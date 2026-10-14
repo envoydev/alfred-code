@@ -166,7 +166,11 @@ test('update: a pending line goes once its launcher moved the data, and a root i
     });
     assert.deepStrictEqual(pendingOf(r.stamp), []);
     assert.ok(!r.has('.alfred'), 'the old root, emptied by the launchers, is removed');
-    assert.ok(r.has('.data/chrome-control/Cookies') && r.has('.data/docs/.gitignore'));
+    assert.ok(r.has('.data/chrome-control/Cookies'));
+    // One .gitignore, the new root's: it carries the docs rules, and the docs root has none of its own.
+    assert.match(r.text('.data/.gitignore'), /^# alfred-code: the data root[^\n]*\n\/\*\n!\/\.gitignore\n!\/docs\/\n\/docs\/flow\/\n/);
+    assert.ok(!r.has('.data/docs/.gitignore'), 'the docs root keeps no .gitignore of its own under the data root');
+    assert.ok(r.has('.data/.sensitive-data'), 'the default sensitive data moved with the root');
 });
 
 test('update: a pending line goes once its launcher moved the data', POSIX_ONLY, () =>
@@ -672,4 +676,49 @@ test('old credentials: a run book under a docs root only settings.local.json nam
     });
     assert.match(outs[1], /sensitive data: handbook\/project-capabilities\/credentials\.local\.env -> \.alfred\/\.sensitive-data \(ADMIN_PASSWORD added\)/, outs[1]);
     assert.match(steps[1] || '', /^ADMIN_PASSWORD=pa55-w0rd-xyz$/m);
+});
+
+// PL2 (audit 2026-10-14, the user's ruling of 2026-10-14): the browser server takes the project's sensitive data as a
+// FILE - the launcher the shipped entry names passes `--secrets <the store, absolute>` and puts no value in the server's
+// environment. End to end: an install writes the store, the user fills it, an update and a re-run leave it as it is, and
+// the entry's own launcher, started in that project, hands Playwright the store the install placed (a moved root's too).
+test('PL2 sensitive data: the shipped browser entry starts Playwright with --secrets <the store>, over a fresh install, an update and a root move', POSIX_ONLY, () =>
+{
+    const { execFileSync } = require('node:child_process');
+    const ROOT = path.join(__dirname, '..');
+    const entry = require('../.claude-plugin/marketplace.json').plugins.find((p) => p.name === 'chrome-control').mcpServers['chrome-control'];
+    const launch = (repo, work) =>
+    {
+        const bin = path.join(work, 'pl2-bin');
+        const record = path.join(work, 'pl2-npx.json');
+        put(path.join(bin, 'npx'), `#!/usr/bin/env node\nrequire('fs').writeFileSync(${JSON.stringify(record)}, JSON.stringify({ argv: process.argv.slice(2), token: process.env.API_TOKEN ?? null }));\n`);
+        fs.chmodSync(path.join(bin, 'npx'), 0o755);
+        const args = entry.args.map((a) => a.split('${CLAUDE_PLUGIN_ROOT}').join(ROOT));
+        const err = execFileSync(entry.command === 'node' ? process.execPath : entry.command, args,
+            { cwd: repo, env: { PATH: `${bin}${path.delimiter}${process.env.PATH}`, HOME: work }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+        const got = JSON.parse(read(record));
+        const at = got.argv.indexOf('--secrets');
+        return { secrets: at < 0 ? null : got.argv[at + 1], token: got.token, err };
+    };
+    let work = null;
+    const { outs, steps } = seedRun(['install', 'update', 'update', 'update'], SELECTION, {
+        prepare: (repo, w) => { prep(repo); work = w; },
+        args: [['--scope', 'project'], UPDATE, UPDATE, [...UPDATE, '--data-path', '.data', '--data-move', 'move']],
+        each: (repo, i) =>
+        {
+            if (i === 0) fs.appendFileSync(path.join(repo, '.alfred', '.sensitive-data'), 'API_TOKEN=tok-abcdef123456\n');
+            const root = i < 3 ? '.alfred' : '.data';
+            return { store: read(path.join(repo, root, '.sensitive-data')), real: fs.realpathSync(repo), launch: launch(repo, work) };
+        },
+    });
+    assert.match(steps[0].store, /^# alfred-code: this project's sensitive data/, 'the install wrote the store');
+    for (const [i, s] of steps.entries())
+    {
+        const root = i < 3 ? '.alfred' : '.data';
+        assert.strictEqual(s.launch.secrets, path.join(s.real, root, '.sensitive-data'), `step ${i}: ${outs[i]}`);
+        assert.strictEqual(s.launch.token, null, `step ${i}: a store value reached the browser's environment`);
+        assert.ok(!s.launch.err.includes('tok-abcdef123456'), `step ${i}: a value was printed`);
+        assert.match(s.store, /^API_TOKEN=tok-abcdef123456$/m, `step ${i}: the user's own key kept`);
+    }
+    assert.strictEqual(steps[2].store, steps[1].store, 'a re-run leaves the store as it is');
 });

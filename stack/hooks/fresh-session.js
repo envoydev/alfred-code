@@ -44,9 +44,14 @@ const FRESH_AT_1M = freshAt('ALFRED_CODE_FRESH_SESSION_1M', 400000);
 // there can run past its window without an offer; lower the variable for such models (it sat at
 // 180,000 until 2.1.6 for exactly that reason).
 const FRESH_AT_DEFAULT = freshAt('ALFRED_CODE_FRESH_SESSION_DEFAULT', 300000);
-// `0` on ALL THREE is the whole off switch. The retired ALFRED_CODE_FRESH_SESSION_PCT is not read
-// at all any more - a percentage of a window is not what this gate fires on.
-const FRESH_OFF = FRESH_AT_200K === 0 && FRESH_AT_1M === 0 && FRESH_AT_DEFAULT === 0;
+// COMPACT INSTEAD (the user's ruling, 2026-10-14): ALFRED_CODE_AUTO_COMPACT=1 makes the project compact where it would
+// have been offered a fresh session - the installer seeds each model's autoCompactWindow at its tier's trigger above
+// (settings.js compactWindowSeeds), and every offer, ask and hold reads the gate as off. `0` (the seed) keeps the
+// offers; anything but `1` reads as `0`.
+const COMPACT_INSTEAD = String(envOf(process.env, 'AUTO_COMPACT') || '').trim() === '1';
+// `0` on ALL THREE is the whole off switch, and so is COMPACT_INSTEAD. The retired ALFRED_CODE_FRESH_SESSION_PCT is not
+// read at all any more - a percentage of a window is not what this gate fires on.
+const FRESH_OFF = (FRESH_AT_200K === 0 && FRESH_AT_1M === 0 && FRESH_AT_DEFAULT === 0) || COMPACT_INSTEAD;
 
 // --- which context WINDOW is this session running in? -------------------------------------
 // ONE rule: the session's model id is looked up in `model-windows.json`, shipped beside this hook
@@ -130,8 +135,9 @@ function envWindow() {
 // window': 'how full the context window can get before Claude Code compacts'; settings-reference `autoCompactWindow` /
 // `modelSettings`). Read in the documented order: the environment variable (both spellings the docs use), then each
 // settings file from the highest scope down - a `modelSettings` entry for this session's model before that file's
-// top-level key. A top-level key in the USER file is skipped: the docs scope it to Opus 5, Fable 5.1 and earlier
-// models, and a newer model keeps its own tuned window, which no file names - the compaction record below measures it.
+// top-level key. The top-level key counts in EVERY file, the user's included: the settings reference gives it 'Scope:
+// Any file' and no model limit (re-read 2026-10-14, audit HK03) - the Opus 5 / Fable 5.1 limit on the user file is
+// `effortLevel`'s, and skipping it here left a user window under the trigger (390k) unread until a compaction was recorded.
 // 'auto', garbage or a value outside 100K-1M is no window. This only ever LOWERS the window: the harness caps the
 // auto-compact window at the model's own.
 function autoCompactWindow() {
@@ -146,14 +152,14 @@ function autoCompactWindow() {
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
     const account = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir() || '', '.claude');
     const id = String(sessionModelId() || '').toLowerCase();
-    const files = [[path.join(root, '.claude', 'settings.local.json'), true], [path.join(root, '.claude', 'settings.json'), true], [path.join(account, 'settings.json'), false]];
-    for (const [file, topLevelApplies] of files) {
+    const files = [path.join(root, '.claude', 'settings.local.json'), path.join(root, '.claude', 'settings.json'), path.join(account, 'settings.json')];
+    for (const file of files) {
       let s;
       try { s = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { continue; }
       if (!s || typeof s !== 'object') continue;
       const per = s.modelSettings && typeof s.modelSettings === 'object' && id
         ? Object.entries(s.modelSettings).find(([k]) => k.toLowerCase() === id || id.endsWith(`/${k.toLowerCase()}`) || id.endsWith(`.${k.toLowerCase()}`)) : null;
-      const n = valid(per && per[1] && per[1].autoCompactWindow) || (topLevelApplies ? valid(s.autoCompactWindow) : null);
+      const n = valid(per && per[1] && per[1].autoCompactWindow) || valid(s.autoCompactWindow);
       if (n) return n;
     }
   } catch { /* no root, no home */ }
@@ -214,8 +220,13 @@ function knownWindow() {
 // 200k account anything at all.
 function ctxThreshold() {
   const window = knownWindow();
-  let at = window === 200000 ? FRESH_AT_200K
-    : window === 1000000 ? FRESH_AT_1M
+  // The TIER is the model's own window - the table row, else the declared default - and an auto-compact window only
+  // lowers the room the trigger must fit in (the clamp below). Tiering by the lowered window put a 1M model under a 400k
+  // compaction window on the DEFAULT trigger, so the window the installer seeds from the 1M trigger (settings.js,
+  // compactWindowSeeds) moved that trigger to 300k (2026-10-14).
+  const tier = tableWindow() || envWindow() || window;
+  let at = tier === 200000 ? FRESH_AT_200K
+    : tier === 1000000 ? FRESH_AT_1M
       : FRESH_AT_DEFAULT;
   // A trigger at or above the window it applies to can never be reached, and a gate that cannot
   // fire is the gate not existing. Honour the number that was set up to the point it goes
@@ -410,7 +421,7 @@ function askAnsweredSince(from) {
 }
 
 module.exports = {
-  use, freshAt, FRESH_AT_200K, FRESH_AT_1M, FRESH_AT_DEFAULT, FRESH_OFF, sessionModelId, tableWindow,
+  use, freshAt, FRESH_AT_200K, FRESH_AT_1M, FRESH_AT_DEFAULT, FRESH_OFF, COMPACT_INSTEAD, sessionModelId, tableWindow,
   envWindow, knownWindow, ctxThreshold, MIN_RECOVERABLE_SHARE, coldFloor, worthResuming, contextNow, lowestTrigger,
   autoCompactWindow, recordCompactPoint, observedCompaction, compactPointsFile,
   transcriptSize, isTypedTurn, freshAskAnsweredThisTurn, freshAskAnsweredCtx, askAnsweredSince,

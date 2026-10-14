@@ -225,8 +225,8 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
    ```ask
    Next: <the deferred item or follow-up>. It opens a NEW cycle in a NEW plan file.
    - 'Start it in a fresh session (Recommended)' - the paste-ready block above; this context stays behind
-   - 'Start it here' - a new cycle in this chat, from step 1
    - 'Leave it for later' - named in Leftovers
+   - 'Start it here' - a new cycle in this chat, from step 1
    ```
 
    An unpushed commit is its own question too (several branches: the merge order):

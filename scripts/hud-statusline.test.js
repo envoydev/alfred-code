@@ -520,3 +520,76 @@ for (const [name, args] of [
         }
     });
 }
+
+// Audit 2026-10-14 PL7: claude-hud 0.11's /claude-hud:setup runs scripts/setup.mjs, which copies its launcher to
+// <account>/plugins/claude-hud/statusline.mjs and points statusLine at it (setup.mjs buildCommand) - on POSIX the runtime
+// and the launcher single-quoted (Bun with --env-file /dev/null), under Git Bash a statusline.cmd shim, under PowerShell
+// the cmd.exe line 0.8.0 wrote. Each is claude-hud's own and current: init must leave it, or the two writers undo each other.
+test('PL7 claude-hud 0.11\'s own launcher lines read as current on darwin, linux and win32 (Git Bash, PowerShell), and are left as they are', () =>
+{
+    const quote = (v) => `'${v.split("'").join("'\\''")}'`;
+    const dir = account();
+    const hudDir = path.join(dir, 'plugins', 'claude-hud');
+    const launcher = path.join(hudDir, 'statusline.mjs');
+    fs.mkdirSync(hudDir, { recursive: true });
+    fs.writeFileSync(launcher, '// claude-hud 0.11 launcher\n');
+    const own = `${quote(NODE)} ${quote(launcher)}`;
+    for (const platform of ['darwin', 'linux'])
+    {
+        const want = hud.expected({ platform, configDir: dir, runtime: NODE, env: {}, exists: fs.existsSync, bash: false });
+        const state = (command, exists = fs.existsSync) => hud.classify({ type: 'command', command }, { platform, want, exists }).state;
+        assert.strictEqual(state(own), 'current', `${platform}: node`);
+        assert.strictEqual(state(`${quote(NODE)} --env-file /dev/null ${quote(launcher)}`), 'current', `${platform}: bun's form`);
+        assert.strictEqual(state(`${quote('/gone/node')} ${quote(launcher)}`), 'stale', `${platform}: a runtime that is gone`);
+        assert.strictEqual(state(`${quote(NODE)} ${quote('/other/.claude/plugins/claude-hud/statusline.mjs')}`), 'stale', `${platform}: another account's launcher`);
+        assert.strictEqual(state(own, (p) => p !== launcher && fs.existsSync(p)), 'stale', `${platform}: the launcher copy missing`);
+    }
+    // A quote inside a path is spelled '\'' by setup.mjs's quote().
+    const odd = path.join(TMP, `it's-${seq++}`);
+    fs.mkdirSync(path.join(odd, 'plugins', 'claude-hud'), { recursive: true });
+    fs.writeFileSync(path.join(odd, 'plugins', 'claude-hud', 'statusline.mjs'), '');
+    const oddWant = hud.expected({ platform: 'linux', configDir: odd, runtime: NODE, env: {}, exists: fs.existsSync, bash: false });
+    assert.strictEqual(hud.classify({ command: `${quote(NODE)} ${quote(path.join(odd, 'plugins', 'claude-hud', 'statusline.mjs'))}` }, { platform: 'linux', want: oddWant, exists: fs.existsSync }).state, 'current');
+    // Git Bash: the shim beside the launcher.
+    const gitbash = 'exec "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/claude-hud/statusline.cmd"';
+    const bashWant = hud.expected({ platform: 'win32', configDir: dir, runtime: WIN_NODE, env: WIN_ENV, exists: winDisk(WIN_NODE), bash: true });
+    assert.strictEqual(hud.classify({ command: gitbash }, { platform: 'win32', want: bashWant, exists: fs.existsSync }).state, 'stale', 'no shim yet');
+    fs.writeFileSync(path.join(hudDir, 'statusline.cmd'), '@echo off\r\n');
+    assert.strictEqual(hud.classify({ command: gitbash }, { platform: 'win32', want: bashWant, exists: fs.existsSync }).state, 'current', 'the shim and the launcher on disk');
+    const cmdWant = hud.expected({ platform: 'win32', configDir: dir, runtime: WIN_NODE, env: WIN_ENV, exists: winDisk(WIN_NODE, CMD_EXE), bash: false });
+    assert.strictEqual(hud.classify({ command: gitbash }, { platform: 'win32', want: cmdWant, exists: fs.existsSync }).state, 'stale', 'a Git Bash line where none runs');
+    // PowerShell: 0.11 writes 0.8.0's own cmd.exe line, already current with a live node and this account's launcher.
+    assert.strictEqual(hud.classify({ command: cmdLine(WIN_NODE, path.win32.join(dir, 'plugins', 'claude-hud', 'statusline.mjs')) }, { platform: 'win32', want: cmdWant, exists: winDisk(WIN_NODE, CMD_EXE) }).state, 'current');
+    // End to end on darwin: init leaves claude-hud's own line, adds only the row.
+    const acct = account({ settings: { statusLine: { type: 'command', command: `${quote(NODE)} ${quote(path.join(TMP, 'x'))}` } } });
+    const acctLauncher = path.join(acct, 'plugins', 'claude-hud', 'statusline.mjs');
+    fs.mkdirSync(path.dirname(acctLauncher), { recursive: true });
+    fs.writeFileSync(acctLauncher, '');
+    const line = `${quote(NODE)} ${quote(acctLauncher)}`;
+    fs.writeFileSync(path.join(acct, 'settings.json'), JSON.stringify({ statusLine: { type: 'command', command: line } }));
+    const res = run(acct);
+    assert.ok(res.lines.includes('hud: statusLine current - left as it is'), res.lines.join('\n'));
+    assert.strictEqual(read(acct, 'settings.json').statusLine.command, line, 'claude-hud\'s own line rewritten');
+    assert.strictEqual(read(acct, 'settings.json').statusLine.refreshInterval, 5, 'the row still lands on claude-hud\'s own block');
+});
+
+// PL7: the claude-hud row of meta/plugin-settings.json names the version its keys were read from, and the stack's update
+// is what moves claude-hud. A cached claude-hud newer than that version goes red here: re-read its dist/config.js and
+// scripts/setup.mjs, re-stamp `verified`, and teach classify() any new launcher line. Reads this machine's account cache;
+// with none (CI), nothing to compare.
+test('PL7 the claude-hud row was verified on a version no older than the newest claude-hud cached in this account', (t) =>
+{
+    const row = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'plugin-settings.json'), 'utf8')).plugins['claude-hud'];
+    const verified = (/^claude-hud (\d+\.\d+\.\d+)\b/.exec(row.verified) || [])[1];
+    assert.ok(verified, `the row's verified line names no version: ${row.verified}`);
+    const cache = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'plugins', 'cache');
+    const parts = (v) => v.split('.').map(Number);
+    const newer = (a, b) => { const [x, y] = [parts(a), parts(b)]; for (let i = 0; i < 3; i += 1) if (x[i] !== y[i]) return x[i] > y[i]; return false; };
+    let markets = [];
+    try { markets = fs.readdirSync(cache); } catch { /* no cache */ }
+    const cached = markets.flatMap((m) => { try { return fs.readdirSync(path.join(cache, m, 'claude-hud')); } catch { return []; } })
+        .filter((v) => /^\d+\.\d+\.\d+$/.test(v));
+    if (!cached.length) { t.skip('no claude-hud in this account\'s plugin cache'); return; }
+    const newest = cached.reduce((a, b) => (newer(b, a) ? b : a));
+    assert.ok(!newer(newest, verified), `claude-hud ${newest} is cached, the row was verified on ${verified} - re-read it and re-stamp meta/plugin-settings.json`);
+});

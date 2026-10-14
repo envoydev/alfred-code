@@ -287,35 +287,124 @@ function transcriptEntrypoint(file)
 // seats ran under AUTO (9a4ef375), and a post-compaction 'ask the user' that a literal follower would have ended an
 // overnight run on (c6142301). The project root is the env's or the payload's own cwd, never this process's cwd.
 const AUTO_STAMP_MAX_MS = 8 * 60 * 60 * 1000;
-function autoStampLive(input, env)
+// A stamp an auto-mode start writes (guard-fresh-session-start.js, `auto-mode` in a task or loop call) names its session on
+// a `session: <id>` line. It is live for THAT session for as long as the run takes - an unattended loop outlives the 8h a
+// hand-written stamp gets - and never for another session in the same project, which the age and birth checks cannot
+// tell apart from it. A week is the backstop for a stamp whose run died without its close.
+const SESSION_STAMP_MAX_MS = 7 * 24 * 60 * 60 * 1000;
+// The approval stamp's state for this payload: its path, first line, named session and whether it is live. null when absent.
+function approvalStamp(input, env)
 {
     try
     {
         const source = env || process.env;
         const payload = input && typeof input === 'object' ? input : {};
         const root = source.CLAUDE_PROJECT_DIR || (typeof payload.cwd === 'string' ? payload.cwd : '');
-        if (!root) return false;
-        const gate = path.resolve(root, envOf(source, 'DOCS_PATH') || '.alfred/docs', 'flow', 'APPROVAL');
-        const stamp = fs.statSync(gate);
-        if (!stamp.isFile() || Date.now() - stamp.mtimeMs > AUTO_STAMP_MAX_MS) return false;
-        if (typeof payload.transcript_path === 'string' && payload.transcript_path)
-        {
-            try
-            {
-                const t = fs.statSync(payload.transcript_path);
-                const born = t.birthtimeMs && t.birthtimeMs !== t.ctimeMs ? t.birthtimeMs : 0;
-                if (born && stamp.mtimeMs < born) return false;
-            }
-            catch { /* no transcript - the age cap decides */ }
-        }
-        const fd = fs.openSync(gate, 'r');
-        const head = Buffer.alloc(512);
+        if (!root) return null;
+        const file = path.resolve(root, envOf(source, 'DOCS_PATH') || '.alfred/docs', 'flow', 'APPROVAL');
+        const stamp = fs.statSync(file);
+        if (!stamp.isFile()) return null;
+        const fd = fs.openSync(file, 'r');
+        const head = Buffer.alloc(2048);
         let n = 0;
         try { n = fs.readSync(fd, head, 0, head.length, 0); }
         finally { fs.closeSync(fd); }
-        return /^\s*AUTO\b/.test(head.toString('utf8', 0, n).split('\n')[0]);
+        const text = head.toString('utf8', 0, n);
+        const first = text.split('\n')[0].trim();
+        const session = (/^session:[ \t]*(\S+)/m.exec(text) || [])[1] || '';
+        const age = Date.now() - stamp.mtimeMs;
+        let live;
+        if (session) live = age <= SESSION_STAMP_MAX_MS && String(payload.session_id || '') === session;
+        else
+        {
+            live = age <= AUTO_STAMP_MAX_MS;
+            if (live && typeof payload.transcript_path === 'string' && payload.transcript_path)
+            {
+                try
+                {
+                    const t = fs.statSync(payload.transcript_path);
+                    const born = t.birthtimeMs && t.birthtimeMs !== t.ctimeMs ? t.birthtimeMs : 0;
+                    if (born && stamp.mtimeMs < born) live = false;
+                }
+                catch { /* no transcript - the age cap decides */ }
+            }
+        }
+        return { file, first, session, live, mtimeMs: stamp.mtimeMs };
     }
-    catch { return false; }
+    catch { return null; }
+}
+function autoStampLive(input, env)
+{
+    const stamp = approvalStamp(input, env);
+    return Boolean(stamp && stamp.live && /^AUTO\b/.test(stamp.first));
+}
+
+// A UserPromptSubmit prompt the HARNESS wrote, not the user: a task notice, a command's output, and a seat's hand-back
+// ('Another Claude session sent a message:' over an `<agent-message>` frame - its transcript row is `isMeta` with
+// `origin.kind: peer`, which the payload does not carry). One test for every hook that reads a prompt as someone typing
+// (audit 2026-10-14 HK14: a hand-back ended auto-mode, drew the answer budget - 351 of 960 injections in a week - and
+// reset the monitor's turn).
+const HARNESS_PROMPT_RE = /^\s*(?:<(?:task-notification|local-command-stdout|local-command-caveat|agent-message)\b|Another Claude session sent a message:)/;
+function harnessPrompt(prompt)
+{
+    return HARNESS_PROMPT_RE.test(String(prompt || ''));
+}
+
+// SHORT-LIVED LINKS (the user's ruling, 2026-10-14). A download link that carries its own short-lived token - Jira's
+// media `?token=<JWT>`, good for about 10 minutes; an S3 presigned URL's `X-Amz-Credential=AKIA...` - matched the
+// credential shapes, so the secret guard refused the fetch in every session and the stop contract could ask to rotate a
+// token that expires by itself. A token in a URL's QUERY whose link states a lifetime of an hour or less - the JWT's own
+// `exp` (and `exp - iat`, when it carries one), S3's `X-Amz-Expires` - is a capability for that fetch, not a login.
+// `shortLivedLinks` names each one (host, seconds left, kind, never the value) and `withoutShortLived` blanks them out of
+// a text, so every OTHER shape in it is still judged. A header, a token outside a URL, one with no lifetime or a longer
+// one keeps every check. The JWT is decoded, never verified: a forged short `exp` buys nothing a forger did not have.
+const SHORT_LIVED_MAX_S = 60 * 60;
+const LINK_RE = /https?:\/\/[^\s'"`<>\\]+/gi;
+const LINK_JWT_RE = /^eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}$/;
+function jwtClaims(token)
+{
+    try { return JSON.parse(Buffer.from(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')); }
+    catch { return null; }
+}
+function linkTokens(link, nowS)
+{
+    let url;
+    try { url = new URL(link); }
+    catch { return []; }
+    const out = [];
+    for (const [key, value] of url.searchParams)
+    {
+        if (!LINK_JWT_RE.test(value)) continue;
+        const claims = jwtClaims(value);
+        const exp = claims && typeof claims === 'object' ? Number(claims.exp) : NaN;
+        const iat = claims && typeof claims === 'object' && claims.iat !== undefined ? Number(claims.iat) : null;
+        if (!Number.isFinite(exp) || exp - nowS > SHORT_LIVED_MAX_S) continue;
+        if (iat !== null && (!Number.isFinite(iat) || exp - iat > SHORT_LIVED_MAX_S)) continue;
+        out.push({ token: value, key, host: url.host, seconds: Math.max(0, Math.round(exp - nowS)), kind: 'jwt' });
+    }
+    const credential = /^((?:AKIA|ASIA)[0-9A-Z]{16})\//.exec(url.searchParams.get('X-Amz-Credential') || '');
+    const expires = Number(url.searchParams.get('X-Amz-Expires'));
+    if (credential && url.searchParams.get('X-Amz-Signature') && Number.isFinite(expires) && expires > 0 && expires <= SHORT_LIVED_MAX_S)
+        out.push({ token: credential[1], key: 'X-Amz-Credential', host: url.host, seconds: expires, kind: 's3' });
+    return out;
+}
+// A JSON-escaped ampersand is the link's own `&`: a Go CLI's JSON prints `&`, and a transcript row escapes that
+// backslash again.
+const unescapeLinks = (text) => String(text || '').replace(/\\+u0026/g, '&');
+function shortLivedLinks(text, now = Date.now())
+{
+    const out = [];
+    for (const m of unescapeLinks(text).matchAll(LINK_RE)) out.push(...linkTokens(m[0], now / 1000));
+    return out;
+}
+function withoutShortLived(text, now = Date.now())
+{
+    return unescapeLinks(text).replace(LINK_RE, (link) =>
+    {
+        let kept = link;
+        for (const t of linkTokens(link, now / 1000)) kept = kept.split(t.token).join('<short-lived>');
+        return kept;
+    });
 }
 
 function unattended(input, env)
@@ -574,4 +663,4 @@ function scanBudget(limits = {})
 // the stop contract's ask deny and the answer-length Stop block, which disagreed ([\u2014\u2013] vs [\u2014\u2015], audit 2026-10-08).
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
-module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopHeldBy, stopMarkerFile, scanBudget, SCAN_LIMITS, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS };
+module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, harnessPrompt, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopHeldBy, stopMarkerFile, scanBudget, SCAN_LIMITS, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS };

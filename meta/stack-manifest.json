@@ -18,13 +18,13 @@
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "loop-quality",
+      "name": "loop-code-quality",
       "note": "deliberate code-quality analyze-triage-fix loop - runs the code-quality capture each round (CODE-ASSESSMENT.md fresh), fixes findings by tier (small to an implementer, substantial designer-led with the plan approved, structural = user decision), anti-gaming sweep, reconcile; the loops/ numbered prompts are the rules, and `staged` keeps the numbered-prompt pipeline; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
       "name": "loop-architecture-quality",
-      "note": "deliberate analyze-assess-improve loop - the architecture capture writes ARCHITECTURE.md, the pros/cons capture writes ASSESSMENT.md fresh every round, fix cons by tier, reconcile; manual /-only"
+      "note": "deliberate analyze-assess-improve loop - the architecture capture writes ARCHITECTURE.md, the pros/cons capture writes ARCHITECTURE-ASSESSMENT.md fresh every round, fix cons by tier, reconcile; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -49,7 +49,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "capture-architecture-quality",
-      "note": "deliberate pros/cons capture over the architecture map - dispatches architecture-analyzer per module, reasons a gated, tiered strengths/weaknesses assessment in the main session, writes docs/quality/ASSESSMENT.md fresh every run (never versioned - quality/ carries no watch.json, so the docs engine never treats it as a domain); reads the decision log, never writes it; manual /-only"
+      "note": "deliberate pros/cons capture over the architecture map - dispatches architecture-analyzer per module, reasons a gated, tiered strengths/weaknesses assessment in the main session, writes docs/quality/ARCHITECTURE-ASSESSMENT.md fresh every run (never versioned - quality/ carries no watch.json, so the docs engine never treats it as a domain); reads the decision log, never writes it; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -219,7 +219,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "npm",
-      "note": "professional npm: lockfile+ci discipline, supply-chain baseline (ignore-scripts/cooldown/allow-git), audit gating, overrides vs legacy-peer-deps, exports maps + ESM-first publishing, update-bot cooldowns"
+      "note": "professional npm: lockfile+ci discipline, supply-chain baseline by npm -v (npm 12 allowScripts approvals / npm 11 ignore-scripts, cooldown, allow-git), audit gating, overrides vs legacy-peer-deps, exports maps + ESM-first publishing, update-bot cooldowns"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -289,12 +289,12 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "dotnet-architecture-tests",
-      "note": "architecture fitness tests: NetArchTest (default)/ArchUnitNET - layer+dependency+naming+isolation rules as build-failing tests"
+      "note": "architecture fitness tests: NetArchTest.eNhancedEdition (default)/ArchUnitNET - layer+dependency+naming+isolation rules as build-failing tests"
     },
     {
       "repo": "envoydev/alfred-code",
       "name": "dotnet-aspire",
-      "note": ".NET Aspire local orchestration: AppHost, ServiceDefaults, service discovery, dashboard"
+      "note": "Aspire local orchestration: AppHost, ServiceDefaults, service discovery, dashboard"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -309,7 +309,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "dotnet-console-apps",
-      "note": "console-app interface surface: CLI arg parsing (System.CommandLine 2.0/Spectre.Console.Cli/Cocona) + bot-SDK integration (Telegram/Discord/Slack/exchange) in a BackgroundService"
+      "note": "console-app interface surface: CLI arg parsing (System.CommandLine 2.0/Spectre.Console.Cli) + bot-SDK integration (Telegram/Discord/Slack/exchange) in a BackgroundService"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -359,7 +359,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "dotnet-openapi",
-      "note": "OpenAPI doc (Swashbuckle / built-in .NET 9+) + Scalar docs UI"
+      "note": "OpenAPI doc (built-in on the .NET 10 floor / Swashbuckle below it) + Scalar docs UI"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -369,7 +369,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "dotnet-security",
-      "note": "OWASP Top 10 (2021) -> .NET 8 mitigations; deprecated-pattern warnings"
+      "note": "OWASP Top 10 (2021, findings labelled A06:2021) -> .NET 10 mitigations; deprecated-pattern warnings"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -759,6 +759,12 @@
     },
     {
       "file": "guard-secret-value.js",
+      "matcher": "^mcp__(plugin_(chrome|msedge|firefox|webkit)-control_)?(chrome|msedge|firefox|webkit)-control__browser_file_upload$",
+      "event": "",
+      "note": "the fourth read route: Playwright MCP's browser_file_upload hands a workspace file to whatever page asks - the Read judgement over tool_input.paths, both routes' spellings of the four engine servers (audit 2026-10-14 PL3)"
+    },
+    {
+      "file": "guard-secret-value.js",
       "matcher": "@SessionStart",
       "event": "",
       "note": "the project's sensitive data (<data root>/.sensitive-data, a dotenv the user fills by hand) by KEY only, and the run that uses it (--with-sensitive) - silent when there is none; every value is a credential there, so a Read is blocked, a dump masked and a source or copy refused"
@@ -779,7 +785,7 @@
       "file": "guard-stop-contract.js",
       "matcher": "@Stop",
       "event": "",
-      "note": "Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, past the window's absolute trigger, re-armed at 1.5x growth; and two log-only probes the analyzer counts - a done claim over a source edit (a file tool's or a shell write), unrun when nothing ran after it (ALFRED_CODE_DONE_GATE=0 off), and the first red build or test run of a streak; and a close dismissing a failure ('pre-existing', 'unrelated to my change', 'flaky') in a turn with a red run or a skipped test"
+      "note": "Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, past the window's absolute trigger, re-armed at 1.5x growth; and two log-only probes the analyzer counts - a done claim over a source edit (a file tool's or a shell write), unrun when nothing ran after it (ALFRED_CODE_DONE_GATE=0 off), and the first red build or test run of a streak; and a close dismissing a failure ('pre-existing', 'unrelated to my change', 'flaky') in a turn with a red run or a skipped test. Under an auto-mode run's stamp (a `session:` line naming this session) a Stop is sent back to the run until its close deletes the stamp - held again only after a tool call (the Stop chain's workSince), and at most 49 times per stamp: the 50th Stop passes with one auto-continue-cap row (audit 2026-10-14 HK05). Where the project compacts instead (ALFRED_CODE_AUTO_COMPACT=1) every fresh-session offer and note stands down, and an ask still carrying a fresh-session option is denied once, handed back with it dropped."
     },
     {
       "file": "guard-stop-contract.js",
@@ -791,13 +797,13 @@
       "file": "guard-stop-contract.js",
       "matcher": "AskUserQuestion",
       "event": "",
-      "note": "PreToolUse AskUserQuestion: DENY once per ask text an ask whose own shape is wrong - its house voice (an em- or en-dash, a double quote), a fresh-session option quoting no number near the measured carry (both carrying the corrected strings), an option telling the user to type into Other, a single-select question without exactly one (Recommended), a new cycle's first ask with no fresh option; INJECT the judgement notes, which land beside the user's answer and are worded for it - stale scope (an option naming repo/remote/job state with no fresh read this turn: verify before acting, re-ask if it moved), a recommendation contradicting an un-actioned earlier prompt, the fresh-session offer for the next ask, a live credential. Presence only"
+      "note": "PreToolUse AskUserQuestion: DENY once per ask text an ask whose own shape is wrong - its house voice (an em- or en-dash, a double quote), a fresh-session option quoting no number near the measured carry (both carrying the corrected strings), an option telling the user to type into Other, a single-select question without exactly one (Recommended), a new cycle's first ask with no fresh option; INJECT the judgement notes, which land beside the user's answer and are worded for it - stale scope (an option naming repo/remote/job state with no fresh read this turn: verify before acting, re-ask if it moved), a recommendation contradicting an un-actioned earlier prompt, the fresh-session offer for the next ask, a live credential. Presence only. Under a live AUTO stamp it ANSWERS an ask whose every question marks one (Recommended) option - allow plus an answers map in updatedInput - except a recommended push, merge, deploy or publish, and takes the next option over a recommended fresh-session hand-off; anything else waits for the user."
     },
     {
       "file": "guard-stop-contract.js",
       "matcher": "@PostToolUseFailure:Bash|PowerShell",
       "event": "",
-      "note": "PostToolUseFailure: LOG-ONLY - the first red build or test run (npm / node --test / jest / vitest / pytest / dotnet / ng / go / cargo / mvn / gradle) of a failure streak writes one root-cause probe row with its tool_use_id, which analyze-usage.js --hook-blocks resolves against the transcript; nothing injected, never a block"
+      "note": "PostToolUseFailure: LOG-ONLY and async (it never blocks or decides, so no shell result waits on it) - the first red build or test run (npm / node --test / jest / vitest / pytest / dotnet / ng / go / cargo / mvn / gradle) of a failure streak writes one root-cause probe row with its tool_use_id, which analyze-usage.js --hook-blocks resolves against the transcript; nothing injected, never a block"
     },
     {
       "file": "guard-stop-contract.js",
@@ -809,19 +815,19 @@
       "file": "guard-fresh-session-start.js",
       "matcher": "Skill",
       "event": "",
-      "note": "PreToolUse Skill: block a deliberate orchestration run starting on another run's carried history past the window-scaled trigger - route it through an AskUserQuestion fresh-session choice"
+      "note": "PreToolUse Skill: block a deliberate orchestration run starting on another run's carried history past the window-scaled trigger - route it through an AskUserQuestion fresh-session choice. `auto-mode` in the call's args on a task or loop skill writes the run's session-named AUTO stamp first and injects the auto-mode contract instead. A prompt the user types in that session ends the run's auto-mode (its stamp deleted). COMPACT INSTEAD: under ALFRED_CODE_AUTO_COMPACT=1 nothing is offered or held; the session's first orchestration run and an automatic compaction's start are told the session compacts and goes on."
     },
     {
       "file": "guard-fresh-session-start.js",
-      "matcher": "@UserPromptExpansion:(^|[^A-Za-z0-9_-])((alfred-)?(loop-(quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|usage-report|related-projects|agent-awareness|project-awareness|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|init|setup|update|configure|validate)$",
+      "matcher": "@UserPromptExpansion:(^|[^A-Za-z0-9_-])((alfred-)?(loop-[a-z][a-z0-9-]*|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|usage-report|related-projects|agent-awareness|project-awareness|agent-capabilities|project-capabilities)|task-[a-z][a-z0-9-]*|issue-diagnoser)|security-review|init|setup|update|configure|validate)$",
       "event": "",
-      "note": "the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - UserPromptExpansion fires on that typed command and names it; the matcher (a regex with no colon, which the row format splits on) lists the orchestration commands under either spelling, so no ordinary prompt spawns the hook; it injects the ask, never blocks (a blocked expansion shows its reason to the user only)"
+      "note": "the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - UserPromptExpansion fires on that typed command and names it; the matcher (a regex with no colon, which the row format splits on) lists the orchestration commands under either spelling - every task-* and loop-* name, a project's own and a digit included (audit 2026-10-14 HK06: a typed /task-migrate-v2 auto-mode never spawned it) - so no ordinary prompt spawns the hook; it injects the ask, never blocks (a blocked expansion shows its reason to the user only). `auto-mode` in command_args on a task or loop command writes the run's session-named AUTO stamp before the run and injects the auto-mode contract instead of any offer."
     },
     {
       "file": "guard-fresh-session-start.js",
       "matcher": "@SessionStart:compact",
       "event": "",
-      "note": "the harness just auto-compacted, which proves the session hit its compaction point at a moment a Stop may never come - inject the fresh-session ask there too"
+      "note": "the harness just auto-compacted, which proves the session hit its compaction point at a moment a Stop may never come - leave a one-shot hold (a compact note where the project compacts instead)"
     },
     {
       "file": "guard-fresh-session-start.js",
@@ -953,13 +959,13 @@
       "file": "memory-session.js",
       "matcher": "@SessionStart",
       "event": "",
-      "note": "push a compact slice of shared memory (own project, cross-project preferences/corrections, related projects) into the session's starting context - engine memory.js copied beside it, not itself wired"
+      "note": "push a compact slice of shared memory (own project, cross-project preferences/corrections, related projects) into the session's starting context - engine memory.js copied beside it, not itself wired; it ends on this host's shell traps (win32: the Git Bash line; a zsh $SHELL: the two zsh lines - audit 2026-10-14 RU13)"
     },
     {
       "file": "memory-session.js",
       "matcher": "@SubagentStart",
       "event": "",
-      "note": "the project's memory tag line for a dispatched subagent - SessionStart context never reaches one, and a seat stores and reads its handoff note under that tag"
+      "note": "the project's memory tag line for a dispatched subagent - SessionStart context never reaches one, and a seat stores and reads its handoff note under that tag - and the memory tools line, which a seat whose tools grant the server skips: it calls them directly; then this host's shell traps (win32: the Git Bash line; a zsh $SHELL: the two zsh lines)"
     },
     {
       "file": "monitor-session.js",
@@ -1028,8 +1034,8 @@
   "mcps": [
     {
       "name": "alfred-navigation",
-      "args": "-e SERENA_HOME=@SERENA_HOME@ -- node -e @ROOT_BOOT@ -- checkout uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from serena-agent@SERENA_PIN@ serena start-mcp-server --context @SERENA_CONTEXT@ --enable-web-dashboard false @SERENA_PROJECT_FLAG@ @SERENA_PROJECT_DIR@",
-      "note": "the navigation server (Serena): LSP symbol navigation; per-project SERENA_HOME (<data root>/serena/home - the data root ignores it, ~327MB LSP) isolates its registry/memories/logs/LSP, no pooling across projects/accounts; its home config points serena at <data root>/serena; --project-from-cwd self-activates the repo on launch (@SERENA_PROJECT_FLAG@ @SERENA_PROJECT_DIR@; a project with no .git whose serena folder moved under the data root registers --project . instead, which the cwd walk cannot find); PyPI (not git), dashboard off; --context names the stack's own serena context (@SERENA_CONTEXT@ = .claude/navigation-context.yml, copied there from stack/mcp) - the upstream claude-code one minus five editing tools and onboarding"
+      "args": "-e SERENA_HOME=@SERENA_HOME@ -e SERENA_USAGE_REPORTING=false -- node -e @ROOT_BOOT@ -- checkout uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from serena-agent@SERENA_PIN@ serena start-mcp-server --context @SERENA_CONTEXT@ --enable-web-dashboard false @SERENA_PROJECT_FLAG@ @SERENA_PROJECT_DIR@ --agent-interface tools",
+      "note": "the navigation server (Serena): LSP symbol navigation; per-project SERENA_HOME (<data root>/serena/home - the data root ignores it, ~327MB LSP) isolates its registry/memories/logs/LSP, no pooling across projects/accounts; its home config points serena at <data root>/serena; --project-from-cwd self-activates the repo on launch (@SERENA_PROJECT_FLAG@ @SERENA_PROJECT_DIR@; a project with no .git whose serena folder moved under the data root registers --project . instead, which the cwd walk cannot find); PyPI (not git), dashboard off, its usage ping off (SERENA_USAGE_REPORTING=false); --context names the stack's own serena context (@SERENA_CONTEXT@ = .claude/navigation-context.yml, copied there from stack/mcp) - the upstream claude-code one minus five editing tools and onboarding"
     },
     {
       "name": "browser",
@@ -1049,7 +1055,7 @@
     {
       "name": "windows-control",
       "active": false,
-      "args": "-e WINDOWS_MCP_EXCLUDE_TOOLS=@WINDOWS_CONTROL_EXCLUDE@ -e WINDOWS_MCP_TOOLS= -e ANONYMIZED_TELEMETRY=false -- uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from windows-mcp@WINDOWS_CONTROL_PIN@ windows-mcp serve",
+      "args": "-e WINDOWS_MCP_EXCLUDE_TOOLS=@WINDOWS_CONTROL_EXCLUDE@ -e WINDOWS_MCP_TOOLS= -e ANONYMIZED_TELEMETRY=false -- uvx --python @WINDOWS_CONTROL_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from windows-mcp@WINDOWS_CONTROL_PIN@ windows-mcp serve",
       "skills": [
         "desktop-automation"
       ],
@@ -1067,8 +1073,8 @@
     {
       "name": "mobile-control",
       "active": false,
-      "args": "-e NO_UI=@MOBILE_NO_UI@ -e ALLOW_REMOTE_APP_URLS=@MOBILE_REMOTE_APPS@ -e REMOTE_SERVER_URL_ALLOW_REGEX=@MOBILE_REMOTE_ALLOW@ -e SCREENSHOTS_DIR=@MOBILE_SCREENSHOTS@ -e PAGE_SOURCES_DIR=@MOBILE_PAGE_SOURCES@ -- node -e @ROOT_BOOT@ -- checkout npx -y appium-mcp@MOBILE_CONTROL_PIN@",
-      "note": "the mobile server (appium-mcp): drives Android and iOS apps on an emulator, a simulator or a device through Appium's embedded UiAutomator2 / XCUITest drivers; addable, seeded by no stack; opt-in (active: false); Node 22+; the Android SDK and a JDK come from ANDROID_HOME / JAVA_HOME where Claude Code starts (the plugin route's launcher, stack/mcp/mobile-launch.js, looks each up only when unset), iOS needs macOS with Xcode; app URLs refused and a local Appium server only unless the user sets ALLOW_REMOTE_APP_URLS / REMOTE_SERVER_URL_ALLOW_REGEX; screenshots and page sources under <data root>/mobile-control"
+      "args": "-e NO_UI=@MOBILE_NO_UI@ -e ALLOW_REMOTE_APP_URLS=@MOBILE_REMOTE_APPS@ -e REMOTE_SERVER_URL_ALLOW_REGEX=@MOBILE_REMOTE_ALLOW@ -e SCREENSHOTS_DIR=@MOBILE_SCREENSHOTS@ -e PAGE_SOURCES_DIR=@MOBILE_PAGE_SOURCES@ -e npm_config_before=@MOBILE_BEFORE@ -- node -e @ROOT_BOOT@ -- checkout npx -y appium-mcp@MOBILE_CONTROL_PIN@",
+      "note": "the mobile server (appium-mcp): drives Android and iOS apps on an emulator, a simulator or a device through Appium's embedded UiAutomator2 / XCUITest drivers; addable, seeded by no stack; opt-in (active: false); Node 22+; the Android SDK and a JDK come from ANDROID_HOME / JAVA_HOME where Claude Code starts (the plugin route's launcher, stack/mcp/mobile-launch.js, looks each up only when unset), iOS needs macOS with Xcode; app URLs refused and a local Appium server only unless the user sets ALLOW_REMOTE_APP_URLS / REMOTE_SERVER_URL_ALLOW_REGEX; screenshots and page sources under <data root>/mobile-control; its caret-ranged dependencies held to the pin's own day (npm_config_before=@MOBILE_BEFORE@, meta/mcp-pins.json's mobile-control refreshed)"
     }
   ],
   "retired": {
@@ -1141,6 +1147,7 @@
       "alfred-issue-signatures-runtime",
       "alfred-loop-architecture-quality",
       "alfred-loop-quality",
+      "loop-quality",
       "alfred-loop-test-coverage",
       "alfred-task-build-from-scratch",
       "alfred-task-design",
@@ -1226,7 +1233,7 @@
       "project-agent-capabilities": "capture-agent-awareness",
       "project-stack-usage-analyzer": "capture-usage-report",
       "project-first-look": "capture-first-look",
-      "project-quality-loop": "loop-quality",
+      "project-quality-loop": "loop-code-quality",
       "project-architecture-quality-loop": "loop-architecture-quality",
       "project-test-coverage-loop": "loop-test-coverage",
       "project-commit-checkpoint": "habits-commit-checkpoint",
@@ -1263,7 +1270,8 @@
       "alfred-issue-signatures-ci": "issue-signatures-ci",
       "alfred-issue-signatures-runtime": "issue-signatures-runtime",
       "alfred-loop-architecture-quality": "loop-architecture-quality",
-      "alfred-loop-quality": "loop-quality",
+      "alfred-loop-quality": "loop-code-quality",
+      "loop-quality": "loop-code-quality",
       "alfred-loop-test-coverage": "loop-test-coverage",
       "alfred-task-build-from-scratch": "task-build-from-scratch",
       "alfred-task-design": "task-design",

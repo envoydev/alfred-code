@@ -21,6 +21,7 @@ const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const m = require('../stack/hooks/memory.js');
 const ENGINE = path.join(ROOT, 'stack', 'hooks', 'memory.js');
 const HOOK = path.join(ROOT, 'stack', 'hooks', 'memory-session.js');
+const host = require(HOOK).hostLines(process.platform, '/bin/bash'); // the lines a bash host gets: none, or win32's own
 
 let DatabaseSync = null;
 try { process.removeAllListeners('warning'); ({ DatabaseSync } = require('node:sqlite')); } catch {}
@@ -68,7 +69,8 @@ test('no seat grants a navigation-server memory tool, and every seat with a hand
   let handoffSeats = 0;
   for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.md'))) {
     const text = fs.readFileSync(path.join(dir, f), 'utf8');
-    const tools = (/^tools:(.*)$/m.exec(text) || [, ''])[1];
+    // what the seat holds as Claude Code resolves it: a whole-server grant minus its removals (scripts/seat-tools.js)
+    const tools = [...require('./seat-tools.js').effectiveTools((/^tools:(.*)$/m.exec(text) || [, ''])[1], (/^disallowedTools:(.*)$/m.exec(text) || [, ''])[1])];
     for (const t of SERENA_MEMORY_TOOLS) assert.ok(!tools.includes(`${NAV}${t}`), `${f} grants ${t}`);
     if (!/^- Memory handoff:/m.test(text)) continue;
     handoffSeats++;
@@ -105,11 +107,20 @@ test('no shipped text tells the model to use a navigation-server memory tool', (
   assert.deepStrictEqual(hits, []);
 });
 
-test('the rules: alfred-memory.md owns the handoff protocol, alfred-navigation.md and the locked row keep no memory on the server', () => {
+test('the rules: alfred-memory.md routes the handoff notes, the trio protocol holds their calls, alfred-navigation.md and the locked row keep no memory on the server', () => {
   const mem = read('stack/rules/alfred-memory.md');
   assert.ok(!mem.includes("handoff notes go to the navigation server's memory"), 'the old routing is gone');
-  for (const piece of ["`conversation_id: '<feature>/<contract_version>'`", "`metadata.type: 'note'`", '`handoff`, `handoff:<feature>`, `handoff:<feature>/<contract_version>`, `note:<note name>` and the project tag', "`tag_match: 'all'`", '`memory_delete`', 'The session-start block never carries a `handoff` row'])
-    assert.ok(mem.includes(piece), `alfred-memory.md: ${piece}`);
+  assert.match(mem, /A seat's handoff note - what one agent leaves the next within a run - lives here too, never in the navigation server \(its memory tools are off\); its dispatch brief names it, and the session-start block never carries a `handoff` row\./);
+  // audit 2026-10-14 RU01: the call shapes left the always-on rule - every seat body carries its own, the orchestrator's protocol the rest
+  assert.ok(!mem.includes('conversation_id'), 'no call shape in the always-on rule');
+  const trio = read('stack/skills/task-solve-cross/references/domain-trio-protocol.md');
+  for (const piece of ["`conversation_id: '<feature>/<contract_version>'`", "`metadata.type: 'note'`", '`handoff`, `handoff:<feature>`, `handoff:<feature>/<contract_version>`, `note:<note name>` and the project tag', "`tag_match: 'all'`", 'memory_delete', 'the newest note per name wins'])
+    assert.ok(trio.includes(piece), `domain-trio-protocol.md: ${piece}`);
+  const seats = fs.readdirSync(path.join(ROOT, 'stack', 'agents')).filter((f) => /Memory handoff:/.test(read(`stack/agents/${f}`)));
+  assert.ok(seats.length >= 30, `the seats carrying a handoff line (${seats.length})`);
+  for (const f of seats)
+    for (const piece of ["`conversation_id: '<feature>/<contract_version>'`", "`metadata.type: 'note'`", "`tag_match: 'all'`"])
+      assert.ok(read(`stack/agents/${f}`).includes(piece), `${f}: ${piece}`);
   const nav = read('stack/rules/alfred-navigation.md');
   assert.ok(!/write_memory|seat memory handoff/.test(nav), 'alfred-navigation.md keeps no memory on the server');
   assert.match(nav, /The navigation server is navigation only: its memory tools are off/);
@@ -208,11 +219,12 @@ function hookProject(registered = true) {
   const config = tmpDir('handoff-hook-config-');
   const dbPath = path.join(root, '.memory-mcp', 'memory.db');
   fs.writeFileSync(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: registered ? { memory: { type: 'stdio', command: 'uvx', args: [], env: { MCP_MEMORY_SQLITE_PATH: dbPath } } } : {} }));
-  const run = (payload) => spawnSync(process.execPath, [HOOK], { cwd: root, input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: config } });
+  // a bash $SHELL: no zsh trap line rides the push (memory-session.js hostLines, audit 2026-10-14 RU13); win32 adds its own
+  const run = (payload) => spawnSync(process.execPath, [HOOK], { cwd: root, input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, SHELL: '/bin/bash', CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: config } });
   return { root, dbPath, run, rm: () => { rmDir(root); rmDir(config); } };
 }
 
-test('SubagentStart hands the seat its project tag line and nothing else', { skip: skipNoSqlite }, () => {
+test('SubagentStart hands the seat its project tag line and the tool line, never the rows', { skip: skipNoSqlite }, () => {
   const p = hookProject();
   try {
     buildDb(p.dbPath, [{ content: 'a project fact', tags: `project:${path.basename(p.root)}`, memory_type: 'reference' }]);
@@ -220,7 +232,9 @@ test('SubagentStart hands the seat its project tag line and nothing else', { ski
     assert.strictEqual(r.status, 0, r.stderr);
     const out = JSON.parse(r.stdout).hookSpecificOutput;
     assert.strictEqual(out.hookEventName, 'SubagentStart');
-    assert.strictEqual(out.additionalContext, `This project's memory tag: project:${path.basename(p.root)}`);
+    assert.strictEqual(out.additionalContext.split('\n')[0], `This project's memory tag: project:${path.basename(p.root)}`);
+    assert.strictEqual(out.additionalContext.split('\n').length, 2 + (host.length ? host.length + 1 : 0), 'the tag line and the tool line (RU10), then the host\'s shell lines (RU13)');
+    assert.ok(!out.additionalContext.includes('a project fact'), 'no row reaches a seat');
     const start = JSON.parse(p.run({ hook_event_name: 'SessionStart', cwd: p.root }).stdout).hookSpecificOutput;
     assert.ok(start.additionalContext.includes('a project fact'), 'SessionStart still pushes the rows');
   } finally { p.rm(); }

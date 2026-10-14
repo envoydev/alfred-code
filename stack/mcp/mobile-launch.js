@@ -3,7 +3,12 @@
 // THE MOBILE SERVER'S LAUNCHER - mobile-control (appium-mcp): drives Android and iOS apps on an emulator, a
 // simulator or a real device through Appium's embedded UiAutomator2 and XCUITest drivers.
 //
-//   node mobile-launch.js --package appium-mcp@<ver> [-- <more server arguments>]
+//   node mobile-launch.js --package appium-mcp@<ver> [--before <cut-off>] [-- <more server arguments>]
+//
+// `--before` is the pin's own dependency cut-off (refresh-mcp-pins.js 'an npm row's own day'), handed to npx as
+// npm_config_before (audit 2026-10-14, PL4): appium-mcp pins only itself, its 17 dependencies are caret ranges, and npx
+// honours `before` for the whole tree it resolves (measured on npm 11.6.1). A npm_config_before the user set - the shell
+// in any case, then the three settings files - is theirs and wins; an empty one means no cut-off.
 //
 // It exists for three things a plugin entry cannot do:
 // - the SDK paths. appium-mcp reads ANDROID_HOME (the Android SDK) and JAVA_HOME (a JDK) from its environment. A
@@ -39,6 +44,15 @@ const LOCAL_ONLY = '^https?://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]+)?(/[
 const DEFAULTS = Object.freeze({ NO_UI: 'true', ALLOW_REMOTE_APP_URLS: 'false', REMOTE_SERVER_URL_ALLOW_REGEX: LOCAL_ONLY });
 // appium-mcp fails its start on a value other than true / false (utils/env.ts readBooleanEnv).
 const BOOLEAN = new Set(['NO_UI', 'ALLOW_REMOTE_APP_URLS']);
+// The keys appium-mcp documents (its 1.97.1 README: the 'Environment Variables' table, and ANDROID_HOME from the setup
+// steps) - the only ones the project's sensitive data hands it (audit 2026-10-14 PL2). Another key there (a login, a
+// token for some other tool) stays out of the server's environment.
+const DOCUMENTED = Object.freeze(['ANDROID_HOME', 'CAPABILITIES_CONFIG', 'SCREENSHOTS_DIR', 'PAGE_SOURCES_DIR', 'NO_UI', 'APPIUM_MCP_APPS_ENABLED',
+    'APPIUM_MCP_ON_CLIENT_DISCONNECT', 'APPIUM_MCP_WDA_APP_PATH', 'REMOTE_SERVER_URL_ALLOW_REGEX', 'REMOTE_SERVER_ENABLE_DIRECT_CONNECT',
+    'ALLOW_REMOTE_APP_URLS', 'AI_VISION_ENABLED', 'AI_VISION_API_BASE_URL', 'AI_VISION_API_KEY', 'AI_VISION_MODEL', 'AI_VISION_COORD_TYPE',
+    'AI_VISION_IMAGE_MAX_WIDTH', 'AI_VISION_IMAGE_QUALITY', 'APPIUM_MCP_DOCS_ENABLED', 'SENTENCE_TRANSFORMERS_MODEL',
+    'APPIUM_MCP_PERSIST_REMOTE_SESSIONS_PATH', 'APPIUM_MCP_EVIDENCE', 'APPIUM_MCP_OTEL_ENABLED', 'APPIUM_MCP_OTEL_INCLUDE_ARGUMENT_VALUES',
+    'OTEL_SERVICE_NAME', 'OTEL_EXPORTER_OTLP_TRACES_ENDPOINT', 'OTEL_TRACES_SAMPLER', 'OTEL_RESOURCE_ATTRIBUTES']);
 
 const exists = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
 
@@ -137,12 +151,28 @@ function mobileEnv({ env = process.env, projectDir, platform = process.platform,
     return out;
 }
 
-// The copy route's registration values, resolved at install: the same safe defaults (the user's own where set) and
-// the output dirs RELATIVE to the project root, which is the server's cwd there (ROOT_BOOT).
-function copyRouteEnv({ env = process.env, projectDir, root, log = () => {} })
+// PL4: the npm cut-off this start takes - `value` to set in the child env (null: leave the env as it is) and `own`, the
+// user's setting that replaced the release's `before` (the shell's, in any case, wins - it is already in the env).
+const NPM_BEFORE = 'npm_config_before';
+function npmBefore({ env = process.env, projectDir, before = '' })
+{
+    const shell = Object.keys(env).find((k) => k.toLowerCase() === NPM_BEFORE);
+    if (shell !== undefined) return { value: null, own: `${shell}=${env[shell]}`, registered: String(env[shell]) };
+    const set = settingFrom({ env: { CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR }, projectDir, key: NPM_BEFORE });
+    if (set) return { value: set, own: `${NPM_BEFORE}=${set}`, registered: set };
+    return { value: before || null, own: '', registered: before || '' };
+}
+
+// The copy route's registration values, resolved at install: the same safe defaults (the user's own where set), the
+// npm cut-off (the pin's own day, `before`, unless the user set one) and the output dirs RELATIVE to the project root,
+// which is the server's cwd there (ROOT_BOOT).
+function copyRouteEnv({ env = process.env, projectDir, root, before = '', log = () => {} })
 {
     const dir = dataRoot.layout(root).mobile;
+    const cut = npmBefore({ env, projectDir, before });
+    if (cut.own) log(`${cut.own} is set - registered in place of the release's cut-off (${before || 'none'})`);
     return {
+        MOBILE_BEFORE: cut.registered,
         MOBILE_NO_UI: safeValue('NO_UI', { env, projectDir, log }),
         MOBILE_REMOTE_APPS: safeValue('ALLOW_REMOTE_APP_URLS', { env, projectDir, log }),
         MOBILE_REMOTE_ALLOW: safeValue('REMOTE_SERVER_URL_ALLOW_REGEX', { env, projectDir, log }),
@@ -187,11 +217,15 @@ function main(argv, { env = process.env, node = process.versions.node } = {})
     const rest = argv.indexOf('--');
     const projectDir = require('../hooks/memory.js').projectRootOf(process.cwd()).checkout;
     const log = (line) => process.stderr.write(`${line}\n`);
-    // The project's sensitive data first, so a key it holds (say ALLOW_REMOTE_APP_URLS) reads like one the shell set.
-    const sensitive = require('./data-root.js').withSensitive(env, { projectDir });
-    if (sensitive.count) log(`mobile-launch: ${sensitive.count} value(s) from the project's sensitive data in the environment`);
+    // The project's sensitive data first, so a key it holds (say ALLOW_REMOTE_APP_URLS) reads like one the shell set -
+    // the keys appium-mcp documents only (DOCUMENTED).
+    const sensitive = require('./data-root.js').withSensitive(env, { projectDir, only: DOCUMENTED });
+    if (sensitive.count) log(`mobile-launch: ${sensitive.count} value(s) from the project's sensitive data in the environment (the keys appium-mcp documents)`);
     const childEnv = mobileEnv({ env: sensitive.env, projectDir, log });
-    log(`mobile-launch: ${spec}, output under ${path.dirname(childEnv.SCREENSHOTS_DIR)}`);
+    const cut = npmBefore({ env: childEnv, projectDir, before: flag('--before') || '' });
+    if (cut.value) childEnv[NPM_BEFORE] = cut.value;
+    if (cut.own) log(`mobile-launch: ${cut.own} is set - npx takes it in place of the release's cut-off (${flag('--before') || 'none'})`);
+    log(`mobile-launch: ${spec}${cut.value ? `, dependencies published by ${cut.value}` : ''}, output under ${path.dirname(childEnv.SCREENSHOTS_DIR)}`);
     const { spawnCommandAsync } = require('../../scripts/install/runtime.js');
     const child = spawnCommandAsync('npx', ['-y', spec, ...(rest < 0 ? [] : argv.slice(rest + 1))], { stdio: 'inherit', env: childEnv, cwd: projectDir });
     // A stop signal is passed on: Claude Code stops a server by signalling the process it started.
@@ -207,4 +241,4 @@ if (require.main === module)
     const rc = main(process.argv.slice(2));
     if (rc !== null) process.exit(rc);
 }
-module.exports = { main, mobileEnv, copyRouteEnv, androidHome, javaHome, prereqNotes, DEFAULTS, LOCAL_ONLY, NODE_FLOOR };
+module.exports = { main, mobileEnv, copyRouteEnv, npmBefore, androidHome, javaHome, prereqNotes, DEFAULTS, DOCUMENTED, LOCAL_ONLY, NODE_FLOOR };

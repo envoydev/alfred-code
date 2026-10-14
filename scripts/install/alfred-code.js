@@ -44,6 +44,7 @@ const stampLayer = require('./stamp.js');
 const library = require('./library.js');
 const { shippedText } = require('./retired-rules.js');
 const uninstallLayer = require('./uninstall.js');
+const toolIgnoresLayer = require('./tool-ignores.js');
 const runtime = require('./runtime.js');
 const { readJson } = require('./json-file.js');
 const { envMigrations } = require('./env-migrations.js');
@@ -75,9 +76,26 @@ const SHELL_SEED_RETIRED = 'the shell installers were removed in 2.0.0 - unset A
 // store under the data root (stack/mcp/data-root.js). RETIRED_DENY are the four ACCOUNT-settings entries releases up to
 // 0.2.62 wrote; they are dropped on every run, by exact string.
 const SECRET_DENY = ['Read(.env)', 'Read(.env.*)', 'Read(*.pem)', 'Read(*.pfx)', 'Read(*.p12)', 'Read(*.key)', 'Read(.sensitive-data)'];
+// PL8 (audit 2026-10-14, the user's ruling of 2026-10-14): the memory server lists 28 tools (meta/mcp-tools.json) and the
+// stack calls five - the alfred-memory rule's store / search / list, a skill's cursor delete and the notes import's
+// update (stack/hooks/memory.js). The other 23 rode every session's deferred list, destructive ones over a database that
+// can be account-wide among them. A bare tool name in permissions.deny 'removes the tool from Claude's context entirely'
+// (code.claude.com/docs/en/permissions, 'Deny rules', re-read 2026-10-14), so each is denied in the spelling of the route
+// that serves the server, written ONCE (settings.js toolDeny): an entry the user removes stays removed.
+const MEMORY_SERVER = 'alfred-memory';
+const MEMORY_TOOLS_USED = ['memory_store', 'memory_search', 'memory_list', 'memory_delete', 'memory_update'];
+function memoryToolsAtPin(dir)
+{
+    const row = ((readJson(path.join(dir, 'meta', 'mcp-tools.json')) || {}).servers || {})[MEMORY_SERVER];
+    return row && Array.isArray(row.tools) ? row.tools.filter((t) => typeof t === 'string' && /^[a-z0-9_]+$/.test(t)) : [];
+}
+const memorySpelling = (bare) => (bare ? `mcp__${MEMORY_SERVER}__` : `mcp__plugin_${MEMORY_SERVER}_${MEMORY_SERVER}__`);
+const memoryToolDeny = (dir, { bare = false } = {}) => memoryToolsAtPin(dir).filter((t) => !MEMORY_TOOLS_USED.includes(t)).map((t) => `${memorySpelling(bare)}${t}`);
+// Both spellings of every memory tool at the pin: a route switch drops the other spelling, and uninstall removes either.
+const memoryDenyShipped = (dir) => memoryToolsAtPin(dir).flatMap((t) => [`${memorySpelling(false)}${t}`, `${memorySpelling(true)}${t}`]);
 // R10: every deny entry a release has written into a project's settings besides the seat denies - the
 // ledger removes no other, since a stamp is project text. A release that stops writing one keeps it here.
-const SHIPPED_DENY = [...SECRET_DENY];
+const SHIPPED_DENY = [...SECRET_DENY, ...memoryDenyShipped(path.join(__dirname, '..', '..'))];
 const RETIRED_DENY = [
     'Read(~/.claude/settings.json)', 'Read(~/.claude/settings.local.json)',
     'Read(~/.claude-*/settings.json)', 'Read(~/.claude-*/settings.local.json)',
@@ -652,11 +670,12 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
 
         // --- the two entries assembled at install time -----------------------------
         const pins = args.printPlan
-            ? { PW_PIN: '', SERENA_PIN: '', MEMORY_PIN: '', WINDOWS_CONTROL_PIN: '', MACOS_CONTROL_PIN: '', MOBILE_CONTROL_PIN: '', MEMORY_BACKEND: 'sqlite_vec', UV_EXCLUDE_FLAG: '', UV_EXCLUDE_NEWER: '' }
+            ? { PW_PIN: '', SERENA_PIN: '', MEMORY_PIN: '', WINDOWS_CONTROL_PIN: '', MACOS_CONTROL_PIN: '', MOBILE_CONTROL_PIN: '', MOBILE_BEFORE: '', MEMORY_BACKEND: 'sqlite_vec', UV_EXCLUDE_FLAG: '', UV_EXCLUDE_NEWER: '' }
             : (() =>
             {
                 const file = readJson(path.join(resolved.dir, 'meta', 'mcp-pins.json'));
-                return mcp.resolvePins({ pins: file.pins, refreshed: file.refreshed, own: userExcludeNewer({ env: cliEnv, projectDir: projectRoot }), log });
+                return mcp.resolvePins({ pins: file.pins, refreshed: file.refreshed, own: userExcludeNewer({ env: cliEnv, projectDir: projectRoot }),
+                    seatsFile: path.join(resolved.dir, 'meta', 'seat-tools.json'), log });
             })();
 
         const pw = mcp.expandPlaywright({
@@ -737,6 +756,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             // such file, and its manifest then carries no @UV_PYTHON@ to resolve anyway.
             // A-I5: the account the run's claude calls use - a --space run's own, not the default one.
             UV_PYTHON: pythonRequest({ env: cliEnv, projectDir: projectRoot }),
+            // windows-control's own: windows-mcp 0.8.6+ needs 3.14 (uv-python.js SERVER_PYTHON, the user's ruling of 2026-10-14).
+            WINDOWS_CONTROL_PYTHON: pythonRequest({ env: cliEnv, projectDir: projectRoot, server: 'windows-control' }),
             // serena's home in the platform's own separator: a '/' reaches cmd.exe on Windows - under the data
             // root, or in a 2.0.0 .serena not moved yet.
             SERENA_HOME: serenaHomeFor(process.platform, dataInfo.root, liveOf('serena')),
@@ -749,7 +770,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             WINDOWS_CONTROL_PIN: pins.WINDOWS_CONTROL_PIN, MACOS_CONTROL_PIN: pins.MACOS_CONTROL_PIN, MOBILE_CONTROL_PIN: pins.MOBILE_CONTROL_PIN,
             // mobile-control's safe defaults (the user's own value where set) and output dirs under the data root, which the
             // plugin route's launcher sets at each start - the copy route registers no launcher (stack/mcp/mobile-launch.js).
-            ...mobileCopyEnv({ env: cliEnv, projectDir: projectRoot, root: dataInfo.root,
+            ...mobileCopyEnv({ env: cliEnv, projectDir: projectRoot, root: dataInfo.root, before: pins.MOBILE_BEFORE,
                 log: lists.mcps.some((e) => String(e).split('|')[0] === 'mobile-control') ? (line) => log(`  mobile: ${line}`) : () => {} }),
             // windows-control's tool gate on the copy route, which registers no launcher: the list the
             // launcher would pass, as Windows-MCP's own WINDOWS_MCP_EXCLUDE_TOOLS.
@@ -836,6 +857,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             picked: withoutForeign(stampPickLists(lists, stampPicks, carriedPicks), ctx.foreignSkills), playwright: pwEngines(ctx), playwrightEnabled: ctx.pw.enabled,
             stoodDown: stoodDownRecord(ctx),
             mcpDenied: ctx.mcpDenied.now || ctx.mcpDenied.prior,
+            toolIgnores: ctx.toolIgnores || stampLayer.readToolIgnores(stampFile),
             // Delta F-UNREAD: a .mcp.json this run could not read was judged for no hold, so the holds the stamp recorded stay.
             mcpHeld: registrationsAt(ctx, 'project').state === 'unreadable'
                 ? [...ctx.mcpHeld, ...stampLayer.readMcpHeld(stampFile).filter((e) => e.scope === 'project' && !ctx.mcpHeld.some((h) => h.scope === 'project' && h.name === e.name))]
@@ -884,18 +906,13 @@ function runLayers(ctx)
     selection.moveGeneratedRules({ projectRoot: ctx.projectRoot, log: ctx.log, note: ctx.note });
     docsRootStep(ctx);
     installHooksAndRules(ctx);
-    importMemory(ctx);
     const docsPath = copy.resolveDocsRoot(ctx.projectRoot, ctx.args.scope);
+    // After the settings pass, so the versioning is the decision this run just wrote; before the memory import, so a
+    // project database lands under a root whose .gitignore already keeps it out.
+    ignoreStep(ctx, docsPath);
+    importMemory(ctx);
     docs.migrateDocsDomains({ projectRoot: ctx.projectRoot, docsPath, rules: selection.generatedRules(ctx.projectRoot), instructions: selection.instructionFiles(ctx.projectRoot), log: ctx.log });
-    // The root states its own versioning to git (docs.ensureDocsIgnore) - after the settings pass, so
-    // it reads the decision this run just wrote.
-    try
-    {
-        const mode = copy.resolveDocsVersioning(ctx.projectRoot, ctx.args.scope) || docs.docsVersioningSeed({ projectRoot: ctx.projectRoot, docsPath });
-        docs.ensureDocsIgnore({ projectRoot: ctx.projectRoot, docsPath, mode, log: ctx.log });
-    }
-    catch (err) { ctx.note(`${docsPath}/.gitignore could not be written (${err.message}) - add the docs root's machine state to the repo's own .gitignore`); }
-    // After the root's .gitignore names the new folder, so a raw transcript copy never lands unignored.
+    // After the .gitignore names the new folder, so a raw transcript copy never lands unignored.
     try { docs.migrateUsageReport({ projectRoot: ctx.projectRoot, docsPath, log: ctx.log }); }
     catch (err) { ctx.note(`the usage report folder could not be renamed under ${docsPath} (${err.message}) - it stays as alfred-code-usage-report/`); }
     try { docs.migratePlans({ projectRoot: ctx.projectRoot, docsPath, rules: selection.generatedRules(ctx.projectRoot), instructions: selection.instructionFiles(ctx.projectRoot), log: ctx.log }); }
@@ -972,8 +989,46 @@ function adoptCredentialsAt(ctx, root, docsPath)
     else if (r.state === 'blocked' || r.state === 'failed') log(`  !! sensitive data: ${r.from} not moved (${r.why}) - the next run tries again`);
 }
 
-// The data root's own files, once the docs root is settled: its `.gitignore` (docs.ensureDataIgnore - the
-// docs stay visible to git, everything else is machine state), serena's project.yml seeded where serena
+// THE ONE .gitignore (the user's ruling of 2026-10-13): the data root's file carries the docs rules too
+// (docs.ensureDataIgnore), so the docs root's own file goes when it is the stack's text, and so do the nested ones an
+// earlier release wrote (docs.pruneNestedIgnores). A docs root outside the data root, or a data root whose file is the
+// project's own, keeps the docs root's own file (docs.ensureDocsIgnore). ctx.dataIgnoreOk gates what may land under
+// the root only once git keeps it out (the sensitive data).
+const STACK_IGNORE = ['written', 'replaced', 'current'];
+function ignoreStep(ctx, docsPath)
+{
+    const { projectRoot, log, note } = ctx;
+    const root = ctx.dataInfo.root;
+    let mode = null;
+    try { mode = copy.resolveDocsVersioning(projectRoot, ctx.args.scope) || docs.docsVersioningSeed({ projectRoot, docsPath }); }
+    catch (err) { note(`the docs versioning could not be read (${err.message}) - the .gitignore keeps the docs committed`); }
+    let data = null;
+    try { data = docs.ensureDataIgnore({ projectRoot, root, docsPath, mode, log }); }
+    catch (err) { note(`${root}/.gitignore could not be written (${err.message}) - add ${root}/ to the repo's own .gitignore, keeping its docs/ folder visible`); }
+    ctx.dataIgnoreOk = data !== null;
+    const dataCovered = STACK_IGNORE.includes(data);
+    let own = null;
+    try { own = docs.ensureDocsIgnore({ projectRoot, docsPath, mode, covered: dataCovered && Boolean(dataRoot.docsInsideRoot({ root, docsPath })), log }); }
+    catch (err) { note(`${docsPath}/.gitignore could not be written (${err.message}) - add the docs root's machine state to the repo's own .gitignore`); }
+    const docsCovered = (dataCovered && Boolean(dataRoot.docsInsideRoot({ root, docsPath }))) || STACK_IGNORE.includes(own);
+    try { docs.pruneNestedIgnores({ projectRoot, root, docsPath, docsCovered, dataCovered, log }); }
+    catch (err) { note(`the nested .gitignore files could not be checked (${err.message}) - they stay as they are`); }
+}
+
+// The project's sensitive data exists from the first install on (data-root.js ensureSensitiveFile): one comment line,
+// written only where git keeps it out; a store git would commit is said, never made.
+function sensitiveFile(ctx, root)
+{
+    let r;
+    try { r = dataRoot.ensureSensitiveFile({ projectDir: ctx.projectRoot, root }); }
+    catch (err) { ctx.note(`${root}/.sensitive-data could not be written (${err.code || err.message}) - create it by hand, one KEY=value per line`); return; }
+    if (r === 'written') ctx.log(`  sensitive data: ${root}/.sensitive-data written - empty, gitignored; put KEY=value lines in it by hand`);
+    else if (r === 'exposed') ctx.log(`  !! sensitive data: ${root}/.sensitive-data not written - git would commit it (the data root's .gitignore is the project's own); ignore it, then run /alfred-code:update`);
+    else if (r === 'blocked') ctx.log(`  !! sensitive data: ${root}/.sensitive-data is not a file - nothing written`);
+}
+
+// The data root's own files, once the docs root is settled: its `.gitignore` (written by ignoreStep - the
+// docs follow their versioning, everything else is machine state), serena's project.yml seeded where serena
 // reads it this run (the root, or a 2.0.0 .serena its launcher has not moved yet) and its home config
 // pointing serena at the folder (the launcher writes it too - the installer's copy serves the copy route,
 // which runs no launcher, and a `serena project index` run before any start). A 2.0.0 place still in use
@@ -982,10 +1037,13 @@ function dataRootLayer(ctx, docsPath)
 {
     const { projectRoot, log, note } = ctx;
     const root = ctx.dataInfo.root;
-    let ignoreOk = true;
-    try { docs.ensureDataIgnore({ projectRoot, root, docsPath, log }); }
-    catch (err) { ignoreOk = false; note(`${root}/.gitignore could not be written (${err.message}) - add ${root}/ to the repo's own .gitignore, keeping its docs/ folder visible`); }
-    if (ignoreOk) adoptCredentials(ctx, root, docsPath);
+    if (ctx.dataIgnoreOk !== false)
+    {
+        adoptCredentials(ctx, root, docsPath);
+        sensitiveFile(ctx, root);
+    }
+    // The project's own tree-walking tools skip the data root (tool-ignores.js): one marked line per ignore file.
+    ctx.toolIgnores = toolIgnoresLayer.ensureToolIgnores({ projectRoot, root, prior: stampLayer.readToolIgnores(ctx.stampFile), log, note });
     const navigation = ctx.lists.mcps.some((e) => e.startsWith('alfred-navigation|'));
     const serenaDir = ctx.liveOf('serena');
     serena.seedProject({ projectRoot, selected: navigation, dir: serenaDir, root, log });
@@ -1610,6 +1668,10 @@ function installPlugins(ctx)
             after: readListing,
         });
         hudLine();
+        // PL5 (b): a renamed id the project's own settings still switch on with no record reaching it - the swap above
+        // reads records only - is removed there once this run carries its successor (plugins.dropStaleRenamed).
+        if (plugins.corePluginOn(ctx.routes) && !blind)
+            plugins.dropStaleRenamed({ raw, projectRoot: ctx.projectRoot, renamed: ctx.manifest.renamed.mcps, set, market: ctx.market, log: ctx.log, note: ctx.note });
         for (const row of ctx.dropEntries || [])
         {
             const spec = `${row.name}@${row.marketplace}`;
@@ -1770,12 +1832,16 @@ function registrationsAt(ctx, scope)
 
 // Whether `entry` registered under `name` launches the stack's own package or calls its url (mcp.identityOf) - read
 // without a word; registrationOf below names a mismatch.
-function stackIdentity(ctx, name, entry)
+function stackIdentitiesOf(ctx)
 {
     ctx.mcpIdentities ||= mcp.stackIdentities({
         catalog: ctx.manifest.catalogs.mcps, remotes: ctx.remotes, tokens: ctx.tokens, retiredRows: readRetiredPlugins(ctx.source.dir), renamed: ctx.manifest.renamed.mcps,
     });
-    return (ctx.mcpIdentities[name] || new Set()).has(mcp.identityOf(entry));
+    return ctx.mcpIdentities;
+}
+function stackIdentity(ctx, name, entry)
+{
+    return (stackIdentitiesOf(ctx)[name] || new Set()).has(mcp.identityOf(entry));
 }
 
 // A-M2 / A-M3: 'stack' when `name` at `scope` is a registration of the stack's own shape (the package it
@@ -1836,21 +1902,24 @@ function vouchedAt(ctx, name, scope, live, { pick = false } = {})
 
 // A registration at local, project or user scope outranks every plugin server (mcp.shadowingRegistrations):
 // one calling a carried plugin's url takes its place, so the stack's plugin-spelled tool names resolve
-// nothing, and one under a carried plugin's name starts a second server. The run prunes only its own
-// scope, so what is left is the user's own or serves other projects - each named once with its remove
-// command. A same-named one registrationOf already named as foreign is not said twice.
+// nothing, and one under a carried plugin's name, or under another name launching its package (PL11), starts a
+// second server. The run prunes only its own scope, so what is left is the user's own or serves other projects - each
+// named once with its remove command, removed never. One registrationOf already named as foreign is not said twice.
 function warnShadowed(ctx, carried)
 {
     const scopes = {};
     for (const scope of ['local', 'project', 'user'])
         scopes[scope] = mcp.registrationsAt({ scope, mcpFile: ctx.mcpFile, accountFile: ctx.accountFile, projectRoot: ctx.projectRoot }).servers;
-    for (const row of mcp.shadowingRegistrations({ plugins: carried, scopes }))
+    const identities = mcp.pluginIdentities({ plugins: carried, identities: stackIdentitiesOf(ctx), renamed: ctx.manifest.renamed.mcps });
+    for (const row of mcp.shadowingRegistrations({ plugins: carried, scopes, identities }))
     {
-        if (row.kind === 'beside' && ctx.mcpForeign.get(row.name) === row.scope) continue;
+        if (row.kind !== 'replaces' && ctx.mcpForeign.get(row.name) === row.scope) continue;
         const remove = `claude mcp remove ${row.name} -s ${row.scope}`;
         ctx.log(row.kind === 'replaces'
             ? `  !! mcp ${row.name} (${row.scope} scope) calls the url of the ${row.plugin} plugin, so Claude Code connects to it instead and the stack's mcp__plugin_${row.plugin}_${row.plugin}__ tools never load - if nothing else needs it: ${remove}`
-            : `  mcp ${row.name} (${row.scope} scope) starts beside the ${row.plugin} plugin's own server - two ${row.plugin} servers in every session here; if nothing else needs it: ${remove}`);
+            : row.kind === 'same-package'
+                ? `  mcp ${row.name} (${row.scope} scope) runs ${row.package}, the package the ${row.plugin} plugin starts - two ${row.plugin} servers in every session here; if nothing else needs it: ${remove}`
+                : `  mcp ${row.name} (${row.scope} scope) starts beside the ${row.plugin} plugin's own server - two ${row.plugin} servers in every session here; if nothing else needs it: ${remove}`);
     }
 }
 
@@ -1943,7 +2012,7 @@ function installMcps(ctx)
     // Whatever still sits ABOVE a plugin this run carries once the prunes are done (read fresh - they
     // changed the files): named, never removed here.
     if (mcp.corePluginOn(ctx.routes))
-        warnShadowed(ctx, ctx.routes.mcps ? [...mcp.LOCKED, ...pwEngines(ctx).map(dataRoot.engineServer)] : mcp.LOCKED);
+        warnShadowed(ctx, ctx.routes.mcps ? [...mcp.LOCKED, ...pwEngines(ctx).map(dataRoot.engineServer), ...soloKept(ctx)] : mcp.LOCKED);
 
     if (ctx.routes.mcps)
     {
@@ -2229,17 +2298,20 @@ function installHooksAndRules(ctx)
     const written = settings.writeSettings({
         // R10: the last run's ledger, and the wirings the RELEASE writes (none on the plugin route) - a
         // hook this run did not select keeps its wiring, one the release dropped loses it.
-        ledger: { prior: ctx.ledger, releaseHooks: ctx.routes.hooks ? [] : ctx.manifest.catalogs.hooks, shippedDeny: SHIPPED_DENY },
+        ledger: { prior: ctx.ledger, releaseHooks: ctx.routes.hooks ? [] : ctx.manifest.catalogs.hooks, shippedDeny: [...new Set([...SHIPPED_DENY, ...memoryDenyShipped(ctx.source.dir)])] },
         file: settings.settingsTarget(ctx.claudeDir, ctx.args.scope),
         // A local-scope run leaves the stack's stale wiring and 1.x keys in settings.json - it removes them there.
         sharedFile: ctx.args.scope === 'local' ? path.join(ctx.claudeDir, 'settings.json') : null,
         catalog, migrations, hookSpecs: wired,
         denySpecs: SECRET_DENY, retiredDeny: RETIRED_DENY, agentDeny, agentAllow,
+        toolDeny: memoryToolDeny(ctx.source.dir, { bare: bareNames(ctx).includes(MEMORY_SERVER) }),
         // On the copy route a --drop'd hook is unwired like a retired one - the writer keeps a merely
         // unselected hook's entries on purpose, so the drop has to name it.
         retiredHooks: ctx.manifest.retired.hooks.concat(ctx.routes.hooks
             ? catalogHooks
             : (ctx.args.dropApplied || []).filter((l) => l.startsWith('hook ')).map((l) => `${l.slice(5)}.js`)),
+        // `--auto-compact on|off`: setup's answer to 'offer a fresh session, or compact and go on?' (settings.js applyEnv 3d).
+        autoCompact: ctx.args.autoCompact ? { value: ctx.args.autoCompact === 'on' ? '1' : '0' } : null,
         docsVersioning: {
             value: ctx.args.docsVersioning || ctx.docsVersioningCarry || '',
             why: ctx.args.docsVersioning ? '--docs-versioning' : ctx.docsVersioningCarry ? 'the old root was kept out of git' : '',
@@ -2278,6 +2350,14 @@ function installHooksAndRules(ctx)
         attribution: { inherited: ctx.args.scope === 'local' ? settings.readBackSettings(ctx.claudeDir, 'project', { sharedOnly: true }).attribution : null },
         // R6: isolated seats branch from this HEAD; at local scope settings.json's own value stays.
         worktreeBase: { inherited: ctx.args.scope === 'local' ? settings.readBackSettings(ctx.claudeDir, 'project', { sharedOnly: true }).worktree : null },
+        // The per-model auto-compact window (settings.js compactWindowSeeds), in this project's own file at every scope (user
+        // scope writes the project's settings.json too, never the account's). At local scope settings.json is the sibling it
+        // never hides; the account file's own window outranks no project file, so a model it names is left to it.
+        compactWindows: {
+            models: readJson(path.join(ctx.source.dir, 'stack', 'hooks', 'model-windows.json')).models || {},
+            inherited: ctx.args.scope === 'local' ? settings.readBackSettings(ctx.claudeDir, 'project', { sharedOnly: true }) : null,
+            account: readJson(path.join(ctx.configDir, 'settings.json')),
+        },
         renamed: ctx.manifest.renamed,
         log: ctx.log, note: ctx.note,
     });
@@ -2301,7 +2381,8 @@ function installHooksAndRules(ctx)
 function importMemory(ctx)
 {
     // A project database its launcher still owes a move keeps its old folder's own .gitignore, and moves with
-    // it - a file written at the new place first would make that place look taken.
+    // it - a file written at the new place first would make that place look taken. Under the data root no file is
+    // written at all (memory.ensureProjectIgnore): the root's own .gitignore keeps the folder out.
     if (ctx.level.level === 'project' && !ctx.dataPlan.pending.some((p) => p.cls === 'memory'))
     {
         try { memory.ensureProjectIgnore(ctx.projectRoot, ctx.log, ctx.level.dbPath); }
@@ -2610,6 +2691,7 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
     const keptRoot = stampLayer.readDataLines(file).root || dataRoot.dataRootOf({ env: {}, projectDir: projectRoot }).root;
     settings.removeManagedSettings({ claudeDir, ledger, shippedDeny: SHIPPED_DENY, mcpRemoved: removed, scope, log, note });
     uninstallLayer.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), library: stampLayer.readLibrary(file) || {}, files: ledger.files || {}, log });
+    toolIgnoresLayer.removeToolIgnores({ projectRoot, record: stampLayer.readToolIgnores(file), log, note });
     const memoryOff = ['settings.json', 'settings.local.json'].some((n) => readJson(path.join(claudeDir, n)).autoMemoryEnabled === false);
     log(`  kept, yours or your data: an AGENTS.md you filled in, the data root (the docs, the navigation index, the browser profiles - ${keptRoot}/, or a 2.0.0 .serena/ / .playwright/), the memory database${memoryOff ? '; autoMemoryEnabled: false stays - Claude\'s own memory is off until you remove that key' : ''}`);
     if (failures()) { log(`  stamp kept - ${path.basename(file)} still lists what is left; run uninstall again to finish`); return 0; }
@@ -2776,4 +2858,4 @@ if (require.main === module)
     });
 }
 
-module.exports = { main, USAGE, CORE_DEP_PLUGINS, HOOK_ENGINES, SECRET_DENY, RETIRED_DENY };
+module.exports = { main, USAGE, CORE_DEP_PLUGINS, HOOK_ENGINES, SECRET_DENY, RETIRED_DENY, SHIPPED_DENY, MEMORY_TOOLS_USED, memoryToolDeny };

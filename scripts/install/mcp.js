@@ -344,7 +344,33 @@ const PIN_ROWS = {
     'windows-control': ['WINDOWS_CONTROL_PIN', '==<v>'], 'macos-control': ['MACOS_CONTROL_PIN', '==<v>'], 'mobile-control': ['MOBILE_CONTROL_PIN', '@<v>'],
 };
 
-function resolvePins({ pins, refreshed, own = '', log = () => {} })
+// Audit 2026-10-14 AG06: a seat that names a server tool by tool is granted the whole server minus the PINNED list's other
+// tools (scripts/seat-tools.js), so an unpinned server's newer tools reach it. The unpinned line names those seats, read
+// from the snapshot's meta/seat-tools.json (`seatsFile`) through seat-tools.js roleOf; unreadable or absent says nothing.
+function widenedSeats(name, seatsFile)
+{
+    if (!seatsFile) return '';
+    let seats;
+    let roleOf;
+    try
+    {
+        seats = JSON.parse(fs.readFileSync(seatsFile, 'utf8')).seats;
+        ({ roleOf } = require('../seat-tools.js'));
+    }
+    catch { return ''; }
+    if (!seats || typeof seats !== 'object' || typeof roleOf !== 'function') return '';
+    const byTool = (token) =>
+    {
+        const text = String(token);
+        const at = text.indexOf(':');
+        const tool = text.slice(at + 1);
+        return at > 0 && roleOf(text.slice(0, at)) === name && tool !== '*' && !tool.startsWith('!');
+    };
+    const named = Object.keys(seats).filter((seat) => Array.isArray(seats[seat]) && seats[seat].some(byTool));
+    return named.length ? `; tool-by-tool seats it widens: ${named.join(', ')}` : '';
+}
+
+function resolvePins({ pins, refreshed, own = '', seatsFile = '', log = () => {} })
 {
     const rows = pins && typeof pins === 'object' && !Array.isArray(pins) ? pins : {};
     // M24: the release's dependency cut-off for every uvx row (uv-python.js excludeNewerOf) - two words,
@@ -354,7 +380,9 @@ function resolvePins({ pins, refreshed, own = '', log = () => {} })
     const release = excludeNewerOf(refreshed);
     const cutoff = cutoffFor(release, own);
     if (own) log(`  UV_EXCLUDE_NEWER=${own} is set - every uvx server starts with ${cutoff ? `the cut-off ${cutoff}` : 'no dependency cut-off'} (the release's: ${release || 'none'})`);
-    const out = { MEMORY_BACKEND: 'sqlite_vec', versions: {}, UV_EXCLUDE_FLAG: cutoff ? '--exclude-newer' : '', UV_EXCLUDE_NEWER: cutoff };
+    // PL4: mobile-control's npm cut-off is its OWN row's day (an --only pin is newer than the shared one), '' with none.
+    const mobile = rows['mobile-control'] && typeof rows['mobile-control'] === 'object' ? rows['mobile-control'] : {};
+    const out = { MEMORY_BACKEND: 'sqlite_vec', versions: {}, UV_EXCLUDE_FLAG: cutoff ? '--exclude-newer' : '', UV_EXCLUDE_NEWER: cutoff, MOBILE_BEFORE: excludeNewerOf(mobile.refreshed) };
     for (const [name, [token, spelling]] of Object.entries(PIN_ROWS))
     {
         const row = rows[name] && typeof rows[name] === 'object' ? rows[name] : {};
@@ -362,7 +390,7 @@ function resolvePins({ pins, refreshed, own = '', log = () => {} })
         out.versions[name] = version;
         out[token] = version ? String(row.spelling || spelling).replace('<v>', version) : '';
         if (version) log(`  pinned ${name}@${version} (the release pin)`);
-        else log(`  !! no release pin for ${name} in this source - installing unpinned`);
+        else log(`  !! no release pin for ${name} in this source - installing unpinned${widenedSeats(name, seatsFile)}`);
     }
     return out;
 }
@@ -499,7 +527,9 @@ function playwrightDrop({ routes, browsers = [] })
 // the shipped files carry. Only the names THIS run registered bare are re-spelled - on a hooks-only
 // copy route the locked three are still plugins beside the core, and re-spelling them was the bug this
 // list exists to prevent.
-const TOOL_NAME_RE = /mcp__plugin_[A-Za-z0-9][A-Za-z0-9.-]*_([A-Za-z0-9][A-Za-z0-9.-]*)__/g;
+// A tool (`mcp__plugin_<p>_<s>__<tool>`) or, since the seats' generated lines (scripts/seat-tools.js, 2026-10-14), a
+// whole-server grant (`mcp__plugin_<p>_<s>` ending the word), which the registered spelling names as `mcp__<s>`.
+const TOOL_NAME_RE = /mcp__plugin_[A-Za-z0-9][A-Za-z0-9.-]*_([A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?)(__|(?![A-Za-z0-9_-]))/g;
 const DOWNCONVERT_EXT = ['.md', '.mdc', '.js', '.json', '.txt'];
 
 // One text re-spelled: each plugin tool name whose server is in `bare` takes the registered spelling.
@@ -508,14 +538,14 @@ function respellToolNames(body, bare = [])
 {
     const names = new Set(bare);
     if (!names.size) return body;
-    return String(body).replace(TOOL_NAME_RE, (full, server) => (names.has(server) ? `mcp__${server}__` : full));
+    return String(body).replace(TOOL_NAME_RE, (full, server, tail) => (names.has(server) ? `mcp__${server}${tail}` : full));
 }
 
 // The servers a copied text already names by the registered spelling - the evidence library-check reads
 // to compare the shipped source with the text the installer wrote (it never sees the run's routes).
 function bareServersIn(text)
 {
-    return [...new Set([...String(text).matchAll(/mcp__(?!plugin_)([A-Za-z0-9][A-Za-z0-9.-]*)__/g)].map((m) => m[1]))];
+    return [...new Set([...String(text).matchAll(/mcp__(?!plugin_)([A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?)(?:__|(?![A-Za-z0-9_-]))/g)].map((m) => m[1]))];
 }
 
 function downconvertToolNames({ roots = [], bare = [], log = () => {} })
@@ -815,6 +845,21 @@ const TOKEN_WORDS = {
     SERENA_PROJECT_FLAG: { optional: false, re: /^--project(-from-cwd)?$/ },
     SERENA_PROJECT_DIR: { optional: true, re: /^\.$/ },
 };
+// An env key a later release ADDED to a template: a registration an earlier release wrote lacks it and is still the
+// stack's, while one that carries it must carry the template's value. Audit 2026-10-14: serena's usage ping off (PL1),
+// mobile-control's npm cut-off (PL4).
+const ADDED_ENV_KEYS = new Set(['SERENA_USAGE_REPORTING', 'npm_config_before']);
+// The same for the argument words a later release ADDED: absent from an earlier release's registration, still the stack's.
+// Audit 2026-10-14 PL10: serena 2.0.0's interface pinned to tools.
+const ADDED_ARG_WORDS = [['--agent-interface', 'tools']];
+function withAddedArgs(matchers, words)
+{
+    const out = matchers.slice();
+    for (const run of ADDED_ARG_WORDS)
+        for (let i = 0; i + run.length <= words.length; i += 1)
+            if (run.every((w, k) => words[i + k] === w)) for (let k = 0; k < run.length; k += 1) out[i + k] = { ...out[i + k], optional: true };
+    return out;
+}
 const TOKEN_RE = /@[A-Z][A-Z0-9_]*@/g;
 const escapeRe = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 function wordMatcher(word)
@@ -862,13 +907,15 @@ function exactStack(name, entry, { catalog = [], remotes = {}, projectRoot = '',
     // The template split as wantFor splits a registration: its env pairs, then the command words.
     const want = wantFor({ kind: 'stdio', words: String(args).split(/\s+/).filter(Boolean) });
     const env = entry.env && typeof entry.env === 'object' ? entry.env : {};
-    if (!isDeepStrictEqual(Object.keys(env).sort(), Object.keys(want.env).sort())) return false;
+    const wantKeys = Object.keys(want.env).filter((k) => Object.hasOwn(env, k) || !ADDED_ENV_KEYS.has(k));
+    if (!isDeepStrictEqual(Object.keys(env).sort(), wantKeys.sort())) return false;
     // An env value is free wherever a token sits in it (any text, empty included); the rest of it is literal.
     const envRe = (v) => new RegExp(`^${String(v).split(TOKEN_RE).map(escapeRe).join('[^]*')}$`);
-    if (!Object.entries(want.env).every(([k, v]) => envRe(v).test(String(env[k])))) return false;
+    if (!wantKeys.every((k) => envRe(want.env[k]).test(String(env[k])))) return false;
     const { words, code } = anchorOf(entry);
     if (code !== null && !boots.includes(code)) return false;
-    if (!wordsMatch(serverWords(want).map(wordMatcher), words)) return false;
+    const template = serverWords(want);
+    if (!wordsMatch(withAddedArgs(template.map(wordMatcher), template), words)) return false;
     if (!engine) return true;
     const dir = words[words.indexOf('--user-data-dir') + 1] || '';
     return ownProfile(dir, projectRoot) && new RegExp(`(^|[\\\\/])(?:${engine}-control|(?:browser|\\.playwright)[\\\\/]${engine})$`).test(dir.replace(/[\\/]+$/, ''));
@@ -882,9 +929,12 @@ function exactStack(name, entry, { catalog = [], remotes = {}, projectRoot = '',
 // spelling the stack ships (its tool grants, alfred-quality-gates' ToolSearch line) resolved nothing.
 // A stdio server matches on command AND args, which a launcher-started plugin entry never shares, so a
 // same-NAMED stdio registration runs BESIDE the plugin's own server - a second one. One row per
-// registration, in precedence order: `{ scope, name, plugin, kind: 'replaces' | 'beside' }`.
+// registration, in precedence order: `{ scope, name, plugin, kind: 'replaces' | 'beside' | 'same-package' }`.
+// Audit 2026-10-14 PL11: a stdio registration under ANOTHER name that launches the package a carried plugin starts - its
+// `identities` (pluginIdentities: the catalog row's package, the release pin, and an old name's) - runs a second copy of
+// that server too: `same-package`, with the `package` it launches. One project here registered `appium-mcp` itself.
 const PLUGIN_ENDPOINTS = { 'alfred-documentation': () => `http:${CONTEXT7_REMOTE.url}` };
-function shadowingRegistrations({ plugins = [], scopes = {} })
+function shadowingRegistrations({ plugins = [], scopes = {}, identities = {} })
 {
     const rows = [];
     for (const scope of ['local', 'project', 'user'])
@@ -893,11 +943,27 @@ function shadowingRegistrations({ plugins = [], scopes = {} })
         {
             const id = identityOf(entry);
             const replaced = plugins.find((plugin) => PLUGIN_ENDPOINTS[plugin] && PLUGIN_ENDPOINTS[plugin]() === id);
-            if (replaced) rows.push({ scope, name, plugin: replaced, kind: 'replaces' });
-            else if (plugins.includes(name)) rows.push({ scope, name, plugin: name, kind: 'beside' });
+            if (replaced) { rows.push({ scope, name, plugin: replaced, kind: 'replaces' }); continue; }
+            if (plugins.includes(name)) { rows.push({ scope, name, plugin: name, kind: 'beside' }); continue; }
+            const same = id.startsWith('stdio:') && plugins.find((plugin) => [...(identities[plugin] || [])].includes(id));
+            if (same) rows.push({ scope, name, plugin: same, kind: 'same-package', package: id.slice('stdio:'.length) });
         }
     }
     return rows;
+}
+
+// The stdio identities each carried plugin's server runs as (stackIdentities' sets): its own name's - the catalog row,
+// which launches the package meta/mcp-pins.json pins - and every old name `renamed` maps onto it (`context7`, the 1.x
+// local Context7 the documentation plugin replaced). A url identity is PLUGIN_ENDPOINTS' business.
+function pluginIdentities({ plugins = [], identities = {}, renamed = {} })
+{
+    const out = {};
+    for (const plugin of plugins)
+    {
+        const names = [plugin, ...Object.keys(renamed || {}).filter((old) => currentMcp(old, renamed) === plugin)];
+        out[plugin] = new Set(names.flatMap((n) => [...(identities[n] || [])]).filter((id) => id.startsWith('stdio:')));
+    }
+    return out;
 }
 
 // Every playwright engine runs with a PERSISTENT profile under <project>/.playwright/<engine> - the
@@ -964,6 +1030,6 @@ module.exports = {
     retiredMcps, dueRetired, bareNamedMcps, mcpArgv, registerSpec, expectShape, wantFor,
     verifyProject, verifyUser, shapeNorm, parseGetShape, wantShape, snapshotMcp, keepMcpOrder,
     playwrightDrop, downconvertToolNames, respellToolNames, bareServersIn, resolvePins, pwArgsFor, playwrightKept, expandPlaywright, playwrightEnabled, playwrightLive, mcpjsonSwitch, mcpjsonTrusted,
-    registrationScope, MCP_SCOPES, broaderMcpScopes, adminMcp, identityOf, exactStack, packageName, stackIdentities, registrationsAt, accountBackups, accountLoss, stackAuthored, shadowingRegistrations, ensurePlaywrightIgnore,
+    registrationScope, MCP_SCOPES, broaderMcpScopes, adminMcp, identityOf, exactStack, packageName, stackIdentities, registrationsAt, accountBackups, accountLoss, stackAuthored, shadowingRegistrations, pluginIdentities, ensurePlaywrightIgnore,
     managedMcp, removeManagedMcp,
 };

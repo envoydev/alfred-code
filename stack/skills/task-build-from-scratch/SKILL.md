@@ -14,26 +14,57 @@ Use this skill to build a new application or a major new module from scratch, be
 - DESIGN runs IN-SESSION on the session's model: the spec becomes 2-3 reasoned architecture options and the user picks, and nothing is scaffolded before that pick. Then the stack's real new-project command + baseline wiring, then the build slice by slice, through the domain seats or in-session per the run-start ask.
 - Not for changing an existing codebase - a feature inside a live app goes to the cross-domain task flow, and a new module in an existing repo is the architecture capture plus that stack's solution-designer.
 
+**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it.
+
 ## Steps
 
 ### 1. DESIGN - in-session
 Load `habits-clarify` first (the Skill tool): a spec gap that blocks the design is its question to the user, never a guess. Then turn the spec into 2-3 reasoned architecture options - stack, architecture style, folder/module shape, state and persistence approach - each with its tradeoffs, drawn from the stack's architecture skills (the per-stack table below names them). Ground every option in the house skills, not recall. Multi-stack designs name the seam and its producer/consumer direction up front - the build step runs it producer-first.
 
 ### 2. THE PICK - hard gate
-Present the options, then put the pick through AskUserQuestion - one option per architecture, its stack and one-line tradeoff as the description, exactly one marked `(Recommended)` and listed first with the reason that decides it, a custom direction always available via Other (plain-text options where the harness lacks the tool). Greenfield tech choices are the user's, never silently picked - nothing is scaffolded before this gate.
+Present the options, then put the pick through one ask - one option per architecture, a custom direction always available via Other (plain-text options where the harness lacks the tool):
+
+```ask
+<N> architectures fit <the brief>. Which one?
+- '<architecture A> (Recommended)' - <its stack; the reason that decides it>
+- '<architecture B>' - <its stack; its one-line tradeoff>
+```
+Greenfield tech choices are the user's, never silently picked - nothing is scaffolded before this gate.
 
 ### 3. SCAFFOLD
 Run the named new-project command (`dotnet new <template>`; `ng new`; `ionic start` for Ionic), establish the structure from the chosen architecture skill, and wire the baseline - DI, config, a test project, formatter/analyzer config - via the stack's own project-setup and code-quality skills where the project installed them. With neither installed, wire that baseline from the chosen architecture skill plus the template's own vendor defaults, and say in the report that it was done without them.
 
 ### 4. BUILD - slice by slice
-When dispatch is available, ask ONE question before the first slice, via AskUserQuestion - build in the current session, or dispatch the stack seats? - one option marked `(Recommended)` per the `habits-execution-strategy` verdict - then hold the answer for the run (an invocation that already names the mode is the answer); no dispatch (Cursor) or a scaffold too small to fan out is INLINE without asking.
+When dispatch is available, ask ONE question before the first slice and hold the answer for the run (an invocation that already names the mode is the answer) - the mark on the mode the `habits-execution-strategy` verdict picks, listed first:
 
-**DELEGATED** - for each vertical slice, dispatch that slice's stack seats directly from the main session (its designer, then implementer(s), then verifier - the domain-trio vertical, this skill's own `references/domain-trio-protocol.md`). Each slice's designer plan goes through ONE AskUserQuestion before its first implementer - 'Approve and build (Recommended)' / 'Changes needed' - and the stamp below quotes the answer. Before the first implementer fans out, stamp the approval gate, in four parts:
+```ask
+Build here or through the stack seats? <the verdict's reason>
+- 'In this session (Recommended)' - <why it fits one chat>
+- 'Dispatch the stack seats' - <the slices that run in parallel>
+```
+
+No dispatch or a scaffold too small to fan out is INLINE without asking.
+
+**DELEGATED** - for each vertical slice, dispatch that slice's stack seats directly from the main session (its designer, then implementer(s), then verifier - the domain-trio vertical, this skill's own `references/domain-trio-protocol.md`). Each slice's designer plan goes through ONE ask before its first implementer, and the stamp below quotes the answer:
+
+```ask
+<slice> plan, <N> tasks. Build it?
+- 'Approve and build (Recommended)' - stamp, then fan out
+- 'Changes needed' - say what in Other
+```
+
+Before the first implementer fans out, stamp the approval gate, in four parts:
 
 - *Shape* - write `<docs-path>/flow/APPROVAL`, first line `APPROVED <plan id> - "<the user's words, verbatim>"` on their explicit approval, or `AUTO - "<their words, verbatim>"` only on a literal no-stops ask. The dispatch hook blocks an unstamped implementer; delete the file when the run completes.
 - *Path* - Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool. Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it. A relative write follows whatever cwd the shell drifted to, and the dispatch then bounces.
 - *Ownership* - the stamp belongs to the session that dispatches, written when its own decision lands and deleted at its own close; an earlier session's leftover stamp is not consent.
-- *Refused* - if BOTH the Write tool and an absolute-path Bash write are refused by the harness's classifier, stop and put the choice through AskUserQuestion (retry the stamp, or run this stage inline) rather than retrying blind or dispatching around the gate.
+- *Refused* - if BOTH the Write tool and an absolute-path Bash write are refused by the harness's classifier, stop and ask rather than retrying blind or dispatching around the gate:
+
+  ```ask
+  Both write routes refused the approval stamp: <the refusal>.
+  - 'Retry the stamp (Recommended)' - allow the write at the prompt
+  - 'Run this stage inline' - no dispatch, no stamp
+  ```
 
 Then: reds route to the matching resolver seat for that stack where one is installed, and are fixed in-session where none is. A multi-stack slice runs producer-first: the PRODUCER designer runs first and the interface section of its plan IS the contract, recorded before any consumer seat is briefed. Loop until the spec's first milestone is met.
 
@@ -48,7 +79,16 @@ Scaffold:  <the new-project command actually run> + <the baseline wired: DI, con
 Slices:    <n> built, <n> verified green - <the milestone reached>
 Baseline:  build <green|red>, tests <n passed / n failed>, quoted from the command that produced it
 Leftovers: APPROVAL stamp <deleted|still present>; <anything this run started and left up - a container, seeded data, a background process - or `none started`>
+Commit:    <the commit `git log -1 --stat` read back | held - the diff is uncommitted | no git - the scaffold is not a repository>
 Next run:  <each capture whose output does not exist yet, in order: /capture-architecture (no architecture docs under <docs-path>/architecture/), /capture-code-style (no <docs-path>/code-style/CODE-STYLE.md), /capture-project-awareness (no <docs-path>/project-capabilities/PROJECT-CAPABILITIES.md - the run book the verifiers read first), /capture-agent-awareness LAST (no .claude/rules/alfred-agent-awareness.md) - each in a FRESH session; `none` when all four exist>
+```
+
+Then the commit decision, ONE AskUserQuestion after the close prints, when the scaffold is a git repository (no git: the `Commit:` field says so and nothing is asked):
+
+```ask
+The first milestone is green and the scaffold is uncommitted. Commit it on this machine?
+- 'Commit now (Recommended)' - runs `habits-commit-checkpoint` in full, then commits
+- 'Hold - review the diff first' - nothing is committed; the diff stays as it is
 ```
 
 Every count comes from the command that produced it, never a hand tally. A capture is named in `Next run:` only when its output is missing - check the four paths, never list them by default. Those named go TO THE USER as their next commands, never invoked from here - all but the architecture one are slash-only and a Skill call on them is refused, and each wants a fresh session anyway. They give the new repo its map, style doc, run book and generated awareness rules, and from there the standing flow machinery owns the project.

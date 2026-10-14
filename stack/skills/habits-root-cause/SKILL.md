@@ -1,6 +1,6 @@
 ---
 name: habits-root-cause
-description: "Use when a failure's cause is unproven, before the first fix - red test, build error, stack trace, flaky run. Not for a signature's meaning, which catalogs add."
+description: "Use when a failure's cause is unproven, before the first fix - red test, build error, stack trace, flaky run. Not for a known error code, which catalogs hold."
 ---
 
 # Root cause - one hypothesis, one change, then the fix

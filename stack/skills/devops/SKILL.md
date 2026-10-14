@@ -27,14 +27,14 @@ Do NOT load for application or schema code, or for editing the Aspire AppHost it
 - Pin the BuildKit frontend on the Dockerfile's first line - `# syntax=docker/dockerfile:1` (to a digest for a fully locked build) - so an untrusted or moving frontend cannot run build-time code you never vetted; and treat `buildx` `--sbom` / `--provenance` attestations as metadata, not signatures - sign the image with cosign if you need provenance you can verify.
 - Build multi-arch images with `buildx --platform linux/amd64,linux/arm64` when developers are on Apple Silicon but production runs x64 - a locally-built image is otherwise the wrong architecture for the server.
 - Run as a non-root USER, mount the root filesystem read-only where the app allows, and keep a .dockerignore that excludes bin, obj, node_modules, .git, and every secret-bearing file.
-- Harden past non-root at runtime - drop all Linux capabilities, set no-new-privileges, cap memory / CPU / PID count, and keep the default seccomp profile plus an AppArmor or SELinux profile instead of reaching for `--privileged`, so a compromised or leaking process cannot escalate, exhaust PIDs, or starve the host. The full checklist with the compose keys: `references/docker-hardening.md`.
+- Harden past non-root at runtime - drop all Linux capabilities, set no-new-privileges, cap memory / CPU / PID count, and keep the default seccomp profile plus an AppArmor or SELinux profile instead of reaching for `--privileged`, so a compromised or leaking process cannot escalate, exhaust PIDs, or starve the host. Then add back what the image's own binary needs: one carrying a file capability (caddy's `cap_net_bind_service`) fails exec under `cap_drop: ALL` until `cap_add` names it. The full checklist with the compose keys: `references/docker-hardening.md`.
 - Give the container a health check and proper PID-1 signal handling (an init shim) so the orchestrator can tell ready from dead and a SIGTERM drains rather than kills. A chiseled or distroless image has no shell and no `curl`, so `HEALTHCHECK CMD curl ...` cannot run there: under Kubernetes use the orchestrator's HTTP probe against the app's health endpoint; where Docker or Compose judges health itself, publish a small probe executable (GET the URL, exit 0 on a 2xx, 1 otherwise) in the build stage and call it in exec form, as below.
 
-The shape in one Dockerfile - multi-stage, cache-ordered, digest-pinned, non-root, health-checked:
+The shape in one Dockerfile - multi-stage, cache-ordered, digest-pinned, non-root, health-checked (the .NET 10 LTS images; each digest is the multi-arch index as read 2026-10-14 - re-read the current one with `docker buildx imagetools inspect <image>` before you pin):
 
 ```dockerfile
 # syntax=docker/dockerfile:1
-FROM mcr.microsoft.com/dotnet/sdk:8.0@sha256:<digest> AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:0d99ebf1ccad15037b5c98c9fe8979d6b8dbac23812feae2277a0b277b5c5ffa AS build
 WORKDIR /src
 COPY ["App/App.csproj", "App/"]
 RUN --mount=type=cache,target=/root/.nuget/packages dotnet restore App/App.csproj
@@ -42,7 +42,7 @@ COPY . .
 RUN --mount=type=cache,target=/root/.nuget/packages dotnet publish App/App.csproj -c Release -o /app
 RUN --mount=type=cache,target=/root/.nuget/packages dotnet publish HealthProbe/HealthProbe.csproj -c Release -o /probe
 
-FROM mcr.microsoft.com/dotnet/aspnet:8.0-noble-chiseled@sha256:<digest>
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled@sha256:84def277556c2843a44fdeefbd3145d0a2e32d8f736d0c1a7b0a96b2880b0187
 WORKDIR /app
 COPY --from=build /app .
 COPY --from=build /probe /probe
@@ -72,9 +72,10 @@ A workflow that parses is not a workflow that runs. Before any done word on a ch
 1. `docker build` on the Dockerfile you touched - an image that does not build is the whole finding.
 2. `actionlint` on the workflow you touched.
 3. `gitleaks` over the diff.
+4. A change to how a container RUNS - its `cap_drop` / `cap_add`, `security_opt`, `read_only`, `tmpfs`, `user`, entrypoint, command or healthcheck - is STARTED under those options: `docker compose up -d <service>` with `docker compose ps` showing it running (healthy where it has a check), or `docker run --rm <the same options> <image> <a version command of its binary>` for an exec-level check. `docker compose config` proves the file parses, never that the container starts.
 
-Quote each result line. Where a tool is not installed, name it and report that leg UNVERIFIED rather than skipping it silently.
+Quote each result line. Where a tool is not installed, name it and report that leg UNVERIFIED rather than skipping it silently; with Docker on the machine, 'unproven at runtime' is a step left unrun, not a flag.
 
-## .NET Aspire - orchestration
+## Aspire - orchestration
 
 - The Aspire AppHost is the composition root for the local run; service discovery and connection strings flow through it, not hardcoded per service. This house deploys through CI and container tooling; `aspire publish` and `aspire deploy` exist, and adopting them is a deliberate pipeline decision, never a default - one this skill makes with the pipeline, never a side effect of adding an AppHost. Depth belongs to the skill covering local cloud-native orchestration, where the install has it; without it, the rules in this section are the whole guidance.

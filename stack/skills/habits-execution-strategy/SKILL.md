@@ -14,6 +14,8 @@ several times a single session, so parallel SEATS need units that are each sizea
 quality-safe; batched calls are the free parallel form. Every number below is a starting point to
 tune on what the project measures, not a law.
 
+The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load.
+
 ## When to use
 
 - Fires before the first edit of a task that needs more than a few steps across more than one file or subtask, spans stacks, touches auth, a migration or a public contract, or would fan work out to seats. A small task settles route, mode and model inline from the always-on line (a direct edit, one agent, batched calls, the session's model) - no load.
@@ -87,8 +89,8 @@ ones (Mode, below). When one holds, those units run in order; the rest may still
 - **A seat type with no pin** (a general-purpose or explore subagent) runs on the session's model
   unless the dispatch names one - the heaviest model, when the session runs on it. Name its model in
   the verdict: the lighter one for read-only search, inventory and classification; the session's only
-  when the unit needs its reasoning (measured: read-only fan-outs inherited the heaviest model, $5.68
-  and $21.76 where the lighter one prices the same tokens far lower).
+  when the unit needs its reasoning - an unnamed read-only fan-out pays the heaviest model's price for
+  work the lighter one does.
 - Inside the cross-domain solve flow its model-routing reference (the role table, the escalation
   column, the designer's per-task model) wins; outside it, these lines are the whole rule.
 
@@ -127,7 +129,7 @@ proceed without waiting unless a stop below applies.
 - **One agent, in order** - the quality check fails for these units.
 - **One agent, batched calls** - the check passes and the units are small. Reads, searches and commands that do not depend on each other go in the same turn; a call whose input is another's result waits.
 - **Parallel seats** - the check passes for two or more units that are each sizeable (about ten tool calls, or a wide read that would flood this context) and whose shared contracts already exist in code. Up to 3 at once by default, more only on the user's ask. Never for a handful of calls (those are batched), never to re-check your own work.
-- **A fork or a briefed seat** - a fork starts from this whole conversation and re-sends it on every turn it takes; a named or Explore seat starts from its own floor plus the brief. Past the install's fresh-session trigger, brief a named or Explore seat; fork only a seat that needs this conversation's own state (measured: 29 forks spent ~61.6M of their ~69.2M input tokens re-reading the parent, $20.44 against the main session's $17.73).
+- **A fork or a briefed seat** - a fork starts from this whole conversation and re-sends it on every turn it takes; a named or Explore seat starts from its own floor plus the brief. Past the install's fresh-session trigger, brief a named or Explore seat; fork only a seat that needs this conversation's own state - the re-sent parent dominates a fork's input.
 
 Edit seats are the house `<stack>-implementer`, inside a flow (Route, above); read-only seats run on any route. The dispatch guard blocks a generic dispatch while a flow stamp is live. Seats that edit files in one directory each get a separate worktree where the platform offers one - and only when every contract they build on is COMMITTED: a worktree branches from HEAD, so seats that need this session's uncommitted plan, keys or files build in the shared tree, one owner per file. With no dispatch available, run the tracks inline in order.
 

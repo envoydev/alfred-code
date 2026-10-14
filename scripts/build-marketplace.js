@@ -29,12 +29,13 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { placement, CORE } = require('./plugin-placement.js');
-const { timeoutFor, asyncFor } = require('./install/settings.js');
+const { timeoutFor, asyncFor, onFailureFor } = require('./install/settings.js');
 const { loadManifest } = require('./install/manifest.js');
 const { HOOK_PROFILES } = require('../stack/hooks/hook-prelude.js');
 const { wiringRows } = require('../stack/hooks/shell-guards.js');
 const fileGuards = require('../stack/hooks/file-guards.js');
 const { DEFAULT_EXCLUDE, DESKTOP_ENV } = require('../stack/mcp/desktop-launch.js');
+const { NAVIGATION_ENV } = require('../stack/mcp/serena-launch.js');
 const { excludeNewerOf } = require('../stack/mcp/uv-python.js');
 
 const REPO = path.resolve(__dirname, '..');
@@ -236,7 +237,9 @@ function hooksBlock(wirings)
         // A side-effect hook runs async, off the call's path (settings.js asyncFor). Its env gate stays inside the hook:
         // the copy route's `[ ... ] ||` shell test fails under PowerShell, the shell form's runner where Git Bash is
         // absent (code.claude.com/docs/en/hooks, 'Exec form and shell form'), and every other plugin hook runs there.
-        group.hooks.push({ type: 'command', command: launch(`stack/hooks/${w.file}`, w.args), timeout: timeoutFor(w.file, w.event), ...(asyncFor(w.file) ? { async: true } : {}) });
+        // The shell-guard dispatcher blocks the call when it fails to judge it (settings.js onFailureFor, audit HK07).
+        group.hooks.push({ type: 'command', command: launch(`stack/hooks/${w.file}`, w.args), timeout: timeoutFor(w.file, w.event), ...(asyncFor(w.file, w.event) ? { async: true } : {}),
+            ...(onFailureFor(w.file, w.event) ? { onFailure: onFailureFor(w.file, w.event) } : {}) });
     }
     return block;
 }
@@ -274,7 +277,9 @@ function readPins(options = {})
         if (!row || !row.version) return '';
         return String(row.spelling || '@<v>').replace('<v>', row.version);
     };
-    return { suffix, pins, cutoff };
+    // PL4: an npm row's OWN cut-off day (refresh-mcp-pins.js 'an npm row's own day'), '' when it records none.
+    const npmBefore = (name) => excludeNewerOf(pins[name] && pins[name].refreshed);
+    return { suffix, pins, cutoff, npmBefore };
 }
 
 // The four browsers the browser catalog entry expands into - ONE PLUGIN EACH, not one plugin
@@ -297,7 +302,7 @@ const { ENGINES: PW_ENGINES } = require('../stack/mcp/data-root.js');
 
 function mcpServerShapes(options = {})
 {
-    const { suffix, cutoff } = readPins(options);
+    const { suffix, cutoff, npmBefore } = readPins(options);
     // A launcher flag, before the server's own `--` arguments; an older launcher ignores it.
     const cut = cutoff ? ['--exclude-newer', cutoff] : [];
     const root = '${CLAUDE_PLUGIN_ROOT}';
@@ -335,7 +340,12 @@ function mcpServerShapes(options = {})
                         // cursor-stack's). The launcher swaps it for the stack's own context file beside
                         // it (navigation-context.yml, I12) - named here as claude-code so a project whose
                         // plugin cache predates that file still starts serena after a catalog refresh.
-                        '--context', 'claude-code', '--enable-web-dashboard', 'false', '--project-from-cwd'],
+                        '--context', 'claude-code', '--enable-web-dashboard', 'false', '--project-from-cwd',
+                        // serena 2.0.0's interface pinned to tools (audit 2026-10-14 PL10): its own config template
+                        // says REPL, which ignores the context's exclusions and edits through serena_repl unseen.
+                        '--agent-interface', 'tools'],
+                    // serena's usage ping off (PL1): the launcher hands its whole env to uvx, so this reaches serena.
+                    env: NAVIGATION_ENV,
                 },
             },
         },
@@ -398,15 +408,17 @@ function mcpServerShapes(options = {})
                 },
             },
         },
-        // --- the mobile server: an npx package, so no Python and no cut-off -----------------------
+        // --- the mobile server: an npx package, so no Python ---------------------------------------
         // The launcher looks up an unset ANDROID_HOME / JAVA_HOME, puts the output dirs under the data root and keeps the
-        // safe defaults where the user set nothing (stack/mcp/mobile-launch.js).
+        // safe defaults where the user set nothing (stack/mcp/mobile-launch.js). Its dependencies are caret ranges, so it
+        // takes its pin's own cut-off day (`--before`, handed to npx as npm_config_before - PL4); an older launcher ignores it.
         'mobile-control': {
             description: 'The mobile server (appium-mcp), as a plugin: drives Android and iOS apps on an emulator, a simulator or a real device through Appium\'s embedded UiAutomator2 and XCUITest drivers (sessions, find, tap, type, gestures, screenshots). Needs Node 22+; Android needs the Android SDK and a JDK (ANDROID_HOME / JAVA_HOME, looked up when unset), iOS needs macOS with Xcode. Started through a launcher that puts screenshots and page sources under the project\'s data root (<data root>/mobile-control) and refuses app URLs and remote Appium servers unless the user sets ALLOW_REMOTE_APP_URLS / REMOTE_SERVER_URL_ALLOW_REGEX.',
             servers: {
                 'mobile-control': {
                     command: 'node',
-                    args: [`${root}/stack/mcp/mobile-launch.js`, '--package', `appium-mcp${suffix('mobile-control')}`],
+                    args: [`${root}/stack/mcp/mobile-launch.js`, '--package', `appium-mcp${suffix('mobile-control')}`,
+                        ...(npmBefore('mobile-control') ? ['--before', npmBefore('mobile-control')] : [])],
                 },
             },
         },
@@ -440,9 +452,39 @@ function mcpPlugins(options = {})
     });
 }
 
+// THE IDS 2.4.0 RENAMED, LISTED AGAIN AS RETIRED ALIASES (audit 2026-10-14 PL5, the user's ruling of 2026-10-14). 2.4.0
+// renamed browser-<engine>, windows-desktop and macos-desktop to <engine>-control, windows-control and macos-control
+// (meta/stack-manifest.json `renamed.mcps`) and unlisted the old ids in the same release - an id a catalog drops stops
+// loading in every project still enabled on it the moment its marketplace refreshes, silently (S25), and one project's
+// update refreshes it for every project on the account. So each is listed again the way 2.2.0 listed its renames:
+// RETIRED, carrying its successor's server under the OLD server name, so a project not yet updated keeps the tool names
+// its copies spell, and its next update swaps the plugin for the new one (install/plugins.js migrateRenamed). An alias
+// names no dependency (I6, I7). Kept until evidence shows no install still resolves through one - never on a release
+// cadence. The 2.0.0 and 2.2.0 renames stay unlisted (2.2.1, the user's ruling of 2026-10-06).
+const LISTED_ALIASES = Object.freeze(['browser-chrome', 'browser-msedge', 'browser-firefox', 'browser-webkit', 'windows-desktop', 'macos-desktop']);
+const ALIAS_RELEASE = '2.4.0';
+function mcpAliasEntries(options = {})
+{
+    const renamed = options.renamedMcps || loadManifest(REPO).renamed.mcps;
+    const current = options.entries || mcpPlugins(options);
+    return LISTED_ALIASES.map((old) =>
+    {
+        const now = renamed[old];
+        const entry = now ? current.find((e) => e.name === now) : null;
+        if (!entry) throw new Error(`build-marketplace: the retired alias ${old} has no successor entry (renamed.mcps names ${now || 'none'})`);
+        const { dependencies, ...rest } = entry;
+        return {
+            ...rest,
+            name: old,
+            description: `RETIRED in ${ALIAS_RELEASE} - renamed ${now}. Run /${CORE}:update: it installs ${now} in its place and removes this entry.`,
+            mcpServers: { [old]: entry.mcpServers[now] },
+        };
+    });
+}
+
 function applyMcpPlugins(mkt, entries)
 {
-    const wanted = entries || mcpPlugins();
+    const wanted = entries || mcpPlugins().concat(mcpAliasEntries());
     const plugins = Array.isArray(mkt.plugins) ? mkt.plugins : (mkt.plugins = []);
     for (const w of wanted)
     {
@@ -453,7 +495,8 @@ function applyMcpPlugins(mkt, entries)
     // is recognisable without a list of past names - which matters, because a regeneration that
     // only adds leaves a split entry (one playwright -> one plugin per engine) behind in the
     // marketplace, enabled on every machine that already installed it. A RENAMED one's old id goes the same way
-    // (2.2.1: the RETIRED aliases are no longer listed).
+    // (2.2.1: the RETIRED aliases are no longer listed) - except the 2.4.0 ones, which are among the wanted entries
+    // (mcpAliasEntries) and stay listed on purpose.
     const keep = new Set(wanted.map(w => w.name));
     const ownedByMcp = p => p && p.mcpServers && !p.skills && !p.agents && !p.commands && !p.hooks;
     for (let i = plugins.length - 1; i >= 0; i--)
@@ -480,7 +523,8 @@ function main(argv)
     {
         const file = path.resolve(arg('--marketplace-file', MARKETPLACE));
         const mkt = readJson(file, 'marketplace.json');
-        const entries = mcpPlugins(options);
+        const current = mcpPlugins(options);
+        const entries = current.concat(mcpAliasEntries({ ...options, entries: current }));
         const before = JSON.stringify(mkt, null, 2) + '\n';
         const after = JSON.stringify(applyMcpPlugins(mkt, entries), null, 2) + '\n';
         if (before === after) { console.log(`mcp entries current: ${entries.length} plugins`); return 0; }
@@ -539,4 +583,4 @@ if (require.main === module)
     catch (err) { console.error(String(err.message || err)); process.exit(1); }
 }
 
-module.exports = { buildEntries, coreEntry, serialize, applyToMarketplace, applyMcpPlugins, mcpPlugins, mcpServerShapes, readPins, PW_ENGINES, parseHookWirings, hooksBlock, mergeHooks, FOLDED_ENTRIES, ENTRIES_FILE, PINS_FILE };
+module.exports = { buildEntries, coreEntry, serialize, applyToMarketplace, applyMcpPlugins, mcpPlugins, mcpAliasEntries, LISTED_ALIASES, mcpServerShapes, readPins, PW_ENGINES, parseHookWirings, hooksBlock, mergeHooks, FOLDED_ENTRIES, ENTRIES_FILE, PINS_FILE };

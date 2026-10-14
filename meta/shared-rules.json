@@ -1623,7 +1623,7 @@
           "marker": "The main session is the only orchestrator for the whole vertical"
         },
         {
-          "file": "stack/skills/loop-quality/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-code-quality/references/domain-trio-protocol.md",
           "marker": "The main session is the only orchestrator for the whole vertical"
         }
       ]
@@ -1644,7 +1644,7 @@
           "marker": "up to 3 at once (more only on the user's ask), queueing the rest as seats return"
         },
         {
-          "file": "stack/skills/loop-quality/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-code-quality/references/domain-trio-protocol.md",
           "marker": "up to 3 at once (more only on the user's ask), queueing the rest as seats return"
         },
         {
@@ -1681,11 +1681,11 @@
           "marker": "fresh-session resume point"
         },
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "fresh-session resume point"
         },
         {
-          "file": "stack/skills/loop-quality/references/staged-mode.md",
+          "file": "stack/skills/loop-code-quality/references/staged-mode.md",
           "marker": "fresh-session resume point"
         }
       ]
@@ -1748,7 +1748,7 @@
           "marker": "ask ONE question before ANALYZE"
         },
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "ask ONE question before ANALYZE"
         },
         {
@@ -1760,7 +1760,7 @@
           "marker": "ask ONE question before building"
         },
         {
-          "file": "stack/skills/task-design/SKILL.md",
+          "file": "stack/skills/task-design/references/design-mode.md",
           "marker": "ask ONE question before designing"
         },
         {
@@ -1792,7 +1792,7 @@
           "marker": "ask ONE question before GATHER"
         },
         {
-          "file": "stack/skills/loop-quality/references/staged-mode.md",
+          "file": "stack/skills/loop-code-quality/references/staged-mode.md",
           "marker": "ask ONE question before DISCOVERY"
         }
       ]
@@ -1851,7 +1851,7 @@
           "marker": "an earlier session's leftover stamp is not consent"
         },
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "an earlier session's leftover stamp is not consent"
         },
         {
@@ -1863,7 +1863,7 @@
           "marker": "an earlier session's leftover stamp is not consent"
         },
         {
-          "file": "stack/skills/loop-quality/references/staged-mode.md",
+          "file": "stack/skills/loop-code-quality/references/staged-mode.md",
           "marker": "an earlier session's leftover stamp is not consent"
         }
       ]
@@ -1931,44 +1931,44 @@
       "_note": "The implementers' loop findings-plan carve-out (any loop brief without a contract_version) (skip the START memory sequence + contract_version, hand-off write only when the brief names it) - identical in all 10 implementer seats because any subset installs per project; the trio memory contract stays the default.",
       "owner": {
         "file": "stack/agents/aspnet-implementer.md",
-        "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+        "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
       },
       "sites": [
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
         },
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
         }
       ]
     },
@@ -2021,8 +2021,53 @@
         }
       ]
     },
+    "verifier-direct-dispatch": {
+      "_note": "The verifiers' direct-dispatch carve-out (audit 2026-10-14 AG02, the user's ruling: option a): a brief with no contract_version - a review over a diff from the single-chat review or the commit checkpoint, or a plan audit from the plan-gate flow - is its own spec: review the diff (and a named plan file), a plan audit runs no build or test, the ledger checks and the memory-handoff WRITE are skipped, and the close keeps the status vocabulary with `contract_version: none`. Before it those dispatches got a build rerun or a CONTRACT_MISMATCH for 'missing task context'. The footer clause says the direct dispatch is excepted beside the rubric audit. Identical in all 10 verifier seats for the same selective-install reason as the rubric carve-out beside it.",
+      "owner": {
+        "file": "stack/agents/aspnet-verifier.md",
+        "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/browser-extension-verifier.md",
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+        },
+        {
+          "file": "stack/agents/console-verifier.md",
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+        },
+        {
+          "file": "stack/agents/data-verifier.md",
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+        },
+        {
+          "file": "stack/agents/devops-verifier.md",
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+        },
+        {
+          "file": "stack/agents/ionic-angular-verifier.md",
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+        },
+        {
+          "file": "stack/agents/web-angular-verifier.md",
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+        },
+        {
+          "file": "stack/agents/windows-service-verifier.md",
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+        },
+        {
+          "file": "stack/agents/winforms-verifier.md",
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+        },
+        {
+          "file": "stack/agents/wpf-verifier.md",
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+        }
+      ]
+    },
     "assessment-coverage-carve-out": {
-      "_note": "The architecture assessment's coverage carve-out: test-suite weaknesses (coverage numbers, missing/weak tests, absent test infrastructure) belong to capture-test-coverage's COVERAGE.md, never ASSESSMENT.md - only the structural testability blocker stays. Canonical in doc-shape.md; restated at the JUDGE step and in the skill's '## When to use' section because a live run flagged coverage as a weakness with the reference-only statement (the description carried it until 2.1.2 capped descriptions at 160 chars, lint check 15c). Moved from capture-architecture to capture-architecture-quality when the findings judgment split out of the map capture.",
+      "_note": "The architecture assessment's coverage carve-out: test-suite weaknesses (coverage numbers, missing/weak tests, absent test infrastructure) belong to capture-test-coverage's COVERAGE.md, never ARCHITECTURE-ASSESSMENT.md - only the structural testability blocker stays. Canonical in doc-shape.md; restated at the JUDGE step and in the skill's '## When to use' section because a live run flagged coverage as a weakness with the reference-only statement (the description carried it until 2.1.2 capped descriptions at 160 chars, lint check 15c). Moved from capture-architecture to capture-architecture-quality when the findings judgment split out of the map capture.",
       "owner": {
         "file": "stack/skills/capture-architecture-quality/references/doc-shape.md",
         "marker": "Test-suite weaknesses are OUT OF SCOPE"
@@ -2112,16 +2157,29 @@
       "_note": "The loop close-out commit decision goes through AskUserQuestion - the local commit recommended and listed first, Hold second (the user's ruling 2026-10-13: a commit stays on this machine and is undone with git reset --soft HEAD~1; a push is held), a picked commit running habits-commit-checkpoint whole (the flows' close template; the commit guard blocks a commit with no receipt) - never a prose 'your call' bullet. Verbatim in all three loops because each installs alone.",
       "owner": {
         "file": "stack/skills/loop-architecture-quality/SKILL.md",
-        "marker": "'Commit now (Recommended)', which runs `habits-commit-checkpoint` whole / 'Hold - review the diff first' - never a prose 'your call' bullet"
+        "marker": "the commit decision is the ask below, never a prose 'your call' bullet"
       },
       "sites": [
         {
           "file": "stack/skills/loop-test-coverage/SKILL.md",
-          "marker": "'Commit now (Recommended)', which runs `habits-commit-checkpoint` whole / 'Hold - review the diff first' - never a prose 'your call' bullet"
+          "marker": "the commit decision is the ask below, never a prose 'your call' bullet"
         },
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
-          "marker": "'Commit now (Recommended)', which runs `habits-commit-checkpoint` whole / 'Hold - review the diff first' - never a prose 'your call' bullet"
+          "file": "stack/skills/loop-code-quality/SKILL.md",
+          "marker": "the commit decision is the ask below, never a prose 'your call' bullet"
+        }
+      ]
+    },
+    "commit-ask-owed-mark": {
+      "_note": "The commit ask that names anything still owed (a gate not run, a review skipped) marks 'Show the diff first', never Hold - the user's ruling 2026-10-13 (76d40e53). The always-on git rule restated it with Hold marked while the checkpoint template marked the diff, and the stop-contract hook asks for one mark in every home (audit 2026-10-14 SKC02).",
+      "owner": {
+        "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
+        "marker": "when the question names anything still owed, 'Show the diff first' takes the mark instead"
+      },
+      "sites": [
+        {
+          "file": "stack/rules/alfred-git.md",
+          "marker": "when it names anything still owed, 'Show the diff first' takes the mark, and every push or publish ask marks holding"
         }
       ]
     },
@@ -2129,16 +2187,16 @@
       "_note": "A capture Skill call the fresh-session guard blocks is answered through one marked ask, and a 'continue' answer re-issues the same call - the guard records the offer and passes the retry until the context grows 1.5x past it (scripts/guard-hooks.test.js 'the size offer is answerable'). Replaces 'never retry a blocked call - read the capture's SKILL.md instead' (2026-10-08 audit C5), verbatim in all three loops.",
       "owner": {
         "file": "stack/skills/loop-architecture-quality/SKILL.md",
-        "marker": "is the gate working, not a fault: put the choice through AskUserQuestion - 'Resume in a fresh session (Recommended)', ending this turn with the RESUME BLOCK / 'Continue here' - and on 'continue', re-issue the same Skill call: the answered offer lets it through until the context grows 1.5x past it"
+        "marker": "is the gate working, not a fault - on 'continue', re-issue the same Skill call: the answered offer lets it through until the context grows 1.5x past it"
       },
       "sites": [
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
-          "marker": "is the gate working, not a fault: put the choice through AskUserQuestion - 'Resume in a fresh session (Recommended)', ending this turn with the RESUME BLOCK / 'Continue here' - and on 'continue', re-issue the same Skill call: the answered offer lets it through until the context grows 1.5x past it"
+          "file": "stack/skills/loop-code-quality/SKILL.md",
+          "marker": "is the gate working, not a fault - on 'continue', re-issue the same Skill call: the answered offer lets it through until the context grows 1.5x past it"
         },
         {
           "file": "stack/skills/loop-test-coverage/SKILL.md",
-          "marker": "is the gate working, not a fault: put the choice through AskUserQuestion - 'Resume in a fresh session (Recommended)', ending this turn with the RESUME BLOCK / 'Continue here' - and on 'continue', re-issue the same Skill call: the answered offer lets it through until the context grows 1.5x past it"
+          "marker": "is the gate working, not a fault - on 'continue', re-issue the same Skill call: the answered offer lets it through until the context grows 1.5x past it"
         }
       ]
     },
@@ -2154,7 +2212,7 @@
           "marker": "next: fresh-session | continue"
         },
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "next: fresh-session | continue"
         }
       ]
@@ -2190,7 +2248,7 @@
       ]
     },
     "small-tier-dispatch-consent": {
-      "_note": "In DELEGATED mode the mode ask's answer is the dispatch consent for small-tier work - the loop stamps flow/APPROVAL (APPROVED small-tier) the moment it lands, rewritten as substantial approvals arrive, because the dispatch guard is tier-blind. loop-quality's AUTO-stamp is the same policy in its own shape, deliberately not pinned here.",
+      "_note": "In DELEGATED mode the mode ask's answer is the dispatch consent for small-tier work - the loop stamps flow/APPROVAL (APPROVED small-tier) the moment it lands, rewritten as substantial approvals arrive, because the dispatch guard is tier-blind. loop-code-quality's AUTO-stamp is the same policy in its own shape, deliberately not pinned here.",
       "owner": {
         "file": "stack/skills/loop-architecture-quality/SKILL.md",
         "marker": "APPROVED small-tier"
@@ -2201,7 +2259,7 @@
           "marker": "APPROVED small-tier"
         },
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "APPROVED small-tier"
         }
       ]
@@ -2295,7 +2353,7 @@
           "marker": "a `Leftovers:` line - what the instrumented runs started"
         },
         {
-          "file": "stack/skills/loop-quality/references/staged-mode.md",
+          "file": "stack/skills/loop-code-quality/references/staged-mode.md",
           "marker": "Leftovers - what the pipeline's gate and audit runs started"
         },
         {
@@ -2311,7 +2369,7 @@
           "marker": "names what this run started to build, test, or verify"
         },
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "tear-down-vs-keep through the same AskUserQuestion call"
         }
       ]
@@ -2639,7 +2697,7 @@
           "marker": "step zero is `git rev-parse HEAD` against the brief's pinned base sha"
         },
         {
-          "file": "stack/skills/loop-quality/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-code-quality/references/domain-trio-protocol.md",
           "marker": "step zero is `git rev-parse HEAD` against the brief's pinned base sha"
         }
       ]
@@ -2866,11 +2924,11 @@
           "marker": "memories purged: <names|none>"
         },
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "memories purged: <names|none>"
         },
         {
-          "file": "stack/skills/loop-quality/references/delegated-mode.md",
+          "file": "stack/skills/loop-code-quality/references/delegated-mode.md",
           "marker": "memories purged: <names|none>"
         },
         {
@@ -2886,7 +2944,7 @@
           "marker": "memories purged: <names|none>"
         },
         {
-          "file": "stack/skills/loop-quality/references/staged-mode.md",
+          "file": "stack/skills/loop-code-quality/references/staged-mode.md",
           "marker": "memories purged: <names|none>"
         }
       ]
@@ -2911,7 +2969,7 @@
           "marker": "The purge is counted, not claimed"
         },
         {
-          "file": "stack/skills/loop-quality/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-code-quality/references/domain-trio-protocol.md",
           "marker": "The purge is counted, not claimed"
         },
         {
@@ -2940,11 +2998,11 @@
           "marker": "is never DONE and never resumed as-is"
         },
         {
-          "file": "stack/skills/loop-quality/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-code-quality/references/domain-trio-protocol.md",
           "marker": "is never DONE and never resumed as-is"
         },
         {
-          "file": "stack/skills/loop-quality/references/delegated-mode.md",
+          "file": "stack/skills/loop-code-quality/references/delegated-mode.md",
           "marker": "is never DONE and never resumed as-is"
         },
         {
@@ -2964,24 +3022,24 @@
     "loop-stage-findings-gate-line": {
       "_note": "The starter stage prompts' shared findings-gate line - a deviation is a finding only with a named breakage; a wrong finding costs more than a missed one. Byte-identical across the five audit stage prompts.",
       "owner": {
-        "file": "stack/skills/loop-quality/assets/loops-starter/code-quality.md",
+        "file": "stack/skills/loop-code-quality/assets/loops-starter/code-quality.md",
         "marker": "a wrong finding costs more than a missed one"
       },
       "sites": [
         {
-          "file": "stack/skills/loop-quality/assets/loops-starter/structure.md",
+          "file": "stack/skills/loop-code-quality/assets/loops-starter/structure.md",
           "marker": "a wrong finding costs more than a missed one"
         },
         {
-          "file": "stack/skills/loop-quality/assets/loops-starter/naming.md",
+          "file": "stack/skills/loop-code-quality/assets/loops-starter/naming.md",
           "marker": "a wrong finding costs more than a missed one"
         },
         {
-          "file": "stack/skills/loop-quality/assets/loops-starter/comments.md",
+          "file": "stack/skills/loop-code-quality/assets/loops-starter/comments.md",
           "marker": "a wrong finding costs more than a missed one"
         },
         {
-          "file": "stack/skills/loop-quality/assets/loops-starter/logging.md",
+          "file": "stack/skills/loop-code-quality/assets/loops-starter/logging.md",
           "marker": "a wrong finding costs more than a missed one"
         }
       ]
@@ -2989,24 +3047,24 @@
     "loop-stage-bar-line": {
       "_note": "The starter stage prompts' shared Bar: line (zero findings at every severity, real findings only, open:[] valid on pass 1, never trimmed). Byte-identical across the five audit stage prompts.",
       "owner": {
-        "file": "stack/skills/loop-quality/assets/loops-starter/code-quality.md",
+        "file": "stack/skills/loop-code-quality/assets/loops-starter/code-quality.md",
         "marker": "Bar: zero findings at every severity - real findings only"
       },
       "sites": [
         {
-          "file": "stack/skills/loop-quality/assets/loops-starter/structure.md",
+          "file": "stack/skills/loop-code-quality/assets/loops-starter/structure.md",
           "marker": "Bar: zero findings at every severity - real findings only"
         },
         {
-          "file": "stack/skills/loop-quality/assets/loops-starter/naming.md",
+          "file": "stack/skills/loop-code-quality/assets/loops-starter/naming.md",
           "marker": "Bar: zero findings at every severity - real findings only"
         },
         {
-          "file": "stack/skills/loop-quality/assets/loops-starter/comments.md",
+          "file": "stack/skills/loop-code-quality/assets/loops-starter/comments.md",
           "marker": "Bar: zero findings at every severity - real findings only"
         },
         {
-          "file": "stack/skills/loop-quality/assets/loops-starter/logging.md",
+          "file": "stack/skills/loop-code-quality/assets/loops-starter/logging.md",
           "marker": "Bar: zero findings at every severity - real findings only"
         }
       ]
@@ -3053,7 +3111,7 @@
           "marker": "all four questions answered explicitly"
         },
         {
-          "file": "stack/skills/loop-quality/references/rules.md",
+          "file": "stack/skills/loop-code-quality/references/rules.md",
           "marker": "all four are answered explicitly"
         },
         {
@@ -3506,7 +3564,7 @@
           "marker": "what it says it covers, never by a remembered name"
         },
         {
-          "file": "stack/skills/loop-quality/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-code-quality/references/domain-trio-protocol.md",
           "marker": "match it from YOUR skill list by what each skill says it covers"
         },
         {
@@ -3581,7 +3639,7 @@
       ]
     },
     "optional-mcp-absence": {
-      "_note": "An optional MCP (the browser server, and the two desktop servers whose read-only observe tools the WPF and WinForms verifiers and the evidence gatherer hold - opt-in and one OS each) is simply absent from a seat tools list when the project never registered it, and a live check that runs through the project's OWN E2E suite (the native device smoke, the loaded-extension run) is absent when the project ships none: the seat still launches, so the failure mode is a SILENT PASS, not an error. Every seat with such a check restates the same contract - run the remaining route, else report the covered checks UNVERIFIED with the reason. The seat names the server only by what it does (the described-cite shape), never by name with a guard beside it - a backticked server name is also a graph edge that would pull the server into every install picking the seat.",
+      "_note": "An optional MCP (the browser server, and the two desktop servers whose read-only observe tools the WPF and WinForms verifiers and the evidence gatherer hold - opt-in and one OS each, and the mobile server whose read-only observe tools the Ionic verifier and the evidence gatherer hold) is simply absent from a seat tools list when the project never registered it, and a live check that runs through the project's OWN E2E suite (the native device smoke, the loaded-extension run) is absent when the project ships none: the seat still launches, so the failure mode is a SILENT PASS, not an error. Every seat with such a check restates the same contract - run the remaining route, else report the covered checks UNVERIFIED with the reason. The seat names the server only by what it does (the described-cite shape), never by name with a guard beside it - a backticked server name is also a graph edge that would pull the server into every install picking the seat.",
       "owner": {
         "file": "stack/agents/integration-reviewer.md",
         "marker": "else record the E2E path as UNVERIFIED with the reason"
@@ -3618,6 +3676,14 @@
         {
           "file": "stack/agents/wpf-verifier.md",
           "marker": "report the view checks as UNVERIFIED with the reason"
+        },
+        {
+          "file": "stack/agents/evidence-gatherer.md",
+          "marker": "say plainly that the device evidence was not obtainable here"
+        },
+        {
+          "file": "stack/agents/ionic-angular-verifier.md",
+          "marker": "a native screen nothing observed is never a silent pass"
         }
       ]
     },
@@ -3739,7 +3805,7 @@
       ]
     },
     "secret-read-allow-receipt": {
-      "_note": "The secret guard's block ends in ONE AskUserQuestion (presence only - recommended / show or use the value this session / drop), and the 'show' answer is honoured through a receipt at <docs-path>/flow/SECRET-READ-ALLOW - a file path, a variable NAME or `*`, this session's own, under 8h. The guard owns the path (it resolves and reads the file); the stop contract reads the same file so a consented exposure is not re-asked for rotation; the security baseline and CLAUDE.md name it. A rename in one place leaves the model writing a receipt nothing reads.",
+      "_note": "The secret guard's block ends in ONE AskUserQuestion (presence only - recommended / show or use the value this session / drop), and the 'show' answer is honoured through a receipt at <docs-path>/flow/SECRET-READ-ALLOW - a file path, a variable NAME or `*`, this session's own, under 8h. The guard owns the path (it resolves and reads the file); the stop contract reads the same file so a consented exposure is not re-asked for rotation; the repo hook notes name it (the security baseline's copy went in audit 2026-10-14 RU03 - the guard's denial carries the ask and the receipt at the moment of need). A rename in one place leaves the model writing a receipt nothing reads.",
       "owner": {
         "file": "stack/hooks/guard-secret-value.js",
         "marker": "'flow', 'SECRET-READ-ALLOW'"
@@ -3748,10 +3814,6 @@
         {
           "file": "stack/hooks/guard-stop-contract.js",
           "marker": "'flow', 'SECRET-READ-ALLOW'"
-        },
-        {
-          "file": "stack/rules/alfred-security.md",
-          "marker": "`<docs-path>/flow/SECRET-READ-ALLOW` receipt"
         },
         {
           "file": ".claude/rules/repo-hooks.md",
@@ -4108,6 +4170,10 @@
         "marker": "the FIRST action is the `habits-done-gate` Skill call, before the claim lands"
       },
       "sites": [
+        {
+          "file": "stack/rules/alfred-security.md",
+          "marker": "the FIRST action is the `habits-commit-checkpoint` Skill call, before the change is presented"
+        },
         {
           "file": "stack/rules/alfred-interaction.md",
           "marker": "the FIRST action is the `habits-plan-writing` Skill call, before the plan file is written"
@@ -5295,11 +5361,11 @@
           "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool"
         },
         {
-          "file": "stack/skills/loop-quality/references/staged-mode.md",
+          "file": "stack/skills/loop-code-quality/references/staged-mode.md",
           "marker": "written with the Write tool at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL`"
         },
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool"
         }
       ]
@@ -5316,11 +5382,11 @@
           "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
         },
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
         },
         {
-          "file": "stack/skills/loop-quality/references/delegated-mode.md",
+          "file": "stack/skills/loop-code-quality/references/delegated-mode.md",
           "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
         },
         {
@@ -5639,7 +5705,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
         },
         {
@@ -5655,7 +5721,7 @@
           "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
         },
         {
-          "file": "stack/skills/loop-quality/references/staged-mode.md",
+          "file": "stack/skills/loop-code-quality/references/staged-mode.md",
           "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
         },
         {
@@ -5671,7 +5737,7 @@
     "never-weaken-the-bar": {
       "_note": "Never weaken, skip or delete a check, test or assertion to make a bar appear met - a fix that would break a test is a finding, not a fix. The quality loop's run rules own it; the upgrade flow restates it for its stage gates. loop-architecture-quality carries a third copy (handed off to the rules/architecture seat to add as a site).",
       "owner": {
-        "file": "stack/skills/loop-quality/references/rules.md",
+        "file": "stack/skills/loop-code-quality/references/rules.md",
         "marker": "Never weaken, skip, or delete a check, test, or assertion to make a bar appear met"
       },
       "sites": [
@@ -6089,19 +6155,6 @@
         }
       ]
     },
-    "navigation-edit-tools": {
-      "_note": "Which edits stay on the navigation server (the user's 2026-09-29 ruling on audit I12, 'Keep rename + safe delete'): symbol lookup, rename_symbol and safe_delete_symbol (the seat memory handoff left it on the user's 2026-10-13 ruling - every note goes to alfred-memory); every other edit goes through Edit / Write, because the navigation server's text-edit tools bypassed config protection, the docs hold, the turn-edit list and the done-gate probe (41 such calls measured in main sessions). The launcher switches those tools off; the always-on rule and the generated capabilities rule's locked-server row say the same thing, so a session never reads the old routing in one of them.",
-      "owner": {
-        "file": "stack/rules/alfred-navigation.md",
-        "marker": "keeps symbol lookup, `rename_symbol` and `safe_delete_symbol`"
-      },
-      "sites": [
-        {
-          "file": "stack/skills/capture-agent-awareness/references/generated-rule-template.md",
-          "marker": "keeps symbol lookup, `rename_symbol` and `safe_delete_symbol`, and every other edit goes through Edit / Write"
-        }
-      ]
-    },
     "project-config-outranks-conventions": {
       "_note": "A house convention skill is the default, never the authority: the project's own config and its captured `<docs-path>/code-style/CODE-STYLE.md` win where they diverge, and the skill says so in its own opening so a seat that loaded only that skill still knows. The language and desktop skills carry the clause; the surrounding sentence names each stack's own config files, which is why only the priority clause is pinned. Eight copies: the Angular and SQL copies said the same thing in their own words and were normalized onto this clause so the lint can see them, and the WinForms and WPF copies were normalized the same way in 2.1.5.",
       "owner": {
@@ -6140,7 +6193,7 @@
       ]
     },
     "config-protection-gate-named": {
-      "_note": "A skill that prescribes an edit guard-config-protection.js blocks names the gate: a change to a strictness key in an existing tsconfig or MSBuild file, or any edit to an existing .editorconfig, needs the user's allowance - asked with the count the change surfaces, never routed around. typescript was the precedent (owner); dotnet-project-setup (Nullable) and dotnet-code-quality (the WarningsAsErrors waves) restate it with their own keys. 2.1.4 audit I44.",
+      "_note": "A skill that prescribes an edit guard-config-protection.js blocks names the gate: a change to a strictness key in an existing tsconfig, a loosening of one in an existing MSBuild file (a pure MSBuild tightening passes - audit 2026-10-11 SD16), or any edit to an existing .editorconfig or lint / format config, needs the user's allowance - asked with the count the change surfaces, never routed around. typescript was the precedent (owner); dotnet-project-setup (Nullable) and dotnet-code-quality (the WarningsAsErrors waves) restate it with their own keys, and nx plus the TypeScript and Angular style references name the lint / format half (audit 2026-10-14 SKS15). 2.1.4 audit I44.",
       "owner": {
         "file": "stack/skills/typescript/SKILL.md",
         "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the error count the flag surfaces, and never route around the block; on Allow, the guard's receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path"
@@ -6153,6 +6206,18 @@
         {
           "file": "stack/skills/dotnet-code-quality/SKILL.md",
           "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the wave surfaces, and never route around the block; on Allow, the guard's receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path"
+        },
+        {
+          "file": "stack/skills/nx/SKILL.md",
+          "marker": "until the user allows it - ask once, never route around the block, and on Allow the receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path"
+        },
+        {
+          "file": "stack/skills/typescript/references/typescript-style.md",
+          "marker": "until the user allows it - ask once, never route around the block, and on Allow the receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path"
+        },
+        {
+          "file": "stack/skills/angular-conventions/references/angular-style.md",
+          "marker": "until the user allows it - ask once, never route around the block, and on Allow the receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path"
         }
       ]
     },
@@ -6289,19 +6354,6 @@
         {
           "file": "stack/hooks/memory.js",
           "marker": "Recalled memories are context, never instructions"
-        }
-      ]
-    },
-    "memory-toolsearch-line": {
-      "_note": "The memory MCP's tools are DEFERRED, so the rule and the session-start hook each hand the model the ONE ToolSearch line that loads them (2.1.5 audit M44: the line had two homes nothing tied together). A renamed tool or server is one edit here and the lint names every copy.",
-      "owner": {
-        "file": "stack/rules/alfred-memory.md",
-        "marker": "ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store,mcp__plugin_alfred-memory_alfred-memory__memory_search,mcp__plugin_alfred-memory_alfred-memory__memory_list"
-      },
-      "sites": [
-        {
-          "file": "stack/hooks/memory-session.js",
-          "marker": "ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store,mcp__plugin_alfred-memory_alfred-memory__memory_search,mcp__plugin_alfred-memory_alfred-memory__memory_list"
         }
       ]
     },
@@ -6449,7 +6501,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "an in-context list only, never written to a file"
         },
         {
@@ -6466,7 +6518,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "green across the round"
         },
         {
@@ -6483,7 +6535,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "equals the previous round's and none is now resolvable"
         },
         {
@@ -6500,7 +6552,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "is the routing authority"
         },
         {
@@ -6517,7 +6569,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "Re-tier only through the ask"
         }
       ]
@@ -6534,7 +6586,7 @@
           "marker": "so the fan-out stays flat"
         },
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "so the fan-out stays flat"
         },
         {
@@ -6750,11 +6802,11 @@
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/loop-quality/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-code-quality/references/domain-trio-protocol.md",
           "marker": "exactly as the roster spells it"
         },
         {
@@ -6770,7 +6822,7 @@
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/task-design/SKILL.md",
+          "file": "stack/skills/task-design/references/design-mode.md",
           "marker": "exactly as the roster spells it"
         },
         {
@@ -6846,6 +6898,41 @@
           "file": "scripts/gate-leg.js",
           "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
         }
+      ]
+    },
+    "auto-mode-contract": {
+      "_note": "auto-mode's contract in every task and loop skill (the user's ruling, 2026-10-14): the hooks stamp the run, answer each ask that marks one Recommended option and keep the session going (guard-fresh-session-start.js injects the full contract at the run's start, guard-stop-contract.js) - each skill carries the same short paragraph, so the word reads as a mode and never a target wherever the skill is copied; the two flows whose SKILL.md sits at its size cap carry it in the reference they read before their first stop, and task-design - preloaded into every designer seat, which never runs one - not at all.",
+      "owner": { "file": "stack/skills/loop-code-quality/SKILL.md", "marker": "**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it." },
+      "sites": [
+        { "file": "stack/skills/task-build-from-scratch/SKILL.md", "marker": "**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it." },
+        { "file": "stack/skills/task-version-upgrade/SKILL.md", "marker": "**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it." },
+        { "file": "stack/skills/task-implement/SKILL.md", "marker": "**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it." },
+        { "file": "stack/skills/task-verify-plan/SKILL.md", "marker": "**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it." },
+        { "file": "stack/skills/task-verify-code/SKILL.md", "marker": "**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it." },
+        { "file": "stack/skills/loop-architecture-quality/SKILL.md", "marker": "**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it." },
+        { "file": "stack/skills/loop-test-coverage/SKILL.md", "marker": "**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it." },
+        { "file": "stack/skills/task-solve/references/step-mechanics.md", "marker": "**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it." },
+        { "file": "stack/skills/task-solve-cross/references/execution-modes.md", "marker": "**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it." }
+      ]
+    },
+    "plugin-cache-newest-entry": {
+      "_note": "The plugin-cache resolver a skill body or the source protocol runs to find the stack's newest core entry when no project copy holds the file it needs (audit 2026-10-14 SKC10): one glob over every marketplace key (`plugins/cache/*/*/*`), the plugin name read off the path, the newest version by `sort -V`, and a dir the CLI marked `.orphaned_at` never taken - a stale copy never serves a run. Each site checks the file it needs; the orphan test is the shared rule.",
+      "owner": { "file": "setup-plugin/references/source-protocol.md", "marker": "[ ! -e \"$d/.orphaned_at\" ]" },
+      "sites": [
+        { "file": "stack/skills/capture-agent-awareness/SKILL.md", "marker": "[ ! -e \"$d/.orphaned_at\" ]" },
+        { "file": "stack/skills/capture-first-look/SKILL.md", "marker": "[ ! -e \"$d/.orphaned_at\" ]" },
+        { "file": "stack/skills/capture-usage-report/SKILL.md", "marker": "[ ! -e \"$d/.orphaned_at\" ]" },
+        { "file": "stack/skills/capture-project-awareness/SKILL.md", "marker": "[ ! -e \"$d/.orphaned_at\" ]" },
+        { "file": "stack/skills/habits-adjust-agents-md/SKILL.md", "marker": "[ ! -e \"$d/.orphaned_at\" ]" },
+        { "file": "stack/skills/task-solve/references/full-spec.md", "marker": "[ ! -e \"$d/.orphaned_at\" ]" },
+        { "file": "stack/skills/task-solve-cross/references/full-spec.md", "marker": "[ ! -e \"$d/.orphaned_at\" ]" }
+      ]
+    },
+    "anti-gaming-sweep-commands": {
+      "_note": "The final-gate anti-gaming sweep's four commands (audit 2026-10-14 SKF-16): the code-quality loop owns them, and the coverage loop vendors the same list, since either loop may be installed alone and its never-weaken rule needs a mechanical check behind it. Each copy keeps its own intro (where the baseline is recorded) and report line; the commands are the shared rule.",
+      "owner": { "file": "stack/skills/loop-code-quality/references/anti-gaming-sweep.md", "marker": "1. `git diff -M --stat <BASE>` - the shape of the run. Rename detection is not optional: a structure stage makes the diff rename-heavy, and a pure rename (R100, no content change) is verified by name alone. 2. `git diff -M <BASE>` - every remaining content hunk, paged deterministically until exhausted. Never cap it (`head`, first-N lines): a gamed bar past the cap is exactly the one that survives. 3. `git ls-files --others --exclude-standard`, minus the paths in `<docs-path>/flow/untracked-at-start-<HEAD sha>` (the record the session start wrote; absent = none to subtract) - the files untracked since the run began. A plain diff is blind to brand-new files, so a gamed bar added in one would never surface. 4. Read each file left by 3 in full - it has no diff to page." },
+      "sites": [
+        { "file": "stack/skills/loop-test-coverage/references/anti-gaming-sweep.md", "marker": "1. `git diff -M --stat <BASE>` - the shape of the run. Rename detection is not optional: a structure stage makes the diff rename-heavy, and a pure rename (R100, no content change) is verified by name alone. 2. `git diff -M <BASE>` - every remaining content hunk, paged deterministically until exhausted. Never cap it (`head`, first-N lines): a gamed bar past the cap is exactly the one that survives. 3. `git ls-files --others --exclude-standard`, minus the paths in `<docs-path>/flow/untracked-at-start-<HEAD sha>` (the record the session start wrote; absent = none to subtract) - the files untracked since the run began. A plain diff is blind to brand-new files, so a gamed bar added in one would never surface. 4. Read each file left by 3 in full - it has no diff to page." }
       ]
     }
   }

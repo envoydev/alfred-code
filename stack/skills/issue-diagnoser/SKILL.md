@@ -191,8 +191,9 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    This close-out stop carries anything
    pending: an unwritten task card, a source the user still has to paste, a sibling repo that
    needs the same fix (that handoff is a FILE - a task card under `<docs-path>/cross-project-tasks/`
-   - never chat-only prose). Delete the navigation server cursor note; keep the signature-to-fix note if the
-   cause was proven, that is the reusable half.
+   - never chat-only prose). Delete this run's cursor rows (`memory_delete`, tags `note:<slug>/diagnosis`
+   and the project tag, `tag_match: 'all'`); when the cause was proven, first store the signature and its
+   fix as ONE alfred-memory row without the `handoff` / `note:` tags - the reusable half.
 
 ## Do not
 

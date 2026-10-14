@@ -24,6 +24,11 @@ const split = (text) =>
 const list = (v) => String(v || '').split(',').map((t) => t.trim()).filter(Boolean);
 const tools = (seat) => list(split(read(seat)).meta.tools);
 const disallowed = (seat) => list(split(read(seat)).meta.disallowedTools);
+// The two lines are generated (scripts/seat-tools.js): a seat grants each server whole and removes what it must not
+// hold. `held` is what it holds as Claude Code resolves that, tool by tool; `intent` is meta/seat-tools.json's row -
+// where `<server>:*` says the seat takes a later pin's tools too.
+const held = (seat) => [...require('./seat-tools.js').effectiveTools(split(read(seat)).meta.tools, split(read(seat)).meta.disallowedTools)];
+const intent = (seat) => (JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'seat-tools.json'), 'utf8')).seats[seat] || []);
 const body = (seat) => split(read(seat)).body;
 const rules = () => JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'shared-rules.json'), 'utf8')).rules;
 const copiesOf = (id) => { const r = rules()[id]; return [r.owner, ...(r.sites || [])]; };
@@ -34,20 +39,20 @@ const verifiers = seats.filter((s) => s.endsWith('-verifier'));
 // deprecation to the documentation server. A seat that judges or writes code and cannot call it can only
 // guess or mark the claim unverified. The five gatherers extract facts from THIS project and pass no
 // outside-world verdict, so they stay without it.
-const DOC_GRANT = 'mcp__plugin_alfred-documentation_alfred-documentation__*';
+const DOC_GRANT = 'alfred-documentation:*';
 const GATHERERS = new Set(['architecture-analyzer', 'code-style-analyzer', 'evidence-gatherer', 'related-project-analyzer', 'test-coverage-analyzer']);
 
 test('I13: every seat that judges or writes code holds the documentation grant the always-on rule sends it to', () =>
 {
     const rule = fs.readFileSync(path.join(ROOT, 'stack', 'rules', 'alfred-quality-gates.md'), 'utf8');
     assert.match(squash(rule), /is checked against the `alfred-documentation` server/, 'the always-on rule still directs the lookup');
-    const missing = seats.filter((s) => !GATHERERS.has(s) && !tools(s).includes(DOC_GRANT));
-    assert.deepStrictEqual(missing, [], `each needs ${DOC_GRANT} in tools:`);
+    const missing = seats.filter((s) => !GATHERERS.has(s) && !intent(s).includes(DOC_GRANT));
+    assert.deepStrictEqual(missing, [], `each needs ${DOC_GRANT} in meta/seat-tools.json`);
 });
 
 test('I13: a seat whose own body sends it to the documentation server holds the grant', () =>
 {
-    const missing = seats.filter((s) => /documentation server|mcp__plugin_alfred-documentation_alfred-documentation__/.test(body(s)) && !tools(s).includes(DOC_GRANT));
+    const missing = seats.filter((s) => /documentation server|mcp__plugin_alfred-documentation_alfred-documentation__/.test(body(s)) && !intent(s).includes(DOC_GRANT));
     assert.deepStrictEqual(missing, []);
 });
 
@@ -60,7 +65,7 @@ test('I13: a seat whose own body sends it to the documentation server holds the 
 const OBSERVE = { 'windows-control': ['Snapshot', 'Screenshot', 'WaitFor'], 'macos-control': ['Snapshot', 'Wait'] };
 const DESKTOP_SEATS = ['evidence-gatherer', 'winforms-verifier', 'wpf-verifier'];
 const desktopGrant = (server, tool) => `mcp__plugin_${server}_${server}__${tool}`;
-const desktopTools = (seat) => tools(seat).filter((t) => /^mcp__plugin_(windows|macos)-control_/.test(t));
+const desktopTools = (seat) => held(seat).filter((t) => /^mcp__plugin_(windows|macos)-control_/.test(t));
 
 test('I14: the three observe seats hold exactly the read-only observe tools of both desktop servers', () =>
 {
@@ -72,7 +77,7 @@ test('I14: no other seat holds a desktop tool, and none holds a desktop wildcard
 {
     const extra = seats.filter((s) => !DESKTOP_SEATS.includes(s) && desktopTools(s).length);
     assert.deepStrictEqual(extra, [], 'a desktop tool drives the user\'s own machine - the observe seats only');
-    const wild = seats.filter((s) => desktopTools(s).some((t) => t.endsWith('__*')));
+    const wild = seats.filter((s) => intent(s).some((t) => /^(windows|macos)-control:\*$/.test(t)));
     assert.deepStrictEqual(wild, [], 'a wildcard would grant Click, Type, App and the rest');
 });
 
@@ -109,12 +114,53 @@ test('I14: winforms-verifier runs the app the way wpf-verifier does - bounded, a
     }
 });
 
+// --- audit 2026-10-14 AG08 (the user's ruling): the opt-in mobile server's read-only subset ---------------------------
+// Since 2.4.0 a project can opt into the mobile server, but no seat could read a device screen: the Ionic verifier drove
+// native flows only through the project's device suite and the gatherer had no device evidence at all. The two get the
+// tools that only look (appium-mcp README: screenshot, page source, find, text; the attribute read is in the pinned
+// tools/list) - never a tap, a value, a gesture or the session tool, so they observe a session already open.
+const MOBILE_OBSERVE = ['appium_screenshot', 'appium_get_page_source', 'appium_find_element', 'appium_find_elements', 'appium_get_text', 'appium_get_element_attribute'];
+const MOBILE_SEATS = ['evidence-gatherer', 'ionic-angular-verifier'];
+const mobileTools = (seat) => held(seat).filter((t) => /^mcp__plugin_mobile-control_mobile-control__/.test(t));
+
+test('AG08: the two mobile observe seats hold exactly the read-only subset, and no other seat holds a mobile tool', () =>
+{
+    const pinned = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'mcp-tools.json'), 'utf8')).servers['mobile-control'].tools;
+    for (const t of MOBILE_OBSERVE) assert.ok(pinned.includes(t), `${t} is a tool at the mobile server's pin`);
+    const want = MOBILE_OBSERVE.map((t) => `mcp__plugin_mobile-control_mobile-control__${t}`).sort();
+    for (const seat of MOBILE_SEATS)
+    {
+        assert.deepStrictEqual(mobileTools(seat).sort(), want, `${seat}: the observe subset, nothing more`);
+        assert.ok(!intent(seat).includes('mobile-control:*'), `${seat}: named tool by tool, so a pin's new tool reaches it only when named`);
+    }
+    for (const t of ['appium_session_management', 'appium_gesture', 'appium_set_value', 'appium_perform_actions', 'appium_app_lifecycle'])
+        for (const seat of MOBILE_SEATS) assert.ok(!held(seat).includes(`mcp__plugin_mobile-control_mobile-control__${t}`), `${seat}: no ${t}`);
+    const extra = seats.filter((s) => !MOBILE_SEATS.includes(s) && mobileTools(s).length);
+    assert.deepStrictEqual(extra, [], 'a mobile tool drives a device - the two observe seats only');
+});
+
+test('AG08: each mobile observe seat describes the server, observes only, and draws no graph edge to it', () =>
+{
+    const graph = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'stack-graph.json'), 'utf8'));
+    for (const seat of MOBILE_SEATS)
+    {
+        const text = squash(body(seat));
+        assert.doesNotMatch(text, /`mobile-control`/, `${seat}: described, never named`);
+        assert.match(text, /through the mobile MCP - the server that drives Android and iOS apps through Appium - with its read-only tools only, against a device session already open/, `${seat}: the described cite`);
+        assert.match(text, /You observe, you never tap, type or open a session/, `${seat}: observe-only`);
+        assert.match(text, /That MCP is optional per project/, `${seat}: the absence clause`);
+        assert.ok(!graph.agents[seat].mcps.includes('mobile-control'), `${seat}: no graph edge to the opt-in server`);
+    }
+    assert.match(squash(body('evidence-gatherer')), /say plainly that the device evidence was not obtainable here/);
+    assert.match(squash(body('ionic-angular-verifier')), /a native screen nothing observed is never a silent pass/);
+});
+
 // Every MCP a stack seeds must be usable where that stack's work is judged, or be declared a main-session
 // tool. Before I14 the WPF and WinForms stacks seeded the desktop server and granted it to no seat.
 // browser-extension seeds the browser, but its verifier proves live behavior through the workspace's own
 // E2E suite (Playwright loads the unpacked extension there); the browser server serves the main session.
 const MAIN_THREAD_ONLY = { 'browser-extension': ['browser'] };
-const grantedServers = (seat) => new Set(tools(seat)
+const grantedServers = (seat) => new Set(held(seat)
     .map((t) => (t.match(/^mcp__plugin_([A-Za-z0-9][A-Za-z0-9.-]*)_\1__/) || [])[1])
     .filter(Boolean)
     .map((p) => (p.match(/^(?:chrome|msedge|firefox|webkit)-control$/) ? 'browser' : p)));
@@ -145,13 +191,13 @@ test('I14: every MCP a stack seeds is granted to one of that stack\'s seats, or 
 // the Playwright server process and is RCE-equivalent') through the documented `disallowedTools` field,
 // which is applied first, then `tools` resolves against what is left.
 const BROWSER_SEATS = ['evidence-gatherer', 'integration-reviewer', 'ionic-angular-verifier', 'web-angular-verifier'];
-const browserWild = (engine) => `mcp__plugin_${engine}-control_${engine}-control__*`;
+const browserWild = (engine) => `${engine}-control:*`;
 const unsafe = (engine) => `mcp__plugin_${engine}-control_${engine}-control__browser_run_code_unsafe`;
 
 test('I11: the four read-only seats keep the browser wildcard for every engine', () =>
 {
     for (const seat of BROWSER_SEATS)
-        for (const engine of PW_ENGINES) assert.ok(tools(seat).includes(browserWild(engine)), `${seat}: ${browserWild(engine)}`);
+        for (const engine of PW_ENGINES) assert.ok(intent(seat).includes(browserWild(engine)), `${seat}: ${browserWild(engine)}`);
 });
 
 test('I11: no seat granting a browser wildcard lacks the browser_run_code_unsafe disallow for that engine', () =>
@@ -159,7 +205,7 @@ test('I11: no seat granting a browser wildcard lacks the browser_run_code_unsafe
     const missing = [];
     for (const seat of seats)
         for (const engine of PW_ENGINES)
-            if (tools(seat).includes(browserWild(engine)) && !disallowed(seat).includes(unsafe(engine))) missing.push(`${seat}: ${unsafe(engine)}`);
+            if (intent(seat).includes(browserWild(engine)) && (!disallowed(seat).includes(unsafe(engine)) || held(seat).includes(unsafe(engine)))) missing.push(`${seat}: ${unsafe(engine)}`);
     assert.deepStrictEqual(missing, []);
 });
 

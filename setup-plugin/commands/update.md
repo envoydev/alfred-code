@@ -59,8 +59,29 @@ their tools in the generated rules, and `ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE` is
 Each browser server is `<engine>-control` (was `browser-<engine>`): update swaps the plugin with its on/off kept,
 and the profile moves from `.alfred/browser/<engine>` to `.alfred/<engine>-control` at that server's next start,
 unasked - `.alfred/browser` goes once its last engine has moved.
-`/loop-quality` now works a code-quality assessment by tier, with the `loops/`
-prompts as its rules; `/loop-quality staged` is the stage-by-stage run a project may rely on.
+**Renamed after 2.4.0.** The code-quality loop is `/loop-code-quality` (its row is in the table below): update
+carries its pick and `skillOverrides` value, prunes the old copy and prints its `renamed: skill` line.
+The architecture assessment is `<docs-path>/quality/ARCHITECTURE-ASSESSMENT.md`: update moves an existing
+`quality/ASSESSMENT.md` there (`docs migration (architecture quality)`) and re-points a generated rule naming it.
+**One `.gitignore` after 2.4.0.** The data root's file carries every rule, the docs' included: update rewrites it and
+removes the stack's own nested ones (`docs root: ... removed`, `gitignore: ... removed`) - the docs root's, `history/`'s,
+the run book's and the project memory folder's - while each holds exactly the stack's text; a file the user edited is
+kept and named, and serena's own `.alfred/serena/.gitignore` stays (serena writes it). A docs root outside the data root
+keeps its own. Every install also writes the project's sensitive data, `.alfred/.sensitive-data`, when absent - one
+comment line, no key (`sensitive data: ... written`); report the line.
+**auto-mode after 2.4.0.** `auto-mode` in a `task-*` or `loop-*` call runs it unattended (each stop's Recommended
+answer, nothing pushed, merged, deployed or sent out). `ALFRED_CODE_AUTO_COMPACT` (seeded `0`) chooses what a long session does at its
+fresh-session trigger: `0` offers a fresh session as before, `1` compacts there instead - no fresh-session ask, and each
+model's `modelSettings.<model>.autoCompactWindow` set in the project's own settings file, add-only (a top-level
+`autoCompactWindow` the user set anywhere wins, and a model another settings file names is left alone). Configure
+switches it; report the `autoCompactWindow per model` line when one prints.
+**The project's tools skip the data root after 2.4.0.** Prettier reads no nested `.gitignore`, so `prettier --check .`
+walked `.alfred/` and the stack's copies in `.claude/`: every run now writes one marked block naming both (the data
+root's path, and a folder the project's own lines already ignore left out) into `.prettierignore` - made where Prettier
+is in use - and into an existing `.eslintignore`, `.stylelintignore` or `.markdownlintignore`. Report each
+`tool ignores:` line; a block the user takes out stays out.
+`/loop-code-quality` now works a code-quality assessment by tier, with the `loops/`
+prompts as its rules; `/loop-code-quality staged` is the stage-by-stage run a project may rely on.
 
 | was | now |
 |---|---|
@@ -83,7 +104,7 @@ prompts as its rules; `/loop-quality staged` is the stage-by-stage run a project
 | `/project-agent-capabilities` | `/capture-agent-awareness` |
 | `/project-stack-usage-analyzer` | `/capture-usage-report` |
 | `/project-first-look` | `/capture-first-look` |
-| `/project-quality-loop` | `/loop-quality` |
+| `/project-quality-loop` | `/loop-code-quality` |
 | `/project-architecture-quality-loop` | `/loop-architecture-quality` |
 | `/project-test-coverage-loop` | `/loop-test-coverage` |
 | `/project-commit-checkpoint` | `/habits-commit-checkpoint` |
@@ -122,7 +143,7 @@ prompts as its rules; `/loop-quality staged` is the stage-by-stage run a project
 | `/alfred-issue-signatures-ci` | `/issue-signatures-ci` |
 | `/alfred-issue-signatures-runtime` | `/issue-signatures-runtime` |
 | `/alfred-loop-architecture-quality` | `/loop-architecture-quality` |
-| `/alfred-loop-quality` | `/loop-quality` |
+| `/alfred-loop-quality` | `/loop-code-quality` |
 | `/alfred-loop-test-coverage` | `/loop-test-coverage` |
 | `/alfred-task-build-from-scratch` | `/task-build-from-scratch` |
 | `/alfred-task-design` | `/task-design` |
@@ -132,6 +153,7 @@ prompts as its rules; `/loop-quality staged` is the stage-by-stage run a project
 | `/alfred-task-verify-code` | `/task-verify-code` |
 | `/alfred-task-verify-plan` | `/task-verify-plan` |
 | `/alfred-task-version-upgrade` | `/task-version-upgrade` |
+| `/loop-quality` | `/loop-code-quality` |
 | seat `alfred-issue-diagnoser-ci` | seat `issue-diagnoser-ci` |
 | seat `alfred-issue-diagnoser-runtime` | seat `issue-diagnoser-runtime` |
 
@@ -345,7 +367,7 @@ A typed folder (Other) is a custom root: `--data-path <folder> --data-move move`
 inside the project, never under `.claude/`, with no space. The recommended answer is `--data-move move`,
 the keep answer `--data-move keep` - on the installer call of whichever path runs (the 2.0.0 spelling
 `--docs-move` is read for one release). `ignored=yes` means git never saw the old docs root: the move
-keeps it that way (the docs' own `.gitignore` of `*`, `ALFRED_CODE_DOCS_VERSIONING` becomes `local`) - say
+keeps it that way (the data root's `.gitignore` keeps the docs out, `ALFRED_CODE_DOCS_VERSIONING` becomes `local`) - say
 so in the move option. `yours=yes` means the docs root `.claude/docs` is out of the ledger - an earlier
 release's 'keep' made it the user's value - yet every Alfred Code file belongs under the data root, so
 the move is still offered and still Recommended: say the root was kept by an earlier answer, and that
@@ -734,8 +756,8 @@ is the VALIDATE bullet's `policy-rev:` trigger above, one printed row, not a re-
 When the navigation server is installed, also name the one-off re-index as a next step whenever this run
 re-seeded serena's `project.yml` (under the data root, or a 2.0.0 `.serena` not moved yet) - an install
 predating the seeding has no `ignored_paths`, so its cache was built over the navigation server's own
-language-server directory: `SERENA_HOME=.alfred/serena/home uvx --python 3.13 --exclude-newer 2026-09-29T23:59:59Z
---from serena-agent@1.7.0 serena project index` (the release pin and cut-off from `meta/mcp-pins.json`) (the data root's own folder in place of `.alfred`; `.serena/home` while a 2.0.0 folder has
+language-server directory: `SERENA_HOME=.alfred/serena/home uvx --python 3.13 --exclude-newer 2026-10-14T23:59:59Z
+--from serena-agent@2.0.0 serena project index` (the release pin and cut-off from `meta/mcp-pins.json`) (the data root's own folder in place of `.alfred`; `.serena/home` while a 2.0.0 folder has
 not moved; Windows PowerShell: `$env:SERENA_HOME='.alfred\serena\home'` - the navigation server hands the path to cmd.exe unquoted, where a `/` cuts it, and so would a space in an absolute path - and, on Windows on ARM, `--python cpython-3.13-windows-x86_64-none`). Never invoke it from this run - the skill is manual-only (`disable-model-invocation`), so a
 Skill call is DENIED by `guard-fresh-session-start.js`, which reads that flag from the skill's own
 frontmatter. Do not lean on the harness for it: measured both ways, one update run's call was

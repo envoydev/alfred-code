@@ -8,8 +8,12 @@
 // own selectForSession degrades to an empty selection there), selects nothing, and the push is then the
 // tag and search lines alone. Fully silent only with no registration, garbage stdin, or any other error -
 // exit 0 throughout, since a session start that cannot be enriched must never be a session start that fails.
-// SubagentStart gets the tag line alone: SessionStart context never reaches a dispatched seat, and a seat's
-// handoff note is stored and read under that tag (alfred-memory.md) - the hook states it, the seat never guesses it.
+// SubagentStart gets the tag line and the tool line: SessionStart context never reaches a dispatched seat, and a seat's
+// handoff note is stored and read under that tag (alfred-memory.md) - the hook states it, the seat never guesses it. The
+// tool line carries the seat carve-out: a stack seat holds no ToolSearch, its tools grant the server, so it calls the
+// tools directly (the rule-side line moves here, audit 2026-10-14 RU10).
+// Both pushes end on this HOST's shell traps (hostLines, audit 2026-10-14 RU13) - the one existing context hook that
+// speaks at every session and seat start of an install, since the memory server is locked into all of them.
 'use strict';
 const os = require('os');
 
@@ -63,6 +67,25 @@ const readInput = async () => {
 };
 const emit = (event, text) => process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: text } }));
 
+// THE HOST'S SHELL TRAPS (audit 2026-10-14 RU13, the user's ruling). The always-on navigation rule carried the Windows Git
+// Bash line into every macOS / Linux session and the zsh lines into every bash one; each host now gets only its own, here,
+// at the session's and every seat's start. Keyed on this process's platform and $SHELL - the shell the Bash tool runs
+// (shell-guards.js reads the same variable for its zsh rewrite). One rule text for every teammate still holds: a per-host
+// line is no per-OS rule copy (the ruling rule-prose.test.js M68 pins), and the rule keeps a one-line pointer here.
+const ZSH_LINES = [
+  "- zsh aborts the WHOLE command on an unmatched bare path glob, status 1 like a genuine no-match, so an aborted scan reads as 'nothing there': list a path glob that may match nothing with `find <dir> -name '<pat>'`.",
+  '- zsh never word-splits `$VAR`, so a command plus flags held in one variable runs as one word - use a function or an array.',
+];
+const WINDOWS_LINES = [
+  "- On Windows (Git Bash): pass a `/tmp/x` path to native `node` through `cygpath -w` (or write under `$TEMP`); prefix a `git show <rev>:<path>` with `MSYS2_ARG_CONV_EXCL='*'`, or path conversion rewrites it; run PowerShell as a quoted-heredoc (`<<'EOF'`) `.ps1` via `-File \"$(cygpath -w <file>)\"`, never a double-quoted `-Command` (Bash expands its `$_`).",
+];
+function hostLines(platform = process.platform, shell = process.env.SHELL) {
+  const name = String(shell || '').split(/[\\/]/).pop().replace(/\.exe$/i, '').toLowerCase();
+  const lines = [...(platform === 'win32' ? WINDOWS_LINES : []), ...(name === 'zsh' ? ZSH_LINES : [])];
+  return lines.length ? ['Shell commands on this host:', ...lines] : [];
+}
+const withHost = (lines) => { const host = hostLines(); return host.length ? [...lines, '', ...host] : lines; };
+
 async function main() {
   const input = await readInput();
   // GATE 6 (hook-prelude.js): a Cursor payload runs only the protective guards - outside the try, a caller's exit must not be swallowed.
@@ -81,7 +104,10 @@ async function main() {
   process.env.CLAUDE_PROJECT_DIR = checkout;
   const dbPath = memory.registeredDbPath(root, { home });
   if (!dbPath) return; // no memory server registered for this project - nothing to push
-  if (event === 'SubagentStart') return emit('SubagentStart', `This project's memory tag: project:${memory.projectName(root)}`);
+  if (event === 'SubagentStart') {
+    return emit('SubagentStart', withHost([`This project's memory tag: project:${memory.projectName(root)}`,
+      `Store, search or list more: ${TOOL_SEARCH_LINE} - a seat whose tools grant them, by name or as the whole server, has them loaded already and calls them directly.`]).join('\n'));
+  }
   const level = memory.levelOfPath(dbPath, { home, projectRoot: root }) || 'unknown';
   const project = memory.projectName(root);
   // related-projects is read through docs.js's own docs-root resolution (ALFRED_CODE_DOCS_PATH in the
@@ -102,10 +128,10 @@ async function main() {
   const lines = text
     ? [`Memory (memory MCP, ${level}):`, tagLine, ...frame, text, '', searchLine]
     : [tagLine, searchLine];
-  emit('SessionStart', lines.join('\n'));
+  emit('SessionStart', withHost(lines).join('\n'));
 }
 
-module.exports = { main };
+module.exports = { main, hostLines };
 if (require.main === module) {
   // process.exit(0) rather than letting the event loop drain on its own: a stdin handle the bounded
   // read above could not fully detach from must never keep this process alive past its own work.

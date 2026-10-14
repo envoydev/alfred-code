@@ -5,7 +5,7 @@ description: "Use when building a .NET CLI tool or chat/trading bot - System.Com
 
 # .NET console apps - the CLI and bot interface surface
 
-A console binary is one of two things by its external interface: a **one-shot CLI tool** (parse arguments, do the work, return an exit code) or a **long-running gateway app** (a bot or consumer that stays connected and reacts to events). The generic host under a long-running bot (lifecycle, shutdown, 24/7 I/O hardening) is the hosted-worker skill's; this skill owns the interface layer - argument parsing and each bot SDK. Floor is .NET 8 / C# 12.
+A console binary is one of two things by its external interface: a **one-shot CLI tool** (parse arguments, do the work, return an exit code) or a **long-running gateway app** (a bot or consumer that stays connected and reacts to events). The generic host under a long-running bot (lifecycle, shutdown, 24/7 I/O hardening) is the hosted-worker skill's; this skill owns the interface layer - argument parsing and each bot SDK. Floor is .NET 10 / C# 14; .NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked.
 
 ## When to use
 
@@ -15,13 +15,12 @@ A console binary is one of two things by its external interface: a **one-shot CL
 
 ## CLI argument parsing
 
-Three libraries; pick by how much command surface you have.
+Two libraries; pick by how much command surface you have.
 
 - **System.CommandLine** - the parser Microsoft's own .NET CLI is built on; reached stable **2.0.0 GA in November 2025**. The default for a real command tree (subcommands, options, arguments, shell tab-completion). Pin the stable 2.x line: a 3.0 prerelease line exists, so check its status through the documentation server before adopting it.
 - **Spectre.Console.Cli** - opinionated, type-safe command/settings model (`[CommandArgument]` / `[CommandOption]`), DI support, and rich rendering (tables, prompts, progress bars). The best default for a polished, interactive CLI.
-- **Cocona** - minimal, attribute/convention-based, ASP.NET-Core-like ergonomics; fastest to stand up a small command surface.
 
-Older patterns: System.CommandLine's API churned hard through the betas - `2.0.0-beta5` (June 2025) landed major breaking changes, and four sub-packages are deprecated and excluded from all future releases (DragonFruit, Hosting, Rendering, NamingConventionBinder). Treat any tutorial older than beta5 as stale, and do not adopt the deprecated `Hosting` package to bridge to the generic host - wire the host yourself.
+Older patterns: System.CommandLine's API churned hard through the betas - `2.0.0-beta5` (June 2025) landed major breaking changes, and four sub-packages are deprecated and excluded from all future releases (DragonFruit, Hosting, Rendering, NamingConventionBinder). Treat any tutorial older than beta5 as stale, and do not adopt the deprecated `Hosting` package to bridge to the generic host - wire the host yourself. Cocona is archived (2025-12-14) - keep an existing use, never start one.
 
 A CLI tool that also needs config, DI, and logging builds the generic host and drives the parser from it - `Host.CreateApplicationBuilder`, resolve the command handler from DI, return its exit code. Do not reach for a parser's abandoned hosting shim to do it. The GA shape - `SetAction` on the command, values read from the `ParseResult` (the beta-era `SetHandler` surface is gone):
 

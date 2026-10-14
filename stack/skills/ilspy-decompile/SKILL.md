@@ -24,7 +24,7 @@ Decompiling needs ilspycmd, a third-party tool. Run it once through dnx, pinned:
 - 'Skip the decompile' - report the question UNANSWERED
 ```
 
-Where `dnx` is unavailable (an SDK before .NET 10), drop the first option and recommend the per-repo pin. Where the harness has no AskUserQuestion tool, ask the same options in plain text and wait. Never download or install on your own judgement.
+Where `dnx` is unavailable (an SDK before .NET 10), or `dnx --help` does not list `--yes` (Learn documents the flag from .NET 11; the 10.0.203 SDK already lists it, an earlier 10.0 SDK may not), drop the first option and recommend the per-repo pin. Where the harness has no AskUserQuestion tool, ask the same options in plain text and wait. Never download or install on your own judgement.
 
 Once approved, the no-install form (the .NET 10 SDK; nothing lands on `PATH`):
 
@@ -37,7 +37,7 @@ Arguments after `--` go to the tool - without it, `-h` prints dnx's own help. `d
 ## Locate the assembly
 
 - NuGet package: `~/.nuget/packages/<package-name>/<version>/lib/<tfm>/`
-- Build output: `./bin/Debug/net8.0/<AssemblyName>.dll` (or `Release/.../publish/`)
+- Build output: `./bin/Debug/net10.0/<AssemblyName>.dll` (or `Release/.../publish/`)
 - Runtime libraries: the shared-framework folder under the SDK (`dotnet --list-runtimes` shows the paths). Reference assemblies hold no implementation - decompile the runtime `.dll`, not the ref.
 
 ## Commands

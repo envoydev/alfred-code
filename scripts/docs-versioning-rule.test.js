@@ -26,7 +26,7 @@ const MIGRATIONS = require('../meta/migrations.json');
 
 const ARCH = { 'architecture/ARCHITECTURE.md': '# Map\n' };
 const STYLE = { 'code-style/CODE-STYLE.md': '# Style\n', 'code-style/watch.json': '{}\n' };
-const QUALITY = { 'quality/ASSESSMENT.md': '# Findings\n' };   // no watch.json: no domain, no vote
+const QUALITY = { 'quality/ARCHITECTURE-ASSESSMENT.md': '# Findings\n' };   // no watch.json: no domain, no vote
 
 // committed / untracked are paths UNDER the docs root. `declared` is a value already in settings.json.
 const SCENARIOS = [

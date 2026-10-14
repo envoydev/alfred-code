@@ -6,7 +6,7 @@
 'use strict';
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
-require('./hook-test-env').isolateHookSuite();
+require('./hook-test-env').isolateHookSuite({ ownTmp: true }); // RU04: the background note's once-per-actor marker sits in the hook temp dir
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -691,6 +691,48 @@ test('audit 2026-10-10 C25: a foreground until / while loop that sleeps is block
   assert.ok(rowsIn(dir).some((x) => !x.mode && x.detail && x.detail.branch === 'poll-loop'), 'a block row');
 });
 
+// audit 2026-10-14 RU04: the watch mechanics left the always-on quality-gates rule (533 chars every session) for the
+// first background call of each actor, where they apply (a background Bash call in 24.8% of sessions).
+test('audit 2026-10-14 RU04: the first background Bash call of each actor carries the watch note, once', () => {
+  const dir = project('bg-');
+  const marks = fs.mkdtempSync(path.join(TMP, 'marks-'));
+  const env = { CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_HOOK_LOG_DIR: marks };
+  const call = (session, input, { tool = 'Bash', agent } = {}) => {
+    const r = run(DISPATCH, { hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, session_id: session, cwd: dir, ...(agent ? { agent_id: agent, agent_type: 'alfred-code:implementer' } : {}) }, { cwd: dir, env });
+    let h = {};
+    try { h = JSON.parse(r.stdout).hookSpecificOutput || {}; } catch { h = {}; }
+    return { status: r.status, context: h.additionalContext || '' };
+  };
+  const bg = { command: 'npm test > run.log 2>&1', run_in_background: true };
+  assert.equal(call('bg1', { command: 'npm test' }).context, '', 'a foreground call says nothing');
+  assert.equal(call('bg1', { command: 'tail -f run.log' }, { tool: 'Monitor' }).context, '', 'a Monitor call IS the watch');
+  assert.equal(call('bg1', { ...bg, run_in_background: 'true' }).context, '', 'only a real true is a background call');
+  const first = call('bg1', bg);
+  assert.equal(first.status, 0, 'a note, never a block');
+  assert.equal(first.context, shell.BACKGROUND_NOTE);
+  // the clauses the rule carried before RU04 (rule-prose M69, F4, C25)
+  assert.match(first.context, /one command whose end is all that matters needs nothing more - its exit re-invokes you/);
+  assert.match(first.context, /a condition inside a run or across several arms takes the `Monitor` tool when you start it/);
+  assert.match(first.context, /`ToolSearch select:Monitor`/);
+  assert.match(first.context, /Poll it through `Monitor` or its new lines, never a whole-log re-read\./);
+  assert.match(first.context, /never a bare process-name grep; task lists track tasks, not shells\./);
+  assert.equal(call('bg1', bg).context, '', 'once per actor');
+  assert.equal(call('bg1', bg, { agent: 'a1' }).context, shell.BACKGROUND_NOTE, 'a seat is its own actor');
+  assert.equal(call('bg1', bg, { agent: 'a1' }).context, '', 'and hears it once too');
+  assert.equal(call('bg2', bg).context, shell.BACKGROUND_NOTE, 'a new session hears it again');
+  assert.ok(fs.readdirSync(marks).some((f) => f === 'alfred-bg-note-bg1-main') && fs.readdirSync(marks).some((f) => f === 'alfred-bg-note-bg1-a1'), 'one marker per actor, in the hook temp dir');
+  const rows = ledgerRows(dir, 'bg1').filter((x) => x.detail && x.detail.branch === 'bg-note');
+  assert.deepEqual(rows.map((x) => x.mode), ['probe', 'probe'], 'one probe row per note');
+  // a marker dir that cannot be written: silent, never a note on every call
+  const gone = { ...env, ALFRED_CODE_HOOK_LOG_DIR: path.join(marks, 'missing', 'deeper') };
+  const r = run(DISPATCH, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: bg, session_id: 'bg3', cwd: dir }, { cwd: dir, env: gone });
+  assert.equal(r.status, 0);
+  assert.ok(!/Background wait/.test(r.stdout), 'no marker, no note');
+  // a block still wins: the note rides beside it
+  const blocked = run(DISPATCH, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'git commit -am x', run_in_background: true }, session_id: 'bg4', cwd: dir }, { cwd: dir, env });
+  assert.equal(blocked.status, 2, 'the commit gate still blocks');
+});
+
 test('audit 2026-10-10: an unaddressed sed -i s/// over several lines of its file gets a note naming them', () => {
   const dir = project('sed-');
   fs.writeFileSync(path.join(dir, 'plan.md'), '# plan\n- status: TODO\nx\n- status: TODO\n');
@@ -717,4 +759,48 @@ test('audit 2026-10-10: the dispatcher\'s own checks stand down where the stack 
   const dir = project('min-');
   assert.equal(own(dir, 'until test -f x; do sleep 1; done', { env: { CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' } }).status, 0, 'minimal');
   assert.equal(own(dir, 'echo =====', { env: { SHELL: '/bin/zsh', CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' } }).command, null);
+});
+
+// ---------------------------------------------------------------------------------------------
+// audit 2026-10-14 HK15: 86 dispatcher runs took 1s or more in a week (max 12,086ms) and no row named the guard that
+// spent it - a run past 1,000ms now writes one probe row with each guard's ms
+// ---------------------------------------------------------------------------------------------
+test('HK15: slowProbe is null at 1,000ms and a probe row one over', () => {
+  assert.strictEqual(shell.SLOW_MS, 1000);
+  assert.strictEqual(shell.slowProbe({ guards: {} }, 1000), null, 'at the line');
+  assert.strictEqual(shell.slowProbe({ guards: {} }, 999), null, 'under it');
+  const row = shell.slowProbe({ startup_ms: 30, own_ms: 2, guards: { 'guard-catastrophic-rm': 1 } }, 1001);
+  assert.deepStrictEqual(row, { mode: 'probe', kind: 'slow', reason: 'probe: slow - the dispatcher ran 1001ms',
+    detail: { branch: 'slow', total_ms: 1001, startup_ms: 30, own_ms: 2, guards: { 'guard-catastrophic-rm': 1 } } });
+});
+
+test('HK15: a dispatcher run past 1s writes one slow row naming each guard\'s ms; a fast run and a repo never set up write none', () => {
+  const copy = path.join(TMP, 'slowpoke');
+  fs.cpSync(HOOKS, copy, { recursive: true });
+  fs.writeFileSync(path.join(copy, 'guard-read-whole-file.js'), "'use strict';\nAtomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1100);\n");
+  const dir = project('slow-');
+  const res = spawnSync(process.execPath, [path.join(copy, 'shell-guards.js')], {
+    input: JSON.stringify(bashPayload('ls', dir)), encoding: 'utf8', cwd: dir, env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, timeout: 15000,
+  });
+  assert.strictEqual(res.status, 0, res.stderr);
+  const slow = ledgerRows(dir).filter((r) => r.kind === 'slow');
+  assert.strictEqual(slow.length, 1, JSON.stringify(ledgerRows(dir)));
+  assert.strictEqual(slow[0].mode, 'probe');
+  assert.strictEqual(slow[0].hook, 'shell-guards.js');
+  assert.strictEqual(slow[0].tool, 'Bash');
+  assert.ok(slow[0].detail.total_ms > 1000, `total ${slow[0].detail.total_ms}`);
+  assert.ok(slow[0].detail.guards['guard-read-whole-file'] >= 1000, 'the stalled guard is named with its own ms');
+  assert.deepStrictEqual(Object.keys(slow[0].detail.guards).sort(), [...shell.GUARDS].sort(), 'every guard that ran');
+  assert.ok(Number.isInteger(slow[0].detail.startup_ms) && Number.isInteger(slow[0].detail.own_ms));
+  // the real dispatcher on an ordinary command stays under the line and writes nothing
+  const fast = project('fast-');
+  assert.strictEqual(run(DISPATCH, bashPayload('ls', fast), { cwd: fast, env: { CLAUDE_PROJECT_DIR: fast } }).status, 0);
+  assert.deepStrictEqual(ledgerRows(fast).filter((r) => r.kind === 'slow'), []);
+  // a repo never set up keeps its ledger empty (GATE 4)
+  const bare = fs.realpathSync(fs.mkdtempSync(path.join(TMP, 'slow-unset-')));
+  git(bare, 'init', '-q');
+  spawnSync(process.execPath, [path.join(copy, 'shell-guards.js')], {
+    input: JSON.stringify(bashPayload('ls', bare)), encoding: 'utf8', cwd: bare, env: { ...process.env, CLAUDE_PROJECT_DIR: bare, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT }, timeout: 15000,
+  });
+  assert.ok(!fs.existsSync(path.join(bare, '.alfred', 'docs', 'hook-blocks')), 'no row where the stack was never set up');
 });

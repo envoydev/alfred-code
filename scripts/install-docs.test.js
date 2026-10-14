@@ -82,7 +82,7 @@ test('versioning: a WATCH-LESS folder is no domain and casts no vote', () =>
 {
     // quality/ is recomputed every run and carries no watch.json by design; a project holding only
     // that is an ordinary shape, not evidence the docs are kept out of git.
-    const root = project({ domains: { quality: null }, files: { '.claude/docs/quality/ASSESSMENT.md': '# q\n' } });
+    const root = project({ domains: { quality: null }, files: { '.claude/docs/quality/ARCHITECTURE-ASSESSMENT.md': '# q\n' } });
     assert.deepStrictEqual(docs.domains(path.join(root, '.claude', 'docs')), []);
     assert.strictEqual(seed(root), 'git');
 });
@@ -169,6 +169,31 @@ test('migration: quality/ and related-context/ are watch-less BY DESIGN and stay
     // related-projects/ IS switched on, and the drop box keeps every other paper it holds.
     assert.deepStrictEqual(out.switched, ['related-projects']);
     assert.strictEqual(fs.readFileSync(path.join(root, '.claude/docs/related-context/sibling-notes.md'), 'utf8'), '# keep me\n');
+});
+
+test('migration: the architecture assessment takes its ARCHITECTURE-ASSESSMENT.md name from both former homes, the newer one winning', () =>
+{
+    const root = project({ files: {
+        '.alfred/docs/quality/ASSESSMENT.md': '# newer\n',
+        '.alfred/docs/architecture/ASSESSMENT.md': '# older\n',
+        '.alfred/docs/quality/CODE-ASSESSMENT.md': '# code\n',
+        '.claude/rules/alfred-architecture.md': RC_RULE('.alfred/docs/quality/ASSESSMENT.md'),
+    } });
+    const logs = [];
+    const run = () => docs.migrateDocsDomains({ projectRoot: root, docsPath: '.alfred/docs', rules: rulesOf(root), log: (m) => logs.push(m) });
+    const out = run();
+    const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
+    assert.deepStrictEqual(out.moved, ['quality/ARCHITECTURE-ASSESSMENT.md']);
+    assert.strictEqual(read('.alfred/docs/quality/ARCHITECTURE-ASSESSMENT.md'), '# newer\n', 'the 2.0.0 home wins over the older one');
+    assert.ok(!fs.existsSync(path.join(root, '.alfred/docs/quality/ASSESSMENT.md')));
+    assert.strictEqual(read('.alfred/docs/architecture/ASSESSMENT.md'), '# older\n', 'the older copy is left, never overwritten');
+    assert.strictEqual(read('.alfred/docs/quality/CODE-ASSESSMENT.md'), '# code\n', 'the code assessment is not this rename');
+    assert.ok(logs.some((m) => /architecture[\\/]ASSESSMENT\.md left in place, nothing overwritten/.test(m)), logs.join(' | '));
+    assert.match(read('.claude/rules/alfred-architecture.md'), /`\.alfred\/docs\/quality\/ARCHITECTURE-ASSESSMENT\.md`/, 'the pointer rule follows the move');
+    assert.deepStrictEqual(run().moved, [], 'a re-run moves nothing');
+
+    const old = project({ files: { '.alfred/docs/architecture/ASSESSMENT.md': '# older\n' } });
+    assert.deepStrictEqual(docs.migrateDocsDomains({ projectRoot: old, docsPath: '.alfred/docs' }).moved, ['quality/ARCHITECTURE-ASSESSMENT.md'], 'the pre-2.0.0 home moves straight to the new name');
 });
 
 test('migration: a second run moves nothing and switches nothing on', () =>

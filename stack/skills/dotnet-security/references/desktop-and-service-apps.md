@@ -36,4 +36,4 @@ A WPF, WinForms, console or Windows-service app has no browser and usually no HT
 
 ## Review output
 
-The same `category | surface | risk | fix` table as SKILL.md, the surface naming the boundary (opened file, pipe, update feed, process start). A web category that does not apply is marked n/a with the reason, never left blank.
+The same `category | surface | risk | fix` table as SKILL.md, the category labelled with its edition (`A08:2021`), the surface naming the boundary (opened file, pipe, update feed, process start). A web category that does not apply is marked n/a with the reason, never left blank.

@@ -5,15 +5,15 @@
 //   node desktop-launch.js --server <windows-control|macos-control> --package <spec> [--exclude-newer <cut-off>] -- <server arguments>
 //
 // Three things a fixed plugin argv cannot do:
-//   - THE PYTHON. uvx takes the newest interpreter it can find, and windows-mcp 0.8.6 already needs
-//     3.14; every uvx-launched stack server runs on the one answer uv-python.js gives.
+//   - THE PYTHON. uvx takes the newest interpreter it can find; every uvx-launched stack server runs on the
+//     answer uv-python.js gives for it - 3.14 for windows-control (windows-mcp 0.8.6+ needs it), 3.13 otherwise.
 //   - THE OS. Each server drives THIS machine's own desktop, and an entry enabled at project scope
 //     reaches every machine that opens the project. On the other OS it exits at once with one line
 //     naming why, instead of downloading a package that cannot import there.
 //   - THE TOOL GATE (windows-control). The entry passes `--exclude-tools PowerShell,Registry,Process,FileSystem`:
 //     shell, registry, process control and file writes, moves and deletes stay off. Windows-MCP gates by
 //     tool NAME, never by mode, so `App` stays on whole - launch, switch and resize, and its
-//     `launch_executable` mode, which starts any program with the arguments given (windows-mcp 0.8.5
+//     `launch_executable` mode, which starts any program with the arguments given (windows-mcp 0.8.8
 //     tools/app.py): a house guard denies that mode unless the user allowed it in
 //     <docs-path>/flow/DESKTOP-EXEC-ALLOW. ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE replaces the list, and
 //     `none` passes no flag at all (Windows-MCP's own config then decides) - read from the shell, then
@@ -36,13 +36,13 @@ const DESKTOP = {
 };
 const DESKTOP_OS = Object.fromEntries(Object.entries(DESKTOP).map(([name, row]) => [name, row.os]));
 const DEFAULT_EXCLUDE = 'PowerShell,Registry,Process,FileSystem';
-// Windows-MCP's tools at the pin (windows-mcp 0.8.5, each tools/*.py `@mcp.tool(name=...)`; meta/mcp-tools.json
+// Windows-MCP's tools at the pin (windows-mcp 0.8.8, each tools/*.py `@mcp.tool(name=...)`; meta/mcp-tools.json
 // records the same list and a test holds the two equal). It matches an --exclude-tools name CASE-SENSITIVELY
 // and skips an unknown one silently, so an override is checked against this list before it is passed on.
-const WINDOWS_TOOLS = Object.freeze(['App', 'Click', 'Clipboard', 'DisplayInventory', 'FileSystem', 'Move', 'MultiEdit', 'MultiSelect',
+const WINDOWS_TOOLS = Object.freeze(['App', 'Click', 'Clipboard', 'ControlStatus', 'DisplayInventory', 'FileSystem', 'Move', 'MultiEdit', 'MultiSelect',
     'Notification', 'PowerShell', 'Process', 'Registry', 'Scrape', 'Screenshot', 'Scroll', 'Shortcut', 'Snapshot', 'Type', 'Wait', 'WaitFor']);
 // Both upstreams send PostHog usage events unless ANONYMIZED_TELEMETRY is 'false' (their lifespan reads it,
-// default 'true' - windows-mcp 0.8.5 and macos-mcp 0.4.6). The plugin entries pass this env, and the copy
+// default 'true' - windows-mcp 0.8.8 and macos-mcp 0.4.6). The plugin entries pass this env, and the copy
 // route registers the same pair: a server driving the user's own desktop reports to nobody.
 const DESKTOP_ENV = Object.freeze({ ANONYMIZED_TELEMETRY: 'false' });
 const OS_LABEL = { win32: 'Windows', darwin: 'macOS', linux: 'Linux' };
@@ -210,8 +210,8 @@ function main(argv, env = process.env)
             log('WINDOWS_MCP_TOOLS in the environment dropped - it would override the tool gate; ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE is the setting');
         }
     }
-    process.stderr.write(`desktop-launch: ${spec}, python ${pythonRequest({ env, projectDir })}, ${row.bin} ${args.join(' ')}\n`);
-    runUvx(['--from', spec, row.bin, ...args], { env: childEnv, projectDir, label: 'desktop-launch', excludeNewer: valueOf(argv.slice(0, rest < 0 ? argv.length : rest), '--exclude-newer') });
+    process.stderr.write(`desktop-launch: ${spec}, python ${pythonRequest({ env, projectDir, server })}, ${row.bin} ${args.join(' ')}\n`);
+    runUvx(['--from', spec, row.bin, ...args], { env: childEnv, projectDir, server, label: 'desktop-launch', excludeNewer: valueOf(argv.slice(0, rest < 0 ? argv.length : rest), '--exclude-newer') });
     return null;   // the process lives as long as the child does
 }
 

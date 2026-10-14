@@ -2561,3 +2561,152 @@ test('unreachedPlugins: a plugin the settings switch on with no record reaching 
     }
     finally { fs.rmSync(work, { recursive: true, force: true }); }
 });
+
+// audit 2026-10-14 PL14, measured on 2.1.300: a plugin a REGISTERED marketplace lists with a relative-path source loads
+// from the marketplace copy with no install record, and with its only record another project's (its SessionStart hook
+// fired, `plugin list` empty); a marketplace declared only in project settings loaded nothing. Such a plugin is reached.
+test('unreachedPlugins: a registered marketplace serving a relative-path entry reaches with no record; nothing else does', () =>
+{
+    const os = require('node:os');
+    const { execFileSync } = require('node:child_process');
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'unreached-mk-'));
+    try
+    {
+        const project = path.join(work, 'proj');
+        const account = path.join(work, 'acct');
+        const mk = path.join(work, 'mk');
+        fs.mkdirSync(path.join(project, '.claude'), { recursive: true });
+        fs.mkdirSync(account, { recursive: true });
+        fs.mkdirSync(path.join(mk, '.claude-plugin'), { recursive: true });
+        fs.writeFileSync(path.join(mk, '.claude-plugin', 'marketplace.json'), JSON.stringify({ name: 'envoydev', plugins: [
+            { name: 'chrome-control', source: './' }, { name: 'remote-one', source: { source: 'github', repo: 'o/r' } }] }));
+        fs.writeFileSync(path.join(project, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: {
+            'chrome-control@envoydev': true, 'remote-one@envoydev': true, 'dropped@envoydev': true, 'other@unregistered': true } }));
+        const listing = JSON.stringify([{ id: 'chrome-control@envoydev', version: '2.3.0', scope: 'local', projectPath: path.join(work, 'other'), enabled: true }]);
+        const registered = JSON.stringify([{ name: 'envoydev', source: 'directory', path: mk, installLocation: mk }]);
+        const names = (marketplaces) => P.unreachedPlugins({ listing, projectRoot: project, configDir: account, marketplaces }).map((u) => u.spec);
+        assert.deepStrictEqual(names(registered), ['dropped@envoydev', 'other@unregistered', 'remote-one@envoydev'],
+            'the relative entry reaches; a non-relative source, an id the catalog does not list and an unregistered marketplace do not');
+        assert.deepStrictEqual(names([]), ['chrome-control@envoydev', 'dropped@envoydev', 'other@unregistered', 'remote-one@envoydev'], 'no marketplace rows: every spec needs a record');
+        assert.deepStrictEqual(names('not json'), names([]), 'an unreadable marketplace listing reads as none');
+        fs.rmSync(path.join(mk, '.claude-plugin', 'marketplace.json'));
+        assert.ok(names(registered).includes('chrome-control@envoydev'), 'a registered marketplace whose catalog cannot be read serves nothing');
+        fs.writeFileSync(path.join(mk, '.claude-plugin', 'marketplace.json'), '{ broken');
+        assert.ok(names(registered).includes('chrome-control@envoydev'), 'a malformed catalog serves nothing');
+        fs.writeFileSync(path.join(mk, '.claude-plugin', 'marketplace.json'), JSON.stringify({ name: 'envoydev', plugins: [{ name: 'chrome-control', source: './' }] }));
+        const lf = path.join(work, 'listing.json');
+        const mf = path.join(work, 'marketplaces.json');
+        fs.writeFileSync(lf, listing);
+        fs.writeFileSync(mf, registered);
+        const cli = (args) => execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'install', 'plugins.js'), 'unreached', project, ...args], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: account } });
+        const out = cli(['--listing', lf, '--marketplaces', mf]);
+        assert.doesNotMatch(out, /chrome-control/, 'the CLI reads the marketplace file');
+        assert.match(out, /^unreached: remote-one@envoydev\t/m);
+        assert.match(cli(['--marketplaces', mf, '--listing', lf]), /^unreached: remote-one@envoydev\t/m, 'flags in either order');
+        assert.match(cli(['--listing', lf]), /^unreached: chrome-control@envoydev\t/m, 'with --listing and no --marketplaces the CLI spawns nothing and reads none');
+    }
+    finally { fs.rmSync(work, { recursive: true, force: true }); }
+});
+
+// PL5 (b) (audit 2026-10-14, the user's ruling of 2026-10-14): migrateRenamed reads install records only, so a renamed
+// id the project's own settings still switch on with no record reaching it stayed - committed, in every clone. Update
+// removes it once the run carries the successor; a record that reaches, another marketplace's key, a successor the run
+// does not carry and an unreadable file or listing each leave it.
+test('PL5 dropStaleRenamed: an old key no record reaches goes from both settings files once the successor is carried; nothing else moves', () =>
+{
+    const os = require('node:os');
+    const SHIPPED_RENAMES = require('./install/manifest.js').loadManifest(ROOT).renamed.mcps;
+    assert.strictEqual(SHIPPED_RENAMES['windows-desktop'], 'windows-control');
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'stale-renamed-'));
+    try
+    {
+        const project = path.join(work, 'proj');
+        const claude = path.join(project, '.claude');
+        fs.mkdirSync(claude, { recursive: true });
+        const shared = { permissions: { deny: ['Read(.env)'] }, enabledPlugins: {
+            'browser-chrome@envoydev': true, 'browser-firefox@envoydev': false, 'windows-desktop@envoydev': true,
+            'browser-webkit@another-market': true, 'serena@envoydev': true, 'chrome-control@envoydev': true } };
+        fs.writeFileSync(path.join(claude, 'settings.json'), JSON.stringify(shared, null, 2));
+        fs.writeFileSync(path.join(claude, 'settings.local.json'), JSON.stringify({ enabledPlugins: { 'browser-msedge@envoydev': true } }, null, 2));
+        const raw = JSON.stringify([
+            { id: 'alfred-code@envoydev', version: '2.4.0', scope: 'project', projectPath: project, enabled: true },
+            { id: 'browser-chrome@envoydev', version: '2.3.0', scope: 'local', projectPath: path.join(work, 'other'), enabled: true },
+            { id: 'serena@envoydev', version: '1.3.0', scope: 'user', enabled: true },
+        ]);
+        const set = ['alfred-code@envoydev', 'alfred-navigation@envoydev', 'chrome-control@envoydev', 'firefox-control@envoydev', 'msedge-control@envoydev'];
+        const logs = [];
+        const gone = P.dropStaleRenamed({ raw, projectRoot: project, renamed: SHIPPED_RENAMES, set, market: 'envoydev', log: (l) => logs.push(l) });
+        assert.deepStrictEqual(gone, [
+            { file: '.claude/settings.json', key: 'browser-chrome@envoydev' },
+            { file: '.claude/settings.json', key: 'browser-firefox@envoydev' },
+            { file: '.claude/settings.local.json', key: 'browser-msedge@envoydev' },
+        ]);
+        const after = JSON.parse(fs.readFileSync(path.join(claude, 'settings.json'), 'utf8'));
+        assert.deepStrictEqual(after, { permissions: { deny: ['Read(.env)'] }, enabledPlugins: {
+            'windows-desktop@envoydev': true, 'browser-webkit@another-market': true, 'serena@envoydev': true, 'chrome-control@envoydev': true } },
+        'windows-desktop: its successor is not carried; another marketplace\'s key is the user\'s; serena: an account-wide record reaches it');
+        assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(claude, 'settings.local.json'), 'utf8')), {}, 'an emptied enabledPlugins goes, the file stays');
+        assert.match(logs.join('\n'), /renamed: browser-chrome@envoydev removed from \.claude\/settings\.json \(it was true\) - no install record reaches it, and chrome-control@envoydev serves this project/);
+        assert.strictEqual(logs.length, 3);
+        // A re-run finds nothing to do and writes nothing.
+        const before = fs.statSync(path.join(claude, 'settings.json')).mtimeMs;
+        assert.deepStrictEqual(P.dropStaleRenamed({ raw, projectRoot: project, renamed: SHIPPED_RENAMES, set, market: 'envoydev' }), []);
+        assert.strictEqual(fs.statSync(path.join(claude, 'settings.json')).mtimeMs, before);
+        // A record of this project spelled through a link reaches it: the key is left to the swap.
+        fs.writeFileSync(path.join(claude, 'settings.json'), JSON.stringify({ enabledPlugins: { 'browser-chrome@envoydev': true } }));
+        const link = path.join(work, 'link');
+        let linked = true;
+        try { fs.symlinkSync(project, link, 'dir'); } catch { linked = false; }
+        if (linked)
+        {
+            const viaLink = JSON.stringify([{ id: 'browser-chrome@envoydev', version: '2.3.0', scope: 'project', projectPath: link, enabled: true }]);
+            assert.deepStrictEqual(P.dropStaleRenamed({ raw: viaLink, projectRoot: project, renamed: SHIPPED_RENAMES, set, market: 'envoydev' }), []);
+        }
+        // An unreadable listing or settings file changes nothing; the file is named.
+        assert.deepStrictEqual(P.dropStaleRenamed({ raw: 'not json', projectRoot: project, renamed: SHIPPED_RENAMES, set, market: 'envoydev' }), []);
+        assert.deepStrictEqual(P.dropStaleRenamed({ raw: '', projectRoot: project, renamed: SHIPPED_RENAMES, set, market: 'envoydev' }), []);
+        fs.writeFileSync(path.join(claude, 'settings.local.json'), '{ "enabledPlugins": { "browser-msedge@envoydev": true ');
+        const notes = [];
+        P.dropStaleRenamed({ raw: '[]', projectRoot: project, renamed: SHIPPED_RENAMES, set, market: 'envoydev', note: (n) => notes.push(n) });
+        assert.strictEqual(fs.readFileSync(path.join(claude, 'settings.local.json'), 'utf8'), '{ "enabledPlugins": { "browser-msedge@envoydev": true ', 'a malformed file is left as it is');
+        assert.match(notes.join('\n'), /\.claude\/settings\.local\.json could not be read/);
+        assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(claude, 'settings.json'), 'utf8')), { }, 'the readable file is still handled');
+        // No settings files at all: nothing to do.
+        fs.rmSync(claude, { recursive: true, force: true });
+        assert.deepStrictEqual(P.dropStaleRenamed({ raw: '[]', projectRoot: project, renamed: SHIPPED_RENAMES, set, market: 'envoydev' }), []);
+    }
+    finally { fs.rmSync(work, { recursive: true, force: true }); }
+});
+
+test('PL5 seed update: a committed old browser key no record reaches goes on update at project and user scope, the user\'s own keys stay, and a re-run is quiet', POSIX_ONLY, () =>
+{
+    for (const scope of ['project', 'user'])
+    {
+        const row = (id, extra = {}) => ({ id, version: '2.4.0', scope, enabled: true, ...extra });
+        const listing = JSON.stringify([
+            row('alfred-code@envoydev'), ...['alfred-navigation', 'alfred-documentation', 'alfred-memory'].map((n) => row(`${n}@envoydev`)),
+            // Another project's record of the old id never reaches this one.
+            row('browser-chrome@envoydev', { version: '2.3.0', scope: 'local', projectPath: '/somewhere/else' }),
+        ]);
+        const own = { 'browser-chrome@envoydev': true, 'browser-webkit@my-own-market': true, 'my-plugin@my-own-market': false };
+        const prepare = (repo) =>
+        {
+            fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+            fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: own, env: { MY_KEY: 'mine' } }, null, 2));
+        };
+        const read = (repo) => JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8'));
+        const { outs, steps, calls } = seedRun(['install', 'update', 'update'], 'mcp browser\n', {
+            plugins: listing, prepare, args: ['--scope', scope, '--browsers', 'chrome'], each: (repo) => read(repo),
+        });
+        assert.strictEqual(steps[0].enabledPlugins['browser-chrome@envoydev'], true, `${scope}: an install leaves it - the removal is update's`);
+        assert.ok(!('browser-chrome@envoydev' in steps[1].enabledPlugins), `${scope}: the update left the old key:\n${outs[1]}`);
+        assert.match(outs[1], /renamed: browser-chrome@envoydev removed from \.claude\/settings\.json \(it was true\) - no install record reaches it, and chrome-control@envoydev serves this project/, scope);
+        assert.strictEqual(steps[1].enabledPlugins['browser-webkit@my-own-market'], true, `${scope}: another marketplace's key of the same name is the user's`);
+        assert.strictEqual(steps[1].enabledPlugins['my-plugin@my-own-market'], false, scope);
+        assert.strictEqual(steps[1].env.MY_KEY, 'mine', scope);
+        assert.ok(calls.some((c) => /^plugin install chrome-control@envoydev --scope (project|user) -y$/.test(c)), `${scope}: the successor was not installed:\n${calls.join('\n')}`);
+        assert.ok(!calls.some((c) => /browser-chrome@envoydev/.test(c)), `${scope}: no CLI call touches a record this project does not have:\n${calls.join('\n')}`);
+        assert.doesNotMatch(outs[2], /renamed: browser-chrome/, `${scope}: a re-run says nothing`);
+        assert.deepStrictEqual(steps[2].enabledPlugins, steps[1].enabledPlugins, `${scope}: a re-run changes nothing`);
+    }
+});

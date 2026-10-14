@@ -11,14 +11,18 @@ name: lint
 # resolves the single lint dep (js-yaml) fresh each run.
 #
 # Run on all three platforms: the lint reads files and compares paths, and a path comparison is
-# where the platforms disagree first.
+# where the platforms disagree first. Never on a push to main, for ci.yml's reason: release.yml
+# requires a green run of this workflow on the tree it ships.
 on:
   push:
+    branches-ignore: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   lint:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:

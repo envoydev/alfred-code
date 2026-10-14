@@ -40,11 +40,14 @@ let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 // implementer approval gate stays live there - for the core's own spelling only, writing no block row
 // (R54). Every other rule of this hook stands down there with the rest of the non-protective hooks.
 let unsetRepo = false;
+// hook-prelude.js approvalStamp - the one reading of the stamp's age, birth and named session; null without the prelude.
+let approvalStamp = null;
 if (require.main === module) {
   let off = false;
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
+    approvalStamp = prelude.approvalStamp || null;
     off = prelude.standDown('guard-unapproved-dispatch', undefined, undefined, { setUp: false });
     unsetRepo = !off && prelude.neverSetUp();
   } catch { /* an install without the prelude runs the hook unchanged */ }
@@ -264,7 +267,13 @@ const gate = path.resolve(root, docsRoot, 'flow', 'APPROVAL');
 const MAX_STAMP_AGE_MS = 8 * 60 * 60 * 1000; // 8h - re-stamping is one Write; staleness shipped unapproved dispatches
 let first = '';
 let stale = false;
-try {
+// An auto-mode stamp names its session and is that session's for the whole run (hook-prelude.js approvalStamp); the
+// prelude reads every stamp, so the age and birth rules below are its stand-in for an install without it.
+const stampState = approvalStamp ? approvalStamp({ ...payload, cwd: root }) : undefined;
+if (stampState !== undefined) {
+  if (stampState && stampState.live) first = stampState.first;
+  else stale = Boolean(stampState);
+} else try {
   const stampMs = fs.statSync(gate).mtimeMs;
   const age = Date.now() - stampMs;
   // A stamp written BEFORE this session started belongs to another session's decision, and the

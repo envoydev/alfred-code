@@ -5,21 +5,24 @@ description: "Load when cutting a release, wiring signing or building release CI
 
 # Capacitor release pipeline
 
-This skill owns the last mile: turning a feature-complete Ionic/Capacitor app into a signed artifact in TestFlight or a Play testing track, and deciding what ships over-the-air versus through a fresh store binary. The app itself - UI, lifecycle, permissions, plugin wrapping - is `ionic`; per-plugin install/config is fetched live (the documentation server / the plugin README); this file picks up where the build is done. Floored at Capacitor 6, current on 8 - prefer the 8 path and treat anything newer as optional. Native Swift / Kotlin source edits are out of scope: this skill configures the native projects (signing, versions, symbols), it does not write platform code - that boundary stays with the platform tooling, not the agent.
+This skill owns the last mile: turning a feature-complete Ionic/Capacitor app into a signed artifact in TestFlight or a Play testing track, and deciding what ships over-the-air versus through a fresh store binary. The app itself - UI, lifecycle, permissions, plugin wrapping - is `ionic`; per-plugin install/config is fetched live (the documentation server / the plugin README); this file picks up where the build is done. Floored at Capacitor 7, current on 8 - prefer the 8 path and treat anything newer as optional; a v6 project: upgrade first, `npx cap migrate` (one major per hop). Native Swift / Kotlin source edits are out of scope: this skill configures the native projects (signing, versions, symbols), it does not write platform code - that boundary stays with the platform tooling, not the agent.
 
 ## When to use
 
-Load when cutting a release, wiring signing, or building the release CI for an Ionic / Capacitor app. Release-pipeline conventions - the gap from a feature-complete build to a signed store submission: native artifacts (.ipa, .aab), iOS and Android signing, TestFlight and Play submission, OTA updates, version sync, and the Fastlane / Actions CI shape. Targets Capacitor 6+ (8 current). Every build or upload step runs only under the approval this skill asks for first.
+Load when cutting a release, wiring signing, or building the release CI for an Ionic / Capacitor app. Release-pipeline conventions - the gap from a feature-complete build to a signed store submission: native artifacts (.ipa, .aab), iOS and Android signing, TestFlight and Play submission, OTA updates, version sync, and the Fastlane / Actions CI shape. Targets Capacitor 7+ (8 current). Every build or upload step runs only under the approval this skill asks for first.
 
 Do NOT load for in-app feature work with no release or signing concern.
 
 ## Step 0 - ask before the first irreversible byte
 
-Every section below either writes a signed artifact or pushes one out, and an upload cannot be taken back: a build number is consumed, a testing track gets a binary, an OTA channel serves it to installed devices. So the FIRST action of this skill, before `cap sync` and before any lane runs, is one AskUserQuestion with these options:
+Every section below either writes a signed artifact or pushes one out, and an upload cannot be taken back: a build number is consumed, a testing track gets a binary, an OTA channel serves it to installed devices. So the FIRST action of this skill, before `cap sync` and before any lane runs, is one AskUserQuestion:
 
-- **Dry run only (recommended)** - print the exact commands, the resolved versions and the target track; run nothing.
-- **Build the artifact, no upload** - run the web build, `cap sync` and the native build; stop before `pilot`, `supply` or any OTA publish.
-- **Build and upload to a testing track** - the full lane against the track the answer names. Promotion to production is the user's own act, never this skill's.
+```ask
+Which release mode for <app> <version>?
+- 'Dry run only (Recommended)' - print the exact commands, the resolved versions and the target track; run nothing
+- 'Build the artifact, no upload' - run the web build, `cap sync` and the native build; stop before `pilot`, `supply` or any OTA publish
+- 'Build and upload to a testing track' - the full lane against the track the answer names; promotion to production stays with the user, never this skill
+```
 
 Carry the answer into the output contract below. One approval covers one target: a different track, a first publish to an OTA channel, or a production promotion is a new ask. Where the harness has no AskUserQuestion tool, present the same three options as plain text and wait for the pick before the first command.
 

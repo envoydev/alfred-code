@@ -43,6 +43,8 @@ const RECEIPT = [
     'head: 1a2b3c4',
     'spec: 4 files - git diff HEAD plus the untracked token module, the whole change set',
     'live-probe: npm test - 2 passed',
+    'format: npm run format:check - clean over 4 staged files',
+    'findings: none',
     'security: auth ok, secrets ok, injection n/a, data-access n/a',
     '',
 ].join('\n');
@@ -77,7 +79,21 @@ test('a compliant commit-checkpoint trace follows every step', () =>
     const r = sc.grade(expectOf('habits-commit-checkpoint'), checkpointRun(), { level: 'plain' });
     assert.deepStrictEqual(failing(r), []);
     assert.strictEqual(r.passed, r.graded);
-    assert.strictEqual(r.graded, 9);
+    assert.strictEqual(r.graded, 10);
+});
+
+// Audit 2026-10-14 SKC16: the guard refuses a receipt with no format: / findings: line since d597d0c0, and the
+// skill's own ask route writes answered:, not authorized: - the expectation grades both.
+test('a receipt with no format: or findings: line fails its step; an answered: receipt passes the five-line step', () =>
+{
+    const bare = RECEIPT.replace(/^format: .*\n/m, '').replace(/^findings: .*\n/m, '');
+    assert.deepStrictEqual(failing(sc.grade(expectOf('habits-commit-checkpoint'), checkpointRun({ receipt: bare }), { level: 'plain' })), ['receipt-format-findings']);
+    const unclean = RECEIPT.replace(/^format: .*$/m, 'format: npm run format:check - 2 files need formatting');
+    assert.deepStrictEqual(failing(sc.grade(expectOf('habits-commit-checkpoint'), checkpointRun({ receipt: unclean }), { level: 'plain' })), ['receipt-format-findings']);
+    const answered = RECEIPT.replace(/^authorized: .*$/m, 'answered: Commit now (Recommended)');
+    const r = sc.grade(expectOf('habits-commit-checkpoint'), checkpointRun({ receipt: answered }), { level: 'plain' });
+    assert.strictEqual(verdicts(r)['receipt-five-lines'], 'PASS');
+    assert.strictEqual(verdicts(r)['receipt-format-findings'], 'PASS');
 });
 
 // 42951e5b (usage audit 2026-10-11): the add -N / reset recipe dropped MERGE_HEAD mid-merge - it fails its step now.
@@ -502,10 +518,10 @@ test('grade CLI: a report per step, --json, and an empty or missing transcript i
         fs.writeFileSync(t, checkpointRun({ format: false }));
         const text = cli(['grade', 'habits-commit-checkpoint', t, '--level', 'plain']);
         assert.strictEqual(text.code, 0, text.err);
-        assert.match(text.out, /habits-commit-checkpoint \(level plain\) - 8 of 9 graded steps followed/);
+        assert.match(text.out, /habits-commit-checkpoint \(level plain\) - 9 of 10 graded steps followed/);
         assert.match(text.out, /^ {2}FAIL {2}formatter-fresh/m);
         const json = JSON.parse(cli(['grade', 'habits-commit-checkpoint', t, '--json']).out);
-        assert.strictEqual(json.passed, 8);
+        assert.strictEqual(json.passed, 9);
 
         fs.writeFileSync(t, '');
         const empty = cli(['grade', 'habits-commit-checkpoint', t]);
@@ -559,7 +575,8 @@ test('an execution-strategy trace grades the load before the first edit and no p
 
 test('check: every shipped expectation is valid and its quotes are still in the skill', () =>
 {
-    assert.deepStrictEqual(sc.listSkills(), ['csharp', 'habits-code-comments', 'habits-commit-checkpoint', 'habits-execution-strategy', 'habits-root-cause', 'task-solve']);
+    // answer-budget is no skill: the interaction rule's budget the answer-length hook injects (audit 2026-10-14 RU06).
+    assert.deepStrictEqual(sc.listSkills(), ['answer-budget', 'background-wait', 'csharp', 'habits-code-comments', 'habits-commit-checkpoint', 'habits-execution-strategy', 'habits-root-cause', 'task-solve']);
     const r = cli(['check']);
     assert.strictEqual(r.code, 0, r.out + r.err);
 });
@@ -615,8 +632,8 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
         assert.ok(!fs.existsSync(out), 'a dry run writes nothing');
         const lines = r.out.split('\n');
         const billed = lines.filter((l, i) => lines[i - 1] === '# billed: one nested model session');
-        assert.strictEqual(billed.length, 18);
-        assert.match(r.out, /6 skill\(s\) x 3 level\(s\) = 18 billed nested session\(s\), each capped at --max-budget-usd 1\.5/);
+        assert.strictEqual(billed.length, 24);
+        assert.match(r.out, /8 skill\(s\) x 3 level\(s\) = 24 billed nested session\(s\), each capped at --max-budget-usd 1\.5/);
         assert.match(lines.slice(3).find((l) => !l.startsWith('#') && l !== 'set -e'), /clean-export\.js/, 'the source is exported first when none is handed in');
         for (const b of billed)
         {
@@ -627,13 +644,13 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
         }
         assert.ok(billed.some((b) => b.includes(BARE('alfred-memory', 'memory_list'))), 'the copy route allows the bare spelling');
         const installs = lines.filter((l) => l.includes('alfred-code.js install'));
-        assert.strictEqual(installs.length, 18);
+        assert.strictEqual(installs.length, 24);
         for (const i of installs) assert.match(i, /env -i PATH="\$PATH" .* ALFRED_CODE_SKILLS_VIA_PLUGIN=false ALFRED_CODE_HOOKS_VIA_PLUGIN=false ALFRED_CODE_MCPS_VIA_PLUGIN=false node /);
         // The scaffold's commit leaves ~300 loose objects, past git's loose-objects threshold (100), so an
         // unconfigured project starts a DETACHED `git maintenance run --auto` that is still packing into
         // .git/objects when the run is deleted (reproduced: ENOTEMPTY, a tmp_pack left behind).
         const inits = lines.filter((l) => / init -q/.test(l));
-        assert.strictEqual(inits.length, 18);
+        assert.strictEqual(inits.length, 24);
         for (const i of inits) assert.match(i, / init -q && git -C \S+ config maintenance\.auto false$/, 'a throwaway project runs no background maintenance');
         // bash parses the whole plan without running any of it
         const script = path.join(dir, 'plan.sh');

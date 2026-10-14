@@ -3,6 +3,19 @@
 An audit appendix, not a run-time load: read it when a rule in SKILL.md looks like ceremony, never
 as part of a commit.
 
+## Contents
+
+- The receipt lines
+- The publish half (usage audit 2026-10-10)
+- The security half (usage audit 2026-10-10)
+- How the trivial bar counts
+- Why the receipt is its own tool call
+- Why a sibling repo is never offered as an option
+- Why the pre-existing untracked files stay out of the change
+- Why a multi-project push names its `scope:`
+- Why a no-fast-forward publish writes its receipt after the merge
+- The reasons SKILL.md states only as rules
+
 ## The receipt lines
 
 Each line closed a measured way the receipt passed while recording nothing.
@@ -46,6 +59,13 @@ Each line closed a measured way the receipt passed while recording nothing.
   untracked `.env` key raw, while the same `git diff --no-index -- /dev/null .env` named in the command
   was rewritten and masked.
 
+## How the trivial bar counts
+
+The hook sums this commit and the session's earlier commits that passed without a receipt: a reviewed
+commit, or one a pull brought in, adds nothing, and when the session's start cannot be read it counts
+the whole uncommitted tree. A receipt left behind after the batch is the stale-stamp failure the hook's
+2h age cap exists for, which is why the close clears it.
+
 ## Why the receipt is its own tool call
 
 The shipped hook accepts the atomic write+commit shape, so only the rule binds: 9 of 13 commits in
@@ -71,3 +91,28 @@ triage followed.
 
 A receipt minted before the merge named the pre-merge tip; the guard read it as reviewing a different
 tree, and the retry cost a full edit-and-redo - measured at ~471k tokens.
+
+## The reasons SKILL.md states only as rules
+
+- **Format over every staged path.** One unformatted commit is a red CI run and a fixup commit, and an
+  inherited file is the one the session never thought to format.
+- **Review before the commit.** Findings caught here land in the same commit; found later they become
+  fixup noise or shipped defects. A dispatched domain-verifier reviews from a clean context, which is why
+  it is the right call once the session's carried context is heavy.
+- **No `git reset` in a review or scope read.** A mixed reset during a merge drops `MERGE_HEAD`, and the
+  merge state has to be rebuilt by hand.
+- **`/security-review` is unbounded.** It recomputes a whole-branch diff whatever base it is handed, so an
+  explicit base does not scope it, and a branch level with origin on a clean tree overflows the same way -
+  'long-lived branch' is not the trigger either. The bound is not the caller's to set.
+- **The untracked record is kept per HEAD.** A later session on the same HEAD (a resume, a compact start,
+  a fresh-session hand-off) keeps the earlier session's new files as the change's own.
+- **The quality loop's gate carries no security pass.** So a loop diff on auth, crypto, secret, payment
+  or data-access paths still runs the security review before `VERIFIED`.
+- **`spec:` counts what the commit takes in.** The guard counts that set, never the rest of the tree; a
+  publish's `spec:` names what leaves the machine instead, so it is never counted against the tree.
+- **The verb is read per clause, per gate.** The PUSH-GATE reads its publish verb the same way the
+  COMMIT-GATE reads the commit verb: 'push it, don't commit' consents to the push alone.
+- **A carried review names its categories once.** The `security:` categories sit in THAT session's
+  receipt; this one's `carried:` line is enough.
+- **A publish has its own receipt.** Other people and CI get the work, and a shared branch cannot be
+  un-pushed quietly.

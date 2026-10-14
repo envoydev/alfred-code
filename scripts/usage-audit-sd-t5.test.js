@@ -22,7 +22,7 @@ const asks = (text) => [...String(text).matchAll(/^[ \t]*```ask[ \t]*\n([\s\S]*?
 test('SD04 5b9ce9c5#3 6288ad94#8 bca100bd#5: check rows alone still get the ask, with a keep option; the diffs ride the ask; the outline compare is a script row', () => {
     const text = read('stack/skills/habits-adjust-agents-md/SKILL.md');
     const t = flat(text);
-    const [mixed, checkOnly] = asks(text);
+    const [mixed, checkOnly] = asks(text).filter((a) => !/^Write <file> from the outline/.test(a.question));
     assert.ok(checkOnly, 'the check-rows-only ask is a template of its own');
     assert.strictEqual(checkOnly.options[0], 'Skip (Recommended)');
     assert.ok(checkOnly.options.some((o) => /^Keep the lines as written for good$/.test(o)), 'the keep marker is one of its options');
@@ -58,8 +58,10 @@ test('SD09 d9035363#5: a docs cleanup keeps the hook ledgers and flow/ state, or
 
 // ---- SD16: a run of unknown length is watched on its failure lines, not only for its exit ---------------------------
 test('SD16 7f8803eb#5: a suite of unknown length arms Monitor on its failure lines plus a quiet alert; exit-only is for a run whose end is all that matters', () => {
-    const t = flat(read('stack/rules/alfred-quality-gates.md'));
-    assert.match(t, /One `run_in_background` command whose end is all that matters needs nothing more - its exit re-invokes you; a suite of unknown length \(failures show long before its end\), a condition inside a run or across several arms the `Monitor` tool when you start it - on the failure lines plus an alert when the output goes quiet/);
+    // audit 2026-10-14 RU04: the text rides the first background call's note (shell-guards.js BACKGROUND_NOTE), not the always-on rule
+    const t = flat(require('../stack/hooks/shell-guards.js').BACKGROUND_NOTE);
+    assert.match(t, /one command whose end is all that matters needs nothing more - its exit re-invokes you\. A suite of unknown length \(failures show long before its end\), a condition inside a run or across several arms takes the `Monitor` tool when you start it - on the failure lines plus an alert when the output goes quiet/);
+    assert.match(flat(read('stack/rules/alfred-quality-gates.md')), /the first background call's note says how to watch it\./);
 });
 
 // ---- SD15: a package change in a project file routes to the migration workflow ----------------------------------------
@@ -73,8 +75,10 @@ test('SD15 42951e5b#8: the .NET router sends a package change to the migration-w
 test('SD13 177c5743#3 e90a1845#2 42951e5b#7 7f8803eb#9: JSON through node -e, rev:path with conversion off, PowerShell from a .ps1', () => {
     const nav = flat(read('stack/rules/alfred-navigation.md'));
     assert.match(nav, /queried \(a `node -e` projection - Git for Windows ships no `jq` - or `grep -n`, then a ranged Read\)/);
-    assert.match(nav, /prefix a `git show <rev>:<path>` with `MSYS2_ARG_CONV_EXCL='\*'`, or path conversion rewrites it/);
-    assert.match(nav, /run PowerShell as a quoted-heredoc \(`<<'EOF'`\) `\.ps1` via `-File "\$\(cygpath -w <file>\)"`, never a double-quoted `-Command` \(Bash expands its `\$_`\)/);
+    // audit 2026-10-14 RU13: the Windows line rides memory-session.js on win32 only, never the always-on rule
+    const win = require('../stack/hooks/memory-session.js').hostLines('win32', '/usr/bin/bash').join('\n');
+    assert.match(win, /prefix a `git show <rev>:<path>` with `MSYS2_ARG_CONV_EXCL='\*'`, or path conversion rewrites it/);
+    assert.match(win, /run PowerShell as a quoted-heredoc \(`<<'EOF'`\) `\.ps1` via `-File "\$\(cygpath -w <file>\)"`, never a double-quoted `-Command` \(Bash expands its `\$_`\)/);
     for (const rel of ['stack/rules', 'stack/skills/capture-usage-report', 'stack/skills/capture-agent-awareness', 'stack/skills/habits-adjust-agents-md'])
     {
         const walk = (dir) => fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(`${dir}/${e.name}`) : e.name.endsWith('.md') ? [`${dir}/${e.name}`] : []));
@@ -85,9 +89,12 @@ test('SD13 177c5743#3 e90a1845#2 42951e5b#7 7f8803eb#9: JSON through node -e, re
 
 // ---- SD16: the security review reads the full change set without moving the index ------------------------------------
 test('SD16 42951e5b#3: the review read is git diff HEAD plus each untracked file against /dev/null - never add -N or reset', () => {
-    const t = flat(read('stack/rules/alfred-security.md'));
-    assert.match(t, /`git diff HEAD`, plus `git diff --no-index -- \/dev\/null <file>` for each file `git ls-files -o --exclude-standard` lists, each named, never a loop \(the secret guard masks only a named dump\)/);
-    assert.match(t, /never `git add -N` or `git reset` for it \(a mixed reset mid-merge drops MERGE_HEAD\)/);
+    // Audit 2026-10-14 RU02: the recipe lives in the checkpoint's security half; the always-on rule points at it.
+    assert.match(flat(read('stack/rules/alfred-security.md')), /untracked files included, for vulnerabilities - the FIRST action is the `habits-commit-checkpoint` Skill call/);
+    const t = flat(read('stack/skills/habits-commit-checkpoint/SKILL.md'));
+    assert.match(t, /`git diff HEAD` plus, for each file `git ls-files -o --exclude-standard` lists, `git diff --no-index -- \/dev\/null <file>`/);
+    assert.match(t, /never a loop or `xargs` over the list - the secret guard masks only a `git diff` whose path it can read/);
+    assert.match(t, /Never `git add -N` and never `git reset` in a review or scope read/);
     assert.doesNotMatch(t, /git add -N \. && git diff HEAD; git reset -q/, 'no rule prescribes the reset recipe');
     for (const f of fs.readdirSync(path.join(ROOT, 'stack', 'rules'))) assert.doesNotMatch(read(`stack/rules/${f}`), /git add -N \.[^`]*git reset/, `${f} prescribes add -N + reset`);
 });
@@ -128,4 +135,17 @@ test('SD14 ae38c08f#5 (skill half): an error on a call a PreToolUse hook rewrote
     assert.match(a, /rpad\('hook-rw', 7\)/);
     assert.match(a, /ran with input a PreToolUse hook REWROTE/);
     assert.match(d, /hook-rw column and the skeleton's 'ran with input a PreToolUse hook REWROTE' line/);
+});
+
+// Audit 2026-10-14 SKC13 / SKC14: create mode's unrequested write went out through a prose pointer at step 5's improve
+// ask, which marks a different option; it has its own marked template now. The memory docs (2026-10-14) name the
+// `/config` Project instructions value that loads CLAUDE.md and AGENTS.md together.
+test('SKC14 + SKC13: the create-mode write ask is a marked template, and the both-files setting is named', () => {
+    const text = read('stack/skills/habits-adjust-agents-md/SKILL.md');
+    const create = asks(text).find((a) => /^Write <file> from the outline above/.test(a.question));
+    assert.ok(create, 'the create-mode write ask is a template');
+    assert.strictEqual(create.options[0], 'Write it (Recommended)');
+    assert.ok(create.options.includes('Skip'));
+    assert.doesNotMatch(flat(text), /puts it through the step-5 AskUserQuestion/);
+    assert.strictEqual((flat(text).match(/Project instructions to 'claude-md-and-agents-md' in `\/config`/g) || []).length, 2, 'both sites name the setting');
 });

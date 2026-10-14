@@ -79,11 +79,12 @@ touches no committed file). The lines, minus anything the project already covers
 - `.alfred/` - the data root (`ALFRED_CODE_DATA_PATH`), outside `.claude/` because Claude Code prompts
   for every write there: the docs (`.alfred/docs/`), the navigation server's index, handoff notes and
   language servers (`.alfred/serena/`), the browser profiles holding session cookies
-  (`.alfred/<engine>-control/`) and a project-level memory database (`.alfred/.alfred-memory/`). It
-  carries its own `.gitignore`, which keeps everything but `docs/` out of git, so while the docs are
-  committed it needs no line here. The docs carry their own, written from `ALFRED_CODE_DOCS_VERSIONING`:
-  `local` keeps them out of git, `git` (a fresh project's default) commits them and keeps only the hooks'
-  machine state out. To keep the docs machine-local, switch it once with
+  (`.alfred/<engine>-control/`), a project-level memory database (`.alfred/.alfred-memory/`) and the
+  project's sensitive data (`.alfred/.sensitive-data`). Its ONE `.gitignore` keeps everything but `docs/` out
+  of git, so while the docs are committed it needs no line here, and it carries the docs' rules too, written
+  from `ALFRED_CODE_DOCS_VERSIONING`: `local` keeps them out of git, `git` (a fresh project's default) commits
+  them and keeps only the hooks' machine state out. No folder under it carries a `.gitignore` of the stack's
+  (serena writes one in `.alfred/serena/` itself). To keep the docs machine-local, switch it once with
   `/alfred-code:update --docs-versioning local`. Where nothing under it is committed (local docs, or the
   docs root set elsewhere) git still lists `.alfred/` as untracked; then add `/.alfred/` -
   `node scripts/git-hygiene.js --root .` from the run's snapshot says which case applies, and
@@ -125,7 +126,7 @@ Init builds it once; by hand, run it from the project root (the first run also d
 C# Roslyn, which needs .NET 10+; the navigation server installs the runtime itself if it is missing):
 
 ```bash
-SERENA_HOME=.alfred/serena/home uvx --python 3.13 --exclude-newer 2026-09-29T23:59:59Z --from serena-agent@1.7.0 serena project index
+SERENA_HOME=.alfred/serena/home uvx --python 3.13 --exclude-newer 2026-10-14T23:59:59Z --from serena-agent@2.0.0 serena project index
 ```
 
 (Your data root in place of `.alfred` when you chose another; `.serena/home` while a 2.0.0 `.serena`
@@ -139,7 +140,7 @@ serena that serves it. (Windows PowerShell: `$env:SERENA_HOME='.alfred\serena\ho
 Or paste this prompt and let the session do it:
 
 ```text
-Index this project for the navigation server (SERENA_HOME=.alfred/serena/home, `uvx --python 3.13 --exclude-newer 2026-09-29T23:59:59Z --from serena-agent@1.7.0 serena project index` - on Windows the spelling above), then verify with
+Index this project for the navigation server (SERENA_HOME=.alfred/serena/home, `uvx --python 3.13 --exclude-newer 2026-10-14T23:59:59Z --from serena-agent@2.0.0 serena project index` - on Windows the spelling above), then verify with
 find_symbol and find_referencing_symbols on a symbol you pick from the code. If the run reports
 failed files, look at .alfred/serena/project.yml - its language_servers and ignored_paths - and tell me
 what you changed.
@@ -188,7 +189,7 @@ dependencies) leaves session-side state describing the OLD tree. Worth pasting t
 
 ```text
 I switched branches and the structure changed. Re-run dependency install if needed, restart the
-language server, re-index for the navigation server (SERENA_HOME=.alfred/serena/home, `uvx --python 3.13 --exclude-newer 2026-09-29T23:59:59Z --from serena-agent@1.7.0 serena project index` - on Windows the spelling above), and purge
+language server, re-index for the navigation server (SERENA_HOME=.alfred/serena/home, `uvx --python 3.13 --exclude-newer 2026-10-14T23:59:59Z --from serena-agent@2.0.0 serena project index` - on Windows the spelling above), and purge
 any handoff note a run left behind (`node .claude/hooks/memory.js handoff` lists them).
 ```
 

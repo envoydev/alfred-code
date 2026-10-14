@@ -22,7 +22,7 @@ must all hold or a generated member silently never appears:
 
 The robust fallback, which also eases migration: put the view models in a separate **.NET Standard 2.0
 class library** with C# 8+ enabled and reference it from the net48 WPF app - the generators run there
-unconditionally, and that library ports to .NET 8/9 unchanged.
+unconditionally, and that library ports to modern .NET unchanged.
 
 ## Composition with the Generic Host
 
@@ -30,7 +30,7 @@ unconditionally, and that library ports to .NET 8/9 unchanged.
   `Microsoft.Extensions.Hosting` and the DI / Configuration / Logging packages run via their .NET
   Standard 2.0 assemblies (build and start the host in an async `OnStartup`, stop it in `OnExit`).
 - Prefer `appsettings.json` + the Options pattern (`IOptions<T>`) over `App.config` - it works on net48
-  and is what a future .NET 8 version wants. The toolkit's `Ioc.Default` static provider is a
+  and is what a future modern-.NET version wants. The toolkit's `Ioc.Default` static provider is a
   service-locator stopgap; constructor injection through the host is the default.
 
 ## Threading and app-level exceptions

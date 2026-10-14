@@ -100,8 +100,8 @@ Placed at the solution root, MSBuild auto-imports it into every project below. K
 
   <!-- target frameworks defined once, referenced by each csproj -->
   <PropertyGroup>
-    <NetLibVersion>net8.0</NetLibVersion>
-    <NetTestVersion>net8.0</NetTestVersion>
+    <NetLibVersion>net10.0</NetLibVersion>
+    <NetTestVersion>net10.0</NetTestVersion>
   </PropertyGroup>
 
   <!-- usings every project gets - keep to truly project-wide ones -->
@@ -123,16 +123,16 @@ A nested `Directory.Build.props` in a subfolder overrides the root one and must 
 
 Prove it: `dotnet restore` and `dotnet build` - quote both summary lines.
 
-Where the house config-protection guard runs, it blocks any change to `Nullable` (or a warning key such as `TreatWarningsAsErrors` or `NoWarn`) in a Directory.Build.props or csproj that already exists - a tightening included - until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the flag surfaces, and never route around the block; on Allow, the guard's receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path and the same edit is retried; a new Directory.Build.props takes the baseline from the start.
+Where the house config-protection guard runs, it blocks a change that loosens `Nullable` or a warning key (`TreatWarningsAsErrors`, `NoWarn`, ...) in a Directory.Build.props or csproj that already exists - a pure tightening (`Nullable` toward `enable`, `TreatWarningsAsErrors` set to true, a `NoWarn` entry removed) passes - until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the flag surfaces, and never route around the block; on Allow, the guard's receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path and the same edit is retried; a new Directory.Build.props takes the baseline from the start.
 
 ## global.json - pin the SDK
 
-Pin the SDK so every machine and CI runner builds with the same toolchain. Projects can still target `net8.0`; the SDK version and the project framework are independent (9.0.200+ is what unlocks `.slnx`).
+Pin the SDK so every machine and CI runner builds with the same toolchain. The SDK version and the project framework are independent - the 10.0 SDK also builds a project still below the floor (`net8.0` / `net9.0`), and any SDK from 9.0.200 reads `.slnx`.
 
 ```json
 {
   "sdk": {
-    "version": "9.0.200",
+    "version": "10.0.100",
     "rollForward": "latestFeature"
   }
 }

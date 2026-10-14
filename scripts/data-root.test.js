@@ -323,6 +323,10 @@ test('sensitive data: a launch takes the store where nothing else set the key, a
     put(path.join(p, '.alfred', '.sensitive-data'), '# mine\nAPI_TOKEN="abc-123"\nDB_HOST=db\nPATH=/evil\n');
     assert.deepStrictEqual(dr.withSensitive({ PATH: '/bin', DB_HOST: 'shell' }, { projectDir: p }),
         { env: { PATH: '/bin', DB_HOST: 'shell', API_TOKEN: 'abc-123' }, count: 1 }, 'the shell or a settings file wins: dotenv\'s own rule');
+    // PL2: `only` - the keys a server documents; the store's other keys stay out of its environment.
+    assert.deepStrictEqual(dr.withSensitive({ PATH: '/bin' }, { projectDir: p, only: ['DB_HOST', 'NOT_THERE'] }),
+        { env: { PATH: '/bin', DB_HOST: 'db' }, count: 1 }, 'only a documented key');
+    assert.deepStrictEqual(dr.withSensitive({ PATH: '/bin' }, { projectDir: p, only: [] }), { env: { PATH: '/bin' }, count: 0 }, 'no documented key: none');
     put(path.join(p, 'var', 'data', '.sensitive-data'), 'OTHER=1\n');
     assert.deepStrictEqual(dr.withSensitive({}, { projectDir: p, root: 'var/data' }).env, { OTHER: '1' }, 'an explicit root');
     assert.deepStrictEqual(dr.withSensitive({ ALFRED_CODE_DATA_PATH: 'var/data' }, { projectDir: p }).env, { ALFRED_CODE_DATA_PATH: 'var/data', OTHER: '1' }, 'the root setting');

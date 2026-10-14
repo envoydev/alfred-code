@@ -1,6 +1,6 @@
 # C# on .NET Framework (C# 7.3 on .NET Framework 4.6.x / 4.7.x / 4.8)
 
-The authoritative house style for C# on .NET Framework: formatting, naming, and language-feature usage only. `SKILL.md` and `references/csharp-style.md` floor at .NET 8 / C# 12; this file is the delta for a Framework codebase, where the C# 7.3 language ceiling, the polyfill packages, and the `SynchronizationContext` async model differ - the modern conventions otherwise still apply. As everywhere, a project's own `.editorconfig` / `<docs-path>/code-style/CODE-STYLE.md` is higher priority than this general baseline. 4.8 is supported (tied to the Windows lifecycle) but frozen: write to these constraints, and treat the move to modern .NET as debt reduction (the migration path is `dotnet-migrate`).
+The authoritative house style for C# on .NET Framework: formatting, naming, and language-feature usage only. `SKILL.md` and `references/csharp-style.md` floor at .NET 10 / C# 14; this file is the delta for a Framework codebase, where the C# 7.3 language ceiling, the polyfill packages, and the `SynchronizationContext` async model differ - the modern conventions otherwise still apply. As everywhere, a project's own `.editorconfig` / `<docs-path>/code-style/CODE-STYLE.md` is higher priority than this general baseline. 4.8 is supported (tied to the Windows lifecycle) but frozen: write to these constraints, and treat the move to modern .NET as debt reduction.
 
 Baseline: Microsoft/.NET Framework conventions with pragmatic senior-level overrides, aligned to legacy StyleCop + Rider default inspections.
 
@@ -268,6 +268,6 @@ These need runtime/BCL support and will NOT work or need a shim:
 - `IAsyncEnumerable` (needs `Microsoft.Bcl.AsyncInterfaces`)
 - Default interface members, static abstract interface members (need runtime support - not on Framework)
 
-Recommendation for new Framework code: stay on 7.3 and keep it clean rather than shimming. If you want the modern feature set, that is the signal to target .NET 8+ instead.
+Recommendation for new Framework code: stay on 7.3 and keep it clean rather than shimming. If you want the modern feature set, that is the signal to target the .NET 10 floor instead.
 
 Route out: pooling / `Span` speed / serialization -> the .NET performance and memory-layout skill; packages, `<LangVersion>`, and runtime config -> the .NET solution and package setup skill; the migration path off Framework -> `dotnet-migrate`.

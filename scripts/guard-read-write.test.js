@@ -161,7 +161,7 @@ test('guard-read-whole-file: no serena remedy for a path serena is seeded to ign
   fs.writeFileSync(inClaude, LONG_JS);
   const r = run(READ, { tool_name: 'Read', tool_input: { file_path: inClaude } });
   assert.equal(r.status, 2, 'the whole-file read is still blocked');
-  // M30: the hook's remedy line is the plugin spelling - the old `select:mcp__serena` pattern matched nothing any hook
+  // M30: the hook's remedy line is the plugin spelling - the old `select:mcp__serena` pattern matched nothing any hook (mcp-fixture)
   // writes, so it could never fail (the ordinary-path case below proves this pattern does match a real remedy).
   assert.doesNotMatch(r.stderr, /ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__/, 'but no tools that cannot index this tree');
   assert.match(r.stderr, /ignored_paths/, 'the denial says why');
@@ -423,6 +423,25 @@ test('audit 2026-10-10 C11: a seat\'s ranges are its own - the parent\'s rows ne
   assert.equal(readAt(f, 150, 190, s, 'aced94b8').status, 0, 'the seat\'s first read, 51% alone, passes (3ce6b036 was blocked at 87%)');
   assert.equal(readAt(f, 1, 60, s, 'aced94b8').status, 2, 'the seat\'s OWN second range past 60% still blocks');
   assert.equal(readAt(f, 200, 100, s).status, 2, 'and the main session\'s own past 60% too');
+});
+
+// audit 2026-10-14 HK16 (the user's ruling): code-quality-analyzer made 143 of 277 range-cap blocks over 85 runs in a week,
+// the verifiers 9 - the cap does not bind that seat; the whole-file size gate still does, and every other seat stays capped.
+test('audit 2026-10-14 HK16: code-quality-analyzer reads past the range cap; other seats and the size gate still bind', () => {
+  const dir = capDir(); const f = path.join(dir, 'OrderService.ts'); fs.writeFileSync(f, linesOf(369));
+  const s = sid();
+  const seatRead = (offset, limit, agent_id, agent_type) => run(READ, { tool_name: 'Read', tool_input: { file_path: f, ...(offset ? { offset, limit } : {}) }, session_id: s, agent_id, agent_type }, { cwd: dir });
+  assert.equal(seatRead(1, 200, 'cqa1', 'alfred-code:code-quality-analyzer').status, 0);
+  assert.equal(seatRead(200, 170, 'cqa1', 'alfred-code:code-quality-analyzer').status, 0, 'the house seat reads the rest past 60%');
+  assert.equal(seatRead(1, 200, 'cqa2', 'code-quality-analyzer').status, 0);
+  assert.equal(seatRead(200, 170, 'cqa2', 'code-quality-analyzer').status, 0, 'and so does its bare spelling');
+  assert.equal(seatRead(1, 200, 'ver1', 'alfred-code:aspnet-verifier').status, 0);
+  assert.equal(seatRead(200, 170, 'ver1', 'alfred-code:aspnet-verifier').status, 2, 'a verifier stays capped');
+  assert.equal(seatRead(1, 200, 'oth1', 'other:code-quality-analyzer').status, 0);
+  assert.equal(seatRead(200, 170, 'oth1', 'other:code-quality-analyzer').status, 2, 'another plugin\'s seat of that name stays capped');
+  assert.equal(readAt(f, 1, 200, s).status, 0);
+  assert.equal(run(READ, { tool_name: 'Read', tool_input: { file_path: f, offset: 200, limit: 170 }, session_id: s, agent_type: 'code-quality-analyzer' }, { cwd: dir }).status, 2, 'a type with no agent id is no seat');
+  assert.equal(seatRead(undefined, undefined, 'cqa3', 'alfred-code:code-quality-analyzer').status, 2, 'its whole-file Read of an oversized file still blocks');
 });
 
 test('audit 2026-10-10 C11: rows read before an edit do not count against the edited file', () => {

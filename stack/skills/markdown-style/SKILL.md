@@ -14,10 +14,10 @@ The question this skill answers is **'is this doc well-formed?'** - not 'does th
 
 **One load per session, and the tables below are the whole check.** This is a before-write check,
 not a companion that rides along: load it once, run both passes over the docs this session writes,
-and do not re-load it for the next `.md` - it is already in context. Neither `references/` file is
-opened unless a specific rule the two quick-reference tables do not settle is actually in dispute
-(measured: one session carried this skill across 11 messages for 1.6M cache-read tokens - ~52% of
-that session's whole cache-read, for a single style check on one file).
+and do not re-load it for the next `.md` - it is already in context. Neither rule reference
+(`references/syntax-canon.md`, `references/style-overlay.md`) is opened unless a specific rule the two
+quick-reference tables do not settle is actually in dispute - a carried skill is paid again in every
+later message. The measurement is `references/evidence.md` - an audit appendix, not a run-time load.
 
 ## When to use
 

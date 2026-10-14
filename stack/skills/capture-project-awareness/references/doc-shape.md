@@ -59,7 +59,7 @@ lives, never by value.
 - Reach: <the URL and port, the window, or the CLI entry>
 - Log in: <numbered steps - the screen, the fields, the role to pick - or 'no login, the app is open'>
 - Accounts: <one line per role - its purpose and the user name's home>
-- Credentials live in: <env var `<NAME>` | `<data root>/.sensitive-data`, key `<NAME>` | vault item `<name>`> - checked for presence, never printed; typing a value goes through the secret guard's ask
+- Credentials live in: <env var `<NAME>` | `<data root>/.sensitive-data`, key `<NAME>` | vault item `<name>`> - checked for presence, never printed; a browser login types the KEY name (`<NAME>`) in `browser_type` / `browser_fill_form`, which the browser server fills from the sensitive data and shows as `<secret>NAME</secret>`; any other typed value goes through the secret guard's ask
 
 ## Flows to verify
 <!-- id: flows-to-verify -->
@@ -107,8 +107,10 @@ file feeds, or the glob is wrong.
 
 ## The keys in the sensitive data
 
-The project's sensitive data, `<data root>/.sensitive-data`, is written only when the login answer asked for the
-keys, and only when absent - one that exists is the user's, never read, rewritten or appended to. One key per
+The project's sensitive data, `<data root>/.sensitive-data`, exists from the install on - one comment line, no key -
+so a capture normally finds it present and hands each key as a `KEY=` line the user adds. The capture writes it only
+when the login answer asked for the keys and it is absent (an install older than that) - one that exists is the user's,
+never read, rewritten or appended to. One key per
 account the answer named, every value EMPTY; the secret guard holds every value in the file as a credential,
 whatever its key:
 

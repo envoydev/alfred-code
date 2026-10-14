@@ -7,7 +7,7 @@ description: "Use before writing, changing or reviewing .NET tests, auditing tes
 
 This skill captures the **approach**, not a single library. The principles below apply regardless of which test runner, substitute library, or assertion library a project picks. Library routing is in §Library choices.
 
-**Floor: .NET 8 / C# 12.** Testing classic ASP.NET on .NET Framework 4.8 (in-memory OWIN `TestServer`, `HttpContextBase`) is `references/net-framework-48.md`.
+**Floor: .NET 10 / C# 14.** .NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked. Testing classic ASP.NET on .NET Framework 4.8 (in-memory OWIN `TestServer`, `HttpContextBase`) is `references/net-framework-48.md`.
 
 ## When to use
 
@@ -56,7 +56,7 @@ The strategy keys off the *role* a unit plays, not a layer name - so it maps ont
 
 ## Library choices
 
-Defaults for a new project: **xUnit** runner, **NSubstitute** substitutes, **FluentAssertions 7.x** assertions (v8+ needs a paid commercial licence, so an upgrade is a licensing decision, not a routine bump; the Apache-2.0 fork AwesomeAssertions is the permissive way forward). One runner, one substitute library and one assertion library per project - migrate, never blend. When the project has already picked, or is picking now, the alternatives and the reason for each are `references/library-routing.md`. Substitute only what you cannot construct, stay loose rather than strict, and verify the boundary that matters instead of every interaction. Snapshot / Verify assertions - approving serialized output instead of hand-written asserts - are `references/snapshot-testing.md`.
+Defaults for a new project: **xUnit** runner, **NSubstitute** substitutes, **FluentAssertions 7.x** assertions (v8+ is paid for commercial use, so an upgrade on a commercial project is a licensing decision, not a routine bump; the Apache-2.0 fork AwesomeAssertions is the permissive way forward). One runner, one substitute library and one assertion library per project - migrate, never blend. When the project has already picked, or is picking now, the alternatives and the reason for each are `references/library-routing.md`. Substitute only what you cannot construct, stay loose rather than strict, and verify the boundary that matters instead of every interaction. Snapshot / Verify assertions - approving serialized output instead of hand-written asserts - are `references/snapshot-testing.md`.
 
 ## Test project conventions
 

@@ -1273,3 +1273,51 @@ test('uninstall: the kept data root is the one in effect - a custom root named, 
     const { outs } = seedRun(['install', 'uninstall'], 'rule markdown-docs\n', { args: [['--scope', 'project', '--data-path', '.data'], []] });
     assert.match(outs[1], /kept, yours or your data: .* - \.data\/, or a 2\.0\.0/, outs[1]);
 });
+
+// PL8 (audit 2026-10-14, the user's ruling of 2026-10-14): every install denies the 23 memory server tools the stack
+// never calls, by bare name in the route's spelling, add-only - a fresh install writes them, the user's removal holds
+// through every update, a re-run changes nothing, and uninstall takes back exactly the ones it wrote.
+test('PL8 seed: the unused memory tools are denied on install, a user\'s removal holds through updates, uninstall removes the rest', POSIX_ONLY, () =>
+{
+    const { memoryToolDeny } = require('./install/alfred-code.js');
+    const ROOT = path.join(__dirname, '..');
+    const COPY = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
+    for (const [route, env, scope, fileName, spelled] of [
+        ['plugin', {}, 'project', 'settings.json', memoryToolDeny(ROOT)],
+        ['copy', COPY, 'project', 'settings.json', memoryToolDeny(ROOT, { bare: true })],
+        ['plugin', {}, 'local', 'settings.local.json', memoryToolDeny(ROOT)],
+    ])
+    {
+        const label = `${route}/${scope}`;
+        const settings = (repo) => { try { return JSON.parse(fs.readFileSync(path.join(repo, '.claude', fileName), 'utf8')); } catch { return null; } };
+        const dropped = spelled[4];
+        const { steps, outs } = seedRun(['install', 'update', 'update', 'uninstall'], 'rule markdown-docs\n', {
+            env, args: [['--scope', scope], ['--scope', scope], ['--scope', scope], []],
+            prepare: (repo) => put(path.join(repo, '.claude', fileName), JSON.stringify({ permissions: { deny: ['Bash(rm -rf:*)'] } })),
+            each: (repo, i) =>
+            {
+                const s = settings(repo);
+                const deny = s && s.permissions && Array.isArray(s.permissions.deny) ? [...s.permissions.deny] : [];
+                if (i === 0 && s)
+                {
+                    s.permissions.deny = s.permissions.deny.filter((e) => e !== dropped);
+                    fs.writeFileSync(path.join(repo, '.claude', fileName), JSON.stringify(s, null, 2));
+                }
+                let stamp = '';
+                try { stamp = fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'); } catch { /* gone after uninstall */ }
+                return { deny, stamp };
+            },
+        });
+        assert.deepStrictEqual(steps[0].deny.filter((e) => spelled.includes(e)), spelled, `${label}: the install writes all 23:\n${outs[0]}`);
+        assert.ok(steps[0].deny.includes('Bash(rm -rf:*)'), `${label}: the user's own entry stays`);
+        assert.match(outs[0], /denied 23 memory server tool\(s\) the stack never calls/, label);
+        assert.ok(!steps[1].deny.includes(dropped), `${label}: the update wrote back an entry the user removed`);
+        assert.deepStrictEqual(steps[1].deny.filter((e) => spelled.includes(e)).length, 22, label);
+        assert.ok(steps[1].stamp.includes(`${fileName}:${dropped}`), `${label}: the removal is carried in the ledger`);
+        assert.doesNotMatch(outs[1], /memory server tool/, `${label}: nothing written, nothing said`);
+        assert.deepStrictEqual(steps[2].deny, steps[1].deny, `${label}: a re-run changes nothing`);
+        assert.ok(!steps[2].deny.includes(dropped), `${label}: still out a run later`);
+        assert.ok(!steps[3].deny.some((e) => spelled.includes(e)), `${label}: uninstall leaves one:\n${outs[3]}`);
+        assert.ok(steps[3].deny.includes('Bash(rm -rf:*)'), `${label}: uninstall keeps the user's own entry`);
+    }
+});

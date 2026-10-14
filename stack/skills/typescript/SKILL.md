@@ -87,4 +87,4 @@ You don't lose the type checker by writing `.js`. The same language server check
 
 ## Prove it
 
-Before any done word on a TypeScript change, run the project's type check (`tsc --noEmit`, with `-p` naming the tsconfig that covers the change, or the workspace's own typecheck script) and its lint over what changed, and quote both result lines. A bundle that built is no type check; with neither command available, the close says the change is type-unchecked.
+Before any done word on a TypeScript change, run the project's type check (`tsc --noEmit`, with `-p` naming the tsconfig that covers the change, or the workspace's own typecheck script) and its lint over what changed, and quote both result lines - close with `types: <command> -> <result line>` and `lint: <command> -> <result line>`. A bundle that built is no type check; with neither command available, the close says the change is type-unchecked.

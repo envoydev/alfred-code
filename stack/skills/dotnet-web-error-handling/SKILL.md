@@ -10,7 +10,7 @@ An API has exactly two ways to report that something went wrong, and they must n
 - **Expected failures** - validation is rejected, the row is not there, a uniqueness rule is broken. These are part of the contract, so they are *return values*: a `Result` / `Result<T>` or a closed error union the caller branches on.
 - **Unexpected failures** - a dependency is down, an invariant is violated, a bug throws. These are exceptions, and they are caught in exactly one place: a global handler.
 
-The language-level call - when to throw versus when to return - is `csharp`. This skill is only about how a failure reaches the wire. Floor is .NET 8 / C# 12.
+The language-level call - when to throw versus when to return - is `csharp`. This skill is only about how a failure reaches the wire. Floor is .NET 10 / C# 14; .NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked.
 
 ## When to use
 
@@ -83,7 +83,7 @@ app.UseExceptionHandler();
 ```
 
 ## Validate at the edge
-- Validate the request before the handler body runs, inside an `IEndpointFilter` (`ValidationFilter<TRequest>`) that short-circuits with `TypedResults.ValidationProblem(...)` on failure - this is the filter the minimal-API surface attaches to its route groups. FluentValidation is the default; fall back to built-in data annotations / `ModelState` only for trivial DTOs.
+- Validate the request before the handler body runs, inside an `IEndpointFilter` (`ValidationFilter<TRequest>`) that short-circuits with `TypedResults.ValidationProblem(...)` on failure - this is the filter the minimal-API surface attaches to each endpoint that binds `TRequest`. FluentValidation is the default; fall back to built-in data annotations / `ModelState` only for trivial DTOs.
 
 ```csharp
 public sealed class ValidationFilter<TRequest>(IValidator<TRequest> validator) : IEndpointFilter

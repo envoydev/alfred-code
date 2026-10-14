@@ -2,8 +2,13 @@ name: test
 
 # The test half of the gate - the sibling lint.yml runs the parity lint on every push
 # and PR; this runs the node test suite (installer source/stamp paths, selection closure,
-# stack graph, plugin skills, analyze-usage) so a develop -> main merge (the release act -
-# it republishes the rolling 'latest' archive) only ever promotes a green tree.
+# stack graph, plugin skills, analyze-usage).
+#
+# Never on a push to main: a develop -> main merge carries the tree develop already tested
+# (2.4.0: the same tree ran twice, 14 minutes each, and the release had shipped 13 minutes
+# before the second run ended). release.yml instead requires a green run of THIS workflow on the
+# tree it ships, so main still only ever promotes a green tree. A tree no branch ran (a conflict
+# resolved in the merge) is run on main by hand through workflow_dispatch.
 #
 # Lock-free like lint.yml (the root package-lock.json is deliberately untracked).
 #
@@ -13,18 +18,31 @@ name: test
 # green while `npm test` on Windows ran ZERO tests and exited 0 - the script passed its glob
 # through the shell, and cmd.exe does not strip single quotes, so node matched nothing and the
 # gate reported success. A gate that cannot fail is not a gate.
+#
+# macOS and Windows split the test files in two (node --test --test-shard): a whole suite took
+# 12-13 minutes there against Ubuntu's 5.5 (2.4.0), spent spawning a node process and real git per
+# hook-test case. The halves measured 1,068 / 1,140 s of Windows test time and 784 / 594 s on macOS.
 
 on:
   push:
+    branches-ignore: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   test:
     runs-on: ${{ matrix.os }}
+    # A hung test holds the runner until GitHub's 6-hour cap: the 2.4.0 macOS leg did (361 minutes).
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-26, windows-2025]
+        include:
+          - { os: ubuntu-24.04, shard: 1/1 }
+          - { os: macos-26, shard: 1/2 }
+          - { os: macos-26, shard: 2/2 }
+          - { os: windows-2025, shard: 1/2 }
+          - { os: windows-2025, shard: 2/2 }
     steps:
       # Full fetch + a local main ref: the installer tests exercise the fallback clone,
       # which is pinned to -b main (the release branch), against THIS checkout - so
@@ -38,4 +56,4 @@ jobs:
           node-version: 22
           package-manager-cache: false
       - run: npm install --no-audit --no-fund
-      - run: npm test
+      - run: npm test -- --test-shard=${{ matrix.shard }}

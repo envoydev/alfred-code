@@ -1,7 +1,7 @@
 # windows-control - Windows-MCP on Windows
 
 The server behind windows-control, what it needs from the machine, and the switches around it.
-Checked against Windows-MCP 0.8.5, the release the stack pins.
+Checked against Windows-MCP 0.8.8, the release the stack pins.
 
 ## Tools
 
@@ -16,6 +16,8 @@ Checked against Windows-MCP 0.8.5, the release the stack pins.
   holds) over a fixed `Wait`.
 - **Apps:** `App` (launch, switch, resize - and `launch_executable`, which starts any program with the
   arguments and working folder given).
+- **Control:** `ControlStatus` (read-only: who holds the desktop - the AI or the user - and the user's
+  idle wait left, in seconds).
 - **Other:** `Clipboard`, `Scrape`, `Notification`, and - switched off by the stack - `PowerShell`,
   `Registry`, `Process`, `FileSystem` (read, write, copy, move, delete).
 
@@ -23,7 +25,7 @@ Checked against Windows-MCP 0.8.5, the release the stack pins.
 
 The stack starts Windows-MCP with `--exclude-tools PowerShell,Registry,Process,FileSystem`: shell,
 registry, process control and file writes, moves and deletes are not there unless the user turns them
-on. What stays on: the observe, input and wait tools, `App`, `Clipboard`, `Scrape` and `Notification`.
+on. What stays on: the observe, input and wait tools, `ControlStatus`, `App`, `Clipboard`, `Scrape` and `Notification`.
 Windows-MCP gates by tool name, never by mode, so `App` stays whole - and its `launch_executable` mode
 starts any program (`powershell.exe -Command ...` included): a house guard denies that mode unless the
 user allowed it in `<docs-path>/flow/DESKTOP-EXEC-ALLOW`, while `launch`, `switch` and `resize` pass.
@@ -37,7 +39,18 @@ own `WINDOWS_MCP_TOOLS` (its `--tools`, which OVERRIDES the exclude list) never 
 environment - the launcher drops it, and the copy route registers it empty. Turning a tool on is the user's decision, never
 a way around a blocked step.
 
+## The user's takeover
+
+The user's own mouse or keyboard takes the desktop back: while they hold it, a tool call is refused with
+`USER_CONTROL`, `TAKEOVER_PENDING` or `PHYSICAL_INPUT_HELD`, and an indicator shows who has control. Read
+`ControlStatus`, wait out the idle time it gives, then observe again before the next action - the screen
+may have changed under the user's hands. Never race the user for the input.
+
 ## What the machine needs
+
+- **An active, unlocked desktop at start.** The server watches physical input and refuses to start without
+  the signed-in user's input desktop: a locked screen, a disconnected remote session, a service or an SSH
+  shell leaves it unable to connect. Unlock, then reconnect it from `/mcp`.
 
 - **English display language.** The `App` tool finds apps by their English names; on another display
   language launching and switching by name fails. Launch the app another way the user agrees to, or

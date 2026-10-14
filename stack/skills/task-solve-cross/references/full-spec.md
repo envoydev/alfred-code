@@ -8,7 +8,8 @@ per item, the path last:
 
 ```bash
 SPEC=.claude/skills/task-solve-cross/scripts/spec-check.js
-[ -f "$SPEC" ] || SPEC=$(for d in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/alfred-code/*; do
+[ -f "$SPEC" ] || SPEC=$(for d in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/*/*; do   # one glob: zsh aborts the loop when any named glob matches nothing
+  PN=${d%/*}; PN=${PN##*/}; [ "$PN" = alfred-code ] || continue
   f="$d/stack/skills/task-solve-cross/scripts/spec-check.js"
   [ -f "$f" ] && [ ! -e "$d/.orphaned_at" ] && printf '%s\t%s\n' "$(basename "$d")" "$f"
 done 2>/dev/null | sort -V | tail -1 | cut -f2)

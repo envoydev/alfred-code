@@ -1,4 +1,4 @@
-# <docs-path>/quality/ASSESSMENT.md - required shape and write protocol
+# <docs-path>/quality/ARCHITECTURE-ASSESSMENT.md - required shape and write protocol
 
 ## Contents
 
@@ -95,7 +95,7 @@ Before ANY candidate is recorded as a weakness, answer all four explicitly; an u
 
 1. **What breaks?** The concrete wrong outcome - wrong or lost data, a crash or 5xx, a security hole, a change that cannot be made safely, or time repeatedly lost by the next developer. 'It differs from how another codebase or a reference doc would do it' is not an answer.
 2. **Who notices, and when?** A user, an operator, or the next person to touch this code - named, with the trigger condition.
-3. **Is it actually new?** Unchanged code whose behaviour the last run's `<docs-path>/quality/ASSESSMENT.md` already records - a known limit, an accepted tradeoff, an existing entry - is a re-measurement, not a discovery: fold the sharper number into the existing entry. Never open a new entry for it, and never re-tier the old one upward merely because it now has a number.
+3. **Is it actually new?** Unchanged code whose behaviour the last run's `<docs-path>/quality/ARCHITECTURE-ASSESSMENT.md` already records - a known limit, an accepted tradeoff, an existing entry - is a re-measurement, not a discovery: fold the sharper number into the existing entry. Never open a new entry for it, and never re-tier the old one upward merely because it now has a number.
 4. **Has the project already decided this?** Read the decision log FIRST (`<docs-path>/decisions/` per the shape above, where that domain has been seeded - or wherever the project keeps ADRs otherwise). A recorded decision is not a defect, and re-raising it each round is exactly the failure this gate exists to stop.
 
 **The external-preference rule.** A convention skill, reference doc, or industry pattern preferring a different approach is not evidence of a weakness. Where this project has a mechanism that works, it wins unless you can show it FAILING - a real miss, a real regression it let through. A candidate whose only support is 'a reference prefers X' lands under Worth knowing at most, never tiered.
@@ -149,11 +149,12 @@ in this stack asks before overwriting an existing doc, because that doc accretes
 want. This one asks only whether to run at all: it is recomputed from the map, the code and the decision log every time it runs, so there is nothing an overwrite
 could destroy that a re-run would not reproduce anyway. REPLACE the file wholesale - Write over whatever was
 there (READ it first if it exists, so the Write is legal - an `rm` first is denied by the auto-mode classifier).
+Never Edit or `sed` it into shape: the old text is no draft to patch, whatever a calling flow's brief says changed.
 
 Open the doc with a freshness line for the human reader - `As of: <branch>@<short-sha>, <YYYY-MM-DD>` (`+dirty`
 appended when the working tree holds uncommitted changes). This is informational only, never a gate: nothing
 reads it to decide whether to skip the run, unlike the `Captured:` stamp on a real domain doc.
 
-Create `<docs-path>/quality/` only when absent. Write ONLY `<docs-path>/quality/ASSESSMENT.md` - never source,
+Create `<docs-path>/quality/` only when absent. Write ONLY `<docs-path>/quality/ARCHITECTURE-ASSESSMENT.md` - never source,
 never the map, never the decision log. After the write, `wc -l` it against the ~300-line target above and run
 the spill pass now if it is over.

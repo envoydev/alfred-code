@@ -612,16 +612,21 @@ test('seed: once init marked the stamp, an update carries the line and the impor
 // M5 (Task 18a review): every run that lands the project level writes the database's own .gitignore -
 // update and configure with --memory-level project too, not only init - so post-install's 'the
 // installer already wrote it' holds whichever command set the level.
-test('seed: a project-level run writes the database folder\'s .gitignore, and a machine level writes no memory folder in the project (M5)', POSIX_ONLY, () =>
+test('seed: a project-level run keeps the database folder out of git through the data root\'s one .gitignore, and a machine level writes no memory folder in the project (M5)', POSIX_ONLY, () =>
 {
     const SEL = 'skill markdown-style\nrule alfred-memory\nmcp serena\nmcp context7\nmcp memory\n';
     const ignore = (repo) => path.join(repo, '.alfred', '.alfred-memory', '.gitignore');
     const { steps } = seedRun(['install', 'update'], SEL, {
         args: [['--memory-level', 'global'], ['--memory-level', 'project']],
-        each: (repo) => (fs.existsSync(ignore(repo)) ? fs.readFileSync(ignore(repo), 'utf8') : null),
+        each: (repo) => ({
+            nested: fs.existsSync(ignore(repo)) ? fs.readFileSync(ignore(repo), 'utf8') : null,
+            folder: fs.existsSync(path.dirname(ignore(repo))),
+            root: fs.readFileSync(path.join(repo, '.alfred', '.gitignore'), 'utf8'),
+        }),
     });
-    assert.strictEqual(steps[0], null, 'global: no project folder at all');
-    assert.strictEqual(steps[1], '*\n', 'the update that moved the level to project ignores the database');
+    assert.strictEqual(steps[0].folder, false, 'global: no project folder at all');
+    assert.strictEqual(steps[1].nested, null, 'the project level writes no .gitignore of its own (the user\'s ruling of 2026-10-13: one file)');
+    assert.match(steps[1].root, /^# alfred-code: the data root[^\n]*\n\/\*\n!\/\.gitignore\n/, 'the data root\'s file keeps .alfred-memory/ out');
     const { result } = seedRun('install', SEL, {
         args: ['--memory-level', 'project'],
         prepare: (repo) => { fs.mkdirSync(path.dirname(ignore(repo)), { recursive: true }); fs.writeFileSync(ignore(repo), '# mine\n*\n'); },

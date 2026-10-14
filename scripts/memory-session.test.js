@@ -21,6 +21,11 @@ const HOOK = path.join(__dirname, '..', 'stack', 'hooks', 'memory-session.js');
 const SCHEMA = fs.readFileSync(path.join(__dirname, 'fixtures', 'memory-schema.sql'), 'utf8');
 
 const tmpDir = (prefix) => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+// Audit 2026-10-14 RU13: both pushes end on the host's shell traps. The fixture pins a bash $SHELL, so on macOS and Linux
+// no host line rides an exact-text case; on win32 the Windows line does, and HOST is what the hook appends there.
+const { hostLines } = require(HOOK);
+const HOST = hostLines(process.platform, '/bin/bash');
+const withHost = (lines) => (HOST.length ? [...lines, '', ...HOST] : lines);
 const rmDir = (dir) => fs.rmSync(dir, { recursive: true, force: true });
 
 function buildDb(file, rows) {
@@ -55,7 +60,7 @@ function fixtureProject({ rows = null, relatedNames = null, registered = true } 
     cwd: root,
     input: typeof payload === 'string' ? payload : JSON.stringify(payload),
     encoding: 'utf8',
-    env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: config, ...extra },
+    env: { ...process.env, SHELL: '/bin/bash', CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: config, ...extra },
   });
   return { root, dbPath, hook, rm: () => { rmDir(root); rmDir(config); } };
 }
@@ -127,10 +132,29 @@ test('an empty database still names the project tag and the search hint - never 
     const out = JSON.parse(r.stdout);
     const text = out.hookSpecificOutput.additionalContext;
     // Kept short: just the tag line and the search hint, no 'Memory (...)' header, no frame, no body.
-    assert.strictEqual(text, [
+    assert.strictEqual(text, withHost([
       `This project's memory tag: project:${projectName}`,
       'Store, search or list more: ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store,mcp__plugin_alfred-memory_alfred-memory__memory_search,mcp__plugin_alfred-memory_alfred-memory__memory_list',
-    ].join('\n'));
+    ]).join('\n'));
+  } finally { p.rm(); }
+});
+
+// Audit 2026-10-14 RU10: the seat's memory-tools line moves out of the always-on rule into the SubagentStart push, so
+// a seat learns both the tag and how its tools load - with the carve-out, since a stack seat holds no ToolSearch.
+test('SubagentStart: the tag line, then the tool line with the seat carve-out (RU10)', { skip: skipNoSqlite }, () => {
+  const p = fixtureProject({ rows: [{ content: 'a project fact', tags: 'project:x', memory_type: 'reference' }] });
+  try {
+    const r = p.hook({ hook_event_name: 'SubagentStart', session_id: 's9', agent_id: 'a1', agent_type: 'reviewer', cwd: p.root });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const out = JSON.parse(r.stdout).hookSpecificOutput;
+    assert.strictEqual(out.hookEventName, 'SubagentStart');
+    assert.strictEqual(out.additionalContext, withHost([
+      `This project's memory tag: project:${path.basename(p.root)}`,
+      'Store, search or list more: ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store,mcp__plugin_alfred-memory_alfred-memory__memory_search,mcp__plugin_alfred-memory_alfred-memory__memory_list - a seat whose tools grant them, by name or as the whole server, has them loaded already and calls them directly.',
+    ]).join('\n'));
+    // no registration: still silent
+    const bare = fixtureProject({ registered: false });
+    try { assert.strictEqual(bare.hook({ hook_event_name: 'SubagentStart', agent_id: 'a1', cwd: bare.root }).stdout, ''); } finally { bare.rm(); }
   } finally { p.rm(); }
 });
 
@@ -327,4 +351,83 @@ test('a SessionStart looks the main checkout up once, at 1.5s per git call', { s
     assert.strictEqual(lookups.length, 1, fs.readFileSync(calls, 'utf8'));
   } finally { p.rm(); rmDir(bin); }
   assert.match(fs.readFileSync(path.join(__dirname, '..', 'stack', 'hooks', 'memory.js'), 'utf8'), /const MAIN_CHECKOUT_GIT_MS = 1500;/);
+});
+
+// ------------------------------------------------------------------ audit 2026-10-14 RU13
+
+// The always-on navigation rule carried the Windows Git Bash line into every macOS / Linux session and the zsh lines into
+// every bash one. The hook now appends only this host's own, keyed on process.platform and $SHELL, at every session and
+// seat start; the rule keeps a pointer. Each case below mocks one host.
+const WIN_LINE = /^- On Windows \(Git Bash\): pass a `\/tmp\/x` path to native `node` through `cygpath -w`/m;
+const ZSH_LINE = /^- zsh aborts the WHOLE command on an unmatched bare path glob/m;
+const SPLIT_LINE = /^- zsh never word-splits `\$VAR`/m;
+
+test('RU13: win32 gets the Windows line, a zsh $SHELL the zsh lines, bash neither', () => {
+  const text = (platform, shell) => hostLines(platform, shell).join('\n');
+  assert.deepStrictEqual(hostLines('linux', '/bin/bash'), [], 'bash on Linux: nothing');
+  assert.deepStrictEqual(hostLines('darwin', '/usr/local/bin/bash'), [], 'bash on macOS: nothing');
+  assert.deepStrictEqual(hostLines('darwin', ''), [], 'no $SHELL: nothing');
+  for (const zsh of ['/bin/zsh', '/usr/local/bin/zsh', 'zsh']) {
+    const t = text('darwin', zsh);
+    assert.match(t, /^Shell commands on this host:$/m, zsh);
+    assert.match(t, ZSH_LINE, zsh);
+    assert.match(t, SPLIT_LINE, zsh);
+    assert.doesNotMatch(t, WIN_LINE, `${zsh}: no Windows line off win32`);
+  }
+  for (const bash of ['C:\\Program Files\\Git\\usr\\bin\\bash.exe', '/usr/bin/bash', '']) {
+    const t = text('win32', bash);
+    assert.match(t, WIN_LINE, `win32 ${bash}`);
+    assert.doesNotMatch(t, ZSH_LINE, `win32 ${bash}: no zsh line`);
+  }
+  assert.match(text('win32', '/usr/bin/zsh'), ZSH_LINE, 'a zsh on win32 gets both');
+  assert.strictEqual(hostLines('win32', 'C:\\msys64\\usr\\bin\\zsh.exe').length, 4, 'the header, the Windows line, the two zsh lines');
+});
+
+// Each host drives the real entry: $SHELL through the env, process.platform through a preload that sets it before the hook runs.
+function driveHost(p, event, { shell, platform } = {}) {
+  const args = [];
+  let pre = null;
+  if (platform) {
+    pre = tmpDir('memory-session-platform-');
+    fs.writeFileSync(path.join(pre, 'platform.js'), `Object.defineProperty(process, 'platform', { value: ${JSON.stringify(platform)} });\n`);
+    args.push('-r', path.join(pre, 'platform.js'));
+  }
+  try {
+    const r = spawnSync(process.execPath, [...args, HOOK], {
+      cwd: p.root, encoding: 'utf8',
+      input: JSON.stringify({ hook_event_name: event, session_id: 's-host', ...(event === 'SubagentStart' ? { agent_id: 'a1' } : {}), cwd: p.root }),
+      env: { ...process.env, SHELL: shell, CLAUDE_PROJECT_DIR: p.root, CLAUDE_CONFIG_DIR: tmpDir('memory-session-host-config-') },
+    });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const out = JSON.parse(r.stdout).hookSpecificOutput;
+    assert.strictEqual(out.hookEventName, event);
+    return out.additionalContext;
+  } finally { if (pre) rmDir(pre); }
+}
+
+test('RU13: a zsh host\'s session and seat starts end on the zsh lines, a bash host\'s on none', () => {
+  const p = fixtureProject();
+  try {
+    for (const event of ['SessionStart', 'SubagentStart']) {
+      const zsh = driveHost(p, event, { shell: '/bin/zsh', platform: 'darwin' });
+      assert.match(zsh, new RegExp(`This project's memory tag: project:${path.basename(p.root)}`), `${event}: the memory push comes first`);
+      assert.match(zsh, /\n\nShell commands on this host:\n- zsh aborts/, `${event}: the host block closes the push`);
+      assert.match(zsh, SPLIT_LINE, event);
+      assert.doesNotMatch(zsh, WIN_LINE, `${event}: no Windows line on macOS`);
+      const bash = driveHost(p, event, { shell: '/bin/bash', platform: 'linux' });
+      assert.doesNotMatch(bash, /Shell commands on this host|zsh|cygpath/, `${event}: a bash host gets neither`);
+    }
+  } finally { p.rm(); }
+});
+
+test('RU13: a win32 host\'s session and seat starts end on the Windows line, with no zsh line under Git Bash', () => {
+  const p = fixtureProject();
+  try {
+    for (const event of ['SessionStart', 'SubagentStart']) {
+      const win = driveHost(p, event, { shell: 'C:\\Program Files\\Git\\usr\\bin\\bash.exe', platform: 'win32' });
+      assert.match(win, /\n\nShell commands on this host:\n- On Windows \(Git Bash\)/, event);
+      assert.match(win, /`MSYS2_ARG_CONV_EXCL='\*'`/, event);
+      assert.doesNotMatch(win, ZSH_LINE, `${event}: Git Bash is no zsh`);
+    }
+  } finally { p.rm(); }
 });

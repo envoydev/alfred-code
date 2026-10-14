@@ -45,12 +45,23 @@ test('a bare matcher is a PreToolUse wiring; an @ prefix names its own event', (
 // platform honours: five hooks were committed 100644, and Windows runs neither.
 // Audit 2026-10-08 row 28: the plugin route spawned the tool-usage log on every tool call and waited on it; it runs async
 // now (code.claude.com/docs/en/hooks, 'Run hooks in the background'), and nothing that must block or decide does.
-test('only the tool-usage log runs async, so every guard can still block', () => {
-    const all = Object.values(block).flat().flatMap((b) => b.hooks);
-    const async = all.filter((h) => h.async === true).map((h) => h.command);
-    assert.deepStrictEqual(async, ['node "${CLAUDE_PLUGIN_ROOT}/stack/hooks/instrument-tool-usage.js"']);
-    const core = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'plugin-entries.json'), 'utf8'));
-    assert.match(JSON.stringify(core), /instrument-tool-usage\.js\\"","timeout":10,"async":true/, 'the generated entry carries it');
+// Audit 2026-10-14 HK12: the stop contract's PostToolUse / PostToolUseFailure halves are log-only too (a red-run probe row),
+// so they run async as well; its Stop, SubagentStop and AskUserQuestion halves block, so they never do.
+test('only the log-only hooks run async - the tool-usage log and the stop contract\'s two shell-result halves - so every guard can still block', () => {
+    const async = Object.entries(block).flatMap(([event, groups]) => groups.flatMap((b) => b.hooks.filter((h) => h.async === true)
+        .map((h) => `${event} ${h.command.replace(/^node "\$\{CLAUDE_PLUGIN_ROOT\}\/stack\/hooks\//, '').replace(/"$/, '')}`))).sort();
+    assert.deepStrictEqual(async, ['PostToolUse guard-stop-contract.js', 'PostToolUseFailure guard-stop-contract.js', 'PreToolUse instrument-tool-usage.js']);
+    for (const [event, groups] of Object.entries(block))
+        for (const h of groups.flatMap((b) => b.hooks))
+            if (/guard-stop-contract\.js/.test(h.command) && !/^PostToolUse/.test(event)) assert.ok(!h.async, `the stop contract's ${event} half must block`);
+    const core = JSON.stringify(JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'plugin-entries.json'), 'utf8')));
+    assert.match(core, /instrument-tool-usage\.js\\"","timeout":10,"async":true/, 'the generated entry carries it');
+    assert.strictEqual((core.match(/guard-stop-contract\.js\\"","timeout":10,"async":true/g) || []).length, 2, 'and the two shell-result halves');
+    // the copy route writes the same table, and backfills it onto an older blocking entry
+    const { asyncFor } = require('./install/settings.js');
+    assert.ok(asyncFor('guard-stop-contract.js', 'PostToolUse') && asyncFor('guard-stop-contract.js', 'PostToolUseFailure'));
+    for (const event of ['Stop', 'SubagentStop', 'PreToolUse']) assert.ok(!asyncFor('guard-stop-contract.js', event), event);
+    assert.ok(asyncFor('instrument-tool-usage.js', 'PreToolUse') && !asyncFor('shell-guards.js', 'PreToolUse'));
 });
 
 test('the block is a valid plugin hooks object: node launcher, timeout 10 (60 and 80 for the two declared exceptions), plugin-root paths', () => {
@@ -206,13 +217,13 @@ test('the slash route is UserPromptExpansion, its matcher naming every orchestra
     assert.strictEqual(slash.length, 1, 'wired once on UserPromptExpansion');
     const matches = (name) => new RegExp(slash[0].matcher).test(name);
     const src = fs.readFileSync(path.join(__dirname, '..', 'stack', 'hooks', file), 'utf8');
-    // UserPromptSubmit carries ONLY the idle-gap route (audit 2026-10-10 C09): the branch offers on a gap and exits,
-    // so the slash offer never runs on an ordinary prompt.
+    // UserPromptSubmit carries ONLY the auto-mode end (2026-10-14) and the idle-gap route (audit 2026-10-10 C09): the
+    // branch ends a session's own auto-mode or offers on a gap, and exits, so the slash offer never runs on an ordinary prompt.
     const submit = (block.UserPromptSubmit || []).filter((b) => b.hooks.some((h) => h.command.includes(file)));
     assert.ok(submit.length <= 1, 'at most once on UserPromptSubmit');
-    assert.match(src, /if \(EVENT === 'UserPromptSubmit'\) \{\s*idleGapOffer\(\);\s*process\.exit\(0\);\s*\}/, 'and that route is the idle gap alone');
+    assert.match(src, /if \(EVENT === 'UserPromptSubmit'\) \{\s*if \(!autoModeEnd\(\)\) idleGapOffer\(\);\s*process\.exit\(0\);\s*\}/, 'and that route is the auto-mode end or the idle gap, then out');
     const orchestration = new RegExp(src.match(/^const ORCHESTRATION = \/(.+)\/;$/m)[1]);
-    const names = ['loop-quality', 'loop-architecture-quality', 'loop-test-coverage', 'capture-architecture',
+    const names = ['loop-code-quality', 'loop-architecture-quality', 'loop-test-coverage', 'capture-architecture',
         'capture-project-awareness', 'task-solve', 'task-solve-cross', 'task-verify-code', 'issue-diagnoser',
         'security-review', 'alfred-code:init', 'alfred-code:setup', 'alfred-code:update', 'alfred-code:configure', 'alfred-code:validate'];
     for (const n of names) {
@@ -220,8 +231,12 @@ test('the slash route is UserPromptExpansion, its matcher naming every orchestra
         assert.ok(matches(n) && matches(n.replace(/^.*:/, '')), `${n} reaches the hook under either spelling`);
         if (!n.includes(':')) assert.ok(matches(`alfred-code:${n}`), `${n} reaches it plugin-scoped too`);
     }
-    for (const n of ['help', 'clear', 'compact', 'dev-log-convert', 'my-setup', 'task-solved', 'csharp', 'alfred-code:status'])
+    for (const n of ['help', 'clear', 'compact', 'dev-log-convert', 'my-setup', 'tasks', 'my-task-x', 'csharp', 'alfred-code:status'])
         assert.ok(!matches(n), `${n} never spawns the hook`);
+    // every task-* and loop-* name reaches it, a project's own and a digit included: `auto-mode` on any of them starts a
+    // run, and the hook exits at once for one that is no orchestration run (audit 2026-10-14 HK06)
+    for (const n of ['task-migrate-v2', 'task-solved', 'loop-perf', 'alfred-code:task-x2'])
+        assert.ok(matches(n), `${n} reaches the hook`);
 });
 
 test('the retired tool names are kept evenly: every file-write matcher names MultiEdit, the dispatch one Task (2.1.5 M7)', () => {
@@ -251,4 +266,73 @@ test('the hooks audit\'s currency rows follow the hooks reference: DirectoryAdde
     assert.match(currency, /`SessionStart` sources `startup` \/ `resume` \/ `clear` \/ `compact` \/ `fork`/);
     const noMatcher = rubric.match(/no matcher on the events that ignore one - ([^;)]*)[;)]/)[1];
     assert.doesNotMatch(noMatcher, /DirectoryAdded/, 'the rubric no longer lists DirectoryAdded among the events that ignore a matcher');
+});
+
+// HK12 on the copy route: the writer keys the async flag by the hook's EVENT, so the stop contract's shell-result halves
+// are written async (and backfilled onto an older blocking entry) while its Stop half stays able to block; a re-run
+// changes nothing.
+test('copy route: the stop contract\'s PostToolUse / PostToolUseFailure entries are async, its Stop entry is not (HK12)', () => {
+    const { writeSettings, hookCommand } = require('./install/settings.js');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hooks-entry-async-'));
+    try {
+        const file = path.join(dir, '.claude', 'settings.json');
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        const cmd = hookCommand('guard-stop-contract.js', '').command;
+        // an older install wired the PostToolUse half blocking
+        fs.writeFileSync(file, JSON.stringify({ hooks: { PostToolUse: [{ matcher: 'Bash|PowerShell', hooks: [{ type: 'command', command: cmd, timeout: 10 }] }] } }));
+        const specs = ['@Stop', '@PostToolUse:Bash|PowerShell', '@PostToolUseFailure:Bash|PowerShell'].map((matcher) => ({ file: 'guard-stop-contract.js', matcher }));
+        const opts = { file, catalog: require('../meta/environment.json').env, migrations: {}, log: () => {}, note: () => {}, hookSpecs: specs };
+        writeSettings(opts);
+        const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+        const of = (event) => data.hooks[event].flatMap((e) => e.hooks).filter((h) => h.command === cmd);
+        assert.deepStrictEqual(of('PostToolUse').map((h) => h.async), [true], 'the older blocking entry is backfilled, not doubled');
+        assert.deepStrictEqual(of('PostToolUseFailure').map((h) => h.async), [true], 'a fresh entry is written async');
+        assert.deepStrictEqual(of('Stop').map((h) => h.async), [undefined], 'the Stop half must block');
+        const before = fs.readFileSync(file, 'utf8');
+        writeSettings(opts);
+        assert.strictEqual(fs.readFileSync(file, 'utf8'), before, 'a re-run changes nothing');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// Audit 2026-10-14 HK07 (the user's ruling): a hook that fails - cannot start, times out, exits other than 0 / 2 - lets the
+// call through unless it sets `onFailure: "block"` (code.claude.com/docs/en/hooks, 'Block the action when a hook fails',
+// 2.1.295+). The shell-guard dispatcher alone carries it, on both routes: its rm, force-push and secret guards are the ones a
+// crashed or stalled dispatcher would silently pass. The copy route backfills it onto an older entry once, touches no
+// hook of the user's, and a re-run changes nothing.
+test('the shell-guard dispatcher alone blocks the call when it fails - plugin and copy routes, backfilled once (HK07)', () => {
+    const flagged = Object.entries(block).flatMap(([event, groups]) => groups.flatMap((b) => b.hooks.filter((h) => h.onFailure !== undefined)
+        .map((h) => `${event} ${b.matcher} ${h.onFailure} ${h.command.replace(/^node "\$\{CLAUDE_PLUGIN_ROOT\}\/stack\/hooks\//, '').replace(/"$/, '')}`)));
+    assert.deepStrictEqual(flagged, [`PreToolUse ${dispatcher.MATCHER} block shell-guards.js`]);
+    const core = JSON.stringify(JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'plugin-entries.json'), 'utf8')));
+    assert.strictEqual((core.match(/"onFailure":"block"/g) || []).length, 1, 'the generated entry carries it once');
+    assert.match(core, /shell-guards\.js\\"","timeout":\d+,"onFailure":"block"/, 'on the dispatcher');
+    const { onFailureFor, writeSettings, hookCommand } = require('./install/settings.js');
+    assert.strictEqual(onFailureFor('shell-guards.js', 'PreToolUse'), 'block');
+    for (const [file, event] of [['file-guards.js', 'PreToolUse'], ['guard-stop-contract.js', 'Stop'], ['instrument-tool-usage.js', 'PreToolUse'], ['shell-guards.js', 'PostToolUse']])
+        assert.strictEqual(onFailureFor(file, event), undefined, `${file} ${event}`);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hooks-entry-onfailure-'));
+    try {
+        const file = path.join(dir, '.claude', 'settings.json');
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        const cmd = hookCommand('shell-guards.js', '').command;
+        const mine = { type: 'command', command: 'node my-own-bash-hook.js', timeout: 5 };
+        // an older install wired the dispatcher without it, beside the user's own Bash hook
+        fs.writeFileSync(file, JSON.stringify({ hooks: { PreToolUse: [{ matcher: dispatcher.MATCHER, hooks: [{ type: 'command', command: cmd, timeout: 90 }] },
+            { matcher: 'Bash', hooks: [mine] }] } }));
+        const specs = [...dispatcher.GUARDS.map((g) => ({ file: `${g}.js`, matcher: dispatcher.MATCHER })), { file: 'guard-stop-contract.js', matcher: '@Stop' }];
+        const opts = { file, catalog: require('../meta/environment.json').env, migrations: {}, log: () => {}, note: () => {}, hookSpecs: specs };
+        writeSettings(opts);
+        const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+        const ours = data.hooks.PreToolUse.flatMap((e) => e.hooks).filter((h) => h.command === cmd);
+        assert.deepStrictEqual(ours.map((h) => h.onFailure), ['block'], 'backfilled onto the older entry, not doubled');
+        assert.deepStrictEqual(data.hooks.PreToolUse.find((e) => e.matcher === 'Bash').hooks, [mine], 'the user\'s own hook is untouched');
+        assert.deepStrictEqual(data.hooks.Stop.flatMap((e) => e.hooks).map((h) => h.onFailure), [undefined], 'a Stop hook never carries it');
+        const before = fs.readFileSync(file, 'utf8');
+        writeSettings(opts);
+        assert.strictEqual(fs.readFileSync(file, 'utf8'), before, 'a re-run changes nothing');
+        // a fresh file gets it written with the entry
+        fs.rmSync(file);
+        writeSettings(opts);
+        assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf8')).hooks.PreToolUse.flatMap((e) => e.hooks).map((h) => h.onFailure), ['block']);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "skill": "answer-budget",
+  "sources": ["stack/rules/alfred-interaction.md"],
+  "extracted": "2026-10-14",
+  "note": "Not a skill: the answer budget and house voice the always-on interaction rule states and guard-answer-length.js injects each turn (audit 2026-10-14 RU06). A replay runs unattended, where the hook's Stop block stands down, so the arms differ only in the injected text and the rule. The fixture question needs no code in the answer; 1,200 chars is the ~900 prose budget with a third of slack.",
+  "run": {
+    "max_turns": 12,
+    "stacks": ["javascript"],
+    "allowed_tools": ["Read", "Glob", "Grep", "Bash"],
+    "selection": { "rules": ["alfred-interaction"] }
+  },
+  "prompts": {
+    "explicit": "Answer inside the house answer budget: what does applyDiscount in src/pricing.js do, and what happens with a negative or over-100 percent?",
+    "plain": "What does applyDiscount in src/pricing.js do, and what happens with a negative or over-100 percent?",
+    "adverse": "Explain src/pricing.js to me - how applyDiscount works, and what it does with a negative or over-100 percent."
+  },
+  "steps": [
+    {
+      "id": "budget",
+      "from": "stack/rules/alfred-interaction.md",
+      "quote": "about 900 characters of prose",
+      "graders": [
+        { "type": "regex", "name": "the closing answer stays near the budget (1,200 chars)", "target": "last_message", "pattern": "^[\\s\\S]{1,1200}$", "match": "contains" }
+      ]
+    },
+    {
+      "id": "no-em-dash",
+      "from": "stack/rules/alfred-interaction.md",
+      "quote": "No em-dashes - single dashes.",
+      "graders": [
+        { "type": "regex", "name": "no em- or en-dash in the answer", "target": "last_message", "pattern": "[\\u2014\\u2013]", "match": "not_contains" }
+      ]
+    },
+    {
+      "id": "no-closing-offer",
+      "from": "stack/rules/alfred-interaction.md",
+      "quote": "No closing offer to elaborate",
+      "graders": [
+        { "type": "regex", "name": "no offer to say more", "target": "last_message", "pattern": "\\b(let me know|want me to|would you like|if you('d| would) like|happy to (explain|help|go))\\b", "flags": "i", "match": "not_contains" }
+      ]
+    }
+  ]
+}

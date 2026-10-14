@@ -945,6 +945,63 @@ function standDownRenamed({ oldSpec, newSpec, at, here, wasOn, isOn, cli, log, n
     else note(`plugin disable failed: ${oldSpec} - it loads beside ${newSpec}, the same server twice; disable it for this project: claude plugin disable ${oldSpec} --scope ${here}`);
 }
 
+// A STALE OLD KEY (audit 2026-10-14 PL5, the user's ruling of 2026-10-14): migrateRenamed acts on install records only,
+// so a project whose own settings still switch on a renamed id that NO record reaches - a committed
+// `"browser-chrome@envoydev": true` from a teammate's machine, or a record uninstalled since - kept it, and every clone
+// carried it. On update, each such key of THIS stack's marketplace whose successor this run carries is removed from the
+// project's two settings files, one line per key naming the file. A record that reaches this project (its own, or an
+// account-wide one) leaves the key to the swap; another marketplace's key of the same name is the user's own and stays;
+// an unreadable listing or settings file changes nothing. `raw` is `claude plugin list --json`'s text.
+// Returns the `{ file, key }` pairs removed.
+function dropStaleRenamed({ raw, projectRoot, renamed = {}, set = [], market = BRAND.marketplace, log = () => {}, note = () => {} })
+{
+    const { currentMcp, renamedFrom } = require('./mcp.js');
+    let data;
+    try { data = JSON.parse(raw); }
+    catch { return []; }
+    const list = Array.isArray(data) ? data : (data && Array.isArray(data.installed) ? data.installed : null);
+    if (!list) return [];
+    const reached = reachedIds(list, projectRoot);
+    const out = [];
+    for (const name of ['settings.json', 'settings.local.json'])
+    {
+        const file = path.join(projectRoot, '.claude', name);
+        let text;
+        try { text = fs.readFileSync(file, 'utf8'); }
+        catch { continue; }
+        let settings;
+        try { settings = parseJson(text); }
+        catch { note(`.claude/${name} could not be read - a renamed plugin's old key in it was not checked`); continue; }
+        const enabled = settings && settings.enabledPlugins;
+        if (!enabled || typeof enabled !== 'object' || Array.isArray(enabled)) continue;
+        const gone = [];
+        for (const old of renamedFrom(renamed))
+        {
+            const key = `${old}@${market}`;
+            const now = `${currentMcp(old, renamed)}@${market}`;
+            if (!Object.hasOwn(enabled, key) || reached.has(key) || !set.includes(now)) continue;
+            gone.push(key);
+            log(`  renamed: ${key} removed from .claude/${name} (it was ${JSON.stringify(enabled[key])}) - no install record reaches it, and ${now} serves this project`);
+            delete enabled[key];
+        }
+        if (!gone.length) continue;
+        if (!Object.keys(enabled).length) delete settings.enabledPlugins;
+        fs.writeFileSync(file, `${JSON.stringify(settings, null, 2)}\n`);
+        out.push(...gone.map((key) => ({ file: `.claude/${name}`, key })));
+    }
+    return out;
+}
+
+// The plugin ids an install record reaches in this project: an account-wide record (no projectPath), or this project's
+// own - its path compared as given and as the file system resolves it (macOS /var is /private/var).
+function reachedIds(rows, projectRoot)
+{
+    const real = (p) => { try { return fs.realpathSync(p); } catch { return p; } };
+    const here = new Set([projectKey(projectRoot), projectKey(real(projectRoot))]);
+    const ours = (pp) => here.has(projectKey(pp)) || here.has(projectKey(real(pp)));
+    return new Set(rows.filter((r) => r && r.id && (!r.projectPath || ours(String(r.projectPath)))).map((r) => String(r.id)));
+}
+
 // The third-party marketplaces THIS run needs registered: the source each installed plugin's
 // manifest row names. A source for a plugin the run does not install is never added to the account.
 function extraMarketplaces(rows, set)
@@ -1027,8 +1084,12 @@ function parseMarketplaces(json)
 // project's - the session had no browser tools and nothing said why). The settings' word is effectiveOn's, over the
 // three files the CLI writes; a record reaches when parsePluginList keeps it (this project's own, or an account-wide
 // one). `listing` is `claude plugin list --json`'s text. Each entry: the spec, the file that switches it on, and how
-// many other projects hold a record of it.
-function unreachedPlugins({ listing, projectRoot, configDir })
+// many other projects hold a record of it. A plugin a REGISTERED marketplace lists with a relative-path source loads
+// from that marketplace's copy with no install record (audit 2026-10-14 PL14, measured on 2.1.300: a SessionStart hook
+// of such a plugin fired with `plugin list` empty, and with its only record another project's; a marketplace declared
+// in project settings alone loaded nothing) - so it is reached. `marketplaces` is `claude plugin marketplace list
+// --json`'s rows; with none, every spec needs a record, the reading before the measurement.
+function unreachedPlugins({ listing, projectRoot, configDir, marketplaces = [] })
 {
     const claudeDir = path.join(projectRoot, '.claude');
     const files = { local: path.join(claudeDir, 'settings.local.json'), project: path.join(claudeDir, 'settings.json'), user: path.join(configDir, 'settings.json') };
@@ -1047,11 +1108,28 @@ function unreachedPlugins({ listing, projectRoot, configDir })
     const real = (p) => { try { return fs.realpathSync(p); } catch { return p; } };
     const here = new Set([projectKey(projectRoot), projectKey(real(projectRoot))]);
     const ours = (pp) => here.has(projectKey(pp)) || here.has(projectKey(real(pp)));
-    const reached = new Set(rows.filter((r) => r && r.id && (!r.projectPath || ours(String(r.projectPath)))).map((r) => String(r.id)));
+    const reached = reachedIds(rows, projectRoot);
+    const catalogs = new Map();
+    const fromCatalog = (spec) =>
+    {
+        const at = spec.lastIndexOf('@');
+        if (at <= 0) return false;
+        const [name, key] = [spec.slice(0, at), spec.slice(at + 1)];
+        if (!catalogs.has(key))
+        {
+            const row = parseMarketplaces(marketplaces).find((r) => r.name === key);
+            const dir = row && (row.installLocation || row.path);
+            let entries = [];
+            try { entries = dir ? parseJson(fs.readFileSync(path.join(dir, '.claude-plugin', 'marketplace.json'), 'utf8')).plugins || [] : []; }
+            catch { entries = []; }
+            catalogs.set(key, Array.isArray(entries) ? entries : []);
+        }
+        return catalogs.get(key).some((e) => e && e.name === name && typeof e.source === 'string' && e.source.startsWith('./'));
+    };
     const out = [];
     for (const spec of [...new Set(Object.values(enabled).flatMap((e) => Object.keys(e)))].sort())
     {
-        if (effectiveOn(isOn, spec) !== true || reached.has(spec)) continue;
+        if (effectiveOn(isOn, spec) !== true || reached.has(spec) || fromCatalog(spec)) continue;
         const scope = ['local', 'project', 'user'].find((s) => isOn(spec, s) !== undefined);
         const elsewhere = rows.filter((r) => r && r.id === spec && r.projectPath && !ours(String(r.projectPath))).length;
         out.push({ spec, file: files[scope], elsewhere });
@@ -1062,33 +1140,40 @@ function unreachedPlugins({ listing, projectRoot, configDir })
 module.exports = {
     OFFICIAL_MARKETPLACE, STACK_MARKETPLACE, CORE_SPEC, USER_SCOPE_PLUGINS, USER_OFF_WINS, CORE_DEP_PLUGINS, HUD_SPEC, itemScope, scopedItem, moveScoped,
     SCOPES, isManaged, scopeRank, overrideScope, scopesOf, adminOwned, atRelease, requiredScopes, leftAt, effectiveOn, withEffective,
-    pluginRoutes, committedRoutes, committedRoutesAt, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor, migrateRenamed,
+    pluginRoutes, committedRoutes, committedRoutesAt, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor, migrateRenamed, dropStaleRenamed,
     resolveStackPlugins, selectionLines, pluginSet,
     refreshMarketplaces, stackMarket, refreshStackSource, installPlugins, prunedRetired, retirementDue, updatePlugins, extraMarketplaces, uninstallEngines,
     copyRouteStandDown, restoreStoodDown, standDownScope, engineStandDown, rowsOn, moveLocalRows, hudStatusLineMissing, unreachedPlugins,
 };
 
-// `node scripts/install/plugins.js unreached [projectRoot] [--listing <file>]` - /alfred-code:status's read: one
-// `unreached: <spec>\t<settings file>\t<why>` line per plugin the settings switch on that loads nothing here, else
-// `unreached: none`. Without --listing it asks `claude plugin list --json`; a listing it cannot read says so.
+// `node scripts/install/plugins.js unreached [projectRoot] [--listing <file>] [--marketplaces <file>]` -
+// /alfred-code:status's read: one `unreached: <spec>\t<settings file>\t<why>` line per plugin the settings switch on
+// that loads nothing here, else `unreached: none`. Without --listing it asks `claude plugin list --json` and
+// `claude plugin marketplace list --json`; a plugin listing it cannot read says so. With --listing, the marketplaces
+// come from --marketplaces alone (none when it is absent), so a test never spawns the CLI.
 if (require.main === module)
 {
     require('../../stack/hooks/hook-prelude.js').blockingStdio();
     const argv = process.argv.slice(2);
-    const at = argv.indexOf('--listing');
-    const listingFile = at >= 0 ? argv[at + 1] : null;
-    const [cmd, root] = at >= 0 ? [...argv.slice(0, at), ...argv.slice(at + 2)] : argv;
-    if (cmd !== 'unreached') { console.error('usage: plugins.js unreached [projectRoot] [--listing <file>]'); process.exit(2); }
+    const flag = (name) => { const i = argv.indexOf(name); if (i < 0) return null; const v = argv[i + 1]; argv.splice(i, 2); return v; };
+    const listingFile = flag('--listing');
+    const marketplacesFile = flag('--marketplaces');
+    const [cmd, root] = argv;
+    if (cmd !== 'unreached') { console.error('usage: plugins.js unreached [projectRoot] [--listing <file>] [--marketplaces <file>]'); process.exit(2); }
     const projectRoot = path.resolve(root || '.');
+    const { capture } = require('./runtime.js');
     let listing = '';
-    try { listing = listingFile ? fs.readFileSync(listingFile, 'utf8') : require('./runtime.js').capture('claude', ['plugin', 'list', '--json'], { cwd: projectRoot }); }
+    try { listing = listingFile ? fs.readFileSync(listingFile, 'utf8') : capture('claude', ['plugin', 'list', '--json'], { cwd: projectRoot }); }
     catch { listing = ''; }
+    let marketplaces = '[]';
+    try { marketplaces = marketplacesFile ? fs.readFileSync(marketplacesFile, 'utf8') : (listingFile ? '[]' : capture('claude', ['plugin', 'marketplace', 'list', '--json'], { cwd: projectRoot })); }
+    catch { marketplaces = '[]'; }
     let readable = false;
     try { const data = JSON.parse(listing); readable = Array.isArray(data) || Boolean(data && Array.isArray(data.installed)); }
     catch { readable = false; }
     if (!readable) { console.log('unreached: unknown - the plugin listing could not be read'); process.exit(0); }
     const { accountDir } = require('./stamp.js');
-    const found = unreachedPlugins({ listing, projectRoot, configDir: accountDir() });
+    const found = unreachedPlugins({ listing, projectRoot, configDir: accountDir(), marketplaces });
     for (const u of found)
     {
         const file = path.relative(projectRoot, u.file).startsWith('..') ? u.file : path.relative(projectRoot, u.file).split(path.sep).join('/');

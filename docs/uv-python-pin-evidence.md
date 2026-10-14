@@ -96,3 +96,38 @@ The snapshot is the newest core entry in the plugin cache, and only `plugin upda
 one there. So a run that picked before updating installed the release it was meant to replace.
 `scripts/install-plugins.test.js` and `scripts/source-cache.test.js` pin the order: a recording
 `claude` stub lands a newer entry on `plugin update`, and the run must take it.
+
+## windows-control on 3.14 (2026-10-14)
+
+windows-mcp 0.8.6, 0.8.7 and 0.8.8 declare `requires_python >=3.14` on PyPI (0.8.5: `>=3.12`), so the
+refresh held windows-control at 0.8.5 while every uvx server shared 3.13. The user ruled on 2026-10-14
+to move it to 0.8.8 on 3.14, so `uv-python.js` gives windows-control its own Python (`SERVER_PYTHON`).
+The other servers stay on 3.13. Measured on a Windows 11 ARM VM (`PROCESSOR_IDENTIFIER` ARMv8) with
+uv 0.13.1 aarch64, as SYSTEM through `prlctl exec`, with a scratch `UV_CACHE_DIR` and
+`UV_PYTHON_INSTALL_DIR`, each command `uv tool run --python <request> --exclude-newer
+2026-10-14T23:59:59Z --from <pkg> windows-mcp serve ...`:
+
+| request | package | `serve --help` | start + tools/list |
+|---|---|---|---|
+| `cpython-3.13-windows-x86_64-none` | `windows-mcp==0.8.5` | exit 0, 46 s (first) | serverInfo `windows-mcp` 4.1.0 in 7.7 s, 16 tools under the stack's `--exclude-tools`, 20 without |
+| `cpython-3.14-windows-x86_64-none` | `windows-mcp==0.8.8` | exit 0, 30 s (first) | exit 1: `RuntimeError: No active interactive desktop for physical input control` |
+| `cpython-3.14-windows-aarch64-none` | `windows-mcp==0.8.8` | exit 1, 82 s | not reached: `Failed to build cryptography==50.0.2` (maturin, `linker link.exe not found`) |
+
+- The generated plugin entry, run on the same VM through a clean export's `desktop-launch.js` with the
+  marketplace entry's own argv (node arm64), printed `desktop-launch: windows-mcp==0.8.8, python
+  cpython-3.14-windows-x86_64-none, windows-mcp serve --exclude-tools PowerShell,Registry,Process,FileSystem`.
+  uvx installed the tree, and the server stopped at the same start check as the row above.
+- The x64 3.14 build installs the whole 0.8.8 tree and runs its CLI, so the x64 request
+  (`cpython-3.14-windows-x86_64-none`) stays the Windows-on-ARM form. ARM64 still lacks the
+  cryptography wheel and needs a compiler, as it did on 3.13.
+- 0.8.8 starts a physical-input monitor in its lifespan. The monitor refuses to run unless the
+  process's WTS session is active and the input desktop is `Default`
+  (`windows_mcp/desktop/control_win32.py _interactive_desktop`). A lock screen or UAC prompt switches
+  the input desktop to Winlogon. SYSTEM in session 0 has none of this, so the server exits at start.
+  That is why the start column above failed in the probe. A start in the signed-in user's session
+  was NOT RUN here: the scheduled task that would have launched it in that session was refused by
+  this session's permission classifier.
+- Tools at 0.8.8, from the wheel's own `tools/*.py` (`refresh-mcp-pins.js`): the 0.8.5 twenty plus
+  `ControlStatus`. That tool is read-only and reports who holds the desktop and the user's idle wait.
+  `App` keeps the same four modes (`tools/app.py:90`), and `--exclude-tools` / `--tools` are unchanged
+  in `serve --help`.

@@ -1,6 +1,6 @@
 ---
 name: task-verify-plan
-description: "Use to audit a plan or design before writing code - 'review this plan', 'is this design sound', 'does the plan miss anything'. Not the built-code review."
+description: "Use to audit an existing plan or design before code - 'review this plan', 'is this design sound', 'does it miss anything'. Not plan writing or code review."
 ---
 
 # Verify Plan - a risk-coverage audit of a plan before you build
@@ -26,6 +26,8 @@ A mode the run already picked is inherited, never re-asked - with ONE boundary: 
 - Use it the moment a plan exists and before implementation starts - especially for anything with a boundary, state, auth, migration, or concurrency surface. The plan file is the whole input: a fresh session (or a different model) audits it as well as the chat that designed it - and independent eyes on the page are the point.
 - Not code review - that is `task-verify-code`, after the build.
 - Not plan *creation* - that is `task-design` (`habits-plan-writing` is the format), after `habits-clarify` settles an ambiguous ask. This audits a plan that already exists.
+
+**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it.
 
 ## The audit - five passes, in order
 

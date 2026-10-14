@@ -10,7 +10,9 @@ const ROOT = path.join(__dirname, '..');
 const ROOTS = ['stack', 'setup-plugin', 'meta', 'scripts'];
 const TOOLS_FILE = path.join(ROOT, 'meta', 'mcp-tools.json');
 const MCP_FIXTURE_MARKER = /(?:\/\/|#|<!--)[^\n]*?(?<![\w-])mcp-fixture(?![\w-])/;
-const PLUGIN_TOOL_SPELLING = /mcp__plugin_([A-Za-z0-9][A-Za-z0-9.-]*)_([A-Za-z0-9][A-Za-z0-9.-]*)__([A-Za-z0-9][A-Za-z0-9_-]*)?/g;
+// A tool (`mcp__plugin_<p>_<s>__<tool>`), a wildcard (`__*`, no tool group) or a whole-server grant ending the word
+// (`mcp__plugin_<p>_<s>`, the seats' generated lines - scripts/seat-tools.js); a sentence's period is not the server's.
+const PLUGIN_TOOL_SPELLING = /mcp__plugin_([A-Za-z0-9][A-Za-z0-9.-]*)_([A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?)(?:__([A-Za-z0-9][A-Za-z0-9_-]*)?|(?![A-Za-z0-9_-]))/g;
 const escape = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // The text files under the given roots, the way the three checks read them.
@@ -70,7 +72,8 @@ function lintMcpToolNames({ files, names } = {})
         }
         catch (err) { return [`the MCP entries could not be generated, so the tool-name sweep did not run: ${err.message}`]; }
     }
-    const bare = new RegExp(`mcp__(${[...new Set(bareNames)].sort((a, b) => b.length - a.length).map(escape).join('|')})__`, 'g');
+    // a tool or wildcard (`mcp__<s>__...`), or a whole-server grant ending the word (`mcp__<s>`)
+    const bare = new RegExp(`mcp__(${[...new Set(bareNames)].sort((a, b) => b.length - a.length).map(escape).join('|')})(?:__|(?![A-Za-z0-9_-]))`, 'g');
     const out = [];
     each(files, (file, n, line) =>
     {

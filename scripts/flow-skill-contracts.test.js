@@ -130,8 +130,8 @@ const PROTECTED = 'Only where the docs root still sits under `.claude/` (the old
     + 'a prompt for it offers \'Yes, and allow Claude to edit files in this project\'s .claude folder for this session\' - '
     + 'take that, since `permissions.allow` cannot pre-approve it.';
 const STAMP_SITES = [
-    'stack/skills/loop-architecture-quality/SKILL.md', 'stack/skills/loop-quality/SKILL.md',
-    'stack/skills/loop-quality/references/delegated-mode.md', 'stack/skills/loop-test-coverage/SKILL.md',
+    'stack/skills/loop-architecture-quality/SKILL.md', 'stack/skills/loop-code-quality/SKILL.md',
+    'stack/skills/loop-code-quality/references/delegated-mode.md', 'stack/skills/loop-test-coverage/SKILL.md',
     'stack/skills/task-build-from-scratch/SKILL.md', 'stack/skills/task-implement/SKILL.md',
     'stack/skills/task-solve/references/step-mechanics.md', 'stack/skills/task-solve-cross/references/execution-modes.md',
     'stack/skills/task-version-upgrade/SKILL.md',

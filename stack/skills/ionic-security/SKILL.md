@@ -9,7 +9,7 @@ An Ionic app is an Angular app running in a native WebView with a bridge to nati
 
 ## When to use
 
-Load when hardening or reviewing an Ionic/Capacitor feature - 'is it safe to store the token like this', 'lock the app behind Face ID', 'review our deep links' - or when a security audit sweeps the mobile stack. Targets Capacitor 6+.
+Load when hardening or reviewing an Ionic/Capacitor feature - 'is it safe to store the token like this', 'lock the app behind Face ID', 'review our deep links' - or when a security audit sweeps the mobile stack. Targets Capacitor 7+.
 
 Covers Keychain / Keystore secret storage (never localStorage or Preferences), deep links as untrusted input, least-privilege native permissions, release-build WebView settings, navigation allowlisting, screen-capture and backgrounding, plugin trust, pinning and biometric gating.
 
@@ -79,8 +79,9 @@ Android enforces the cleartext ban in `res/xml/network_security_config.xml`, ref
 Prove the two release flags mechanically before either one becomes a row - a flag you did not grep is reported UNVERIFIED, never assumed off:
 
 ```bash
-grep -rn 'cleartextTrafficPermitted' android/app/src/main/res/       # expect ="false"; no file at all is itself the finding
-grep -rn 'webContentsDebuggingEnabled\|server' capacitor.config.*    # expect no debugging flag true, no server.url outside a dev-only config
+grep -n 'usesCleartextTraffic' android/app/src/main/AndroidManifest.xml   # expect no ="true"
+grep -rn 'cleartextTrafficPermitted="true"' android/app/src/main/res/       # expect no hit - no config file is the platform default (API 28+), cleartext off
+grep -rn 'webContentsDebuggingEnabled\|cleartext\|server' capacitor.config.*  # expect no debugging flag or cleartext true, no server.url outside a dev-only config
 ```
 
 Report findings as `surface | risk | fix`, ordered by risk - e.g. `Preferences token store | anyone with the device reads the session token | move to the Keychain/Keystore plugin, biometric-gate the read`. Findings on the web layer inside the WebView route to the skill covering Angular web hardening (XSS, CSP, token storage, CSRF), on the API side to the skill covering ASP.NET / .NET hardening - name the route by what it covers, do not restate its content here; when no installed skill matches, keep the finding in this report tagged with its surface and mark it UNVERIFIED for that stack.

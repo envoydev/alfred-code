@@ -41,7 +41,9 @@ const SHARED_BROWSER = 'browser';
 // mobile-control's screenshots, recordings and saved page sources (stack/mcp/mobile-launch.js).
 const MOBILE_FOLDER = 'mobile-control';
 // The project's own secret store, a dotenv the user fills by hand (the user's ruling of 2026-10-13): every value in it is
-// a credential to stack/hooks/guard-secret-value.js, and each launcher hands them to its server (withSensitive).
+// a credential to stack/hooks/guard-secret-value.js. The browser launcher hands Playwright MCP the FILE (--secrets), which
+// types a value by its KEY and masks it in each response; mobile-control takes only the keys appium-mcp documents
+// (withSensitive `only`); no other server gets any (audit 2026-10-14 PL2, the user's ruling of 2026-10-14).
 const SENSITIVE_FILE = '.sensitive-data';
 
 // ------------------------------------------------------------------ the setting
@@ -125,37 +127,55 @@ function sharedBrowserOf(cls, root = DATA_ROOT_DEFAULT)
 
 // ------------------------------------------------------------------ the root's own .gitignore
 
-// Everything under the root is this machine's - the navigation index and its ~327MB of language servers,
-// browser profiles holding session cookies, a project memory database - EXCEPT the docs, whose own
-// `.gitignore` says how they are versioned. So the root ignores everything and re-includes the docs folder:
-// a bare `*` would hide it, `git check-ignore` would then answer yes for it, and the versioning seed would
-// read every fresh project's docs as kept out of git and seed `local`. It re-includes ITSELF too, so it is
-// committed and a teammate's clone has it before any server writes there. The header line marks the file
-// as the stack's: any other text is the project's own and is left alone. One home, read by the installer
-// (docs.ensureDataIgnore) and by every launcher that writes under the root (ensureRootIgnore).
+// THE ONE .gitignore the stack writes (the user's ruling of 2026-10-13: one file, at the data root). Everything under
+// the root is this machine's - the navigation index and its ~327MB of language servers, browser profiles holding
+// session cookies, a project memory database, the sensitive data - EXCEPT the docs, which follow
+// ALFRED_CODE_DOCS_VERSIONING. `local` keeps them out too; `git` (and a mode nobody has set yet) re-includes the docs
+// folder and keeps out only the hooks' machine state under it. A bare `*` would hide the docs from git under `git`,
+// `git check-ignore` would then answer yes for them, and the versioning seed would read every fresh project as
+// `local`. The file re-includes ITSELF, so it is committed and a teammate's clone has it before any server writes
+// there. The header line marks it as the stack's: any other text is the project's own and is left alone. One home,
+// read by the installer (docs.ensureDataIgnore) and by every launcher that writes under the root (ensureRootIgnore).
+// A docs root OUTSIDE this root keeps its own file (docs.ensureDocsIgnore) - no file of the stack's reaches it.
 const DATA_IGNORE_HEAD = '# alfred-code: the data root (ALFRED_CODE_DATA_PATH) is machine-local';
+// The hooks' machine state under the docs root, relative to it: never committed, whatever the versioning.
+const DOCS_STATE_IGNORE = [
+    '/flow/', '/hook-blocks/', '/history/', '/tools-usage/', '/.branches/', '/docs-log.jsonl',
+    "# the usage audit's raw transcript and ledger copies stay on this machine",
+    '/usage-report/**/*.jsonl',
+    "# the run book's credentials file before 2026-10-13, which an older capture still writes",
+    '/project-capabilities/credentials.local.env',
+];
 const relOf = (v) => String(v || '').replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
-function dataIgnoreText({ root, docsPath })
+function docsInsideRoot({ root, docsPath })
 {
     const rel = path.posix.relative(relOf(root), relOf(docsPath));
-    const docsInside = rel && !rel.startsWith('..') && !path.posix.isAbsolute(rel);
-    return docsInside
-        ? `${DATA_IGNORE_HEAD}; the docs under it follow ALFRED_CODE_DOCS_VERSIONING (their own .gitignore)\n/*\n!/.gitignore\n!/${rel.split('/')[0]}/\n`
-        : `${DATA_IGNORE_HEAD}\n*\n!/.gitignore\n`;
+    return rel && !rel.startsWith('..') && !path.posix.isAbsolute(rel) ? rel : '';
+}
+function dataIgnoreText({ root, docsPath, mode })
+{
+    const rel = docsInsideRoot({ root, docsPath });
+    if (!rel) return `${DATA_IGNORE_HEAD}\n*\n!/.gitignore\n`;
+    if (mode === 'local') return `${DATA_IGNORE_HEAD}; the docs under it are too (ALFRED_CODE_DOCS_VERSIONING=local)\n/*\n!/.gitignore\n`;
+    const state = DOCS_STATE_IGNORE.map((l) => (l.startsWith('#') ? l : `/${rel}${l}`));
+    return `${DATA_IGNORE_HEAD}; the docs under it are committed (ALFRED_CODE_DOCS_VERSIONING=git), the hooks' state there is not\n`
+        + `/*\n!/.gitignore\n!/${rel.split('/')[0]}/\n${state.join('\n')}\n`;
 }
 
 // A launcher's half, before it hands out a path under the root: the file is written only when absent (the
-// installer keeps it current), with the docs root the settings name - else `<root>/docs`, what every install
-// writes. A project on 2.0.0 whose servers are already 2.1 has none yet. 'written' | 'present'.
+// installer keeps it current), with the docs root and versioning the settings name - else `<root>/docs`, what every
+// install writes, and the committed shape. A project on 2.0.0 whose servers are already 2.1 has none yet.
+// 'written' | 'present'.
 function ensureRootIgnore({ projectDir, root, env = process.env })
 {
     const base = path.join(projectDir, ...String(root).split('/'));
     const file = path.join(base, '.gitignore');
     if (fs.existsSync(file)) return 'present';
     const docsPath = settingFrom({ env, projectDir, suffix: 'DOCS_PATH' }) || `${root}/docs`;
+    const mode = String(settingFrom({ env, projectDir, suffix: 'DOCS_VERSIONING' }) || '').trim().toLowerCase();
     fs.mkdirSync(base, { recursive: true });
     // `wx`: another server starting at the same moment may have written it - its file stands.
-    try { fs.writeFileSync(file, dataIgnoreText({ root, docsPath }), { flag: 'wx' }); }
+    try { fs.writeFileSync(file, dataIgnoreText({ root, docsPath, mode }), { flag: 'wx' }); }
     catch (err) { if (err.code === 'EEXIST') return 'present'; throw err; }
     return 'written';
 }
@@ -491,13 +511,33 @@ function readSensitive({ projectDir, root = DATA_ROOT_DEFAULT })
 }
 
 // A launcher's child environment with the project's sensitive data in it: a variable already set (the shell, a settings
-// file's env) keeps its value - a launch takes the store only where nothing else answers, the dotenv convention.
+// file's env) keeps its value - a launch takes the store only where nothing else answers, the dotenv convention. `only`
+// names the keys the server documents (null: every key); any other key in the store stays out of its environment.
 // { env, count } - the count is for the launcher's one stderr line; no value is ever logged.
-function withSensitive(env, { projectDir, root } = {})
+function withSensitive(env, { projectDir, root, only = null } = {})
 {
     const values = readSensitive({ projectDir, root: root || dataRootOf({ env, projectDir }).root });
-    const added = Object.keys(values).filter((k) => !Object.hasOwn(env, k));
+    const added = Object.keys(values).filter((k) => !Object.hasOwn(env, k) && (!only || only.includes(k)));
     return { env: { ...env, ...Object.fromEntries(added.map((k) => [k, values[k]])) }, count: added.length };
+}
+
+// The project's sensitive data exists from the first install on (the user's ruling of 2026-10-13), so a person finds
+// it where every rule points before anything needs a value. One comment line, no key: the secret guard's start line
+// stays silent on it, and a run book capture's keys are a `KEY=` line it hands the user. Written only when absent and
+// only where git keeps it out (or there is no repository) - a store git would commit is said, never made.
+// 'written' | 'present' | 'exposed' | 'blocked' (a folder or link under the name).
+const SENSITIVE_DEFAULT = "# alfred-code: this project's sensitive data - KEY=value, one per line; gitignored, and its values never reach the chat\n";
+function ensureSensitiveFile({ projectDir, root = DATA_ROOT_DEFAULT, check = gitIgnores })
+{
+    const file = path.join(projectDir, ...String(root).split('/'), SENSITIVE_FILE);
+    if (isFile(file)) return 'present';
+    try { fs.lstatSync(file); return 'blocked'; }
+    catch { /* absent: ours to write */ }
+    if (check(projectDir, `${relOf(root)}/${SENSITIVE_FILE}`) === false) return 'exposed';
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    try { fs.writeFileSync(file, SENSITIVE_DEFAULT, { flag: 'wx', mode: 0o600 }); }
+    catch (err) { if (err.code === 'EEXIST') return 'present'; throw err; }
+    return 'written';
 }
 
 // The capture's own credentials file before 2026-10-13 (`<docs>/project-capabilities/credentials.local.env`): one
@@ -698,7 +738,7 @@ function ensureSerenaConfig(homeAbs, folder = `${DATA_ROOT_DEFAULT}/serena`)
 module.exports = {
     DATA_ROOT_DEFAULT, MEMORY_FOLDER, LEGACY_MEMORY_FOLDER, MOBILE_FOLDER, SENSITIVE_FILE, sensitivePlaceOf, readSensitive, withSensitive, adoptCredentials, ENGINES, LEGACY, SHARED_BROWSER, engineServer, engineOfServer, ENGINE_SERVER, sharedBrowserOf, isRelayout,
     checkDataPath, dataRootOf, layout, targetOf, rootOfPlace, legacyOf,
-    DATA_IGNORE_HEAD, dataIgnoreText, ensureRootIgnore,
+    DATA_IGNORE_HEAD, DOCS_STATE_IGNORE, docsInsideRoot, dataIgnoreText, ensureRootIgnore, SENSITIVE_DEFAULT, ensureSensitiveFile,
     memoryDbFor, memoryLevelOf, legacyTwinOf, homeTwinOf, liveMemoryDb,
     busyDbs, profileLocks, serenaBusy, serenaPids, writeText, moveEntry, movePlace, moveHomeMemory,
     dataMovePlan, renderPending, readPending, pendingOf, liveDir, ensureSerenaConfig,

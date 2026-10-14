@@ -22,9 +22,10 @@
 // sessions, one of which NAMED the fresh-session need in its own text ('a fresh session is the
 // right home for a loop like this') and then ran the loop anyway, to 380k tokens per message.
 // Same step run fresh in the next session cost 134k. This is that rule mechanized.
-//   UserPromptSubmit        - only the idle-gap offer (audit 2026-10-10 C09): the prompt ending a gap past the
-//                             clock route's hours injects the offer once per gap. It runs beside the two other
-//                             prompt hooks, in parallel, and reads one 1MB tail; it never judges a command.
+//   UserPromptSubmit        - the auto-mode end (a prompt typed in a session holding its own AUTO stamp ends
+//                             it, 2026-10-14), else the idle-gap offer (audit 2026-10-10 C09): the prompt ending a
+//                             gap past the clock route's hours injects the offer once per gap. It runs beside the
+//                             two other prompt hooks, in parallel, and reads one 1MB tail; it never judges a command.
 //
 // The incoming skill must be one of the orchestration entry points below - everything else passes -
 // and then EITHER trigger is enough: the session's context is already past the threshold, or - on
@@ -39,11 +40,14 @@ const nodePath = require('path');
 // this hook running.
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 let unattended = () => false;
+// hook-prelude.js harnessPrompt - a prompt the harness wrote (a task notice, a command's output, a seat's hand-back).
+let harnessPrompt = (prompt) => /^\s*<(?:task-notification|local-command-stdout|local-command-caveat)>/.test(String(prompt || ''));
 if (require.main === module) {
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
     unattended = prelude.unattended || unattended;
+    harnessPrompt = prelude.harnessPrompt || harnessPrompt;
     if (prelude.standDown('guard-fresh-session-start')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
@@ -142,14 +146,17 @@ if (!IS_SKILL_CALL && !IS_HOLD_CALL && !['UserPromptExpansion', 'UserPromptSubmi
 let fresh;
 try { fresh = require(require('path').join(__dirname, 'fresh-session.js')); } catch {
   fresh = {
-    use() {}, freshAt: (k, d) => d, FRESH_AT_200K: 0, FRESH_AT_1M: 0, FRESH_AT_DEFAULT: 0, FRESH_OFF: true,
+    use() {}, freshAt: (k, d) => d, FRESH_AT_200K: 0, FRESH_AT_1M: 0, FRESH_AT_DEFAULT: 0, FRESH_OFF: true, COMPACT_INSTEAD: false,
     sessionModelId: () => null, tableWindow: () => null, envWindow: () => null, knownWindow: () => null,
     ctxThreshold: () => null, MIN_RECOVERABLE_SHARE: 0.4, coldFloor: () => null, worthResuming: () => false,
     transcriptSize: () => 0, freshAskAnsweredThisTurn: () => false, askAnsweredSince: () => true,
   };
 }
 fresh.use(payload);
-const { FRESH_OFF, ctxThreshold, worthResuming } = fresh;
+const { FRESH_OFF, COMPACT_INSTEAD, ctxThreshold, worthResuming } = fresh;
+// COMPACT INSTEAD's one line, said at the compaction start and at the first orchestration run of a session.
+const COMPACT_NOTE = 'This project compacts instead of offering a fresh session (ALFRED_CODE_AUTO_COMPACT=1): past its '
+  + "window's trigger the session compacts and the work goes on from the summary.";
 
 // The hold itself. Released - never denied again - once an ask was answered after the compaction, the turn wrote the
 // single-short-step line, a resume would recover too little (the engine's own worthResuming - audit 2026-10-10 C26,
@@ -271,7 +278,7 @@ function idleGapOffer() {
   const n = parseFloat(envOf(process.env, 'FRESH_SESSION_AFTER_HOURS'));
   const hours = Number.isNaN(n) || n < 0 ? 2 : n;
   if (!(hours > 0)) return;
-  if (/^\s*<(?:task-notification|local-command-stdout|local-command-caveat)>/.test(String(payload.prompt || ''))) return;
+  if (harnessPrompt(payload.prompt)) return;
   const last = lastReply();
   if (!last || !last.usage) return;
   const gapH = (Date.now() - last.at) / 3600000;
@@ -315,8 +322,30 @@ function idleGapOffer() {
     },
   }));
 }
+// A prompt the user TYPES ends auto-mode in this session (the 2026-10-14 review): someone is at the terminal, so each
+// decision goes to them again and the Stop hold stops - an interrupted run's stamp lived on for the week, answering the
+// user's own later asks. A harness prompt (a task notice, a command's output, a seat's hand-back - hook-prelude.js
+// harnessPrompt) is nobody typing, and a SLASH command carrying the word is the next auto-mode run, which the expansion
+// route starts. Any other prompt ends it, one naming the word included: 'stop auto-mode' and 'auto-mode off' are the
+// likeliest off-switches (audit 2026-10-14 HK13, HK14). Only this session's own AUTO stamp is taken back.
+const AUTO_SLASH_RE = /^\s*\/[A-Za-z0-9:_-]+\b.*(?:^|\s)auto-mode(?=\s|$)/is;
+function autoModeEnd() {
+  const sid = String(payload.session_id || '');
+  const prompt = String(payload.prompt || '');
+  if (!sid || payload.agent_id || harnessPrompt(prompt) || AUTO_SLASH_RE.test(prompt)) return false;
+  const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+  let stamp = null;
+  try { stamp = require('./hook-prelude.js').approvalStamp({ ...payload, cwd: root }); } catch { return false; }
+  if (!stamp || stamp.session !== sid || !/^AUTO\b/.test(stamp.first)) return false;
+  try { fs.rmSync(stamp.file); } catch { return false; }
+  ledgerRow({ mode: 'auto', kind: 'auto-end', reason: 'auto-mode ended: the user typed a prompt' });
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext:
+    'auto-mode is OFF: the user typed this prompt, so they are at the terminal - put each decision to them again, and a '
+    + 'turn is no longer sent back at its Stop. `auto-mode` on the next task or loop call starts a new run.' } }));
+  return true;
+}
 if (EVENT === 'UserPromptSubmit') {
-  idleGapOffer();
+  if (!autoModeEnd()) idleGapOffer();
   process.exit(0);
 }
 
@@ -394,7 +423,7 @@ function sessionWrites() {
 // after that spend. `capture-agent-awareness` is here because the stack's own next-steps card
 // tells the user to run it after every update. The guided plugin commands are here because
 // they are multi-phase walks too, and the slash route is what finally reaches them.
-const ORCHESTRATION = /^((alfred-)?(loop-(quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|usage-report|related-projects|agent-awareness|project-awareness|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|alfred-code:(init|setup|update|configure|validate))$/;
+const ORCHESTRATION = /^((alfred-)?(loop-(quality|code-quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|usage-report|related-projects|agent-awareness|project-awareness|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|alfred-code:(init|setup|update|configure|validate))$/;
 // a plugin-namespaced Skill call arrives as `<plugin>:<skill>`; the guided commands are
 // matched on their FULL name, so a bare `/setup` from some other plugin is not read as one of them - and only this
 // stack's own namespace is stripped, so another plugin's `other:task-solve` is not this stack's run (audit 2026-10-08)
@@ -697,6 +726,92 @@ function gatedStepHold() {
   );
   process.exit(2);
 }
+
+// --- AUTO-MODE: `auto-mode` on a task or loop call runs that call unattended (the user's ruling, 2026-10-14) ----------
+// The word on the call is the user's own waiver - the one task-solve's AUTO stamp records - so this hook writes the stamp
+// itself, naming the session (hook-prelude.js approvalStamp), BEFORE the run's first step. From there every hook that
+// asks a person reads the session as unattended - this gate's fresh-session offers below, the post-compaction hold, the
+// stop contract's prose and pending-close blocks - while the stop contract answers each ask that marks a Recommended
+// option and keeps the session going until the run's close deletes the stamp. A stamp already live for this session is
+// kept, so a second flow in the same run rides it. A seat never starts one: the session that dispatched it owns the run.
+// A digit is part of a skill name (`task-migrate-v2`): the live probe of 2026-10-14 started none for `task-probe2`.
+const AUTO_SKILL_RE = /^(?:alfred-code:)?(?:alfred-)?(?:task|loop)-[a-z][a-z0-9-]*$/;
+const AUTO_WORD_RE = /(?:^|\s)auto-mode(?=\s|$)/i;
+function autoArgs() {
+  if (IS_SKILL_CALL) return String((payload.tool_input || {}).args || '');
+  if (EVENT !== 'UserPromptExpansion') return '';
+  if (typeof payload.command_args === 'string') return payload.command_args;
+  return String(payload.prompt || '').replace(/^\s*\/[A-Za-z0-9:_-]+/, '');
+}
+// The Skill route is the MODEL's call, so the word on its args is the model's: it starts auto-mode only when the user's
+// newest TYPED prompt carries the word too - a slash command's args or a prose ask (the user's ruling, 2026-10-14, after
+// audit HK04 replayed a self-start: 'look at the cache layer' typed, then Skill(task-implement, 'auto-mode') opened the
+// implementer gate). A harness row (a skill body, a seat's hand-back, a task notice, a tool result) is no typed prompt.
+const TYPED_WORD_RE = /(?:^|[^\w-])auto-mode(?![\w-])/i;
+function lastTypedPrompt() {
+  try {
+    const p = payload.transcript_path;
+    if (!p) return '';
+    const size = fs.statSync(p).size;
+    const start = Math.max(0, size - 4 * 1024 * 1024);
+    const fd = fs.openSync(p, 'r');
+    const buf = Buffer.alloc(size - start);
+    try { fs.readSync(fd, buf, 0, buf.length, start); } finally { fs.closeSync(fd); }
+    const lines = buf.toString('utf8').split('\n');
+    for (let i = lines.length - 1; i >= 0; i -= 1) {
+      if (!lines[i].includes('"user"')) continue;
+      let row;
+      try { row = JSON.parse(lines[i]); } catch { continue; }
+      if (!row || row.type !== 'user' || row.isMeta || row.isCompactSummary || row.isSidechain) continue;
+      const c = row.message && row.message.content;
+      if (Array.isArray(c) && c.some((x) => x && x.type === 'tool_result')) continue;
+      const text = typeof c === 'string' ? c : Array.isArray(c) ? c.filter((x) => x && x.type === 'text').map((x) => x.text || '').join('\n') : '';
+      if (!text.trim() || harnessPrompt(text)) continue;
+      return text;
+    }
+  } catch { /* no transcript - no typed word */ }
+  return '';
+}
+function autoModeStart() {
+  const sid = String(payload.session_id || '');
+  if (!sid || payload.agent_id || !AUTO_SKILL_RE.test(skill) || !AUTO_WORD_RE.test(autoArgs())) return null;
+  if (IS_SKILL_CALL && !TYPED_WORD_RE.test(lastTypedPrompt())) {
+    ledgerRow({ mode: 'auto', kind: 'auto-start-refused', reason: `auto-mode: ${skill} called with the word, but the user's newest typed prompt does not carry it` });
+    return null;
+  }
+  const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+  const file = nodePath.resolve(root, docsRootEnv(), 'flow', 'APPROVAL');
+  let current = null;
+  try { current = require('./hook-prelude.js').approvalStamp({ ...payload, cwd: root }); } catch { /* no prelude: written fresh */ }
+  const kept = Boolean(current && current.live && current.session === sid && /^AUTO\b/.test(current.first));
+  // The user's words, verbatim but for the line breaks and double quotes the stamp's one-line quote cannot hold.
+  const typed = IS_SKILL_CALL ? `/${skill} ${autoArgs()}` : String(payload.prompt || `/${skill} ${autoArgs()}`);
+  const words = typed.replace(/\s+/g, ' ').trim().replace(/"/g, "'").slice(0, 400);
+  if (!kept) {
+    try {
+      fs.mkdirSync(nodePath.dirname(file), { recursive: true });
+      fs.writeFileSync(file, `AUTO - "${words}"\nsession: ${sid}\nskill: ${skill}\nat: ${new Date().toISOString()}\n`);
+    } catch { return null; }   // no stamp, no auto-mode: the run asks as it always has
+  }
+  ledgerRow({ mode: 'auto', kind: 'auto-start', reason: `auto-mode: ${kept ? 'the live stamp kept' : 'stamp written'} for ${skill}`, detail: { skill, kept } });
+  return { file: nodePath.relative(root, file).split(nodePath.sep).join('/') || file };
+}
+const auto = (IS_SKILL_CALL && (EVENT === 'PreToolUse' || !EVENT)) || EVENT === 'UserPromptExpansion' ? autoModeStart() : null;
+if (auto) {
+  const contract = `auto-mode is ON for this /${skill} run: the user typed it on the call, and ${auto.file} holds their words for this session. `
+    + 'Nobody answers until the run ends. '
+    + '(1) Every stop takes its (Recommended) option: an AskUserQuestion whose every question marks one is answered with it by the stop hook, '
+    + 'and one carrying a question that marks none - or whose recommended option acts outward (push, merge, deploy, publish, open a PR, post, send, delete a remote, rotate, reset, drop) - waits for the user, so put only those. '
+    + '(2) Do not end a turn between steps: the Stop hook sends you back while the stamp stands. A wait on work this session started is a one-line turn end; the harness wakes you when it lands. '
+    + '(3) Commit through the usual gates; never push, merge, deploy or send anything out - list those for the user in the close (an unpushed commit is a Leftovers line, never an ask). '
+    + '(4) The fresh-session offers are off and the fresh-session hand-off is never taken or recommended: the session compacts at its auto-compact window and the run goes on from its own state files. '
+    + "(5) 'auto-mode' is a mode word, not a target - leave it out of the run's arguments. "
+    + `(6) The stamp is the run's approval too: never write an APPROVED or AUTO line over it and never delete it before the close. An answered ask is the go - carry on in the same turn. `
+    + `(7) When the whole run is finished, print its close and delete ${auto.file}: that ends auto-mode.`;
+  const event = EVENT === 'UserPromptExpansion' ? 'UserPromptExpansion' : 'PreToolUse';
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: contract } }));
+  process.exit(0);
+}
 if (IS_SKILL_CALL && (EVENT === 'PreToolUse' || !EVENT)) gatedStepHold();
 
 if (EVENT !== 'SessionStart' && !isOrchestration(skill)) process.exit(0);
@@ -721,7 +836,9 @@ if (EVENT === 'SessionStart') {
     'from the code (measured: a resume grepped the tree and read a 10k-char source range before ' +
     'opening the plan whose header already named the ranges).' + (pointer ? ` ${pointer}` : '');
   if (FRESH_OFF || quiet || manual) {
-    const text = manual ? after : pointer;
+    // Compacting IS this project's answer to a full context (fresh-session.js COMPACT_INSTEAD): the summary's own
+    // 'continue' line stands, and the two notes after it still apply.
+    const text = manual ? after : COMPACT_INSTEAD ? `${COMPACT_NOTE} Continue the work from the summary. ${after}` : pointer;
     if (text) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: text } }));
     process.exit(0);
   }
@@ -863,6 +980,10 @@ function priorOrchestrationRun() {
 // ONE chained offer per session: once the user has answered it, a retry of the same run goes
 // through. This trigger has no number to grow, so repeating it would only print an answered
 // question again.
+function compactNoteFile() {
+  const key = String(payload.transcript_path || payload.session_id || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
+  return nodePath.join(envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir(), `guard-fresh-compactnote-${key}.said`);
+}
 function chainedOfferFile() {
   const os = require('os');
   const key = String(payload.transcript_path || payload.session_id || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
@@ -922,6 +1043,17 @@ function sweepOffers() {
 // the carry read here is the parent session's, and a seat has no user to answer the offer - so
 // neither trigger judges it.
 if (payload.agent_id) process.exit(0);
+// COMPACT INSTEAD: no offer is made here, and the run is told once per session - its own stop asks offer the
+// fresh-session hand-off past the trigger, and the stop contract denies an ask that still carries one.
+if (COMPACT_INSTEAD) {
+  let first = true;
+  try { fs.writeFileSync(compactNoteFile(), new Date().toISOString(), { flag: 'wx' }); sweepOffers(); } catch (e) { first = !(e && e.code === 'EEXIST'); }
+  if (first) process.stdout.write(JSON.stringify({ hookSpecificOutput: {
+    hookEventName: EVENT === 'UserPromptExpansion' ? 'UserPromptExpansion' : 'PreToolUse',
+    additionalContext: `${COMPACT_NOTE} So /${skill} puts no fresh-session option in any ask and never ends a turn to move to a new session.`,
+  } }));
+  process.exit(0);
+}
 const usage = lastUsage();
 // A session with no readable usage has ctx 0: the size trigger cannot fire, the chained one still can.
 const ctx = usage

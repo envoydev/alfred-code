@@ -203,7 +203,7 @@ test('committed docs in a domain other than architecture/ are read as committed,
 // The other half of the same rule: a watch.json is what makes a domain, so a docs root holding only watch-less
 // folders (quality/, related-context/) holds nothing this setting governs and reports no disagreement about it.
 test('a committed docs root holding no domain at all is no fact to disagree with', () => {
-  const r = repo({ tracked: true, files: { '.claude/docs/quality/ASSESSMENT.md': '# Findings\n' } });
+  const r = repo({ tracked: true, files: { '.claude/docs/quality/ARCHITECTURE-ASSESSMENT.md': '# Findings\n' } });
   try {
     for (const mode of ['git', 'local']) {
       const st = r.cli(['status'], undefined, { ALFRED_CODE_DOCS_VERSIONING: mode }).stdout;
@@ -1085,7 +1085,7 @@ test('a folder is a domain only when it holds a watch.json', () => {
   try {
     r.write('.claude/docs/architecture/watch.json', '{}');
     r.write('.claude/docs/code-style/watch.json', '{}');
-    r.write('.claude/docs/quality/ASSESSMENT.md', '# x');
+    r.write('.claude/docs/quality/ARCHITECTURE-ASSESSMENT.md', '# x');
     r.write('.claude/docs/.branches/watch.json', '{}');
     const docs = requireEngine(r.root);
     assert.deepEqual(docs.domains(), ['architecture', 'code-style']);
@@ -1373,7 +1373,7 @@ test('promote refuses a stranded overlay that would otherwise fold into a decoy 
   const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' } });
   // A file sitting at the docs ROOT, owned by no domain - what a domain's own root file (e.g.
   // architecture/ASSESSMENT.md) decays into once read with a domain segment that no longer resolves
-  // (Task 10 moves exactly this file to quality/ASSESSMENT.md).
+  // (Task 10 moves exactly this file to quality/ARCHITECTURE-ASSESSMENT.md).
   r.write('.claude/docs/architecture/watch.json', '{}');
   r.write('.claude/docs/ASSESSMENT.md', '# Assessment\nExisting content, never touched by docs.js.\n');
   try {

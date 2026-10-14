@@ -5,7 +5,7 @@ description: "Use when writing a worker service, BackgroundService or IHostedSer
 
 # .NET hosted services - background work on the generic host
 
-This skill owns the host a long-running task runs inside - registration, base type, failure, scoped dependencies, looping, clean stop - and stops at the host boundary (what lies past it: When to use). Floor is .NET 8 / C# 12; anything newer is marked optional.
+This skill owns the host a long-running task runs inside - registration, base type, failure, scoped dependencies, looping, clean stop - and stops at the host boundary (what lies past it: When to use). Floor is .NET 10 / C# 14; .NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked.
 
 ## When to use
 
@@ -169,4 +169,4 @@ The host is the engine; a worker or bot that stays up for weeks also has to surv
 
 - **`references/resilience-and-io.md`** - outbound I/O hardening the web hub would give a service but does not reach a console host: `HttpClient`/socket-exhaustion (singleton + `SocketsHttpHandler`, or `IHttpClientFactory`), Polly v8 resilience pipelines, `System.Threading.RateLimiting`, and raw `ClientWebSocket` reconnect/backoff/re-subscribe.
 - **`references/scheduling-and-coordination.md`** - when a plain loop is not enough: the Hangfire / Quartz.NET / Coravel decision, and single-instance leader election (RedLock.net / SQL lock, with the idempotency caveat).
-- **`references/newer-versions.md`** - what .NET 10 and .NET 11 change about `ExecuteAsync` and about a failed worker's exception. Read it before assuming a newer runtime behaves like the .NET 8 floor above.
+- **`references/newer-versions.md`** - what .NET 10 changed about `ExecuteAsync` (and what that means below the floor) and what .NET 11 changes about a failed worker's exception. Read it before assuming another runtime behaves like the .NET 10 floor above.

@@ -110,7 +110,8 @@ A plugin loads at session start; `/reload-plugins` re-reads skills, agents, hook
   the difference that matters is DISPLAY: a plugin command lists namespaced-only, a plugin skill
   named exactly like the plugin lists bare (`/<plugin>`) - choose by what the user should see.
 - **Skills** (`skills/<name>/SKILL.md`): read the skills docs (code.claude.com/docs/en/skills) before the first write.
-- **Agents** (`agents/<name>.md`): a `tools:` allowlist of tools that exist, a model / effort pin
+- **Agents** (`agents/<name>.md`): a `tools:` allowlist of tools that exist (a whole MCP server is one
+  `mcp__<server>` entry, listed as written; `disallowedTools` is never listed), a model / effort pin
   with the measurement that justifies it, and no `hooks` / `mcpServers` / `permissionMode`.
 - **Hooks** (`hooks/hooks.json`): a `command` hook without `timeout` gets Claude Code's 600s
   default - one stalled child freezes the session for ten minutes, so every entry carries a short

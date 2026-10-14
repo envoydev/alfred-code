@@ -229,7 +229,7 @@ const underDataRoot = (p) =>
 // saying exactly that and still made 100 Bash calls and 0 navigation calls. The loading call goes in
 // the denial itself, where the model is already looking for what to do instead.
 const LOAD_SERENA = `  ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview,mcp__plugin_alfred-navigation_alfred-navigation__find_symbol,mcp__plugin_alfred-navigation_alfred-navigation__find_referencing_symbols\n`
-  + `  (a seat whose tools: list names them has them loaded already - call them directly)\n`;
+  + `  (a seat whose tools grant them - by name or as the whole server - has them loaded already; call them directly)\n`;
 // A markup template has no symbols the navigation server indexes: get_symbols_overview on a 326-line Angular template
 // was the remedy a denial named, and the session read the lines through `sed -n` instead (audit 2026-10-10, 81264f0d).
 const MARKUP_EXT = /\.(?:html|razor|cshtml|xaml)$/i;
@@ -1668,6 +1668,13 @@ const sessionStateFile = () => pathMod.join(os.tmpdir(), `guard-read-${(payload.
 // c6142301, 0498718d, 81264f0d).
 const CAP = 0.6;
 const actorKey = String(payload.agent_id || 'main');
+// Seats the cap does not bind (audit 2026-10-14 HK16, the user's ruling): code-quality-analyzer reads code to judge it,
+// and over 2026-10-07..14 its 85 runs made 143 of the 277 range-cap blocks (and 290 of all 588 read-guard blocks), while
+// the verifiers made 9. The size and sweep gates still bind it. Bare or the house's own prefix - another plugin's seat
+// of that name is not ours.
+const RANGE_CAP_EXEMPT_SEATS = new Set(['code-quality-analyzer']);
+const rangeCapExempt = () => payload.agent_id !== undefined && payload.agent_id !== null
+  && RANGE_CAP_EXEMPT_SEATS.has(String(payload.agent_type || '').replace(/^alfred-code:/, ''));
 const fileVersion = (abs, lineCount) => { try { return `${Math.floor(fs.statSync(abs).mtimeMs)}:${lineCount}`; } catch { return `?:${lineCount}`; } };
 // The file's state in the working tree: 'new' (untracked or added), 'changed', or '' (clean, or no repo).
 const treeState = (abs) => {
@@ -1711,7 +1718,7 @@ function rangeCap(abs, shown, lineCount, a, b) {
   } catch { /* no log - this range alone */ }
   if (!mine) { prior = merged; merged = mergeIn(merged, a, b); }
   const covered = coverOf(merged);
-  if (covered <= lineCount * CAP) return;
+  if (covered <= lineCount * CAP || rangeCapExempt()) return;
   // A file the working tree ADDS is under review whole - a verifier seat left half of a new 251-line test file unread
   // behind this cap (audit 2026-10-10, session 05c925e9) - so its ranges complete it. A changed file names its diff.
   const state = treeState(fileKey);
@@ -1733,8 +1740,9 @@ function rangeCap(abs, shown, lineCount, a, b) {
   process.exit(2);
 }
 
-// The nine path-scoped convention rules attach on a FILE-TOOL touch and on nothing else. Under a
-// Bash-first working mode they therefore never attach at all: measured with a control for the first
+// The path-scoped convention rules attach on a Read / Write / Edit of a matching file and on a Bash command that counts as
+// a READ of one (`cat` or `head` on a single file - code.claude.com/docs/en/memory, re-read 2026-10-14), never on a shell
+// WRITE. Under a Bash-first working mode an edit therefore never attaches them: measured with a control for the first
 // time, 19 Bash calls naming `.cs` files produced 0 attachments, while the session's single
 // Read-tool call on a `.cs` file attached BOTH `.cs`-scoped rules 0.94 s later - so the C# rule was
 // absent for the whole DESIGN, PLAN and GATE phase of a C# build. Corroborated at 0 attaches over
@@ -1742,7 +1750,11 @@ function rangeCap(abs, shown, lineCount, a, b) {
 // already parses the extension, so it is the one place that can close the gap: it names the rule
 // that governs the file, ONCE per rule per session, as non-blocking additionalContext.
 const CONVENTION_RULES = [
-  [/\.Designer\.cs\b|\w*Form(\.[^\s\/]+)?\.cs\b/, 'winforms-conventions.md'], // twin of the rule's paths (Designer + *Form.cs + *Form.*.cs); case-SENSITIVE so Platform.cs / Transform.cs stay plain C#
+  // Twin of the rule's paths (Designer + *Form.cs + *Form.*.cs); case-SENSITIVE so Platform.cs / Transform.cs stay plain C#.
+  // An EF migration's `*.Designer.cs` under Migrations/ is schema work, never a form (audit 2026-10-14 RU12).
+  [/^(?!.*(?:^|\/)Migrations\/).*(?:\.Designer\.cs\b|\w*Form(\.[^\s\/]+)?\.cs\b)/, 'winforms-conventions.md'],
+  // Twin of sql-conventions.md's `**/Migrations/**/*.cs`: an EF migration is schema work (audit 2026-10-14 RU12).
+  [/(?:^|\/)Migrations\/(?:[^\s\/]+\/)*[^\s\/]+\.cs$/, 'sql-conventions.md'],
   [/\.cs\b/i, 'csharp-conventions.md'],
   [/\.xaml\b/i, 'wpf-conventions.md'],
   // Twin of the rule's own `paths:`. The suffixes are the pre-v20 spelling; the directory shapes are

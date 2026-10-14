@@ -30,11 +30,12 @@ Use the ESLint flat config (`eslint.config.js`, ESLint v9+). Combine @eslint/js,
 // eslint.config.js
 // @ts-check
 const eslint = require('@eslint/js');
+const { defineConfig } = require('eslint/config');
 const tseslint = require('typescript-eslint');
 const angular = require('angular-eslint');
 const eslintConfigPrettier = require('eslint-config-prettier');
 
-module.exports = tseslint.config(
+module.exports = defineConfig(
   { ignores: ['.angular/**', 'coverage/**', 'dist/**'] },
   {
     files: ['**/*.ts'],
@@ -73,6 +74,7 @@ module.exports = tseslint.config(
 
 - Run `ng lint` and `prettier --check` in CI to block non-conforming PRs. A typical `.prettierrc`: `singleQuote: true`, `printWidth` to team taste.
 - eslint-config-prettier must come last so it disables ESLint formatting rules that conflict with Prettier. Prettier owns formatting; ESLint owns correctness and Angular-specific rules.
+- Where the house config-protection guard runs, an edit to an existing lint or format config (ESLint, Prettier, `.editorconfig`) is blocked until the user allows it - ask once, never route around the block, and on Allow the receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path.
 
 ## Modern vs legacy examples
 

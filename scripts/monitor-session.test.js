@@ -306,6 +306,12 @@ test('monitor: a Read of a file that changed between reads is a new input, and a
     t.hook({ hook_event_name: 'UserPromptSubmit', prompt: '<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>' });
     for (let i = 0; i < 2; i++) t.call('Bash', { command: 'git status' });
     assert.strictEqual(t.rows().filter((r) => r.kind === 'repeat').length, 1, 'the notice did not empty the turn log');
+    // nor does a seat's hand-back (audit 2026-10-14 HK14)
+    const h = session();
+    for (let i = 0; i < 3; i++) h.call('Bash', { command: 'git log -1' });
+    h.hook({ hook_event_name: 'UserPromptSubmit', prompt: 'Another Claude session sent a message:\n<agent-message from="a1b2">\n[Subagent hand-back] done\n</agent-message>' });
+    for (let i = 0; i < 2; i++) h.call('Bash', { command: 'git log -1' });
+    assert.strictEqual(h.rows().filter((r) => r.kind === 'repeat').length, 1, 'the hand-back did not empty the turn log');
 });
 
 // Audit 2026-10-11 SD08, sessions fdce35ae / 7f8803eb: an input-less Screenshot after each Click, and a fixed-coordinate
@@ -359,6 +365,15 @@ test('monitor: a desktop action right after another, no Snapshot between, writes
     rows = s.rows();
     assert.strictEqual(rows.length, 3);
     assert.strictEqual(rows[2].detail.actor, 'agent-c');
+    // windows-mcp 0.8.8's ControlStatus is neither: no row of its own, and no look at the screen between two actions
+    s.call(W('Snapshot'), {});
+    s.call(W('Click'), { label: 7 });
+    s.call(W('ControlStatus'), {});
+    assert.strictEqual(s.rows().length, 3, 'reading who holds the desktop is no action');
+    s.call(W('Click'), { label: 8 });
+    rows = s.rows();
+    assert.strictEqual(rows.length, 4, 'and no observation: Click, ControlStatus, Click is unobserved');
+    assert.strictEqual(rows[3].detail.previous, 'Click');
     const i = session({ ALFRED_CODE_MONITOR: 'inject' });
     i.call(W('Click'), { label: 1 });
     assert.match(i.call(W('Type'), { label: 2, text: 'y' }), /Session monitor: two desktop actions with no Snapshot between them/);

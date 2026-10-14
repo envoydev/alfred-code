@@ -10,20 +10,22 @@ You drive a breaking version event - framework, runtime, or load-bearing package
 
 The event kind - framework vs package - is not the user's call to make up front: DETECT reads the manifests and classifies it. The workflow is identical either way; only the breaking-change surface differs. A routine minor/patch bump with no breaking changes needs none of this - say so and exit.
 
-Read `references/upgrade-playbooks.md` before PLAN - the stack-keyed sequencing rules and the runtime-break catalog are this skill's contract, not suggestions.
+Read `references/upgrade-playbooks.md` before PLAN - the stack-keyed sequencing rules and the runtime-break catalog are this skill's contract, not suggestions. The printed plan's first line is the receipt: `playbooks: read - <the stack section(s) applied>`.
 
 ## When to use
 
 - The deliberate version-upgrade flow for any BREAKING version event - a framework or runtime major, an EOL, a load-bearing package's breaking major: plan in-session (the published breaking-change surface crossed against located usage - applicable changes only), present the staged plan at an approval gate, then drive the execution stage by stage with a green gate after every stage.
 - Triggers also on 'plan the framework upgrade'. Routine non-breaking bumps need no skill: just bump.
-- Auto mode - skipping the approval gate - runs ONLY when the user explicitly asked for it.
+- `auto-mode` - the run unattended - starts ONLY on the user's typed word; its hard stops still wait for the user.
 - Not for a feature that merely needs a newer package (the feature's own flow), or a red CI pipeline (issue-diagnoser-ci, or its single-chat CI-triage twin).
 
-## Approval gate - and the explicit auto mode
+## Approval gate - and auto-mode
 
 The staged plan is presented and NOTHING is edited until the user approves - an upgrade is consequential. Two answers end the run early: 'just the plan' (exit after PLAN, hand over the plan) and 'stop'.
 
-**Auto mode skips the gate - only when the user explicitly asked for it in the invocation** ('run it in auto mode', '/task-version-upgrade --auto'). Never infer auto from urgency, from a clean plan, or from past runs; absent those words, the gate stands. Auto mode still stops on every hard signal below - it skips the approval pause, not the safety rails. (Side effect worth knowing: an auto run never pauses, so the model the session is on at run start carries the whole run; a gated run can switch at the approval pause and drop to a cheaper model for execution.)
+**Under auto-mode the gate is answered, not skipped - and only when the user typed `auto-mode` on the call.** Never infer it from urgency, from a clean plan, or from past runs; the old `--auto` / 'auto mode' wording starts nothing, and the gate stands. The hook takes the gate's `(Recommended)` option, so an open user-level call still ends the run at 'Just the plan'. The hard stops in step 5 stay rails: under auto-mode their ask goes out with no `(Recommended)` mark, so it waits for the user. (Side effect worth knowing: an unattended run never pauses, so the model the session is on at run start carries the whole run; an attended run can switch at the approval pause and drop to a cheaper model for execution.)
+
+**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it.
 
 ## The run
 
@@ -38,7 +40,7 @@ Green baseline first - build + tests green, zero pending EF migrations, before a
 Cross the surface against located usage: a breaking change nothing uses is not a task. Split engine-applied vs hand edits. Sequence foundation-first per the playbooks (SDK pin -> TFM -> framework packages in lockstep -> code edits on .NET; one major at a time with `ng update` + the peer matrix on Angular). Each stage carries: its edits, its verification command, its rollback point. Genuinely user-level calls (accept a new major's baseline, drop a deprecated dependency) go to the gate as questions, never guessed. **Hard cap: 2 planning passes.**
 
 ### 4. APPROVAL GATE
-PRINT the staged plan in the chat first - every stage with its edits, its verification command and its rollback point - in the same turn as the gate: an approval over a plan the chat never showed approves nothing. Load `habits-execution-strategy` (the Skill tool); its `Execution:` line is the mode reason, and stages that share files read `serial`. Then put the gate through AskUserQuestion as ONE call - free text stays available via Other, and the PLAN step's user-level calls join the same call as their own questions (plain-text options where the harness lacks the tool). With no user-level call open:
+PRINT the staged plan in the chat first - the `playbooks:` line, then every stage with its edits, its verification command and its rollback point - in the same turn as the gate: an approval over a plan the chat never showed approves nothing. Load `habits-execution-strategy` (the Skill tool); its `Execution:` line is the mode reason, and stages that share files read `serial`. Then put the gate through AskUserQuestion as ONE call - free text stays available via Other, and the PLAN step's user-level calls join the same call as their own questions (plain-text options where the harness lacks the tool). With no user-level call open:
 
 ```ask
 The staged plan above: <n> stages, each with its verification and rollback point. Execute it stage by stage <through the seats | in this session>: <the Execution: line's reason>.
@@ -57,15 +59,13 @@ The staged plan above is ready, but <n> user-level call(s) are open. Take the pl
 - 'Stop - changes needed' - say what changes in Other
 ```
 
-Auto mode (explicitly requested) proceeds without the pause, in the mode the verdict names.
-
 ### 5. EXECUTE - stage by stage
-Before the first implementer dispatch, write the approval gate file `<docs-path>/flow/APPROVAL` - first line `APPROVED <plan id> - "<the user's words, verbatim>"` from the gate's approving answer, or `AUTO - "<their words, verbatim>"` from the auto-mode invocation - the dispatch hook blocks an unstamped implementer; delete the file when the run completes. Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool. Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it. A relative write follows whatever cwd the shell drifted to and the dispatch then bounces. The stamp belongs to the session that dispatches - written when its own decision lands, deleted at its own close; an earlier session's leftover stamp is not consent. If BOTH the Write tool and an absolute-path Bash write are refused by the harness's classifier, stop and put the choice through AskUserQuestion (retry the stamp, or run this stage inline) rather than retrying blind or dispatching around the gate.
+Before the first implementer dispatch, write the approval gate file `<docs-path>/flow/APPROVAL` - first line `APPROVED <plan id> - "<the user's words, verbatim>"` from the gate's approving answer (under auto-mode the hook's `AUTO` stamp already stands - leave it) - the dispatch hook blocks an unstamped implementer; delete the file when the run completes. Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool. Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it. A relative write follows whatever cwd the shell drifted to and the dispatch then bounces. The stamp belongs to the session that dispatches - written when its own decision lands, deleted at its own close; an earlier session's leftover stamp is not consent. If BOTH the Write tool and an absolute-path Bash write are refused by the harness's classifier, stop and put the choice through AskUserQuestion - 'Retry the stamp (Recommended)' / 'Run this stage inline' - rather than retrying blind or dispatching around the gate.
 
-Per stage, in the plan's order, in the mode the gate's answer chose: through the seats, dispatch the domain **implementer (sonnet/medium)** with the stage as a scoped brief (trivial manifest bumps: edit inline); in this session, make the stage's edits here (no approval stamp needed - nothing dispatches); run the stage's verification (build + tests); a red routes to the matching **resolver (sonnet/high)** for that stack - the seat covering build errors, or the one covering test failures, matched from your installed agents; with none matching, resolve the red inline and say so; gate green before the next stage. Hard stops, auto mode included: a resolver returning BLOCKED_CONTRACT_CHANGE, a stage that stays red after its resolver pass, or reality contradicting the plan - stop and put it through ONE AskUserQuestion - 'Re-plan from this stage (Recommended)' / 'Roll back to the last stage's rollback point' / 'Stop here' - never push through or skip a stage gate.
+Per stage, in the plan's order, in the mode the gate's answer chose: through the seats, dispatch the domain **implementer (sonnet/medium)** with the stage as a scoped brief (trivial manifest bumps: edit inline); in this session, make the stage's edits here (no approval stamp needed - nothing dispatches); run the stage's verification (build + tests); a red routes to the matching **resolver (sonnet/high)** for that stack - the seat covering build errors, or the one covering test failures, matched from your installed agents; with none matching, resolve the red inline and say so; gate green before the next stage. Hard stops, auto-mode included: a resolver returning BLOCKED_CONTRACT_CHANGE, a stage that stays red after its resolver pass, or reality contradicting the plan - stop and put it through ONE AskUserQuestion - 'Re-plan from this stage (Recommended)' / 'Roll back to the last stage's rollback point' / 'Stop here' - never push through or skip a stage gate. Under auto-mode put the same three options with NO `(Recommended)` mark, the question opening 'no option is recommended: a hard stop waits for you under auto-mode' - the hook answers only a marked ask, so this one waits.
 
 ### 6. VERIFY + REPORT
-Full suite green at the end; on a large upgrade, optionally the domain **verifier (sonnet/xhigh)** over the assembled result. Report: current -> target, stages landed and what each changed, runtime-break checks done, anything deferred or user-declined, the rollback points. If the run stopped early: which stage, why, and the state it left. Shaped like:
+Full suite green at the end; on a large upgrade, optionally the domain **verifier (sonnet/xhigh)** over the assembled result. Report: current -> target, stages landed and what each changed, runtime-break checks done, anything deferred or user-declined, the rollback points, and the commit line. If the run stopped early: which stage, why, and the state it left. Shaped like:
 
 ```
 .NET 8 -> 10: 4 stages landed, full suite green (412 passed)
@@ -73,7 +73,16 @@ Full suite green at the end; on a large upgrade, optionally the domain **verifie
   3 obsolete-API swaps (SYSLIB warnings)       4 hand edits - TimeProvider swap, 3 call sites
 runtime-break checks: serializer defaults reviewed, zero [Obsolete] warnings left
 deferred: FluentAssertions major (user-declined)
+commit: held - the diff is uncommitted
+```
+
+Then the commit decision, ONE AskUserQuestion once the report prints (an early stop asks it too when a stage landed):
+
+```ask
+<N> upgrade stage(s) landed, uncommitted (<suite green | stopped at stage <k>>). Commit them on this machine?
+- 'Commit now (Recommended)' - runs `habits-commit-checkpoint` in full, then commits
+- 'Hold - review the diff first' - nothing is committed; the diff stays as it is
 ```
 
 ## Don't game it
-Enumerate the real breaking changes from the framework's own docs, not recall - recall catches the compile break and ships the runtime break. Keep the plan to located usage. Never wave a deprecation off as 'probably fine' - unclear impact is marked to verify. Never weaken a test, suppress a warning, or skip a stage gate to make a stage look green - that is a new break, not progress. Auto mode is the user's word only - proceeding past the gate without it is a protocol violation, not initiative.
+Enumerate the real breaking changes from the framework's own docs, not recall - recall catches the compile break and ships the runtime break. Keep the plan to located usage. Never wave a deprecation off as 'probably fine' - unclear impact is marked to verify. Never weaken a test, suppress a warning, or skip a stage gate to make a stage look green - that is a new break, not progress. `auto-mode` is the user's typed word only - proceeding past the gate without it is a protocol violation, not initiative.

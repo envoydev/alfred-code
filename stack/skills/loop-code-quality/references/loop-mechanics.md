@@ -1,6 +1,6 @@
 # Code Quality Loop - loop mechanics
 
-Step-scoped mechanics for the default `loop-quality` run: the seat brief shapes (step 2), the
+Step-scoped mechanics for the default `loop-code-quality` run: the seat brief shapes (step 2), the
 RESUME BLOCK (step 3, on a 'fresh' answer) and the final report's field rules (step 3, on STOP). The
 body's step 3 Reads this file whole and the report's `Mechanics` line is the receipt; step 2 reads its
 own section when it dispatches. Every rule here is binding - this file holds the shape, the body holds
@@ -11,7 +11,7 @@ the step. The staged run has its own mechanics (`stage-close.md`) and never uses
 - **small-tier implementer brief** - ONE brief per module batching its small findings: per finding the
   file:line, the rule it breaks, the smallest correct change already decided and the check that proves
   it; then the `0.`-numbered fix discipline's text folded in whole; then `memory: none` - a scoped fix
-  has no navigation-server hand-off. A brief that does hand a note names it literally, read side included (memory
+  has no memory hand-off. A brief that does hand a note names it literally, read side included (memory
   hygiene: `references/domain-trio-protocol.md`).
 - **substantial-tier designer brief** - the finding, its assessment entry (rule, severity, remediation)
   as the requirement, and the fix discipline; the designer returns the decomposition, and the body's
@@ -27,8 +27,8 @@ When the fresh-session ask answers 'fresh', end the turn with this block and not
 step', no new work in this chat. The new session must be able to start from the block alone:
 
 ```text
-RESUME - loop-quality
-Invocation: /loop-quality <TARGET> - resumed round <N of 3> (rounds consumed: <list>)
+RESUME - loop-code-quality
+Invocation: /loop-code-quality <TARGET> - resumed round <N of 3> (rounds consumed: <list>)
 Mode: <DELEGATED | INLINE> - "<the mode answer, verbatim>"
 Read first: <docs-path>/loops/0.<name>.md (the fix discipline, when present) - step 1 recomputes <docs-path>/quality/CODE-ASSESSMENT.md fresh, so there is nothing to resume from in that file
 Sweep baseline: <sha recorded at round 1> - the final anti-gaming sweep diffs against it

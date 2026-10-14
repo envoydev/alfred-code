@@ -805,3 +805,50 @@ test('blockingStdio: every entry that writes and calls process.exit makes stdio 
     assert.ok(files.length > 50, `the sweep found ${files.length} files`);
     assert.deepStrictEqual(missing, []);
 });
+
+// The user's ruling 2026-10-14: a token in a link's query whose link states an hour of life or less is that link's own
+// capability (a Jira media `?token=<JWT>`, an S3 presigned URL). The JWT's `exp` and `exp - iat` both bound it; S3 states
+// `X-Amz-Expires`. A link inside a transcript row's JSON, a Go CLI's `&` included, is read the same.
+test('shortLivedLinks / withoutShortLived: an hour or less, by the link\'s own lifetime, at any JSON depth', () =>
+{
+    const { shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S } = require(PRELUDE);
+    const b64url = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+    const jwt = (claims) => [b64url({ alg: 'HS256' }), b64url(claims), 'c2lnbmF0dXJlLW5vdC1jaGVja2Vk'].join('.');
+    const now = Math.floor(Date.now() / 1000) * 1000; // a whole second, so `seconds` (rounded) is exactly the 600 set below
+    const s = Math.floor(now / 1000);
+    const link = (token, sep = '&') => `https://media.example.test/f?client=y${sep}token=${token}${sep}name=a.png`;
+    const s3 = (seconds, id = 'AKIA') => `https://b.s3.example.test/k?X-Amz-Credential=${id}${'A'.repeat(16)}%2F20261014%2Fus-east-1&X-Amz-Expires=${seconds}&X-Amz-Signature=ab`;
+    const count = (text) => shortLivedLinks(text, now).length;
+    assert.strictEqual(SHORT_LIVED_MAX_S, 3600);
+    assert.deepStrictEqual({
+        'ten minutes': count(link(jwt({ exp: s + 600, iat: s - 60 }))),
+        'exactly an hour': count(link(jwt({ exp: s + 3600, iat: s }))),
+        'an hour and a second': count(link(jwt({ exp: s + 3601, iat: s }))),
+        'already expired': count(link(jwt({ exp: s - 60, iat: s - 660 }))),
+        'short exp, a week-old iat': count(link(jwt({ exp: s + 600, iat: s - 7 * 86400 }))),
+        'no exp': count(link(jwt({ sub: 'u' }))),
+        'a garbage payload': count(link(`eyJ${'x'.repeat(12)}.${'y'.repeat(12)}.${'z'.repeat(12)}`)),
+        'a JWT outside any URL': count(`token=${jwt({ exp: s + 600 })}`),
+        'S3, 900 s': count(s3(900)),
+        'S3 temporary key, 900 s': count(s3(900, 'ASIA')),
+        'S3, 7 days': count(s3(604800)),
+        'S3 with no signature': count(s3(900).replace(/&X-Amz-Signature=ab/, '')),
+    }, {
+        'ten minutes': 1, 'exactly an hour': 1, 'an hour and a second': 0, 'already expired': 1, 'short exp, a week-old iat': 0,
+        'no exp': 0, 'a garbage payload': 0, 'a JWT outside any URL': 0,
+        'S3, 900 s': 1, 'S3 temporary key, 900 s': 1, 'S3, 7 days': 0, 'S3 with no signature': 0,
+    });
+    const token = jwt({ exp: s + 600, iat: s - 60 });
+    const [row] = shortLivedLinks(link(token), now);
+    assert.deepStrictEqual([row.host, row.key, row.kind, row.seconds], ['media.example.test', 'token', 'jwt', 600]);
+    for (const sep of ['&', '\\u0026'])
+        for (const depth of [0, 1, 2])
+        {
+            let text = `{"u":"${link(token, sep)}"}`;
+            for (let i = 0; i < depth; i++) text = JSON.stringify(text);
+            assert.ok(!withoutShortLived(text, now).includes(token), `${sep} at depth ${depth}`);
+        }
+    const long = jwt({ exp: s + 86400 });
+    const both = `${link(token)} Authorization: Bearer ${long}`;
+    assert.ok(withoutShortLived(both, now).includes(long) && !withoutShortLived(both, now).includes(token), 'only the short-lived token is blanked');
+});

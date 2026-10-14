@@ -5,7 +5,7 @@ description: "Use when setting up formatting, analyzers, .editorconfig, warnings
 
 # .NET code quality - enforcement, not opinion
 
-The `csharp` skill says *what* good C# looks like; this skill makes a build *prove* it. The goal is that style and correctness rules are a gate the compiler and CI enforce, so they never depend on a reviewer noticing. Baseline is .NET 8 / C# 12. This is about configuring the tools - authoring a source generator belongs to the skill covering source-generator authoring, a Roslyn analyzer has no house skill (resolve its API through the documentation server), and judging whether the *tests* are any good belongs to the .NET testing hub.
+The `csharp` skill says *what* good C# looks like; this skill makes a build *prove* it. The goal is that style and correctness rules are a gate the compiler and CI enforce, so they never depend on a reviewer noticing. Floor is .NET 10 / C# 14; .NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked. This is about configuring the tools - authoring a source generator belongs to the skill covering source-generator authoring, a Roslyn analyzer has no house skill (resolve its API through the documentation server), and judging whether the *tests* are any good belongs to the .NET testing hub.
 
 ## When to use
 
@@ -46,7 +46,7 @@ Turn on the analyzers that ship with the SDK first - they cost nothing and catch
 
 Only reach for a third-party pack (Roslynator, StyleCop, Meziantou) once the SDK baseline is in place and you have a concrete rule the SDK lacks - and give it an explicit severity plan so packs do not enforce contradictory versions of the same rule. **Roslynator** is the first add: prefer the `Roslynator.Analyzers` NuGet package (build-enforced) over the CLI; the CLI (`roslynator.dotnet.cli`) earns its place only for one-off analyze / fix / find-unused sweeps, and treat any auto-`fix` as a controlled change - run it on a bounded target, rebuild, rerun the tests.
 
-A **per-method complexity ceiling** is the archetypal rule the SDK lacks - gate on cyclomatic or cognitive complexity, not just a line-count cap, because a 20-line method can still hide a branch thicket the length rule never catches. The SDK analyzers ship no complexity rule; Roslynator (or Sonar) supplies one, promoted to a build-failing severity like any other. To rank *existing* methods by change risk - cyclomatic complexity weighed against test coverage, so tests land where they pay - see `references/crap-analysis.md`.
+A **per-method complexity ceiling** is the archetypal rule the SDK lacks - gate on cyclomatic or cognitive complexity, not just a line-count cap, because a 20-line method can still hide a branch thicket the length rule never catches. The SDK ships CA1502 (cyclomatic complexity) off by default and outside even `AnalysisMode` `All`: enable it with `dotnet_diagnostic.CA1502.severity = error` in the root `.editorconfig` and set the threshold in a `CodeMetricsConfig.txt` added as `AdditionalFiles`; reach for Roslynator or Sonar only for cognitive complexity. To rank *existing* methods by change risk - cyclomatic complexity weighed against test coverage, so tests land where they pay - see `references/crap-analysis.md`.
 
 ## One root `.editorconfig` is the single source of severity
 
@@ -75,7 +75,7 @@ If the fix is genuinely too large, put it to the user through ONE AskUserQuestio
 
 Flipping `TreatWarningsAsErrors=true` on an existing codebase floods the build - promote curated IDs in waves; the waves, their prerequisites and the per-wave proof are `references/legacy-backlog.md`.
 
-Where the house config-protection guard runs, it blocks any change to `WarningsAsErrors`, `EnforceCodeStyleInBuild` or another warning key in a Directory.Build.props or csproj that already exists, and any edit to an existing `.editorconfig` - a tightening included - until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the wave surfaces, and never route around the block; on Allow, the guard's receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path and the same edit is retried; a new file takes the settings from the start.
+Where the house config-protection guard runs, it blocks a change that loosens `WarningsAsErrors`, `EnforceCodeStyleInBuild` or another warning key in a Directory.Build.props or csproj that already exists (a pure tightening - a `WarningsAsErrors` entry added, `EnforceCodeStyleInBuild` or `TreatWarningsAsErrors` set to true, a `NoWarn` entry removed - passes), and any edit to an existing `.editorconfig` - a tightening included - until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the wave surfaces, and never route around the block; on Allow, the guard's receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path and the same edit is retried; a new file takes the settings from the start.
 
 ## The gate is `dotnet build`
 
@@ -86,14 +86,10 @@ Prove the gate before calling any of this done, and quote the result:
 1. `dotnet tool restore` - the pinned tools resolve from the manifest, not from a machine-global install.
 2. `dotnet csharpier check .` - exit 0, or the list of unformatted files.
 3. `dotnet build -warnaserror` - exit 0, or the analyzer IDs it failed on.
-4. Check the diff against `references/reward-hacking.md` row by row - report `Reward-hack scan: clean` or the rows hit.
+4. Check the diff against `references/reward-hacking.md` row by row - report `Reward-hack scan: clean` or the rows hit. The config-protection guard blocks the `<NoWarn>` and severity-downgrade rows where it runs; the rest is review discipline.
 
 Report the command and its result line for each, never the claim alone. A gate you did not run is a gate you cannot say holds.
 
 ## Reward-hacking shortcuts to reject
 
-The recurring ways a change fakes a green build instead of earning it - reject each in review, whoever wrote it. Most are gated above or in a sibling skill; this is the one consolidated list to check a diff against before claiming done.
-
 The shortcut-by-shortcut table is `references/reward-hacking.md` - read it before claiming a change is done.
-
-The config-protection guard blocks the `<NoWarn>` and severity-downgrade rows where it is installed; `#pragma warning disable` and the rest are review discipline. A check that only notices them after merge has already paid for the slop.

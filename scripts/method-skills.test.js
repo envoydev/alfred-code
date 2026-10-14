@@ -347,6 +347,24 @@ test('audit 2026-10-08: the checkpoint carries the test-only carve-out, a templa
     assert.ok(!discard.sites.some((s) => s.file.includes('habits-commit-checkpoint')), 'the registry no longer pins a checkpoint copy');
 });
 
+// Audit 2026-10-14 SKC03 / SKC04 / SKC07: the no-formatter paragraph had split the receipt block from its
+// continuation, so the WAIVED alternative opened on a dangling parenthesis; `/code-review` was called a user-run
+// parallel sweep (the docs list it as the bundled correctness review of the current diff, multi-agent only at
+// `ultra`); and the why-each-line and trivial-bar arithmetic sat in a body loaded on every commit.
+test('audit 2026-10-14: the checkpoint receipt reads in order, names /code-review right, and keeps its why in evidence', () => {
+    const cp = squash(read('stack/skills/habits-commit-checkpoint/SKILL.md'));
+    const ev = squash(read('stack/skills/habits-commit-checkpoint/references/evidence.md'));
+    assert.match(cp, /\. On the user's explicit waiver the receipt is `WAIVED - "<the user's words, verbatim>"` alone/, 'the waiver starts its own sentence');
+    assert.match(cp, /``` The quality-loop and cross-task gate exemptions count as VERIFIED - name the loop or gate\./, 'the exemptions sentence follows the receipt block');
+    assert.ok(cp.indexOf('`format: none configured') > cp.indexOf('`carried: <cycle id>, reviewed <date>`'), 'the no-formatter paragraph follows the line rules');
+    assert.doesNotMatch(cp, /\(the quality-loop and cross-task/, 'no dangling parenthesis');
+    assert.ok(cp.includes('`/code-review` - the bundled correctness review of the current diff - is not this gate'), '/code-review named as the docs do');
+    assert.doesNotMatch(cp, /user-run parallel sweep/);
+    assert.doesNotMatch(cp, /Each line answers a way the receipt once passed/, 'the why-each-line moved to evidence');
+    assert.doesNotMatch(cp, /2h age cap/, 'the age-cap reason moved to evidence');
+    assert.ok(ev.includes('a reviewed commit, or one a pull brought in, adds nothing') && ev.includes("2h age cap"), 'the trivial-bar arithmetic lives in evidence');
+});
+
 test('audit 2026-10-08: the habits record their evidence and carry no copy of an internal cause', () => {
     // the worked bug example is what the model copies: no internal symbol in Problem or the repro steps
     const bug = read('stack/skills/habits-create-ticket/references/bug.md').split('## Example')[1];
@@ -378,7 +396,7 @@ test('the inline task skills load their method skill through the Skill tool at t
 
 test('skills S5: the judging captures and their loops run on the session model and ask for no switch to Opus (A/B 2026-10-09)', () => {
     const body = (n) => squash(read(`stack/skills/${n}/SKILL.md`));
-    for (const n of ['capture-architecture', 'capture-architecture-quality', 'capture-code-quality', 'loop-architecture-quality', 'loop-quality', 'task-version-upgrade', 'task-build-from-scratch']) {
+    for (const n of ['capture-architecture', 'capture-architecture-quality', 'capture-code-quality', 'loop-architecture-quality', 'loop-code-quality', 'task-version-upgrade', 'task-build-from-scratch']) {
         const text = body(n);
         assert.doesNotMatch(text, /Opus with `\/model`|not on Opus|switch to `\/model` Opus|on Opus \(checked|in-session, on Opus/, `${n} still asks for Opus`);
         assert.match(text, /no `model` pin/i, `${n} keeps the no-pin reason`);
@@ -389,4 +407,26 @@ test('skills S5: the judging captures and their loops run on the session model a
     assert.match(fields, /Two shapes, pick the true one: - `<model> - the judgment above ran on it`/);
     assert.doesNotMatch(fields, /already on Opus|not on Opus/);
     assert.match(squash(read('stack/skills/capture-architecture/references/evidence.md')), /\*\*no switch to Opus is asked for\*\* - measured 2026-10-09/);
+});
+
+// Audit 2026-10-14 SKC15: measured stories sat in always-loaded bodies; each rule keeps a one-clause reason and the
+// incident moves to the skill's evidence appendix (the pilot-3 shape).
+test('audit 2026-10-14 SKC15: the stories live in the evidence appendices, the bodies keep the rule', () => {
+    const cases = {
+        'habits-execution-strategy': [/\$5\.68/, /61\.6M/],
+        'habits-clarify': [/returns across tabs/],
+        'markdown-style': [/1\.6M cache-read/],
+        'capture-architecture-quality': [/W2 and W3 built, W1 remains/],
+    };
+    for (const [name, stories] of Object.entries(cases)) {
+        const body = squash(read(`stack/skills/${name}/SKILL.md`));
+        const ev = squash(read(`stack/skills/${name}/references/evidence.md`));
+        assert.match(ev, /audit appendix, not a run-time load|never to run the skill/, `${name}: the appendix says what it is`);
+        assert.match(body, /`references\/evidence\.md`/, `${name}: the body points at it`);
+        for (const s of stories) {
+            assert.doesNotMatch(body, s, `${name}: ${s} left the body`);
+            assert.match(ev, s, `${name}: ${s} kept in the appendix`);
+        }
+    }
+    assert.doesNotMatch(squash(read('stack/skills/capture-architecture/SKILL.md')), /Measured \(2026-10-09 A\/B/, 'the A/B figure lives in the appendix');
 });

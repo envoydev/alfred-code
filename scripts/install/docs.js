@@ -124,10 +124,12 @@ function switchOnDomain(dir, doc, { log = () => {} } = {})
 // exactly where it is - only the orientation doc that capture wrote moves out of it. The orientation
 // doc's pre-folder home, loose at the root, moves too: its capture moves it on its next run, and a
 // capture never re-runs by itself (2026-10-10: a 0.2.x project carried it loose to .alfred/docs/
-// through the data move). The folder form is listed first, so it wins when both exist.
+// through the data move). The folder form is listed first, so it wins when both exist; so is the architecture
+// assessment's newer home, quality/ASSESSMENT.md (2.0.0 to 2.4.0), over the older architecture/ one.
 const DOCS_MIGRATIONS = [
     ['PROJECT-CODE-STYLE.md', 'code-style/CODE-STYLE.md', 'code style'],
-    ['architecture/ASSESSMENT.md', 'quality/ASSESSMENT.md', 'architecture quality'],
+    ['quality/ASSESSMENT.md', 'quality/ARCHITECTURE-ASSESSMENT.md', 'architecture quality'],
+    ['architecture/ASSESSMENT.md', 'quality/ARCHITECTURE-ASSESSMENT.md', 'architecture quality'],
     ['related-context/PROJECT-RELATED-CONTEXT.md', 'related-projects/RELATED-PROJECTS.md', 'related projects'],
     ['PROJECT-RELATED-CONTEXT.md', 'related-projects/RELATED-PROJECTS.md', 'related projects'],
 ];
@@ -188,22 +190,27 @@ function repointDocs({ projectRoot, docsPath, base, rules = [], instructions = [
     return out;
 }
 
-// THE ROOT'S OWN .gitignore. The old default sat under `.claude/`, which a project's own `.claude/*`
-// line kept out of git for free; `.alfred/docs` is outside it, so the root states its versioning itself,
-// absent-only, the `.playwright` / `.memory-mcp` way. `local` keeps the whole root out of git - and git
-// then answers check-ignore for the root, so the four-home rule reads it back as kept out. `git` commits
-// the docs and keeps out only what the hooks write for this machine: the flow receipts, the block and
-// usage ledgers, the session history (which also ignores itself) and the local overlays - plus the raw
-// session transcripts the usage audit copies beside its reports (code, file contents, possibly secrets).
+// THE DOCS ROOT'S OWN .gitignore - only for a docs root OUTSIDE the data root, or under a data root whose
+// .gitignore is the project's own: everywhere else the data root's one file carries these rules (data-root.js
+// dataIgnoreText, the user's ruling of 2026-10-13) and an update removes this file when it is the stack's text.
+// `local` keeps the whole root out of git - and git then answers check-ignore for the root, so the four-home rule
+// reads it back as kept out. `git` commits the docs and keeps out only what the hooks write for this machine
+// (data-root.js DOCS_STATE_IGNORE): the flow receipts, the block and usage ledgers, the session history and the local
+// overlays - plus the raw session transcripts the usage audit copies beside its reports and the run book's old
+// credentials file.
+const { DOCS_STATE_IGNORE } = require('../../stack/mcp/data-root.js');
 const DOCS_IGNORE = {
     local: '# alfred-code: the docs root is machine-local (ALFRED_CODE_DOCS_VERSIONING=local)\n*\n',
     git: '# alfred-code: the docs are committed (ALFRED_CODE_DOCS_VERSIONING=git); the hooks\' machine-local state is not\n'
-        + '/flow/\n/hook-blocks/\n/history/\n/tools-usage/\n/.branches/\n/docs-log.jsonl\n'
-        + '# the usage audit\'s raw transcript and ledger copies stay on this machine\n/usage-report/**/*.jsonl\n',
+        + `${DOCS_STATE_IGNORE.join('\n')}\n`,
 };
 // Texts an earlier release wrote, still the stack's own: an update replaces them instead of keeping them as
-// the project's. 2.1.3's git text had no usage-report line; up to 2.1.6 the folder was `alfred-code-usage-report/`.
+// the project's. 2.1.3's git text had no usage-report line; up to 2.1.6 the folder was `alfred-code-usage-report/`;
+// up to 2.4.0 there was no credentials line.
 const DOCS_IGNORE_FORMER = [
+    '# alfred-code: the docs are committed (ALFRED_CODE_DOCS_VERSIONING=git); the hooks\' machine-local state is not\n'
+        + '/flow/\n/hook-blocks/\n/history/\n/tools-usage/\n/.branches/\n/docs-log.jsonl\n'
+        + '# the usage audit\'s raw transcript and ledger copies stay on this machine\n/usage-report/**/*.jsonl\n',
     '# alfred-code: the docs are committed (ALFRED_CODE_DOCS_VERSIONING=git); the hooks\' machine-local state is not\n'
         + '/flow/\n/hook-blocks/\n/history/\n/tools-usage/\n/.branches/\n/docs-log.jsonl\n',
     '# alfred-code: the docs are committed (ALFRED_CODE_DOCS_VERSIONING=git); the hooks\' machine-local state is not\n'
@@ -212,7 +219,7 @@ const DOCS_IGNORE_FORMER = [
 ];
 
 // THE USAGE AUDIT'S FOLDER took a plain name in 2.1.7 (`alfred-code-usage-report/` -> `usage-report/`, the user's
-// ruling of 2026-10-06). Run AFTER ensureDocsIgnore, so the root's own file already names the new folder. An audit
+// ruling of 2026-10-06). Run AFTER the .gitignore step (alfred-code.js ignoreStep), so the file holding the docs rules already names the new folder. An audit
 // copies whole session transcripts (code, file contents, possibly secrets) beside its reports, and the old folder's
 // ignore line does not cover the new name: a folder holding a raw `.jsonl` moves only where git keeps it out at the
 // new path (no repository, a `local` root, or the project's own line), else it stays and one `!!` line names the fix.
@@ -387,9 +394,11 @@ function repointSuperpowers({ projectRoot, docsPath, base, rules = [], instructi
 
 // 'written' | 'current' | 'replaced' | 'kept' (the project's own file) | 'outside' (the root is not in
 // the project) | 'skipped' (no versioning to state, or a root under `.claude/`) | 'tracked' (local, over a
-// root git already tracks docs in). A file that is exactly the stack's text - for the OTHER mode, or one an
-// earlier release wrote - is the stack's and follows the run; any other text is the project's.
-function ensureDocsIgnore({ projectRoot, docsPath, mode, log = () => {} })
+// root git already tracks docs in) | 'covered' (the data root's file carries the rules, no file here) | 'removed'
+// (the stack's file here, removed because the data root's carries the rules). A file that is exactly the stack's
+// text - for the OTHER mode, or one an earlier release wrote - is the stack's and follows the run; any other text is
+// the project's. `covered`: the data root's own .gitignore (the stack's) holds the docs rules.
+function ensureDocsIgnore({ projectRoot, docsPath, mode, covered = false, log = () => {} })
 {
     if (!Object.hasOwn(DOCS_IGNORE, mode)) return 'skipped';
     const root = path.resolve(projectRoot);
@@ -404,9 +413,22 @@ function ensureDocsIgnore({ projectRoot, docsPath, mode, log = () => {} })
     let have = null;
     // CRLF-normalised: a checkout with autocrlf turns the stack's own file into different bytes.
     try { have = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n'); } catch { have = null; }
-    if (have === want) return 'current';
     const shown = rel.split(path.sep).join('/');
-    if (have !== null && !Object.values(DOCS_IGNORE).includes(have) && !DOCS_IGNORE_FORMER.includes(have))
+    const stacks = have !== null && (Object.values(DOCS_IGNORE).includes(have) || DOCS_IGNORE_FORMER.includes(have));
+    if (covered)
+    {
+        if (have === null) return 'covered';
+        if (!stacks)
+        {
+            log(`  docs root: ${shown}/.gitignore is the project's own - left as it is (the data root's .gitignore carries the stack's rules)`);
+            return 'kept';
+        }
+        fs.rmSync(file);
+        log(`  docs root: ${shown}/.gitignore removed - the data root's .gitignore carries its rules now (versioning ${mode})`);
+        return 'removed';
+    }
+    if (have === want) return 'current';
+    if (have !== null && !stacks)
     {
         log(`  docs root: ${shown}/.gitignore is the project's own - left as it is (versioning ${mode})`);
         return 'kept';
@@ -612,17 +634,32 @@ function moveDocsRoot({ projectRoot, plan })
     return { ok: true, moved: done.length, gitMoved: done.filter(([k]) => k === 'git').length };
 }
 
-// THE DATA ROOT'S OWN .gitignore - its text and why live in stack/mcp/data-root.js (dataIgnoreText), the one
-// home the launchers read too. The installer keeps it CURRENT: absent or the stack's own older text is
-// written, any other text is the project's own and is left alone.
-const { DATA_IGNORE_HEAD, dataIgnoreText, engineOfServer } = require('../../stack/mcp/data-root.js');
+// THE DATA ROOT'S OWN .gitignore - the one the stack writes; its text and why live in stack/mcp/data-root.js
+// (dataIgnoreText), the one home the launchers read too. The installer keeps it CURRENT: absent or the stack's own
+// older text is written, any other text is the project's own and is left alone. `mode` is the docs versioning; a
+// `local` root over docs git already tracks keeps them visible (a `*` would hide every NEW doc while the old ones
+// stay committed - `docs.js status` reports the disagreement), the hooks' state still kept out.
+const { DATA_IGNORE_HEAD, dataIgnoreText, docsInsideRoot, engineOfServer } = require('../../stack/mcp/data-root.js');
 
 // 'written' | 'replaced' | 'current' | 'kept' (the project's own file).
-function ensureDataIgnore({ projectRoot, root, docsPath, log = () => {} })
+function ensureDataIgnore({ projectRoot, root, docsPath, mode, log = () => {} })
 {
     const base = path.join(projectRoot, ...normRoot(root).split('/'));
     const file = path.join(base, '.gitignore');
-    const want = dataIgnoreText({ root, docsPath });
+    let shape = mode;
+    if (mode === 'local' && docsInsideRoot({ root, docsPath }))
+    {
+        const shown = String(docsPath).replace(/\\/g, '/').replace(/\/+$/, '');
+        let tracked = false;
+        try { tracked = String(rt.execCommand('git', ['ls-files', '--', shown], { cwd: projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })).trim() !== ''; }
+        catch { tracked = false; }
+        if (tracked)
+        {
+            shape = 'git';
+            log(`  data root: git tracks docs under ${shown} - they stay visible to git (versioning local; docs.js status reports the disagreement)`);
+        }
+    }
+    const want = dataIgnoreText({ root, docsPath, mode: shape });
     let have = null;
     try { have = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n'); } catch { have = null; }
     if (have === want) return 'current';
@@ -659,6 +696,37 @@ function pruneDataRoot({ projectRoot, root, log = () => {} })
     try { fs.rmSync(base, { recursive: true }); } catch { return false; }
     log(`  data root: ${normRoot(root)}/ removed - everything in it moved`);
     return true;
+}
+
+// THE NESTED .gitignore FILES an earlier release wrote, once one file carries their rules (the user's ruling of
+// 2026-10-13: one .gitignore, the data root's). Each goes only while it holds exactly the stack's text and a stack
+// file covers it: `docsCovered` - the docs rules are in the data root's file or the docs root's own stack file;
+// `dataCovered` - the data root's file is the stack's. A file holding anything else is the project's and stays.
+// serena's own folder file is serena's: it writes one whenever the folder has none (serena/project.py), so it is
+// never touched. Returns the removed paths, project-relative.
+const NESTED_IGNORES = [
+    { at: 'docs', rel: 'history/.gitignore', text: '*\n' },
+    { at: 'docs', rel: 'project-capabilities/.gitignore', text: 'credentials.local.env\n' },
+    { at: 'data', rel: '.alfred-memory/.gitignore', text: '*\n' },
+];
+function pruneNestedIgnores({ projectRoot, root, docsPath, docsCovered = false, dataCovered = false, log = () => {} })
+{
+    const out = [];
+    for (const row of NESTED_IGNORES)
+    {
+        if (!(row.at === 'docs' ? docsCovered : dataCovered)) continue;
+        const base = row.at === 'docs' ? path.resolve(projectRoot, String(docsPath || '')) : path.join(projectRoot, ...normRoot(root).split('/'));
+        const file = path.join(base, ...row.rel.split('/'));
+        let have;
+        try { have = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n'); } catch { continue; }
+        if (have !== row.text) continue;
+        try { fs.rmSync(file); }
+        catch (err) { log(`  !! ${path.relative(projectRoot, file).split(path.sep).join('/')} could not be removed (${err.code || err.message}) - the data root's .gitignore covers it, so it can go by hand`); continue; }
+        const shown = path.relative(projectRoot, file).split(path.sep).join('/');
+        out.push(shown);
+        log(`  gitignore: ${shown} removed - the ${row.at === 'docs' && !dataCovered ? "docs root's" : "data root's"} .gitignore covers it`);
+    }
+    return out;
 }
 
 // THE WHOLE DATA MOVE AN UPDATE OFFERS - the docs plan and every server class whose data sits somewhere
@@ -699,6 +767,6 @@ function dataOfferLine(offer)
 
 module.exports = {
     domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, ensureDocsIgnore, migrateUsageReport, migratePlans, docsMovePlan, docsMoveViews, moveDocsRoot,
-    ensureDataIgnore, dataIgnoreText, pruneDataRoot, dataOffer, dataOfferLine,
+    ensureDataIgnore, dataIgnoreText, pruneDataRoot, pruneNestedIgnores, dataOffer, dataOfferLine,
     DOCS_IGNORE, DOCS_IGNORE_FORMER, DOCS_MIGRATIONS, DOCS_SWITCH_ON, RESERVED, LEGACY_DOCS_ROOT, DATA_IGNORE_HEAD, OS_LITTER,
 };

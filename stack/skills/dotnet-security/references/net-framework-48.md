@@ -1,6 +1,6 @@
 # .NET application security on .NET Framework 4.8
 
-This skill floors at .NET 8 / C# 12; the OWASP mitigations in SKILL.md still apply on net48, but several
+This skill floors at .NET 10 / C# 14; the OWASP mitigations in SKILL.md still apply on net48, but several
 high-risk areas have Framework-specific mechanics and defaults. 4.8 is supported but frozen, and
 security is the strongest reason to move - hardening it in place is the interim.
 

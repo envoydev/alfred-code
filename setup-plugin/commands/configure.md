@@ -319,7 +319,11 @@ spending its own question. A row carrying `group_off` is ONE question for the wh
 them (recommended), set your own (Other: one number per key, in the catalog's own order), or do not
 use the feature (which writes the row's `group_off` value to every key in the group). Only a row
 carrying `group_off` gets an off answer; never invent one for a row without it, and a group already
-sitting at that value is reported as off, with turning it back on as the change. On a
+sitting at that value is reported as off, with turning it back on as the change. The fresh-session group also
+carries `ALFRED_CODE_AUTO_COMPACT`, so its question gains one answer: switch between offering a fresh session at
+the triggers (`0`) and compacting there instead (`1`) - the value on disk is the kept one. A change is an env change,
+so step 12's installer runs and sets or removes each model's compaction window from the value just written; it
+applies from the next session. On a
 docs-root change, say plainly: existing generated docs do NOT move - they stay under the old root until
 moved by hand or re-captured. Then re-stamp the deployed rule - run
 `node $TMP/repo/scripts/stamp-docs-root.js <project root>`: it rewrites the 'This install's root:'

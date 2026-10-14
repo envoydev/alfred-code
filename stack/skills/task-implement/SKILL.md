@@ -16,14 +16,34 @@ The plan FILE is the whole input - not the chat that produced it. Run this in a 
 - You have a task plan and want to build it in this chat: it honors each task's contract, writes code + tests, gates each task green before the next, then hands to the build review.
 - Not for a plan-less ad-hoc edit, or the whole gated cycle from design to done (/task-solve).
 
+**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it.
+
 ## Build mode - this chat or the implementer seats
 
-1. **Pick the mode.** When the invocation names no mode and no calling flow has already recorded one (`task-solve`'s `mode <session|agents>` approval line, an orchestrator's brief), ask ONE question before building, via AskUserQuestion - this chat, or the implementer seats? - one option marked `(Recommended)` and listed first, the one the `habits-execution-strategy` verdict picks (`parallel seats` marks the seats), the reason in its description - and hold the answer; a mode the run already picked is inherited, never re-asked.
+1. **Pick the mode.** When the invocation names no mode and no calling flow has already recorded one (`task-solve`'s `mode <session|agents>` approval line, an orchestrator's brief), ask ONE question before building and hold the answer; a mode the run already picked is inherited, never re-asked. The mark sits on the mode the `habits-execution-strategy` verdict picks (`parallel seats` moves it to the seats, listed first):
+
+   ```ask
+   Build here or through the implementer seats? <the verdict's reason>
+   - 'In this chat (Recommended)' - <why it fits one chat>
+   - 'Dispatch the implementer seats' - <the tasks that run in parallel>
+   ```
 2. **Build.** In-chat: build in this chat, the protocol below. On an agents answer: dispatch each task to its `<stack>-implementer` seat instead, exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it) - up to 3 at once, each on its frontmatter model unless you name one.
 3. **Stamp the approval before the first dispatch.** `<docs-path>/flow/APPROVAL`, first line `APPROVED <plan id> - "<the user's words, verbatim>"` on their explicit approval, or `AUTO - "<their words, verbatim>"` only on a literal no-stops ask; the dispatch hook blocks an unstamped implementer; delete the file when the run completes. Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool. Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it. A relative write follows whatever cwd the shell drifted to and the dispatch then bounces. The stamp belongs to the session that dispatches - written when its own decision lands, deleted at its own close; an earlier session's leftover stamp is not consent.
-4. **If the stamp is refused, ask - never dispatch around it.** If BOTH the Write tool and an absolute-path Bash write are refused by the harness's classifier, stop and put the choice through AskUserQuestion (retry the stamp, or run this stage inline) rather than retrying blind or dispatching around the gate.
+4. **If the stamp is refused, ask - never dispatch around it.** If BOTH the Write tool and an absolute-path Bash write are refused by the harness's classifier, stop and ask rather than retrying blind or dispatching around the gate:
+
+   ```ask
+   Both write routes refused the approval stamp: <the refusal>.
+   - 'Retry the stamp (Recommended)' - allow the write at the prompt
+   - 'Run this stage inline' - no dispatch, no stamp
+   ```
 5. **Stay the only orchestrator.** Keep the main session the only orchestrator, routing a red per the repair-agent rules, and ticking the plan file as reports land - and each seat's gate is build + fast tests only, never a minutes-long run like integration replays or an E2E pass; the full suite stays with this session's finish step. Dispatch nothing you were not asked to.
-6. **No plan approval line, one ask before task 1.** The approval is the calling flow's too - and a plan file that carries no `Approved:` line when this skill is invoked on its own gets ONE approval AskUserQuestion before task 1 - 'Approve - build task 1 (Recommended)' / 'Changes needed' - its answer written to the plan as `Approved: <date> - "<the user's words, verbatim>"`.
+6. **No plan approval line, one ask before task 1.** The approval is the calling flow's too - and a plan file that carries no `Approved:` line when this skill is invoked on its own gets ONE approval ask before task 1, its answer written to the plan as `Approved: <date> - "<the user's words, verbatim>"`:
+
+   ```ask
+   <plan file> carries no Approved: line. Build it?
+   - 'Approve - build task 1 (Recommended)' - stamped as Approved:
+   - 'Changes needed' - say what in Other
+   ```
 
 ## The protocol - per task, in plan order
 
@@ -31,8 +51,23 @@ Before reading the plan, load `habits-plan-writing` (the Skill tool) - the card 
 
 1. **Take exactly one task.** Its card is the contract: the files it owns, the traps it names, the `file:symbol` anchors, the `test:` it writes first, and its acceptance criterion. When the plan lives in a file (it should - `task-design` writes it to `<docs-path>/plans/`), mark the task `IN_PROGRESS` there before touching code. Jump to the anchors - the designer already located them; do not re-navigate the repo.
 2. **Build the slice + its tests together.** The acceptance criterion is what the tests prove; a task without its test is not built, it is drafted. The card's `test:` comes first, by `habits-test-first` - its red, a run that failed on the assertion the criterion names, is the only red that counts. The card's `log_points` go in with the slice, through the repo's logging seam at the level and with the identifiers the card names - never left for a later pass, never a second logger. Every line meets 'The bar I build to' - structure, quality, naming, comments - and every judgment call lands with its precedent. Stay inside the task's boundary - a needed change outside it is a flag, not a detour (see below).
-3. **Gate the task green.** Build + the relevant tests after each task, not at the end of the plan - the plan header's `Build:` command set where it has one, scoped to the touched projects and never a subset of it: a gate that drops the build passes what only the build catches (a template binding error, a missing provider). Resolve every red INLINE in this session - keep the fix loop here, quoting each build/test run so every attempt stays inspectable; the in-chat build dispatches nothing. The loop is bounded the way the resolver seats' is: after the FIFTH red run of one task's gate the next act is ONE AskUserQuestion - 'Keep fixing inline' / 'Hand it to a resolver seat' / 'Stop', one marked `(Recommended)` and listed first: 'Keep fixing inline' when the last red run changed, else the resolver seat (or 'Stop' where the project installed none) - never a sixth run. Load the stack's convention skills for the trap list when the red points at one.
-4. **Close the task honestly** - the per-task completion gate is `habits-done-gate`'s rule, carried here so no load stands between it and the tick: run the acceptance command after the last edit and quote its output before any done word. Run it, then tick the task `DONE` with its evidence line - the acceptance command's own quoted output - in the plan file, append the task's judgment calls to the plan's `## Decisions` ledger (choice + precedent, per the bar), and refresh the plan's one-line resume note (next task + any mid-task state). The file, not the chat, is what a compacted or fresh session resumes from - it must never be more than one task stale. Then the next task. Partial is stated as partial. A task whose acceptance criterion is a RUN that has not happened yet - an integration pass, a manual try, a suite the gate deferred - stays `IN_PROGRESS` with a `needs: <the run>` line; 'code complete, builds' is not DONE. A task stamped `FAILED` ends the turn with ONE AskUserQuestion - 'Stop and report (Recommended)' / 'Continue inline' / 'Resolver seat' / 'Revert' - before any further run or edit: a 'reported to the user' line in the plan with no ask behind it is the measured failure.
+3. **Gate the task green.** Build + the relevant tests after each task, not at the end of the plan - the plan header's `Build:` command set where it has one, scoped to the touched projects and never a subset of it: a gate that drops the build passes what only the build catches (a template binding error, a missing provider). Resolve every red INLINE in this session - keep the fix loop here, quoting each build/test run so every attempt stays inspectable; the in-chat build dispatches nothing. The loop is bounded the way the resolver seats' is: after the FIFTH red run of one task's gate the next act is ONE ask, never a sixth run - the mark on 'Keep fixing inline' when the last red run changed, else on the resolver seat (or 'Stop' where the project installed none), listed first. Load the stack's convention skills for the trap list when the red points at one.
+
+   ```ask
+   <task> is red after 5 runs: <the last error>.
+   - 'Keep fixing inline (Recommended)' - <what the last run changed>
+   - 'Hand it to a resolver seat' - <the seat>
+   - 'Stop' - the task stays red in the plan
+   ```
+4. **Close the task honestly** - the per-task completion gate is `habits-done-gate`'s rule, carried here so no load stands between it and the tick: run the acceptance command after the last edit and quote its output before any done word. Run it, then tick the task `DONE` with its evidence line - the acceptance command's own quoted output - in the plan file, append the task's judgment calls to the plan's `## Decisions` ledger (choice + precedent, per the bar), and refresh the plan's one-line resume note (next task + any mid-task state). The file, not the chat, is what a compacted or fresh session resumes from - it must never be more than one task stale. Then the next task. Partial is stated as partial. A task whose acceptance criterion is a RUN that has not happened yet - an integration pass, a manual try, a suite the gate deferred - stays `IN_PROGRESS` with a `needs: <the run>` line; 'code complete, builds' is not DONE. A task stamped `FAILED` ends the turn with ONE ask before any further run or edit - a 'reported to the user' line in the plan with no ask behind it is the measured failure:
+
+   ```ask
+   <task> FAILED: <why>.
+   - 'Stop and report (Recommended)' - the plan records it
+   - 'Continue inline' - <the next attempt>
+   - 'Resolver seat' - <the seat>
+   - 'Revert' - back to the task's start
+   ```
 
 ## The bar I build to
 
@@ -54,14 +89,49 @@ The review-and-fix loop's five stages - structure, code quality, naming, logging
 
 ## When the plan meets reality
 
-- **A task proves wrong mid-build** (the seam isn't where the plan said, a trap the audit missed): stop the task and name the delta - never silently redesign while implementing. The re-entry is the USER's call on the FIRST occurrence, not a counter you spend: end the turn with ONE AskUserQuestion - re-design this slice with `task-design` (recommended, the delta named in the option) / continue against the delta as it stands / stop the build here (plain-text options where the harness lacks the tool) - and re-enter only on that answer. The plan is the contract; reality wins, but through a revision, not a drift.
+- **A task proves wrong mid-build** (the seam isn't where the plan said, a trap the audit missed): stop the task and name the delta - never silently redesign while implementing. The re-entry is the USER's call on the FIRST occurrence, not a counter you spend: end the turn with ONE ask (plain-text options where the harness lacks the tool) and re-enter only on that answer. The plan is the contract; reality wins, but through a revision, not a drift.
+
+  ```ask
+  <task> proves wrong: <the delta>.
+  - 'Re-design this slice with task-design (Recommended)' - <the delta, named>
+  - 'Continue against the delta' - <what changes>
+  - 'Stop the build here' - the plan records where
+  ```
 - **A tool the environment blocks** (a generator hanging on denied egress, a command the sandbox refuses): the task still finishes in this session - take the in-session route before any ask. For an EF migration: `dotnet ef migrations add <Name>` with `--project` AND `--startup-project` both set to the project holding the design-time DbContext factory - the tools take that factory first and boot no host; failing that, hand-write the migration and its model-snapshot change from the nearest prior migration. Only a task with no in-session route becomes a blocker ask, and that ask recommends the route - never 'retry the same command' or 'you run it'.
-- **Scope beyond the plan** (a bug discovered nearby, a refactor itch): flag it and put the call through AskUserQuestion - 'Leave it for later (Recommended)' / 'Add it to the plan' (plain-text options where the harness lacks the tool). Never rides along. The same ask covers a bug reported AFTER a cycle stamped COMPLETE or outside any active cycle - 'Defer (Recommended)' / 'Fix now, ad hoc' / 'Open a new cycle'.
-- **A shared contract surfaces** (a DTO both sides compile against, a schema semantic): stop the task and put it through ONE AskUserQuestion - 'Hand it to the cross-domain flow (Recommended)' (name `/task-solve-cross` as the user's command; this build stops here) / 'Keep it in this plan as a scoped change' / 'Stop the build' - the same BLOCKED_CONTRACT_CHANGE discipline the dispatched seats follow.
+- **Scope beyond the plan** (a bug discovered nearby, a refactor itch): flag it and ask (plain-text options where the harness lacks the tool). Never rides along. A bug reported AFTER a cycle stamped COMPLETE or outside any active cycle takes the second ask:
+
+  ```ask
+  Out of plan: <the item>.
+  - 'Leave it for later (Recommended)' - named in the report
+  - 'Add it to the plan' - a revision, then build
+  ```
+
+  ```ask
+  <the bug>, reported outside an active cycle.
+  - 'Defer (Recommended)' - named in the report
+  - 'Fix now, ad hoc' - <the fix>
+  - 'Open a new cycle' - a new plan file
+  ```
+- **A shared contract surfaces** (a DTO both sides compile against, a schema semantic): stop the task and put it through ONE ask - the same BLOCKED_CONTRACT_CHANGE discipline the dispatched seats follow:
+
+  ```ask
+  <task> touches a shared contract: <the DTO or schema>.
+  - 'Hand it to the cross-domain flow (Recommended)' - you run `/task-solve-cross`; this build stops here
+  - 'Keep it in this plan as a scoped change' - <the scope>
+  - 'Stop the build' - the plan records where
+  ```
 
 ## Finish - the in-session verifier
 
-All tasks green: run the full suite once - the workspace's affected set (`nx affected -t test lint build` in an Nx workspace), else every touched project plus the projects that depend on it, never a hand-picked list - quoting the command in the report and in any verifier brief. Then review the assembled diff against the plan - the reviewer through ONE AskUserQuestion unless a calling flow already chose it - 'task-verify-code in-session (Recommended)' (inline, dispatches nothing - the single-chat form of the verifier seat) / 'The `<stack>-verifier` seat' (dispatched, isolated, on its frontmatter model unless you name one) - pointed at the plan file so it reviews against the plan, not in isolation, and apply its findings; then the done-gate on the whole feature. Report against the plan, one line per task - `task | status (DONE / deferred / revised) | evidence (the green command and what it proved)` - then the suite + the review result, the `## Decisions` ledger by its entry count (never re-pasted), and anything deferred or revised with its reason. The vertical is complete: design (`task-design`) -> audit (`task-verify-plan`) -> build (this) -> review (`task-verify-code` / `<stack>-verifier`) - one session, every step inspectable.
+All tasks green: run the full suite once - the workspace's affected set (`nx affected -t test lint build` in an Nx workspace), else every touched project plus the projects that depend on it, never a hand-picked list - quoting the command in the report and in any verifier brief. Then review the assembled diff against the plan - the reviewer through ONE ask unless a calling flow already chose it, pointed at the plan file so it reviews against the plan, not in isolation, and apply its findings; then the done-gate on the whole feature.
+
+```ask
+All tasks green (<the suite command>). Who reviews the diff?
+- 'task-verify-code in-session (Recommended)' - inline, the single-chat form of the verifier seat
+- 'The <stack>-verifier seat' - dispatched, isolated, on its frontmatter model
+```
+
+Report against the plan, one line per task - `task | status (DONE / deferred / revised) | evidence (the green command and what it proved)` - then the suite + the review result, the `## Decisions` ledger by its entry count (never re-pasted), and anything deferred or revised with its reason. The vertical is complete: design (`task-design`) -> audit (`task-verify-plan`) -> build (this) -> review (`task-verify-code` / `<stack>-verifier`) - one session, every step inspectable.
 
 **Known ceilings.** File every deliberate simplification this build made as a `where | limit | revisit when` row - never a code comment - before the close: Read `references/known-ceilings.md` and file the rows by its procedure; the close report says how many rows it filed, or `none`.
 

@@ -141,16 +141,54 @@ test('mergeHooks keeps one group per matcher, the first block\'s hooks first', (
     assert.deepStrictEqual(own.PreToolUse[0].hooks, [{ command: 'own' }], 'the inputs are not mutated');
 });
 
-// 2.2.1 (the user's ruling of 2026-10-06): no RETIRED alias is listed - every id `renamed.mcps` left behind
-// is out of the live file, which an update migrates without. The bare 1.x `playwright` row names the catalog group,
-// never a plugin id, so it is not one.
-const RETIRED_ALIAS_NAMES = Object.keys(require('./install/manifest.js').loadManifest(path.join(__dirname, '..')).renamed.mcps)
-    .filter((old) => old !== 'playwright');
-test('no RETIRED alias is generated or listed: the renamed MCP ids are gone', () => {
+// 2.2.1 (the user's ruling of 2026-10-06): the 2.0.0 and 2.2.0 renamed ids are out of the live file, which an update
+// migrates without. The bare 1.x `playwright` row names the catalog group, never a plugin id, so it is not one. The six
+// ids 2.4.0 renamed are listed again as RETIRED aliases (audit 2026-10-14 PL5, the user's ruling of 2026-10-14): 2.4.0
+// unlisted them in the release that renamed them, and an install not yet updated lost its server at the next refresh.
+const RENAMED_MCPS = require('./install/manifest.js').loadManifest(path.join(__dirname, '..')).renamed.mcps;
+const RETIRED_ALIAS_NAMES = Object.keys(RENAMED_MCPS).filter((old) => old !== 'playwright');
+const LISTED_2_4 = ['browser-chrome', 'browser-msedge', 'browser-firefox', 'browser-webkit', 'windows-desktop', 'macos-desktop'];
+test('the 2.0.0 and 2.2.0 renamed ids stay unlisted; only the six 2.4.0 ids are RETIRED aliases', () => {
     assert.strictEqual(RETIRED_ALIAS_NAMES.length, 15, 'serena, context7, the four playwright engines, the three 2.2.0 ids, the two desktop servers and the four browser engines (2026-10-13)');
-    for (const name of RETIRED_ALIAS_NAMES) assert.strictEqual(shippedBy[name], undefined, `${name} is still listed`);
-    assert.strictEqual(SHIPPED.plugins.filter((p) => /^RETIRED/.test(p.description || '')).length, 0, 'no RETIRED row at all');
-    assert.ok(!('aliasEntries' in require('./build-marketplace.js')) && !('mcpAliasEntries' in require('./build-marketplace.js')), 'no generator is left to bring one back');
+    const { LISTED_ALIASES } = require('./build-marketplace.js');
+    assert.deepStrictEqual([...LISTED_ALIASES], LISTED_2_4);
+    for (const name of RETIRED_ALIAS_NAMES.filter((n) => !LISTED_2_4.includes(n))) assert.strictEqual(shippedBy[name], undefined, `${name} is still listed`);
+    assert.deepStrictEqual(SHIPPED.plugins.filter((p) => /^RETIRED/.test(p.description || '')).map((p) => p.name).sort(), [...LISTED_2_4].sort(), 'the six, and no other RETIRED row');
+    assert.ok(!('aliasEntries' in require('./build-marketplace.js')), 'no 1.x core alias generator');
+});
+
+test('PL5: each 2.4.0 alias carries its successor\'s server under the OLD name, no dependency, and says what update does', () => {
+    const { mcpAliasEntries, mcpPlugins } = require('./build-marketplace.js');
+    const current = mcpPlugins();
+    const aliases = mcpAliasEntries({ entries: current });
+    assert.strictEqual(aliases.length, 6);
+    for (const alias of aliases)
+    {
+        const now = RENAMED_MCPS[alias.name];
+        const successor = current.find((e) => e.name === now);
+        assert.ok(successor, `${alias.name} -> ${now}`);
+        assert.deepStrictEqual(Object.keys(alias.mcpServers), [alias.name], 'one server, named like the plugin - the tool names an un-updated copy spells');
+        assert.deepStrictEqual(alias.mcpServers[alias.name], successor.mcpServers[now], 'the successor\'s own launcher and pin');
+        assert.ok(!('dependencies' in alias), 'I6: an alias names no dependency');
+        assert.strictEqual(alias.version, successor.version);
+        assert.strictEqual(alias.description, `RETIRED in 2.4.0 - renamed ${now}. Run /alfred-code:update: it installs ${now} in its place and removes this entry.`);
+        assert.deepStrictEqual(shippedBy[alias.name], alias, `${alias.name}: the live file is the generated alias`);
+    }
+    // A manifest that loses a successor fails loudly instead of listing a dead alias.
+    assert.throws(() => mcpAliasEntries({ entries: current, renamedMcps: { ...RENAMED_MCPS, 'macos-desktop': 'gone-control' } }), /macos-desktop has no successor entry/);
+});
+
+test('PL5: --mcp-entries keeps the aliases on a re-run and puts back one a hand edit removed', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mkt-alias-'));
+    const file = path.join(tmp, 'marketplace.json');
+    const live = JSON.parse(JSON.stringify(SHIPPED));
+    live.plugins = live.plugins.filter((p) => p.name !== 'windows-desktop');
+    fs.writeFileSync(file, JSON.stringify(live, null, 2) + '\n');
+    run(['--mcp-entries', '--marketplace-file', file]);
+    const byName = (m) => Object.fromEntries(m.plugins.map((p) => [p.name, p]));
+    assert.deepStrictEqual(byName(JSON.parse(fs.readFileSync(file, 'utf8'))), byName(SHIPPED), 'the alias is back, nothing else moved');
+    assert.match(run(['--mcp-entries', '--marketplace-file', file]), /mcp entries current: 16 plugins/, 'a re-run writes nothing');
+    fs.rmSync(tmp, { recursive: true, force: true });
 });
 
 test('malformed input fails loudly rather than emitting a short list', () => {
@@ -286,6 +324,14 @@ test('no generated MCP entry declares a dependency - none may block a core disab
 test('the two desktop MCP plugins start their upstream with its telemetry off', () => {
     for (const name of ['windows-control', 'macos-control'])
         assert.deepStrictEqual(shippedBy[name].mcpServers[name].env, { ANONYMIZED_TELEMETRY: 'false' }, `${name} must pass ANONYMIZED_TELEMETRY=false`);
+});
+
+// Audit 2026-10-14 PL1: serena-agent 1.7.0 pings its maker's host at every agent start unless SERENA_USAGE_REPORTING is
+// 'false' (serena/agent.py _send_usage_info). A locked server, so every session of every install would ping.
+test('the navigation MCP plugin starts serena with its usage ping off, and the copy-route row registers the same', () => {
+    assert.deepStrictEqual(shippedBy['alfred-navigation'].mcpServers['alfred-navigation'].env, { SERENA_USAGE_REPORTING: 'false' });
+    const row = require('../meta/stack-manifest.json').mcps.find((m) => m.name === 'alfred-navigation');
+    assert.match(row.args, /(^| )-e SERENA_USAGE_REPORTING=false /, row.args);
 });
 
 // M24: every uvx-started server passes the release's dependency cut-off (the pins file's refreshed day, its last

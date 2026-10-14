@@ -260,8 +260,8 @@ It is the only place a plugin that cannot load says so: a row the catalog no lon
 (`docs/plugin-cli-evidence.md` S13, S25).
 
 A row whose `projectPath` names another project is that project's install, not this one's - leave it out. Then
-`node "${CLAUDE_PLUGIN_ROOT}/scripts/install/plugins.js" unreached .` names what the settings switch on and no
-record reaches here: each `unreached: <spec>\t<file>\t<why>` line is one more row - version and scope `-`, enabled
+`node "${CLAUDE_PLUGIN_ROOT}/scripts/install/plugins.js" unreached .` names what the settings switch on that loads
+nothing here - no record reaches it, and no registered marketplace serves it from a relative path (`docs/plugin-cli-evidence.md` S29): each `unreached: <spec>\t<file>\t<why>` line is one more row - version and scope `-`, enabled
 `yes (<file>)`, health `not installed for this project`, the line's command in the close. `unreached: none` adds
 nothing; `unreached: unknown` adds the line under the table (measured: a project's settings enabled a browser
 engine whose only record was another project's, and the session searched for its tools three times).
@@ -278,6 +278,7 @@ engine whose only record was another project's, and the session searched for its
 | ALFRED_CODE_FRESH_SESSION_1M | 400000 (default) - the fresh-session gate's trigger on a window above 200k; 0 = off for that tier |
 | ALFRED_CODE_FRESH_SESSION_200K | 150000 (default) - the same trigger on a 200k window; 0 = off for that tier |
 | ALFRED_CODE_FRESH_SESSION_DEFAULT | 300000 (default) - the same trigger for every other case: a window that is neither of those sizes, or one the gate cannot read. Which one applies comes from the session model's row in `.claude/hooks/model-windows.json` |
+| ALFRED_CODE_AUTO_COMPACT | 0 (default) - offer a fresh session at the trigger; 1 = compact there instead (each model's `autoCompactWindow` set, no fresh-session ask) |
 | ALFRED_CODE_DEFAULT_CONTEXT_WINDOW | 300000 (default) - the window for a model `.claude/hooks/model-windows.json` does not list |
 | CONTEXT7_API_KEY (account env) | set (N chars) / absent - absent = the keyless free tier |
 
@@ -341,7 +342,7 @@ the seat handoff notes still in the memory database (`node .claude/hooks/memory.
 |---|---|---|---|
 | architecture/ARCHITECTURE.md | yes | main@a1b2c3d, 2026-07-24 | 2026-07-24 |
 | architecture/watch.json | yes | - | 2026-07-24 |
-| quality/ASSESSMENT.md | yes | as of main@a1b2c3d, 2026-07-24 (recomputed, not a domain) | 2026-07-24 |
+| quality/ARCHITECTURE-ASSESSMENT.md | yes | as of main@a1b2c3d, 2026-07-24 (recomputed, not a domain) | 2026-07-24 |
 | quality/CODE-ASSESSMENT.md | no | - | - |
 | code-style/CODE-STYLE.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
 | related-projects/RELATED-PROJECTS.md | no | - | - |

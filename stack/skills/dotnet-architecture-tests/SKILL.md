@@ -5,7 +5,7 @@ description: "Load when adding or reviewing architecture or fitness tests, layer
 
 # .NET architecture tests - fitness functions
 
-The architecture-decision skill decides *what* the structure should be (clean, vertical-slice, DDD, modular, microservices); this skill makes a test *prove* it, and fail the build the moment a boundary is crossed. Without that, a layering rule lives only in a diagram and a reviewer's memory, so it erodes silently - one stray `using` at a time - until the next big refactor. Baseline is .NET 8 / C# 12.
+The architecture-decision skill decides *what* the structure should be (clean, vertical-slice, DDD, modular, microservices); this skill makes a test *prove* it, and fail the build the moment a boundary is crossed. Without that, a layering rule lives only in a diagram and a reviewer's memory, so it erodes silently - one stray `using` at a time - until the next big refactor. Floor is .NET 10 / C# 14; .NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked.
 
 ## When to use
 
@@ -15,7 +15,7 @@ The architecture-decision skill decides *what* the structure should be (clean, v
 
 ## Pick the library: NetArchTest by default
 
-Default to **NetArchTest.Rules**: lightweight, fluent, fast, and zero-ceremony - assertions over namespaces, dependencies, and layering that read cleanly in a normal test.
+Default to **NetArchTest.eNhancedEdition**: lightweight, fluent, fast, and zero-ceremony - assertions over namespaces, dependencies, and layering that read cleanly in a normal test. It is the maintained successor of NetArchTest.Rules (dormant since 1.3.2, 2021): same `NetArchTest.Rules` namespace and `Types.InAssembly(...)` chain, but not fully backwards compatible - `TestResult` lists `FailingTypes`, not `FailingTypeNames`, so a suite moving over recompiles and fixes its messages. A repo already on NetArchTest.Rules stays on it until that move is its own change.
 
 ```csharp
 [Fact]
@@ -26,12 +26,12 @@ public void Domain_depends_on_nothing_outside_itself()
         .ShouldNot().HaveDependencyOnAny("Microsoft.EntityFrameworkCore", "Shop.Infrastructure", "Microsoft.AspNetCore")
         .GetResult();
 
-    result.IsSuccessful.Should().BeTrue(
-        because: $"domain must stay pure; offenders: {string.Join(", ", result.FailingTypeNames)}");
+    Assert.True(result.IsSuccessful,
+        $"domain must stay pure; offenders: {string.Join(", ", result.FailingTypes.Select(t => t.FullName))}");
 }
 ```
 
-Reach for **ArchUnitNET** only when NetArchTest's model is too thin - it offers richer modeling (slice analysis, namespace/assembly cycle detection, custom conditions and predicates) at the cost of a heavier API. Pick one per solution; do not run both.
+Reach for **ArchUnitNET** only when NetArchTest's model is too thin - it offers richer modeling (namespace/assembly cycle detection, custom conditions and predicates) at the cost of a heavier API; eNhancedEdition already covers slice isolation (`.Slice().ByNamespacePrefix(...)`). Pick one per solution; do not run both.
 
 ## The rules worth enforcing
 

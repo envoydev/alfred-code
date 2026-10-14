@@ -82,7 +82,12 @@ test('M67: the shell-no-attach rationale is a maintainer comment in the path rul
         assert.ok(!/through the shell|first shell write/.test(live), `${name}.md: the injected text still explains the shell route: ${live}`);
         assert.match(squash(rule(name)), /<!--[^>]*shell[^>]*guard-read-whole-file\.js[^>]*-->/, `${name}.md keeps the rationale as a comment`);
     }
-    assert.ok(injected('alfred-navigation').includes('path-scoped rules do not attach on the shell route'), 'the always-on copy reaches the shell run and stays');
+    // audit 2026-10-14 RU07: a plain one-file shell view attaches a path-scoped rule (code.claude.com/docs/en/memory); a shell write never does
+    const nav = injected('alfred-navigation');
+    assert.ok(nav.includes('Only a plain one-file view (`cat`, `head`, `tail`, `sed -n`, `grep`, no pipe or redirect) attaches path-scoped rules; a shell write never does, so the read guard names the governing rule on the first shell write.'), 'the always-on copy reaches the shell run and stays');
+    assert.ok(!nav.includes('do not attach on the shell route'), 'the drifted claim');
+    for (const name of ['csharp-conventions', 'markdown-docs', 'skill-authoring'])
+        assert.ok(squash(rule(name)).includes('gets no attach on a shell write'), `${name}.md: the comment names the shell write`);
 });
 
 // ------------------------------------------------------------------ M68
@@ -93,7 +98,13 @@ test('M68: the browser-only screenshot line leaves the always-on navigation rule
     assert.ok(!/screenshot/i.test(nav), 'the browser row owns screenshot readback');
     const row = read('stack/skills/capture-agent-awareness/references/generated-rule-template.md').split('\n').find((l) => l.startsWith('- `browser` - '));
     assert.ok(row && row.includes('never the iteration loop'), 'the browser row carries the mid-loop rule');
-    assert.ok(nav.includes('Git Bash'), 'the Windows line stays: a per-OS rule copy would differ between teammates');
+    // The M68 ruling stands - one rule text for every teammate, never a per-OS rule COPY. Audit 2026-10-14 RU13 (the
+    // user's ruling): a per-host hook line is no copy, so the Windows line rides memory-session.js on win32 only, and the
+    // rule keeps one pointer at it (the hook's own cases: memory-session.test.js, RU13).
+    assert.ok(nav.includes('- The traps of this host\'s own shell (zsh, Git Bash on Windows) arrive in the session-start context, only where they apply.'), 'the pointer');
+    assert.ok(!nav.includes('cygpath'), 'the Windows line left the always-on rule');
+    const { hostLines } = require('../stack/hooks/memory-session.js');
+    assert.ok(hostLines('win32', 'C:\\Program Files\\Git\\usr\\bin\\bash.exe').some((l) => l.startsWith('- On Windows (Git Bash): pass a `/tmp/x` path')), 'the hook carries it on win32');
 });
 
 // ------------------------------------------------------------------ M69
@@ -104,7 +115,8 @@ test('M69: the quality gates drop the generic simplicity line and name Monitor a
     assert.ok(!gates.includes('Keep it simple') && !gates.includes('speculative'), 'a generic line with no measured miss');
     assert.ok(gates.includes('Comments: none by default; a why only when the code cannot say it'), 'the implementer bar cites this comments line by name');
     assert.ok(!gates.includes('the wait tool is deferred'), 'the tool is named');
-    assert.ok(gates.includes('`ToolSearch select:Monitor`'), 'the load line names Monitor');
+    // audit 2026-10-14 RU04: the Monitor load line moved to the first background call's note (shell-guards.test.js RU04)
+    assert.ok(!gates.includes('select:Monitor'), 'the load line left the always-on rule');
 });
 
 // ------------------------------------------------------------------ M71
@@ -175,7 +187,9 @@ test('hooks #14: an ask with no options to name still goes through the tool - th
 test('rules F4: background output is polled from one home, the quality gates', () =>
 {
     assert.ok(!/Monitor/.test(injected('alfred-navigation')), 'the navigation copy is folded away');
-    assert.match(injected('alfred-quality-gates'), /Poll it through `Monitor` or its new lines, never a whole-log re-read\./);
+    // audit 2026-10-14 RU04: the polling line rides the first background call's note now (shell-guards.test.js RU04)
+    assert.ok(!/whole-log/.test(injected('alfred-quality-gates')), 'one home: the dispatcher note');
+    assert.match(injected('alfred-quality-gates'), /runs in the background while you do work that does not depend on it; the first background call's note says how to watch it\./);
 });
 
 test('rules F5 + F16: the navigation rule says one thing per line, in plain words', () =>
@@ -252,12 +266,18 @@ test('rules F12 + F13: the commit header and the memory verify clause are each s
     assert.strictEqual((memory.match(/verified before use/g) || []).length, 1, memory);
 });
 
-test('agents F03: a seat whose tools: list names a locked server\'s tools calls them directly - live probe 2026-10-09', () =>
+// audit 2026-10-14 AG01: ec2f0027 granted every seat whole servers; the 2026-10-14 probe (docs/baseline-rules-evidence.md)
+// saw a whole-server-granted seat with no ToolSearch call the tools on its first try, so the clause names both grant shapes.
+test('agents F03 + AG01: a seat whose tools grant a locked server\'s tools - by name or whole - calls them directly - live probes 2026-10-09, 2026-10-14', () =>
 {
-    const clause = 'A seat whose `tools:` list names them has them loaded already - it calls them directly, with no ToolSearch.';
-    for (const name of ['alfred-navigation', 'alfred-memory'])
-        assert.ok(injected(name).includes(clause), name);
-    assert.ok(injected('alfred-quality-gates').includes('then the query (a seat whose `tools:` list names them calls them directly)'));
+    const clause = 'A seat whose tools grant them - by name or as the whole server - has them loaded already; it calls them directly.';
+    assert.ok(injected('alfred-navigation').includes(clause), 'alfred-navigation');
+    // RU10 moved the memory line into the hook's SubagentStart push, carve-out and all.
+    assert.ok(fs.readFileSync(path.join(ROOT, 'stack', 'hooks', 'memory-session.js'), 'utf8')
+        .includes('a seat whose tools grant them, by name or as the whole server, has them loaded already and calls them directly'), 'memory-session.js');
+    assert.ok(injected('alfred-quality-gates').includes('then the query (a seat whose tools grant them - by name or as the whole server - calls them directly)'));
+    for (const name of ['alfred-navigation', 'alfred-memory', 'alfred-quality-gates'])
+        assert.ok(!injected(name).includes('list names them'), `${name}: the exact-name-only clause`);
 });
 
 // ------------------------------------------------------------------ audit 2026-10-10 C14
@@ -280,9 +300,13 @@ test('C14: no shipped instruction prescribes the bash-only PIPESTATUS read; the 
     assert.deepStrictEqual(hits, [], 'a shipped text tells the model to read ${PIPESTATUS[0]}');
     const nav = injected('alfred-navigation');
     assert.match(nav, /Read `\$\?` on the very next line, with `set -o pipefail` before a pipe/);
-    assert.match(nav, /a bare word opening with `=`[^.]*quote it, `echo '====='`/);
-    assert.match(nav, /never word-splits `\$VAR`/);
-    assert.match(nav, /a path glob that may match nothing with `find <dir> -name '<pat>'`/);
+    // audit 2026-10-14 RU05: shell-guards.js quotes a tool-owned glob and a bare `=word` under zsh (shell-guards.test.js C14), so the rule drops both
+    assert.ok(!/opening with `=`|a glob the TOOL owns/.test(nav), 'a hook-held clause left the rule');
+    // audit 2026-10-14 RU13: the two zsh traps ride memory-session.js on a zsh host only; the rule points at them
+    assert.ok(!/word-splits|bare path glob/.test(nav), 'the zsh lines left the always-on rule');
+    const zsh = require('../stack/hooks/memory-session.js').hostLines('darwin', '/bin/zsh').join('\n');
+    assert.match(zsh, /never word-splits `\$VAR`/);
+    assert.match(zsh, /a path glob that may match nothing with `find <dir> -name '<pat>'`/);
 });
 
 // ------------------------------------------------------------------ audit 2026-10-10 C22
@@ -293,8 +317,10 @@ test('C22: Angular specs route to angular-testing, EF migrations attach the SQL 
     assert.match(ng, /Writing or changing a spec file \(`\*\.spec\.ts`\) loads `angular-testing` in the same action/);
     const graph = JSON.parse(read('meta/stack-graph.json'));
     assert.ok(graph.rules['angular-conventions'].skills.includes('angular-testing'), 'the rule pulls the skill it names');
-    assert.deepStrictEqual(pathsOf('sql-conventions'), ['**/*.sql', '**/Migrations/*.cs']);
-    assert.match(injected('sql-conventions'), /An EF migration \(`Migrations\/\*\.cs`\) is schema work: the same first action adds the migration-safety skill/);
+    // audit 2026-10-14 RU12: nested `Migrations/<Context>/` folders attach too
+    assert.deepStrictEqual(pathsOf('sql-conventions'), ['**/*.sql', '**/Migrations/**/*.cs']);
+    assert.match(injected('sql-conventions'), /An EF migration \(`Migrations\/\*\*\/\*\.cs`\) is schema work: the same first action adds the migration-safety skill/);
+    assert.match(injected('winforms-conventions'), /an EF migration's `\*\.Designer\.cs` \(generated, under `Migrations\/`\) is not WinForms - skip/);
     const md = injected('markdown-docs');
     const carve = md.indexOf('The generated docs root is NOT governed here');
     assert.ok(carve >= 0 && carve < md.indexOf('the FIRST action after this rule attaches'), 'the carve-out comes before the first action');
@@ -405,8 +431,10 @@ test('C12: a pasted secret serves its one call only, and a documented seed is ci
 test('C25 / C31 / C07: one background command needs no Monitor, a red run is logged once, a completeness verdict scopes itself', () =>
 {
     const gates = injected('alfred-quality-gates');
-    assert.match(gates, /One `run_in_background` command whose end is all that matters needs nothing more - its exit re-invokes you; .*a condition inside a run or across several arms the `Monitor` tool when you start it/);
-    assert.match(gates, /never a foreground `until` \/ `while` sleep loop/);
+    // audit 2026-10-14 RU04: the one-command / Monitor split rides the first background call's note (shell-guards.test.js RU04)
+    assert.match(require('../stack/hooks/shell-guards.js').BACKGROUND_NOTE, /one command whose end is all that matters needs nothing more - its exit re-invokes you\. .*a condition inside a run or across several arms takes the `Monitor` tool when you start it/);
+    // audit 2026-10-14 RU05: shell-guards.js blocks a foreground sleep loop (shell-guards.test.js poll-loop), so the rule drops the clause
+    assert.ok(!gates.includes('sleep loop'), 'a hook-held clause left the rule');
     assert.match(gates, /A red test or build run is captured once to a scratch log \(`<cmd> > <scratch>\/run\.log 2>&1; tail -n 60 <scratch>\/run\.log`\); every later look greps that log, never a re-run\./);
     assert.match(gates, /A verdict that something is complete against a reference \(parity with another app, everything a spec lists\) leads with what its evidence covers/);
 });
@@ -427,4 +455,52 @@ test('T4 cross-track: every seat\'s START reads the brief\'s docs anchors first,
     assert.deepStrictEqual(homes(format).map((h) => h.file).sort(), agents.filter((f) => f.endsWith('-verifier.md')).sort());
     for (const f of agents.filter((a) => a.endsWith('-verifier.md')))
         assert.ok(read(f).split('\n').some((l) => /^1\. /.test(l) && l.includes(format.owner.marker)), `${f}: the format check rides check 1`);
+});
+
+// ------------------------------------------------------------------ audit 2026-10-14 RU09 / SKC02
+
+// RU09: docs-session.js hands every session and seat the read-by-section route whenever a docs domain exists, so the
+// always-on rule keeps only the case the hook cannot speak to - no docs block at all.
+test('RU09: the navigation rule leaves the docs route to the session-start block and keeps the no-docs fallback', () =>
+{
+    const nav = injected('alfred-navigation');
+    assert.ok(nav.includes('- No docs block at session start means no capture ran: say so once and navigate from code.'), nav);
+    assert.ok(!nav.includes('docs.js where'), 'the where / show route is the hook\'s block');
+    assert.match(read('stack/hooks/docs-session.js'), /names the sections covering a file; .*show <file>#<id>.* prints one/, 'the hook still carries the route');
+});
+
+// SKC02: the user's ruling 2026-10-13 (76d40e53) - a commit ask naming anything still owed marks 'Show the diff first';
+// the git rule had marked Hold, and the stop-contract hook asks for one mark in every home.
+test('SKC02: the git rule and the checkpoint mark the same option on an owed commit ask, pinned in the registry', () =>
+{
+    const git = injected('alfred-git');
+    assert.ok(git.includes("when it names anything still owed, 'Show the diff first' takes the mark, and every push or publish ask marks holding."), git);
+    assert.ok(!git.includes('holding takes the mark'), 'the old owed-case mark');
+    const cp = squash(read('stack/skills/habits-commit-checkpoint/SKILL.md'));
+    assert.ok(cp.includes("when the question names anything still owed, 'Show the diff first' takes the mark instead"), 'the checkpoint home');
+    const entry = registry()['commit-ask-owed-mark'];
+    assert.ok(entry, 'a commit-ask-owed-mark pin');
+    assert.deepStrictEqual(homes(entry).map((h) => h.file).sort(), ['stack/rules/alfred-git.md', 'stack/skills/habits-commit-checkpoint/SKILL.md']);
+});
+
+// ------------------------------------------------------------------ audit 2026-10-14 RU03
+
+// RU03: the credentials section restated the guards' own block texts - the value ask with its receipt (guard-secret-value.js
+// askLine, on every denial) and the rotate ask's once-per-exposure switch (guard-stop-contract.js) - which arrive exactly when
+// they apply. The rule keeps every constraint; the Read-deny coverage line, which changes no model action, is a maintainer note.
+test('RU03: the credentials section keeps its constraints and leaves the ask, the receipt and the switch to the guards', () =>
+{
+    const sec = injected('alfred-security');
+    for (const gone of ['ROTATE_ASK', 'once per exposure', 'SECRET-READ-ALLOW', 'When the VALUE', 'nested key', 'Read rules cover'])
+        assert.ok(!sec.includes(gone), `the always-on copy still carries '${gone}'`);
+    for (const kept of ['End the turn on the ask (rotate now / acknowledge and defer), never on prose.', "(the secret guard's `--presence` view - its denial prints the command)",
+        'a pasted one may do the job it was pasted for, inline in that one call', '`.sensitive-data`', '`--with-sensitive`', 'never a fragment of the value',
+        'Each rotation option names its site, action and command itself'])
+        assert.ok(sec.includes(kept), `the constraint '${kept}' stays`);
+    assert.ok(squash(rule('alfred-security')).includes('`guard-secret-value.js` covers those by content'), 'the coverage line is a maintainer note');
+    const guard = read('stack/hooks/guard-secret-value.js');
+    assert.ok(guard.includes("'Presence only (Recommended)'") && guard.includes("'flow', 'SECRET-READ-ALLOW'"), 'the value ask and its receipt ride every denial');
+    const stop = read('stack/hooks/guard-stop-contract.js');
+    assert.ok(stop.includes('This ask comes once') && stop.includes('ALFRED_CODE_ROTATE_ASK=0 in the settings.json env turns it off'), 'the rotate ask names its switch');
+    assert.ok(!homes(registry()['secret-read-allow-receipt']).some((h) => h.file === 'stack/rules/alfred-security.md'), 'the registry drops the rule site');
 });

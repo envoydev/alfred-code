@@ -71,7 +71,10 @@ or you pay for the wrong tool:
   lists the files it would write; then run it and close on `nx affected -t lint` with its result line.
 - Enforce module boundaries with tags: set `tags` on each project and turn on the
   `@nx/enforce-module-boundaries` ESLint rule so a forbidden cross-project import fails lint - the
-  boundary is a build-failing rule, not a convention.
+  boundary is a build-failing rule, not a convention. Where the house config-protection guard runs, an
+  edit to an existing lint or format config (ESLint, Prettier, `.editorconfig`) is blocked until the user
+  allows it - ask once, never route around the block, and on Allow the receipt
+  `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path.
 
 ## The CLI is the lever; the Nx MCP is optional
 - Prefer teaching the CLI (this skill) over the Nx MCP server - `nx show` / `nx affected` output is

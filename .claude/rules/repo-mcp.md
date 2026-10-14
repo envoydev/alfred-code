@@ -24,7 +24,13 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
   live in `scripts/lint-mcp-tools.js`, and a deliberate fixture line carries `mcp-fixture` in a comment. A plugin's
   servers LOAD TOGETHER, so a second server in one entry would put a second set of tool schemas in
   every session. The entries are GENERATED (`scripts/build-marketplace.js --mcp-entries`, from
-  `meta/mcp-pins.json`); `ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores the 0.2.x registration route for
+  `meta/mcp-pins.json`). Every entry's `source` is the repo root, so each caches the WHOLE tracked tree and every
+  release re-copies every entry, a server whose pin did not move included: 14.8 MB tracked, 15-16 MB per cached
+  version, 301 MB under `plugins/cache/envoydev` on one machine (measured 2026-10-14: 6 ids, 20 versions from 2.2.0 to
+  2.4.0). ACCEPTED and recorded (audit 2026-10-14 PL15, the user's ruling): a slim `mcp/` source was declined because
+  the launchers import `stack/hooks/memory.js` (`projectRootOf`, the memory settings reader) and
+  `scripts/install/runtime.js` (the Windows-safe spawn), so it would carry vendored copies of shared modules - a second
+  home for each, for disk alone (the shared-root discovery is `docs/plugin-migration-evidence.md` finding 6). `ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores the 0.2.x registration route for
   the browser, on which the installer re-spells the copied skills, agents, rules and hooks to the bare
   names a registration writes - that needs the FILES, so the switch belongs with
   `ALFRED_CODE_SKILLS_VIA_PLUGIN=false` (a mixed pair is reported, never half-fixed). A seat's
@@ -85,7 +91,8 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
     manifest row): 0.0.82 collects and lists the tools a visited PAGE registers through WebMCP by default,
     and a page is data, never a toolbox. The browser agents grant all four, each minus `browser_run_code_unsafe`
     (RCE-equivalent) through their `disallowedTools`, which Claude Code applies before `tools` resolves
-    (code.claude.com/docs/en/sub-agents). The data root's own `.gitignore` keeps the profiles out of
+    (code.claude.com/docs/en/sub-agents) - `<engine>-control:*` and `<engine>-control:!browser_run_code_unsafe` in
+    `meta/seat-tools.json`; the copy route's downconvert re-spells the grant and the removal alike (`mcp.respellToolNames`). The data root's own `.gitignore` keeps the profiles out of
     git (they hold session cookies); a 2.0.0 `.playwright/<engine>` still in use gets `.playwright/.gitignore` (`*`).
   - `windows-control` (Windows-MCP) and `macos-control` (MacOS-MCP) - each drives the machine's OWN
     desktop apps, so each installs on its own OS only and neither on Linux (`stack/mcp/desktop-launch.js`
@@ -120,13 +127,19 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
     registration): both wheels read it, defaulting to `true`, and send PostHog usage events otherwise.
     Each server brings the `desktop-automation` skill through the graph (the 'Select a skill by DESCRIPTION' invariant in `CLAUDE.md`). `wpf-verifier`, `winforms-verifier`
     and `evidence-gatherer` hold only its read-only observe tools (Windows `Snapshot` / `Screenshot` / `WaitFor`,
-    macOS `Snapshot` / `Wait` - the pinned wheels' readOnlyHint tools that look at the desktop), named in `tools:`
-    and described in the body, so no graph edge pulls the opt-in server into an install; a stack that seeds a
+    macOS `Snapshot` / `Wait` - the pinned wheels' readOnlyHint tools that look at the desktop), named in their
+    `meta/seat-tools.json` rows (every other tool of the server removed) and described in the body, so no graph edge pulls the opt-in server into an install; a stack that seeds a
     server no seat of it holds is listed main-thread-only in `scripts/seat-grants.test.js` (browser-extension's browser).
   - `mobile-control` (appium-mcp, the user's call of 2026-10-13) - drives Android and iOS apps on an emulator, a
     simulator or a device through Appium's embedded UiAutomator2 / XCUITest drivers. Every OS, seeded by no stack,
-    `active: false` (opt-in, like the desktop pair), an npx package so no Python and no cut-off; Node 22+ (its engines
-    floor - the launcher refuses an older Node in one line). The plugin route starts `stack/mcp/mobile-launch.js`: the SDK
+    `active: false` (opt-in, like the desktop pair), an npx package so no Python; Node 22+ (its engines
+    floor - the launcher refuses an older Node in one line). Its 17 dependencies are caret ranges, so it takes its pin's OWN
+    cut-off day (audit 2026-10-14, PL4): `meta/mcp-pins.json`'s mobile-control `refreshed` (every npm row the refresh checks
+    records one - the shared uvx day predates an `--only` pin, and npm refuses an exact pin published after `before`,
+    ETARGET), which the entry hands the launcher as `--before <day>T23:59:59Z` and the launcher hands npx as
+    `npm_config_before` - npx honours it for the whole tree (measured on npm 11.6.1); the copy route registers
+    `-e npm_config_before=@MOBILE_BEFORE@`. A `npm_config_before` the user set (the shell in any case, then the settings
+    files) is theirs and wins; an empty one means none. The browser's deps are exact and leaf, so it takes none. The plugin route starts `stack/mcp/mobile-launch.js`: the SDK
     paths come from the environment (`ANDROID_HOME`, `JAVA_HOME` - the shell or a settings file's `env`, which reach a
     server process, code.claude.com/docs/en/settings-reference 'Values reach subprocesses') and are looked up ONLY when unset
     (`ANDROID_SDK_ROOT`, Android Studio's SDK place and bundled JBR, macOS `java_home`) - never written into a
@@ -139,8 +152,14 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
     no SDK path. Its plugin row goes the engine way on the copy route and takes its own scope (`soloKept`); its
     prerequisites are said once, on the run that brings it in. Tools: the pinned server's own `tools/list`
     (`refresh-mcp-pins.js --only mobile-control`, which moves no other pin and keeps the uvx cut-off day); `appium_ai`
-    registers only with `AI_VISION_ENABLED=true` and a vision key, so it is not listed. No seat holds its tools.
-  - plus `alfred-navigation` (Serena), `alfred-documentation` (Context7, the hosted remote only - its `Context7-API-Key` header, the name
+    registers only with `AI_VISION_ENABLED=true` and a vision key, so it is not listed. `ionic-angular-verifier` and
+    `evidence-gatherer` hold only its read-only observe subset (`appium_screenshot`, `appium_get_page_source`,
+    `appium_find_element`, `appium_find_elements`, `appium_get_text`, `appium_get_element_attribute` - no session tool,
+    so they read a session already open; audit 2026-10-14 AG08), named in their `meta/seat-tools.json` rows and described
+    in the body, so no graph edge pulls the opt-in server in.
+  - plus `alfred-navigation` (Serena - started with `SERENA_USAGE_REPORTING=false`, the entry's `env` and the copy route's
+    `-e` pair alike: serena-agent pings its maker's host with the OS, version and context at every start otherwise,
+    `serena/agent.py _send_usage_info`, still honoured in 2.0.0; audit 2026-10-14, PL1), `alfred-documentation` (Context7, the hosted remote only - its `Context7-API-Key` header, the name
     Context7 documents (2.1.5 M25: a proxy may drop a header name with an underscore, and a keyed user with it), expands
     `CONTEXT7_API_KEY` from the ACCOUNT settings.json `env`, keyless = the free tier) and `alfred-memory`. 2.0.0 cut `angular-cli`,
     `chrome-devtools`, `appium-mcp`, `sentry` and `context7-local` (manifest `retired.mcps`,
@@ -155,18 +174,27 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
     `browser-<engine>` `<engine>-control`, with no shared folder: a profile moves from `<data root>/browser/<engine>` to
     `<data root>/<engine>-control` at the server's next start, unasked (a relayout inside the root, `data-root.js isRelayout`),
     the emptied `browser/` removed by the last move, and the stamp lines are `control-engines:` / `control-enabled:`
-    (`browser-*` and `playwright-*` read as the fallback). The catalog name `browser` stays the selection token. The old ids were
-    listed as RETIRED aliases through 2.2.0 and are UNLISTED from 2.2.1 (the user's ruling of 2026-10-06, every install
-    updated), the old tool spellings leaving every seat grant with them; the
-    memory readers take either server name (`MEMORY_SERVERS`, `stack/hooks/memory.js` and `scripts/install/memory.js`). An install still on an old id
-    no longer loads it once the marketplace refreshes (S25) and gets it back on its next update. Update swaps each old row at THIS run's scope
+    (`browser-*` and `playwright-*` read as the fallback). The catalog name `browser` stays the selection token. The 2.0.0
+    and 2.2.0 ids were listed as RETIRED aliases through 2.2.0 and are UNLISTED from 2.2.1 (the user's ruling of 2026-10-06,
+    every install updated), the old tool spellings leaving every seat grant with them; an install still on one no longer
+    loads it once the marketplace refreshes (S25) and gets it back on its next update. The six 2.4.0 ids (`browser-<engine>`,
+    `windows-desktop`, `macos-desktop`) are LISTED again as RETIRED aliases (audit 2026-10-14 PL5, the user's ruling of
+    2026-10-14 - 2.4.0 had unlisted them in the release that renamed them): `build-marketplace.js mcpAliasEntries`, each its
+    successor's server under the OLD server name and no dependency, `LISTED_ALIASES` the list, lint 53 holding each to the
+    generator, until evidence shows no install resolves through one. The seats still grant the current spellings only. The
+    memory readers take either server name (`MEMORY_SERVERS`, `stack/hooks/memory.js` and `scripts/install/memory.js`).
+    Update swaps each old row at THIS run's scope
     (`plugins.migrateRenamed`): the successor installed there first, then the old id removed - an
     engine or desktop server keeps its on/off, a locked server comes on. An old row at ANOTHER scope serves the projects
     there, whose not-yet-updated files still spell the old tools, so it is stood down instead: the
     successor installed at this run's scope, the old id disabled for this project only (`disable
     --scope project`, or `local`), and one `!!` line naming its uninstall for once every project there
     has updated; this scope's rows go first, since an in-place uninstall clears the settings key a
-    disable wrote (I2). An old id the run does not carry goes at this run's scope only. The full copy route stands the old ids down instead. Old copy-route registrations
+    disable wrote (I2). An old id the run does not carry goes at this run's scope only. The swap reads records only, so on
+    update a renamed id's KEY that the project's own `.claude/settings.json` / `settings.local.json` still switches on with no
+    record reaching this project (a teammate's committed `browser-chrome@envoydev`) is removed from that file once the run
+    carries its successor, one `renamed:` line per key (`plugins.dropStaleRenamed`, PL5) - another marketplace's key of the
+    same name, a reaching record and an unreadable file or listing leave it. The full copy route stands the old ids down instead. Old copy-route registrations
     go on every route by the stack's own shape (the user's own server under an old name is kept), the
     approval lists follow, the read-back and selection lines read old names under the new ones, and
     the generated project files are re-spelled (`selection.respellRenamed`; a seeded AGENTS.md / CLAUDE.md only while the ledger
@@ -197,7 +225,7 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
   environment plus the ACCOUNT settings.json `env` (an unset `${VAR}` stays literal with a
   `claude mcp list` warning). Cursor runs serena with `--context ide-assistant`. Claude runs it on the
   stack's own context, `stack/mcp/navigation-context.yml` (2.1.4, I12 - ruling 'Keep rename + safe
-  delete'): serena 1.7.0's `claude-code` context (its six exclusions, `single_project`, structured output
+  delete'): serena's `claude-code` context, byte-identical in 1.7.0 and 2.0.0 (its six exclusions, `single_project`, structured output
   off) plus `replace_content`, `replace_in_files`, `replace_symbol_body`, `insert_after_symbol`,
   `insert_before_symbol` and `onboarding` off - writes no Edit/Write-matched hook sees - and, since the user's
   2026-10-13 ruling ('Serena is just for navigation'), its six memory tools off too (a seat's handoff note is an
@@ -214,6 +242,13 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
   `claude-code`); the
   verify pass reads the same token, the ledger's `managed-files` records the copy, and a run that no
   longer registers navigation (a plugin route) removes an unchanged copy, as uninstall does.
+  serena 2.0.0 (audit 2026-10-14 PL10) adds `agent_interface`: its own config template says `REPL`, where the context's
+  exclusions do not apply and the one working tool, `serena_repl`, runs Python that edits files no hook sees (measured:
+  a start on a fresh `SERENA_HOME` served `initial_instructions` and `serena_repl` alone). So both routes pass
+  `--agent-interface tools`, the global override (a `project.yml` value still wins - the user's own), and `mcp.js
+  ADDED_ARG_WORDS` keeps an earlier release's registration without the pair the stack's. serena 1.7.0 refuses the flag
+  and any `excluded_tools` name it does not know (`Invalid tool name: serena_repl`, failing closed), so neither may meet
+  a 1.7.0 start: the context file carries no 2.0.0-only name, and the flag ships only beside the 2.0.0 pin.
 - **Every project-anchored server starts at its project root, whatever the launch directory** (re-verify 3 S2, S3;
   re-verify 4 T1-T3). Claude Code starts a server in the directory the session was launched from, a subdirectory included,
   and an inherited `CLAUDE_PROJECT_DIR` names whatever folder the shell had. `stack/hooks/memory.js projectRootOf` is the
@@ -239,17 +274,20 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
   own right path; a local- or user-scope registration keeps the absolute path. `mcp.identityOf` reads the server after
   the anchor (`serverWords`); `mcp.exactStack` vouches only for an anchor running this release's `ROOT_BOOT` or one
   `FORMER_ROOT_BOOTS` lists, and for an engine profile under this project (T5) - a release that changes `ROOT_BOOT`
-  lists the old one there, or every row it registered reads as the user's.
+  lists the old one there, or every row it registered reads as the user's. The same holds for an env key a release ADDS to
+  a template: `ADDED_ENV_KEYS` names it (`SERENA_USAGE_REPORTING`, `npm_config_before`), so a registration an earlier
+  release wrote without it is still the stack's (absent is free; present must carry the template's value).
 - **The navigation server's state is isolated per project** under the data root: `SERENA_HOME` is
   `<data root>/serena/home` (the launcher sets it; the copy route registers it), and serena's per-project
   folder - the index cache, `memories/`, `project.yml` - is `<data root>/serena`, named by
-  `project_serena_folder_location` in the home's own `serena_config.yml` (serena 1.7.0 has no flag for it;
+  `project_serena_folder_location` in the home's own `serena_config.yml` (serena has no flag for it, 1.7.0 or 2.0.0;
   `data-root.js ensureSerenaConfig` writes it absent-only and follows the root only over the stack's own
   value, never a user's central path). The data root's `.gitignore` keeps it out of git (LSP cache ~327MB
   for C#); a 2.0.0 `.serena/` still in use keeps its own `.gitignore` (`*`), widened from serena's
   narrower one (`/cache`, `/project.local.yml`), any other text the project's.
-- **Every uvx-launched server runs on a PINNED Python** - `stack/mcp/uv-python.js` is the one answer: `3.13`,
-  the x64 `cpython-3.13-windows-x86_64-none` on Windows on ARM; `ALFRED_CODE_UV_PYTHON` overrides,
+- **Every uvx-launched server runs on a PINNED Python** - `stack/mcp/uv-python.js` is the one answer per server: `3.13`,
+  the x64 `cpython-3.13-windows-x86_64-none` on Windows on ARM, and `3.14` for windows-control alone (`SERVER_PYTHON`,
+  `pythonFor`; the copy route's `@WINDOWS_CONTROL_PYTHON@`); `ALFRED_CODE_UV_PYTHON` overrides every server's,
   read from the shell, then `settings.local.json`, `settings.json` and the account settings (a plugin
   server never gets a project settings env key). uvx takes the newest interpreter, and serena-agent's
   pyyaml 6.0.2 ships no 3.14 wheel, so an unpinned start dies without a C compiler (Claude Code shows
@@ -257,12 +295,17 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
   x64 build runs there under emulation. Every such plugin entry starts through a node launcher
   (`serena-launch.js`, `memory-launch.js`, `desktop-launch.js`; the browser engines' npx through
   `browser-launch.js`, for the profile's place) because the right value is the MACHINE's
-  (windows-mcp 0.8.6 already needs 3.14, so `refresh-mcp-pins.js` takes the newest release the pinned
-  Python can install); the copy route
+  (`refresh-mcp-pins.js` takes the newest release the server's own Python can install - `pythonFor`. windows-mcp 0.8.6+
+  requires 3.14: PL9 of audit 2026-10-14 held it at 0.8.5 for want of a security fix, and the user ruled the same day to
+  move it to 0.8.8 on 3.14 - measured on Windows 11 ARM (`docs/uv-python-pin-evidence.md`): the x64 3.14 build
+  installs it and `serve --help` runs, the ARM64 one dies building cryptography with no linker; 0.8.8 adds the read-only
+  `ControlStatus` tool and a physical-input takeover that refuses a call while the user holds the mouse or keyboard,
+  and it will not start without an active, unlocked input desktop - a SYSTEM shell in session 0 exits at start, so
+  its tools/list was never run on the VM; the wheel's own sources give its 21 tools); the copy route
   resolves `@UV_PYTHON@` into `.mcp.json`. Never hand-patch a cached entry - the next refresh
   overwrites it (`docs/uv-python-pin-evidence.md`). The serena launcher keeps `SERENA_HOME` RELATIVE
   in the platform's separator, and the copy route registers `.alfred\serena\home` on Windows
-  (`@SERENA_HOME@`) - which is why the data root may hold no space: serena 1.7.0 execs its TypeScript server through npm's `.bin` shim, so cmd.exe
+  (`@SERENA_HOME@`) - which is why the data root may hold no space: serena (1.7.0 and 2.0.0) execs its TypeScript server through npm's `.bin` shim, so cmd.exe
   gets the path UNQUOTED and cuts it at its first `/` (an absolute one at the first space). Both
   launchers pass a stop signal on to uvx (`runUvx`), or the server outlives them. The pin fixes only the top
   package, so every uvx start also takes the release's dependency CUT-OFF (2.1.5 M24): `--exclude-newer

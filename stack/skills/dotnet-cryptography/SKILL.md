@@ -5,7 +5,7 @@ description: "Use when encrypting, hashing passwords, signing or deriving keys i
 
 # .NET cryptography
 
-Cryptography in .NET is a library of correct primitives that are easy to assemble incorrectly. The job is almost never to invent a scheme - it is to pick the primitive the situation calls for and use it the single way it is meant to be used. Everything here lives in `System.Security.Cryptography`. Floor is .NET 8 / C# 12, which covers every classical primitive below; post-quantum is a .NET 10+ addition flagged at the end.
+Cryptography in .NET is a library of correct primitives that are easy to assemble incorrectly. The job is almost never to invent a scheme - it is to pick the primitive the situation calls for and use it the single way it is meant to be used. Everything here lives in `System.Security.Cryptography`. Floor is .NET 10 / C# 14; .NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked. The floor covers every classical primitive below; post-quantum (at the end) is on it too, but only where the platform supplies it.
 
 Two boundaries this skill does not cross. Where keys and secrets *live* - a vault, a managed key service, environment config - is your secrets layer, never a literal in source and never a checked-in file. Signing a user in belongs to the skill covering .NET authentication. This skill is only the math and the API around it. On .NET Framework 4.8 two defaults are footguns - PBKDF2's SHA-1 default and the `RandomNumberGenerator` API name - covered in `references/net-framework-48.md`.
 
@@ -37,7 +37,7 @@ A password hash is deliberately slow and salted, the opposite of the fast unkeye
 
 - `Rfc2898DeriveBytes.Pbkdf2(password, salt, iterations, HashAlgorithmName.SHA256, outputLength)` with **a per-user salt of 16+ random bytes** from `RandomNumberGenerator` and **600,000+ iterations** (the current OWASP floor for SHA-256 - raise it as hardware improves). This count is volatile: re-check the OWASP password-storage cheat sheet annually and bump the floor when it moves.
 - **Persist the parameters with the hash**: algorithm, iteration count, salt, and digest. A common `$pbkdf2-sha256$iterations$salt$hash` string lets you raise the work factor later and rehash on next successful sign-in without locking anyone out.
-- Argon2id is the stronger memory-hard choice and worth a vetted package (for example `Konscious.Security.Cryptography` or a libsodium binding) on a fresh, security-sensitive service. There is no first-party Argon2 on the .NET 8 floor, so PBKDF2 stays the default unless you adopt that dependency deliberately.
+- Argon2id is the stronger memory-hard choice and worth a vetted package (for example `Konscious.Security.Cryptography` or a libsodium binding) on a fresh, security-sensitive service. There is no first-party Argon2 on the floor (none in .NET 10), so PBKDF2 stays the default unless you adopt that dependency deliberately.
 
 Verify by deriving with the *stored* parameters and `FixedTimeEquals`-ing the result against the stored digest.
 
@@ -70,9 +70,9 @@ Reach for asymmetric crypto only when you actually need two parties or a public/
 - **Key agreement: `ECDiffieHellman`** to derive a shared secret between two parties; run the raw secret through a KDF (`HKDF.DeriveKey`) before using it as an encryption key.
 - Move keys with the PEM helpers (`ImportFromPem` / `ExportPkcs8PrivateKeyPem` / `ExportSubjectPublicKeyInfoPem`); a private key is a secret and obeys the storage boundary above.
 
-## Post-quantum (.NET 10+, optional)
+## Post-quantum (platform-gated, optional)
 
-.NET 10 introduces the NIST PQC primitives - `MLKem` (key encapsulation), `MLDsa`, and `SlhDsa` (signatures) - over platform crypto (Windows 11 / Windows Server 2025 with the PQC update, or OpenSSL 3.5+). They are **not on the .NET 8 floor**, so treat them as opt-in: gate every call on the type's static `IsSupported`, keep a classical fallback, and check via the documentation server which of the three still carry the SYSLIB5006 experimental mark in your target release before you take the dependency. The migration-ready move today is hybrid - pair a classical primitive with a PQC one so a future break in either still leaves you covered.
+.NET 10 introduces the NIST PQC primitives - `MLKem` (key encapsulation), `MLDsa`, and `SlhDsa` (signatures) - over platform crypto (Windows 11 / Windows Server 2025 with the PQC update, or OpenSSL 3.5+). The types are on the floor but the algorithms run only where the platform provides them, so treat them as opt-in: gate every call on the type's static `IsSupported`, keep a classical fallback, and check via the documentation server which of the three still carry the SYSLIB5006 experimental mark in your target release before you take the dependency. Below the floor, .NET 8 / 9 have none of the three. The migration-ready move today is hybrid - pair a classical primitive with a PQC one so a future break in either still leaves you covered.
 
 ## Prove it
 

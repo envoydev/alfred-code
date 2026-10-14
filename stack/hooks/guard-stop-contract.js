@@ -42,21 +42,30 @@ const fs = require('fs');
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 let unattended = () => false;
 let autoLive = () => false;   // hook-prelude.js autoStampLive - a live AUTO waiver of this session
+let stampOf = () => null;     // hook-prelude.js approvalStamp - the stamp's state, an auto-mode run's named session included
 // The Stop chain (hook-prelude.js stopHeldThisCycle): without the prelude, any continuation stands down - the old reading.
 let stopHeld = (input) => !!(input && input.stop_hook_active);
 let markHeld = () => {};
+// Where the auto-continue count lives (audit 2026-10-14 HK05): beside this hook's chain marker, never in it - the marker
+// is cleared at every new cycle and every workSince reopen, which is exactly what an auto-mode run does between holds.
+let autoCountFile = (input) => require('path').join(envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir(),
+  `alfred-stop-held-guard-stop-contract-Stop-${String(input.session_id || 'nosession').replace(/[^\w.-]/g, '_').slice(-80)}-main.auto`);
 let houseDash = /[\u2014\u2013\u2015]/; // hook-prelude.js HOUSE_DASH, the one dash class
+let withoutShortLived = (text) => text; // hook-prelude.js withoutShortLived - a short-lived link's own token blanked
 if (require.main === module) {
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
     unattended = prelude.unattended || unattended;
     autoLive = prelude.autoStampLive || autoLive;
+    stampOf = prelude.approvalStamp || stampOf;
     houseDash = prelude.HOUSE_DASH || houseDash;
+    withoutShortLived = prelude.withoutShortLived || withoutShortLived;
     if (prelude.stopHeldThisCycle) {
       stopHeld = (input) => prelude.stopHeldThisCycle('guard-stop-contract', input, undefined, { workSince: true });
       markHeld = (input) => prelude.markStopHeld('guard-stop-contract', input);
     }
+    if (prelude.stopMarkerFile) autoCountFile = (input) => `${prelude.stopMarkerFile('guard-stop-contract', input)}.auto`;
     if (prelude.standDown('guard-stop-contract')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
@@ -368,13 +377,13 @@ if (payload.hook_event_name === 'PostToolUse' || payload.hook_event_name === 'Po
 let fresh;
 try { fresh = require(require('path').join(__dirname, 'fresh-session.js')); } catch {
   fresh = {
-    use() {}, freshAt: (k, d) => d, FRESH_AT_200K: 0, FRESH_AT_1M: 0, FRESH_AT_DEFAULT: 0, FRESH_OFF: true,
+    use() {}, freshAt: (k, d) => d, FRESH_AT_200K: 0, FRESH_AT_1M: 0, FRESH_AT_DEFAULT: 0, FRESH_OFF: true, COMPACT_INSTEAD: false,
     sessionModelId: () => null, tableWindow: () => null, envWindow: () => null, knownWindow: () => null,
     ctxThreshold: () => null, MIN_RECOVERABLE_SHARE: 0.4, coldFloor: () => null, worthResuming: () => false,
   };
 }
 fresh.use(payload);
-const { FRESH_OFF, ctxThreshold, coldFloor, worthResuming } = fresh;
+const { FRESH_OFF, COMPACT_INSTEAD, ctxThreshold, coldFloor, worthResuming } = fresh;
 // The CLOCK the same offer is judged against in the AskUserQuestion branch (never in the Stop
 // branch, which blocks). Context is not the only thing that makes a resume worth it: 63.5% of the
 // audited collection's cache-read was paid under the 1M window's own trigger, and the flows' stop
@@ -464,7 +473,7 @@ const RETRO_YOUR_CALL_RE = /\b(record(ed)?|noted?|logged|captured|set|chosen|dec
 // The quoted token is the other measured half: the model writes its own hand-back word in quotes,
 // so the literal `say go` saw none of the five asks it made in one session.
 const PROSE_ASK_CLAUSE_RE = /(?:^|[\n.;:,!?)\]-]\s*|\b(?:then|and|or|so|when|otherwise)\s+)(?:(?:just |please )?tell me\b(?!\s+(?:if|when|whenever|whether|why|what|how)\b)|(?:just |then )?say\s+['"‘’“”]?(?:go|yes|ok|okay|allowed|proceed|approved?)['"‘’“”]?\b)/i;
-// loop-quality's two structural pauses - the run-start mode ask and the stage-close
+// loop-code-quality's two structural pauses - the run-start mode ask and the stage-close
 // fresh-session ask - live in its SKILL.md as sentences, so the loop can word them as a statement
 // that ends on no '?' ('Continue in a fresh session from the loops folder (recommended), or
 // continue here.') and the question shape never sees them (improvement plan 2.5). Each needs the
@@ -1170,7 +1179,10 @@ function transcriptTail() {
   fs.closeSync(fd);
   return (TAIL = buf.toString('utf8'));
 }
-// The newest row that put a credential shape in front of the model, or null.
+// The newest row that put a credential shape in front of the model, or null. A token inside a link that states an hour
+// of life or less (hook-prelude.js shortLivedLinks - a Jira media `?token=`, an S3 presigned URL) is that link's own
+// capability and expires by itself, so it is blanked before the shape test: rotating it is no answer to anything.
+const exposedShape = (row) => SECRET_SHAPE.test(withoutShortLived(row));
 function secretExposure() {
   try {
     let found = null;
@@ -1180,7 +1192,7 @@ function secretExposure() {
       // USER-role rows: both the tool_results the model's own reads returned, and the user's own
       // typed or pasted text. The assistant's own text is judged separately, by ROTATE_RE.
       if (!seen.includes('"tool_result"') && !/"type"\s*:\s*"user"/.test(seen)) continue;
-      if (SECRET_SHAPE.test(seen)) found = line;
+      if (exposedShape(seen)) found = line;
     }
     return found;
   } catch {
@@ -1242,12 +1254,25 @@ function rotateAskAnswered() {
     transcriptTail().split('\n').forEach((line, i) => {
       if (isRotateBlock(line)) lastBlock = i;
       if (ROTATE_ANSWER_RE.test(line) || (lastBlock >= 0 && ANY_ANSWER_RE.test(line))) lastAnswer = i;
-      if (SECRET_SHAPE.test(line) && SECRET_SHAPE.test(visibleRow(line))) lastShape = i;
+      if (SECRET_SHAPE.test(line) && exposedShape(visibleRow(line))) lastShape = i;
     });
     return lastAnswer >= 0 && lastAnswer > lastShape;
   } catch {
     return false;
   }
+}
+
+// The auto-continue count per stamp (HK05): this Stop's number under the live stamp, 1 for the first. The key is the stamp's
+// session and mtime - the start writes a stamp once and keeps a live one, so a rewritten stamp is a new run and starts
+// over. A torn or foreign file reads as 0; an unwritable one counts nothing (0), the uncapped reading.
+const AUTO_CONTINUE_CAP = 50;
+function countAutoContinue(stamp) {
+  const file = autoCountFile(payload);
+  const key = `${stamp.session}@${stamp.mtimeMs}`;
+  let n = 0;
+  try { const o = JSON.parse(fs.readFileSync(file, 'utf8')); if (o && o.stamp === key && Number.isInteger(o.count) && o.count > 0) n = o.count; } catch { /* absent or torn: 0 */ }
+  try { fs.writeFileSync(file, JSON.stringify({ stamp: key, count: n + 1 })); } catch { return 0; }
+  return n + 1;
 }
 
 // A silent fail-open is indistinguishable from a clean turn, which is how the misses above
@@ -1959,6 +1984,34 @@ if (payload.hook_event_name === 'Stop') {
       + '`none`) - and a headline that agrees with the leftovers. Nothing else changes.');
     process.exit(2);
   }
+  // AUTO-MODE (the user's ruling, 2026-10-14): an auto-mode run is over when its close deletes the stamp the start wrote
+  // (guard-fresh-session-start.js, a `session:` line naming this session) - until then nobody is at the terminal to say
+  // 'go on', and a turn that ends between steps idles the run until a person comes back. So a Stop under that stamp is
+  // sent back to the run. The Stop chain bounds it: once held, the next Stop passes unless a tool call ran in between
+  // (hook-prelude.js stopHeldThisCycle, workSince), so a run that can only wait - or only ask - ends its turn on the
+  // second Stop. A hand-written AUTO stamp (task-solve's, no session line) is never held here: its flow closes itself.
+  // The chain bounds a cycle, not the run: Claude Code's own 8-continuation cap 'resets each time Claude calls a tool'
+  // (code.claude.com/docs/en/hooks, Stop decision control), so a run that keeps calling tools was held for as long as its
+  // stamp stood - the week backstop. So the holds are counted per stamp, and the AUTO_CONTINUE_CAP-th Stop passes with one
+  // `auto-continue-cap` row (audit 2026-10-14 HK05, the user's ruling: 50); a new stamp counts from 0 again.
+  const autoStamp = payload.agent_id ? null : stampOf(payload);
+  if (autoStamp && autoStamp.live && autoStamp.session && /^AUTO\b/.test(autoStamp.first)) {
+    const nth = countAutoContinue(autoStamp);
+    if (nth >= AUTO_CONTINUE_CAP) {
+      if (nth === AUTO_CONTINUE_CAP) {
+        ledgerRow({ tool: '', mode: 'auto', kind: 'auto-continue-cap', detail: { count: nth, stamp: autoStamp.file },
+          reason: `auto-mode: the ${AUTO_CONTINUE_CAP}th Stop under this stamp passes - the run was sent back ${AUTO_CONTINUE_CAP - 1} times; the stamp stands until its close or a typed prompt` });
+      }
+      process.exit(0);
+    }
+    blockDetail('auto-continue', autoStamp.first.slice(0, 120));
+    process.stderr.write(`auto-mode is on and its run is not closed (${autoStamp.file} stands). Nobody is at the terminal to\n`
+      + 'say go on: carry on with the run\'s next step now, taking each stop\'s (Recommended) option. If the run is finished,\n'
+      + `print its close and delete ${autoStamp.file} - that ends auto-mode. If it waits on work this session started, end the\n`
+      + 'turn with one line saying so; if only the user can decide the next step (an ask with no Recommended option, a push),\n'
+      + 'put that ask now.');
+    process.exit(2);
+  }
   // Every branch below asks a PERSON something - a decision, a pending step, a fresh session - and
   // with nobody at the terminal (hook-prelude.js unattended) the block only buys another turn. The
   // probes above still log, and so does the credential branch - its row is the record of the exposure.
@@ -2072,7 +2125,9 @@ if (payload.hook_event_name === 'Stop') {
     return u ? (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0) : 0;
   })();
   const _trigger = ctxThreshold();
-  const freshLine = _trigger === null
+  const freshLine = COMPACT_INSTEAD
+    ? 'This project compacts instead of offering a fresh session (ALFRED_CODE_AUTO_COMPACT=1), so no resume option belongs in the ask.\n'
+    : _trigger === null
     ? 'The fresh-session offer is switched off on this install, so no resume option is expected.\n'
     : (_carry
       ? `This session carries ~${Math.round(_carry / 1000)}k tokens per message and this window's\n`
@@ -2159,6 +2214,71 @@ function blockStateFile() {
 // The stale-scope note's remote half (read by freshStateReadThisTurn, so declared before the branch runs).
 const REMOTE_STATE_RE = /\b(?:merged?|merging|pull request|PRs?|remote|upstream|deploy(?:ed|ment)?|pipeline|CI|workflow run)\b/i;
 const REMOTE_READ_RE = /\bgit\s+(?:fetch|pull|ls-remote|remote\s+(?:update|show))\b|\bgit\s+(?:log|rev-list|branch|show|merge-base|diff|cherry)\b[^\n;|&]*\s(?:origin|upstream)\/|\bgit\s+branch\b[^\n;|&]*\s(?:-r|-a|--remotes|--all)\b|\bgh\s+(?:pr|run|api|repo)\b/;
+// AUTO-MODE answers the ask (the user's ruling, 2026-10-14). Under a live AUTO stamp nobody is at the terminal, and the
+// user's word was 'run everything with the recommended options'. So an ask whose every question marks ONE option
+// '(Recommended)' is answered with it - the documented route: `allow` with the questions echoed and an `answers` map in
+// `updatedInput` (code.claude.com/docs/en/hooks, 'Tools that require user interaction'), which records a real answer the
+// commit gate's `answered:` line can name. An ask with a question that marks none, or two, waits for the user - that is
+// the 'ask only when nothing is recommended' half - and so does one whose recommended answer pushes, merges, deploys or
+// publishes: auto-mode commits but never ships. A seat has no AskUserQuestion; its parent's ask is the one judged.
+// OUTWARD is anything another person sees or nothing local undoes (audit 2026-10-14 HK01, replayed: 'Open the PR',
+// 'Post the comment', 'Send it to the team channel', 'Create the GitHub issue', 'Delete the 4 remote branches', 'Ship',
+// 'Rotate it now', 'Reset the branch to origin/main' and a database 'Drop it' were all answered, and an answered 'Open
+// the PR' is push consent to the commit gate). The ask waits: a false hit costs one wait, a miss acts for the user.
+const AUTO_FRESH_RE = /\bfresh session\b|\bresume (?:it |this |the run )?(?:in|from) a (?:new|fresh)\b/i;
+const AUTO_OUTWARD_RE = new RegExp([
+  String.raw`\b(?:push(?:es|ed|ing)?|merg(?:e|es|ed|ing)|deploy(?:s|ed|ing|ment)?|publish(?:es|ed|ing)?|release[sd]?|ship(?:s|ped|ping)?)\b`,
+  String.raw`\b(?:pull requests?|merge requests?|PRs?|MRs?)\b`,
+  String.raw`\b(?:open|create|raise|submit|file|report)\b[^.;?\n]{0,40}\b(?:issues?|tickets?|bugs?|incidents?)\b`,
+  String.raw`\b(?:post(?:s|ed|ing)?|send(?:s|ing)?|sent|e-?mail(?:s|ed|ing)?|upload(?:s|ed|ing)?|announc(?:e|es|ed|ing)|notif(?:y|ies|ied))\b(?!-)`,
+  String.raw`\b(?:delet(?:e|es|ed|ing)|remov(?:e|es|ed|ing)|prun(?:e|es|ed|ing))\b[^.;?\n]{0,40}\b(?:remote|origin|upstream|branch(?:es)?|tags?|releases?|repo(?:sitor(?:y|ies))?|environments?)\b`,
+  String.raw`\breset\b[^.;?\n]{0,40}(?:--hard|\bhard\b|\borigin\b|\bupstream\b|\bbranch\b)`,
+  String.raw`\b(?:drop(?:s|ped|ping)?|truncat(?:e|es|ed|ing)|wip(?:e|es|ed|ing))\b[^.;?\n]{0,40}\b(?:database|db|tables?|schemas?|collections?|data)\b`,
+  String.raw`\b(?:drop(?:s|ped|ping)?|truncat(?:e|es|ed|ing))\b[^.;?\n]{0,10}\b(?:it|them)\b[^\n]{0,80}\b(?:database|db|tables?|schemas?)\b`,
+  String.raw`\b(?:databases?|db|tables?|schemas?)\b[^\n]{0,80}\bdrop(?:s|ped|ping)?\b`,
+  String.raw`\bforce[- ]?push|--force\b|\brotat(?:e|es|ed|ing|ion)\b|\brevok(?:e|es|ed|ing)\b|\b(?:pay|purchas(?:e|es|ed|ing)|buy|charg(?:e|ed|ing))\b`,
+  // The user's other languages (alfred-interaction: answer in the language of the user's prompts).
+  '(?:запуш|пуш|змерж|смерж|мерж|задеплой|деплой|опублік|опублик|надісл|відправ|отправ|реліз|релиз|видали\\S*\\s+\\S*\\s*(?:гілк|ремоут|remote)|удали\\S*\\s+\\S*\\s*(?:ветк|remote))',
+].join('|'), 'i');
+function autoAnswers(questions) {
+  if (!Array.isArray(questions) || !questions.length) return null;
+  const answers = {};
+  for (const q of questions) {
+    if (!q || typeof q.question !== 'string' || !Array.isArray(q.options)) return null;
+    const marked = q.options.filter((o) => o && typeof o.label === 'string' && /\(Recommended\)/i.test(o.label));
+    if (marked.length !== 1) return null;
+    // The fresh-session hand-off is never taken: nobody is there to paste its resume block (task-solve's AUTO rule). An
+    // ask that recommends it past a trigger gets the next option in the template's order, the smallest safe mode.
+    const pick = AUTO_FRESH_RE.test(marked[0].label)
+      ? q.options.find((o) => o && typeof o.label === 'string' && o !== marked[0] && !AUTO_FRESH_RE.test(o.label)) : marked[0];
+    if (!pick) return null;
+    if (AUTO_OUTWARD_RE.test(`${q.question} ${pick.label} ${pick.description || ''}`)) return null;
+    answers[q.question] = pick.label;
+  }
+  return answers;
+}
+// The answer is this session's alone: only a stamp naming it (the auto-mode start's `session:` line) answers its asks, as
+// only such a stamp holds its Stop. A hand-written AUTO stamp (task-solve's waiver, no session line) is live for every
+// session born before it, so it answered a second session's asks in the same project (audit 2026-10-14 HK02, replayed).
+const askStamp = payload.tool_name === 'AskUserQuestion' && !payload.agent_id ? stampOf(payload) : null;
+if (askStamp && askStamp.live && askStamp.session && /^AUTO\b/.test(askStamp.first)) {
+  const input = payload.tool_input || {};
+  const answers = autoAnswers(input.questions);
+  if (answers) {
+    const picked = Object.entries(answers).map(([q, a]) => `'${q}' -> '${a}'`).join('; ');
+    ledgerRow({ tool: 'AskUserQuestion', mode: 'auto', kind: 'auto-answer', reason: 'auto-mode: answered with the Recommended option', detail: { answers } });
+    process.stdout.write(JSON.stringify({ hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision: 'allow',
+      permissionDecisionReason: 'auto-mode: the Recommended option',
+      updatedInput: { ...input, answers },
+      additionalContext: `auto-mode answered this ask with its Recommended option (${picked}) - nobody is at the terminal. `
+        + 'Log it in the run\'s close as `auto: <question> -> <choice>` and go on with the run.',
+    } }));
+    process.exit(0);
+  }
+  ledgerRow({ tool: 'AskUserQuestion', mode: 'auto', kind: 'auto-ask-waits', reason: 'auto-mode: no single Recommended option, or an outward one - the ask waits for the user' });
+}
 if (payload.tool_name === 'AskUserQuestion') {
   const notes = [];
   try {
@@ -2251,17 +2371,30 @@ if (payload.tool_name === 'AskUserQuestion') {
     // 12. A SMALL CLOSE WITH NO REVIEW RECEIPT (smallCloseOwesReview, below) - denied once per ask text: the verifier runs
     // before the close is put to the user, not after the answer.
     const noReview = (() => { try { const f = flowState(); return f.flow && smallCloseOwesReview(f, `${turnProseBeforeAsk()}\n${askText}`); } catch { return false; } })();
-    if (voice.length || numbers || typeIntoOther || unmarked || newCycle || blind || noReview) {
+    // 13. A FRESH-SESSION OPTION WHERE THE PROJECT COMPACTS INSTEAD (fresh-session.js COMPACT_INSTEAD, the user's ruling of
+    // 2026-10-14). The flows' stop asks offer the hand-off from their own text; here the session compacts and goes on, so
+    // the option is dropped - mechanical, so the fix is handed back: a '(Recommended)' mark it carried moves to the first
+    // option left, listed first.
+    const compactFresh = COMPACT_INSTEAD && !payload.agent_id && questions.some((q) => q && Array.isArray(q.options) && q.options.some(isFreshOpt));
+    if (voice.length || numbers || typeIntoOther || unmarked || newCycle || blind || noReview || compactFresh) {
       const fixProse = (t) => (voice.length ? String(t).replace(new RegExp(`\\s*${DASH}\\s*`, 'g'), ' - ').replace(/["“”]/g, "'") : String(t));
       const fix = (t) => String(t).split(/(```[\s\S]*?```|`[^`\n]*`)/).map((s, i) => (i % 2 ? s : fixProse(s))).join('');
       const k = (n) => `~${Math.round(n / 1000)}k`;
       const numberLine = numbers ? ` Measured now: ${k(numbers.ctx)} tokens per message in this session; a fresh one starts at ${numbers.floor ? k(numbers.floor) : 'this install\'s cold floor'}.` : '';
+      const MARK = /\s*\(Recommended\)/i;
+      const dropFresh = (opts) => {
+        const kept = opts.filter((o) => !isFreshOpt(o));
+        if (kept.length === opts.length || !kept.length || kept.some((o) => o && MARK.test(String(o.label || '')))) return kept;
+        if (!opts.some((o) => isFreshOpt(o) && MARK.test(String(o.label || '')))) return kept;
+        return [{ ...kept[0], label: `${String(kept[0].label || '').replace(MARK, '')} (Recommended)` }, ...kept.slice(1)];
+      };
       const fixed = questions.map((q) => (q && typeof q === 'object' ? {
         ...q,
         ...(q.question !== undefined ? { question: fix(q.question) } : {}),
         ...(q.header !== undefined ? { header: fix(q.header) } : {}),
-        ...(Array.isArray(q.options) ? { options: q.options.map((o) => (o && typeof o === 'object' ? { ...o, label: fix(o.label || ''), description: fix(o.description || '') + (numbers && isFreshOpt(o) ? numberLine : '') } : o)) } : {}),
+        ...(Array.isArray(q.options) ? { options: (compactFresh ? dropFresh(q.options) : q.options).map((o) => (o && typeof o === 'object' ? { ...o, label: fix(o.label || ''), description: fix(o.description || '') + (numbers && isFreshOpt(o) ? numberLine : '') } : o)) } : {}),
       } : q));
+      const tooFew = compactFresh && fixed.some((q) => q && Array.isArray(q.options) && q.options.length < 2);
       const key = require('crypto').createHash('sha1').update(askText).digest('hex').slice(0, 16);
       const marker = `${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-askvoice-${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}-${key}.denied`;
       // Once per ask text: a marker that cannot be written where HOOK_LOG_DIR points is written under the temp dir, and
@@ -2278,16 +2411,17 @@ if (payload.tool_name === 'AskUserQuestion') {
         try { fs.writeFileSync(`${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-newcycle-${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}-${newCycle.at}.denied`, '', { flag: 'wx' }); }
         catch { newCycle = null; }
       }
-      const mechanical = voice.length || numbers;
+      const mechanical = voice.length || numbers || compactFresh;
       if (first && (mechanical || typeIntoOther || unmarked || newCycle || blind || noReview)) {
         const reasons = [...voice];
+        if (compactFresh) reasons.push('a fresh-session option, while this project compacts instead (ALFRED_CODE_AUTO_COMPACT=1)');
         if (noReview) reasons.push('a small solve-task close whose `Result:` line has no `review:` field');
         if (blind) reasons.push(`an approval of ${blind.noun ? `the ${blind.noun}` : 'something'} the chat has not shown since the user's last message`);
         if (numbers) reasons.push(`a fresh-session option with no measured number (this session carries ${k(numbers.ctx)} per message now)`);
         if (typeIntoOther) reasons.push('an option that tells the user to type into Other');
         if (unmarked) reasons.push(`${unmarked} question(s) without exactly one option marked '(Recommended)', listed first`);
         if (newCycle) reasons.push('no fresh-session option, while this ask opens new work after this session already finished a solve-task cycle');
-        global.BLOCK_DETAIL = { branch: 'ask-voice', voice: voice.map((v) => v.split(' (')[0]), numbers: !!numbers, other: typeIntoOther, unmarked, newCycle: !!newCycle, blind: !!blind, noReview: !!noReview };
+        global.BLOCK_DETAIL = { branch: 'ask-voice', voice: voice.map((v) => v.split(' (')[0]), numbers: !!numbers, other: typeIntoOther, unmarked, newCycle: !!newCycle, blind: !!blind, noReview: !!noReview, compactFresh };
         process.stderr.write(`Blocked: this AskUserQuestion carries ${reasons.join('; ')}.`
           + (voice.length ? ` The house voice (alfred-interaction.md) covers an ask's question, header, labels and descriptions, and the user reads them as written.` : '')
           + (typeIntoOther ? ` A picked option returns only its LABEL - a value the user must type goes in plain prose that ends the turn, and the ask carries what they can PICK ('I have them' / 'Someone else owns them' / 'Defer').` : '')
@@ -2295,7 +2429,8 @@ if (payload.tool_name === 'AskUserQuestion') {
           + (noReview ? ` The small row runs \`task-verify-code\` inline before its close (task-solve SKILL.md): run it, then put \`review: <reviewer> - <its verdict>\` on the \`Result:\` line - or, if the size grew past small, restate \`Size:\`.` : '')
           + (blind ? ` The user approves what the chat SHOWS: put ${blind.noun ? `the ${blind.noun}` : 'what the ask approves'} in your reply text first (the stages, the draft as it will be posted, the edit made), then ask about 'the ${blind.noun || 'draft'} above' - or, if it sits in a file the user has open, re-send the ask unchanged.` : '')
           + (newCycle ? ` A new cycle after a finished one recommends the fresh-session hand-off first: add 'Resume in a fresh session (Recommended)' quoting ${newCycle.ctx ? `${k(newCycle.ctx)} per message here` : 'this session\'s carry'} and ${newCycle.floor ? `${k(newCycle.floor)} for a fresh start` : 'the fresh start\'s floor'}, and state the new cycle's \`Size:\` line in the question - or, if this ask still belongs to the finished cycle, re-send it unchanged.` : '')
-          + (mechanical ? ` Re-send the ask with these questions - only ${[voice.length ? 'the dashes and quotes' : '', numbers ? 'the fresh option\'s numbers' : ''].filter(Boolean).join(' and ')} changed:\n${JSON.stringify(fixed, null, 1)}\n` : '\n'));
+          + (compactFresh ? ` Here the session compacts past its window's trigger and the work goes on, so no ask offers a new session.${tooFew ? ' A question left with one option is no question: take that option and drop the question.' : ''}` : '')
+          + (mechanical ? ` Re-send the ask with these questions - only ${[voice.length ? 'the dashes and quotes' : '', numbers ? 'the fresh option\'s numbers' : '', compactFresh ? 'the fresh-session option dropped' : ''].filter(Boolean).join(' and ')} changed:\n${JSON.stringify(fixed, null, 1)}\n` : '\n'));
         process.exit(2);
       }
       if (voice.length) notes.push(`The ask just sent carried ${voice.join(' and ')} after its first denial. Keep the house voice `

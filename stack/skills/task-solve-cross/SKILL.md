@@ -1,6 +1,6 @@
 ---
 name: task-solve-cross
-description: "Use when work spans backend and frontend, or to route agent seats - 'plan the agents for this', 'how should I route this'. Not for greenfield builds."
+description: "Use when work spans backend and frontend, a cross-stack bug, or to route agent seats - 'plan the agents for this'. Not for greenfield builds."
 disable-model-invocation: true
 ---
 

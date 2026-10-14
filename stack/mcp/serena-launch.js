@@ -45,6 +45,12 @@ const path = require('node:path');
 const { pythonRequest, runUvx } = require('./uv-python.js');
 const dataRoot = require('./data-root.js');
 
+// serena-agent sends a usage ping (os, version, backend, context name; 2.0.0 adds the agent interface, on a background
+// thread) to its maker's host at every agent start unless SERENA_USAGE_REPORTING is 'false' (serena/agent.py
+// `_send_usage_info`, 1.7.0 and 2.0.0). The plugin entry passes this env, and
+// the copy route registers the same pair, as the desktop servers turn their telemetry off (audit 2026-10-14, PL1).
+const NAVIGATION_ENV = Object.freeze({ SERENA_USAGE_REPORTING: 'false' });
+
 const nativeHome = (value, platform = process.platform) => (platform === 'win32' ? path.win32 : path.posix).normalize(value);
 // The copy route registers the same spelling - the same directory on disk either way.
 const serenaHomeFor = (platform = process.platform, root = dataRoot.DATA_ROOT_DEFAULT, dir = `${root}/serena`) => nativeHome(`${dir}/home`, platform);
@@ -140,4 +146,4 @@ if (require.main === module)
     const rc = main(process.argv.slice(2));
     if (rc !== null) process.exit(rc);
 }
-module.exports = { main, nativeHome, serenaHomeFor, serenaData, projectArgs, contextArgs, copyRouteProject, STACK_CONTEXT };
+module.exports = { main, nativeHome, serenaHomeFor, serenaData, projectArgs, contextArgs, copyRouteProject, STACK_CONTEXT, NAVIGATION_ENV };

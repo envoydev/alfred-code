@@ -6,7 +6,7 @@
 - **Write protocol** (how step 5 lands the doc) - the stamp, section format, ORIENTATION.md, watch.json, branches, diagrams and format, the folder, the budget check and the spill
 - **`.claude/rules/alfred-architecture.md`** - the awareness rule's template and byte budget
 
-The pros/cons judgment over this map is not this capture's: nothing here writes `<docs-path>/quality/ASSESSMENT.md`, and no finding goes into the map.
+The pros/cons judgment over this map is not this capture's: nothing here writes `<docs-path>/quality/ARCHITECTURE-ASSESSMENT.md`, and no finding goes into the map.
 
 ## <docs-path>/architecture/ARCHITECTURE.md - the structure map
 
@@ -77,8 +77,8 @@ Load `docs-as-code` before writing - its Mermaid ground rules govern the core-ma
 sequence/ER diagram (one exception: a reconcile whose diagrams carry forward verified unchanged may skip the load
 and say so in the report). This file fixes WHAT each doc contains - including the format-for-agents discipline
 above (tables and grouped rows over prose, no ASCII art) that keeps the docs cheap for every seat that reads them
-at orientation; `docs-as-code` fixes HOW the diagrams are written. Both docs are clean, scannable Markdown per the
-`markdown-style` skill.
+at orientation; `docs-as-code` fixes HOW the diagrams are written. Both docs are clean, scannable Markdown in the
+shape this file fixes.
 
 ### The folder
 

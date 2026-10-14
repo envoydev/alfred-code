@@ -37,9 +37,9 @@ The single source-of-truth index mapping a concrete .NET work area - a construct
 | register services, build an `Add*` extension, or reason about DI lifetimes | `csharp` (lifetimes in the hub; `Add*` / keyed / factory composition in its `references/dependency-injection.md`) |
 | bind or validate settings - `IOptions`, `IValidateOptions`, `ValidateOnStart` | `dotnet-web-backend` (its typed-options section) |
 | set up a new solution - the layout, `.slnx`, `Directory.Build.props`, or `global.json` | `dotnet-project-setup` |
-| add or upgrade a NuGet package, or edit `Directory.Packages.props` | `dotnet-project-setup` (its `references/central-package-management.md`) |
+| add a NuGet package, or set up central package management (`Directory.Packages.props`) | `dotnet-project-setup` (its `references/central-package-management.md`) |
 | set up or enforce C# formatting and analyzers - CSharpier, SDK analyzers, `.editorconfig` severity, `TreatWarningsAsErrors`, the CI quality gate | `dotnet-code-quality` |
-| run a .NET migration workflow - EF schema, .NET/SDK version upgrade, or NuGet update with preview/rollback/verify | `dotnet-migrate` |
+| run a .NET migration workflow - EF schema, .NET/SDK version upgrade, or a NuGet package update (a version bump in `Directory.Packages.props` included) with preview/rollback/verify | `dotnet-migrate` |
 
 ## ASP.NET Core and web
 
@@ -58,7 +58,7 @@ The single source-of-truth index mapping a concrete .NET work area - a construct
 
 | You are about to... | Load |
 |---|---|
-| harden against OWASP Top 10 - injection, broken access control, SSRF, dependency audit, deprecated-security patterns | `dotnet-security` |
+| harden against OWASP Top 10 - injection, broken access control, SSRF, dependency audit, deprecated-security patterns; or a desktop / console / service app's boundaries (opened files, IPC, local secrets, updates) | `dotnet-security` |
 | use `System.Security.Cryptography` - hashing, AES-GCM, RSA/ECDSA, PBKDF2/Argon2id, constant-time compare | `dotnet-cryptography` |
 
 ## Data and EF
@@ -85,7 +85,7 @@ The single source-of-truth index mapping a concrete .NET work area - a construct
 | pick a scheduler (Hangfire / Quartz.NET / Coravel) or run a job on exactly one instance (leader election) | `dotnet-hosted-services` (its `references/scheduling-and-coordination.md`) |
 | deploy or observe a headless worker - signals, systemd / container / Kubernetes shutdown, health checks without Kestrel, `[LoggerMessage]` | `dotnet-hosted-services` (its `references/deployment-and-observability.md`) |
 | host a worker under the Windows Service Control Manager - `AddWindowsService` / `UseWindowsService`, SCM start/stop budgets and exit codes, scripted `sc.exe` install with recovery actions, service accounts, event-log source | `dotnet-windows-service` (load `dotnet-hosted-services` first - the host model it stacks on) |
-| build a CLI tool - argument parsing (`System.CommandLine` 2.0 / `Spectre.Console.Cli` / `Cocona`), subcommands, exit codes | `dotnet-console-apps` |
+| build a CLI tool - argument parsing (`System.CommandLine` 2.0 / `Spectre.Console.Cli`), subcommands, exit codes | `dotnet-console-apps` |
 | build a chat or trading bot - a Telegram / Discord / Slack / exchange SDK plugged into a `BackgroundService`, command handlers in DI | `dotnet-console-apps` (its `references/bot-sdks.md`) |
 
 ## Testing and quality
@@ -123,4 +123,4 @@ Maintaining or hardening a .NET Framework 4.8 codebase routes through a second t
 
 - **Rows that name a reference file.** Some rows route into a hub's reference file rather than a standalone skill - load the named skill, then open that reference.
 - **Hubs vs leaves.** `csharp` is the C# baseline hub, `dotnet-web-backend` the web hub, `database-conventions` the data hub, `dotnet-testing` the test hub - a leaf specialist points UP to its hub, the hub points DOWN to its deep specialists, and this router indexes them all. Load the web hub before a web specialist; load the data hub before EF/SQL specialists.
-- **Out of this router's scope.** Web front-end and mobile work belong to the Angular, TypeScript and Ionic/Capacitor conventions skills, whose descriptions lead with their own triggers - not here. Cross-cutting flow that is not .NET-specific - the security review, code verification, the documentation server library docs, git - lives in the always-on baseline rules.
+- **Out of this router's scope.** Web front-end and mobile work belong to the Angular, TypeScript and Ionic/Capacitor conventions skills, whose descriptions lead with their own triggers - not here. Cross-cutting flow that is not .NET-specific - the security review, code verification, library docs through the documentation server, git - lives in the always-on baseline rules.

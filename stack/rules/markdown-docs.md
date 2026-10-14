@@ -17,7 +17,7 @@ action, not two competing ones. Skip the load when it is already in context. Nam
 loaded, or say it was already in context - the receipt is what makes the load happen. Skip one-line
 tweaks.
 
-<!-- Maintainer note: a run working through the shell gets no attach at all until it uses a file tool -
+<!-- Maintainer note: a run working through the shell gets no attach on a shell write -
      0 attaches over 123 `.md` write targets - so a sentence saying so here could never reach the run it
      describes; guard-read-whole-file.js names this rule on the first shell write instead (audit M67). -->
 

@@ -87,7 +87,7 @@ test('M50: integration-reviewer attributes the security-half pass to the commit 
 // --- M51: security-auditor's rubric carve-out names only what the seat has ---------------------------
 test('M51: security-auditor skips on a rubric dispatch only what its Method holds', () =>
 {
-    const line = squash(body('security-auditor')).match(/When dispatched by the `loop-quality` skill[^\n]*?never to rubric audits\./);
+    const line = squash(body('security-auditor')).match(/When dispatched by the `loop-code-quality` skill[^\n]*?never to rubric audits\./);
     assert.ok(line, 'the rubric carve-out');
     assert.doesNotMatch(line[0], /plan\/contract diff|build\+test rerun/, 'a Method with no plan diff and no rerun skips neither');
     assert.ok(line[0].includes('the memory handoff WRITE unless the dispatch brief asks for it'), 'the registered clause stays');
@@ -379,4 +379,77 @@ test('agents F06: every quoted skill-section pointer in a trap list resolves to 
     assert.ok(!asp.includes('(the loaded skills carry the fix;'), 'the over-claim: three of the seven traps have no preload home');
     for (const h of ['Session lifetime and thread-safety', 'Identity map and change tracking', 'Loading strategy and N+1', 'Model expected failures as return values'])
         assert.ok(asp.includes(`'## ${h}'`), h);
+});
+
+// --- audit 2026-10-14 AG04: every working seat closes on its status line --------------------------------------
+// The routers read 'a closing status line' (domain-trio-protocol, step-mechanics); the implementers and verifiers still
+// opened their close with it ('end with X, then Y'), the order 10-08 F04 fixed for the designers. One shape for all.
+test('AG04: implementers and verifiers put the status and contract_version lines last', () =>
+{
+    const working = seats.filter((s) => s.endsWith('-implementer'));
+    const checking = seats.filter((s) => s.endsWith('-verifier'));
+    assert.strictEqual(working.length, 10);
+    assert.strictEqual(checking.length, 10);
+    for (const s of working)
+    {
+        const report = squash(section(body(s), 'Report')).trim();
+        assert.ok(!report.includes('End with a status'), `${s}: the 'end with X, then Y' order`);
+        const close = report.indexOf('Close with a literal `status:` line - DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT, BLOCKED, or BLOCKED_CONTRACT_CHANGE - then the task\'s contract_version as a literal `contract_version:` line');
+        assert.ok(close > report.indexOf('Report the task built'), `${s}: the close follows the report items`);
+        assert.ok(report.endsWith('the last two lines of the report.'), `${s}: the close is the section's last sentence`);
+    }
+    for (const s of checking)
+    {
+        const text = body(s);
+        const lines = text.slice(text.indexOf('End with exactly this output contract')).split('\n');
+        const start = lines.findIndex((l) => l.startsWith('- '));
+        let end = start;
+        while (end < lines.length && lines[end].startsWith('- ')) end++;
+        const items = lines.slice(start, end);
+        assert.ok(items.length >= 5, `${s}: the footer list`);
+        assert.ok(text.includes("literal `status:` and `contract_version:` lines, the report's last two"), `${s}: the header says where they go`);
+        assert.deepStrictEqual(items.slice(-2), ['- `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`', '- the contract_version gated against'], s);
+    }
+});
+
+// --- audit 2026-10-14 AG03 / AG07: a seat names the boundary, never the skill that calls it -------------------------
+test('AG03 / AG07: the data implementer hands app-side mapping to the app stack, and no analyzer names its capture', () =>
+{
+    assert.match(meta('data-implementer').description, /or for the app-side EF Core mapping \(the app stack's implementer\)\.$/);
+    for (const s of ['code-style-analyzer', 'test-coverage-analyzer', 'related-project-analyzer'])
+    {
+        const text = squash(read(s));
+        assert.doesNotMatch(text, /capture-(code-style|test-coverage|related-projects) skill/, `${s}: a named caller`);
+        assert.ok(text.includes('The capture that dispatched you'), `${s}: the described caller`);
+    }
+    assert.doesNotMatch(squash(read('code-style-analyzer')), /primary caller/, 'code-style-analyzer: a caller attribution');
+    assert.doesNotMatch(squash(read('security-auditor')), /code-quality stage's ARCHITECTURE\.md orientation/, 'security-auditor: verifier-only text (AG05)');
+});
+
+// --- audit 2026-10-14 AG02 (the user's ruling, option a): a verifier dispatched with no contract_version ---------------
+// task-verify-plan sends `<stack>-verifier` to audit a plan file, task-verify-code and the commit checkpoint send it to
+// review a diff where a plan is optional - but the seat gated only landed trio work against the ledger, footered EVERY
+// trio-verify report, and turned 'missing task context' into CONTRACT_MISMATCH. One registered carve-out beside the
+// rubric one, and the footer names the exception.
+const DIRECT = '- When the brief carries no contract_version - a direct review (task-verify-code, the commit checkpoint) or a plan audit (task-verify-plan) - the brief is the spec: review the diff, and the plan file when the brief names one; for a plan audit run the brief\'s passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE; close with the same `status:` vocabulary and `contract_version: none`.';
+const DIRECT_FOOTER = 'and this footer MUST NOT be appended; a direct dispatch (a brief with no contract_version) is excepted too - its Conventions carve-out is authoritative, and its last line reads `contract_version: none`:';
+test('AG02: every verifier carries the direct-dispatch carve-out beside the rubric one, pinned, and its footer excepts it', () =>
+{
+    const checking = seats.filter((s) => s.endsWith('-verifier'));
+    assert.strictEqual(checking.length, 10);
+    for (const s of checking)
+    {
+        const conv = section(body(s), 'Conventions');
+        const lines = conv.split('\n');
+        const rubric = lines.findIndex((l) => l.startsWith('- When dispatched by the `loop-code-quality` skill with a stage rubric'));
+        assert.ok(rubric >= 0, `${s}: the rubric carve-out`);
+        assert.strictEqual(lines[rubric + 1], DIRECT, `${s}: the direct-dispatch carve-out sits right after it, verbatim`);
+        assert.ok(squash(body(s)).includes(DIRECT_FOOTER), `${s}: the footer names the exception`);
+        // the trio footer and its two closing lines are unchanged for a trio verify (AG04)
+        assert.ok(squash(body(s)).includes('on EVERY trio-verify report this seat returns'), `${s}: the trio footer stands`);
+    }
+    const files = listedIn('verifier-direct-dispatch');
+    assert.deepStrictEqual([...files].sort(), checking.map((s) => `stack/agents/${s}.md`).sort(), 'all 10 pinned');
+    assert.strictEqual(rules()['verifier-direct-dispatch'].owner.file, 'stack/agents/aspnet-verifier.md');
+    for (const c of copiesOf('verifier-direct-dispatch')) assert.ok(squash(readRel(c.file)).includes(squash(c.marker)), `${c.file}: the marker`);
 });

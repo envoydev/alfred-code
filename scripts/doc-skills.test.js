@@ -20,7 +20,10 @@ const squash = (s) => s.replace(/\s+/g, ' ');
 test('audit 2026-10-08: markdown-style cites what it has loaded and closes on a lint re-run', () => {
     const raw = read('stack/skills/markdown-style/SKILL.md');
     const md = squash(raw);
-    assert.ok(md.includes('Neither `references/` file is opened unless a specific rule the two quick-reference tables do not settle is actually in dispute'), 'the no-open rule stands');
+    assert.ok(md.includes('Neither rule reference (`references/syntax-canon.md`, `references/style-overlay.md`) is opened unless a specific rule the two quick-reference tables do not settle is actually in dispute'), 'the no-open rule stands');
+    // audit 2026-10-14 SKC15: the measured story moved to the evidence appendix, a one-clause reason stays
+    assert.doesNotMatch(md, /1\.6M cache-read/, 'the story left the body');
+    assert.match(squash(read('stack/skills/markdown-style/references/evidence.md')), /11 messages for 1\.6M cache-read tokens/);
     assert.ok(md.includes("each fix cites the quick-reference row it breaks (e.g. 'syntax: Headings'), and a reference short name only when that file was opened for a dispute"), 'Pass 1 cites a row');
     assert.ok(md.includes('Every finding cites a rule - a quick-reference row, or the reference entry when one was opened.'), 'the hard limit agrees');
     assert.doesNotMatch(md, /each fix cites its rule by short name/, 'no short name the body never loaded');

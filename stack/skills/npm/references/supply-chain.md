@@ -12,7 +12,7 @@ Three waves of a self-replicating npm worm (counts are vendor-reported - treat a
 
 Lessons, each mapped to a defense:
 
-1. **Install-time script execution is the blast radius** -> `ignore-scripts=true` everywhere.
+1. **Install-time script execution is the blast radius** -> on npm >= 12, the default block plus a reviewed `allowScripts` list (`npm install-scripts approve`, pinned `pkg@version`); on npm 11, `ignore-scripts=true` everywhere.
 2. **Malicious versions die fast** (the Sep 2025 debug/chalk versions were pulled in ~2.5h, Shai-Hulud 2.0 in ~12h, the Mar 2026 axios versions in ~3h) -> a multi-day cooldown filters nearly all of them.
 3. **CI secrets in the install environment are the crown jewels** -> OIDC, scoped short-lived credentials, no tokens in env when installing.
 4. **Stolen-token republishing is the propagation mechanism** -> provenance + staged publishing exist precisely for this.

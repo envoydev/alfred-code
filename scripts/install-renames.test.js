@@ -55,7 +55,7 @@ test('the renamed map: every old name is retired, every new name ships, and no n
     const m = loadManifest(ROOT);
     const skills = new Set(m.catalogs.skills.map((e) => e.split('|').pop()));
     const agents = new Set(m.agents.map((f) => f.replace(/\.md$/, '')));
-    assert.strictEqual(Object.keys(RENAMED.skills).length, 66, 'the 23 project-* skills, the three 2.1.0 renames, the 2.1.6 AGENTS.md one, the 2.1.7 usage-report one, the 36 alfred- prefixes 2.2.0 dropped and the two awareness captures (2026-10-13)');
+    assert.strictEqual(Object.keys(RENAMED.skills).length, 67, 'the 23 project-* skills, the three 2.1.0 renames, the 2.1.6 AGENTS.md one, the 2.1.7 usage-report one, the 36 alfred- prefixes 2.2.0 dropped, the two awareness captures (2026-10-13) and the code-quality loop');
     assert.strictEqual(Object.keys(RENAMED.agents).length, 4, 'the two failure diagnosers, then their alfred- prefix (2.2.0)');
     for (const [from, to] of Object.entries(RENAMED.skills))
     {
@@ -458,10 +458,10 @@ test('settings writer: a personal skillOverrides switch-off in settings.local.js
         const run = () => writeSettings({ file, localFile, renamed: RENAMED, log: (m) => logs.push(m), note: (m) => assert.fail(m) });
         run();
         const local = JSON.parse(fs.readFileSync(localFile, 'utf8'));
-        assert.deepStrictEqual(local.skillOverrides, { 'my-own-skill': 'off', 'loop-quality': 'off' });
+        assert.deepStrictEqual(local.skillOverrides, { 'my-own-skill': 'off', 'loop-code-quality': 'off' });
         assert.strictEqual(local.MY_LOCAL_KEY, 1, "the user's own local key survives");
         assert.strictEqual(JSON.parse(fs.readFileSync(file, 'utf8')).skillOverrides, undefined, 'a personal switch-off stays personal');
-        assert.ok(logs.some((m) => /settings\.local\.json: skillOverrides project-quality-loop re-keyed loop-quality/.test(m)), logs.join('\n'));
+        assert.ok(logs.some((m) => /settings\.local\.json: skillOverrides project-quality-loop re-keyed loop-code-quality/.test(m)), logs.join('\n'));
         const before = fs.readFileSync(localFile, 'utf8');
         run();
         assert.strictEqual(fs.readFileSync(localFile, 'utf8'), before, 'a second run changes nothing');
@@ -1017,10 +1017,10 @@ test('settings writer: at local scope an old skillOverrides key in settings.json
         const logs = [];
         const opts = { file: localFile, renamed: RENAMED, inheritedOverrides: shared.skillOverrides, note: (m) => assert.fail(m) };
         writeSettings({ ...opts, log: (m) => logs.push(m) });
-        assert.deepStrictEqual(JSON.parse(fs.readFileSync(localFile, 'utf8')).skillOverrides, { 'capture-first-look': 'on', 'loop-quality': 'off' }, 'the user\'s switch-off stopped applying');
+        assert.deepStrictEqual(JSON.parse(fs.readFileSync(localFile, 'utf8')).skillOverrides, { 'capture-first-look': 'on', 'loop-code-quality': 'off' }, 'the user\'s switch-off stopped applying');
         assert.deepStrictEqual(JSON.parse(fs.readFileSync(sharedFile, 'utf8')), shared, 'settings.json is never written at local scope');
         const text = logs.join('\n');
-        assert.match(text, /settings\.local\.json: settings\.json still names skillOverrides project-quality-loop - set as loop-quality in settings\.local\.json; a local-scope run never writes settings\.json, a project-scope update re-keys it/);
+        assert.match(text, /settings\.local\.json: settings\.json still names skillOverrides project-quality-loop - set as loop-code-quality in settings\.local\.json; a local-scope run never writes settings\.json, a project-scope update re-keys it/);
         assert.doesNotMatch(text, /project-first-look/, 'a new name the local file already sets wins, silently');
         const before = fs.readFileSync(localFile, 'utf8');
         const again = [];
@@ -1045,7 +1045,7 @@ test('seed: a local-scope update carries settings.json\'s old skillOverrides key
             local: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.local.json'), 'utf8')),
         }),
     });
-    assert.deepStrictEqual(result.local.skillOverrides, { 'loop-quality': 'off' });
+    assert.deepStrictEqual(result.local.skillOverrides, { 'loop-code-quality': 'off' });
     assert.deepStrictEqual(result.shared, { skillOverrides: { 'project-quality-loop': 'off' } }, 'a local-scope run never writes settings.json');
-    assert.match(out, /settings\.local\.json: settings\.json still names skillOverrides project-quality-loop - set as loop-quality in settings\.local\.json/, out);
+    assert.match(out, /settings\.local\.json: settings\.json still names skillOverrides project-quality-loop - set as loop-code-quality in settings\.local\.json/, out);
 });

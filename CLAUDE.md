@@ -110,7 +110,8 @@ The mechanism notes for each part live in a path-scoped rule in `.claude/rules/`
   every skill DESCRIPTION plus `when_to_use` (a `disable-model-invocation` skill's is not in context, so
   its description is skipped), and the fixed text every generated capabilities rule carries (the usage
   policy and the locked-server row) - prints each part, and fails over 80,000 chars (raised from 70,000 on
-  2026-10-13 when the seats' tools lists began to count - 76,449 measured, 21,955 of it the lists; lowered from
+  2026-10-13 when the seats' tools lists began to count - 76,449 measured, 21,955 of it the lists, 9,109 once the lists
+  were generated as one grant per server on 2026-10-14, `scripts/seat-tools.js`; lowered from
   160,000 on 2026-09-29, about 40% over the measured total; 50,007 on 2026-10-06 (2.1.7): pathless rules 23,759, agent
   descriptions 12,532, skill descriptions 11,886 with 13 manual-only skipped, capabilities fixed text
   1,830 - the pilot-3 trim cut each rule clause to its imperative plus a one-line reason, the stories

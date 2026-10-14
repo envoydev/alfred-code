@@ -57,6 +57,29 @@ test('the release pins cover every package server, and the generator spells a pi
     assert.strictEqual(mcp.resolvePins({ pins: { 'mobile-control': { version: '1.2.3', spelling: '@<v>' } } }).MOBILE_CONTROL_PIN, '@1.2.3');
 });
 
+// Audit 2026-10-14 PL4: appium-mcp's caret-ranged tree is held to its pin's OWN day - npx honours npm_config_before for
+// the whole tree (measured on npm 11.6.1), and refuses an exact pin published after it (ETARGET), so the shared uvx day
+// (older than an --only pin) cannot serve. Both routes take it: the entry hands the launcher `--before`, the copy route
+// registers `-e npm_config_before=`. The browser's deps are exact and leaf, so it takes none.
+test('PL4 mobile-control takes its pin\'s own cut-off day on both routes; a row with no day takes none', () =>
+{
+    const pins = JSON.parse(read('meta/mcp-pins.json'));
+    const day = pins.pins['mobile-control'].refreshed;
+    assert.match(day, /^\d{4}-\d{2}-\d{2}$/, 'the committed mobile-control row records its own day');
+    // An --only pin is newer than the shared uvx day, which would not resolve it; a whole refresh (PL10) sets both to one day.
+    assert.ok(day >= pins.refreshed, 'the row\'s own day is never older than the shared uvx day');
+    const shipped = require('../.claude-plugin/marketplace.json').plugins.find((p) => p.name === 'mobile-control').mcpServers['mobile-control'].args;
+    assert.deepStrictEqual(shipped.slice(-2), ['--before', `${day}T23:59:59Z`]);
+    const shape = (row) => mcpServerShapes({ pins: { 'mobile-control': row } })['mobile-control'].servers['mobile-control'].args;
+    assert.deepStrictEqual(shape({ version: '1.2.3', spelling: '@<v>' }).slice(1), ['--package', 'appium-mcp@1.2.3'], 'no day, no flag');
+    assert.deepStrictEqual(shape({ version: '1.2.3', spelling: '@<v>', refreshed: '2026-10-20' }).slice(-2), ['--before', '2026-10-20T23:59:59Z']);
+    assert.ok(!require('../.claude-plugin/marketplace.json').plugins.find((p) => p.name === 'chrome-control').mcpServers['chrome-control'].args.includes('--before'), 'the browser takes no npm cut-off');
+    const row = JSON.parse(read('meta/stack-manifest.json')).mcps.find((r) => r.name === 'mobile-control');
+    assert.match(row.args, / -e npm_config_before=@MOBILE_BEFORE@ -- /);
+    assert.strictEqual(mcp.resolvePins({ pins: { 'mobile-control': { version: '1.2.3', refreshed: '2026-10-20' } } }).MOBILE_BEFORE, '2026-10-20T23:59:59Z');
+    assert.strictEqual(mcp.resolvePins({ pins: { 'mobile-control': { version: '1.2.3' } } }).MOBILE_BEFORE, '', 'no day: an empty value, which npm reads as none');
+});
+
 test('the seed takes each pin from the release, never from a registry', () =>
 {
     const release = JSON.parse(read('meta/mcp-pins.json')).pins;
@@ -183,17 +206,27 @@ async function refreshRun({ navigation = '9.9.9', context = 'same', recorded = t
     const out = [];
     const current = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'mcp-pins.json'), 'utf8')).pins;
     const listed = [];
+    const asked = [];
     const rc = await main(argv, {
         pinsFile, toolsFile, contextFile, log: (l) => out.push(l), today: () => '2026-10-01',
         npmLatest: (pkg) => (Object.hasOwn(npm, pkg) ? npm[pkg] : Object.values(current).find((r) => r.package === pkg).version),
-        pypiLatest: (pkg) => (pkg === 'serena-agent' ? navigation : Object.values(current).find((r) => r.package === pkg).version),
+        pypiLatest: (pkg, python) => { asked.push([pkg, python]); return pkg === 'serena-agent' ? navigation : Object.values(current).find((r) => r.package === pkg).version; },
         upstreamContext: () => (context === 'same' ? upstream : context),
         listTools: (name) => { listed.push(name); return Object.hasOwn(lists, name) ? lists[name] : null; },
     });
-    const result = { rc, listed, text: out.join('\n'), pins: JSON.parse(fs.readFileSync(pinsFile, 'utf8')), tools: JSON.parse(fs.readFileSync(toolsFile, 'utf8')) };
+    const result = { rc, listed, asked, text: out.join('\n'), pins: JSON.parse(fs.readFileSync(pinsFile, 'utf8')), tools: JSON.parse(fs.readFileSync(toolsFile, 'utf8')) };
     fs.rmSync(dir, { recursive: true, force: true });
     return result;
 }
+
+// windows-mcp 0.8.6+ requires Python 3.14: windows-control alone launches on it (the user's ruling of 2026-10-14), so its pin
+// is resolved against 3.14 and every other uvx server's against 3.13 - a pin past its server's Python fails at launch.
+test('refresh-mcp-pins: each PyPI pin is resolved against the Python its server launches on', async () =>
+{
+    const r = await refreshRun();
+    const asked = Object.fromEntries(r.asked);
+    assert.deepStrictEqual(asked, { 'serena-agent': '3.13', 'mcp-memory-service': '3.13', 'windows-mcp': '3.14', 'macos-mcp': '3.13' });
+});
 
 test('R7 refresh-mcp-pins: a serena bump whose claude-code context changed is refused until it is re-diffed', async () =>
 {
@@ -233,6 +266,12 @@ test('M31 refresh-mcp-pins: --write records each server\'s tool names, and keeps
     assert.strictEqual(got.tools.servers.browser.version, JSON.parse(read('meta/mcp-pins.json')).pins.browser.version);
     assert.deepStrictEqual(got.tools.servers["alfred-memory"].tools, ['kept_tool'], 'an unlisted server keeps what it had');
     assert.match(got.text, /tools alfred-memory: NOT CHECKED/);
+    // PL4: a whole refresh moves every npm row's own day with the shared one; a PyPI row carries none.
+    assert.strictEqual(got.pins.pins.browser.refreshed, '2026-10-01');
+    assert.strictEqual(got.pins.pins['mobile-control'].refreshed, '2026-10-01');
+    assert.ok(!Object.hasOwn(got.pins.pins['alfred-memory'], 'refreshed'), 'a PyPI row takes the shared day');
+    const offline = await refreshRun({ npm: { 'appium-mcp': null } });
+    assert.strictEqual(offline.pins.pins['mobile-control'].refreshed, JSON.parse(read('meta/mcp-pins.json')).pins['mobile-control'].refreshed, 'a row it could not reach keeps its pin and its day');
 });
 
 // 2026-10-13: a server joins the catalog through --only - its own row resolved and listed, every other pin, tool list and
@@ -246,6 +285,8 @@ test('refresh-mcp-pins --only: the named npm row moves alone; a PyPI row is refu
     assert.strictEqual(got.pins.pins.browser.version, committed.pins.browser.version, 'a pin not named stays');
     assert.strictEqual(got.pins.pins['alfred-navigation'].version, committed.pins['alfred-navigation'].version, 'the PyPI bump the registry offers is not taken');
     assert.strictEqual(got.pins.refreshed, committed.refreshed, 'the cut-off day stays');
+    assert.strictEqual(got.pins.pins['mobile-control'].refreshed, '2026-10-01', 'PL4: the npm row it resolved records its own day');
+    assert.strictEqual(got.pins.pins.browser.refreshed, committed.pins.browser.refreshed, 'a row it kept keeps its day');
     assert.deepStrictEqual(got.listed, ['mobile-control'], 'only the named server is listed');
     assert.deepStrictEqual(got.tools.servers['mobile-control'], { version: '9.0.0', tools: ['appium_screenshot'] });
     assert.deepStrictEqual(got.tools.servers['alfred-memory'].tools, ['kept_tool'], 'another server keeps its list');

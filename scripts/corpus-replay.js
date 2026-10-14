@@ -61,6 +61,10 @@ const ROUTES = [
   { hook: 'guard-desktop-exec.js', event: 'PreToolUse', deny: true,
     pattern: '^mcp__(plugin_windows-control_)?windows-control__App$|^mcp__(plugin_macos-control_)?macos-control__Shell$',
     tools: ['mcp__plugin_windows-control_windows-control__App', `mcp__${'windows-control'}__App`, 'mcp__plugin_macos-control_macos-control__Shell', `mcp__${'macos-control'}__Shell`] },
+  // The browser's file upload, the secret guard's fourth read route (audit 2026-10-14 PL3): every engine, both routes.
+  { hook: 'guard-secret-value.js', event: 'PreToolUse', deny: true,
+    pattern: '^mcp__(plugin_(chrome|msedge|firefox|webkit)-control_)?(chrome|msedge|firefox|webkit)-control__browser_file_upload$',
+    tools: ['chrome', 'msedge', 'firefox', 'webkit'].flatMap((e) => [`mcp__plugin_${e}-control_${e}-control__browser_file_upload`, `mcp__${e}-control__browser_file_upload`]) },
   { hook: 'guard-stop-contract.js', event: 'Stop', deny: true },
   // One job per recorded shell call's RESULT: an error result is the PostToolUseFailure payload, any
   // other the PostToolUse one. Each job is its own session, so the rate is the per-run upper bound -

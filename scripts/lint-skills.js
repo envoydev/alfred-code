@@ -95,6 +95,8 @@ const PLUGIN_MARKETPLACE_URLS = new Set([
 const NON_SKILL_TOKENS = new Set([
     // the AGENTS.template.md rules table's slash-only-capture notation - a marker, not a skill.
     'user-run',
+    // the task and loop skills' mode word (`/loop-code-quality auto-mode`) - an argument the hooks read, not a skill.
+    'auto-mode',
     // the commit-gate hook, referenced by name from alfred-git.md and task-verify-code - a hook, not a skill.
     'guard-ungated-commit',
     // the env-gated usage instrument, named by the usage analyzer as the thing to switch on - a hook, not a skill.
@@ -1117,7 +1119,8 @@ function lintAgentTools(label, text)
 // search but not save, or save but not search, defeats the point - the spec gives every seat both,
 // read-only support seats included (the rule that scopes what gets SAVED to lessons lives beside
 // the grant, not instead of it). An agent with no `tools:` line inherits every tool, memory
-// included, so it has nothing to fix.
+// included, so it has nothing to fix. What a seat holds is read as Claude Code resolves it - a whole-server grant
+// is every pinned tool of that server, minus its `disallowedTools` (scripts/seat-tools.js, check 63).
 const MEMORY_TOOLS = ['mcp__plugin_alfred-memory_alfred-memory__memory_store', 'mcp__plugin_alfred-memory_alfred-memory__memory_search', 'mcp__plugin_alfred-memory_alfred-memory__memory_list'];
 
 function lintAgentMemoryTools(label, text)
@@ -1125,8 +1128,9 @@ function lintAgentMemoryTools(label, text)
     const line = /^tools:\s*(.+)$/m.exec(text || '');
     if (!line) return [];
 
-    const tools = line[1].split(',').map(t => t.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
-    const missing = MEMORY_TOOLS.filter(t => !tools.includes(t));
+    const removed = /^disallowedTools:\s*(.+)$/m.exec(text || '');
+    const tools = require('./seat-tools.js').effectiveTools(line[1], removed ? removed[1] : '');
+    const missing = MEMORY_TOOLS.filter(t => !tools.has(t));
     if (missing.length === 0) return [];
 
     return [`${label} tools: allowlist is missing ${missing.join(', ')} - every seat must be able to `
@@ -1169,15 +1173,22 @@ function lintReferenceContents(skillsDir, skillDirs, fsLike = fs)
 // flow skills below carry their stops as templates in SKILL.md itself - the file every run reads - and the count is
 // pinned per skill, so a rewrite that drops even one stop back to prose goes red (a new stop raises the pin). The
 // AGENTS.md improve ask joined them (usage audit 2026-10-10: as prose it went out with no option marked), and its
-// check-rows-only twin (audit 2026-10-11 SD04: with only check rows drafted the run ruled them itself, no ask).
-const ASK_FLOW_TEMPLATES = { 'task-solve': 9, 'task-solve-cross': 5, 'issue-diagnoser': 4, 'habits-adjust-agents-md': 2 };
+// check-rows-only twin (audit 2026-10-11 SD04: with only check rows drafted the run ruled them itself, no ask). The
+// three loops, task-implement and task-build-from-scratch joined them (audit 2026-10-14 SKF-06): auto-mode answers an
+// ask only when it marks one option, and their prose stops carried no mark on four of them, so the run waited. The
+// AGENTS.md create-mode write ask (audit 2026-10-14 SKC14) and task-build-from-scratch's commit ask (SKF-11) followed.
+const ASK_FLOW_TEMPLATES = {
+    'task-solve': 9, 'task-solve-cross': 5, 'issue-diagnoser': 4, 'habits-adjust-agents-md': 3,
+    'loop-architecture-quality': 10, 'loop-code-quality': 10, 'loop-test-coverage': 8, 'task-implement': 10, 'task-build-from-scratch': 5,
+};
 const ASK_FLOW_SKILLS = Object.keys(ASK_FLOW_TEMPLATES);
 // The setup / configure walk's layer asks are templates too (2026-09-29: a walk with whole-layer verdicts only left every
 // per-row change to typing). Pinned per file like the flow skills, so a layer ask dropped back to prose goes red.
 const SETUP_ASK_TEMPLATES = {
     // +1: the mobile-control ask (2026-10-13).
     'setup-plugin/references/walk.md': 13,
-    'setup-plugin/commands/setup.md': 2,
+    // +1: screen B's compact-or-fresh-session ask (2026-10-14).
+    'setup-plugin/commands/setup.md': 3,
     // +2: step 1's closing ask, one template per case (audit 2026-10-11, session a9e06780).
     'setup-plugin/commands/configure.md': 6,
     // audit 2026-10-11: update's three asks plus step 6's re-spell of the project's own AGENTS.md (session b3f8193f).
@@ -1287,6 +1298,22 @@ function lintPluginComponents(manifest, listings)
 
 // Check 19: every disable-model-invocation skill carries the "manual" row flag and every user-invocable: false
 // skill the "model-only" one (2.1.6 M128 part 3), and no row claims a state its SKILL.md does not set.
+// Check 12a: the word the README's headline MCP row describes each opt-in MCP server (manifest `active: false`) by. A new
+// opt-in server has no word here, so it fails until the row describes it (audit 2026-10-14 PL12 - mobile-control shipped
+// with the row silent about it).
+const OPT_IN_README_WORDS = { 'windows-control': 'desktop', 'macos-control': 'desktop', 'mobile-control': 'mobile' };
+function lintReadmeOptInMcps(row, optInNames)
+{
+    const out = [];
+    for (const name of optInNames)
+    {
+        const word = OPT_IN_README_WORDS[name];
+        if (!word) out.push(`README.md: opt-in MCP server '${name}' has no README word - add it to OPT_IN_README_WORDS in scripts/lint-skills.js and describe it in the '| **MCP servers** |' row`);
+        else if (!new RegExp(`\\b${word}\\b`, 'i').test(row)) out.push(`README.md: the '| **MCP servers** |' row does not describe the opt-in ${name} (no '${word}')`);
+    }
+    return out;
+}
+
 function lintInvocationFlags(skills, html)
 {
     const out = [];
@@ -1756,6 +1783,12 @@ function main()
         {
             flag(`README.md: headline ${rowLabel} count is ${got} but the installer holds ${expected}`);
         }
+    }
+
+    // 12a. Every opt-in MCP server is described in the README's headline MCP row (lintReadmeOptInMcps).
+    {
+        const row = (fs.readFileSync(CLAUDE_README, 'utf8').match(/^\| \*\*MCP servers\*\* \|.*$/m) || [''])[0];
+        for (const finding of lintReadmeOptInMcps(row, (raw.mcps || []).filter((r) => r && r.active === false).map((r) => r.name))) flag(finding);
     }
 
     // 12b. The on-disk agents/*.md set must equal the agents the manifest carries. A drift means a
@@ -2453,6 +2486,13 @@ function main()
     for (const finding of lintStaleMcpToolNames()) flag(finding);
     // 62. No shipped file names a tool its pinned server does not have (meta/mcp-tools.json).
     for (const finding of lintMcpToolsAtPin()) flag(finding);
+    // 63. Every seat's tools: / disallowedTools: lines are what meta/seat-tools.json generates (scripts/seat-tools.js):
+    // a server granted whole, the tools the seat must not hold removed - so a hand edit, a new seat with no row, or a
+    // pin that adds a tool (which reaches no seat until the json names it) is a finding until --write runs.
+    let seatDrift;
+    try { seatDrift = require('./seat-tools.js').drift(); }
+    catch (err) { seatDrift = [`meta/seat-tools.json or meta/mcp-tools.json could not be read (${err.message}), so no seat's tool lines were checked`]; }
+    for (const finding of seatDrift) flag(finding);
     // 60. The inventory page's inline script parses - a broken string there renders an empty page.
     for (const finding of lintPageScripts()) flag(finding);
     // 60b. The inventory page shows every seat at its frontmatter pin.
@@ -2658,7 +2698,12 @@ function lintMcpEntries()
     try { mkt = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin/marketplace.json'), 'utf8')); }
     catch (err) { return [`.claude-plugin/marketplace.json could not be read: ${err.message}`]; }
 
-    for (const entry of wanted)
+    // The ids 2.4.0 renamed are listed again as RETIRED aliases (build-marketplace.js mcpAliasEntries, audit 2026-10-14
+    // PL5): generated like the entries, held to the generator the same way, and outside the catalog checks below.
+    let aliases = [];
+    try { aliases = build.mcpAliasEntries({ entries: wanted }); }
+    catch (err) { out.push(`the retired MCP aliases could not be generated: ${err.message}`); }
+    for (const entry of wanted.concat(aliases))
     {
         const live = (mkt.plugins || []).find(p => p && p.name === entry.name);
         if (!live)
@@ -3029,7 +3074,7 @@ function lintMarketplaceEntries(liveIn)
     // meta/mcp-pins.json plus the shapes in build-marketplace.js). Placement never produces them, so
     // they are not drift.
     const elsewhere = new Set();
-    try { for (const e of build.mcpPlugins()) elsewhere.add(e.name); } catch { /* 53 reports it */ }
+    try { for (const e of build.mcpPlugins().concat(build.mcpAliasEntries())) elsewhere.add(e.name); } catch { /* 53 reports it */ }
     for (const p of live.plugins || [])
     {
         if (!p || elsewhere.has(p.name) || generated.has(p.name)) continue;
@@ -3146,6 +3191,7 @@ module.exports = {
     lintMarketplaceEntries,
     lintAgentPreloads,
     lintInvocationFlags,
+    lintReadmeOptInMcps,
     lintRepoRootReserved,
     lintMarketplaceSchema,
     RESERVED_ROOT_NAMES,

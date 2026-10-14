@@ -5,12 +5,11 @@ description: "Use before writing or editing ASP.NET Core API controllers and act
 
 # ASP.NET Core controllers - API controller mechanics
 
-This skill owns the shape of a controller-based Web API: how a controller is declared, how routes attach, what an action returns, how parameters bind, and how a cross-cutting concern hangs off an action. It is the mainstream, brownfield-friendly counterpart to the minimal-API surface - the same HTTP service, sliced into classes and methods instead of endpoint registrations. It stops at the controller boundary. The pipeline-wide concerns - validation library, resilience, observability, caching - belong to the ASP.NET Core cross-cutting hub; the OpenAPI document and its docs UI to the OpenAPI skill; the failure-to-`ProblemDetails` contract and the FluentValidation filter to the HTTP error-handling skill; auth configuration to the .NET authentication skill. With none of those in your skill list the controller rules below still execute - keep the concern out of the action and report the surrounding wiring as unowned rather than restating it here. Floor is .NET 8 / C# 12; anything newer is marked optional. On .NET Framework 4.8 (MVC 5 / Web API 2) the two separate DI resolvers and the bind-DTOs-not-entities rule are in `references/net-framework-48.md`.
+This skill owns the shape of a controller-based Web API: how a controller is declared, how routes attach, what an action returns, how parameters bind, and how a cross-cutting concern hangs off an action. It is the mainstream, brownfield-friendly counterpart to the minimal-API surface - the same HTTP service, sliced into classes and methods instead of endpoint registrations. It stops at the controller boundary. The pipeline-wide concerns - validation library, resilience, observability, caching - belong to the ASP.NET Core cross-cutting hub; the OpenAPI document and its docs UI to the OpenAPI skill; the failure-to-`ProblemDetails` contract and the FluentValidation filter to the HTTP error-handling skill; auth configuration to the .NET authentication skill. With none of those in your skill list the controller rules below still execute - keep the concern out of the action and report the surrounding wiring as unowned rather than restating it here. Floor is .NET 10 / C# 14; .NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked. On .NET Framework 4.8 (MVC 5 / Web API 2) the two separate DI resolvers and the bind-DTOs-not-entities rule are in `references/net-framework-48.md`.
 
 ## When to use
 
 - Covers the ApiController attribute, attribute routing, ActionResult of T versus IActionResult or typed HttpResults, the automatic 400 filter (ApiBehaviorOptions, SuppressModelStateInvalidFilter), binding sources and From-attributes, IAsyncActionFilter.
-- The 9/10 deltas are flagged optional.
 - Do NOT use for minimal APIs (that is the minimal-API endpoint skill), MVC views, Razor Pages, gRPC, SignalR, or non-HTTP code.
 
 ## The controller and the [ApiController] attribute
@@ -106,7 +105,7 @@ public sealed class ValidationFilter<TRequest> : IAsyncActionFilter
     public async Task OnActionExecutionAsync(
         ActionExecutingContext context, ActionExecutionDelegate next)
     {
-        if (context.ActionArguments.TryGetValue("request", out var arg) && arg is TRequest request)
+        if (context.ActionArguments.Values.OfType<TRequest>().FirstOrDefault() is { } request)
         {
             // resolve a validator, validate; on failure set context.Result to short-circuit
         }
@@ -157,6 +156,6 @@ Report: the three quoted results.
 - Business logic, EF Core queries, or a `try`/`catch` in the action body - an action is a transport adapter, not a method body. Delegate to a service and let the global exception handler own the failure path.
 - Two HTTP styles (controllers and minimal APIs) interleaved in one repo with no boundary; pick one as the default and confine the other to its justified slice.
 
-## Newer versions (optional)
+## Version-gated additions
 
-Targeting .NET 9 or 10? The optional deltas - the built-in OpenAPI generator, the unified validation APIs, the `IActionContextAccessor` obsoletion - are in `references/newer-versions.md`.
+What the .NET 9 / 10 releases changed for controllers - the built-in OpenAPI generator, the unified validation APIs, the `IActionContextAccessor` obsoletion - is in `references/newer-versions.md`; all of it is on the floor, and each item names the runtime a project below it needs.

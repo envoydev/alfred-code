@@ -22,7 +22,8 @@ test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 // A Claude Code session hands its settings env to this process; every knob the arithmetic reads is
 // cleared so each case states exactly the values it runs with.
 const KNOBS = ['ALFRED_CODE_FRESH_SESSION_1M', 'ALFRED_CODE_FRESH_SESSION_200K', 'ALFRED_CODE_FRESH_SESSION_DEFAULT',
-  'ALFRED_CODE_DEFAULT_CONTEXT_WINDOW', 'ALFRED_CODE_HOOK_LOG_DIR', 'CLAUDE_CONFIG_DIR', 'CLAUDE_PROJECT_DIR'];
+  'ALFRED_CODE_DEFAULT_CONTEXT_WINDOW', 'ALFRED_CODE_HOOK_LOG_DIR', 'CLAUDE_CONFIG_DIR', 'CLAUDE_PROJECT_DIR',
+  'CLAUDE_CODE_AUTO_COMPACT_WINDOW', 'CLAUDE_CODE_AUTOCOMPACT_WINDOW'];
 const baseEnv = () => {
   const env = { ...process.env };
   for (const k of KNOBS) delete env[k];
@@ -129,6 +130,16 @@ for (const route of Object.keys(HOOK_ROUTES)) {
     assert.equal(offered(route, session('claude-opus-5', carry(900000)), { ALFRED_CODE_FRESH_SESSION_1M: '0' }), false, '_1M=0: no offer at any size');
     assert.equal(offered(route, session('claude-opus-5', carry(900000)), { ALFRED_CODE_FRESH_SESSION_200K: '0', ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' }), true,
       'the other tiers\' off switches do not reach a 1M row');
+  });
+
+  test(`${route}: the account file's top-level autoCompactWindow lowers an Opus 5.5 window (audit HK03)`, () => {
+    // settings-reference `autoCompactWindow`: 'Scope: Any file', no model limit (re-read 2026-10-14). A 390k window under
+    // the 1M tier's 400k trigger holds it at 90% of the window: 351,000.
+    const account = fs.mkdtempSync(path.join(TMP, 'acct-window-'));
+    fs.writeFileSync(path.join(account, 'settings.json'), JSON.stringify({ autoCompactWindow: 390000 }));
+    const env = { CLAUDE_CONFIG_DIR: account };
+    assert.equal(offered(route, session('claude-opus-5-5', carry(351000)), env), false, 'clamped trigger 351,000 - at it');
+    assert.equal(offered(route, session('claude-opus-5-5', carry(351001)), env), true, '351,001 is past it');
   });
 
   test(`${route}: a trigger at or above its window is clamped to 90% of the window`, () => {

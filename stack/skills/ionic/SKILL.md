@@ -94,4 +94,4 @@ App.addListener('backButton', ({ canGoBack }) =>
 
 ## Prove it
 
-Before any done word, run the web build (`ionic build`, or the workspace's `ng build`) and `npx cap sync` (copy, then update the native projects), and quote both result lines; then run the changed native flow on a device or simulator and quote what it showed. A native flow with no device run is reported UNVERIFIED, the flow named - never inferred from a jsdom test.
+Before any done word, run the web build (`ionic build`, or the workspace's `ng build`) and `npx cap sync` (copy, then update the native projects), then run the changed native flow on a device or simulator. Close with `build: <command> -> <result line>`, `sync: npx cap sync -> <result line>` and `device: <flow> -> <what it showed | UNVERIFIED>`. A native flow with no device run is reported UNVERIFIED, the flow named - never inferred from a jsdom test.

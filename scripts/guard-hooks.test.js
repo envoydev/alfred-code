@@ -232,6 +232,33 @@ test('guard-stop-contract: the rotate ask is asked ONCE per exposure, and ALFRED
   assert.equal(stop('r4', [leak, assistantRow('a4', 'Wired the token as asked; tests green.')], { ALFRED_CODE_ROTATE_ASK: '0' }).status, 0, 'the switch turns the ask off');
 });
 
+// The user's ruling 2026-10-14: a Jira issue read returned an image's media link carrying a ten-minute `?token=<JWT>`,
+// and the close asked to rotate a token that expires by itself. A link stating an hour of life or less asks nothing; the
+// same session with a long-lived token beside it still asks.
+test('guard-stop-contract: a short-lived link\'s token in a tool result asks no rotation; a long-lived one still does', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'projSL-'));
+  const b64url = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const jwt = (claims) => [b64url({ alg: 'HS256' }), b64url(claims), 'c2lnbmF0dXJlLW5vdC1jaGVja2Vk'].join('.');
+  const s = Math.floor(Date.now() / 1000);
+  const media = (token) => `https://media.example.test/file/abc/binary?client=x\\u0026token=${token}\\u0026name=shot.png`;
+  const result = (id, text) => ({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: text }] } });
+  const issue = (token) => result('t1', JSON.stringify({ fields: { attachment: [{ content: media(token) }] } }));
+  const close = assistantRow('m1', 'Downloaded the screenshot from the issue; the layout bug is in the header.');
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.alfred/docs' };
+  const stop = (name, rows) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: transcript(name, rows) }, { env }).status;
+  assert.deepStrictEqual({
+    'a ten-minute media token': stop('sl1', [issue(jwt({ exp: s + 600, iat: s - 60 })), close]),
+    'the same token, expired by the close': stop('sl2', [issue(jwt({ exp: s - 60, iat: s - 660 })), close]),
+    'a one-day token in the same link': stop('sl3', [issue(jwt({ exp: s + 86400, iat: s })), close]),
+    'a short link, then a long-lived token': stop('sl4', [issue(jwt({ exp: s + 600, iat: s })), result('t2', `TOKEN=${'ghp_' + 'F'.repeat(24)}`), close]),
+  }, {
+    'a ten-minute media token': 0,
+    'the same token, expired by the close': 0,
+    'a one-day token in the same link': 2,
+    'a short link, then a long-lived token': 2,
+  });
+});
+
 // Review of pilot 4, M3: an answer naming neither rotation nor the defer option - a free-text 'Other' ('leave it, test
 // token'), or a question the model worded without the word - kept the ask coming on every turn for the rest of the
 // session. Any AskUserQuestion answered after the rotate-ask block is the user's answer to it.
@@ -292,14 +319,17 @@ test('guard-fresh-session-start: gates orchestration runs only, and only past th
   const hot = (n) => transcript(`hot-${n}`, ctxRows(`m6-${n}`, 450000));
   const cold = transcript('cold', ctxRows('m7', 50000));
   const call = (skill, tp) => run('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill }, transcript_path: tp });
-  assert.equal(call('loop-quality', hot('a')), 2, 'orchestration run on carried history');
-  assert.equal(call('alfred-code:loop-quality', hot('b')), 2, 'namespaced form');
+  assert.equal(call('loop-code-quality', hot('a')), 2, 'orchestration run on carried history');
+  assert.equal(call('alfred-code:loop-code-quality', hot('b')), 2, 'namespaced form');
+  // The old name, still copied in a project not yet updated - read from the rename map, its one home.
+  const oldLoop = Object.entries(require('../meta/stack-manifest.json').renamed.skills).find(([o, n]) => n === 'loop-code-quality' && /^loop-/.test(o))[0];
+  assert.equal(call(oldLoop, hot('f')), 2, 'the renamed loop under its old name');
   assert.equal(call('issue-diagnoser', hot('c')), 2, 'the gated diagnosis flow chained onto carried history');
-  assert.equal(call('loop-quality', cold), 0, 'under the threshold');
+  assert.equal(call('loop-code-quality', cold), 0, 'under the threshold');
   assert.equal(call('csharp', hot('d')), 0, 'an ordinary skill is never gated');
   // A subagent's Skill call carries agent_id: the carry this hook reads is the parent session's, and
   // a seat has no user to answer the offer - so the size trigger never judges it.
-  assert.equal(run('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill: 'loop-quality' }, transcript_path: hot('e'), agent_id: 'a1b2c3' }), 0,
+  assert.equal(run('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill: 'loop-code-quality' }, transcript_path: hot('e'), agent_id: 'a1b2c3' }), 0,
     'a seat is not offered a fresh session on its parent\'s history');
 });
 
@@ -318,7 +348,7 @@ test('guard-fresh-session-start: the size offer is answerable - the retry passes
   const grow = (ctx) => fs.appendFileSync(tp, JSON.stringify(assistantRow(`rearm-${ctx}`, 'ok', { cache_read_input_tokens: ctx })) + '\n');
   const answer = () => fs.appendFileSync(tp, JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'ask1', content: 'Your questions have been answered: "Start it here?"="Run it here anyway"' }] } }) + '\n');
   const call = () => runIn('guard-fresh-session-start.js',
-    { tool_name: 'Skill', tool_input: { skill: 'loop-quality' }, transcript_path: tp }, env).status;
+    { tool_name: 'Skill', tool_input: { skill: 'loop-code-quality' }, transcript_path: tp }, env).status;
   assert.equal(call(), 2, 'the offer is made once');
   // audit 2026-10-08: the retry passed with no ask between - a soft gate; the offer stands until an ask answers it
   assert.equal(call(), 2, 'an identical retry with no answered ask is the same offer again');
@@ -368,7 +398,7 @@ test('audit 2026-10-08: the fresh-session guard reads commands and the router sk
 test('guard-fresh-session-start: the trigger is the tier\'s own variable', () => {
   const at = (name, ctx) => transcript(name, ctxRows(name, ctx));
   const call = (tp, env) => runIn('guard-fresh-session-start.js',
-    { tool_name: 'Skill', tool_input: { skill: 'loop-quality' }, transcript_path: tp },
+    { tool_name: 'Skill', tool_input: { skill: 'loop-code-quality' }, transcript_path: tp },
     { env: { ...process.env, ...(env || {}) } }).status;
 
   // The window comes from ONE place, model-windows.json, keyed by the session's model id (these
@@ -463,7 +493,7 @@ test('the stop contract, the fresh-session offer and the read guard sweep their 
   assert.ok(fs.statSync(log).size <= 256 * 1024, `the log was capped (${fs.statSync(log).size} bytes)`);
   const freshOld = plant(logDir, 'guard-fresh-size-old.offered', 8, '100 1');
   const tp = transcript('sweep-fresh', ctxRows('sweep-fresh', 450000));
-  assert.equal(runIn('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill: 'loop-quality' }, transcript_path: tp }, env).status, 2, 'the offer is made');
+  assert.equal(runIn('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill: 'loop-code-quality' }, transcript_path: tp }, env).status, 2, 'the offer is made');
   assert.ok(!fs.existsSync(freshOld), 'writing an offer swept an offer past 7 days');
   // the hook's temp dir is this suite's own (isolateHookSuite ownTmp), the parent of TMP
   const readOld = plant(os.tmpdir(), 'guard-read-gone.json', 8, '{}');
@@ -664,18 +694,18 @@ test('guard-ungated-commit: the receipt states', () => {
   assert.equal(gateT('git commit -am x'), 0, 'unless the receipt says the review is carried');
   // the 2.0.0 loop names - `quality-loop` matched the 1.x spelling only, so a receipt naming the
   // renamed loop minted consent with no loop ever run
-  receipt(full({ first: 'VERIFIED loop-quality round 2 gate' })); assert.equal(gateT('git commit -am x'), 2, 'a quality loop named but never called');
+  receipt(full({ first: 'VERIFIED loop-code-quality round 2 gate' })); assert.equal(gateT('git commit -am x'), 2, 'a quality loop named but never called');
   receipt(full({ first: 'VERIFIED loop-architecture-quality stage 3' })); assert.equal(gateT('git commit -am x'), 2, 'the architecture loop too');
   // ... while a loop the user TYPED is a run of it: a slash invocation writes no Skill call at all
   // (measured: 4 of 4 slash-run loops, zero Skill events), only the harness's command row
-  const slash = transcript('slash-loop', [{ type: 'user', message: { role: 'user', content: '<command-name>/alfred-code:loop-quality</command-name>' } }, assistantRow('m1', 'round 2 green')]);
+  const slash = transcript('slash-loop', [{ type: 'user', message: { role: 'user', content: '<command-name>/alfred-code:loop-code-quality</command-name>' } }, assistantRow('m1', 'round 2 green')]);
   const gateS = (cmd) => runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: cmd }, transcript_path: slash },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }).status;
   assert.equal(gateS('git commit -am x'), 0, 'a slash-invoked loop ran');
   // a session that typed the pre-2.2.0 spelling ran the same loop
   const loopRenamed = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8')).renamed.skills;
-  const oldLoop = Object.keys(loopRenamed).find((o) => loopRenamed[o] === 'loop-quality' && /^alfred-/.test(o));
-  assert.ok(oldLoop, 'the map renames loop-quality from its alfred- spelling');
+  const oldLoop = Object.keys(loopRenamed).find((o) => loopRenamed[o] === 'loop-code-quality' && /^alfred-/.test(o));
+  assert.ok(oldLoop, 'the map renames loop-code-quality from its alfred- spelling');
   const slashOld = transcript('slash-loop-old', [{ type: 'user', message: { role: 'user', content: `<command-name>/${oldLoop}</command-name>` } }, assistantRow('m1', 'round 2 green')]);
   assert.equal(runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: 'git commit -am x' }, transcript_path: slashOld },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }).status, 0, 'the old spelling typed is a run too');
@@ -1437,11 +1467,11 @@ test('guard-stop-contract: the AskUserQuestion branch injects its notes, and den
   const once = [{ question: 'Ship it \u2014 today?', header: 'Ship', options: [{ label: 'Yes', description: 'ok' }] }];
   assert.equal(noDir(once).status, 2, 'the first send is denied');
   assert.equal(noDir(once).status, 0, 'the re-send passes, the marker kept under the temp dir');
-  // The rule line names the deny that enforces it - '(the Stop hook never sees an ask)' read as 'nothing checks it'.
+  // The rule line states the bar; the deny above enforces it (audit 2026-10-14 RU06: its mechanics left the always-on rule).
   const ruleLine = fs.readFileSync(path.join(__dirname, '..', 'stack', 'rules', 'alfred-interaction.md'), 'utf8').split('\n').find((l) => /No double quotes in prose/.test(l));
   assert.doesNotMatch(ruleLine, /the Stop hook never sees an ask/, 'the stale parenthetical is gone');
-  assert.match(ruleLine, /PreToolUse deny/, 'the rule names the PreToolUse deny');
-  assert.match(ruleLine, /In JSON or code a string's delimiters stay double/, 'and keeps the code carve-out the deny now honours');
+  assert.doesNotMatch(ruleLine, /PreToolUse deny/, 'the deny mechanics live in the hook, not the rule');
+  assert.match(ruleLine, /[Ii]n JSON or code a string's delimiters stay double/, 'and keeps the code carve-out the deny honours');
 
   // two typed turns before one reply - the contradicted-recommendation shape
   const two = ask(transcript('ask-two', [
@@ -1471,7 +1501,7 @@ test('guard-stop-contract: prose offers, tool-call ends, continuations and unrea
 });
 
 test('guard-stop-contract: the quality loop\'s mode ask and stage-close ask in prose are sent to ONE AskUserQuestion; the same words through the tool pass', () => {
-  // loop-quality's two structural pauses are sentences in its SKILL.md (improvement plan 2.5):
+  // loop-code-quality's two structural pauses are sentences in its SKILL.md (improvement plan 2.5):
   // worded as a statement they end on no '?', so the question shape alone never caught them.
   const stop = (tp) => run('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp });
   const prose = (id, text) => stop(transcript(id, [assistantRow('a', text)]));
@@ -1508,7 +1538,7 @@ test('guard-fresh-session-start: other tools, unreadable transcripts, the name f
   const call = (payload) => runIn('guard-fresh-session-start.js', payload,
     { env: { ...process.env, CLAUDE_CONFIG_DIR: accountDir('fs-thresh-200k', 'claude-haiku-4-5') } }).status;
   assert.equal(call({ tool_name: 'Read', tool_input: { file_path: 'x.ts' }, transcript_path: hot }), 0, 'not a Skill call');
-  assert.equal(call({ tool_name: 'Skill', tool_input: { skill: 'loop-quality' }, transcript_path: path.join(TMP, 'absent-fs.jsonl') }), 0, 'no transcript - fail open');
+  assert.equal(call({ tool_name: 'Skill', tool_input: { skill: 'loop-code-quality' }, transcript_path: path.join(TMP, 'absent-fs.jsonl') }), 0, 'no transcript - fail open');
   assert.equal(call({ tool_name: 'Skill', tool_input: { name: 'task-solve' }, transcript_path: hot }), 2, 'the name field spelling');
   const edge = transcript('fs-edge', ctxRows('m', 150000));
   assert.equal(call({ tool_name: 'Skill', tool_input: { skill: 'task-solve' }, transcript_path: edge }), 0, 'exactly 150k is not past it');
@@ -2427,7 +2457,7 @@ test('mount paths: a POSIX host still reads /c/... as a POSIX path', () => {
 // settings model id's own suffix and then the old inference, and an unresolved one gates nothing.
 const winEnv = (extra) => ({ ...process.env, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'latch-')), ...(extra || {}) });
 const askLoop = (tp, env) => runIn('guard-fresh-session-start.js',
-    { tool_name: 'Skill', tool_input: { skill: 'loop-quality' }, transcript_path: tp }, { env }).status;
+    { tool_name: 'Skill', tool_input: { skill: 'loop-code-quality' }, transcript_path: tp }, { env }).status;
 const ctxAt = (name, ctx) => transcript(name, ctxRows(name, ctx));
 function accountDir(name, model) {
   const d = fs.mkdtempSync(path.join(TMP, `${name}-`));
@@ -2453,7 +2483,7 @@ test('guard-fresh-session-start: the slash and compaction routes carry the same 
 
     // It injects, never blocks: a blocked expansion shows its reason to the user only - the run would be
     // lost and the model would never learn why.
-    const slash = upe('loop-quality', hot, undefined, { args: 'run it' });
+    const slash = upe('loop-code-quality', hot, undefined, { args: 'run it' });
     assert.equal(slash.status, 0, 'the slash route never denies');
     assert.match(injected(slash), /Do NOT start the run yet/, '... it injects the ask instead');
     assert.equal(JSON.parse(slash.stdout).hookSpecificOutput.hookEventName, 'UserPromptExpansion', 'answered on its own event');
@@ -2462,13 +2492,13 @@ test('guard-fresh-session-start: the slash and compaction routes carry the same 
     assert.match(injected(upe('update', hot, undefined, { typed: 'alfred-code:update' })), /Do NOT start the run yet/,
         'a plugin command named bare takes its namespace from the typed prompt');
     assert.equal(injected(upe('update', hot, undefined, { typed: 'other-plugin:update' })), '', 'another plugin\'s update is not the walk');
-    assert.equal(injected(upe('loop-quality', ctxAt('ups-cold', 40000))), '', 'a cold session is left alone');
+    assert.equal(injected(upe('loop-code-quality', ctxAt('ups-cold', 40000))), '', 'a cold session is left alone');
     assert.equal(injected(upe('help', hot)), '', 'a slash that is not an orchestration run passes');
-    assert.equal(injected(upe('loop-quality', hot, { ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' })), '', '0 on the trigger this session uses disables this route too');
+    assert.equal(injected(upe('loop-code-quality', hot, { ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' })), '', '0 on the trigger this session uses disables this route too');
     // An install still wired on UserPromptSubmit (an older copy-route settings.json) passes silently: nothing
     // parses the prompt any more, and the next update rewires it.
     const legacy = runIn('guard-fresh-session-start.js',
-        { hook_event_name: 'UserPromptSubmit', prompt: '<command-name>/loop-quality</command-name>', transcript_path: hot }, { env: winEnv() });
+        { hook_event_name: 'UserPromptSubmit', prompt: '<command-name>/loop-code-quality</command-name>', transcript_path: hot }, { env: winEnv() });
     assert.deepStrictEqual([legacy.status, legacy.stdout], [0, ''], 'the old event is no route');
 
     // SessionStart measures nothing - the transcript has just been replaced by its summary - so the
@@ -2653,6 +2683,15 @@ test('guard-read-whole-file: a shell touch names the convention rule the file to
   assert.doesNotMatch(platCtx, /winforms-conventions\.md/, "Platform.cs is not a form");
   assert.match(platCtx, /csharp-conventions\.md/, "... it is plain C#");
   assert.match(ctxOf(call("sed -i '' 's/a/b/' src/Forms/MainForm.Designer.cs", `m5-${Math.random().toString(36).slice(2)}`)), /winforms-conventions\.md/, "the designer file still names it");
+  // audit 2026-10-14 RU12: sql-conventions.md matches `**/Migrations/**/*.cs` - an EF migration is schema work - and a
+  // migration's `*.Designer.cs` is no WinForms form
+  const sMig = `m5-${Math.random().toString(36).slice(2)}`;
+  const migCtx = ctxOf(call("sed -i '' 's/a/b/' src/Data/Migrations/20260101_Init.Designer.cs", sMig));
+  assert.match(migCtx, /sql-conventions\.md/, 'a migration names the SQL rule');
+  assert.match(migCtx, /csharp-conventions\.md/, '... and the C# baseline beside it');
+  assert.doesNotMatch(migCtx, /winforms-conventions\.md/, "a migration's designer file is not a form");
+  assert.match(ctxOf(call("sed -i '' 's/a/b/' src/Data/Migrations/Snapshots/AppModelSnapshot.cs", `m5-${Math.random().toString(36).slice(2)}`)), /sql-conventions\.md/, 'a nested Migrations folder too');
+  assert.doesNotMatch(ctxOf(call("sed -i '' 's/a/b/' src/Migrations.cs", `m5-${Math.random().toString(36).slice(2)}`)), /sql-conventions\.md/, 'a file named Migrations.cs is not under one');
   // a denial and an injection are two answers to one call: the rule is not spent on a blocked command
   const s2 = `m5-${Math.random().toString(36).slice(2)}`;
   const blocked = call(`cat ${BIG.replace(/\.js$/, '.js')}`, s2);
@@ -3309,8 +3348,9 @@ test('guard-read-whole-file: the denial names the call that LOADS the serena too
   const r = runIn('guard-read-whole-file.js', { tool_name: 'Read', tool_input: { file_path: big } }, {});
   assert.equal(r.status, 2);
   assert.match(r.stderr, /ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview,mcp__plugin_alfred-navigation_alfred-navigation__find_symbol/);
-  // agents F03 (live probe 2026-10-09): a seat whose tools: list names an MCP tool has it loaded, so the denial says so
-  assert.match(r.stderr, /a seat whose tools: list names them has them loaded already - call them directly/);
+  // agents F03 + audit 2026-10-14 AG01 (live probes 2026-10-09 and 2026-10-14): a seat granted an MCP tool - by name or
+  // as the whole server, the shape every seat has since ec2f0027 - has it loaded, so the denial says so
+  assert.match(r.stderr, /a seat whose tools grant them - by name or as the whole server - has them loaded already; call them directly/);
   // ... and the same file under a `.claude/` tree takes the grep route, so the fixture's place is what decides
   const hidden = path.join(TMP, '.claude', 'worktrees', 'x', 'navigable.ts');
   fs.mkdirSync(path.dirname(hidden), { recursive: true });
@@ -3396,14 +3436,14 @@ test('guard-fresh-session-start: a disable-model-invocation skill is denied to t
         fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(path.join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: a test skill\n${front}---\n\nbody\n`);
     };
-    write('loop-quality', 'disable-model-invocation: true\n');
+    write('loop-code-quality', 'disable-model-invocation: true\n');
     write('capture-architecture', '');   // deliberately model-invocable so the loop can call it
     write('csharp', '');
     const skillCall = (skill) => runIn('guard-fresh-session-start.js',
         { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill }, cwd: root, session_id: 'dmi' },
         { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
 
-    const blocked = skillCall('loop-quality');
+    const blocked = skillCall('loop-code-quality');
     assert.equal(blocked.status, 2, 'the model may not call a slash-only skill');
     assert.match(blocked.stderr, /disable-model-invocation/, 'the denial names why');
     assert.match(blocked.stderr, /hand the turn back/, 'and says what to do instead - not to retry');
@@ -3415,7 +3455,7 @@ test('guard-fresh-session-start: a disable-model-invocation skill is denied to t
 
     // The USER's own route is a different event and must stay open.
     const typed = runIn('guard-fresh-session-start.js',
-        { hook_event_name: 'UserPromptExpansion', expansion_type: 'slash_command', command_name: 'loop-quality', prompt: '/loop-quality', cwd: root, session_id: 'dmi' },
+        { hook_event_name: 'UserPromptExpansion', expansion_type: 'slash_command', command_name: 'loop-code-quality', prompt: '/loop-code-quality', cwd: root, session_id: 'dmi' },
         { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
     assert.equal(typed.status, 0, 'the user typing the command is never blocked');
     assert.doesNotMatch(typed.stdout + typed.stderr, /disable-model-invocation/, 'and never told the skill is the model\'s to refuse');
@@ -3435,14 +3475,14 @@ test('guard-fresh-session-start: the flag is read from the PLUGIN cache too, not
         fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(path.join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: a test skill\n${front}---\n\nbody\n`);
     };
-    place('alfred-code', 'loop-quality', 'disable-model-invocation: true\n', ['stack', 'skills']);
+    place('alfred-code', 'loop-code-quality', 'disable-model-invocation: true\n', ['stack', 'skills']);
     place('alfred-code-wpf', 'dotnet-wpf', '', ['stack', 'skills']);
     const skillCall = (skill) => runIn('guard-fresh-session-start.js',
         { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill }, cwd: root, session_id: 'dmip' },
         { env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: cfg } });
 
-    assert.equal(skillCall('loop-quality').status, 2, 'a flagged skill served by a plugin is still denied');
-    assert.equal(skillCall('alfred-code:loop-quality').status, 2, 'and under its scoped spelling');
+    assert.equal(skillCall('loop-code-quality').status, 2, 'a flagged skill served by a plugin is still denied');
+    assert.equal(skillCall('alfred-code:loop-code-quality').status, 2, 'and under its scoped spelling');
     assert.equal(skillCall('alfred-code-wpf:dotnet-wpf').status, 0, 'an unflagged plugin skill stays callable');
     assert.equal(skillCall('alfred-code:not-shipped').status, 0, 'a name no home carries is not this guard\'s business');
 
@@ -3479,7 +3519,7 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
     // the command being judged, as a prompt row already on disk; one below ends without it. It never denies:
     // an offer is injected context, so the helper returns that text ('' = no offer).
     const slash = (tp, env, skill) => {
-      const name = skill || 'loop-quality';
+      const name = skill || 'loop-code-quality';
       const r = runIn('guard-fresh-session-start.js',
           { hook_event_name: 'UserPromptExpansion', expansion_type: 'slash_command', command_name: name, command_args: '', prompt: `/${name}`, transcript_path: tp },
           { env: env || winEnv() });
@@ -3491,12 +3531,12 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
         { env: winEnv() }).status;
 
     // ONE run starting - its own marker is not a prior run.
-    assert.equal(slash(transcript('chain-first', [cmd('loop-quality')])), '', 'the run that is starting is not evidence against itself');
+    assert.equal(slash(transcript('chain-first', [cmd('loop-code-quality')])), '', 'the run that is starting is not evidence against itself');
 
     // A finished run, a human turn, then a second typed one: the whole measured shape.
     const second = transcript('chain-second', [
       cmd('capture-architecture'), assistantRow('a1', 'captured', FLOOR), toolResult(),
-      userRow('now run the quality loop'), assistantRow('a2', 'ok', COLD), cmd('loop-quality'),
+      userRow('now run the quality loop'), assistantRow('a2', 'ok', COLD), cmd('loop-code-quality'),
     ]);
     const env = winEnv();
     const offered = slash(second, env);
@@ -3525,12 +3565,12 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
       toolResult(), assistantRow('a2', 'approve the plan?', COLD), userRow('approved'), skillRow('a3', 'task-implement'),
     ]);
     assert.equal(skillCall(cycle, 'task-implement'), 0, 'a phase of a run in flight is not a second run');
-    assert.equal(skillCall(cycle, 'loop-quality'), 0, '... nor is any Skill-route call - only a typed run chains');
+    assert.equal(skillCall(cycle, 'loop-code-quality'), 0, '... nor is any Skill-route call - only a typed run chains');
 
     // Chaining the SAME command twice is still chaining.
     assert.match(slash(transcript('chain-twice', [
-      cmd('loop-quality'), assistantRow('a1', 'done', FLOOR), toolResult(),
-      userRow('do it again'), assistantRow('a2', 'ok', COLD), cmd('loop-quality'),
+      cmd('loop-code-quality'), assistantRow('a1', 'done', FLOOR), toolResult(),
+      userRow('do it again'), assistantRow('a2', 'ok', COLD), cmd('loop-code-quality'),
     ])), /ALREADY run one/, 'the same run a second time carries the same carried history');
 
     // The REAL slash shape: the harness writes the skill's body as an isMeta user record right after
@@ -3552,16 +3592,16 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
     assert.equal(slash(transcript('chain-in-tool-result', [
       assistantRow('a0', 'reading', FLOOR),
       { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', content: `const x = '${markup}';` }] } },
-      userRow('next'), assistantRow('a1', 'ok', COLD), cmd('loop-quality'),
+      userRow('next'), assistantRow('a1', 'ok', COLD), cmd('loop-code-quality'),
     ])), '', 'a marker printed by a tool is not a prior run');
     assert.equal(slash(transcript('chain-in-tool-input', [
       { type: 'assistant', message: { id: 'a0', content: [{ type: 'tool_use', name: 'Write', input: { content: markup } }], usage: FLOOR } },
-      toolResult(), userRow('next'), assistantRow('a1', 'ok', COLD), cmd('loop-quality'),
+      toolResult(), userRow('next'), assistantRow('a1', 'ok', COLD), cmd('loop-code-quality'),
     ])), '', 'a marker the model wrote into a tool input is not a prior run');
     assert.equal(slash(transcript('chain-in-meta', [
       assistantRow('a0', 'hi', FLOOR),
       { type: 'user', isMeta: true, message: { role: 'user', content: [{ type: 'text', text: `skill body quoting ${markup}` }] } },
-      userRow('next'), assistantRow('a1', 'ok', COLD), cmd('loop-quality'),
+      userRow('next'), assistantRow('a1', 'ok', COLD), cmd('loop-code-quality'),
     ])), '', 'a marker inside a harness-written row is not a prior run');
 
     // An ordinary skill after a deliberate run is not a run, and the off switch covers both triggers.
@@ -3572,10 +3612,10 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
     // A chain whose whole carry IS the install's own floor has nothing for a resume to recover.
     assert.equal(slash(transcript('chain-allfloor', [
       cmd('capture-architecture'), assistantRow('a1', 'captured', { cache_read_input_tokens: 59000 }),
-      toolResult(), userRow('next'), assistantRow('a2', 'ok', COLD), cmd('loop-quality'),
+      toolResult(), userRow('next'), assistantRow('a2', 'ok', COLD), cmd('loop-code-quality'),
     ])), '', 'a second run carrying only the cold floor is not worth a fresh session');
     assert.equal(slash(transcript('chain-off', [
-      cmd('capture-architecture'), assistantRow('a1', 'captured', FLOOR), toolResult(), userRow('next'), cmd('loop-quality'),
+      cmd('capture-architecture'), assistantRow('a1', 'captured', FLOOR), toolResult(), userRow('next'), cmd('loop-code-quality'),
     ]), winEnv({ ALFRED_CODE_FRESH_SESSION_200K: '0', ALFRED_CODE_FRESH_SESSION_1M: '0', ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' })), '',
         'all three triggers off is the whole off switch - the chained one included');
 });
@@ -3943,6 +3983,53 @@ test('guard-config-protection: an MSBuild change that only makes a check stricte
     assert.strictEqual(edit(props, 'not in the file', '<NoWarn></NoWarn>'), 2, 'an old_string the file lacks is judged on the fragments');
     const tw = at('src/App/App.csproj', '<Project><PropertyGroup><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup></Project>');
     assert.strictEqual(edit(tw, '<TreatWarningsAsErrors>true</TreatWarningsAsErrors>', ''), 2, 'removing TreatWarningsAsErrors');
+  });
+});
+
+// Audit 2026-10-14 HK19 (replay cfg.js): outside MSBuild a tightening edit was still blocked - eslint `"warn"` -> `"error"` and
+// tsconfig `"strict": false` -> `true` both exit 2. The one-way rule reaches tsconfig's strictness booleans and eslint's
+// rule severities; every loosening, and anything beside the severity, still blocks.
+test('guard-config-protection: a tsconfig strictness flag turned on and an eslint severity raised pass (audit 2026-10-14 HK19)', () => {
+  const H = 'guard-config-protection.js';
+  const { root, at } = cfgProject('cfg-hk19-');
+  const edit = (file, old_string, new_string) => run(H, { tool_name: 'Edit', cwd: root, tool_input: { file_path: file, old_string, new_string } });
+  const write = (file, content) => run(H, { tool_name: 'Write', cwd: root, tool_input: { file_path: file, content } });
+  withProject(root, {}, () => {
+    const ts = at('tsconfig.json', '{"compilerOptions":{"strict":false,"skipLibCheck":true,"noImplicitAny":false}}\n');
+    assert.strictEqual(edit(ts, '"strict":false', '"strict":true'), 0, 'the replayed edit: strict false -> true');
+    assert.strictEqual(edit(ts, '"skipLibCheck":true', '"skipLibCheck":false'), 0, 'a loosening-when-true key turned off');
+    assert.strictEqual(edit(ts, '"strict":false', '"strict":false,"noUncheckedIndexedAccess":true'), 0, 'a strict flag added as true');
+    assert.strictEqual(write(ts, '{"compilerOptions":{"strict":true,"skipLibCheck":false,"noImplicitAny":true}}\n'), 0, 'a whole-file Write that only tightens');
+    assert.strictEqual(edit(ts, '"strict":false,', ''), 2, 'a strict key removed');
+    assert.strictEqual(edit(ts, '"noImplicitAny":false', '"noImplicitAny":true,"allowUnreachableCode":true'), 2, 'a tightening beside a loosening');
+    assert.strictEqual(edit(ts, '"skipLibCheck":true', '"skipLibCheck":"yes"'), 2, 'a value that is no boolean');
+    assert.strictEqual(edit(ts, '"strict":false', '"strict":true,"strict":true'), 2, 'a key named twice');
+    const on = at('tsconfig.base.json', '{"compilerOptions":{"strict":true}}\n');
+    assert.strictEqual(edit(on, '"strict":true', '"strict":false'), 2, 'strict true -> false still blocks');
+
+    const json = at('.eslintrc.json', '{"rules":{"no-console":"warn","eqeqeq":0,"max-depth":["warn",4],"complexity":[1,{"max":10}]},"overrides":[{"files":["*.ts"],"rules":{"no-var":"off"}}]}\n');
+    assert.strictEqual(edit(json, '"no-console":"warn"', '"no-console":"error"'), 0, 'the replayed edit: warn -> error');
+    assert.strictEqual(edit(json, '"eqeqeq":0', '"eqeqeq":"error"'), 0, 'a numeric severity raised to a word');
+    assert.strictEqual(edit(json, '["warn",4]', '["error",4]'), 0, 'the array form, its options kept');
+    assert.strictEqual(edit(json, '"no-var":"off"', '"no-var":"warn"'), 0, 'inside an override\'s rules');
+    assert.strictEqual(edit(json, '"no-console":"warn"', '"no-console":"off"'), 2, 'a severity lowered');
+    assert.strictEqual(edit(json, '["warn",4]', '["error",6]'), 2, 'a raise beside a loosened option');
+    assert.strictEqual(edit(json, '{"max":10}', '{"max":2}'), 2, 'an option is never read as a severity');
+    assert.strictEqual(edit(json, '"no-console":"warn"', '"no-console":"warn","no-alert":"error"'), 2, 'a new rule is a change to the check');
+    assert.strictEqual(edit(json, '"no-console":"warn",', '"no-console": "warn" ,'), 2, 'whitespace alone keeps the block');
+    assert.strictEqual(edit(json, 'not in the file', '"error"'), 2, 'an old_string the file lacks');
+    const flat = at('eslint.config.js', 'export default [{ files: ["**/*.js"], rules: { "no-console": "off", semi: [1, "always"] } }];\n');
+    assert.strictEqual(edit(flat, '"no-console": "off"', '"no-console": "warn"'), 0, 'flat config, unquoted rules key');
+    assert.strictEqual(edit(flat, 'semi: [1,', 'semi: [2,'), 0, 'numeric severity in the array form');
+    assert.strictEqual(edit(flat, 'files: ["**/*.js"]', 'files: ["src/**/*.js"]'), 2, 'any other change keeps the block');
+    const yml = at('.eslintrc.yml', 'env:\n  node: true\nrules:\n  no-console: warn\n  quotes: [warn, single]\n  max-len: off  # later\n');
+    assert.strictEqual(edit(yml, '  no-console: warn', '  no-console: error'), 0, 'YAML warn -> error');
+    assert.strictEqual(edit(yml, 'quotes: [warn, single]', 'quotes: [error, single]'), 0, 'the YAML flow form');
+    assert.strictEqual(edit(yml, 'max-len: off  # later', 'max-len: warn  # later'), 0, 'a trailing comment kept');
+    assert.strictEqual(edit(yml, '  no-console: warn', '  no-console: off'), 2, 'YAML lowered');
+    assert.strictEqual(edit(yml, 'quotes: [warn, single]', 'quotes: [error, double]'), 2, 'YAML option changed beside it');
+    assert.strictEqual(edit(yml, '  node: true', '  node: false'), 2, 'a line outside rules');
+    assert.strictEqual(edit(at('.prettierrc.json', '{"semi":false}\n'), 'false', 'true'), 2, 'another whole-file config keeps the block');
   });
 });
 

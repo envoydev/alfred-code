@@ -9,9 +9,10 @@ user-invocable: false
 For any WinForms or NuGet API surface not pinned down here, resolve signatures with the `alfred-documentation` MCP rather than memory - never by grepping the NuGet cache or decompiled sources.
 
 WinForms is an immediate-mode, control-tree desktop UI. The realistic work is maintenance and
-modernization of line-of-business apps, not greenfield, so this skill floors **new** work at .NET 8 /
-C# 12 while treating **.NET Framework 4.8 as a supported-but-frozen maintenance surface** - fully
-serviced, but no new WinForms features land there. The conventions below are the same whichever
+modernization of line-of-business apps, not greenfield, so this skill floors **new** work at .NET 10 /
+C# 14 while treating **.NET Framework 4.8 as a supported-but-frozen maintenance surface** - fully
+serviced, but no new WinForms features land there. .NET 8 / 9 are past support from 2026-11-10 -
+deltas below the floor are marked. The conventions below are the same whichever
 runtime you are on; the version-specific mechanics live in the references.
 
 A `*.Designer.cs` belongs to the designer: change it through the designer or in its own generated shape - no logic, nothing it cannot round-trip; initialization that touches controls goes after `InitializeComponent()`.
@@ -21,7 +22,7 @@ A `*.Designer.cs` belongs to the designer: change it through the designer or in 
 **Load the version reference for the concrete mechanics:**
 
 - .NET Framework 4.8 (the frozen world) -> **references/net-framework-48.md**
-- .NET 8 / 9 / 10 (the strategic target) -> **references/modern-net.md**
+- .NET 10, the floor (and .NET 8 / 9 below it) -> **references/modern-net.md**
 
 Out of scope, by design: the async / nullable / mapping baseline -> `csharp`; deeper MVP, command,
 observer, and memento orchestration -> `csharp-design-patterns`; test framework + UI-automation
@@ -32,7 +33,7 @@ mechanics -> `dotnet-testing`; the upgrade safety playbook (baseline, staged, ro
 
 - WinForms conventions for maintenance and modernization.
 - Covers logic out of code-behind (MVP passive view for legacy, the .NET 8 MVVM binding engine for new), DI-resolvable forms, async/await with no UI-thread blocking, BindingSource + INotifyPropertyChanged binding, control/component/GDI disposal, PerMonitorV2 high-DPI, virtual-mode grids, presenter unit tests.
-- Floors new work at .NET 8 / C# 12 and covers 4.8 as the supported-but-frozen maintenance surface.
+- Floors new work at .NET 10 / C# 14 and covers 4.8 as the supported-but-frozen maintenance surface.
 - Do NOT load for WPF - that is the WPF conventions skill - nor for WinUI 3, MAUI, Avalonia, or Uno.
 
 ## Logic out of code-behind - the one rule everything rests on
@@ -91,9 +92,10 @@ and applies unchanged. The WinForms-specific points:
 - **Report progress with `IProgress<T>` / `Progress<T>`** - `Progress<T>` captures the creating
   thread's `SynchronizationContext` and raises its callback there, so a worker reports from any
   thread and the UI update lands safely. Pair it with a `CancellationToken` for cancellation.
-- **Marshal back with `Control.Invoke` / `BeginInvoke`.** From .NET 9 prefer the async
-  `Control.InvokeAsync`, which removes a class of deadlocks (see **references/modern-net.md**); it does
-  not exist on .NET 8 or 4.8 - there, `Invoke`/`BeginInvoke` stay the marshaling primitives.
+- **Marshal back with `Control.Invoke` / `BeginInvoke`.** On the floor prefer the async
+  `Control.InvokeAsync`, which removes a class of deadlocks (see **references/modern-net.md**); below
+  the floor (.NET 8) and on 4.8 it does not exist - there, `Invoke`/`BeginInvoke` stay the marshaling
+  primitives.
 - **`BackgroundWorker` is legacy** - supported, but no longer the recommended model and it only
   offloads CPU work, not I/O. New code uses `await` for I/O and an awaited `Task.Run` for CPU-bound
   work, marshaling UI updates through `IProgress<T>` or `InvokeAsync`.

@@ -5,7 +5,7 @@ description: "Use for chat, notifications, live dashboards or server push in .NE
 
 # .NET real-time - ASP.NET Core SignalR
 
-SignalR is server-push over a persistent connection: the server can call methods on connected clients (and they on it) without the client polling. The transport negotiates down a ladder - WebSockets first, then Server-Sent Events, then long-polling. Reach for it for chat, notifications, live dashboards, presence, and collaborative editing - anything where the server has something to say *now* and a client is connected to hear it. Baseline is .NET 8 / C# 12.
+SignalR is server-push over a persistent connection: the server can call methods on connected clients (and they on it) without the client polling. The transport negotiates down a ladder - WebSockets first, then Server-Sent Events, then long-polling. Reach for it for chat, notifications, live dashboards, presence, and collaborative editing - anything where the server has something to say *now* and a client is connected to hear it. Floor is .NET 10 / C# 14; .NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked.
 
 The defining trait, and the thing that sets every rule below: a SignalR message is **connection-scoped and best-effort**. The server holds no durable copy; a client that is offline, mid-reconnect, or on another server simply misses it. That is the opposite of broker-backed messaging, where the broker persists the message and redelivers until acknowledged. If a notification *must* arrive, the durable guarantee lives in the broker, and SignalR is only the last hop - see the seam below. This skill does not cover broker-backed messaging, request/response HTTP, or in-process reactive streams (Rx / System.Reactive) - each has its own skill where the project installed one.
 
@@ -14,6 +14,7 @@ The defining trait, and the thing that sets every rule below: a SignalR message 
 - ASP.NET Core SignalR conventions: server-to-client push over a persistent connection, connection-scoped and not durable. Also fires on: server-side WebSocket push.
 - Covers the strongly-typed hub (Hub of TClient), sending via IHubContext, group/user targeting, reconnection, JWT-over-query-string auth, additive client contracts, MessagePack, and scale-out (Redis backplane / Azure SignalR Service).
 - Not for broker-backed durable messaging (that is the broker-messaging skill), in-process reactive streams (Rx / System.Reactive), or an outbound ClientWebSocket.
+- One-way push with no groups to plain-HTTP clients is server-sent events (.NET 10), not SignalR.
 
 ## The seam with messaging: broker delivers, SignalR pushes
 
@@ -81,6 +82,8 @@ connection.onreconnected(() => rejoinRoomsAndResync());   // groups are gone - r
 ```
 
 Reconnection only spans a brief window; past it the connection closes and the client must start a new one. Because messages sent while disconnected are simply lost, a client that needs the current state after a gap should **re-fetch over REST**, not assume SignalR replayed anything.
+
+Stateful reconnect (.NET 8+, opt-in: `AllowStatefulReconnects` on the hub endpoint, `withStatefulReconnect()` on the client) keeps the ConnectionId and replays what was buffered during a brief drop - a smoother blip, still not durable; groups and the REST re-fetch rule stand past its buffer.
 
 ## Auth: at connect, over the query string, and re-validated per message
 

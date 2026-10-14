@@ -59,7 +59,8 @@ keeps the file it came from: that list becomes the sections' `covers:` lines and
    plugin cache, NEWEST version first, and run it with no `--out` - it prints and writes nothing:
 
    ```bash
-   SCAN=$(for d in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/alfred-code/*; do
+   SCAN=$(for d in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/*/*; do   # one glob: zsh aborts the loop when any named glob matches nothing
+     PN=${d%/*}; PN=${PN##*/}; [ "$PN" = alfred-code ] || continue
      f="$d/scripts/scan-evidence.js"
      [ -f "$f" ] && [ ! -e "$d/.orphaned_at" ] && printf '%s\t%s\n' "$(basename "$d")" "$f"
    done 2>/dev/null | sort -V | tail -1 | cut -f2)
@@ -95,7 +96,7 @@ How is the app started and reached for a manual check? The repo shows: <start co
 
 ```ask
 How does an agent log in? The repo shows: <a login route, an auth config - or no login>. Never type a password here - via Other, type the login steps, the account's role and WHERE its credentials already live (an env var, a file and key, a vault item).
-- 'A test account - add its keys to the project's sensitive data for me to fill (Recommended)' - its keys, empty, in `<data root>/.sensitive-data`, gitignored; the doc points at them
+- 'A test account - name its keys and I add them to the sensitive data (Recommended)' - the report hands one `KEY=` line per key for `<data root>/.sensitive-data`; the doc points at them
 - 'No login - the app is open' - the section says so
 - 'Unknown for now' - the section says unknown; the next capture asks again
 ```
@@ -123,7 +124,8 @@ When the login answer asked for the keys, they go in the project's sensitive dat
 (`.alfred` unless `ALFRED_CODE_DATA_PATH` names another root). Prove it is ignored BEFORE writing:
 `git check-ignore -q <data root>/.sensitive-data` exits 0 - the root's own `.gitignore` covers it. Any other exit
 writes nothing: the doc points at an environment variable and the report names `/alfred-code:update`, which writes
-that `.gitignore`. Outside git there is nothing to commit it to; say so. Absent, Write it with the keys empty
+that `.gitignore`. Outside git there is nothing to commit it to; say so. Every install writes it with one comment line and no
+key, so it is normally present; absent (an older install), Write it with the keys empty
 (`references/doc-shape.md`). Present, it is the user's - never read, rewritten or appended to (the secret guard
 refuses each); the session's `Sensitive data:` line lists its keys, and a key the doc needs that it lacks is a
 `KEY=` line the report hands the user to add.

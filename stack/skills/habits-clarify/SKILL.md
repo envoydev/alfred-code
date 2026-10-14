@@ -9,6 +9,8 @@ A design built on a guessed requirement is rebuilt when the guess is found out, 
 build. Clarifying is cheap at the start and expensive at every step after it. Gate on AMBIGUITY, not
 on size or domain count: a one-file change with two readings is clarified, a large crisp one is not.
 
+The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load.
+
 ## When to use
 
 - Fires before designing, planning or dispatching work on a feature, change or greenfield ask that can be read more than one way: an unclear scope, user, success criterion or constraint, 'make it better', 'add support for X', a vague bug report, or a brief a seat returned as NEEDS_CONTEXT.
@@ -22,8 +24,8 @@ on size or domain count: a one-file change with two readings is clarified, a lar
    An ask that cites a source row - a spec table row, an audit finding, a card - is read against
    the row whole: hold the user's words against EVERY clause of it (the defect it describes and the
    fix it names), and a clause the words leave uncovered is a second reading - asked, or under AUTO
-   recorded as a `## Decisions` line naming the dropped half (measured: a row's 'returns across
-   tabs' clause, outside the user's one-line fix, went unbuilt and was pushed).
+   recorded as a `## Decisions` line naming the dropped half - an uncovered clause otherwise goes
+   unbuilt and ships.
    One reading left: record the ask verbatim as the requirement and go on to the design - nothing
    to ask.
 2. **Ask one question at a time.** Through AskUserQuestion: the question names the fork and why it

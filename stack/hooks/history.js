@@ -33,10 +33,10 @@ const git = (root, args) => {
   catch { return ''; }
 };
 
+// No .gitignore of its own (the user's ruling of 2026-10-13: one file, the data root's): the data root's - or a docs
+// root outside it, its own - keeps `history/` out of git, and an update removes the `*` file earlier releases wrote here.
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
-  const ig = path.join(dir, '.gitignore');
-  if (!fs.existsSync(ig)) fs.writeFileSync(ig, '*\n');
 }
 
 // Only the bytes after `offset`, only whole lines; a half-written last line waits for the next pass.

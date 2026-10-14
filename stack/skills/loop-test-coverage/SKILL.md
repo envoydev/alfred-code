@@ -11,26 +11,65 @@ You drive a deliberate loop that raises a project's test coverage to its require
 ## When to use
 
 - The deliberate coverage analyze-triage-fix loop: it runs the capture-test-coverage capture, works the coverage doc's weak points by tier - structural gaps flagged for a user decision, never auto-applied - re-runs the capture to reconcile the docs, and loops until the requirement holds or the loop plateaus.
-- Not for a measure-only run with no fixes (/capture-test-coverage alone), a code-quality polish (loop-quality), or an architecture / structure pass (loop-architecture-quality).
+- Not for a measure-only run with no fixes (/capture-test-coverage alone), a code-quality polish (loop-code-quality), or an architecture / structure pass (loop-architecture-quality).
+
+**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it.
 
 ## Execution modes
-When dispatch is available, ask ONE question before ANALYZE, via AskUserQuestion - work the fixes in the current session (INLINE), or dispatch the stack seats (DELEGATED)? - one option marked `(Recommended)` and listed first, the one the `habits-execution-strategy` verdict picks (`parallel seats` marks the seats), the reason in its description - then hold the answer for the run; no dispatch capability (a Cursor session, a non-stack project) is INLINE without asking. INLINE works every fix yourself in this session. DELEGATED dispatches each test-writing brief to the matching `<stack>-implementer` seat, exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it), up to 3 at once, routes a red build/test to the matching resolver, and runs a substantial refactor through the stack's designer -> implementers -> verifier vertical (this skill's own `references/domain-trio-protocol.md`). In DELEGATED mode, the mode ask's answer IS the dispatch consent for small test-writing briefs: write the `<docs-path>/flow/APPROVAL` stamp (`APPROVED small-tier - "<the answer, verbatim>"`) the moment that answer lands, and rewrite it as substantial-tier plan approvals arrive - the dispatch guard is deliberately tier-blind, so an unstamped small-brief dispatch just bounces. A surface with no matching seat runs INLINE regardless. In BOTH modes the instrumented run stays the capture's, in the main session - a coverage run never enters a dispatch brief (seat gates are fast; the capture owns the measurement).
+When dispatch is available, ask ONE question before ANALYZE and hold the answer for the run; the mark sits on the mode the `habits-execution-strategy` verdict picks (`parallel seats` moves it to the seats, listed first):
+
+```ask
+Work the fixes here (INLINE) or through the stack seats (DELEGATED)? <the verdict's reason>
+- 'In this session (Recommended)' - <why it fits one chat>
+- 'Dispatch the stack seats' - <the briefs that run in parallel>
+```
+
+No dispatch capability, or a non-stack project, is INLINE without asking. INLINE works every fix yourself in this session. DELEGATED dispatches each test-writing brief to the matching `<stack>-implementer` seat, exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it), up to 3 at once, routes a red build/test to the matching resolver, and runs a substantial refactor through the stack's designer -> implementers -> verifier vertical (this skill's own `references/domain-trio-protocol.md`). In DELEGATED mode, the mode ask's answer IS the dispatch consent for small test-writing briefs: write the `<docs-path>/flow/APPROVAL` stamp (`APPROVED small-tier - "<the answer, verbatim>"`) the moment that answer lands, and rewrite it as substantial-tier plan approvals arrive - the dispatch guard is deliberately tier-blind, so an unstamped small-brief dispatch just bounces. A surface with no matching seat runs INLINE regardless. In BOTH modes the instrumented run stays the capture's, in the main session - a coverage run never enters a dispatch brief (seat gates are fast; the capture owns the measurement).
 
 ## The loop
 
 ### 1. ANALYZE
-Run the `capture-test-coverage` capture by INVOKING it - the Skill tool, never its protocol replayed from memory (where no Skill tool exists, Read its `SKILL.md` from the installed skills directory and follow it in-session). A Skill call the fresh-session guard blocks is the gate working, not a fault: put the choice through AskUserQuestion - 'Resume in a fresh session (Recommended)', ending this turn with the RESUME BLOCK / 'Continue here' - and on 'continue', re-issue the same Skill call: the answered offer lets it through until the context grows 1.5x past it. The load is step zero of ANALYZE, not optional homework: a round that has not loaded the capture this session has not run it, whatever it measured - unloaded rounds hand-roll their own aggregation, so no two rounds' numbers are comparable, and the class-level aggregation the protocol looks past hides uncovered lines an ad-hoc dig only finds by luck. It owns the detection, the instrumented runs, and the judgment, and it writes `<docs-path>/test-coverage/COVERAGE.md`. That doc is this loop's work list: the weak points, each carrying a tier (the routing key) and a simplify-testing action. The requirement and exclusions come from the doc; changing either is a user decision recorded there, never a loop shortcut.
+Run the `capture-test-coverage` capture by INVOKING it - the Skill tool, never its protocol replayed from memory (where no Skill tool exists, Read its `SKILL.md` from the installed skills directory and follow it in-session). A Skill call the fresh-session guard blocks is the gate working, not a fault - on 'continue', re-issue the same Skill call: the answered offer lets it through until the context grows 1.5x past it:
+
+```ask
+The fresh-session guard held the capture at <N>k; a fresh session restarts at <M>k.
+- 'Resume in a fresh session (Recommended)' - this turn ends with the RESUME BLOCK
+- 'Continue here' - the same Skill call again
+```
+
+The load is step zero of ANALYZE, not optional homework: a round that has not loaded the capture this session has not run it, whatever it measured - unloaded rounds hand-roll their own aggregation, so no two rounds' numbers are comparable, and the class-level aggregation the protocol looks past hides uncovered lines an ad-hoc dig only finds by luck. It owns the detection, the instrumented runs, and the judgment, and it writes `<docs-path>/test-coverage/COVERAGE.md`. That doc is this loop's work list: the weak points, each carrying a tier (the routing key) and a simplify-testing action. The requirement and exclusions come from the doc; changing either is a user decision recorded there, never a loop shortcut.
 
 ### 2. TRIAGE + FIX by tier
-Confirm the green baseline (build + tests) first, then take the weak points in leverage order:
+Confirm the green baseline (build + tests) first - round 1 also records the sweep baseline: HEAD, or on a dirty tree the sha `git stash create` prints; the final anti-gaming sweep diffs against it - then take the weak points in leverage order:
 
-- **small** (missing tests on existing seams) - a scoped brief: the module, the uncovered symbols, the behavior each test must pin. Write them INLINE, or DELEGATED dispatch the stack's implementer with the brief - the brief states `memory: none` (a scoped test brief has no navigation-server hand-off; one that does hand a note names it literally, read side included - memory hygiene: `references/domain-trio-protocol.md`). Tests assert behavior - a test written to touch lines is gamed coverage, not progress.
+- **small** (missing tests on existing seams) - a scoped brief: the module, the uncovered symbols, the behavior each test must pin. Write them INLINE, or DELEGATED dispatch the stack's implementer with the brief - the brief states `memory: none` (a scoped test brief has no memory hand-off; one that does hand a note names it literally, read side included - memory hygiene: `references/domain-trio-protocol.md`). Tests assert behavior - a test written to touch lines is gamed coverage, not progress.
 - **substantial** (a testability refactor, or 'no test infrastructure') - designer-led with approval. 'No test infrastructure' goes FIRST when it is on the list - nothing else is measurable until a harness exists: propose the runner the stack's house testing skill records as its default (absent one, the framework's own documented default, cited), and on approval wire the runner + coverage output and land the first tests. Each substantial item runs four acts in order:
   1. **Plan it** - turn the simplify-testing action into a plan; a refactor for testability is still a refactor.
-  2. **Get the user's approval before building** - present the plan, ask via AskUserQuestion - 'Approve and build (Recommended)' / 'Changes needed' (plain-text options where the harness lacks the tool).
-  3. **Record the approving answer.** DELEGATED: write `<docs-path>/flow/APPROVAL`, first line `APPROVED <plan id> - "<the user's words, verbatim>"` - the selected answer IS those words (the dispatch hook blocks an unstamped implementer; delete the file when the run completes). Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool. Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it. A relative write follows whatever cwd the shell drifted to and the dispatch then bounces. The stamp belongs to the session that dispatches - written when its own decision lands, deleted at its own close; an earlier session's leftover stamp is not consent. If BOTH the Write tool and an absolute-path Bash write are refused by the harness's classifier, stop and put the choice through AskUserQuestion (retry the stamp, or run this stage inline) rather than retrying blind or dispatching around the gate.
+  2. **Get the user's approval before building** - present the plan, then (plain-text options where the harness lacks the tool):
+
+     ```ask
+     <plan id>, <N> tasks. Build it?
+     - 'Approve and build (Recommended)' - stamp, then fan out
+     - 'Changes needed' - say what in Other
+     ```
+  3. **Record the approving answer.** DELEGATED: write `<docs-path>/flow/APPROVAL`, first line `APPROVED <plan id> - "<the user's words, verbatim>"` - the selected answer IS those words (the dispatch hook blocks an unstamped implementer; delete the file when the run completes). Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool. Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it. A relative write follows whatever cwd the shell drifted to and the dispatch then bounces. The stamp belongs to the session that dispatches - written when its own decision lands, deleted at its own close; an earlier session's leftover stamp is not consent. If BOTH the Write tool and an absolute-path Bash write are refused by the harness's classifier, stop and ask rather than retrying blind or dispatching around the gate:
+
+     ```ask
+     Both write routes refused the approval stamp: <the refusal>.
+     - 'Retry the stamp (Recommended)' - allow the write at the prompt
+     - 'Run this stage inline' - no dispatch, no stamp
+     ```
   4. **Build and gate it** - INLINE yourself, DELEGATED through the domain trio.
-- **structural** - do NOT auto-apply. Present the gap, the reasoning, and the rework, then ask the decision via AskUserQuestion - 'Defer (Recommended)' / 'Apply - routes as substantial' / 'Decline', the reason in each option's description (plain-text options where the harness lacks the tool); declined -> flagged in the final report. **decline or defer adds the gap to this run's declined set** - an in-context list only, never written to a file: the same gap reappearing in the next round's fresh capture is checked against it and skipped without a second ask. A fresh session starts clean and may ask again.
+- **structural** - do NOT auto-apply. Present the gap, the reasoning, and the rework, then ask (plain-text options where the harness lacks the tool); declined -> flagged in the final report:
+
+  ```ask
+  <gap> is structural: <the rework>.
+  - 'Defer (Recommended)' - <why it can wait>
+  - 'Apply - routes as substantial' - <what it touches>
+  - 'Decline' - <the tradeoff kept>
+  ```
+
+  **decline or defer adds the gap to this run's declined set** - an in-context list only, never written to a file: the same gap reappearing in the next round's fresh capture is checked against it and skipped without a second ask. A fresh session starts clean and may ask again.
 
 Keep build and tests green across the round - a red routes to the matching resolver (DELEGATED) or is fixed inline before the next weak point.
 
@@ -42,7 +81,7 @@ A fix that rewrites or deletes an EXISTING spec flagged `red-check pending` (the
 The label has no other enforcement point - this step is it.
 
 ### 3. UPDATE DOCS
-Re-run the capture: `<docs-path>/test-coverage/COVERAGE.md` and the raw results reconcile with what landed - closed weak points drop off, the numbers refresh, anything the fixes exposed is added. The doc is regenerated by the capture, never hand-edited here. COVERAGE.md is the only doc this loop maintains - `<docs-path>/quality/ASSESSMENT.md` is the findings capture's, reconciled at its own cadence, never touched from here.
+Re-run the capture: `<docs-path>/test-coverage/COVERAGE.md` and the raw results reconcile with what landed - closed weak points drop off, the numbers refresh, anything the fixes exposed is added. The doc is regenerated by the capture, never hand-edited here. COVERAGE.md is the only doc this loop maintains - `<docs-path>/quality/ARCHITECTURE-ASSESSMENT.md` is the findings capture's, reconciled at its own cadence, never touched from here.
 
 ### 4. LOOP or STOP
 Decide off the reconciled numbers the step-3 capture just produced, not by eye - they are already in this context (re-read `<docs-path>/test-coverage/COVERAGE.md` only after a compaction or when the in-context picture is genuinely stale, never as a per-round habit). On a LOOP verdict, run the fresh-session ask (Bounded and honest) before the next round - the resume invocation names the rounds already consumed so the 3-round cap survives a resume. The round verdict line carries the ask's receipt - `next: fresh-session | continue - "<the user's answer, verbatim>"` - and that receipt can only come from the AskUserQuestion answer; a verdict line without it is an unfinished step 4:
@@ -52,7 +91,21 @@ Decide off the reconciled numbers the step-3 capture just produced, not by eye -
 - **CAPPED** - the improve-round cap is reached (see Bounded and honest).
 - **BLOCKED** - only structural gaps remain and the user has not approved a rework.
 
-Then the final report - one line per field, a table for the per-surface numbers (the close is an answer like any other and the answer-length hook blocks a wall of prose; tables are exempt): the outcome and round; per-surface coverage before -> after; each weak point resolved (tier + the change that closed it); the deferred items; the reconciled docs' state; the build + tests baseline at stop; and `memories purged: <names|none>`, fold-first (the trio reference's receipt, restated here because a loop round does not load that reference). When the report closes with uncommitted work and no next round queued, the commit decision goes through AskUserQuestion - 'Commit now (Recommended)', which runs `habits-commit-checkpoint` whole / 'Hold - review the diff first' - never a prose 'your call' bullet, which drifts unresolved while the uncommitted set grows. The same close names what this round's runs started and still have up - a Docker container or compose stack, seeded integration-test data, a background process - and puts tear-down-vs-keep through the same AskUserQuestion call (teardown recommended; started-nothing is said plainly, and what the round did not start is never touched).
+On STOP, when any fix shipped: Read `references/anti-gaming-sweep.md` and run its four commands against the sweep baseline, after the final build + tests - a gamed bar is a BLOCKER, reverted and fixed before the report.
+
+Then the final report - one line per field, a table for the per-surface numbers (the close is an answer like any other and the answer-length hook blocks a wall of prose; tables are exempt): the outcome and round; per-surface coverage before -> after; each weak point resolved (tier + the change that closed it); the deferred items; the reconciled docs' state; the build + tests baseline at stop; `Anti-gaming: <clean | what was reverted>` (the sweep's verdict; `n/a - no fix shipped` when none did); and `memories purged: <names|none>`, fold-first (the trio reference's receipt, restated here because a loop round does not load that reference). When the report closes with uncommitted work and no next round queued, the commit decision is the ask below, never a prose 'your call' bullet, which drifts unresolved while the uncommitted set grows. The same close names what this round's runs started and still have up - a Docker container or compose stack, seeded integration-test data, a background process - and puts tear-down-vs-keep through the same AskUserQuestion call (started-nothing is said plainly, and what the round did not start is never touched):
+
+```ask
+<N> files changed, uncommitted.
+- 'Commit now (Recommended)' - `habits-commit-checkpoint`, whole
+- 'Hold - review the diff first' - nothing committed
+```
+
+```ask
+This round started <what is still up>.
+- 'Tear it down (Recommended)' - only what this round started
+- 'Keep it running' - named in the report
+```
 
 ## Example
 INLINE, one round over a two-surface workspace:
@@ -63,11 +116,20 @@ INLINE, one round over a two-surface workspace:
 
 ## Bounded and honest
 - **Hard cap: 3 improve rounds** - each round re-runs the instrumented capture; do not loop chasing the last decimal.
-- **Each round boundary is a fresh-session resume point** - the reconciled `<docs-path>/test-coverage/COVERAGE.md` is the handoff; carried-forward conversation (not tool output) is what a fresh session sheds. A step, not advice: at each LOOP decision, ask via AskUserQuestion - resume in a fresh session from the reconciled doc (recommended) vs continue here; on 'fresh', end the turn with this RESUME BLOCK and nothing else - the new session must be able to start from it alone, and the invocation names the rounds already consumed so the 3-round cap survives:
+- **Each round boundary is a fresh-session resume point** - the reconciled `<docs-path>/test-coverage/COVERAGE.md` is the handoff; carried-forward conversation (not tool output) is what a fresh session sheds. A step, not advice: at each LOOP decision, ask:
+
+  ```ask
+  Round <N>: LOOP - <what is left>. A fresh session restarts from the reconciled doc at <M>k.
+  - 'Resume in a fresh session (Recommended)' - the RESUME BLOCK, then this turn ends
+  - 'Continue here' - the next round in this chat
+  ```
+
+  On 'fresh', end the turn with this RESUME BLOCK and nothing else - the new session must be able to start from it alone, and the invocation names the rounds already consumed so the 3-round cap survives:
 
   ```text
   RESUME - loop-test-coverage
   Invocation: /loop-test-coverage <scope> - resumed round <N of 3> (rounds consumed: <list>)
+  Sweep baseline: <sha recorded at round 1> - the final anti-gaming sweep diffs against it
   Read first: <docs-path>/test-coverage/COVERAGE.md - its ## Resume section RANGED, never the whole file - and the requirement and exclusions it records; then the coverage capture's own protocol (the Skill tool, or its SKILL.md from the installed skills directory where no Skill tool exists) - the ANALYZE step's protocol owner, which a fresh session has never read
   Remaining weak points, tier order:
     1. <surface - symbol> - <tier> - <the action, one line>
@@ -79,4 +141,4 @@ INLINE, one round over a two-surface workspace:
 - The main session is the only orchestrator; the seats it dispatches carry no Agent tool, so the fan-out stays flat.
 - The instrumented run never enters a seat's dispatch brief - measurement is the capture's, in the main session, in both modes.
 - Implementers keep writing each task's tests in every build flow (the `habits-done-gate` bar) - this loop is the deliberate catch-up cadence, not a substitute for that.
-- Keep this skill orchestration only: measurement judgment lives in the capture; build knowledge lives in the domain seats and house skills. A pure code-quality polish is `loop-quality`; architecture weaknesses are `loop-architecture-quality`'s.
+- Keep this skill orchestration only: measurement judgment lives in the capture; build knowledge lives in the domain seats and house skills. A pure code-quality polish is `loop-code-quality`; architecture weaknesses are `loop-architecture-quality`'s.

@@ -262,7 +262,9 @@ test('I24: the locked servers share ONE routing row that points at their baselin
         assert.ok(!map.includes(select), `the template restates a baseline's load line: ${select}`);
 });
 
-test('I24: the generated rule holds no sentence a baseline owns, except the pinned navigation-edit line', () =>
+// Audit 2026-10-14 RU11: the locked row no longer restates the navigation rule's edit and memory lines - both
+// baselines are locked into every install, so the generated rule paid ~190 chars for a copy of them.
+test('I24: the generated rule holds no sentence a baseline owns', () =>
 {
     const registry = JSON.parse(read('meta/shared-rules.json')).rules;
     const generated = squash(`${policyBlock()}\n${routingMapText()}`);
@@ -270,7 +272,8 @@ test('I24: the generated rule holds no sentence a baseline owns, except the pinn
         .filter(([, r]) => r.owner && /^stack\/rules\/alfred-/.test(r.owner.file))
         .filter(([, r]) => generated.includes(squash(r.owner.marker)))
         .map(([id]) => id);
-    assert.deepStrictEqual(restated, ['navigation-edit-tools']);
+    assert.deepStrictEqual(restated, []);
+    assert.ok(!registry['navigation-edit-tools'], 'the edit line has one home, the navigation rule');
 });
 
 test('I24: the report prints one locked-server row, and --verify passes a rule built from it', () =>
@@ -301,7 +304,7 @@ test('I24: the report prints one locked-server row, and --verify passes a rule b
 
 // ------------------------------------------------------------------ I12 (prose half)
 
-test('I12: the navigation rule and the locked row keep rename and safe delete, every other edit on Edit / Write', () =>
+test('I12: the navigation rule keeps rename and safe delete, every other edit on Edit / Write; the locked row points at it', () =>
 {
     const nav = squash(read('stack/rules/alfred-navigation.md'));
     assert.ok(!nav.includes('symbol edits and the memory handoff stay on the navigation server'), 'the old edit routing is gone');
@@ -309,11 +312,13 @@ test('I12: the navigation rule and the locked row keep rename and safe delete, e
     assert.ok(nav.includes(line), 'alfred-navigation.md');
     assert.ok(nav.includes('every other edit goes through Edit / Write'), 'alfred-navigation.md');
     const map = squash(routingMapText());
-    assert.ok(map.includes(line) && map.includes('every other edit goes through Edit / Write'), 'the template row');
+    // RU11: the row points at the baselines instead of restating them.
+    assert.ok(map.includes('- `alfred-navigation`, `alfred-documentation`, `alfred-memory` - load and route as their baselines say; first call: the `ToolSearch select:` line each names.'), 'the template row points');
+    assert.ok(!map.includes(line) && !map.includes('memory tools are off'), 'the template row restates no baseline line');
     assert.ok(!map.includes('symbol-level editor'), 'the row no longer sells the server as an editor');
     // The user's 2026-10-13 ruling: the navigation server is navigation only, every note goes to alfred-memory.
     assert.ok(!nav.includes('seat memory handoff') && !map.includes('seat memory handoff'), 'no seat handoff left on the navigation server');
-    assert.ok(map.includes('its memory tools are off, every note goes to `alfred-memory`'), 'the template row routes notes to alfred-memory');
+    assert.ok(nav.includes('its memory tools are off, and every note - a seat\'s handoff included - goes to the `alfred-memory` MCP'), 'the navigation rule routes notes to alfred-memory');
 });
 
 // ------------------------------------------------------------------ I45 + I10 (prose half)

@@ -56,7 +56,7 @@ test('C9: the engine refuses `set` on a missing doc on an overlay branch, and ta
 // conversational question ('what are the risks here?') used to start the whole run with no approval. Each now
 // asks first unless its loop invoked it, and its doc-shape no longer claims 'no write gate'.
 const RUN_GATES = {
-    'capture-architecture-quality': { shape: 'references/doc-shape.md', doc: 'ASSESSMENT.md', before: '### 1. ORIENT' },
+    'capture-architecture-quality': { shape: 'references/doc-shape.md', doc: 'ARCHITECTURE-ASSESSMENT.md', before: '### 1. ORIENT' },
     'capture-code-quality': { shape: 'references/doc-shape.md', doc: 'CODE-ASSESSMENT.md', before: '### 1. ORIENT' },
     'capture-test-coverage': { shape: 'references/doc-shape.md', doc: 'COVERAGE.md', before: '### 3. MEASURE' },
 };
@@ -129,7 +129,7 @@ test('audit 2026-10-08: the inventory marks every capture a loop invokes as mode
     const inv = read('stack/skills/capture-agent-awareness/scripts/capabilities-inventory.js');
     const set = /const MODEL_INVOCABLE_BY_DESIGN = new Set\(\[([^\]]*)\]\)/.exec(inv);
     const names = [...set[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
-    for (const loop of ['loop-architecture-quality', 'loop-quality', 'loop-test-coverage'])
+    for (const loop of ['loop-architecture-quality', 'loop-code-quality', 'loop-test-coverage'])
     {
         const body = read(`stack/skills/${loop}/SKILL.md`);
         for (const cap of ['capture-architecture', 'capture-architecture-quality', 'capture-code-quality', 'capture-test-coverage'])
@@ -147,4 +147,50 @@ test('audit 2026-10-08: capture-architecture keeps its anecdotes in the evidence
     assert.ok(squash(read('stack/skills/capture-architecture/references/doc-shapes.md')).includes("('1 (overlay, 12 sections)')"), 'the overlay count rule moved to Branches');
     const flat = squash(body);
     assert.ok(flat.indexOf('- Write the map to its required shape') < flat.indexOf('- After the write, run `node .claude/hooks/docs.js lint architecture`'), 'the write precedes its lint');
+});
+
+// Audit 2026-10-14 SKC01: three captures told the run to apply markdown-style to their doc under the docs root,
+// which markdown-docs.md and markdown-style itself exclude (the root belongs to the skill that writes it).
+// e1b790fe fixed capture-related-projects; the same wording now covers the other three.
+test('audit 2026-10-14 SKC01: no capture loads markdown-style for its docs-root doc', () => {
+    const files = [
+        'stack/skills/capture-code-style/SKILL.md',
+        'stack/skills/capture-code-style/references/doc-shape.md',
+        'stack/skills/capture-architecture/SKILL.md',
+        'stack/skills/capture-architecture/references/doc-shapes.md',
+        'stack/skills/capture-test-coverage/SKILL.md',
+        'stack/skills/capture-test-coverage/references/doc-shape.md',
+    ];
+    for (const rel of files)
+        assert.doesNotMatch(read(rel), /markdown-style/, `${rel}: names markdown-style for a docs-root doc`);
+    assert.ok(squash(read('stack/skills/capture-code-style/SKILL.md')).includes('no formatting skill loads for it (the docs root belongs to the skill that writes it)'),
+        'capture-code-style states why no formatting skill loads');
+    assert.ok(read('stack/skills/capture-architecture/references/doc-shapes.md').includes('Load `docs-as-code` before writing'), 'the diagram load stays');
+});
+
+// Audit 2026-10-14 SKC05: the login ask's recommended option promised to add the account's keys to the sensitive
+// data, but every install writes that file and the run may never append to it - the report hands KEY= lines instead.
+test('audit 2026-10-14 SKC05: the login ask names the KEY= handoff, never a write to an existing sensitive-data file', () => {
+    const raw = read('stack/skills/capture-project-awareness/SKILL.md');
+    const ask = (raw.match(/```ask\nHow does an agent log in\?[\s\S]*?```/) || [''])[0];
+    assert.ok(ask, 'the login ask is a template');
+    const first = ask.split('\n').find((l) => l.startsWith('- '));
+    assert.match(first, /\(Recommended\)' - the report hands one `KEY=` line per key for `<data root>\/\.sensitive-data`/, 'the recommended option names the handoff');
+    assert.doesNotMatch(ask, /its keys, empty, in/, 'no promised write');
+    assert.ok(squash(raw).includes('absent (an older install), Write it with the keys empty'), 'the absent-file write stays the stated exception');
+});
+
+// Audit 2026-10-14 SKC06: the usage-report body sat at the compaction re-attach cut with the `Discipline: read`
+// receipt rule as the first text to drop. The receipt rule now sits in step 4 beside the read it receipts, and the
+// machine-section list and the previously-audited test live in the run-mechanics reference.
+test('audit 2026-10-14 SKC06: the usage-report receipt rule sits early, its mechanics in the reference', () => {
+    const raw = read('stack/skills/capture-usage-report/SKILL.md');
+    const at = Buffer.from(raw).indexOf('The discipline is READ this run, never remembered');
+    assert.ok(at > -1 && at < 15000, `the receipt rule sits before byte 15000 (at ${at})`);
+    assert.ok(raw.length < 19000, `the body shrank (${raw.length})`);
+    assert.doesNotMatch(raw, /## Don't game it[\s\S]*step-4 discipline is READ/, 'no second copy at the end');
+    const mech = squash(read('stack/skills/capture-usage-report/references/run-mechanics.md'));
+    assert.ok(mech.includes('## Which sessions to skip - the previously-audited test') && mech.includes('carries no `FILL IN` section'), 'the skip test moved');
+    assert.ok(mech.includes('A non-use finding cites that section\'s own row instead of the stack\'s full catalog'), 'the inventory rule moved');
+    assert.ok(squash(raw).includes('the test (the report, never the folder) is in `references/run-mechanics.md`'), 'the body points at it');
 });

@@ -1,6 +1,6 @@
 ---
 name: task-design
-description: "Use to settle how a feature fits the existing code before writing any - 'design this feature', 'plan this change'. Not for one-line edits."
+description: "Use to settle how a feature fits the existing code before writing any - 'design this feature', 'plan this change'. Not for one-line edits or a plan audit."
 ---
 
 # Solution Design - how a change fits, then decomposed, in one chat
@@ -9,7 +9,7 @@ The design carries the quality: a build handles the traps its plan named and shi
 
 ## Design mode - this chat, a read fan-out, or the designer seat
 
-Design inline in this chat, the method below, so you inspect each step. On an agents request, dispatch the `<stack>-solution-designer` seat instead, exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it) - on its frontmatter model unless you name one - and take its returned plan; the seat runs this same method, isolated. When the invocation names no mode and no calling flow has already recorded one, ask ONE question before designing, via AskUserQuestion - this chat, or the designer seat? - one option marked `(Recommended)` and listed first: this chat, unless the user asked for isolation - and hold the answer; a mode the run already picked is inherited, never re-asked. Where orientation spans a sibling repo or more areas than one bounded pass reads, the ask adds a third option - 'Research fan-out: <N> read-only seats, design here' - each seat read-only, on the model the dispatch names (Sonnet for search and classification - a seat type with no pin runs on the session's model), reporting `file:symbol` facts. One designer runs, and nothing is dispatched that the answer did not pick. Loaded INSIDE a dispatched designer seat, the dispatch IS that answer: run the method below there, no ask and no further dispatch (the seat has neither tool).
+In this chat, ask the mode per `references/design-mode.md` - read it before designing; a mode the invocation or a calling flow already picked is inherited, never re-asked. Inside a designer seat: no ask, no dispatch - the dispatch is the answer, run the method below.
 
 ## When to use / not
 
