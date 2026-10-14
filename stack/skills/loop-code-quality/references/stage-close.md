@@ -26,7 +26,7 @@ the next session nothing to start from.
 End the turn with a RESUME BLOCK the new session can start from alone, and nothing else - no 'one more
 step', no new work in this chat:
 
-- the exact invocation - `/loop-quality staged` - naming `RUN-STATE.md` and the next stage number,
+- the exact invocation - `/loop-code-quality staged` - naming `RUN-STATE.md` and the next stage number,
   so the new session resumes the staged run rather than starting the default loop;
 - one line on what that stage will do.
 

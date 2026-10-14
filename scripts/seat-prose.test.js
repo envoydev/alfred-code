@@ -87,7 +87,7 @@ test('M50: integration-reviewer attributes the security-half pass to the commit 
 // --- M51: security-auditor's rubric carve-out names only what the seat has ---------------------------
 test('M51: security-auditor skips on a rubric dispatch only what its Method holds', () =>
 {
-    const line = squash(body('security-auditor')).match(/When dispatched by the `loop-quality` skill[^\n]*?never to rubric audits\./);
+    const line = squash(body('security-auditor')).match(/When dispatched by the `loop-code-quality` skill[^\n]*?never to rubric audits\./);
     assert.ok(line, 'the rubric carve-out');
     assert.doesNotMatch(line[0], /plan\/contract diff|build\+test rerun/, 'a Method with no plan diff and no rerun skips neither');
     assert.ok(line[0].includes('the memory handoff WRITE unless the dispatch brief asks for it'), 'the registered clause stays');

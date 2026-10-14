@@ -381,7 +381,7 @@ turn polling for it. Five inputs, five gates:
    matching exclusion.
 2. **The rest vs the project's stated conventions - version pins included.** Review the remaining
    scope against the project's OWN docs - the project's AGENTS.md or CLAUDE.md, `<docs-path>/architecture/ARCHITECTURE.md` /
-   `quality/ASSESSMENT.md`, `code-style/CODE-STYLE.md`, where they exist - and propose a drop on a cited
+   `quality/ARCHITECTURE-ASSESSMENT.md`, `code-style/CODE-STYLE.md`, where they exist - and propose a drop on a cited
    conflict: quote the conflicting rule verbatim and name its source. Version pins count as
    conventions, and the scan PRECOMPUTES the known cases: the `judgment.versionConflicts` rows in
    found.json arrive with the package, the found version, the threshold, the conflict text, and

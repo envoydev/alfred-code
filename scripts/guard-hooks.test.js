@@ -292,14 +292,17 @@ test('guard-fresh-session-start: gates orchestration runs only, and only past th
   const hot = (n) => transcript(`hot-${n}`, ctxRows(`m6-${n}`, 450000));
   const cold = transcript('cold', ctxRows('m7', 50000));
   const call = (skill, tp) => run('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill }, transcript_path: tp });
-  assert.equal(call('loop-quality', hot('a')), 2, 'orchestration run on carried history');
-  assert.equal(call('alfred-code:loop-quality', hot('b')), 2, 'namespaced form');
+  assert.equal(call('loop-code-quality', hot('a')), 2, 'orchestration run on carried history');
+  assert.equal(call('alfred-code:loop-code-quality', hot('b')), 2, 'namespaced form');
+  // The old name, still copied in a project not yet updated - read from the rename map, its one home.
+  const oldLoop = Object.entries(require('../meta/stack-manifest.json').renamed.skills).find(([o, n]) => n === 'loop-code-quality' && /^loop-/.test(o))[0];
+  assert.equal(call(oldLoop, hot('f')), 2, 'the renamed loop under its old name');
   assert.equal(call('issue-diagnoser', hot('c')), 2, 'the gated diagnosis flow chained onto carried history');
-  assert.equal(call('loop-quality', cold), 0, 'under the threshold');
+  assert.equal(call('loop-code-quality', cold), 0, 'under the threshold');
   assert.equal(call('csharp', hot('d')), 0, 'an ordinary skill is never gated');
   // A subagent's Skill call carries agent_id: the carry this hook reads is the parent session's, and
   // a seat has no user to answer the offer - so the size trigger never judges it.
-  assert.equal(run('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill: 'loop-quality' }, transcript_path: hot('e'), agent_id: 'a1b2c3' }), 0,
+  assert.equal(run('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill: 'loop-code-quality' }, transcript_path: hot('e'), agent_id: 'a1b2c3' }), 0,
     'a seat is not offered a fresh session on its parent\'s history');
 });
 
@@ -318,7 +321,7 @@ test('guard-fresh-session-start: the size offer is answerable - the retry passes
   const grow = (ctx) => fs.appendFileSync(tp, JSON.stringify(assistantRow(`rearm-${ctx}`, 'ok', { cache_read_input_tokens: ctx })) + '\n');
   const answer = () => fs.appendFileSync(tp, JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'ask1', content: 'Your questions have been answered: "Start it here?"="Run it here anyway"' }] } }) + '\n');
   const call = () => runIn('guard-fresh-session-start.js',
-    { tool_name: 'Skill', tool_input: { skill: 'loop-quality' }, transcript_path: tp }, env).status;
+    { tool_name: 'Skill', tool_input: { skill: 'loop-code-quality' }, transcript_path: tp }, env).status;
   assert.equal(call(), 2, 'the offer is made once');
   // audit 2026-10-08: the retry passed with no ask between - a soft gate; the offer stands until an ask answers it
   assert.equal(call(), 2, 'an identical retry with no answered ask is the same offer again');
@@ -368,7 +371,7 @@ test('audit 2026-10-08: the fresh-session guard reads commands and the router sk
 test('guard-fresh-session-start: the trigger is the tier\'s own variable', () => {
   const at = (name, ctx) => transcript(name, ctxRows(name, ctx));
   const call = (tp, env) => runIn('guard-fresh-session-start.js',
-    { tool_name: 'Skill', tool_input: { skill: 'loop-quality' }, transcript_path: tp },
+    { tool_name: 'Skill', tool_input: { skill: 'loop-code-quality' }, transcript_path: tp },
     { env: { ...process.env, ...(env || {}) } }).status;
 
   // The window comes from ONE place, model-windows.json, keyed by the session's model id (these
@@ -463,7 +466,7 @@ test('the stop contract, the fresh-session offer and the read guard sweep their 
   assert.ok(fs.statSync(log).size <= 256 * 1024, `the log was capped (${fs.statSync(log).size} bytes)`);
   const freshOld = plant(logDir, 'guard-fresh-size-old.offered', 8, '100 1');
   const tp = transcript('sweep-fresh', ctxRows('sweep-fresh', 450000));
-  assert.equal(runIn('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill: 'loop-quality' }, transcript_path: tp }, env).status, 2, 'the offer is made');
+  assert.equal(runIn('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill: 'loop-code-quality' }, transcript_path: tp }, env).status, 2, 'the offer is made');
   assert.ok(!fs.existsSync(freshOld), 'writing an offer swept an offer past 7 days');
   // the hook's temp dir is this suite's own (isolateHookSuite ownTmp), the parent of TMP
   const readOld = plant(os.tmpdir(), 'guard-read-gone.json', 8, '{}');
@@ -664,18 +667,18 @@ test('guard-ungated-commit: the receipt states', () => {
   assert.equal(gateT('git commit -am x'), 0, 'unless the receipt says the review is carried');
   // the 2.0.0 loop names - `quality-loop` matched the 1.x spelling only, so a receipt naming the
   // renamed loop minted consent with no loop ever run
-  receipt(full({ first: 'VERIFIED loop-quality round 2 gate' })); assert.equal(gateT('git commit -am x'), 2, 'a quality loop named but never called');
+  receipt(full({ first: 'VERIFIED loop-code-quality round 2 gate' })); assert.equal(gateT('git commit -am x'), 2, 'a quality loop named but never called');
   receipt(full({ first: 'VERIFIED loop-architecture-quality stage 3' })); assert.equal(gateT('git commit -am x'), 2, 'the architecture loop too');
   // ... while a loop the user TYPED is a run of it: a slash invocation writes no Skill call at all
   // (measured: 4 of 4 slash-run loops, zero Skill events), only the harness's command row
-  const slash = transcript('slash-loop', [{ type: 'user', message: { role: 'user', content: '<command-name>/alfred-code:loop-quality</command-name>' } }, assistantRow('m1', 'round 2 green')]);
+  const slash = transcript('slash-loop', [{ type: 'user', message: { role: 'user', content: '<command-name>/alfred-code:loop-code-quality</command-name>' } }, assistantRow('m1', 'round 2 green')]);
   const gateS = (cmd) => runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: cmd }, transcript_path: slash },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }).status;
   assert.equal(gateS('git commit -am x'), 0, 'a slash-invoked loop ran');
   // a session that typed the pre-2.2.0 spelling ran the same loop
   const loopRenamed = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8')).renamed.skills;
-  const oldLoop = Object.keys(loopRenamed).find((o) => loopRenamed[o] === 'loop-quality' && /^alfred-/.test(o));
-  assert.ok(oldLoop, 'the map renames loop-quality from its alfred- spelling');
+  const oldLoop = Object.keys(loopRenamed).find((o) => loopRenamed[o] === 'loop-code-quality' && /^alfred-/.test(o));
+  assert.ok(oldLoop, 'the map renames loop-code-quality from its alfred- spelling');
   const slashOld = transcript('slash-loop-old', [{ type: 'user', message: { role: 'user', content: `<command-name>/${oldLoop}</command-name>` } }, assistantRow('m1', 'round 2 green')]);
   assert.equal(runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: 'git commit -am x' }, transcript_path: slashOld },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }).status, 0, 'the old spelling typed is a run too');
@@ -1471,7 +1474,7 @@ test('guard-stop-contract: prose offers, tool-call ends, continuations and unrea
 });
 
 test('guard-stop-contract: the quality loop\'s mode ask and stage-close ask in prose are sent to ONE AskUserQuestion; the same words through the tool pass', () => {
-  // loop-quality's two structural pauses are sentences in its SKILL.md (improvement plan 2.5):
+  // loop-code-quality's two structural pauses are sentences in its SKILL.md (improvement plan 2.5):
   // worded as a statement they end on no '?', so the question shape alone never caught them.
   const stop = (tp) => run('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp });
   const prose = (id, text) => stop(transcript(id, [assistantRow('a', text)]));
@@ -1508,7 +1511,7 @@ test('guard-fresh-session-start: other tools, unreadable transcripts, the name f
   const call = (payload) => runIn('guard-fresh-session-start.js', payload,
     { env: { ...process.env, CLAUDE_CONFIG_DIR: accountDir('fs-thresh-200k', 'claude-haiku-4-5') } }).status;
   assert.equal(call({ tool_name: 'Read', tool_input: { file_path: 'x.ts' }, transcript_path: hot }), 0, 'not a Skill call');
-  assert.equal(call({ tool_name: 'Skill', tool_input: { skill: 'loop-quality' }, transcript_path: path.join(TMP, 'absent-fs.jsonl') }), 0, 'no transcript - fail open');
+  assert.equal(call({ tool_name: 'Skill', tool_input: { skill: 'loop-code-quality' }, transcript_path: path.join(TMP, 'absent-fs.jsonl') }), 0, 'no transcript - fail open');
   assert.equal(call({ tool_name: 'Skill', tool_input: { name: 'task-solve' }, transcript_path: hot }), 2, 'the name field spelling');
   const edge = transcript('fs-edge', ctxRows('m', 150000));
   assert.equal(call({ tool_name: 'Skill', tool_input: { skill: 'task-solve' }, transcript_path: edge }), 0, 'exactly 150k is not past it');
@@ -2427,7 +2430,7 @@ test('mount paths: a POSIX host still reads /c/... as a POSIX path', () => {
 // settings model id's own suffix and then the old inference, and an unresolved one gates nothing.
 const winEnv = (extra) => ({ ...process.env, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'latch-')), ...(extra || {}) });
 const askLoop = (tp, env) => runIn('guard-fresh-session-start.js',
-    { tool_name: 'Skill', tool_input: { skill: 'loop-quality' }, transcript_path: tp }, { env }).status;
+    { tool_name: 'Skill', tool_input: { skill: 'loop-code-quality' }, transcript_path: tp }, { env }).status;
 const ctxAt = (name, ctx) => transcript(name, ctxRows(name, ctx));
 function accountDir(name, model) {
   const d = fs.mkdtempSync(path.join(TMP, `${name}-`));
@@ -2453,7 +2456,7 @@ test('guard-fresh-session-start: the slash and compaction routes carry the same 
 
     // It injects, never blocks: a blocked expansion shows its reason to the user only - the run would be
     // lost and the model would never learn why.
-    const slash = upe('loop-quality', hot, undefined, { args: 'run it' });
+    const slash = upe('loop-code-quality', hot, undefined, { args: 'run it' });
     assert.equal(slash.status, 0, 'the slash route never denies');
     assert.match(injected(slash), /Do NOT start the run yet/, '... it injects the ask instead');
     assert.equal(JSON.parse(slash.stdout).hookSpecificOutput.hookEventName, 'UserPromptExpansion', 'answered on its own event');
@@ -2462,13 +2465,13 @@ test('guard-fresh-session-start: the slash and compaction routes carry the same 
     assert.match(injected(upe('update', hot, undefined, { typed: 'alfred-code:update' })), /Do NOT start the run yet/,
         'a plugin command named bare takes its namespace from the typed prompt');
     assert.equal(injected(upe('update', hot, undefined, { typed: 'other-plugin:update' })), '', 'another plugin\'s update is not the walk');
-    assert.equal(injected(upe('loop-quality', ctxAt('ups-cold', 40000))), '', 'a cold session is left alone');
+    assert.equal(injected(upe('loop-code-quality', ctxAt('ups-cold', 40000))), '', 'a cold session is left alone');
     assert.equal(injected(upe('help', hot)), '', 'a slash that is not an orchestration run passes');
-    assert.equal(injected(upe('loop-quality', hot, { ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' })), '', '0 on the trigger this session uses disables this route too');
+    assert.equal(injected(upe('loop-code-quality', hot, { ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' })), '', '0 on the trigger this session uses disables this route too');
     // An install still wired on UserPromptSubmit (an older copy-route settings.json) passes silently: nothing
     // parses the prompt any more, and the next update rewires it.
     const legacy = runIn('guard-fresh-session-start.js',
-        { hook_event_name: 'UserPromptSubmit', prompt: '<command-name>/loop-quality</command-name>', transcript_path: hot }, { env: winEnv() });
+        { hook_event_name: 'UserPromptSubmit', prompt: '<command-name>/loop-code-quality</command-name>', transcript_path: hot }, { env: winEnv() });
     assert.deepStrictEqual([legacy.status, legacy.stdout], [0, ''], 'the old event is no route');
 
     // SessionStart measures nothing - the transcript has just been replaced by its summary - so the
@@ -3396,14 +3399,14 @@ test('guard-fresh-session-start: a disable-model-invocation skill is denied to t
         fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(path.join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: a test skill\n${front}---\n\nbody\n`);
     };
-    write('loop-quality', 'disable-model-invocation: true\n');
+    write('loop-code-quality', 'disable-model-invocation: true\n');
     write('capture-architecture', '');   // deliberately model-invocable so the loop can call it
     write('csharp', '');
     const skillCall = (skill) => runIn('guard-fresh-session-start.js',
         { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill }, cwd: root, session_id: 'dmi' },
         { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
 
-    const blocked = skillCall('loop-quality');
+    const blocked = skillCall('loop-code-quality');
     assert.equal(blocked.status, 2, 'the model may not call a slash-only skill');
     assert.match(blocked.stderr, /disable-model-invocation/, 'the denial names why');
     assert.match(blocked.stderr, /hand the turn back/, 'and says what to do instead - not to retry');
@@ -3415,7 +3418,7 @@ test('guard-fresh-session-start: a disable-model-invocation skill is denied to t
 
     // The USER's own route is a different event and must stay open.
     const typed = runIn('guard-fresh-session-start.js',
-        { hook_event_name: 'UserPromptExpansion', expansion_type: 'slash_command', command_name: 'loop-quality', prompt: '/loop-quality', cwd: root, session_id: 'dmi' },
+        { hook_event_name: 'UserPromptExpansion', expansion_type: 'slash_command', command_name: 'loop-code-quality', prompt: '/loop-code-quality', cwd: root, session_id: 'dmi' },
         { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
     assert.equal(typed.status, 0, 'the user typing the command is never blocked');
     assert.doesNotMatch(typed.stdout + typed.stderr, /disable-model-invocation/, 'and never told the skill is the model\'s to refuse');
@@ -3435,14 +3438,14 @@ test('guard-fresh-session-start: the flag is read from the PLUGIN cache too, not
         fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(path.join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: a test skill\n${front}---\n\nbody\n`);
     };
-    place('alfred-code', 'loop-quality', 'disable-model-invocation: true\n', ['stack', 'skills']);
+    place('alfred-code', 'loop-code-quality', 'disable-model-invocation: true\n', ['stack', 'skills']);
     place('alfred-code-wpf', 'dotnet-wpf', '', ['stack', 'skills']);
     const skillCall = (skill) => runIn('guard-fresh-session-start.js',
         { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill }, cwd: root, session_id: 'dmip' },
         { env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: cfg } });
 
-    assert.equal(skillCall('loop-quality').status, 2, 'a flagged skill served by a plugin is still denied');
-    assert.equal(skillCall('alfred-code:loop-quality').status, 2, 'and under its scoped spelling');
+    assert.equal(skillCall('loop-code-quality').status, 2, 'a flagged skill served by a plugin is still denied');
+    assert.equal(skillCall('alfred-code:loop-code-quality').status, 2, 'and under its scoped spelling');
     assert.equal(skillCall('alfred-code-wpf:dotnet-wpf').status, 0, 'an unflagged plugin skill stays callable');
     assert.equal(skillCall('alfred-code:not-shipped').status, 0, 'a name no home carries is not this guard\'s business');
 
@@ -3479,7 +3482,7 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
     // the command being judged, as a prompt row already on disk; one below ends without it. It never denies:
     // an offer is injected context, so the helper returns that text ('' = no offer).
     const slash = (tp, env, skill) => {
-      const name = skill || 'loop-quality';
+      const name = skill || 'loop-code-quality';
       const r = runIn('guard-fresh-session-start.js',
           { hook_event_name: 'UserPromptExpansion', expansion_type: 'slash_command', command_name: name, command_args: '', prompt: `/${name}`, transcript_path: tp },
           { env: env || winEnv() });
@@ -3491,12 +3494,12 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
         { env: winEnv() }).status;
 
     // ONE run starting - its own marker is not a prior run.
-    assert.equal(slash(transcript('chain-first', [cmd('loop-quality')])), '', 'the run that is starting is not evidence against itself');
+    assert.equal(slash(transcript('chain-first', [cmd('loop-code-quality')])), '', 'the run that is starting is not evidence against itself');
 
     // A finished run, a human turn, then a second typed one: the whole measured shape.
     const second = transcript('chain-second', [
       cmd('capture-architecture'), assistantRow('a1', 'captured', FLOOR), toolResult(),
-      userRow('now run the quality loop'), assistantRow('a2', 'ok', COLD), cmd('loop-quality'),
+      userRow('now run the quality loop'), assistantRow('a2', 'ok', COLD), cmd('loop-code-quality'),
     ]);
     const env = winEnv();
     const offered = slash(second, env);
@@ -3525,12 +3528,12 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
       toolResult(), assistantRow('a2', 'approve the plan?', COLD), userRow('approved'), skillRow('a3', 'task-implement'),
     ]);
     assert.equal(skillCall(cycle, 'task-implement'), 0, 'a phase of a run in flight is not a second run');
-    assert.equal(skillCall(cycle, 'loop-quality'), 0, '... nor is any Skill-route call - only a typed run chains');
+    assert.equal(skillCall(cycle, 'loop-code-quality'), 0, '... nor is any Skill-route call - only a typed run chains');
 
     // Chaining the SAME command twice is still chaining.
     assert.match(slash(transcript('chain-twice', [
-      cmd('loop-quality'), assistantRow('a1', 'done', FLOOR), toolResult(),
-      userRow('do it again'), assistantRow('a2', 'ok', COLD), cmd('loop-quality'),
+      cmd('loop-code-quality'), assistantRow('a1', 'done', FLOOR), toolResult(),
+      userRow('do it again'), assistantRow('a2', 'ok', COLD), cmd('loop-code-quality'),
     ])), /ALREADY run one/, 'the same run a second time carries the same carried history');
 
     // The REAL slash shape: the harness writes the skill's body as an isMeta user record right after
@@ -3552,16 +3555,16 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
     assert.equal(slash(transcript('chain-in-tool-result', [
       assistantRow('a0', 'reading', FLOOR),
       { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', content: `const x = '${markup}';` }] } },
-      userRow('next'), assistantRow('a1', 'ok', COLD), cmd('loop-quality'),
+      userRow('next'), assistantRow('a1', 'ok', COLD), cmd('loop-code-quality'),
     ])), '', 'a marker printed by a tool is not a prior run');
     assert.equal(slash(transcript('chain-in-tool-input', [
       { type: 'assistant', message: { id: 'a0', content: [{ type: 'tool_use', name: 'Write', input: { content: markup } }], usage: FLOOR } },
-      toolResult(), userRow('next'), assistantRow('a1', 'ok', COLD), cmd('loop-quality'),
+      toolResult(), userRow('next'), assistantRow('a1', 'ok', COLD), cmd('loop-code-quality'),
     ])), '', 'a marker the model wrote into a tool input is not a prior run');
     assert.equal(slash(transcript('chain-in-meta', [
       assistantRow('a0', 'hi', FLOOR),
       { type: 'user', isMeta: true, message: { role: 'user', content: [{ type: 'text', text: `skill body quoting ${markup}` }] } },
-      userRow('next'), assistantRow('a1', 'ok', COLD), cmd('loop-quality'),
+      userRow('next'), assistantRow('a1', 'ok', COLD), cmd('loop-code-quality'),
     ])), '', 'a marker inside a harness-written row is not a prior run');
 
     // An ordinary skill after a deliberate run is not a run, and the off switch covers both triggers.
@@ -3572,10 +3575,10 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
     // A chain whose whole carry IS the install's own floor has nothing for a resume to recover.
     assert.equal(slash(transcript('chain-allfloor', [
       cmd('capture-architecture'), assistantRow('a1', 'captured', { cache_read_input_tokens: 59000 }),
-      toolResult(), userRow('next'), assistantRow('a2', 'ok', COLD), cmd('loop-quality'),
+      toolResult(), userRow('next'), assistantRow('a2', 'ok', COLD), cmd('loop-code-quality'),
     ])), '', 'a second run carrying only the cold floor is not worth a fresh session');
     assert.equal(slash(transcript('chain-off', [
-      cmd('capture-architecture'), assistantRow('a1', 'captured', FLOOR), toolResult(), userRow('next'), cmd('loop-quality'),
+      cmd('capture-architecture'), assistantRow('a1', 'captured', FLOOR), toolResult(), userRow('next'), cmd('loop-code-quality'),
     ]), winEnv({ ALFRED_CODE_FRESH_SESSION_200K: '0', ALFRED_CODE_FRESH_SESSION_1M: '0', ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' })), '',
         'all three triggers off is the whole off switch - the chained one included');
 });

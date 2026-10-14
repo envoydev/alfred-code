@@ -1623,7 +1623,7 @@
           "marker": "The main session is the only orchestrator for the whole vertical"
         },
         {
-          "file": "stack/skills/loop-quality/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-code-quality/references/domain-trio-protocol.md",
           "marker": "The main session is the only orchestrator for the whole vertical"
         }
       ]
@@ -1644,7 +1644,7 @@
           "marker": "up to 3 at once (more only on the user's ask), queueing the rest as seats return"
         },
         {
-          "file": "stack/skills/loop-quality/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-code-quality/references/domain-trio-protocol.md",
           "marker": "up to 3 at once (more only on the user's ask), queueing the rest as seats return"
         },
         {
@@ -1681,11 +1681,11 @@
           "marker": "fresh-session resume point"
         },
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "fresh-session resume point"
         },
         {
-          "file": "stack/skills/loop-quality/references/staged-mode.md",
+          "file": "stack/skills/loop-code-quality/references/staged-mode.md",
           "marker": "fresh-session resume point"
         }
       ]
@@ -1748,7 +1748,7 @@
           "marker": "ask ONE question before ANALYZE"
         },
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "ask ONE question before ANALYZE"
         },
         {
@@ -1792,7 +1792,7 @@
           "marker": "ask ONE question before GATHER"
         },
         {
-          "file": "stack/skills/loop-quality/references/staged-mode.md",
+          "file": "stack/skills/loop-code-quality/references/staged-mode.md",
           "marker": "ask ONE question before DISCOVERY"
         }
       ]
@@ -1851,7 +1851,7 @@
           "marker": "an earlier session's leftover stamp is not consent"
         },
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "an earlier session's leftover stamp is not consent"
         },
         {
@@ -1863,7 +1863,7 @@
           "marker": "an earlier session's leftover stamp is not consent"
         },
         {
-          "file": "stack/skills/loop-quality/references/staged-mode.md",
+          "file": "stack/skills/loop-code-quality/references/staged-mode.md",
           "marker": "an earlier session's leftover stamp is not consent"
         }
       ]
@@ -1931,44 +1931,44 @@
       "_note": "The implementers' loop findings-plan carve-out (any loop brief without a contract_version) (skip the START memory sequence + contract_version, hand-off write only when the brief names it) - identical in all 10 implementer seats because any subset installs per project; the trio memory contract stays the default.",
       "owner": {
         "file": "stack/agents/aspnet-implementer.md",
-        "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+        "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
       },
       "sites": [
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
         },
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-code-quality`, `loop-architecture-quality`, `loop-test-coverage`"
         }
       ]
     },
@@ -2022,7 +2022,7 @@
       ]
     },
     "assessment-coverage-carve-out": {
-      "_note": "The architecture assessment's coverage carve-out: test-suite weaknesses (coverage numbers, missing/weak tests, absent test infrastructure) belong to capture-test-coverage's COVERAGE.md, never ASSESSMENT.md - only the structural testability blocker stays. Canonical in doc-shape.md; restated at the JUDGE step and in the skill's '## When to use' section because a live run flagged coverage as a weakness with the reference-only statement (the description carried it until 2.1.2 capped descriptions at 160 chars, lint check 15c). Moved from capture-architecture to capture-architecture-quality when the findings judgment split out of the map capture.",
+      "_note": "The architecture assessment's coverage carve-out: test-suite weaknesses (coverage numbers, missing/weak tests, absent test infrastructure) belong to capture-test-coverage's COVERAGE.md, never ARCHITECTURE-ASSESSMENT.md - only the structural testability blocker stays. Canonical in doc-shape.md; restated at the JUDGE step and in the skill's '## When to use' section because a live run flagged coverage as a weakness with the reference-only statement (the description carried it until 2.1.2 capped descriptions at 160 chars, lint check 15c). Moved from capture-architecture to capture-architecture-quality when the findings judgment split out of the map capture.",
       "owner": {
         "file": "stack/skills/capture-architecture-quality/references/doc-shape.md",
         "marker": "Test-suite weaknesses are OUT OF SCOPE"
@@ -2120,7 +2120,7 @@
           "marker": "'Commit now (Recommended)', which runs `habits-commit-checkpoint` whole / 'Hold - review the diff first' - never a prose 'your call' bullet"
         },
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "'Commit now (Recommended)', which runs `habits-commit-checkpoint` whole / 'Hold - review the diff first' - never a prose 'your call' bullet"
         }
       ]
@@ -2133,7 +2133,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "is the gate working, not a fault: put the choice through AskUserQuestion - 'Resume in a fresh session (Recommended)', ending this turn with the RESUME BLOCK / 'Continue here' - and on 'continue', re-issue the same Skill call: the answered offer lets it through until the context grows 1.5x past it"
         },
         {
@@ -2154,7 +2154,7 @@
           "marker": "next: fresh-session | continue"
         },
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "next: fresh-session | continue"
         }
       ]
@@ -2190,7 +2190,7 @@
       ]
     },
     "small-tier-dispatch-consent": {
-      "_note": "In DELEGATED mode the mode ask's answer is the dispatch consent for small-tier work - the loop stamps flow/APPROVAL (APPROVED small-tier) the moment it lands, rewritten as substantial approvals arrive, because the dispatch guard is tier-blind. loop-quality's AUTO-stamp is the same policy in its own shape, deliberately not pinned here.",
+      "_note": "In DELEGATED mode the mode ask's answer is the dispatch consent for small-tier work - the loop stamps flow/APPROVAL (APPROVED small-tier) the moment it lands, rewritten as substantial approvals arrive, because the dispatch guard is tier-blind. loop-code-quality's AUTO-stamp is the same policy in its own shape, deliberately not pinned here.",
       "owner": {
         "file": "stack/skills/loop-architecture-quality/SKILL.md",
         "marker": "APPROVED small-tier"
@@ -2201,7 +2201,7 @@
           "marker": "APPROVED small-tier"
         },
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "APPROVED small-tier"
         }
       ]
@@ -2295,7 +2295,7 @@
           "marker": "a `Leftovers:` line - what the instrumented runs started"
         },
         {
-          "file": "stack/skills/loop-quality/references/staged-mode.md",
+          "file": "stack/skills/loop-code-quality/references/staged-mode.md",
           "marker": "Leftovers - what the pipeline's gate and audit runs started"
         },
         {
@@ -2311,7 +2311,7 @@
           "marker": "names what this run started to build, test, or verify"
         },
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "tear-down-vs-keep through the same AskUserQuestion call"
         }
       ]
@@ -2639,7 +2639,7 @@
           "marker": "step zero is `git rev-parse HEAD` against the brief's pinned base sha"
         },
         {
-          "file": "stack/skills/loop-quality/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-code-quality/references/domain-trio-protocol.md",
           "marker": "step zero is `git rev-parse HEAD` against the brief's pinned base sha"
         }
       ]
@@ -2866,11 +2866,11 @@
           "marker": "memories purged: <names|none>"
         },
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "memories purged: <names|none>"
         },
         {
-          "file": "stack/skills/loop-quality/references/delegated-mode.md",
+          "file": "stack/skills/loop-code-quality/references/delegated-mode.md",
           "marker": "memories purged: <names|none>"
         },
         {
@@ -2886,7 +2886,7 @@
           "marker": "memories purged: <names|none>"
         },
         {
-          "file": "stack/skills/loop-quality/references/staged-mode.md",
+          "file": "stack/skills/loop-code-quality/references/staged-mode.md",
           "marker": "memories purged: <names|none>"
         }
       ]
@@ -2911,7 +2911,7 @@
           "marker": "The purge is counted, not claimed"
         },
         {
-          "file": "stack/skills/loop-quality/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-code-quality/references/domain-trio-protocol.md",
           "marker": "The purge is counted, not claimed"
         },
         {
@@ -2940,11 +2940,11 @@
           "marker": "is never DONE and never resumed as-is"
         },
         {
-          "file": "stack/skills/loop-quality/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-code-quality/references/domain-trio-protocol.md",
           "marker": "is never DONE and never resumed as-is"
         },
         {
-          "file": "stack/skills/loop-quality/references/delegated-mode.md",
+          "file": "stack/skills/loop-code-quality/references/delegated-mode.md",
           "marker": "is never DONE and never resumed as-is"
         },
         {
@@ -2964,24 +2964,24 @@
     "loop-stage-findings-gate-line": {
       "_note": "The starter stage prompts' shared findings-gate line - a deviation is a finding only with a named breakage; a wrong finding costs more than a missed one. Byte-identical across the five audit stage prompts.",
       "owner": {
-        "file": "stack/skills/loop-quality/assets/loops-starter/code-quality.md",
+        "file": "stack/skills/loop-code-quality/assets/loops-starter/code-quality.md",
         "marker": "a wrong finding costs more than a missed one"
       },
       "sites": [
         {
-          "file": "stack/skills/loop-quality/assets/loops-starter/structure.md",
+          "file": "stack/skills/loop-code-quality/assets/loops-starter/structure.md",
           "marker": "a wrong finding costs more than a missed one"
         },
         {
-          "file": "stack/skills/loop-quality/assets/loops-starter/naming.md",
+          "file": "stack/skills/loop-code-quality/assets/loops-starter/naming.md",
           "marker": "a wrong finding costs more than a missed one"
         },
         {
-          "file": "stack/skills/loop-quality/assets/loops-starter/comments.md",
+          "file": "stack/skills/loop-code-quality/assets/loops-starter/comments.md",
           "marker": "a wrong finding costs more than a missed one"
         },
         {
-          "file": "stack/skills/loop-quality/assets/loops-starter/logging.md",
+          "file": "stack/skills/loop-code-quality/assets/loops-starter/logging.md",
           "marker": "a wrong finding costs more than a missed one"
         }
       ]
@@ -2989,24 +2989,24 @@
     "loop-stage-bar-line": {
       "_note": "The starter stage prompts' shared Bar: line (zero findings at every severity, real findings only, open:[] valid on pass 1, never trimmed). Byte-identical across the five audit stage prompts.",
       "owner": {
-        "file": "stack/skills/loop-quality/assets/loops-starter/code-quality.md",
+        "file": "stack/skills/loop-code-quality/assets/loops-starter/code-quality.md",
         "marker": "Bar: zero findings at every severity - real findings only"
       },
       "sites": [
         {
-          "file": "stack/skills/loop-quality/assets/loops-starter/structure.md",
+          "file": "stack/skills/loop-code-quality/assets/loops-starter/structure.md",
           "marker": "Bar: zero findings at every severity - real findings only"
         },
         {
-          "file": "stack/skills/loop-quality/assets/loops-starter/naming.md",
+          "file": "stack/skills/loop-code-quality/assets/loops-starter/naming.md",
           "marker": "Bar: zero findings at every severity - real findings only"
         },
         {
-          "file": "stack/skills/loop-quality/assets/loops-starter/comments.md",
+          "file": "stack/skills/loop-code-quality/assets/loops-starter/comments.md",
           "marker": "Bar: zero findings at every severity - real findings only"
         },
         {
-          "file": "stack/skills/loop-quality/assets/loops-starter/logging.md",
+          "file": "stack/skills/loop-code-quality/assets/loops-starter/logging.md",
           "marker": "Bar: zero findings at every severity - real findings only"
         }
       ]
@@ -3053,7 +3053,7 @@
           "marker": "all four questions answered explicitly"
         },
         {
-          "file": "stack/skills/loop-quality/references/rules.md",
+          "file": "stack/skills/loop-code-quality/references/rules.md",
           "marker": "all four are answered explicitly"
         },
         {
@@ -3506,7 +3506,7 @@
           "marker": "what it says it covers, never by a remembered name"
         },
         {
-          "file": "stack/skills/loop-quality/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-code-quality/references/domain-trio-protocol.md",
           "marker": "match it from YOUR skill list by what each skill says it covers"
         },
         {
@@ -5295,11 +5295,11 @@
           "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool"
         },
         {
-          "file": "stack/skills/loop-quality/references/staged-mode.md",
+          "file": "stack/skills/loop-code-quality/references/staged-mode.md",
           "marker": "written with the Write tool at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL`"
         },
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool"
         }
       ]
@@ -5316,11 +5316,11 @@
           "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
         },
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
         },
         {
-          "file": "stack/skills/loop-quality/references/delegated-mode.md",
+          "file": "stack/skills/loop-code-quality/references/delegated-mode.md",
           "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
         },
         {
@@ -5639,7 +5639,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
         },
         {
@@ -5655,7 +5655,7 @@
           "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
         },
         {
-          "file": "stack/skills/loop-quality/references/staged-mode.md",
+          "file": "stack/skills/loop-code-quality/references/staged-mode.md",
           "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
         },
         {
@@ -5671,7 +5671,7 @@
     "never-weaken-the-bar": {
       "_note": "Never weaken, skip or delete a check, test or assertion to make a bar appear met - a fix that would break a test is a finding, not a fix. The quality loop's run rules own it; the upgrade flow restates it for its stage gates. loop-architecture-quality carries a third copy (handed off to the rules/architecture seat to add as a site).",
       "owner": {
-        "file": "stack/skills/loop-quality/references/rules.md",
+        "file": "stack/skills/loop-code-quality/references/rules.md",
         "marker": "Never weaken, skip, or delete a check, test, or assertion to make a bar appear met"
       },
       "sites": [
@@ -6449,7 +6449,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "an in-context list only, never written to a file"
         },
         {
@@ -6466,7 +6466,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "green across the round"
         },
         {
@@ -6483,7 +6483,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "equals the previous round's and none is now resolvable"
         },
         {
@@ -6500,7 +6500,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "is the routing authority"
         },
         {
@@ -6517,7 +6517,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "Re-tier only through the ask"
         }
       ]
@@ -6534,7 +6534,7 @@
           "marker": "so the fan-out stays flat"
         },
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "so the fan-out stays flat"
         },
         {
@@ -6750,11 +6750,11 @@
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/loop-quality/SKILL.md",
+          "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/loop-quality/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-code-quality/references/domain-trio-protocol.md",
           "marker": "exactly as the roster spells it"
         },
         {

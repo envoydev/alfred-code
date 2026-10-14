@@ -73,7 +73,7 @@ Denied by the permission classifier? ASK, do not re-probe. Re-issuing the same d
 
 ```ask
 Where should Alfred Code keep this project's data - its docs, the navigation index and handoff notes, browser profiles and a project memory database? Recommended: .alfred at the project root - one folder outside .claude/, where Claude Code prompts for every write.
-- '.alfred (Recommended)' - everything under one folder at the project root; its own .gitignore keeps all but the docs out of git
+- '.alfred (Recommended)' - everything under one folder at the project root; its one .gitignore keeps all but the docs out of git
 - 'Another folder' - the path is asked next: relative, inside the project, never under .claude/, no space
 ```
 

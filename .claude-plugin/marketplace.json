@@ -608,7 +608,7 @@
         ],
         "UserPromptExpansion": [
           {
-            "matcher": "(^|[^A-Za-z0-9_-])((alfred-)?(loop-(quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|usage-report|related-projects|agent-awareness|project-awareness|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|init|setup|update|configure|validate)$",
+            "matcher": "(^|[^A-Za-z0-9_-])((alfred-)?(loop-(quality|code-quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|usage-report|related-projects|agent-awareness|project-awareness|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|init|setup|update|configure|validate)$",
             "hooks": [
               {
                 "type": "command",

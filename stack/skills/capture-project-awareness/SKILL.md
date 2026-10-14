@@ -123,7 +123,8 @@ When the login answer asked for the keys, they go in the project's sensitive dat
 (`.alfred` unless `ALFRED_CODE_DATA_PATH` names another root). Prove it is ignored BEFORE writing:
 `git check-ignore -q <data root>/.sensitive-data` exits 0 - the root's own `.gitignore` covers it. Any other exit
 writes nothing: the doc points at an environment variable and the report names `/alfred-code:update`, which writes
-that `.gitignore`. Outside git there is nothing to commit it to; say so. Absent, Write it with the keys empty
+that `.gitignore`. Outside git there is nothing to commit it to; say so. Every install writes it with one comment line and no
+key, so it is normally present; absent (an older install), Write it with the keys empty
 (`references/doc-shape.md`). Present, it is the user's - never read, rewritten or appended to (the secret guard
 refuses each); the session's `Sensitive data:` line lists its keys, and a key the doc needs that it lacks is a
 `KEY=` line the report hands the user to add.

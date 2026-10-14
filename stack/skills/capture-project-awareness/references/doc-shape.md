@@ -107,8 +107,10 @@ file feeds, or the glob is wrong.
 
 ## The keys in the sensitive data
 
-The project's sensitive data, `<data root>/.sensitive-data`, is written only when the login answer asked for the
-keys, and only when absent - one that exists is the user's, never read, rewritten or appended to. One key per
+The project's sensitive data, `<data root>/.sensitive-data`, exists from the install on - one comment line, no key -
+so a capture normally finds it present and hands each key as a `KEY=` line the user adds. The capture writes it only
+when the login answer asked for the keys and it is absent (an install older than that) - one that exists is the user's,
+never read, rewritten or appended to. One key per
 account the answer named, every value EMPTY; the secret guard holds every value in the file as a credential,
 whatever its key:
 

@@ -341,7 +341,7 @@ the seat handoff notes still in the memory database (`node .claude/hooks/memory.
 |---|---|---|---|
 | architecture/ARCHITECTURE.md | yes | main@a1b2c3d, 2026-07-24 | 2026-07-24 |
 | architecture/watch.json | yes | - | 2026-07-24 |
-| quality/ASSESSMENT.md | yes | as of main@a1b2c3d, 2026-07-24 (recomputed, not a domain) | 2026-07-24 |
+| quality/ARCHITECTURE-ASSESSMENT.md | yes | as of main@a1b2c3d, 2026-07-24 (recomputed, not a domain) | 2026-07-24 |
 | quality/CODE-ASSESSMENT.md | no | - | - |
 | code-style/CODE-STYLE.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
 | related-projects/RELATED-PROJECTS.md | no | - | - |

@@ -79,11 +79,12 @@ touches no committed file). The lines, minus anything the project already covers
 - `.alfred/` - the data root (`ALFRED_CODE_DATA_PATH`), outside `.claude/` because Claude Code prompts
   for every write there: the docs (`.alfred/docs/`), the navigation server's index, handoff notes and
   language servers (`.alfred/serena/`), the browser profiles holding session cookies
-  (`.alfred/<engine>-control/`) and a project-level memory database (`.alfred/.alfred-memory/`). It
-  carries its own `.gitignore`, which keeps everything but `docs/` out of git, so while the docs are
-  committed it needs no line here. The docs carry their own, written from `ALFRED_CODE_DOCS_VERSIONING`:
-  `local` keeps them out of git, `git` (a fresh project's default) commits them and keeps only the hooks'
-  machine state out. To keep the docs machine-local, switch it once with
+  (`.alfred/<engine>-control/`), a project-level memory database (`.alfred/.alfred-memory/`) and the
+  project's sensitive data (`.alfred/.sensitive-data`). Its ONE `.gitignore` keeps everything but `docs/` out
+  of git, so while the docs are committed it needs no line here, and it carries the docs' rules too, written
+  from `ALFRED_CODE_DOCS_VERSIONING`: `local` keeps them out of git, `git` (a fresh project's default) commits
+  them and keeps only the hooks' machine state out. No folder under it carries a `.gitignore` of the stack's
+  (serena writes one in `.alfred/serena/` itself). To keep the docs machine-local, switch it once with
   `/alfred-code:update --docs-versioning local`. Where nothing under it is committed (local docs, or the
   docs root set elsewhere) git still lists `.alfred/` as untracked; then add `/.alfred/` -
   `node scripts/git-hygiene.js --root .` from the run's snapshot says which case applies, and

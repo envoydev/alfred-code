@@ -18,7 +18,7 @@ const copiesOf = (entry) => [entry.owner, ...(entry.sites || [])].map((c) => c.f
 const registryFindings = (...names) => lintSharedRules({ rules: Object.fromEntries(names.map((n) => [n, shared()[n]])) }, read);
 
 const TRIO_OWNER = 'stack/skills/task-solve-cross/references/domain-trio-protocol.md';
-const TRIO_COPIES = [TRIO_OWNER, ...['loop-architecture-quality', 'loop-quality', 'loop-test-coverage', 'task-build-from-scratch']
+const TRIO_COPIES = [TRIO_OWNER, ...['loop-architecture-quality', 'loop-code-quality', 'loop-test-coverage', 'task-build-from-scratch']
     .map((s) => `stack/skills/${s}/references/domain-trio-protocol.md`)];
 
 // ---- BLOCKER 1 (C1, D4): the vendored trio fan-out obeys the 3-at-once cap -------------------------------------
@@ -53,10 +53,10 @@ test('trio protocol: two failed fix rounds end in ONE marked ask, never a bare e
 });
 
 // ---- the three improvement loops ------------------------------------------------------------------------------
-const LOOPS = ['loop-architecture-quality', 'loop-quality', 'loop-test-coverage'];
+const LOOPS = ['loop-architecture-quality', 'loop-code-quality', 'loop-test-coverage'];
 const BLOCKED_RETRY = "is the gate working, not a fault: put the choice through AskUserQuestion - 'Resume in a fresh session (Recommended)', ending this turn with the RESUME BLOCK / 'Continue here' - and on 'continue', re-issue the same Skill call: the answered offer lets it through until the context grows 1.5x past it";
 
-// C5, D5, MATERIAL loop-architecture-quality:27 / loop-quality:33: guard-fresh-session-start re-arms on 1.5x growth
+// C5, D5, MATERIAL loop-architecture-quality:27 / loop-code-quality:33: guard-fresh-session-start re-arms on 1.5x growth
 // (scripts/guard-hooks.test.js 'the size offer is answerable - the retry passes'), so a loop retries an answered block.
 test('C5: a loop re-issues a capture call the fresh-session guard blocked, never reads the capture\'s SKILL.md instead', () => {
     for (const name of LOOPS) {
@@ -81,7 +81,7 @@ test('C6: every loop close recommends the local commit and routes it through the
         assert.doesNotMatch(text, /\(commit now \/ hold\)/, `${name}: the unmarked, commit-first ask is gone`);
         assert.ok(text.includes(ask), `${name}: the marked ask`);
     }
-    for (const name of ['loop-architecture-quality', 'loop-quality']) {
+    for (const name of ['loop-architecture-quality', 'loop-code-quality']) {
         const mech = flat(read(`stack/skills/${name}/references/loop-mechanics.md`));
         assert.doesNotMatch(mech, /commit now \/ hold/, `${name}/loop-mechanics.md: the report rules name the same ask`);
         assert.match(mech, /'Commit now \(Recommended\)', which runs `habits-commit-checkpoint` whole \/ 'Hold - review the diff first'/);
@@ -104,9 +104,9 @@ test('loops: the mode, plan-approval and structural asks each mark exactly one o
     assert.deepStrictEqual(registryFindings('mode-ask-at-start'), []);
 });
 
-// MINOR loop-architecture-quality:51, loop-quality:55: an INLINE answer never dispatches a resolver seat.
+// MINOR loop-architecture-quality:51, loop-code-quality:55: an INLINE answer never dispatches a resolver seat.
 test('loops: a red routes to a resolver seat only in DELEGATED mode', () => {
-    for (const name of ['loop-architecture-quality', 'loop-quality']) {
+    for (const name of ['loop-architecture-quality', 'loop-code-quality']) {
         const text = flat(skill(name));
         assert.match(text, /a red routes, in DELEGATED mode, to the matching build- or test-failure resolver seat where the project installed one/, name);
         assert.match(text, /INLINE, or with no matching seat installed, fix the red in-session/, name);
@@ -117,13 +117,13 @@ test('loops: a red routes to a resolver seat only in DELEGATED mode', () => {
 
 // MINOR loop-architecture-quality:9, loop-test-coverage:9: no see-also into a sibling loop.
 test('loops: the opening paragraph carries no see-also into a sibling loop', () => {
-    assert.doesNotMatch(flat(skill('loop-architecture-quality')), /the code-focused counterpart is `loop-quality`/);
+    assert.doesNotMatch(flat(skill('loop-architecture-quality')), /the code-focused counterpart is `loop-code-quality`/);
     assert.doesNotMatch(flat(skill('loop-test-coverage')), /exactly like `loop-architecture-quality` for architecture/);
 });
 
-// MINOR loop-quality:23: each staged-mode companion is named with the step that reads it.
-test('loop-quality: each staged companion is named with the step that reads it', () => {
-    const text = flat(skill('loop-quality'));
+// MINOR loop-code-quality:23: each staged-mode companion is named with the step that reads it.
+test('loop-code-quality: each staged companion is named with the step that reads it', () => {
+    const text = flat(skill('loop-code-quality'));
     for (const piece of [/`references\/rules\.md` \(before the first stage's first pass\)/, /`references\/stage-close\.md` \(at each stage STOP or pause, and on resume\)/,
         /`references\/delegated-mode\.md` \(DELEGATED only, before the first dispatch\)/, /`references\/worked-example\.md` \(optional/, /`references\/bootstrap\.md` \(a missing or empty loops folder\)/])
         assert.match(text, piece);

@@ -133,7 +133,7 @@ test('M39 the handoff notes keep the one grammar and are read by exact tags', ()
     assert.doesNotMatch(solve, /named `<feature>\/cycle`/);
     assert.match(solve, /\(`<feature>\/<contract_version>\/<seat>\/<task>`\), never a second cursor/);
     assert.match(solve, /Resume: step 4 BUILD - mode session - next task 2/);
-    assert.match(read('stack/skills/loop-quality/references/delegated-mode.md'), /named `<feature>\/<contract_version>\/<seat>\/<task>`/);
+    assert.match(read('stack/skills/loop-code-quality/references/delegated-mode.md'), /named `<feature>\/<contract_version>\/<seat>\/<task>`/);
 });
 
 // The purge count is a script's number, never a recollection: `node .claude/hooks/memory.js handoff <feature>` reads

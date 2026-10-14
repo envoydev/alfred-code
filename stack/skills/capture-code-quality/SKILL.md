@@ -21,7 +21,7 @@ You are the judgment seat for this run: you gather the project's quality rules, 
 
 - A tiered, gated assessment against the numbered prompts under the loops folder, the convention rules and the recorded code style; every finding is tied to its file:line and rule and recomputed fresh each run into `quality/CODE-ASSESSMENT.md`.
 - Deliberate only, never mid-build; fixes nothing and never writes the decision log.
-- Not for fixing the findings (/loop-quality), the architecture (capture-architecture-quality), test coverage (the coverage capture), recording the code style (/capture-code-style), a security audit (/security-review or the security-auditor seat) or one diff (task-verify-code).
+- Not for fixing the findings (/loop-code-quality), the architecture (capture-architecture-quality), test coverage (the coverage capture), recording the code style (/capture-code-style), a security audit (/security-review or the security-auditor seat) or one diff (task-verify-code).
 
 ## Execution modes
 
@@ -54,7 +54,7 @@ Collect the rule sources, in precedence order (`references/doc-shape.md` says wh
 2. **`<docs-path>/code-style/CODE-STYLE.md`** - the style the project actually follows; absent, say so.
 3. **The stack's convention rules** - the path-scoped files under `.claude/rules/` whose globs attach a file family to its house convention skill. Only the families the target actually holds count.
 
-**No rule source at all - stop.** No stage prompt under `loops/`, no `CODE-STYLE.md` and no convention rule attaching to a file family the target holds: say so in one line and stop before GATHER, writing nothing - a doc judged against nothing reads as clean code. Name the two ways to get rules, both the user's to run: `/capture-code-style` records the code style, and `/loop-quality` seeds the `loops/` starter set.
+**No rule source at all - stop.** No stage prompt under `loops/`, no `CODE-STYLE.md` and no convention rule attaching to a file family the target holds: say so in one line and stop before GATHER, writing nothing - a doc judged against nothing reads as clean code. Name the two ways to get rules, both the user's to run: `/capture-code-style` records the code style, and `/loop-code-quality` seeds the `loops/` starter set.
 
 Then the modules, inside the target - the scope the invocation names (the quality loop hands its TARGET), else the whole project: the Project structure table of `<docs-path>/architecture/ARCHITECTURE.md` when the map exists, else the target's top-level source folders from one listing (say the map is missing - a stale or absent map is a note, never a blocker). Read `<docs-path>/quality/CODE-ASSESSMENT.md` if it exists - not ground truth, but gate question 3 folds a re-measurement into its entries - and the decision log plus the project AGENTS.md's recorded choices, which gate question 4 depends on.
 
@@ -68,7 +68,7 @@ Treat every `F` line as a candidate, never a finding, until it clears `reference
 Where a finding is unclear or a module came back PARTIAL, dispatch code-quality-analyzer again on exactly that module and rule. Where two seats contradict each other on a CHECKABLE fact, settle it with the cheapest deterministic probe in-session first (`grep -c`, a navigation-server lookup, the stack's own command) and re-dispatch only for a judgment conflict no command settles. **Hard cap: 3 gather rounds.** Still unsettled after 3: write what is established, mark what is uncertain and what would settle it - never guess to fill an entry.
 
 ### 5. WRITE - <docs-path>/quality/CODE-ASSESSMENT.md, per references/doc-shape.md
-No diff check - once the run gate is answered, REPLACE the file wholesale every run: READ it first if it exists so the Write is legal, then Write the fresh judgment over it, composed whole in-session and landed in one write. Write ONLY `<docs-path>/quality/CODE-ASSESSMENT.md` - never source, never the loops prompts, never the decision log. After the write, `wc -l` it against the ~300-line target and run the spill pass now if it is over.
+No diff check - once the run gate is answered, REPLACE the file wholesale every run: READ it first if it exists so the Write is legal, then Write the fresh judgment over it, composed whole in-session and landed in one Write of the whole file - no Edit, no `sed`, no patch of the old text, the spill pass included. A calling flow's brief that names what shipped or what remains is context for the report, never the scope: a 'reconcile' run still judges every module. Write ONLY `<docs-path>/quality/CODE-ASSESSMENT.md` - never source, never the loops prompts, never the decision log. After the write, `wc -l` it against the ~300-line target and run the spill pass now if it is over.
 
 ### 6. REPORT
 Confirm the file written (created vs refreshed), then lean: gather rounds used and whether the picture settled within the cap, the assessment's shape (per-bucket counts, the Must-fix tier and severity tallies, the per-rule counts, the top few fixes the quality loop should take first), the hand-offs counted by destination, any Proposed decisions, anything unverified and what would settle it. Then the receipt lines - one per field, UNCONDITIONAL:

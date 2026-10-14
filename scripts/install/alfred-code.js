@@ -884,18 +884,13 @@ function runLayers(ctx)
     selection.moveGeneratedRules({ projectRoot: ctx.projectRoot, log: ctx.log, note: ctx.note });
     docsRootStep(ctx);
     installHooksAndRules(ctx);
-    importMemory(ctx);
     const docsPath = copy.resolveDocsRoot(ctx.projectRoot, ctx.args.scope);
+    // After the settings pass, so the versioning is the decision this run just wrote; before the memory import, so a
+    // project database lands under a root whose .gitignore already keeps it out.
+    ignoreStep(ctx, docsPath);
+    importMemory(ctx);
     docs.migrateDocsDomains({ projectRoot: ctx.projectRoot, docsPath, rules: selection.generatedRules(ctx.projectRoot), instructions: selection.instructionFiles(ctx.projectRoot), log: ctx.log });
-    // The root states its own versioning to git (docs.ensureDocsIgnore) - after the settings pass, so
-    // it reads the decision this run just wrote.
-    try
-    {
-        const mode = copy.resolveDocsVersioning(ctx.projectRoot, ctx.args.scope) || docs.docsVersioningSeed({ projectRoot: ctx.projectRoot, docsPath });
-        docs.ensureDocsIgnore({ projectRoot: ctx.projectRoot, docsPath, mode, log: ctx.log });
-    }
-    catch (err) { ctx.note(`${docsPath}/.gitignore could not be written (${err.message}) - add the docs root's machine state to the repo's own .gitignore`); }
-    // After the root's .gitignore names the new folder, so a raw transcript copy never lands unignored.
+    // After the .gitignore names the new folder, so a raw transcript copy never lands unignored.
     try { docs.migrateUsageReport({ projectRoot: ctx.projectRoot, docsPath, log: ctx.log }); }
     catch (err) { ctx.note(`the usage report folder could not be renamed under ${docsPath} (${err.message}) - it stays as alfred-code-usage-report/`); }
     try { docs.migratePlans({ projectRoot: ctx.projectRoot, docsPath, rules: selection.generatedRules(ctx.projectRoot), instructions: selection.instructionFiles(ctx.projectRoot), log: ctx.log }); }
@@ -972,8 +967,46 @@ function adoptCredentialsAt(ctx, root, docsPath)
     else if (r.state === 'blocked' || r.state === 'failed') log(`  !! sensitive data: ${r.from} not moved (${r.why}) - the next run tries again`);
 }
 
-// The data root's own files, once the docs root is settled: its `.gitignore` (docs.ensureDataIgnore - the
-// docs stay visible to git, everything else is machine state), serena's project.yml seeded where serena
+// THE ONE .gitignore (the user's ruling of 2026-10-13): the data root's file carries the docs rules too
+// (docs.ensureDataIgnore), so the docs root's own file goes when it is the stack's text, and so do the nested ones an
+// earlier release wrote (docs.pruneNestedIgnores). A docs root outside the data root, or a data root whose file is the
+// project's own, keeps the docs root's own file (docs.ensureDocsIgnore). ctx.dataIgnoreOk gates what may land under
+// the root only once git keeps it out (the sensitive data).
+const STACK_IGNORE = ['written', 'replaced', 'current'];
+function ignoreStep(ctx, docsPath)
+{
+    const { projectRoot, log, note } = ctx;
+    const root = ctx.dataInfo.root;
+    let mode = null;
+    try { mode = copy.resolveDocsVersioning(projectRoot, ctx.args.scope) || docs.docsVersioningSeed({ projectRoot, docsPath }); }
+    catch (err) { note(`the docs versioning could not be read (${err.message}) - the .gitignore keeps the docs committed`); }
+    let data = null;
+    try { data = docs.ensureDataIgnore({ projectRoot, root, docsPath, mode, log }); }
+    catch (err) { note(`${root}/.gitignore could not be written (${err.message}) - add ${root}/ to the repo's own .gitignore, keeping its docs/ folder visible`); }
+    ctx.dataIgnoreOk = data !== null;
+    const dataCovered = STACK_IGNORE.includes(data);
+    let own = null;
+    try { own = docs.ensureDocsIgnore({ projectRoot, docsPath, mode, covered: dataCovered && Boolean(dataRoot.docsInsideRoot({ root, docsPath })), log }); }
+    catch (err) { note(`${docsPath}/.gitignore could not be written (${err.message}) - add the docs root's machine state to the repo's own .gitignore`); }
+    const docsCovered = (dataCovered && Boolean(dataRoot.docsInsideRoot({ root, docsPath }))) || STACK_IGNORE.includes(own);
+    try { docs.pruneNestedIgnores({ projectRoot, root, docsPath, docsCovered, dataCovered, log }); }
+    catch (err) { note(`the nested .gitignore files could not be checked (${err.message}) - they stay as they are`); }
+}
+
+// The project's sensitive data exists from the first install on (data-root.js ensureSensitiveFile): one comment line,
+// written only where git keeps it out; a store git would commit is said, never made.
+function sensitiveFile(ctx, root)
+{
+    let r;
+    try { r = dataRoot.ensureSensitiveFile({ projectDir: ctx.projectRoot, root }); }
+    catch (err) { ctx.note(`${root}/.sensitive-data could not be written (${err.code || err.message}) - create it by hand, one KEY=value per line`); return; }
+    if (r === 'written') ctx.log(`  sensitive data: ${root}/.sensitive-data written - empty, gitignored; put KEY=value lines in it by hand`);
+    else if (r === 'exposed') ctx.log(`  !! sensitive data: ${root}/.sensitive-data not written - git would commit it (the data root's .gitignore is the project's own); ignore it, then run /alfred-code:update`);
+    else if (r === 'blocked') ctx.log(`  !! sensitive data: ${root}/.sensitive-data is not a file - nothing written`);
+}
+
+// The data root's own files, once the docs root is settled: its `.gitignore` (written by ignoreStep - the
+// docs follow their versioning, everything else is machine state), serena's project.yml seeded where serena
 // reads it this run (the root, or a 2.0.0 .serena its launcher has not moved yet) and its home config
 // pointing serena at the folder (the launcher writes it too - the installer's copy serves the copy route,
 // which runs no launcher, and a `serena project index` run before any start). A 2.0.0 place still in use
@@ -982,10 +1015,11 @@ function dataRootLayer(ctx, docsPath)
 {
     const { projectRoot, log, note } = ctx;
     const root = ctx.dataInfo.root;
-    let ignoreOk = true;
-    try { docs.ensureDataIgnore({ projectRoot, root, docsPath, log }); }
-    catch (err) { ignoreOk = false; note(`${root}/.gitignore could not be written (${err.message}) - add ${root}/ to the repo's own .gitignore, keeping its docs/ folder visible`); }
-    if (ignoreOk) adoptCredentials(ctx, root, docsPath);
+    if (ctx.dataIgnoreOk !== false)
+    {
+        adoptCredentials(ctx, root, docsPath);
+        sensitiveFile(ctx, root);
+    }
     const navigation = ctx.lists.mcps.some((e) => e.startsWith('alfred-navigation|'));
     const serenaDir = ctx.liveOf('serena');
     serena.seedProject({ projectRoot, selected: navigation, dir: serenaDir, root, log });
@@ -2301,7 +2335,8 @@ function installHooksAndRules(ctx)
 function importMemory(ctx)
 {
     // A project database its launcher still owes a move keeps its old folder's own .gitignore, and moves with
-    // it - a file written at the new place first would make that place look taken.
+    // it - a file written at the new place first would make that place look taken. Under the data root no file is
+    // written at all (memory.ensureProjectIgnore): the root's own .gitignore keeps the folder out.
     if (ctx.level.level === 'project' && !ctx.dataPlan.pending.some((p) => p.cls === 'memory'))
     {
         try { memory.ensureProjectIgnore(ctx.projectRoot, ctx.log, ctx.level.dbPath); }

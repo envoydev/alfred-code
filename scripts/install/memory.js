@@ -309,13 +309,18 @@ function registeredMemory(projectRoot, { home, configDir })
     return withPath(acctFile, memoryServerOf(own && own.mcpServers));
 }
 
-// A project-level database lives in the repo, so its folder gets its own `.gitignore` (`*`) the moment
-// the level lands - from init, update or configure alike (M5) - on top of the data root's own. `dbPath` is
-// the database the level names; with none, the 2.0.0 place. An existing file is the user's, left alone.
+// A project-level database lives in the repo, so its folder is kept out of git the moment the level lands - from
+// init, update or configure alike (M5). Under a data root whose `.gitignore` is the stack's, that file already does it
+// (`/*`) and nothing is written (the user's ruling of 2026-10-13: one file); elsewhere - the 2.0.0 place, a folder the
+// user named - the folder gets its own `*`. `dbPath` is the database the level names; with none, the 2.0.0 place. An
+// existing file is the user's, left alone.
 function ensureProjectIgnore(projectRoot, log = () => {}, dbPath = '')
 {
     const dir = dbPath ? path.dirname(dbPath) : path.join(projectRoot, dataRoot.LEGACY_MEMORY_FOLDER);
     const ignore = path.join(dir, '.gitignore');
+    let parent = '';
+    try { parent = fs.readFileSync(path.join(path.dirname(dir), '.gitignore'), 'utf8'); } catch { parent = ''; }
+    if (path.basename(dir) === dataRoot.MEMORY_FOLDER && parent.startsWith(dataRoot.DATA_IGNORE_HEAD)) return false;
     if (fs.existsSync(ignore)) return false;
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(ignore, '*\n');

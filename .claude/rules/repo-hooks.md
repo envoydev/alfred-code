@@ -713,8 +713,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     import, find the server one way (`serviceEntry`): a registration, else the installed
     `memory@envoydev` plugin's own declaration with the db path pinned.
   - `history-session.js` (`SessionStart` + `Stop`) with its engine `history.js` (copied beside it, not
-    wired) - a machine-local record per session under `<docs-path>/history/` (a `.gitignore` of `*` written
-    INSIDE that folder, the project's own never opened; no `watch.json`, so no docs domain): at `Stop` it
+    wired) - a machine-local record per session under `<docs-path>/history/` (no `.gitignore` of its own since 2026-10-13 - the data root's
+    one file keeps it out, and an update removes the `*` file earlier releases wrote; no `watch.json`, so no docs domain): at `Stop` it
     reads only the transcript bytes past a stored offset (8MB at most per pass) and keeps the commits since
     the session's start sha, the files left dirty, the plan file written (project-relative, or `~/` under the home
     directory) and the user's AskUserQuestion answers (credential shapes scrubbed, 300 chars each, 60 kept); its git

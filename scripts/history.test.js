@@ -77,12 +77,12 @@ test('a half-written last line is left for the next pass', () => {
   assert.strictEqual(e.rulings.length, 1);
 });
 
-test('the folder ignores itself, and credentials never reach the file', () => {
+test('the folder writes no .gitignore of its own (the data root\'s keeps it out), and credentials never reach the file', () => {
   const { root } = project();
   const tr = transcriptFile();
   fs.writeFileSync(tr, ruling('Token?', 'use ghp_0123456789abcdefghij0123456789abcdef now'));
   H.upsert(root, { session_id: 's3', transcript_path: tr, cwd: root });
-  assert.strictEqual(fs.readFileSync(path.join(H.historyDir(root), '.gitignore'), 'utf8'), '*\n');
+  assert.ok(!fs.existsSync(path.join(H.historyDir(root), '.gitignore')), 'the user\'s ruling of 2026-10-13: one .gitignore, the data root\'s');
   assert.doesNotMatch(fs.readFileSync(path.join(H.historyDir(root), 's3.json'), 'utf8'), /ghp_/);
 });
 

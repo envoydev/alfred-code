@@ -56,7 +56,7 @@ test('C9: the engine refuses `set` on a missing doc on an overlay branch, and ta
 // conversational question ('what are the risks here?') used to start the whole run with no approval. Each now
 // asks first unless its loop invoked it, and its doc-shape no longer claims 'no write gate'.
 const RUN_GATES = {
-    'capture-architecture-quality': { shape: 'references/doc-shape.md', doc: 'ASSESSMENT.md', before: '### 1. ORIENT' },
+    'capture-architecture-quality': { shape: 'references/doc-shape.md', doc: 'ARCHITECTURE-ASSESSMENT.md', before: '### 1. ORIENT' },
     'capture-code-quality': { shape: 'references/doc-shape.md', doc: 'CODE-ASSESSMENT.md', before: '### 1. ORIENT' },
     'capture-test-coverage': { shape: 'references/doc-shape.md', doc: 'COVERAGE.md', before: '### 3. MEASURE' },
 };
@@ -129,7 +129,7 @@ test('audit 2026-10-08: the inventory marks every capture a loop invokes as mode
     const inv = read('stack/skills/capture-agent-awareness/scripts/capabilities-inventory.js');
     const set = /const MODEL_INVOCABLE_BY_DESIGN = new Set\(\[([^\]]*)\]\)/.exec(inv);
     const names = [...set[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
-    for (const loop of ['loop-architecture-quality', 'loop-quality', 'loop-test-coverage'])
+    for (const loop of ['loop-architecture-quality', 'loop-code-quality', 'loop-test-coverage'])
     {
         const body = read(`stack/skills/${loop}/SKILL.md`);
         for (const cap of ['capture-architecture', 'capture-architecture-quality', 'capture-code-quality', 'capture-test-coverage'])

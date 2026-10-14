@@ -117,7 +117,7 @@ Skills you start by name. Every install has these.
 | `/capture-first-look` | A quick map of an unfamiliar project |
 | `/capture-architecture` | Write or refresh the architecture docs |
 | `/capture-project-awareness` | A run book: build, start, log in |
-| `/loop-quality` | Find and fix code-quality issues in rounds |
+| `/loop-code-quality` | Find and fix code-quality issues in rounds |
 
 Add what you want after the name:
 

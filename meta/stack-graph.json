@@ -315,7 +315,7 @@
       ],
       "plugins": []
     },
-    "loop-quality": {
+    "loop-code-quality": {
       "mcps": [
         "alfred-memory"
       ],

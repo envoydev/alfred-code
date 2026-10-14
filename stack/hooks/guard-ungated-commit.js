@@ -506,7 +506,7 @@ const TRANSCRIPT_SCAN_MAX = 64 * 1024 * 1024;
 const SKILL_RAN_RE = /"name"\s*:\s*"Skill"|<command-name>\/(?:[\w-]+:)?(?:(?:alfred|project)-[\w-]+|(?:capture|habits|issue|loop|task)-[\w-]+)<\/command-name>/;
 const normQuote = (t) => String(t).replace(/\s*\(recommended\)\s*$/i, '').replace(/\s+/g, ' ').trim().toLowerCase();
 // A review the checkpoint names: the house verify skills and loops, /security-review, or a verifier / reviewer seat.
-const REVIEW_SKILL = /(?:^|:)(?:(?:project-|task-)?verify-(?:code|plan)|quality-loop|(?:alfred-)?loop-(?:quality|architecture-quality|test-coverage)|security-review)$/i;
+const REVIEW_SKILL = /(?:^|:)(?:(?:project-|task-)?verify-(?:code|plan)|quality-loop|(?:alfred-)?loop-(?:quality|code-quality|architecture-quality|test-coverage)|security-review)$/i;
 const REVIEW_SEAT = /verifier|reviewer/i;
 let _scan;
 function transcriptScan() {
@@ -895,7 +895,7 @@ function judgeReceipt(body, opts) {
   // consent in 45 seconds and defeats the freshness check.
   // The loop arm names both spellings: the 1.x `quality-loop` and the 2.0.0 `alfred-loop-<name>` and the 2.2.0 `loop-<name>`
   // family - the rename left this arm matching nothing, so a receipt naming the loop minted consent.
-  if (/\b(project-)?verify-(code|plan)\b|\bquality-loop\b|\b(?:alfred-)?loop-(?:quality|architecture-quality|test-coverage)\b/i.test(first) && !skillCallRan() && !field('carried')) {
+  if (/\b(project-)?verify-(code|plan)\b|\bquality-loop\b|\b(?:alfred-)?loop-(?:quality|code-quality|architecture-quality|test-coverage)\b/i.test(first) && !skillCallRan() && !field('carried')) {
     r.problem = `the VERIFIED line names a verify skill but no Skill call ran in this session - if this review is carried from an earlier cycle say so: \`carried: <cycle id>, reviewed <date>\``;
     return r;
   }

@@ -1,6 +1,6 @@
 # Staged mode - the numbered-prompt pipeline (autonomous)
 
-The pre-2.0.0 run of `loop-quality`, kept whole for a project that relies on it: each stage
+The pre-2.0.0 run of `loop-code-quality`, kept whole for a project that relies on it: each stage
 prompt under the loops folder runs in numeric order as its own review-fix loop, looped to that prompt's
 bar, then the next. It is reached only the way the skill's Execution modes say - an invocation naming
 `staged`, or the resume of a staged run - and it binds that run alone: the default loop never reads it,

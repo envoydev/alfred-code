@@ -88,7 +88,7 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   seat with a `## Loop` section and no cap. Captures are deliberate-only
   (`capture-architecture` writes `architecture/ARCHITECTURE.md` and
   `alfred-architecture.md`; the findings go to `capture-architecture-quality`
-  (`quality/ASSESSMENT.md`), the code's to `capture-code-quality` (`quality/CODE-ASSESSMENT.md`), and the
+  (`quality/ARCHITECTURE-ASSESSMENT.md`), the code's to `capture-code-quality` (`quality/CODE-ASSESSMENT.md`), and the
   run book to `capture-project-awareness` (`project-capabilities/PROJECT-CAPABILITIES.md` and
   `alfred-project-awareness.md` - how to build, start, reach, log into and hand-check the app, which the
   ten verifiers, `issue-diagnoser-runtime`, `evidence-gatherer` and `integration-reviewer` read

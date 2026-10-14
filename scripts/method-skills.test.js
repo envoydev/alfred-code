@@ -378,7 +378,7 @@ test('the inline task skills load their method skill through the Skill tool at t
 
 test('skills S5: the judging captures and their loops run on the session model and ask for no switch to Opus (A/B 2026-10-09)', () => {
     const body = (n) => squash(read(`stack/skills/${n}/SKILL.md`));
-    for (const n of ['capture-architecture', 'capture-architecture-quality', 'capture-code-quality', 'loop-architecture-quality', 'loop-quality', 'task-version-upgrade', 'task-build-from-scratch']) {
+    for (const n of ['capture-architecture', 'capture-architecture-quality', 'capture-code-quality', 'loop-architecture-quality', 'loop-code-quality', 'task-version-upgrade', 'task-build-from-scratch']) {
         const text = body(n);
         assert.doesNotMatch(text, /Opus with `\/model`|not on Opus|switch to `\/model` Opus|on Opus \(checked|in-session, on Opus/, `${n} still asks for Opus`);
         assert.match(text, /no `model` pin/i, `${n} keeps the no-pin reason`);

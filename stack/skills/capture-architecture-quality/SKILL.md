@@ -7,7 +7,7 @@ description: "Use when asked to assess or judge the architecture - its weaknesse
 
 You are the judgment seat for this run: you read the project's architecture map, verify what matters against the code, and reason out a candid strengths/weaknesses assessment - gated, tiered, and written fresh every time you run.
 
-- `<docs-path>/quality/ASSESSMENT.md` - the reasoned, tiered evaluation. The doc you write; over target its detail spills to `<docs-path>/quality/references/<topic>.md`, replaced wholesale with it.
+- `<docs-path>/quality/ARCHITECTURE-ASSESSMENT.md` - the reasoned, tiered evaluation. The doc you write; over target its detail spills to `<docs-path>/quality/references/<topic>.md`, replaced wholesale with it.
 
 **`quality/` is no docs domain - recomputed every run; `references/doc-shape.md` says why.** Read `references/doc-shape.md` before JUDGE - the findings gate, the count rule, the three buckets, the shape and the format budget are this skill's contract, not suggestions; the same file also says exactly what engine machinery this skill skips and why.
 
@@ -31,12 +31,12 @@ The measurements behind these rules live in `references/evidence.md` - an audit 
 
 ## Execution modes
 
-**Run gate - a run no calling flow started asks first.** The run dispatches seats and replaces ASSESSMENT.md, and a conversational 'what are the risks here?' can match this skill. So unless the quality loop invoked this run, put this ask before GATHER (joined with the mode ask below where that fires, one AskUserQuestion call). No answer, no run.
+**Run gate - a run no calling flow started asks first.** The run dispatches seats and replaces ARCHITECTURE-ASSESSMENT.md, and a conversational 'what are the risks here?' can match this skill. So unless the quality loop invoked this run, put this ask before GATHER (joined with the mode ask below where that fires, one AskUserQuestion call). No answer, no run.
 
 ```ask
-Run a fresh architecture assessment and replace ASSESSMENT.md?
-- 'Run the assessment and replace ASSESSMENT.md (Recommended)' - a fresh judgment, seats as picked in the mode ask
-- 'Answer from the existing ASSESSMENT.md only' - nothing dispatched, nothing written; with no ASSESSMENT.md yet the run stops here
+Run a fresh architecture assessment and replace ARCHITECTURE-ASSESSMENT.md?
+- 'Run the assessment and replace ARCHITECTURE-ASSESSMENT.md (Recommended)' - a fresh judgment, seats as picked in the mode ask
+- 'Answer from the existing ARCHITECTURE-ASSESSMENT.md only' - nothing dispatched, nothing written; with no ARCHITECTURE-ASSESSMENT.md yet the run stops here
 ```
 
 DELEGATED vs INLINE keys on dispatch capability, not file presence - agent files on disk with no Agent tool to dispatch them is still INLINE. When dispatch is available, ask ONE question before GATHER, via AskUserQuestion - hunt weaknesses and strengths via architecture-analyzer seats (recommend it: the cheap seats absorb the reads), or in-session? - unless a calling flow (the quality loop) already picked the run's mode, which is inherited, never re-asked.
@@ -49,7 +49,7 @@ DELEGATED vs INLINE keys on dispatch capability, not file presence - agent files
 ### 1. ORIENT
 Read `<docs-path>/architecture/ARCHITECTURE.md` - the map `capture-architecture` writes, the structural facts every weakness and strength traces to. No map at all: say so and stop, pointing at that capture - there is nothing to judge yet. A map whose own `Captured:` stamp is far behind HEAD is still read (a stale map is a claim to verify, not a blocker) - note the gap in the report rather than blocking on it.
 
-Read `<docs-path>/quality/ASSESSMENT.md` if it already exists - not ground truth, but its entries are what gate question 3 ('is it actually new') folds a re-measurement into, so an unchanged finding keeps its existing shape rather than opening a duplicate. Read the project's decision log when present (`<docs-path>/decisions/`, or wherever the project keeps ADRs): each accepted decision is declared intent to reconcile against, and a tradeoff it records deliberately lands as a Deliberate tradeoff, not a weakness - gate question 4 depends on this read having happened.
+Read `<docs-path>/quality/ARCHITECTURE-ASSESSMENT.md` if it already exists - not ground truth, but its entries are what gate question 3 ('is it actually new') folds a re-measurement into, so an unchanged finding keeps its existing shape rather than opening a duplicate. Read the project's decision log when present (`<docs-path>/decisions/`, or wherever the project keeps ADRs): each accepted decision is declared intent to reconcile against, and a tradeoff it records deliberately lands as a Deliberate tradeoff, not a weakness - gate question 4 depends on this read having happened.
 
 ### 2. GATHER - architecture-analyzer per module, in parallel
 Dispatch architecture-analyzer per module/topic named in the map's Project structure table, exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it) - in a single message where the areas are independent. Brief each dispatch toward the fifth verdict item (smells / violations, over-build included) and the fourth (patterns in use), the raw material weaknesses and strengths are built from - the five-part verdict shape holds regardless. You are the expensive seat: never read the codebase wholesale yourself - the navigation server (`get_symbols_overview`, `find_symbol` / `find_referencing_symbols`) and `Read` are for light orientation and spot-verification of one edge only. A digest the harness spilled to a persisted `tool-results/*.txt` file is the same rule one layer out: `grep` it for the claim you need, or Read it with an offset and a limit - never whole.
@@ -66,8 +66,8 @@ Strength-check every Must-fix remediation against the Strengths list before it l
 ### 4. RE-GATHER on the gaps
 Where a smell is unclear or a claim uncovered, dispatch architecture-analyzer again on exactly that topic. Where two digests contradict each other on a CHECKABLE fact, settle it with the cheapest deterministic probe in-session first - a `grep -c`, a navigation-server lookup, the stack's own command - and re-dispatch only for a judgment conflict no command can settle. **Hard cap: 3 gather rounds.** Still unsettled after 3: write what is established, mark what is uncertain and what would settle it - never guess to fill an entry.
 
-### 5. WRITE - <docs-path>/quality/ASSESSMENT.md, per references/doc-shape.md
-No diff check here - once the run gate is answered, REPLACE the file wholesale every run: READ it first if it exists so the Write is legal (an `rm` first is denied by the auto-mode classifier), then Write the fresh judgment over it. Compose the whole doc in-session and land it in one write (or one batched edit pass) - never a per-claim edit stream. Write ONLY `<docs-path>/quality/ASSESSMENT.md` and, over target, its `<docs-path>/quality/references/<topic>.md` spill files - never the map, never source, never the decision log. After the write, `wc -l` it against the ~300-line target; over target, run the spill pass now - this run owns the doc, and no other flow will.
+### 5. WRITE - <docs-path>/quality/ARCHITECTURE-ASSESSMENT.md, per references/doc-shape.md
+No diff check here - once the run gate is answered, REPLACE the file wholesale every run: READ it first if it exists so the Write is legal (an `rm` first is denied by the auto-mode classifier), then Write the fresh judgment over it. Compose the whole doc in-session and land it in one Write of the whole file - never a per-claim edit stream: no Edit, no `sed`, no patch of the old text, the spill pass included (it is a second whole-file Write). A calling flow's brief that names what shipped or what remains is context for the REPORT, never the scope: a 'reconcile' run still gathers, judges and writes the whole assessment (2026-10-13: a loop's 'W2 and W3 built, W1 remains' brief turned one run into three in-place edits of the old file). Write ONLY `<docs-path>/quality/ARCHITECTURE-ASSESSMENT.md` and, over target, its `<docs-path>/quality/references/<topic>.md` spill files - never the map, never source, never the decision log. After the write, `wc -l` it against the ~300-line target; over target, run the spill pass now - this run owns the doc, and no other flow will.
 
 ### 6. REPORT
 Confirm the file written (created vs refreshed), then lean: gather rounds used and whether the picture settled within the cap, the assessment's shape (per-bucket counts, the Must-fix tier tally, the top few highest-leverage fixes `loop-architecture-quality` should take first, the over-build `net:` line), any Proposed decisions this run surfaced, anything unverified and what would settle it. Then the receipt lines - one per field, UNCONDITIONAL:

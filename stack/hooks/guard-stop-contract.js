@@ -464,7 +464,7 @@ const RETRO_YOUR_CALL_RE = /\b(record(ed)?|noted?|logged|captured|set|chosen|dec
 // The quoted token is the other measured half: the model writes its own hand-back word in quotes,
 // so the literal `say go` saw none of the five asks it made in one session.
 const PROSE_ASK_CLAUSE_RE = /(?:^|[\n.;:,!?)\]-]\s*|\b(?:then|and|or|so|when|otherwise)\s+)(?:(?:just |please )?tell me\b(?!\s+(?:if|when|whenever|whether|why|what|how)\b)|(?:just |then )?say\s+['"‘’“”]?(?:go|yes|ok|okay|allowed|proceed|approved?)['"‘’“”]?\b)/i;
-// loop-quality's two structural pauses - the run-start mode ask and the stage-close
+// loop-code-quality's two structural pauses - the run-start mode ask and the stage-close
 // fresh-session ask - live in its SKILL.md as sentences, so the loop can word them as a statement
 // that ends on no '?' ('Continue in a fresh session from the loops folder (recommended), or
 // continue here.') and the question shape never sees them (improvement plan 2.5). Each needs the

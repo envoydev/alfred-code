@@ -6,7 +6,7 @@
 - **Write protocol** (how step 5 lands the doc) - the stamp, section format, ORIENTATION.md, watch.json, branches, diagrams and format, the folder, the budget check and the spill
 - **`.claude/rules/alfred-architecture.md`** - the awareness rule's template and byte budget
 
-The pros/cons judgment over this map is not this capture's: nothing here writes `<docs-path>/quality/ASSESSMENT.md`, and no finding goes into the map.
+The pros/cons judgment over this map is not this capture's: nothing here writes `<docs-path>/quality/ARCHITECTURE-ASSESSMENT.md`, and no finding goes into the map.
 
 ## <docs-path>/architecture/ARCHITECTURE.md - the structure map
 

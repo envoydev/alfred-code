@@ -35,7 +35,7 @@ const frontmatter = (text) =>
 const body = (text) => text.replace(/^---\n[\s\S]*?\n---\n/, '');
 
 const CAPTURE = 'stack/skills/capture-code-quality';
-const LOOP = 'stack/skills/loop-quality';
+const LOOP = 'stack/skills/loop-code-quality';
 const SEAT = 'stack/agents/code-quality-analyzer.md';
 
 // A loops/ folder exactly as the 1.x bootstrap seeded it, plus what a project adds over time: a stage
@@ -60,7 +60,7 @@ test('the capture is a copy and its seat rides the core, placed by the rule that
     // 2.1.0: every skill is a project copy, every seat rides the core.
     const p = placement();
     const core = p.plugins[CORE];
-    for (const s of ['capture-architecture-quality', 'loop-architecture-quality', 'loop-quality', 'capture-code-quality'])
+    for (const s of ['capture-architecture-quality', 'loop-architecture-quality', 'loop-code-quality', 'capture-code-quality'])
     {
         assert.ok(p.library.skills.includes(s), `${s} is a project copy`);
         assert.ok(!core.skills.includes(s), `${s} rides no plugin`);
@@ -73,7 +73,7 @@ test('the capture is a copy and its seat rides the core, placed by the rule that
 
     const recs = JSON.parse(read('meta/recommendations.json'));
     assert.ok(recs.always.skills.includes('capture-code-quality'), 'seeded where the quality loop is');
-    assert.ok(recs.always.skills.includes('loop-quality'));
+    assert.ok(recs.always.skills.includes('loop-code-quality'));
     assert.ok(recs.always.agents.includes('code-quality-analyzer'), 'the capture seeds the seat it fans out');
 
     const manifest = JSON.parse(read('meta/stack-manifest.json'));
@@ -174,7 +174,7 @@ test('the capture writes only quality/CODE-ASSESSMENT.md, fresh every run, and O
     assert.match(b, /\*\*Reads decisions, never writes them - hard rule\.\*\*/);
     // No rule source at all: stop, write nothing - a doc judged against nothing reads as clean code.
     assert.match(b, /\*\*No rule source at all - stop\.\*\*[^*]*writing nothing/);
-    assert.match(b, /No rule source at all - stop\.\*\*[^*]*`\/capture-code-style`[^*]*`\/loop-quality`/, 'and names the two ways to get rules, both slash-typed');
+    assert.match(b, /No rule source at all - stop\.\*\*[^*]*`\/capture-code-style`[^*]*`\/loop-code-quality`/, 'and names the two ways to get rules, both slash-typed');
     // A remediation is checked against the OTHER handed rules, or the loop oscillates between them.
     const judge = squash(raw.slice(raw.indexOf('### 3. JUDGE'), raw.indexOf('### 4. RE-GATHER')));
     assert.match(judge, /Cross-check every Must-fix remediation against the other rules/);
@@ -182,7 +182,7 @@ test('the capture writes only quality/CODE-ASSESSMENT.md, fresh every run, and O
     // The neighbours with their destinations live in the body's When to use (the 160-char description cannot hold them).
     const whenToUse = raw.slice(raw.indexOf('## When to use'), raw.indexOf('## Execution modes'));
     assert.ok(whenToUse.length > 0, 'the body has a When to use section before Execution modes');
-    for (const dest of ['/loop-quality', 'capture-architecture-quality', 'capture-code-style', '/security-review', 'task-verify-code'])
+    for (const dest of ['/loop-code-quality', 'capture-architecture-quality', 'capture-code-style', '/security-review', 'task-verify-code'])
         assert.ok(whenToUse.includes(dest), `Not for ... (${dest})`);
     assert.ok(read('stack/skills/capture-architecture-quality/SKILL.md').split('\n')[2].includes('(capture-code-quality)'),
         'the architecture-quality capture sends code quality to its new neighbour');
@@ -220,7 +220,7 @@ test('quality/CODE-ASSESSMENT.md is no docs domain - the engine never sections o
     try
     {
         r.write('.claude/docs/architecture/watch.json', '{}');
-        r.write('.claude/docs/quality/ASSESSMENT.md', '# x');
+        r.write('.claude/docs/quality/ARCHITECTURE-ASSESSMENT.md', '# x');
         r.write('.claude/docs/quality/CODE-ASSESSMENT.md', '# x');
         delete require.cache[ENGINE];
         process.env.CLAUDE_PROJECT_DIR = r.root;
@@ -235,7 +235,7 @@ test('quality/CODE-ASSESSMENT.md is no docs domain - the engine never sections o
         r.rm();
     }
     const root = squash(read('stack/rules/alfred-docs-root.md'));
-    assert.match(root, /`quality\/ASSESSMENT\.md` and `quality\/CODE-ASSESSMENT\.md`/, 'the docs-root rule names both beside each other');
+    assert.match(root, /`quality\/ARCHITECTURE-ASSESSMENT\.md` and `quality\/CODE-ASSESSMENT\.md`/, 'the docs-root rule names both beside each other');
 });
 
 test('an existing loops folder is the capture\'s rule source: numbered stages in numeric order, never the fix discipline or the run records', () =>
@@ -265,7 +265,7 @@ test('the numbered-prompt run stays reachable as the STAGED mode, over the same 
 {
     const loop = squash(body(read(`${LOOP}/SKILL.md`)));
     assert.match(loop, /\*\*STAGED\*\*/, 'the mode is named');
-    assert.match(loop, /`\/loop-quality staged/, 'reached by naming it in the invocation');
+    assert.match(loop, /`\/loop-code-quality staged/, 'reached by naming it in the invocation');
     assert.match(loop, /`RUN-STATE\.md`/, 'a staged run in progress resumes staged');
     assert.match(loop, /Read `references\/staged-mode\.md`/);
 
@@ -344,7 +344,7 @@ test('the loop runs the capture each round and routes its findings by tier', () 
     assert.match(b, /never seed[^.]*around/, 'a user-authored folder is never seeded around');
 
     const mech = squash(read(`${LOOP}/references/loop-mechanics.md`));
-    assert.match(mech, /RESUME - loop-quality/);
+    assert.match(mech, /RESUME - loop-code-quality/);
     assert.match(mech, /\*\*Mechanics\*\* - `loop-mechanics\.md: read`/);
     assert.match(mech, /\*\*Anti-gaming\*\*/);
 
@@ -440,4 +440,21 @@ test('the shared-rules registry pins the new homes of the loop and capture rules
         assert.ok(sites(id).includes(`${LOOP}/references/domain-trio-protocol.md`), `${id} pins the vendored trio copy`);
     for (const id of ['report-lean', 'serena-overview-file-not-directory', 'on-demand-skill-availability'])
         assert.ok(sites(id).includes(SEAT), `${id} pins the seat`);
+});
+
+// 2026-10-13, a consuming project's loop: the architecture loop called the findings capture with 'W2 and W3 built, W1 remains',
+// and the capture re-checked those three and patched the old ASSESSMENT.md (two Edits and a sed deletion) instead of
+// recomputing it. Both captures write the whole file every run whatever the brief, and both loops hand them no status.
+test('the two quality captures write the whole file whatever the brief, and the loops hand them no findings status', () =>
+{
+    const flat = (t) => t.replace(/\s+/g, ' ');
+    for (const cap of ['stack/skills/capture-architecture-quality/SKILL.md', `${CAPTURE}/SKILL.md`])
+    {
+        const step5 = flat(read(cap)).split('### 5. WRITE')[1].split('### 6.')[0];
+        assert.match(step5, /one Write of the whole file - (?:never a per-claim edit stream: )?no Edit, no `sed`, no patch of the old text, the spill pass included/, cap);
+        assert.match(step5, /A calling flow's brief that names what shipped or what remains is context for the (?:REPORT|report), never the scope: a 'reconcile' run still/, cap);
+        assert.doesNotMatch(step5, /one batched edit pass/, `${cap}: a recomputed doc has no edit pass`);
+    }
+    for (const loop of ['stack/skills/loop-architecture-quality/SKILL.md', `${LOOP}/SKILL.md`])
+        assert.match(flat(read(loop)), /mode and TARGET only - never a status of the findings \(which shipped, which remain\)/, loop);
 });

@@ -59,8 +59,18 @@ their tools in the generated rules, and `ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE` is
 Each browser server is `<engine>-control` (was `browser-<engine>`): update swaps the plugin with its on/off kept,
 and the profile moves from `.alfred/browser/<engine>` to `.alfred/<engine>-control` at that server's next start,
 unasked - `.alfred/browser` goes once its last engine has moved.
-`/loop-quality` now works a code-quality assessment by tier, with the `loops/`
-prompts as its rules; `/loop-quality staged` is the stage-by-stage run a project may rely on.
+**Renamed after 2.4.0.** The code-quality loop is `/loop-code-quality` (its row is in the table below): update
+carries its pick and `skillOverrides` value, prunes the old copy and prints its `renamed: skill` line.
+The architecture assessment is `<docs-path>/quality/ARCHITECTURE-ASSESSMENT.md`: update moves an existing
+`quality/ASSESSMENT.md` there (`docs migration (architecture quality)`) and re-points a generated rule naming it.
+**One `.gitignore` after 2.4.0.** The data root's file carries every rule, the docs' included: update rewrites it and
+removes the stack's own nested ones (`docs root: ... removed`, `gitignore: ... removed`) - the docs root's, `history/`'s,
+the run book's and the project memory folder's - while each holds exactly the stack's text; a file the user edited is
+kept and named, and serena's own `.alfred/serena/.gitignore` stays (serena writes it). A docs root outside the data root
+keeps its own. Every install also writes the project's sensitive data, `.alfred/.sensitive-data`, when absent - one
+comment line, no key (`sensitive data: ... written`); report the line.
+`/loop-code-quality` now works a code-quality assessment by tier, with the `loops/`
+prompts as its rules; `/loop-code-quality staged` is the stage-by-stage run a project may rely on.
 
 | was | now |
 |---|---|
@@ -83,7 +93,7 @@ prompts as its rules; `/loop-quality staged` is the stage-by-stage run a project
 | `/project-agent-capabilities` | `/capture-agent-awareness` |
 | `/project-stack-usage-analyzer` | `/capture-usage-report` |
 | `/project-first-look` | `/capture-first-look` |
-| `/project-quality-loop` | `/loop-quality` |
+| `/project-quality-loop` | `/loop-code-quality` |
 | `/project-architecture-quality-loop` | `/loop-architecture-quality` |
 | `/project-test-coverage-loop` | `/loop-test-coverage` |
 | `/project-commit-checkpoint` | `/habits-commit-checkpoint` |
@@ -122,7 +132,7 @@ prompts as its rules; `/loop-quality staged` is the stage-by-stage run a project
 | `/alfred-issue-signatures-ci` | `/issue-signatures-ci` |
 | `/alfred-issue-signatures-runtime` | `/issue-signatures-runtime` |
 | `/alfred-loop-architecture-quality` | `/loop-architecture-quality` |
-| `/alfred-loop-quality` | `/loop-quality` |
+| `/alfred-loop-quality` | `/loop-code-quality` |
 | `/alfred-loop-test-coverage` | `/loop-test-coverage` |
 | `/alfred-task-build-from-scratch` | `/task-build-from-scratch` |
 | `/alfred-task-design` | `/task-design` |
@@ -132,6 +142,7 @@ prompts as its rules; `/loop-quality staged` is the stage-by-stage run a project
 | `/alfred-task-verify-code` | `/task-verify-code` |
 | `/alfred-task-verify-plan` | `/task-verify-plan` |
 | `/alfred-task-version-upgrade` | `/task-version-upgrade` |
+| `/loop-quality` | `/loop-code-quality` |
 | seat `alfred-issue-diagnoser-ci` | seat `issue-diagnoser-ci` |
 | seat `alfred-issue-diagnoser-runtime` | seat `issue-diagnoser-runtime` |
 
@@ -345,7 +356,7 @@ A typed folder (Other) is a custom root: `--data-path <folder> --data-move move`
 inside the project, never under `.claude/`, with no space. The recommended answer is `--data-move move`,
 the keep answer `--data-move keep` - on the installer call of whichever path runs (the 2.0.0 spelling
 `--docs-move` is read for one release). `ignored=yes` means git never saw the old docs root: the move
-keeps it that way (the docs' own `.gitignore` of `*`, `ALFRED_CODE_DOCS_VERSIONING` becomes `local`) - say
+keeps it that way (the data root's `.gitignore` keeps the docs out, `ALFRED_CODE_DOCS_VERSIONING` becomes `local`) - say
 so in the move option. `yours=yes` means the docs root `.claude/docs` is out of the ledger - an earlier
 release's 'keep' made it the user's value - yet every Alfred Code file belongs under the data root, so
 the move is still offered and still Recommended: say the root was kept by an earlier answer, and that

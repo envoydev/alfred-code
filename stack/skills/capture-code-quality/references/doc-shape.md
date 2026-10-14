@@ -14,7 +14,7 @@
 ## Why this doc lives outside the docs-domain engine
 
 `<docs-path>/quality/` carries no `watch.json`, so `domains()` in `.claude/hooks/docs.js` never picks it
-up - this doc and `quality/ASSESSMENT.md` beside it are no docs domain at all. Findings are a function of
+up - this doc and `quality/ARCHITECTURE-ASSESSMENT.md` beside it are no docs domain at all. Findings are a function of
 the rules plus the code, recomputable on demand for whatever branch you are on; versioning them would be
 storing a cache and calling it a record. No `<!-- id: -->` / `<!-- covers: -->` lines, no section stamp,
 no `docs.js set` or `lint`, no branch-overlay question at session end - none of that machinery applies,
@@ -138,4 +138,4 @@ Open the doc with a freshness line for the human reader - `As of: <branch>@<shor
 gate: nothing reads it to decide whether to skip a run.
 
 Create `<docs-path>/quality/` only when absent. Write ONLY `<docs-path>/quality/CODE-ASSESSMENT.md` -
-never source, never the loops prompts, never the decision log, never `quality/ASSESSMENT.md`.
+never source, never the loops prompts, never the decision log, never `quality/ARCHITECTURE-ASSESSMENT.md`.

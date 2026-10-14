@@ -102,10 +102,15 @@ The memory levels and stores, where the docs root and the data root live, and th
   (code.claude.com/docs/en/permission-modes, 'Protected paths') - so every plan, capture and commit
   receipt the model writes cost a prompt, and a headless run could not write them at all. The default
   is `.alfred/docs`, stated in every code home of the fallback (`scripts/docs-root-default.test.js`
-  holds them to one value). The root carries its own `.gitignore` by `ALFRED_CODE_DOCS_VERSIONING`
-  (`docs.ensureDocsIgnore`, absent-only, never under `.claude/`): `local` keeps the whole root out of
+  holds them to one value). ONE `.gitignore` (the user's ruling of 2026-10-13): the data root's carries the docs rules
+  by `ALFRED_CODE_DOCS_VERSIONING` (`data-root.js dataIgnoreText`, `alfred-code.js ignoreStep`), and an update removes the
+  docs root's own file and the nested ones earlier releases wrote (`history/`, the run book's `project-capabilities/`, the
+  project memory folder) while each holds exactly the stack's text (`docs.pruneNestedIgnores`); serena's folder file is
+  serena's - it writes one whenever none is there. A docs root OUTSIDE the data root, or under a data root whose file is
+  the project's own, keeps its own (`docs.ensureDocsIgnore`, never under `.claude/`). `local` keeps the whole docs root out of
   git, `git` keeps only the hooks' machine state out (`flow/`, `hook-blocks/`, `history/`,
-  `tools-usage/`, `.branches/`, `docs-log.jsonl`) plus the usage audit's raw transcript copies
+  `tools-usage/`, `.branches/`, `docs-log.jsonl`, `data-root.js DOCS_STATE_IGNORE`) plus the run book's old
+  `credentials.local.env` and the usage audit's raw transcript copies
   (`usage-report/**/*.jsonl`, which the audit's copy step checks with `git check-ignore`
   before it copies; the folder was `alfred-code-usage-report/` until 2.1.7 - `docs.migrateUsageReport`, run after this
   file is current, renames it, never moving raw copies to a path git would not ignore, never over a session folder the new
@@ -130,13 +135,14 @@ The memory levels and stores, where the docs root and the data root live, and th
   default `.alfred` at the project root - relative, never under `.claude/`, no space, no `..` (`data-root.js
   checkDataPath`) - holds the docs (`<root>/docs`), serena's folder and home (`<root>/serena`), the browser
   profiles (`<root>/<engine>-control`), a project-level memory database (`<root>/.alfred-memory`) and the project's
-  sensitive data (`<root>/.sensitive-data`, a dotenv the user fills by hand - 2026-10-13; the secret guard keeps its
+  sensitive data (`<root>/.sensitive-data`, a dotenv the user fills by hand - 2026-10-13; every install writes it absent-only
+  with one comment line and no key, only where git keeps it out (`data-root.js ensureSensitiveFile`); the secret guard keeps its
   values out of the chat, `withSensitive` hands them to every launcher's server where the shell and a settings file
   set nothing, and a root change moves it inline on every route, into a root whose `.gitignore` is written first;
   `Read(.sensitive-data)` is in the shipped deny, a bare name matching at any depth per code.claude.com/docs/en/permissions).
   `stack/mcp/data-root.js` is the one home of every place, read by the three launchers, the installer, init's
   plan and the preflight. The docs root is written as `<root>/docs` unless the user set their own (a value the
-  ledger does not record is never moved). `<root>/.gitignore` is `/*` plus `!/.gitignore` and `!/docs/`
+  ledger does not record is never moved). `<root>/.gitignore` is `/*` plus `!/.gitignore` and, under `git` versioning, `!/docs/` with the docs' machine-state lines
   (`data-root.js dataIgnoreText`, header-marked, a project's own text kept): a bare `*` would make `git
   check-ignore` answer yes for the docs and the versioning seed would read every fresh project as `local`, and
   the file re-includes itself so it is committed and a teammate's clone has it. The installer keeps it current
@@ -175,7 +181,7 @@ The memory levels and stores, where the docs root and the data root live, and th
   as a value. The capture's own `credentials.local.env` before 2026-10-13 is moved into that store by every install
   run (`data-root.js adoptCredentials`, the user's call: one credential home, by update) - the values read and written
   by the installer, never printed, the run book's line re-pointed; a key the store holds with another value, a store
-  git would commit (`git check-ignore`) or one that is not a file moves nothing and is said every run until fixed. The findings (`quality/ASSESSMENT.md`, `quality/CODE-ASSESSMENT.md`, owned by the
+  git would commit (`git check-ignore`) or one that is not a file moves nothing and is said every run until fixed. The findings (`quality/ARCHITECTURE-ASSESSMENT.md`, `quality/CODE-ASSESSMENT.md`, owned by the
   two `*-quality` captures) are the opposite of durable - recomputed fresh every run, so
   `quality/` carries no `watch.json` and is no docs domain. A doc an older capture left at a former home moves on
   update (`docs.migrateDocsDomains`, absent-only: `PROJECT-CODE-STYLE.md`, `architecture/ASSESSMENT.md`, and the
