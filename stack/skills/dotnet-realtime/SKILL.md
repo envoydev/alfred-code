@@ -14,6 +14,7 @@ The defining trait, and the thing that sets every rule below: a SignalR message 
 - ASP.NET Core SignalR conventions: server-to-client push over a persistent connection, connection-scoped and not durable. Also fires on: server-side WebSocket push.
 - Covers the strongly-typed hub (Hub of TClient), sending via IHubContext, group/user targeting, reconnection, JWT-over-query-string auth, additive client contracts, MessagePack, and scale-out (Redis backplane / Azure SignalR Service).
 - Not for broker-backed durable messaging (that is the broker-messaging skill), in-process reactive streams (Rx / System.Reactive), or an outbound ClientWebSocket.
+- One-way push with no groups to plain-HTTP clients is server-sent events (.NET 10), not SignalR.
 
 ## The seam with messaging: broker delivers, SignalR pushes
 
@@ -81,6 +82,8 @@ connection.onreconnected(() => rejoinRoomsAndResync());   // groups are gone - r
 ```
 
 Reconnection only spans a brief window; past it the connection closes and the client must start a new one. Because messages sent while disconnected are simply lost, a client that needs the current state after a gap should **re-fetch over REST**, not assume SignalR replayed anything.
+
+Stateful reconnect (.NET 8+, opt-in: `AllowStatefulReconnects` on the hub endpoint, `withStatefulReconnect()` on the client) keeps the ConnectionId and replays what was buffered during a brief drop - a smoother blip, still not durable; groups and the REST re-fetch rule stand past its buffer.
 
 ## Auth: at connect, over the query string, and re-validated per message
 

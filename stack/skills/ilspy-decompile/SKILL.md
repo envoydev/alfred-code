@@ -24,7 +24,7 @@ Decompiling needs ilspycmd, a third-party tool. Run it once through dnx, pinned:
 - 'Skip the decompile' - report the question UNANSWERED
 ```
 
-Where `dnx` is unavailable (an SDK before .NET 10), drop the first option and recommend the per-repo pin. Where the harness has no AskUserQuestion tool, ask the same options in plain text and wait. Never download or install on your own judgement.
+Where `dnx` is unavailable (an SDK before .NET 10), or `dnx --help` does not list `--yes` (Learn documents the flag from .NET 11; the 10.0.203 SDK already lists it, an earlier 10.0 SDK may not), drop the first option and recommend the per-repo pin. Where the harness has no AskUserQuestion tool, ask the same options in plain text and wait. Never download or install on your own judgement.
 
 Once approved, the no-install form (the .NET 10 SDK; nothing lands on `PATH`):
 

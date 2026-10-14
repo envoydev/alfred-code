@@ -106,7 +106,7 @@ public sealed class ValidationFilter<TRequest> : IAsyncActionFilter
     public async Task OnActionExecutionAsync(
         ActionExecutingContext context, ActionExecutionDelegate next)
     {
-        if (context.ActionArguments.TryGetValue("request", out var arg) && arg is TRequest request)
+        if (context.ActionArguments.Values.OfType<TRequest>().FirstOrDefault() is { } request)
         {
             // resolve a validator, validate; on failure set context.Result to short-circuit
         }

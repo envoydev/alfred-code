@@ -28,6 +28,7 @@ END $$;
 ```
 
 - Growable value set: `TEXT` + `CHECK (col IN (...))`. A native `CREATE TYPE ... AS ENUM` only for a truly fixed set - adding a value needs `ALTER TYPE`, reordering is painful.
+- UUID keys: `DEFAULT uuidv7()` on PG 18+; before 18 generate v7 app-side - a random v4 default scatters inserts across a write-heavy index.
 - Partition (`PARTITION BY RANGE`) once a table passes ~100M rows or is time-series with date-scoped reads: the planner prunes to relevant partitions, and dropping old data is an instant `DROP TABLE events_2023_01`, not a lock-heavy `DELETE` + `VACUUM`.
 - Postgres never auto-indexes foreign-key columns. Every FK needs its own index or joins and `ON DELETE CASCADE` become full scans - audit with `pg_constraint` vs `pg_index`.
 

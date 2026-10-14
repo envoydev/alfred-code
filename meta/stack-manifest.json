@@ -294,7 +294,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "dotnet-aspire",
-      "note": ".NET Aspire local orchestration: AppHost, ServiceDefaults, service discovery, dashboard"
+      "note": "Aspire local orchestration: AppHost, ServiceDefaults, service discovery, dashboard"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -309,7 +309,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "dotnet-console-apps",
-      "note": "console-app interface surface: CLI arg parsing (System.CommandLine 2.0/Spectre.Console.Cli/Cocona) + bot-SDK integration (Telegram/Discord/Slack/exchange) in a BackgroundService"
+      "note": "console-app interface surface: CLI arg parsing (System.CommandLine 2.0/Spectre.Console.Cli) + bot-SDK integration (Telegram/Discord/Slack/exchange) in a BackgroundService"
     },
     {
       "repo": "envoydev/alfred-code",

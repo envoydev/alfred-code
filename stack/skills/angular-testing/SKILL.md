@@ -26,9 +26,10 @@ Not for .NET tests or plain TS/JS outside Angular.
 Use whichever the workspace already runs - `angular.json` / `package.json` name it (Karma/Jasmine
 the long-lived default, Jest or Vitest where configured). Detect, never install or migrate a
 runner inside a task; a migration is its own user-approved change. A NEW workspace with no
-runner yet reaches for Vitest - Karma is deprecated and Vitest is the CLI default (the
+runner yet reaches for Vitest - the CLI default for new projects (the
 `@angular/build:unit-test` builder; jsdom or happy-dom, browser mode via Playwright when a real
-DOM is needed). Mock collaborators with the workspace's runner - `jasmine.createSpyObj` under
+DOM is needed); Angular still supports Karma, but the karma project itself is deprecated
+upstream. Mock collaborators with the workspace's runner - `jasmine.createSpyObj` under
 Karma, `jest.fn()` under Jest, `vi.fn()` under Vitest - and do not mix them.
 
 ## Test strategy by role

@@ -24,11 +24,10 @@ public static class TodoEndpoints
     {
         var group = app.MapGroup("/api/v1/todos")
             .WithTags("Todos")
-            .RequireAuthorization()
-            .AddEndpointFilter<ValidationFilter<CreateTodoRequest>>();
+            .RequireAuthorization();
 
         group.MapGet("/{id:guid}", GetTodo);
-        group.MapPost("/", CreateTodo);
+        group.MapPost("/", CreateTodo).AddEndpointFilter<ValidationFilter<CreateTodoRequest>>();
         return app;
     }
 }
@@ -83,14 +82,14 @@ public class ValidationFilter<TRequest> : IEndpointFilter
     public async ValueTask<object?> InvokeAsync(
         EndpointFilterInvocationContext context, EndpointFilterDelegate next)
     {
-        var request = context.GetArgument<TRequest>(0);
+        var request = context.Arguments.OfType<TRequest>().First();
         // resolve a validator, validate, short-circuit on failure
         return await next(context);
     }
 }
 ```
 
-Reach for a filter over middleware when the concern is per-endpoint rather than per-request; middleware sees the raw pipeline and runs for everything, a filter runs only where it is attached and sees model-bound arguments. Attach it on the group (`.AddEndpointFilter<ValidationFilter<TRequest>>()`) when it applies to every route, or on a single endpoint when it does not.
+Reach for a filter over middleware when the concern is per-endpoint rather than per-request; middleware sees the raw pipeline and runs for everything, a filter runs only where it is attached and sees model-bound arguments. Attach a request-typed filter to the endpoint that binds that type (`.AddEndpointFilter<ValidationFilter<TRequest>>()` on its `MapPost`); on a group only when every route in it binds the same request - a `GET /{id}` in the group binds no `TRequest`, and the filter fails it with a 500.
 
 Validation is the canonical filter: it runs before the handler and returns `TypedResults.ValidationProblem(...)` on failure. The error envelope, the global exception handler, and the `ProblemDetails` shape belong to the HTTP error-handling skill - do not assemble an error body here. The validator library choice belongs to the web hub. Authorization rides on `.RequireAuthorization("policy")`, but the policies and scheme are configured by the authentication skill.
 

@@ -123,7 +123,7 @@ A nested `Directory.Build.props` in a subfolder overrides the root one and must 
 
 Prove it: `dotnet restore` and `dotnet build` - quote both summary lines.
 
-Where the house config-protection guard runs, it blocks any change to `Nullable` (or a warning key such as `TreatWarningsAsErrors` or `NoWarn`) in a Directory.Build.props or csproj that already exists - a tightening included - until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the flag surfaces, and never route around the block; on Allow, the guard's receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path and the same edit is retried; a new Directory.Build.props takes the baseline from the start.
+Where the house config-protection guard runs, it blocks a change that loosens `Nullable` or a warning key (`TreatWarningsAsErrors`, `NoWarn`, ...) in a Directory.Build.props or csproj that already exists - a pure tightening (`Nullable` toward `enable`, `TreatWarningsAsErrors` set to true, a `NoWarn` entry removed) passes - until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the flag surfaces, and never route around the block; on Allow, the guard's receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path and the same edit is retried; a new Directory.Build.props takes the baseline from the start.
 
 ## global.json - pin the SDK
 

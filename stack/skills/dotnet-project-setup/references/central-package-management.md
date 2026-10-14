@@ -46,7 +46,7 @@ Projects reference the packages with no version:
 
 ## Rules
 
-- **Add and remove through the CLI.** `dotnet add package <name>` writes both the central `PackageVersion` and the versionless `PackageReference`, and validates the package resolves; hand-adding invites typos and a malformed manifest. A version bump or a transitive pin is a one-line edit of `Directory.Packages.props`.
+- **Add and remove through the CLI.** `dotnet add package <name>` writes both the central `PackageVersion` and the versionless `PackageReference`, and validates the package resolves; hand-adding invites typos and a malformed manifest. A version bump goes through the CLI too - `dotnet package add <name> --version <v>` (`dotnet add package` before the .NET 10 SDK) rewrites the central `PackageVersion`.
 - Never inline a `Version` on a `PackageReference` while CPM is on - restore fails (NU1008); use `VersionOverride` for the rare exception, so the drift CPM exists to stop stays visible.
 - Group a related family under one version variable (the OpenTelemetry block above) so a single edit moves them together; mismatched versions inside a family are a common break.
 - CPM blocks floating versions (`1.0.*`) by default (NU1011) - restore stays deterministic; a fixed bracket range like `[8.5.2,9.0.0)` is still allowed, and `CentralPackageFloatingVersionsEnabled` lifts the block if you truly need one.
@@ -55,7 +55,7 @@ Projects reference the packages with no version:
 dotnet add package Serilog                 # both files, in sync
 dotnet add package Serilog --version 4.2.0 # pin a specific version
 dotnet remove package Serilog
-dotnet restore                             # apply a version bump edited in Directory.Packages.props
+dotnet add package Serilog --version 4.3.0 # a bump: rewrites the central PackageVersion
 ```
 
 ## Transitive pinning

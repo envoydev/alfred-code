@@ -15,11 +15,14 @@ Do NOT load for in-app feature work with no release or signing concern.
 
 ## Step 0 - ask before the first irreversible byte
 
-Every section below either writes a signed artifact or pushes one out, and an upload cannot be taken back: a build number is consumed, a testing track gets a binary, an OTA channel serves it to installed devices. So the FIRST action of this skill, before `cap sync` and before any lane runs, is one AskUserQuestion with these options:
+Every section below either writes a signed artifact or pushes one out, and an upload cannot be taken back: a build number is consumed, a testing track gets a binary, an OTA channel serves it to installed devices. So the FIRST action of this skill, before `cap sync` and before any lane runs, is one AskUserQuestion:
 
-- **Dry run only (recommended)** - print the exact commands, the resolved versions and the target track; run nothing.
-- **Build the artifact, no upload** - run the web build, `cap sync` and the native build; stop before `pilot`, `supply` or any OTA publish.
-- **Build and upload to a testing track** - the full lane against the track the answer names. Promotion to production is the user's own act, never this skill's.
+```ask
+Which release mode for <app> <version>?
+- 'Dry run only (Recommended)' - print the exact commands, the resolved versions and the target track; run nothing
+- 'Build the artifact, no upload' - run the web build, `cap sync` and the native build; stop before `pilot`, `supply` or any OTA publish
+- 'Build and upload to a testing track' - the full lane against the track the answer names; promotion to production stays with the user, never this skill
+```
 
 Carry the answer into the output contract below. One approval covers one target: a different track, a first publish to an OTA channel, or a production promotion is a new ask. Where the harness has no AskUserQuestion tool, present the same three options as plain text and wait for the pick before the first command.
 

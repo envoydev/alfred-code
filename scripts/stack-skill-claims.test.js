@@ -224,7 +224,13 @@ test('I43: prepared statements behind a transaction pooler follow the pooler, no
 test('I44: dotnet-project-setup names the config-protection gate, pinned with typescript', () =>
 {
     const text = squash(read('stack/skills/dotnet-project-setup/SKILL.md'));
-    assert.match(text, /Where the house config-protection guard runs, it blocks any change to `Nullable`/);
+    assert.match(text, /Where the house config-protection guard runs, it blocks a change that loosens `Nullable`/);
+    // audit 2026-10-14 SKD-04: a pure MSBuild tightening passes the guard since audit 2026-10-11 SD16, so neither .NET
+    // skill says a tightening is blocked for an MSBuild key; the .editorconfig half (whole-file) still is
+    assert.match(text, /a pure tightening \(`Nullable` toward `enable`/);
+    const quality = squash(read('stack/skills/dotnet-code-quality/SKILL.md'));
+    assert.match(quality, /it blocks a change that loosens `WarningsAsErrors`/);
+    assert.match(quality, /any edit to an existing `\.editorconfig` - a tightening included -/);
     assert.match(text, /never route around the block/);
     assertPinned(['stack/skills/typescript/SKILL.md', 'stack/skills/dotnet-project-setup/SKILL.md', 'stack/skills/dotnet-code-quality/SKILL.md'], 'stack/skills/typescript/SKILL.md');
 });

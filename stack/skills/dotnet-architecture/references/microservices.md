@@ -6,7 +6,7 @@ Independently deployable, independently scalable services split by bounded conte
 
 - The default failure mode is a **distributed monolith**: services that must deploy together, share a database, or chat synchronously on every request - all the cost of distribution, none of the benefit.
 - Microservices are never the goal; a business driver is - independent scale, faster deploys, fault isolation. 'It's modern' is not a reason. Start as a modular monolith and extract a service only when a specific boundary needs independent deploy cadence, independent scale, team autonomy, or a different stack.
-- Below roughly five services, or with a small team, the distribution tax - network latency, distributed debugging, operational overhead - outweighs the benefit. Prefer the modular monolith and extract later; local .NET Aspire orchestration supports that path.
+- Below roughly five services, or with a small team, the distribution tax - network latency, distributed debugging, operational overhead - outweighs the benefit. Prefer the modular monolith and extract later; local Aspire orchestration supports that path.
 
 ## Boundaries
 
@@ -46,7 +46,7 @@ Independently deployable, independently scalable services split by bounded conte
 
 ## Local orchestration - dev-time only
 
-Run the whole mesh locally with .NET Aspire: the AppHost models services, databases, and messaging and wires service discovery, OpenTelemetry, and resilience by default. The AppHost is a **dev-time orchestrator, not a production runtime** - production stays on your Kubernetes / Helm / GitOps pipeline. Its publish/deploy targets (Azure Container Apps, Kubernetes) change status release by release - verify the current state via the documentation server before leaning on one; the house default stays your own pipeline.
+Run the whole mesh locally with Aspire: the AppHost models services, databases, and messaging and wires service discovery, OpenTelemetry, and resilience by default. The AppHost is a **dev-time orchestrator, not a production runtime** - production stays on your Kubernetes / Helm / GitOps pipeline. Its publish/deploy targets (Azure Container Apps, Kubernetes) change status release by release - verify the current state via the documentation server before leaning on one; the house default stays your own pipeline.
 
 ## Verify independent deployability
 

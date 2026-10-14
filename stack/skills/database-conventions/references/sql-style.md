@@ -180,7 +180,7 @@ sqlstyle.guide: 'Where possible do not use vendor-specific data types.' Prefer `
 #### UUID
 | Engine | UUID handling |
 |---|---|
-| PostgreSQL | Native `uuid` type (16 bytes); `gen_random_uuid()` built in since **v13** (per the PostgreSQL 13 release notes: 'Add function gen_random_uuid() to generate version-4 UUIDs'; before v13 required the `uuid-ossp` or `pgcrypto` modules) |
+| PostgreSQL | Native `uuid` type (16 bytes); `uuidv7()` (time-ordered) and `uuidv4()` built in from **v18** (PostgreSQL 18 release notes: 'Add UUID version 7 generation function uuidv7()'); `gen_random_uuid()` (v4) since **v13** (per the PostgreSQL 13 release notes: 'Add function gen_random_uuid() to generate version-4 UUIDs'; before v13 required the `uuid-ossp` or `pgcrypto` modules) - on v13-17 generate v7 in the application |
 | SQL Server | `uniqueidentifier`; `NEWID()` or `NEWSEQUENTIALID()` |
 | SQLite | No UUID type; store as `TEXT` or `BLOB` |
 
@@ -352,7 +352,7 @@ Current timestamp: PostgreSQL `now()` / `CURRENT_TIMESTAMP`; SQL Server `GETDATE
 | Recursive CTE | `WITH RECURSIVE` | `WITH` (no RECURSIVE) + `OPTION(MAXRECURSION)` | `WITH RECURSIVE` |
 | Preferred string type | `text` | `nvarchar` | `TEXT` |
 | Preferred timestamp | `timestamptz` | `datetime2`/`datetimeoffset` | ISO-8601 `TEXT` |
-| UUID | `uuid` (`gen_random_uuid()` v13+) | `uniqueidentifier` (`NEWID()`) | `TEXT`/`BLOB` |
+| UUID | `uuid` (`uuidv7()` v18+, `gen_random_uuid()` v13+) | `uniqueidentifier` (`NEWID()`) | `TEXT`/`BLOB` |
 | Error handling | PL/pgSQL `EXCEPTION` | `TRY/CATCH` + `THROW` | app layer |
 | Default schema | `public` | `dbo` | `main` |
 | Current timestamp | `now()` | `SYSDATETIME()`/`GETDATE()` | `CURRENT_TIMESTAMP` |

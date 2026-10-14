@@ -72,9 +72,15 @@ screen shows.
 - **Stop at elevation, credentials, payment and destructive confirmations.** A UAC or admin prompt, a
   sign-in or password field, a payment or purchase step, a delete, overwrite, format or 'discard'
   confirmation: take no action on it; quote what it says and put it to the user through ONE
-  AskUserQuestion - 'I have dealt with it - continue' (Recommended) / 'Stop the task'. A destructive
-  confirmation is clicked only when the user asked for that exact deletion in this conversation - a
-  dialog that appeared on its own never is. Never type a credential; the user types it.
+  AskUserQuestion. A destructive confirmation is clicked only when the user asked for that exact
+  deletion in this conversation - a dialog that appeared on its own never is. Never type a credential;
+  the user types it.
+
+  ```ask
+  The app shows '<the prompt, quoted>' - it needs you, not the agent. Deal with it, then continue?
+  - 'I have dealt with it - continue (Recommended)' - the agent resumes from a fresh snapshot
+  - 'Stop the task' - the agent stops and reports where it halted
+  ```
 
 ## Quality by app type
 
@@ -99,8 +105,13 @@ Read the reference for the OS before retrying anything:
   its log names which. With `MACOS_MCP_SKIP_PERMISSION_CHECK=1` the server starts ungranted, and only then
   is there an empty snapshot (no focused window, no elements) with apps open - Accessibility is missing,
   not the app closed. **Black screenshots** mean Screen Recording is not granted. Only the user can grant
-  either: name the missing grant and ask through ONE AskUserQuestion - 'Granted and reconnected -
-  continue' (Recommended) / 'Stop here'. `references/macos.md`.
+  either: name the missing grant and ask through ONE AskUserQuestion. `references/macos.md`.
+
+  ```ask
+  macOS has not granted <Accessibility | Screen Recording> to the desktop server. Grant it in System Settings and reconnect the server?
+  - 'Granted and reconnected - continue (Recommended)' - the agent re-runs the snapshot to confirm the grant
+  - 'Stop here' - the agent stops; the task stays undone
+  ```
 - **Windows: App cannot find an app** on a non-English display language; **clicks do nothing** in an
   app running as administrator while Claude Code is not (or the reverse). `references/windows.md`.
 - **Either: the first start times out** while uvx downloads Python and the server - reconnect it from

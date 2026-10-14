@@ -88,6 +88,8 @@ public sealed partial class OrderListViewModel : ObservableObject
 }
 ```
 
+On C# 14 (.NET 10) write `[ObservableProperty] public partial string? CustomerName { get; set; }` - CommunityToolkit.Mvvm 8.4.1+ supports it without `preview`, and MVVMTK0042 flags the field form.
+
 ## Commands, not Click handlers
 
 - Buttons, menu items, and key gestures bind `Command` (an `ICommand`); they do not wire `Click` in

@@ -55,12 +55,15 @@ var safe = db.Users.FromSql($"select * from users where name = {name}");        
 
 ## Probe before you report
 
-Two checks turn this from an opinion into a finding, and both are one query, run as the runtime login. List the login's grants and quote the result - a login that can `CREATE`, `DROP` or read another schema is the finding, whatever the queries look like. Then confirm row-level security is enabled on every tenant-scoped table and quote the policy count; zero policies on a tenant table is the IDOR. A check you did not run is reported UNVERIFIED.
+Two checks turn this from an opinion into a finding, run as the runtime login. List the login's attributes and grants and quote the result - a login that is superuser, can `CREATE` or `DROP`, or reads another schema is the finding, whatever the queries look like. Then confirm row-level security is ON and NOT BYPASSED on every tenant-scoped table: RLS off, or a runtime login that owns the table without `FORCE ROW LEVEL SECURITY` or holds superuser / `BYPASSRLS`, is the IDOR; RLS on with zero policies is default-deny - a broken feature, not a leak. A check you did not run is reported UNVERIFIED.
 
 ```sql
--- PostgreSQL: grants, then RLS state and policy count per table
-SELECT table_schema, table_name, privilege_type FROM information_schema.role_table_grants WHERE grantee = '<runtime login>';
-SELECT c.relname, c.relrowsecurity, count(p.polname) AS policies FROM pg_class c LEFT JOIN pg_policy p ON p.polrelid = c.oid WHERE c.relkind = 'r' GROUP BY 1, 2;
+-- PostgreSQL: the login's attributes, its table grants (every enabled role, PUBLIC included), the schemas it can
+-- CREATE in, then RLS state, FORCE, owner and policy count per table
+SELECT rolsuper, rolbypassrls, rolcreaterole, rolcreatedb FROM pg_roles WHERE rolname = current_user;
+SELECT table_schema, table_name, privilege_type FROM information_schema.table_privileges WHERE table_schema NOT IN ('pg_catalog', 'information_schema');
+SELECT n.nspname FROM pg_namespace n WHERE has_schema_privilege(current_user, n.nspname, 'CREATE');
+SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity, pg_get_userbyid(c.relowner) AS owner, count(p.polname) AS policies FROM pg_class c LEFT JOIN pg_policy p ON p.polrelid = c.oid WHERE c.relkind IN ('r', 'p') AND c.relnamespace NOT IN ('pg_catalog'::regnamespace, 'information_schema'::regnamespace) GROUP BY 1, 2, 3, 4;
 
 -- SQL Server: the login's database permissions, then the security policies and whether each is on
 SELECT * FROM fn_my_permissions(NULL, 'DATABASE');

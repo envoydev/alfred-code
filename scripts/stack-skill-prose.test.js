@@ -34,6 +34,11 @@ test('M105: a central package version moves through the dotnet CLI in the upgrad
     assert.doesNotMatch(playbook, /that is one edit in `Directory\.Packages\.props`/);
     assert.match(playbook, /one `<PackageVersion>` change in `Directory\.Packages\.props`, made through the dotnet CLI/);
     assert.match(squash(skill('csharp')), /never hand-edit `Directory\.Packages\.props`/);
+    // audit 2026-10-14 SKD-03: the CPM reference sends a bump through the CLI, never a hand edit
+    const cpm = squash(skill('dotnet-project-setup', 'references/central-package-management.md'));
+    assert.doesNotMatch(cpm, /one-line edit of `Directory\.Packages\.props`/);
+    assert.doesNotMatch(cpm, /version bump edited in Directory\.Packages\.props/);
+    assert.match(cpm, /A version bump goes through the CLI too/);
 });
 
 // The preloaded hubs ride into every seat that lists them; situational detail waits in references/.
@@ -338,4 +343,46 @@ test('H2: the commit checkpoint states spec: over what the commit takes in, and 
     assert.match(body, /at most 2 files and 15 changed lines across the session's change - this commit plus the session's earlier commits that passed without a receipt/, 'the bar is cumulative per session (review M2), over the trivial commits only (re-verify N1)');
     assert.match(body, /never split a real change into small commits to slip under it/, 'and splitting still never walks under it');
     assert.doesNotMatch(body, /15 changed lines (?:in what the commit takes in|across the uncommitted tree -)/, 'neither the per-commit nor the tree bar');
+});
+
+// Audit 2026-10-14 (skills-dotnet SKD-02 / SKD-05 / SKD-18, skills-stacks SKS10): the router, the filter sample, the CLI
+// picks and the release stop, each pinned so the old teaching cannot come back.
+test('SKD-02: the .NET router sends a NuGet package update to the migration skill, not to project setup', () =>
+{
+    const router = squash(skill('dotnet'));
+    assert.doesNotMatch(router, /upgrade a NuGet/);
+    assert.match(router, /\| add a NuGet package, or set up central package management \(`Directory\.Packages\.props`\) \| `dotnet-project-setup`/);
+    assert.match(router, /a NuGet package update \(a version bump in `Directory\.Packages\.props` included\) with preview\/rollback\/verify \| `dotnet-migrate` \|/);
+});
+
+// Measured: a group-attached ValidationFilter<CreateTodoRequest> fails GET /{id:guid} with 500 ('Sequence contains no
+// elements' with OfType().First(); InvalidCastException with GetArgument<TRequest>(0)); attached to the MapPost, GET 200,
+// POST 201 (10.0.203 SDK, scratch app).
+test('SKD-05: the minimal-API validation filter is attached per endpoint and matches by argument type', () =>
+{
+    const minimal = skill('dotnet-minimal-api');
+    assert.doesNotMatch(minimal, /GetArgument<TRequest>\(0\)/);
+    assert.match(minimal, /context\.Arguments\.OfType<TRequest>\(\)\.First\(\)/);
+    assert.doesNotMatch(minimal, /MapGroup\([^;]*AddEndpointFilter<ValidationFilter</, 'no group-level request-typed filter');
+    assert.match(minimal, /group\.MapPost\("\/", CreateTodo\)\.AddEndpointFilter<ValidationFilter<CreateTodoRequest>>\(\);/);
+    assert.match(squash(skill('dotnet-web-error-handling')), /attaches to each endpoint that binds `TRequest`/);
+    assert.doesNotMatch(skill('dotnet-mvc-controllers'), /TryGetValue\("request"/);
+});
+
+// Cocona's repository was archived on 2025-12-14 (last release 2.2.0, 2023-03-27 - github.com/mayuki/Cocona).
+test('SKD-18: Cocona is named only as archived', () =>
+{
+    const console = squash(skill('dotnet-console-apps'));
+    assert.match(console, /Two libraries; pick by how much command surface you have\./);
+    assert.match(console, /Cocona is archived \(2025-12-14\) - keep an existing use, never start one\./);
+    assert.doesNotMatch(console, /\*\*Cocona\*\*/);
+    assert.doesNotMatch(skill('dotnet'), /Cocona/);
+});
+
+test('SKS10: the capacitor-release first stop is an ask template the lint can hold', () =>
+{
+    const text = skill('capacitor-release');
+    assert.strictEqual(askCount(text), 1);
+    assert.deepStrictEqual(lintAskTemplates([{ file: 'capacitor-release/SKILL.md', text }]), []);
+    assert.match(text, /^- 'Dry run only \(Recommended\)' - /m);
 });

@@ -147,4 +147,4 @@ Default a new HTTP surface to minimal APIs: one default per repo, a controller s
 - Broker messaging / outbox / sagas -> `dotnet-messaging`
 - Per-layer tests -> `dotnet-testing`
 
-Errors (`dotnet-web-error-handling`), the OpenAPI document (`dotnet-openapi`), deep manual OpenTelemetry (`references/observability.md`), and Aspire (`dotnet-aspire`) are routed where they arise in the sections above.
+Errors, the OpenAPI document, deep manual OpenTelemetry (`references/observability.md`) and Aspire are routed where they arise in the sections above.

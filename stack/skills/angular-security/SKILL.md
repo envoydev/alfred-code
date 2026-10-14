@@ -32,7 +32,7 @@ readonly embedUrl = this.sanitizer.bypassSecurityTrustResourceUrl(
 
 ## Content-Security-Policy
 
-- Ship a strict CSP - a nonce-based script-src with no unsafe-inline and no unsafe-eval. Angular supports a build/runtime nonce (`CSP_NONCE`) so its inline styles/scripts carry the nonce. A good CSP turns a landed XSS from code execution into a blocked console error.
+- Ship a strict CSP - a nonce-based script-src with no unsafe-inline and no unsafe-eval. Angular supports a build/runtime nonce (`CSP_NONCE`) so its inline styles/scripts carry the nonce. A good CSP turns a landed XSS from code execution into a blocked console error. Where a per-request nonce is impossible (a static or cached `index.html`), `security.autoCsp` in `angular.json` hashes the inline scripts - it covers scripts only, so the style-src directive still needs its own nonce or hash, and it does not work with SSR.
 - The style-src directive needs a nonce or hash for Angular component styles; do not fall back to unsafe-inline to make it work.
 - Add Trusted Types where the browser supports it (the require-trusted-types-for 'script' CSP directive): it makes raw string-to-DOM-sink writes throw at the browser layer, so a stray `innerHTML` or a slipped `bypassSecurityTrust*` becomes a hard error instead of a payload. Angular's sanitizer is Trusted Types-aware, so idiomatic bindings keep working.
 

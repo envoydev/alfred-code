@@ -3,7 +3,7 @@ name: dotnet-aspire
 description: "Load when scaffolding or editing an AppHost or ServiceDefaults - Aspire, AddProject, WithReference, service discovery. Not for production deploys or images."
 ---
 
-# .NET Aspire - local orchestration
+# Aspire - local orchestration
 
 Aspire describes a distributed app as one object graph and runs the whole thing with a single F5 - everything starts together with the right connection strings already threaded between resources, and one dashboard shows every process's traces, logs, and metrics. Services floor at .NET 8 / C# 12; the AppHost itself needs a newer SDK than the services it runs, so confirm the current AppHost prerequisites through the documentation server before scaffolding one.
 
@@ -16,12 +16,12 @@ The cross-cutting plumbing itself - OpenTelemetry exporters, the health-check pr
 ## When to use
 
 - Also fires on: declaring resources and references, wiring discovery.
-- .NET Aspire conventions for local cloud-native orchestration - the AppHost that declares the topology, the shared ServiceDefaults extension every service calls once, name-based service discovery, AppHost-injected connection strings, and the developer dashboard.
+- Aspire conventions for local cloud-native orchestration - the AppHost that declares the topology, the shared ServiceDefaults extension every service calls once, name-based service discovery, AppHost-injected connection strings, and the developer dashboard.
 - Do NOT load for non-Aspire projects, production deployment, or publishing images - those are the DevOps skill's.
 
 ## What Aspire is and is not
 
-- **Local orchestration here; deploys are a pipeline decision.** The graph drives `dotnet run` on the AppHost. This house deploys through CI and container tooling; `aspire publish` and `aspire deploy` exist, and adopting them is a deliberate pipeline decision, never a default - the DevOps skill's call, not this one's.
+- **Local orchestration here; deploys are a pipeline decision.** The graph drives `dotnet run` on the AppHost. This house deploys through CI and container tooling; `aspire publish` and `aspire deploy` exist, and adopting them is a deliberate pipeline decision, never a default - the DevOps skill's call, not this one's. Both commands are still marked preview in the Aspire CLI reference.
 - **No Aspire type inside business logic.** A service reads its connection string from configuration as usual; the AppHost is only what hands it over. An Aspire type in a handler means the wiring leaked a layer.
 - **First-party integration over a bare container.** Postgres, Redis, RabbitMQ, SQL Server and the rest each bring the connection string, a health check and traces; a hand-configured container brings none of them.
 

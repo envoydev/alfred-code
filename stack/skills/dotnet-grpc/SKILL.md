@@ -94,7 +94,13 @@ Put logging, authentication checks, exception-to-status mapping, validation, and
 
 ## Prove the contract
 
-Codegen makes a build green without proving a call works. Three lines before any done word: build to regenerate the stubs from the `.proto` and quote the result; call one method with `grpcurl` and quote the status; call it again with an already-expired deadline and quote the `DeadlineExceeded`. A method that never returns `DeadlineExceeded` is a method with no deadline wired.
+Codegen makes a build green without proving a call works. Before any done word:
+
+1. Build to regenerate the stubs from the `.proto` and quote the result line.
+2. Call one method with `grpcurl` and quote the status.
+3. Call it again with an already-expired deadline and quote the `DeadlineExceeded`.
+
+Report: the three quoted results. A method that never returns `DeadlineExceeded` is a method with no deadline wired.
 
 ## Browsers can't speak raw gRPC
 A browser client needs **gRPC-Web** - the server and CORS wiring, and its streaming limits, are in `references/optional-surfaces.md`.

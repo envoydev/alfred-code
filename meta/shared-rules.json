@@ -6153,7 +6153,7 @@
       ]
     },
     "config-protection-gate-named": {
-      "_note": "A skill that prescribes an edit guard-config-protection.js blocks names the gate: a change to a strictness key in an existing tsconfig or MSBuild file, or any edit to an existing .editorconfig, needs the user's allowance - asked with the count the change surfaces, never routed around. typescript was the precedent (owner); dotnet-project-setup (Nullable) and dotnet-code-quality (the WarningsAsErrors waves) restate it with their own keys. 2.1.4 audit I44.",
+      "_note": "A skill that prescribes an edit guard-config-protection.js blocks names the gate: a change to a strictness key in an existing tsconfig, a loosening of one in an existing MSBuild file (a pure MSBuild tightening passes - audit 2026-10-11 SD16), or any edit to an existing .editorconfig or lint / format config, needs the user's allowance - asked with the count the change surfaces, never routed around. typescript was the precedent (owner); dotnet-project-setup (Nullable) and dotnet-code-quality (the WarningsAsErrors waves) restate it with their own keys, and nx plus the TypeScript and Angular style references name the lint / format half (audit 2026-10-14 SKS15). 2.1.4 audit I44.",
       "owner": {
         "file": "stack/skills/typescript/SKILL.md",
         "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the error count the flag surfaces, and never route around the block; on Allow, the guard's receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path"
@@ -6166,6 +6166,18 @@
         {
           "file": "stack/skills/dotnet-code-quality/SKILL.md",
           "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the wave surfaces, and never route around the block; on Allow, the guard's receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path"
+        },
+        {
+          "file": "stack/skills/nx/SKILL.md",
+          "marker": "until the user allows it - ask once, never route around the block, and on Allow the receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path"
+        },
+        {
+          "file": "stack/skills/typescript/references/typescript-style.md",
+          "marker": "until the user allows it - ask once, never route around the block, and on Allow the receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path"
+        },
+        {
+          "file": "stack/skills/angular-conventions/references/angular-style.md",
+          "marker": "until the user allows it - ask once, never route around the block, and on Allow the receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path"
         }
       ]
     },

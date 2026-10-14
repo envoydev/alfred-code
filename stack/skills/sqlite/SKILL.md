@@ -90,7 +90,7 @@ PRAGMA foreign_keys=ON;                           -- step 12
 ## Connections and testing
 
 - No server, no pooling - a connection is a file handle. Keep a connection per thread; do not share one connection across threads.
-- An in-memory database (`:memory:`) is private to its connection unless you use a shared-cache name. For tests, hold the connection open for the database's lifetime, or the schema vanishes when it closes.
+- An in-memory database (`:memory:`) is private to its connection: hold that one connection open for the test's lifetime, or the schema vanishes. Tests needing several connections use a temp-file database in WAL mode (shared cache, the classic route to a shared in-memory database, is obsolete and discouraged upstream).
 
 ## Backup
 

@@ -317,8 +317,16 @@ test('M database-conventions: keyset pagination lives in sql-style \u00a710 with
 test('m database-security: the two probes are spelled per engine, and the description names its boundary', () =>
 {
     const probe = section(skill('database-security'), 'Probe before you report');
-    assert.match(probe, /FROM information_schema\.role_table_grants WHERE grantee = '<runtime login>';/);
+    // audit 2026-10-14 SKS06: table_privileges keeps a PUBLIC grant role_table_grants omits; RLS on with no policy is
+    // default-deny, the leak is RLS off or bypassed (owner without FORCE, superuser, BYPASSRLS) -
+    // https://www.postgresql.org/docs/current/ddl-rowsecurity.html
+    assert.doesNotMatch(probe, /role_table_grants/);
+    assert.doesNotMatch(squash(probe), /zero policies on a tenant table is the IDOR/);
+    assert.match(probe, /SELECT rolsuper, rolbypassrls, rolcreaterole, rolcreatedb FROM pg_roles WHERE rolname = current_user;/);
+    assert.match(probe, /SELECT table_schema, table_name, privilege_type FROM information_schema\.table_privileges WHERE table_schema NOT IN \('pg_catalog', 'information_schema'\);/);
+    assert.match(probe, /c\.relforcerowsecurity, pg_get_userbyid\(c\.relowner\) AS owner/);
     assert.match(probe, /LEFT JOIN pg_policy p ON p\.polrelid = c\.oid/);
+    assert.match(squash(probe), /RLS on with zero policies is default-deny - a broken feature, not a leak/);
     assert.match(probe, /SELECT \* FROM fn_my_permissions\(NULL, 'DATABASE'\);/);
     assert.match(probe, /SELECT name, is_enabled FROM sys\.security_policies;/);
     assert.match(description('database-security'), /Not for schema design\.$/);
@@ -365,8 +373,12 @@ test('M desktop-automation: the two stops ask through AskUserQuestion, and the l
     const text = squash(skill('desktop-automation'));
     assert.doesNotMatch(text, /report what it says, and hand it to the user/);
     assert.doesNotMatch(text, /Say so and stop: only the user can grant either/);
-    assert.match(text, /ONE AskUserQuestion - 'I have dealt with it - continue' \(Recommended\) \/ 'Stop the task'/);
-    assert.match(text, /ONE AskUserQuestion - 'Granted and reconnected - continue' \(Recommended\) \/ 'Stop here'/);
+    // audit 2026-10-14 SKS10: both stops are fenced ask templates, so lint check 61 holds the (Recommended) mark
+    const raw = skill('desktop-automation');
+    assert.strictEqual([...raw.matchAll(/^[ \t]*```ask[ \t]*$/gm)].length, 2, 'the two stops are ask templates');
+    assert.deepStrictEqual(require('./lint-skills.js').lintAskTemplates([{ file: 'desktop-automation/SKILL.md', text: raw }]), []);
+    assert.match(text, /- 'I have dealt with it - continue \(Recommended\)' - .*- 'Stop the task' - /);
+    assert.match(text, /- 'Granted and reconnected - continue \(Recommended\)' - .*- 'Stop here' - /);
     assert.match(description('desktop-automation'), /Not for web pages or the app code\.$/);
 });
 

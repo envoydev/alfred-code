@@ -62,7 +62,7 @@ When the generated document needs adjusting - a server URL, a global response, c
 
 - **Built-in (.NET 9+):** three composable hooks. `IOpenApiDocumentTransformer` (or `.AddDocumentTransformer(...)`) for whole-document edits like info, servers, and security; operation transformers via `.AddOperationTransformer(...)` for per-endpoint tags and shared responses; schema transformers for type-level adjustments. They run in registration order and stack cleanly.
 - **Swashbuckle (.NET 8):** the same three levels are `IDocumentFilter`, `IOperationFilter`, and `ISchemaFilter`, registered inside `AddSwaggerGen(o => o.DocumentFilter<...>())`.
-- The per-endpoint `.WithOpenApi(...)` modifier is deprecated from .NET 10 under the built-in generator (`ASPDEPR002`); it still works on .NET 9. Move that logic into an operation transformer so the customization lives in one place instead of scattered across route registrations.
+- The per-endpoint `.WithOpenApi(...)` modifier is deprecated from .NET 10 (`ASPDEPR002`) whatever the generator; it still works on .NET 9. Move that logic into an operation transformer (built-in generator) or an `IOperationFilter` (Swashbuckle) so the customization lives in one place instead of scattered across route registrations.
 
 ## Declare security schemes in the document
 

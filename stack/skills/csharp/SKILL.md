@@ -11,7 +11,7 @@ C# style, structure, and runtime conventions in one place: how code is shaped (n
 
 **Formatting, naming, and language-feature style is authoritative in `references/csharp-style.md`** (with the full canonical `.editorconfig`); the .NET Framework 4.8 delta (the C# 7.3 ceiling, polyfills, the SynchronizationContext async caveat) is `references/net-framework-48.md`. This file keeps the house rules those do not cover, and where it overlaps them, the style docs win. **Above all of these, a project's own `.editorconfig` and its `<docs-path>/code-style/CODE-STYLE.md` are higher priority: where a project diverges from these general conventions, follow the project.**
 
-**Floor: .NET 8 / C# 12.** Every rule below assumes at least this target - `TimeProvider`, `UnsafeAccessorAttribute`, the static argument throw-helpers, and the C# 12 collection expressions / primary constructors are all in. Where a convention names a newer feature (C# 13 `System.Threading.Lock`, the C# 14 `field` keyword), it flags the version inline; treat those as opt-in once the project's target moves up.
+**Floor: .NET 8 / C# 12.** Every rule below assumes at least this target - `TimeProvider`, `UnsafeAccessorAttribute`, the static argument throw-helpers, and the C# 12 collection expressions / primary constructors are all in. Where a convention names a newer feature (.NET 9 `System.Threading.Lock`, the C# 14 `field` keyword), it flags the version inline; treat those as opt-in once the project's target moves up.
 
 ## When to use
 
@@ -30,11 +30,10 @@ C# style, structure, and runtime conventions in one place: how code is shaped (n
 - Max 300 lines per file - a file past that is accreting more than one responsibility. Split by extracting cohesive groups of methods into new classes.
 - 120 columns per line in `.cs` files - the soft limit `references/csharp-style.md` sets; markdown, JSON, config files exempt.
 - Partial classes only for generated code (EF migrations, designer files) or extending a generated class.
-- One-type-per-file, file naming, and file-scoped namespaces follow `references/csharp-style.md` - it owns the detail.
 
 ## Naming
 
-Casing, prefixes, and the `Async` suffix live in `references/csharp-style.md` - not repeated here. The house rule on top of them is naming *intent* - apply four tests to every name:
+The house rule is naming *intent* - apply four tests to every name:
 1. **Domain-aligned** - use vocabulary from the project domain. Avoid `Manager`, `Helper`, `Data`, `Info`, `Item`, or vague verbs like `Process` / `Handle` when a domain-specific term exists.
 2. **Intent-revealing** - the name explains what the member does without reading the implementation.
 3. **DDD-consistent** - value objects model concepts, not primitives. Don't suffix entity types with `Entity` or `Aggregate`. Do suffix repositories and services.
@@ -62,7 +61,6 @@ Consecutive blank lines are the formatter's (`references/csharp-style.md` sectio
 - Every `switch` case body wrapped in its own `{ }` block - even when one statement, even when no variable is declared, so no variable leaks between cases. Brace any half-braced switch you edit; the worked example, blank lines included, is in `references/csharp-style.md` (section 2, 'Switch case blocks').
 
 ## Types and variables
-- `var`, nullable reference types, records vs classes and expression-bodied members are `references/csharp-style.md`'s; the bullets below are house additions.
 - Value objects: model as small immutable types - typically `readonly record struct` - validate in the constructor (trust everywhere after), and expose explicit conversions / factory methods only, never an `implicit operator` (it silently defeats the type safety it exists to provide). Add a `TypeConverter` when the value object must bind from configuration.
 - Member signatures expose the narrowest useful shape: accept `IEnumerable<T>` / `IReadOnlyCollection<T>` / `IReadOnlyList<T>` (or `ReadOnlySpan<T>` on hot paths), and return a read-only collection type (`IReadOnlyList<T>`, `IReadOnlyDictionary<,>`); return a `List<T>` / array only when the caller is meant to mutate it.
 - No magic numbers or magic strings - use named constants or enums.
@@ -82,7 +80,7 @@ Reach for the framework-native construct before hand-rolling a GoF pattern - mos
 
 ## Modern C# syntax preferences
 
-The modern-feature style (primary constructors, collection expressions, raw strings, `required`, the `field` keyword, pattern matching) is section 4 of `references/csharp-style.md`. Two house preferences it does not name: prefer `params ReadOnlySpan<T>` (C# 13) for new internal zero-alloc APIs over `params T[]`, and `System.Threading.Lock` (C# 13) for new lock objects (do not retrofit existing `lock(object)` sites).
+Two house preferences: prefer `params ReadOnlySpan<T>` (C# 13) for new internal zero-alloc APIs over `params T[]`, and `System.Threading.Lock` (.NET 9+) for new lock objects (do not retrofit existing `lock(object)` sites).
 
 Performance concerns (readonly structs, `Span<T>` / `ArrayPool<T>`, collection choice) belong to the skill covering .NET performance and memory layout, when your skill list has one; without it, prefer the framework default and measure before optimizing.
 
@@ -136,7 +134,7 @@ Read `references/runtime-behavior.md` before writing async or cancellation code,
 - Typed options and startup validation (`IOptions<T>` family, `ValidateOnStart`, `IValidateOptions<T>`) belong to the web hub skill - the ASP.NET Core cross-cutting baseline - where the install has it; the DI-side binding shape and the configuration layer order are `references/dependency-injection.md`, and without the web hub that is the whole rule.
 
 ## LINQ
-Method-vs-query syntax choice, chain wrapping, multiple-enumeration, and terminal-operator intent are authoritative in `references/csharp-style.md`. House additions:
+House additions:
 - No more than 4-5 chained operators without an intermediate variable with a descriptive name.
 - Materialize queries (`ToList`, `ToArray`) before returning from a method that owns the DbContext or connection lifetime.
 

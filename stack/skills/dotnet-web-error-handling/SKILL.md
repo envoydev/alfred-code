@@ -83,7 +83,7 @@ app.UseExceptionHandler();
 ```
 
 ## Validate at the edge
-- Validate the request before the handler body runs, inside an `IEndpointFilter` (`ValidationFilter<TRequest>`) that short-circuits with `TypedResults.ValidationProblem(...)` on failure - this is the filter the minimal-API surface attaches to its route groups. FluentValidation is the default; fall back to built-in data annotations / `ModelState` only for trivial DTOs.
+- Validate the request before the handler body runs, inside an `IEndpointFilter` (`ValidationFilter<TRequest>`) that short-circuits with `TypedResults.ValidationProblem(...)` on failure - this is the filter the minimal-API surface attaches to each endpoint that binds `TRequest`. FluentValidation is the default; fall back to built-in data annotations / `ModelState` only for trivial DTOs.
 
 ```csharp
 public sealed class ValidationFilter<TRequest>(IValidator<TRequest> validator) : IEndpointFilter

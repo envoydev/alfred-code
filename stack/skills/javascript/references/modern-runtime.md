@@ -2,7 +2,7 @@
 
 Loaded from the `javascript` skill when choosing language features or dates/decorators/module mechanics. Version facts move fast - re-verify before making one load-bearing.
 
-## Features to prefer (shipped, safe on Node 20+/current browsers)
+## Features to prefer (shipped in current browsers and Node 24+; on Node 22 LTS skip `Promise.try`, `RegExp.escape` and `using`)
 
 - `?.` and `??` (plus `??=`, `||=`, `&&=`) - fully replace lodash `get` and `&&` guard chains.
 - `structuredClone()` - replaces `JSON.parse(JSON.stringify(x))` (which drops Dates, Maps, `undefined`) and most `cloneDeep` uses.
@@ -11,7 +11,7 @@ Loaded from the `javascript` skill when choosing language features or dates/deco
 - Iterator helpers (ES2025): `.map`/`.filter`/`.take`/`.drop`/`.flatMap`/`.reduce`/`.toArray` on any iterator - lazy pipelines without materializing intermediate arrays; prefer over eager chains on large or infinite sequences.
 - Set methods (ES2025): `union`, `intersection`, `difference`, `symmetricDifference`, `isSubsetOf`/`isSupersetOf`/`isDisjointFrom` - retire hand-rolled set logic.
 - `Promise.try` (sync-or-async wrapping), `RegExp.escape` (safe user-string interpolation into regexes), top-level await in ESM.
-- Explicit resource management: `using` / `await using` (TS 5.2+, Node 22+; spec-wise ES2026) for deterministic cleanup of disposables.
+- Explicit resource management: `using` / `await using` (TS 5.2+, Node 24+, not yet in Safari; spec-wise ES2026) for deterministic cleanup of disposables.
 
 Unlearn on sight: `var`, the `arguments` object, `require`/`module.exports` in new code, JSON-round-trip cloning, `apply`-based max/min, moment.js, hand-rolled deep equality for grouping, IIFE module patterns.
 

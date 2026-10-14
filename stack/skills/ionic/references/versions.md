@@ -4,7 +4,7 @@ The hub (`SKILL.md`) stays version-agnostic. This file is the orientation map fo
 
 ## Ionic Framework
 
-Floor: Ionic 7. Current: Ionic 9 (needs Angular 18-22; Ionic 8 needs Angular 16+ - the house floor is Angular 17+ either way). Prefer the 9 path.
+Floor: Ionic 7. Current: Ionic 9 (needs Angular 18-22; Ionic 8 supports Angular 16-20 - an Angular 21 or 22 workspace needs Ionic 9; the house floor is Angular 17+ either way). Prefer the 9 path.
 
 - **Standalone entry point, per major** - Ionic 8: import UI components and `provideIonicAngular()` from `@ionic/angular/standalone`, because the bare `@ionic/angular` barrel pulls in lazy-loaded code that defeats tree-shaking. Ionic 9: standalone IS the default `@ionic/angular` entry and the lazy barrel moved to `@ionic/angular/lazy`. Resolve the path against the installed major via the documentation server before the first import, never from recall. (Hub: Components and structure.)
 - **Zoneless, per major** - Ionic 8 keeps Zone.js as a peer dependency and is not zoneless-compatible whatever Angular runs underneath: keep `zone.js` in the polyfills; signals are still fine in your own layer, they just do not make Ionic's components zoneless. Ionic 9 ships official zoneless support and Angular 21+ defaults to it, so a plain field set from an async callback no longer repaints on its own - state flows through signals (or `markForCheck()`), which the hub's signals-first rules already satisfy. (Hub: Change detection and zoneless.)
