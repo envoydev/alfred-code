@@ -575,7 +575,8 @@ test('an execution-strategy trace grades the load before the first edit and no p
 
 test('check: every shipped expectation is valid and its quotes are still in the skill', () =>
 {
-    assert.deepStrictEqual(sc.listSkills(), ['csharp', 'habits-code-comments', 'habits-commit-checkpoint', 'habits-execution-strategy', 'habits-root-cause', 'task-solve']);
+    // answer-budget is no skill: the interaction rule's budget the answer-length hook injects (audit 2026-10-14 RU06).
+    assert.deepStrictEqual(sc.listSkills(), ['answer-budget', 'csharp', 'habits-code-comments', 'habits-commit-checkpoint', 'habits-execution-strategy', 'habits-root-cause', 'task-solve']);
     const r = cli(['check']);
     assert.strictEqual(r.code, 0, r.out + r.err);
 });
@@ -631,8 +632,8 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
         assert.ok(!fs.existsSync(out), 'a dry run writes nothing');
         const lines = r.out.split('\n');
         const billed = lines.filter((l, i) => lines[i - 1] === '# billed: one nested model session');
-        assert.strictEqual(billed.length, 18);
-        assert.match(r.out, /6 skill\(s\) x 3 level\(s\) = 18 billed nested session\(s\), each capped at --max-budget-usd 1\.5/);
+        assert.strictEqual(billed.length, 21);
+        assert.match(r.out, /7 skill\(s\) x 3 level\(s\) = 21 billed nested session\(s\), each capped at --max-budget-usd 1\.5/);
         assert.match(lines.slice(3).find((l) => !l.startsWith('#') && l !== 'set -e'), /clean-export\.js/, 'the source is exported first when none is handed in');
         for (const b of billed)
         {
@@ -643,13 +644,13 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
         }
         assert.ok(billed.some((b) => b.includes(BARE('alfred-memory', 'memory_list'))), 'the copy route allows the bare spelling');
         const installs = lines.filter((l) => l.includes('alfred-code.js install'));
-        assert.strictEqual(installs.length, 18);
+        assert.strictEqual(installs.length, 21);
         for (const i of installs) assert.match(i, /env -i PATH="\$PATH" .* ALFRED_CODE_SKILLS_VIA_PLUGIN=false ALFRED_CODE_HOOKS_VIA_PLUGIN=false ALFRED_CODE_MCPS_VIA_PLUGIN=false node /);
         // The scaffold's commit leaves ~300 loose objects, past git's loose-objects threshold (100), so an
         // unconfigured project starts a DETACHED `git maintenance run --auto` that is still packing into
         // .git/objects when the run is deleted (reproduced: ENOTEMPTY, a tmp_pack left behind).
         const inits = lines.filter((l) => / init -q/.test(l));
-        assert.strictEqual(inits.length, 18);
+        assert.strictEqual(inits.length, 21);
         for (const i of inits) assert.match(i, / init -q && git -C \S+ config maintenance\.auto false$/, 'a throwaway project runs no background maintenance');
         // bash parses the whole plan without running any of it
         const script = path.join(dir, 'plan.sh');
