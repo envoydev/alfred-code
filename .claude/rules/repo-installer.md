@@ -142,7 +142,10 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   `--scope managed` command (`plugins.leftAt`); on MCP, `mcp.adminMcp` reads `managed-mcp.json` and
   `managedMcpServers` from the managed folder (`ALFRED_CODE_MANAGED_DIR` overrides it): a server it provides is
   never registered over, and an exclusive `managed-mcp.json` is said `!!` - it suppresses every plugin server.
-- **The auto-compact window per model (after 2.4.0, the user's ruling of 2026-10-14).** Every run writes
+- **The auto-compact window per model (after 2.4.0, the user's rulings of 2026-10-14).** While the project compacts
+  instead of offering a fresh session - `ALFRED_CODE_AUTO_COMPACT=1`, seeded `0`, which setup asks with the fresh-session
+  triggers and passes as `--auto-compact on|off` (written over the value there, `applyEnv` 3d) and configure's env step
+  switches - every run writes
   `modelSettings.<id>.autoCompactWindow` into the project's own settings file (settings.json, settings.local.json at local
   scope - never the account's) for each `model-windows.json` row, at its window tier's fresh-session trigger
   (`settings.js compactWindowSeeds`: `_200K` / `_1M` / `_DEFAULT` from the env the file applies, `0` skips the tier, past
@@ -150,7 +153,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   and goes on. Claude Code reads the key at session start only. Add-only and ledgered (`managed-settings:
   <file>:modelSettings.<id>.autoCompactWindow=<hash>`; `stamp.js SETTINGS_PATH` must read the path back, or no update,
   move or uninstall can take the row back - the 2026-10-14 matrix caught exactly that): an update re-derives a row still at
-  its hash and removes one it no longer seeds, a hand-changed value is the user's. Nothing is seeded while this file, the
+  its hash and removes one it no longer seeds (every one once the key goes back to `0`), a hand-changed value is the user's. Nothing is seeded while this file, the
   sibling project file or the account file sets a top-level `autoCompactWindow`, and a model the sibling or the account
   file names is left to it.
 - **`.mcp.json` is the COPY ROUTE only** (`ALFRED_CODE_MCPS_VIA_PLUGIN=false`); on the default

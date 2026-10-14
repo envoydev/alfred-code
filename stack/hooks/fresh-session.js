@@ -44,9 +44,14 @@ const FRESH_AT_1M = freshAt('ALFRED_CODE_FRESH_SESSION_1M', 400000);
 // there can run past its window without an offer; lower the variable for such models (it sat at
 // 180,000 until 2.1.6 for exactly that reason).
 const FRESH_AT_DEFAULT = freshAt('ALFRED_CODE_FRESH_SESSION_DEFAULT', 300000);
-// `0` on ALL THREE is the whole off switch. The retired ALFRED_CODE_FRESH_SESSION_PCT is not read
-// at all any more - a percentage of a window is not what this gate fires on.
-const FRESH_OFF = FRESH_AT_200K === 0 && FRESH_AT_1M === 0 && FRESH_AT_DEFAULT === 0;
+// COMPACT INSTEAD (the user's ruling, 2026-10-14): ALFRED_CODE_AUTO_COMPACT=1 makes the project compact where it would
+// have been offered a fresh session - the installer seeds each model's autoCompactWindow at its tier's trigger above
+// (settings.js compactWindowSeeds), and every offer, ask and hold reads the gate as off. `0` (the seed) keeps the
+// offers; anything but `1` reads as `0`.
+const COMPACT_INSTEAD = String(envOf(process.env, 'AUTO_COMPACT') || '').trim() === '1';
+// `0` on ALL THREE is the whole off switch, and so is COMPACT_INSTEAD. The retired ALFRED_CODE_FRESH_SESSION_PCT is not
+// read at all any more - a percentage of a window is not what this gate fires on.
+const FRESH_OFF = (FRESH_AT_200K === 0 && FRESH_AT_1M === 0 && FRESH_AT_DEFAULT === 0) || COMPACT_INSTEAD;
 
 // --- which context WINDOW is this session running in? -------------------------------------
 // ONE rule: the session's model id is looked up in `model-windows.json`, shipped beside this hook
@@ -415,7 +420,7 @@ function askAnsweredSince(from) {
 }
 
 module.exports = {
-  use, freshAt, FRESH_AT_200K, FRESH_AT_1M, FRESH_AT_DEFAULT, FRESH_OFF, sessionModelId, tableWindow,
+  use, freshAt, FRESH_AT_200K, FRESH_AT_1M, FRESH_AT_DEFAULT, FRESH_OFF, COMPACT_INSTEAD, sessionModelId, tableWindow,
   envWindow, knownWindow, ctxThreshold, MIN_RECOVERABLE_SHARE, coldFloor, worthResuming, contextNow, lowestTrigger,
   autoCompactWindow, recordCompactPoint, observedCompaction, compactPointsFile,
   transcriptSize, isTypedTurn, freshAskAnsweredThisTurn, freshAskAnsweredCtx, askAnsweredSince,

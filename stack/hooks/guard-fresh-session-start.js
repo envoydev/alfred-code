@@ -142,14 +142,17 @@ if (!IS_SKILL_CALL && !IS_HOLD_CALL && !['UserPromptExpansion', 'UserPromptSubmi
 let fresh;
 try { fresh = require(require('path').join(__dirname, 'fresh-session.js')); } catch {
   fresh = {
-    use() {}, freshAt: (k, d) => d, FRESH_AT_200K: 0, FRESH_AT_1M: 0, FRESH_AT_DEFAULT: 0, FRESH_OFF: true,
+    use() {}, freshAt: (k, d) => d, FRESH_AT_200K: 0, FRESH_AT_1M: 0, FRESH_AT_DEFAULT: 0, FRESH_OFF: true, COMPACT_INSTEAD: false,
     sessionModelId: () => null, tableWindow: () => null, envWindow: () => null, knownWindow: () => null,
     ctxThreshold: () => null, MIN_RECOVERABLE_SHARE: 0.4, coldFloor: () => null, worthResuming: () => false,
     transcriptSize: () => 0, freshAskAnsweredThisTurn: () => false, askAnsweredSince: () => true,
   };
 }
 fresh.use(payload);
-const { FRESH_OFF, ctxThreshold, worthResuming } = fresh;
+const { FRESH_OFF, COMPACT_INSTEAD, ctxThreshold, worthResuming } = fresh;
+// COMPACT INSTEAD's one line, said at the compaction start and at the first orchestration run of a session.
+const COMPACT_NOTE = 'This project compacts instead of offering a fresh session (ALFRED_CODE_AUTO_COMPACT=1): past its '
+  + "window's trigger the session compacts and the work goes on from the summary.";
 
 // The hold itself. Released - never denied again - once an ask was answered after the compaction, the turn wrote the
 // single-short-step line, a resume would recover too little (the engine's own worthResuming - audit 2026-10-10 C26,
@@ -773,7 +776,9 @@ if (EVENT === 'SessionStart') {
     'from the code (measured: a resume grepped the tree and read a 10k-char source range before ' +
     'opening the plan whose header already named the ranges).' + (pointer ? ` ${pointer}` : '');
   if (FRESH_OFF || quiet || manual) {
-    const text = manual ? after : pointer;
+    // Compacting IS this project's answer to a full context (fresh-session.js COMPACT_INSTEAD): the summary's own
+    // 'continue' line stands, and the two notes after it still apply.
+    const text = manual ? after : COMPACT_INSTEAD ? `${COMPACT_NOTE} Continue the work from the summary. ${after}` : pointer;
     if (text) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: text } }));
     process.exit(0);
   }
@@ -915,6 +920,10 @@ function priorOrchestrationRun() {
 // ONE chained offer per session: once the user has answered it, a retry of the same run goes
 // through. This trigger has no number to grow, so repeating it would only print an answered
 // question again.
+function compactNoteFile() {
+  const key = String(payload.transcript_path || payload.session_id || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
+  return nodePath.join(envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir(), `guard-fresh-compactnote-${key}.said`);
+}
 function chainedOfferFile() {
   const os = require('os');
   const key = String(payload.transcript_path || payload.session_id || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
@@ -974,6 +983,17 @@ function sweepOffers() {
 // the carry read here is the parent session's, and a seat has no user to answer the offer - so
 // neither trigger judges it.
 if (payload.agent_id) process.exit(0);
+// COMPACT INSTEAD: no offer is made here, and the run is told once per session - its own stop asks offer the
+// fresh-session hand-off past the trigger, and the stop contract denies an ask that still carries one.
+if (COMPACT_INSTEAD) {
+  let first = true;
+  try { fs.writeFileSync(compactNoteFile(), new Date().toISOString(), { flag: 'wx' }); sweepOffers(); } catch (e) { first = !(e && e.code === 'EEXIST'); }
+  if (first) process.stdout.write(JSON.stringify({ hookSpecificOutput: {
+    hookEventName: EVENT === 'UserPromptExpansion' ? 'UserPromptExpansion' : 'PreToolUse',
+    additionalContext: `${COMPACT_NOTE} So /${skill} puts no fresh-session option in any ask and never ends a turn to move to a new session.`,
+  } }));
+  process.exit(0);
+}
 const usage = lastUsage();
 // A session with no readable usage has ctx 0: the size trigger cannot fire, the chained one still can.
 const ctx = usage

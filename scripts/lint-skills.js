@@ -1179,7 +1179,8 @@ const ASK_FLOW_SKILLS = Object.keys(ASK_FLOW_TEMPLATES);
 const SETUP_ASK_TEMPLATES = {
     // +1: the mobile-control ask (2026-10-13).
     'setup-plugin/references/walk.md': 13,
-    'setup-plugin/commands/setup.md': 2,
+    // +1: screen B's compact-or-fresh-session ask (2026-10-14).
+    'setup-plugin/commands/setup.md': 3,
     // +2: step 1's closing ask, one template per case (audit 2026-10-11, session a9e06780).
     'setup-plugin/commands/configure.md': 6,
     // audit 2026-10-11: update's three asks plus step 6's re-spell of the project's own AGENTS.md (session b3f8193f).

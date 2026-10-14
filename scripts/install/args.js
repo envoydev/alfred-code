@@ -23,6 +23,9 @@ const ENUMS = {
     // the layout as it is and no later update offers again. Not given, nothing moves. `--docs-move` is the
     // 2.0.0 spelling, read for one release.
     dataMove: { values: ['', 'move', 'keep'], text: "--data-move must be 'move' or 'keep'" },
+    // Compact instead of offering a fresh session (ALFRED_CODE_AUTO_COMPACT, settings.js applyEnv): setup's screen-B
+    // answer, written over the value already there. Not given, the absent-only seed (`0`) stands.
+    autoCompact: { values: ['', 'on', 'off'], text: "--auto-compact must be 'on' or 'off'" },
 };
 
 // ONE canonical order, so a server list never depends on how the flag was typed.
@@ -35,7 +38,7 @@ const VALUED = new Map([
     // from before it still passes them. Never beside the new spelling of the same flag.
     ['--playwright-browsers', 'playwrightBrowsersRaw'], ['--playwright-enabled', 'playwrightEnabledRaw'],
     ['--docs-versioning', 'docsVersioning'], ['--memory-level', 'memoryLevel'],
-    ['--data-move', 'dataMove'], ['--docs-move', 'dataMove'], ['--data-path', 'dataPath'],
+    ['--data-move', 'dataMove'], ['--docs-move', 'dataMove'], ['--data-path', 'dataPath'], ['--auto-compact', 'autoCompact'],
     ['--selection', 'selection'], ['--source', 'source'], ['--plan-out', 'planOut'],
 ]);
 
@@ -63,7 +66,7 @@ const SCOPE_OF = /^([a-z0-9-]+)=(global|user|project|local)$/;
 
 const ALIASES = new Map([['--playwright-browsers', '--browsers'], ['--playwright-enabled', '--browser-enabled'], ['--docs-move', '--data-move']]);
 
-const FLAG_LIST = '--space, --scope, --memory-level, --browsers, --browser-enabled, --docs-versioning, --data-path, --data-move, --github-cli, --keep-pins, --selection, --installed-only, --add, --drop, --scope-of, --print-plan, --plan-out, --skills-only, --rename-claude-md, --source';
+const FLAG_LIST = '--space, --scope, --memory-level, --browsers, --browser-enabled, --docs-versioning, --data-path, --data-move, --auto-compact, --github-cli, --keep-pins, --selection, --installed-only, --add, --drop, --scope-of, --print-plan, --plan-out, --skills-only, --rename-claude-md, --source';
 
 // One selection line, the shape the walks write: `<category> <name>`.
 const ADD_LINE = /^(skill|agent|rule|hook|mcp|plugin) [A-Za-z0-9._-]+$/;
@@ -81,7 +84,7 @@ function parseArgs(argv)
 {
     const out = {
         action: '', space: '', scope: '',
-        playwrightBrowsersRaw: '', playwrightEnabledRaw: '', docsVersioning: '', memoryLevel: '', dataMove: '', dataPath: '',
+        playwrightBrowsersRaw: '', playwrightEnabledRaw: '', docsVersioning: '', memoryLevel: '', dataMove: '', dataPath: '', autoCompact: '',
         selection: '', source: '', planOut: '',
         githubCli: false, keepPins: false, installedOnly: false, printPlan: false, skillsOnly: false,
         add: [], drop: [], scopeOf: {},
@@ -167,6 +170,7 @@ function parseArgs(argv)
     out.docsVersioning = lower(out.docsVersioning);
     out.memoryLevel = lower(out.memoryLevel);
     out.dataMove = lower(out.dataMove);
+    out.autoCompact = lower(out.autoCompact);
     // The data root is a folder INSIDE the project (stack/mcp/data-root.js checkDataPath says what is refused
     // and why) - refused here, before a path that would prompt, escape the project or break a server lands.
     if (out.dataPath)

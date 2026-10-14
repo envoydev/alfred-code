@@ -58,15 +58,20 @@ const ATTRIBUTION_OFF = [['commit', ''], ['pr', ''], ['sessionUrl', false]];
 // Every settings path the stack seeds, with its seed value - the ledger records them and a scope move takes them along.
 const SEEDED_SETTINGS = [...ATTRIBUTION_OFF.map(([k, v]) => [`attribution.${k}`, v]), ['worktree.baseRef', 'head']];
 
-// THE AUTO-COMPACT WINDOW PER MODEL (the user's ruling, 2026-10-14): each model `hooks/model-windows.json` lists compacts
-// where the fresh-session gate offers a resume - its window tier's ALFRED_CODE_FRESH_SESSION_* value (200k -> _200K,
-// 1M -> _1M, any other -> _DEFAULT), read from the env this file applies - so an unattended auto-mode run compacts and goes
-// on instead of running to the harness's own point (about 967k on a 1M window). A tier switched off (`0`) seeds nothing;
+// THE AUTO-COMPACT WINDOW PER MODEL (the user's rulings, 2026-10-14): where the project compacts instead of offering a
+// fresh session (ALFRED_CODE_AUTO_COMPACT=1), each model `hooks/model-windows.json` lists compacts where the fresh-session
+// gate would have offered a resume - its window tier's ALFRED_CODE_FRESH_SESSION_* value (200k -> _200K, 1M -> _1M, any
+// other -> _DEFAULT), read from the env this file applies - instead of at the window Claude Code tunes for the model
+// (settings reference: unset by default; measured near 390k on a 1M window, fresh-session.js). A tier switched off (`0`) seeds nothing;
 // a trigger at or past its window is held at 90% of it (fresh-session.js ctxThreshold's clamp), and the value stays inside
 // the 100,000-1,000,000 Claude Code accepts (settings-reference `modelSettings`). Returns { <model id>: <tokens> }.
 const COMPACT_TIER_KEYS = { 200000: 'ALFRED_CODE_FRESH_SESSION_200K', 1000000: 'ALFRED_CODE_FRESH_SESSION_1M' };
 function compactWindowSeeds(models, env = {}, catalog = [])
 {
+    // Only where the project compacts instead of offering a fresh session (ALFRED_CODE_AUTO_COMPACT, seeded `0`): with the
+    // offers on, a window at the trigger would compact the session before the offer could reach anyone.
+    const mode = env && Object.hasOwn(env, 'ALFRED_CODE_AUTO_COMPACT') ? env.ALFRED_CODE_AUTO_COMPACT : (catalog.find((r) => r.key === 'ALFRED_CODE_AUTO_COMPACT') || {}).default;
+    if (String(mode || '').trim() !== '1') return {};
     const seedOf = (key) => parseInt((catalog.find((r) => r.key === key) || {}).default, 10);
     const tier = (key) =>
     {
@@ -300,7 +305,7 @@ function retireAndReseed(env, migrations, log, label, only = () => true)
 // C8: a PERSONAL_KEYS value always goes to the overlay when there is one, and leaves this file.
 // `sharedKeys` (C5): a decision that shapes committed state lands in THIS file even when the overlay
 // holds the key - the hooks copy route's HOOKS_OFF complement, which is the committed wiring's mirror.
-function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath, memoryDb, hooksOff, hooksAnswered, inherited, overlay, overlayUnreadable = false, sharedKeys = [], log, label = 'settings.json', overlayLabel = 'settings.local.json' })
+function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath, autoCompact = null, memoryDb, hooksOff, hooksAnswered, inherited, overlay, overlayUnreadable = false, sharedKeys = [], log, label = 'settings.json', overlayLabel = 'settings.local.json' })
 {
     let changed = renameEnv(env, migrations, log, label);
     const beneath = inherited && typeof inherited === 'object' && !Array.isArray(inherited) ? { ...inherited } : {};
@@ -346,10 +351,23 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
         }
     }
 
+    // 3d. COMPACT INSTEAD OF A FRESH SESSION (`--auto-compact on|off`, setup's screen-B answer), written over a value
+    // already there like the two roots above; without the flag the absent-only seed below writes `0`. The window pass
+    // in writeSettings reads the value this leaves.
+    if (autoCompact && autoCompact.value)
+    {
+        const { into, lab, mine } = at('ALFRED_CODE_AUTO_COMPACT');
+        const old = into.ALFRED_CODE_AUTO_COMPACT;
+        if (old !== autoCompact.value) { into.ALFRED_CODE_AUTO_COMPACT = autoCompact.value; if (mine) changed = true; }
+        log(`  ${lab} env: ALFRED_CODE_AUTO_COMPACT ${old === undefined ? 'absent' : `'${old}'`} -> '${autoCompact.value}'`
+            + ` (--auto-compact${old === autoCompact.value ? ', unchanged' : ''})`);
+    }
+
     // 4. SEEDS - absent-only, from the catalog, which is the one list.
     for (const row of catalog)
     {
         if (row.written) continue;                       // step 5 owns these
+        if (row.key === 'ALFRED_CODE_AUTO_COMPACT' && autoCompact && autoCompact.value && !heldHere(row.key)) continue;   // decided above
         if (row.key === 'ALFRED_CODE_DOCS_VERSIONING') continue;   // a decision, below
         if (row.key === 'ALFRED_CODE_HOOKS_OFF') continue;         // answered-wins, below
         if (present(row.key)) continue;
@@ -531,7 +549,7 @@ function writeSettings(opts)
         file, hookSpecs = [], retiredHooks = [], denySpecs = [], retiredDeny = [],
         agentDeny = [], agentAllow = [],
         mcpNames = [], mcpOff = [], mcpjsonDisable = [], mcpjsonEnable = [], catalog = [], migrations = {},
-        docsVersioning, docsPath = null, dataPath = null, memoryDb, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null, renamed = null,
+        docsVersioning, docsPath = null, dataPath = null, autoCompact = null, memoryDb, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null, renamed = null,
         inheritedOverrides = null, sharedFile = null, sharedKeys = [], attribution = null, worktreeBase = null, compactWindows = null, ledger = {},
         log = () => {}, note = () => {},
     } = opts;
@@ -701,7 +719,7 @@ function writeSettings(opts)
     }
     const overlay = local && local.env && typeof local.env === 'object' && !Array.isArray(local.env) ? local.env : null;
     const overlayBefore = overlay && !createdLocal ? JSON.stringify(overlay) : null;
-    if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, docsPath, dataPath, memoryDb, hooksOff, hooksAnswered, inherited: inheritedEnv, overlay, overlayUnreadable: localUnreadable, sharedKeys, log, label,
+    if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, docsPath, dataPath, autoCompact, memoryDb, hooksOff, hooksAnswered, inherited: inheritedEnv, overlay, overlayUnreadable: localUnreadable, sharedKeys, log, label,
         overlayLabel: localFile ? path.basename(localFile) : undefined })) changed = true;
     // The auto-compact window per model (compactWindowSeeds). Claude Code reads it at session START only - measured
     // 2026-10-14: written mid-session it changed nothing in print or interactive mode, set before the start it compacted

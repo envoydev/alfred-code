@@ -58,7 +58,13 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   held again only after a tool call), until the run's close deletes the stamp. A hand-written stamp (task-solve's, no
   `session:` line) is never held there. The compaction point is no runtime act: Claude Code reads `autoCompactWindow` at
   session START only (measured 2026-10-14 on 2.1.299: written mid-session it changed nothing, set before the start it
-  compacted at 76k of a 100k window), so the installer seeds it per model (`settings.js compactWindowSeeds`, `repo-installer.md`).
+  compacted at 76k of a 100k window), so the installer seeds it per model where the project compacts instead
+  (`ALFRED_CODE_AUTO_COMPACT=1`; `settings.js compactWindowSeeds`, `repo-installer.md`). **Compact instead** (the user's
+  ruling, 2026-10-14): `ALFRED_CODE_AUTO_COMPACT=1` is `fresh-session.js` `COMPACT_INSTEAD`, which sets `FRESH_OFF`, so
+  every offer, ask note and hold below stands down; `guard-fresh-session-start.js` says so once per session at the first
+  orchestration run and at an automatic compaction's start (the summary's 'continue' line stands there, no hold), and
+  `guard-stop-contract.js` denies an `AskUserQuestion` still carrying a fresh-session option (check 13, once per ask
+  text, the fix handed back with the option dropped and its `(Recommended)` mark moved to the first option left).
   The fresh-session arithmetic (trigger per window tier, window lookup, cold floor) lives in one
   engine, `fresh-session.js`, which the two fresh-session hooks and the monitor require from their
   own directory; a hook that runs before it lands keeps every offer off. `shell-writes.js` parses a

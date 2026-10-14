@@ -204,6 +204,21 @@
       }
     },
     {
+      "key": "ALFRED_CODE_AUTO_COMPACT",
+      "default": "0",
+      "ask": true,
+      "asked_with": "ALFRED_CODE_FRESH_SESSION_1M",
+      "what": "what a long session does at the fresh-session trigger above. `0` (the seed) offers a fresh session there: an ask hands the work to a new session with a paste-ready resume, and Claude Code compacts at its own point. `1` compacts instead: the installer sets each model's `autoCompactWindow` in this project's settings to its trigger, no fresh-session ask is ever made, and the work goes on from the summary - read at session start, so it applies from the next session. Asked with the triggers; setup passes the answer as `--auto-compact on|off`.",
+      "validate": {
+        "type": "enum",
+        "values": [
+          "0",
+          "1"
+        ],
+        "off": "0"
+      }
+    },
+    {
       "key": "ALFRED_CODE_DOCS_BLOCK",
       "default": "1",
       "ask": false,

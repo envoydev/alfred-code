@@ -233,15 +233,19 @@ test('auto-mode dispatch: the run\'s stamp approves its implementer seats past 8
 const CATALOG = require('../meta/environment.json').env;
 const MODELS = { 'claude-opus-5-5': 1000000, 'claude-haiku-4-5': 200000, 'claude-x-500k': 500000 };
 
-test('auto-mode window: each model compacts at its window tier\'s fresh-session trigger', () =>
+const ON = { ALFRED_CODE_AUTO_COMPACT: '1' };
+test('auto-mode window: each model compacts at its window tier\'s fresh-session trigger, only where the project compacts instead', () =>
 {
-    assert.deepStrictEqual(settings.compactWindowSeeds(MODELS, {}, CATALOG), { 'claude-opus-5-5': 400000, 'claude-haiku-4-5': 150000, 'claude-x-500k': 300000 }, 'the seeded triggers');
-    assert.deepStrictEqual(settings.compactWindowSeeds(MODELS, { ALFRED_CODE_FRESH_SESSION_1M: '350000', ALFRED_CODE_FRESH_SESSION_200K: '0', ALFRED_CODE_FRESH_SESSION_DEFAULT: 'x' }, CATALOG),
+    assert.deepStrictEqual(settings.compactWindowSeeds(MODELS, ON, CATALOG), { 'claude-opus-5-5': 400000, 'claude-haiku-4-5': 150000, 'claude-x-500k': 300000 }, 'the seeded triggers');
+    assert.deepStrictEqual(settings.compactWindowSeeds(MODELS, {}, CATALOG), {}, 'the catalog seeds ALFRED_CODE_AUTO_COMPACT 0: the fresh-session offers stay, nothing compacts early');
+    for (const v of ['0', 'yes', 'true', ''])
+        assert.deepStrictEqual(settings.compactWindowSeeds(MODELS, { ALFRED_CODE_AUTO_COMPACT: v }, CATALOG), {}, `'${v}' is not 1`);
+    assert.deepStrictEqual(settings.compactWindowSeeds(MODELS, { ...ON, ALFRED_CODE_FRESH_SESSION_1M: '350000', ALFRED_CODE_FRESH_SESSION_200K: '0', ALFRED_CODE_FRESH_SESSION_DEFAULT: 'x' }, CATALOG),
         { 'claude-opus-5-5': 350000, 'claude-x-500k': 300000 }, 'the env the file applies; a tier switched off seeds nothing; garbage reads as the seed');
-    assert.deepStrictEqual(settings.compactWindowSeeds({ a: 200000, b: 1000000 }, { ALFRED_CODE_FRESH_SESSION_200K: '250000', ALFRED_CODE_FRESH_SESSION_1M: '50000' }, CATALOG),
+    assert.deepStrictEqual(settings.compactWindowSeeds({ a: 200000, b: 1000000 }, { ...ON, ALFRED_CODE_FRESH_SESSION_200K: '250000', ALFRED_CODE_FRESH_SESSION_1M: '50000' }, CATALOG),
         { a: 180000, b: 100000 }, 'a trigger past its window is held at 90% of it, and the value never under Claude Code\'s 100,000');
-    assert.deepStrictEqual(settings.compactWindowSeeds({ tiny: 50000, junk: 'x' }, {}, CATALOG), {}, 'a row under 100k or not a number seeds nothing');
-    assert.deepStrictEqual(settings.compactWindowSeeds({ 'us.anthropic.claude-x': 200000, 'Claude-X': 200000 }, {}, CATALOG), {}, 'nor an id the stamp could not read back');
+    assert.deepStrictEqual(settings.compactWindowSeeds({ tiny: 50000, junk: 'x' }, ON, CATALOG), {}, 'a row under 100k or not a number seeds nothing');
+    assert.deepStrictEqual(settings.compactWindowSeeds({ 'us.anthropic.claude-x': 200000, 'Claude-X': 200000 }, ON, CATALOG), {}, 'nor an id the stamp could not read back');
 });
 
 function writer(dir, opts = {})
@@ -251,6 +255,8 @@ function writer(dir, opts = {})
         localFile: opts.local ? null : path.join(dir, '.claude', 'settings.local.json'),
         inheritedEnv: opts.inheritedEnv || null,
         compactWindows: opts.windows === null ? null : { models: MODELS, inherited: opts.inherited || null, account: opts.account || {} },
+        // `--auto-compact on` unless the case says otherwise (null: the flag not given)
+        autoCompact: opts.autoCompact === undefined ? { value: '1' } : opts.autoCompact,
         ledger: { prior: opts.prior || null } });
 }
 const read = (dir, name = 'settings.json') => JSON.parse(fs.readFileSync(path.join(dir, '.claude', name), 'utf8'));
@@ -322,4 +328,92 @@ test('auto-mode window: a window the user set for every model, or for this one e
     dir = fresh();
     writer(dir, { local: true, inherited: { modelSettings: { 'claude-opus-5-5': { autoCompactWindow: 450000 } } } });
     assert.deepStrictEqual(Object.keys(read(dir, 'settings.local.json').modelSettings), ['claude-haiku-4-5', 'claude-x-500k']);
+});
+
+test('compact instead: ALFRED_CODE_AUTO_COMPACT is seeded 0, --auto-compact writes it over, and the windows follow it', () =>
+{
+    const dir = fs.mkdtempSync(path.join(TMP, 'switch-'));
+    fs.mkdirSync(path.join(dir, '.claude'));
+    let said = [];
+    const log = (l) => said.push(l);
+    const first = writer(dir, { autoCompact: null, log });
+    assert.strictEqual(read(dir).env.ALFRED_CODE_AUTO_COMPACT, '0', 'seeded 0');
+    assert.strictEqual(read(dir).modelSettings, undefined, 'and no window: the fresh-session offers stay');
+    said = [];
+    const on = writer(dir, { autoCompact: { value: '1' }, prior: throughStamp(first.managed), log });
+    assert.strictEqual(read(dir).env.ALFRED_CODE_AUTO_COMPACT, '1');
+    assert.ok(said.some((l) => /env: ALFRED_CODE_AUTO_COMPACT '0' -> '1' \(--auto-compact\)/.test(l)), said.join('\n'));
+    assert.deepStrictEqual(Object.keys(read(dir).modelSettings), ['claude-opus-5-5', 'claude-haiku-4-5', 'claude-x-500k'], 'every model seeded in the same run');
+    // an update without the flag keeps the answer and changes nothing
+    said = [];
+    const kept = writer(dir, { autoCompact: null, prior: throughStamp(on.managed), log });
+    assert.strictEqual(read(dir).env.ALFRED_CODE_AUTO_COMPACT, '1');
+    assert.ok(!said.some((l) => /AUTO_COMPACT|autoCompactWindow/.test(l)), said.join('\n'));
+    // back to the offers: the stack's windows leave, one the user set stays
+    const data = read(dir);
+    data.modelSettings['claude-haiku-4-5'].autoCompactWindow = 120000;
+    fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify(data));
+    said = [];
+    writer(dir, { autoCompact: { value: '0' }, prior: throughStamp(kept.managed), log });
+    assert.strictEqual(read(dir).env.ALFRED_CODE_AUTO_COMPACT, '0');
+    assert.deepStrictEqual(read(dir).modelSettings, { 'claude-haiku-4-5': { autoCompactWindow: 120000 } });
+    assert.ok(said.some((l) => /autoCompactWindow removed for claude-opus-5-5, claude-x-500k/.test(l)), said.join('\n'));
+    // a value the user put in by hand (configure's env step) is read without the flag
+    const hand = fs.mkdtempSync(path.join(TMP, 'hand-'));
+    fs.mkdirSync(path.join(hand, '.claude'));
+    fs.writeFileSync(path.join(hand, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_AUTO_COMPACT: '1' } }));
+    writer(hand, { autoCompact: null });
+    assert.strictEqual(Object.keys(read(hand).modelSettings || {}).length, 3, 'settings.local.json\'s value applies over this file');
+    // the flag is refused before anything is written when it is neither on nor off
+    const bad = spawnSync(process.execPath, [path.join(__dirname, 'install', 'alfred-code.js'), 'install', '--auto-compact', 'maybe'], { cwd: hand, encoding: 'utf8' });
+    assert.notStrictEqual(bad.status, 0);
+    assert.match(bad.stderr + bad.stdout, /--auto-compact must be 'on' or 'off'/);
+});
+
+// ---------------------------------------------------------------------------------------------
+// compact instead: the hooks (fresh-session.js COMPACT_INSTEAD)
+// ---------------------------------------------------------------------------------------------
+test('compact instead: no fresh-session offer at Stop, at a run\'s start or after a compaction; the run is told once', () =>
+{
+    const p = project();
+    const big = transcript([], 'claude-opus-5-5', 450000);
+    const log = fs.mkdtempSync(path.join(TMP, 'ci-'));
+    const env = (on) => ({ CLAUDE_PROJECT_DIR: p.root, ALFRED_CODE_HOOK_LOG_DIR: log, ALFRED_CODE_AUTO_COMPACT: on ? '1' : '0' });
+    const close = (on, sid) => run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: sid, cwd: p.root, transcript_path: big,
+        last_assistant_message: 'The loop is closed: four stages done, nothing pending on my side.' }, env(on));
+    const offered = close(false, 'c0');
+    assert.strictEqual(offered.status, 2, 'past the 400k trigger the offers hold the close');
+    assert.match(offered.stderr, /fresh session/i);
+    assert.strictEqual(close(true, 'c1').status, 0, 'compacting instead: the close ends the turn');
+    const start = (on, sid) => run('guard-fresh-session-start.js', { hook_event_name: 'UserPromptExpansion', session_id: sid, cwd: p.root, transcript_path: big,
+        expansion_type: 'slash_command', command_name: 'loop-code-quality', command_args: 'src/', prompt: '/loop-code-quality src/' }, env(on));
+    assert.match(context(start(false, 's0')), /Do NOT start the run yet/, 'the offer, with the offers on');
+    const told = context(start(true, 's1'));
+    assert.doesNotMatch(told, /Do NOT start the run yet/);
+    assert.match(told, /^This project compacts instead of offering a fresh session \(ALFRED_CODE_AUTO_COMPACT=1\)/);
+    assert.match(told, /puts no fresh-session option in any ask/);
+    assert.strictEqual(context(start(true, 's1')), '', 'once per session');
+    const compacted = run('guard-fresh-session-start.js', { hook_event_name: 'SessionStart', source: 'compact', session_id: 's2', cwd: p.root, transcript_path: big }, env(true));
+    assert.strictEqual(compacted.status, 0);
+    const said = context(compacted);
+    assert.match(said, /compacts instead of offering a fresh session/);
+    assert.match(said, /Continue the work from the summary/);
+    assert.doesNotMatch(said, /supersedes it/, 'the summary\'s continue line stands');
+    assert.ok(!fs.readdirSync(log).some((f) => /^guard-fresh-compact-.*\.hold$/.test(f)), 'and no hold is left for the next change');
+});
+
+test('compact instead: an ask still carrying a fresh-session option is handed back with it dropped and the mark moved', () =>
+{
+    const p = project();
+    const log = fs.mkdtempSync(path.join(TMP, 'ca-'));
+    const questions = [q('Stage 1 is closed. Next?', ['Resume in a fresh session (Recommended)', 'Run stage 2 here', 'Stop here'])];
+    const send = (extra = {}, on = true) => run('guard-stop-contract.js', { hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: { questions },
+        session_id: 'k1', cwd: p.root, transcript_path: transcript(), ...extra }, { CLAUDE_PROJECT_DIR: p.root, ALFRED_CODE_HOOK_LOG_DIR: log, ALFRED_CODE_AUTO_COMPACT: on ? '1' : '0' });
+    const denied = send();
+    assert.strictEqual(denied.status, 2, denied.stderr);
+    assert.match(denied.stderr, /a fresh-session option, while this project compacts instead/);
+    const fixed = JSON.parse(denied.stderr.slice(denied.stderr.indexOf('\n[') + 1));
+    assert.deepStrictEqual(fixed[0].options.map((o) => o.label), ['Run stage 2 here (Recommended)', 'Stop here']);
+    assert.strictEqual(send().status, 0, 'once per ask text');
+    assert.strictEqual(send({ agent_id: 'seat-1', session_id: 'k2' }).status, 0, 'a seat is never judged for it');
 });

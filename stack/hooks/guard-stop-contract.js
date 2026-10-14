@@ -370,13 +370,13 @@ if (payload.hook_event_name === 'PostToolUse' || payload.hook_event_name === 'Po
 let fresh;
 try { fresh = require(require('path').join(__dirname, 'fresh-session.js')); } catch {
   fresh = {
-    use() {}, freshAt: (k, d) => d, FRESH_AT_200K: 0, FRESH_AT_1M: 0, FRESH_AT_DEFAULT: 0, FRESH_OFF: true,
+    use() {}, freshAt: (k, d) => d, FRESH_AT_200K: 0, FRESH_AT_1M: 0, FRESH_AT_DEFAULT: 0, FRESH_OFF: true, COMPACT_INSTEAD: false,
     sessionModelId: () => null, tableWindow: () => null, envWindow: () => null, knownWindow: () => null,
     ctxThreshold: () => null, MIN_RECOVERABLE_SHARE: 0.4, coldFloor: () => null, worthResuming: () => false,
   };
 }
 fresh.use(payload);
-const { FRESH_OFF, ctxThreshold, coldFloor, worthResuming } = fresh;
+const { FRESH_OFF, COMPACT_INSTEAD, ctxThreshold, coldFloor, worthResuming } = fresh;
 // The CLOCK the same offer is judged against in the AskUserQuestion branch (never in the Stop
 // branch, which blocks). Context is not the only thing that makes a resume worth it: 63.5% of the
 // audited collection's cache-read was paid under the 1M window's own trigger, and the flows' stop
@@ -2090,7 +2090,9 @@ if (payload.hook_event_name === 'Stop') {
     return u ? (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0) : 0;
   })();
   const _trigger = ctxThreshold();
-  const freshLine = _trigger === null
+  const freshLine = COMPACT_INSTEAD
+    ? 'This project compacts instead of offering a fresh session (ALFRED_CODE_AUTO_COMPACT=1), so no resume option belongs in the ask.\n'
+    : _trigger === null
     ? 'The fresh-session offer is switched off on this install, so no resume option is expected.\n'
     : (_carry
       ? `This session carries ~${Math.round(_carry / 1000)}k tokens per message and this window's\n`
@@ -2313,17 +2315,30 @@ if (payload.tool_name === 'AskUserQuestion') {
     // 12. A SMALL CLOSE WITH NO REVIEW RECEIPT (smallCloseOwesReview, below) - denied once per ask text: the verifier runs
     // before the close is put to the user, not after the answer.
     const noReview = (() => { try { const f = flowState(); return f.flow && smallCloseOwesReview(f, `${turnProseBeforeAsk()}\n${askText}`); } catch { return false; } })();
-    if (voice.length || numbers || typeIntoOther || unmarked || newCycle || blind || noReview) {
+    // 13. A FRESH-SESSION OPTION WHERE THE PROJECT COMPACTS INSTEAD (fresh-session.js COMPACT_INSTEAD, the user's ruling of
+    // 2026-10-14). The flows' stop asks offer the hand-off from their own text; here the session compacts and goes on, so
+    // the option is dropped - mechanical, so the fix is handed back: a '(Recommended)' mark it carried moves to the first
+    // option left, listed first.
+    const compactFresh = COMPACT_INSTEAD && !payload.agent_id && questions.some((q) => q && Array.isArray(q.options) && q.options.some(isFreshOpt));
+    if (voice.length || numbers || typeIntoOther || unmarked || newCycle || blind || noReview || compactFresh) {
       const fixProse = (t) => (voice.length ? String(t).replace(new RegExp(`\\s*${DASH}\\s*`, 'g'), ' - ').replace(/["“”]/g, "'") : String(t));
       const fix = (t) => String(t).split(/(```[\s\S]*?```|`[^`\n]*`)/).map((s, i) => (i % 2 ? s : fixProse(s))).join('');
       const k = (n) => `~${Math.round(n / 1000)}k`;
       const numberLine = numbers ? ` Measured now: ${k(numbers.ctx)} tokens per message in this session; a fresh one starts at ${numbers.floor ? k(numbers.floor) : 'this install\'s cold floor'}.` : '';
+      const MARK = /\s*\(Recommended\)/i;
+      const dropFresh = (opts) => {
+        const kept = opts.filter((o) => !isFreshOpt(o));
+        if (kept.length === opts.length || !kept.length || kept.some((o) => o && MARK.test(String(o.label || '')))) return kept;
+        if (!opts.some((o) => isFreshOpt(o) && MARK.test(String(o.label || '')))) return kept;
+        return [{ ...kept[0], label: `${String(kept[0].label || '').replace(MARK, '')} (Recommended)` }, ...kept.slice(1)];
+      };
       const fixed = questions.map((q) => (q && typeof q === 'object' ? {
         ...q,
         ...(q.question !== undefined ? { question: fix(q.question) } : {}),
         ...(q.header !== undefined ? { header: fix(q.header) } : {}),
-        ...(Array.isArray(q.options) ? { options: q.options.map((o) => (o && typeof o === 'object' ? { ...o, label: fix(o.label || ''), description: fix(o.description || '') + (numbers && isFreshOpt(o) ? numberLine : '') } : o)) } : {}),
+        ...(Array.isArray(q.options) ? { options: (compactFresh ? dropFresh(q.options) : q.options).map((o) => (o && typeof o === 'object' ? { ...o, label: fix(o.label || ''), description: fix(o.description || '') + (numbers && isFreshOpt(o) ? numberLine : '') } : o)) } : {}),
       } : q));
+      const tooFew = compactFresh && fixed.some((q) => q && Array.isArray(q.options) && q.options.length < 2);
       const key = require('crypto').createHash('sha1').update(askText).digest('hex').slice(0, 16);
       const marker = `${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-askvoice-${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}-${key}.denied`;
       // Once per ask text: a marker that cannot be written where HOOK_LOG_DIR points is written under the temp dir, and
@@ -2340,16 +2355,17 @@ if (payload.tool_name === 'AskUserQuestion') {
         try { fs.writeFileSync(`${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-newcycle-${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}-${newCycle.at}.denied`, '', { flag: 'wx' }); }
         catch { newCycle = null; }
       }
-      const mechanical = voice.length || numbers;
+      const mechanical = voice.length || numbers || compactFresh;
       if (first && (mechanical || typeIntoOther || unmarked || newCycle || blind || noReview)) {
         const reasons = [...voice];
+        if (compactFresh) reasons.push('a fresh-session option, while this project compacts instead (ALFRED_CODE_AUTO_COMPACT=1)');
         if (noReview) reasons.push('a small solve-task close whose `Result:` line has no `review:` field');
         if (blind) reasons.push(`an approval of ${blind.noun ? `the ${blind.noun}` : 'something'} the chat has not shown since the user's last message`);
         if (numbers) reasons.push(`a fresh-session option with no measured number (this session carries ${k(numbers.ctx)} per message now)`);
         if (typeIntoOther) reasons.push('an option that tells the user to type into Other');
         if (unmarked) reasons.push(`${unmarked} question(s) without exactly one option marked '(Recommended)', listed first`);
         if (newCycle) reasons.push('no fresh-session option, while this ask opens new work after this session already finished a solve-task cycle');
-        global.BLOCK_DETAIL = { branch: 'ask-voice', voice: voice.map((v) => v.split(' (')[0]), numbers: !!numbers, other: typeIntoOther, unmarked, newCycle: !!newCycle, blind: !!blind, noReview: !!noReview };
+        global.BLOCK_DETAIL = { branch: 'ask-voice', voice: voice.map((v) => v.split(' (')[0]), numbers: !!numbers, other: typeIntoOther, unmarked, newCycle: !!newCycle, blind: !!blind, noReview: !!noReview, compactFresh };
         process.stderr.write(`Blocked: this AskUserQuestion carries ${reasons.join('; ')}.`
           + (voice.length ? ` The house voice (alfred-interaction.md) covers an ask's question, header, labels and descriptions, and the user reads them as written.` : '')
           + (typeIntoOther ? ` A picked option returns only its LABEL - a value the user must type goes in plain prose that ends the turn, and the ask carries what they can PICK ('I have them' / 'Someone else owns them' / 'Defer').` : '')
@@ -2357,7 +2373,8 @@ if (payload.tool_name === 'AskUserQuestion') {
           + (noReview ? ` The small row runs \`task-verify-code\` inline before its close (task-solve SKILL.md): run it, then put \`review: <reviewer> - <its verdict>\` on the \`Result:\` line - or, if the size grew past small, restate \`Size:\`.` : '')
           + (blind ? ` The user approves what the chat SHOWS: put ${blind.noun ? `the ${blind.noun}` : 'what the ask approves'} in your reply text first (the stages, the draft as it will be posted, the edit made), then ask about 'the ${blind.noun || 'draft'} above' - or, if it sits in a file the user has open, re-send the ask unchanged.` : '')
           + (newCycle ? ` A new cycle after a finished one recommends the fresh-session hand-off first: add 'Resume in a fresh session (Recommended)' quoting ${newCycle.ctx ? `${k(newCycle.ctx)} per message here` : 'this session\'s carry'} and ${newCycle.floor ? `${k(newCycle.floor)} for a fresh start` : 'the fresh start\'s floor'}, and state the new cycle's \`Size:\` line in the question - or, if this ask still belongs to the finished cycle, re-send it unchanged.` : '')
-          + (mechanical ? ` Re-send the ask with these questions - only ${[voice.length ? 'the dashes and quotes' : '', numbers ? 'the fresh option\'s numbers' : ''].filter(Boolean).join(' and ')} changed:\n${JSON.stringify(fixed, null, 1)}\n` : '\n'));
+          + (compactFresh ? ` Here the session compacts past its window's trigger and the work goes on, so no ask offers a new session.${tooFew ? ' A question left with one option is no question: take that option and drop the question.' : ''}` : '')
+          + (mechanical ? ` Re-send the ask with these questions - only ${[voice.length ? 'the dashes and quotes' : '', numbers ? 'the fresh option\'s numbers' : '', compactFresh ? 'the fresh-session option dropped' : ''].filter(Boolean).join(' and ')} changed:\n${JSON.stringify(fixed, null, 1)}\n` : '\n'));
         process.exit(2);
       }
       if (voice.length) notes.push(`The ask just sent carried ${voice.join(' and ')} after its first denial. Keep the house voice `
