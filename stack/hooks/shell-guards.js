@@ -37,6 +37,7 @@
 // copy route) is judged by that copy, so the plugin's steps aside - yieldToCopiedTwin('shell-guards').
 'use strict';
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const vm = require('node:vm');
 const { createRequire } = require('node:module');
@@ -294,6 +295,14 @@ function combine(results)
 //     (49cb4b82: both task cards flipped).
 //   - a recursive grep for a code identifier in the main session writes one `mode: probe` row, the rate a nudge would
 //     be weighed on (bc2fa83e: 16 grep-then-read against 1 symbol call).
+// What the first background call of an actor is told (RU04): the watch mechanics the quality-gates rule used to carry.
+const BACKGROUND_NOTE = 'Background wait (alfred-quality-gates.md): one command whose end is all that matters needs nothing more - its exit '
+    + 're-invokes you. A suite of unknown length (failures show long before its end), a condition inside a run or across several '
+    + 'arms takes the `Monitor` tool when you start it - on the failure lines plus an alert when the output goes quiet (deferred: '
+    + '`ToolSearch select:Monitor` first). Poll it through `Monitor` or its new lines, never a whole-log re-read. A \'what is '
+    + 'running\' check keys on a specific PID, marker file or output sentinel, never a bare process-name grep; task lists track '
+    + 'tasks, not shells.';
+
 function ownChecks(stdin)
 {
     const out = { stdin, results: [] };
@@ -346,6 +355,29 @@ function ownChecks(stdin)
             + 'A short wait you must hold for can run bounded: `timeout 60 <the loop>`.';
         row({ reason: firstLine(text).slice(0, 200), detail: { branch: 'poll-loop' } });
         out.results.push({ guard: `${SELF}.js`, code: 2, stdout: '', stderr: text });
+    }
+
+    // -- the first background call: how to watch it (audit 2026-10-14 RU04) --
+    // The always-on quality-gates rule keeps 'a wait measured in minutes runs in the background'; these mechanics ride
+    // the first run_in_background Bash call of each actor (the main session or one seat), once - an exclusive marker -
+    // where they apply, instead of every session's context (533 chars there; a background call in 24.8% of sessions).
+    if (tool === 'Bash' && input.run_in_background === true)
+    {
+        let first = false;
+        try
+        {
+            const dir = (prelude && typeof prelude.envOf === 'function' && prelude.envOf(process.env, 'HOOK_LOG_DIR')) || os.tmpdir();
+            const part = (v) => String(v || '').replace(/[^\w.-]/g, '_').slice(-80);
+            fs.writeFileSync(path.join(dir, `alfred-bg-note-${part(payload.session_id || 'nosession')}-${part(payload.agent_id || 'main')}`), new Date().toISOString(), { flag: 'wx' });
+            first = true;
+            if (prelude && typeof prelude.sweepStale === 'function') prelude.sweepStale(dir, 'alfred-bg-note-');
+        }
+        catch { first = false; }
+        if (first)
+        {
+            row({ mode: 'probe', reason: 'probe: bg-note', detail: { branch: 'bg-note' } });
+            out.results.push({ guard: `${SELF}.js`, code: 0, stderr: '', stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: BACKGROUND_NOTE } }) });
+        }
     }
 
     // -- the zsh traps: quote what zsh would expand and abort on --
@@ -557,5 +589,5 @@ function main()
     if (!pending) process.exit(verdict.code);
 }
 
-module.exports = { GUARDS, SELF, MATCHER, PROTECTIVE, RUN_ORDER, SLOW_MS, wiringRows, runGuard, combine, parseOut, ownChecks, slowProbe };
+module.exports = { GUARDS, SELF, MATCHER, PROTECTIVE, RUN_ORDER, SLOW_MS, BACKGROUND_NOTE, wiringRows, runGuard, combine, parseOut, ownChecks, slowProbe };
 if (require.main === module) main();

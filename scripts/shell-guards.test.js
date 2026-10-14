@@ -6,7 +6,7 @@
 'use strict';
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
-require('./hook-test-env').isolateHookSuite();
+require('./hook-test-env').isolateHookSuite({ ownTmp: true }); // RU04: the background note's once-per-actor marker sits in the hook temp dir
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -689,6 +689,48 @@ test('audit 2026-10-10 C25: a foreground until / while loop that sleeps is block
   assert.equal(own(dir, 'echo "until x; do sleep 1; done"').status, 0, 'text in quotes');
   assert.equal(own(dir, 'for i in 1 2 3; do sleep 1; done').status, 0, 'a for loop is bounded by its list');
   assert.ok(rowsIn(dir).some((x) => !x.mode && x.detail && x.detail.branch === 'poll-loop'), 'a block row');
+});
+
+// audit 2026-10-14 RU04: the watch mechanics left the always-on quality-gates rule (533 chars every session) for the
+// first background call of each actor, where they apply (a background Bash call in 24.8% of sessions).
+test('audit 2026-10-14 RU04: the first background Bash call of each actor carries the watch note, once', () => {
+  const dir = project('bg-');
+  const marks = fs.mkdtempSync(path.join(TMP, 'marks-'));
+  const env = { CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_HOOK_LOG_DIR: marks };
+  const call = (session, input, { tool = 'Bash', agent } = {}) => {
+    const r = run(DISPATCH, { hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, session_id: session, cwd: dir, ...(agent ? { agent_id: agent, agent_type: 'alfred-code:implementer' } : {}) }, { cwd: dir, env });
+    let h = {};
+    try { h = JSON.parse(r.stdout).hookSpecificOutput || {}; } catch { h = {}; }
+    return { status: r.status, context: h.additionalContext || '' };
+  };
+  const bg = { command: 'npm test > run.log 2>&1', run_in_background: true };
+  assert.equal(call('bg1', { command: 'npm test' }).context, '', 'a foreground call says nothing');
+  assert.equal(call('bg1', { command: 'tail -f run.log' }, { tool: 'Monitor' }).context, '', 'a Monitor call IS the watch');
+  assert.equal(call('bg1', { ...bg, run_in_background: 'true' }).context, '', 'only a real true is a background call');
+  const first = call('bg1', bg);
+  assert.equal(first.status, 0, 'a note, never a block');
+  assert.equal(first.context, shell.BACKGROUND_NOTE);
+  // the clauses the rule carried before RU04 (rule-prose M69, F4, C25)
+  assert.match(first.context, /one command whose end is all that matters needs nothing more - its exit re-invokes you/);
+  assert.match(first.context, /a condition inside a run or across several arms takes the `Monitor` tool when you start it/);
+  assert.match(first.context, /`ToolSearch select:Monitor`/);
+  assert.match(first.context, /Poll it through `Monitor` or its new lines, never a whole-log re-read\./);
+  assert.match(first.context, /never a bare process-name grep; task lists track tasks, not shells\./);
+  assert.equal(call('bg1', bg).context, '', 'once per actor');
+  assert.equal(call('bg1', bg, { agent: 'a1' }).context, shell.BACKGROUND_NOTE, 'a seat is its own actor');
+  assert.equal(call('bg1', bg, { agent: 'a1' }).context, '', 'and hears it once too');
+  assert.equal(call('bg2', bg).context, shell.BACKGROUND_NOTE, 'a new session hears it again');
+  assert.ok(fs.readdirSync(marks).some((f) => f === 'alfred-bg-note-bg1-main') && fs.readdirSync(marks).some((f) => f === 'alfred-bg-note-bg1-a1'), 'one marker per actor, in the hook temp dir');
+  const rows = ledgerRows(dir, 'bg1').filter((x) => x.detail && x.detail.branch === 'bg-note');
+  assert.deepEqual(rows.map((x) => x.mode), ['probe', 'probe'], 'one probe row per note');
+  // a marker dir that cannot be written: silent, never a note on every call
+  const gone = { ...env, ALFRED_CODE_HOOK_LOG_DIR: path.join(marks, 'missing', 'deeper') };
+  const r = run(DISPATCH, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: bg, session_id: 'bg3', cwd: dir }, { cwd: dir, env: gone });
+  assert.equal(r.status, 0);
+  assert.ok(!/Background wait/.test(r.stdout), 'no marker, no note');
+  // a block still wins: the note rides beside it
+  const blocked = run(DISPATCH, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'git commit -am x', run_in_background: true }, session_id: 'bg4', cwd: dir }, { cwd: dir, env });
+  assert.equal(blocked.status, 2, 'the commit gate still blocks');
 });
 
 test('audit 2026-10-10: an unaddressed sed -i s/// over several lines of its file gets a note naming them', () => {

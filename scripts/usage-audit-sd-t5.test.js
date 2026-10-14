@@ -58,8 +58,10 @@ test('SD09 d9035363#5: a docs cleanup keeps the hook ledgers and flow/ state, or
 
 // ---- SD16: a run of unknown length is watched on its failure lines, not only for its exit ---------------------------
 test('SD16 7f8803eb#5: a suite of unknown length arms Monitor on its failure lines plus a quiet alert; exit-only is for a run whose end is all that matters', () => {
-    const t = flat(read('stack/rules/alfred-quality-gates.md'));
-    assert.match(t, /One `run_in_background` command whose end is all that matters needs nothing more - its exit re-invokes you; a suite of unknown length \(failures show long before its end\), a condition inside a run or across several arms the `Monitor` tool when you start it - on the failure lines plus an alert when the output goes quiet/);
+    // audit 2026-10-14 RU04: the text rides the first background call's note (shell-guards.js BACKGROUND_NOTE), not the always-on rule
+    const t = flat(require('../stack/hooks/shell-guards.js').BACKGROUND_NOTE);
+    assert.match(t, /one command whose end is all that matters needs nothing more - its exit re-invokes you\. A suite of unknown length \(failures show long before its end\), a condition inside a run or across several arms takes the `Monitor` tool when you start it - on the failure lines plus an alert when the output goes quiet/);
+    assert.match(flat(read('stack/rules/alfred-quality-gates.md')), /the first background call's note says how to watch it\./);
 });
 
 // ---- SD15: a package change in a project file routes to the migration workflow ----------------------------------------

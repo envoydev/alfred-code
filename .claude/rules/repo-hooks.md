@@ -131,7 +131,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   zod object, so the entry parses with the key stripped (the 2.1.100 and 2.1.294 bundles read 2026-10-14; the 2.1.294
   plugin validator says 'Claude Code ignores unrecognized fields at load time'). The copy route backfills the key onto
   an older entry.
-  The dispatcher makes four checks of its OWN before any guard (`ownChecks`, audit 2026-10-10 C14 / C25), where the
+  The dispatcher makes five checks of its OWN before any guard (`ownChecks`, audit 2026-10-10 C14 / C25), where the
   stack's non-protective hooks run (`standDown`, `cursorStandDown`): under zsh (`$SHELL`) a tool-owned glob
   (`--include=` / `--exclude=` / `--exclude-dir=`, `-name` / `-path` and their `i` forms, a brace list expanded one
   word per alternative) and a bare word opening with `=` (`=====`, a `==` outside `[[ ]]` / `(( ))`) are single-quoted
@@ -139,7 +139,13 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   command on either - 44 aborted scans in one session); a FOREGROUND `until` / `while` loop that sleeps on Bash is
   blocked, naming `run_in_background` and the Monitor tool (a `while read` loop, a `timeout` of 120s or less and a
   background run pass); an unaddressed `sed -i` `s///` whose pattern matches more than one line of its file gets an
-  `additionalContext` note naming the lines; and a recursive grep for a code identifier (CamelCase, a call) in the
+  `additionalContext` note naming the lines; the FIRST `run_in_background: true` Bash call of each actor (the main
+  session, or one `agent_id`) gets `BACKGROUND_NOTE` as `additionalContext` - how to watch it: a lone command needs
+  nothing, a suite or a condition takes `Monitor`, no whole-log re-read, no bare process-name grep - once, through an
+  exclusive `alfred-bg-note-<session>-<agent|main>` marker in the hook temp dir (a dir it cannot write stays silent),
+  plus a `mode: probe`, `bg-note` row (audit 2026-10-14 RU04: the text left `alfred-quality-gates.md`, 533 chars in
+  every session, for the 24.8% of sessions that start a background call; a week of `bg-note` rows against the
+  background-call rate is the owed comparison); and a recursive grep for a code identifier (CamelCase, a call) in the
   main session writes one `mode: probe` row. Each writes its row under `shell-guards.js`.
   A dispatcher run past 1,000ms, timed from its own process start, writes one `mode: probe`, `kind: slow` row with each
   guard's ms, its own checks' and the boot's (`slowProbe`, audit 2026-10-14 HK15: 86 runs of 1s or more in a week, max

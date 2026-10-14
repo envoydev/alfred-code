@@ -115,7 +115,8 @@ test('M69: the quality gates drop the generic simplicity line and name Monitor a
     assert.ok(!gates.includes('Keep it simple') && !gates.includes('speculative'), 'a generic line with no measured miss');
     assert.ok(gates.includes('Comments: none by default; a why only when the code cannot say it'), 'the implementer bar cites this comments line by name');
     assert.ok(!gates.includes('the wait tool is deferred'), 'the tool is named');
-    assert.ok(gates.includes('`ToolSearch select:Monitor`'), 'the load line names Monitor');
+    // audit 2026-10-14 RU04: the Monitor load line moved to the first background call's note (shell-guards.test.js RU04)
+    assert.ok(!gates.includes('select:Monitor'), 'the load line left the always-on rule');
 });
 
 // ------------------------------------------------------------------ M71
@@ -186,7 +187,9 @@ test('hooks #14: an ask with no options to name still goes through the tool - th
 test('rules F4: background output is polled from one home, the quality gates', () =>
 {
     assert.ok(!/Monitor/.test(injected('alfred-navigation')), 'the navigation copy is folded away');
-    assert.match(injected('alfred-quality-gates'), /Poll it through `Monitor` or its new lines, never a whole-log re-read\./);
+    // audit 2026-10-14 RU04: the polling line rides the first background call's note now (shell-guards.test.js RU04)
+    assert.ok(!/whole-log/.test(injected('alfred-quality-gates')), 'one home: the dispatcher note');
+    assert.match(injected('alfred-quality-gates'), /runs in the background while you do work that does not depend on it; the first background call's note says how to watch it\./);
 });
 
 test('rules F5 + F16: the navigation rule says one thing per line, in plain words', () =>
@@ -428,7 +431,8 @@ test('C12: a pasted secret serves its one call only, and a documented seed is ci
 test('C25 / C31 / C07: one background command needs no Monitor, a red run is logged once, a completeness verdict scopes itself', () =>
 {
     const gates = injected('alfred-quality-gates');
-    assert.match(gates, /One `run_in_background` command whose end is all that matters needs nothing more - its exit re-invokes you; .*a condition inside a run or across several arms the `Monitor` tool when you start it/);
+    // audit 2026-10-14 RU04: the one-command / Monitor split rides the first background call's note (shell-guards.test.js RU04)
+    assert.match(require('../stack/hooks/shell-guards.js').BACKGROUND_NOTE, /one command whose end is all that matters needs nothing more - its exit re-invokes you\. .*a condition inside a run or across several arms takes the `Monitor` tool when you start it/);
     // audit 2026-10-14 RU05: shell-guards.js blocks a foreground sleep loop (shell-guards.test.js poll-loop), so the rule drops the clause
     assert.ok(!gates.includes('sleep loop'), 'a hook-held clause left the rule');
     assert.match(gates, /A red test or build run is captured once to a scratch log \(`<cmd> > <scratch>\/run\.log 2>&1; tail -n 60 <scratch>\/run\.log`\); every later look greps that log, never a re-run\./);
