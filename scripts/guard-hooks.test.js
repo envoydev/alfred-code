@@ -1467,11 +1467,11 @@ test('guard-stop-contract: the AskUserQuestion branch injects its notes, and den
   const once = [{ question: 'Ship it \u2014 today?', header: 'Ship', options: [{ label: 'Yes', description: 'ok' }] }];
   assert.equal(noDir(once).status, 2, 'the first send is denied');
   assert.equal(noDir(once).status, 0, 'the re-send passes, the marker kept under the temp dir');
-  // The rule line names the deny that enforces it - '(the Stop hook never sees an ask)' read as 'nothing checks it'.
+  // The rule line states the bar; the deny above enforces it (audit 2026-10-14 RU06: its mechanics left the always-on rule).
   const ruleLine = fs.readFileSync(path.join(__dirname, '..', 'stack', 'rules', 'alfred-interaction.md'), 'utf8').split('\n').find((l) => /No double quotes in prose/.test(l));
   assert.doesNotMatch(ruleLine, /the Stop hook never sees an ask/, 'the stale parenthetical is gone');
-  assert.match(ruleLine, /PreToolUse deny/, 'the rule names the PreToolUse deny');
-  assert.match(ruleLine, /In JSON or code a string's delimiters stay double/, 'and keeps the code carve-out the deny now honours');
+  assert.doesNotMatch(ruleLine, /PreToolUse deny/, 'the deny mechanics live in the hook, not the rule');
+  assert.match(ruleLine, /[Ii]n JSON or code a string's delimiters stay double/, 'and keeps the code carve-out the deny honours');
 
   // two typed turns before one reply - the contradicted-recommendation shape
   const two = ask(transcript('ask-two', [
