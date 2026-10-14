@@ -200,16 +200,14 @@ function proseOf(text) {
 }
 
 // The budget text, one copy for both routes that inject it.
+// The rule (alfred-interaction.md) is the budget's home, cached once; this per-turn copy carries only the delta that
+// needs the last-position slot (audit 2026-10-14 RU06: the full 751-char text rode every prompt and session start, saved
+// in the transcript each turn - ~22.5K chars over a 30-turn session).
 const BUDGET_TEXT =
-        `Answer budget (alfred-interaction.md, house rule): at most 3 sentences plus bullet ` +
-        `points, ~${BUDGET} characters of prose. Lead with the result and stop - no preamble, no ` +
-        `restating the request, no listing what you considered, no caveat paragraph. Code, ` +
-        `tables and command output are exempt and do not count. Write more ONLY if THIS message ` +
-        `asked for depth, in English, Ukrainian or Russian (in detail / walk me through / write a plan; детально, ` +
-        `покроково, розпиши); 'explain' by itself does ` +
-        `not - explanations are capped too, and short means plainer words, never compressed jargon. ` +
-        `House voice, same rule, same source: single dashes, never em-dashes, and single quotes in ` +
-        `prose - in the answer AND in an AskUserQuestion's own text, which no Stop hook reads.`;
+        `Answer budget (alfred-interaction.md): 3 sentences plus bullets, ~${BUDGET} characters of prose, result first. ` +
+        `Code, tables and command output are exempt. Only THIS message's depth words lift it (in detail / walk me ` +
+        `through / write a plan; детально, покроково, розпиши). Single dashes and single quotes, an ` +
+        `AskUserQuestion's text included.`;
 
 // --- the correction streak: N short human turns in a row, each right after a long answer -----
 // The interaction rule says a re-ask on the SAME deliverable is ONE format AskUserQuestion, not

@@ -743,7 +743,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     -v q` for C# - and hands the first 20 error lines back as a block, once per turn (its own continuation Stop
     passes). A missing compiler or a timeout is a pass, and so is a C# project never restored (every error line
     `NETSDK1004`, which `--no-restore` cannot get past), written as one `mode: probe` row (audit 2026-10-08).
-  - `guard-answer-length.js` (`UserPromptSubmit` + `Stop` + `PostToolUse` `AskUserQuestion`) - injects the answer budget every turn; the
+  - `guard-answer-length.js` (`UserPromptSubmit` + `Stop` + `PostToolUse` `AskUserQuestion`) - injects the answer budget every turn (a
+    333-char delta of the rule's section, which stays its home - audit 2026-10-14 RU06; it was 751 on every prompt); the
     Stop half blocks prose past 1800 chars when the user asked for no depth, and blocks an em-dash (en-dash and horizontal
     bar too, `HOUSE_DASH`) in prose at any length. After the third consecutive short correction following a long answer it injects
     the format ask (injection only). A correction turn (short, after an answer, carrying a correction marker -

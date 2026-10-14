@@ -36,7 +36,7 @@ A design, plan or decision the user proposes gets an adversarial review - valida
 
 ## Formatting and privacy
 
-- No em-dashes - single dashes. No double quotes in prose - single quotes, an AskUserQuestion's question, labels and descriptions included (a PreToolUse deny hands a slip back corrected, code spans untouched). In JSON or code a string's delimiters stay double.
+- No em-dashes - single dashes. No double quotes in prose - single quotes, an AskUserQuestion's text included; in JSON or code a string's delimiters stay double.
 - Never use or mention the user's name unless they ask.
 
 ## Planning and execution
