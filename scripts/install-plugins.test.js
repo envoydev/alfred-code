@@ -2562,6 +2562,52 @@ test('unreachedPlugins: a plugin the settings switch on with no record reaching 
     finally { fs.rmSync(work, { recursive: true, force: true }); }
 });
 
+// audit 2026-10-14 PL14, measured on 2.1.300: a plugin a REGISTERED marketplace lists with a relative-path source loads
+// from the marketplace copy with no install record, and with its only record another project's (its SessionStart hook
+// fired, `plugin list` empty); a marketplace declared only in project settings loaded nothing. Such a plugin is reached.
+test('unreachedPlugins: a registered marketplace serving a relative-path entry reaches with no record; nothing else does', () =>
+{
+    const os = require('node:os');
+    const { execFileSync } = require('node:child_process');
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'unreached-mk-'));
+    try
+    {
+        const project = path.join(work, 'proj');
+        const account = path.join(work, 'acct');
+        const mk = path.join(work, 'mk');
+        fs.mkdirSync(path.join(project, '.claude'), { recursive: true });
+        fs.mkdirSync(account, { recursive: true });
+        fs.mkdirSync(path.join(mk, '.claude-plugin'), { recursive: true });
+        fs.writeFileSync(path.join(mk, '.claude-plugin', 'marketplace.json'), JSON.stringify({ name: 'envoydev', plugins: [
+            { name: 'chrome-control', source: './' }, { name: 'remote-one', source: { source: 'github', repo: 'o/r' } }] }));
+        fs.writeFileSync(path.join(project, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: {
+            'chrome-control@envoydev': true, 'remote-one@envoydev': true, 'dropped@envoydev': true, 'other@unregistered': true } }));
+        const listing = JSON.stringify([{ id: 'chrome-control@envoydev', version: '2.3.0', scope: 'local', projectPath: path.join(work, 'other'), enabled: true }]);
+        const registered = JSON.stringify([{ name: 'envoydev', source: 'directory', path: mk, installLocation: mk }]);
+        const names = (marketplaces) => P.unreachedPlugins({ listing, projectRoot: project, configDir: account, marketplaces }).map((u) => u.spec);
+        assert.deepStrictEqual(names(registered), ['dropped@envoydev', 'other@unregistered', 'remote-one@envoydev'],
+            'the relative entry reaches; a non-relative source, an id the catalog does not list and an unregistered marketplace do not');
+        assert.deepStrictEqual(names([]), ['chrome-control@envoydev', 'dropped@envoydev', 'other@unregistered', 'remote-one@envoydev'], 'no marketplace rows: every spec needs a record');
+        assert.deepStrictEqual(names('not json'), names([]), 'an unreadable marketplace listing reads as none');
+        fs.rmSync(path.join(mk, '.claude-plugin', 'marketplace.json'));
+        assert.ok(names(registered).includes('chrome-control@envoydev'), 'a registered marketplace whose catalog cannot be read serves nothing');
+        fs.writeFileSync(path.join(mk, '.claude-plugin', 'marketplace.json'), '{ broken');
+        assert.ok(names(registered).includes('chrome-control@envoydev'), 'a malformed catalog serves nothing');
+        fs.writeFileSync(path.join(mk, '.claude-plugin', 'marketplace.json'), JSON.stringify({ name: 'envoydev', plugins: [{ name: 'chrome-control', source: './' }] }));
+        const lf = path.join(work, 'listing.json');
+        const mf = path.join(work, 'marketplaces.json');
+        fs.writeFileSync(lf, listing);
+        fs.writeFileSync(mf, registered);
+        const cli = (args) => execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'install', 'plugins.js'), 'unreached', project, ...args], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: account } });
+        const out = cli(['--listing', lf, '--marketplaces', mf]);
+        assert.doesNotMatch(out, /chrome-control/, 'the CLI reads the marketplace file');
+        assert.match(out, /^unreached: remote-one@envoydev\t/m);
+        assert.match(cli(['--marketplaces', mf, '--listing', lf]), /^unreached: remote-one@envoydev\t/m, 'flags in either order');
+        assert.match(cli(['--listing', lf]), /^unreached: chrome-control@envoydev\t/m, 'with --listing and no --marketplaces the CLI spawns nothing and reads none');
+    }
+    finally { fs.rmSync(work, { recursive: true, force: true }); }
+});
+
 // PL5 (b) (audit 2026-10-14, the user's ruling of 2026-10-14): migrateRenamed reads install records only, so a renamed
 // id the project's own settings still switch on with no record reaching it stayed - committed, in every clone. Update
 // removes it once the run carries the successor; a record that reaches, another marketplace's key, a successor the run
