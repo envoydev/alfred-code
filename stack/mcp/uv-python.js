@@ -1,6 +1,7 @@
 'use strict';
-// THE PYTHON EVERY uvx-LAUNCHED STACK SERVER RUNS ON - one answer, read by every launcher and by the
-// installer's copy route, so the plugin entries and a .mcp.json registration can never disagree.
+// THE PYTHON EVERY uvx-LAUNCHED STACK SERVER RUNS ON - one answer per server, read by every launcher, by the
+// installer's copy route and by the pin refresh, so the plugin entries, a .mcp.json registration and the pin
+// can never disagree.
 //
 // uvx takes the newest interpreter it can find or download, and that is the failure: serena-agent
 // 1.7.0 pins pyyaml 6.0.2, which ships no CPython 3.14 wheel on any platform, so a machine holding
@@ -9,7 +10,12 @@
 // ruamel.yaml.clib ship no ARM64 wheel on ANY Python, while the x64 CPython runs there under the
 // OS's own emulation with every wheel (docs/uv-python-pin-evidence.md).
 //
-//   ALFRED_CODE_UV_PYTHON   a uv python request that replaces the choice below (e.g. 3.12), read
+// One server runs on a newer Python than the rest (SERVER_PYTHON): windows-mcp 0.8.6+ requires 3.14, and
+// windows-control moved to 0.8.8 on it (the user's ruling of 2026-10-14) - measured to install on Windows 11
+// ARM through the x64 3.14 build, while the ARM64 one dies building cryptography with no linker
+// (docs/uv-python-pin-evidence.md). The rest stay on 3.13.
+//
+//   ALFRED_CODE_UV_PYTHON   a uv python request that replaces the choice below for EVERY server (e.g. 3.12), read
 //                            from the shell env, then the project's settings.local.json, its
 //                            settings.json and the account settings.json `env` - a plugin server never
 //                            sees a PROJECT settings env key (memory-launch.js says why), so the files
@@ -23,7 +29,13 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 
 const PYTHON = '3.13';
-const WINDOWS_ARM_PYTHON = 'cpython-3.13-windows-x86_64-none';
+// A server whose pinned release needs a newer Python than PYTHON: its own minor, here and nowhere else.
+const SERVER_PYTHON = { 'windows-control': '3.14' };
+// The Python a server's pin is resolved against and launched on - PYTHON unless SERVER_PYTHON names it.
+const pythonFor = (server) => SERVER_PYTHON[server] || PYTHON;
+// The x64 build Windows on ARM runs (every wheel, under the OS's emulation), for a minor.
+const windowsArmPython = (minor) => `cpython-${minor}-windows-x86_64-none`;
+const WINDOWS_ARM_PYTHON = windowsArmPython(PYTHON);
 
 // The stack's setting ALFRED_CODE_<suffix>, '' read as unset. This file ships without hook-prelude.js
 // (a plugin server, not a hook), so its own copy of envOf is inline - pinned with the hooks' copy as
@@ -71,11 +83,12 @@ function settingFrom({ env, projectDir, suffix, key })
 
 const overrideFrom = ({ env, projectDir }) => settingFrom({ env, projectDir, suffix: 'UV_PYTHON' });
 
-function pythonRequest({ platform = process.platform, arch = process.arch, env = process.env, projectDir } = {})
+function pythonRequest({ platform = process.platform, arch = process.arch, env = process.env, projectDir, server } = {})
 {
     const override = overrideFrom({ env, projectDir });
     if (override) return override;
-    return platform === 'win32' && isWindowsArm({ arch, env }) ? WINDOWS_ARM_PYTHON : PYTHON;
+    const minor = pythonFor(server);
+    return platform === 'win32' && isWindowsArm({ arch, env }) ? windowsArmPython(minor) : minor;
 }
 
 // THE DEPENDENCY CUT-OFF. The pin fixes the top package only; its dependencies float, so two starts a week
@@ -114,7 +127,7 @@ function excludeNewerArgs(value, { env = process.env, log = () => {} } = {})
 // a stop signal is passed on: Claude Code stops a server by signalling the process it started - the
 // launcher - and uvx, the server and its language servers would otherwise outlive it (measured: a
 // SIGTERM to the launcher left the server running).
-function runUvx(args, { env: given = process.env, cwd, projectDir, label = 'launcher', excludeNewer = '' } = {})
+function runUvx(args, { env: given = process.env, cwd, projectDir, label = 'launcher', excludeNewer = '', server } = {})
 {
     // A UV_EXCLUDE_NEWER only a settings file names is put where uv reads it - the child's own environment.
     const own = String(given.UV_EXCLUDE_NEWER || '').trim() ? '' : userExcludeNewer({ env: given, projectDir });
@@ -123,7 +136,7 @@ function runUvx(args, { env: given = process.env, cwd, projectDir, label = 'laun
     // as a file (browser-launch.js --secrets), mobile-control only the keys appium-mcp documents.
     const env = own ? { ...given, UV_EXCLUDE_NEWER: own } : given;
     const cutoff = excludeNewerArgs(excludeNewer, { env, log: (line) => process.stderr.write(`${label}: ${line}\n`) });
-    const child = spawn('uvx', ['--python', pythonRequest({ env, projectDir }), ...cutoff, ...args], { stdio: 'inherit', env, cwd });
+    const child = spawn('uvx', ['--python', pythonRequest({ env, projectDir, server }), ...cutoff, ...args], { stdio: 'inherit', env, cwd });
     const forward = (signal) => { try { child.kill(signal); } catch { /* already gone */ } };
     for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(signal, forward);
     child.on('error', err =>
@@ -135,4 +148,4 @@ function runUvx(args, { env: given = process.env, cwd, projectDir, label = 'laun
     return child;
 }
 
-module.exports = { pythonRequest, runUvx, settingFrom, excludeNewerOf, excludeNewerArgs, userExcludeNewer, cutoffFor, PYTHON, WINDOWS_ARM_PYTHON };
+module.exports = { pythonRequest, pythonFor, runUvx, settingFrom, excludeNewerOf, excludeNewerArgs, userExcludeNewer, cutoffFor, PYTHON, SERVER_PYTHON, WINDOWS_ARM_PYTHON };

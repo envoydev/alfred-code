@@ -1055,7 +1055,7 @@
     {
       "name": "windows-control",
       "active": false,
-      "args": "-e WINDOWS_MCP_EXCLUDE_TOOLS=@WINDOWS_CONTROL_EXCLUDE@ -e WINDOWS_MCP_TOOLS= -e ANONYMIZED_TELEMETRY=false -- uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from windows-mcp@WINDOWS_CONTROL_PIN@ windows-mcp serve",
+      "args": "-e WINDOWS_MCP_EXCLUDE_TOOLS=@WINDOWS_CONTROL_EXCLUDE@ -e WINDOWS_MCP_TOOLS= -e ANONYMIZED_TELEMETRY=false -- uvx --python @WINDOWS_CONTROL_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from windows-mcp@WINDOWS_CONTROL_PIN@ windows-mcp serve",
       "skills": [
         "desktop-automation"
       ],

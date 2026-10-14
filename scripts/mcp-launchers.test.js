@@ -198,6 +198,21 @@ test('uv-python: an x64 node emulated on Windows ARM still sees the ARM machine 
     assert.strictEqual(pythonRequest({ platform: 'linux', arch: 'x64', env: { PROCESSOR_ARCHITECTURE: 'ARM64' } }), '3.13');
 });
 
+// The user's ruling of 2026-10-14: windows-mcp 0.8.6+ requires 3.14, so windows-control alone launches on it - the x64
+// build on Windows on ARM, where the ARM64 one dies building cryptography (docs/uv-python-pin-evidence.md).
+test('uv-python: windows-control runs on its own Python, 3.14 (x64 on Windows ARM); every other server stays on 3.13', () =>
+{
+    assert.strictEqual(pythonRequest({ platform: 'win32', arch: 'x64', env: {}, server: 'windows-control' }), '3.14');
+    assert.strictEqual(pythonRequest({ platform: 'win32', arch: 'arm64', env: {}, server: 'windows-control' }), 'cpython-3.14-windows-x86_64-none');
+    for (const server of ['alfred-navigation', 'alfred-memory', 'macos-control', undefined])
+        assert.strictEqual(pythonRequest({ platform: 'win32', arch: 'x64', env: {}, server }), '3.13', String(server));
+    assert.strictEqual(pythonRequest({ platform: 'win32', arch: 'x64', env: { ALFRED_CODE_UV_PYTHON: '3.15' }, server: 'windows-control' }), '3.15', 'the override replaces every server\'s');
+    const { SERVER_PYTHON, pythonFor } = require(UV_PYTHON);
+    assert.deepStrictEqual(SERVER_PYTHON, { 'windows-control': '3.14' });
+    assert.strictEqual(pythonFor('windows-control'), '3.14');
+    assert.strictEqual(pythonFor('alfred-memory'), '3.13');
+});
+
 test('uv-python: ALFRED_CODE_UV_PYTHON overrides the choice; an empty one does not', () =>
 {
     assert.strictEqual(pythonRequest({ platform: 'win32', arch: 'arm64', env: { ALFRED_CODE_UV_PYTHON: '3.12' } }), '3.12');
@@ -458,7 +473,9 @@ test('desktop-launch: windows-control gets the Python pin, the pinned package, s
 {
     const got = desktopRun('desktop-win', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32' } });
     assert.strictEqual(got.status, 0, got.stderr);
-    assert.deepStrictEqual(got.argv, ['--python', '3.13', '--exclude-newer', CUTOFF, '--from', 'windows-mcp==0.8.5', 'windows-mcp', 'serve', '--exclude-tools', 'PowerShell,Registry,Process,FileSystem']);
+    // windows-control launches on 3.14 - windows-mcp 0.8.6+ requires it (the user's ruling of 2026-10-14)
+    const pin = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'mcp-pins.json'), 'utf8')).pins['windows-control'].version;
+    assert.deepStrictEqual(got.argv, ['--python', '3.14', '--exclude-newer', CUTOFF, '--from', `windows-mcp==${pin}`, 'windows-mcp', 'serve', '--exclude-tools', 'PowerShell,Registry,Process,FileSystem']);
     assert.strictEqual(got.stdout, '', 'stdout is the MCP stream - the launcher writes nothing there');
 });
 
@@ -568,7 +585,7 @@ test('M24 uvx launchers: the shipped entry\'s --exclude-newer cut-off reaches uv
         const platform = name === 'windows-control' ? 'win32' : 'darwin';
         execFileSync(process.execPath, [launcher, ...entryArgs(name)], { cwd: dir, env: { ...BARE, PATH: uvx.PATH, HOME: dir, CLAUDE_CONFIG_DIR: acct, ALFRED_CODE_PLATFORM: platform }, stdio: 'pipe' });
         const argv = uvx.argv().argv;
-        assert.deepStrictEqual(argv.slice(0, 4), ['--python', '3.13', '--exclude-newer', CUTOFF], `${name}: ${argv.join(' ')}`);
+        assert.deepStrictEqual(argv.slice(0, 4), ['--python', name === 'windows-control' ? '3.14' : '3.13', '--exclude-newer', CUTOFF], `${name}: ${argv.join(' ')}`);
     }
 });
 

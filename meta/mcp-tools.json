@@ -205,11 +205,12 @@
       ]
     },
     "windows-control": {
-      "version": "0.8.5",
+      "version": "0.8.8",
       "tools": [
         "App",
         "Click",
         "Clipboard",
+        "ControlStatus",
         "DisplayInventory",
         "FileSystem",
         "Move",

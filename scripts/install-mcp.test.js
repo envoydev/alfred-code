@@ -412,13 +412,15 @@ test('M24 pins: the copy route\'s uvx rows carry the release cut-off, and none w
     assert.strictEqual(pins.UV_EXCLUDE_FLAG, '--exclude-newer');
     assert.strictEqual(pins.UV_EXCLUDE_NEWER, `${file.refreshed}T23:59:59Z`);
     const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8'));
-    const tokens = { ...pins, UV_PYTHON: '3.13' };
+    // windows-control has its own Python token (3.14: windows-mcp 0.8.6+ requires it, the user's ruling of 2026-10-14)
+    const tokens = { ...pins, UV_PYTHON: '3.13', WINDOWS_CONTROL_PYTHON: '3.14' };
     for (const row of manifest.mcps.filter((m) => /\buvx\b/.test(m.args)))
     {
         const words = mcp.mcpArgv(row.args, tokens);
         const at = words.indexOf('--python');
-        assert.deepStrictEqual(words.slice(at, at + 4), ['--python', '3.13', '--exclude-newer', pins.UV_EXCLUDE_NEWER], `${row.name}: ${words.join(' ')}`);
-        const bare = mcp.mcpArgv(row.args, { ...mcp.resolvePins({ pins: file.pins }), UV_PYTHON: '3.13' });
+        assert.deepStrictEqual(words.slice(at, at + 4), ['--python', row.name === 'windows-control' ? '3.14' : '3.13', '--exclude-newer', pins.UV_EXCLUDE_NEWER], `${row.name}: ${words.join(' ')}`);
+        assert.ok(!words.some((w) => /PYTHON@/.test(w)), `${row.name}: its Python token resolved - ${words.join(' ')}`);
+        const bare = mcp.mcpArgv(row.args, { ...mcp.resolvePins({ pins: file.pins }), UV_PYTHON: '3.13', WINDOWS_CONTROL_PYTHON: '3.14' });
         assert.ok(!bare.includes('--exclude-newer') && !bare.includes(''), `${row.name} with no day: ${JSON.stringify(bare)}`);
     }
     assert.strictEqual(manifest.mcps.filter((m) => /\buvx\b/.test(m.args)).length, 4, 'navigation, memory and the two desktop servers');
@@ -510,14 +512,14 @@ test('copy route: windows-control registers with the release pin and the tool ga
     const mac = manifest.catalogs.mcps.find((e) => e.startsWith('macos-control|'));
     assert.ok(row && mac, 'both desktop servers are catalog rows');
     const { copyRouteExclude } = require('../stack/mcp/desktop-launch.js');
-    const tokens = { UV_PYTHON: '3.13', WINDOWS_CONTROL_PIN: '==0.8.5', MACOS_CONTROL_PIN: '==0.4.6', WINDOWS_CONTROL_EXCLUDE: copyRouteExclude({ env: {} }),
+    const tokens = { UV_PYTHON: '3.13', WINDOWS_CONTROL_PYTHON: '3.14', WINDOWS_CONTROL_PIN: '==0.8.8', MACOS_CONTROL_PIN: '==0.4.6', WINDOWS_CONTROL_EXCLUDE: copyRouteExclude({ env: {} }),
         UV_EXCLUDE_FLAG: '--exclude-newer', UV_EXCLUDE_NEWER: '2026-09-29T23:59:59Z' };
     const argv = mcp.registerSpec({ name: 'windows-control', args: row.slice(row.indexOf('|') + 1), scope: 'project', tokens });
     // I10: FileSystem (write, copy, move, delete) is off on this route too. M41: WINDOWS_MCP_TOOLS (Windows-MCP's
     // --tools, which OVERRIDES --exclude-tools) is registered EMPTY - click reads an empty variable as unset - so
     // one inherited from the shell never lifts the gate.
     assert.deepStrictEqual(argv, ['mcp', 'add', '--scope', 'project', 'windows-control', '-e', 'WINDOWS_MCP_EXCLUDE_TOOLS=PowerShell,Registry,Process,FileSystem',
-        '-e', 'WINDOWS_MCP_TOOLS=', '-e', 'ANONYMIZED_TELEMETRY=false', '--', 'uvx', '--python', '3.13', '--exclude-newer', '2026-09-29T23:59:59Z', '--from', 'windows-mcp==0.8.5', 'windows-mcp', 'serve']);
+        '-e', 'WINDOWS_MCP_TOOLS=', '-e', 'ANONYMIZED_TELEMETRY=false', '--', 'uvx', '--python', '3.14', '--exclude-newer', '2026-09-29T23:59:59Z', '--from', 'windows-mcp==0.8.8', 'windows-mcp', 'serve']);
     assert.deepStrictEqual(mcp.registerSpec({ name: 'macos-control', args: mac.slice(mac.indexOf('|') + 1), scope: 'project', tokens }),
         ['mcp', 'add', '--scope', 'project', 'macos-control', '-e', 'ANONYMIZED_TELEMETRY=false', '--', 'uvx', '--python', '3.13', '--exclude-newer', '2026-09-29T23:59:59Z', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve'],
         'the upstream telemetry is off on the copy route too');

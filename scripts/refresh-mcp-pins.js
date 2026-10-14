@@ -41,7 +41,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const zlib = require('node:zlib');
 const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
-const { PYTHON, excludeNewerOf } = require('../stack/mcp/uv-python.js');
+const { PYTHON, pythonFor, excludeNewerOf } = require('../stack/mcp/uv-python.js');
 
 const REPO = path.join(__dirname, '..');
 const PINS = path.join(REPO, 'meta', 'mcp-pins.json');
@@ -99,9 +99,9 @@ function admits(spec, python)
     return true;
 }
 
-// The newest FINAL release, not yanked, that the stack's pinned Python can install - every uvx server
-// starts on that one interpreter (stack/mcp/uv-python.js), so a pin past its floor fails at launch
-// (windows-mcp 0.8.6 needs 3.14). null when no release qualifies: the row keeps its committed pin.
+// The newest FINAL release, not yanked, that the server's pinned Python can install - each uvx server
+// starts on the interpreter stack/mcp/uv-python.js names for it (3.14 for windows-control, 3.13 for the rest),
+// so a pin past its floor fails at launch. null when no release qualifies: the row keeps its committed pin.
 function newestFor(json, python)
 {
     const releases = (json && json.releases) || {};
@@ -112,13 +112,13 @@ function newestFor(json, python)
     return ok.length ? ok[ok.length - 1] : null;
 }
 
-function pypiLatest(pkg)
+function pypiLatest(pkg, python = PYTHON)
 {
     try
     {
         const out = rt.execCommand('curl', ['-fsSL', '--max-time', '20', `https://pypi.org/pypi/${pkg}/json`],
             { encoding: 'utf8', timeout: 30000, maxBuffer: 32 * 1024 * 1024 });
-        return newestFor(JSON.parse(out), PYTHON);
+        return newestFor(JSON.parse(out), python);
     }
     catch { return null; }
 }
@@ -330,7 +330,7 @@ async function main(argv, deps = {})
             continue;
         }
         const was = (current.pins && current.pins[name] && current.pins[name].version) || null;
-        const now = spec.registry === 'npm' ? d.npmLatest(spec.package) : d.pypiLatest(spec.package);
+        const now = spec.registry === 'npm' ? d.npmLatest(spec.package) : d.pypiLatest(spec.package, pythonFor(name));
         // Unreachable keeps the committed pin: a refresh run on a plane must not unpin the stack.
         let version = now || was;
         if (name === 'alfred-navigation' && now && now !== was)

@@ -756,6 +756,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             // such file, and its manifest then carries no @UV_PYTHON@ to resolve anyway.
             // A-I5: the account the run's claude calls use - a --space run's own, not the default one.
             UV_PYTHON: pythonRequest({ env: cliEnv, projectDir: projectRoot }),
+            // windows-control's own: windows-mcp 0.8.6+ needs 3.14 (uv-python.js SERVER_PYTHON, the user's ruling of 2026-10-14).
+            WINDOWS_CONTROL_PYTHON: pythonRequest({ env: cliEnv, projectDir: projectRoot, server: 'windows-control' }),
             // serena's home in the platform's own separator: a '/' reaches cmd.exe on Windows - under the data
             // root, or in a 2.0.0 .serena not moved yet.
             SERENA_HOME: serenaHomeFor(process.platform, dataInfo.root, liveOf('serena')),

@@ -5,7 +5,7 @@
 // of 2026-09-29: 'Gate + observe grants'). A desktop server drives the machine's own apps with the user's
 // full rights, and two of its tools are not UI at all:
 //   - Windows-MCP's `App` in mode `launch_executable` - a Popen of ANY executable with caller-given args
-//     and cwd (wheel windows_mcp/tools/app.py:90 at the pinned 0.8.5: mode is launch / launch_executable /
+//     and cwd (wheel windows_mcp/tools/app.py:90 at the pinned 0.8.8: mode is launch / launch_executable /
 //     resize / switch). Windows-MCP excludes tools by NAME, never by mode, so the launcher's exclude list
 //     cannot take this mode away while App's UI modes stay - `powershell.exe -Command ...` still ran with
 //     the PowerShell tool excluded.

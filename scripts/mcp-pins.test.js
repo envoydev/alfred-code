@@ -206,17 +206,27 @@ async function refreshRun({ navigation = '9.9.9', context = 'same', recorded = t
     const out = [];
     const current = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'mcp-pins.json'), 'utf8')).pins;
     const listed = [];
+    const asked = [];
     const rc = await main(argv, {
         pinsFile, toolsFile, contextFile, log: (l) => out.push(l), today: () => '2026-10-01',
         npmLatest: (pkg) => (Object.hasOwn(npm, pkg) ? npm[pkg] : Object.values(current).find((r) => r.package === pkg).version),
-        pypiLatest: (pkg) => (pkg === 'serena-agent' ? navigation : Object.values(current).find((r) => r.package === pkg).version),
+        pypiLatest: (pkg, python) => { asked.push([pkg, python]); return pkg === 'serena-agent' ? navigation : Object.values(current).find((r) => r.package === pkg).version; },
         upstreamContext: () => (context === 'same' ? upstream : context),
         listTools: (name) => { listed.push(name); return Object.hasOwn(lists, name) ? lists[name] : null; },
     });
-    const result = { rc, listed, text: out.join('\n'), pins: JSON.parse(fs.readFileSync(pinsFile, 'utf8')), tools: JSON.parse(fs.readFileSync(toolsFile, 'utf8')) };
+    const result = { rc, listed, asked, text: out.join('\n'), pins: JSON.parse(fs.readFileSync(pinsFile, 'utf8')), tools: JSON.parse(fs.readFileSync(toolsFile, 'utf8')) };
     fs.rmSync(dir, { recursive: true, force: true });
     return result;
 }
+
+// windows-mcp 0.8.6+ requires Python 3.14: windows-control alone launches on it (the user's ruling of 2026-10-14), so its pin
+// is resolved against 3.14 and every other uvx server's against 3.13 - a pin past its server's Python fails at launch.
+test('refresh-mcp-pins: each PyPI pin is resolved against the Python its server launches on', async () =>
+{
+    const r = await refreshRun();
+    const asked = Object.fromEntries(r.asked);
+    assert.deepStrictEqual(asked, { 'serena-agent': '3.13', 'mcp-memory-service': '3.13', 'windows-mcp': '3.14', 'macos-mcp': '3.13' });
+});
 
 test('R7 refresh-mcp-pins: a serena bump whose claude-code context changed is refused until it is re-diffed', async () =>
 {

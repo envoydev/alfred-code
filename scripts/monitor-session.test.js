@@ -365,6 +365,15 @@ test('monitor: a desktop action right after another, no Snapshot between, writes
     rows = s.rows();
     assert.strictEqual(rows.length, 3);
     assert.strictEqual(rows[2].detail.actor, 'agent-c');
+    // windows-mcp 0.8.8's ControlStatus is neither: no row of its own, and no look at the screen between two actions
+    s.call(W('Snapshot'), {});
+    s.call(W('Click'), { label: 7 });
+    s.call(W('ControlStatus'), {});
+    assert.strictEqual(s.rows().length, 3, 'reading who holds the desktop is no action');
+    s.call(W('Click'), { label: 8 });
+    rows = s.rows();
+    assert.strictEqual(rows.length, 4, 'and no observation: Click, ControlStatus, Click is unobserved');
+    assert.strictEqual(rows[3].detail.previous, 'Click');
     const i = session({ ALFRED_CODE_MONITOR: 'inject' });
     i.call(W('Click'), { label: 1 });
     assert.match(i.call(W('Type'), { label: 2, text: 'y' }), /Session monitor: two desktop actions with no Snapshot between them/);

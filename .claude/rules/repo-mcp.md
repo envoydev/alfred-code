@@ -285,8 +285,9 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
   value, never a user's central path). The data root's `.gitignore` keeps it out of git (LSP cache ~327MB
   for C#); a 2.0.0 `.serena/` still in use keeps its own `.gitignore` (`*`), widened from serena's
   narrower one (`/cache`, `/project.local.yml`), any other text the project's.
-- **Every uvx-launched server runs on a PINNED Python** - `stack/mcp/uv-python.js` is the one answer: `3.13`,
-  the x64 `cpython-3.13-windows-x86_64-none` on Windows on ARM; `ALFRED_CODE_UV_PYTHON` overrides,
+- **Every uvx-launched server runs on a PINNED Python** - `stack/mcp/uv-python.js` is the one answer per server: `3.13`,
+  the x64 `cpython-3.13-windows-x86_64-none` on Windows on ARM, and `3.14` for windows-control alone (`SERVER_PYTHON`,
+  `pythonFor`; the copy route's `@WINDOWS_CONTROL_PYTHON@`); `ALFRED_CODE_UV_PYTHON` overrides every server's,
   read from the shell, then `settings.local.json`, `settings.json` and the account settings (a plugin
   server never gets a project settings env key). uvx takes the newest interpreter, and serena-agent's
   pyyaml 6.0.2 ships no 3.14 wheel, so an unpinned start dies without a C compiler (Claude Code shows
@@ -294,13 +295,13 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
   x64 build runs there under emulation. Every such plugin entry starts through a node launcher
   (`serena-launch.js`, `memory-launch.js`, `desktop-launch.js`; the browser engines' npx through
   `browser-launch.js`, for the profile's place) because the right value is the MACHINE's
-  (windows-mcp 0.8.6 already needs 3.14, so `refresh-mcp-pins.js` takes the newest release the pinned
-  Python can install - no security fix, held at 0.8.5: audit 2026-10-14 PL9, read 2026-10-14 - the 0.8.6 (2026-09-26),
-  0.8.7 (2026-09-30) and 0.8.8 (2026-10-10) release notes at github.com/CursorTouch/Windows-MCP/releases carry no
-  security fix of Windows-MCP's own (input validation, stability, a takeover overlay, region capture, dependency bumps),
-  its one advisory, GHSA-vrxg-gm77-7q5g (the HTTP transports, never stdio), is patched since 0.7.5, and PyPI's
-  `requires_dist` is the same lower-bound list on all four, so a dependency's fix such as the pyjwt and urllib3 bumps
-  reaches 0.8.5 through the pins' cut-off, not this pin; a per-server Python 3.14 waits for a security fix that needs it); the copy route
+  (`refresh-mcp-pins.js` takes the newest release the server's own Python can install - `pythonFor`. windows-mcp 0.8.6+
+  requires 3.14: PL9 of audit 2026-10-14 held it at 0.8.5 for want of a security fix, and the user ruled the same day to
+  move it to 0.8.8 on 3.14 - measured on Windows 11 ARM (`docs/uv-python-pin-evidence.md`): the x64 3.14 build
+  installs it and `serve --help` runs, the ARM64 one dies building cryptography with no linker; 0.8.8 adds the read-only
+  `ControlStatus` tool and a physical-input takeover that refuses a call while the user holds the mouse or keyboard,
+  and it will not start without an active, unlocked input desktop - a SYSTEM shell in session 0 exits at start, so
+  its tools/list was never run on the VM; the wheel's own sources give its 21 tools); the copy route
   resolves `@UV_PYTHON@` into `.mcp.json`. Never hand-patch a cached entry - the next refresh
   overwrites it (`docs/uv-python-pin-evidence.md`). The serena launcher keeps `SERENA_HOME` RELATIVE
   in the platform's separator, and the copy route registers `.alfred\serena\home` on Windows

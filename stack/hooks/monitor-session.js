@@ -57,6 +57,10 @@ function mcpParts(tool)
 // MCP call acts on what the server drives.
 const OBSERVE_NAME = /^(?:browser_)?(?:snapshot|screenshot|take_screenshot|wait|get|list|read|find|search|query|show|describe|fetch|view|inspect|resolve)/i;
 const observes = (parts) => OBSERVE_NAME.test(parts.name);
+// A call that neither acts nor looks at the screen: Windows-MCP 0.8.8's ControlStatus reads who holds the desktop. It is
+// no action, and no observation either - Click, ControlStatus, Click still has nothing seen between its two actions.
+const NEUTRAL_NAME = /^controlstatus$/i;
+const neutral = (parts) => NEUTRAL_NAME.test(parts.name);
 const DESKTOP_SERVER = /^(?:windows|macos)-control$/;
 
 // The log's text as rows; a line that is not a row is skipped.
@@ -96,7 +100,7 @@ function notesFor(rows, id, { contextNow = () => 0, trigger = () => null, floor 
     if (r.k === mine.k) { same += 1; first = i; continue; }
     if (!mineMcp || r.a !== mine.a) continue;
     const p = mcpParts(r.t);
-    if (p && p.server === mineMcp.server && !observes(p)) break;
+    if (p && p.server === mineMcp.server && !observes(p) && !neutral(p)) break;
   }
   if (same === REPEAT_AT)
   {
@@ -112,14 +116,14 @@ function notesFor(rows, id, { contextNow = () => 0, trigger = () => null, floor 
   // desktop-automation's hard rule, never two actions without a Snapshot between them, read off the stream (audit
   // 2026-10-11 SD08, session fdce35ae: 4 of 53 Clicks followed another action, one undisclosed). The actor's previous
   // desktop call this turn was an action too; calls on other tools between observe nothing on the screen.
-  if (mineMcp && DESKTOP_SERVER.test(mineMcp.server) && !observes(mineMcp))
+  if (mineMcp && DESKTOP_SERVER.test(mineMcp.server) && !observes(mineMcp) && !neutral(mineMcp))
   {
     for (let i = at - 1; i >= 0; i--)
     {
       const r = rows[i];
       if (r.a !== mine.a) continue;
       const p = mcpParts(r.t);
-      if (!p || !DESKTOP_SERVER.test(p.server)) continue;
+      if (!p || !DESKTOP_SERVER.test(p.server) || neutral(p)) continue;
       if (!observes(p))
         notes.push({
           kind: 'unobserved-action', tool,
