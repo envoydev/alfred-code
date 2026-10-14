@@ -146,7 +146,7 @@ More on the two task flows: [`docs/solve-skills-guide.md`](docs/solve-skills-gui
 | **Agents** | 44 | designers, implementers, verifiers, reviewers |
 | **Rules** | 20 | always-on basics and per-file conventions |
 | **Hooks** | 18 | the guards, plus the docs, memory and history hooks |
-| **MCP servers** | 4 | alfred-navigation, alfred-documentation, alfred-memory (required) and the browser (optional), plus the two opt-in desktop servers |
+| **MCP servers** | 4 | alfred-navigation, alfred-documentation, alfred-memory (required) and the browser (optional), plus the opt-in desktop pair and mobile server |
 | **Plugins** | 3 | optional: claude-hud (recommended) and the C# and TypeScript language servers |
 
 The full inventory is [`docs/alfred-code.html`](docs/alfred-code.html) - open it in a browser.
@@ -200,7 +200,7 @@ by default. `/alfred-code:configure` moves one.
 <details>
 <summary><strong>What does it cost per message?</strong></summary>
 
-The stack's own always-on text is about 13k tokens. `/alfred-code:status` shows your install's number.
+The stack's own always-on text is about 16k tokens. `/alfred-code:status` shows your install's number.
 
 </details>
 
@@ -241,8 +241,8 @@ The flags you are most likely to want:
 
 Under managed settings:
 
-- With `strictKnownMarketplaces`, add `envoydev` and `claude-hud` to `extraKnownMarketplaces`.
-- Enable `alfred-code` in `enabledPlugins`, and `claude-hud` if you want its status line.
+- `strictKnownMarketplaces` registers nothing, and Claude Code refuses an `extraKnownMarketplaces` entry it does not admit: allow `{ "source": "github", "repo": "envoydev/alfred-code" }`, `anthropics/claude-plugins-official` (the LSP pair) and `jarrodwatts/claude-hud` if you keep it, then register the same three (`envoydev`, `claude-plugins-official`, `claude-hud`) in `extraKnownMarketplaces`.
+- Enable `alfred-code` and the three servers `alfred-navigation`, `alfred-documentation` and `alfred-memory` (each `@envoydev`) in `enabledPlugins`, and `claude-hud@claude-hud` if you want its status line.
 - `allowManagedHooksOnly` silently switches off all eighteen hooks - the guards never fire.
 
 Details: [`docs/install-footprint.md`](docs/install-footprint.md#under-managed-settings).

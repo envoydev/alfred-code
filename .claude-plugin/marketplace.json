@@ -189,7 +189,10 @@
             "--enable-web-dashboard",
             "false",
             "--project-from-cwd"
-          ]
+          ],
+          "env": {
+            "SERENA_USAGE_REPORTING": "false"
+          }
         }
       }
     },
@@ -256,7 +259,9 @@
           "args": [
             "${CLAUDE_PLUGIN_ROOT}/stack/mcp/mobile-launch.js",
             "--package",
-            "appium-mcp@1.97.1"
+            "appium-mcp@1.97.1",
+            "--before",
+            "2026-10-13T23:59:59Z"
           ]
         }
       }

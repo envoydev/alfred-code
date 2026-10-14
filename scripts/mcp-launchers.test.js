@@ -992,7 +992,7 @@ test('S3 launchers: started in a subdirectory, or under another folder\'s CLAUDE
 // ------------------------------------------------------------------ mobile-control (appium-mcp), 2026-10-13
 const MOBILE = path.join(ROOT, 'stack/mcp/mobile-launch.js');
 const mobile = require('../stack/mcp/mobile-launch.js');
-const MOBILE_KEYS = ['ANDROID_HOME', 'JAVA_HOME', 'NO_UI', 'ALLOW_REMOTE_APP_URLS', 'REMOTE_SERVER_URL_ALLOW_REGEX', 'SCREENSHOTS_DIR', 'PAGE_SOURCES_DIR'];
+const MOBILE_KEYS = ['ANDROID_HOME', 'JAVA_HOME', 'NO_UI', 'ALLOW_REMOTE_APP_URLS', 'REMOTE_SERVER_URL_ALLOW_REGEX', 'SCREENSHOTS_DIR', 'PAGE_SOURCES_DIR', 'npm_config_before', 'NPM_CONFIG_BEFORE'];
 function envRecorder(name)
 {
     const dir = path.join(TMP, `${name}-rec-bin`);
@@ -1017,6 +1017,36 @@ test('mobile-launch: npx gets the pinned package, the safe defaults, and output 
     assert.strictEqual(got.env.PAGE_SOURCES_DIR, path.join(real, '.alfred', 'mobile-control', 'page-sources'));
     assert.ok(fs.existsSync(path.join(dir, '.alfred', '.gitignore')), 'the root ignores what lands under it before the server writes');
     assert.match(r.stderr, /no Android SDK found - Android needs ANDROID_HOME/, 'an empty HOME holds no SDK, and the line says so');
+    assert.strictEqual(got.env.npm_config_before, null, 'an entry with no --before (an older one) sets no cut-off');
+});
+
+// Audit 2026-10-14 PL4: appium-mcp pins only itself and its 17 dependencies are caret ranges, so the entry hands the
+// launcher its pin's own day and npx gets it as npm_config_before (honoured for the whole tree - measured on npm 11.6.1).
+// A npm_config_before the user set wins: the shell's in any case, then a settings file's; an empty one means none.
+test('PL4 mobile-launch: --before reaches npx as npm_config_before, never as an argument; the user\'s own value wins', POSIX, () =>
+{
+    const DAY = '2026-10-13T23:59:59Z';
+    const run = (name, { env = {}, local } = {}) =>
+    {
+        const { dir } = project(name, local ? { local } : {});
+        const rec = envRecorder(name);
+        const r = spawnSync(process.execPath, [MOBILE, '--package', 'appium-mcp@1.97.1', '--before', DAY], { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir, ...env }, encoding: 'utf8' });
+        assert.strictEqual(r.status, 0, r.stderr);
+        return { got: rec.got(), err: r.stderr };
+    };
+    const plain = run('mobile-before');
+    assert.deepStrictEqual(plain.got.argv, ['-y', 'appium-mcp@1.97.1'], 'the launcher flag is not handed to the server');
+    assert.strictEqual(plain.got.env.npm_config_before, DAY);
+    assert.match(plain.err, /appium-mcp@1\.97\.1, dependencies published by 2026-10-13T23:59:59Z/);
+    const shell = run('mobile-before-shell', { env: { NPM_CONFIG_BEFORE: '2026-10-20' } });
+    assert.strictEqual(shell.got.env.NPM_CONFIG_BEFORE, '2026-10-20', 'the shell\'s own, in any case');
+    assert.strictEqual(shell.got.env.npm_config_before, null, 'no second spelling beside the user\'s');
+    assert.match(shell.err, /NPM_CONFIG_BEFORE=2026-10-20 is set - npx takes it in place of the release's cut-off \(2026-10-13T23:59:59Z\)/);
+    const empty = run('mobile-before-empty', { env: { npm_config_before: '' } });
+    assert.strictEqual(empty.got.env.npm_config_before, '', 'an empty one (no cut-off) is kept');
+    const local = run('mobile-before-local', { local: { npm_config_before: '2026-11-01' } });
+    assert.strictEqual(local.got.env.npm_config_before, '2026-11-01', 'a settings file\'s value, which a plugin server never gets on its own');
+    assert.deepStrictEqual(mobile.npmBefore({ env: {}, projectDir: project('mobile-before-none').dir, before: '' }), { value: null, own: '', registered: '' }, 'no day, nothing set');
 });
 
 test('mobile-launch: the user\'s own values win - the shell, then a settings file; a boolean appium-mcp would refuse keeps the default', POSIX, () =>
@@ -1072,9 +1102,11 @@ test('mobile-launch: an older Node is refused in one line, and an entry with no 
 test('mobile-launch: the copy route registers the same values, its dirs relative to the project root, and no SDK path', () =>
 {
     const { dir } = project('mobile-copy', { settings: { ALLOW_REMOTE_APP_URLS: 'true' } });
-    const got = mobile.copyRouteEnv({ env: {}, projectDir: dir, root: '.data' });
-    assert.deepStrictEqual(got, { MOBILE_NO_UI: 'true', MOBILE_REMOTE_APPS: 'true', MOBILE_REMOTE_ALLOW: mobile.LOCAL_ONLY,
+    const got = mobile.copyRouteEnv({ env: {}, projectDir: dir, root: '.data', before: '2026-10-13T23:59:59Z' });
+    assert.deepStrictEqual(got, { MOBILE_BEFORE: '2026-10-13T23:59:59Z', MOBILE_NO_UI: 'true', MOBILE_REMOTE_APPS: 'true', MOBILE_REMOTE_ALLOW: mobile.LOCAL_ONLY,
         MOBILE_SCREENSHOTS: '.data/mobile-control/screenshots', MOBILE_PAGE_SOURCES: '.data/mobile-control/page-sources' });
+    assert.strictEqual(mobile.copyRouteEnv({ env: { npm_config_before: '2026-12-01' }, projectDir: dir, root: '.data', before: '2026-10-13T23:59:59Z' }).MOBILE_BEFORE, '2026-12-01', 'PL4: the user\'s own cut-off is registered');
+    assert.strictEqual(mobile.copyRouteEnv({ env: {}, projectDir: dir, root: '.data' }).MOBILE_BEFORE, '', 'no day recorded: an empty value, which npm reads as none');
     assert.ok(!Object.keys(got).some((k) => /ANDROID|JAVA/.test(k)), 'a committed .mcp.json never carries one machine\'s SDK path');
 });
 

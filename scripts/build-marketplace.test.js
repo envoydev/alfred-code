@@ -288,6 +288,14 @@ test('the two desktop MCP plugins start their upstream with its telemetry off', 
         assert.deepStrictEqual(shippedBy[name].mcpServers[name].env, { ANONYMIZED_TELEMETRY: 'false' }, `${name} must pass ANONYMIZED_TELEMETRY=false`);
 });
 
+// Audit 2026-10-14 PL1: serena-agent 1.7.0 pings its maker's host at every agent start unless SERENA_USAGE_REPORTING is
+// 'false' (serena/agent.py _send_usage_info). A locked server, so every session of every install would ping.
+test('the navigation MCP plugin starts serena with its usage ping off, and the copy-route row registers the same', () => {
+    assert.deepStrictEqual(shippedBy['alfred-navigation'].mcpServers['alfred-navigation'].env, { SERENA_USAGE_REPORTING: 'false' });
+    const row = require('../meta/stack-manifest.json').mcps.find((m) => m.name === 'alfred-navigation');
+    assert.match(row.args, /(^| )-e SERENA_USAGE_REPORTING=false /, row.args);
+});
+
 // M24: every uvx-started server passes the release's dependency cut-off (the pins file's refreshed day, its last
 // second UTC) to its launcher, beside the pin it was generated with; the npx browser has no uvx and takes none.
 test('M24 each uvx MCP entry hands its launcher the release cut-off, and the browser entries none', () =>

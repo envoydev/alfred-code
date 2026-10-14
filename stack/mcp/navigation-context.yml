@@ -14,9 +14,9 @@
 # alfred-memory MCP alone) - a seat's handoff note is an alfred-memory row tagged `handoff` (alfred-memory.md).
 #
 # The plugin route: serena-launch.js swaps the entry's `--context claude-code` for this file beside it. The
-# full copy route: the installer copies it to the project's `.claude/navigation-context.yml` and registers
-# `--context ${CLAUDE_PROJECT_DIR:-.}/.claude/navigation-context.yml` (absolute where the variable reaches the
-# expansion, else resolved against the server's cwd, the project).
+# full copy route: the installer copies it to the project's `.claude/navigation-context.yml` and registers the
+# relative `--context .claude/navigation-context.yml`, resolved against the server's cwd - the checkout, where the
+# row starts through ROOT_BOOT (2.1.5 R6: serena fails closed on a context path that does not resolve).
 name: alfred-code
 description: Alfred Code navigation - serena's claude-code context (single project; file, shell and search work is the harness's) with editing left to the harness except the reference-aware rename and safe delete.
 prompt: |

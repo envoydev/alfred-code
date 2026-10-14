@@ -126,8 +126,14 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
     server no seat of it holds is listed main-thread-only in `scripts/seat-grants.test.js` (browser-extension's browser).
   - `mobile-control` (appium-mcp, the user's call of 2026-10-13) - drives Android and iOS apps on an emulator, a
     simulator or a device through Appium's embedded UiAutomator2 / XCUITest drivers. Every OS, seeded by no stack,
-    `active: false` (opt-in, like the desktop pair), an npx package so no Python and no cut-off; Node 22+ (its engines
-    floor - the launcher refuses an older Node in one line). The plugin route starts `stack/mcp/mobile-launch.js`: the SDK
+    `active: false` (opt-in, like the desktop pair), an npx package so no Python; Node 22+ (its engines
+    floor - the launcher refuses an older Node in one line). Its 17 dependencies are caret ranges, so it takes its pin's OWN
+    cut-off day (audit 2026-10-14, PL4): `meta/mcp-pins.json`'s mobile-control `refreshed` (every npm row the refresh checks
+    records one - the shared uvx day predates an `--only` pin, and npm refuses an exact pin published after `before`,
+    ETARGET), which the entry hands the launcher as `--before <day>T23:59:59Z` and the launcher hands npx as
+    `npm_config_before` - npx honours it for the whole tree (measured on npm 11.6.1); the copy route registers
+    `-e npm_config_before=@MOBILE_BEFORE@`. A `npm_config_before` the user set (the shell in any case, then the settings
+    files) is theirs and wins; an empty one means none. The browser's deps are exact and leaf, so it takes none. The plugin route starts `stack/mcp/mobile-launch.js`: the SDK
     paths come from the environment (`ANDROID_HOME`, `JAVA_HOME` - the shell or a settings file's `env`, which reach a
     server process, code.claude.com/docs/en/settings-reference 'Values reach subprocesses') and are looked up ONLY when unset
     (`ANDROID_SDK_ROOT`, Android Studio's SDK place and bundled JBR, macOS `java_home`) - never written into a
@@ -141,7 +147,9 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
     prerequisites are said once, on the run that brings it in. Tools: the pinned server's own `tools/list`
     (`refresh-mcp-pins.js --only mobile-control`, which moves no other pin and keeps the uvx cut-off day); `appium_ai`
     registers only with `AI_VISION_ENABLED=true` and a vision key, so it is not listed. No seat holds its tools.
-  - plus `alfred-navigation` (Serena), `alfred-documentation` (Context7, the hosted remote only - its `Context7-API-Key` header, the name
+  - plus `alfred-navigation` (Serena - started with `SERENA_USAGE_REPORTING=false`, the entry's `env` and the copy route's
+    `-e` pair alike: serena-agent 1.7.0 pings its maker's host with the OS, version and context at every start otherwise,
+    `serena/agent.py _send_usage_info`; audit 2026-10-14, PL1), `alfred-documentation` (Context7, the hosted remote only - its `Context7-API-Key` header, the name
     Context7 documents (2.1.5 M25: a proxy may drop a header name with an underscore, and a keyed user with it), expands
     `CONTEXT7_API_KEY` from the ACCOUNT settings.json `env`, keyless = the free tier) and `alfred-memory`. 2.0.0 cut `angular-cli`,
     `chrome-devtools`, `appium-mcp`, `sentry` and `context7-local` (manifest `retired.mcps`,
@@ -240,7 +248,9 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
   own right path; a local- or user-scope registration keeps the absolute path. `mcp.identityOf` reads the server after
   the anchor (`serverWords`); `mcp.exactStack` vouches only for an anchor running this release's `ROOT_BOOT` or one
   `FORMER_ROOT_BOOTS` lists, and for an engine profile under this project (T5) - a release that changes `ROOT_BOOT`
-  lists the old one there, or every row it registered reads as the user's.
+  lists the old one there, or every row it registered reads as the user's. The same holds for an env key a release ADDS to
+  a template: `ADDED_ENV_KEYS` names it (`SERENA_USAGE_REPORTING`, `npm_config_before`), so a registration an earlier
+  release wrote without it is still the stack's (absent is free; present must carry the template's value).
 - **The navigation server's state is isolated per project** under the data root: `SERENA_HOME` is
   `<data root>/serena/home` (the launcher sets it; the copy route registers it), and serena's per-project
   folder - the index cache, `memories/`, `project.yml` - is `<data root>/serena`, named by

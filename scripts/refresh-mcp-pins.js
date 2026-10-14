@@ -14,6 +14,12 @@
 // `refreshed` day as committed - how a server joins the catalog without moving the others. A uvx (PyPI) row is
 // refused there: its pin must not be newer than the shared cut-off, which only a whole refresh moves.
 //
+// AN NPM ROW'S OWN DAY (audit 2026-10-14, PL4). An npx package pins only its top version, and its dependencies' caret
+// ranges float, so its launcher holds npm to `npm_config_before=<day>T23:59:59Z` - npx honours it for the whole tree
+// (measured on npm 11.6.1). The shared `refreshed` day cannot serve there: an --only pin is newer than it, and npm
+// refuses an exact version published after `before` (ETARGET). So every npm row the run checked carries its own
+// `refreshed` (today), and a row it kept or could not reach keeps the day it had.
+//
 // Offline or a dead registry is NOT a failure: the row keeps the pin it had, and the report says
 // which ones could not be checked. A row that never resolved carries `null`, which the generator
 // reads as 'ship unpinned' - the same fallback the installer had.
@@ -116,6 +122,9 @@ function pypiLatest(pkg)
     }
     catch { return null; }
 }
+
+// An npm row's own cut-off day (the header): `{ refreshed }` from `row` when it holds a day, else nothing. A PyPI row has none.
+const ownDay = (spec, row) => (spec.registry === 'npm' && row && /^\d{4}-\d{2}-\d{2}$/.test(String(row.refreshed || '')) ? { refreshed: row.refreshed } : {});
 
 function readPins(file = PINS)
 {
@@ -285,6 +294,8 @@ async function listTools(name, row, { cutoff = '' } = {})
     finally { fs.rmSync(scratch, { recursive: true, force: true }); }
 }
 
+const NOTE = 'The MCP runtime versions the generated plugin entries pin to, and (refreshed) the day that is the uvx servers\' dependency cut-off: each starts with --exclude-newer <refreshed>T23:59:59Z, so the whole tree is fixed, not only the top package. An npm row carries its own refreshed day, the npx servers\' cut-off (npm_config_before=<day>T23:59:59Z), since an --only pin is newer than the shared day. Refreshed deliberately with `node scripts/refresh-mcp-pins.js --write`, never during an install or by hand - a pin newer than the cut-off would not resolve. A null version ships unpinned.';
+
 // The servers with a tool list: every pinned package plus the hosted documentation server (no version).
 const TOOL_SERVERS = [...Object.keys(PACKAGES), 'alfred-documentation'];
 
@@ -315,7 +326,7 @@ async function main(argv, deps = {})
         if (only && !only.includes(name))
         {
             const kept = (current.pins && current.pins[name]) || null;
-            pins[name] = { package: spec.package, registry: spec.registry, spelling: spec.spelling, version: kept ? kept.version : null };
+            pins[name] = { package: spec.package, registry: spec.registry, spelling: spec.spelling, version: kept ? kept.version : null, ...ownDay(spec, kept) };
             continue;
         }
         const was = (current.pins && current.pins[name] && current.pins[name].version) || null;
@@ -331,14 +342,15 @@ async function main(argv, deps = {})
         else if (!now) report.push(`  ${name}: NOT CHECKED (registry unreachable) - keeping ${was || 'unpinned'}`);
         else if (now === was) report.push(`  ${name}: ${now} (unchanged)`);
         else report.push(`  ${name}: ${was || 'unpinned'} -> ${now}`);
-        pins[name] = { package: spec.package, registry: spec.registry, spelling: spec.spelling, version };
+        const had = (current.pins && current.pins[name]) || null;
+        pins[name] = { package: spec.package, registry: spec.registry, spelling: spec.spelling, version, ...ownDay(spec, now ? { refreshed: d.today() } : had) };
     }
     d.log(report.join('\n'));
     if (!write) { d.log('\nnothing written - re-run with --write to commit these pins'); return refused ? 1 : 0; }
     const refreshed = only && current.refreshed ? current.refreshed : d.today();
     const out = {
         generatedBy: 'refresh-mcp-pins',
-        note: 'The MCP runtime versions the generated plugin entries pin to, and (refreshed) the day that is the uvx servers\' dependency cut-off: each starts with --exclude-newer <refreshed>T23:59:59Z, so the whole tree is fixed, not only the top package. Refreshed deliberately with `node scripts/refresh-mcp-pins.js --write`, never during an install or by hand - a pin newer than the cut-off would not resolve. A null version ships unpinned.',
+        note: NOTE,
         refreshed,
         pins,
     };

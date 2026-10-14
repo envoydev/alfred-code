@@ -653,11 +653,12 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
 
         // --- the two entries assembled at install time -----------------------------
         const pins = args.printPlan
-            ? { PW_PIN: '', SERENA_PIN: '', MEMORY_PIN: '', WINDOWS_CONTROL_PIN: '', MACOS_CONTROL_PIN: '', MOBILE_CONTROL_PIN: '', MEMORY_BACKEND: 'sqlite_vec', UV_EXCLUDE_FLAG: '', UV_EXCLUDE_NEWER: '' }
+            ? { PW_PIN: '', SERENA_PIN: '', MEMORY_PIN: '', WINDOWS_CONTROL_PIN: '', MACOS_CONTROL_PIN: '', MOBILE_CONTROL_PIN: '', MOBILE_BEFORE: '', MEMORY_BACKEND: 'sqlite_vec', UV_EXCLUDE_FLAG: '', UV_EXCLUDE_NEWER: '' }
             : (() =>
             {
                 const file = readJson(path.join(resolved.dir, 'meta', 'mcp-pins.json'));
-                return mcp.resolvePins({ pins: file.pins, refreshed: file.refreshed, own: userExcludeNewer({ env: cliEnv, projectDir: projectRoot }), log });
+                return mcp.resolvePins({ pins: file.pins, refreshed: file.refreshed, own: userExcludeNewer({ env: cliEnv, projectDir: projectRoot }),
+                    seatsFile: path.join(resolved.dir, 'meta', 'seat-tools.json'), log });
             })();
 
         const pw = mcp.expandPlaywright({
@@ -750,7 +751,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             WINDOWS_CONTROL_PIN: pins.WINDOWS_CONTROL_PIN, MACOS_CONTROL_PIN: pins.MACOS_CONTROL_PIN, MOBILE_CONTROL_PIN: pins.MOBILE_CONTROL_PIN,
             // mobile-control's safe defaults (the user's own value where set) and output dirs under the data root, which the
             // plugin route's launcher sets at each start - the copy route registers no launcher (stack/mcp/mobile-launch.js).
-            ...mobileCopyEnv({ env: cliEnv, projectDir: projectRoot, root: dataInfo.root,
+            ...mobileCopyEnv({ env: cliEnv, projectDir: projectRoot, root: dataInfo.root, before: pins.MOBILE_BEFORE,
                 log: lists.mcps.some((e) => String(e).split('|')[0] === 'mobile-control') ? (line) => log(`  mobile: ${line}`) : () => {} }),
             // windows-control's tool gate on the copy route, which registers no launcher: the list the
             // launcher would pass, as Windows-MCP's own WINDOWS_MCP_EXCLUDE_TOOLS.
@@ -1808,12 +1809,16 @@ function registrationsAt(ctx, scope)
 
 // Whether `entry` registered under `name` launches the stack's own package or calls its url (mcp.identityOf) - read
 // without a word; registrationOf below names a mismatch.
-function stackIdentity(ctx, name, entry)
+function stackIdentitiesOf(ctx)
 {
     ctx.mcpIdentities ||= mcp.stackIdentities({
         catalog: ctx.manifest.catalogs.mcps, remotes: ctx.remotes, tokens: ctx.tokens, retiredRows: readRetiredPlugins(ctx.source.dir), renamed: ctx.manifest.renamed.mcps,
     });
-    return (ctx.mcpIdentities[name] || new Set()).has(mcp.identityOf(entry));
+    return ctx.mcpIdentities;
+}
+function stackIdentity(ctx, name, entry)
+{
+    return (stackIdentitiesOf(ctx)[name] || new Set()).has(mcp.identityOf(entry));
 }
 
 // A-M2 / A-M3: 'stack' when `name` at `scope` is a registration of the stack's own shape (the package it
@@ -1874,21 +1879,24 @@ function vouchedAt(ctx, name, scope, live, { pick = false } = {})
 
 // A registration at local, project or user scope outranks every plugin server (mcp.shadowingRegistrations):
 // one calling a carried plugin's url takes its place, so the stack's plugin-spelled tool names resolve
-// nothing, and one under a carried plugin's name starts a second server. The run prunes only its own
-// scope, so what is left is the user's own or serves other projects - each named once with its remove
-// command. A same-named one registrationOf already named as foreign is not said twice.
+// nothing, and one under a carried plugin's name, or under another name launching its package (PL11), starts a
+// second server. The run prunes only its own scope, so what is left is the user's own or serves other projects - each
+// named once with its remove command, removed never. One registrationOf already named as foreign is not said twice.
 function warnShadowed(ctx, carried)
 {
     const scopes = {};
     for (const scope of ['local', 'project', 'user'])
         scopes[scope] = mcp.registrationsAt({ scope, mcpFile: ctx.mcpFile, accountFile: ctx.accountFile, projectRoot: ctx.projectRoot }).servers;
-    for (const row of mcp.shadowingRegistrations({ plugins: carried, scopes }))
+    const identities = mcp.pluginIdentities({ plugins: carried, identities: stackIdentitiesOf(ctx), renamed: ctx.manifest.renamed.mcps });
+    for (const row of mcp.shadowingRegistrations({ plugins: carried, scopes, identities }))
     {
-        if (row.kind === 'beside' && ctx.mcpForeign.get(row.name) === row.scope) continue;
+        if (row.kind !== 'replaces' && ctx.mcpForeign.get(row.name) === row.scope) continue;
         const remove = `claude mcp remove ${row.name} -s ${row.scope}`;
         ctx.log(row.kind === 'replaces'
             ? `  !! mcp ${row.name} (${row.scope} scope) calls the url of the ${row.plugin} plugin, so Claude Code connects to it instead and the stack's mcp__plugin_${row.plugin}_${row.plugin}__ tools never load - if nothing else needs it: ${remove}`
-            : `  mcp ${row.name} (${row.scope} scope) starts beside the ${row.plugin} plugin's own server - two ${row.plugin} servers in every session here; if nothing else needs it: ${remove}`);
+            : row.kind === 'same-package'
+                ? `  mcp ${row.name} (${row.scope} scope) runs ${row.package}, the package the ${row.plugin} plugin starts - two ${row.plugin} servers in every session here; if nothing else needs it: ${remove}`
+                : `  mcp ${row.name} (${row.scope} scope) starts beside the ${row.plugin} plugin's own server - two ${row.plugin} servers in every session here; if nothing else needs it: ${remove}`);
     }
 }
 
@@ -1981,7 +1989,7 @@ function installMcps(ctx)
     // Whatever still sits ABOVE a plugin this run carries once the prunes are done (read fresh - they
     // changed the files): named, never removed here.
     if (mcp.corePluginOn(ctx.routes))
-        warnShadowed(ctx, ctx.routes.mcps ? [...mcp.LOCKED, ...pwEngines(ctx).map(dataRoot.engineServer)] : mcp.LOCKED);
+        warnShadowed(ctx, ctx.routes.mcps ? [...mcp.LOCKED, ...pwEngines(ctx).map(dataRoot.engineServer), ...soloKept(ctx)] : mcp.LOCKED);
 
     if (ctx.routes.mcps)
     {

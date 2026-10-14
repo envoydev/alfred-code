@@ -35,6 +35,7 @@ const { HOOK_PROFILES } = require('../stack/hooks/hook-prelude.js');
 const { wiringRows } = require('../stack/hooks/shell-guards.js');
 const fileGuards = require('../stack/hooks/file-guards.js');
 const { DEFAULT_EXCLUDE, DESKTOP_ENV } = require('../stack/mcp/desktop-launch.js');
+const { NAVIGATION_ENV } = require('../stack/mcp/serena-launch.js');
 const { excludeNewerOf } = require('../stack/mcp/uv-python.js');
 
 const REPO = path.resolve(__dirname, '..');
@@ -274,7 +275,9 @@ function readPins(options = {})
         if (!row || !row.version) return '';
         return String(row.spelling || '@<v>').replace('<v>', row.version);
     };
-    return { suffix, pins, cutoff };
+    // PL4: an npm row's OWN cut-off day (refresh-mcp-pins.js 'an npm row's own day'), '' when it records none.
+    const npmBefore = (name) => excludeNewerOf(pins[name] && pins[name].refreshed);
+    return { suffix, pins, cutoff, npmBefore };
 }
 
 // The four browsers the browser catalog entry expands into - ONE PLUGIN EACH, not one plugin
@@ -297,7 +300,7 @@ const { ENGINES: PW_ENGINES } = require('../stack/mcp/data-root.js');
 
 function mcpServerShapes(options = {})
 {
-    const { suffix, cutoff } = readPins(options);
+    const { suffix, cutoff, npmBefore } = readPins(options);
     // A launcher flag, before the server's own `--` arguments; an older launcher ignores it.
     const cut = cutoff ? ['--exclude-newer', cutoff] : [];
     const root = '${CLAUDE_PLUGIN_ROOT}';
@@ -336,6 +339,8 @@ function mcpServerShapes(options = {})
                         // it (navigation-context.yml, I12) - named here as claude-code so a project whose
                         // plugin cache predates that file still starts serena after a catalog refresh.
                         '--context', 'claude-code', '--enable-web-dashboard', 'false', '--project-from-cwd'],
+                    // serena's usage ping off (PL1): the launcher hands its whole env to uvx, so this reaches serena.
+                    env: NAVIGATION_ENV,
                 },
             },
         },
@@ -398,15 +403,17 @@ function mcpServerShapes(options = {})
                 },
             },
         },
-        // --- the mobile server: an npx package, so no Python and no cut-off -----------------------
+        // --- the mobile server: an npx package, so no Python ---------------------------------------
         // The launcher looks up an unset ANDROID_HOME / JAVA_HOME, puts the output dirs under the data root and keeps the
-        // safe defaults where the user set nothing (stack/mcp/mobile-launch.js).
+        // safe defaults where the user set nothing (stack/mcp/mobile-launch.js). Its dependencies are caret ranges, so it
+        // takes its pin's own cut-off day (`--before`, handed to npx as npm_config_before - PL4); an older launcher ignores it.
         'mobile-control': {
             description: 'The mobile server (appium-mcp), as a plugin: drives Android and iOS apps on an emulator, a simulator or a real device through Appium\'s embedded UiAutomator2 and XCUITest drivers (sessions, find, tap, type, gestures, screenshots). Needs Node 22+; Android needs the Android SDK and a JDK (ANDROID_HOME / JAVA_HOME, looked up when unset), iOS needs macOS with Xcode. Started through a launcher that puts screenshots and page sources under the project\'s data root (<data root>/mobile-control) and refuses app URLs and remote Appium servers unless the user sets ALLOW_REMOTE_APP_URLS / REMOTE_SERVER_URL_ALLOW_REGEX.',
             servers: {
                 'mobile-control': {
                     command: 'node',
-                    args: [`${root}/stack/mcp/mobile-launch.js`, '--package', `appium-mcp${suffix('mobile-control')}`],
+                    args: [`${root}/stack/mcp/mobile-launch.js`, '--package', `appium-mcp${suffix('mobile-control')}`,
+                        ...(npmBefore('mobile-control') ? ['--before', npmBefore('mobile-control')] : [])],
                 },
             },
         },

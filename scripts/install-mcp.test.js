@@ -373,6 +373,35 @@ test('pins: the RELEASE pins from meta/mcp-pins.json - a package with no usable 
         assert.strictEqual(mcp.resolvePins({ pins: garbage }).PW_PIN, '', `pins=${JSON.stringify(garbage)}`);
 });
 
+// Audit 2026-10-14 AG06: a seat named tool by tool holds the whole server minus the pinned list's other tools, so an
+// unpinned server's newer tools reach it - the unpinned line names those seats (a whole-server `*` grant widens nothing
+// new); a browser engine's tokens count for the browser row. An unreadable or missing seats file adds nothing.
+test('AG06 the unpinned line names the tool-by-tool seats it widens, read from the snapshot\'s meta/seat-tools.json', () =>
+{
+    const file = path.join(TMP, `seat-tools-${seq++}.json`);
+    fs.writeFileSync(file, JSON.stringify({ seats: {
+        'reader-seat': ['alfred-navigation:find_symbol', 'Read'],
+        'whole-seat': ['alfred-navigation:*', 'alfred-navigation:!rename_symbol'],
+        'browser-seat': ['chrome-control:browser_snapshot', 'firefox-control:browser_snapshot'],
+        'memory-seat': ['alfred-memory:memory_search'],
+    } }));
+    const lines = (seatsFile, pins = { 'alfred-navigation': { version: null }, browser: { version: null }, 'alfred-memory': { version: '11.14.0' } }) =>
+    {
+        const logs = [];
+        mcp.resolvePins({ pins, seatsFile, log: (m) => logs.push(m) });
+        return logs.join('\n');
+    };
+    const out = lines(file);
+    assert.match(out, /no release pin for alfred-navigation in this source - installing unpinned; tool-by-tool seats it widens: reader-seat$/m, out);
+    assert.match(out, /no release pin for browser in this source - installing unpinned; tool-by-tool seats it widens: browser-seat$/m, out);
+    assert.match(out, /no release pin for windows-control in this source - installing unpinned$/m, 'no seat names it: the line as before');
+    assert.doesNotMatch(out, /memory-seat/, 'a pinned server widens nothing');
+    for (const bad of [path.join(TMP, 'absent.json'), (() => { const f = path.join(TMP, `garbage-${seq++}.json`); fs.writeFileSync(f, '{ nope'); return f; })(), ''])
+        assert.match(lines(bad), /no release pin for alfred-navigation in this source - installing unpinned$/m, `fail-open for ${bad || 'no file'}`);
+    const shipped = lines(path.join(__dirname, '..', 'meta', 'seat-tools.json'), {});
+    assert.match(shipped, /no release pin for alfred-navigation .* tool-by-tool seats it widens: \S/, 'the shipped seats name the navigation server tool by tool');
+});
+
 // M24: the copy route registers uvx itself, so each uvx row carries the release's dependency cut-off - the pins
 // file's refreshed day, its last second UTC - right after the Python pin, the same value the plugin entries pass
 // their launchers. A source with no refreshed day registers no cut-off, and no empty argv word either.
@@ -1910,6 +1939,34 @@ test('exactStack: an engine profile must be this project\'s own, and an anchored
     assert.strictEqual(mcp.exactStack('alfred-navigation', nav(own), { catalog, boots: [own] }), true, 'a listed earlier release\'s code');
 });
 
+// Audit 2026-10-14 PL1: the copy route registers serena with its usage ping off (-e SERENA_USAGE_REPORTING=false), and a
+// registration an earlier release wrote - no such key - is still the stack's (ADDED_ENV_KEYS), so an update repairs it
+// instead of holding it as the user's own.
+test('PL1 copy route: navigation registers SERENA_USAGE_REPORTING=false, and the pre-fix shape without it is still the stack\'s', () =>
+{
+    const row = require('../meta/stack-manifest.json').mcps.find((m) => m.name === 'alfred-navigation');
+    const catalog = [`alfred-navigation|${row.args}`];
+    const boot = require('../stack/hooks/memory.js').ROOT_BOOT;
+    const spec = mcp.registerSpec({ name: 'alfred-navigation', args: row.args, scope: 'project',
+        tokens: { SERENA_HOME: '.alfred/serena/home', ROOT_BOOT: boot, UV_PYTHON: '3.13', UV_EXCLUDE_FLAG: '--exclude-newer', UV_EXCLUDE_NEWER: '2026-09-29T23:59:59Z', SERENA_PIN: '@1.7.0', SERENA_CONTEXT: '.claude/navigation-context.yml', SERENA_PROJECT_FLAG: '--project-from-cwd', SERENA_PROJECT_DIR: '' } });
+    assert.deepStrictEqual(spec.slice(0, 9), ['mcp', 'add', '--scope', 'project', 'alfred-navigation', '-e', 'SERENA_HOME=.alfred/serena/home', '-e', 'SERENA_USAGE_REPORTING=false']);
+    const nav = (env) => ({ type: 'stdio', command: 'node', args: ['-e', boot, '--', 'checkout', 'uvx', '--python', '3.13', '--exclude-newer', '2026-09-29T23:59:59Z', '--from', 'serena-agent@1.7.0', 'serena', 'start-mcp-server', '--context', '.claude/navigation-context.yml', '--enable-web-dashboard', 'false', '--project-from-cwd'], env });
+    const exact = (env) => mcp.exactStack('alfred-navigation', nav(env), { catalog });
+    assert.strictEqual(exact({ SERENA_HOME: '.alfred/serena/home', SERENA_USAGE_REPORTING: 'false' }), true, 'this release\'s shape');
+    assert.strictEqual(exact({ SERENA_HOME: '.alfred/serena/home' }), true, 'the pre-fix shape an earlier release registered');
+    assert.strictEqual(exact({ SERENA_HOME: '.alfred/serena/home', SERENA_USAGE_REPORTING: 'true' }), false, 'the ping switched back on is the user\'s');
+    assert.strictEqual(exact({ SERENA_USAGE_REPORTING: 'false' }), false, 'a key the template always had is still required');
+    assert.strictEqual(exact({ SERENA_HOME: '.alfred/serena/home', SERENA_USAGE_REPORTING: 'false', SERENA_LOG_LEVEL: 'debug' }), false, 'an env key of the user\'s own');
+    // PL4: mobile-control's npm cut-off, added the same way - a 2.4.0 registration without it is still the stack's.
+    const mob = require('../meta/stack-manifest.json').mcps.find((m) => m.name === 'mobile-control');
+    const mobile = (env) => mcp.exactStack('mobile-control', { type: 'stdio', command: 'node', args: ['-e', boot, '--', 'checkout', 'npx', '-y', 'appium-mcp@1.97.1'],
+        env: { NO_UI: 'true', ALLOW_REMOTE_APP_URLS: 'false', REMOTE_SERVER_URL_ALLOW_REGEX: 'x', SCREENSHOTS_DIR: '.alfred/mobile-control/screenshots', PAGE_SOURCES_DIR: '.alfred/mobile-control/page-sources', ...env } },
+    { catalog: [`mobile-control|${mob.args}`] });
+    assert.strictEqual(mobile({ npm_config_before: '2026-10-13T23:59:59Z' }), true, 'this release\'s shape');
+    assert.strictEqual(mobile({}), true, 'the 2.4.0 shape, before the cut-off');
+    assert.strictEqual(mobile({ npm_config_before: '' }), true, 'a release with no day recorded registers it empty');
+});
+
 test('accountBackups: the CLI\'s corrupted copies and its last good ones, oldest first, from every folder named once', () =>
 {
     const dir = path.join(TMP, `backups-${seq++}`);
@@ -1940,6 +1997,43 @@ test('shadowingRegistrations: a registration above the plugins that replaces a p
     assert.deepStrictEqual(mcp.shadowingRegistrations({ plugins: ['alfred-documentation'] }), [], 'no registrations read');
 });
 
+// Audit 2026-10-14 PL11: a registration under ANOTHER name that launches the package a carried plugin starts runs a
+// second copy of that server - one project here registered `appium-mcp` (npx appium-mcp@1.95.8, the 2.0.0 add-back)
+// beside mobile-control. Keyed by the stack's own identities (the catalog row's pinned package, and an old name's).
+test('PL11 shadowingRegistrations: a same-package registration under another name is named beside its plugin', () =>
+{
+    const appium = { type: 'stdio', command: 'npx', args: ['-y', 'appium-mcp@1.95.8'] };
+    const ownSerena = { type: 'stdio', command: 'uvx', args: ['--from', 'serena-agent==1.6.0', 'serena', 'start-mcp-server'] };
+    const localCtx7 = { type: 'stdio', command: 'npx', args: ['-y', '@upstash/context7-mcp@4.1.1'] };
+    const renamed = require('../meta/stack-manifest.json').renamed.mcps;
+    const identities = mcp.pluginIdentities({
+        plugins: ['alfred-navigation', 'alfred-documentation', 'mobile-control', 'chrome-control'],
+        identities: { 'alfred-navigation': new Set(['stdio:serena-agent']), 'alfred-documentation': new Set([`http:${mcp.CONTEXT7_REMOTE.url}`]), context7: new Set(['stdio:@upstash/context7-mcp']),
+            'mobile-control': new Set(['stdio:appium-mcp']), 'chrome-control': new Set(['stdio:@playwright/mcp']) },
+        renamed,
+    });
+    assert.deepStrictEqual([...identities['alfred-documentation']], ['stdio:@upstash/context7-mcp'], 'an old name\'s stdio identity, never the url');
+    const rows = mcp.shadowingRegistrations({
+        plugins: ['alfred-navigation', 'alfred-documentation', 'mobile-control', 'chrome-control'], identities,
+        scopes: {
+            project: { 'appium-mcp': appium, 'mobile-control': appium, mine: { command: 'node', args: ['my-server.js'] } },
+            local: { ctx7: localCtx7 },
+            user: { 'my-serena': ownSerena, pw: { type: 'stdio', command: 'npx', args: ['@playwright/mcp@latest', '--browser', 'firefox'] } },
+        },
+    });
+    assert.deepStrictEqual(rows, [
+        { scope: 'local', name: 'ctx7', plugin: 'alfred-documentation', kind: 'same-package', package: '@upstash/context7-mcp' },
+        { scope: 'project', name: 'appium-mcp', plugin: 'mobile-control', kind: 'same-package', package: 'appium-mcp' },
+        { scope: 'project', name: 'mobile-control', plugin: 'mobile-control', kind: 'beside' },
+        { scope: 'user', name: 'my-serena', plugin: 'alfred-navigation', kind: 'same-package', package: 'serena-agent' },
+        { scope: 'user', name: 'pw', plugin: 'chrome-control', kind: 'same-package', package: '@playwright/mcp' },
+    ]);
+    assert.deepStrictEqual(mcp.shadowingRegistrations({ plugins: ['alfred-navigation'], identities, scopes: { project: { 'appium-mcp': appium } } }), [],
+        'a package no carried plugin starts is no row');
+    assert.deepStrictEqual(mcp.shadowingRegistrations({ plugins: ['mobile-control'], scopes: { project: { 'appium-mcp': appium } } }), [],
+        'no identities handed in: the same-name and url rows only, as before');
+});
+
 // The run at PROJECT scope prunes what it wrote into this project's .mcp.json, and never reads the account's user-
 // or local-scope registrations - where context7's own README puts it (`claude mcp add --transport http
 // context7 <url>`). Each one that takes a plugin's place is named with its remove command, removed never:
@@ -1966,6 +2060,31 @@ test('seed install (plugin route, project scope): a user- or local-scope registr
     assert.strictEqual(line(/!! mcp alfred-documentation \(project scope\) calls the url of the alfred-documentation plugin.*claude mcp remove alfred-documentation -s project/g), 1, out);
     assert.strictEqual(line(/mcp alfred-documentation: kept - the \.mcp\.json entry is not the one the stack wrote/g), 1, out);
     assert.deepStrictEqual(calls.filter((c) => /^mcp remove .* -s (user|local)$/.test(c)), [], 'a project-scope run removed an account registration');
+});
+
+// PL11 end to end: a picked mobile-control beside the user's own `appium-mcp` in .mcp.json, and a user-scope serena of the
+// user's own under another name - each named once with its remove command and kept; a re-run says the same and removes nothing.
+test('PL11 seed install + re-run (plugin route, project scope): a same-package registration under another name is named, never removed', POSIX_ONLY, () =>
+{
+    const appium = { type: 'stdio', command: 'npx', args: ['-y', 'appium-mcp@1.95.8'], env: {} };
+    const ownSerena = { type: 'stdio', command: 'uvx', args: ['--from', 'serena-agent==1.6.0', 'serena', 'start-mcp-server'], env: {} };
+    const { calls, outs, result } = seedRun(['install', 'install'], 'skill markdown-style\nrule markdown-docs\nmcp mobile-control\n', {
+        plugins: JSON.stringify(STACK_ROWS('envoydev')), tools: { claude: MCPJSON_CLI },
+        prepare: (repo, work) =>
+        {
+            accountMcp(work, { 'my-serena': ownSerena });
+            fs.writeFileSync(path.join(repo, '.mcp.json'), `${JSON.stringify({ mcpServers: { 'appium-mcp': appium } }, null, 2)}\n`);
+        },
+        inspect: (repo) => jsonAt(repo, '.mcp.json'),
+    });
+    for (const out of outs)
+    {
+        const line = (re) => (out.match(re) || []).length;
+        assert.strictEqual(line(/mcp appium-mcp \(project scope\) runs appium-mcp, the package the mobile-control plugin starts - two mobile-control servers in every session here; if nothing else needs it: claude mcp remove appium-mcp -s project/g), 1, out);
+        assert.strictEqual(line(/mcp my-serena \(user scope\) runs serena-agent, the package the alfred-navigation plugin starts .*claude mcp remove my-serena -s user/g), 1, out);
+    }
+    assert.deepStrictEqual(result, { mcpServers: { 'appium-mcp': appium } }, 'the user\'s own .mcp.json row was changed');
+    assert.deepStrictEqual(calls.filter((c) => /^mcp remove (appium-mcp|my-serena) /.test(c)), [], 'a same-package registration was removed');
 });
 
 // Plugins audit (2026-09-26): every playwright engine runs with a PERSISTENT profile under

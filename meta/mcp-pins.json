@@ -1,13 +1,14 @@
 {
   "generatedBy": "refresh-mcp-pins",
-  "note": "The MCP runtime versions the generated plugin entries pin to, and (refreshed) the day that is the uvx servers' dependency cut-off: each starts with --exclude-newer <refreshed>T23:59:59Z, so the whole tree is fixed, not only the top package. Refreshed deliberately with `node scripts/refresh-mcp-pins.js --write`, never during an install or by hand - a pin newer than the cut-off would not resolve. A null version ships unpinned.",
+  "note": "The MCP runtime versions the generated plugin entries pin to, and (refreshed) the day that is the uvx servers' dependency cut-off: each starts with --exclude-newer <refreshed>T23:59:59Z, so the whole tree is fixed, not only the top package. An npm row carries its own refreshed day, the npx servers' cut-off (npm_config_before=<day>T23:59:59Z), since an --only pin is newer than the shared day. Refreshed deliberately with `node scripts/refresh-mcp-pins.js --write`, never during an install or by hand - a pin newer than the cut-off would not resolve. A null version ships unpinned.",
   "refreshed": "2026-09-29",
   "pins": {
     "browser": {
       "package": "@playwright/mcp",
       "registry": "npm",
       "spelling": "@<v>",
-      "version": "0.0.83"
+      "version": "0.0.83",
+      "refreshed": "2026-09-29"
     },
     "alfred-navigation": {
       "package": "serena-agent",
@@ -37,7 +38,8 @@
       "package": "appium-mcp",
       "registry": "npm",
       "spelling": "@<v>",
-      "version": "1.97.1"
+      "version": "1.97.1",
+      "refreshed": "2026-10-13"
     }
   }
 }

@@ -66,8 +66,8 @@ The whole per-message floor - Claude Code's own prompt and tools, every plugin's
 
 ## Under managed settings
 
-- **`strictKnownMarketplaces`** - add two `extraKnownMarketplaces` rows, `envoydev` and `claude-hud`. Both are needed on every run, since `claude-hud` is required, and only `claude-plugins-official` is known by default.
-- **`enabledPlugins`** - one key for each plugin the project keeps; `alfred-code` and `claude-hud` always.
+- **`strictKnownMarketplaces`** - the allowlist registers nothing, and Claude Code refuses to register a managed marketplace whose source it does not admit (code.claude.com/docs/en/plugins/org). Allow each source the stack installs from - `{ "source": "github", "repo": "envoydev/alfred-code" }`, `{ "source": "github", "repo": "anthropics/claude-plugins-official" }` for the `*-lsp` pair, and `{ "source": "github", "repo": "jarrodwatts/claude-hud" }` if you keep claude-hud (optional, recommended) - and register the same marketplaces in `extraKnownMarketplaces`: `envoydev`, `claude-plugins-official` and `claude-hud`, each with its matching `source`.
+- **`enabledPlugins`** - one key for each plugin the project keeps; `alfred-code@envoydev` and the three locked servers `alfred-navigation@envoydev`, `alfred-documentation@envoydev` and `alfred-memory@envoydev` always, `claude-hud@claude-hud` when you keep it.
 - **`allowManagedHooksOnly`** - silently disables all eighteen house hooks. The plugin still installs and enables, but no guard ever fires, and nothing reports it. Decide this one before rolling the stack out under a managed policy.
 
 `ALFRED_CODE_HOOKS_OFF` is the supported way to switch individual hooks off.

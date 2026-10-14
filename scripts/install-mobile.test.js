@@ -16,6 +16,7 @@ const installs = (calls, name) => calls.filter((c) => c.startsWith(`plugin insta
 const COPY = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
 const SEL = 'skill markdown-style\nmcp mobile-control\n';
 const PIN = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'mcp-pins.json'), 'utf8')).pins['mobile-control'].version;
+const DAY = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'mcp-pins.json'), 'utf8')).pins['mobile-control'].refreshed;
 const said = (out) => (out.match(/^(==> )?\s*(!! )?mobile: .*$/gm) || []);
 
 test('seed install: a selection naming mobile-control installs its plugin on any OS and says its prerequisites once', POSIX_ONLY, () =>
@@ -61,7 +62,8 @@ test('seed install (full copy route): the registration carries the pin, the safe
     assert.deepStrictEqual(reg.env, {
         NO_UI: 'true', ALLOW_REMOTE_APP_URLS: 'true', REMOTE_SERVER_URL_ALLOW_REGEX: LOCAL_ONLY,
         SCREENSHOTS_DIR: '.alfred/mobile-control/screenshots', PAGE_SOURCES_DIR: '.alfred/mobile-control/page-sources',
-    }, 'the user\'s own ALLOW_REMOTE_APP_URLS is taken; their SDK path never enters the committed file');
+        npm_config_before: `${DAY}T23:59:59Z`,
+    }, 'the user\'s own ALLOW_REMOTE_APP_URLS is taken; their SDK path never enters the committed file; PL4: the pin\'s own cut-off day');
     assert.ok(reg.args.includes('checkout'), 'the server starts at the checkout root, so the relative dirs resolve there');
     assert.deepStrictEqual(steps[1], reg, 'the update keeps the registration as it is');
     assert.doesNotMatch(outs[1], /mcp repaired: mobile-control/, outs[1]);

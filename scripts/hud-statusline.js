@@ -26,7 +26,11 @@
 // a fallback to the environment's account.
 //
 // The shapes below are claude-hud 0.8.0's (commands/setup.md; MIT, Copyright (c) 2026 Jarrod Watts),
-// kept byte for byte so a line /claude-hud:setup wrote reads as current here, and ours there.
+// kept byte for byte so a line /claude-hud:setup wrote reads as current here, and ours there. claude-hud 0.11
+// (0.11.2's scripts/setup.mjs `buildCommand`) writes a launcher line instead - the runtime and a copy of its
+// statusline.mjs at <account>/plugins/claude-hud/ (POSIX), a statusline.cmd shim there (Git Bash), or the same cmd.exe
+// line as 0.8.0 (PowerShell) - and those read as current too, so /alfred-code:init never rewrites a line claude-hud's
+// own setup just wrote (audit 2026-10-14, PL7: two writers of one key, each undoing the other).
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -47,6 +51,11 @@ const AWK_BUN = AWK_NODE.replace('exec "{RUNTIME_PATH}" "', 'exec "{RUNTIME_PATH
 // Windows (setup.md:369, the cmd path per :375-377): the launcher below, through the absolute cmd.exe.
 const CMD = '{CMD_PATH} /d /s /c ""{RUNTIME_PATH}" "{WRAPPER_PATH}""';
 const SHAPES = { sortV: SORT_V, awkNode: AWK_NODE, awkBun: AWK_BUN, cmd: CMD };
+// claude-hud 0.11's own lines (setup.mjs buildCommand), read as current, never written here: POSIX quotes the runtime and
+// the launcher in single quotes (a quote inside as '\''), Bun adding --env-file /dev/null; Git Bash runs the shim.
+const LAUNCHER_POSIX_RE = /^'((?:[^']|'\\'')+)'( --env-file \/dev\/null)? '((?:[^']|'\\'')+)'$/;
+const LAUNCHER_GITBASH = 'exec "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/claude-hud/statusline.cmd"';
+const unquote = (word) => word.split("'\\''").join("'");
 
 // The Windows launcher, `<account>/plugins/claude-hud/statusline.mjs` (setup.md:237-293).
 const LAUNCHER = String.raw`import fs from 'node:fs';
@@ -197,16 +206,19 @@ function projectGit(git, cwd)
 // which bash does not eat as escapes), else the cmd.exe line with `launcher`, the file it runs.
 function expected({ platform, configDir, runtime, env, exists, bash })
 {
+    // Where claude-hud 0.11's own setup puts its launcher (and, under Git Bash, its statusline.cmd shim).
+    const hudDir = path.join(configDir, 'plugins', HUD);
     if (platform !== 'win32' || bash)
     {
         const node = platform === 'win32' ? runtime.replace(/\\/g, '/') : runtime;
-        return { shell: 'bash', command: fill(SORT_V, { RUNTIME_PATH: node, SOURCE: 'dist/index.js' }), launcher: null };
+        return { shell: 'bash', command: fill(SORT_V, { RUNTIME_PATH: node, SOURCE: 'dist/index.js' }), launcher: null, hudDir };
     }
     const wrapper = path.win32.join(configDir, 'plugins', HUD, 'statusline.mjs');
     return {
         shell: 'cmd',
         command: fill(CMD, { CMD_PATH: cmdPath(env, exists), RUNTIME_PATH: runtime, WRAPPER_PATH: wrapper }),
         launcher: { file: path.join(configDir, 'plugins', HUD, 'statusline.mjs'), wrapper },
+        hudDir,
     };
 }
 
@@ -219,8 +231,8 @@ const winRuntimeExists = (runtime, exists) =>
     return exists(native) || exists(`${native}.exe`);
 };
 
-// absent | current | stale | foreign. Current = a shape claude-hud 0.8.0 writes on this platform,
-// whose runtime (and on Windows, whose launcher) is on disk.
+// absent | current | stale | foreign. Current = a shape claude-hud 0.8.0 or 0.11 writes on this platform,
+// whose runtime (and launcher, where the line runs one) is on disk.
 function classify(statusLine, { platform, want, exists })
 {
     if (statusLine !== undefined && (statusLine === null || typeof statusLine !== 'object' || Array.isArray(statusLine)))
@@ -233,6 +245,15 @@ function classify(statusLine, { platform, want, exists })
     // form of the shell that will run it: a bash line cannot run without Git Bash, a cmd line under it.
     const shapes = !win ? [[SORT_V, 'dist/index.js'], [AWK_NODE, 'dist/index.js'], [AWK_BUN, 'src/index.ts']]
         : want.shell === 'bash' ? [[SORT_V, 'dist/index.js']] : [[CMD, '']];
+    // claude-hud 0.11's launcher lines: this account's own launcher copy, on disk, and (POSIX) a runtime that is.
+    const hudDir = want.hudDir || '';
+    if (hudDir && !win)
+    {
+        const m = LAUNCHER_POSIX_RE.exec(command);
+        if (m && exists(unquote(m[1])) && unquote(m[3]) === path.join(hudDir, 'statusline.mjs') && exists(unquote(m[3]))) return { state: 'current' };
+    }
+    if (hudDir && win && want.shell === 'bash' && command === LAUNCHER_GITBASH
+        && exists(path.join(hudDir, 'statusline.cmd')) && exists(path.join(hudDir, 'statusline.mjs'))) return { state: 'current' };
     for (const [shape, source] of shapes)
     {
         const m = shapeRe(shape, source).exec(command);
