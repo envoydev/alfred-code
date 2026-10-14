@@ -157,6 +157,7 @@
   "dotnet-architecture-tests": {
    "packages": [
     "NetArchTest.Rules",
+    "NetArchTest.eNhancedEdition",
     "TngTech.ArchUnitNET"
    ]
   },
