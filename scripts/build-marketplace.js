@@ -449,9 +449,39 @@ function mcpPlugins(options = {})
     });
 }
 
+// THE IDS 2.4.0 RENAMED, LISTED AGAIN AS RETIRED ALIASES (audit 2026-10-14 PL5, the user's ruling of 2026-10-14). 2.4.0
+// renamed browser-<engine>, windows-desktop and macos-desktop to <engine>-control, windows-control and macos-control
+// (meta/stack-manifest.json `renamed.mcps`) and unlisted the old ids in the same release - an id a catalog drops stops
+// loading in every project still enabled on it the moment its marketplace refreshes, silently (S25), and one project's
+// update refreshes it for every project on the account. So each is listed again the way 2.2.0 listed its renames:
+// RETIRED, carrying its successor's server under the OLD server name, so a project not yet updated keeps the tool names
+// its copies spell, and its next update swaps the plugin for the new one (install/plugins.js migrateRenamed). An alias
+// names no dependency (I6, I7). Kept until evidence shows no install still resolves through one - never on a release
+// cadence. The 2.0.0 and 2.2.0 renames stay unlisted (2.2.1, the user's ruling of 2026-10-06).
+const LISTED_ALIASES = Object.freeze(['browser-chrome', 'browser-msedge', 'browser-firefox', 'browser-webkit', 'windows-desktop', 'macos-desktop']);
+const ALIAS_RELEASE = '2.4.0';
+function mcpAliasEntries(options = {})
+{
+    const renamed = options.renamedMcps || loadManifest(REPO).renamed.mcps;
+    const current = options.entries || mcpPlugins(options);
+    return LISTED_ALIASES.map((old) =>
+    {
+        const now = renamed[old];
+        const entry = now ? current.find((e) => e.name === now) : null;
+        if (!entry) throw new Error(`build-marketplace: the retired alias ${old} has no successor entry (renamed.mcps names ${now || 'none'})`);
+        const { dependencies, ...rest } = entry;
+        return {
+            ...rest,
+            name: old,
+            description: `RETIRED in ${ALIAS_RELEASE} - renamed ${now}. Run /${CORE}:update: it installs ${now} in its place and removes this entry.`,
+            mcpServers: { [old]: entry.mcpServers[now] },
+        };
+    });
+}
+
 function applyMcpPlugins(mkt, entries)
 {
-    const wanted = entries || mcpPlugins();
+    const wanted = entries || mcpPlugins().concat(mcpAliasEntries());
     const plugins = Array.isArray(mkt.plugins) ? mkt.plugins : (mkt.plugins = []);
     for (const w of wanted)
     {
@@ -462,7 +492,8 @@ function applyMcpPlugins(mkt, entries)
     // is recognisable without a list of past names - which matters, because a regeneration that
     // only adds leaves a split entry (one playwright -> one plugin per engine) behind in the
     // marketplace, enabled on every machine that already installed it. A RENAMED one's old id goes the same way
-    // (2.2.1: the RETIRED aliases are no longer listed).
+    // (2.2.1: the RETIRED aliases are no longer listed) - except the 2.4.0 ones, which are among the wanted entries
+    // (mcpAliasEntries) and stay listed on purpose.
     const keep = new Set(wanted.map(w => w.name));
     const ownedByMcp = p => p && p.mcpServers && !p.skills && !p.agents && !p.commands && !p.hooks;
     for (let i = plugins.length - 1; i >= 0; i--)
@@ -489,7 +520,8 @@ function main(argv)
     {
         const file = path.resolve(arg('--marketplace-file', MARKETPLACE));
         const mkt = readJson(file, 'marketplace.json');
-        const entries = mcpPlugins(options);
+        const current = mcpPlugins(options);
+        const entries = current.concat(mcpAliasEntries({ ...options, entries: current }));
         const before = JSON.stringify(mkt, null, 2) + '\n';
         const after = JSON.stringify(applyMcpPlugins(mkt, entries), null, 2) + '\n';
         if (before === after) { console.log(`mcp entries current: ${entries.length} plugins`); return 0; }
@@ -548,4 +580,4 @@ if (require.main === module)
     catch (err) { console.error(String(err.message || err)); process.exit(1); }
 }
 
-module.exports = { buildEntries, coreEntry, serialize, applyToMarketplace, applyMcpPlugins, mcpPlugins, mcpServerShapes, readPins, PW_ENGINES, parseHookWirings, hooksBlock, mergeHooks, FOLDED_ENTRIES, ENTRIES_FILE, PINS_FILE };
+module.exports = { buildEntries, coreEntry, serialize, applyToMarketplace, applyMcpPlugins, mcpPlugins, mcpAliasEntries, LISTED_ALIASES, mcpServerShapes, readPins, PW_ENGINES, parseHookWirings, hooksBlock, mergeHooks, FOLDED_ENTRIES, ENTRIES_FILE, PINS_FILE };

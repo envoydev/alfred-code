@@ -416,9 +416,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     stderr, line-buffered - its EXACT text only: an encoded, split or reversed print is not caught, so it is leak protection
     against accidents, never a wall against a deliberate read (the session-start line says so and forbids the transform); the exit code is the command's. SessionStart (its own manifest row, silent with no store, an
     empty or an unparseable one) says the KEYS and that command line, plus a warning when `git check-ignore` exits 1 (not
-    ignored, or tracked). The launchers read the same file through `data-root.js readSensitive` (a twin parser - the hooks
+    ignored, or tracked). The browser launcher passes the file itself to Playwright MCP (`--secrets`: a KEY name typed in
+    `browser_type` / `browser_fill_form` is filled with its value, and each value prints as `<secret>KEY</secret>`), and
+    mobile-control reads only the keys appium-mcp documents through `data-root.js readSensitive` (a twin parser - the hooks
     ship apart from `stack/mcp` on the copy route; `guard-sensitive-data.test.js` holds both to one fixture), where the
-    shell and a settings file's env win.
+    shell and a settings file's env win; no other server gets a value (audit 2026-10-14 PL2, repo-memory-data.md).
   - `guard-unapproved-dispatch.js` (PreToolUse `Task|Agent`) - blocks an `*-implementer` dispatch (bare or
     `alfred-code:`-prefixed; a foreign plugin's is not the flow's seat) without the `<docs-path>/flow/APPROVAL` gate file (written on explicit approval or an AUTO waiver),
     blocks a generic `general-purpose`/`claude` dispatch while that stamp is live (stamps older than 8h

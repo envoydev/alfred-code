@@ -118,10 +118,10 @@ function runUvx(args, { env: given = process.env, cwd, projectDir, label = 'laun
 {
     // A UV_EXCLUDE_NEWER only a settings file names is put where uv reads it - the child's own environment.
     const own = String(given.UV_EXCLUDE_NEWER || '').trim() ? '' : userExcludeNewer({ env: given, projectDir });
-    // The project's sensitive data (<data root>/.sensitive-data) where nothing else set the key - data-root.js withSensitive.
-    const sensitive = projectDir ? require('./data-root.js').withSensitive(given, { projectDir }) : { env: given, count: 0 };
-    if (sensitive.count) process.stderr.write(`${label}: ${sensitive.count} value(s) from the project's sensitive data in the environment\n`);
-    const env = own ? { ...sensitive.env, UV_EXCLUDE_NEWER: own } : sensitive.env;
+    // No server uvx starts (serena, the memory service, windows- and macos-control) documents a key it would read from the
+    // project's sensitive data, so none of its values reaches them (audit 2026-10-14 PL2) - the browser takes the store
+    // as a file (browser-launch.js --secrets), mobile-control only the keys appium-mcp documents.
+    const env = own ? { ...given, UV_EXCLUDE_NEWER: own } : given;
     const cutoff = excludeNewerArgs(excludeNewer, { env, log: (line) => process.stderr.write(`${label}: ${line}\n`) });
     const child = spawn('uvx', ['--python', pythonRequest({ env, projectDir }), ...cutoff, ...args], { stdio: 'inherit', env, cwd });
     const forward = (signal) => { try { child.kill(signal); } catch { /* already gone */ } };

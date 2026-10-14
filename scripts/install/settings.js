@@ -563,7 +563,7 @@ function writeSettings(opts)
 {
     const {
         file, hookSpecs = [], retiredHooks = [], denySpecs = [], retiredDeny = [],
-        agentDeny = [], agentAllow = [],
+        agentDeny = [], agentAllow = [], toolDeny = [],
         mcpNames = [], mcpOff = [], mcpjsonDisable = [], mcpjsonEnable = [], catalog = [], migrations = {},
         docsVersioning, docsPath = null, dataPath = null, autoCompact = null, memoryDb, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null, renamed = null,
         inheritedOverrides = null, sharedFile = null, sharedKeys = [], attribution = null, worktreeBase = null, compactWindows = null, ledger = {},
@@ -601,6 +601,23 @@ function writeSettings(opts)
     // clears what an older install seeded. A project's own entry is never touched.
     for (const rule of [...deny]) if (retiredDeny.includes(rule))
     { deny.splice(deny.indexOf(rule), 1); changed = true; log(`  ${label}: dropped retired deny entry ${rule}`); }
+    // PL8: the ADD-ONLY rows (the memory tools the stack never calls): each written once. One the last run's ledger
+    // records for this file - in either route's spelling of the tool - that the file holds in neither was taken out by
+    // the user: it stays out, and its record is carried (the managed list below), so no later run writes it back. With
+    // no ledger, or none naming it, it is written. A route switch adds the new spelling while the old one is still there;
+    // the ledger pass below then drops the old one.
+    const toolKey = (entry) => String(entry).replace(/^mcp__plugin_(.+?)_\1__/, 'mcp__$1__');
+    const heldTools = new Set(deny.map(toolKey));
+    const declinedDeny = [];
+    const addedTools = [];
+    for (const rule of toolDeny)
+    {
+        if (deny.includes(rule)) continue;
+        const recorded = Boolean(prior && Array.isArray(prior.deny) && prior.deny.some((d) => d.file === label && toolKey(d.entry) === toolKey(rule)));
+        if (recorded && !heldTools.has(toolKey(rule))) { declinedDeny.push(rule); continue; }
+        deny.push(rule); changed = true; addedTools.push(rule);
+    }
+    if (addedTools.length) log(`  ${label}: denied ${addedTools.length} memory server tool(s) the stack never calls (${addedTools.map((r) => r.replace(/^.*__/, '')).join(', ')}) - out of every session's context; take one out of permissions.deny to use it, and it stays out`);
     // I1 (fix round 1): the pass below also runs over settings.local.json's deny list - a seat the
     // user switched off for themselves is re-spelled THERE, never moved into the shared file.
     const respellSeats = (list, lab) =>
@@ -817,7 +834,7 @@ function writeSettings(opts)
         managedEnv[localName] = envLocal.managed;
     }
     const priorDeny = prior && prior.deny ? prior.deny : null;
-    const ownDeny = (entry) => denySpecs.includes(entry) || Boolean(stackSeat(entry));
+    const ownDeny = (entry) => denySpecs.includes(entry) || toolDeny.includes(entry) || Boolean(stackSeat(entry));
     for (const [list, name] of [[deny, label], [localDeny, localName]])
     {
         if (!list || !priorDeny) continue;
@@ -833,8 +850,11 @@ function writeSettings(opts)
     // recorded for the other file (a local-scope install's own, before a move) never claims the team's
     // copy (review finding 1). With no ledger a secret-file deny is never claimed - it may be the team's,
     // and a leftover after uninstall is harmless where a removed one is not (finding 6); a stack seat is.
-    const managedDeny = deny.filter((entry) => !denyBefore.includes(entry)
+    // An add-only row the file holds is the stack's whoever wrote it (the same string), so a later removal is the user's
+    // and is kept; one the user took out is carried as recorded (declinedDeny), never written back.
+    const managedDeny = deny.filter((entry) => !denyBefore.includes(entry) || toolDeny.includes(entry)
         || (priorDeny ? priorDeny.some((d) => d.file === label && d.entry === entry) : Boolean(stackSeat(entry)))).map((entry) => ({ file: label, entry }));
+    for (const entry of declinedDeny) managedDeny.push({ file: label, entry });
     if (localDeny)
         for (const entry of localDeny)
             if (!localDenyBefore.includes(entry) || (priorDeny ? priorDeny.some((d) => d.file === localName && d.entry === entry) : Boolean(stackSeat(entry))))

@@ -41,7 +41,9 @@ const SHARED_BROWSER = 'browser';
 // mobile-control's screenshots, recordings and saved page sources (stack/mcp/mobile-launch.js).
 const MOBILE_FOLDER = 'mobile-control';
 // The project's own secret store, a dotenv the user fills by hand (the user's ruling of 2026-10-13): every value in it is
-// a credential to stack/hooks/guard-secret-value.js, and each launcher hands them to its server (withSensitive).
+// a credential to stack/hooks/guard-secret-value.js. The browser launcher hands Playwright MCP the FILE (--secrets), which
+// types a value by its KEY and masks it in each response; mobile-control takes only the keys appium-mcp documents
+// (withSensitive `only`); no other server gets any (audit 2026-10-14 PL2, the user's ruling of 2026-10-14).
 const SENSITIVE_FILE = '.sensitive-data';
 
 // ------------------------------------------------------------------ the setting
@@ -509,12 +511,13 @@ function readSensitive({ projectDir, root = DATA_ROOT_DEFAULT })
 }
 
 // A launcher's child environment with the project's sensitive data in it: a variable already set (the shell, a settings
-// file's env) keeps its value - a launch takes the store only where nothing else answers, the dotenv convention.
+// file's env) keeps its value - a launch takes the store only where nothing else answers, the dotenv convention. `only`
+// names the keys the server documents (null: every key); any other key in the store stays out of its environment.
 // { env, count } - the count is for the launcher's one stderr line; no value is ever logged.
-function withSensitive(env, { projectDir, root } = {})
+function withSensitive(env, { projectDir, root, only = null } = {})
 {
     const values = readSensitive({ projectDir, root: root || dataRootOf({ env, projectDir }).root });
-    const added = Object.keys(values).filter((k) => !Object.hasOwn(env, k));
+    const added = Object.keys(values).filter((k) => !Object.hasOwn(env, k) && (!only || only.includes(k)));
     return { env: { ...env, ...Object.fromEntries(added.map((k) => [k, values[k]])) }, count: added.length };
 }
 

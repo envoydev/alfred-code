@@ -685,6 +685,160 @@
           }
         ]
       }
+    },
+    {
+      "name": "browser-chrome",
+      "source": "./",
+      "description": "RETIRED in 2.4.0 - renamed chrome-control. Run /alfred-code:update: it installs chrome-control in its place and removes this entry.",
+      "version": "2.5.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "browser-chrome": {
+          "command": "node",
+          "args": [
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
+            "--package",
+            "@playwright/mcp@0.0.83",
+            "--browser",
+            "chrome"
+          ]
+        }
+      }
+    },
+    {
+      "name": "browser-msedge",
+      "source": "./",
+      "description": "RETIRED in 2.4.0 - renamed msedge-control. Run /alfred-code:update: it installs msedge-control in its place and removes this entry.",
+      "version": "2.5.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "browser-msedge": {
+          "command": "node",
+          "args": [
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
+            "--package",
+            "@playwright/mcp@0.0.83",
+            "--browser",
+            "msedge"
+          ]
+        }
+      }
+    },
+    {
+      "name": "browser-firefox",
+      "source": "./",
+      "description": "RETIRED in 2.4.0 - renamed firefox-control. Run /alfred-code:update: it installs firefox-control in its place and removes this entry.",
+      "version": "2.5.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "browser-firefox": {
+          "command": "node",
+          "args": [
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
+            "--package",
+            "@playwright/mcp@0.0.83",
+            "--browser",
+            "firefox"
+          ]
+        }
+      }
+    },
+    {
+      "name": "browser-webkit",
+      "source": "./",
+      "description": "RETIRED in 2.4.0 - renamed webkit-control. Run /alfred-code:update: it installs webkit-control in its place and removes this entry.",
+      "version": "2.5.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "browser-webkit": {
+          "command": "node",
+          "args": [
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
+            "--package",
+            "@playwright/mcp@0.0.83",
+            "--browser",
+            "webkit"
+          ]
+        }
+      }
+    },
+    {
+      "name": "windows-desktop",
+      "source": "./",
+      "description": "RETIRED in 2.4.0 - renamed windows-control. Run /alfred-code:update: it installs windows-control in its place and removes this entry.",
+      "version": "2.5.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "windows-desktop": {
+          "command": "node",
+          "args": [
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/desktop-launch.js",
+            "--server",
+            "windows-control",
+            "--package",
+            "windows-mcp==0.8.5",
+            "--exclude-newer",
+            "2026-09-29T23:59:59Z",
+            "--",
+            "serve",
+            "--exclude-tools",
+            "PowerShell,Registry,Process,FileSystem"
+          ],
+          "env": {
+            "ANONYMIZED_TELEMETRY": "false"
+          }
+        }
+      }
+    },
+    {
+      "name": "macos-desktop",
+      "source": "./",
+      "description": "RETIRED in 2.4.0 - renamed macos-control. Run /alfred-code:update: it installs macos-control in its place and removes this entry.",
+      "version": "2.5.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "macos-desktop": {
+          "command": "node",
+          "args": [
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/desktop-launch.js",
+            "--server",
+            "macos-control",
+            "--package",
+            "macos-mcp==0.4.6",
+            "--exclude-newer",
+            "2026-09-29T23:59:59Z",
+            "--",
+            "serve"
+          ],
+          "env": {
+            "ANONYMIZED_TELEMETRY": "false"
+          }
+        }
+      }
     }
   ]
 }

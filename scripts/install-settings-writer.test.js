@@ -1206,3 +1206,84 @@ function hookCommandEntry(file)
 {
     return { type: 'command', command: hookCommand(file, '').command, timeout: HOOK_TIMEOUT };
 }
+
+// PL8 (audit 2026-10-14, the user's ruling of 2026-10-14): the memory tools the stack never calls are denied by bare
+// name, ADD-ONLY - written once, ledgered like the seat denies, and an entry the user takes out stays out on every
+// later run; a route switch re-spells them through the ledger (the other spelling is shipped, so it goes).
+test('PL8 settings-ledger: the add-only tool denies are written once, a user\'s removal is kept run after run, and a route switch re-spells them', () =>
+{
+    const { memoryToolDeny, SHIPPED_DENY, MEMORY_TOOLS_USED } = require('./install/alfred-code.js');
+    const ROOT = path.join(__dirname, '..');
+    const plugin = memoryToolDeny(ROOT);
+    const bare = memoryToolDeny(ROOT, { bare: true });
+    const tools = require('../meta/mcp-tools.json').servers['alfred-memory'].tools;
+    assert.strictEqual(tools.length, 28);
+    assert.strictEqual(plugin.length, 23, '28 tools at the pin minus the five the stack calls');
+    assert.deepStrictEqual(MEMORY_TOOLS_USED.filter((t) => !tools.includes(t)), [], 'every tool the stack calls exists at the pin');
+    assert.ok(plugin.every((e) => /^mcp__plugin_alfred-memory_alfred-memory__[a-z_]+$/.test(e)) && bare.every((e) => /^mcp__alfred-memory__[a-z_]+$/.test(e))); // mcp-fixture
+    assert.ok(plugin.includes('mcp__plugin_alfred-memory_alfred-memory__memory_cleanup') && !plugin.some((e) => /__memory_(store|search|list|delete|update)$/.test(e)));
+    for (const e of [...plugin, ...bare]) assert.ok(SHIPPED_DENY.includes(e), `${e} is shipped, so the ledger may remove it`);
+
+    const shippedDeny = SHIPPED_DENY;
+    const file = settingsFile({ permissions: { deny: ['Bash(rm:*)'] } });
+    // A fresh install (no ledger): every one written, each in the managed ledger, one log line.
+    const first = write(file, { denySpecs: ['Read(.env)'], toolDeny: plugin, ledger: { prior: null, releaseHooks: [], shippedDeny } });
+    assert.deepStrictEqual(first.data.permissions.deny, ['Bash(rm:*)', 'Read(.env)', ...plugin]);
+    assert.match(first.logs.join('\n'), /settings\.json: denied 23 memory server tool\(s\) the stack never calls \(commit_session_legacy, .*unquarantine_memory\) - out of every session's context/);
+    const ledger1 = first.result.managed.deny;
+    assert.deepStrictEqual(ledger1.filter((d) => plugin.includes(d.entry)).map((d) => d.entry), plugin);
+    assert.ok(!ledger1.some((d) => d.entry === 'Bash(rm:*)'), 'the user\'s own entry is never managed');
+    // A re-run changes nothing and says nothing.
+    const again = write(file, { denySpecs: ['Read(.env)'], toolDeny: plugin, ledger: { prior: { deny: ledger1 }, releaseHooks: [], shippedDeny } });
+    assert.deepStrictEqual(again.data.permissions.deny, first.data.permissions.deny);
+    assert.doesNotMatch(again.logs.join('\n'), /memory server tool/);
+    // The user takes two out: the next run keeps them out, and the run after it too (the record is carried).
+    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const taken = [plugin[0], plugin[5]];
+    data.permissions.deny = data.permissions.deny.filter((e) => !taken.includes(e));
+    fs.writeFileSync(file, JSON.stringify(data, null, 2));
+    const second = write(file, { denySpecs: ['Read(.env)'], toolDeny: plugin, ledger: { prior: { deny: again.result.managed.deny }, releaseHooks: [], shippedDeny } });
+    assert.ok(taken.every((e) => !second.data.permissions.deny.includes(e)), 'a removal is kept');
+    assert.ok(taken.every((e) => second.result.managed.deny.some((d) => d.entry === e)), 'and its record is carried');
+    const third = write(file, { denySpecs: ['Read(.env)'], toolDeny: plugin, ledger: { prior: { deny: second.result.managed.deny }, releaseHooks: [], shippedDeny } });
+    assert.ok(taken.every((e) => !third.data.permissions.deny.includes(e)), 'still kept a run later');
+    assert.strictEqual(third.data.permissions.deny.length, 2 + 21);
+    // A route switch: the plugin spelling goes and the bare one arrives - the two the user took out stay out in it too.
+    const switched = write(file, { denySpecs: ['Read(.env)'], toolDeny: bare, ledger: { prior: { deny: third.result.managed.deny }, releaseHooks: [], shippedDeny } });
+    assert.ok(!switched.data.permissions.deny.some((e) => plugin.includes(e)), 'the old spelling goes');
+    const takenBare = taken.map((e) => e.replace('mcp__plugin_alfred-memory_alfred-memory__', 'mcp__alfred-memory__')); // mcp-fixture
+    assert.deepStrictEqual(switched.data.permissions.deny.filter((e) => bare.includes(e)), bare.filter((e) => !takenBare.includes(e)));
+    assert.ok(takenBare.every((e) => switched.result.managed.deny.some((d) => d.entry === e)), 'the removal is carried in the new spelling');
+    assert.ok(switched.data.permissions.deny.includes('Bash(rm:*)'), 'the user\'s own entry stays');
+    const back = write(file, { denySpecs: ['Read(.env)'], toolDeny: plugin, ledger: { prior: { deny: switched.result.managed.deny }, releaseHooks: [], shippedDeny } });
+    assert.deepStrictEqual(back.data.permissions.deny.filter((e) => plugin.includes(e)), plugin.filter((e) => !taken.includes(e)), 'and back again');
+    assert.ok(!back.data.permissions.deny.some((e) => bare.includes(e)));
+    // An entry the user already wrote in the same spelling is the stack's from here on (a later removal is kept).
+    const ownFile = settingsFile({ permissions: { deny: [bare[3]] } });
+    const own = write(ownFile, { toolDeny: bare, ledger: { prior: { deny: [] }, releaseHooks: [], shippedDeny } });
+    assert.deepStrictEqual(own.data.permissions.deny.filter((e) => e === bare[3]).length, 1, 'never doubled');
+    assert.ok(own.result.managed.deny.some((d) => d.entry === bare[3]));
+});
+
+test('PL8: no shipped skill, rule, seat, command or hook names a memory tool the install denies', () =>
+{
+    const { MEMORY_TOOLS_USED } = require('./install/alfred-code.js');
+    const ROOT = path.join(__dirname, '..');
+    const tools = require('../meta/mcp-tools.json').servers['alfred-memory'].tools;
+    const denied = tools.filter((t) => !MEMORY_TOOLS_USED.includes(t));
+    const hits = [];
+    const walk = (dir) =>
+    {
+        for (const e of fs.readdirSync(dir, { withFileTypes: true }))
+        {
+            const p = path.join(dir, e.name);
+            if (e.isDirectory()) { if (e.name !== 'node_modules') walk(p); continue; }
+            if (!/\.(md|js|json|ya?ml)$/.test(e.name)) continue;
+            const text = fs.readFileSync(p, 'utf8');
+            // memory_graph is also the service's SQLite table, which the notes import reads by that name.
+            for (const t of denied) if (new RegExp(`\\b${t}\\b`).test(text) && !(t === 'memory_graph' && /FROM memory_graph|name = 'memory_graph'|memory_graph edges/.test(text))) hits.push(`${path.relative(ROOT, p)}: ${t}`);
+        }
+    };
+    for (const d of ['stack', 'setup-plugin']) walk(path.join(ROOT, d));
+    assert.deepStrictEqual(hits, [], 'a shipped file uses a tool the install removes from context - add it to MEMORY_TOOLS_USED');
+});

@@ -137,8 +137,16 @@ The memory levels and stores, where the docs root and the data root live, and th
   profiles (`<root>/<engine>-control`), a project-level memory database (`<root>/.alfred-memory`) and the project's
   sensitive data (`<root>/.sensitive-data`, a dotenv the user fills by hand - 2026-10-13; every install writes it absent-only
   with one comment line and no key, only where git keeps it out (`data-root.js ensureSensitiveFile`); the secret guard keeps its
-  values out of the chat, `withSensitive` hands them to every launcher's server where the shell and a settings file
-  set nothing, and a root change moves it inline on every route, into a root whose `.gitignore` is written first;
+  values out of the chat. The browser launcher hands Playwright MCP the FILE, `--secrets <absolute path>` (audit 2026-10-14
+  PL2, the user's ruling of 2026-10-14, reversing 2026-10-13's 'every launcher'): a login types the KEY name in
+  `browser_type` / `browser_fill_form`, the server fills the value (`lookupSecret`) and writes each value back as
+  `<secret>KEY</secret>` in its responses (`redactSecrets`, playwright-core's coreBundle.js under the 0.0.83 pin, read
+  2026-10-14) - its README calls that 'a convenience and not a security feature', so the guard stays the gate. No value
+  enters the browser's environment, which `browser_run_code_unsafe` can reach. Playwright parses the file as UTF-8 with
+  dotenv (an unquoted `#` starts a comment there, so a value holding one is quoted); a UTF-16 store is not passed and the
+  launcher says so. mobile-control takes only the keys appium-mcp documents (`mobile-launch.js DOCUMENTED`, from its
+  README; `withSensitive` `only`), and serena, the memory service and the desktop servers none. A root change moves the
+  store inline on every route, into a root whose `.gitignore` is written first;
   `Read(.sensitive-data)` is in the shipped deny, a bare name matching at any depth per code.claude.com/docs/en/permissions).
   `stack/mcp/data-root.js` is the one home of every place, read by the three launchers, the installer, init's
   plan and the preflight. The docs root is written as `<root>/docs` unless the user set their own (a value the

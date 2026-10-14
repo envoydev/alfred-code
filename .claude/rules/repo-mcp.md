@@ -24,7 +24,13 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
   live in `scripts/lint-mcp-tools.js`, and a deliberate fixture line carries `mcp-fixture` in a comment. A plugin's
   servers LOAD TOGETHER, so a second server in one entry would put a second set of tool schemas in
   every session. The entries are GENERATED (`scripts/build-marketplace.js --mcp-entries`, from
-  `meta/mcp-pins.json`); `ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores the 0.2.x registration route for
+  `meta/mcp-pins.json`). Every entry's `source` is the repo root, so each caches the WHOLE tracked tree and every
+  release re-copies every entry, a server whose pin did not move included: 14.8 MB tracked, 15-16 MB per cached
+  version, 301 MB under `plugins/cache/envoydev` on one machine (measured 2026-10-14: 6 ids, 20 versions from 2.2.0 to
+  2.4.0). ACCEPTED and recorded (audit 2026-10-14 PL15, the user's ruling): a slim `mcp/` source was declined because
+  the launchers import `stack/hooks/memory.js` (`projectRootOf`, the memory settings reader) and
+  `scripts/install/runtime.js` (the Windows-safe spawn), so it would carry vendored copies of shared modules - a second
+  home for each, for disk alone (the shared-root discovery is `docs/plugin-migration-evidence.md` finding 6). `ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores the 0.2.x registration route for
   the browser, on which the installer re-spells the copied skills, agents, rules and hooks to the bare
   names a registration writes - that needs the FILES, so the switch belongs with
   `ALFRED_CODE_SKILLS_VIA_PLUGIN=false` (a mixed pair is reported, never half-fixed). A seat's
@@ -164,18 +170,27 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
     `browser-<engine>` `<engine>-control`, with no shared folder: a profile moves from `<data root>/browser/<engine>` to
     `<data root>/<engine>-control` at the server's next start, unasked (a relayout inside the root, `data-root.js isRelayout`),
     the emptied `browser/` removed by the last move, and the stamp lines are `control-engines:` / `control-enabled:`
-    (`browser-*` and `playwright-*` read as the fallback). The catalog name `browser` stays the selection token. The old ids were
-    listed as RETIRED aliases through 2.2.0 and are UNLISTED from 2.2.1 (the user's ruling of 2026-10-06, every install
-    updated), the old tool spellings leaving every seat grant with them; the
-    memory readers take either server name (`MEMORY_SERVERS`, `stack/hooks/memory.js` and `scripts/install/memory.js`). An install still on an old id
-    no longer loads it once the marketplace refreshes (S25) and gets it back on its next update. Update swaps each old row at THIS run's scope
+    (`browser-*` and `playwright-*` read as the fallback). The catalog name `browser` stays the selection token. The 2.0.0
+    and 2.2.0 ids were listed as RETIRED aliases through 2.2.0 and are UNLISTED from 2.2.1 (the user's ruling of 2026-10-06,
+    every install updated), the old tool spellings leaving every seat grant with them; an install still on one no longer
+    loads it once the marketplace refreshes (S25) and gets it back on its next update. The six 2.4.0 ids (`browser-<engine>`,
+    `windows-desktop`, `macos-desktop`) are LISTED again as RETIRED aliases (audit 2026-10-14 PL5, the user's ruling of
+    2026-10-14 - 2.4.0 had unlisted them in the release that renamed them): `build-marketplace.js mcpAliasEntries`, each its
+    successor's server under the OLD server name and no dependency, `LISTED_ALIASES` the list, lint 53 holding each to the
+    generator, until evidence shows no install resolves through one. The seats still grant the current spellings only. The
+    memory readers take either server name (`MEMORY_SERVERS`, `stack/hooks/memory.js` and `scripts/install/memory.js`).
+    Update swaps each old row at THIS run's scope
     (`plugins.migrateRenamed`): the successor installed there first, then the old id removed - an
     engine or desktop server keeps its on/off, a locked server comes on. An old row at ANOTHER scope serves the projects
     there, whose not-yet-updated files still spell the old tools, so it is stood down instead: the
     successor installed at this run's scope, the old id disabled for this project only (`disable
     --scope project`, or `local`), and one `!!` line naming its uninstall for once every project there
     has updated; this scope's rows go first, since an in-place uninstall clears the settings key a
-    disable wrote (I2). An old id the run does not carry goes at this run's scope only. The full copy route stands the old ids down instead. Old copy-route registrations
+    disable wrote (I2). An old id the run does not carry goes at this run's scope only. The swap reads records only, so on
+    update a renamed id's KEY that the project's own `.claude/settings.json` / `settings.local.json` still switches on with no
+    record reaching this project (a teammate's committed `browser-chrome@envoydev`) is removed from that file once the run
+    carries its successor, one `renamed:` line per key (`plugins.dropStaleRenamed`, PL5) - another marketplace's key of the
+    same name, a reaching record and an unreadable file or listing leave it. The full copy route stands the old ids down instead. Old copy-route registrations
     go on every route by the stack's own shape (the user's own server under an old name is kept), the
     approval lists follow, the read-back and selection lines read old names under the new ones, and
     the generated project files are re-spelled (`selection.respellRenamed`; a seeded AGENTS.md / CLAUDE.md only while the ledger
@@ -269,7 +284,12 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
   (`serena-launch.js`, `memory-launch.js`, `desktop-launch.js`; the browser engines' npx through
   `browser-launch.js`, for the profile's place) because the right value is the MACHINE's
   (windows-mcp 0.8.6 already needs 3.14, so `refresh-mcp-pins.js` takes the newest release the pinned
-  Python can install); the copy route
+  Python can install - no security fix, held at 0.8.5: audit 2026-10-14 PL9, read 2026-10-14 - the 0.8.6 (2026-09-26),
+  0.8.7 (2026-09-30) and 0.8.8 (2026-10-10) release notes at github.com/CursorTouch/Windows-MCP/releases carry no
+  security fix of Windows-MCP's own (input validation, stability, a takeover overlay, region capture, dependency bumps),
+  its one advisory, GHSA-vrxg-gm77-7q5g (the HTTP transports, never stdio), is patched since 0.7.5, and PyPI's
+  `requires_dist` is the same lower-bound list on all four, so a dependency's fix such as the pyjwt and urllib3 bumps
+  reaches 0.8.5 through the pins' cut-off, not this pin; a per-server Python 3.14 waits for a security fix that needs it); the copy route
   resolves `@UV_PYTHON@` into `.mcp.json`. Never hand-patch a cached entry - the next refresh
   overwrites it (`docs/uv-python-pin-evidence.md`). The serena launcher keeps `SERENA_HOME` RELATIVE
   in the platform's separator, and the copy route registers `.alfred\serena\home` on Windows

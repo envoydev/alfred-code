@@ -76,9 +76,26 @@ const SHELL_SEED_RETIRED = 'the shell installers were removed in 2.0.0 - unset A
 // store under the data root (stack/mcp/data-root.js). RETIRED_DENY are the four ACCOUNT-settings entries releases up to
 // 0.2.62 wrote; they are dropped on every run, by exact string.
 const SECRET_DENY = ['Read(.env)', 'Read(.env.*)', 'Read(*.pem)', 'Read(*.pfx)', 'Read(*.p12)', 'Read(*.key)', 'Read(.sensitive-data)'];
+// PL8 (audit 2026-10-14, the user's ruling of 2026-10-14): the memory server lists 28 tools (meta/mcp-tools.json) and the
+// stack calls five - the alfred-memory rule's store / search / list, a skill's cursor delete and the notes import's
+// update (stack/hooks/memory.js). The other 23 rode every session's deferred list, destructive ones over a database that
+// can be account-wide among them. A bare tool name in permissions.deny 'removes the tool from Claude's context entirely'
+// (code.claude.com/docs/en/permissions, 'Deny rules', re-read 2026-10-14), so each is denied in the spelling of the route
+// that serves the server, written ONCE (settings.js toolDeny): an entry the user removes stays removed.
+const MEMORY_SERVER = 'alfred-memory';
+const MEMORY_TOOLS_USED = ['memory_store', 'memory_search', 'memory_list', 'memory_delete', 'memory_update'];
+function memoryToolsAtPin(dir)
+{
+    const row = ((readJson(path.join(dir, 'meta', 'mcp-tools.json')) || {}).servers || {})[MEMORY_SERVER];
+    return row && Array.isArray(row.tools) ? row.tools.filter((t) => typeof t === 'string' && /^[a-z0-9_]+$/.test(t)) : [];
+}
+const memorySpelling = (bare) => (bare ? `mcp__${MEMORY_SERVER}__` : `mcp__plugin_${MEMORY_SERVER}_${MEMORY_SERVER}__`);
+const memoryToolDeny = (dir, { bare = false } = {}) => memoryToolsAtPin(dir).filter((t) => !MEMORY_TOOLS_USED.includes(t)).map((t) => `${memorySpelling(bare)}${t}`);
+// Both spellings of every memory tool at the pin: a route switch drops the other spelling, and uninstall removes either.
+const memoryDenyShipped = (dir) => memoryToolsAtPin(dir).flatMap((t) => [`${memorySpelling(false)}${t}`, `${memorySpelling(true)}${t}`]);
 // R10: every deny entry a release has written into a project's settings besides the seat denies - the
 // ledger removes no other, since a stamp is project text. A release that stops writing one keeps it here.
-const SHIPPED_DENY = [...SECRET_DENY];
+const SHIPPED_DENY = [...SECRET_DENY, ...memoryDenyShipped(path.join(__dirname, '..', '..'))];
 const RETIRED_DENY = [
     'Read(~/.claude/settings.json)', 'Read(~/.claude/settings.local.json)',
     'Read(~/.claude-*/settings.json)', 'Read(~/.claude-*/settings.local.json)',
@@ -1649,6 +1666,10 @@ function installPlugins(ctx)
             after: readListing,
         });
         hudLine();
+        // PL5 (b): a renamed id the project's own settings still switch on with no record reaching it - the swap above
+        // reads records only - is removed there once this run carries its successor (plugins.dropStaleRenamed).
+        if (plugins.corePluginOn(ctx.routes) && !blind)
+            plugins.dropStaleRenamed({ raw, projectRoot: ctx.projectRoot, renamed: ctx.manifest.renamed.mcps, set, market: ctx.market, log: ctx.log, note: ctx.note });
         for (const row of ctx.dropEntries || [])
         {
             const spec = `${row.name}@${row.marketplace}`;
@@ -2275,12 +2296,13 @@ function installHooksAndRules(ctx)
     const written = settings.writeSettings({
         // R10: the last run's ledger, and the wirings the RELEASE writes (none on the plugin route) - a
         // hook this run did not select keeps its wiring, one the release dropped loses it.
-        ledger: { prior: ctx.ledger, releaseHooks: ctx.routes.hooks ? [] : ctx.manifest.catalogs.hooks, shippedDeny: SHIPPED_DENY },
+        ledger: { prior: ctx.ledger, releaseHooks: ctx.routes.hooks ? [] : ctx.manifest.catalogs.hooks, shippedDeny: [...new Set([...SHIPPED_DENY, ...memoryDenyShipped(ctx.source.dir)])] },
         file: settings.settingsTarget(ctx.claudeDir, ctx.args.scope),
         // A local-scope run leaves the stack's stale wiring and 1.x keys in settings.json - it removes them there.
         sharedFile: ctx.args.scope === 'local' ? path.join(ctx.claudeDir, 'settings.json') : null,
         catalog, migrations, hookSpecs: wired,
         denySpecs: SECRET_DENY, retiredDeny: RETIRED_DENY, agentDeny, agentAllow,
+        toolDeny: memoryToolDeny(ctx.source.dir, { bare: bareNames(ctx).includes(MEMORY_SERVER) }),
         // On the copy route a --drop'd hook is unwired like a retired one - the writer keeps a merely
         // unselected hook's entries on purpose, so the drop has to name it.
         retiredHooks: ctx.manifest.retired.hooks.concat(ctx.routes.hooks
@@ -2834,4 +2856,4 @@ if (require.main === module)
     });
 }
 
-module.exports = { main, USAGE, CORE_DEP_PLUGINS, HOOK_ENGINES, SECRET_DENY, RETIRED_DENY };
+module.exports = { main, USAGE, CORE_DEP_PLUGINS, HOOK_ENGINES, SECRET_DENY, RETIRED_DENY, SHIPPED_DENY, MEMORY_TOOLS_USED, memoryToolDeny };

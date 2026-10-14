@@ -44,6 +44,15 @@ const LOCAL_ONLY = '^https?://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]+)?(/[
 const DEFAULTS = Object.freeze({ NO_UI: 'true', ALLOW_REMOTE_APP_URLS: 'false', REMOTE_SERVER_URL_ALLOW_REGEX: LOCAL_ONLY });
 // appium-mcp fails its start on a value other than true / false (utils/env.ts readBooleanEnv).
 const BOOLEAN = new Set(['NO_UI', 'ALLOW_REMOTE_APP_URLS']);
+// The keys appium-mcp documents (its 1.97.1 README: the 'Environment Variables' table, and ANDROID_HOME from the setup
+// steps) - the only ones the project's sensitive data hands it (audit 2026-10-14 PL2). Another key there (a login, a
+// token for some other tool) stays out of the server's environment.
+const DOCUMENTED = Object.freeze(['ANDROID_HOME', 'CAPABILITIES_CONFIG', 'SCREENSHOTS_DIR', 'PAGE_SOURCES_DIR', 'NO_UI', 'APPIUM_MCP_APPS_ENABLED',
+    'APPIUM_MCP_ON_CLIENT_DISCONNECT', 'APPIUM_MCP_WDA_APP_PATH', 'REMOTE_SERVER_URL_ALLOW_REGEX', 'REMOTE_SERVER_ENABLE_DIRECT_CONNECT',
+    'ALLOW_REMOTE_APP_URLS', 'AI_VISION_ENABLED', 'AI_VISION_API_BASE_URL', 'AI_VISION_API_KEY', 'AI_VISION_MODEL', 'AI_VISION_COORD_TYPE',
+    'AI_VISION_IMAGE_MAX_WIDTH', 'AI_VISION_IMAGE_QUALITY', 'APPIUM_MCP_DOCS_ENABLED', 'SENTENCE_TRANSFORMERS_MODEL',
+    'APPIUM_MCP_PERSIST_REMOTE_SESSIONS_PATH', 'APPIUM_MCP_EVIDENCE', 'APPIUM_MCP_OTEL_ENABLED', 'APPIUM_MCP_OTEL_INCLUDE_ARGUMENT_VALUES',
+    'OTEL_SERVICE_NAME', 'OTEL_EXPORTER_OTLP_TRACES_ENDPOINT', 'OTEL_TRACES_SAMPLER', 'OTEL_RESOURCE_ATTRIBUTES']);
 
 const exists = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
 
@@ -208,9 +217,10 @@ function main(argv, { env = process.env, node = process.versions.node } = {})
     const rest = argv.indexOf('--');
     const projectDir = require('../hooks/memory.js').projectRootOf(process.cwd()).checkout;
     const log = (line) => process.stderr.write(`${line}\n`);
-    // The project's sensitive data first, so a key it holds (say ALLOW_REMOTE_APP_URLS) reads like one the shell set.
-    const sensitive = require('./data-root.js').withSensitive(env, { projectDir });
-    if (sensitive.count) log(`mobile-launch: ${sensitive.count} value(s) from the project's sensitive data in the environment`);
+    // The project's sensitive data first, so a key it holds (say ALLOW_REMOTE_APP_URLS) reads like one the shell set -
+    // the keys appium-mcp documents only (DOCUMENTED).
+    const sensitive = require('./data-root.js').withSensitive(env, { projectDir, only: DOCUMENTED });
+    if (sensitive.count) log(`mobile-launch: ${sensitive.count} value(s) from the project's sensitive data in the environment (the keys appium-mcp documents)`);
     const childEnv = mobileEnv({ env: sensitive.env, projectDir, log });
     const cut = npmBefore({ env: childEnv, projectDir, before: flag('--before') || '' });
     if (cut.value) childEnv[NPM_BEFORE] = cut.value;
@@ -231,4 +241,4 @@ if (require.main === module)
     const rc = main(process.argv.slice(2));
     if (rc !== null) process.exit(rc);
 }
-module.exports = { main, mobileEnv, copyRouteEnv, npmBefore, androidHome, javaHome, prereqNotes, DEFAULTS, LOCAL_ONLY, NODE_FLOOR };
+module.exports = { main, mobileEnv, copyRouteEnv, npmBefore, androidHome, javaHome, prereqNotes, DEFAULTS, DOCUMENTED, LOCAL_ONLY, NODE_FLOOR };

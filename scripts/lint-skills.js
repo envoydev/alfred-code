@@ -2676,7 +2676,12 @@ function lintMcpEntries()
     try { mkt = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin/marketplace.json'), 'utf8')); }
     catch (err) { return [`.claude-plugin/marketplace.json could not be read: ${err.message}`]; }
 
-    for (const entry of wanted)
+    // The ids 2.4.0 renamed are listed again as RETIRED aliases (build-marketplace.js mcpAliasEntries, audit 2026-10-14
+    // PL5): generated like the entries, held to the generator the same way, and outside the catalog checks below.
+    let aliases = [];
+    try { aliases = build.mcpAliasEntries({ entries: wanted }); }
+    catch (err) { out.push(`the retired MCP aliases could not be generated: ${err.message}`); }
+    for (const entry of wanted.concat(aliases))
     {
         const live = (mkt.plugins || []).find(p => p && p.name === entry.name);
         if (!live)
@@ -3047,7 +3052,7 @@ function lintMarketplaceEntries(liveIn)
     // meta/mcp-pins.json plus the shapes in build-marketplace.js). Placement never produces them, so
     // they are not drift.
     const elsewhere = new Set();
-    try { for (const e of build.mcpPlugins()) elsewhere.add(e.name); } catch { /* 53 reports it */ }
+    try { for (const e of build.mcpPlugins().concat(build.mcpAliasEntries())) elsewhere.add(e.name); } catch { /* 53 reports it */ }
     for (const p of live.plugins || [])
     {
         if (!p || elsewhere.has(p.name) || generated.has(p.name)) continue;

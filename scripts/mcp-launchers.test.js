@@ -1126,40 +1126,99 @@ test('mobile-launch: the prerequisites say Node, the SDK paths found or missing,
 });
 
 // ------------------------------------------------------------------ the project's sensitive data (2026-10-13)
-// Every launcher hands the project's <data root>/.sensitive-data to its server, where nothing else set the key - the
-// shell and a settings file's env win, dotenv's own rule. One stderr line counts them; no value is ever printed.
+// The browser launcher hands Playwright MCP the store as a FILE (--secrets: it types a value by its KEY and masks it in
+// each response), mobile-control takes only the keys appium-mcp documents, and no uvx server gets any (audit
+// 2026-10-14 PL2, the user's ruling of 2026-10-14). No value ever reaches a server's environment it would not read.
 function keyRecorder(name, bin, keys)
 {
     const dir = path.join(TMP, `${name}-keys-bin`);
     fs.mkdirSync(dir, { recursive: true });
     const record = path.join(TMP, `${name}-keys.json`);
-    fs.writeFileSync(path.join(dir, bin), `#!/usr/bin/env node\nrequire('fs').writeFileSync(${JSON.stringify(record)}, JSON.stringify(Object.fromEntries(${JSON.stringify(keys)}.map((k) => [k, process.env[k] ?? null]))));\n`, { mode: 0o755 });
+    fs.writeFileSync(path.join(dir, bin), `#!/usr/bin/env node\nrequire('fs').writeFileSync(${JSON.stringify(record)}, JSON.stringify({ argv: process.argv.slice(2), env: Object.fromEntries(${JSON.stringify(keys)}.map((k) => [k, process.env[k] ?? null])) }));\n`, { mode: 0o755 });
     return { PATH: dir + path.delimiter + process.env.PATH, got: () => JSON.parse(fs.readFileSync(record, 'utf8')) };
 }
-const STORE_TEXT = 'API_TOKEN="tok-abcdef123456"\nDB_HOST=db.internal\nALLOW_REMOTE_APP_URLS=true\n';
-const STORE_KEYS = ['API_TOKEN', 'DB_HOST', 'ALLOW_REMOTE_APP_URLS'];
+const STORE_TEXT = 'API_TOKEN="tok-abcdef123456"\nDB_HOST=db.internal\nALLOW_REMOTE_APP_URLS=true\nAI_VISION_API_KEY=vis-0987654321\n';
+const STORE_KEYS = ['API_TOKEN', 'DB_HOST', 'ALLOW_REMOTE_APP_URLS', 'AI_VISION_API_KEY'];
+const NO_KEYS = { API_TOKEN: null, DB_HOST: null, ALLOW_REMOTE_APP_URLS: null, AI_VISION_API_KEY: null };
 
-test('sensitive data: serena (runUvx), the browser and the mobile launcher each hand the store to their server; the shell wins', POSIX, () =>
+test('PL2 sensitive data: the browser gets --secrets <the store, absolute> and none of its values in its environment', POSIX, () =>
+{
+    const { dir } = project('sensitive-browser');
+    put(path.join(dir, '.alfred', '.sensitive-data'), STORE_TEXT);
+    const rec = keyRecorder('sensitive-browser', 'npx', STORE_KEYS);
+    const r = spawnSync(process.execPath, [BROWSER, '--package', '@playwright/mcp@0.0.83', '--browser', 'chrome', '--', '--headless'],
+        { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir }, encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const got = rec.got();
+    const real = fs.realpathSync(dir);
+    const at = got.argv.indexOf('--secrets');
+    assert.ok(at > 0, `no --secrets in ${got.argv.join(' ')}`);
+    assert.strictEqual(got.argv[at + 1], path.join(real, '.alfred', '.sensitive-data'), 'the store, absolute');
+    assert.ok(path.isAbsolute(got.argv[at + 1]));
+    assert.strictEqual(got.argv[got.argv.length - 1], '--headless', 'the entry\'s own arguments still come last');
+    assert.deepStrictEqual(got.env, NO_KEYS, 'no store value reaches the browser\'s environment');
+    assert.match(r.stderr, /sensitive data .*\.sensitive-data \(typed by KEY name, masked in responses\)/);
+    assert.ok(!r.stderr.includes('tok-abcdef123456'), `a value was printed:\n${r.stderr}`);
+});
+
+test('PL2 sensitive data: a store under a custom data root, or in the main worktree, is the one handed over', POSIX, () =>
+{
+    const { dir } = project('sensitive-browser-root', { settings: { ALFRED_CODE_DATA_PATH: 'var/data' } });
+    put(path.join(dir, 'var', 'data', '.sensitive-data'), STORE_TEXT);
+    put(path.join(dir, '.alfred', '.sensitive-data'), 'WRONG=1\n');
+    const rec = keyRecorder('sensitive-browser-root', 'npx', STORE_KEYS);
+    const r = spawnSync(process.execPath, [BROWSER, '--package', '@playwright/mcp@0.0.83', '--browser', 'chrome'], { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir }, encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const argv = rec.got().argv;
+    assert.strictEqual(argv[argv.indexOf('--secrets') + 1], path.join(fs.realpathSync(dir), 'var', 'data', '.sensitive-data'));
+});
+
+test('PL2 sensitive data: no store, or a UTF-16 one Playwright cannot read, passes no --secrets; the UTF-16 one is named', POSIX, () =>
+{
+    for (const [name, text] of [['none', null], ['utf16', Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('API_TOKEN=x\n', 'utf16le')])]])
+    {
+        const { dir } = project(`sensitive-browser-${name}`);
+        if (text !== null) { fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true }); fs.writeFileSync(path.join(dir, '.alfred', '.sensitive-data'), text); }
+        const rec = keyRecorder(`sensitive-browser-${name}`, 'npx', STORE_KEYS);
+        const r = spawnSync(process.execPath, [BROWSER, '--package', '@playwright/mcp@0.0.83', '--browser', 'chrome'], { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir }, encoding: 'utf8' });
+        assert.strictEqual(r.status, 0, `${name}: ${r.stderr}`);
+        assert.ok(!rec.got().argv.includes('--secrets'), name);
+        assert.deepStrictEqual(rec.got().env, NO_KEYS, name);
+        if (name === 'utf16') assert.match(r.stderr, /is UTF-16 - Playwright MCP reads it as UTF-8; save it as UTF-8/);
+        else assert.doesNotMatch(r.stderr, /sensitive data/);
+    }
+});
+
+test('PL2 sensitive data: serena, the memory service and the desktop servers (runUvx) get no store key at all', POSIX, () =>
 {
     const launches = [
-        ['serena', 'uvx', SERENA, ['--package', 'serena-agent@1.7.0']],
-        ['browser', 'npx', BROWSER, ['--package', '@playwright/mcp@0.0.82', '--browser', 'chrome']],
-        ['mobile', 'npx', MOBILE, ['--package', 'appium-mcp@1.97.1']],
+        ['serena', SERENA, ['--package', 'serena-agent@1.7.0'], {}],
+        ['memory', LAUNCH, ['--package', 'mcp-memory-service[sqlite]==11.14.0'], { ALFRED_CODE_MEMORY_DB: path.join(TMP, 'sensitive-uvx-db', 'memory.db') }],
+        ['macos', DESKTOP, MAC_ARGS, { ALFRED_CODE_PLATFORM: 'darwin' }],
     ];
-    for (const [name, bin, script, args] of launches)
+    for (const [name, script, args, extra] of launches)
     {
-        const { dir } = project(`sensitive-${name}`);
+        const { dir } = project(`sensitive-uvx-${name}`);
         put(path.join(dir, '.alfred', '.sensitive-data'), STORE_TEXT);
-        const rec = keyRecorder(`sensitive-${name}`, bin, STORE_KEYS);
-        const r = spawnSync(process.execPath, [script, ...args], { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir, DB_HOST: 'from-the-shell' }, encoding: 'utf8' });
+        const rec = keyRecorder(`sensitive-uvx-${name}`, 'uvx', STORE_KEYS);
+        const r = spawnSync(process.execPath, [script, ...args], { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir, DB_HOST: 'from-the-shell', ...extra }, encoding: 'utf8' });
         assert.strictEqual(r.status, 0, `${name}: ${r.stderr}`);
-        const got = rec.got();
-        assert.strictEqual(got.API_TOKEN, 'tok-abcdef123456', name);
-        assert.strictEqual(got.DB_HOST, 'from-the-shell', `${name}: a key the shell set keeps its value`);
-        assert.match(r.stderr, /: 2 value\(s\) from the project's sensitive data in the environment/, name);
-        assert.ok(!r.stderr.includes('tok-abcdef123456'), `${name} printed a value:\n${r.stderr}`);
-        if (name === 'mobile') assert.strictEqual(got.ALLOW_REMOTE_APP_URLS, 'true', 'a mobile setting in the store reads like one the shell set');
+        assert.deepStrictEqual(rec.got().env, { ...NO_KEYS, DB_HOST: 'from-the-shell' }, `${name}: only the shell's own value`);
+        assert.doesNotMatch(r.stderr, /sensitive data/, name);
     }
+});
+
+test('PL2 sensitive data: mobile-control takes only the keys appium-mcp documents; the shell still wins', POSIX, () =>
+{
+    const { dir } = project('sensitive-mobile');
+    put(path.join(dir, '.alfred', '.sensitive-data'), STORE_TEXT);
+    const rec = keyRecorder('sensitive-mobile', 'npx', STORE_KEYS);
+    const r = spawnSync(process.execPath, [MOBILE, '--package', 'appium-mcp@1.97.1'], { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir, AI_VISION_API_KEY: 'from-the-shell' }, encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.deepStrictEqual(rec.got().env, { API_TOKEN: null, DB_HOST: null, ALLOW_REMOTE_APP_URLS: 'true', AI_VISION_API_KEY: 'from-the-shell' });
+    assert.match(r.stderr, /: 1 value\(s\) from the project's sensitive data in the environment \(the keys appium-mcp documents\)/);
+    assert.ok(!r.stderr.includes('vis-0987654321') && !r.stderr.includes('tok-abcdef123456'), r.stderr);
+    assert.ok(!rec.got().argv.includes('--secrets'), 'appium-mcp has no secrets flag');
 });
 
 test('sensitive data: no store, an empty one or a malformed one starts every server as before and says nothing', POSIX, () =>
@@ -1169,9 +1228,9 @@ test('sensitive data: no store, an empty one or a malformed one starts every ser
         const { dir } = project(`sensitive-quiet-${name}`);
         if (text !== null) put(path.join(dir, '.alfred', '.sensitive-data'), text);
         const rec = keyRecorder(`sensitive-quiet-${name}`, 'npx', STORE_KEYS);
-        const r = spawnSync(process.execPath, [BROWSER, '--package', '@playwright/mcp@0.0.82', '--browser', 'chrome'], { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir }, encoding: 'utf8' });
+        const r = spawnSync(process.execPath, [MOBILE, '--package', 'appium-mcp@1.97.1'], { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir }, encoding: 'utf8' });
         assert.strictEqual(r.status, 0, `${name}: ${r.stderr}`);
-        assert.deepStrictEqual(rec.got(), { API_TOKEN: null, DB_HOST: null, ALLOW_REMOTE_APP_URLS: null }, name);
+        assert.deepStrictEqual(rec.got().env, { ...NO_KEYS, ALLOW_REMOTE_APP_URLS: 'false' }, `${name}: the launcher's own safe default only`);
         assert.doesNotMatch(r.stderr, /sensitive data/, name);
     }
 });

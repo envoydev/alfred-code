@@ -20,11 +20,36 @@
 // schemas and results come from the page', the v0.0.82 release notes) - a page is data, never a toolbox.
 // The copy route's registration carries the same flag (meta/stack-manifest.json, the browser row).
 //
+// `--secrets <the project's sensitive data>` when the store exists (audit 2026-10-14 PL2, the user's ruling of
+// 2026-10-14): Playwright MCP reads the dotenv itself, fills a field typed as a KEY name with its value
+// (browser_type, browser_fill_form - `lookupSecret`) and writes every value back as <secret>KEY</secret> in its
+// responses (`redactSecrets`; playwright-core's coreBundle.js, the @playwright/mcp 0.0.83 pin). The values never enter
+// the server's environment, which browser_run_code_unsafe can reach. Its own README calls the masking 'a convenience
+// and not a security feature', so the secret guard stays the gate. A UTF-16 store (Notepad's 'Unicode') or one that
+// cannot be read is not passed - Playwright reads the file as UTF-8 and stops at a read error - and one line says so.
+//
 // stdout is the MCP stream: nothing is written to it here, diagnostics go to stderr. The spawn is the
 // installer's Windows-safe one (scripts/install/runtime.js - the plugin tree is the whole repo): npx is a
 // batch file on Windows, which Node starts only through cmd.exe since the CVE-2024-27980 fix.
+const fs = require('node:fs');
 const path = require('node:path');
 const dataRoot = require('./data-root.js');
+
+// ['--secrets', <absolute path>] for the store this project's checkout (or its main worktree) holds, [] with none.
+function secretsArgs({ projectDir, root, log = () => {} })
+{
+    const file = dataRoot.sensitivePlaceOf({ projectDir, root });
+    if (!file) return [];
+    let head;
+    try { const fd = fs.openSync(file, 'r'); try { head = Buffer.alloc(2); fs.readSync(fd, head, 0, 2, 0); } finally { fs.closeSync(fd); } }
+    catch (err) { log(`browser-launch: ${file} could not be read (${err.code || err.message}) - started without the project's sensitive data`); return []; }
+    if (head[0] === 0xff && head[1] === 0xfe)
+    {
+        log(`browser-launch: ${file} is UTF-16 - Playwright MCP reads it as UTF-8; save it as UTF-8 for the browser to type its keys`);
+        return [];
+    }
+    return ['--secrets', path.resolve(file)];
+}
 
 function browserArgs({ spec, engine, projectDir, env = process.env, extra = [], log = () => {} })
 {
@@ -41,7 +66,7 @@ function browserArgs({ spec, engine, projectDir, env = process.env, extra = [], 
         catch (err) { log(`browser-launch: ${root}/.gitignore could not be written (${err.message}) - add ${root}/ to the repo's own .gitignore`); }
     }
     const profile = path.join(projectDir, ...live.dir.split('/'));
-    return ['-y', spec, '--browser', engine, '--user-data-dir', profile, '--output-dir', path.join(profile, 'output'), '--no-webmcp', ...extra];
+    return ['-y', spec, '--browser', engine, '--user-data-dir', profile, '--output-dir', path.join(profile, 'output'), '--no-webmcp', ...secretsArgs({ projectDir, root, log }), ...extra];
 }
 
 function main(argv)
@@ -62,11 +87,10 @@ function main(argv)
     const projectDir = require('../hooks/memory.js').projectRootOf(process.cwd()).checkout;
     const log = (line) => process.stderr.write(`${line}\n`);
     const args = browserArgs({ spec, engine, projectDir, extra: rest < 0 ? [] : argv.slice(rest + 1), log });
-    log(`browser-launch: ${spec} ${engine}, profile ${args[args.indexOf('--user-data-dir') + 1]}`);
-    const sensitive = dataRoot.withSensitive(process.env, { projectDir });
-    if (sensitive.count) log(`browser-launch: ${sensitive.count} value(s) from the project's sensitive data in the environment`);
+    const secrets = args.indexOf('--secrets');
+    log(`browser-launch: ${spec} ${engine}, profile ${args[args.indexOf('--user-data-dir') + 1]}${secrets >= 0 ? `, sensitive data ${args[secrets + 1]} (typed by KEY name, masked in responses)` : ''}`);
     const { spawnCommandAsync } = require('../../scripts/install/runtime.js');
-    const child = spawnCommandAsync('npx', args, { stdio: 'inherit', env: sensitive.env, cwd: projectDir });
+    const child = spawnCommandAsync('npx', args, { stdio: 'inherit', env: process.env, cwd: projectDir });
     // A stop signal is passed on: Claude Code stops a server by signalling the process it started.
     const forward = (signal) => { try { child.kill(signal); } catch { /* already gone */ } };
     for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(signal, forward);
@@ -80,4 +104,4 @@ if (require.main === module)
     const rc = main(process.argv.slice(2));
     if (rc !== null) process.exit(rc);
 }
-module.exports = { main, browserArgs };
+module.exports = { main, browserArgs, secretsArgs };
