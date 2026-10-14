@@ -7,6 +7,7 @@ for them. Audit material: read it to learn WHY a rule is shaped the way it is, n
 - **Run the audit from a FRESH session** - measured: an in-session run at ~620k accumulated context paid six 529-retry re-sends (629k cache-write for 11 messages) for a report a fresh session produces from its cold floor. The floor is the install's own: a fixed '~20k' quoted in an ask (usage audit 2026-10-10, session 516e653d) stood where the stop hook measured ~87.2k, so the body quotes the measured figure or says it is unmeasured.
 - **The batch is BOUNDED at 12 bundles per run** - measured: two runs took 45 and 53 bundles in one chat for 42.1M and 78.2M cache-read and 2 and 4 forced compactions, because the biggest scope was the one marked Recommended.
 - **... or at the first bundle boundary past the fresh-session trigger** - measured (audit 2026-10-11, session ae38c08f): a 12-bundle single-turn run on a 1M window, inside the bound, crossed the 400k trigger right after bundle 4 and peaked at 719.5k; the context at the boundaries ran 142k, 221k, 292k, 386k, 450k ... 694k, and 48.15M of its 68.6M cache-read sat at or above 400k. One turn means no Stop, and 1M means no compaction, so nothing offered the fresh session; a hand-off after bundle 4 would have saved ~24.2M cache-read (35%). The gate script reads the trigger the Stop offer reads.
+- **The bound counts on either window** - on a 200k window the biggest scope forces compactions; on a 1M window it runs on past the trigger, where no Stop and no compaction comes to offer a fresh session.
 
 ## Step 1 - FIND
 - **The marker pattern allows a plugin prefix** - measured (audit 2026-10-11, session ae38c08f): a hand-written `<command-name>/?(alfred-[a-z-]+)</command-name>` grep found 2 files, so every scope option offered 6 unaudited sessions while 13 existed - the 7 it missed were all `/alfred-code:*` runs - and the run widened to 12 and said so only at the close.
@@ -17,6 +18,7 @@ for them. Audit material: read it to learn WHY a rule is shaped the way it is, n
 ## Step 2 - GET
 - **Run these as SEPARATE simple commands, not a piped one-liner** - measured three times: two runs fell back after a denied pipe; one lost 17 minutes - a quarter of its session - to the resulting cold clone.
 - **Only the PIPE half of that rule holds** - measured: one sweep carried a loop in 69 of its 141 calls, because a per-session command times N sessions is N calls - the clause that banned loops was unfollowable at real scope.
+- **Look in the plugin cache before downloading** - measured: downloading first tripped the harness classifier in 4 audited bundles, and paid ~1.8s for a 1.4MB archive already on disk. The cache entries are keyed by VERSION and the newest valid one wins, so a new release is picked up the moment the plugin updates.
 
 ## Step 3 - RUN
 - **Test for the ledgers, never assert their absence** - measured: all 53 reports in one sweep shipped `Hook ledger | absent` from a prose instruction nobody executed, and 26 of them were reworked at the end of the run for 6,222,488 cache-read - 8.0% of that session.
@@ -46,6 +48,8 @@ for them. Audit material: read it to learn WHY a rule is shaped the way it is, n
 - **Read EVERY user turn, not the ones next to command markers** - measured: a report omitted the run's only real ask and the user's 'no' to it entirely, because neither was adjacent to a command marker.
 - **A consent claim cites the ask -> mutation PAIR, by timestamp** - measured: a report's consent proof was inverted - two Writes at 09:11 and 09:14 against the first ask at 09:16 - and another scored two DECLINES that landed after the installer had already run as the run's 'biggest strength'.
 - **A layer the run CHANGED is checked against the installer's contract too** - measured: a report graded a plugin failure as a syntax slip and proposed hardcoding the command shape, missing that both plugins were still DISABLED after the installer ran.
+- **The guard-block ledger is copied, the instrumentation ledgers moved** - the guard-block ledger is the project's own running record of what its gates denied; an audited run's instrumentation ledgers live with its bundle, so the collection folder drains as runs get audited instead of accumulating forever.
+- **The `--check-report` gate holds the bundle** - measured: judgment numbers that contradicted the machine tables three lines above them were the single largest defect family in the audited set.
 
 ## Step 4 / 5 - the per-bundle gate and SUMMARY
 - **The bundle list is the gate's, rewritten after each bundle** - measured (audit 2026-10-11, session ae38c08f): with 'rewrite it after EACH bundle closes' loaded as prose, SUMMARY.md was first written after bundle 8 and again after bundle 12; a run cut short before bundle 8 would have left no summary. A row the gate writes is a mechanism, the sentence was a reminder.
