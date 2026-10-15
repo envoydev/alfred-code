@@ -494,5 +494,5 @@ test('SKF-04: the upgrade has one auto mode, and its hard stop waits for the use
     assert.match(t, /Under auto-mode put the same three options with NO `\(Recommended\)` mark, the question opening 'no option is recommended: a hard stop waits for you under auto-mode' - the hook answers only a marked ask, so this one waits\./);
     // the attended ask keeps its mark, and the auto-mode contract paragraph is untouched
     assert.match(t, /'Re-plan from this stage \(Recommended\)' \/ 'Roll back to the last stage's rollback point' \/ 'Stop here'/);
-    assert.match(t, /\*\*auto-mode\.\*\* `auto-mode` in the arguments is a mode word, not a target/);
+    assert.match(t, /\*\*auto-mode\.\*\* `auto-mode` as the first word of the arguments is a mode word, not a target/);
 });

@@ -287,7 +287,7 @@ function transcriptEntrypoint(file)
 // seats ran under AUTO (9a4ef375), and a post-compaction 'ask the user' that a literal follower would have ended an
 // overnight run on (c6142301). The project root is the env's or the payload's own cwd, never this process's cwd.
 const AUTO_STAMP_MAX_MS = 8 * 60 * 60 * 1000;
-// A stamp an auto-mode start writes (guard-fresh-session-start.js, `auto-mode` in a task or loop call) names its session on
+// A stamp an auto-mode start writes (guard-fresh-session-start.js, `auto-mode` opening a task, loop or issue call) names its session on
 // a `session: <id>` line. It is live for THAT session for as long as the run takes - an unattended loop outlives the 8h a
 // hand-written stamp gets - and never for another session in the same project, which the age and birth checks cannot
 // tell apart from it. A week is the backstop for a stamp whose run died without its close.

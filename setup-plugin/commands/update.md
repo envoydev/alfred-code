@@ -72,7 +72,7 @@ the run book's and the project memory folder's - while each holds exactly the st
 kept and named, and serena's own `.alfred/serena/.gitignore` stays (serena writes it). A docs root outside the data root
 keeps its own. Every install also writes the project's sensitive data, `.alfred/.sensitive-data`, when absent - one
 comment line, no key (`sensitive data: ... written`); report the line.
-**auto-mode after 2.4.0.** `auto-mode` in a `task-*` or `loop-*` call runs it unattended (each stop's Recommended
+**auto-mode after 2.4.0.** `auto-mode` as the first word after a `/task-*`, `/loop-*` or `/issue-*` command runs it unattended (each stop's Recommended
 answer, nothing pushed, merged, deployed or sent out). `ALFRED_CODE_AUTO_COMPACT` (seeded `0`) chooses what a long session does at its
 fresh-session trigger: `0` offers a fresh session as before, `1` compacts there instead - no fresh-session ask, and each
 model's `modelSettings.<model>.autoCompactWindow` set in the project's own settings file, add-only (a top-level

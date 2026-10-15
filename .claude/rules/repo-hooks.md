@@ -45,11 +45,15 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   instead), no answer-length Stop block, no fresh-session offer, and the credential rotation ask becomes one
   `mode: unattended` row per exposure (it replaced 2 of 12 pilot-3 finals). Every protective denial is
   unchanged; a missing, empty or torn-last-row transcript reads as a person.
-  **auto-mode** (the user's ruling, 2026-10-14): `auto-mode` in a `task-*` or `loop-*` call - typed
-  (`UserPromptExpansion`, `command_args`; the matcher takes every `task-*` / `loop-*` name, audit 2026-10-14 HK06) or
-  the model's `Skill` call (`args`) only when the user's newest TYPED prompt in the transcript carries the word too (the
-  user's ruling after audit HK04: a skill body, a seat's hand-back, a task notice or a tool result is no typed prompt;
-  a refused start writes an `auto-start-refused` row), never a seat's - makes
+  **auto-mode** (the user's ruling, 2026-10-14): `auto-mode` as the FIRST word after a `task-*`, `loop-*` or `issue-*`
+  command (the user's ruling of 2026-10-15, which added the issue family and dropped every other place: '/task-solve fix
+  the auto-mode banner' had started a run, and so could a mid-task question naming the word) - typed
+  (`UserPromptExpansion`, `command_args` opening with it, `AUTO_FIRST_RE`; the matcher takes every `task-*` / `loop-*` /
+  `issue-*` name, audit 2026-10-14 HK06) or the model's `Skill` call (`args`) only when the user's newest TYPED prompt in
+  the transcript is itself such a command opening with the word (`typedAutoCommand`: the `<command-name>` /
+  `<command-args>` row a typed slash command leaves, or a raw `/name args` line - a prose ask starts nothing; audit HK04:
+  a skill body, a seat's hand-back, a task notice or a tool result is no typed prompt; a refused start writes an
+  `auto-start-refused` row), never a seat's - makes
   `guard-fresh-session-start.js` write that session-named AUTO stamp (`AUTO - "<the typed words>"`, `session:`, `skill:`,
   `at:`) before the run's first step, inject the contract as `additionalContext` and leave, so its own offers and every
   person-directed hook read the session as unattended; a stamp already live for the session is kept. `guard-stop-contract.js`
@@ -69,7 +73,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   with an `auto-input` row and a note saying so - ending on any typed prompt, the 2026-10-14 rule, sent every later ask
   of a run the user had only added a remark to back to them). It ends on 'stop auto-mode' / 'auto-mode off' / 'вимкни
   auto-mode' (`AUTO_OFF_RE`, audit HK13), a bare 'stop' (`BARE_STOP_RE`; 'stop using X' is input), or a typed task,
-  capture, loop or issue command that starts no new auto-mode run (its banner says OFF); a harness prompt - a task
+  capture, loop or issue command that starts no new auto-mode run - the word not its first (its banner says OFF); a harness prompt - a task
   notice, a command's output, a seat's hand-back, `hook-prelude.js` `harnessPrompt`, HK14 - and any other slash command
   leave it, and a stop asked in other words, or a run already finished, is the model's to end by deleting the stamp, as
   the note says. A hand-written stamp (task-solve's, no `session:` line) is never held there. The compaction point is no runtime act: Claude Code reads `autoCompactWindow` at
@@ -85,7 +89,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   (the expansion matcher takes each family whole) gets two fixed lines its first reply opens with, said once - the
   expansion fires once per typed command and the lines forbid a repeat: `**Auto-mode: ON**` (each ask answered with its
   Recommended option, an outward one or an unmarked one still waiting) or `**Auto-mode: OFF**` (each ask waits; the word
-  on a capture or issue command is said to run only on task and loop), then `**Context:**` - auto-mode or
+  on a capture command is said to run only on task, loop and issue, and on one of those past the first argument to
+  start only as the first word), then `**Context:**` - auto-mode or
   `COMPACT_INSTEAD` compacts (at the seeded `autoCompactWindow` when one is set, else Claude Code's own point), offers off
   compact too, and otherwise the fresh-session refresh past `ctxThreshold()` - with the window and model the engine read,
   no number invented for an unknown window. It rides AFTER the contract, the compact note or the offer

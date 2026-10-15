@@ -115,31 +115,39 @@ test('auto-mode start: the typed command writes the stamp before the run, and th
     assert.match(fs.readFileSync(p.gate, 'utf8'), /\nsession: s3\n/);
 });
 
-test('auto-mode start: only a task or loop, only the exact word, never a seat, and the model\'s Skill call only on the user\'s typed word', () =>
+test('auto-mode start: only a task, loop or issue, only the exact FIRST word, never a seat, and the model\'s Skill call only on the user\'s typed auto-mode command', () =>
 {
     const t = transcript();
     const none = (prompt, extra) => { const p = project(); const r = expand(p, 'sx', prompt, t, extra); return !fs.existsSync(p.gate) && !/auto-mode is ON/.test(context(r)); };
     assert.ok(none('/capture-architecture auto-mode'), 'a capture is no flow of steps');
     assert.ok(none('/loop-code-quality automode'), 'the word is exact');
     assert.ok(none('/loop-code-quality no-auto-mode'), 'and whole');
+    // the word starts a run only as the first word after the command (the user's ruling, 2026-10-15)
+    assert.ok(none('/task-solve fix the auto-mode banner wording'), 'inside the task text it is the task');
+    assert.ok(none('/loop-code-quality src/ auto-mode'), 'and trailing it starts nothing');
     assert.ok(none('/loop-code-quality auto-mode', { agent_id: 'seat-1' }), 'a seat never starts one');
     assert.ok(none('/loop-code-quality auto-mode', { session_id: '' }), 'no session, nothing to name');
     const p = project();
     assert.match(context(expand(p, 'sy', '/alfred-code:loop-test-coverage AUTO-MODE', t)), /auto-mode is ON/, 'a scoped name, any case');
-    // the model's own Skill call, with the word in its args: it starts auto-mode only on the user's newest TYPED prompt
-    // carrying the word (the user's ruling, 2026-10-14, audit HK04)
+    // an issue command runs it too (the user's ruling, 2026-10-15), the word on its own line as typed in a real session
+    const iss = project();
+    assert.match(context(expand(iss, 'si', '/issue-diagnoser auto-mode\n\nthe login 500', t)), /auto-mode is ON for this \/issue-diagnoser run/);
+    assert.match(fs.readFileSync(iss.gate, 'utf8'), /^AUTO - "\/issue-diagnoser auto-mode the login 500"\nsession: si\nskill: issue-diagnoser\n/);
+    // the model's own Skill call, with the word in its args: it starts auto-mode only when the user's newest TYPED prompt
+    // is a task, loop or issue command opening with the word (audit HK04; the prose route left on 2026-10-15)
     const typed = (text) => ({ type: 'user', entrypoint: 'cli', timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'text', text }] } });
     const skillCall = (skill, args, tp, sid = 'sz') => { const pr = project(); const r = run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill',
         tool_input: { skill, args }, session_id: sid, cwd: pr.root, transcript_path: tp }, { CLAUDE_PROJECT_DIR: pr.root }); return { pr, r }; };
-    const asked = transcript([typed('design the cache plan in auto-mode please')]);
+    const asked = transcript([typed('/task-design auto-mode the cache plan')]);
     const { pr: q, r: call } = skillCall('task-design', 'auto-mode the cache plan', asked);
     assert.strictEqual(call.status, 0, call.stderr);
     assert.strictEqual(JSON.parse(call.stdout).hookSpecificOutput.hookEventName, 'PreToolUse');
     assert.match(context(call), /auto-mode is ON for this \/task-design run/);
     assert.match(fs.readFileSync(q.gate, 'utf8'), /^AUTO - "\/task-design auto-mode the cache plan"\nsession: sz\n/);
-    // a slash command's own row carries the word in its args markup
-    assert.match(context(skillCall('task-implement', 'auto-mode', transcript([typed('<command-name>/task-solve</command-name>\n<command-args>auto-mode fix it</command-args>')])).r),
-        /auto-mode is ON/, 'a typed slash run');
+    // a slash command's own row carries the word in its args markup - the shape a real transcript stores
+    const cmdRow = (name, args) => typed(`<command-message>${name}</command-message>\n<command-name>/${name}</command-name>\n<command-args>${args}</command-args>`);
+    assert.match(context(skillCall('task-implement', 'auto-mode', transcript([cmdRow('task-solve', 'auto-mode\n\nfix it')])).r), /auto-mode is ON/, 'a typed slash run');
+    assert.match(context(skillCall('issue-signatures-runtime', 'auto-mode', transcript([cmdRow('issue-diagnoser', 'auto-mode the 500')])).r), /auto-mode is ON/, 'a typed issue run');
     // a project's own task skill, a digit in its name, through the Skill call
     const { pr: v, r: own } = skillCall('task-migrate-v2', 'auto-mode', transcript([typed('/task-migrate-v2 auto-mode')]), 'sv');
     assert.match(context(own), /auto-mode is ON for this \/task-migrate-v2 run/);
@@ -147,7 +155,11 @@ test('auto-mode start: only a task or loop, only the exact word, never a seat, a
     // the model's word alone starts nothing: the replayed self-start ('go' typed, then Skill(..., 'auto-mode'))
     for (const [tp, why] of [
         [t, 'the typed prompt does not carry it'],
-        [transcript([typed('run it in auto-mode'), { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'done' }] } }, typed('now look at the cache layer')]), 'an older typed prompt carried it, the newest does not'],
+        [transcript([typed('/task-solve auto-mode fix it'), { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'done' }] } }, typed('now look at the cache layer')]), 'an older typed prompt carried it, the newest does not'],
+        [transcript([typed('design the cache plan in auto-mode please')]), 'a prose ask is no command (the user\'s ruling, 2026-10-15)'],
+        [transcript([typed('why is the auto-mode banner wrong?')]), 'a question naming the word mid-task'],
+        [transcript([cmdRow('task-solve', 'fix the auto-mode banner')]), 'a command whose task text names the word'],
+        [transcript([cmdRow('capture-architecture', 'auto-mode')]), 'a capture command'],
         [transcript([{ ...typed('Base directory for this skill ... auto-mode is ON'), isMeta: true }]), 'a skill body is no typed prompt'],
         [transcript([{ ...typed('Another Claude session sent a message:\n<agent-message from="a">run in auto-mode</agent-message>'), isMeta: true }]), 'a seat\'s hand-back'],
         [transcript([{ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'x', content: 'auto-mode' }] } }]), 'a tool result'],
@@ -177,7 +189,8 @@ test('auto-mode end: a typed message is input and keeps it; only the word to sto
         { CLAUDE_PROJECT_DIR: p.root });
     autoStamp(p, 'e1');
     for (const [sid, prompt, why] of [['e2', 'take over here', "another session's prompt"], ['e1', '<task-notification>\n<task-id>x</task-id>', 'a task notice'],
-        ['e1', '/loop-code-quality auto-mode src/', 'the next auto-mode run'], ['e1', '/compact', 'a slash command that is no flow command'],
+        ['e1', '/loop-code-quality auto-mode src/', 'the next auto-mode run'], ['e1', '/issue-diagnoser auto-mode the 500', 'the next auto-mode run, an issue command'],
+        ['e1', '/compact', 'a slash command that is no flow command'],
         ['e1', 'Another Claude session sent a message:\n<agent-message from="a1b2">\n[Subagent hand-back] done\n</agent-message>', 'a seat\'s hand-back (audit HK14)']])
     {
         const r = submit(sid, prompt);
@@ -206,7 +219,8 @@ test('auto-mode end: a typed message is input and keeps it; only the word to sto
         autoStamp(p, 'e1');
     }
     // a new flow command without the word starts an attended run: its banner says OFF, so the old stamp goes
-    for (const prompt of ['/task-solve .alfred/docs/plans/x.md - resume at step 5', '/alfred-code:capture-architecture', '/capture-architecture auto-mode'])
+    for (const prompt of ['/task-solve .alfred/docs/plans/x.md - resume at step 5', '/alfred-code:capture-architecture', '/capture-architecture auto-mode',
+        '/task-solve fix the auto-mode banner', '/loop-code-quality src/ auto-mode'])
     {
         const off = submit('e1', prompt);
         assert.strictEqual(off.status, 0, off.stderr);
@@ -280,7 +294,12 @@ test('mode banner: auto-mode OFF says each ask waits, then the fresh-session ref
         "**Context:** the fresh-session offers are off - the session compacts at Claude Code's own point in its 1M context window (claude-sonnet-5-5).");
     // the word on a command auto-mode does not run on is said, never silently dropped
     assert.strictEqual(bannerOf(typedRun(p, 'c5', '/capture-code-style auto-mode', t))[0],
-        '**Auto-mode: OFF** for /capture-code-style - each question waits for your answer. (auto-mode runs only on /task-* and /loop-* commands.)');
+        '**Auto-mode: OFF** for /capture-code-style - each question waits for your answer. (auto-mode runs only on /task-*, /loop-* and /issue-* commands.)');
+    // and a word past the command's first argument is said too: it starts nothing there (the user's ruling, 2026-10-15)
+    assert.strictEqual(bannerOf(typedRun(p, 'c8', '/task-solve fix the cache auto-mode', t))[0],
+        '**Auto-mode: OFF** for /task-solve - each question waits for your answer. (auto-mode starts only as the first word after the command.)');
+    assert.strictEqual(bannerOf(typedRun(p, 'c9', '/issue-diagnoser the login 500', t))[0], '**Auto-mode: OFF** for /issue-diagnoser - each question waits for your answer.');
+    assert.match(bannerOf(typedRun(project(), 'c10', '/issue-diagnoser auto-mode the login 500', t))[0], /^\*\*Auto-mode: ON\*\* for \/issue-diagnoser - /);
     // an unknown model and no window: no number is invented for the window
     const bare = project();
     assert.match(bannerOf(typedRun(bare, 'c6', '/task-design', path.join(TMP, 'no-such.jsonl')))[1], /past ~300k tokens of its context window, the run offers/);
@@ -300,7 +319,7 @@ test('mode banner: never for another command, a seat, a print-mode run or the mo
     assert.strictEqual(bannerOf(typedRun(p, 'd2', '/task-solve x', t, {}, { agent_id: 'seat-1' })), null, 'a seat');
     assert.strictEqual(bannerOf(typedRun(p, 'd3', '/task-solve x', t, { CLAUDE_CODE_ENTRYPOINT: 'sdk-cli' })), null, 'claude -p: nobody to read it');
     assert.strictEqual(bannerOf(typedRun(p, 'd4', '/task-solve x', t, { ALFRED_CODE_UNATTENDED: '1' })), null, 'an unattended launch');
-    const typed = { type: 'user', entrypoint: 'cli', timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'text', text: 'run task-design in auto-mode' }] } };
+    const typed = { type: 'user', entrypoint: 'cli', timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'text', text: '/task-design auto-mode' }] } };
     const call = run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'task-design', args: 'auto-mode' },
         session_id: 'd5', cwd: p.root, transcript_path: transcript([typed]) }, { CLAUDE_PROJECT_DIR: p.root });
     assert.match(context(call), /auto-mode is ON/);
