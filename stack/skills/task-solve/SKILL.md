@@ -77,11 +77,18 @@ fresh-session trigger for its context window (150,000 tokens on a 200k window, 4
 any other window), spans hours, or resumes after a 2h+ idle gap, the fresh-session resume IS one of the next ask's
 options - every ask until it is taken or the cycle closes; the stop-contract hook then injects the two measured
 numbers (this session's carry per message, a fresh one's cold floor): quote THIS stop's, or say they are unmeasured.
-Wherever it is offered, the paste-ready resume block - first line `Open in: <the project root>`, then
-`/clear, then paste:` and the `/task-solve` line naming the plan file - is printed ABOVE the ask, so
-taking it needs no reply turn. And HONOR the answer: when the user picks it, the turn ends with a one-line ack -
-no 'one more step', no new work in this chat. A CONSTRUCTION check, not a memory: before any stop's
-ask, 'has this cycle crossed the trigger?' - if yes and the option is missing, rebuild it.
+A CONSTRUCTION check, not a memory: before any stop's ask, 'has this cycle crossed the trigger?' - if yes
+and the option is missing, rebuild it. And HONOR the answer: when the user picks it, the turn ENDS with this
+block, after the answer - no new work in this chat. The fence holds the command alone: the plan's `Resume:`
+line holds the step.
+
+````
+**Resume in a fresh session** - in <the project root>, type `/clear`, then paste and send:
+```text
+/task-solve <plan file>
+```
+Next: <its first move> -> <the steps left>.
+````
 
 **Autonomy waiver (AUTO).** When the user explicitly asks for a no-stops run ('run all
 recommended without asking me'), never self-authorize silently - write `<docs-path>/flow/APPROVAL`
@@ -224,7 +231,7 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
 
    ```ask
    Next: <the deferred item or follow-up>. It opens a NEW cycle in a NEW plan file.
-   - 'Start it in a fresh session (Recommended)' - the paste-ready block above; this context stays behind
+   - 'Start it in a fresh session (Recommended)' - the resume block ends this turn; this context stays behind
    - 'Leave it for later' - named in Leftovers
    - 'Start it here' - a new cycle in this chat, from step 1
    ```

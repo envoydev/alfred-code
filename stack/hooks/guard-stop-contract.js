@@ -1066,6 +1066,27 @@ function freshPickedThisTurn() {
     }, false);
   } catch { return false; }
 }
+// THE RESUME BLOCK (the user's ruling, 2026-10-15): a close after the user picked the fresh-session hand-off told them to
+// 'type /clear, then paste the resume block above' with no block anywhere on screen. So that close must carry what to
+// paste in a fenced block, which copies whole. The pick is a hand-off label (resume / start / continue ... in a fresh or
+// new session), never a setting that merely names one ('Offer a fresh session', the setup walk's trigger answer).
+const RESUME_PICK_RE = /"="\s*(?:resume|start|continue|run|open|move|hand)\b[^"\n]*\b(?:fresh|new) (?:session|chat)\b/i;
+function resumePickedThisTurn() {
+  try {
+    return walkBack(() => (o) => {
+      if (!o || o.type !== 'user' || !o.message) return undefined;
+      const c = o.message.content;
+      if (Array.isArray(c) && c.some((b) => b && b.type === 'tool_result' && ANSWER_RESULT_RE.test(resultText(b)) && RESUME_PICK_RE.test(resultText(b)))) return true;
+      if (isTypedTurn(o) && !/^Stop hook feedback:/.test(rowText(o))) return false;
+      return undefined;
+    }, false);
+  } catch { return false; }
+}
+function fencedPasteShown(t) {
+  const re = /(`{3,}|~{3,})[^\n]*\n([\s\S]*?)\n[ \t]*\1/g;
+  for (let m = re.exec(String(t || '')); m; m = re.exec(String(t || ''))) if (m[2].trim()) return true;
+  return false;
+}
 // 'Deferred by you:' (the pinned contract with validate's close): the line names an item the user deferred through an
 // ask, so it is nothing owed - but only when an ask answered in THIS turn carries a deferral in its ANSWER (a picked
 // option's `"="...` part or a free-text answer), so a line the model writes on its own authority is judged as written.
@@ -2000,7 +2021,7 @@ if (payload.hook_event_name === 'Stop') {
     if (nth >= AUTO_CONTINUE_CAP) {
       if (nth === AUTO_CONTINUE_CAP) {
         ledgerRow({ tool: '', mode: 'auto', kind: 'auto-continue-cap', detail: { count: nth, stamp: autoStamp.file },
-          reason: `auto-mode: the ${AUTO_CONTINUE_CAP}th Stop under this stamp passes - the run was sent back ${AUTO_CONTINUE_CAP - 1} times; the stamp stands until its close or a typed prompt` });
+          reason: `auto-mode: the ${AUTO_CONTINUE_CAP}th Stop under this stamp passes - the run was sent back ${AUTO_CONTINUE_CAP - 1} times; the stamp stands until its close or the user's word to stop` });
       }
       process.exit(0);
     }
@@ -2021,6 +2042,17 @@ if (payload.hook_event_name === 'Stop') {
         reason: 'skip: nobody is at the terminal - logged, not held' });
     }
     process.exit(0);
+  }
+  // The fresh-session pick's close carries the paste text in a fenced block (RESUME_PICK_RE above) - held once per cycle.
+  if (resumePickedThisTurn() && !fencedPasteShown(text)) {
+    blockDetail('resume-block', 'a fresh-session pick closed with no fenced paste text');
+    process.stderr.write('The user picked the fresh session, and this close gives them nothing to paste. Rewrite it as the\n'
+      + 'RESUME BLOCK: one line saying where to run it (the project root) and to type /clear first; then the paste text\n'
+      + 'ALONE in its own fenced block - the flow\'s command naming its plan or state file and nothing more (the file says\n'
+      + 'where it picks up), or the prompt that carries the work on; then at most two lines, outside the fence, on what the\n'
+      + 'fresh session does first and what follows.\n'
+      + 'Never point at a block printed earlier. No new work in this chat.');
+    process.exit(2);
   }
   if (!proseAsk(tail) && !doneClose && !endsOnQuestion) {
     // The turn closed cleanly - the work is DONE, which is the only moment this offer belongs at.

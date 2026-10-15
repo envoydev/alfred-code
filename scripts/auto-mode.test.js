@@ -169,7 +169,7 @@ test('auto-mode start: only a task or loop, only the exact word, never a seat, a
         assert.ok(!matcher.test(name), `and not for ${name}`);
 });
 
-test('auto-mode end: a prompt the user types ends it in that session, the word included; a harness row, a slash run or another session does not', () =>
+test('auto-mode end: a typed message is input and keeps it; only the word to stop, a bare stop or a new flow command without the word ends it (the user\'s ruling, 2026-10-15)', () =>
 {
     const p = project();
     const t = transcript();
@@ -177,29 +177,47 @@ test('auto-mode end: a prompt the user types ends it in that session, the word i
         { CLAUDE_PROJECT_DIR: p.root });
     autoStamp(p, 'e1');
     for (const [sid, prompt, why] of [['e2', 'take over here', "another session's prompt"], ['e1', '<task-notification>\n<task-id>x</task-id>', 'a task notice'],
-        ['e1', '/loop-code-quality auto-mode src/', 'the next auto-mode run'],
+        ['e1', '/loop-code-quality auto-mode src/', 'the next auto-mode run'], ['e1', '/compact', 'a slash command that is no flow command'],
         ['e1', 'Another Claude session sent a message:\n<agent-message from="a1b2">\n[Subagent hand-back] done\n</agent-message>', 'a seat\'s hand-back (audit HK14)']])
     {
-        assert.strictEqual(submit(sid, prompt).status, 0);
+        const r = submit(sid, prompt);
+        assert.strictEqual(r.status, 0);
         assert.ok(fs.existsSync(p.gate), `kept: ${why}`);
+        assert.doesNotMatch(context(r), /auto-mode is OFF/, `and nothing says it ended: ${why}`);
     }
-    // the word itself is no reason to keep it: the likeliest off-switches name it (audit HK13)
-    for (const prompt of ['stop auto-mode', 'auto-mode off', 'turn auto-mode off, I am back'])
+    // a message typed mid-run is input to the run: the stamp stands and the model is told to carry on
+    for (const prompt of ['use the v2 endpoint for the fix instead', 'stop using lodash in the fix', 'what is the status?', 'the end of the auto-mode run should commit too'])
+    {
+        const kept = submit('e1', prompt);
+        assert.strictEqual(kept.status, 0, kept.stderr);
+        assert.ok(fs.existsSync(p.gate), `kept: ${prompt}`);
+        assert.match(context(kept), /^auto-mode stays ON \(\.alfred\/docs\/flow\/APPROVAL\): the user typed this message while the run goes on, so it is INPUT to the run/);
+        assert.match(context(kept), /delete \.alfred\/docs\/flow\/APPROVAL - that ends auto-mode/, 'a stop in other words is the model\'s to honor');
+    }
+    assert.ok(rows(p, 'e1').some((r) => r.kind === 'auto-input'), 'an auto-input row');
+    // the word to stop ends it, in English and Ukrainian, and so does a bare stop (audit HK13)
+    for (const prompt of ['stop auto-mode', 'auto-mode off', 'turn auto-mode off, I am back', 'Please disable auto mode', 'stop, I will take it from here', 'stop', 'Stop - let me check',
+        'вимкни авто-режим', 'зупини auto-mode', 'стоп'])
     {
         const off = submit('e1', prompt);
         assert.strictEqual(off.status, 0, off.stderr);
         assert.ok(!fs.existsSync(p.gate), `ended: ${prompt}`);
-        assert.match(context(off), /^auto-mode is OFF/);
+        assert.match(context(off), /^auto-mode is OFF: the user asked to stop it/);
         autoStamp(p, 'e1');
     }
-    const typed = submit('e1', 'stop, I will take it from here');
-    assert.strictEqual(typed.status, 0);
-    assert.ok(!fs.existsSync(p.gate), 'the stamp is gone');
-    assert.match(context(typed), /^auto-mode is OFF: the user typed this prompt/);
-    assert.ok(rows(p, 'e1').some((r) => r.kind === 'auto-end'), 'one auto-end row');
+    // a new flow command without the word starts an attended run: its banner says OFF, so the old stamp goes
+    for (const prompt of ['/task-solve .alfred/docs/plans/x.md - resume at step 5', '/alfred-code:capture-architecture', '/capture-architecture auto-mode'])
+    {
+        const off = submit('e1', prompt);
+        assert.strictEqual(off.status, 0, off.stderr);
+        assert.ok(!fs.existsSync(p.gate), `ended: ${prompt}`);
+        assert.match(context(off), /^auto-mode is OFF: the user typed a new flow command without auto-mode/);
+        autoStamp(p, 'e1');
+    }
+    assert.ok(rows(p, 'e1').some((r) => r.kind === 'auto-end'), 'an auto-end row');
     // a stamp written by hand (task-solve's waiver, no session line) is no auto-mode run of this hook's
     fs.writeFileSync(p.gate, 'AUTO - "take every recommendation"\n');
-    submit('e1', 'next thing');
+    assert.strictEqual(context(submit('e1', 'stop auto-mode')), '', 'nothing said');
     assert.ok(fs.existsSync(p.gate), 'a hand-written stamp stays');
 });
 
@@ -232,7 +250,7 @@ test('mode banner: auto-mode ON says every ask takes its Recommended option and 
     assert.match(said, /^auto-mode is ON for this \/loop-code-quality run/, 'the contract first, its shape unchanged');
     assert.strictEqual(said.split(BANNER_HEAD).length, 2, 'the banner once');
     assert.deepStrictEqual(bannerOf(on), [
-        '**Auto-mode: ON** for /loop-code-quality - every question takes its (Recommended) option without waiting for you; one with no recommended option, or whose recommendation acts outward (push, merge, deploy, publish, a PR), still waits. Typing any message ends auto-mode.',
+        '**Auto-mode: ON** for /loop-code-quality - every question takes its (Recommended) option without waiting for you; one with no recommended option, or whose recommendation acts outward (push, merge, deploy, publish, a PR), still waits. A message you type mid-run is input to the run; type `stop auto-mode` (or just `stop`) to end it.',
         "**Context:** no fresh-session hand-off - the session auto-compacts at Claude Code's own point in its 1M context window (claude-opus-5-5) and the run goes on from the summary and its state files.",
     ]);
     // the second flow of the same run rides the live stamp, and says so too
@@ -429,7 +447,7 @@ test('auto-mode Stop: the 50th Stop under one stamp passes with one auto-continu
     assert.strictEqual(capRows()[0].detail.count, 50);
     assert.strictEqual(stop().status, 0, '51: passes');
     assert.strictEqual(capRows().length, 1, 'still the one row');
-    assert.ok(fs.existsSync(p.gate), 'the stamp stands - only its close or a typed prompt ends auto-mode');
+    assert.ok(fs.existsSync(p.gate), 'the stamp stands - only its close or the user\'s word to stop ends auto-mode');
     // a new auto-mode start writes a new stamp: its count starts over
     autoStamp(p, 'c1', 'at: 2026-10-14T12:00:00.000Z\n');
     const past = new Date(Date.now() - 30000);

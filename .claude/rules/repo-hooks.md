@@ -64,11 +64,15 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   and it sends a Stop back to the run while the stamp stands (`auto-continue`, bounded by the Stop chain's `workSince`:
   held again only after a tool call; counted per stamp beside the chain marker, `<marker>.auto` keyed on the stamp's
   session and mtime, and the 50th Stop passes with one `auto-continue-cap` row - audit HK05: Claude Code's own
-  8-continuation cap resets on every tool call), until the run's close deletes the stamp - or a prompt the user TYPES in that
-  session, which deletes it (`UserPromptSubmit`, `autoModeEnd`: someone is at the terminal; a harness prompt - a task
-  notice, a command's output, a seat's hand-back, `hook-prelude.js` `harnessPrompt` - or a slash command carrying the
-  word is not, while 'stop auto-mode' is; review 2026-10-14 - an interrupted run's stamp otherwise answered the user's own
-  asks for the week; audit HK13 / HK14 - a hand-back ended the run, the likeliest off-switch did not). A hand-written stamp (task-solve's, no `session:` line) is never held there. The compaction point is no runtime act: Claude Code reads `autoCompactWindow` at
+  8-continuation cap resets on every tool call), until the run's close deletes the stamp - or the user's word to stop it
+  (`UserPromptSubmit`, `autoModeEnd`; the user's ruling of 2026-10-15: a message typed mid-run is INPUT to the run, kept
+  with an `auto-input` row and a note saying so - ending on any typed prompt, the 2026-10-14 rule, sent every later ask
+  of a run the user had only added a remark to back to them). It ends on 'stop auto-mode' / 'auto-mode off' / 'вимкни
+  auto-mode' (`AUTO_OFF_RE`, audit HK13), a bare 'stop' (`BARE_STOP_RE`; 'stop using X' is input), or a typed task,
+  capture, loop or issue command that starts no new auto-mode run (its banner says OFF); a harness prompt - a task
+  notice, a command's output, a seat's hand-back, `hook-prelude.js` `harnessPrompt`, HK14 - and any other slash command
+  leave it, and a stop asked in other words, or a run already finished, is the model's to end by deleting the stamp, as
+  the note says. A hand-written stamp (task-solve's, no `session:` line) is never held there. The compaction point is no runtime act: Claude Code reads `autoCompactWindow` at
   session START only (measured 2026-10-14 on 2.1.299: written mid-session it changed nothing, set before the start it
   compacted at 76k of a 100k window), so the installer seeds it per model where the project compacts instead
   (`ALFRED_CODE_AUTO_COMPACT=1`; `settings.js compactWindowSeeds`, `repo-installer.md`). **Compact instead** (the user's
@@ -574,7 +578,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     finished. A fork, subagent or worker is work that ends; a `queue-operation` row that only QUEUED a task notice
     (`enqueue`) has not ended it - the delivered one does; 'remains' is pending only in its pending forms ('still remains',
     'remains to be done'), so 'only sentry remains' is a status; and the fresh-session branch passes a close whose turn
-    already ANSWERED an ask carrying the fresh-session choice (2.1.7, a consuming project's session audit). Audit
+    already ANSWERED an ask carrying the fresh-session choice (2.1.7, a consuming project's session audit). That close
+    carries its paste text in a fenced block (the user's ruling, 2026-10-15: a close said 'paste the resume block above'
+    with none on screen): a hand-off pick this turn (`RESUME_PICK_RE` - resume, start or continue in a fresh or new
+    session, never a setting such as 'Offer a fresh session') closing with no non-empty fence is held once, `resume-block`. Audit
     2026-10-10 C15 widened both halves from measured misses, each replayed over the bundles' turn-ending closes: the
     offer shapes ('Say 'commit' when ...', 'I can X if you want', 'If you want ..., I can', 'I can X next, or',
     'My recommendation is to ... Otherwise'), `pushed` as done, a 'Not run:' label, 'never ran', 'still open', an open

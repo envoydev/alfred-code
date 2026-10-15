@@ -324,26 +324,54 @@ function idleGapOffer() {
     },
   }));
 }
-// A prompt the user TYPES ends auto-mode in this session (the 2026-10-14 review): someone is at the terminal, so each
-// decision goes to them again and the Stop hold stops - an interrupted run's stamp lived on for the week, answering the
-// user's own later asks. A harness prompt (a task notice, a command's output, a seat's hand-back - hook-prelude.js
-// harnessPrompt) is nobody typing, and a SLASH command carrying the word is the next auto-mode run, which the expansion
-// route starts. Any other prompt ends it, one naming the word included: 'stop auto-mode' and 'auto-mode off' are the
-// likeliest off-switches (audit 2026-10-14 HK13, HK14). Only this session's own AUTO stamp is taken back.
-const AUTO_SLASH_RE = /^\s*\/[A-Za-z0-9:_-]+\b.*(?:^|\s)auto-mode(?=\s|$)/is;
+// Auto-mode ends on the user's word or the run's own close, never on a message typed mid-run (the user's ruling,
+// 2026-10-15: the 2026-10-14 rule ended it on ANY typed prompt, so a remark added mid-run sent every later ask back to
+// the user and offered a fresh session the run would have compacted past). A typed prompt is input to the run, and is
+// told so. Three prompts end it: one asking to stop auto-mode ('stop auto-mode', 'auto-mode off', 'вимкни auto-mode' -
+// audit 2026-10-14 HK13), a bare stop ('stop', 'stop, I will take it from here' - never 'stop using X', which is input),
+// and a typed /task-*, /capture-*, /loop-* or /issue-* command that starts no new auto-mode run - its banner says OFF,
+// so the old stamp must not answer its asks. A harness prompt (a task notice, a command's output, a seat's hand-back -
+// hook-prelude.js harnessPrompt, HK14) is nobody typing; any other slash command (`/compact`) leaves the run alone.
+// Only this session's own AUTO stamp is read. Returns true when it wrote the prompt's context.
+const AUTO_NAME = String.raw`(?:auto[- ]?mode|авто[- ]?режим[а-яіїєґ]*)`;
+const AUTO_OFF_RE = new RegExp([
+  String.raw`(?:^|[^\w-])(?:stop|end|disable|exit|quit|cancel|halt|pause|kill|leave)\s+(?:the\s+|this\s+)?${AUTO_NAME}`,
+  String.raw`${AUTO_NAME}\s*[:,-]?\s*(?:off|stop|end|disabled?)(?![\w-])`,
+  String.raw`(?:^|[^\w-])(?:turn|switch|shut)\s+(?:the\s+)?${AUTO_NAME}\s+off\b`,
+  String.raw`(?:^|[^\w-])(?:turn|switch|shut)\s+off\s+(?:the\s+)?${AUTO_NAME}`,
+  String.raw`(?:^|[^\wа-яіїєґ'-])(?:вимкн|зупин|припин|скасу)[а-яіїєґ']*\s+${AUTO_NAME}`,
+  String.raw`${AUTO_NAME}\s*[:,-]?\s*(?:вимкн|стоп)`,
+].join('|'), 'i');
+const BARE_STOP_RE = /^\s*(?:please\s+)?(?:stop|halt|pause|cancel|abort|enough|стоп|зупинись|зупини|досить|пауза)(?:\s+(?:it|now|the run|here|everything|please))?\s*(?:[.!,;:]|-\s|$)/i;
+const FLOW_CMD_RE = /^\s*\/(?:alfred-code:)?(?:alfred-)?(?:task|capture|loop|issue)-[a-z][a-z0-9-]*(?=\s|$)/i;
+const AUTO_RUN_CMD_RE = /^\s*\/(?:alfred-code:)?(?:alfred-)?(?:task|loop)-[a-z][a-z0-9-]*\s(?:.*\s)?auto-mode(?=\s|$)/is;
 function autoModeEnd() {
   const sid = String(payload.session_id || '');
   const prompt = String(payload.prompt || '');
-  if (!sid || payload.agent_id || harnessPrompt(prompt) || AUTO_SLASH_RE.test(prompt)) return false;
+  if (!sid || payload.agent_id || harnessPrompt(prompt)) return false;
+  const slash = /^\s*\//.test(prompt);
+  // A slash command other than a flow command (`/compact`, a project's own) is no word about the run.
+  if (slash && (!FLOW_CMD_RE.test(prompt) || AUTO_RUN_CMD_RE.test(prompt))) return false;
   const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
   let stamp = null;
   try { stamp = require('./hook-prelude.js').approvalStamp({ ...payload, cwd: root }); } catch { return false; }
   if (!stamp || stamp.session !== sid || !/^AUTO\b/.test(stamp.first)) return false;
+  const file = nodePath.relative(root, stamp.file).split(nodePath.sep).join('/') || stamp.file;
+  if (!slash && !AUTO_OFF_RE.test(prompt) && !BARE_STOP_RE.test(prompt)) {
+    ledgerRow({ mode: 'auto', kind: 'auto-input', reason: 'auto-mode kept: a prompt typed mid-run is input to the run' });
+    process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext:
+      `auto-mode stays ON (${file}): the user typed this message while the run goes on, so it is INPUT to the run - answer `
+      + 'or apply it, then carry on with the run\'s next step; each ask still takes its (Recommended) option. A typed message '
+      + "never ends auto-mode: only the user's word to stop it, or the run's own close, does. If this message asks to stop "
+      + `or pause the run in other words, or the run is already finished, delete ${file} - that ends auto-mode - and say so in one line.` } }));
+    return true;
+  }
   try { fs.rmSync(stamp.file); } catch { return false; }
-  ledgerRow({ mode: 'auto', kind: 'auto-end', reason: 'auto-mode ended: the user typed a prompt' });
+  const why = slash ? 'the user typed a new flow command without auto-mode' : 'the user asked to stop it';
+  ledgerRow({ mode: 'auto', kind: 'auto-end', reason: `auto-mode ended: ${why}` });
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext:
-    'auto-mode is OFF: the user typed this prompt, so they are at the terminal - put each decision to them again, and a '
-    + 'turn is no longer sent back at its Stop. `auto-mode` on the next task or loop call starts a new run.' } }));
+    `auto-mode is OFF: ${why}, so each decision goes to them again and a turn is no longer sent back at its Stop. `
+    + '`auto-mode` on the next task or loop call starts a new run.' } }));
   return true;
 }
 if (EVENT === 'UserPromptSubmit') {
@@ -820,7 +848,7 @@ function modeBanner(autoOn) {
   const name = `/${skill.replace(/^alfred-code:/, '')}`;
   const mode = autoOn
     ? `**Auto-mode: ON** for ${name} - every question takes its (Recommended) option without waiting for you; one with no `
-      + 'recommended option, or whose recommendation acts outward (push, merge, deploy, publish, a PR), still waits. Typing any message ends auto-mode.'
+      + 'recommended option, or whose recommendation acts outward (push, merge, deploy, publish, a PR), still waits. A message you type mid-run is input to the run; type `stop auto-mode` (or just `stop`) to end it.'
     : `**Auto-mode: OFF** for ${name} - each question waits for your answer.`
       + (AUTO_WORD_RE.test(autoArgs()) && !AUTO_SKILL_RE.test(skill) ? ' (auto-mode runs only on /task-* and /loop-* commands.)' : '');
   const at = ctxThreshold();
@@ -856,8 +884,9 @@ if (auto) {
     + '(3) Commit through the usual gates; never push, merge, deploy or send anything out - list those for the user in the close (an unpushed commit is a Leftovers line, never an ask). '
     + '(4) The fresh-session offers are off and the fresh-session hand-off is never taken or recommended: the session compacts at its auto-compact window and the run goes on from its own state files. '
     + "(5) 'auto-mode' is a mode word, not a target - leave it out of the run's arguments. "
-    + `(6) The stamp is the run's approval too: never write an APPROVED or AUTO line over it and never delete it before the close. An answered ask is the go - carry on in the same turn. `
-    + `(7) When the whole run is finished, print its close and delete ${auto.file}: that ends auto-mode.`;
+    + `(6) The stamp is the run's approval too: never write an APPROVED or AUTO line over it and never delete it before the close, unless the user asks to stop auto-mode. An answered ask is the go - carry on in the same turn. `
+    + `(7) When the whole run is finished, print its close and delete ${auto.file}: that ends auto-mode. `
+    + '(8) A message the user types mid-run is input to the run, never a stop: take it in and carry on.';
   if (EVENT === 'UserPromptExpansion') expansionOut(contract);
   else process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: contract } }));
   process.exit(0);

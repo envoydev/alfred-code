@@ -2838,7 +2838,7 @@
       ]
     },
     "honor-fresh-session-answer": {
-      "_note": "A fresh-session answer is honored: the turn ends on a short ack + paste-ready resume block, no new work in the old chat - measured: a tool-held 'Fresh session' answer was ignored and the run continued 1h51m to 490k ctx.",
+      "_note": "A fresh-session answer is honored: the turn ends on the resume block, printed after the answer with the paste text alone in a fenced block, no new work in the old chat - measured: a tool-held 'Fresh session' answer was ignored and the run continued 1h51m to 490k ctx.",
       "owner": {
         "file": "stack/skills/task-solve-cross/SKILL.md",
         "marker": "Honor a fresh-session answer"

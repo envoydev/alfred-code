@@ -105,12 +105,29 @@ test("C15: an answer to the user's own question listing others' or deferred item
   // 69dbed46: the user picked the fresh session; the mandated close read 'committed' + 'next steps'
   const fresh = [typed('continue'), call('ask1', 'AskUserQuestion', { questions: [{ question: 'Resume?', options: [{ label: 'Resume in a fresh session (Recommended)' }, { label: 'Continue here' }] }] }),
     result('ask1', 'Your questions have been answered: "Resume?"="Resume in a fresh session (Recommended)"'), ...work(4)];
-  const resume = 'Result: state is saved for a fresh session. Nothing is committed or pushed.\n\nNext steps: T1 src work, then T2 to T7.';
+  const resume = 'Result: state is saved for a fresh session. Nothing is committed or pushed.\n\n1. Type `/clear`.\n2. Paste:\n\n```text\n/task-solve plans/x.md - resume at step 4\n```\n\nNext steps: T1 src work, then T2 to T7.';
   assert.strictEqual(over(fresh, resume).status, 0, 'the close the fresh-session answer asked for');
   assert.strictEqual(over([typed('continue'), ...work(4)], resume).status, 2, 'the same close with no such answer is the stall');
   const offeredOnly = [typed('continue'), call('ask2', 'AskUserQuestion', { questions: [{ question: 'Next?', options: [{ label: 'Commit now (Recommended)' }, { label: 'Resume in a fresh session' }] }] }),
     result('ask2', 'Your questions have been answered: "Next?"="Commit now (Recommended)"'), ...work(4)];
   assert.strictEqual(over(offeredOnly, resume).status, 2, 'an ask that only offered the fresh session, answered another way, is no pick');
+});
+
+test('resume block (the user\'s ruling, 2026-10-15): a fresh-session pick closes with the paste text in a fenced block, held once without it', () => {
+  const picked = (label, id) => [typed('continue'), call(id, 'AskUserQuestion', { questions: [{ question: 'Resume?', options: [{ label }, { label: 'Continue here' }] }] }),
+    result(id, `Your questions have been answered: "Resume?"="${label}"`), ...work(2)];
+  const pointer = 'Result: the plan file now holds the punch list.\nProgress: 4 of 6 steps\nLeftovers: punch list P1-P9 for the fresh session.\n\nStopping here: type /clear, then paste the resume block above.';
+  const held = over(picked('Resume in a fresh session (Recommended)', 'r1'), pointer);
+  assert.strictEqual(held.status, 2, 'the measured close: a pointer at a block nobody can see');
+  assert.match(held.stderr, /RESUME BLOCK/);
+  assert.match(held.stderr, /ALONE in its own fenced block - the flow's command naming its plan or state file and nothing more/);
+  const block = 'Result: the plan file now holds the punch list.\n\n**Resume in a fresh session**\n1. In the project root, type `/clear`.\n2. Paste this line and send it:\n\n```text\n/task-solve plans/audit.md\n```\n\nNext: step 5 CONFORMANCE - fix P1-P9, re-review -> close.';
+  assert.strictEqual(over(picked('Resume in a fresh session (Recommended)', 'r2'), block).status, 0, 'the block passes');
+  assert.strictEqual(over(picked('Start it in a fresh session (Recommended)', 'r3'), 'Leaving this chat here.').status, 2, 'a new cycle\'s hand-off owes it too');
+  assert.strictEqual(over(picked('Resume in a fresh session (Recommended)', 'r4'), 'Paste:\n\n```\n```').status, 2, 'an empty fence is no paste text');
+  // a setting that names a fresh session is no hand-off (the setup walk's trigger answer), nor an ask answered another way
+  assert.strictEqual(over(picked('Offer a fresh session (Recommended)', 'r5'), 'Setup is complete. Nothing is pending.').status, 0, 'a setting, not a pick');
+  assert.strictEqual(over([typed('go'), ...work(2)], 'Result: done, nothing pending.').status, 0, 'no ask, no block');
 });
 
 test('C15: the corpus replay neighbours stay clean', () => {
