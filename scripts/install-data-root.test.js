@@ -639,7 +639,9 @@ test('old credentials: an update moves credentials.local.env into the store and 
             each: (repo, i) =>
             {
                 if (i === 0) old(repo);
-                return { store: read(path.join(repo, '.alfred', '.sensitive-data')), cred: fs.existsSync(path.join(CAP(repo), 'credentials.local.env')), book: read(path.join(CAP(repo), 'PROJECT-CAPABILITIES.md')) };
+                // the update also moves the run book to its 2026-10-15 home, and the credentials line is re-pointed there
+                return { store: read(path.join(repo, '.alfred', '.sensitive-data')), cred: fs.existsSync(path.join(CAP(repo), 'credentials.local.env')),
+                    book: read(path.join(repo, '.alfred', 'docs', 'project-awareness', 'PROJECT-AWARENESS.md')), oldBook: fs.existsSync(path.join(CAP(repo), 'PROJECT-CAPABILITIES.md')) };
             },
         });
         // The install itself already moves a file present before it ran; here the file lands after it, so the first update moves it.
@@ -648,6 +650,8 @@ test('old credentials: an update moves credentials.local.env into the store and 
         assert.match(steps[1].store, /^ADMIN_PASSWORD=pa55-w0rd-xyz$/m, route);
         assert.ok(!steps[1].cred, route);
         assert.strictEqual(steps[1].book, '- Credentials live in: `.alfred/.sensitive-data`, key `ADMIN_PASSWORD`\n', route);
+        assert.ok(!steps[1].oldBook, `${route}: the run book left project-capabilities/`);
+        assert.match(outs[1], /docs migration \(project awareness\): PROJECT-CAPABILITIES\.md -> /, `${route}:\n${outs[1]}`);
         assert.ok(!outs.join('\n').includes('pa55-w0rd-xyz') && !outs.join('\n').includes('me@x.io'), `${route}: a value was printed`);
         assert.doesNotMatch(outs[2], /sensitive data:/, `${route}: the re-run says nothing`);
         assert.deepStrictEqual(steps[2], steps[1], route);

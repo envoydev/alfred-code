@@ -2478,7 +2478,9 @@ test('guard-fresh-session-start: the slash and compaction routes carry the same 
           prompt: `/${typed || name}${args ? ` ${args}` : ''}`, transcript_path: tp }, { env: winEnv(env) });
     const start = (source, env) => runIn('guard-fresh-session-start.js',
         { hook_event_name: 'SessionStart', source }, { env: winEnv(env) });
-    const injected = (r) => (r.stdout && r.stdout.includes('additionalContext') ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext : '');
+    // the mode banner a typed task-*, capture-*, loop-* or issue-* command carries (2026-10-15) is no offer
+    const unbanner = (t) => t.replace(/(?:^|\n\n)Open your reply to this command with these two lines[\s\S]*$/, '');
+    const injected = (r) => unbanner(r.stdout && r.stdout.includes('additionalContext') ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext : '');
     const hot = ctxAt('ups-hot', 450000);   // no model id here, so 450k is past the 300k DEFAULT trigger
 
     // It injects, never blocks: a blocked expansion shows its reason to the user only - the run would be
@@ -3524,7 +3526,8 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
           { hook_event_name: 'UserPromptExpansion', expansion_type: 'slash_command', command_name: name, command_args: '', prompt: `/${name}`, transcript_path: tp },
           { env: env || winEnv() });
       assert.equal(r.status, 0, 'the slash route never denies');
-      return r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext : '';
+      // the mode banner a typed task-*, capture-*, loop-* or issue-* command carries (2026-10-15) is no offer
+      return (r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext : '').replace(/(?:^|\n\n)Open your reply to this command with these two lines[\s\S]*$/, '');
     };
     const skillCall = (tp, skill) => runIn('guard-fresh-session-start.js',
         { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill }, transcript_path: tp },

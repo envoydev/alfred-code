@@ -412,7 +412,7 @@ test('cli: a hand copy of the shipped template is flagged unfilled and by its pl
     const template = fs.readFileSync(path.join(__dirname, '..', 'stack', 'AGENTS.template.md'), 'utf8');
     const rules = ['alfred-interaction', 'alfred-quality-gates', 'alfred-security', 'alfred-git', 'alfred-navigation', 'alfred-docs-root', 'alfred-memory',
         'alfred-agent-awareness', 'alfred-architecture', 'alfred-related-context', 'alfred-project-awareness', 'project-code-style'];
-    const files = { '.claude/AGENTS.md': template, '.alfred/docs/code-style/CODE-STYLE.md': '', '.alfred/docs/project-capabilities/PROJECT-CAPABILITIES.md': '' };
+    const files = { '.claude/AGENTS.md': template, '.alfred/docs/code-style/CODE-STYLE.md': '', '.alfred/docs/project-awareness/PROJECT-AWARENESS.md': '' };
     for (const r of rules) files[`.claude/rules/${r}.md`] = '';
     const root = tree(files, { git: true });
     const r = cli(root);

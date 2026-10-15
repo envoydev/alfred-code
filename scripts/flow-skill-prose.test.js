@@ -185,7 +185,7 @@ test('M92: build-from-scratch Next run names the run book and the capabilities c
     const at = order.map((c) => line.indexOf(c));
     assert.ok(at.every((i) => i > 0), `every capture named: ${line}`);
     assert.deepStrictEqual([...at].sort((a, b) => a - b), at, 'in the template\'s post-install order, agent-capabilities last');
-    assert.match(line, /PROJECT-CAPABILITIES\.md/);
+    assert.match(line, /project-awareness\/PROJECT-AWARENESS\.md/);
     assert.match(line, /alfred-agent-awareness\.md/);
 });
 
@@ -233,12 +233,12 @@ test('M96: task-design states verify-plan\'s own grades for a missing Oriented: 
 });
 
 // ---- M97: the docs-root rule lists every capture domain folder ------------------------------------------------
-test('M97: alfred-docs-root names diagnoses/ and project-capabilities/', () => {
+test('M97: alfred-docs-root names diagnoses/ and project-awareness/ (the run book\'s home since 2026-10-15)', () => {
     const line = read('stack/rules/alfred-docs-root.md').split('\n').find((l) => /EVERY doc the assistant creates/.test(l)) || '';
     assert.match(line, /`diagnoses\/`/);
-    assert.match(line, /`project-capabilities\/PROJECT-CAPABILITIES\.md`/);
+    assert.match(line, /`project-awareness\/PROJECT-AWARENESS\.md`/);
     assert.match(flat(skill('issue-diagnoser')), /diagnoses\//, 'the folder the diagnoser writes');
-    assert.match(flat(skill('capture-project-awareness')), /project-capabilities\/PROJECT-CAPABILITIES\.md/);
+    assert.match(flat(skill('capture-project-awareness')), /project-awareness\/PROJECT-AWARENESS\.md/);
 });
 
 // ---- M98: the vendored trio protocol's pointers into the owner's folder are the pinned exception ----------------

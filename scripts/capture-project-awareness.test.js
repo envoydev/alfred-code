@@ -51,7 +51,7 @@ test('the doc: the seven sections in reading order, each addressable by a stable
         assert.match(doc.slice(at).split('\n')[1], /^<!-- id: [a-z-]+ -->$/, `${h} carries its id on the line under the heading`);
     }
     // The skill writes the doc where the rule and the seats point.
-    assert.ok(body().includes('<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md'));
+    assert.ok(body().includes('<docs-path>/project-awareness/PROJECT-AWARENESS.md'));
 });
 
 test('credentials: never asked for in chat, never in the doc - the doc names where one lives', () =>
@@ -97,10 +97,10 @@ test('M14 the value check catches env, YAML and lower-case password keys, and ne
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'runbook-values-'));
     try
     {
-        const cap = path.join(dir, 'project-capabilities');
+        const cap = path.join(dir, 'project-awareness');
         fs.mkdirSync(cap);
         const values = ['envpass1', 'yamlpass2', 'lowerpass3', 'tokval4', 'apikey5'];
-        fs.writeFileSync(path.join(cap, 'PROJECT-CAPABILITIES.md'), [
+        fs.writeFileSync(path.join(cap, 'PROJECT-AWARENESS.md'), [
             'Captured: main@abc1234, 2026-09-29',
             `DB_PASSWORD=${values[0]}`,
             `    POSTGRES_PASSWORD: ${values[1]}`,
@@ -115,7 +115,7 @@ test('M14 the value check catches env, YAML and lower-case password keys, and ne
         const r = spawnSync('bash', ['-c', cmd], { encoding: 'utf8' });
         const hits = r.stdout.split('\n').filter(Boolean);
         for (const v of values) assert.ok(!r.stdout.includes(v), `the value '${v}' reached the screen:\n${r.stdout}`);
-        const keys = hits.map((h) => h.replace(/^.*PROJECT-CAPABILITIES\.md:(\d+):\s*/, '$1 '));
+        const keys = hits.map((h) => h.replace(/^.*PROJECT-AWARENESS\.md:(\d+):\s*/, '$1 '));
         assert.deepStrictEqual(keys, ['2 DB_PASSWORD', '3 POSTGRES_PASSWORD', '4 password', '5 GITHUB_TOKEN', '6 STRIPE_API_KEY'], r.stdout + r.stderr);
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
@@ -130,25 +130,35 @@ test('the asks: every template marks one recommended option first, and each gap 
     for (const ask of asks.slice(1)) assert.match(ask, /- 'Unknown for now' - /, 'a gap ask lets the answer be unknown - the unattended rule lands there');
 });
 
-test('the generated rule: a pathless pointer to the run book, stamped with the literal docs root, inside its budget', () =>
+test('the generated rule: a pathless import of the run book, stamped with the literal docs root, inside its budget', () =>
 {
     const tpl = read('references/run-book-rule.template.md');
     const front = tpl.split('---')[1];
     assert.match(front, /^description: /m);
     assert.ok(!/^paths:/m.test(front), 'pathless - loads in every session and every subagent');
-    assert.ok(tpl.includes('`__DOC_PATH__/project-capabilities/PROJECT-CAPABILITIES.md`'), 'the doc path is the one placeholder');
-    assert.deepStrictEqual(tpl.match(/__[A-Z_]+__/g), ['__DOC_PATH__']);
+    assert.ok(tpl.includes('`__DOC_PATH__/project-awareness/PROJECT-AWARENESS.md`'), 'the doc path is the one placeholder');
+    assert.deepStrictEqual([...new Set(tpl.match(/__[A-Z_]+__/g))], ['__DOC_PATH__']);
+    // The user's ruling of 2026-10-15: the run book is read before the session starts, no matter what - so the rule
+    // IMPORTS it, and Claude Code loads it at every launch. An import resolves from the rule's own folder.
+    assert.match(tpl, /^@\.\.\/\.\.\/__DOC_PATH__\/project-awareness\/PROJECT-AWARENESS\.md$/m, 'the last line imports the doc from .claude/rules/');
+    const { renderRunBookRule, runBookImport } = require('./install/docs.js');
     for (const root of ['.alfred/docs', 'docs/generated/by-alfred'])
     {
-        const out = tpl.split('__DOC_PATH__').join(root);
-        assert.ok(out.includes(`\`${root}/project-capabilities/PROJECT-CAPABILITIES.md\``));
-        assert.ok(Buffer.byteLength(out) <= 300, `${root}: ${Buffer.byteLength(out)} bytes, over the 300-byte budget`);
+        const out = renderRunBookRule(tpl, root);
+        assert.ok(out.includes(`\`${root}/project-awareness/PROJECT-AWARENESS.md\``));
+        assert.match(out, new RegExp(`^@\\.\\./\\.\\./${root.replace(/[./]/g, '\\$&')}/project-awareness/PROJECT-AWARENESS\\.md$`, 'm'));
+        assert.ok(Buffer.byteLength(out) <= 450, `${root}: ${Buffer.byteLength(out)} bytes, over the 450-byte budget`);
+        // the model's own render - the placeholder replaced everywhere - is the same text for a project-relative root
+        assert.strictEqual(tpl.split('__DOC_PATH__').join(root), out);
     }
-    // The skill's RULE step bakes it and checks both facts.
+    assert.strictEqual(runBookImport('/srv/team docs'), '/srv/team\\ docs/project-awareness/PROJECT-AWARENESS.md', 'an absolute root is written as it is, a space escaped');
+    assert.strictEqual(runBookImport('C:\\work\\docs'), 'C:/work/docs/project-awareness/PROJECT-AWARENESS.md');
+    // The skill's RULE step bakes it and checks the facts.
     const skill = squash(body());
     assert.ok(skill.includes('.claude/rules/alfred-project-awareness.md'));
     assert.match(skill, /`__DOC_PATH__` replaced by the LITERAL docs root/);
-    assert.match(skill, /`grep -c __DOC_PATH__` prints 0 and `wc -c` stays at or under 300/);
+    assert.match(skill, /an absolute root drops the `\.\.\/\.\.\/`/);
+    assert.match(skill, /`grep -c __DOC_PATH__` prints 0, the import's path resolves .* and `wc -c` stays at or under 450/);
 });
 
 test('the seats that run the app read the run book first', () =>
@@ -162,10 +172,10 @@ test('the seats that run the app read the run book first', () =>
     {
         const text = squash(fs.readFileSync(path.join(ROOT, 'stack', 'agents', `${seat}.md`), 'utf8'));
         // 2026-10-08 agents audit F14: the condition leads, so the line no longer reads as 'log in before you start'.
-        assert.ok(text.includes('When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app'), `${seat} reads the run book first`);
+        assert.ok(text.includes('When the run book `<docs-path>/project-awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app - the generated run-book rule imports it at session start, so Read it only when its text is not in your context'), `${seat} follows the run book first`);
         assert.ok(!/before you build/i.test(text), `${seat}: build commands are the generated rule's`);
     }
-    assert.ok(squash(read('references/run-book-rule.template.md')).includes('read it before you build, start, log into or hand-check the app'), 'the generated rule keeps build');
+    assert.ok(squash(read('references/run-book-rule.template.md')).includes('follow it before you build, start, log into or hand-check the app'), 'the generated rule keeps build');
 });
 
 test('the docs engine: the watch.json shape lints clean, and a doc written to the shape is found by where and show', () =>
@@ -185,19 +195,19 @@ test('the docs engine: the watch.json shape lints clean, and a doc written to th
         }).join('\n');
     const r = repo({ tracked: true, docsPath: '.alfred/docs', files: {
         'package.json': '{ "scripts": { "start": "ng serve" } }\n',
-        '.alfred/docs/project-capabilities/PROJECT-CAPABILITIES.md': doc,
-        '.alfred/docs/project-capabilities/watch.json': watch[1],
+        '.alfred/docs/project-awareness/PROJECT-AWARENESS.md': doc,
+        '.alfred/docs/project-awareness/watch.json': watch[1],
     } });
     try
     {
         const lint = r.cli(['lint']);
         assert.doesNotMatch(lint.stdout, /PROBLEM/, lint.stdout);
         const where = r.cli(['where', 'package.json']);
-        assert.match(where.stdout, /PROJECT-CAPABILITIES#build - Build/, where.stdout);
-        const show = r.cli(['show', 'PROJECT-CAPABILITIES#reach-and-log-in']);
+        assert.match(where.stdout, /PROJECT-AWARENESS#build - Build/, where.stdout);
+        const show = r.cli(['show', 'PROJECT-AWARENESS#reach-and-log-in']);
         assert.match(show.stdout, /## Reach and log in/, show.stdout);
         const hit = r.cli(['watch', 'package.json']);
-        assert.match(hit.stdout, /PROJECT-CAPABILITIES#build/, hit.stdout);
+        assert.match(hit.stdout, /PROJECT-AWARENESS#build/, hit.stdout);
     }
     finally { r.rm(); }
 });

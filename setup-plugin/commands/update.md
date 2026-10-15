@@ -51,8 +51,11 @@ generated file both exist, and the old one is the user's to remove.
 `alfred-architecture.md`, `alfred-project-related-context.md` -> `alfred-related-context.md`,
 `alfred-project-agent-capabilities.md` -> `alfred-agent-awareness.md`, `alfred-project-run-book.md` ->
 `alfred-project-awareness.md` - each MOVED with its content kept, and the two captures that write them are
-`/capture-agent-awareness` and `/capture-project-awareness` (the run book's doc keeps its path,
-`<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md`). The desktop servers are `windows-control` and
+`/capture-agent-awareness` and `/capture-project-awareness`. After 2.5.0 the run book's doc follows its capture's
+name: `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` moves to
+`<docs-path>/project-awareness/PROJECT-AWARENESS.md` (its `watch.json` and branch versions with it, the section ids
+re-spelled), and a run-book rule still holding the capture's own pointer text is rewritten to import it, so every
+session loads the run book at its start. The desktop servers are `windows-control` and
 `macos-control` (were `windows-desktop` / `macos-desktop`): update swaps the plugin with its on/off kept, re-spells
 their tools in the generated rules, and `ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE` is the gate key - the old
 `ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE` is still read while the new one is unset, with a line saying to rename it.

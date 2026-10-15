@@ -187,8 +187,11 @@ The memory levels and stores, where the docs root and the data root live, and th
   deliberately (that skill or `loop-architecture-quality`), never after each change. The code
   style lives in `<docs-path>/code-style/CODE-STYLE.md` + the path-scoped `project-code-style.md` rule
   (owned by `capture-code-style`). The run book lives in
-  `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` (owned by
-  `capture-project-awareness`, repo facts first, the user's answers for the gaps): a
+  `<docs-path>/project-awareness/PROJECT-AWARENESS.md` (owned by
+  `capture-project-awareness`, repo facts first, the user's answers for the gaps;
+  `project-capabilities/PROJECT-CAPABILITIES.md` until 2026-10-15, moved by `docs.migrateRunBook` with its
+  `watch.json`, section ids and branch versions, and the generated rule `@`-imports it so every session loads it at
+  its start): a
   credential appears there only as WHERE it lives - an env var, a vault item, or a key in the
   project's `<data root>/.sensitive-data` (the capture writes its keys empty only when the file is absent) - never
   as a value. The capture's own `credentials.local.env` before 2026-10-13 is moved into that store by every install

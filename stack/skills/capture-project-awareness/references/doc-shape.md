@@ -1,4 +1,4 @@
-# project-capabilities/PROJECT-CAPABILITIES.md - the run book's shape and write protocol
+# project-awareness/PROJECT-AWARENESS.md - the run book's shape and write protocol
 
 ## Contents
 
@@ -10,10 +10,10 @@
 
 ## The domain
 
-`<docs-path>/project-capabilities/` is a docs domain like `architecture/` or `code-style/`: its
+`<docs-path>/project-awareness/` is a docs domain like `architecture/` or `code-style/`: its
 `watch.json` is what makes the docs engine (`.claude/hooks/docs.js`) section, lint and watch it, and what
 lets a seat find one section by path (`docs.js where package.json`) or by id
-(`docs.js show PROJECT-CAPABILITIES#reach-and-log-in`) instead of reading the whole file. This capture
+(`docs.js show PROJECT-AWARENESS#reach-and-log-in`) instead of reading the whole file. This capture
 is its sole author. The folder holds the doc, its `watch.json`, and - only when the user chose it - the
 credentials template with its `.gitignore`.
 
@@ -96,8 +96,8 @@ first-change gate to the domains that map the code. For a project whose commands
 ```json
 {
   "watch": [
-    { "kind": "build and test commands", "globs": ["**package.json"], "sections": ["PROJECT-CAPABILITIES#build"] },
-    { "kind": "services and start config", "globs": ["**docker-compose*.yml"], "sections": ["PROJECT-CAPABILITIES#before-you-run", "PROJECT-CAPABILITIES#start", "PROJECT-CAPABILITIES#debugging"] }
+    { "kind": "build and test commands", "globs": ["**package.json"], "sections": ["PROJECT-AWARENESS#build"] },
+    { "kind": "services and start config", "globs": ["**docker-compose*.yml"], "sections": ["PROJECT-AWARENESS#before-you-run", "PROJECT-AWARENESS#start", "PROJECT-AWARENESS#debugging"] }
   ]
 }
 ```
@@ -123,15 +123,16 @@ APP_TEST_PASSWORD=
 
 The data root's own `.gitignore` covers the file - nothing is added to any `.gitignore`. The doc's `Credentials
 live in` line names the file and each key. A `credentials.local.env` an older capture wrote in
-`project-capabilities/` is moved into the store by the next install or update, which re-points this line; a key the
-store already holds with another value stops that move until the user drops it from one file.
+`project-capabilities/` (the run book's home before 2026-10-15) is moved into the store by the next install or
+update, which re-points this line; a key the store already holds with another value stops that move until the user
+drops it from one file.
 
 ## Write mechanics
 
-- **A first capture** writes `PROJECT-CAPABILITIES.md` and `watch.json` whole (Write), creating the
+- **A first capture** writes `PROJECT-AWARENESS.md` and `watch.json` whole (Write), creating the
   folder when absent - `docs.js set` refuses a file that does not exist yet.
 - **A refresh** lands each changed section through
-  `node .claude/hooks/docs.js set PROJECT-CAPABILITIES#<id> <textfile>`: the engine writes it in place
+  `node .claude/hooks/docs.js set PROJECT-AWARENESS#<id> <textfile>`: the engine writes it in place
   on mainline, without git or under git versioning, and into this branch's overlay otherwise - the
   capture never decides which. Sections nobody changed are not rewritten. Each section `set` writes carries its own
   `captured:` stamp; where it wrote in place, also edit the top `Captured:` line to this run's.

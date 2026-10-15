@@ -12,7 +12,9 @@
 //                             which fired on every prompt and parsed a `<command-name>` marker, missing
 //                             one typed with a leading space). This route INJECTS the ask; it never
 //                             blocks, because a blocked expansion shows its reason to the user only -
-//                             the run would be lost and the model would never learn why.
+//                             the run would be lost and the model would never learn why. Every typed
+//                             task-* / capture-* / loop-* / issue-* command also gets the MODE BANNER
+//                             (auto-mode ON or OFF, and how the session meets a full context).
 //   SessionStart (compact)  - the harness has just auto-compacted, which is PROOF the session
 //                             reached the ceiling the gate exists for (the harness's own compaction
 //                             point, which moves with the window), at a moment a Stop may never come (measured: 23m27s /
@@ -797,6 +799,54 @@ function autoModeStart() {
   return { file: nodePath.relative(root, file).split(nodePath.sep).join('/') || file };
 }
 const auto = (IS_SKILL_CALL && (EVENT === 'PreToolUse' || !EVENT)) || EVENT === 'UserPromptExpansion' ? autoModeStart() : null;
+// --- the MODE BANNER (the user's ruling, 2026-10-15) ---
+// A typed /task-*, /capture-*, /loop-* or /issue-* command opens its first reply with two lines saying how this session
+// will behave during the run: whether auto-mode is on (each ask answered with its Recommended option, or each one waiting
+// for the user), and how it meets a full context - it compacts (auto-mode, or ALFRED_CODE_AUTO_COMPACT=1), or it offers
+// a fresh session at its trigger - with the numbers behind it, from the same engine every offer reads. Once per typed
+// command: the expansion fires once, and the lines say they are not repeated. Never on a phase's Skill call, a seat's or
+// a session nobody is at. It rides AFTER whatever else this expansion injects, so each of those keeps its own shape.
+const BANNER_RE = /^(?:alfred-code:)?(?:alfred-)?(?:task|capture|loop|issue)-[a-z][a-z0-9-]*$/;
+const BANNER_HEAD = 'Open your reply to this command with these two lines, exactly as written, and never repeat them in a later reply:';
+const tokens = (n) => (n >= 1000000 && n % 1000000 === 0 ? `${n / 1000000}M` : `${Math.round(n / 1000)}k`);
+function modeBanner(autoOn) {
+  const model = fresh.sessionModelId();
+  const window = fresh.tableWindow() || fresh.envWindow();
+  const room = `its ${window ? `${tokens(window)} ` : ''}context window${model ? ` (${model})` : ''}`;
+  const acw = fresh.autoCompactWindow();
+  const where = acw
+    ? `as it nears its ${tokens(acw)} auto-compact window (${window ? `of ${tokens(window)}` : 'context'}${model ? `, ${model}` : ''})`
+    : `at Claude Code's own point in ${room}`;
+  const name = `/${skill.replace(/^alfred-code:/, '')}`;
+  const mode = autoOn
+    ? `**Auto-mode: ON** for ${name} - every question takes its (Recommended) option without waiting for you; one with no `
+      + 'recommended option, or whose recommendation acts outward (push, merge, deploy, publish, a PR), still waits. Typing any message ends auto-mode.'
+    : `**Auto-mode: OFF** for ${name} - each question waits for your answer.`
+      + (AUTO_WORD_RE.test(autoArgs()) && !AUTO_SKILL_RE.test(skill) ? ' (auto-mode runs only on /task-* and /loop-* commands.)' : '');
+  const at = ctxThreshold();
+  const ctxLine = autoOn
+    ? `**Context:** no fresh-session hand-off - the session auto-compacts ${where} and the run goes on from the summary and its state files.`
+    : COMPACT_INSTEAD
+      ? `**Context:** auto-compact is on (ALFRED_CODE_AUTO_COMPACT=1) - the session compacts ${where} instead of offering a fresh session.`
+      : FRESH_OFF || at === null
+        ? `**Context:** the fresh-session offers are off - the session compacts ${where}.`
+        : `**Context:** session refresh - past ~${tokens(at)} tokens of ${room}, the run offers to resume in a fresh session from its state file instead of compacting.`;
+  return `${BANNER_HEAD}\n${mode}\n${ctxLine}`;
+}
+// Nobody at the terminal is judged WITHOUT the session's own AUTO stamp (a payload with no session id reads none): that
+// stamp is the auto-mode this banner reports ON, and the person who typed the command is there to read it. A print-mode
+// run, ALFRED_CODE_UNATTENDED=1 or a hand-written stamp still reads as nobody.
+const banner = EVENT === 'UserPromptExpansion' && !payload.agent_id && BANNER_RE.test(skill) && !unattended({ ...payload, session_id: '' })
+  ? modeBanner(Boolean(auto)) : '';
+// Every UserPromptExpansion output goes through here, the banner after the text; `leave` is an exit with nothing else to say.
+function expansionOut(text) {
+  const body = [text, banner].filter(Boolean).join('\n\n');
+  if (body) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptExpansion', additionalContext: body } }));
+}
+function leave() {
+  if (EVENT === 'UserPromptExpansion') expansionOut('');
+  process.exit(0);
+}
 if (auto) {
   const contract = `auto-mode is ON for this /${skill} run: the user typed it on the call, and ${auto.file} holds their words for this session. `
     + 'Nobody answers until the run ends. '
@@ -808,13 +858,13 @@ if (auto) {
     + "(5) 'auto-mode' is a mode word, not a target - leave it out of the run's arguments. "
     + `(6) The stamp is the run's approval too: never write an APPROVED or AUTO line over it and never delete it before the close. An answered ask is the go - carry on in the same turn. `
     + `(7) When the whole run is finished, print its close and delete ${auto.file}: that ends auto-mode.`;
-  const event = EVENT === 'UserPromptExpansion' ? 'UserPromptExpansion' : 'PreToolUse';
-  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: contract } }));
+  if (EVENT === 'UserPromptExpansion') expansionOut(contract);
+  else process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: contract } }));
   process.exit(0);
 }
 if (IS_SKILL_CALL && (EVENT === 'PreToolUse' || !EVENT)) gatedStepHold();
 
-if (EVENT !== 'SessionStart' && !isOrchestration(skill)) process.exit(0);
+if (EVENT !== 'SessionStart' && !isOrchestration(skill)) leave();
 
 // SessionStart carries no run name and nothing measurable - the transcript has just been REPLACED
 // by its summary - so the compaction event itself is the evidence, and the offer goes out on it.
@@ -1042,16 +1092,15 @@ function sweepOffers() {
 // A SUBAGENT's Skill call (the payload carries agent_id) is a phase of work its parent dispatched:
 // the carry read here is the parent session's, and a seat has no user to answer the offer - so
 // neither trigger judges it.
-if (payload.agent_id) process.exit(0);
+if (payload.agent_id) leave();
 // COMPACT INSTEAD: no offer is made here, and the run is told once per session - its own stop asks offer the
 // fresh-session hand-off past the trigger, and the stop contract denies an ask that still carries one.
 if (COMPACT_INSTEAD) {
   let first = true;
   try { fs.writeFileSync(compactNoteFile(), new Date().toISOString(), { flag: 'wx' }); sweepOffers(); } catch (e) { first = !(e && e.code === 'EEXIST'); }
-  if (first) process.stdout.write(JSON.stringify({ hookSpecificOutput: {
-    hookEventName: EVENT === 'UserPromptExpansion' ? 'UserPromptExpansion' : 'PreToolUse',
-    additionalContext: `${COMPACT_NOTE} So /${skill} puts no fresh-session option in any ask and never ends a turn to move to a new session.`,
-  } }));
+  const note = first ? `${COMPACT_NOTE} So /${skill} puts no fresh-session option in any ask and never ends a turn to move to a new session.` : '';
+  if (EVENT === 'UserPromptExpansion') expansionOut(note);
+  else if (note) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: note } }));
   process.exit(0);
 }
 const usage = lastUsage();
@@ -1072,12 +1121,12 @@ const overSize = !FRESH_OFF && FRESH_AT !== null && ctx > FRESH_AT && worthResum
 // of a run already in flight, and the size trigger still covers that route.
 const chained = EVENT === 'UserPromptExpansion' && !FRESH_OFF && !overSize && worthResuming(ctx)
   && !chainedOfferSpent() && priorOrchestrationRun();
-if (!overSize && !chained) process.exit(0);
+if (!overSize && !chained) leave();
 // Nobody at the terminal (hook-prelude.js unattended) has nobody to offer it to: one row, and no offer state is
 // spent, so a person resuming the session later is still offered it (review A, M3).
 if (unattended(payload)) {
   ledgerRow({ mode: 'unattended', kind: chained ? 'chained-offer' : 'size-offer', reason: UNATTENDED_SKIP, detail: { skill, ctx } });
-  process.exit(0);
+  leave();
 }
 if (chained) {
   try { fs.writeFileSync(chainedOfferFile(), `size ${fresh.transcriptSize()} ${new Date().toISOString()}`); } catch { /* never let state break the gate */ }
@@ -1101,16 +1150,12 @@ const why = chained
 // The slash route only ADDS context - a blocked expansion shows its reason to the user, not the
 // model - so it states the same thing as an instruction and lets the model ask.
 if (EVENT === 'UserPromptExpansion') {
-  process.stdout.write(JSON.stringify({
-    hookSpecificOutput: {
-      hookEventName: 'UserPromptExpansion',
-      additionalContext:
-        `/${skill} ${why.replace(/\n/g, ' ')} ` +
-        `Do NOT start the run yet. Put it to the user as ONE AskUserQuestion: start it in a fresh ` +
-        `session (recommended - end this turn with the paste-ready invocation and the state file it ` +
-        `resumes from), or run it here anyway with the cost stated.`,
-    },
-  }));
+  expansionOut(
+    `/${skill} ${why.replace(/\n/g, ' ')} ` +
+    `Do NOT start the run yet. Put it to the user as ONE AskUserQuestion: start it in a fresh ` +
+    `session (recommended - end this turn with the paste-ready invocation and the state file it ` +
+    `resumes from), or run it here anyway with the cost stated.`,
+  );
   process.exit(0);
 }
 

@@ -79,7 +79,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "capture-project-awareness",
-      "note": "deliberate run-book capture - reads the repo first (the first-look scan, launch configs, compose, README), asks only for the gaps (start and reach, login and where the credentials live, flows and edge cases, before-you-run and debugging), writes docs/project-capabilities/PROJECT-CAPABILITIES.md (its own docs domain) + the generated pointer rule alfred-project-awareness.md; credentials by location, never by value; manual /-only"
+      "note": "deliberate run-book capture - reads the repo first (the first-look scan, launch configs, compose, README), asks only for the gaps (start and reach, login and where the credentials live, flows and edge cases, before-you-run and debugging), writes docs/project-awareness/PROJECT-AWARENESS.md (its own docs domain) + the generated rule alfred-project-awareness.md, whose @ import loads the run book at every session start; credentials by location, never by value; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -819,9 +819,9 @@
     },
     {
       "file": "guard-fresh-session-start.js",
-      "matcher": "@UserPromptExpansion:(^|[^A-Za-z0-9_-])((alfred-)?(loop-[a-z][a-z0-9-]*|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|usage-report|related-projects|agent-awareness|project-awareness|agent-capabilities|project-capabilities)|task-[a-z][a-z0-9-]*|issue-diagnoser)|security-review|init|setup|update|configure|validate)$",
+      "matcher": "@UserPromptExpansion:(^|[^A-Za-z0-9_-])((alfred-)?(loop-[a-z][a-z0-9-]*|capture-[a-z][a-z0-9-]*|task-[a-z][a-z0-9-]*|issue-[a-z][a-z0-9-]*)|security-review|init|setup|update|configure|validate)$",
       "event": "",
-      "note": "the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - UserPromptExpansion fires on that typed command and names it; the matcher (a regex with no colon, which the row format splits on) lists the orchestration commands under either spelling - every task-* and loop-* name, a project's own and a digit included (audit 2026-10-14 HK06: a typed /task-migrate-v2 auto-mode never spawned it) - so no ordinary prompt spawns the hook; it injects the ask, never blocks (a blocked expansion shows its reason to the user only). `auto-mode` in command_args on a task or loop command writes the run's session-named AUTO stamp before the run and injects the auto-mode contract instead of any offer."
+      "note": "the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - UserPromptExpansion fires on that typed command and names it; the matcher (a regex with no colon, which the row format splits on) lists the orchestration commands under either spelling - every task-* and loop-* name, a project's own and a digit included (audit 2026-10-14 HK06: a typed /task-migrate-v2 auto-mode never spawned it) - so no ordinary prompt spawns the hook; it injects the ask, never blocks (a blocked expansion shows its reason to the user only). `auto-mode` in command_args on a task or loop command writes the run's session-named AUTO stamp before the run and injects the auto-mode contract instead of any offer. Every capture-* and issue-* name spawns it too (the user's ruling of 2026-10-15): each typed task-*, capture-*, loop-* or issue-* command gets the MODE BANNER after whatever else it injects - two lines its first reply opens with, auto-mode ON or OFF and how the session meets a full context (it compacts, or offers a fresh session at its trigger), with the window numbers."
     },
     {
       "file": "guard-fresh-session-start.js",

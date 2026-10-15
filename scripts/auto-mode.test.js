@@ -163,7 +163,7 @@ test('auto-mode start: only a task or loop, only the exact word, never a seat, a
     const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8'));
     const row = manifest.hooks.find((h) => String(h.matcher || '').startsWith('@UserPromptExpansion:'));
     const matcher = new RegExp(row.matcher.slice('@UserPromptExpansion:'.length));
-    for (const name of ['task-migrate-v2', 'alfred-code:task-solve', 'loop-perf', 'task-solve-cross', 'capture-architecture', 'issue-diagnoser'])
+    for (const name of ['task-migrate-v2', 'alfred-code:task-solve', 'loop-perf', 'task-solve-cross', 'capture-architecture', 'issue-diagnoser', 'capture-first-look', 'issue-signatures-ci'])
         assert.ok(matcher.test(name), `expansion spawns for ${name}`);
     for (const name of ['review', 'commit', 'tasks', 'my-task-x'])
         assert.ok(!matcher.test(name), `and not for ${name}`);
@@ -211,6 +211,83 @@ const ask = (p, sid, questions, extra = {}) => run('guard-stop-contract.js', {
 }, { CLAUDE_PROJECT_DIR: p.root });
 const q = (question, labels, multiSelect = false) => ({ question, header: 'H', multiSelect, options: labels.map((label) => ({ label, description: 'd' })) });
 const answered = (r) => { try { const o = JSON.parse(r.stdout).hookSpecificOutput; return o.permissionDecision === 'allow' ? o.updatedInput.answers : null; } catch { return null; } };
+
+// THE MODE BANNER (the user's ruling, 2026-10-15): a typed /task-*, /capture-*, /loop-* or /issue-* command opens its
+// first reply with two lines - auto-mode ON or OFF, and how the session meets a full context, with its numbers - said
+// once per typed command, after whatever else the expansion injects.
+const BANNER_HEAD = 'Open your reply to this command with these two lines, exactly as written, and never repeat them in a later reply:';
+const bannerOf = (r) => { const t = context(r); const at = t.indexOf(BANNER_HEAD); return at < 0 ? null : t.slice(at).split('\n').slice(1); };
+const typedRun = (p, sid, prompt, t, env = {}, extra = {}) => run('guard-fresh-session-start.js', {
+    hook_event_name: 'UserPromptExpansion', session_id: sid, cwd: p.root, transcript_path: t, expansion_type: 'slash_command',
+    command_name: prompt.slice(1).split(' ')[0], command_args: prompt.split(' ').slice(1).join(' '), prompt, ...extra,
+}, { CLAUDE_PROJECT_DIR: p.root, ...env });
+
+test('mode banner: auto-mode ON says every ask takes its Recommended option and the session compacts, at the window it will', () =>
+{
+    const p = project();
+    const t = transcript();
+    const on = typedRun(p, 'b1', '/loop-code-quality auto-mode src/', t);
+    assert.strictEqual(on.status, 0, on.stderr);
+    const said = context(on);
+    assert.match(said, /^auto-mode is ON for this \/loop-code-quality run/, 'the contract first, its shape unchanged');
+    assert.strictEqual(said.split(BANNER_HEAD).length, 2, 'the banner once');
+    assert.deepStrictEqual(bannerOf(on), [
+        '**Auto-mode: ON** for /loop-code-quality - every question takes its (Recommended) option without waiting for you; one with no recommended option, or whose recommendation acts outward (push, merge, deploy, publish, a PR), still waits. Typing any message ends auto-mode.',
+        "**Context:** no fresh-session hand-off - the session auto-compacts at Claude Code's own point in its 1M context window (claude-opus-5-5) and the run goes on from the summary and its state files.",
+    ]);
+    // the second flow of the same run rides the live stamp, and says so too
+    assert.match(bannerOf(typedRun(p, 'b1', '/task-solve auto-mode fix the cache', t))[0], /^\*\*Auto-mode: ON\*\* for \/task-solve /);
+    // the window the installer seeded for this model (ALFRED_CODE_AUTO_COMPACT=1) is the one named
+    const q = project();
+    fs.mkdirSync(path.join(q.root, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(q.root, '.claude', 'settings.json'), JSON.stringify({ modelSettings: { 'claude-opus-5-5': { autoCompactWindow: 400000 } } }));
+    assert.strictEqual(bannerOf(typedRun(q, 'b2', '/task-solve auto-mode x', t))[1],
+        '**Context:** no fresh-session hand-off - the session auto-compacts as it nears its 400k auto-compact window (of 1M, claude-opus-5-5) and the run goes on from the summary and its state files.');
+});
+
+test('mode banner: auto-mode OFF says each ask waits, then the fresh-session refresh, the compaction, or the offers off', () =>
+{
+    const p = project();
+    const t = transcript([], 'claude-sonnet-5-5');
+    const off = bannerOf(typedRun(p, 'c1', '/task-solve fix the cache', t));
+    assert.deepStrictEqual(off, [
+        '**Auto-mode: OFF** for /task-solve - each question waits for your answer.',
+        '**Context:** session refresh - past ~400k tokens of its 1M context window (claude-sonnet-5-5), the run offers to resume in a fresh session from its state file instead of compacting.',
+    ]);
+    // a 200k model takes its own tier's trigger
+    assert.match(bannerOf(typedRun(p, 'c2', '/capture-architecture', transcript([], 'claude-haiku-4-5')))[1], /past ~150k tokens of its 200k context window \(claude-haiku-4-5\)/);
+    assert.strictEqual(bannerOf(typedRun(p, 'c3', '/loop-test-coverage', t, { ALFRED_CODE_AUTO_COMPACT: '1' }))[1],
+        "**Context:** auto-compact is on (ALFRED_CODE_AUTO_COMPACT=1) - the session compacts at Claude Code's own point in its 1M context window (claude-sonnet-5-5) instead of offering a fresh session.");
+    assert.strictEqual(bannerOf(typedRun(p, 'c4', '/issue-diagnoser the login 500', t, { ALFRED_CODE_FRESH_SESSION_1M: '0' }))[1],
+        "**Context:** the fresh-session offers are off - the session compacts at Claude Code's own point in its 1M context window (claude-sonnet-5-5).");
+    // the word on a command auto-mode does not run on is said, never silently dropped
+    assert.strictEqual(bannerOf(typedRun(p, 'c5', '/capture-code-style auto-mode', t))[0],
+        '**Auto-mode: OFF** for /capture-code-style - each question waits for your answer. (auto-mode runs only on /task-* and /loop-* commands.)');
+    // an unknown model and no window: no number is invented for the window
+    const bare = project();
+    assert.match(bannerOf(typedRun(bare, 'c6', '/task-design', path.join(TMP, 'no-such.jsonl')))[1], /past ~300k tokens of its context window, the run offers/);
+    // the fresh-session offer keeps its text and its place; the banner follows it
+    const big = transcript([], 'claude-opus-5-5', 450000);
+    const offered = context(typedRun(p, 'c7', '/loop-code-quality src/', big));
+    assert.match(offered, /^\/loop-code-quality is a deliberate orchestration run .* Do NOT start the run yet/);
+    assert.ok(offered.indexOf(BANNER_HEAD) > offered.indexOf('Do NOT start the run yet'), 'after the offer');
+});
+
+test('mode banner: never for another command, a seat, a print-mode run or the model\'s Skill call', () =>
+{
+    const p = project();
+    const t = transcript();
+    for (const prompt of ['/security-review', '/alfred-code:setup', '/review', '/help'])
+        assert.strictEqual(bannerOf(typedRun(p, 'd1', prompt, t)), null, `no banner for ${prompt}`);
+    assert.strictEqual(bannerOf(typedRun(p, 'd2', '/task-solve x', t, {}, { agent_id: 'seat-1' })), null, 'a seat');
+    assert.strictEqual(bannerOf(typedRun(p, 'd3', '/task-solve x', t, { CLAUDE_CODE_ENTRYPOINT: 'sdk-cli' })), null, 'claude -p: nobody to read it');
+    assert.strictEqual(bannerOf(typedRun(p, 'd4', '/task-solve x', t, { ALFRED_CODE_UNATTENDED: '1' })), null, 'an unattended launch');
+    const typed = { type: 'user', entrypoint: 'cli', timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'text', text: 'run task-design in auto-mode' }] } };
+    const call = run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'task-design', args: 'auto-mode' },
+        session_id: 'd5', cwd: p.root, transcript_path: transcript([typed]) }, { CLAUDE_PROJECT_DIR: p.root });
+    assert.match(context(call), /auto-mode is ON/);
+    assert.ok(!context(call).includes(BANNER_HEAD), 'a Skill call is a phase of a run, never a typed command');
+});
 
 test('auto-mode asks: every question marking one Recommended option is answered with it; anything else waits for the user', () =>
 {
@@ -544,7 +621,9 @@ test('compact instead: no fresh-session offer at Stop, at a run\'s start or afte
     assert.doesNotMatch(told, /Do NOT start the run yet/);
     assert.match(told, /^This project compacts instead of offering a fresh session \(ALFRED_CODE_AUTO_COMPACT=1\)/);
     assert.match(told, /puts no fresh-session option in any ask/);
-    assert.strictEqual(context(start(true, 's1')), '', 'once per session');
+    const again = context(start(true, 's1'));
+    assert.doesNotMatch(again, /compacts instead of offering a fresh session \(ALFRED_CODE_AUTO_COMPACT=1\): past/, 'the note is said once per session');
+    assert.match(again, /^Open your reply to this command with these two lines/, 'the mode banner still opens each typed run');
     const compacted = run('guard-fresh-session-start.js', { hook_event_name: 'SessionStart', source: 'compact', session_id: 's2', cwd: p.root, transcript_path: big }, env(true));
     assert.strictEqual(compacted.status, 0);
     const said = context(compacted);

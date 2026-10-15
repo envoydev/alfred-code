@@ -6674,63 +6674,63 @@
       ]
     },
     "run-book-read-first": {
-      "_note": "The run book is read before a seat builds, starts, logs into or hand-checks the app. The generated pointer rule (alfred-project-awareness.md, from the capture's template) is canonical and reaches every session and subagent once the capture ran; the seats that run the app restate it as a step, because a seat dispatched before the capture ran still needs to know where the doc will be. The seat line leaves 'build' to the generated rule (2.1.5 M60): the resolvers and implementers build too and carry no seat line.",
+      "_note": "The run book is followed before a seat builds, starts, logs into or hand-checks the app. The generated rule (alfred-project-awareness.md, from the capture's template) is canonical: its @ import loads the whole run book into every session and subagent once the capture ran (the user's ruling of 2026-10-15: read before the session starts, no matter what). The seats that run the app restate it as a step, Read only when the text is not in context, because a seat dispatched before the capture ran, or without project instructions, still needs to know where the doc will be. The seat line leaves 'build' to the generated rule (2.1.5 M60): the resolvers and implementers build too and carry no seat line.",
       "owner": {
         "file": "stack/skills/capture-project-awareness/references/run-book-rule.template.md",
-        "marker": "read it before you build, start, log into or hand-check the app"
+        "marker": "follow it before you build, start, log into or hand-check the app"
       },
       "sites": [
         {
           "file": "stack/agents/aspnet-verifier.md",
-          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/project-awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/project-awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/project-awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/project-awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/project-awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/project-awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/project-awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/project-awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/project-awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/project-awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/issue-diagnoser-runtime.md",
-          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/project-awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/evidence-gatherer.md",
-          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/project-awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/integration-reviewer.md",
-          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/project-awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
         }
       ]
     },

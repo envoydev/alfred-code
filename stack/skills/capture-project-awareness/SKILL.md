@@ -1,21 +1,22 @@
 ---
 name: capture-project-awareness
-description: "Use when asked to capture the project capabilities or run book - how to build, start and log in to the app. Manual, /-only. Not for the tools inventory."
+description: "Use when asked to capture the project awareness or run book - how to build, start and log in to the app. Manual, /-only. Not for the tools inventory."
 disable-model-invocation: true
 ---
 
-# Project Capabilities - the run book an agent reads before it runs the app
+# Project Awareness - the run book every session loads before it runs the app
 
 A change is proven twice: by its tests, and by running the app and exercising what changed. The second
 half fails on facts no code states - the command that starts the app, the URL it answers on, the test
 account, the service that must be up first, the flow that proves the change. This capture records them
-once, so every seat that builds, starts, logs into or hand-checks the app reads them instead of
-guessing. Two artifacts come out:
+once, so every session and every seat that builds, starts, logs into or hand-checks the app has them
+instead of guessing. Two artifacts come out:
 
-1. `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` - the run book, a docs domain with its own
+1. `<docs-path>/project-awareness/PROJECT-AWARENESS.md` - the run book, a docs domain with its own
    `watch.json`. `references/doc-shape.md` is its shape and write protocol.
-2. `.claude/rules/alfred-project-awareness.md` - the generated pathless pointer rule, from
-   `references/run-book-rule.template.md`.
+2. `.claude/rules/alfred-project-awareness.md` - the generated pathless rule, from
+   `references/run-book-rule.template.md`: its `@` import makes Claude Code load the whole run book at every
+   session start, so no session runs the app on a guess.
 
 The repo answers first; the user fills only what the repo cannot show. There is no judgment to spend
 beyond that, so the skill carries no model pin: the session's own model runs it.
@@ -23,7 +24,7 @@ beyond that, so the skill carries no model pin: the session's own model runs it.
 ## When to use
 
 - The deliberate run-book capture: how to build, start, reach and log in to the app, the flows and edge cases a manual check exercises, the debug entry points - so an agent can run the app and hand-verify a change. Re-run to refresh.
-- It reads the repo first, asks only for the gaps, and writes `project-capabilities/PROJECT-CAPABILITIES.md` under the docs root plus the generated pointer rule `alfred-project-awareness.md`; a credential is recorded by where it lives, never by value.
+- It reads the repo first, asks only for the gaps, and writes `project-awareness/PROJECT-AWARENESS.md` under the docs root plus the generated rule `alfred-project-awareness.md` that imports it into every session; a credential is recorded by where it lives, never by value.
 - Not the installed-tools inventory (the agent-awareness capture), the architecture map or the code style.
 
 ## Credentials - the hard rule
@@ -116,7 +117,7 @@ What must be up or known before a run, and where does debugging start? The repo 
 ### 3. WRITE - the run book, to references/doc-shape.md
 
 Read `references/doc-shape.md` now: the skeleton, the `covers:` and `watch.json` rules, the keys for the
-sensitive data and how a refresh lands on a branch. Write under `<docs-path>/project-capabilities/` only; the
+sensitive data and how a refresh lands on a branch. Write under `<docs-path>/project-awareness/` only; the
 doc opens with the `Captured: <branch>@<short-sha>, <date>` stamp (`+dirty` on an uncommitted tree).
 Every repo fact cites its file; every gap nobody filled says `unknown` and names this capture.
 
@@ -133,7 +134,7 @@ refuses each); the session's `Sensitive data:` line lists its keys, and a key th
 Then three checks, all before the report:
 
 ```bash
-grep -HnE '(PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|password|passwd)[A-Za-z0-9_]*[:=][[:space:]]*[^[:space:]<]' "<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md" | sed -E 's/((PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|password|passwd)[A-Za-z0-9_]*)[:=].*/\1/'
+grep -HnE '(PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|password|passwd)[A-Za-z0-9_]*[:=][[:space:]]*[^[:space:]<]' "<docs-path>/project-awareness/PROJECT-AWARENESS.md" | sed -E 's/((PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|password|passwd)[A-Za-z0-9_]*)[:=].*/\1/'
 node .claude/hooks/docs.js lint
 node .claude/hooks/docs.js watch <one file DISCOVER cited>
 ```
@@ -143,14 +144,14 @@ and treat it as a pasted value (above). A `PROBLEM` line from the lint is fixed 
 
 ### 4. RULE - write .claude/rules/alfred-project-awareness.md
 
-Generated from `references/run-book-rule.template.md` with `__DOC_PATH__` replaced by the LITERAL docs root (`alfred-docs-root.md` names it; a rule is static text and cannot resolve the setting at load). A REPLACE, never a delete: READ the existing rule first, then Write the fresh one over it. Verify: `grep -c __DOC_PATH__` prints 0 and `wc -c` stays at or under 300 - the rule loads in every session and every subagent. It stays out of the installer's catalog, so an update never overwrites it.
+Generated from `references/run-book-rule.template.md` with `__DOC_PATH__` replaced by the LITERAL docs root (`alfred-docs-root.md` names it; a rule is static text and cannot resolve the setting at load). The last line is an `@` import, which Claude Code resolves from the rule's own folder (`.claude/rules/`), so it keeps its `../../` for a project-relative root; an absolute root drops the `../../`, and a space in the path is written `\ `. A REPLACE, never a delete: READ the existing rule first, then Write the fresh one over it. Verify: `grep -c __DOC_PATH__` prints 0, the import's path resolves (`ls` it from `.claude/rules/`), and `wc -c` stays at or under 450 - the rule and the run book it imports load in every session and every subagent. It stays out of the installer's catalog, so an update never overwrites it; an update only re-points or upgrades the stack's own text.
 
 ### 5. REPORT
 
 A literal line template, one line per field (a table where a field lists several items):
 
 ```text
-Doc:          <created | refreshed> - <docs-path>/project-capabilities/PROJECT-CAPABILITIES.md, sections <touched>
+Doc:          <created | refreshed> - <docs-path>/project-awareness/PROJECT-AWARENESS.md, sections <touched>
 From repo:    <the files DISCOVER read the facts from>
 Asked:        <each question asked with the answer's label, or `none - the repo settled every gap`>
 Unknown:      <the sections or lines still unknown, or `none`>

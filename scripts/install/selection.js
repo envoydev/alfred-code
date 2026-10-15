@@ -574,12 +574,16 @@ function respellDocsRoot({ projectRoot, from, to, log = () => {}, note = () => {
     if (!from || !to || from === to) return 0;
     const escape = (o) => o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const re = new RegExp(`(?<![A-Za-z0-9_./-])${escape(from)}(?![A-Za-z0-9_.-])`, 'g');
+    // The run-book rule's @ import reaches the root from .claude/rules/ (`@../../<root>/...`), so the root there sits
+    // after a slash the pattern above refuses; it takes the import spelling of the new root (docs.js runBookImport).
+    const importRe = new RegExp(`^@\\.\\./\\.\\./${escape(from)}(?=/)`, 'gm');
+    const importOf = (root) => (/^(?:\/|[A-Za-z]:\/|~\/)/.test(String(root).replace(/\\/g, '/')) ? '' : '../../') + root;
     const done = [];
     for (const file of generatedRules(projectRoot))
     {
         let text;
         try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
-        const out = text.replace(re, to);
+        const out = text.replace(re, to).replace(importRe, () => `@${importOf(to)}`);
         if (out === text) continue;
         try { fs.writeFileSync(file, out); done.push(path.basename(file)); }
         catch (err) { note(`${path.basename(file)} still names the docs root ${from} and could not be re-stamped (${err.message}) - re-run its capture`); }

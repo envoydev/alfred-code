@@ -77,6 +77,16 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   orchestration run and at an automatic compaction's start (the summary's 'continue' line stands there, no hold), and
   `guard-stop-contract.js` denies an `AskUserQuestion` still carrying a fresh-session option (check 13, once per ask
   text, the fix handed back with the option dropped and its `(Recommended)` mark moved to the first option left).
+  **The mode banner** (the user's ruling, 2026-10-15): every typed `task-*`, `capture-*`, `loop-*` or `issue-*` command
+  (the expansion matcher takes each family whole) gets two fixed lines its first reply opens with, said once - the
+  expansion fires once per typed command and the lines forbid a repeat: `**Auto-mode: ON**` (each ask answered with its
+  Recommended option, an outward one or an unmarked one still waiting) or `**Auto-mode: OFF**` (each ask waits; the word
+  on a capture or issue command is said to run only on task and loop), then `**Context:**` - auto-mode or
+  `COMPACT_INSTEAD` compacts (at the seeded `autoCompactWindow` when one is set, else Claude Code's own point), offers off
+  compact too, and otherwise the fresh-session refresh past `ctxThreshold()` - with the window and model the engine read,
+  no number invented for an unknown window. It rides AFTER the contract, the compact note or the offer
+  (`expansionOut`), so each of those keeps its shape; a seat, the Skill route and nobody at the terminal get none - judged
+  without the session's own AUTO stamp, which is the auto-mode the banner reports (`auto-mode.test.js`, 'mode banner').
   The fresh-session arithmetic (trigger per window tier, window lookup, cold floor) lives in one
   engine, `fresh-session.js`, which the two fresh-session hooks and the monitor require from their
   own directory; a hook that runs before it lands keeps every offer off. `shell-writes.js` parses a

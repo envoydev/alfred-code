@@ -21,7 +21,7 @@
 //
 //   capture: <skill> - run: read <SKILL.md> | done: <output> exists | skip: <why>
 //     The five captures in their fixed order, each only when the install lists its skill AND its seat
-//     (project-capabilities and agent-capabilities have none). init READS the SKILL.md and follows it inline: these skills are
+//     (project-awareness and agent-awareness have none). init READS the SKILL.md and follows it inline: these skills are
 //     manual-only, so a Skill call is denied. An existing output is done - re-capturing is the user's
 //     call, later. The library copy in .claude/skills wins over the plugin's.
 //
@@ -57,7 +57,7 @@ const CAPTURES = [
     { skill: 'capture-architecture', seat: 'architecture-analyzer', output: (docs) => `${docs}/architecture/ARCHITECTURE.md` },
     { skill: 'capture-code-style', seat: 'code-style-analyzer', output: (docs) => `${docs}/code-style/CODE-STYLE.md` },
     // The run book: no seat - it reads the repo and asks for the gaps in the main session.
-    { skill: 'capture-project-awareness', seat: null, output: (docs) => `${docs}/project-capabilities/PROJECT-CAPABILITIES.md` },
+    { skill: 'capture-project-awareness', seat: null, output: (docs) => `${docs}/project-awareness/PROJECT-AWARENESS.md` },
     // Its own precheck decides whether the generated rule is current - always run when installed.
     { skill: 'capture-agent-awareness', seat: null, output: null },
 ];

@@ -938,7 +938,8 @@ test('guard-fresh-session-start: an abandoned or double-submitted run is not a P
       { hook_event_name: 'UserPromptExpansion', expansion_type: 'slash_command', command_name: name, command_args: '', prompt: `/${name}`, transcript_path: tp },
       { env: logEnv() });
     assert.equal(r.status, 0, 'the slash route never denies');
-    return r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext : '';
+    // the mode banner every typed task-* command carries (2026-10-15) is no offer
+    return (r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext : '').replace(/(?:^|\n\n)Open your reply to this command with these two lines[\s\S]*$/, '');
   };
 
   assert.equal(slash(transcript('ab-dup', [

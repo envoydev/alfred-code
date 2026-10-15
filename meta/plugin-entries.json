@@ -362,7 +362,7 @@
         ],
         "UserPromptExpansion": [
           {
-            "matcher": "(^|[^A-Za-z0-9_-])((alfred-)?(loop-[a-z][a-z0-9-]*|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|usage-report|related-projects|agent-awareness|project-awareness|agent-capabilities|project-capabilities)|task-[a-z][a-z0-9-]*|issue-diagnoser)|security-review|init|setup|update|configure|validate)$",
+            "matcher": "(^|[^A-Za-z0-9_-])((alfred-)?(loop-[a-z][a-z0-9-]*|capture-[a-z][a-z0-9-]*|task-[a-z][a-z0-9-]*|issue-[a-z][a-z0-9-]*)|security-review|init|setup|update|configure|validate)$",
             "hooks": [
               {
                 "type": "command",

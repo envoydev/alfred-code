@@ -124,7 +124,7 @@ test('42951e5b#10: a command the cycle proved wrong is doc drift, named against 
 {
     const mech = flat(read('stack/skills/task-solve/references/step-mechanics.md'));
     assert.match(mech, /A build, test or run command this cycle proved wrong[^.]*is doc drift too/);
-    assert.match(mech, /names the AGENTS\.md line or the run-book section \(`<docs-path>\/project-capabilities\/PROJECT-CAPABILITIES\.md`\)/);
+    assert.match(mech, /names the AGENTS\.md line or the run-book section \(`<docs-path>\/project-awareness\/PROJECT-AWARENESS\.md`\)/);
 });
 
 // ------------------------------------------------------------------ SD15 - the upgrade gate and the execution verdict

@@ -587,18 +587,25 @@ function adoptCredentials({ projectDir, root = DATA_ROOT_DEFAULT, docsPath = `${
             else fs.appendFileSync(toAbs, `${buf.length && buf[buf.length - 1] !== 0x0a ? '\n' : ''}${lines}`);
         }
         fs.rmSync(fromAbs);
+        // The run book left this folder on 2026-10-15 (docs.js migrateRunBook): emptied now, it goes in this same run,
+        // so the next one has nothing left to do. Anything still in it - the run book itself, a .gitignore - keeps it.
+        try { fs.rmdirSync(folder); } catch { /* not empty */ }
     }
     catch (err) { return { state: 'failed', ...at, why: err.code || err.message }; }
     // The run book names the file by a path ending in its name, backticked or bare: each spelling becomes the store's.
+    // It sits at its 2026-10-15 home once an install moved it (docs.js migrateRunBook), at the old one before.
     let repointed = 0;
-    const book = path.join(folder, 'PROJECT-CAPABILITIES.md');
-    try
+    for (const book of [path.resolve(projectDir, String(docsPath), 'project-awareness', 'PROJECT-AWARENESS.md'), path.join(folder, 'PROJECT-CAPABILITIES.md')])
     {
-        const text = fs.readFileSync(book, 'utf8');
-        const next = text.replace(/(?:[\w.\-<>]+\/)*credentials\.local\.env\b/g, () => { repointed += 1; return at.to; });
-        if (repointed) writeText(book, next);
+        try
+        {
+            let n = 0;
+            const text = fs.readFileSync(book, 'utf8');
+            const next = text.replace(/(?:[\w.\-<>]+\/)*credentials\.local\.env\b/g, () => { n += 1; return at.to; });
+            if (n) { writeText(book, next); repointed += n; }
+        }
+        catch { /* no run book here, or one the next capture rewrites */ }
     }
-    catch { /* no run book, or one the next capture rewrites */ }
     return { state: 'moved', ...at, keys, added, repointed };
 }
 // git's answer for a path: true ignored, false not ignored (or tracked), null no repository / no git.

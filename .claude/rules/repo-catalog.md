@@ -95,10 +95,12 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   (`capture-architecture` writes `architecture/ARCHITECTURE.md` and
   `alfred-architecture.md`; the findings go to `capture-architecture-quality`
   (`quality/ARCHITECTURE-ASSESSMENT.md`), the code's to `capture-code-quality` (`quality/CODE-ASSESSMENT.md`), and the
-  run book to `capture-project-awareness` (`project-capabilities/PROJECT-CAPABILITIES.md` and
-  `alfred-project-awareness.md` - how to build, start, reach, log into and hand-check the app, which the
-  ten verifiers, `issue-diagnoser-runtime`, `evidence-gatherer` and `integration-reviewer` read
-  before they run it, pinned as `run-book-read-first`); never in a build flow).
+  run book to `capture-project-awareness` (`project-awareness/PROJECT-AWARENESS.md` - until 2026-10-15
+  `project-capabilities/PROJECT-CAPABILITIES.md`, which `docs.migrateRunBook` moves - and
+  `alfred-project-awareness.md`, whose `@` import loads the whole run book at every session start, the user's
+  ruling of 2026-10-15: how to build, start, reach, log into and hand-check the app, which the
+  ten verifiers, `issue-diagnoser-runtime`, `evidence-gatherer` and `integration-reviewer` follow
+  before they run it, reading the file only when it is not in context, pinned as `run-book-read-first`); never in a build flow).
   `task-solve-cross` is the single entry-point orchestrator (single-stack vertical per
   `references/domain-trio-protocol.md`; cross-domain runs freeze the contract and end at
   `integration-reviewer`; two tasks sharing a directory run as `isolation: "worktree"` seats, which

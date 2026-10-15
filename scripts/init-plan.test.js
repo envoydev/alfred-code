@@ -271,10 +271,10 @@ test('captures: the fixed order; run, done and skip each say why; the library co
     // The run book has no seat: the capture reads the repo and asks in the main session.
     assert.strictEqual(lines[3], `capture: capture-project-awareness - run: read ${libPath('capture-project-awareness')}`);
     assert.strictEqual(lines[4], `capture: capture-agent-awareness - run: read ${libPath('capture-agent-awareness')}`);
-    fs.mkdirSync(path.join(root, 'notes', 'ai', 'project-capabilities'), { recursive: true });
-    fs.writeFileSync(path.join(root, 'notes', 'ai', 'project-capabilities', 'PROJECT-CAPABILITIES.md'), '# run book\n');
+    fs.mkdirSync(path.join(root, 'notes', 'ai', 'project-awareness'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'notes', 'ai', 'project-awareness', 'PROJECT-AWARENESS.md'), '# run book\n');
     const again = render(plan({ inv, root, platform: 'linux', env: E(), probe: NONE })).filter((l) => l.startsWith('capture:'));
-    assert.strictEqual(again[3], 'capture: capture-project-awareness - done: notes/ai/project-capabilities/PROJECT-CAPABILITIES.md exists');
+    assert.strictEqual(again[3], 'capture: capture-project-awareness - done: notes/ai/project-awareness/PROJECT-AWARENESS.md exists');
 
     const bare = render(plan({ inv: INV({ skills: ['capture-agent-awareness'], agents: [] }), root, platform: 'linux', env: E(), probe: NONE }))
         .filter((l) => l.startsWith('capture:'));
