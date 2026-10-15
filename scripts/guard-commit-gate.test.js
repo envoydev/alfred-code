@@ -668,16 +668,16 @@ test('guard-ungated-commit: opening a pull request is consent to publish, a bare
   // the real asks - m2 (review-216-hooks.md): a word between the article and the noun, and 'up' after the verb
   for (const words of ['open the PR', 'open a PR', 'create a pull request', 'raise a PR', 'raise a PR for it', 'please submit the pull request',
     'opening the PR now is fine', 'go ahead and open the pull request', 'open a draft PR', 'open up a PR', 'raise a new PR',
-    'відкрий PR', 'створи пул-реквест', 'открой пулл-реквест', 'создай PR', 'відкрий новий PR', 'создай новый PR']) {
+    'відкрий PR', 'створи пул-реквест', 'відкрий новий PR']) {
     assert.strictEqual(push(words), 0, `consent: ${words}`);
   }
   // m1: the review's 18 sentences about a PR that ask for nothing - an editing verb (make, file), the noun followed by
-  // what is ABOUT the PR, a question, a negation, and every adjectival or negated Ukrainian / Russian form
+  // what is ABOUT the PR, a question, a negation, and every adjectival or negated Ukrainian form
   for (const words of ['the PR is open', 'did you open the PR?', "don't open a PR", 'PR review', 'open the PR in the browser',
     'make the PR description shorter', 'create a PR template', 'file a PR comment on line 4', 'look at the PR',
     'never open a pull request for this', 'не відкривай PR', 'у відкритому PR помилка', 'подальший PR додасть тести',
-    'створений PR має конфлікт', 'в открытом PR ошибка', 'не открывай PR', 'созданный PR упал', 'откройте PR в браузере, я гляну',
-    'PR', 'what does the PR say?', 'the pull request looks odd', 'open the file', 'відкрий файл', 'посмотри PR']) {
+    'створений PR має конфлікт',
+    'PR', 'what does the PR say?', 'the pull request looks odd', 'open the file', 'відкрий файл']) {
     assert.strictEqual(push(words), 2, `no consent: ${words}`);
   }
 });
@@ -761,11 +761,11 @@ test('guard-ungated-commit: consent reads the whole quote, and a negation or a q
     writeReceipt(dir, 'PUSH-GATE', pushReceipt(head, { auth: `authorized: "${words}"` }));
     return gateIn(dir, 'git push');
   };
-  for (const words of ["let's open a PR", 'Открывай PR', 'відкривай PR', 'push it, no need to wait for CI', 'yes, open the PR']) {
+  for (const words of ["let's open a PR", 'відкривай PR', 'push it, no need to wait for CI', 'yes, open the PR']) {
     assert.strictEqual(push(words), 0, `consent: ${words}`);
   }
   for (const words of ['I do not think we should open a PR yet', 'no need to open a PR', 'open a PR? not yet', "don't push yet",
-    'never commit this', 'не пуш поки', 'не открывай PR']) {
+    'never commit this', 'не пуш поки']) {
     assert.strictEqual(push(words), 2, `no consent: ${words}`);
   }
 });
@@ -773,21 +773,19 @@ test('guard-ungated-commit: consent reads the whole quote, and a negation or a q
 // 2.1.6 re-verify 2 R2-M3: the N3 reading refused real consent - a deferral anywhere refused the whole quote, and a
 // clause ran across a spaced dash or 'but' ('commit now, push later', 'no need to ask - just commit it', 'не забудь
 // закомітити') - while 23 of 24 refusals still read as consent ('push is not needed', 'stop committing', 'why did you
-// push?', 'hold the commit'). The reviewer's 46 quotes through a real receipt and `git commit -am x`. R2-m4: the three
+// push?', 'hold the commit'). The reviewer's quotes (36 of its 46, the English and Ukrainian ones) through a real receipt and `git commit -am x`. R2-m4: the three
 // holdouts its fix still read as consent. And consent is per gate class: 'commit it, don't push' opens the commit only.
 const R2_CONSENTS = ['commit now, push later', "commit it, I'll open the PR later", 'no need to ask - just commit it', 'No problem - commit it',
   'never mind the lint warning - push it', 'not sure about the name but commit it', 'no issues - ship it', 'commit and push; we can tidy up later',
   'не забудь закомітити', 'не питай - просто коміть', 'закоміть зараз, а пуш пізніше', 'Не чекай CI - мерж', 'коміть, PR відкриємо пізніше',
-  'не жди CI - мержи', 'коммить сейчас, пуш позже', 'Нет проблем - пушь', "don't forget to commit", "I don't mind - push it",
-  'не забудь закоммитить', 'не спрашивай - просто коммить', 'commit it', 'go ahead and push'];
+  "don't forget to commit", "I don't mind - push it", 'commit it', 'go ahead and push'];
 const R2_REFUSALS = ['push is not needed', "commit isn't what I asked for", 'committing now would be a mistake', 'stop committing',
   'stop pushing to main', 'why did you push?', 'who told you to commit?', 'commit after I review it', 'push tomorrow, not today',
   'yes, but do not commit', 'hold the commit', 'wait with the push', 'the commit message has a typo', 'пушити не треба', 'коміт поки не робимо',
-  'з пушем зачекай', 'мерж завтра', 'давай ще раз перевіримо тести', 'так, але не коміть', 'пушить не надо', 'давай ещё раз проверим тесты',
-  'да, но не коммить', 'зачем ты запушил?', 'коммит пока не делаем'];
+  'з пушем зачекай', 'мерж завтра', 'давай ще раз перевіримо тести', 'так, але не коміть'];
 const R2_HOLDOUT_REFUSALS = ['I will commit it myself', 'пуш не потрібен', 'commit is broken'];
-test('guard-ungated-commit: consent is read per clause and per gate - 46 quotes through a real commit (2.1.6 re-verify 2 R2-M3, R2-m4)', () => {
-  assert.equal(R2_CONSENTS.length + R2_REFUSALS.length, 46);
+test('guard-ungated-commit: consent is read per clause and per gate - 36 quotes through a real commit (2.1.6 re-verify 2 R2-M3, R2-m4)', () => {
+  assert.equal(R2_CONSENTS.length + R2_REFUSALS.length, 36);
   const dir = scratchRepo();
   const commit = (words) => {
     writeReceipt(dir, 'COMMIT-GATE', ['VERIFIED the checkpoint', `authorized: "${words}"`, `head: ${headOf(dir)}`, 'spec: 1 file', 'live-probe: NOT RUN - fixture', FMT].join('\n') + '\n');
@@ -812,7 +810,7 @@ test('guard-ungated-commit: a negated verb of the gate\'s own class refuses that
   assert.strictEqual(commit('yes, but never force-push'), 0, '... and leaves the commit consented');
   assert.strictEqual(push('open the PR, but do not merge it'), 2, 'a refused merge refuses the push gate');
   assert.strictEqual(push('I will push it myself'), 2, 'the user keeping the act is no consent to it');
-  assert.strictEqual(push('сам запушу'), 2, '... in Ukrainian and Russian too');
+  assert.strictEqual(push('сам запушу'), 2, '... in Ukrainian too');
   assert.strictEqual(push('push is fine'), 0, 'a verb followed by a positive state is consent');
   writeReceipt(dir, 'PUSH-GATE', pushReceipt(head, { auth: `authorized: "commit it, don't push"` }));
   assert.match(gateFull(dir, 'git push').stderr, /carries no publish verb left standing \(push, merge, release, ship\) and opens no pull request/, 'the push gate names its own verb class');
@@ -822,33 +820,32 @@ test('guard-ungated-commit: a negated verb of the gate\'s own class refuses that
 
 // 2.1.6 re-verify 3 R3-M1: a consent for one gate opened the other - a standing commit verb consented to a push
 // ('commit it' in a PUSH-GATE receipt) - and a bare 'no' after the verb was not read ('commit yes, push no'). R3-m1:
-// the Ukrainian and Russian publish verbs were no consent verbs at all. 'push after CI' names a condition that holds
+// the Ukrainian publish verbs were no consent verbs at all. 'push after CI' names a condition that holds
 // only after the push (CI runs on it), so it consents to nothing now. Each phrase is judged on both gates:
-// [words, COMMIT-GATE, PUSH-GATE], 0 = consent, 2 = refused - 41 phrases, 82 per-gate cells.
+// [words, COMMIT-GATE, PUSH-GATE], 0 = consent, 2 = refused - 34 phrases, 68 per-gate cells.
 const R3_PER_GATE = [
-  // a commit-only answer opens the commit and never the push (12)
+  // a commit-only answer opens the commit and never the push (9)
   ['commit it', 0, 2], ['go ahead and commit', 0, 2], ['yes, commit this', 0, 2], ['закоміть', 0, 2], ['закоміть це', 0, 2],
-  ['зроби коміт', 0, 2], ['закоммить', 0, 2], ['сделай коммит', 0, 2], ['commit it and stop there', 0, 2], ['commit only', 0, 2],
-  ['тільки коміт', 0, 2], ['только коммит', 0, 2],
-  // a bare no after the verb answers it (5)
-  ['commit yes, push no', 0, 2], ['коміт так, пуш ні', 0, 2], ['коммит да, пуш нет', 0, 2], ['commit no, push yes', 2, 0], ['коміт ні', 2, 2],
-  // the Ukrainian and Russian publish verbs (6) - a push takes the commit with it, so the commit gate reads them too
-  ['мерджи', 0, 0], ['залий', 0, 0], ['залей', 0, 0], ['влей в main', 0, 0], ['викоти', 0, 0], ['выкати', 0, 0],
+  ['зроби коміт', 0, 2], ['commit it and stop there', 0, 2], ['commit only', 0, 2], ['тільки коміт', 0, 2],
+  // a bare no after the verb answers it (4)
+  ['commit yes, push no', 0, 2], ['коміт так, пуш ні', 0, 2], ['commit no, push yes', 2, 0], ['коміт ні', 2, 2],
+  // the Ukrainian publish verbs (4) - a push takes the commit with it, so the commit gate reads them too
+  ['мерджи', 0, 0], ['залий', 0, 0], ['влий в main', 0, 0], ['викоти', 0, 0],
   // a publish conditioned on CI, which runs on the push itself (1)
   ['push after CI', 2, 2],
-  // the rest of the grid (17)
+  // the rest of the grid (16)
   ['yes', 0, 0], ['go ahead', 0, 0], ['push it', 0, 0], ['commit and push', 0, 0], ['ship it', 0, 0], ['merge it', 0, 0],
-  ['open the PR', 0, 0], ['запуш', 0, 0], ['запушь', 0, 0], ['так, пуш', 0, 0], ['давай', 0, 0], ['approved', 0, 0],
+  ['open the PR', 0, 0], ['запуш', 0, 0], ['так, пуш', 0, 0], ['давай', 0, 0], ['approved', 0, 0],
   ["commit it, don't push", 0, 2], ["push it, don't commit", 2, 0], ['do not push', 2, 2], ['не коміть', 2, 2],
   ['yes, commit and open a PR', 0, 0],
 ];
-// The implementer's own 36 holdout phrases (re-verify 2), both gates - the commit-only ones now refuse the push, and a
+// The implementer's own holdout phrases (re-verify 2, 33 of its 36 - the English and Ukrainian ones), both gates - the commit-only ones now refuse the push, and a
 // publish conditioned on CI consents to nothing.
 const R2_HOLDOUT_PER_GATE = [
   ['ok, commit', 0, 2], ['go ahead and commit', 0, 2], ['looks good, commit and push', 0, 0], ['sure - push it', 0, 0],
-  ['please merge it', 0, 0], ['коміть', 0, 2], ['пуш', 0, 0], ['давай, коммить', 0, 2], ['так, пуш', 0, 0],
+  ['please merge it', 0, 0], ['коміть', 0, 2], ['пуш', 0, 0], ['так, пуш', 0, 0],
   ['commit it now', 0, 2], ['yes', 0, 0], ['approved', 0, 0], ['do the commit', 0, 2], ['make a commit and push it', 0, 0],
-  ['Stop the dev server and commit', 0, 2], ['tests pass, so push', 0, 0], ['закомить и запушь', 0, 0], ['коммить и пушь', 0, 0],
+  ['Stop the dev server and commit', 0, 2], ['tests pass, so push', 0, 0],
   ['commit it yourself', 0, 2], ['push when CI is green', 2, 2],
   ["don't commit yet", 2, 2], ['do not push', 2, 2], ['no commit today', 2, 2], ['never push to main', 2, 2],
   ['the push failed', 2, 2], ['was the commit signed?', 2, 2], ['I will push it later', 2, 2], ['не коміть', 2, 2],
@@ -872,12 +869,12 @@ function perGateWrong(rows) {
   }
   return wrong;
 }
-test('guard-ungated-commit: each gate consents on its own act - 82 per-gate cells (2.1.6 re-verify 3 R3-M1, R3-m1)', () => {
-  assert.equal(R3_PER_GATE.length * 2, 82);
+test('guard-ungated-commit: each gate consents on its own act - 68 per-gate cells (2.1.6 re-verify 3 R3-M1, R3-m1)', () => {
+  assert.equal(R3_PER_GATE.length * 2, 68);
   assert.deepStrictEqual(perGateWrong(R3_PER_GATE), []);
 });
-test('guard-ungated-commit: the 36 holdout phrases hold on both gates (2.1.6 re-verify 3 R3-M1)', () => {
-  assert.equal(R2_HOLDOUT_PER_GATE.length, 36);
+test('guard-ungated-commit: the 33 holdout phrases hold on both gates (2.1.6 re-verify 3 R3-M1)', () => {
+  assert.equal(R2_HOLDOUT_PER_GATE.length, 33);
   assert.deepStrictEqual(perGateWrong(R2_HOLDOUT_PER_GATE), []);
 });
 // R4-m1: 'once CI is green' was a deferral for every verb, so 'merge it once CI is green' - the ordinary way to ask for a

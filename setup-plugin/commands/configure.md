@@ -219,8 +219,8 @@ is where the same value can also be edited by hand.
 
 ## 7. MCPs
 
-walk.md's MCPs layer, the two browser asks pre-selected from step 1's plan (step 12 passes a
-changed answer).
+walk.md's MCPs layer, the browser engines picked as rows of their own, pre-selected from step 1's plan (step 12
+passes a changed pick).
 
 Whenever `alfred-memory` is PRESENT after this round - kept from before, or newly pulled in by adding
 `alfred-memory` at step 3 - ask the shared memory level. Read what is registered today first:
@@ -363,8 +363,8 @@ Environment step - every other key in `permissions` (`allow` / `deny` / `ask` /
 
 ## 11. Prerequisite check
 
-Run: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --emit "$TMP/selection.txt" --check [--hooks-answered] [--browsers <csv>] [--config-dir ~/.claude-<space>]`
-(`--hooks-answered` whenever the Hooks area was walked this run, so a walk that switched every hook off emits `hook none` rather than no hook line - which reads as 'every hook'; `--browsers` with the step-7 kept browsers whenever the browser server is kept - a kept `msedge` warns
+Run: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --emit "$TMP/selection.txt" --check [--hooks-answered] [--config-dir ~/.claude-<space>]`
+(`--hooks-answered` whenever the Hooks area was walked this run, so a walk that switched every hook off emits `hook none` rather than no hook line - which reads as 'every hook'; no `--browsers` here: the engines picked at step 7 sit in `raw.json` as `<engine>-control`, and the run prints them as one `browsers: <csv>` line - a picked `msedge` warns
 when Edge is not installed; `--config-dir` under a `--space` profile, so the env probe reads that account's
 settings.json), output redirected to `$TMP/select.out` like every recompute. **Fixed shape, three blocks:** (1) one
 verdict line - `blockers: N · warnings: N`; (2) the closed selection grouped by category - closure
@@ -408,7 +408,7 @@ lands the same revision step 1 previewed. One fixed capture form, always - `2>&1
 "$TMP/install.log"` on the call itself, so the post-install read below has a file that was actually
 written (the shared contract is in `source-protocol.md`'s 'Capture the installer's own output'):
 
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--space <name>] [--keep-pins] [--browsers <csv>] [--browser-enabled <csv|none>] [--scope-of <item>=<global|project|local>]... [--docs-versioning git|local] [--data-path <folder> --data-move move] [--memory-level global|scoped|project] [--rename-claude-md] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. One `--scope-of` per optional item the walk's last ask moved (`references/walk.md`, 'Where each optional item installs'), plus one per newly added item made global - none for 'Keep each where it is': an update keeps every item where it lives, and this flag is the one way one moves. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--space <name>] [--keep-pins] [--browsers <csv>] [--scope-of <item>=<global|project|local>]... [--docs-versioning git|local] [--data-path <folder> --data-move move] [--memory-level global|scoped|project] [--rename-claude-md] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. One `--scope-of` per optional item the walk's last ask moved (`references/walk.md`, 'Where each optional item installs'), plus one per newly added item made global - none for 'Keep each where it is': an update keeps every item where it lives, and this flag is the one way one moves. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
 - **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED` set to `shell`). The frozen OS twin is gone, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
 - `--docs-versioning` only when the user's own invocation names a value (`/alfred-code:configure
   --docs-versioning local`): the installer writes it over the current value and prints the old and new

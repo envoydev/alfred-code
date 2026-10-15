@@ -392,26 +392,26 @@ const MAX_RECEIPT_AGE_MS = 2 * 60 * 60 * 1000; // 2h - the gate runs right befor
 // A PENDING draft placeholder matches the bare prefix, so the prefix alone is never the test
 // (measured: a PENDING draft sat gate-passing for ~2 minutes).
 const CONSENT_VERB = /\b(commit|commits|committing|push|pushes|pushing|land|lands|landing|ship|ships|shipping|merge|merges|merging|publish|publishes|publishing|release|releases|releasing|go ahead|do it|approve[ds]?|yes)\b/i;
-const CONSENT_VERB_CYR = /(закоммит|коммит|коміт|комміт|закоміт|запуш|пуш|залив|злий|мерж|мердж|мёрдж|вле[йв]|зали[йв]|зале[йв]|викот|выкат|злит|відправ|отправ|випуст|выпуст|дава[йй]|погоджу|согласен|схвал|так, |да, )/i;
+const CONSENT_VERB_CYR = /(коміт|комміт|закоміт|запуш|пуш|залив|злий|мерж|мердж|влий|зали[йв]|викот|злит|відправ|випуст|дава[йй]|погоджу|схвал|так, )/i;
 // A WAIVED quote names the review it skips (audit 2026-10-08): skip / waive, without or no review / check / tests, 'just
-// <act>', 'anyway', 'as is' - and the Ukrainian and Russian 'без перевірки', 'пропусти', 'просто <act>', 'як є'.
+// <act>', 'anyway', 'as is' - and the Ukrainian 'без перевірки', 'пропусти', 'просто <act>', 'як є'.
 const WAIVER_WORDS = /\b(?:skip|skips|skipping|skipped|waive[sd]?|waiving|anyway|regardless|as[\s-]is|without\s+(?:the\s+|a\s+|any\s+)?(?:review|check|verification|verify|tests?|testing|probe)|no\s+(?:review|check|verification|tests?|probe)|(?:don'?t|do\s+not|no\s+need\s+to)\s+(?:review|check|verify|test)|just\s+(?:commit|push|merge|ship|land|publish|release|do\s+it|go))\b/i;
-const WAIVER_WORDS_CYR = /(без\s+(?:рев'?ю|ревью|перевір|провер|тест)|пропуст|просто\s+(?:за)?(?:ком|кім|пуш|залий|влий|мерж|мердж|викот|выкат)|як\s+є|как\s+есть|все\s+одно|всё\s+равно|все\s+равно|не\s+(?:треба|потрібно|нужно|надо)\s+(?:перевір|провер|рев))/i;
+const WAIVER_WORDS_CYR = /(без\s+(?:рев'?ю|перевір|тест)|пропуст|просто\s+(?:за)?(?:ком|кім|пуш|залий|влий|мерж|мердж|викот)|як\s+є|все\s+одно|не\s+(?:треба|потрібно)\s+(?:перевір|рев))/i;
 // Opening a pull request asks for the publish under it (2.1.6 H3): the checkpoint skill fires on 'open the PR', and the
 // user's own words were refused as consent. The verb and the PR noun count only together - a bare 'PR' or 'look at the
 // PR' asks for nothing - and only as an ask (review m1 / m2): the verb opens, creates, raises or submits the PR ('make'
 // and 'file' edit one), 'up' may follow it and one word may sit before the noun ('open up a draft PR'), no question or
 // negation leads it ('did you', 'never'), and the noun is not followed by what is ABOUT the PR (its description,
-// template, comment, review, title, body, link or page) or by 'in the browser'. In Ukrainian and Russian the verb is a
+// template, comment, review, title, body, link or page) or by 'in the browser'. In Ukrainian the verb is a
 // whole word in its imperative or infinitive form, never after 'не' / 'ні' - an adjective or a participle
-// ('відкритому', 'созданный') and a negated imperative ('не открывай') are statements.
+// ('відкритому', 'створений') and a negated imperative ('не відкривай') are statements.
 const CONSENT_PR = /(?<!\b(?:did|didn't|do|does|don't|never|not|no)\s+(?:you\s+|we\s+|i\s+)?)\b(?:open|opens|opening|create|creates|creating|raise|raises|raising|submit|submits|submitting)(?:\s+up)?\s+(?:(?:a|an|the)\s+)?(?:[\w-]+\s+)?(?:PR|pull[\s-]?request)s?\b(?!\s+(?:description|template|comment|review|title|body|link|page)s?\b|\s+in\s+(?:the\s+)?browser\b)/i;
-const CONSENT_PR_CYR = /(?<!(?:^|[^\p{L}])(?:не|ні)\s+)(?<!\p{L})(?:відкр(?:ий|ийте|ити|ивай|ивайте)|створ(?:и|іть|ити|юй|юйте)|зроб(?:и|іть|ити)|пода(?:й|йте|ти|вай|вайте)|откр(?:ой|ойте|ыть|ывай|ывайте)|созд(?:ай|айте|ать|авай|авайте)|сдела(?:й|йте|ть))\s+(?:[\p{L}-]+\s+)?(?:PR|ПР|пул+[\s-]?реквест\p{L}*|pull[\s-]?request)(?!\p{L})(?!\s+(?:в|у)\s+браузер)/iu;
+const CONSENT_PR_CYR = /(?<!(?:^|[^\p{L}])(?:не|ні)\s+)(?<!\p{L})(?:відкр(?:ий|ийте|ити|ивай|ивайте)|створ(?:и|іть|ити|юй|юйте)|зроб(?:и|іть|ити)|пода(?:й|йте|ти|вай|вайте))\s+(?:[\p{L}-]+\s+)?(?:PR|ПР|пул+[\s-]?реквест\p{L}*|pull[\s-]?request)(?!\p{L})(?!\s+(?:в|у)\s+браузер)/iu;
 // A quote is read to its OWN closing mark: an apostrophe inside double quotes ("let's open a PR", "don't push") is text,
 // not the end (review re-verify N3). Consent is then read per CLAUSE and per GATE (re-verify 2 R2-M3: a deferral
 // anywhere refused 'commit now, push later', a clause ran across ' - ' and 'but', and 'push is not needed', 'stop
 // committing', 'why did you push?' and 'hold the commit' read as consent):
-//   - a clause ends at . ! ? ; , :, a spaced dash, or 'but / then / але / но / а';
+//   - a clause ends at . ! ? ; , :, a spaced dash, or 'but / then / але / а';
 //   - positive idioms are blanked first ('don't forget to', 'no need to', 'no problem', 'never mind', 'не забудь');
 //   - a consent verb is refused by a negation before it in its clause, 'stop / hold / wait with' right before it, a
 //     negation right after it ('is not needed', 'не треба', 'не потрібен', 'зачекай'), a deferral in its own clause
@@ -431,26 +431,26 @@ const CONSENT_PR_CYR = /(?<!(?:^|[^\p{L}])(?:не|ні)\s+)(?<!\p{L})(?:відк
 //   - a quote past 1,000 characters is no answer (R3-m10), and each clause is found by a binary search over the
 //     sorted clause bounds, so the reader stays linear in the quote.
 const QUOTED = /"([^"\n]*)"|“([^”\n]*)”|'([^'\n]*)'|‘([^’\n]*)’/;
-const CLAUSE_END = /[.!?;,:]|\s[-\u2013\u2014]\s|\s(?:but|then|але|но|а)\s/giu;
-const POSITIVE_IDIOM = /\b(?:don'?t forget(?: to)?|no (?:need|problem|issues?|worries|rush)(?: to \w+)?|never mind|not sure [^,.;]*? but|(?:i )?don'?t mind)\b|(?<!\p{L})(?:не забудь\p{L}*|без проблем|нема проблем|нет проблем)(?!\p{L})/giu;
-const NEGATION_BEFORE = /\b(?:not|no|never|don'?t|doesn'?t|didn'?t|won'?t|shouldn'?t|can'?t|cannot|without)\b|(?<!\p{L})(?:не|ні|нет|ніколи|никогда)(?!\p{L})/iu;
-const STOP_BEFORE = /(?:\b(?:stop|quit|hold off(?: on)?|hold|wait with|wait on)|(?<!\p{L})(?:стоп|зупини\p{L}*|останови\p{L}*))\s+(?:(?:the|with the)\s+)?$/iu;
-const BARE_NO_AFTER = /^[^\p{L}\p{N}]*(?:no|nope|ні|нет|не)[^\p{L}\p{N}]*$/iu;
-const NEGATION_AFTER = /^[^\p{L}\p{N}]*(?:[\p{L}'-]+\s+){0,2}?(?:is(?:n'?t| not)|are(?:n'?t| not)|was(?:n'?t| not)|not (?:needed|necessary|required|now|yet|today)|would be a mistake|не\s+(?:треба|надо|нужно|нужен|нужна|нужны|потрібно|потрібен|потрібна|потрібні|варто|стоит|робимо|делаем|зараз|сейчас)|зачекай|почекай|подожди|погоди)(?!\p{L})/iu;
+const CLAUSE_END = /[.!?;,:]|\s[-\u2013\u2014]\s|\s(?:but|then|але|а)\s/giu;
+const POSITIVE_IDIOM = /\b(?:don'?t forget(?: to)?|no (?:need|problem|issues?|worries|rush)(?: to \w+)?|never mind|not sure [^,.;]*? but|(?:i )?don'?t mind)\b|(?<!\p{L})(?:не забудь\p{L}*|без проблем|нема проблем)(?!\p{L})/giu;
+const NEGATION_BEFORE = /\b(?:not|no|never|don'?t|doesn'?t|didn'?t|won'?t|shouldn'?t|can'?t|cannot|without)\b|(?<!\p{L})(?:не|ні|ніколи)(?!\p{L})/iu;
+const STOP_BEFORE = /(?:\b(?:stop|quit|hold off(?: on)?|hold|wait with|wait on)|(?<!\p{L})(?:стоп|зупини\p{L}*))\s+(?:(?:the|with the)\s+)?$/iu;
+const BARE_NO_AFTER = /^[^\p{L}\p{N}]*(?:no|nope|ні|не)[^\p{L}\p{N}]*$/iu;
+const NEGATION_AFTER = /^[^\p{L}\p{N}]*(?:[\p{L}'-]+\s+){0,2}?(?:is(?:n'?t| not)|are(?:n'?t| not)|was(?:n'?t| not)|not (?:needed|necessary|required|now|yet|today)|would be a mistake|не\s+(?:треба|потрібно|потрібен|потрібна|потрібні|варто|робимо|зараз)|зачекай|почекай)(?!\p{L})/iu;
 const STATEMENT_AFTER = /^\s+(?:is|was|are|were|has been|looks|seems)\s+(?!(?:fine|ok|okay|good|allowed|approved|welcome|alright|all right|safe)\b)/i;
-const DEFERRAL_CLAUSE = /\b(?:not yet|not now|later|hold off|tomorrow|after (?:i|you|we)\b|once (?:i|you)\b|when i\b)|(?<!\p{L})(?:пізніше|позже|почекай|подожди|завтра|потім|потом)(?!\p{L})/iu;
+const DEFERRAL_CLAUSE = /\b(?:not yet|not now|later|hold off|tomorrow|after (?:i|you|we)\b|once (?:i|you)\b|when i\b)|(?<!\p{L})(?:пізніше|почекай|завтра|потім)(?!\p{L})/iu;
 // A wait on CI defers a push, a publish, a release or a ship, but not a MERGE: 'merge it once CI is green' is the ordinary
 // way to ask for the merge CI gates (2.1.6 re-verify 4 R4-m1).
-const CI_DEFERRAL = /\b(?:after|once|when|until|till|as soon as) (?:the )?(?:ci|checks?|pipeline)\b|(?<!\p{L})(?:після|после|коли|когда) (?:CI|ci|сі|пайплайн\p{L}*)(?!\p{L})/iu;
-const MERGE_VERB = /^(?:merge|мерж|мердж|мёрдж)/iu;
-const USER_KEEPS = /\bmyself\b|(?<!\p{L})(?:сам|сама|самі|сами|самостійно|самостоятельно)(?!\p{L})/iu;
+const CI_DEFERRAL = /\b(?:after|once|when|until|till|as soon as) (?:the )?(?:ci|checks?|pipeline)\b|(?<!\p{L})(?:після|коли) (?:CI|ci|сі|пайплайн\p{L}*)(?!\p{L})/iu;
+const MERGE_VERB = /^(?:merge|мерж|мердж)/iu;
+const USER_KEEPS = /\bmyself\b|(?<!\p{L})(?:сам|сама|самі|самостійно)(?!\p{L})/iu;
 const NOUN_BEFORE = /\b(?:the|a|an|this|that|my|your|its|our|last|first|previous|next)\s+$/i;
 const ACT_BEFORE = /\b(?:do|make|create|go ahead with|proceed with|run|finish|approve)\s+(?:the|a|an|this|that|your)\s+$/i;
-const WHY_CLAUSE = /^\s*(?:why|who|did you|have you|what)\b|(?<!\p{L})(?:зачем|навіщо|чому|почему|хто|кто)(?!\p{L})/iu;
-const ANSWERED_NO = /^[^\p{L}\p{N}]*(?:no|nope|not yet|not now|later|не|ні|нет|пізніше|позже|потом|потім)[^\p{L}\p{N}]*$/iu;
-const CLASS_COMMIT = /^(?:commit|land|коміт|комміт|закоміт|коммит|закоммит)/iu;
-const CLASS_PUSH = /^(?:push|publish|release|ship|merge|land|пуш|запуш|випуст|выпуст|відправ|отправ|залив|мерж|мердж|мёрдж|вле[йв]|зали[йв]|зале[йв]|викот|выкат|злий|злит)|\bPR\b|pull|ПР|реквест|^(?:open|create|raise|submit|відкр|откр|створ|созд|пода|зроб|сдела)/iu;
-const GENERIC_CONSENT = /^(?:go ahead|do it|approve[ds]?|yes|дава|погоджу|согласен|схвал|так,|да,)/iu;
+const WHY_CLAUSE = /^\s*(?:why|who|did you|have you|what)\b|(?<!\p{L})(?:навіщо|чому|хто)(?!\p{L})/iu;
+const ANSWERED_NO = /^[^\p{L}\p{N}]*(?:no|nope|not yet|not now|later|не|ні|пізніше|потім)[^\p{L}\p{N}]*$/iu;
+const CLASS_COMMIT = /^(?:commit|land|коміт|комміт|закоміт)/iu;
+const CLASS_PUSH = /^(?:push|publish|release|ship|merge|land|пуш|запуш|випуст|відправ|залив|мерж|мердж|влий|зали[йв]|викот|злий|злит)|\bPR\b|pull|ПР|реквест|^(?:open|create|raise|submit|відкр|створ|пода|зроб)/iu;
+const GENERIC_CONSENT = /^(?:go ahead|do it|approve[ds]?|yes|дава|погоджу|схвал|так,)/iu;
 const CONSENT_QUOTE_CAP = 1000;
 // The first bound past `i` in the sorted bounds, by binary search.
 function boundAfter(bounds, i) {

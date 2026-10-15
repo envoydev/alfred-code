@@ -105,18 +105,19 @@ test('setup: no memory level, the init prerequisites deferred, and a close that 
     assert.ok(!/## \d+\. AGENTS\.md/.test(setup) && /## 6\. AGENTS\.md/.test(cmdBody('init')), 'the AGENTS.md fill moved to init');
 });
 
-// R77: the ENABLE question pre-selects the LIVE state (plan-out) over an install - never the
-// stamp's own line - and every installed engine only on a first install. Setup never meets a stamp
-// any more, so the live read is the DELTA walk's.
-test('the walk: the playwright ENABLE pre-selection reads plan-out\'s live state in DELTA (R77)', () => {
+// R77: the engine pick pre-selects the LIVE state over an install - the table's own rows, which stack-select reads from
+// plan-out's `browser` block (stack-select.test.js) - never the stamp's line. Since 2026-10-15 the engines are rows of
+// their own and no enable question is asked: the run passes no --browser-enabled, so an installed engine keeps its on/off.
+test('the walk: the browser engine pick reads the live install in DELTA and asks no enable question (R77)', () => {
     const walk = walkBody();
     const mcps = flat(walk.slice(walk.indexOf('## MCPs'), walk.indexOf('## Plugins')));
-    assert.match(mcps, /DELTA pre-selects from the LIVE install, never by hand: `node -e '[^']*\.browser\)\)' "\$TMP\/installed\.json"`/);
-    assert.match(mcps, /Never pre-select from the stamp's own `control-enabled:` line/);
-    assert.match(mcps, /pre-selected: `enabled` plus any newly added one in DELTA, every one in FRESH/);
+    assert.match(mcps, /FRESH pre-selects `chrome-control` when it was earned, DELTA every engine the table reads `yes` or `yes \(off\)`/);
+    assert.match(mcps, /No enable question is asked and no `--browser-enabled` is passed: an engine installed now arrives on, one already installed keeps its on\/off/);
+    assert.match(mcps, /The `--emit` run prints a `browsers: <csv>` line - pass it to the installer as `--browsers <csv>`/);
     assert.match(mcps, /18\.7k characters of schema/, 'the per-session cost stays named (R67)');
     // M2: picking a Playwright-built engine installs it in THIS run - the ask says so; init only reports.
-    assert.match(mcps, /Picking one IS installing it, and the question says so in one line: the install downloads a picked `firefox` \/ `webkit`/);
+    assert.match(mcps, /Picking one IS installing it: a picked `firefox` \/ `webkit` is downloaded/);
+    for (const cmd of ['setup', 'configure', 'validate']) assert.ok(!/--browser-enabled/.test(cmdBody(cmd)), `${cmd} passes no enable answer`);
     assert.match(mcps, /`\/alfred-code:init` reports one that is not there/);
     assert.match(flat(cmdBody('setup')), /references\/walk\.md` before step 4 and run it in \*\*FRESH\*\*/);
     assert.match(flat(cmdBody('configure')), /references\/walk\.md` AT step 3, never earlier - [^*]*and run it in \*\*DELTA\*\*/);
@@ -1079,18 +1080,21 @@ test('the data-root question is one ask template in setup and configure - .alfre
     }
 });
 
-// M13: each enabled browser puts about 25 tools into every session, so keeping the browser server is
-// recommended only where the walk seeded it (a web stack) or the evidence proved it; with neither, the
-// ask leads with dropping it. Two templates, one per case, each with its recommended option first.
-test('M13 the browser ask recommends keeping the server only when a stack seeded it or the evidence proved it', () =>
+// M13: each enabled browser puts about 25 tools into every session, so a browser is recommended only where the walk
+// seeded it (a web stack) or the evidence proved it; with neither, a gate leading with leaving them out comes first.
+// Since 2026-10-15 the engines are picked as rows of their own: the gate, then ONE engine pick, chrome first.
+test('M13 the browser ask recommends a browser only when a stack seeded it or the evidence proved it', () =>
 {
     const walk = walkBody();
-    const browser = askBlocks(walk).filter((b) => /Keep the browser server \(Playwright\)\?/.test(b[0]));
-    assert.strictEqual(browser.length, 2, 'one template for a seeded or evidence-proven row, one for the rest');
-    const firsts = browser.map((b) => b.filter((l) => /^- '/.test(l))[0]);
-    assert.match(firsts[0], /^- 'Keep the browser server \(Recommended\)' - [^\n]*(seeded|evidence)/, firsts[0]);
-    assert.match(firsts[1], /^- 'Drop the browser server \(Recommended\)'/, firsts[1]);
-    assert.match(flat(walk), /browser row reads `stack:<name>`, `recommended` or `evidence`[^.]*first template[^.]*otherwise[^.]*second/i);
+    const gate = askBlocks(walk).filter((b) => /Add a browser server \(Playwright\)\?/.test(b[0]));
+    const pick = askBlocks(walk).filter((b) => /^Which browser servers\?/.test(b[0]));
+    assert.strictEqual(gate.length, 1, 'one gate for a row nothing earned');
+    assert.strictEqual(pick.length, 1, 'one engine pick');
+    assert.match(gate[0].filter((l) => /^- '/.test(l))[0], /^- 'Leave the browsers out \(Recommended\)'/);
+    const engines = pick[0].filter((l) => /^- '/.test(l)).map((l) => /^- '([^ ']+)/.exec(l)[1]);
+    assert.deepStrictEqual(engines, ['chrome-control', 'firefox-control', 'msedge-control', 'webkit-control']);
+    assert.match(pick[0].filter((l) => /^- '/.test(l))[0], /^- 'chrome-control \(Recommended\)'/);
+    assert.match(flat(walk), /When the `chrome-control` row reads `stack:<name>`, `recommended` or `evidence`[^.]*ask the engine pick straight away; otherwise[^.]*ask the gate first/);
 });
 
 test('setup and configure name option asks, not typed numbers, for stacks and the add/drop rounds', () =>
@@ -1189,7 +1193,6 @@ test('setup texts read JSON with node -e, never jq', () =>
         const runs = text.split('\n').filter((l) => /(^|[`$(|;&]\s*)jq\s+-/.test(l));
         assert.deepStrictEqual(runs, [], `${rel} runs jq`);
     }
-    assert.match(fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'walk.md'), 'utf8'), /node -e '[^']*\.browser\)\)' "\$TMP\/installed\.json"/);
 });
 
 // ------------------------------------------------------------------ audit 2026-10-11 SD06 (configure step 1)

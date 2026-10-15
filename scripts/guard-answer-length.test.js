@@ -65,9 +65,8 @@ test('Stop allows a wall of text when the user asked for depth', () => {
     }
 });
 
-test('Stop allows a wall of text when the depth request is Ukrainian or Russian', () => {
-    for (const ask of ['розкажи детально', 'опиши покроково', 'розпиши будь ласка', 'напиши план',
-        'расскажи подробно', 'объясни развернуто']) {
+test('Stop allows a wall of text when the depth request is Ukrainian', () => {
+    for (const ask of ['розкажи детально', 'опиши покроково', 'розпиши будь ласка', 'напиши план']) {
         const p = transcript('depth-cyr', ask, [{ type: 'text', text: WALL }]);
         assert.strictEqual(run({ hook_event_name: 'Stop', transcript_path: p }).status, 0, `'${ask}' must lift the cap`);
     }
@@ -307,7 +306,7 @@ test('the correction test counts a short turn carrying a correction marker, afte
     for (const prompt of ['I meant the CI pipeline', 'no, shorter', 'shorter', 'But there is no resume block', 'Why did you stop?',
         'I told you to use the org token', 'Do not commit when you finish the whole work', 'Elementor updated, but the error is still there',
         'It’s wrong approach of CI', 'you forgot the tests', 'I do not want the host in that url', 'that name does not fit',
-        'Okay but do not forget to verify changes', 'you said 30 minutes, but they have passed', 'ні, не так', 'нет, я просил другое']) {
+        'Okay but do not forget to verify changes', 'you said 30 minutes, but they have passed', 'ні, не так', 'ні, я просив інше']) {
         const { rows } = prompted(prompt);
         assert.strictEqual(rows.length, 1, `a correction: ${prompt}`);
         assert.strictEqual(rows[0].hook, 'guard-answer-length.js');

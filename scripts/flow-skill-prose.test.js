@@ -215,11 +215,10 @@ test('M94: task-design keeps the seat method in SKILL.md and the orchestrator ha
     for (const f of seats) assert.match(read(`stack/agents/${f}`), /^\s*-\s*task-design$/m, `${f} preloads it`);
 });
 
-// ---- M95: explain-code's language rule states the Russian fallback --------------------------------------------
-test('M95: explain-code says which language answers a request written in Russian', () => {
+// ---- M95: explain-code's language rule states the fallback language -------------------------------------------
+test('M95: explain-code says which language answers a request in another language', () => {
     const lang = flat(section(body(skill('habits-explain-code')), 'Language'));
-    assert.match(lang, /A request written in Russian is answered in English/);
-    assert.match(lang, /Never use Russian under any circumstances/, 'the author\'s constraint stands');
+    assert.match(lang, /A request written in any other language is answered in English/);
 });
 
 // ---- M96: task-design and verify-plan agree on a missing header ------------------------------------------------

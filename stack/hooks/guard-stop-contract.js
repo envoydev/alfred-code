@@ -520,10 +520,10 @@ const DONE_RE = /\b(done|complete[d]?|finished|committed|landed|green|all tests 
 // 390aebcb, 458953b8), and the run-state words a close uses for its own seats ('Three agents are still building',
 // 0498718d - a wait like 'still running', see RUNNING_ITEM_RE).
 const PENDING_RE = /\b(not pushed|nothing pushed|awaiting|waiting (on|for)|still (?:running|building|working|going)|pending your|next steps?|(?:what|that|which|still) remains?|remains? (?:to|open|pending|outstanding|undone|unpushed|uncommitted)|left to do|yet to|whenever you|when you'?re ready|(when|whenever|once) you say so|un-?pushed|not (?:yet )?(?:run|verified)(?=\**\s*[:\u2013-])|(?<!\bI )never ran|still open|still held for (?:your )?review|(?<!\bno )(?<!\bzero )open items?|put off)\b/i;
-// The same two halves in Ukrainian and Russian (review re-verify N4: an all-Cyrillic stall passed on every tree). The
-// first-person past ('Зробив', 'Сделал', 'Закоммитил') is how a close in either language reports done (re-verify 2 R2-M2).
-const DONE_RE_CYR = /(?<!\p{L})(?:готов[оаі]?|зроблено|виконан[оаі]?|завершен[оаіы]?|закінчен[оаі]?|выполнен[оаы]?|сделан[оаы]?|закончен[оаы]?|закомічено|закоммичено|запушено|злито|слито|(?:з|за|ви|до|пере)?(?:робив|робила|робили|виконав|виконала|виконали|завершив|завершила|завершили|закінчив|закінчила|закінчили|комітив|комітила|комітили|пушив|пушила|пушили)|(?:с|за|вы|до|пере)?(?:делал|делала|делали|выполнил|выполнила|выполнили|завершил|завершила|завершили|закончил|закончила|закончили|коммитил|коммитила|коммитили|пушил|пушила|пушили))(?!\p{L})/iu;
-const PENDING_RE_CYR = /(?<!\p{L})(?:чекаю|очікую|жду|ожидаю|(?:ще|досі|все ще|ещё|еще|всё ещё|все еще)\s+(?:працю|викону|триває|работа|выполня|ид[её]т)\p{L}*|наступн\p{L}*\s+крок\p{L}*|следующ\p{L}*\s+шаг\p{L}*|залишил\p{L}*|лишилось|осталось|ще не|ещё не|еще не|коли будеш готов\p{L}*|когда будешь готов\p{L}*|(?:коли|як|когда|как) скаж\p{L}*)(?!\p{L})/iu;
+// The same two halves in Ukrainian (review re-verify N4: an all-Cyrillic stall passed on every tree). The
+// first-person past ('Зробив', 'Закомітив') is how a Ukrainian close reports done (re-verify 2 R2-M2).
+const DONE_RE_CYR = /(?<!\p{L})(?:готов[оаі]?|зроблено|виконан[оаі]?|завершен[оаі]?|закінчен[оаі]?|закомічено|запушено|злито|(?:з|за|ви|до|пере)?(?:робив|робила|робили|виконав|виконала|виконали|завершив|завершила|завершили|закінчив|закінчила|закінчили|комітив|комітила|комітили|пушив|пушила|пушили))(?!\p{L})/iu;
+const PENDING_RE_CYR = /(?<!\p{L})(?:чекаю|очікую|(?:ще|досі|все ще)\s+(?:працю|викону|триває)\p{L}*|наступн\p{L}*\s+крок\p{L}*|залишил\p{L}*|лишилось|ще не|коли будеш готов\p{L}*|(?:коли|як) скаж\p{L}*)(?!\p{L})/iu;
 // DONE_RE and PENDING_RE judge PROSE, and three measured false positives came from reading
 // something else. A block costs the whole turn, so the two halves are tested against a SCRUBBED
 // copy of the close:
@@ -708,7 +708,7 @@ function liveBackgroundWork() {
 // running') blocking whatever it is called.
 const RUNNING_NOUN_RE = /\b(?:agents?|reviews?|reviewers?|implementers?)\b[^.\n]{0,40}\b(?:(?:still |now |currently )?(?:running|executing|in progress|queued)|(?:still |currently )(?:building|working)|in the background|backgrounded)\b/i;
 const WAKE_RE = /\b(?:wakes? me|(?:when|once|as soon as) (?:it|they|either|both|each) (?:reports?|lands?|finish(?:es)?|completes?))\b/i;
-const RUNNING_NOUN_CYR = /(?<!\p{L})(?:агент|рев'?ю|ревью|імплементер|рецензент)\p{L}*[^.\n]{0,40}(?<!\p{L})(?:ще|досі|все ще|ещё|еще|всё ещё|все еще)\s+(?:працю|викону|работа|выполня)\p{L}*/iu;
+const RUNNING_NOUN_CYR = /(?<!\p{L})(?:агент|рев'?ю|імплементер|рецензент)\p{L}*[^.\n]{0,40}(?<!\p{L})(?:ще|досі|все ще)\s+(?:працю|викону)\p{L}*/iu;
 // The close is a status line over that work only when every pending item it states is a WAIT on running work -
 // 'still running', 'waiting on / for', 'awaiting' - and none is a step (a next step, what remains, what is left, a
 // hand-back). A wait whose object is the user ('awaiting your go-ahead', 'waiting on you') is a hand-back whatever
@@ -716,19 +716,19 @@ const RUNNING_NOUN_CYR = /(?<!\p{L})(?:агент|рев'?ю|ревью|імпл
 // among them 'The refactor is done and the dev server is running. Next step: ...' and 'The review agent is queued;
 // next step is task 5.', whose pending item is a step, not the running work).
 // A WAIT is on the running work only when it names that work (review re-verify N-B2): of the first 6 words after
-// 'awaiting' / 'waiting on / for' (`чекаю` / `очікую` / `жду` / `ожидаю`), an approval-shaped noun makes it a hand-back
+// 'awaiting' / 'waiting on / for' (`чекаю` / `очікую`), an approval-shaped noun makes it a hand-back
 // ('awaiting approval to commit', 'waiting for the go-ahead', 'чекаю на підтвердження'), and only a work noun makes it
 // a wait ('waiting on its report', 'awaiting its verdict') - a wait the lists do not know blocks, the safe side.
-// 'still running' (`ще працює`, `ещё работает`) stays a wait. A hand-back also says so outright: 'tell me', 'let me
-// know', 'your call', 'up to you', or a wait on 'you' / 'your' in any of the three languages.
+// 'still running' (`ще працює`) stays a wait. A hand-back also says so outright: 'tell me', 'let me
+// know', 'your call', 'up to you', or a wait on 'you' / 'your' in English or Ukrainian.
 // Re-verify 3 R3-m2 adds the hand-backs no list named ('over to you', 'the push is yours', 'your move', 'за тобою',
-// 'дай знать', 'скажи - і я запушу', 'напиши, коли'), and R3-m3 narrows 'tell me' / 'let me know' to the imperative -
+// 'дай знати', 'скажи - і я запушу', 'напиши, коли'), and R3-m3 narrows 'tell me' / 'let me know' to the imperative -
 // opening a clause or after 'please' / 'just' / 'and' - since 'the verifier will tell me if anything is off' reports.
-const HANDBACK_RE = /\b(?:awaiting|waiting (?:on|for)) (?:you|your|the user'?s?)\b|\bnothing reports\b|(?:^|[.!;:,(]\s*|\n\s*|\s[-\u2013]\s+|\b(?:please|just|and|so|then)\s+)(?:tell me|let me know)\b(?!,?\s+(?:if|in case|how|what|whether|about)\b(?!\s+to\b))|\b(?:your call|up to you|over to you|on you|(?:is|are|'s) yours|yours to|your (?:move|court|signal|nod|turn)|ping me\b(?!,?\s+(?:if|in case|how|what|whether|about)\b(?!\s+to\b)))\b|(?<!\p{L})(?:чекаю|очікую|жду|ожидаю)\s+(?:на\s+)?(?:твоє|ваше|твого|вашого|твоего|вашего|твоё|твой|ваш|твою|вашу|твоя|ваша)(?!\p{L})|(?<!\p{L})(?:за (?:тобою|тобой|вами)|дай(?:те)? знат\p{L}*|скажи(?:те|ть)?|напиши(?:те|ть)?)(?!\p{L})(?!,?\s+(?:якщо|если|як|как|що|что)(?!\p{L}))/iu;
-const APPROVAL_WORDS = /\b(?:approval|allow|go-?ahead|sign-?off|confirmation|decision|answer|input|reply|ok|okay|green light|call|choice|pick|permission|feedback|instructions?)\b|(?<!\p{L})(?:рішенн|решени|підтвердженн|подтверждени|згод|согласи|дозвол|разрешени|схвал|одобрени|відповід|ответ|вказівк|указани)\p{L}*/iu;
+const HANDBACK_RE = /\b(?:awaiting|waiting (?:on|for)) (?:you|your|the user'?s?)\b|\bnothing reports\b|(?:^|[.!;:,(]\s*|\n\s*|\s[-\u2013]\s+|\b(?:please|just|and|so|then)\s+)(?:tell me|let me know)\b(?!,?\s+(?:if|in case|how|what|whether|about)\b(?!\s+to\b))|\b(?:your call|up to you|over to you|on you|(?:is|are|'s) yours|yours to|your (?:move|court|signal|nod|turn)|ping me\b(?!,?\s+(?:if|in case|how|what|whether|about)\b(?!\s+to\b)))\b|(?<!\p{L})(?:чекаю|очікую)\s+(?:на\s+)?(?:твоє|ваше|твого|вашого|ваш|твою|вашу|твоя|ваша)(?!\p{L})|(?<!\p{L})(?:за (?:тобою|вами)|дай(?:те)? знат\p{L}*|скажи(?:те|ть)?|напиши(?:те|ть)?)(?!\p{L})(?!,?\s+(?:якщо|як|що)(?!\p{L}))/iu;
+const APPROVAL_WORDS = /\b(?:approval|allow|go-?ahead|sign-?off|confirmation|decision|answer|input|reply|ok|okay|green light|call|choice|pick|permission|feedback|instructions?)\b|(?<!\p{L})(?:рішенн|підтвердженн|згод|дозвол|схвал|відповід|вказівк)\p{L}*/iu;
 // forks, subagents and workers are the async agents by another name ('Waiting on the other 3 forks', 177c5743)
-const WORK_WORDS = /\b(?:forks?|subagents?|workers?|designers?|diagnosers?|analy[sz]ers?|resolvers?|gatherers?|plans?|findings|digests?|agents?|reviews?|reviewers?|implementers?|verifiers?|auditors?|seats?|jobs?|runs?|builds?|tests?|suites?|ci|pipelines?|workflows?|deploys?|reports?|verdicts?|results?|notices?|watchers?|monitors?|packages?|it|its|them|their)\b|(?<!\p{L})(?:агент|рев'?ю|ревью|рецензент|звіт|отч[её]т|збірк|сборк|тест|пайплайн|результат|вердикт|перевірк|проверк)\p{L}*/iu;
-const RUNNING_ITEM_RE = /^(?:still (?:running|building|working|going)|(?:ще|досі|все ще|ещё|еще|всё ещё|все еще)\s+(?:працю|викону|триває|работа|выполня|ид[её]т)\p{L}*)$/iu;
+const WORK_WORDS = /\b(?:forks?|subagents?|workers?|designers?|diagnosers?|analy[sz]ers?|resolvers?|gatherers?|plans?|findings|digests?|agents?|reviews?|reviewers?|implementers?|verifiers?|auditors?|seats?|jobs?|runs?|builds?|tests?|suites?|ci|pipelines?|workflows?|deploys?|reports?|verdicts?|results?|notices?|watchers?|monitors?|packages?|it|its|them|their)\b|(?<!\p{L})(?:агент|рев'?ю|рецензент|звіт|збірк|тест|пайплайн|результат|вердикт|перевірк)\p{L}*/iu;
+const RUNNING_ITEM_RE = /^(?:still (?:running|building|working|going)|(?:ще|досі|все ще)\s+(?:працю|викону|триває)\p{L}*)$/iu;
 // A hand-back needs no pending word (re-verify 2 R2-B1): 'Push when you approve', 'I need your go-ahead', 'awaiting a
 // review from you', 'waiting for it to be approved', 'Confirm and I push' each hand the next act to a person. The
 // real closes' own disclaimer ('Nothing needs your decision') is scrubbed first, and so is a negated one ('not your call').
@@ -738,15 +738,15 @@ const NO_HANDBACK_RE = /\b(?:nothing|no (?:[\w-]+ )?(?:decision|input|action|ans
 // 'by the user' asks only after an approval passive ('approved by the user', never 'requested by the user'), and a
 // sentence-initial 'Confirm' / 'Pick' only as a word ('Pick-up of task 4' reports).
 const PERSON_ASK_RE = /\b(?:your|the user'?s)\s+(?:[\w-]+\s+){0,2}?(?:approval|allow|go-?ahead|sign-?off|confirmation|decision|answer|input|reply|ok|okay|green light|choice|pick|permission|feedback|instructions?|say-?so|word|call|signal|nod|look|move|turn|court)\b(?!\s+(?!(?:to|before|on|for|and|or|so|then|is|was|are|were|first|here|now|please|in|at|from|with|by|if|when|once|after|of|i)\b)[a-z])|\byour (?:own|manual)\s+[\w-]+|\b(?:for|after|pending|until) your (?:review|look|check|test(?:ing)?)\b|\bfrom (?:you|the user)\b|\b(?:approved|confirmed|signed off|reviewed|decided|authori[sz]ed|accepted|ok'?e?d) by (?:you|the user)\b|\b(?:when(?:ever)?|once|if|after|until|as soon as) you(?:'ve| have)? (?:approve|confirm|decide|say|choose|pick|review|sign|give|agree|check|test|ok|look|read|see)\w*|\bwhen(?:ever)? you(?:'re| are) ready\b|\bsay the word\b|(?:^|[.!;:]\s+|\n\s*)(?:please\s+)?(?:confirm|approve|decide|choose|pick)(?![-\w])|\byou (?:need to|have to|should|can|may|must) (?:approve|confirm|decide|review|sign|check|test|run|merge|push)\b|\bto be (?:approved|reviewed|confirmed|signed off)\b|\b(?:them|it) to (?:approve|sign|confirm|review)\b|\bI need (?:your|you|a|an|the) (?:[\w-]+ )?(?:approval|go-?ahead|sign-?off|confirmation|decision|answer|ok|okay|input)\b/i;
-const PERSON_ASK_CYR = /(?<!\p{L})(?:тво|твій|твої|ваш)\p{L}*\s+(?:\p{L}+\s+){0,2}?(?:(?:схвал|рішенн|решени|підтвердж|подтвержд|згод|согласи|дозвол|разрешени|одобр|відповід|ответ|команд|апрув|усмотрени|розсуд|сигнал)\p{L}*|ок|окей|хід|ход)(?!\p{L})|(?<!\p{L})(?:на|для|після|после|до)\s+(?:тво|ваш)\p{L}*\s+(?:рев'?ю|ревью|перевірк|проверк)\p{L}*|(?<!\p{L})(?:від|от) (?:тебе|тебя|вас)(?!\p{L})|(?<!\p{L})(?:коли|когда|як тільки|как только)\s+(?:ти |ты |ви |вы )?(?:скаж|підтверд|подтверд|схвал|одобр|виріш|реш|перевір|провер|глян|подив|посмотр)\p{L}*/iu;
+const PERSON_ASK_CYR = /(?<!\p{L})(?:тво|твій|твої|ваш)\p{L}*\s+(?:\p{L}+\s+){0,2}?(?:(?:схвал|рішенн|підтвердж|згод|дозвол|відповід|команд|апрув|розсуд|сигнал)\p{L}*|ок|окей|хід)(?!\p{L})|(?<!\p{L})(?:на|для|після|до)\s+(?:тво|ваш)\p{L}*\s+(?:рев'?ю|перевірк)\p{L}*|(?<!\p{L})від (?:тебе|вас)(?!\p{L})|(?<!\p{L})(?:коли|як тільки)\s+(?:ти |ви )?(?:скаж|підтверд|схвал|виріш|перевір|глян|подив)\p{L}*/iu;
 // A pending act handed over in the imperative or the infinitive (re-verify 3 R3-m2): a clause that OPENS on the act
-// verb, followed by what the act takes ('Push once you have looked it over', 'Merge when ready', 'Пушить - на твоё
-// усмотрение'), is the user's to do - the model's own future is 'I push' / 'запушу'. A compound noun ('Merge
+// verb, followed by what the act takes ('Push once you have looked it over', 'Merge when ready', 'Пушити - на твій
+// розсуд'), is the user's to do - the model's own future is 'I push' / 'запушу'. A compound noun ('Merge
 // conflicts resolved', 'Release notes updated') opens on no act.
-const OPEN_ACT_RE = /(?:^|[.!;:,]\s+|\n\s*|\s[-–]\s+)(?:please\s+|just\s+)?(?:push|merge|commit|deploy|release|ship|publish)\s+(?:it|this|that|them|the|to|when|whenever|once|after|if|on|now|as soon)\b|(?:^|[.!;:,]\s+|\n\s*|\s[-–]\s+)(?:за|з)?(?:пуш|мерж|мердж|депло|коміт|коммит)\p{L}*(?:ти|ть|іть|ите)(?!\p{L})/iu;
+const OPEN_ACT_RE = /(?:^|[.!;:,]\s+|\n\s*|\s[-–]\s+)(?:please\s+|just\s+)?(?:push|merge|commit|deploy|release|ship|publish)\s+(?:it|this|that|them|the|to|when|whenever|once|after|if|on|now|as soon)\b|(?:^|[.!;:,]\s+|\n\s*|\s[-–]\s+)(?:за|з)?(?:пуш|мерж|мердж|депло|коміт)\p{L}*(?:ти|ть|іть)(?!\p{L})/iu;
 // A past report is no hand-back ('Pushed after your approval.', 'Запушив після твого схвалення.'): a clause opening on
 // the act or a done verb in the past is blanked before the future-frame read (re-verify 3 R3-M2).
-const PAST_REPORT_CLAUSE = /(?:^|(?<=[.!?;:,\n]\s*)|(?<=\s[-–]\s))\s*(?:(?:I|we|it)\s+)?(?:(?:have|has|had|was|were)\s+)?(?:pushed|merged|committed|deployed|released|shipped|published|landed|opened|created|applied|finished|completed)\b[^.!?;\n]*|(?:^|(?<=[.!?;:,\n]\s*))\s*(?:(?:я|мы|ми)\s+)?(?:(?:за|з|с|ви|вы|до|пере)?(?:пуш|мерж|мердж|коміт|комміт|коммит|депло[їи]|роб|дел|викон|выполн|заверш|закінч|законч)\p{L}*?(?:ив|ила|или|ил|ів|ав|ала|али|ал|нув|нул)|зли(?:в|ла|ли|л)|сли(?:л|ла|ли))(?!\p{L})[^.!?;\n]*/giu;
+const PAST_REPORT_CLAUSE = /(?:^|(?<=[.!?;:,\n]\s*)|(?<=\s[-–]\s))\s*(?:(?:I|we|it)\s+)?(?:(?:have|has|had|was|were)\s+)?(?:pushed|merged|committed|deployed|released|shipped|published|landed|opened|created|applied|finished|completed)\b[^.!?;\n]*|(?:^|(?<=[.!?;:,\n]\s*))\s*(?:(?:я|ми)\s+)?(?:(?:за|з|ви|до|пере)?(?:пуш|мерж|мердж|коміт|комміт|деплої|роб|викон|заверш|закінч)\p{L}*?(?:ив|ила|или|ів|ав|ала|али|нув)|зли(?:в|ла|ли))(?!\p{L})[^.!?;\n]*/giu;
 function handsBack(closeTail) {
   const t = closeTail.replace(NO_HANDBACK_RE, ' ').replace(NOTHING_PENDING_RE, ' ');
   return HANDBACK_RE.test(t) || PERSON_ASK_RE.test(t) || PERSON_ASK_CYR.test(t) || OPEN_ACT_RE.test(t);
@@ -770,7 +770,7 @@ function pendingItems(closeTail) {
 }
 function itemIsAWait(closeTail, m) {
   if (RUNNING_ITEM_RE.test(m[0])) return true;
-  if (!/^(?:awaiting|waiting (?:on|for)|чекаю|очікую|жду|ожидаю)$/iu.test(m[0])) return false; // a step, not a wait
+  if (!/^(?:awaiting|waiting (?:on|for)|чекаю|очікую)$/iu.test(m[0])) return false; // a step, not a wait
   const object = closeTail.slice(m.index + m[0].length).split(/\s+/).filter(Boolean).slice(0, 6).join(' ');
   // a bare 'awaiting review' names no running seat, and the FIRST noun decides: work before approval is a wait on the
   // work ('awaiting the verifier's answer'), approval first is a hand-back (re-verify 2 R2-B1, R2-m3); the running
@@ -861,7 +861,7 @@ function answersOthersOpen(closeTail) {
 // asked for (audit 2026-10-11 SD10, session 2ca8e8ee: 'Show me the merge order as sentences' got a read-only git survey
 // and a list opening on a ticket 'committed ... waiting for its PR'; the done-close block forced a 'Nothing is waiting
 // on me' retry at 338k). The model's own next move, an approval hand-back or any changing call keeps the close judged.
-const INFO_PROMPT_RE = /^\s*(?:please\s+|can you\s+|could you\s+)?(?:show|list|explain|describe|summari[sz]e|tell me|give me|walk me through|what|which|how|why|where|who|whose|is|are|was|were|does|do|did|has|have)\b|\?\s*$|^\s*(?:покажи|поясни|розкажи|расскажи|що|чому|як|де|что|почему|как|где)(?!\p{L})/iu;
+const INFO_PROMPT_RE = /^\s*(?:please\s+|can you\s+|could you\s+)?(?:show|list|explain|describe|summari[sz]e|tell me|give me|walk me through|what|which|how|why|where|who|whose|is|are|was|were|does|do|did|has|have)\b|\?\s*$|^\s*(?:покажи|поясни|розкажи|що|чому|як|де)(?!\p{L})/iu;
 const READ_ONLY_TOOL_RE = /^(?:Read|Grep|Glob|LS|WebFetch|WebSearch|ToolSearch|TodoWrite|TaskOutput|BashOutput)$|^mcp__.+__(?:find|get|search|list|read|query|resolve|fetch)[\w-]*$/i;
 const READ_HEAD_RE = /^(?:ls|cat|head|tail|grep|egrep|fgrep|rg|wc|cut|sort|uniq|tr|column|echo|printf|pwd|cd|true|stat|file|du|df|which|whoami|date|uname|tree|jq|diff|cmp|realpath|basename|dirname|nl|awk)$/;
 const GIT_SAFE_SUB = /^(?:status|log|show|diff|rev-parse|rev-list|ls-files|ls-tree|ls-remote|describe|blame|shortlog|merge-base|cat-file|for-each-ref|show-ref|grep|name-rev|check-ignore|cherry|fetch)$/;
@@ -2237,8 +2237,8 @@ const AUTO_OUTWARD_RE = new RegExp([
   String.raw`\b(?:drop(?:s|ped|ping)?|truncat(?:e|es|ed|ing))\b[^.;?\n]{0,10}\b(?:it|them)\b[^\n]{0,80}\b(?:database|db|tables?|schemas?)\b`,
   String.raw`\b(?:databases?|db|tables?|schemas?)\b[^\n]{0,80}\bdrop(?:s|ped|ping)?\b`,
   String.raw`\bforce[- ]?push|--force\b|\brotat(?:e|es|ed|ing|ion)\b|\brevok(?:e|es|ed|ing)\b|\b(?:pay|purchas(?:e|es|ed|ing)|buy|charg(?:e|ed|ing))\b`,
-  // The user's other languages (alfred-interaction: answer in the language of the user's prompts).
-  '(?:запуш|пуш|змерж|смерж|мерж|задеплой|деплой|опублік|опублик|надісл|відправ|отправ|реліз|релиз|видали\\S*\\s+\\S*\\s*(?:гілк|ремоут|remote)|удали\\S*\\s+\\S*\\s*(?:ветк|remote))',
+  // Ukrainian (alfred-interaction: answer in the language of the user's prompts).
+  '(?:запуш|пуш|змерж|мерж|задеплой|деплой|опублік|надісл|відправ|реліз|видали\\S*\\s+\\S*\\s*(?:гілк|ремоут|remote))',
 ].join('|'), 'i');
 function autoAnswers(questions) {
   if (!Array.isArray(questions) || !questions.length) return null;

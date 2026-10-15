@@ -119,10 +119,10 @@ const HARD_CAP = 1800; // block: double the budget with no depth request = a wal
 // narrow: 'explain X' does NOT qualify - the rule caps explanations too ('whether it is work
 // output or an explanation'); only an ask for depth, length or a written document does.
 const DEPTH_RE = /\b(in detail|detailed|more detail|deep ?dive|in ?depth|elaborate|expand on|walk me through|step[- ]by[- ]step|full (breakdown|analysis|report|list|picture|write[- ]?up)|comprehensive|thorough(ly)?|verbose|long(er)? (answer|version|form)|everything (you|about)|write (me )?(a|the) (plan|report|doc|document|spec|summary)|don'?t (be )?(short|brief))\b/i;
-// The same ask in the user's other languages. Kept as its own pattern because JS \b is ASCII-only -
+// The same ask in Ukrainian. Kept as its own pattern because JS \b is ASCII-only -
 // a word boundary around a Cyrillic stem never matches, so these are matched as bare substrings
-// (stems only: 'детальн' covers детально / детальніше / детальный).
-const DEPTH_RE_CYR = /(детальн|докладн|подробн|розгорнут|развернут|покроков|пошагов|крок за кроком|шаг за шагом|розпиши|распиши|розбір|разбор|напиши план|повністю|полностью|поясни глибше|глибше|глубже)/i;
+// (stems only: 'детальн' covers детально / детальніше / детальний).
+const DEPTH_RE_CYR = /(детальн|докладн|розгорнут|покроков|крок за кроком|розпиши|розбір|напиши план|повністю|поясни глибше|глибше)/i;
 
 // A first-person retraction of something this run already said. 'Sorry' alone is not one, and
 // neither is a correction the run is making to somebody else's work - the exemption is for the
@@ -278,7 +278,7 @@ function correctionStreak(currentPrompt) {
 // turns exist in the corpus to measure them.
 const CORRECTION_STRONG_RE = /^\W*(?:no|nope|nah|wrong|incorrect|not (?:that|this|what|quite|like that|right|correct)|undo|revert|roll ?back)\b|(?:^|[.,;:!?]\s*|\b(?:but|and|please|pls|so|then|also|just)\s+)(?:do not|don'?t|dont|never|stop \w+ing)\b|\byou (?:did not|didn'?t|didnt|have not|haven'?t|havent|should not|shouldn'?t|forgot|missed|ignored|broke|skipped|removed|deleted|dropped|lost|said|told)\b|\bwhy (?:did |do |are |have |haven'?t |didn'?t |would |were )?you\b(?! (?:cannot|can'?t|can not|couldn'?t)\b)|\bi (?:said|asked|told you|meant|wanted|did not ask|didn'?t ask|never asked|already (?:said|told|asked))\b|\b(?:still|again) (?:there|broken|fail\w*|wrong|the same|red|happen\w*|error\w*|doesn'?t|does not|isn'?t|is not|not)\b|\bsame (?:error|issue|problem|bug)\b|\b(?:that'?s|that is|this is|it'?s|it is) (?:wrong|incorrect|not (?:right|correct|what|how|it))\b|\bnot what i\b|\bi (?:do not|don'?t|dont|did not|didn'?t) (?:want|need|like)\b|\b(?:does not|doesn'?t|did not|didn'?t) (?:fit|work|help|make sense)\b|\bnot working\b|\b(?:too (?:long|much text|verbose|many words|complicated|complex)|a lot of text|less text|shorter|simpler|more concise)\b/i;
 const CORRECTION_WEAK_RE = /^\W*but\b|^\W*(?:ok(?:ay)?|yes|yeah|fine|sure|good|right)\b\W*but\b|^\W*stop\b|\binstead\b|(?<!\b(?:what|which|how|whether|where|when|who|why)\b[^.,;:!?\n]{0,60})\b(?:it|this|that|they|these|those|there) should(?:n'?t| not| have| be| stay| use| go)\b/i;
-const CORRECTION_CYR_RE = /(?<![\p{L}])(?:ні(?=[\s,.!]|$)|нет(?=[\s,.!]|$)|не (?:так|те|то)(?![\p{L}])|не ?правильн|не (?:треба|потрібно|надо|нужно|роби|делай)(?![\p{L}])|я (?:ж )?(?:казав|просив|говорив|сказав|говорил|просил|сказал)|(?:чому ти|почему ты)(?! не мож)|навіщо ти|зачем ты|коротше|покороче|простіше|проще|забагато|слишком|(?:та сама|та ж|та же|та самая) (?:помилк|ошибк|проблем)|не (?:працює|работает)|(?:досі|все ще|всё ещё|все еще) не(?![\p{L}]))/iu;
+const CORRECTION_CYR_RE = /(?<![\p{L}])(?:ні(?=[\s,.!]|$)|не (?:так|те)(?![\p{L}])|не ?правильн|не (?:треба|потрібно|роби)(?![\p{L}])|я (?:ж )?(?:казав|просив|говорив|сказав)|чому ти(?! не мож)|навіщо ти|коротше|простіше|забагато|(?:та сама|та ж) (?:помилк|проблем)|не працює|(?:досі|все ще) не(?![\p{L}]))/iu;
 function correctionMarker(text) {
   const t = String(text || '').replace(/[‘’]/g, "'").trim();
   const m = t.match(CORRECTION_STRONG_RE) || t.match(CORRECTION_CYR_RE) || (!t.includes('?') && t.match(CORRECTION_WEAK_RE));

@@ -479,7 +479,7 @@ merge - write it by running `node "$TMP/repo/scripts/stamp-docs-root.js" <projec
 (it reads and writes the stamp's scope file, as the installer does), which re-probes at the write instead of trusting the
 table's preview a step stale, and report its printed line. Every other accepted row still goes
 through the generic merge. Emit + prereq-check it -
-`node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/final.json" --graph "$TMP/repo/meta/stack-graph.json" --emit "$TMP/selection.txt" --check [--browsers <csv>] [--config-dir ~/.claude-<space>]` (`--browsers` with the kept browsers whenever the browser server is kept, so a kept `msedge` warns when Edge is not installed)
+`node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/final.json" --graph "$TMP/repo/meta/stack-graph.json" --emit "$TMP/selection.txt" --check [--config-dir ~/.claude-<space>]` (an added browser's engines sit in `final.json` as `<engine>-control`; the run prints them as one `browsers: <csv>` line, and a picked `msedge` warns when Edge is not installed)
 (`--config-dir` under a `--space`
 profile), output to `$TMP/select.out` - then:
 
@@ -490,15 +490,15 @@ profile), output to `$TMP/select.out` - then:
   closure re-requires but no accepted add names - report it as staying off) and `keep-parked plugin
   <name>` (a parked plugin the read-back would enable - a `--drop` whenever the installer runs, no
   reason on its own to run it). Otherwise:
-  `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope "$(node "$TMP/repo/scripts/install/stamp.js" scope .)" --installed-only [--add '<line>']... [--drop '<line>']... [--browsers <csv> --browser-enabled <csv|none>] 2>&1 | tee "$TMP/install.log"`
+  `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope "$(node "$TMP/repo/scripts/install/stamp.js" scope .)" --installed-only [--add '<line>']... [--drop '<line>']... [--browsers <csv>] 2>&1 | tee "$TMP/install.log"`
   - one `--add` per `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted,
   applied on top of the same read-back, so nothing the reconcile did not touch moves. Never
   `--selection` on this seed: that route neither removes nor disables what the reconcile dropped,
   and it stamps every carried item as a pick. On `ALFRED_CODE_SEED=shell` the frozen twin no
   longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
-  The browser server among the ADDS: ask which browsers to install (`chrome` pre-selected, `msedge`,
-  `firefox`, `webkit`), then which of those to enable (all pre-selected; each enabled one adds its ~25
-  tools to every session) and pass both; `/plugin` toggles them later. An installed browser server passes
+  The browser server among the ADDS: ask walk.md's engine pick (`chrome-control` recommended; each one adds its ~25
+  tools to every session), put the ticked engines in `final.json` as `<engine>-control` and pass the `browsers: <csv>`
+  line as `--browsers <csv>` - no enable question, an engine installed now arrives on; `/plugin` toggles them later. An installed browser server passes
   nothing (the installer reads its browsers back from the stamp, and switches none). A server 2.0.0 cut is no reconcile row: the run uninstalls the stack's own copy and prints
   its `add it back:` line - pass it through. Presence, never the value - run this
   and paste its lines as-is: `node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" CONTEXT7_API_KEY`

@@ -2513,7 +2513,7 @@ test('guard-fresh-session-start: the slash and compaction routes carry the same 
     // Two sessions switched to English right after compacting, and one resume grepped the tree and
     // read a 10k-char range before opening the plan whose header named the ranges (both measured).
     assert.match(injected(start('compact')), /language of the user's own prompts/, '... with the language line');
-    // review-215-flow MINOR 4: a loaded skill that sets the answer language (explain-code: Russian -> English) wins
+    // review-215-flow MINOR 4: a loaded skill that sets the answer language (explain-code: any other language -> English) wins
     assert.match(injected(start('compact')), /language of the user's own prompts, unless a loaded skill sets the answer language/, '... which yields to a skill that sets it');
     assert.match(injected(start('compact')), /re-read its HEADER first/, '... and the plan-first line');
     assert.equal(injected(start('startup')), '', 'an ordinary session start does not');

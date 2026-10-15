@@ -563,12 +563,12 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     that cannot be read, an agent / review / implementer still running or a waiter that wakes the session); a wait counts only when
     it names the running work (a report, a verdict, an agent - an approval, a go-ahead, a decision or a sign-off is a
     hand-back), a dev server, `dotnet run`, `docker compose up` or another server or watcher is no work that ends, and a
-    wait on the user, a next step, 'tell me' or 'nothing reports' keeps it a stall, in English, Ukrainian and Russian
-    (review B2, re-verify N-B2, N4) - except that 'tell me', 'let me know', 'ping me' and the Ukrainian and Russian
+    wait on the user, a next step, 'tell me' or 'nothing reports' keeps it a stall, in English and Ukrainian
+    (review B2, re-verify N-B2, N4) - except that 'tell me', 'let me know', 'ping me' and the Ukrainian
     forms are an OFFER when an offer word follows (if, in case, how, what, whether, about - not before an infinitive:
     'tell me whether to push' asks for the decision), and a when / once / after condition still hands back (re-verify 4 R4-M3). A HAND-BACK anywhere in the close (an approval, a go-ahead, 'let me know', a
     question to the user) wins over every wait and every text exemption (R2-M1), the first-person past done forms read
-    in Ukrainian and Russian ('Зробив', 'Сделал', 'Закоммитил' - R2-M2), and a wait on the stack's own seats (a designer,
+    in Ukrainian ('Зробив', 'Закомітив' - R2-M2), and a wait on the stack's own seats (a designer,
     a diagnoser, an analyzer) is a wait on work (R2-m3); holds ONCE a subagent that stops on a wait nobody will end ('I'll wait for...' or its own
     ScheduleWakeup) with no background work of its own; a close saying the RUN has nothing pending (the pinned line in shared-rules.json) is
     finished. A fork, subagent or worker is work that ends; a `queue-operation` row that only QUEUED a task notice

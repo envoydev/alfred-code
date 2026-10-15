@@ -292,9 +292,11 @@ neighbouring one so no question has fewer than 2 options.
 
 Locked = the servers the kept selection pulls: `alfred-navigation` via the `alfred-navigation` rule, `alfred-documentation`
 via `alfred-quality-gates`, `alfred-memory` via the `alfred-memory` rule - required in every install, the same way
-the navigation server and the documentation server are. `browser` is droppable: seeded on the web Angular, Ionic
-and browser-extension stacks, pre-selected elsewhere only when the evidence scan matched it, and in
-DELTA preserved across runs like any direct pick (`raw.json` carries it). The two desktop servers drive
+the navigation server and the documentation server are. The browser server is FOUR rows, one per engine -
+`chrome-control`, `firefox-control`, `msedge-control`, `webkit-control` - each its own plugin, all droppable: a seed
+(the web Angular, Ionic and browser-extension stacks) or an evidence match lands on `chrome-control`, and in DELTA each
+row reads the live install (`yes`, `yes (off)` for one installed but switched off, `-`). `raw.json` carries the picked
+engines by those names; the tool folds them onto the one catalog entry `browser`. The two desktop servers drive
 the machine's own apps, so the table offers each on its own OS only and neither on Linux:
 `windows-control` (Windows-MCP) on Windows, seeded on the WPF and WinForms stacks, and `macos-control`
 (MacOS-MCP) on macOS, seeded by no stack - a plain add. A seed this OS cannot run comes back as one
@@ -305,25 +307,31 @@ and matching privilege on Windows, the Accessibility and Screen Recording grants
 (appium-mcp) drives Android and iOS apps on an emulator, a simulator or a device, on every OS; seeded by no stack,
 it is offered as a plain row everywhere and asked in FRESH only for a mobile app (an Ionic or Capacitor stack, or
 an `android/` or `ios/` folder at the root) - the installer prints what it needs (Node 22+, the Android SDK and a
-JDK through ANDROID_HOME / JAVA_HOME, Xcode for iOS). Those seven are the whole catalog. A server 2.0.0 cut (`angular-cli`, `chrome-devtools`, `appium-mcp`, `sentry`,
+JDK through ANDROID_HOME / JAVA_HOME, Xcode for iOS). Those seven (the browser as its four engines) are the whole catalog. A server 2.0.0 cut (`angular-cli`, `chrome-devtools`, `appium-mcp`, `sentry`,
 `context7-local`) is offered nowhere: the run uninstalls the stack's own copy and prints the `claude
 mcp add` line that brings it back as the user's own.
 
 FRESH asks, one per free row (alfred-navigation, alfred-documentation and alfred-memory are locked and never an option).
-Each enabled browser puts about 25 tools into every session, so keeping it is recommended only where it
-was earned: when the browser row reads `stack:<name>`, `recommended` or `evidence` in the table, ask the
-first template; otherwise (a `-` row, nothing seeded or proved it) ask the second, which leads with the drop:
+Each enabled browser puts about 25 tools (about 18.7k characters of schema) into every session, so a browser is
+recommended only where it was earned. When the `chrome-control` row reads `stack:<name>`, `recommended` or `evidence`,
+or any engine row reads `yes` / `yes (off)` in DELTA, ask the engine pick straight away; otherwise (every engine row `-`)
+ask the gate first, and only 'Pick browsers' opens the engine pick:
 
 ```ask
-MCPs: alfred-navigation, alfred-documentation and alfred-memory always install. Keep the browser server (Playwright)?
-- 'Keep the browser server (Recommended)' - seeded by a web stack or proved by the evidence scan; each enabled browser adds about 25 tools
-- 'Drop the browser server' - no browser tools in any session
+MCPs: alfred-navigation, alfred-documentation and alfred-memory always install. Add a browser server (Playwright)?
+- 'Leave the browsers out (Recommended)' - no stack or evidence here needs one, and each browser adds about 25 tools to every session
+- 'Pick browsers' - opens the engine pick: chrome-control, firefox-control, msedge-control, webkit-control
 ```
 
+The engine pick is ONE multi-select question. FRESH pre-selects `chrome-control` when it was earned, DELTA every
+engine the table reads `yes` or `yes (off)`; say that pre-selection in the question. Ticking none drops the browser:
+
 ```ask
-MCPs: alfred-navigation, alfred-documentation and alfred-memory always install. Keep the browser server (Playwright)?
-- 'Drop the browser server (Recommended)' - no stack or evidence here needs it, and each enabled browser adds about 25 tools to every session
-- 'Keep the browser server' - browser tools for driving and checking a web UI
+Which browser servers? Each one is its own plugin and adds about 25 tools to every session.
+- 'chrome-control (Recommended)' - runs the machine's Google Chrome; downloads nothing
+- 'firefox-control' - downloads Playwright's Firefox build at the release's pin
+- 'msedge-control' - runs the machine's Microsoft Edge; downloads nothing
+- 'webkit-control' - downloads Playwright's WebKit build (Safari's engine) at the release's pin
 ```
 
 ```ask
@@ -342,40 +350,15 @@ Ask only the rows this OS and selection have. In DELTA the browser and desktop q
 state and the Recommended option is the current one.
 
 
-Only if the browser server stayed selected, ask two AskUserQuestions, in order. FRESH has no install to
-read, so the first pre-selects `chrome` and the second every installed browser. DELTA pre-selects
-from the LIVE install, never by hand: `node -e 'console.log(JSON.stringify(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).browser))' "$TMP/installed.json"` (the step-1 plan)
-prints `{"installed": [...], "enabled": [...]}`:
-`installed` is the kept browsers (the stamp's record; for a 1.x install, what the listing or
-`.mcp.json` carries - a legacy single `playwright` server is migrated by the run), and `enabled` is
-what the settings files say is ON NOW, a `/plugin` toggle included (on the MCP copy route: at project
-scope every registered browser `disabledMcpjsonServers` does not name, at local and user scope the
-last enable answer, since only an enabled browser is registered there). Never pre-select from the
-stamp's own `control-enabled:` line - it is the last answer, and a toggle made since would be
-reverted.
-
-1. Which browsers to INSTALL (multi-select; pre-selected: `installed` in DELTA, since a run
-   uninstalls one the answer leaves out; `chrome` in FRESH). `chrome` = the machine's Google
-   Chrome, `msedge` = the machine's Microsoft Edge, `firefox`, `webkit` = Safari's engine. Picking
-   one IS installing it, and the question says so in one line: the install downloads a picked
-   `firefox` / `webkit` (Playwright's own build, at the release's pinned `@playwright/mcp`), while
-   `chrome` and `msedge` download nothing - they run the browser already on the machine, and
-   `/alfred-code:init` reports one that is not there.
-2. Which of THOSE to ENABLE (multi-select over the installed ones only; pre-selected: `enabled` plus
-   any newly added one in DELTA, every one in FRESH), the question
-   naming the cost in one line: each enabled browser adds its own ~25 tools (about 18.7k characters
-   of schema) to every session.
-
-Each installed browser is its own plugin (`chrome-control`, `firefox-control`, ...); any
-number can be enabled together, and one left unticked is installed, then disabled. Pass the answers
-to the installer as `--browsers <csv>` (a browser left out is uninstalled by the run) and
-`--browser-enabled <csv|none>`; in DELTA an unchanged answer passes nothing, and the run switches
-only an engine whose live state the answer changes. `/plugin` toggles them later. On the MCP copy
-route they are `.mcp.json` servers: at project scope one left unticked is registered AND named in
-`disabledMcpjsonServers`, which keeps it from loading, and taking it out of that list turns it on;
-at local and user scope no settings key reaches the registration, so there the registration IS the
-enable - one left unticked is not registered (still installed and downloaded), and ticking it later
-registers it.
+The ticked engines replace `browser` in `raw.json` as `<engine>-control` names; none ticked removes every one.
+Picking one IS installing it: a picked `firefox` / `webkit` is downloaded (Playwright's own build, at the release's
+pinned `@playwright/mcp`), while `chrome` and `msedge` run the browser already on the machine and `/alfred-code:init`
+reports one that is not there. The `--emit` run prints a `browsers: <csv>` line - pass it to the installer as
+`--browsers <csv>` (an engine left out is uninstalled by the run); in DELTA an unchanged pick passes nothing. No enable
+question is asked and no `--browser-enabled` is passed: an engine installed now arrives on, one already installed keeps
+its on/off (a `yes (off)` row stays off), and `/plugin` toggles them later. On the MCP copy route they are
+`.mcp.json` servers: at project scope each picked engine is registered, and taking it out of `disabledMcpjsonServers`
+turns on one left off; at local and user scope the registration IS the enable.
 
 ## Plugins
 
