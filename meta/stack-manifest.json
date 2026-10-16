@@ -917,7 +917,13 @@
       "file": "docs-session.js",
       "matcher": "@SubagentStop",
       "event": "",
-      "note": "the finish ask, per agent: what THAT agent changed, once - the seat that made the change is the only context that knows why"
+      "note": "the finish ask for a seat that stopped WITHOUT a hand-back (a harness with no SubagentHandback tool, Cursor among them): what THAT agent changed, once - the seat that made the change is the only context that knows why"
+    },
+    {
+      "file": "docs-session.js",
+      "matcher": "SubagentHandback",
+      "event": "",
+      "note": "the finish ask, per agent, BEFORE its report leaves: the seat's first SubagentHandback that owes one is denied with the ask, and the retried hand-back carries the docs line (deep hooks review 2026-10-16: 48 of 48 SubagentStop asks came after the hand-back, 41 never acted on)"
     },
     {
       "file": "docs-session.js",

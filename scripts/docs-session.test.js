@@ -659,6 +659,70 @@ test('one block per agent: the continuation stop and a later change are both sil
   } finally { r.rm(); }
 });
 
+// Deep hooks review 2026-10-16: a seat reports through SubagentHandback, so a SubagentStop ask came after the report had
+// left (48 of 48, 41 never acted on). The ask is a deny of the first hand-back that owes one; the retry carries the answer.
+const handBack = (s, id, message, extra = {}) => ({ hook_event_name: 'PreToolUse', session_id: s, tool_name: 'SubagentHandback', tool_input: { message }, agent_id: id, agent_type: 'dotnet-implementer', ...extra });
+const answers = (r) => r.read('.claude/docs/docs-log.jsonl').trim().split('\n').filter((l) => l.includes('"ask-answer"')).map((l) => JSON.parse(l));
+
+test('deep review: a seat is asked at its first hand-back, the retry passes with the answer, and SubagentStop stays quiet', () => {
+  const r = watched();
+  try {
+    const s = sid();
+    r.hook(subStart(s, 'agent-h1'), GIT);
+    touchBy(r, s, 'h1');
+    const first = r.hook(handBack(s, 'h1', 'status: DONE\ncontract_version: 3'), GIT);
+    assert.ok(denied(first), first.stdout);
+    const reason = JSON.parse(first.stdout).hookSpecificOutput.permissionDecisionReason;
+    assert.match(reason, /^Docs check: you changed src\/Api\/Program\.cs\n\nOne section documents this file - 'orders'/);
+    assert.match(reason, /Your report was NOT delivered\. Answer this first, then call SubagentHandback again: the docs line first\n\(docs ok, or the section you rewrote\), then your report unchanged/);
+    assert.doesNotMatch(reason, /This reply is what your caller receives/, 'the SubagentStop closing is not this route\'s');
+    assert.match(r.read(`.claude/docs/hook-blocks/${s}.jsonl`), /"event":"PreToolUse","tool":"SubagentHandback"/);
+    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"ask-update".*"via":"handback"/);
+    const retry = r.hook(handBack(s, 'h1', 'docs ok\nstatus: DONE\ncontract_version: 3'), GIT);
+    assert.strictEqual(retry.stdout, '', 'the hand-back sent after the ask is delivered');
+    const [row] = answers(r);
+    assert.deepStrictEqual([row.via, row.outcome, row.saidDocsOk], ['handback', 'unchanged', true]);
+    assert.strictEqual(r.hook(subStop(s, 'h1', { last_assistant_message: 'done' }), GIT).stdout, '', 'no second ask at SubagentStop');
+    assert.strictEqual(r.hook(handBack(s, 'h1', 'again'), GIT).stdout, '', 'nor at a later hand-back');
+    assert.strictEqual(answers(r).length, 1, 'one answer row');
+  } finally { r.rm(); }
+});
+
+test('deep review: the hand-back route asks nobody it should not, and a seat that stops instead of retrying is answered once', () => {
+  const r = watched();
+  try {
+    const s = sid();
+    r.hook(subStart(s, 'idle'), GIT);
+    assert.strictEqual(r.hook(handBack(s, 'idle', 'status: DONE'), GIT).stdout, '', 'a seat that wrote nothing hands back at once');
+    touch(r);
+    assert.strictEqual(r.hook({ ...handBack(s, 'x', 'hi'), agent_id: undefined, agent_type: undefined }, GIT).stdout, '', 'the main session has no hand-back ask');
+    r.hook(subStart(s, 'off'), GIT);
+    touchBy(r, s, 'off');
+    assert.strictEqual(r.hook(handBack(s, 'off', 'status: DONE'), { ...GIT, ALFRED_CODE_DOCS_ASK: '0' }).stdout, '', 'the ask switch covers this route');
+    const s2 = sid();
+    r.hook(subStart(s2, 'h2'), GIT);
+    wroteBy(r, s2, 'h2', 'src/Api/Program.cs', 'app.UseH2();\napp.Run();\n');
+    assert.ok(denied(r.hook(handBack(s2, 'h2', 'status: DONE'), GIT)));
+    assert.strictEqual(r.hook(subStop(s2, 'h2', { last_assistant_message: 'docs ok' }), GIT).stdout, '', 'stopping instead of retrying is not asked again');
+    const row = answers(r).pop();
+    assert.deepStrictEqual([row.via, row.saidDocsOk], ['handback', true], 'its last message is the answer');
+    // and with no hand-back at all, SubagentStop is still the ask (a harness without the tool)
+    const s3 = sid();
+    r.hook(subStart(s3, 'h3'), GIT);
+    wroteBy(r, s3, 'h3', 'src/Api/Program.cs', 'app.UseH3();\napp.Run();\n');
+    assert.match(r.hook(subStop(s3, 'h3'), GIT).stdout, /"decision":"block"/);
+  } finally { r.rm(); }
+});
+
+test('deep review: the manifest wires docs-session on SubagentHandback as its own row, outside the file dispatcher', () => {
+  const rows = require('../meta/stack-manifest.json').hooks.filter((h) => h.file === 'docs-session.js').map((h) => h.matcher);
+  assert.ok(rows.includes('SubagentHandback') && rows.includes('@SubagentStop'), rows.join(' '));
+  const entry = require('../.claude-plugin/marketplace.json').plugins.find((p) => p.name === 'alfred-code');
+  const pre = (entry.hooks.PreToolUse || []).filter((g) => g.matcher === 'SubagentHandback');
+  assert.strictEqual(pre.length, 1);
+  assert.match(pre[0].hooks[0].command, /stack\/hooks\/docs-session\.js"$/);
+});
+
 // Task 6b review, finding 7: a warning-only ask-answer row reads sections: [], outcome: 'unchanged' - the
 // same shape as a turn nothing was ever asked about at all, so the block ledger cannot tell a warning
 // apart from a no-op without joining back to the ask-update row. `warned` is one extra field carrying the

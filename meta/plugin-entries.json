@@ -176,6 +176,16 @@
             ]
           },
           {
+            "matcher": "SubagentHandback",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
             "matcher": "^mcp__(plugin_(alfred-)?navigation_)?(alfred-)?navigation__(rename_symbol|safe_delete_symbol)$",
             "hooks": [
               {

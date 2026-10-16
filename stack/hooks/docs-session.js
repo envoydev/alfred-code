@@ -5,8 +5,10 @@
 //                    overrides and conflicts, and how to read by section; snapshots the tree for the end check
 //   SubagentStart -> the same orientation for a dispatched subagent (SessionStart context never reaches one), and
 //                    the snapshot the finish ask below compares against
-//   SubagentStop  -> what THAT agent WROTE, once: a file it wrote that also changed and hits watch.json blocks with
-//                    the owning sections quoted, so whoever made the change says whether the docs still hold
+//   PreToolUse SubagentHandback -> what THAT agent WROTE, once, before its report leaves: a file it wrote that also
+//                    changed and hits watch.json denies the hand-back with the owning sections quoted, so whoever made
+//                    the change says whether the docs still hold, and the retried hand-back carries the answer
+//   SubagentStop  -> the same ask for a seat that stopped without a hand-back (a harness with no such tool)
 //   PreToolUse    -> records reads of the docs and attributes each write to the agent that made it; holds the FIRST
 //                    change under a source root until a section was read, handing the covering section over inline -
 //                    what a merge just folded into mainline comes first
@@ -297,6 +299,7 @@ function main() {
   if (event === 'SessionStart') return sessionStart(input, root, docs, state);
   if (event === 'SubagentStart') return subagentStart(input, root, docs);
   if (event === 'SubagentStop') return subagentStop(input, root, docs);
+  if (event === 'PreToolUse' && input.tool_name === HANDBACK_TOOL) return handback(input, root, docs);
   if (event === 'PreToolUse') return preToolUse(input, root, docs, state);
   if (event === 'Stop') return stop(input, root, docs, state);
 }
@@ -564,35 +567,64 @@ function sectionRefs(docs, hits, limit, exclude = () => false) {
 }
 
 // The agent that made a change is the only context that knows why it was made - the main session usually does not -
-// so the ask lands here, once, for the files THAT agent changed (its start snapshot against the tree now).
+// so the ask lands with that agent, once, for the files THAT agent changed (its start snapshot against the tree now).
+// WHEN it lands decides whether it counts: a seat reports through its SubagentHandback tool call, and the report is
+// with the caller the moment that call returns. Asked at SubagentStop, all 48 asks of two weeks came after the hand-back
+// and 41 of them were the transcript's last row - nothing acted on them (deep hooks review 2026-10-16). So the ask is a
+// PreToolUse deny of the FIRST hand-back that owes one (the seat stays in its turn, answers, and sends the report again
+// with the docs line), and SubagentStop asks only a seat that stopped without a hand-back. PreToolUse fires on that tool:
+// 35 hook runs recorded in seat transcripts. Cursor has no such tool, so its seats keep the SubagentStop route.
+const HANDBACK_TOOL = 'SubagentHandback';
+
+// The row an answered ask writes. It states what HAPPENED to the sections we asked about - which of them the agent
+// rewrote through `docs.js set` - and nothing claims to know what it meant. Logged once and nothing more: no dedupe rests
+// on it, because an agent that simply went on and one that rewrote every section are otherwise the same event.
+function answerRow(root, input, a, key, reply) {
+  a.answered = true;
+  saveState(input.session_id, a, key);
+  const asked = a.asked || [];
+  const rewrote = setsSince(root, a.askedAt, asked);
+  // Three states because two cannot tell them apart: where several sections were asked about, rewriting one of
+  // them is neither the job done nor nothing done, and that middle case is the one worth counting.
+  const outcome = rewrote.length === 0 ? 'unchanged' : rewrote.length === asked.length ? 'rewritten' : 'partial';
+  // Separate from `sections` on purpose (see the comment on a.warned below): a warning-only turn reads
+  // sections: [], outcome: 'unchanged' - true, not false, but indistinguishable from a turn nothing ever
+  // asked about at all. `warned` is what lets the block ledger tell the two apart without joining back
+  // to the ask-update row that named them.
+  log(root, input, { event: 'ask-answer', agent: key, via: a.via || 'stop', sections: asked, warned: a.warned || [], rewrote, outcome, saidDocsOk: saidDocsOk(reply) });
+}
+
+function handback(input, root, docs) {
+  if (envOf(process.env, 'DOCS_ASK') === '0' || !input.agent_id) return;
+  const key = agentKey(input);
+  const a = loadAgent(input.session_id, key);
+  const report = (input.tool_input || {}).message;
+  // the hand-back sent after our ask: it passes, and says what the ask came to
+  if (a.blocked) { if (!a.answered) answerRow(root, input, a, key, report); return; }
+  const reason = seatAsk(input, root, docs, a, key, HANDBACK_LAST);
+  if (!reason) return;
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
+}
+
 function subagentStop(input, root, docs) {
   if (envOf(process.env, 'DOCS_ASK') === '0') return;
   const key = agentKey(input);
   const a = loadAgent(input.session_id, key);
-  // The stop our own block caused. The row it writes states what HAPPENED to the sections we asked about - which of
-  // them the agent rewrote through `docs.js set` - and nothing claims to know what it meant by stopping. Logged once
-  // and nothing more: no dedupe rests on it, because an agent that simply stopped and one that rewrote every section
-  // are otherwise the same event.
-  if (input.stop_hook_active) {
-    if (a.blocked && !a.answered) {
-      a.answered = true;
-      saveState(input.session_id, a, key);
-      const asked = a.asked || [];
-      const rewrote = setsSince(root, a.askedAt, asked);
-      // Three states because two cannot tell them apart: where several sections were asked about, rewriting one of
-      // them is neither the job done nor nothing done, and that middle case is the one worth counting.
-      const outcome = rewrote.length === 0 ? 'unchanged' : rewrote.length === asked.length ? 'rewritten' : 'partial';
-      // Separate from `sections` on purpose (see the comment on a.warned below): a warning-only turn reads
-      // sections: [], outcome: 'unchanged' - true, not false, but indistinguishable from a turn nothing ever
-      // asked about at all. `warned` is what lets the block ledger tell the two apart without joining back
-      // to the ask-update row that named them.
-      log(root, input, { event: 'ask-answer', agent: key, sections: asked, warned: a.warned || [], rewrote, outcome, saidDocsOk: saidDocsOk(input.last_assistant_message) });
-    }
+  // The stop our own block caused, or a seat asked at its hand-back that stopped without sending it again.
+  if (input.stop_hook_active || a.blocked) {
+    if (a.blocked && !a.answered) answerRow(root, input, a, key, input.last_assistant_message);
     return;
   }
+  const reason = seatAsk(input, root, docs, a, key, SEAT_REPORT_LAST);
+  if (reason) process.stdout.write(JSON.stringify({ decision: 'block', reason }));
+}
+
+// The ask itself, shared by both routes: null when this agent owes none, else the reason - and the agent's state then
+// records it (blocked, the asked ids, the instant), so neither route asks it twice.
+function seatAsk(input, root, docs, a, key, closing) {
   // One block per agent, whatever it answered, and never one for an agent whose start was never seen: with no
   // snapshot there is nothing that says what this agent changed, and a guess would ask the wrong seat.
-  if (a.blocked || !a.snapshot || typeof docs.askRef !== 'function') return;
+  if (a.blocked || !a.snapshot || typeof docs.askRef !== 'function') return null;
   // What THIS agent wrote, not what the tree did. `changedSince` is a whole-TREE diff, so a seat that opened nothing
   // was otherwise told it changed whatever the writer running BESIDE it changed - and this stack dispatches in
   // parallel by design. A seat that wrote nothing is silent (the brief's read-only seats, now true under parallel
@@ -604,14 +636,14 @@ function subagentStop(input, root, docs) {
     // The block RATE is what says a gate earns its keep, so the silence is logged rather than looking like a gate
     // nobody needed. A read-only seat logs one row too - that is the same fact, honestly counted.
     log(root, input, { event: 'ask-skipped', why: 'no write attributed to this agent', agent: key, agentType: input.agent_type || '' });
-    return;
+    return null;
   }
-  if (noWatch(docs)) return;
+  if (noWatch(docs)) return null;
   let changed;
   let hits = [];
   try {
     changed = docs.changedSince(a.snapshot);
-    if (!changed.files.length && !changed.dirs.length) return;
+    if (!changed.files.length && !changed.dirs.length) return null;
     let mineFiles;
     if (own.includes(UNKNOWN_SOURCE_WRITE)) {
       // A write the shell route could not name ('git apply', 'dotnet ef migrations add' with no --project). The seat
@@ -626,18 +658,19 @@ function subagentStop(input, root, docs) {
     const mineDirs = changed.dirs.filter((d) => mineFiles.some((f) => f.startsWith(`${d}/`)));
     if (!mineFiles.length && !mineDirs.length) {
       log(root, input, { event: 'ask-skipped', why: 'nothing this agent wrote changed', agent: key, wrote: own.length });
-      return;
+      return null;
     }
     hits = docs.watchHits(mineFiles, mineDirs);
-  } catch { return; }
-  if (!hits.length) return;
+  } catch { return null; }
+  if (!hits.length) return null;
   // Dedupe on the pair (agent, section), never the section alone: two agents in one run often touch the same
   // section, and the second is the one most likely to notice the first's rewrite only covered half the change.
   const { asks, warnings } = sectionRefs(docs, namedFirst(docs, hits), ASK_SECTIONS, (id) => a.asked.includes(id));
-  if (!asks.length && !warnings.length) return;
+  if (!asks.length && !warnings.length) return null;
   const files = [...new Set(hits.flatMap((h) => h.files))];
-  const reason = finishAsk(docs, files, asks, warnings, SEAT_REPORT_LAST);
+  const reason = finishAsk(docs, files, asks, warnings, closing);
   a.blocked = true;
+  a.via = input.hook_event_name === 'PreToolUse' ? 'handback' : 'stop';
   // Only ASK ids: a warning can never appear in setsSince (the write refusal means `docs.js set` never
   // records one), so folding its id in here would only ever pull the outcome below toward 'partial' or
   // 'unchanged' for a section nothing was ever asking to be rewritten. Warning ids are tracked separately,
@@ -647,9 +680,9 @@ function subagentStop(input, root, docs) {
   // The instant the ask was made, so a rewrite that landed before it is never counted as an answer to it.
   a.askedAt = new Date().toISOString();
   saveState(input.session_id, a, key);
-  log(root, input, { event: 'ask-update', agent: key, agentType: input.agent_type || '', sections: asks.map((r) => r.id), warnings: warnings.map((r) => r.id), files: files.slice(0, 5), kinds: [...new Set(hits.map((h) => h.kind))] });
+  log(root, input, { event: 'ask-update', agent: key, agentType: input.agent_type || '', via: a.via, sections: asks.map((r) => r.id), warnings: warnings.map((r) => r.id), files: files.slice(0, 5), kinds: [...new Set(hits.map((h) => h.kind))] });
   blockRow(root, input, reason);
-  process.stdout.write(JSON.stringify({ decision: 'block', reason }));
+  return reason;
 }
 
 // What the tool is about to touch, project-relative.
@@ -997,6 +1030,12 @@ const SUMMARY_LAST = [
 const SEAT_REPORT_LAST = [
   'This reply is what your caller receives: the docs line first, then your report as your brief asks for it -',
   'its status: and contract_version: lines, where it has them, unchanged.',
+];
+// ...and at the hand-back the report has not left yet: it goes again, with the docs line, once the ask is answered.
+const HANDBACK_LAST = [
+  'Your report was NOT delivered. Answer this first, then call SubagentHandback again: the docs line first',
+  '(docs ok, or the section you rewrote), then your report unchanged - its status: and contract_version: lines,',
+  'where it has them, as they were.',
 ];
 function finishAsk(docs, files, asks, warnings = [], closing = []) {
   const named = `${files.slice(0, FILES_NAMED).join(', ')}${files.length > FILES_NAMED ? ` and ${files.length - FILES_NAMED} more` : ''}`;
