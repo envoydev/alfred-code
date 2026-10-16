@@ -255,7 +255,7 @@ Leaf picks - nothing requires a hook and a hook requires nothing, so every row i
 cascade never reaches here. Recommended (FRESH) = all seventeen: the twelve always-on guards, the
 three session engines (`docs-session` - the docs start block and finish ask - `memory-session` - the
 shared-memory slice at session start - and `history-session` - what the last sessions on this branch
-did and ruled), the turn-end build check (`check-turn-build` - wired, but inert until
+did and ruled), the turn-end build check (`check-turn-build` - run inside history-session's Stop, inert until
 `ALFRED_CODE_TURN_CHECK` flips to `1`, seeded `0`), plus the env-gated `instrument-tool-usage` (wired
 like the guards, but inert until `ALFRED_CODE_INSTRUMENT` flips to `1` - so keeping it costs nothing
 idle, and dropping it leaves the install unable to record a measured run without a manual re-wire).

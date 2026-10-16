@@ -151,9 +151,12 @@ function sessionStartMs(transcript)
   catch { return 0; }
 }
 
-module.exports = { groupRoots, runChecks, commandFor, changedSince, sessionStartMs, MAX_LINES, BUDGET_MS };
-
-if (require.main === module)
+// THE STOP STEP - run by history-session.js inside its own Stop process (the user's ruling of 2026-10-16: this hook
+// started a node process every turn to read a switch that is off in every project), or by this file's own wiring where
+// history-session is not wired. Its gates are its own, so history switched off leaves the check alone and the reverse.
+// Returns { code, stderr }: 2 blocks the stop with the text; 0 passes. Never throws, never exits.
+const PASS = Object.freeze({ code: 0, stderr: '' });
+function stopCheck(payload)
 {
   // STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in
   // every hook. Fail-open: envOf falls back to the bare ALFRED_CODE_ read (pre-2.0.0 behaviour: 'an
@@ -175,29 +178,29 @@ if (require.main === module)
     }
     // the hook profile applies here: strict reads the seeded 0 as on
     if (typeof prelude.switchOn === 'function') switchOn = (suffix) => prelude.switchOn(suffix);
-    if (prelude.standDown('check-turn-build')) process.exit(0);
+    if (prelude.standDown('check-turn-build')) return PASS;
+    // The plugin's copy also steps aside for a copied history-session: on the copy route that copy carries the check
+    // (its row folds into history-session's), so the plugin's would run it a second time.
+    if (typeof prelude.yieldToCopiedTwin === 'function' && prelude.yieldToCopiedTwin('history-session')) return PASS;
   }
   catch { /* an install without the prelude runs the hook unchanged */ }
-  if (!switchOn('TURN_CHECK')) process.exit(0);
-
-  let payload;
-  try { payload = JSON.parse(fs.readFileSync(0, 'utf8')); } catch { process.exit(0); }
-  if (!payload || typeof payload !== 'object') process.exit(0);
-  // GATE 6 (hook-prelude.js): a Cursor payload runs only the protective guards - outside the try, a caller's exit must not be swallowed.
+  if (!switchOn('TURN_CHECK')) return PASS;
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return PASS;
+  // GATE 6 (hook-prelude.js): a Cursor payload runs only the protective guards.
   let cursorOff = false;
   try { cursorOff = require('./hook-prelude.js').cursorStandDown(payload, __filename); } catch { /* no prelude: run */ }
-  if (cursorOff) process.exit(0);
+  if (cursorOff) return PASS;
   const event = payload.hook_event_name;
   const root = path.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd());
   const docs = path.resolve(root, envOf(process.env, 'DOCS_PATH') || '.alfred/docs');
   const sid = String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_');
   const marker = path.join(docs, 'flow', `turn-check-${sid.replace(/[^A-Za-z0-9_-]/g, '_')}`);
 
-  if (event !== 'Stop') process.exit(0);
+  if (event !== 'Stop') return PASS;
   // The continuation after OUR block passes and leaves the marker where the blocked Stop set it, so the fix-up edits
   // are the next turn's check - once per turn. One a sibling Stop hook caused is checked: its fix-up edits are this
   // turn's (hook-prelude.js, the Stop chain - audit 2026-10-08 S1).
-  if (stopHeld(payload)) process.exit(0);
+  if (stopHeld(payload)) return PASS;
 
   // This turn began at the previous Stop's marker, or - the session's first Stop - when the session began. The marker
   // moves to now before the check, so an edit made after this Stop is the next turn's.
@@ -211,9 +214,9 @@ if (require.main === module)
     if (typeof prelude.sweepStale === 'function') prelude.sweepStale(path.dirname(marker), 'turn-check-');
   }
   catch { /* no marker: the next Stop measures from the session start again */ }
-  if (!since) process.exit(0);
+  if (!since) return PASS;
   const roots = groupRoots(changedSince(root, since), root);
-  if (!roots.length) process.exit(0);
+  if (!roots.length) return PASS;
   const { errors, outcomes } = runChecks(roots);
   // A root left unchecked because it was never restored is one `mode: probe` row, so the week's tally can tell a
   // checked turn from one the check could not judge; the block rate skips it like every mode row.
@@ -231,7 +234,7 @@ if (require.main === module)
     }
     catch { /* a log row never throws */ }
   }
-  if (!errors.length) process.exit(0);
+  if (!errors.length) return PASS;
 
   const ran = outcomes.filter((o) => o.outcome === 'errors').map((o) => o.root);
   const commands = roots.filter((r) => ran.includes(r.config)).map((r) => (r.kind === 'ts'
@@ -247,12 +250,24 @@ if (require.main === module)
     })}\n`);
   }
   catch { /* a log row never throws */ }
-  process.stderr.write(
-    `This turn changed source files and the build check for them fails - ${commands.join('; ')}.\n` +
-    `The first ${errors.length} error line(s):\n${errors.join('\n')}\n` +
-    'Fix them, or say plainly why they stand, before ending the turn. The check runs once per turn;\n' +
-    'ALFRED_CODE_TURN_CHECK=0 in the settings.json env switches it off.\n',
-  );
   markHeld(payload);
-  process.exit(2);
+  return {
+    code: 2,
+    stderr: `This turn changed source files and the build check for them fails - ${commands.join('; ')}.\n` +
+      `The first ${errors.length} error line(s):\n${errors.join('\n')}\n` +
+      'Fix them, or say plainly why they stand, before ending the turn. The check runs once per turn;\n' +
+      'ALFRED_CODE_TURN_CHECK=0 in the settings.json env switches it off.\n',
+  };
+}
+
+module.exports = { groupRoots, runChecks, commandFor, changedSince, sessionStartMs, stopCheck, MAX_LINES, BUDGET_MS };
+
+// Its own wiring - the copy route with history-session not picked, or an install the fold has not reached yet.
+if (require.main === module)
+{
+  let payload = null;
+  try { payload = JSON.parse(fs.readFileSync(0, 'utf8')); } catch { process.exit(0); }
+  const r = stopCheck(payload);
+  if (r.stderr) process.stderr.write(r.stderr);
+  process.exit(r.code);
 }

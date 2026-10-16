@@ -485,8 +485,9 @@ test('every non-protective hook file carries the cursorStandDown call, so a new 
         for (const b of blocks) for (const h of b.hooks) for (const m of String(h.command).matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/([\w./-]+\.js)/g)) launched.add(m[1]);
     const files = [...launched];
     assert.ok(files.includes('setup-plugin/hooks/guard-layer-table.js') && files.includes('setup-plugin/hooks/library-stamp.js'), files.join(', '));
-    assert.ok(files.length >= 15, `found ${files.length} launched hooks`);
-    const dispatched = [...require(path.join(HOOKS_DIR, 'shell-guards.js')).GUARDS, ...require(path.join(HOOKS_DIR, 'file-guards.js')).NAMES].map((g) => `stack/hooks/${g}.js`);
+    assert.ok(files.length >= 14, `found ${files.length} launched hooks`);
+    const dispatched = [...require(path.join(HOOKS_DIR, 'shell-guards.js')).GUARDS, ...require(path.join(HOOKS_DIR, 'file-guards.js')).NAMES,
+        ...require(path.join(HOOKS_DIR, 'history-session.js')).RIDERS].map((g) => `stack/hooks/${g}.js`);
     for (const f of [...new Set([...files, ...dispatched])])
     {
         const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');

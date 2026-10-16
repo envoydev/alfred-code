@@ -2994,6 +2994,9 @@ function lintHooksEntry(liveIn)
         for (const guard of dispatcher.GUARDS) wired.add(`${guard}.js`);
     if (wired.has(`${fileDispatcher.SELF}.js`))
         for (const guard of fileDispatcher.NAMES) wired.add(`${guard}.js`);
+    // So does history-session's Stop process, for the hooks that ride it (the turn build check, 2026-10-16).
+    if (wired.has('history-session.js'))
+        for (const rider of require(path.join(ROOT, 'stack/hooks/history-session.js')).RIDERS) wired.add(`${rider}.js`);
     for (const file of fs.readdirSync(path.join(ROOT, 'stack/hooks')))
     {
         if (!file.endsWith('.js') || ENGINES.has(file) || wired.has(file)) continue;

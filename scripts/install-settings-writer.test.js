@@ -67,6 +67,34 @@ test('settings-writer: a file that does not parse is LEFT UNTOUCHED', () =>
     assert.match(notes[0], /not valid JSON/);
 });
 
+// The 2026-10-16 matrix: a hooks block of the wrong shape threw half-way through the write ('Cannot read properties of
+// null', 'entries.splice is not a function') and a list wired nothing, silently. It is the user's to fix, like bad JSON.
+test('settings-writer: a hooks block Claude Code cannot read is LEFT UNTOUCHED and named where it breaks', () =>
+{
+    for (const [hooks, where] of [
+        [[], 'hooks is not an object'],
+        [{ Stop: 'nope' }, 'hooks.Stop is not a list'],
+        [{ PostToolUse: [null] }, 'hooks.PostToolUse[0] is not an object'],
+        [{ Stop: [{ hooks: 'x' }] }, 'hooks.Stop[0].hooks is not a list'],
+        [{ Stop: [{ hooks: [{ type: 'command', command: 'echo a' }, null] }] }, 'hooks.Stop[0].hooks[1] is not an object'],
+    ])
+    {
+        const text = JSON.stringify({ model: 'mine', hooks });
+        const file = settingsFile(text);
+        const { result, notes } = write(file, { hookSpecs: [HOOK('history-session.js', '@Stop')] });
+        assert.strictEqual(result.refused, true, where);
+        assert.strictEqual(fs.readFileSync(file, 'utf8'), text, where);
+        assert.strictEqual(notes[0], `settings.json hooks block is not the shape Claude Code reads (${where}) - left untouched; fix it and re-run`);
+    }
+    // An absent or null block is no block, and a group with no `hooks` key an empty one: the stack's row is written beside it.
+    for (const hooks of [undefined, null, { Stop: [{ matcher: '' }] }])
+    {
+        const { result, data } = write(settingsFile({ hooks }), { hookSpecs: [HOOK('history-session.js', '@Stop')] });
+        assert.notStrictEqual(result.refused, true, JSON.stringify(hooks));
+        assert.ok(data.hooks.Stop.some((g) => (g.hooks || []).some((h) => /history-session\.js/.test(h.command))), JSON.stringify(hooks));
+    }
+});
+
 // Re-verify 3 S9: a file that cannot be READ is said so with its error code - never 'not valid JSON', which sends the user
 // looking for a syntax error in a file that may be fine.
 test('settings-writer: a file that cannot be read is LEFT UNTOUCHED and named by its read error, not as bad JSON', () =>
@@ -121,6 +149,19 @@ test('settings-writer: the 60s exception is the build check\'s Stop wiring alone
     const { data } = write(file, { hookSpecs: [HOOK('check-turn-build.js', '@PostToolUse:Write|Edit|MultiEdit'), HOOK('check-turn-build.js', '@Stop')] });
     assert.strictEqual(data.hooks.Stop.flatMap((e) => e.hooks)[0].timeout, 60, 'the build itself gets its minute');
     assert.strictEqual(data.hooks.PostToolUse.flatMap((e) => e.hooks)[0].timeout, HOOK_TIMEOUT, 'a path append that stalls is killed at 10s, and an old 60 is corrected');
+});
+
+// The user's ruling of 2026-10-16: the turn check rides history-session's Stop process on the copy route too, and that
+// wiring takes the check's minute; with history-session not picked the check keeps its own Stop row.
+test('settings-writer: the build check folds into history-session\'s Stop wiring, or keeps its own without it', () =>
+{
+    const both = write(settingsFile({}), { hookSpecs: [HOOK('history-session.js', '@SessionStart'), HOOK('history-session.js', '@Stop'), HOOK('check-turn-build.js', '@Stop')] }).data;
+    const stop = both.hooks.Stop.flatMap((e) => e.hooks);
+    assert.deepStrictEqual(stop.map((h) => h.command), ['"$CLAUDE_PROJECT_DIR/.claude/hooks/history-session.js"'], 'one Stop process');
+    assert.strictEqual(stop[0].timeout, 60, 'the check it carries gets its minute');
+    assert.strictEqual(both.hooks.SessionStart.flatMap((e) => e.hooks)[0].timeout, HOOK_TIMEOUT, 'history\'s start keeps 10');
+    const alone = write(settingsFile({}), { hookSpecs: [HOOK('check-turn-build.js', '@Stop')] }).data;
+    assert.deepStrictEqual(alone.hooks.Stop.flatMap((e) => e.hooks).map((h) => [h.command, h.timeout]), [['"$CLAUDE_PROJECT_DIR/.claude/hooks/check-turn-build.js"', 60]]);
 });
 
 test('settings-writer: the command placeholder is QUOTED, so a path with a space survives', () =>

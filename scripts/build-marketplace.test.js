@@ -430,6 +430,9 @@ test('the README trust surface counts what the core entry carries', () =>
     if (dispatched) for (const g of dispatcher.GUARDS) files.add(`stack/hooks/${g}.js`);
     const fileDispatched = files.delete(`stack/hooks/${fileDispatcher.SELF}.js`);
     if (fileDispatched) for (const g of fileDispatcher.NAMES) files.add(`stack/hooks/${g}.js`);
+    // So is a hook history-session's Stop process runs (the turn build check, 2026-10-16).
+    const ridden = (core.hooks.Stop || []).some((g) => g.hooks.some((h) => /history-session\.js"/.test(h.command)));
+    if (ridden) for (const g of require('../stack/hooks/history-session.js').RIDERS) files.add(`stack/hooks/${g}.js`);
     const own = [...files].filter((f) => f.startsWith('setup-plugin/')).length;
     const UNITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',
         'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
@@ -446,6 +449,7 @@ test('the README trust surface counts what the core entry carries', () =>
     assert.doesNotMatch(row, /entries carrying this project's skills|needs no call of its own/, 'no clause stale since 1.3.0');
     if (dispatched) assert.match(row, new RegExp(`${word(dispatcher.GUARDS.length)} of them run in-process by one dispatcher \\(\`${dispatcher.SELF}\\.js\`\\)`), 'the row names the dispatcher that runs the shell guards');
     if (fileDispatched) assert.match(row, new RegExp(`${word(fileDispatcher.GUARDS.length)} by another \\(\`${fileDispatcher.SELF}\\.js\`\\) on the file tools`), 'and the one that runs the file guards');
+    if (ridden) assert.match(row, /the turn build check \(`check-turn-build\.js`\) inside `history-session\.js`'s Stop/, 'and the hook that runs the turn check');
 });
 
 // Review finding 2: code.claude.com/docs/en/plugins-reference - 'If you declare `options` on any field,

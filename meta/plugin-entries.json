@@ -278,13 +278,8 @@
               },
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/check-turn-build.js\"",
-                "timeout": 60
-              },
-              {
-                "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/history-session.js\"",
-                "timeout": 10
+                "timeout": 60
               }
             ]
           }

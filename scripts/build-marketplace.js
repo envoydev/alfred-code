@@ -34,6 +34,7 @@ const { loadManifest } = require('./install/manifest.js');
 const { HOOK_PROFILES } = require('../stack/hooks/hook-prelude.js');
 const { wiringRows } = require('../stack/hooks/shell-guards.js');
 const fileGuards = require('../stack/hooks/file-guards.js');
+const historySession = require('../stack/hooks/history-session.js');
 const { DEFAULT_EXCLUDE, DESKTOP_ENV } = require('../stack/mcp/desktop-launch.js');
 const { NAVIGATION_ENV } = require('../stack/mcp/serena-launch.js');
 const { excludeNewerOf } = require('../stack/mcp/uv-python.js');
@@ -196,8 +197,9 @@ function parseHookWirings(sourceDir)
     const { catalogs } = loadManifest(sourceDir || REPO);
     if (!catalogs.hooks.length) throw new Error('build-marketplace: meta/stack-manifest.json hooks[] is empty - the wiring table moved');
     // The shell guards' rows fold into ONE shell-guards.js row: one process per shell call, not eight - and the
-    // file guards' into ONE file-guards.js row (2.1.5 M3): one process per file-tool call, not three.
-    const rows = fileGuards.wiringRows(wiringRows(catalogs.hooks));
+    // file guards' into ONE file-guards.js row (2.1.5 M3): one process per file-tool call, not three - and the turn
+    // check's Stop row into history-session's (2026-10-16): one process per turn fewer.
+    const rows = historySession.wiringRows(fileGuards.wiringRows(wiringRows(catalogs.hooks)));
     const out = [];
     for (const line of rows)
     {

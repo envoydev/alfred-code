@@ -31,9 +31,11 @@ const { BRAND } = require('./brand.js');
 const { valueHash } = require('./stamp.js');
 const shellGuards = require('../../stack/hooks/shell-guards.js');
 const fileGuards = require('../../stack/hooks/file-guards.js');
+const historySession = require('../../stack/hooks/history-session.js');
 const { tierKeyOf } = require('../../stack/hooks/fresh-session.js');
 // Both dispatchers fold their guards' rows into one row each (R11 for the shell tools, 2.1.5 M3 for the file tools).
-const foldDispatchers = (rows, opts) => fileGuards.wiringRows(shellGuards.wiringRows(rows, opts), opts);
+// The turn check's Stop row rides history-session's Stop process too (the user's ruling of 2026-10-16).
+const foldDispatchers = (rows, opts) => historySession.wiringRows(fileGuards.wiringRows(shellGuards.wiringRows(rows, opts), opts));
 
 // A hook's run is mostly its node spawn (audit 2026-10-14, cold p50 of 10 runs: a bare `node -e 0` 23.8ms, a single hook
 // 26-52ms, the stop contract's Stop 181.8ms on a 19MB transcript, the shell dispatcher 58.7-209.9ms with a commit's git
@@ -46,7 +48,8 @@ const HOOK_TIMEOUT = 10;
 // other hook. The plugin entry's generator reads the same table (build-marketplace.js).
 // The shell-guard dispatcher runs every shell guard in one process, so its budget is theirs summed:
 // each guard keeps the 10s it had as its own hook.
-const HOOK_TIMEOUTS = { 'check-turn-build.js': { Stop: 60 }, [`${shellGuards.SELF}.js`]: { PreToolUse: HOOK_TIMEOUT * shellGuards.GUARDS.length },
+// history-session's Stop carries the turn check (history-session.js wiringRows), so it takes the check's 60s.
+const HOOK_TIMEOUTS = { 'check-turn-build.js': { Stop: 60 }, 'history-session.js': { Stop: 60 }, [`${shellGuards.SELF}.js`]: { PreToolUse: HOOK_TIMEOUT * shellGuards.GUARDS.length },
     [`${fileGuards.SELF}.js`]: { PreToolUse: HOOK_TIMEOUT * fileGuards.GUARDS.length } };
 const timeoutFor = (file, event) => (HOOK_TIMEOUTS[file] || {})[event] || HOOK_TIMEOUT;
 // A hook whose only work is a side effect runs with `async: true`: the call never waits on its node spawn, and an async
@@ -139,7 +142,34 @@ function readSettings(file)
     catch (err) { const e = new Error(`${path.basename(file)} is not valid JSON (${err.message}) - left untouched; fix it and re-run`); e.leaveAlone = true; throw e; }
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
     { const e = new Error(`${path.basename(file)} top level is not an object - left untouched`); e.leaveAlone = true; throw e; }
+    // A hooks block Claude Code cannot read is the user's to fix, like bad JSON: the writer would throw half-way through it
+    // (a null entry, an event that is no list - the 2026-10-16 matrix), or wire nothing beside a list and say nothing.
+    const where = hooksShapeError(parsed.hooks);
+    if (where)
+    { const e = new Error(`${path.basename(file)} hooks block is not the shape Claude Code reads (${where}) - left untouched; fix it and re-run`); e.leaveAlone = true; throw e; }
     return { data: parsed, existed: true };
+}
+
+// Where a settings file's `hooks` value leaves the event -> [{ matcher?, hooks: [{ ... }] }] shape, or '' when it keeps it.
+// An absent or null block is no block; a group without its `hooks` key is read as an empty one.
+function hooksShapeError(hooks)
+{
+    if (hooks === undefined || hooks === null) return '';
+    const plainObject = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
+    if (!plainObject(hooks)) return 'hooks is not an object';
+    for (const [event, groups] of Object.entries(hooks))
+    {
+        if (!Array.isArray(groups)) return `hooks.${event} is not a list`;
+        for (const [i, group] of groups.entries())
+        {
+            if (!plainObject(group)) return `hooks.${event}[${i}] is not an object`;
+            if (group.hooks === undefined) continue;
+            if (!Array.isArray(group.hooks)) return `hooks.${event}[${i}].hooks is not a list`;
+            const j = group.hooks.findIndex((h) => !plainObject(h));
+            if (j >= 0) return `hooks.${event}[${i}].hooks[${j}] is not an object`;
+        }
+    }
+    return '';
 }
 
 // A hook spec is `file::matcher::args`. A matcher starting with '@' wires a non-PreToolUse

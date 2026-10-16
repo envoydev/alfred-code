@@ -61,6 +61,67 @@ function project({ git = true } = {})
     return { root, run, write, marker, tsc, file, spawned, log, transcript };
 }
 
+// The user's ruling of 2026-10-16: the check rides history-session's Stop process - one node start fewer per turn - with
+// its OWN gates, so either hook switched off leaves the other running, and only the check can block.
+const HISTORY_HOOK = path.join(__dirname, '..', 'stack', 'hooks', 'history-session.js');
+test('turn-build: history-session\'s Stop runs the check with its own gates; either one off leaves the other', { skip: !posix && 'stub binaries are shell scripts' }, () =>
+{
+    const p = project();
+    p.file('tsconfig.json', '{}');
+    p.tsc('.', 3);
+    const viaHistory = (env = {}, event = 'Stop') => spawnSync(process.execPath, [HISTORY_HOOK], {
+        input: JSON.stringify({ hook_event_name: event, session_id: 'sess', cwd: p.root, transcript_path: p.transcript }),
+        encoding: 'utf8', env: { ...BASE_ENV, CLAUDE_PROJECT_DIR: p.root, ALFRED_CODE_TURN_CHECK: '1', ALFRED_CODE_HOOK_LOG_DIR: p.root, ...env },
+    });
+    const runs = () => p.spawned().length;
+    p.write('src/a.ts');
+    const first = viaHistory();
+    assert.strictEqual(first.status, 2, first.stderr);
+    assert.match(first.stderr, /^This turn changed source files and the build check for them fails - tsc --noEmit -p tsconfig\.json \(in \.\)\.\nThe first 3 error line\(s\):/);
+    for (const env of [{ ALFRED_CODE_HISTORY: '0' }, { ALFRED_CODE_HOOKS_OFF: 'history-session' }])
+    {
+        p.write('src/a.ts');
+        assert.strictEqual(viaHistory(env).status, 2, `history off (${JSON.stringify(env)}) leaves the check on`);
+    }
+    const before = runs();
+    for (const env of [{ ALFRED_CODE_HOOKS_OFF: 'check-turn-build' }, { ALFRED_CODE_TURN_CHECK: '0' }])
+    {
+        p.write('src/a.ts');
+        const r = viaHistory(env);
+        assert.deepStrictEqual([r.status, r.stderr], [0, ''], `the check off (${JSON.stringify(env)}) runs nothing`);
+    }
+    p.write('src/a.ts');
+    assert.deepStrictEqual([viaHistory({}, 'SessionStart').status, runs()], [0, before], 'a start never runs it');
+    // The plugin's copy steps aside for a copied history-session, which carries the check on the copy route - once, not twice.
+    p.file('.claude/alfred-code.stamp', 'source: x\n');
+    const plugin = { CLAUDE_PLUGIN_ROOT: path.join(__dirname, '..') };
+    p.write('src/a.ts');
+    assert.strictEqual(viaHistory(plugin).status, 2, 'the plugin route runs it');
+    p.file('.claude/settings.json', JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: '"$CLAUDE_PROJECT_DIR/.claude/hooks/history-session.js"' }] }] } }));
+    const copied = runs();
+    p.write('src/a.ts');
+    assert.deepStrictEqual([viaHistory(plugin).status, runs()], [0, copied], 'beside a copied history-session the plugin\'s stands down');
+});
+
+test('turn-build: its Stop row folds into history-session\'s wherever that row is wired; alone it keeps its own', () =>
+{
+    const { wiringRows } = require(HISTORY_HOOK);
+    assert.deepStrictEqual(wiringRows(['history-session.js::@SessionStart', 'check-turn-build.js::@Stop', 'history-session.js::@Stop', 'docs-session.js::@Stop']),
+        ['history-session.js::@SessionStart', 'history-session.js::@Stop', 'docs-session.js::@Stop']);
+    assert.deepStrictEqual(wiringRows(['check-turn-build.js::@Stop', 'history-session.js::@SessionStart']), ['check-turn-build.js::@Stop', 'history-session.js::@SessionStart'],
+        'no history Stop row to ride');
+    assert.deepStrictEqual(wiringRows([{ file: 'history-session.js', matcher: '@Stop' }, { file: 'check-turn-build.js', matcher: '@Stop', note: 'x' }]).map((r) => r.file), ['history-session.js'],
+        'the manifest\'s row shape');
+    assert.deepStrictEqual(wiringRows(['history-session.js::@Stop', 'check-turn-build.js::@Stop::--x']), ['history-session.js::@Stop', 'check-turn-build.js::@Stop::--x'], 'a row with args is its own');
+    // The generated core: no wiring of the check's own, and the Stop process that carries it at the check's 60s.
+    const entries = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'plugin-entries.json'), 'utf8'));
+    const hooks = [];
+    const walk = (v) => { if (Array.isArray(v)) v.forEach(walk); else if (v && typeof v === 'object') { if (typeof v.command === 'string') hooks.push(v); Object.values(v).forEach(walk); } };
+    walk(entries);
+    assert.ok(!hooks.some((h) => /check-turn-build\.js/.test(h.command)), 'the check has no process of its own');
+    assert.deepStrictEqual(hooks.filter((h) => /history-session\.js/.test(h.command)).map((h) => h.timeout).sort(), [10, 60]);
+});
+
 test('turn-build: off by default - no marker, and a Stop never spawns a check', { skip: !posix && 'stub binaries are shell scripts' }, () =>
 {
     const p = project();

@@ -12,6 +12,7 @@ const { parseHookWirings, hooksBlock, coreEntry } = build;
 
 const dispatcher = require('../stack/hooks/shell-guards.js');
 const fileDispatcher = require('../stack/hooks/file-guards.js');
+const historySession = require('../stack/hooks/history-session.js');
 const wirings = parseHookWirings();
 const block = hooksBlock(wirings);
 
@@ -19,7 +20,9 @@ test('the wirings come from the installer table, not a second list', () => {
     assert.ok(wirings.length >= 26, `expected the installer's whole HOOKS table, got ${wirings.length}`);
     // The shell guards launch as ONE dispatcher and the file guards as another, each running its guards in-process.
     const files = new Set(wirings.flatMap(w => (w.file === `${dispatcher.SELF}.js` ? dispatcher.GUARDS.map(g => `${g}.js`)
-        : w.file === `${fileDispatcher.SELF}.js` ? fileDispatcher.NAMES.map(g => `${g}.js`) : [w.file])));
+        : w.file === `${fileDispatcher.SELF}.js` ? fileDispatcher.NAMES.map(g => `${g}.js`)
+        // The turn build check rides history-session's Stop process (2026-10-16): a hook, though it starts no process of its own.
+        : w.file === 'history-session.js' && w.event === 'Stop' ? [w.file, ...historySession.RIDERS.map(g => `${g}.js`)] : [w.file])));
     assert.strictEqual(files.size, 17, 'seventeen hooks, however many wirings they take');
     for (const w of wirings) assert.ok(/^[a-z-]+\.js$/.test(w.file), `odd file name: ${w.file}`);
 });
@@ -71,10 +74,10 @@ test('the block is a valid plugin hooks object: node launcher, timeout 10 (60 an
             for (const h of b.hooks)
             {
                 assert.strictEqual(h.type, 'command');
-                // check-turn-build.js runs a real build at Stop - the one wiring allowed past 10s. Its
-                // PostToolUse half only appends a path, so it keeps 10 like every other hook.
+                // check-turn-build.js runs a real build at Stop - the one wiring allowed past 10s - and since 2026-10-16
+                // it rides history-session's Stop process, which takes its 60 (history-session.js wiringRows).
                 // Each dispatcher runs its guards in one process: their 10s each, summed.
-                const expected = event === 'Stop' && /check-turn-build\.js"/.test(h.command) ? 60
+                const expected = event === 'Stop' && /(check-turn-build|history-session)\.js"/.test(h.command) ? 60
                     : /shell-guards\.js"/.test(h.command) ? 10 * dispatcher.GUARDS.length
                     : /file-guards\.js"/.test(h.command) ? 10 * fileDispatcher.GUARDS.length : 10;
                 assert.strictEqual(h.timeout, expected, `${event} wiring must carry timeout ${expected}: ${h.command}`);
@@ -99,7 +102,7 @@ test('every generated hook command runs a non-executable script, under a root wi
         const commands = new Set();
         for (const blocks of Object.values(coreEntry().hooks))
             for (const b of blocks) for (const h of b.hooks) commands.add(h.command);
-        assert.ok(commands.size >= 15, `expected the seventeen hooks (the shell and file guards through their two dispatchers) plus the core's own two, got ${commands.size}`);
+        assert.ok(commands.size >= 14, `expected the seventeen hooks (the shell and file guards through their two dispatchers, the turn check through history-session's Stop) plus the core's own two, got ${commands.size}`);
         const env = { PATH: `${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH}` };
         for (const command of commands)
         {

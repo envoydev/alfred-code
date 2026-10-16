@@ -195,7 +195,9 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   lists only what the stack wrote), the read-back takes it as a pick, and its one line says the first
   `/alfred-code:update` after the user removes theirs registers the stack's (re-verify 4 T7). `verifyUser` names the run's
   scope in its lines (S8); an unreadable settings or `.mcp.json` file is said as `could not be read (<code>)`, a parse
-  error as 'not valid JSON' (S9). At project scope (`.mcp.json`) the same held rule applies, judged by the ledger's `mcp` row
+  error as 'not valid JSON' (S9), and a settings file whose `hooks` block leaves Claude Code's shape (a list for the block,
+  an event that is no list, a null group or hook) as 'hooks block is not the shape Claude Code reads (<where>)' - left
+  untouched like bad JSON (`settings.js hooksShapeError`; the 2026-10-16 matrix: the writer threw half-way through it). At project scope (`.mcp.json`) the same held rule applies, judged by the ledger's `mcp` row
   rather than a hash: a name the ledger LISTS is the stack's whatever the row holds now (an edit to it is still repaired -
   the documented drift repair), and one it does not list, or with no ledger one that is not the release template's exact
   shape, is the user's own - kept, named with `claude mcp remove <name> -s project`, recorded as `project:<name>` in

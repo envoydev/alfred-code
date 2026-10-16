@@ -17,7 +17,7 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
   with cursor-stack run `node .claude/hooks/docs.js` (and the history block points at `history.js
   rulings`). The core's hooks block is GENERATED from the manifest's `hooks[]` table after the core's
   own two per event (`mergeHooks`, lint check 48); every hook carries `"timeout": 10` (a hook with none
-  gets Claude Code's 600s) except `check-turn-build.js`'s 60 on its `Stop` wiring, `shell-guards.js`'s 90 and `file-guards.js`'s 60 (10 for each guard a dispatcher runs), from the
+  gets Claude Code's 600s) except `history-session.js`'s 60 on its `Stop` wiring (the turn build check rides it, below), `shell-guards.js`'s 90 and `file-guards.js`'s 60 (10 for each guard a dispatcher runs), from the
   `HOOK_TIMEOUTS` table (per file, per event) the seed writes, and launches as `node "${CLAUDE_PLUGIN_ROOT}/<file>"` (a bare path needs the exec bit, and
   never runs on Windows). `ALFRED_CODE_HOOKS_VIA_PLUGIN=false` restores the 0.2.x copy route (the
   core's copies stand down for the wired ones); the walk writes the hooks it did NOT pick into
@@ -804,7 +804,12 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     it runs ONE scoped check per nearest root - the project's own `tsc --noEmit -p` for TypeScript, `dotnet build --no-restore
     -v q` for C# - and hands the first 20 error lines back as a block, once per turn (its own continuation Stop
     passes). A missing compiler or a timeout is a pass, and so is a C# project never restored (every error line
-    `NETSDK1004`, which `--no-restore` cannot get past), written as one `mode: probe` row (audit 2026-10-08).
+    `NETSDK1004`, which `--no-restore` cannot get past), written as one `mode: probe` row (audit 2026-10-08). It starts
+    no process of its own (the user's ruling of 2026-10-16: a node start every Stop, in every project, to read a switch
+    that is off): `history-session.js`'s Stop runs its `stopCheck` in-process with the check's OWN gates (`HOOKS_OFF`,
+    `TURN_CHECK`, the Cursor and Stop chain gates), so either hook switched off leaves the other running, and both
+    generators fold its Stop row into history-session's (`history-session.js wiringRows`, `RIDERS`), which takes its 60s;
+    with history-session not picked its own row stays.
   - `guard-answer-length.js` (`UserPromptSubmit` + `SessionStart:compact` + `Stop` + `PostToolUse` `AskUserQuestion`) - injects the answer budget every turn (a
     333-char delta of the rule's section, which stays its home - audit 2026-10-14 RU06; it was 751 on every prompt), and
     again after a compaction, which drops that injection - only then since the deep hooks review 2026-10-16 (startup,
@@ -858,7 +863,7 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     import, find the server one way (`serviceEntry`): a registration, else the installed
     `memory@envoydev` plugin's own declaration with the db path pinned.
   - `history-session.js` (`SessionStart` + `Stop`) with its engine `history.js` (copied beside it, not
-    wired) - a machine-local record per session under `<docs-path>/history/` (no `.gitignore` of its own since 2026-10-13 - the data root's
+    wired; its Stop process also runs the turn build check, above) - a machine-local record per session under `<docs-path>/history/` (no `.gitignore` of its own since 2026-10-13 - the data root's
     one file keeps it out, and an update removes the `*` file earlier releases wrote; no `watch.json`, so no docs domain): at `Stop` it
     reads only the transcript bytes past a stored offset (8MB at most per pass) and keeps the commits since
     the session's start sha, the files left dirty, the plan file written (project-relative, or `~/` under the home

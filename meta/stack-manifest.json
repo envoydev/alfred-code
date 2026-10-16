@@ -955,7 +955,7 @@
       "file": "check-turn-build.js",
       "matcher": "@Stop",
       "event": "",
-      "note": "seeded OFF (ALFRED_CODE_TURN_CHECK=0): the turn's changed files from git (mtime past the previous Stop's marker), then ONE scoped tsc / dotnet build per root, first 20 error lines as a block, once per turn; timeout 60, the one declared exception"
+      "note": "seeded OFF (ALFRED_CODE_TURN_CHECK=0): the turn's changed files from git (mtime past the previous Stop's marker), then ONE scoped tsc / dotnet build per root, first 20 error lines as a block, once per turn; it runs inside history-session's Stop process where that row is wired (2026-10-16: no node start of its own), its timeout 60 moving onto that wiring"
     },
     {
       "file": "history-session.js",
