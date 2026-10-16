@@ -278,24 +278,14 @@ test('guard-stop-contract: a background dev server or watcher is no work that re
 
 // 2.1.6 review re-verify N-B2: a hand-back whose wait names no person ('awaiting approval', 'waiting for the go-ahead')
 // passed while any work ran - 59 cells, 0 on base - and a background server (`dotnet run`, `docker compose up`) never
-// ends, so it held the exemption open for the rest of the session. The reviewer's closes and states, as fixtures. N4
-// (its stop half): an all-Ukrainian stall is judged like an English one.
+// ends, so it held the exemption open for the rest of the session. The reviewer's closes and states, as fixtures.
 const REVERIFY_STALLS = [
   ['X11', 'The fix is done and verified. Awaiting approval to commit.'],
   ['X12', 'Everything is ready - waiting for the go-ahead to push.'],
   ['X13', 'Migration done. Waiting on a decision about the schema.'],
   ['X14', 'Task 3 is done and the review agent is still running. Tell me whether to push.'],
-  ['X16', 'Task 3 is done; the review agent is still running. Чекаю на твоє рішення щодо push.'],
   ['X18', 'Task 3 is done. Awaiting sign-off before I push.'],
   ['X19', 'Done - the reviewer is still running. Waiting for confirmation to merge.'],
-];
-const CYRILLIC_STALLS = [
-  ['UK1', 'Задача 3 виконана. Чекаю на твоє рішення щодо push.'],
-  ['UK2', 'Готово. Наступний крок: додати сторінку налаштувань.'],
-  ['UK3', 'Міграцію завершено. Чекаю на підтвердження схеми.'],
-];
-const CYRILLIC_STATUS = [
-  ['UK4', "Задача 2 готова. Агент рев'ю ще працює; продовжу, коли він відзвітує."],
 ];
 const REVERIFY_STATUS = [
   ['P5', 'Task 3 is done; the review agent is still running, waiting on its report.'],
@@ -316,15 +306,14 @@ const RV_STATES = {
 test('guard-stop-contract: a hand-back waits on a person whatever else runs, and a server is no work that ends (2.1.6 re-verify N-B2)', () => {
   const passed = [];
   for (const [state, rows] of Object.entries(RV_STATES)) {
-    for (const [id, text] of [...REVERIFY_STALLS, ...CYRILLIC_STALLS]) if (closeOver(`nb2-${id}-${state}`, rows(), text).status !== 2) passed.push(`${id}/${state}`);
+    for (const [id, text] of REVERIFY_STALLS) if (closeOver(`nb2-${id}-${state}`, rows(), text).status !== 2) passed.push(`${id}/${state}`);
   }
-  for (const [id, text] of CYRILLIC_STALLS) if (closeOver(`nb2-${id}-none`, fgBash, text).status !== 2) passed.push(`${id}/none`);
   assert.deepStrictEqual(passed, [], 'a stall passed');
 });
-test('guard-stop-contract: a wait on the session\'s own running work is still a status line, in English and Ukrainian (2.1.6 re-verify N-B2, N4)', () => {
+test('guard-stop-contract: a wait on the session\'s own running work is still a status line (2.1.6 re-verify N-B2)', () => {
   const live = ['agent', 'tests', 'monitor', 'resumed'];
   const idle = { none: () => fgBash, dotnet: RV_STATES.dotnet, compose: RV_STATES.compose, uvicorn: RV_STATES.uvicorn, hugo: RV_STATES.hugo };
-  for (const [id, text] of [...REVERIFY_STATUS, ['P1', RUNNING_CLOSE], ['P2', WAITING_CLOSE], ...CYRILLIC_STATUS]) {
+  for (const [id, text] of [...REVERIFY_STATUS, ['P1', RUNNING_CLOSE], ['P2', WAITING_CLOSE]]) {
     for (const state of live) assert.equal(closeOver(`st-${id}-${state}`, RV_STATES[state](), text).status, 0, `${id} under ${state}`);
     for (const [state, rows] of Object.entries(idle)) assert.equal(closeOver(`st-${id}-${state}`, rows(), text).status, 2, `${id} with only ${state}`);
   }
@@ -333,9 +322,8 @@ test('guard-stop-contract: a wait on the session\'s own running work is still a 
 // 2.1.6 re-verify 2: 37 closes x 14 transcript states, the reviewer's cells. R2-B1: a hand-back the pending parser
 // cannot see ('Push when you approve', 'I need your go-ahead', 'awaiting a review from you') passed under any live work,
 // and a background server the never-ends list did not name held the exemption open. R2-M1: a hand-back beside a job
-// noun ('The build is still running; awaiting your approval') passed through the text exemptions in every state. R2-M2:
-// the first-person past ('Зробив', 'Закомітив') is how a Ukrainian close reports done. R2-m3: a
-// wait on the stack's own seats ('the designer's plan') is a wait on running work.
+// noun ('The build is still running; awaiting your approval') passed through the text exemptions in every state. R2-m3:
+// a wait on the stack's own seats ('the designer's plan') is a wait on running work.
 const R2_HANDBACKS = [
   ['HB1', 'Task 3 is done and the review agent is still running. Push when you approve.'],
   ['HB2', 'Task 3 is done and the review agent is still running. I need your go-ahead to push.'],
@@ -349,16 +337,10 @@ const R2_HANDBACKS = [
   ['HB10', 'Task 3 is done. Waiting for it to be approved.'],
   ['HB11', "Task 3 is done. Awaiting the user's review."],
   ['HB12', 'Task 3 is done. Waiting for the results of your manual test.'],
-  ['HB13', "Задача 3 готова, агент рев'ю ще працює. Пуш після твого схвалення."],
-  ['HB15', "Задача 3 готова. Чекаю на рев'ю від тебе."],
   ['PR1', 'Task 3 is done. The build is still running; awaiting your approval to push.'],
   ['PR2', 'Task 3 is done and the dev server runs in the background. Next step: push when you say so.'],
   ['PR3', 'All tests pass. CI is still running. Next steps: merge when you are ready.'],
   ['PR4', 'Task 3 is done; tests are queued in CI. Awaiting your go-ahead to merge.'],
-  ['CY2', 'Зробив задачу 3. Чекаю на твоє рішення щодо push.'],
-  ['CY4', 'Закомітив. Наступний крок: пуш.'],
-  ['CY6', 'Виконав задачу 3. Залишилось запушити.'],
-  ['CY8', 'Готово. Далі - пуш, коли скажеш.'],
 ];
 const R2_STATUS = [
   ['SN1', "Task 3 is done. Awaiting the designer's plan."],
@@ -380,9 +362,9 @@ const R2_STATES = {
   dev: () => devServer,
   ...Object.fromEntries(R2_SERVERS.map((command, i) => [command, () => bgShell(`br2s${i}`, command)])),
 };
-test('guard-stop-contract: 31 closes in 14 states - a hand-back blocks whatever runs, a wait on finite work passes only while it runs (2.1.6 re-verify 2 R2-B1, R2-M1, R2-M2, R2-m3)', () => {
+test('guard-stop-contract: 25 closes in 14 states - a hand-back blocks whatever runs, a wait on finite work passes only while it runs (2.1.6 re-verify 2 R2-B1, R2-M1, R2-M2, R2-m3)', () => {
   assert.equal(Object.keys(R2_STATES).length, 14);
-  assert.equal(R2_HANDBACKS.length + R2_STATUS.length, 31);
+  assert.equal(R2_HANDBACKS.length + R2_STATUS.length, 25);
   const wrong = [];
   for (const [state, rows] of Object.entries(R2_STATES)) {
     const live = state === 'agent' || state === 'tests';
@@ -392,28 +374,24 @@ test('guard-stop-contract: 31 closes in 14 states - a hand-back blocks whatever 
       if (status !== (live ? 0 : 2)) wrong.push(`${id}/${state} ${status === 0 ? 'passed' : 'blocked'}`);
     }
   }
-  assert.deepStrictEqual(wrong, [], `${wrong.length} of 434 cells wrong`);
+  assert.deepStrictEqual(wrong, [], `${wrong.length} of 350 cells wrong`);
 });
 
 // 2.1.6 re-verify 3 R3-M2: a done close that hands the next act back with no pending word ('Push when you approve.')
 // passed in every state - the 'ready to commit when you say so' stall the contract exists for. R3-m2: a hand-back in
-// words no list named ('over to you', 'the push is yours', 'за тобою') passed while the session's own finite work ran.
+// words no list named ('over to you', 'the push is yours') passed while the session's own finite work ran.
 // R3-m3: seven status closes were read as hand-backs under live work ('tell me' in a clause about the verifier, 'your'
 // before a noun that is no approval, 'by the user' after 'requested', a hyphenated 'Pick-up').
 const R3_DONE_HANDBACKS = [
   ['P1', 'Task 3 is done. Push when you approve.'],
   ['P2', 'Task 3 is done. I need your go-ahead to push.'],
   ['P3', 'Task 3 is done. The push is yours.'],
-  ['P4', 'Готово. Запушу, коли підтвердиш.'],
 ];
-const R3_PAST_REPORTS = [['PP1', 'Pushed after your approval.'], ['PP2', 'Запушив після твого схвалення.']];
+const R3_PAST_REPORTS = [['PP1', 'Pushed after your approval.']];
 const R3_HANDBACK_WORDS = [
   ['N1', 'Over to you for the push'], ['N2', 'The push is yours'], ['N3', 'Ping me when to push'], ['N4', 'Ready to push on your signal'],
   ['N5', 'The push waits on you'], ['N6', 'Push is blocked on you'], ['N7', 'Your move on the push'], ['N8', 'Push once you have looked it over'],
   ['N9', 'The ball is in your court for the push'], ['N10', 'Push after your look'],
-  ['N11', 'Далі - за тобою'], ['N13', 'Твій хід щодо пушу'], ['N14', 'Дай знати - і я запушу'],
-  ['N15', 'Скажи - і я запушу'], ['N16', 'Напиши, коли пушити'], ['N17', 'Пуш за тобою'], ['N18', 'Запушу після твого апруву'],
-  ['N19', 'Пушну після твого ок'], ['N20', 'Пушити - на твій розсуд'],
 ];
 const R3_STATUS = [
   ['S1', 'Waiting on the verifier.'],
@@ -426,7 +404,6 @@ const R3_STATUS = [
   ['S8', 'Waiting on the review agent. Pick-up of task 4 starts after it reports.'],
   ['S9', 'The review agent is still running; I read its report next.'],
   ['S10', 'Waiting on the verifier to finish your review checklist.'],
-  ['S11', "Чекаю на звіт агента рев'ю."],
 ];
 test('guard-stop-contract: a done close handing the next act back blocks in all 14 states, a past report passes (2.1.6 re-verify 3 R3-M2)', () => {
   const wrong = [];
@@ -435,9 +412,9 @@ test('guard-stop-contract: a done close handing the next act back blocks in all 
     for (const [id, text] of R3_DONE_HANDBACKS) if (closeOver(`r3-${id}-${tag}`, rows(), text).status !== 2) wrong.push(`${id}/${state} passed`);
     for (const [id, text] of R3_PAST_REPORTS) if (closeOver(`r3-${id}-${tag}`, rows(), text).status !== 0) wrong.push(`${id}/${state} blocked`);
   }
-  assert.deepStrictEqual(wrong, [], `${wrong.length} of 84 cells wrong`);
+  assert.deepStrictEqual(wrong, [], `${wrong.length} of 56 cells wrong`);
 });
-test('guard-stop-contract: a hand-back in any of 19 wordings blocks under live work (2.1.6 re-verify 3 R3-m2)', () => {
+test('guard-stop-contract: a hand-back in any of 10 wordings blocks under live work (2.1.6 re-verify 3 R3-m2)', () => {
   const wrong = [];
   for (const state of ['agent', 'tests', 'none']) {
     for (const [id, text] of R3_HANDBACK_WORDS) {
@@ -445,14 +422,14 @@ test('guard-stop-contract: a hand-back in any of 19 wordings blocks under live w
       if (closeOver(`r3-${id}-${state}`, R2_STATES[state](), close).status !== 2) wrong.push(`${id}/${state} passed`);
     }
   }
-  assert.deepStrictEqual(wrong, [], `${wrong.length} of 57 cells wrong`);
+  assert.deepStrictEqual(wrong, [], `${wrong.length} of 30 cells wrong`);
 });
 test('guard-stop-contract: a status close on running work passes under live work (2.1.6 re-verify 3 R3-m3)', () => {
   const wrong = [];
   for (const state of ['agent', 'tests']) {
     for (const [id, text] of R3_STATUS) if (closeOver(`r3-${id}-${state}`, R2_STATES[state](), `Task 3 is done. ${text}`).status !== 0) wrong.push(`${id}/${state} blocked`);
   }
-  assert.deepStrictEqual(wrong, [], `${wrong.length} of 22 cells wrong`);
+  assert.deepStrictEqual(wrong, [], `${wrong.length} of 20 cells wrong`);
 });
 // 2.1.6 re-verify 4 R4-M3: 'ping me', 'let me know' and the Ukrainian forms read as a hand-back whatever
 // followed, so a finished answer signing off with an OFFER ('Ping me if anything looks off.') was blocked in every state
@@ -464,21 +441,17 @@ const R4_SIGN_OFFS = [
   ['O3', 'All done. Feel free to ping me if something looks wrong.'],
   ['O4', 'All done. Let me know how the review goes.'],
   ['O5', 'All done. Ping me about anything that looks off.'],
-  ['O6', 'Готово. Дай знати, якщо щось не так.'],
-  ['O8', 'Готово. Скажи, якщо потрібні зміни.'],
   ['O9', 'Task 3 is done. Tell me what you think of the naming.'],
 ];
 const R4_STILL_HANDBACKS = [
   ['H1', 'Task 3 is done. Ping me when you are ready to push.'],
   ['H2', 'Task 3 is done. Let me know when to push.'],
   ['H3', 'Task 3 is done. Let me know once you have looked it over.'],
-  ['H4', 'Готово. Дай знати, коли пушити.'],
   ['H6', 'Task 3 is done. Ping me after your review.'],
   // 'whether to' / 'how to' / 'what to' ask for the decision itself: the offer words hand back before an infinitive
   ['H7', 'Task 3 is done. Tell me whether to push.'],
   ['H8', 'Task 3 is done. Let me know how to proceed.'],
   ['H9', 'Task 3 is done. Tell me what to do next.'],
-  ['H10', 'Готово. Скажи, чи пушити.'],
 ];
 test('guard-stop-contract: a finished answer signing off with an offer passes, a hand-back with a condition still blocks (2.1.6 re-verify 4 R4-M3)', () => {
   const wrong = [];
@@ -1054,4 +1027,14 @@ test('guard-answer-length: the em-dash fix yields to a stop-contract block on th
   const both = longAnswer();
   assert.equal(both.status, 2, 'the wall of text still blocks');
   assert.match(both.stderr, /blocked this same turn too/, '... and the two hooks now agree on one turn');
+});
+// Deep hooks review 2026-10-16, the user's ruling 'English + script rule': the word lists read English only, so a close
+// in another language is not judged on its words - only on its neutral signals.
+test('guard-stop-contract: a close the hook cannot read as English is not judged on its words, a closing question mark still is (deep review: English only)', () => {
+  const stall = 'Задача 3 готова. Чекаю на твоє рішення.';
+  const ask = 'Задача 3 готова. Пушити?';
+  for (const [state, rows] of [['none', fgBash], ['agent', reviewAgent]]) {
+    assert.equal(closeOver(`en-stall-${state}`, rows, stall).status, 0, `a stall in Ukrainian under ${state}`);
+    assert.equal(closeOver(`en-ask-${state}`, rows, ask).status, 2, `a closing '?' in Ukrainian under ${state}`);
+  }
 });

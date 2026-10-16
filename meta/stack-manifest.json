@@ -800,18 +800,6 @@
       "note": "PreToolUse AskUserQuestion: DENY once per ask text an ask whose own shape is wrong - its house voice (an em- or en-dash, a double quote), a fresh-session option quoting no number near the measured carry (both carrying the corrected strings), an option telling the user to type into Other, a single-select question without exactly one (Recommended), a new cycle's first ask with no fresh option; INJECT the judgement notes, which land beside the user's answer and are worded for it - stale scope (an option naming repo/remote/job state with no fresh read this turn: verify before acting, re-ask if it moved), a recommendation contradicting an un-actioned earlier prompt, the fresh-session offer for the next ask, a live credential. Presence only. Under a live AUTO stamp it ANSWERS an ask whose every question marks one (Recommended) option - allow plus an answers map in updatedInput - except a recommended push, merge, deploy or publish, and takes the next option over a recommended fresh-session hand-off; anything else waits for the user."
     },
     {
-      "file": "guard-stop-contract.js",
-      "matcher": "@PostToolUseFailure:Bash|PowerShell",
-      "event": "",
-      "note": "PostToolUseFailure: LOG-ONLY and async (it never blocks or decides, so no shell result waits on it) - the first red build or test run (npm / node --test / jest / vitest / pytest / dotnet / ng / go / cargo / mvn / gradle) of a failure streak writes one root-cause probe row with its tool_use_id, which analyze-usage.js --hook-blocks resolves against the transcript; nothing injected, never a block"
-    },
-    {
-      "file": "guard-stop-contract.js",
-      "matcher": "@PostToolUse:Bash|PowerShell",
-      "event": "",
-      "note": "PostToolUse: the same streak read from a run that exited 0 - a red runner summary behind a pipe is logged the same way; one streak per actor, ended when every run that went red in it is green again (or an hour with no red run)"
-    },
-    {
       "file": "guard-fresh-session-start.js",
       "matcher": "Skill",
       "event": "",
@@ -897,9 +885,9 @@
     },
     {
       "file": "guard-answer-length.js",
-      "matcher": "@SessionStart",
+      "matcher": "@SessionStart:compact",
       "event": "",
-      "note": "re-inject the budget after a COMPACTION rebuilds the context without it (measured absent for 277 of 366 messages in one session) - a startup/resume session gets it before the first prompt too"
+      "note": "re-inject the budget after a COMPACTION rebuilds the context without it (measured absent for 277 of 366 messages in one session); startup, resume and clear get it from the first prompt's UserPromptSubmit injection, so the start no longer pays for a second copy (deep hooks review 2026-10-16)"
     },
     {
       "file": "guard-answer-length.js",
@@ -933,7 +921,7 @@
     },
     {
       "file": "docs-session.js",
-      "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob",
+      "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit|Grep",
       "event": "",
       "note": "doc reads recorded; the FIRST change under a source root held until a covering section was read, that section handed over inline"
     },
@@ -968,34 +956,10 @@
       "note": "the project's memory tag line for a dispatched subagent - SessionStart context never reaches one, and a seat stores and reads its handoff note under that tag - and the memory tools line, which a seat whose tools grant the server skips: it calls them directly; then this host's shell traps (win32: the Git Bash line; a zsh $SHELL: the two zsh lines)"
     },
     {
-      "file": "monitor-session.js",
-      "matcher": "@PostToolUse",
-      "event": "",
-      "note": "a live monitor that never denies: the same call repeated 5 times with identical input, over 20 files written in one turn, the context at 80% of the fresh-session trigger - one row each, injected only when ALFRED_CODE_MONITOR=inject"
-    },
-    {
-      "file": "monitor-session.js",
-      "matcher": "@UserPromptSubmit",
-      "event": "",
-      "note": "a new turn: the monitor's per-turn counts reset"
-    },
-    {
-      "file": "check-turn-build.js",
-      "matcher": "@PostToolUse:Write|Edit|MultiEdit",
-      "event": "",
-      "note": "seeded OFF (ALFRED_CODE_TURN_CHECK=0): records each written path for the turn's one build check"
-    },
-    {
-      "file": "check-turn-build.js",
-      "matcher": "@PostToolUse:^mcp__(plugin_(alfred-)?navigation_)?(alfred-)?navigation__(rename_symbol|safe_delete_symbol)$",
-      "event": "",
-      "note": "the same record for the navigation server's two kept edit tools - the path is tool_input.relative_path, from the project root; both routes' spellings"
-    },
-    {
       "file": "check-turn-build.js",
       "matcher": "@Stop",
       "event": "",
-      "note": "the turn's ONE scoped tsc / dotnet build per root, first 20 error lines as a block, once per turn; timeout 60 on this Stop wiring alone, the one declared exception - its PostToolUse half keeps 10"
+      "note": "seeded OFF (ALFRED_CODE_TURN_CHECK=0): the turn's changed files from git (mtime past the previous Stop's marker), then ONE scoped tsc / dotnet build per root, first 20 error lines as a block, once per turn; timeout 60, the one declared exception"
     },
     {
       "file": "history-session.js",
@@ -1197,7 +1161,8 @@
     ],
     "hooks": [
       "require-convention-skill.js",
-      "inject-code-style.js"
+      "inject-code-style.js",
+      "monitor-session.js"
     ],
     "mcps": [
       "angular-cli",

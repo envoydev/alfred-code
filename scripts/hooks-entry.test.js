@@ -20,7 +20,7 @@ test('the wirings come from the installer table, not a second list', () => {
     // The shell guards launch as ONE dispatcher and the file guards as another, each running its guards in-process.
     const files = new Set(wirings.flatMap(w => (w.file === `${dispatcher.SELF}.js` ? dispatcher.GUARDS.map(g => `${g}.js`)
         : w.file === `${fileDispatcher.SELF}.js` ? fileDispatcher.NAMES.map(g => `${g}.js`) : [w.file])));
-    assert.strictEqual(files.size, 18, 'eighteen hooks, however many wirings they take');
+    assert.strictEqual(files.size, 17, 'seventeen hooks, however many wirings they take');
     for (const w of wirings) assert.ok(/^[a-z-]+\.js$/.test(w.file), `odd file name: ${w.file}`);
 });
 
@@ -45,22 +45,21 @@ test('a bare matcher is a PreToolUse wiring; an @ prefix names its own event', (
 // platform honours: five hooks were committed 100644, and Windows runs neither.
 // Audit 2026-10-08 row 28: the plugin route spawned the tool-usage log on every tool call and waited on it; it runs async
 // now (code.claude.com/docs/en/hooks, 'Run hooks in the background'), and nothing that must block or decide does.
-// Audit 2026-10-14 HK12: the stop contract's PostToolUse / PostToolUseFailure halves are log-only too (a red-run probe row),
-// so they run async as well; its Stop, SubagentStop and AskUserQuestion halves block, so they never do.
-test('only the log-only hooks run async - the tool-usage log and the stop contract\'s two shell-result halves - so every guard can still block', () => {
+// Audit 2026-10-14 HK12 made the stop contract's PostToolUse / PostToolUseFailure probe async; the deep hooks review
+// 2026-10-16 dropped that probe, so the tool-usage log is the one async hook and the stop contract wires no shell result.
+test('only the log-only hook runs async - the tool-usage log - so every guard can still block', () => {
     const async = Object.entries(block).flatMap(([event, groups]) => groups.flatMap((b) => b.hooks.filter((h) => h.async === true)
         .map((h) => `${event} ${h.command.replace(/^node "\$\{CLAUDE_PLUGIN_ROOT\}\/stack\/hooks\//, '').replace(/"$/, '')}`))).sort();
-    assert.deepStrictEqual(async, ['PostToolUse guard-stop-contract.js', 'PostToolUseFailure guard-stop-contract.js', 'PreToolUse instrument-tool-usage.js']);
+    assert.deepStrictEqual(async, ['PreToolUse instrument-tool-usage.js']);
     for (const [event, groups] of Object.entries(block))
         for (const h of groups.flatMap((b) => b.hooks))
-            if (/guard-stop-contract\.js/.test(h.command) && !/^PostToolUse/.test(event)) assert.ok(!h.async, `the stop contract's ${event} half must block`);
+            if (/guard-stop-contract\.js/.test(h.command)) assert.ok(!h.async && !/^PostToolUse/.test(event), `the stop contract's ${event} half must block, and no shell result is wired`);
     const core = JSON.stringify(JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'plugin-entries.json'), 'utf8')));
     assert.match(core, /instrument-tool-usage\.js\\"","timeout":10,"async":true/, 'the generated entry carries it');
-    assert.strictEqual((core.match(/guard-stop-contract\.js\\"","timeout":10,"async":true/g) || []).length, 2, 'and the two shell-result halves');
+    assert.strictEqual((core.match(/guard-stop-contract\.js\\"","timeout":10,"async":true/g) || []).length, 0, 'and no stop-contract half');
     // the copy route writes the same table, and backfills it onto an older blocking entry
     const { asyncFor } = require('./install/settings.js');
-    assert.ok(asyncFor('guard-stop-contract.js', 'PostToolUse') && asyncFor('guard-stop-contract.js', 'PostToolUseFailure'));
-    for (const event of ['Stop', 'SubagentStop', 'PreToolUse']) assert.ok(!asyncFor('guard-stop-contract.js', event), event);
+    for (const event of ['Stop', 'SubagentStop', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure']) assert.ok(!asyncFor('guard-stop-contract.js', event), event);
     assert.ok(asyncFor('instrument-tool-usage.js', 'PreToolUse') && !asyncFor('shell-guards.js', 'PreToolUse'));
 });
 
@@ -100,7 +99,7 @@ test('every generated hook command runs a non-executable script, under a root wi
         const commands = new Set();
         for (const blocks of Object.values(coreEntry().hooks))
             for (const b of blocks) for (const h of b.hooks) commands.add(h.command);
-        assert.ok(commands.size >= 15, `expected the eighteen hooks (the shell and file guards through their two dispatchers) plus the core's own two, got ${commands.size}`);
+        assert.ok(commands.size >= 15, `expected the seventeen hooks (the shell and file guards through their two dispatchers) plus the core's own two, got ${commands.size}`);
         const env = { PATH: `${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH}` };
         for (const command of commands)
         {
@@ -266,32 +265,6 @@ test('the hooks audit\'s currency rows follow the hooks reference: DirectoryAdde
     assert.match(currency, /`SessionStart` sources `startup` \/ `resume` \/ `clear` \/ `compact` \/ `fork`/);
     const noMatcher = rubric.match(/no matcher on the events that ignore one - ([^;)]*)[;)]/)[1];
     assert.doesNotMatch(noMatcher, /DirectoryAdded/, 'the rubric no longer lists DirectoryAdded among the events that ignore a matcher');
-});
-
-// HK12 on the copy route: the writer keys the async flag by the hook's EVENT, so the stop contract's shell-result halves
-// are written async (and backfilled onto an older blocking entry) while its Stop half stays able to block; a re-run
-// changes nothing.
-test('copy route: the stop contract\'s PostToolUse / PostToolUseFailure entries are async, its Stop entry is not (HK12)', () => {
-    const { writeSettings, hookCommand } = require('./install/settings.js');
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hooks-entry-async-'));
-    try {
-        const file = path.join(dir, '.claude', 'settings.json');
-        fs.mkdirSync(path.dirname(file), { recursive: true });
-        const cmd = hookCommand('guard-stop-contract.js', '').command;
-        // an older install wired the PostToolUse half blocking
-        fs.writeFileSync(file, JSON.stringify({ hooks: { PostToolUse: [{ matcher: 'Bash|PowerShell', hooks: [{ type: 'command', command: cmd, timeout: 10 }] }] } }));
-        const specs = ['@Stop', '@PostToolUse:Bash|PowerShell', '@PostToolUseFailure:Bash|PowerShell'].map((matcher) => ({ file: 'guard-stop-contract.js', matcher }));
-        const opts = { file, catalog: require('../meta/environment.json').env, migrations: {}, log: () => {}, note: () => {}, hookSpecs: specs };
-        writeSettings(opts);
-        const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-        const of = (event) => data.hooks[event].flatMap((e) => e.hooks).filter((h) => h.command === cmd);
-        assert.deepStrictEqual(of('PostToolUse').map((h) => h.async), [true], 'the older blocking entry is backfilled, not doubled');
-        assert.deepStrictEqual(of('PostToolUseFailure').map((h) => h.async), [true], 'a fresh entry is written async');
-        assert.deepStrictEqual(of('Stop').map((h) => h.async), [undefined], 'the Stop half must block');
-        const before = fs.readFileSync(file, 'utf8');
-        writeSettings(opts);
-        assert.strictEqual(fs.readFileSync(file, 'utf8'), before, 'a re-run changes nothing');
-    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 // Audit 2026-10-14 HK07 (the user's ruling): a hook that fails - cannot start, times out, exits other than 0 / 2 - lets the

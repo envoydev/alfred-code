@@ -172,6 +172,9 @@ const log = (root, input, row) => {
 function orientation(root, docs) {
   let block = '';
   try { block = fs.readFileSync(docs.BLOCK_FILE, 'utf8').trim(); } catch {}
+  // A copy of the footer below pasted into the file is dropped, not pushed twice (docs.js HOOK_FOOTER; an older engine
+  // beside this hook has none, and the block goes out as written).
+  if (docs.HOOK_FOOTER) block = block.split('\n').filter((l) => !docs.HOOK_FOOTER.test(l)).join('\n').trim();
   // The 4KB cap is enforced here, not only reported by lint: an 11,901-byte file pushed the block past the harness's
   // 10,000-character context cap, which swaps it for a path and a preview - the where / show lines at its end were
   // lost (audit 2026-10-08).
@@ -401,7 +404,12 @@ function sweepRecords(dir, now = Date.now()) {
   } catch { /* a sweep never fails the start */ }
 }
 
+// Claude Code's own seats that write no project code: the orientation block is ~1-4KB they never use and the snapshot
+// feeds an ask they never earn (deep hooks review 2026-10-16). A stack seat or general-purpose still gets both.
+const NO_DOCS_SEATS = new Set(['Explore', 'Plan', 'claude-code-guide', 'statusline-setup']);
+
 function subagentStart(input, root, docs) {
+  if (NO_DOCS_SEATS.has(input.agent_type)) return;
   // The snapshot is what makes the finish ask possible, and it is NOT the orientation block: the block's switch
   // must not blind the ask, and the ask's switch must not cost a snapshot nobody will read.
   if (envOf(process.env, 'DOCS_ASK') !== '0') {

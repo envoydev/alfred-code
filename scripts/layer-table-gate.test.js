@@ -252,7 +252,7 @@ test('the DELTA add / drop ask names its layer too', () => {
 });
 
 test('a layer ask passes once that layer table ran and was pasted', () => {
-  const r = run([typed('/alfred-code:setup'), recompute, result('r1', ''), table('hooks'), result('t1', 'total: 18 hooks'), say('```\n 1 | x\ntotal: 18 hooks\n```')], layerAsk('Hooks: keep all 18 on?'));
+  const r = run([typed('/alfred-code:setup'), recompute, result('r1', ''), table('hooks'), result('t1', 'total: 17 hooks'), say('```\n 1 | x\ntotal: 17 hooks\n```')], layerAsk('Hooks: keep all 17 on?'));
   assert.strictEqual(r.status, 0);
 });
 

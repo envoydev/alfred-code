@@ -5,9 +5,8 @@
 //                claiming the session's own change done / fixed / passing / works / ready writes ONE
 //                probe row per turn - `unrun` when a source edit landed after the turn's last build or
 //                test run (or none ran), `ran` otherwise. A close with no edit writes nothing.
-//   root cause - PostToolUseFailure / PostToolUse on Bash and PowerShell, LOG-ONLY since the same ruling:
-//                a build or test command that failed writes ONE probe row per failure streak, carrying the
-//                run's tool_use_id and actor; the next green run of that command resets the streak.
+//   root cause - the PostToolUse / PostToolUseFailure probe, dropped in the deep hooks review 2026-10-16;
+//                one test below pins that a red shell result now writes nothing.
 // Both directions are pinned: a gate that also fires on the clean neighbour teaches a bypass.
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
@@ -406,210 +405,21 @@ test('done gate: the row records the skill load, the project\'s test markers and
     }
 });
 
-// --- root cause: PostToolUseFailure / PostToolUse (log-only probe) ------------------------------
-// LOG-ONLY since 2026-09-25, like the done gate: a red build or test run writes ONE `mode: probe`,
-// `kind: root-cause` row per failure streak and says nothing to the model. The row carries the run's
-// `tool_use_id` and actor, so the analyzer can read the transcript after it: was the skill loaded
-// before the next fix, after it, or never.
-let tu = 0;
-const post = (root, event, tool, command, extra, extraEnv) =>
-    run(root, { hook_event_name: event, tool_name: tool, tool_input: { command }, tool_use_id: `toolu_${++tu}`, ...(extra || {}) }, extraEnv);
-const rcProbes = (root) =>
-{
+// --- root cause: the PostToolUse / PostToolUseFailure probe is gone -------------------------------
+// Dropped in the deep hooks review 2026-10-16 (27,380 async runs for 250 rows nobody read). A stale wiring that still
+// sends a red shell result passes silently and writes nothing.
+test('deep review: a red shell result writes no root-cause row and says nothing', () => {
+    const root = project();
     const dir = path.join(root, '.alfred', 'docs', 'hook-blocks');
-    if (!fs.existsSync(dir)) return [];
-    return fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl'))
-        .flatMap((f) => fs.readFileSync(path.join(dir, f), 'utf8').trim().split('\n').filter(Boolean))
-        .filter((l) => { const o = JSON.parse(l); return o.mode === 'probe' && o.kind === 'root-cause'; });
-};
-// One shell event, and the root-cause probe row it wrote (null when it wrote none).
-const logged = (root, event, tool, command, extra, extraEnv) =>
-{
-    const before = new Set(rcProbes(root));
-    const r = post(root, event, tool, command, extra, extraEnv);
-    assert.strictEqual(r.status, 0, `log-only, never a block: ${r.stderr}`);
-    assert.strictEqual(r.stdout.trim(), '', 'log-only: nothing is injected');
-    const added = rcProbes(root).filter((l) => !before.has(l));
-    return added.length ? JSON.parse(added[0]) : null;
-};
-
-test('root cause: a failing test command is logged once per streak, never injected, and a green run resets it', () => {
-    const root = project();
-    const first = logged(root, 'PostToolUseFailure', 'Bash', 'npm test', { error: 'Exit code 1\nnot ok 1 - cart total', tool_use_id: 'toolu_red1' });
-    assert.ok(first, 'the first failure is logged');
-    assert.strictEqual(first.hook, 'guard-stop-contract.js');
-    assert.strictEqual(first.event, 'PostToolUseFailure');
-    assert.strictEqual(first.tool, 'Bash');
-    assert.deepStrictEqual(first.detail, { run: 'npm test', key: 'npm test', tool_use_id: 'toolu_red1', agent: null, agent_type: null });
-    assert.strictEqual(logged(root, 'PostToolUseFailure', 'Bash', 'npm test 2>&1 | tail -20', { error: 'Exit code 1\n1 failing' }), null, 'a second failure in the streak is silent');
-    assert.strictEqual(logged(root, 'PostToolUse', 'Bash', 'npm test', { tool_response: { stdout: 'ℹ tests 3\nℹ pass 3\nℹ fail 0', stderr: '' } }), null, 'a green run logs nothing');
-    assert.ok(logged(root, 'PostToolUseFailure', 'Bash', 'npm test', { error: 'Exit code 1\n1 failing' }), 'the next failure after green is logged again');
-    const rows = ledger(root);
-    assert.strictEqual(rows.length, 2, JSON.stringify(rows));
-    for (const row of rows) { assert.strictEqual(row.mode, 'probe'); assert.strictEqual(row.kind, 'root-cause'); }
-});
-
-test('root cause: a subagent\'s red run names the actor, so a seat that preloads the skill can be told apart', () => {
-    const root = project();
-    const row = logged(root, 'PostToolUseFailure', 'Bash', 'dotnet test', { error: 'Exit code 1\n1 failing', agent_id: 'agent-7', agent_type: 'alfred-code:dotnet-test-failure-resolver' });
-    assert.strictEqual(row.detail.agent, 'agent-7');
-    assert.strictEqual(row.detail.agent_type, 'alfred-code:dotnet-test-failure-resolver');
-});
-
-// M6: one streak per actor. A second failing spelling of the same suite, or another failing command
-// inside the same red stretch, is the same need. A green run closes its own command (and the scoped
-// runs of it, when it ran unscoped); the streak ends when none is open.
-test('root cause: one streak per actor - a scoped green never closes the full suite, and two spellings log once', () => {
-    const root = project();
-    const red = (cmd, extra) => logged(root, 'PostToolUseFailure', 'Bash', cmd, { error: 'Exit code 1\n1 failing', ...(extra || {}) });
-    const green = (cmd) => logged(root, 'PostToolUse', 'Bash', cmd, { tool_response: { stdout: 'ℹ tests 3\nℹ pass 3\nℹ fail 0', stderr: '' } });
-    assert.ok(red('npm test'));
-    assert.strictEqual(red('npx vitest run'), null, 'a second spelling of the failing suite is the same streak');
-    assert.strictEqual(red('dotnet build'), null, 'another red run inside the streak is the same need');
-    assert.ok(red('npm test', { agent_id: 'agent-7' }), 'a subagent keeps its own streak');
-    assert.ok(logged(root, 'PostToolUseFailure', 'PowerShell', 'dotnet test', { error: 'Exit code 1\n1 failing', session_id: 'ps-1' }), 'PowerShell runs count');
-    for (const cmd of ['npm test -- -t cart', 'npx vitest run', 'dotnet build']) assert.strictEqual(green(cmd), null);
-    assert.strictEqual(red('npm test'), null, 'the scoped green left the full-suite streak open');
-    assert.strictEqual(green('npm test -- -t cart'), null);
-    assert.strictEqual(green('npm test 2>&1 | tail -3'), null, 'the unscoped green closes npm test and its scoped runs');
-    assert.ok(red('npm test -- -t tax'), 'nothing open - a new streak is logged');
-});
-
-test('root cause: a streak left open for an hour lapses', () => {
-    const root = project();
-    const state = path.join(root, '.hooklog', 'guard-stop-rootcause-sess-1-main.json');
-    fs.mkdirSync(path.dirname(state), { recursive: true });
-    fs.writeFileSync(state, JSON.stringify({ 'npm test': new Date(Date.now() - 61 * 60 * 1000).toISOString() }));
-    assert.ok(logged(root, 'PostToolUseFailure', 'Bash', 'dotnet build', { error: 'Exit code 1\n1 failing' }), 'the stale open key no longer silences the probe');
-    fs.writeFileSync(state, JSON.stringify({ 'npm test': new Date(Date.now() - 59 * 60 * 1000).toISOString() }));
-    assert.strictEqual(logged(root, 'PostToolUseFailure', 'Bash', 'go test ./...', { error: 'Exit code 1\n1 failing' }), null, 'one under the hour still holds');
-});
-
-test('root cause: a piped cargo or ng failure counts as red', () => {
-    const root = project();
-    let s = 0;
-    const piped = (cmd, stdout) => logged(root, 'PostToolUse', 'Bash', cmd, { session_id: `m6-${++s}`, tool_response: { stdout, stderr: '' } });
-    assert.ok(piped('cargo build 2>&1 | tail -20', 'error[E0308]: mismatched types\n --> src/main.rs:4:5'));
-    assert.ok(piped('cargo test 2>&1 | tail -5', 'error: could not compile `app` (lib) due to 1 previous error'));
-    assert.ok(piped('ng build 2>&1 | tail -5', 'Error: Schema validation failed with the following errors:'));
-    assert.strictEqual(piped('node --test 2>&1 | tail -5', 'Error: logged by a passing test\nℹ pass 3\nℹ fail 0'), null, 'an Error line outside ng is no verdict');
-});
-
-test('root cause: a red run piped to a filter that exits 0 still counts as red', () => {
-    const root = project();
-    const piped = (stdout) => logged(root, 'PostToolUse', 'Bash', 'node --test 2>&1 | tail -5', { tool_response: { stdout, stderr: '' } });
-    assert.ok(piped('ℹ tests 3\nℹ pass 2\nℹ fail 1'), 'node --test summary with a failure');
-    assert.strictEqual(piped('ℹ tests 3\nℹ pass 2\nℹ fail 1'), null, 'the same streak');
-    assert.strictEqual(piped('ℹ tests 3\nℹ pass 3\nℹ fail 0'), null, 'green resets');
-    assert.ok(piped('Tests:       1 failed, 2 passed, 3 total'), 'a jest summary after the reset');
-});
-
-test('root cause: what is not a failing build or test run logs nothing', () => {
-    const root = project();
-    const none = (event, tool, cmd, extra) => assert.strictEqual(logged(root, event, tool, cmd, extra), null, `${event} ${tool} ${cmd}`);
-    none('PostToolUseFailure', 'Bash', 'ls missing-dir', { error: 'Exit code 1\n1 failing' });
-    none('PostToolUseFailure', 'Bash', 'grep -rn "npm test" docs', { error: 'Exit code 1\n1 failing' });
-    none('PostToolUseFailure', 'Bash', 'cat jest.config.js', { error: 'Exit code 1\n1 failing' });
-    none('PostToolUseFailure', 'Bash', 'npm install', { error: 'Exit code 1\n1 failing' });
-    none('PostToolUseFailure', 'Bash', 'npm test', { error: 'Interrupted', is_interrupt: true });
-    none('PostToolUseFailure', 'Read', 'npm test', { error: 'boom' });
-    none('PostToolUse', 'Bash', 'npm test', { tool_response: { stdout: 'ok', stderr: '', interrupted: true } });
-    assert.deepStrictEqual(ledger(root), []);
-});
-
-test('root cause: a runner counts at the start of a segment, never as an argument', () => {
-    const root = project();
-    let s = 0;
-    const fires = (cmd) => !!logged(root, 'PostToolUseFailure', 'Bash', cmd, { error: 'Exit code 1\n1 failing', session_id: `c-${++s}` });
-    for (const cmd of ['npx jest --watchAll=false', 'yarn test', 'pnpm run build', 'npm run typecheck', 'python -m pytest tests', 'cargo clippy',
-        'go vet ./...', 'ng test --watch=false', '.\\gradlew.bat build', 'FOO=1 npm test', 'env -u X node --test a.test.js', 'timeout 60 dotnet test',
-        'cd web && npm test -- --run'])
-        assert.ok(fires(cmd), `a build or test run: ${cmd}`);
-    for (const cmd of ['npm run lint', 'npm run lint-check', 'npm ci', 'npm install jest', 'echo npm test', 'echo "a; npm test --silent"', 'git commit -m "npm test"',
-        'cat <<EOF\nnpm test\nEOF', 'node scripts/build-marketplace.js'])
-        assert.ok(!fires(cmd), `not a build or test run: ${cmd}`);
-});
-
-// Audit 2026-10-10 C16 / C02 (and the T4 cross-track 'never compiled' case): the probe counted planned test-first reds as
-// MISSED in nine sessions, a failure with no runner verdict as red, and missed Nx's verdict and a backgrounded suite.
-const allRows = (root) =>
-{
-    const dir = path.join(root, '.alfred', 'docs', 'hook-blocks');
-    if (!fs.existsSync(dir)) return [];
-    return fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl')).flatMap((f) => fs.readFileSync(path.join(dir, f), 'utf8').trim().split('\n').filter(Boolean)).map((l) => JSON.parse(l));
-};
-test('root cause: a test-first red under habits-test-first is logged apart, and the red after a source edit still counts (audit 2026-10-10 C16)', () => {
-    const root = project();
-    const tp = path.join(root, 'transcript.jsonl');
-    const skill = call('Skill', { skill: 'alfred-code:habits-test-first' });
-    const spec = call('Edit', { file_path: path.join(root, 'src', 'cart.test.ts'), old_string: 'a', new_string: 'b' });
-    const run1 = call('Bash', { command: 'npm test' });
-    fs.writeFileSync(tp, [typed('add the discount'), skill.row, result(skill.id, 'loaded'), spec.row, result(spec.id, 'ok'), run1.row].map((r) => JSON.stringify(r)).join('\n') + '\n');
-    const red = { error: 'Exit code 1\n1 failing\n  cart applies the discount', transcript_path: tp };
-    assert.strictEqual(logged(root, 'PostToolUseFailure', 'Bash', 'npm test', { ...red, tool_use_id: run1.id }), null, 'the planned red is no root-cause row');
-    assert.deepStrictEqual(allRows(root).map((r) => r.kind), ['test-first-red'], 'it is logged as what it is');
-    const src = call('Edit', { file_path: path.join(root, 'src', 'cart.ts'), old_string: 'a', new_string: 'b' });
-    const run2 = call('Bash', { command: 'npm test' });
-    fs.appendFileSync(tp, [result(run1.id, 'Exit code 1', true), src.row, result(src.id, 'ok'), run2.row].map((r) => JSON.stringify(r)).join('\n') + '\n');
-    assert.ok(logged(root, 'PostToolUseFailure', 'Bash', 'npm test', { ...red, tool_use_id: run2.id }), 'red after a source edit is the real need');
-    // a run that never compiled is no test-first red, however the turn names it (7fae0c39)
-    const r2 = project();
-    const tp2 = path.join(r2, 'transcript.jsonl');
-    const run3 = call('Bash', { command: 'npx jest src/cart.test.ts' });
-    fs.writeFileSync(tp2, [typed('go'), skill.row, spec.row, run3.row].map((r) => JSON.stringify(r)).join('\n') + '\n');
-    const broken = logged(r2, 'PostToolUseFailure', 'Bash', 'npx jest src/cart.test.ts',
-        { error: 'Exit code 1\nFAIL src/cart.test.ts\n  ● Test suite failed to run\n    error TS2304: Cannot find name discount\nTests: 1 failed', transcript_path: tp2, tool_use_id: run3.id });
-    assert.ok(broken, 'a spec that did not build is a root-cause row');
-    assert.strictEqual(broken.detail.compiled, false);
-    // without the skill loaded, the same red is a root-cause row
-    const r3 = project();
-    const tp3 = path.join(r3, 'transcript.jsonl');
-    const run4 = call('Bash', { command: 'npm test' });
-    fs.writeFileSync(tp3, [typed('go'), spec.row, run4.row].map((r) => JSON.stringify(r)).join('\n') + '\n');
-    assert.ok(logged(r3, 'PostToolUseFailure', 'Bash', 'npm test', { ...red, transcript_path: tp3, tool_use_id: run4.id }), 'no test-first load, no exemption');
-});
-// Audit 2026-10-11 SD10, session 2ca8e8ee: under habits-test-first a C# compile stub (a new production file the tests
-// need) was written before the tests, and the planned red opened a root-cause streak. A production file the streak
-// CREATED beside a test edit is scaffolding; an edit to an existing production file still opens the streak.
-test('root cause: a production stub the streak created beside its tests is test-first scaffolding (audit 2026-10-11 SD10)', () => {
-    const skill = call('Skill', { skill: 'alfred-code:habits-test-first' });
-    const red = { error: 'Exit code 1\nFailed!  - Failed:     3, Passed:    12, Skipped:     0, Total:    15' };
-    const runOver = (rows, label) => {
-        const root = project();
-        const tp = path.join(root, 'transcript.jsonl');
-        const run1 = call('Bash', { command: 'dotnet test' });
-        fs.writeFileSync(tp, [typed('add the restore policy'), skill.row, result(skill.id, 'loaded'), ...rows(root), run1.row].map((r) => JSON.stringify(r)).join('\n') + '\n');
-        logged(root, 'PostToolUseFailure', 'Bash', 'dotnet test', { ...red, transcript_path: tp, tool_use_id: run1.id });
-        return allRows(root).map((r) => r.kind).join(',') || label;
-    };
-    const write = (file, created) => { const c = call('Write', { file_path: file, content: 'class X {}' }); return [c.row, result(c.id, created ? `File created successfully at: ${file}` : `The file ${file} has been updated successfully.`)]; };
-    const edit = (file) => { const c = call('Edit', { file_path: file, old_string: 'a', new_string: 'b' }); return [c.row, result(c.id, 'ok')]; };
-    const stub = (root) => path.join(root, 'App', 'RetryPolicy.cs');
-    const spec = (root) => path.join(root, 'App.Tests', 'RetryPolicyTests.cs');
-    assert.strictEqual(runOver((root) => [...write(stub(root), true), ...write(spec(root), true)]), 'test-first-red', 'the measured case: stub created, then the tests');
-    assert.strictEqual(runOver((root) => [...write(spec(root), true), ...write(stub(root), true), ...edit(stub(root))]), 'test-first-red', 'the stub edited again in the streak is still new');
-    assert.strictEqual(runOver((root) => [...write(stub(root), false), ...write(spec(root), true)]), 'root-cause', 'an overwritten production file is a change');
-    assert.strictEqual(runOver((root) => [...edit(path.join(root, 'App', 'Existing.cs')), ...write(stub(root), true), ...write(spec(root), true)]), 'root-cause', 'an edit to an existing one keeps the streak');
-    assert.strictEqual(runOver((root) => [...write(stub(root), true)]), 'root-cause', 'a created file with no test edit is no test-first red');
-    const garbled = (root) => { const c = call('Write', { file_path: stub(root), content: 'x' }); return [c.row, { type: 'user', message: { content: 'torn' } }, ...write(spec(root), true)]; };
-    assert.strictEqual(runOver(garbled), 'root-cause', 'a Write with no readable result is not taken as created');
-});
-test('root cause: a failure needs the runner\'s verdict, Nx\'s verdict counts, and a background suite read later opens the streak (audit 2026-10-10 C16 / C02)', () => {
-    const root = project();
-    assert.strictEqual(logged(root, 'PostToolUseFailure', 'Bash', 'npm test', { error: 'Exit code 1\n==\n==\n==\n==' }), null, '6ed392a5: an exit 1 with no verdict is unknown');
-    assert.strictEqual(logged(root, 'PostToolUse', 'Bash', 'npx nx test feature-profile | grep -v WARN', { tool_response: { stdout: 'just lines', stderr: '', exitCode: 1 } }), null, '0d070bcc: a filter exit with no verdict');
-    const nx = logged(root, 'PostToolUse', 'Bash', 'npx nx test feature-profile | tail -40',
-        { tool_response: { stdout: ' NX   Running target test for 25 projects failed\n\nFailed tasks:\n\n- feature-profile:test', stderr: '' } });
-    assert.ok(nx, "0d070bcc: Nx's own verdict is red");
-    const r2 = project();
-    const tp = path.join(r2, 'transcript.jsonl');
-    const bg = call('Bash', { command: 'dotnet test App.slnx', run_in_background: true });
-    fs.writeFileSync(tp, [typed('run the suite'), bg.row, result(bg.id, 'Command running in background with ID: bk42. Output is being written to: /tmp/x/tasks/bk42.output')].map((r) => JSON.stringify(r)).join('\n') + '\n');
-    const read = logged(r2, 'PostToolUse', 'Bash', 'tail -30 /tmp/x/tasks/bk42.output', { tool_response: { stdout: 'Failed!  - Failed:     3, Passed:   120', stderr: '' }, transcript_path: tp });
-    assert.ok(read, 'bc2fa83e: the backgrounded suite is red where it is read');
-    assert.strictEqual(read.detail.background, true);
-    assert.strictEqual(read.detail.run, 'dotnet test');
-    assert.strictEqual(logged(r2, 'PostToolUse', 'Bash', 'tail -30 /tmp/x/tasks/zz9.output', { tool_response: { stdout: 'Failed: 3', stderr: '' }, transcript_path: tp }), null, 'an output file no launch names is no run');
+    for (const [event, extra] of [['PostToolUseFailure', { error: 'Exit code 1\nnot ok 1 - cart total' }],
+        ['PostToolUse', { tool_response: { stdout: 'not ok 1 - cart total\n1 failing', stderr: '' } }]])
+    {
+        const r = run(root, { hook_event_name: event, tool_name: 'Bash', tool_input: { command: 'npm test' }, tool_use_id: 'toolu_red', ...extra });
+        assert.strictEqual(r.status, 0, `${event}: ${r.stderr}`);
+        assert.strictEqual(r.stdout.trim(), '', `${event}: nothing injected`);
+    }
+    const rows = fs.existsSync(dir) ? fs.readdirSync(dir).flatMap((f) => fs.readFileSync(path.join(dir, f), 'utf8').trim().split('\n').filter(Boolean)) : [];
+    assert.deepStrictEqual(rows.filter((l) => /root-cause|test-first-red/.test(l)), [], 'no probe row');
 });
 
 // --- both: a repo never set up, and a malformed payload -----------------------------------------

@@ -527,7 +527,7 @@ test('install-scope: a user-scope project reads only its OWN stamp for the hooks
         // ever lands on its disk.
         runOn(projectB, selB, ['install', '--scope', 'user']);
         // Project A installs SECOND (same account), on the copy route, with an explicit None - its
-        // own stamp says 'copy' and its own ALFRED_CODE_HOOKS_OFF names all 18.
+        // own stamp says 'copy' and its own ALFRED_CODE_HOOKS_OFF names all 17.
         runOn(projectA, selA, ['install', '--scope', 'user'], { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' });
 
         const stampOf = (repo) => fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');

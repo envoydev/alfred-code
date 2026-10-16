@@ -106,6 +106,9 @@ const HISTORY = /<!--\s*orient:\s*history\s*-->/i;
 // exists. It describes the tree from manifests only, so every reader treats it as stale by definition: status and
 // stale say so, and the session hook pushes it with that warning, until the architecture capture replaces the file.
 const PROVISIONAL = /provisional - replaced by the architecture capture/i;
+// The lines docs-session.js wraps around the block on every push. A copy pasted INTO ORIENTATION.md reached every
+// session twice (deep hooks review 2026-10-16), so the hook drops such a line and lint names it.
+const HOOK_FOOTER = /^\s*(?:How this project is documented - read this before|The docs live under `|`[^`]*\bwhere <path>` names the sections covering a file|For a specific symbol the CODE wins)/;
 const COMMENT = /^\s*<!--.*-->\s*$/;
 const STOP = new Set(['test', 'tests', 'common', 'features', 'endpoints', 'endpoint', 'src', 'file', 'class', 'async', 'http', 'json', 'with', 'from', 'this', 'that', 'into', 'over', 'core', 'main', 'code']);
 const norm = (t) => String(t).replace(/\r\n/g, '\n').replace(/\n+$/, '');
@@ -1520,6 +1523,8 @@ function lint(domain) {
       const bytes = fs.statSync(BLOCK_FILE).size;
       if (bytes > BLOCK_BYTES) problems.push(`ORIENTATION.md is ${bytes} bytes, cap ${BLOCK_BYTES} - every session pays for it`);
       for (const p of verifyBlock()) problems.push(`ORIENTATION.md ${p}`);
+      const footer = fs.readFileSync(BLOCK_FILE, 'utf8').split('\n').filter((l) => HOOK_FOOTER.test(l)).length;
+      if (footer) notes.push(`ORIENTATION.md repeats ${footer} line(s) of the session hook's own footer - delete them, the hook adds them`);
       if (orientationState() === 'provisional') notes.push('ORIENTATION.md is provisional - a first-look scan the architecture capture replaces');
     } else notes.push('no ORIENTATION.md: sessions start with no map');
   }
@@ -1944,7 +1949,7 @@ function adrNew(title) {
 }
 
 module.exports = {
-  ROOT, DOCS_ROOT, DOCS, BLOCK_FILE, BRANCHES, domains, domainDir, resetDomains,
+  ROOT, DOCS_ROOT, DOCS, BLOCK_FILE, HOOK_FOOTER, BRANCHES, domains, domainDir, resetDomains,
   git, tracked, VERSIONING_KEYS, docsMode, gitVersioned, versioningMismatch, hasGit, branch, isMainline, safe, overlayDir, docFiles, relKey, key, findFile, parseRef, isHistory,
   parse, sections, allSections, where, namingSections, show, toc, matches, outgrownFiles, stale,
   set, writeBaseMeta, refreshBaseMeta, readMeta, mainlineRefs, porcelainPaths, blobOf, blobsOf, overlayOwner,

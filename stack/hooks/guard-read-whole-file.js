@@ -111,7 +111,10 @@ const SWEEP_EXT_ANY = /\.(ts|tsx|js|jsx|mjs|cjs|cs|go|razor|cshtml|xaml|html|md)
 // Small files are cheap to read whole. 200, not 100: measured across four real
 // sessions (315 blocks), ~71% of blocks hit 100-200-line files where the forced
 // navigation-server detour costs about what the whole-file read would - the guard only pays above 200.
-const THRESHOLD = 200;
+// 400, not 200 (deep hooks review 2026-10-16, the user's ruling): 485 of 590 sized blocks (82%) in two weeks hit 200-400-line
+// files, and after a block the model read about 80% of the file anyway, one request later. The range cap and every shell
+// span rule bind only above this line count too.
+const THRESHOLD = 400;
 // The Read-tool half's size cap for a file with no line count to judge (below); the shell route's slice rule reads it too.
 const BIG_BYTES = 60 * 1024;
 const lineCountOf = (p) => {
@@ -2621,6 +2624,23 @@ if (!GATED_EXT.test(path)) {
   // session 05c925e9).
   const docsRel = docsRootEnv().replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
   const planFile = /\.md$/i.test(path) && String(path).replace(/\\/g, '/').includes(`${docsRel}/plans/`);
+  if (size > BIG_BYTES && whole && !planFile && /\.pdf$/i.test(path)) {
+    // A PDF is read by PAGE: the Read tool takes one of 10 pages or fewer whole, and a longer one only through `pages`,
+    // at most 20 a call - the binary remedy below ('head -c', 'file') answered nothing for one (hooks review 2026-10-16).
+    // The page count is the document's own page objects; a count it hides (compressed object streams) asks for pages.
+    let pages = 0;
+    try {
+      const fd = fs.openSync(path, 'r');
+      const buf = Buffer.alloc(Math.min(size, 8 * 1024 * 1024));
+      fs.readSync(fd, buf, 0, buf.length, 0);
+      fs.closeSync(fd);
+      pages = (buf.toString('latin1').match(/\/Type\s*\/Page(?![A-Za-z])/g) || []).length;
+    } catch { pages = 0; }
+    if (pages > 0 && pages <= 10) process.exit(0);
+    process.stderr.write(`Blocked: whole-file Read of ${path} (${Math.round(size / 1024)}KB, ${pages ? `${pages} pages` : 'page count unknown'}).\n`
+      + 'Read a PDF by page: Read with `pages: "1-5"` (at most 20 pages a call), then the next range only if the first did not answer.\n');
+    process.exit(2);
+  }
   if (size > BIG_BYTES && whole && !planFile) {
     // A grep remedy needs LINES. This branch judges size, not language, so it also catches the 93KB
     // PNG and the one-line minified bundle, where `grep -n` and an offset+limit Read both answer
@@ -2661,12 +2681,9 @@ const wholeShape = (input.offset ?? 0) <= 1 && (input.limit == null || input.lim
 if (wholeShape) {
   const state = treeState(pathMod.resolve(anchorDirs[0] || process.cwd(), path));
   process.stderr.write(
-    `Blocked: whole-file Read of ${path} (${lineCount} lines).\n` +
-      `Per alfred-navigation.md, Read is for code you've ALREADY located - never to find a symbol.\n` +
-      `A limit that covers the whole file is still a whole-file Read - and so is\n` +
-      `offset 1 with limit = the file's line count (measured: that exact retry got\n` +
-      `blocked twice in a row). Ranged reads of one file may cover at most ${Math.round(CAP * 100)}% of it per session -\n` +
-      `read the located symbol's range, never halves (a second half is blocked next).\n` +
+    `Blocked: whole-file Read of ${path} (${lineCount} lines). Read is for code you've ALREADY located: locate the\n` +
+      `symbol, then Read its range with offset+limit. A limit covering the whole file is still a whole read, and ranges\n` +
+      `of one file may cover at most ${Math.round(CAP * 100)}% of it per session - never read it in halves.\n` +
       (state === 'changed' ? `Reviewing this change? Its diff is the review route: git diff HEAD -- '${path}'\n` : '') +
       serenaHint(path),
   );

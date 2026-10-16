@@ -308,7 +308,7 @@ test('audit 2026-10-08: every phrase habits-explain-code advertises lifts the an
         assert.ok(m, `guard-answer-length.js still declares ${name}`);
         return new RegExp(m[1], m[2]);
     };
-    const depth = [re('DEPTH_RE'), re('DEPTH_RE_CYR')];
+    const depth = [re('DEPTH_RE')]; // English only since 2026-10-16: any other language lifts the cap by script
     const text = read('stack/skills/habits-explain-code/SKILL.md');
     const desc = (text.match(/^description:\s*"?(.*?)"?$/m) || [])[1] || '';
     const phrases = [...desc.matchAll(/'([^']+)'/g)].map((m) => m[1]);

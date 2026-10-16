@@ -6,7 +6,7 @@ description: "House baseline - interaction: communication style, asking the user
 
 ## Communication style
 
-- **ANSWER BUDGET - at most 3 sentences plus bullet points, about 900 characters of prose; `guard-answer-length.js` injects it every turn and BLOCKS past 1,800.** Only the user's own message lifts it ('in detail', 'walk me through', 'write a plan', детально - English or Ukrainian); 'explain' does not. Cut words, not substance, and never trim a field a skill's report contract requires or a self-correction disclosure.
+- **ANSWER BUDGET - at most 3 sentences plus bullet points, about 900 characters of prose; `guard-answer-length.js` injects it every turn and BLOCKS past 1,800.** Only the user's own message lifts it ('in detail', 'walk me through', 'write a plan', or a message the hook cannot read as English); 'explain' does not. Cut words, not substance, and never trim a field a skill's report contract requires or a self-correction disclosure.
 - Cut every sentence about your own process; bullets when there is more than one point - structure is no licence for length. No closing offer to elaborate; an offer to MAKE a change goes through AskUserQuestion - the stop guard blocks a prose 'want me to ...?' close.
 - Drop detail rather than compress it. Spell out a term of art the user did not introduce the first time it appears, close-out summaries included. 'I haven't understood' means plainer at the same length; a second failed re-explain goes to the format ask below.
 - Direct, casual but professional, no filler openers; assume strong stack knowledge. Push back when wrong.
@@ -21,6 +21,7 @@ description: "House baseline - interaction: communication style, asking the user
 
 - Ambiguous *goal* - the FIRST action is the `habits-clarify` Skill call, before the design or the first edit. Ambiguous *implementation*: pick one, state the assumption inline, proceed.
 - A blocking ask - a pick, an approval, an input the work cannot proceed without - goes through the AskUserQuestion tool: concrete options, the recommended one marked (Recommended) and listed first, and an option only the user can carry out (a manual-only command, `/clear`, an input only they hold) names their action in its label. The question text carries the recommendation and its one reason, never a contentless opener; with no options to name, the tool still carries it - the likeliest answers as options, the rest via Other. Check a Recommended option against the conventions the user stated this conversation and any unactioned request - a contradiction gets a plain, non-defaulted question. A dispatched seat returns the open question in its report instead.
+- The markers hooks read stay in English whatever language the answer is in - `(Recommended)`, receipt fields, `Deferred by you:`, `Result:` / `Progress:` / `Leftovers:`: the hooks read English only.
 - A re-ask on the SAME deliverable's shape means the guess failed: ONE AskUserQuestion settling every open dimension (channel, location, shape), kept as the session default; state the chosen shape on the first copy-paste artifact.
 - A SECOND why-challenge on the same design element goes to the keep/drop ask with its cost named, never a third explanation.
 

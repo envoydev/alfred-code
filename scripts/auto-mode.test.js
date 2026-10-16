@@ -208,9 +208,15 @@ test('auto-mode end: a typed message is input and keeps it; only the word to sto
         assert.match(context(kept), /delete \.alfred\/docs\/flow\/APPROVAL - that ends auto-mode/, 'a stop in other words is the model\'s to honor');
     }
     assert.ok(rows(p, 'e1').some((r) => r.kind === 'auto-input'), 'an auto-input row');
-    // the word to stop ends it, in English and Ukrainian, and so does a bare stop (audit HK13)
-    for (const prompt of ['stop auto-mode', 'auto-mode off', 'turn auto-mode off, I am back', 'Please disable auto mode', 'stop, I will take it from here', 'stop', 'Stop - let me check',
-        'вимкни авто-режим', 'зупини auto-mode', 'стоп'])
+    // a stop in another language is input, and the note hands it to the model (English only since 2026-10-16)
+    for (const prompt of ['вимкни авто-режим', 'стоп'])
+    {
+        const kept = submit('e1', prompt);
+        assert.ok(fs.existsSync(p.gate), `kept: ${prompt}`);
+        assert.match(context(kept), /delete \.alfred\/docs\/flow\/APPROVAL - that ends auto-mode/, `the model honors it: ${prompt}`);
+    }
+    // the word to stop ends it, and so does a bare stop (audit HK13)
+    for (const prompt of ['stop auto-mode', 'auto-mode off', 'turn auto-mode off, I am back', 'Please disable auto mode', 'stop, I will take it from here', 'stop', 'Stop - let me check'])
     {
         const off = submit('e1', prompt);
         assert.strictEqual(off.status, 0, off.stderr);
@@ -359,7 +365,9 @@ test('auto-mode asks: every question marking one Recommended option is answered 
         ['Ticket comment drafted. Post it?', 'Post the comment to the ticket (Recommended)'], ['Send the summary?', 'Send it to the team channel (Recommended)'],
         ['File the bug upstream?', 'Create the GitHub issue (Recommended)'], ['Stale branches found. Clean up?', 'Delete the 4 remote branches (Recommended)'],
         ['Ship it?', 'Ship v2.5.0 (Recommended)'], ['A token leaked. Rotate?', 'Rotate it now (Recommended)'], ['Diverged. Reset?', 'Reset the branch to origin/main (Recommended)'],
-        ['Drop the test database?', 'Drop it (Recommended)'], ['Що далі?', 'Запушити гілку (Recommended)']])
+        ['Drop the test database?', 'Drop it (Recommended)'],
+        // an ask the English list cannot read waits too (deep hooks review 2026-10-16, the script rule)
+        ['Що далі?', 'Запушити гілку (Recommended)'], ['Що далі?', 'Оновити документацію (Recommended)']])
         assert.strictEqual(answered(ask(p, 'a1', [q(question, [label, 'Not now'])])), null, `waits: ${label}`);
     for (const [question, label] of [['Fix the issue now?', 'Fix it (Recommended)'], ['Drop the unused import?', 'Drop it (Recommended)'], ['Dead code found.', 'Remove the dead code (Recommended)']])
         assert.ok(answered(ask(p, 'a1', [q(question, [label, 'Not now'])])), `answered, a local act: ${label}`);

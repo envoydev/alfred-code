@@ -16,17 +16,19 @@ test('every settings-env migration in the real file reaches applyEnv', () =>
     assert.deepEqual(m.renames, []);
     assert.ok(m.retired.some(([k]) => k === 'ALFRED_CODE_FRESH_SESSION_PCT'));
     assert.ok(m.retired.some(([k]) => k === 'ALFRED_CODE_CONTEXT_WINDOW'));
+    assert.ok(m.retired.some(([k, when]) => k === 'ALFRED_CODE_MONITOR' && when === null), 'the retired monitor hook\'s key goes whatever it held');
     assert.ok(m.reseed.some(([k]) => k === 'ALFRED_CODE_FRESH_SESSION_DEFAULT'));
 });
 
 test('an old install is migrated by the real file', () =>
 {
-    const env = { ALFRED_CODE_DOCS_PATH: 'docs', ALFRED_CODE_FRESH_SESSION_PCT: '60', ALFRED_CODE_FRESH_SESSION_DEFAULT: '250000', ALFRED_CODE_MONITOR: 'log', OTHER: 'x' };
+    const env = { ALFRED_CODE_DOCS_PATH: 'docs', ALFRED_CODE_FRESH_SESSION_PCT: '60', ALFRED_CODE_FRESH_SESSION_DEFAULT: '250000', ALFRED_CODE_MONITOR: 'inject', ALFRED_CODE_CORRECTION_NUDGE: 'log', OTHER: 'x' };
     applyEnv(env, { catalog: [], migrations: envMigrations(REAL), log: () => {} });
     assert.equal(env.ALFRED_CODE_DOCS_PATH, 'docs');
     assert.ok(!('ALFRED_CODE_FRESH_SESSION_PCT' in env));
     assert.equal(env.ALFRED_CODE_FRESH_SESSION_DEFAULT, '180000');
-    assert.equal(env.ALFRED_CODE_MONITOR, 'log', 'a key no migration names is left alone');
+    assert.ok(!('ALFRED_CODE_MONITOR' in env), 'the retired monitor key goes, even off its seed');
+    assert.equal(env.ALFRED_CODE_CORRECTION_NUDGE, 'log', 'a key no migration names is left alone');
     assert.equal(env.OTHER, 'x');
 });
 

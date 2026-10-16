@@ -343,11 +343,26 @@ function autoStampLive(input, env)
 // ('Another Claude session sent a message:' over an `<agent-message>` frame - its transcript row is `isMeta` with
 // `origin.kind: peer`, which the payload does not carry). One test for every hook that reads a prompt as someone typing
 // (audit 2026-10-14 HK14: a hand-back ended auto-mode, drew the answer budget - 351 of 960 injections in a week - and
-// reset the monitor's turn).
+// reset the turn of the since-removed session monitor).
 const HARNESS_PROMPT_RE = /^\s*(?:<(?:task-notification|local-command-stdout|local-command-caveat|agent-message)\b|Another Claude session sent a message:)/;
 function harnessPrompt(prompt)
 {
     return HARNESS_PROMPT_RE.test(String(prompt || ''));
+}
+
+// TEXT A HOOK CANNOT READ (deep hooks review 2026-10-16, the user's ruling: the hooks read English only). Their word lists
+// are English, so a text whose letters are 30% or more outside ASCII is one they cannot judge - measured, the Ukrainian the
+// user and the model wrote read 72-100%, an English prompt quoting UI copy at most 29.7% - and each hook takes its safe
+// side: an auto-mode ask waits for the user, a length is logged and not held. A Latin-script language reads as English and
+// its words are missed by the lists, as they always were. (A commit consent is stricter: any non-ASCII letter in the
+// quote, guard-ungated-commit.js.)
+const UNREADABLE_SHARE = 0.3;
+function unreadable(text)
+{
+    const letters = String(text || '').match(/\p{L}/gu) || [];
+    if (!letters.length) return false;
+    const foreign = letters.filter((c) => c > '\u007f').length;
+    return foreign / letters.length >= UNREADABLE_SHARE;
 }
 
 // SHORT-LIVED LINKS (the user's ruling, 2026-10-14). A download link that carries its own short-lived token - Jira's
@@ -553,7 +568,7 @@ function markStopHeld(hook, input, env)
 }
 
 // STATE HYGIENE (audit 2026-10-08 S9). The hooks' per-session state - the stop contract's markers and log, the
-// fresh-session offers, the read guard's range logs, the Stop-chain markers above, `<docs>/flow/monitor-*` and
+// fresh-session offers, the read guard's range logs, the Stop-chain markers above and
 // `trivial-*` - was never pruned. sweepStale removes the FILES in `dir` named with `prefix` and untouched for 7 days,
 // once per (dir, prefix) per process, inside a 50ms budget of its own (the docs-session sweep's pattern: a bounded,
 // fail-silent pass a hook makes when it writes its own state). A file exactly at the cutoff is kept.
@@ -663,4 +678,4 @@ function scanBudget(limits = {})
 // the stop contract's ask deny and the answer-length Stop block, which disagreed ([\u2014\u2013] vs [\u2014\u2015], audit 2026-10-08).
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
-module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, harnessPrompt, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopHeldBy, stopMarkerFile, scanBudget, SCAN_LIMITS, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS };
+module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, harnessPrompt, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopHeldBy, stopMarkerFile, scanBudget, SCAN_LIMITS, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS };

@@ -184,10 +184,9 @@ const STREAK_TURNS = 3, STREAK_SHORT = 200, STREAK_LONG = 1500;   // its correct
 // --- correction-turn test
 const CORRECTION_STRONG_RE = /^\W*(?:no|nope|nah|wrong|incorrect|not (?:that|this|what|quite|like that|right|correct)|undo|revert|roll ?back)\b|(?:^|[.,;:!?]\s*|\b(?:but|and|please|pls|so|then|also|just)\s+)(?:do not|don'?t|dont|never|stop \w+ing)\b|\byou (?:did not|didn'?t|didnt|have not|haven'?t|havent|should not|shouldn'?t|forgot|missed|ignored|broke|skipped|removed|deleted|dropped|lost|said|told)\b|\bwhy (?:did |do |are |have |haven'?t |didn'?t |would |were )?you\b(?! (?:cannot|can'?t|can not|couldn'?t)\b)|\bi (?:said|asked|told you|meant|wanted|did not ask|didn'?t ask|never asked|already (?:said|told|asked))\b|\b(?:still|again) (?:there|broken|fail\w*|wrong|the same|red|happen\w*|error\w*|doesn'?t|does not|isn'?t|is not|not)\b|\bsame (?:error|issue|problem|bug)\b|\b(?:that'?s|that is|this is|it'?s|it is) (?:wrong|incorrect|not (?:right|correct|what|how|it))\b|\bnot what i\b|\bi (?:do not|don'?t|dont|did not|didn'?t) (?:want|need|like)\b|\b(?:does not|doesn'?t|did not|didn'?t) (?:fit|work|help|make sense)\b|\bnot working\b|\b(?:too (?:long|much text|verbose|many words|complicated|complex)|a lot of text|less text|shorter|simpler|more concise)\b/i;
 const CORRECTION_WEAK_RE = /^\W*but\b|^\W*(?:ok(?:ay)?|yes|yeah|fine|sure|good|right)\b\W*but\b|^\W*stop\b|\binstead\b|(?<!\b(?:what|which|how|whether|where|when|who|why)\b[^.,;:!?\n]{0,60})\b(?:it|this|that|they|these|those|there) should(?:n'?t| not| have| be| stay| use| go)\b/i;
-const CORRECTION_CYR_RE = /(?<![\p{L}])(?:ні(?=[\s,.!]|$)|не (?:так|те)(?![\p{L}])|не ?правильн|не (?:треба|потрібно|роби)(?![\p{L}])|я (?:ж )?(?:казав|просив|говорив|сказав)|чому ти(?! не мож)|навіщо ти|коротше|простіше|забагато|(?:та сама|та ж) (?:помилк|проблем)|не працює|(?:досі|все ще) не(?![\p{L}]))/iu;
 function correctionMarker(text) {
   const t = String(text || '').replace(/[‘’]/g, "'").trim();
-  const m = t.match(CORRECTION_STRONG_RE) || t.match(CORRECTION_CYR_RE) || (!t.includes('?') && t.match(CORRECTION_WEAK_RE));
+  const m = t.match(CORRECTION_STRONG_RE) || (!t.includes('?') && t.match(CORRECTION_WEAK_RE));
   return m ? m[0].trim().slice(0, 40) : null;
 }
 // --- end correction-turn test
@@ -1936,7 +1935,7 @@ async function analyzeTranscript(file, window) {
   // next Skill call: a new request is a new phase, and the carry otherwise charged that phase to
   // whatever skill was last active (measured: one run's later phases billed to a skill that had
   // stopped). A continuation says only 'keep going' - it opens nothing, so the stamp survives it.
-  const CONTINUATION_RE = /^(?:y|yes|yep|yeah|ok|okay|k|sure|go|go on|go ahead|continue|proceed|next|do it|carry on|again|так|ок|давай|продовжуй)\b[\s.!,]*$/i;
+  const CONTINUATION_RE = /^(?:y|yes|yep|yeah|ok|okay|k|sure|go|go on|go ahead|continue|proceed|next|do it|carry on|again)\b[\s.!,]*$/i;
   const continuesRun = (t) => t.length <= 60 && CONTINUATION_RE.test(t);
   const onHumanTurn = (typed, ts) => {
     turnHadCheck = false;

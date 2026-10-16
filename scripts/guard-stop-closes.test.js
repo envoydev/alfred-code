@@ -177,11 +177,23 @@ test('C15: the ask branch counts typed turns on the live branch, and push as git
   const reply2 = { type: 'assistant', uuid: 'r2', parentUuid: 'l2', message: { id: 'r2', content: [{ type: 'text', text: 'on it' }] } };
   assert.match(ask([p, live, second, reply2], q), /more than one message/, 'two typed turns on one chain still count');
   assert.match(ask([typed('a'), typed('b'), say('r3', 'ok')], q), /more than one message/, 'a transcript with no uuids is read in order');
+  // hooks review 2026-10-16: 42 notes in two weeks, none over two typed messages - harness rows, interrupts and built-in
+  // local commands (their output row follows them) are no message
+  const stdout = (t) => typed(`<local-command-stdout>${t}</local-command-stdout>`);
+  for (const [rows, why] of [
+    [[typed('[Request interrupted by user]'), typed('fix the header too')], 'an interrupt and one message'],
+    [[typed('<command-name>/exit</command-name>'), stdout('Goodbye!'), typed('carry on with task 4')], '/exit and its output, then one message'],
+    [[typed('<command-name>/reload-plugins</command-name>'), { type: 'system', subtype: 'local_command', content: '<local-command-stdout>Reloaded: 7 plugins</local-command-stdout>' },
+      typed('<command-name>/alfred-code:update</command-name>')], '/reload-plugins (a system output row), then a command'],
+    [[typed('<task-notification><task-id>a1</task-id></task-notification>'), typed('<task-notification><task-id>a2</task-id></task-notification>')], 'two task notices'],
+  ]) assert.doesNotMatch(ask([...rows, say(`h${seq}`, 'ok')], q), /more than one message/, why);
+  assert.match(ask([typed('<command-name>/task-solve</command-name> the view'), typed('and the admin view'), say('h9', 'ok')], q), /more than one message/,
+    'a command with no output row of its own is a typed message');
   // ecea6d56: a push NOTIFICATION check is not git state
   const pushCheck = [{ question: 'Run the push check on the Android emulator against staging?', options: [{ label: 'Run it (Recommended)', description: 'x' }, { label: 'Defer', description: 'y' }] }];
-  assert.doesNotMatch(ask([typed('go'), say('s1', 'ok')], pushCheck), /named repository, remote or job state/);
+  assert.doesNotMatch(ask([typed('go'), say('s1', 'ok')], pushCheck), /This ask named (?:remote or job|git) state/);
   const gitPush = [{ question: 'Push to origin/develop?', options: [{ label: 'Push now (Recommended)', description: 'x' }, { label: 'Hold', description: 'y' }] }];
-  assert.match(ask([typed('go'), say('s2', 'ok')], gitPush), /named repository, remote or job state/);
+  assert.match(ask([typed('go'), say('s2', 'ok')], gitPush), /This ask named (?:remote or job|git) state/);
 });
 
 // Audit 2026-10-10 C18, 0824440b: the commit / publish ask carried three different recommended options across three
@@ -250,10 +262,10 @@ test('SD10: a merge, PR or remote ask is backed only by a remote-aware read', ()
   };
   const ran = (command) => { const id = `r${seq}`; return [typed('go'), call(id, 'Bash', { command }), result(id, 'ok')]; };
   const merged = 'The check needs the new services. Recommended: wait until ticket 3 is merged and install that build.';
-  assert.match(ask(ran('git status --short'), merged), /lives past the local clone/, 'the measured ask: git status cannot see a merge');
+  assert.match(ask(ran('git status --short'), merged), /no remote-aware read in this turn/, 'the measured ask: git status cannot see a merge');
   for (const command of ['git fetch -q && git log origin/develop --oneline -5', 'git branch -r --merged origin/develop', 'gh pr view 42'])
-    assert.doesNotMatch(ask(ran(command), merged), /named repository, remote or job state/, `a remote-aware read: ${command}`);
-  assert.doesNotMatch(ask(ran('git status --short'), 'Commit the staged files now?'), /named repository/, 'a local ask keeps the local read');
+    assert.doesNotMatch(ask(ran(command), merged), /This ask named (?:remote or job|git) state/, `a remote-aware read: ${command}`);
+  assert.doesNotMatch(ask(ran('git status --short'), 'Commit the staged files now?'), /This ask named/, 'a local ask keeps the local read');
   assert.match(ask(ran('ls'), 'Commit the staged files now?'), /no `git status`/, '... and its own note without one');
 });
 
@@ -274,4 +286,65 @@ test('SD10: a continuation that made a tool call after this hook\'s block is jud
   now(result('e1', 'ok'));
   assert.strictEqual(stop(ask2, true).status, 2, 'the measured miss: new work, a new prose question, judged');
   assert.strictEqual(stop(ask2, true).status, 0, 'and it holds once more, until the next call');
+});
+
+// Hooks review 2026-10-16: 20 done-close blocks read against their transcripts - 3 right, 15 wrong. The two causes behind 9
+// of the wrong ones: a NEGATED done word read as a done report, and a read-only answer to a question vetoed by any
+// hand-back phrase although it named nothing pending. Each close below is a measured one's load-bearing clause, reworded.
+test('hooks review: a negated done word reports nothing done, and a negated unpushed / uncommitted is no pending item', () => {
+  for (const [text, why] of [
+    ['The method parses the header first. Nothing is committed. Nobody has run it in the real app. You can check by opening the settings page.', 'row 14: an explanation'],
+    ["Nothing is committed or pushed. I'll report the full-suite result when it finishes, and then you can decide on committing.", "row 15: 'committed or pushed' after the negation"],
+    ['You do not need to be present for each round: nothing gets pushed until the last one. Your auto instruction covers the rest.', "row 12: 'gets'"],
+    ["Added it as a task in the open-items file. That file isn't committed. The order that matters: confirm a deploy works first.", "row 10: 'isn't committed'"],
+    ['Nothing is left to implement, and nothing is unpushed or uncommitted. Develop CI is green.', 'row 3: the pending side'],
+    ['Зміни у файлі, ще не закомічено. Скажи, якщо треба запушити.', 'a close in another language is not judged (English only, 2026-10-16)'],
+    ['Закомітив. Ще не запушено - чекаю на твоє рішення.', '... a done word beside a pending one included'],
+  ]) assert.strictEqual(close(text).status, 0, why);
+  for (const [text, why] of [
+    ['Committed on develop, 1 ahead of origin, not pushed. Next: /clear, then paste the block.', 'row 2: right, and stays'],
+    ['I pushed the fix. The optional tidy-up is still waiting for your yes or no.', 'row 8: right, and stays'],
+    ['Nothing broke and everything is committed. Push when you approve.', 'a negation that is not about the done word'],
+    ['Tests are not failing anymore, all green. Waiting for your review.', 'a negated failure is still a green report'],
+  ]) assert.strictEqual(close(text).status, 2, why);
+});
+
+test('hooks review: a read-only answer to a question that names nothing pending is no done-close stall, whatever hand-back phrase it carries', () => {
+  const asked = (prompt, extra) => [typed(prompt), ...(extra || [])];
+  const fetched = (prompt) => { const id = `f${seq}`; return asked(prompt, [call(id, 'WebFetch', { url: 'https://example.com/docs', prompt: 'x' }), result(id, 'ok')]); };
+  for (const [rows, text, why] of [
+    [asked('I enabled it, what is next?'), "Reconnect the connector: open its settings and sign in again. Tell me when that's done and I'll read the ticket.", 'row 4'],
+    [asked('can we consider the task as finished?'), 'Yes - finished and verified.\n\nOpen:\n- The diff is uncommitted, because I commit only on your explicit word.', 'row 5: the mandated hold line'],
+    [fetched('can the token reach the private repos?'), 'Yes. The token is tied to your own login, so anything done through it is done as you.', 'row 13: a WebFetch turn'],
+    [asked('how do I add the key to GitHub?'), "Add it in the repository settings, or run the gh command below. Either way, tell me when it's done. I'll confirm the next run picks it up.", 'row 16'],
+    [asked('you want me to start the invoker?'), "Yes - it needs to come from you. Run the start command in a terminal.\n\nReady when the terminal shows 'listening'. Then: /clear and paste the block.", 'row 18'],
+  ]) assert.strictEqual(over(rows, text).status, 0, why);
+  const edited = () => { const id = `e${seq}`; return [call(id, 'Edit', { file_path: 'a.ts', old_string: 'a', new_string: 'b' }), result(id, 'ok')]; };
+  const row4 = "Reconnect the connector: open its settings and sign in again. Tell me when that's done and I'll read the ticket.";
+  assert.strictEqual(over(asked('I enabled it, what is next?', edited()), row4).status, 2, 'a turn that changed a file is judged');
+  assert.strictEqual(over(asked('reconnect it for me'), row4).status, 2, 'an instruction is no question');
+  assert.strictEqual(over(asked('what is left?'), 'Committed. The push is pending your approval.').status, 2, 'a pending item keeps the hand-back veto');
+  for (const text of ['All done and committed. Up to you if we push today.', 'Committed on develop. Your call on the push.'])
+    assert.strictEqual(over(asked('what is the status?'), text).status, 2, `a decision handed over in prose still blocks: ${text}`);
+});
+
+// The two single-row causes the sample left (hooks review 2026-10-16, rows 11 and 19): a wait on the running seats' FIXES
+// and CHECKS read as a stall, and the list of decisions an auto-mode run took read as a commit handed to the user.
+test("hooks review: a wait on running seats' fixes and checks is status; a record of decisions taken is no hand-off", () => {
+  const fixes = 'The admin and chat fixes landed. Lint and typecheck pass. Still waiting on the `libs/ui` fixes and the cheat check; the final full gate runs after both report.';
+  assert.strictEqual(over([typed('go')], fixes, { background_tasks: running }).status, 0, 'row 11: the seats are still running');
+  assert.strictEqual(over([typed('go')], fixes, { background_tasks: [] }).status, 2, 'with nothing running it is a stall');
+  assert.strictEqual(over([typed('go')], 'Тести пройшли, готово. Ще чекаю на виправлення від агента.', { background_tasks: running }).status, 0, 'a wait in another language is not judged');
+  assert.strictEqual(over([typed('go')], 'The fixes landed. Still waiting for your check of the login page.', { background_tasks: running }).status, 2,
+    "'your check' is the user's, whatever runs");
+  const record = (heading, items) => `I finished the conformance check and committed the fixes. All checks passed.\n\n${heading}\n${items}`;
+  for (const [text, why] of [
+    [record('Decisions auto-mode made for you:', '- Scope: re-audit, then build the gaps.\n- Commit: commit now.\n- Leftover services: shut down.'), 'row 19'],
+    [record('**Choices taken:**', '1. Commit: commit now.\n2. Push: push later.'), 'a numbered record'],
+    [record('Рішення, які auto-mode ухвалив за тебе:', '- Коміт: закомітити зараз.'), 'a record in another language is not judged'],
+  ]) assert.strictEqual(close(text).status, 0, why);
+  for (const [text, why] of [
+    [record('Decisions to be made:', '- Push: push it when you approve.'), 'decisions still owed'],
+    [record('Decisions auto-mode made for you:', '- Commit: commit now.') + '\n\nPush it when you are ready.', 'a hand-off after the record'],
+  ]) assert.strictEqual(close(text).status, 2, why);
 });

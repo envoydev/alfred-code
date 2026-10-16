@@ -1225,8 +1225,7 @@
       "guard-ungated-commit",
       "history-session",
       "instrument-tool-usage",
-      "memory-session",
-      "monitor-session"
+      "memory-session"
     ]
   },
   "mcps": {

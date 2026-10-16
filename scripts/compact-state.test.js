@@ -64,7 +64,8 @@ test('compact-state: PreCompact writes the live plan, the flow stamps with ages 
     p.stamp('monitor-sess.json', 1);   // the monitor's state is no stamp - its 2.1.5 turn log and context marker neither
     p.stamp('monitor-sess.jsonl', 1);
     p.stamp('monitor-sess.context', 1);
-    p.stamp('turn-edits-sess', 1);     // nor is the turn check's edit list
+    p.stamp('turn-edits-sess', 1);     // nor is the turn check's old edit list
+    p.stamp('turn-check-sess', 1);     // or its Stop marker
     p.wrote('main.session', ['scripts/a.js', 'stack/hooks/b.js']);
     p.wrote('agent-x', ['stack/hooks/b.js', 'docs/c.md']);
     const tp = p.transcript([

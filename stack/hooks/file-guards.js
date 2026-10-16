@@ -28,13 +28,15 @@ const GUARDS = [
     ['guard-fresh-session-start', ['Write', 'Edit', 'MultiEdit', 'NotebookEdit']],
     ['guard-config-protection', ['Write', 'Edit', 'MultiEdit', 'NotebookEdit']],
     ['guard-cross-project-write', ['Write', 'Edit', 'MultiEdit', 'NotebookEdit']],
-    ['docs-session', ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Grep', 'Glob']],
+    // no Glob: a Glob is no read of a section and no write, so docs-session did nothing on it but cost a process per call
+    // (deep hooks review 2026-10-16)
+    ['docs-session', ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Grep']],
 ];
 const NAMES = GUARDS.map(([g]) => g);
 const TOOLS = new Map(GUARDS);
 const SELF = 'file-guards';
 // Every file tool, in one order, so a matcher built from any set of guards reads the same way.
-const TOOL_ORDER = ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Grep', 'Glob'];
+const TOOL_ORDER = ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Grep'];
 const MATCHER = TOOL_ORDER.join('|');
 const PROTECTIVE = new Set(['guard-secret-value']);
 // The order the guards RUN in: the protective ones first, so a guard stalling past the budget can never drop their

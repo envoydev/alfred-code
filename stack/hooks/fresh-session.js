@@ -169,7 +169,7 @@ function autoCompactWindow() {
 // `<docs>/flow/compact-points.json` (guard-fresh-session-start.js writes it at PreCompact and at the compact start), and
 // the lowest one for this session's model in the last 30 days is a fact about where the harness compacts here - which
 // the model's row cannot know (audit 2026-10-10 C08: 29 compactions of one project at 300-400k against a 400k trigger,
-// so neither the Stop offer nor the monitor's note could fire before the harness compacted).
+// so the Stop offer could not fire before the harness compacted).
 const COMPACT_POINTS_DAYS = 30;
 function compactPointsFile() {
   const path = require('path');
@@ -310,15 +310,6 @@ function contextNow(tail = 64 * 1024) {
     return start > 0 && tail < 1024 * 1024 ? contextNow(1024 * 1024) : 0;
   } catch { return 0; }
 }
-// The LOWEST trigger any window could resolve to, without reading the model: every live tier's own
-// number, or 90% of the smallest window the table accepts when the clamp would bring it down. A
-// context under a share of this cannot be past that share of the real trigger, so the per-call
-// caller skips the model lookup (a second 512KB scan) until it can matter. null = every tier off.
-function lowestTrigger() {
-  const live = [FRESH_AT_200K, FRESH_AT_1M, FRESH_AT_DEFAULT].filter((n) => n > 0);
-  return live.length ? Math.min(...live, 90000) : null;
-}
-
 // ---- the asks this session answered (moved from guard-stop-contract.js, audit 2026-10-08) ------------------------------
 // The transcript's bytes from `from` on, the newest `max` at most; '' when there is none.
 function transcriptText(from = 0, max = 512 * 1024) {
@@ -422,7 +413,7 @@ function askAnsweredSince(from) {
 
 module.exports = {
   use, freshAt, FRESH_AT_200K, FRESH_AT_1M, FRESH_AT_DEFAULT, FRESH_OFF, COMPACT_INSTEAD, sessionModelId, tableWindow,
-  envWindow, knownWindow, ctxThreshold, MIN_RECOVERABLE_SHARE, coldFloor, worthResuming, contextNow, lowestTrigger,
+  envWindow, knownWindow, ctxThreshold, MIN_RECOVERABLE_SHARE, coldFloor, worthResuming, contextNow,
   autoCompactWindow, recordCompactPoint, observedCompaction, compactPointsFile,
   transcriptSize, isTypedTurn, freshAskAnsweredThisTurn, freshAskAnsweredCtx, askAnsweredSince,
 };

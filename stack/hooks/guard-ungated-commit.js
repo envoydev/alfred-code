@@ -392,65 +392,63 @@ const MAX_RECEIPT_AGE_MS = 2 * 60 * 60 * 1000; // 2h - the gate runs right befor
 // A PENDING draft placeholder matches the bare prefix, so the prefix alone is never the test
 // (measured: a PENDING draft sat gate-passing for ~2 minutes).
 const CONSENT_VERB = /\b(commit|commits|committing|push|pushes|pushing|land|lands|landing|ship|ships|shipping|merge|merges|merging|publish|publishes|publishing|release|releases|releasing|go ahead|do it|approve[ds]?|yes)\b/i;
-const CONSENT_VERB_CYR = /(коміт|комміт|закоміт|запуш|пуш|залив|злий|мерж|мердж|влий|зали[йв]|викот|злит|відправ|випуст|дава[йй]|погоджу|схвал|так, )/i;
 // A WAIVED quote names the review it skips (audit 2026-10-08): skip / waive, without or no review / check / tests, 'just
-// <act>', 'anyway', 'as is' - and the Ukrainian 'без перевірки', 'пропусти', 'просто <act>', 'як є'.
+// <act>', 'anyway', 'as is'.
 const WAIVER_WORDS = /\b(?:skip|skips|skipping|skipped|waive[sd]?|waiving|anyway|regardless|as[\s-]is|without\s+(?:the\s+|a\s+|any\s+)?(?:review|check|verification|verify|tests?|testing|probe)|no\s+(?:review|check|verification|tests?|probe)|(?:don'?t|do\s+not|no\s+need\s+to)\s+(?:review|check|verify|test)|just\s+(?:commit|push|merge|ship|land|publish|release|do\s+it|go))\b/i;
-const WAIVER_WORDS_CYR = /(без\s+(?:рев'?ю|перевір|тест)|пропуст|просто\s+(?:за)?(?:ком|кім|пуш|залий|влий|мерж|мердж|викот)|як\s+є|все\s+одно|не\s+(?:треба|потрібно)\s+(?:перевір|рев))/i;
 // Opening a pull request asks for the publish under it (2.1.6 H3): the checkpoint skill fires on 'open the PR', and the
 // user's own words were refused as consent. The verb and the PR noun count only together - a bare 'PR' or 'look at the
 // PR' asks for nothing - and only as an ask (review m1 / m2): the verb opens, creates, raises or submits the PR ('make'
 // and 'file' edit one), 'up' may follow it and one word may sit before the noun ('open up a draft PR'), no question or
 // negation leads it ('did you', 'never'), and the noun is not followed by what is ABOUT the PR (its description,
-// template, comment, review, title, body, link or page) or by 'in the browser'. In Ukrainian the verb is a
-// whole word in its imperative or infinitive form, never after 'не' / 'ні' - an adjective or a participle
-// ('відкритому', 'створений') and a negated imperative ('не відкривай') are statements.
+// template, comment, review, title, body, link or page) or by 'in the browser'.
 const CONSENT_PR = /(?<!\b(?:did|didn't|do|does|don't|never|not|no)\s+(?:you\s+|we\s+|i\s+)?)\b(?:open|opens|opening|create|creates|creating|raise|raises|raising|submit|submits|submitting)(?:\s+up)?\s+(?:(?:a|an|the)\s+)?(?:[\w-]+\s+)?(?:PR|pull[\s-]?request)s?\b(?!\s+(?:description|template|comment|review|title|body|link|page)s?\b|\s+in\s+(?:the\s+)?browser\b)/i;
-const CONSENT_PR_CYR = /(?<!(?:^|[^\p{L}])(?:не|ні)\s+)(?<!\p{L})(?:відкр(?:ий|ийте|ити|ивай|ивайте)|створ(?:и|іть|ити|юй|юйте)|зроб(?:и|іть|ити)|пода(?:й|йте|ти|вай|вайте))\s+(?:[\p{L}-]+\s+)?(?:PR|ПР|пул+[\s-]?реквест\p{L}*|pull[\s-]?request)(?!\p{L})(?!\s+(?:в|у)\s+браузер)/iu;
 // A quote is read to its OWN closing mark: an apostrophe inside double quotes ("let's open a PR", "don't push") is text,
 // not the end (review re-verify N3). Consent is then read per CLAUSE and per GATE (re-verify 2 R2-M3: a deferral
 // anywhere refused 'commit now, push later', a clause ran across ' - ' and 'but', and 'push is not needed', 'stop
 // committing', 'why did you push?' and 'hold the commit' read as consent):
-//   - a clause ends at . ! ? ; , :, a spaced dash, or 'but / then / але / а';
-//   - positive idioms are blanked first ('don't forget to', 'no need to', 'no problem', 'never mind', 'не забудь');
+//   - a clause ends at . ! ? ; , :, a spaced dash, or 'but / then';
+//   - positive idioms are blanked first ('don't forget to', 'no need to', 'no problem', 'never mind');
 //   - a consent verb is refused by a negation before it in its clause, 'stop / hold / wait with' right before it, a
-//     negation right after it ('is not needed', 'не треба', 'не потрібен', 'зачекай'), a deferral in its own clause
-//     ('later', 'tomorrow', 'after I', 'завтра'), a next clause that only answers no ('open a PR? not yet'), or the user
-//     keeping the act ('I will push it myself', 'сам запушу');
+//     negation right after it ('is not needed'), a deferral in its own clause ('later', 'tomorrow', 'after I'), a next
+//     clause that only answers no ('open a PR? not yet'), or the user keeping the act ('I will push it myself');
 //   - a verb after an article or a possessive is a noun ('the commit message') unless an act verb leads it ('do the
 //     commit'), a noun followed by a state is a statement ('commit is broken'), a why / who / 'did you' clause asks
-//     nothing, and 'давай' consents only alone or before a consent verb;
-//   - a bare answer word closing the verb's clause refuses it ('commit yes, push no', 'коміт ні' - re-verify 3 R3-M1);
+//     nothing;
+//   - a bare answer word closing the verb's clause refuses it ('commit yes, push no' - re-verify 3 R3-M1);
 //   - a publish conditioned on CI ('push after CI', 'when CI is green') consents to nothing now: CI runs on the push;
 //   - a refused verb of the gate's OWN class refuses that gate ('commit it, don't push' opens the commit, not the
 //     push);
 //   - each gate consents on its OWN act (re-verify 3 R3-M1: 'commit it' in a PUSH-GATE receipt published): the
 //     COMMIT-GATE on any act verb left standing (a push takes the commit with it), the PUSH-GATE on a publish verb or
-//     a PR opened, and a generic yes ('go ahead', 'yes', 'давай') counts for a gate only when the quote names no act
+//     a PR opened, and a generic yes ('go ahead', 'yes') counts for a gate only when the quote names no act
 //     of the other class ('go ahead and commit' consents to no push);
 //   - a quote past 1,000 characters is no answer (R3-m10), and each clause is found by a binary search over the
-//     sorted clause bounds, so the reader stays linear in the quote.
+//     sorted clause bounds, so the reader stays linear in the quote;
+//   - ENGLISH ONLY (deep hooks review 2026-10-16, the user's ruling): a quote holding any letter outside ASCII is no
+//     consent - the Ukrainian lists it replaced read 'committed it, don't push' and 'I committed the changes, check them'
+//     (written in Ukrainian) as consent. The denial says to ask instead: a picked option is `answered: <label>`,
+//     whatever language the user answered in.
 const QUOTED = /"([^"\n]*)"|“([^”\n]*)”|'([^'\n]*)'|‘([^’\n]*)’/;
-const CLAUSE_END = /[.!?;,:]|\s[-\u2013\u2014]\s|\s(?:but|then|але|а)\s/giu;
-const POSITIVE_IDIOM = /\b(?:don'?t forget(?: to)?|no (?:need|problem|issues?|worries|rush)(?: to \w+)?|never mind|not sure [^,.;]*? but|(?:i )?don'?t mind)\b|(?<!\p{L})(?:не забудь\p{L}*|без проблем|нема проблем)(?!\p{L})/giu;
-const NEGATION_BEFORE = /\b(?:not|no|never|don'?t|doesn'?t|didn'?t|won'?t|shouldn'?t|can'?t|cannot|without)\b|(?<!\p{L})(?:не|ні|ніколи)(?!\p{L})/iu;
-const STOP_BEFORE = /(?:\b(?:stop|quit|hold off(?: on)?|hold|wait with|wait on)|(?<!\p{L})(?:стоп|зупини\p{L}*))\s+(?:(?:the|with the)\s+)?$/iu;
-const BARE_NO_AFTER = /^[^\p{L}\p{N}]*(?:no|nope|ні|не)[^\p{L}\p{N}]*$/iu;
-const NEGATION_AFTER = /^[^\p{L}\p{N}]*(?:[\p{L}'-]+\s+){0,2}?(?:is(?:n'?t| not)|are(?:n'?t| not)|was(?:n'?t| not)|not (?:needed|necessary|required|now|yet|today)|would be a mistake|не\s+(?:треба|потрібно|потрібен|потрібна|потрібні|варто|робимо|зараз)|зачекай|почекай)(?!\p{L})/iu;
+const CLAUSE_END = /[.!?;,:]|\s[-\u2013\u2014]\s|\s(?:but|then)\s/gi;
+const POSITIVE_IDIOM = /\b(?:don'?t forget(?: to)?|no (?:need|problem|issues?|worries|rush)(?: to \w+)?|never mind|not sure [^,.;]*? but|(?:i )?don'?t mind)\b/gi;
+const NEGATION_BEFORE = /\b(?:not|no|never|don'?t|doesn'?t|didn'?t|won'?t|shouldn'?t|can'?t|cannot|without)\b/i;
+const STOP_BEFORE = /\b(?:stop|quit|hold off(?: on)?|hold|wait with|wait on)\s+(?:(?:the|with the)\s+)?$/i;
+const BARE_NO_AFTER = /^[^\p{L}\p{N}]*(?:no|nope)[^\p{L}\p{N}]*$/iu;
+const NEGATION_AFTER = /^[^\p{L}\p{N}]*(?:[\p{L}'-]+\s+){0,2}?(?:is(?:n'?t| not)|are(?:n'?t| not)|was(?:n'?t| not)|not (?:needed|necessary|required|now|yet|today)|would be a mistake)(?!\p{L})/iu;
 const STATEMENT_AFTER = /^\s+(?:is|was|are|were|has been|looks|seems)\s+(?!(?:fine|ok|okay|good|allowed|approved|welcome|alright|all right|safe)\b)/i;
-const DEFERRAL_CLAUSE = /\b(?:not yet|not now|later|hold off|tomorrow|after (?:i|you|we)\b|once (?:i|you)\b|when i\b)|(?<!\p{L})(?:пізніше|почекай|завтра|потім)(?!\p{L})/iu;
+const DEFERRAL_CLAUSE = /\b(?:not yet|not now|later|hold off|tomorrow|after (?:i|you|we)\b|once (?:i|you)\b|when i\b)/i;
 // A wait on CI defers a push, a publish, a release or a ship, but not a MERGE: 'merge it once CI is green' is the ordinary
 // way to ask for the merge CI gates (2.1.6 re-verify 4 R4-m1).
-const CI_DEFERRAL = /\b(?:after|once|when|until|till|as soon as) (?:the )?(?:ci|checks?|pipeline)\b|(?<!\p{L})(?:після|коли) (?:CI|ci|сі|пайплайн\p{L}*)(?!\p{L})/iu;
-const MERGE_VERB = /^(?:merge|мерж|мердж)/iu;
-const USER_KEEPS = /\bmyself\b|(?<!\p{L})(?:сам|сама|самі|самостійно)(?!\p{L})/iu;
+const CI_DEFERRAL = /\b(?:after|once|when|until|till|as soon as) (?:the )?(?:ci|checks?|pipeline)\b/i;
+const MERGE_VERB = /^merge/i;
+const USER_KEEPS = /\bmyself\b/i;
 const NOUN_BEFORE = /\b(?:the|a|an|this|that|my|your|its|our|last|first|previous|next)\s+$/i;
 const ACT_BEFORE = /\b(?:do|make|create|go ahead with|proceed with|run|finish|approve)\s+(?:the|a|an|this|that|your)\s+$/i;
-const WHY_CLAUSE = /^\s*(?:why|who|did you|have you|what)\b|(?<!\p{L})(?:навіщо|чому|хто)(?!\p{L})/iu;
-const ANSWERED_NO = /^[^\p{L}\p{N}]*(?:no|nope|not yet|not now|later|не|ні|пізніше|потім)[^\p{L}\p{N}]*$/iu;
-const CLASS_COMMIT = /^(?:commit|land|коміт|комміт|закоміт)/iu;
-const CLASS_PUSH = /^(?:push|publish|release|ship|merge|land|пуш|запуш|випуст|відправ|залив|мерж|мердж|влий|зали[йв]|викот|злий|злит)|\bPR\b|pull|ПР|реквест|^(?:open|create|raise|submit|відкр|створ|пода|зроб)/iu;
-const GENERIC_CONSENT = /^(?:go ahead|do it|approve[ds]?|yes|дава|погоджу|схвал|так,)/iu;
+const WHY_CLAUSE = /^\s*(?:why|who|did you|have you|what)\b/i;
+const ANSWERED_NO = /^[^\p{L}\p{N}]*(?:no|nope|not yet|not now|later)[^\p{L}\p{N}]*$/iu;
+const CLASS_COMMIT = /^(?:commit|land)/i;
+const CLASS_PUSH = /^(?:push|publish|release|ship|merge|land)|\bPR\b|pull|^(?:open|create|raise|submit)/i;
+const GENERIC_CONSENT = /^(?:go ahead|do it|approve[ds]?|yes)/i;
 const CONSENT_QUOTE_CAP = 1000;
 // The first bound past `i` in the sorted bounds, by binary search.
 function boundAfter(bounds, i) {
@@ -459,8 +457,11 @@ function boundAfter(bounds, i) {
   while (lo < hi) { const mid = (lo + hi) >> 1; if (bounds[mid] <= i) lo = mid + 1; else hi = mid; }
   return lo;
 }
+// A quote holding any letter outside ASCII: the lists cannot read it, so it is no consent (the header, ENGLISH ONLY).
+const foreignQuote = (text) => /[^\x00-\x7f]/.test(String(text).replace(/[^\p{L}]/gu, ''));
+const FOREIGN_HINT = ' - the gate reads a quote in English only; ask with AskUserQuestion (English labels) and write the picked option as `answered: <the chosen label>`';
 function consentIn(text, gate) {
-  if (text.length > CONSENT_QUOTE_CAP) return false;
+  if (text.length > CONSENT_QUOTE_CAP || foreignQuote(text)) return false;
   const clean = text.replace(POSITIVE_IDIOM, (m) => ' '.repeat(m.length));
   const bounds = [0];
   for (const b of clean.matchAll(CLAUSE_END)) bounds.push(b.index + b[0].length);
@@ -473,14 +474,13 @@ function consentIn(text, gate) {
   let ownHit = false;
   let otherHit = false;
   let genericHit = false;
-  for (const re of [CONSENT_VERB, CONSENT_VERB_CYR, CONSENT_PR, CONSENT_PR_CYR]) {
+  for (const re of [CONSENT_VERB, CONSENT_PR]) {
     for (const m of clean.matchAll(new RegExp(re.source, `${re.flags.replace('g', '')}g`))) {
       const [a, z] = clauseOf(m.index);
       const clause = clean.slice(a, z);
       const before = clean.slice(a, m.index);
       const after = clean.slice(m.index + m[0].length, z);
       if ((NOUN_BEFORE.test(before) && !ACT_BEFORE.test(before)) || WHY_CLAUSE.test(clause)) continue;
-      if (/^дава/i.test(m[0]) && !(/^[\s,!]*$/.test(after) || CONSENT_VERB_CYR.test(after.replace(/^\p{L}*/u, '')))) continue;
       const nk = boundAfter(bounds, z);
       const nextEnd = nk < bounds.length ? bounds[nk] : undefined;
       const answeredNo = nextEnd !== undefined && ANSWERED_NO.test(clean.slice(z, nextEnd));
@@ -603,6 +603,22 @@ function answerHint() {
   const last = a[a.length - 1].text.replace(/\s+/g, ' ').trim().slice(0, 80);
   return ` - this session's latest ask was answered "${last}"; a picked option is written \`answered: ${last}\``;
 }
+// A waiver given by picking an option (deep hooks review 2026-10-16: with a non-English quote no consent, a user who answers
+// in another language waives through a click): `WAIVED - answered: <label>`, `format: skipped - answered: <label>`. Null when
+// the line names no answered: label; else { problem } - empty when the label skips the review in WAIVER_WORDS, an ask
+// THIS session answered carries it, and someone is at the terminal (under auto-mode the Recommended option answers itself,
+// and a skipped review is never the run's own call).
+function answeredWaiver(line) {
+  const m = /\banswered:\s*(.+)$/i.exec(String(line || ''));
+  if (!m) return null;
+  const label = m[1].trim();
+  if (!WAIVER_WORDS.test(label)) return { problem: `the answered: waiver (${JSON.stringify(label).slice(0, 60)}) skips no review - its label names the skip ('Skip the review and commit')` };
+  if (!answeredAt(label)) return { problem: `the answered: waiver (${JSON.stringify(label).slice(0, 60)}) matches no ask answered in this session${answerHint()}` };
+  let nobody = false;
+  try { nobody = require('./hook-prelude.js').unattended(payload); } catch { nobody = false; }
+  if (nobody) return { problem: 'the answered: waiver was given while nobody is at the terminal (auto-mode answers its own Recommended option) - a skipped review needs the user' };
+  return { problem: null };
+}
 // When the latest answer carrying `label` landed, or 0 when no answer carries it.
 function answeredAt(label) {
   const want = normQuote(String(label).replace(/^option\s+\d+\s*/i, '').replace(/["'\u201c\u2018\u201d\u2019]/g, ''));
@@ -711,11 +727,14 @@ function judgeReceipt(body, opts) {
 
   if (waived) {
     const w = quotedOf(first);
-    if (!w) r.problem = 'the WAIVED line carries no quoted words - a waiver is the user\'s own sentence, in quotes, on that line';
+    const picked = answeredWaiver(first);
+    if (!w && picked) { if (picked.problem) r.problem = picked.problem; return r; }
+    if (!w) r.problem = 'the WAIVED line carries no quoted words - a waiver is the user\'s own sentence, in quotes, on that line, or `answered: <the label they picked>`';
+    else if (foreignQuote(w)) r.problem = `the WAIVED quote (${JSON.stringify(w).slice(0, 60)}) is not in English${FOREIGN_HINT}`;
     // Any quote passed (audit 2026-10-08: `WAIVED - "what time is it?"` exit 0), the hole the authorized: clause closed.
     // A waiver names the review it skips; a plain 'commit it' is an instruction to commit, never a waiver
     // (habits-commit-checkpoint), and an option label this run wrote is the model's sentence, not the user's.
-    else if (!WAIVER_WORDS.test(w) && !WAIVER_WORDS_CYR.test(w)) r.problem = `the WAIVED quote (${JSON.stringify(w).slice(0, 60)}) waives nothing - a waiver is the user's own words skipping the review ('skip the review', 'just push', 'commit it without the check'); an instruction to commit is no waiver`;
+    else if (!WAIVER_WORDS.test(w)) r.problem = `the WAIVED quote (${JSON.stringify(w).slice(0, 60)}) waives nothing - a waiver is the user's own words skipping the review ('skip the review', 'just push', 'commit it without the check'); an instruction to commit is no waiver`;
     else if (isOwnOptionLabel(w)) r.problem = 'the WAIVED quote is character-identical to an option label THIS run wrote - that is the model\'s sentence, not the user\'s waiver';
     return r;
   }
@@ -730,6 +749,7 @@ function judgeReceipt(body, opts) {
         : 'commit verb left standing (commit, land, or a publish that takes the commit with it)';
       r.problem = authorized.length > CONSENT_QUOTE_CAP
         ? `the authorized: quote runs past ${CONSENT_QUOTE_CAP} characters - a consent is the user's own answer, quoted; this is no answer`
+        : foreignQuote(authorized) ? `the authorized: quote (${JSON.stringify(authorized).slice(0, 60)}) is not in English${FOREIGN_HINT}`
         : `the authorized: quote (${JSON.stringify(authorized).slice(0, 60)}) carries no ${verbs} - a negation, a stop, a deferral or 'myself' in its clause refuses the verb; it records the user saying something, not the user asking for THIS act${answerHint()}`;
       return r;
     }
@@ -811,7 +831,7 @@ function judgeReceipt(body, opts) {
   if (opts && opts.gate === 'COMMIT-GATE') {
     const fmt = field('format');
     const fmtQuote = quotedOf(fmt);
-    const fmtWaived = fmtQuote && (WAIVER_WORDS.test(fmtQuote) || WAIVER_WORDS_CYR.test(fmtQuote)) && !isOwnOptionLabel(fmtQuote);
+    const fmtWaived = (fmtQuote && WAIVER_WORDS.test(fmtQuote) && !foreignQuote(fmtQuote) && !isOwnOptionLabel(fmtQuote)) || (!fmtQuote && answeredWaiver(fmt || '') && !answeredWaiver(fmt).problem);
     if (!fmtWaived && (!fmt || !/\bclean\b/i.test(fmt))) {
       r.problem = `${fmt ? `format: ${fmt.slice(0, 60)} carries no clean verdict` : 'no format: line'} - a commit receipt records the formatter CHECK run over every staged file, \`format: <the check command> - clean over <N> staged files\` (a project with no formatter: \`format: none configured - clean over <N> staged files\`; the user's own waiver: \`format: skipped - "<their words>"\`)`;
       return r;
@@ -821,7 +841,7 @@ function judgeReceipt(body, opts) {
     // quoted waiver, the format: rule.
     const fnd = field('findings');
     const fndQuote = quotedOf(fnd);
-    const fndWaived = fndQuote && (WAIVER_WORDS.test(fndQuote) || WAIVER_WORDS_CYR.test(fndQuote)) && !isOwnOptionLabel(fndQuote);
+    const fndWaived = (fndQuote && WAIVER_WORDS.test(fndQuote) && !foreignQuote(fndQuote) && !isOwnOptionLabel(fndQuote)) || (!fndQuote && answeredWaiver(fnd || '') && !answeredWaiver(fnd).problem);
     // a findings line that says the review was skipped is a waiver, and a waiver is the user's quoted words
     if (!fndWaived && (!(fnd && fnd.replace(/[-:\s]/g, '')) || /\b(?:skip(?:s|ped)?|waived?|not\s+run)\b/i.test(fnd))) {
       r.problem = `${fnd && fnd.replace(/[-:\s]/g, '') ? `findings: ${fnd.slice(0, 60)} skips the review with no quoted waiver` : 'no findings: line'} - a commit receipt carries the review's Findings field, copied: \`findings: <a count by severity, or none>\` (the user's own waiver: \`findings: skipped - "<their words>"\`)`;
@@ -1010,28 +1030,15 @@ if (publishMatch) {
           : r.problem
             ? `Blocked: ${act} - the publish receipt at ${r.gate} does not hold: ${r.problem}.\n`
             : `Blocked: ${act} without the publish gate receipt.\n`) +
-          `Pushing and merging are where the work leaves this machine - other people and CI get it,\n` +
-          `and a shared branch cannot be un-pushed quietly. Measured across four sessions: every\n` +
-          `push and merge passed every guard, one of them publishing 40 files to a shared develop\n` +
-          `and one running before any review receipt existed at all.\n\n` +
-          `Per alfred-git.md, the publish runs through habits-commit-checkpoint's publish half (load it with\n` +
-          `the Skill tool): say what is being published and to which branch, get the user's answer, then write\n` +
-          `${r.gate}\n` +
-          `with these lines:\n` +
-          `  VERIFIED <what is being published, one phrase>\n` +
-          `  authorized: "<the user's words asking for THIS publish, verbatim>"   (or, when they\n` +
-          `    picked an option instead of typing, answered: <the chosen label>)\n` +
-          `  head: <git rev-parse HEAD>\n` +
-          `  spec: <N files - the set this publish covers>\n` +
-          `  live-probe: <what you actually ran, or NOT RUN - <reason>>\n` +
-          `  scope: <workspace, or the project list the probe ran - required when this push touches\n` +
-          `    more than one project>\n` +
-          `The quoted words must carry a publish verb and must not be an option label this run\n` +
-          `wrote. If they EXPLICITLY waived it this conversation, write WAIVED - "<their words,\n` +
-          `verbatim>" instead; never fabricate either quote. Then retry, and clear the file once\n` +
-          `it lands.\n` +
-          `A repo whose remote is already gated (branch protection, a required review) can turn\n` +
-          `this half off for good: ALFRED_CODE_PUSH_GATE=0 in the settings.json env block.`,
+          `A publish leaves this machine for good. Run habits-commit-checkpoint's publish half (load it): say what goes to\n` +
+          `which branch, get the user's answer, then write ${r.gate} with the skill's scripts/receipt.js (\`push\`) - it\n` +
+          `fills head: and spec: from git:\n` +
+          `  VERIFIED <what is being published>\n` +
+          `  authorized: "<the user's words asking for THIS publish, verbatim>"  (in English, or answered: <the label they picked>)\n` +
+          `  live-probe: <what you ran, or NOT RUN - <reason>>   scope: <workspace, or the projects - when it spans several>\n` +
+          `The quote carries a publish verb and is never an option label this run wrote. A waiver is WAIVED - "<their\n` +
+          `words>" or WAIVED - answered: <the label they picked>. Never fabricate either; retry, and clear the file once it\n` +
+          `lands. A remote already gated (branch protection) can turn this half off: ALFRED_CODE_PUSH_GATE=0.`,
       );
       process.exit(2);
     }
@@ -1597,28 +1604,17 @@ process.stderr.write(
     : c.problem
       ? `Blocked: git commit - the gate receipt at ${c.gate} does not hold: ${c.problem}.\n`
       : `Blocked: git commit on a non-trivial diff without the pre-commit gate receipt.\n`) +
-    `The checkpoint (the habits-commit-checkpoint skill - load it) runs BEFORE a non-trivial commit: the formatter, then\n` +
-    `the house review task-verify-code - plus /security-review when the diff touches\n` +
-    `auth/crypto/secrets/payment/data-access paths (alfred-security.md). When those pass, write\n` +
-    `${c.gate}\n` +
-    `with these lines:\n` +
+    `Run the checkpoint first (load habits-commit-checkpoint): the formatter, then task-verify-code, plus /security-review\n` +
+    `on auth, crypto, secrets, payment or data-access paths. Then write ${c.gate} with the skill's scripts/receipt.js\n` +
+    `(\`commit\`) - it fills head:, spec: and the counts from git:\n` +
     `  VERIFIED <what was reviewed, one phrase>\n` +
-    `  authorized: "<the user's words asking for THIS commit, verbatim>"   (or, when they picked\n` +
-    `    an option instead of typing, answered: <the chosen label>)\n` +
-    `  head: <git rev-parse HEAD>\n` +
-    `  spec: <N files - the set the review covered>\n` +
-    `  live-probe: <what you actually ran, or NOT RUN - <reason>>\n` +
-    `  format: <the formatter CHECK command run over the staged files> - clean over <N> staged files\n` +
+    `  authorized: "<the user's words asking for THIS commit, verbatim>"  (in English, or answered: <the label they picked>)\n` +
+    `  live-probe: <what you ran, or NOT RUN - <reason>>\n` +
+    `  format: <the formatter check> - clean over <N> staged files\n` +
     `  findings: <the review's Findings field - a count by severity, or none>\n` +
-    `The VERIFIED line proves the review ran; the authorized line proves the user asked for the\n` +
-    `commit, and its quote must carry a commit verb and must not be an option label this run\n` +
-    `wrote (measured: a self-written VERIFIED receipt passed this gate on a commit no user\n` +
-    `requested, and 'authorized: "what time is it?"' passed it too).\n` +
-    `Then retry the commit. If the user EXPLICITLY waived the gate this conversation, write\n` +
-    `WAIVED - "<their words, verbatim>" instead; never fabricate either quote, and 'commit\n` +
-    `it' alone is an instruction to commit, not a waiver of the review. Do not split a real\n` +
-    `change into tiny commits to slip under this gate's trivial-diff exemption. Clear the\n` +
-    `file once the commit lands (after the LAST commit when one receipt covers a batch - its head: stays the sha the\n` +
-    `review ran against, and each later commit of the batch passes while it takes in only files spec: covered).`,
+    `The quote carries a commit verb and is never an option label this run wrote. A waiver is WAIVED - "<their words>"\n` +
+    `or WAIVED - answered: <the label they picked>; 'commit it' is no waiver. Never fabricate either, never split a change\n` +
+    `to slip under the trivial bar, and clear the file after the batch's last commit (one receipt covers commits taking in\n` +
+    `only the files its spec: names).`,
 );
 process.exit(2);

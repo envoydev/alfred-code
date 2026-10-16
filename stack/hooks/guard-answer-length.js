@@ -21,8 +21,8 @@
 //   assistant row is the fallback, and the user's own message always comes from the transcript.
 //   Deliberately a wall-of-text catch, not a byte-counter: the soft budget lives in the reminder
 //   because a Stop block cannot unsay text the user already read - it can only add more.
-// SessionStart wiring: re-emits the budget as additionalContext whenever the harness rebuilds the
-//   context (startup, resume, clear, compact) - a compaction drops the UserPromptSubmit injection.
+// SessionStart:compact wiring: re-emits the budget as additionalContext after a compaction, which drops the
+//   UserPromptSubmit injection; startup, resume and clear get it from the first prompt (deep hooks review 2026-10-16).
 // PostToolUse AskUserQuestion wiring: an answer typed into an ask's Other field is the user speaking through a tool
 //   result - one probe row, the correction test over it, and a note to open a path it names (audit 2026-10-10 C15).
 // exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unparseable.
@@ -40,6 +40,7 @@ let markHeld = () => {};
 let contractHeld = () => false;
 let houseDash = /[\u2014\u2013\u2015]/; // hook-prelude.js HOUSE_DASH, the one dash class
 let harnessPrompt = (prompt) => /^\s*<task-notification>/.test(String(prompt || ''));   // hook-prelude.js harnessPrompt
+let unreadable = (text) => { const l = String(text || '').match(/\p{L}/gu) || []; return l.length > 0 && l.filter((c) => c > '\u007f').length / l.length >= 0.3; }; // hook-prelude.js unreadable
 if (require.main === module) {
   try {
     const prelude = require('./hook-prelude.js');
@@ -47,6 +48,7 @@ if (require.main === module) {
     unattended = prelude.unattended || unattended;
     houseDash = prelude.HOUSE_DASH || houseDash;
     harnessPrompt = prelude.harnessPrompt || harnessPrompt;
+    unreadable = prelude.unreadable || unreadable;
     if (prelude.stopHeldThisCycle) {
       stopHeld = (input) => prelude.stopHeldThisCycle('guard-answer-length', input);
       markHeld = (input) => prelude.markStopHeld('guard-answer-length', input);
@@ -119,10 +121,9 @@ const HARD_CAP = 1800; // block: double the budget with no depth request = a wal
 // narrow: 'explain X' does NOT qualify - the rule caps explanations too ('whether it is work
 // output or an explanation'); only an ask for depth, length or a written document does.
 const DEPTH_RE = /\b(in detail|detailed|more detail|deep ?dive|in ?depth|elaborate|expand on|walk me through|step[- ]by[- ]step|full (breakdown|analysis|report|list|picture|write[- ]?up)|comprehensive|thorough(ly)?|verbose|long(er)? (answer|version|form)|everything (you|about)|write (me )?(a|the) (plan|report|doc|document|spec|summary)|don'?t (be )?(short|brief))\b/i;
-// The same ask in Ukrainian. Kept as its own pattern because JS \b is ASCII-only -
-// a word boundary around a Cyrillic stem never matches, so these are matched as bare substrings
-// (stems only: 'детальн' covers детально / детальніше / детальний).
-const DEPTH_RE_CYR = /(детальн|докладн|розгорнут|покроков|крок за кроком|розпиши|розбір|напиши план|повністю|поясни глибше|глибше)/i;
+// English only (deep hooks review 2026-10-16, the user's ruling): a prompt the list cannot read - 30% or more of its letters
+// outside ASCII, hook-prelude.js unreadable - lifts the cap and writes a `length-unread` row instead (the Stop half below),
+// so a depth ask in any language keeps its long answer.
 
 // A first-person retraction of something this run already said. 'Sorry' alone is not one, and
 // neither is a correction the run is making to somebody else's work - the exemption is for the
@@ -206,7 +207,7 @@ function proseOf(text) {
 const BUDGET_TEXT =
         `Answer budget (alfred-interaction.md): 3 sentences plus bullets, ~${BUDGET} characters of prose, result first. ` +
         `Code, tables and command output are exempt. Only THIS message's depth words lift it (in detail / walk me ` +
-        `through / write a plan; детально, покроково, розпиши). Single dashes and single quotes, an ` +
+        `through / write a plan). Single dashes and single quotes, an ` +
         `AskUserQuestion's text included.`;
 
 // --- the correction streak: N short human turns in a row, each right after a long answer -----
@@ -274,14 +275,11 @@ function correctionStreak(currentPrompt) {
 // in-sample, 3 of the replay's 52 hits were not corrections. A STRONG marker counts anywhere; a WEAK
 // one (an opening 'but', 'instead', 'it should') only in a turn that asks nothing, where it is a
 // correction rather than a challenge. 'why can't you' is a question about a limit, not a correction.
-// The Cyrillic stems are bounded by a non-letter lookbehind (JS \b is ASCII-only); too few Cyrillic
-// turns exist in the corpus to measure them.
 const CORRECTION_STRONG_RE = /^\W*(?:no|nope|nah|wrong|incorrect|not (?:that|this|what|quite|like that|right|correct)|undo|revert|roll ?back)\b|(?:^|[.,;:!?]\s*|\b(?:but|and|please|pls|so|then|also|just)\s+)(?:do not|don'?t|dont|never|stop \w+ing)\b|\byou (?:did not|didn'?t|didnt|have not|haven'?t|havent|should not|shouldn'?t|forgot|missed|ignored|broke|skipped|removed|deleted|dropped|lost|said|told)\b|\bwhy (?:did |do |are |have |haven'?t |didn'?t |would |were )?you\b(?! (?:cannot|can'?t|can not|couldn'?t)\b)|\bi (?:said|asked|told you|meant|wanted|did not ask|didn'?t ask|never asked|already (?:said|told|asked))\b|\b(?:still|again) (?:there|broken|fail\w*|wrong|the same|red|happen\w*|error\w*|doesn'?t|does not|isn'?t|is not|not)\b|\bsame (?:error|issue|problem|bug)\b|\b(?:that'?s|that is|this is|it'?s|it is) (?:wrong|incorrect|not (?:right|correct|what|how|it))\b|\bnot what i\b|\bi (?:do not|don'?t|dont|did not|didn'?t) (?:want|need|like)\b|\b(?:does not|doesn'?t|did not|didn'?t) (?:fit|work|help|make sense)\b|\bnot working\b|\b(?:too (?:long|much text|verbose|many words|complicated|complex)|a lot of text|less text|shorter|simpler|more concise)\b/i;
 const CORRECTION_WEAK_RE = /^\W*but\b|^\W*(?:ok(?:ay)?|yes|yeah|fine|sure|good|right)\b\W*but\b|^\W*stop\b|\binstead\b|(?<!\b(?:what|which|how|whether|where|when|who|why)\b[^.,;:!?\n]{0,60})\b(?:it|this|that|they|these|those|there) should(?:n'?t| not| have| be| stay| use| go)\b/i;
-const CORRECTION_CYR_RE = /(?<![\p{L}])(?:ні(?=[\s,.!]|$)|не (?:так|те)(?![\p{L}])|не ?правильн|не (?:треба|потрібно|роби)(?![\p{L}])|я (?:ж )?(?:казав|просив|говорив|сказав)|чому ти(?! не мож)|навіщо ти|коротше|простіше|забагато|(?:та сама|та ж) (?:помилк|проблем)|не працює|(?:досі|все ще) не(?![\p{L}]))/iu;
 function correctionMarker(text) {
   const t = String(text || '').replace(/[‘’]/g, "'").trim();
-  const m = t.match(CORRECTION_STRONG_RE) || t.match(CORRECTION_CYR_RE) || (!t.includes('?') && t.match(CORRECTION_WEAK_RE));
+  const m = t.match(CORRECTION_STRONG_RE) || (!t.includes('?') && t.match(CORRECTION_WEAK_RE));
   return m ? m[0].trim().slice(0, 40) : null;
 }
 // --- end correction-turn test
@@ -547,7 +545,12 @@ if (payload.hook_event_name === 'Stop') {
   if (!overLength && !dashes) process.exit(0);
   // The three length exemptions below excuse the LENGTH only. An em-dash is a character to
   // replace, not content to drop, so no exemption reaches it and the re-answer loses nothing.
-  if (overLength && user && (DEPTH_RE.test(user) || DEPTH_RE_CYR.test(user))) overLength = false; // depth asked this turn
+  if (overLength && user && DEPTH_RE.test(user)) overLength = false; // depth asked this turn
+  if (overLength && user && unreadable(user)) {
+    // the depth list cannot read this prompt: logged, never held - a forced re-answer would delete what was asked for
+    ledgerRow({ mode: 'probe', kind: 'length-unread', reason: 'probe: a long answer to a prompt the depth list cannot read - logged, not held', detail: { chars: body.length } });
+    overLength = false;
+  }
   // Two exemptions, both bought with measured damage: one forced re-answer went 3,184 -> 1,085
   // chars and took TWO of five headline findings and a self-correction disclosure with it. A cap
   // that deletes content the user needed is worse than the wall of text it replaced.

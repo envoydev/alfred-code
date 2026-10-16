@@ -46,8 +46,8 @@ On any non-trivial diff, before committing or presenting, in order:
    - 'Hold' - nothing is committed and no receipt is written
    ```
 
-6. **Receipt.** Write the receipt below, then commit, read `git log -1 --stat` back into the close,
-   then clear it.
+6. **Receipt.** Write the receipt below with `receipt.js`, then commit, read `git log -1 --stat` back
+   into the close, then clear it.
 
 **Scope - the session's own change.** What was untracked before this change began is not part of
 it: the docs hook lists it at session start, once per HEAD (`<docs-path>/flow/untracked-at-start-<HEAD
@@ -125,6 +125,26 @@ On a security-relevant diff the receipt adds an extra line: `security:` naming e
 checked and its verdict (`security: auth ok, secrets ok, injection ok, data-access n/a`). A
 security claim with no `security:` line, or one that names no categories, is the one-line nod
 `alfred-security.md` rejects - the guard reads it as no review at all.
+
+**Write it with this skill's bundled `receipt.js`**, never by hand: it fills `head:`, `spec:` (the
+count and the paths) and the counts on `format:` and `security:` from git, which is where hand-written
+receipts were refused 37 times in three weeks. Resolve it from the skill's own folder (Node.js built-ins
+only; run from the project):
+
+```bash
+R="${CLAUDE_SKILL_DIR}/scripts/receipt.js"
+[ -f "$R" ] || R=.claude/skills/habits-commit-checkpoint/scripts/receipt.js
+node "$R" commit --verified '<what was reviewed>' --authorized '<the user words, verbatim>' \
+  --probe '<what ran, or NOT RUN - reason>' --format '<the format check command, or none>' \
+  --findings '<count by severity, or none>' --paths <the session's own paths>
+```
+
+`--answered '<label>'` replaces `--authorized` for a picked option, `--security '<each category and
+its verdict>'` adds that line, `--carried` the carried line, and `--all` stands for `git commit -a`;
+with nothing staged and no `--paths` it counts the whole tree minus what was untracked at session
+start. `push` writes the PUSH-GATE receipt (`--scope` when the push spans projects), `--waived '<the
+user words>'` the waiver line alone, and `clear commit` removes the receipt. A receipt the guard would
+refuse for a missing line is refused here first: exit 2, nothing written.
 
 Write the receipt as its OWN tool call, before the call that runs `git commit` - one written inside
 the same compound command is unauditable in the ledger. The shipped hook still ACCEPTS the atomic

@@ -728,13 +728,14 @@ function readReceipt(root, transcriptPath, sessionId) {
 // The one sentence every denial and every redacted view ends on: the block or the placeholder is the
 // default, the user's answer is honoured. It names the RESOLVED receipt path - the docs root may be
 // absolute, and a relative spelling of it is one the model would have to re-anchor.
+// Cut to its instruction (deep hooks review 2026-10-16: about 720 characters rode every denial and every rewritten call's
+// note, some 4,000 a fortnight); the three labels are the contract and stay verbatim.
 const askLine = (r) =>
-  'If the VALUE itself is what the user needs - shown to them, or placed where a blind copy (jq ... > file, cp, sed -i) ' +
-  'cannot reach - do not decide for them: end this turn with ONE AskUserQuestion carrying, in this order, ' +
-  "'Presence only (Recommended)', 'Show or use the value this session - it enters the transcript permanently', 'Drop it'. " +
-  `On the second answer write the receipt ${r.path}: ${r.session ? `the line \`session: ${r.session}\`` : 'a `session: <id>` line naming this session (`$CLAUDE_CODE_SESSION_ID` in its shell)'}, ` +
-  'then the file path, the variable NAME, or `*` (everything, this session), each on its own line, then retry; it is honoured for this session only, under 8h' +
-  (r.stale ? ' - the receipt there now is stale (older than 8h, written before this session began, or naming another session), so rewrite it only on a fresh answer' : '') + '.';
+  'If the user needs the VALUE itself (shown, or placed where a blind copy cannot reach), end the turn with ONE ' +
+  "AskUserQuestion: 'Presence only (Recommended)', 'Show or use the value this session - it enters the transcript permanently', 'Drop it'. " +
+  `On the second answer write ${r.path}: ${r.session ? `\`session: ${r.session}\`` : '`session: <id>` (`$CLAUDE_CODE_SESSION_ID`)'}, ` +
+  'then the file, the variable NAME or `*`, one per line, and retry (this session, under 8h)' +
+  (r.stale ? ' - the receipt there now is stale (older than 8h, from before this session, or naming another), so rewrite it only on a fresh answer' : '') + '.';
 // A note the rewritten call prints as its first line, so the model reads what happened and the route
 // to the value in the same tool result - nothing is fed back through a denial.
 const noteLine = (what, r) => `# credential guard: ${what} A value never enters the chat. ${askLine(r)}`;
@@ -909,6 +910,13 @@ function sensitiveFile(start = process.cwd()) {
   } catch { /* no engine beside the hook: the start directory alone */ }
   const at = places.map((p) => pathMod.join(p, ...root.split('/'), SENSITIVE_FILE));
   return at.find((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } }) || at[0];
+}
+// The project's store as a real path, or null when it does not exist - what a tree-taking verb on a folder above it carries.
+function sensitiveStore() {
+  try {
+    const f = sensitiveFile((payload && typeof payload.cwd === 'string' && payload.cwd) || process.cwd());
+    return fs.statSync(f).isFile() ? realOf(f) : null;
+  } catch { return null; }
 }
 function sensitiveValues(file) {
   const out = {};
@@ -1397,13 +1405,9 @@ const rewrite = (command, detail) => {
   process.exit(0);
 };
 const presenceHint = (file) =>
-  `Per alfred-security.md a credential is read for PRESENCE only:\n` +
-  `  node "${__filename}" --presence "${file}" [KEY ...]   ->  KEY=set (N chars) | KEY=empty (present, no value) | KEY=absent\n` +
-  `A shell dump of it - cat "${file}" - is rewritten into the redacted view for free:\n` +
-  `  node "${__filename}" --redacted "${file}"   ->  the file, every credential value shown as <set (N chars)>\n` +
-  `Never echo the value, never pass it to a tool, never ask for it in the chat - the user sets it in\n` +
-  `the file by hand. A credential in a PROJECT settings.json belongs in the ACCOUNT file\n` +
-  `(~/.claude/settings.json, or the space's): only that env reaches .mcp.json expansion.\n`;
+  `Read it for PRESENCE: node "${__filename}" --presence "${file}" [KEY ...]  ->  KEY=set (N chars) | empty | absent.\n` +
+  `A shell \`cat\` of it runs as the redacted view (--redacted). The user sets values by hand; one .mcp.json expands\n` +
+  `belongs in the ACCOUNT settings file (~/.claude/settings.json), never a project one.\n`;
 
 // The verbs that print a file, and the runtimes whose inline reads do the same with a different
 // spelling. `grep` is a dump verb: `grep -n SENTRY settings.json` prints the value's whole line.
@@ -2841,8 +2845,8 @@ if (isShellTool(payload.tool_name)) {
 // same globs): adjacent quoted spans are joined first (`.sensitive""-data`), and each operand of the steps the shell runs
 // (heredoc bodies blanked) goes through the dump judge's own resolver - list variables, braces, a last-component glob,
 // a `cd` earlier in the command - to the real path, refused when it IS the store, or on an archive / add / recursive copy
-// verb when it is a directory holding the store directly. A folder further up (`tar cf x.tgz .`) is not judged: the
-// command that reads the store back out of the archive names it, and is refused for that.
+// verb when it is a directory holding the store directly - or, on a verb that takes a tree whole, any folder above it
+// (judgeStage's `takesTree`; deep hooks review 2026-10-16), unless the command excludes the store or a folder on its way.
 // Its tables live inside the function: the shell branch above runs at load, before a module-level const below it exists.
 function refuseSensitiveMention(text, steps = text) {
   if (allowAll) return;
@@ -2860,9 +2864,14 @@ function refuseSensitiveMention(text, steps = text) {
       'The file itself is the user\'s to edit, by hand.\n');
   };
   const plain = (w) => !/^[A-Za-z_]\w*=/.test(w) && w !== 'sudo' && w !== '!';
+  // What an exclusion names is what the command leaves OUT (hooks review 2026-10-16: `rsync -a --exclude .alfred ./ x` was
+  // refused while the same copy without the exclusion passed): the operand of --exclude / --exclude-from / --exclude-dir
+  // is no mention and no path.
+  const EXCLUDE_FLAG = /^--exclude(?:-from|-dir)?$/;
+  const EXCLUDED = /(^|\s)--exclude(?:-from|-dir)?(?:=|\s+)("[^"]*"|'[^']*'|\S+)/g;
   // the literal name, quoted spans joined
   for (const seg of String(text).split(/[;&|\n]+/)) {
-    const joined = joinQuoted(seg);
+    const joined = joinQuoted(seg.replace(EXCLUDED, '$1'));
     if (!MENTION.test(joined) || /guard-secret-value\.js/.test(seg)) continue;
     const words = joined.trim().split(/\s+/).filter(plain);
     if (SENSITIVE_LOOKS.has(words[0] || '')) continue;
@@ -2895,9 +2904,47 @@ function refuseSensitiveMention(text, steps = text) {
     const args = words.slice(1);
     const sub = args.find((w) => !w.startsWith('-'));
     const recursive = args.some((w) => /^-[A-Za-z]*[rRa][A-Za-z]*$|^--(?:recursive|archive)$|^-recurse$/i.test(w));
+    const copies = /^(?:cp|copy-item|cpi|copy|xcopy|robocopy|ditto|rsync|scp)$/i.test(verb);
     const bundles = SENSITIVE_ARCHIVE.test(verb) || (verb === 'git' && sub === 'add')
       || (/^(?:cp|copy-item|cpi|copy|xcopy|robocopy|ditto)$/i.test(verb) && (recursive || /^(?:ditto|robocopy|xcopy)$/i.test(verb)));
-    for (const raw of args) {
+    // What the bundle leaves out: each exclusion pattern (zip's `-x` list too), a glob matched against the path from the
+    // named folder down to the store - one of its folders (`.alfred`, `.*`) or the store itself.
+    const exclusions = [];
+    const patternAt = new Set(); // zip's -x list: patterns, never paths
+    for (let i = 0; i < args.length; i++) {
+      if (/^--exclude(?:-dir)?$/.test(args[i])) exclusions.push(args[++i] || '');
+      else if (/^--exclude(?:-dir)?=/.test(args[i])) exclusions.push(args[i].replace(/^[^=]*=/, ''));
+      else if (/^zip$/i.test(verb) && args[i] === '-x') { while (args[i + 1] && !args[i + 1].startsWith('-')) { patternAt.add(i + 1); exclusions.push(args[++i]); } }
+    }
+    const excludes = (segs) => exclusions.some((x) => {
+      const p = x.replace(/^\.?\//, '').replace(/\/\*{1,2}$/, '').replace(/\/+$/, '');
+      if (!p) return false;
+      const re = (g) => new RegExp(`^${g.split('').map((ch) => (ch === '*' ? '[^/]*' : ch === '?' ? '[^/]' : ch.replace(/[.+^${}()|[\]\\]/g, '\\$&'))).join('')}$`);
+      const full = re(p); const base = re(baseOf(p));
+      return segs.some((s, k) => full.test(s) || base.test(s) || full.test(segs.slice(0, k + 1).join('/')));
+    });
+    // A folder ABOVE the store carries it too, on a verb that takes a tree whole (deep hooks review 2026-10-16, the user's
+    // ruling: `cp -R . x` and `rsync -a ./ x` copied it and passed): an archive being created, a recursive copy's SOURCE
+    // (its destination - the last operand, or cp's `-t` - holds nothing yet), and a forced `git add` (a plain one honours
+    // the ignore file that keeps the data root out). A tar or 7z extract, and a copy INTO the project, pass.
+    const positional = args.filter((w) => !w.startsWith('-'));
+    const named = args.findIndex((w) => /^(?:-t|--target-directory|-Destination|-DestinationPath)$/i.test(w));
+    const destination = !copies ? null : named >= 0 ? args[named + 1]
+      : /^(?:robocopy|xcopy)$/i.test(verb) ? positional[1] : positional[positional.length - 1];
+    // tar's mode is a `-c` cluster, `--create` or an old-style first word (`czf`); `-C` is a directory change
+    const creates = /^(?:g|bsd)?tar$/i.test(verb) ? args.some((w) => w === '--create' || /^-[A-Za-z]*c[A-Za-z]*$/.test(w)) || /^[A-Za-z]*c[A-Za-z]*$/.test(args[0] || '')
+      : /^(?:7z|7za|7zz|rar)$/i.test(verb) ? /^[aum]$/.test(sub || '')
+      : /^pax$/i.test(verb) ? args.some((w) => /^-[A-Za-z]*w/.test(w))
+      : /^zip$/i.test(verb) ? recursive
+      : !/^cpio$/i.test(verb); // cpio takes its list on stdin, and a pass-through operand is where it writes
+    const takesTree = creates && (SENSITIVE_ARCHIVE.test(verb) && !copies ? true
+      : copies ? (recursive || /^(?:ditto|robocopy|xcopy)$/i.test(verb))
+      : verb === 'git' && sub === 'add' && args.some((w) => /^--force$|^-[A-Za-z]*f[A-Za-z]*$/.test(w)));
+    const storeAt = takesTree ? sensitiveStore() : null;
+    for (let i = 0; i < args.length; i++) {
+      const raw = args[i];
+      if (EXCLUDE_FLAG.test(raw)) { i++; continue; }
+      if (/^--exclude(?:-from|-dir)?=/.test(raw) || patternAt.has(i)) continue;
       if (budget <= 0) return;
       const word = raw.replace(/^\d*[<>]+&?/, '');
       const value = /^-[^=]*=/.test(word) ? word.slice(word.indexOf('=') + 1) : word;
@@ -2907,7 +2954,12 @@ function refuseSensitiveMention(text, steps = text) {
         const hit = statAny(p);
         if (!hit) continue;
         if (!hit.dir && isStore(hit.at)) refuse(verb);
-        if (hit.dir && bundles) { try { if (fs.statSync(pathMod.join(hit.at, SENSITIVE_FILE)).isFile()) refuse(verb); } catch { /* not here */ } }
+        if (hit.dir && bundles && !excludes([SENSITIVE_FILE])) { try { if (fs.statSync(pathMod.join(hit.at, SENSITIVE_FILE)).isFile()) refuse(verb); } catch { /* not here */ } }
+        if (hit.dir && storeAt && raw !== destination) {
+          const d = realOf(hit.at);
+          const rel = pathMod.relative(d, storeAt);
+          if (rel && !rel.startsWith('..') && !pathMod.isAbsolute(rel) && !excludes(rel.split(pathMod.sep))) refuse(verb);
+        }
       }
     }
   };
@@ -2978,22 +3030,48 @@ function redactGitStages(text) {
   let changed = false;
   // The probe runs NOW, before any step of the command, so it reads the wrong tree once an earlier step moves
   // the shell (`cd`) or changes what git sees (`git add -N .` - the security-review diff's own first step, which
-  // printed a new file's credential unmasked; final review IM1). changingStep's allowlist decides the second.
+  // printed a new file's credential unmasked; final review IM1). changingStep's allowlist decides the second. A `cd` to
+  // a LITERAL directory that exists is followed instead: the probe runs there (deep hooks review 2026-10-16: 'moved' on
+  // every `cd` - the project root's own included - piped about two thirds of 3,957 stages unprobed).
   let moved = false;
+  let dir = probeCwd();
   const out = segs.map((seg, n) => {
-    if (/^\s*(?:\(\s*)?(?:cd|pushd|popd)\b/.test(seg) || (n > 0 && changingStep(segs[n - 1], -1, -1))) moved = true;
+    if (n > 0 && changingStep(segs[n - 1], -1, -1)) moved = true;
+    if (/^\s*(?:\(\s*)?(?:cd|pushd|popd)\b/.test(seg)) {
+      const to = literalCdTarget(seg, dir);
+      if (to) dir = to; else moved = true;
+    }
     const stages = splitPipes(seg);
     if (stages.join('|') !== seg || stages.some((st) => REDACT.test(st))) return seg;
     if (!stages.some(teesToTerminal) && (redirectsToFile(seg) || stages.some(isReducer))) return seg;
+    // A subshell's closing paren rides the last stage (`(cd sub && git diff)` reads `git diff)`), which hid the dump from
+    // every test below - it printed a credential raw (deep hooks review 2026-10-16, replayed on the old guard too). The
+    // stage is judged without it, and the pipe goes inside the group. A group the stage itself opens (`(git diff)`) is no
+    // `$(...)` to keep whole: its leading paren is left out of the count.
+    const parts = stages.map((st) => {
+      const m = st.match(/(?:\s*\))+\s*$/);
+      const body = m ? st.slice(0, m.index) : st;
+      const inner = body.replace(/^\s*\(+/, '');
+      return m && (inner.match(/\(/g) || []).length <= (inner.match(/\)/g) || []).length ? [body, st.slice(m.index)] : [st, ''];
+    });
     // a git dump and a recursive search take the same pipe; the search's lines carry a `path:line:` prefix the mask reads past
-    const hits = stages.map((st) => { const g = gitDumpOf(st); return g ? (moved || g.fed || gitOutputLeaks(g.inner) ? '' : null) : walkPrints(st) ? (moved || walkLeaks(st) ? ` --grep${walkNamesSecret(st) ? ' --literals' : ''}` : null) : null; });
+    // A group opened with no space (`(git diff`) is one shell word to the tokenizer, so the git judge reads it spaced, and
+    // the walk judges, which want the verb first, read it without the opener (`( grep -rn ...`, `{ rg ...`); an
+    // arithmetic `((` is left alone.
+    const hits = parts.map(([raw]) => {
+      const st = raw.replace(/^(\s*)\((?![(\s])/, '$1( ');
+      const g = gitDumpOf(st);
+      if (g) return moved || g.fed || gitOutputLeaks(g.inner, dir) ? '' : null;
+      const walk = st.replace(/^\s*(?:\((?!\()|\{(?=\s))\s*/, '');
+      return walkPrints(walk) ? (moved || walkLeaks(walk, dir) ? ` --grep${walkNamesSecret(walk) ? ' --literals' : ''}` : null) : null;
+    });
     if (hits.every((h) => h === null)) return seg;
     changed = true;
     hits.forEach((h) => { if (h !== null) redactGitStages.kinds.add(h ? 'walk' : 'git'); });
     const view = `node "${shDouble(__filename)}" --redact-stdin`;
     // A walk that ends its pipeline set the segment's exit status, and the redactor's took its place: `--grep` mode exits
     // 1 on empty input, grep's own 'nothing matched' (redactStdinMain).
-    return stages.map((st, i) => (hits[i] !== null ? `${st.replace(/\s+$/, '')} | ${view}${hits[i]}${st.match(/\s*$/)[0]}` : st)).join('|');
+    return parts.map(([st, close], i) => (hits[i] !== null ? `${st.replace(/\s+$/, '')} | ${view}${hits[i]}${close || st.match(/\s*$/)[0]}` : st + close)).join('|');
   });
   return changed ? out.map((seg, i) => seg + (seps[i] || '')).join('') : text;
 }
@@ -3049,25 +3127,60 @@ function gitPrintsContent(stage) {
 // reads stays inside the dispatcher's budget - a timed-out PreToolUse command hook lets the call run with no verdict.
 function takeProbe() { if (takeProbe.left === undefined) takeProbe.left = 4; return takeProbe.left-- > 0; }
 function probeCwd() { return (payload && typeof payload.cwd === 'string' && payload.cwd) || process.env.CLAUDE_PROJECT_DIR || process.cwd(); }
+// A shell word the shell passes on verbatim, read quote by quote the way the shell reads it, or null when the shell would
+// expand something in it (a variable, a substitution, a glob, a brace, a tilde). Inside double quotes only `$` and a
+// backtick expand, and a backslash escapes only `$`, a backtick, `"`, `\` and a newline - anywhere else it is kept, as
+// POSIX reads it (deep hooks review 2026-10-16: `grep -rn "a\|b" .` was piped unprobed).
+function inertWord(t) {
+  if (/^~/.test(t)) return null;
+  let out = ''; let bare = '';
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (c === "'") { const j = t.indexOf("'", i + 1); if (j < 0) return null; out += t.slice(i + 1, j); i = j; continue; }
+    if (c === '"') {
+      let j = i + 1;
+      for (; j < t.length && t[j] !== '"'; j++) {
+        if (t[j] === '$' || t[j] === '`') return null;
+        if (t[j] === '\\' && j + 1 < t.length && /[$`"\\\n]/.test(t[j + 1])) j++;
+        out += t[j];
+      }
+      if (j >= t.length) return null;
+      i = j; continue;
+    }
+    out += c; bare += c;
+  }
+  return /[$`*?[{\\]/.test(bare) ? null : out;
+}
+// The directory a `cd <dir>` / `pushd <dir>` segment moves the shell to, when the target is one inert word naming a
+// directory that exists (resolved against where the shell stands); null for anything else - `cd` alone, `cd -`, an option,
+// a word the shell expands, a subshell's `(cd`, `popd`, a missing directory - which the caller reads as 'moved'.
+function literalCdTarget(seg, from) {
+  const words = shellTokens(seg.trim());
+  if (words.length !== 2 || !/^(?:cd|pushd)$/.test(words[0])) return null;
+  const word = inertWord(words[1]);
+  if (!word || word.startsWith('-')) return null;
+  const to = pathMod.resolve(from, nativePath(word));
+  try { return fs.statSync(to).isDirectory() ? to : null; } catch { return null; }
+}
 // A `filter.<driver>.clean` / `.process` in the repository's own config runs inside a working-tree diff; such a stage is
-// piped unprobed rather than run before approval. Read once per git spelling (`-C`, `--git-dir` kept); a read that
-// cannot run counts as configured.
-function localFilterConfigured(pre) {
-  const key = pre.join('\0');
+// piped unprobed rather than run before approval. Read once per git spelling (`-C`, `--git-dir` kept) and directory; a read
+// that cannot run counts as configured.
+function localFilterConfigured(pre, cwd = probeCwd()) {
+  const key = [cwd, ...pre].join('\0');
   localFilterConfigured.seen = localFilterConfigured.seen || new Map();
   if (localFilterConfigured.seen.has(key)) return localFilterConfigured.seen.get(key);
   const r = require('child_process').spawnSync('git', [...pre, 'config', '--local', '--get-regexp', '^filter\\.'], {
-    cwd: probeCwd(), timeout: 3000, maxBuffer: 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
+    cwd, timeout: 3000, maxBuffer: 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
   });
   // exit 1 is 'no such key', and outside a repository (128) there is no local config to hold one
   const on = !!r.error || String(r.stdout || '').trim() !== '';
   localFilterConfigured.seen.set(key, on);
   return on;
 }
-function gitOutputLeaks(stage) {
+function gitOutputLeaks(stage, cwd = probeCwd()) {
   const raw = shellTokens(stage.replace(PREFIX_WORDS, '').trim());
-  if (raw.some((t) => !/^'[^']*'$/.test(t) && (/[$`*?[{\\]/.test(t) || /^~/.test(t)))) return true;
-  const w = raw.map((t) => t.replace(/^(['"])([\s\S]*)\1$/, '$2'));
+  const w = raw.map(inertWord);
+  if (w.some((x) => x === null)) return true;
   let i = 1;
   while (i < w.length && w[i].startsWith('-')) {
     if (/^(?:-c|--config-env|--exec-path)(?:=|$)/.test(w[i])) return true;
@@ -3079,12 +3192,12 @@ function gitOutputLeaks(stage) {
   // a remote or config read takes none of the diff flags, and `remote show` asks the network unless told `-n`
   const plain = w[i] === 'cat-file' || w[i] === 'remote' || w[i] === 'config' || w[i] === 'grep';
   // a clean filter the repository configures runs inside a working-tree diff - a command, before any approval
-  if (!plain && localFilterConfigured(w.slice(1, i))) return true;
+  if (!plain && localFilterConfigured(w.slice(1, i), cwd)) return true;
   if (!takeProbe()) return true;
   const tail = w[i] === 'remote' && w[at] === 'show' && !w.includes('-n') ? [w[at], '-n', ...w.slice(at + 1)] : w.slice(at);
   const argv = ['-c', 'core.fsmonitor=false', ...w.slice(1, at), ...(plain ? [] : ['--no-ext-diff', '--no-textconv', '--no-color']), ...tail];
   const r = require('child_process').spawnSync('git', argv, {
-    cwd: probeCwd(), timeout: 3000, maxBuffer: 8 * 1024 * 1024,
+    cwd, timeout: 3000, maxBuffer: 8 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_PAGER: 'cat', PAGER: 'cat' },
   });
   // Exit 1 is `diff --no-index`'s 'the files differ', with the diff on stdout.
@@ -3133,28 +3246,11 @@ function walkNamesSecret(stage) {
 // Would the walk print something lineRedactor masks? Run the way gitOutputLeaks runs git: argv, never a shell, 3s and
 // 8MB at most. A word the shell would expand, ripgrep's command-running `--pre`, a run that fails, times out or
 // overflows counts as a leak, so that stage is piped unprobed: the safe side.
-function walkLeaks(stage) {
+function walkLeaks(stage, cwd = probeCwd()) {
   const raw = shellTokens(stage.replace(PREFIX_WORDS, '').trim());
   // A token is inert when nothing in it is expanded: the quotes INSIDE a word count, so `--include='*.cs'` passes its
-  // glob to grep verbatim (audit 2026-10-10, session a3d497f8: 6 such greps were piped unprobed). Read quote by quote,
-  // the way the shell reads the word, and handed to the probe dequoted the same way.
-  const readWord = (t) => {
-    if (/^~/.test(t)) return null;
-    let out = ''; let bare = '';
-    for (let i = 0; i < t.length; i++) {
-      const c = t[i];
-      if (c === "'") { const j = t.indexOf("'", i + 1); if (j < 0) return null; out += t.slice(i + 1, j); i = j; continue; }
-      if (c === '"') {
-        let j = i + 1;
-        for (; j < t.length && t[j] !== '"'; j++) if (/[$`\\]/.test(t[j])) return null;
-        if (j >= t.length) return null;
-        out += t.slice(i + 1, j); i = j; continue;
-      }
-      out += c; bare += c;
-    }
-    return /[$`*?[{\\]/.test(bare) ? null : out;
-  };
-  const words = raw.map(readWord);
+  // glob to grep verbatim (audit 2026-10-10, session a3d497f8: 6 such greps were piped unprobed) - inertWord.
+  const words = raw.map(inertWord);
   if (words.some((x) => x === null)) return true;
   const w = words;
   // fd redirections that stay on the terminal or go nowhere are the shell's, not grep's arguments
@@ -3167,7 +3263,7 @@ function walkLeaks(stage) {
   // The probe runs the system grep, which reads a directory operand and `-3` the GNU way; the Bash tool's ugrep walks
   // both. `-r` first makes the probe walk what the tool will (audit 2026-10-11 SD01) - a superset, the safe side.
   const r = require('child_process').spawnSync(w[0], w[0] === 'rg' ? args : ['-r', ...args], {
-    cwd: probeCwd(), timeout: 3000, maxBuffer: 8 * 1024 * 1024,
+    cwd, timeout: 3000, maxBuffer: 8 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, RIPGREP_CONFIG_PATH: '' },
   });
   if (r.error || (r.status !== 0 && r.status !== 1 && !r.stdout.length)) return true;
@@ -3433,6 +3529,48 @@ function judgeShell(text, forceRuntime, main, bodyLang) {
       if (/guard-secret-value\.js["']?\s+--redact-stdin\b/.test(stages[sj + 1] || '')) continue;
       // A reader whose output a variable holds and no later step prints (heldOnlyInArgs) reads into no terminal.
       if (!forceRuntime && !IS_PWSH && heldOnlyInArgs(stage, text)) continue;
+      // A COMPARISON keeps both operands and its own exit status (hooks review 2026-10-16): the one-file view below dropped
+      // the second file, so `cmp -s .env .env.bak && echo SAME || echo DIFFERS` printed the redacted file and 'SAME' for
+      // two files that differed. `cmp` without its byte-printing flags and `diff -q` print no content - the status is the
+      // answer - so they read nothing here; a content comparison sees each credential operand as its redacted view, in
+      // place (`diff <(node <this file> --redacted .env) .env.example`), and a command that cannot take that splice is
+      // refused with the route that answers.
+      if (!isRuntime && !IS_PWSH) {
+        const cw = shellTokens(stage.replace(PREFIX_WORDS, '').trim());
+        const cv = String(cw[0] || '').replace(/^["']|["']$/g, '').replace(/^.*[\\/]/, '').toLowerCase();
+        if (/^(?:cmp|diff|sdiff|comm)$/.test(cv)) {
+          const flags = cw.slice(1).filter((w) => /^-./.test(w));
+          if (cv === 'cmp' ? !flags.some((f) => /^-[a-z]*[lb]|^--(?:verbose|print-bytes)$/.test(f))
+            : cv === 'diff' && flags.some((f) => /^(?:-[a-zA-Z]*q[a-zA-Z]*|--brief)$/.test(f))) continue;
+          const takes = { diff: 'UCLIxXSFD', sdiff: 'owWIF', comm: '', cmp: 'inI' }[cv];
+          const masked = [];
+          let kept = stage;
+          for (let w = 1; w < cw.length; w++) {
+            const word = cw[w];
+            if (/^--?$/.test(word)) continue;
+            if (/^--/.test(word)) { if (!word.includes('=') && /^--(?:label|ignore-matching-lines|exclude|exclude-from|starting-file|from-file|to-file|width|output|ignore-initial|bytes)$/.test(word)) w++; continue; }
+            if (/^-./.test(word)) { if (takes.includes(word[word.length - 1]) && word.length === 2) w++; continue; }
+            for (const p of candidatePaths(word)) {
+              const f = statFile(p);
+              if (!f || !secretInUnlessAllowed(f)) continue;
+              masked.push(f);
+              const esc = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              kept = kept.replace(new RegExp(`(^|\\s)${esc}(?=\\s|$)`, 'g'), (m, lead) => `${lead}<(node "${shDouble(__filename)}" --redacted "${shDouble(f)}" --note-to-stderr)`);
+              break;
+            }
+          }
+          if (masked.length) {
+            const spliced = spliceView(stages.map((st, i) => (i === sj ? kept : st)).join('|'));
+            if (spliced == null) {
+              block(`Blocked: a ${cv} of ${masked.map((f) => pathMod.basename(f)).join(' and ')}, which hold${masked.length > 1 ? '' : 's'} a credential, in a command this guard cannot rewrite.\n`
+                + `Ask whether they match with \`cmp -s A B\` (its exit status, no content), or compare the redacted views on their own:\n`
+                + `  ${cv} <(node "${__filename}" --redacted A --note-to-stderr) <(node "${__filename}" --redacted B --note-to-stderr)\n`);
+            }
+            judgeKept(spliced);
+            rewrite(spliced, { branch: 'file-compare', file: masked.map((f) => pathMod.basename(f)).join(',') });
+          }
+        }
+      }
       // A dump verb or a runtime read on a file that HOLDS a credential - judged by content, not path.
       homeAnchor = isRuntime && /homedir|expanduser|USERPROFILE|HOME/.test(stage);
       const candidates = [];

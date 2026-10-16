@@ -1,8 +1,9 @@
 'use strict';
-// check-turn-build.js (improvement plan 2.4): PostToolUse on Write|Edit|MultiEdit records the path; at
-// Stop, when the turn's list holds source files, ONE scoped check per root runs - tsc --noEmit -p for
-// TypeScript, dotnet build --no-restore -v q for C# - and the first 20 error lines go back as a Stop
-// block, once per turn. Seeded OFF: nothing runs unless ALFRED_CODE_TURN_CHECK=1.
+// check-turn-build.js (improvement plan 2.4; Stop only since the hooks review of 2026-10-16): at Stop the turn's
+// changed files come from git - every path git status lists whose mtime is past the previous Stop's marker, or the
+// session's start - and when they hold source files, ONE scoped check per root runs - tsc --noEmit -p for
+// TypeScript, dotnet build --no-restore -v q for C# - and the first 20 error lines go back as a Stop block, once per
+// turn. Seeded OFF: nothing runs unless ALFRED_CODE_TURN_CHECK=1.
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
 require('./hook-test-env').isolateHookSuite();
@@ -13,7 +14,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const HOOK = path.join(__dirname, '..', 'stack', 'hooks', 'check-turn-build.js');
-const { runChecks, groupRoots, commandFor, MAX_LINES } = require(HOOK);
+const { runChecks, groupRoots, commandFor, changedSince, sessionStartMs, MAX_LINES } = require(HOOK);
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'turn-build-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 const posix = process.platform !== 'win32';
@@ -22,17 +23,30 @@ const BASE_ENV = { ...process.env };
 for (const k of ['ALFRED_CODE_DOCS_PATH', 'ALFRED_CODE_HOOKS_OFF', 'ALFRED_CODE_TURN_CHECK', 'CLAUDE_PLUGIN_OPTION_HOOK_PROFILE']) delete BASE_ENV[k];
 
 let seq = 0;
-function project()
+// A git repo whose session began a minute ago (its transcript's first timestamp); `write` is an edit made this turn -
+// its mtime set past any marker a Stop just wrote, so a same-millisecond write never reads as last turn's.
+function project({ git = true } = {})
 {
     const root = fs.mkdtempSync(path.join(TMP, `p${seq++}-`));
+    if (git) spawnSync('git', ['init', '-q', root]);
     const log = path.join(root, 'spawned.log');
+    const transcript = path.join(TMP, `t${seq}.jsonl`);
+    fs.writeFileSync(transcript, `${JSON.stringify({ type: 'user', timestamp: new Date(Date.now() - 60000).toISOString() })}\n`);
     const run = (payload, env = {}) => spawnSync(process.execPath, [HOOK], {
-        input: typeof payload === 'string' ? payload : JSON.stringify({ session_id: 'sess', cwd: root, ...payload }),
+        input: typeof payload === 'string' ? payload : JSON.stringify({ session_id: 'sess', cwd: root, transcript_path: transcript, ...payload }),
         // The Stop-chain marker (hook-prelude.js) lives in the project, so no case reads another's.
         encoding: 'utf8', env: { ...BASE_ENV, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_TURN_CHECK: '1', ALFRED_CODE_HOOK_LOG_DIR: root, ...env },
     });
-    const write = (rel) => run({ hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: path.join(root, rel), content: 'x' } });
-    const list = path.join(root, '.alfred', 'docs', 'flow', 'turn-edits-sess');
+    let tick = Date.now() / 1000 + 1;
+    const write = (rel) =>
+    {
+        const file = path.join(root, rel);
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, 'x');
+        tick += 1;
+        fs.utimesSync(file, tick, tick);
+    };
+    const marker = path.join(root, '.alfred', 'docs', 'flow', 'turn-check-sess');
     // A stub tsc: logs where and how it ran, prints `errors` error lines, exits 2 when there are any.
     const tsc = (dir, errors) =>
     {
@@ -44,22 +58,30 @@ function project()
     };
     const file = (rel, text = '') => { fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true }); fs.writeFileSync(path.join(root, rel), text); };
     const spawned = () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n') : []);
-    return { root, run, write, list, tsc, file, spawned, log };
+    return { root, run, write, marker, tsc, file, spawned, log, transcript };
 }
 
-test('turn-build: off by default - no list, and a Stop never spawns a check', { skip: !posix && 'stub binaries are shell scripts' }, () =>
+test('turn-build: off by default - no marker, and a Stop never spawns a check', { skip: !posix && 'stub binaries are shell scripts' }, () =>
 {
     const p = project();
     p.file('tsconfig.json', '{}');
     p.tsc('.', 3);
-    const off = { ALFRED_CODE_TURN_CHECK: '' };
-    assert.strictEqual(p.run({ hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: path.join(p.root, 'src/a.ts') } }, off).status, 0);
-    assert.ok(!fs.existsSync(p.list), 'the off hook kept a list');
+    p.write('src/a.ts');
+    assert.strictEqual(p.run({ hook_event_name: 'Stop' }, { ALFRED_CODE_TURN_CHECK: '' }).status, 0);
     assert.strictEqual(p.run({ hook_event_name: 'Stop' }, { ALFRED_CODE_TURN_CHECK: '0' }).status, 0);
+    assert.ok(!fs.existsSync(p.marker), 'the off hook kept a marker');
     assert.deepStrictEqual(p.spawned(), []);
 });
 
-test('turn-build: a TypeScript error blocks the Stop with the first 20 error lines, and the list is consumed', { skip: !posix && 'stub binaries are shell scripts' }, () =>
+// The PostToolUse half is gone: an edit costs no hook process; a stale wiring of it does nothing.
+test('turn-build: a PostToolUse payload does nothing', () =>
+{
+    const p = project();
+    assert.strictEqual(p.run({ hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: path.join(p.root, 'src/a.ts') } }).status, 0);
+    assert.ok(!fs.existsSync(path.join(p.root, '.alfred')), 'it wrote state');
+});
+
+test('turn-build: a TypeScript error blocks the Stop with the first 20 error lines, and the marker moves', { skip: !posix && 'stub binaries are shell scripts' }, () =>
 {
     const p = project();
     p.file('tsconfig.json', '{}');
@@ -67,7 +89,6 @@ test('turn-build: a TypeScript error blocks the Stop with the first 20 error lin
     p.write('src/a.ts');
     p.write('src/a.ts');
     p.write('README.md');
-    assert.deepStrictEqual(fs.readFileSync(p.list, 'utf8').trim().split('\n').length, 3, 'every write is recorded');
     const r = p.run({ hook_event_name: 'Stop' });
     assert.strictEqual(r.status, 2, r.stderr);
     assert.match(r.stderr, /problem 20$/m);
@@ -75,7 +96,10 @@ test('turn-build: a TypeScript error blocks the Stop with the first 20 error lin
     assert.match(r.stderr, /tsc --noEmit -p tsconfig\.json/);
     assert.deepStrictEqual(p.spawned().length, 1, 'one check for one root');
     assert.match(p.spawned()[0], /--noEmit -p .*tsconfig\.json/);
-    assert.ok(!fs.existsSync(p.list), 'the list outlived the check');
+    assert.ok(fs.existsSync(p.marker), 'the Stop set the next turn\'s start');
+    assert.strictEqual(p.run({ hook_event_name: 'Stop', session_id: 'sess2' }).status, 2, 'another session, no marker yet: measured from its start');
+    fs.utimesSync(path.join(p.root, 'src', 'a.ts'), new Date(Date.now() - 30000), new Date(Date.now() - 30000));
+    assert.strictEqual(p.run({ hook_event_name: 'Stop' }).status, 0, 'a file last changed before the marker is no edit of this turn');
     const row = fs.readFileSync(path.join(p.root, '.alfred', 'docs', 'hook-blocks', 'sess.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).pop();
     assert.strictEqual(row.hook, 'check-turn-build.js');
     assert.strictEqual(row.event, 'Stop');
@@ -94,7 +118,7 @@ test('turn-build: profile strict runs the check over a seeded 0; the csv and pro
         const p = project();
         p.file('tsconfig.json', '{}');
         p.tsc('.', 2);
-        p.run({ hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: path.join(p.root, 'src/a.ts') } }, env);
+        p.write('src/a.ts');
         return { p, stop: p.run({ hook_event_name: 'Stop' }, env) };
     };
     const strict = setUp({ ALFRED_CODE_TURN_CHECK: '0', CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'strict' });
@@ -121,7 +145,8 @@ test('turn-build: once per turn - the continuation Stop after a block passes, ev
     p.write('src/a.ts');
     assert.strictEqual(p.run({ hook_event_name: 'Stop', stop_hook_active: true }).status, 0);
     assert.strictEqual(p.spawned().length, 1, 'the continuation ran a second check');
-    assert.ok(fs.existsSync(p.list), 'the fix-up edits are kept for the next turn');
+    assert.strictEqual(p.run({ hook_event_name: 'Stop' }).status, 2, 'the fix-up edits are the next turn\'s check');
+    assert.strictEqual(p.spawned().length, 2);
 });
 
 // The Stop chain (audit 2026-10-08 S1): `stop_hook_active` is set after ANY Stop hook's block, so the fix-up edits of
@@ -243,12 +268,16 @@ test('turn-build: garbage stdin, garbage list lines and the hooks-off switch nev
 {
     const p = project();
     assert.strictEqual(p.run('{nope').status, 0);
-    fs.mkdirSync(path.dirname(p.list), { recursive: true });
-    fs.writeFileSync(p.list, '\u0000\n\n{]\n');
-    assert.strictEqual(p.run({ hook_event_name: 'Stop' }).status, 0);
+    fs.mkdirSync(path.dirname(p.marker), { recursive: true });
+    fs.writeFileSync(p.marker, '\u0000\n\n{]\n');
+    assert.strictEqual(p.run({ hook_event_name: 'Stop' }).status, 0, 'only the marker\'s time is read');
     const off = project();
-    off.run({ hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { file_path: path.join(off.root, 'a.ts') } }, { ALFRED_CODE_HOOKS_OFF: 'check-turn-build' });
-    assert.ok(!fs.existsSync(off.list));
+    off.file('tsconfig.json', '{}');
+    off.tsc('.', 2);
+    off.write('a.ts');
+    assert.strictEqual(off.run({ hook_event_name: 'Stop' }, { ALFRED_CODE_HOOKS_OFF: 'check-turn-build' }).status, 0);
+    assert.ok(!fs.existsSync(off.marker));
+    assert.deepStrictEqual(off.spawned(), []);
 });
 
 test('turn-build: on Windows the tsc.cmd shim runs through the shell QUOTED - a path with a space still runs', () =>
@@ -262,19 +291,55 @@ test('turn-build: on Windows the tsc.cmd shim runs through the shell QUOTED - a 
     assert.deepStrictEqual(commandFor(cs, true), { cmd: 'dotnet', args: ['build', '--no-restore', '-v', 'q', 'C:\\a b\\App.csproj'], shell: false });
 });
 
-// I12 (the user's ruling of 2026-09-29): the navigation server keeps rename_symbol and safe_delete_symbol on, and
-// both change a source file - named in `relative_path`, from the project root. Both routes' spellings (built at run
-// time - lint check 54 bans the bare server spelling as literal text).
-test('turn-build: the navigation server\'s two kept edit tools record their file, on both routes', () =>
+// Git is the record now: any edit counts - the navigation server's rename, a shell `sed -i`, a new file - and what
+// this turn did not touch, or git cannot see, does not.
+test('turn-build: git names the turn\'s files - untracked and renamed ones too; older, deleted and ignored ones are not this turn\'s', { skip: !posix && 'stub binaries are shell scripts' }, () =>
 {
     const p = project();
-    const sub = path.join(p.root, 'sub');
-    fs.mkdirSync(sub, { recursive: true });
-    for (const server of ['plugin_alfred-navigation_alfred-navigation', 'alfred-navigation', 'plugin_navigation_navigation', 'navigation'])
-        for (const tool of ['rename_symbol', 'safe_delete_symbol'])
-            assert.strictEqual(p.run({ hook_event_name: 'PostToolUse', cwd: sub, tool_name: `mcp__${server}__${tool}`, tool_input: { name_path: 'A/b', relative_path: 'src/a.ts' } }).status, 0);
-    p.run({ hook_event_name: 'PostToolUse', tool_name: 'mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', tool_input: { name_path: 'A', relative_path: 'src/b.ts' } });
-    p.run({ hook_event_name: 'PostToolUse', tool_name: 'mcp__plugin_alfred-navigation_alfred-navigation__rename_symbol', tool_input: { name_path: 'A' } });
-    assert.deepStrictEqual(fs.readFileSync(p.list, 'utf8').trim().split('\n'), Array(8).fill(path.join(p.root, 'src', 'a.ts')),
-        'eight edits, each from the project root whatever the cwd; a lookup and an edit with no file record nothing');
+    const g = (...a) => spawnSync('git', ['-C', p.root, '-c', 'user.email=t@e.x', '-c', 'user.name=t', ...a], { encoding: 'utf8' });
+    p.file('web/tsconfig.json', '{}');
+    p.file('api/tsconfig.json', '{}');
+    p.file('lib/tsconfig.json', '{}');
+    p.file('gone/tsconfig.json', '{}');
+    p.file('.gitignore', 'gen/\nnode_modules/\n');
+    p.tsc('.', 0);
+    for (const f of ['api/src/old.ts', 'lib/src/keep.ts', 'gone/src/x.ts', 'web/src/from.ts']) p.file(f, 'x');
+    g('add', '-A'); g('commit', '-qm', 'seed');
+    const past = new Date(Date.now() - 3600000);
+    p.file('api/src/old.ts', 'dirty before the session');
+    fs.utimesSync(path.join(p.root, 'api/src/old.ts'), past, past);
+    g('mv', 'web/src/from.ts', 'web/src/to.ts');
+    p.write('web/src/to.ts');
+    fs.rmSync(path.join(p.root, 'gone/src/x.ts'));
+    p.write('lib/src/new.ts');
+    p.write('gen/out.ts');
+    const since = Date.now() - 60000;
+    const files = changedSince(p.root, since).map((f) => path.relative(p.root, f)).sort();
+    assert.deepStrictEqual(files, ['lib/src/new.ts', 'web/src/to.ts']);
+    assert.strictEqual(p.run({ hook_event_name: 'Stop' }).status, 0);
+    const ran = p.spawned().map((l) => path.basename(l.split(' ')[1])).sort();
+    assert.deepStrictEqual(ran, ['lib', 'web'], p.spawned().join('\n'));
+    const sub = path.join(p.root, 'web', 'src');
+    assert.deepStrictEqual(changedSince(sub, since).map((f) => path.relative(p.root, f)).filter((f) => f.endsWith('.ts')).sort(), files, 'from a subfolder too (the Stop has since written its marker - no source file)');
+});
+
+test('turn-build: outside git, or with no session start and no marker, nothing is this turn\'s - the first Stop only sets the marker', { skip: !posix && 'stub binaries are shell scripts' }, () =>
+{
+    const bare = project({ git: false });
+    bare.file('tsconfig.json', '{}');
+    bare.tsc('.', 2);
+    bare.write('src/a.ts');
+    assert.strictEqual(bare.run({ hook_event_name: 'Stop' }).status, 0);
+    assert.deepStrictEqual(bare.spawned(), [], 'no git, no check');
+    const p = project();
+    p.file('tsconfig.json', '{}');
+    p.tsc('.', 2);
+    p.write('src/a.ts');
+    assert.strictEqual(p.run({ hook_event_name: 'Stop', transcript_path: path.join(TMP, 'missing.jsonl') }).status, 0);
+    assert.deepStrictEqual(p.spawned(), [], 'an unknown start judges nothing');
+    assert.ok(fs.existsSync(p.marker), 'but the next turn is measured from here');
+    p.write('src/a.ts');
+    assert.strictEqual(p.run({ hook_event_name: 'Stop', transcript_path: undefined }).status, 2);
+    assert.strictEqual(sessionStartMs(''), 0);
+    assert.ok(sessionStartMs(p.transcript) > 0 && sessionStartMs(p.transcript) < Date.now());
 });

@@ -21,9 +21,6 @@
 //   shell-writes.js) writes one row per turn - `unrun` when the edit landed after the turn's last run
 //   (ALFRED_CODE_DONE_GATE=0 off). And the RATIONALIZATION PROBE, log-only: a close dismissing a
 //   failure in a turn with a red run, a skipped test or an added skip marker writes one row per turn.
-// PostToolUse + PostToolUseFailure (Bash|PowerShell) wiring: LOG-ONLY - a red build or test run writes one
-//   probe row per failure streak (where `habits-root-cause` was needed); the streak ends when every
-//   command that ran red in it has run green again, or after an hour with no red run.
 // SubagentStop wiring: a subagent that closes on a wait nobody will end, with no background work of
 //   its own, is held once and told to do its directive (see the branch below for the field report).
 // PreToolUse (AskUserQuestion) wiring: the judgement notes are INJECTED - `hookSpecificOutput.additionalContext`,
@@ -52,6 +49,10 @@ let autoCountFile = (input) => require('path').join(envOf(process.env, 'HOOK_LOG
   `alfred-stop-held-guard-stop-contract-Stop-${String(input.session_id || 'nosession').replace(/[^\w.-]/g, '_').slice(-80)}-main.auto`);
 let houseDash = /[\u2014\u2013\u2015]/; // hook-prelude.js HOUSE_DASH, the one dash class
 let withoutShortLived = (text) => text; // hook-prelude.js withoutShortLived - a short-lived link's own token blanked
+// hook-prelude.js unreadable - text the English lists cannot judge (30% or more of its letters outside ASCII)
+let unreadable = (text) => { const l = String(text || '').match(/\p{L}/gu) || []; return l.length > 0 && l.filter((c) => c > '\u007f').length / l.length >= 0.3; };
+// hook-prelude.js harnessPrompt - a row the harness wrote (a task notice, a command's output, a seat's hand-back)
+let harnessPrompt = (text) => /^\s*(?:<(?:task-notification|local-command-stdout|local-command-caveat|agent-message)\b|Another Claude session sent a message:)/.test(String(text || ''));
 if (require.main === module) {
   try {
     const prelude = require('./hook-prelude.js');
@@ -61,6 +62,8 @@ if (require.main === module) {
     stampOf = prelude.approvalStamp || stampOf;
     houseDash = prelude.HOUSE_DASH || houseDash;
     withoutShortLived = prelude.withoutShortLived || withoutShortLived;
+    harnessPrompt = prelude.harnessPrompt || harnessPrompt;
+    unreadable = prelude.unreadable || unreadable;
     if (prelude.stopHeldThisCycle) {
       stopHeld = (input) => prelude.stopHeldThisCycle('guard-stop-contract', input, undefined, { workSince: true });
       markHeld = (input) => prelude.markStopHeld('guard-stop-contract', input);
@@ -135,7 +138,7 @@ if (cursorOff) process.exit(0);
 // the command: `grep -rn "npm test" docs` is a search. The KIND names the runner; the KEY is the run
 // as typed, less its wrappers and redirections - `npm test` piped to `tail` is the same run as
 // `npm test`, and `npm test -- -t cart` is a scoped run of it. This list is NARROW on purpose: a
-// runner it misses costs the root-cause probe one row. The done gate asks a wider question below.
+// runner it misses costs the rationalization probe one row. The done gate asks a wider question below.
 const SHELL_TOOL_RE = /^(?:Bash|PowerShell)$/;
 const RUNNERS = [
   [/^(jest|vitest|mocha|ava|karma|pytest|tsc|playwright\s+test|cypress\s+run)(?=\s|$)/, (m) => m[1].replace(/\s+/g, ' ')],
@@ -180,25 +183,13 @@ function ledgerRow(row) {
   } catch { /* never throws */ }
 }
 
-// --- PostToolUse / PostToolUseFailure on Bash and PowerShell: a red run, measured ---------------------
-// The fix that follows a red run is where a guess lands - where `habits-root-cause` is NEEDED.
-// LOG-ONLY since 2026-09-25 (the user's ruling: rely on the skill's description and the flows that
-// load it, and count the misses): a build or test command that FAILED writes one `mode: probe` row per
-// failure streak and says nothing to the model. The row carries the run's `tool_use_id` and actor, so
-// `analyze-usage.js --hook-blocks` reads the transcript after it - the skill loaded before the next
-// fix, after it, or never. A piped run (`npm test | tail`) exits 0 whatever the tests did, so a green
-// exit is read for the runner's own red summary too. The streak is per session and per actor - a
-// subagent's red run is its own - and ONE per actor: a second spelling of the failing suite (`npm
-// test`, then `npx vitest run`), or another red run inside the same stretch, is the same need. Each
-// red run's KEY stays open until that run is green again (an unscoped green also closes its scoped
-// runs; a scoped green never closes the full suite), and a new row comes only once no key is open. A
-// key with no red run for an hour lapses, so a suite the session stopped running never mutes it.
-// Nx's own verdict joins the list (audit 2026-10-10 C02, 0d070bcc: 'Running target test for 25 projects failed' and
-// 'Failed tasks:' were a real red run the probe never saw).
+// --- a red build or test run, as the runner reports it ------------------------------------------------
+// Read by the Stop branch's rationalization probe below. A piped run (`npm test | tail`) exits 0 whatever the tests
+// did, so the runner's own red summary is read too. Nx's own verdict joins the list (audit 2026-10-10 C02, 0d070bcc:
+// 'Running target test for 25 projects failed' and 'Failed tasks:' were a real red run the probe never saw). The
+// PostToolUse root-cause probe that also read it was dropped in the deep hooks review 2026-10-16 (27,380 async runs for
+// 250 rows nobody read).
 const RED_SUMMARY_RE = /(?:^|\n)\s*(?:ℹ|#)\s*fail\s+[1-9]|\b[1-9]\d*\s+(?:failed|failing)\b|\bFailed:\s*[1-9]|\bBuild FAILED\b|\bBUILD (?:FAILED|FAILURE)\b|\berror (?:TS|CS|NG|MSB|NETSDK)\d+|(?:^|\n)npm (?:ERR!|error)\s|(?:^|\n)\s*FAIL\s|(?:^|\n)--- FAIL:|test result: FAILED|✘ \[ERROR\]|\berror\[E\d{4}\]|\berror: could not compile\b|\bRunning targets? \S+ for \d+ projects? failed\b|(?:^|\n)\s*Failed tasks:|(?:^|\n)\s*not ok \d+\b/;
-// A run that never COMPILED is no test-first red, however the turn names it: 'Test suite failed to run' is jest's word for
-// a spec that did not build, and a compiler error is the same (T4 cross-track, audit 2026-10-10, 7fae0c39).
-const NEVER_COMPILED_RE = /Test suite failed to run|\berror (?:TS|CS|MSB)\d+|\berror\[E\d{4}\]|\berror: could not compile\b|\bBuild FAILED\b|\bBUILD FAILED\b|Cannot find module ['"]/;
 // The Angular CLI's own verdict is a bare `Error:` line - too common in a passing run's logs to read
 // as red for any other runner.
 const NG_RED_RE = /(?:^|\n)Error: /;
@@ -207,169 +198,6 @@ const NG_RED_RE = /(?:^|\n)Error: /;
 // what the rationalization probe below counts as something to dismiss, beside a red run.
 const SKIPPED_RE = /(?:^|\n)\s*(?:ℹ|#)\s*(?:skipped|skip)\s+[1-9]|\b[1-9]\d*\s+(?:skipped|pending)\b|\bSkipped:\s*[1-9]/;
 const SKIP_MARKER_RE = /\b(?:it|test|describe|context)\.skip\s*\(|\bx(?:it|test|describe)\s*\(|\bSkip\s*=\s*["']|@pytest\.mark\.skip|\bt\.skip\s*\(|\[Ignore\b|@Disabled\b|\{\s*skip\s*:\s*true/;
-const STREAK_TTL_MS = 60 * 60 * 1000;
-function runText(p) {
-  const r = p.tool_response;
-  const parts = [typeof r === 'string' ? r : r && typeof r === 'object' ? `${r.stdout || ''}\n${r.stderr || ''}` : ''];
-  if (typeof p.error === 'string') parts.push(p.error);
-  return parts.join('\n');
-}
-// A failure is red only when the RUNNER says so (audit 2026-10-10 C16 / C02): a read-only seat's broken `set --` loop
-// exited 1 with four empty headers and no test output and became its session's one MISSED (6ed392a5), and a grep
-// filter's exit 1 behind an `nx test` read as 'a red nx test run' (0d070bcc). A failed exit with no verdict is unknown -
-// it neither opens nor closes a streak.
-function runFailed(p, kind) {
-  const red = (text) => RED_SUMMARY_RE.test(text) || (/^(?:ng|nx) /.test(kind || '') && NG_RED_RE.test(text));
-  if (p.hook_event_name === 'PostToolUseFailure') return p.is_interrupt ? null : (red(runText(p).slice(-8192)) || null);
-  const r = p.tool_response;
-  if (typeof r === 'string') return red(r.slice(-4096));
-  if (!r || typeof r !== 'object' || r.interrupted) return null;
-  const code = r.exitCode !== undefined ? r.exitCode : r.exit_code;
-  const said = red(`${r.stdout || ''}\n${r.stderr || ''}`.slice(-8192));
-  if (typeof code === 'number' && code !== 0) return said || null;
-  return said;
-}
-// A TEST-FIRST red is the method working, not a root cause to find (audit 2026-10-10 C16: every MISSED row in nine
-// sessions was a planned 'red for the right reason' under habits-test-first - 229e2715 4 of 4, 390aebcb 2 of 2,
-// c6142301 4 of 4). A red run counts as one when the actor loaded habits-test-first and every file it edited since its
-// previous build or test run is a test file - and the run COMPILED. It writes a `test-first-red` row (the analyzer's
-// root-cause tally reads `root-cause` rows only) and opens no streak, so the real red after a source edit still logs.
-const TEST_PATH_RE = /(?:^|[\\/])(?:tests?|specs?|__tests__|e2e)[\\/]|\.(?:test|spec|check)\.[cm]?[jt]sx?$|_test\.(?:go|py)$|(?:^|[\\/])test_[^\\/]+\.py$|Tests?\.cs$|[\\/][\w.-]*\.Tests?[\\/]/i;
-const TEST_FIRST_LOAD_RE = /"skill"\s*:\s*"(?:[\w-]+:)?(?:alfred-)?habits-test-first"|habits-test-first[\\/]+SKILL\.md|<command-name>\s*\/?(?:alfred-code:)?(?:alfred-)?habits-test-first\b/;
-function actorTranscript() {
-  const tp = payload.transcript_path;
-  if (!tp) return null;
-  if (payload.agent_id) {
-    const own = require('path').join(tp.replace(/\.jsonl$/, ''), 'subagents', `agent-${payload.agent_id}.jsonl`);
-    if (fs.existsSync(own)) return own;
-  }
-  return tp;
-}
-function testFirstEdits() {
-  try {
-    const p = actorTranscript();
-    if (!p) return null;
-    const size = fs.statSync(p).size;
-    const from = Math.max(0, size - 8 * 1024 * 1024);
-    const fd = fs.openSync(p, 'r');
-    const buf = Buffer.alloc(size - from);
-    try { fs.readSync(fd, buf, 0, buf.length, from); } finally { fs.closeSync(fd); }
-    let loaded = false;
-    let edits = [];
-    // A production file the streak CREATED (a Write the harness answered 'File created') beside a test edit is the
-    // compile stub a test-first red needs - a new type no earlier behaviour depended on (audit 2026-10-11 SD10, session
-    // 2ca8e8ee: a C# stub written before its tests opened a root-cause streak over a planned red).
-    let writeIds = new Map();
-    let created = new Set();
-    const settled = () => (edits.some((f) => TEST_PATH_RE.test(f)) ? edits.filter((f) => TEST_PATH_RE.test(f) || !created.has(f)) : edits);
-    for (const line of buf.toString('utf8').split('\n')) {
-      if (!loaded && TEST_FIRST_LOAD_RE.test(line)) loaded = true;
-      if (line.includes('"tool_result"') && writeIds.size) {
-        let r;
-        try { r = JSON.parse(line); } catch { r = null; }
-        const c = r && r.type === 'user' && r.message && r.message.content;
-        if (Array.isArray(c)) {
-          for (const b of c) {
-            if (b && b.type === 'tool_result' && writeIds.has(b.tool_use_id) && /^\s*File created successfully\b/.test(resultText(b))) created.add(writeIds.get(b.tool_use_id));
-          }
-        }
-        continue;
-      }
-      if (!line.includes('"tool_use"')) continue;
-      let o;
-      try { o = JSON.parse(line); } catch { continue; }
-      if (!o || o.type !== 'assistant' || !Array.isArray(o.message && o.message.content)) continue;
-      for (const b of o.message.content) {
-        if (!b || b.type !== 'tool_use') continue;
-        if (b.id && b.id === payload.tool_use_id) return loaded ? settled() : null;
-        const input = b.input || {};
-        if (/^(?:Write|Edit|MultiEdit|NotebookEdit)$/.test(b.name)) {
-          const f = String(input.file_path || input.notebook_path || '');
-          edits.push(f);
-          if (b.name === 'Write' && b.id) writeIds.set(b.id, f);
-        } else if (SHELL_TOOL_RE.test(String(b.name)) && buildTestRun(input.command)) { edits = []; writeIds = new Map(); created = new Set(); }
-      }
-    }
-    return loaded ? settled() : null;
-  } catch { return null; }
-}
-// A suite run in the BACKGROUND is read later, from its output file (bc2fa83e: the session's one unexpected red was a
-// backgrounded `dotnet test` read with a shell `tail`, and no row was written). A shell read of a background task's
-// `.output` file is judged as that task's run: the launch is found by its task id in the transcript.
-function backgroundRunOf(command) {
-  const m = /[\\/]tasks[\\/]([\w-]+)\.output\b/.exec(String(command || ''));
-  if (!m) return null;
-  try {
-    const p = payload.transcript_path;
-    const size = fs.statSync(p).size;
-    const from = Math.max(0, size - 8 * 1024 * 1024);
-    const fd = fs.openSync(p, 'r');
-    const buf = Buffer.alloc(size - from);
-    try { fs.readSync(fd, buf, 0, buf.length, from); } finally { fs.closeSync(fd); }
-    const launches = new Map();
-    for (const line of buf.toString('utf8').split('\n')) {
-      if (!line.includes(m[1]) && !line.includes('run_in_background')) continue;
-      let o;
-      try { o = JSON.parse(line); } catch { continue; }
-      const c = o && o.message && o.message.content;
-      if (!Array.isArray(c)) continue;
-      for (const b of c) {
-        if (b && b.type === 'tool_use' && b.input && b.input.run_in_background === true) launches.set(b.id, String(b.input.command || ''));
-        if (b && b.type === 'tool_result' && launches.has(b.tool_use_id) && resultText(b).includes(m[1])) return buildTestRun(launches.get(b.tool_use_id));
-      }
-    }
-  } catch { /* unreadable - no run */ }
-  return null;
-}
-if (payload.hook_event_name === 'PostToolUse' || payload.hook_event_name === 'PostToolUseFailure') {
-  if (!SHELL_TOOL_RE.test(String(payload.tool_name || ''))) process.exit(0);
-  const input = payload.tool_input;
-  const command = typeof input === 'string' ? input : input && input.command;
-  const direct = buildTestRun(command);
-  const background = direct ? null : backgroundRunOf(command);
-  const runOf = direct || background;
-  const kind = runOf ? runOf.kind : null;
-  // a background run is judged by its output read: red when the runner's own verdict is in it, never on the read's exit
-  const failed = !kind ? null : background ? (RED_SUMMARY_RE.test(runText(payload).slice(-8192)) || null) : runFailed(payload, kind);
-  if (failed === null) process.exit(0);
-  const safe = (s) => String(s).replace(/[^a-zA-Z0-9-]/g, '_').slice(-80);
-  const stateFile = `${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-rootcause-${safe(payload.session_id || 'nosession')}-${safe(payload.agent_id || 'main')}.json`;
-  let streaks = {};
-  try { streaks = JSON.parse(fs.readFileSync(stateFile, 'utf8')) || {}; } catch { /* no streak yet */ }
-  const now = Date.now();
-  const live = (k) => now - Date.parse(streaks[k]) < STREAK_TTL_MS;
-  const open = Object.keys(streaks).filter((k) => !k.startsWith('tf:') && live(k));
-  const firstOpen = Object.keys(streaks).filter((k) => k.startsWith('tf:') && live(k));
-  const save = (next) => { try { fs.writeFileSync(stateFile, JSON.stringify(next)); } catch { /* a lost marker re-injects once - never a block */ } };
-  const closes = (k) => { const key = k.replace(/^tf:/, ''); return key === runOf.key || key.startsWith(`${runOf.key} `); };
-  if (!failed) {
-    const left = [...open, ...firstOpen].filter((k) => !closes(k));
-    if (left.length !== Object.keys(streaks).length) save(Object.fromEntries(left.map((k) => [k, streaks[k]])));
-    process.exit(0);
-  }
-  const detail = { run: kind, key: runOf.key, tool_use_id: payload.tool_use_id || null, agent: payload.agent_id || null, agent_type: payload.agent_type || null };
-  if (background) detail.background = true;
-  const compiled = !NEVER_COMPILED_RE.test(runText(payload).slice(-8192));
-  if (!compiled) detail.compiled = false;
-  const edits = compiled && !background ? testFirstEdits() : null;
-  const firstRed = edits && ((edits.length && edits.every((f) => TEST_PATH_RE.test(f))) || (!edits.length && firstOpen.length));
-  if (firstRed) {
-    const tfKey = `tf:${runOf.key}`;
-    save({ ...Object.fromEntries([...open, ...firstOpen].map((k) => [k, streaks[k]])), [tfKey]: new Date(now).toISOString() });
-    if (!firstOpen.includes(tfKey)) {
-      ledgerRow({ mode: 'probe', kind: 'test-first-red', reason: `probe: a test-first red ${kind} run - the method working, logged apart from root-cause`,
-        detail: { ...detail, edits: edits.length } });
-    }
-    process.exit(0);
-  }
-  save({ ...Object.fromEntries([...open, ...firstOpen].map((k) => [k, streaks[k]])), [runOf.key]: new Date(now).toISOString() });
-  if (open.length) process.exit(0); // logged once already in this streak
-  ledgerRow({
-    mode: 'probe', kind: 'root-cause', reason: `probe: a red ${kind} run - logged, nothing injected`,
-    detail,
-  });
-  process.exit(0);
-}
 
 // The fresh-session arithmetic lives in fresh-session.js beside this hook, shared with
 // guard-fresh-session-start.js. An update from an older install can run this hook before that file
@@ -504,8 +332,11 @@ function proseAsk(text) {
 // finished?' after 2-22 minutes, so the shape is a stop, not a status line. Both halves must
 // hit: something finished, and something still pending on the user or on a running job.
 // `pushed` (audit 2026-10-10 C15, 458953b8: 'I pushed the change to origin/develop ... Not run: the card's manual check'
-// read no done word) - a negated or un- form is no report of one.
-const DONE_RE = /\b(done|complete[d]?|finished|committed|landed|green|all tests pass|ready|(?<!\b(?:not|nothing|never)(?: (?:yet|is|was|been|has been|got))? )(?<!\bun-?)pushed)\b/i;
+// read no done word) - a negated or un- form is no report of one. A check that `passed` and the resume close's 'saved for a
+// fresh session' (hooks review 2026-10-16): with negated done words read as negations (NEGATED_DONE_RE), 'The full gate
+// passed ... Nothing is committed; the diff stays uncommitted for your review' and the resume close printed with no fresh
+// pick had read as done only through their 'Nothing is committed'.
+const DONE_RE = /\b(done|complete[d]?|finished|committed|landed|green|all tests pass|ready|(?:gate|checks?|suite|tests?|build|review|verification|lint|ci)\s+(?:(?:has|have|all)\s+)?passed|saved for a fresh session|(?<!\b(?:not|nothing|never)(?: (?:yet|is|was|been|has been|got))? )(?<!\bun-?)pushed)\b/i;
 // `next steps?`: the plural is what a mandated close header actually reads ('Next steps:'), and the
 // singular-only pattern let every card carrying it past the gate (measured: the doneClose check
 // could not fire on the one shape it was written for). `when you say so` is the same hand-back the
@@ -519,11 +350,18 @@ const DONE_RE = /\b(done|complete[d]?|finished|committed|landed|green|all tests 
 // still held for review' - each passed, and the user asked 'have you started?' or 'is everything finished?' after it,
 // 390aebcb, 458953b8), and the run-state words a close uses for its own seats ('Three agents are still building',
 // 0498718d - a wait like 'still running', see RUNNING_ITEM_RE).
+// ENGLISH ONLY (deep hooks review 2026-10-16, the user's ruling): the Ukrainian halves decided 4 things in 4 weeks, 2 of them
+// false blocks. A close in any other language is not judged here - its neutral signals (a closing '?', the ask rule, the
+// background registry) still are - and the markers this hook reads stay English whatever language the answer is in
+// (alfred-interaction.md).
 const PENDING_RE = /\b(not pushed|nothing pushed|awaiting|waiting (on|for)|still (?:running|building|working|going)|pending your|next steps?|(?:what|that|which|still) remains?|remains? (?:to|open|pending|outstanding|undone|unpushed|uncommitted)|left to do|yet to|whenever you|when you'?re ready|(when|whenever|once) you say so|un-?pushed|not (?:yet )?(?:run|verified)(?=\**\s*[:\u2013-])|(?<!\bI )never ran|still open|still held for (?:your )?review|(?<!\bno )(?<!\bzero )open items?|put off)\b/i;
-// The same two halves in Ukrainian (review re-verify N4: an all-Cyrillic stall passed on every tree). The
-// first-person past ('Зробив', 'Закомітив') is how a Ukrainian close reports done (re-verify 2 R2-M2).
-const DONE_RE_CYR = /(?<!\p{L})(?:готов[оаі]?|зроблено|виконан[оаі]?|завершен[оаі]?|закінчен[оаі]?|закомічено|запушено|злито|(?:з|за|ви|до|пере)?(?:робив|робила|робили|виконав|виконала|виконали|завершив|завершила|завершили|закінчив|закінчила|закінчили|комітив|комітила|комітили|пушив|пушила|пушили))(?!\p{L})/iu;
-const PENDING_RE_CYR = /(?<!\p{L})(?:чекаю|очікую|(?:ще|досі|все ще)\s+(?:працю|викону|триває)\p{L}*|наступн\p{L}*\s+крок\p{L}*|залишил\p{L}*|лишилось|ще не|коли будеш готов\p{L}*|(?:коли|як) скаж\p{L}*)(?!\p{L})/iu;
+// A done word under a negation reports nothing done (hooks review 2026-10-16: 5 of 20 sampled done-close blocks read
+// 'Nothing is committed', 'isn't committed', 'nothing gets pushed', 'Nothing is committed or pushed' as a done report -
+// DONE_RE's own lookbehind guards only `pushed`, after a short list). Blanked on the DONE half alone (doneProse): the
+// pending half keeps 'not pushed', which is its item ('Committed, not pushed' stays a stall).
+const DONE_WORDS = 'committed|pushed|merged|landed|done|finished|complete[d]?|ready|green|passed';
+const NEGATED_DONE_RE = new RegExp(`\\b(?:not|nothing|never|neither|nor|(?:is|are|was|were|has|have|had|did|do|does|wo)n['\u2019]t|before anything)\\b(?:\\s+[\\w'\u2019]+){0,2}?\\s+(?:${DONE_WORDS})\\b(?:\\s+(?:or|nor|and)\\s+(?:${DONE_WORDS})\\b)?`, 'gi');
+const doneProse = (text) => text.replace(NEGATED_DONE_RE, ' ');
 // DONE_RE and PENDING_RE judge PROSE, and three measured false positives came from reading
 // something else. A block costs the whole turn, so the two halves are tested against a SCRUBBED
 // copy of the close:
@@ -533,8 +371,10 @@ const PENDING_RE_CYR = /(?<!\p{L})(?:чекаю|очікую|(?:ще|досі|в
 //   - a NEGATION says the opposite of a pending item: 'Nothing I started is still running' was read
 //     as a stall and blocked a genuinely clean close at ~505k context - one extra round trip, ~1.01M
 //     tokens, the most expensive single false positive in the audited collection.
-// Only the matched span is removed, so a real pending item later in the same sentence still counts.
-const NEGATED_PENDING_RE = /\b(?:nothing|none of (?:it|them|those|the \w+)|no (?:jobs?|tasks?|runs?|steps?|work|processes?|background work))\b[^.\n]{0,60}?\b(?:is|are|'s|remains?|stays?)\s+(?:still\s+|currently\s+)?(?:running|executing|pending|waiting|queued|in progress|outstanding|left|open)\b(?:\s+(?:on|from|for)\s+(?:you|your side|me|my side|my end|the user)\b)?|\bno longer (?:running|pending|waiting|queued|in progress)\b|\bno (?:open |further |more |other )?next steps?\b/gi;
+// Only the matched span is removed, so a real pending item later in the same sentence still counts. 'nothing is unpushed or
+// uncommitted' is a negation too (hooks review 2026-10-16) - read only right after its 'nothing', so 'Nothing is committed;
+// the diff stays uncommitted for your review' keeps its hold line.
+const NEGATED_PENDING_RE = /\b(?:nothing|none of (?:it|them|those|the \w+)|no (?:jobs?|tasks?|runs?|steps?|work|processes?|background work))\b[^.\n]{0,60}?\b(?:is|are|'s|remains?|stays?)\s+(?:still\s+|currently\s+)?(?:running|executing|pending|waiting|queued|in progress|outstanding|left|open)\b(?:\s+(?:on|from|for)\s+(?:you|your side|me|my side|my end|the user)\b)?|\bnothing(?: else)?(?: is| are|'s)? (?:left )?(?:un-?pushed|uncommitted)\b(?:\s+(?:or|nor|and)\s+(?:un-?pushed|uncommitted)\b)?|\bno longer (?:running|pending|waiting|queued|in progress)\b|\bno (?:open |further |more |other )?next steps?\b/gi;
 function closeProse(text) {
   return text
     .replace(/`[^`\n]*`/g, ' ')
@@ -708,7 +548,6 @@ function liveBackgroundWork() {
 // running') blocking whatever it is called.
 const RUNNING_NOUN_RE = /\b(?:agents?|reviews?|reviewers?|implementers?)\b[^.\n]{0,40}\b(?:(?:still |now |currently )?(?:running|executing|in progress|queued)|(?:still |currently )(?:building|working)|in the background|backgrounded)\b/i;
 const WAKE_RE = /\b(?:wakes? me|(?:when|once|as soon as) (?:it|they|either|both|each) (?:reports?|lands?|finish(?:es)?|completes?))\b/i;
-const RUNNING_NOUN_CYR = /(?<!\p{L})(?:агент|рев'?ю|імплементер|рецензент)\p{L}*[^.\n]{0,40}(?<!\p{L})(?:ще|досі|все ще)\s+(?:працю|викону)\p{L}*/iu;
 // The close is a status line over that work only when every pending item it states is a WAIT on running work -
 // 'still running', 'waiting on / for', 'awaiting' - and none is a step (a next step, what remains, what is left, a
 // hand-back). A wait whose object is the user ('awaiting your go-ahead', 'waiting on you') is a hand-back whatever
@@ -716,19 +555,20 @@ const RUNNING_NOUN_CYR = /(?<!\p{L})(?:агент|рев'?ю|імплемент�
 // among them 'The refactor is done and the dev server is running. Next step: ...' and 'The review agent is queued;
 // next step is task 5.', whose pending item is a step, not the running work).
 // A WAIT is on the running work only when it names that work (review re-verify N-B2): of the first 6 words after
-// 'awaiting' / 'waiting on / for' (`чекаю` / `очікую`), an approval-shaped noun makes it a hand-back
-// ('awaiting approval to commit', 'waiting for the go-ahead', 'чекаю на підтвердження'), and only a work noun makes it
+// 'awaiting' / 'waiting on / for', an approval-shaped noun makes it a hand-back
+// ('awaiting approval to commit', 'waiting for the go-ahead'), and only a work noun makes it
 // a wait ('waiting on its report', 'awaiting its verdict') - a wait the lists do not know blocks, the safe side.
-// 'still running' (`ще працює`) stays a wait. A hand-back also says so outright: 'tell me', 'let me
-// know', 'your call', 'up to you', or a wait on 'you' / 'your' in English or Ukrainian.
-// Re-verify 3 R3-m2 adds the hand-backs no list named ('over to you', 'the push is yours', 'your move', 'за тобою',
-// 'дай знати', 'скажи - і я запушу', 'напиши, коли'), and R3-m3 narrows 'tell me' / 'let me know' to the imperative -
+// 'still running' stays a wait. A hand-back also says so outright: 'tell me', 'let me
+// know', 'your call', 'up to you', or a wait on 'you' / 'your'.
+// Re-verify 3 R3-m2 adds the hand-backs no list named ('over to you', 'the push is yours', 'your move'), and R3-m3 narrows 'tell me' / 'let me know' to the imperative -
 // opening a clause or after 'please' / 'just' / 'and' - since 'the verifier will tell me if anything is off' reports.
-const HANDBACK_RE = /\b(?:awaiting|waiting (?:on|for)) (?:you|your|the user'?s?)\b|\bnothing reports\b|(?:^|[.!;:,(]\s*|\n\s*|\s[-\u2013]\s+|\b(?:please|just|and|so|then)\s+)(?:tell me|let me know)\b(?!,?\s+(?:if|in case|how|what|whether|about)\b(?!\s+to\b))|\b(?:your call|up to you|over to you|on you|(?:is|are|'s) yours|yours to|your (?:move|court|signal|nod|turn)|ping me\b(?!,?\s+(?:if|in case|how|what|whether|about)\b(?!\s+to\b)))\b|(?<!\p{L})(?:чекаю|очікую)\s+(?:на\s+)?(?:твоє|ваше|твого|вашого|ваш|твою|вашу|твоя|ваша)(?!\p{L})|(?<!\p{L})(?:за (?:тобою|вами)|дай(?:те)? знат\p{L}*|скажи(?:те|ть)?|напиши(?:те|ть)?)(?!\p{L})(?!,?\s+(?:якщо|як|що)(?!\p{L}))/iu;
-const APPROVAL_WORDS = /\b(?:approval|allow|go-?ahead|sign-?off|confirmation|decision|answer|input|reply|ok|okay|green light|call|choice|pick|permission|feedback|instructions?)\b|(?<!\p{L})(?:рішенн|підтвердженн|згод|дозвол|схвал|відповід|вказівк)\p{L}*/iu;
-// forks, subagents and workers are the async agents by another name ('Waiting on the other 3 forks', 177c5743)
-const WORK_WORDS = /\b(?:forks?|subagents?|workers?|designers?|diagnosers?|analy[sz]ers?|resolvers?|gatherers?|plans?|findings|digests?|agents?|reviews?|reviewers?|implementers?|verifiers?|auditors?|seats?|jobs?|runs?|builds?|tests?|suites?|ci|pipelines?|workflows?|deploys?|reports?|verdicts?|results?|notices?|watchers?|monitors?|packages?|it|its|them|their)\b|(?<!\p{L})(?:агент|рев'?ю|рецензент|звіт|збірк|тест|пайплайн|результат|вердикт|перевірк)\p{L}*/iu;
-const RUNNING_ITEM_RE = /^(?:still (?:running|building|working|going)|(?:ще|досі|все ще)\s+(?:працю|викону|триває)\p{L}*)$/iu;
+const HANDBACK_RE = /\b(?:awaiting|waiting (?:on|for)) (?:you|your|the user'?s?)\b|\bnothing reports\b|(?:^|[.!;:,(]\s*|\n\s*|\s[-\u2013]\s+|\b(?:please|just|and|so|then)\s+)(?:tell me|let me know)\b(?!,?\s+(?:if|in case|how|what|whether|about)\b(?!\s+to\b))|\b(?:your call|up to you|over to you|on you|(?:is|are|'s) yours|yours to|your (?:move|court|signal|nod|turn)|ping me\b(?!,?\s+(?:if|in case|how|what|whether|about)\b(?!\s+to\b)))\b/i;
+const APPROVAL_WORDS = /\b(?:approval|allow|go-?ahead|sign-?off|confirmation|decision|answer|input|reply|ok|okay|green light|call|choice|pick|permission|feedback|instructions?)\b/i;
+// forks, subagents and workers are the async agents by another name ('Waiting on the other 3 forks', 177c5743); a
+// seat's fixes and checks are its work too ('Still waiting on the libs/ui fixes and the cheat check', hooks review
+// 2026-10-16, 899bc83d)
+const WORK_WORDS = /\b(?:forks?|subagents?|workers?|designers?|diagnosers?|analy[sz]ers?|resolvers?|gatherers?|plans?|findings|digests?|agents?|reviews?|reviewers?|implementers?|verifiers?|auditors?|seats?|jobs?|runs?|builds?|tests?|suites?|ci|pipelines?|workflows?|deploys?|reports?|verdicts?|results?|notices?|watchers?|monitors?|packages?|fix(?:es)?|checks?|it|its|them|their)\b/i;
+const RUNNING_ITEM_RE = /^(?:still (?:running|building|working|going))$/i;
 // A hand-back needs no pending word (re-verify 2 R2-B1): 'Push when you approve', 'I need your go-ahead', 'awaiting a
 // review from you', 'waiting for it to be approved', 'Confirm and I push' each hand the next act to a person. The
 // real closes' own disclaimer ('Nothing needs your decision') is scrubbed first, and so is a negated one ('not your call').
@@ -738,39 +578,46 @@ const NO_HANDBACK_RE = /\b(?:nothing|no (?:[\w-]+ )?(?:decision|input|action|ans
 // 'by the user' asks only after an approval passive ('approved by the user', never 'requested by the user'), and a
 // sentence-initial 'Confirm' / 'Pick' only as a word ('Pick-up of task 4' reports).
 const PERSON_ASK_RE = /\b(?:your|the user'?s)\s+(?:[\w-]+\s+){0,2}?(?:approval|allow|go-?ahead|sign-?off|confirmation|decision|answer|input|reply|ok|okay|green light|choice|pick|permission|feedback|instructions?|say-?so|word|call|signal|nod|look|move|turn|court)\b(?!\s+(?!(?:to|before|on|for|and|or|so|then|is|was|are|were|first|here|now|please|in|at|from|with|by|if|when|once|after|of|i)\b)[a-z])|\byour (?:own|manual)\s+[\w-]+|\b(?:for|after|pending|until) your (?:review|look|check|test(?:ing)?)\b|\bfrom (?:you|the user)\b|\b(?:approved|confirmed|signed off|reviewed|decided|authori[sz]ed|accepted|ok'?e?d) by (?:you|the user)\b|\b(?:when(?:ever)?|once|if|after|until|as soon as) you(?:'ve| have)? (?:approve|confirm|decide|say|choose|pick|review|sign|give|agree|check|test|ok|look|read|see)\w*|\bwhen(?:ever)? you(?:'re| are) ready\b|\bsay the word\b|(?:^|[.!;:]\s+|\n\s*)(?:please\s+)?(?:confirm|approve|decide|choose|pick)(?![-\w])|\byou (?:need to|have to|should|can|may|must) (?:approve|confirm|decide|review|sign|check|test|run|merge|push)\b|\bto be (?:approved|reviewed|confirmed|signed off)\b|\b(?:them|it) to (?:approve|sign|confirm|review)\b|\bI need (?:your|you|a|an|the) (?:[\w-]+ )?(?:approval|go-?ahead|sign-?off|confirmation|decision|answer|ok|okay|input)\b/i;
-const PERSON_ASK_CYR = /(?<!\p{L})(?:тво|твій|твої|ваш)\p{L}*\s+(?:\p{L}+\s+){0,2}?(?:(?:схвал|рішенн|підтвердж|згод|дозвол|відповід|команд|апрув|розсуд|сигнал)\p{L}*|ок|окей|хід)(?!\p{L})|(?<!\p{L})(?:на|для|після|до)\s+(?:тво|ваш)\p{L}*\s+(?:рев'?ю|перевірк)\p{L}*|(?<!\p{L})від (?:тебе|вас)(?!\p{L})|(?<!\p{L})(?:коли|як тільки)\s+(?:ти |ви )?(?:скаж|підтверд|схвал|виріш|перевір|глян|подив)\p{L}*/iu;
 // A pending act handed over in the imperative or the infinitive (re-verify 3 R3-m2): a clause that OPENS on the act
-// verb, followed by what the act takes ('Push once you have looked it over', 'Merge when ready', 'Пушити - на твій
-// розсуд'), is the user's to do - the model's own future is 'I push' / 'запушу'. A compound noun ('Merge
+// verb, followed by what the act takes ('Push once you have looked it over', 'Merge when ready'), is the user's to do -
+// the model's own future is 'I push'. A compound noun ('Merge
 // conflicts resolved', 'Release notes updated') opens on no act.
-const OPEN_ACT_RE = /(?:^|[.!;:,]\s+|\n\s*|\s[-–]\s+)(?:please\s+|just\s+)?(?:push|merge|commit|deploy|release|ship|publish)\s+(?:it|this|that|them|the|to|when|whenever|once|after|if|on|now|as soon)\b|(?:^|[.!;:,]\s+|\n\s*|\s[-–]\s+)(?:за|з)?(?:пуш|мерж|мердж|депло|коміт)\p{L}*(?:ти|ть|іть)(?!\p{L})/iu;
-// A past report is no hand-back ('Pushed after your approval.', 'Запушив після твого схвалення.'): a clause opening on
+const OPEN_ACT_RE = /(?:^|[.!;:,]\s+|\n\s*|\s[-–]\s+)(?:please\s+|just\s+)?(?:push|merge|commit|deploy|release|ship|publish)\s+(?:it|this|that|them|the|to|when|whenever|once|after|if|on|now|as soon)\b/i;
+// A past report is no hand-back ('Pushed after your approval.'): a clause opening on
 // the act or a done verb in the past is blanked before the future-frame read (re-verify 3 R3-M2).
-const PAST_REPORT_CLAUSE = /(?:^|(?<=[.!?;:,\n]\s*)|(?<=\s[-–]\s))\s*(?:(?:I|we|it)\s+)?(?:(?:have|has|had|was|were)\s+)?(?:pushed|merged|committed|deployed|released|shipped|published|landed|opened|created|applied|finished|completed)\b[^.!?;\n]*|(?:^|(?<=[.!?;:,\n]\s*))\s*(?:(?:я|ми)\s+)?(?:(?:за|з|ви|до|пере)?(?:пуш|мерж|мердж|коміт|комміт|деплої|роб|викон|заверш|закінч)\p{L}*?(?:ив|ила|или|ів|ав|ала|али|нув)|зли(?:в|ла|ли))(?!\p{L})[^.!?;\n]*/giu;
+const PAST_REPORT_CLAUSE = /(?:^|(?<=[.!?;:,\n]\s*)|(?<=\s[-–]\s))\s*(?:(?:I|we|it)\s+)?(?:(?:have|has|had|was|were)\s+)?(?:pushed|merged|committed|deployed|released|shipped|published|landed|opened|created|applied|finished|completed)\b[^.!?;\n]*/gi;
+// A list of decisions already taken is a record, not a hand-off (hooks review 2026-10-16, 0bd1b7eb): an auto-mode close
+// listed the options it picked - 'Decisions auto-mode made for you:' over '- Commit: commit now.' - and OPEN_ACT_RE read
+// the picked label as a commit handed to the user. A line naming decisions AND a past verb opens the record, and the
+// list items under it are blanked up to the first line that is not one. A heading still owing them ('Decisions to be
+// made:', 'Decisions still open, made by you:') opens none.
+const DECISION_RECORD_RE = /^[ \t]*(?=[^\n]*(?:\b(?:decisions?|choices?|answers?)\b))(?=[^\n]*(?:\b(?:made|taken|picked|chosen|answered|settled)\b))(?![^\n]*(?:\b(?:to be|to make|still|pending|open|needs?|needed|waiting|left|owed|remaining|by you|your)\b))[^\n]*\n(?:[ \t]*(?:[-*•]|\d+[.)])[^\n]*(?:\n|$))+/gimu;
 function handsBack(closeTail) {
   const t = closeTail.replace(NO_HANDBACK_RE, ' ').replace(NOTHING_PENDING_RE, ' ');
-  return HANDBACK_RE.test(t) || PERSON_ASK_RE.test(t) || PERSON_ASK_CYR.test(t) || OPEN_ACT_RE.test(t);
+  return HANDBACK_RE.test(t) || PERSON_ASK_RE.test(t) || OPEN_ACT_RE.test(t);
 }
+// What a forward read leaves out: a parenthetical aside records a call already made ('not run (your call,
+// environment-sensitive)'), a past report clause, a record of decisions taken.
+const blankPast = (closeTail) => closeTail.replace(/\([^()\n]*\)/g, (m) => ' '.repeat(m.length))
+  .replace(PAST_REPORT_CLAUSE, (m) => ' '.repeat(m.length)).replace(DECISION_RECORD_RE, (m) => m.replace(/[^\n]/g, ' '));
 // The pending half of a done close also takes a FUTURE-frame hand-back with no pending word ('Push when you approve',
-// 'The push is yours', 'Запушу, коли підтвердиш'), never a past report (re-verify 3 R3-M2).
+// 'The push is yours'), never a past report (re-verify 3 R3-M2).
 function handsBackAhead(closeTail) {
-  // a parenthetical aside records a call already made ('not run (your call, environment-sensitive)')
-  return handsBack(closeTail.replace(/\([^()\n]*\)/g, (m) => ' '.repeat(m.length)).replace(PAST_REPORT_CLAUSE, (m) => ' '.repeat(m.length)));
+  return handsBack(blankPast(closeTail));
 }
 // The words that made it a hand-back, for the ledger row: with no PENDING_RE word its pending half read the literal
 // 'undefined' (audit 2026-10-10 C15, 0824440b: 'committed + undefined' over 'held for your review').
 function handBackText(closeTail) {
-  const t = closeTail.replace(/\([^()\n]*\)/g, (m) => ' '.repeat(m.length)).replace(PAST_REPORT_CLAUSE, (m) => ' '.repeat(m.length))
-    .replace(NO_HANDBACK_RE, ' ').replace(NOTHING_PENDING_RE, ' ');
-  for (const re of [HANDBACK_RE, PERSON_ASK_RE, PERSON_ASK_CYR, OPEN_ACT_RE]) { const m = t.match(re); if (m) return m[0].trim(); }
+  const t = blankPast(closeTail).replace(NO_HANDBACK_RE, ' ').replace(NOTHING_PENDING_RE, ' ');
+  for (const re of [HANDBACK_RE, PERSON_ASK_RE, OPEN_ACT_RE]) { const m = t.match(re); if (m) return m[0].trim(); }
   return 'hand-back';
 }
 function pendingItems(closeTail) {
-  return [...closeTail.matchAll(new RegExp(PENDING_RE.source, 'gi')), ...closeTail.matchAll(new RegExp(PENDING_RE_CYR.source, 'giu'))];
+  return [...closeTail.matchAll(new RegExp(PENDING_RE.source, 'gi'))];
 }
 function itemIsAWait(closeTail, m) {
   if (RUNNING_ITEM_RE.test(m[0])) return true;
-  if (!/^(?:awaiting|waiting (?:on|for)|чекаю|очікую)$/iu.test(m[0])) return false; // a step, not a wait
+  if (!/^(?:awaiting|waiting (?:on|for))$/i.test(m[0])) return false; // a step, not a wait
   const object = closeTail.slice(m.index + m[0].length).split(/\s+/).filter(Boolean).slice(0, 6).join(' ');
   // a bare 'awaiting review' names no running seat, and the FIRST noun decides: work before approval is a wait on the
   // work ('awaiting the verifier's answer'), approval first is a hand-back (re-verify 2 R2-B1, R2-m3); the running
@@ -779,10 +626,6 @@ function itemIsAWait(closeTail, m) {
   const a = object.search(APPROVAL_WORDS);
   const w = object.search(WORK_WORDS);
   return w >= 0 && (a < 0 || w < a);
-}
-function pendingIsAWait(closeTail) {
-  const items = pendingItems(closeTail);
-  return items.length > 0 && items.every((m) => itemIsAWait(closeTail, m));
 }
 // Two shapes of a status line over live work the lists above missed (audit 2026-10-10 C15). The close's mandated hold line
 // ('the diff stays uncommitted for your review') read as a hand-back and short-circuited this test (6ed392a5: blocked 3s
@@ -808,7 +651,7 @@ function ownWorkRunning(closeTail, tail) {
   if (!holdOnly && !waits) return false;
   const live = liveBackgroundWork();
   if (live === true) return true;
-  if (live === null) return RUNNING_NOUN_RE.test(tail) || RUNNING_NOUN_CYR.test(tail) || (BACKGROUND_RE.test(tail) && WAKE_RE.test(tail));
+  if (live === null) return RUNNING_NOUN_RE.test(tail) || (BACKGROUND_RE.test(tail) && WAKE_RE.test(tail));
   return false;
 }
 // An ANSWER to the user's own question is no stall when what it lists as open belongs to somebody else or was deferred
@@ -861,13 +704,16 @@ function answersOthersOpen(closeTail) {
 // asked for (audit 2026-10-11 SD10, session 2ca8e8ee: 'Show me the merge order as sentences' got a read-only git survey
 // and a list opening on a ticket 'committed ... waiting for its PR'; the done-close block forced a 'Nothing is waiting
 // on me' retry at 338k). The model's own next move, an approval hand-back or any changing call keeps the close judged.
-const INFO_PROMPT_RE = /^\s*(?:please\s+|can you\s+|could you\s+)?(?:show|list|explain|describe|summari[sz]e|tell me|give me|walk me through|what|which|how|why|where|who|whose|is|are|was|were|does|do|did|has|have)\b|\?\s*$|^\s*(?:покажи|поясни|розкажи|що|чому|як|де)(?!\p{L})/iu;
+const INFO_PROMPT_RE = /^\s*(?:please\s+|can you\s+|could you\s+)?(?:show|list|explain|describe|summari[sz]e|tell me|give me|walk me through|what|which|how|why|where|who|whose|is|are|was|were|does|do|did|has|have)\b|\?\s*$/i;
 const READ_ONLY_TOOL_RE = /^(?:Read|Grep|Glob|LS|WebFetch|WebSearch|ToolSearch|TodoWrite|TaskOutput|BashOutput)$|^mcp__.+__(?:find|get|search|list|read|query|resolve|fetch)[\w-]*$/i;
 const READ_HEAD_RE = /^(?:ls|cat|head|tail|grep|egrep|fgrep|rg|wc|cut|sort|uniq|tr|column|echo|printf|pwd|cd|true|stat|file|du|df|which|whoami|date|uname|tree|jq|diff|cmp|realpath|basename|dirname|nl|awk)$/;
 const GIT_SAFE_SUB = /^(?:status|log|show|diff|rev-parse|rev-list|ls-files|ls-tree|ls-remote|describe|blame|shortlog|merge-base|cat-file|for-each-ref|show-ref|grep|name-rev|check-ignore|cherry|fetch)$/;
 const GIT_LIST_FORM = { branch: /^(?:--show-current|-[arvl]+|-vv|--all|--remotes|--list|--merged|--no-merged|--no-color)$/, tag: /^(?:-l|--list|-n\d*)$/, remote: /^-v$/ };
 const GIT_LIST_SUB = /^(?:stash (?:list|show)|worktree list|reflog(?: show)?|remote (?:show|get-url))(?:\s|$)/;
 const OWN_MOVE_RE = /\b(?:I(?:'ll| will| can| could| am going to| plan to|'d (?:suggest|recommend))|let me|shall I|want me to)\b/i;
+// The hand-backs that put a decision to the user, as against those that only describe ('tell me when it's done', 'your own
+// login', 'from you') - answersInfoRequest's veto when the close names nothing pending.
+const DECISION_HANDOFF_RE = /\b(?:your call|up to you|over to you|your (?:move|turn|court|decision|choice|pick|go-?ahead|approval|sign-?off|green light|say-?so)|say the word|(?:when(?:ever)?|once|if|after|until|as soon as) you(?:'ve| have)? (?:approve|confirm|decide|say|choose|pick|sign|give|agree|ok)\w*)\b/i;
 const STATE_ITEM_RE = /^(?:awaiting|waiting (?:on|for)|still (?:running|building|working|going)|not pushed|nothing pushed|un-?pushed|still open|still held for (?:your )?review)$/i;
 function readOnlyCommand(command) {
   const cmd = String(command || '');
@@ -913,10 +759,20 @@ function readOnlyTurn() {
   } catch { return false; }
 }
 function answersInfoRequest(closeTail) {
+  // The veto reads the model's own move or a hand-back only BESIDE a named pending item. With none named, the pending half
+  // came from a hand-back phrase alone, and in a read-only answer to a question that phrase described, it asked nothing
+  // ('tell me when it's done and I'll read the ticket', 'tied to your own login', 'it needs to come from you', the mandated
+  // 'I commit only on your explicit word') - 5 of 20 sampled done-close blocks, each a forced re-answer (hooks review
+  // 2026-10-16). A hand-back that puts a DECISION to the user still vetoes ('All done and committed. Up to you if we push
+  // today.' - the prose-ask branch does not read that one).
+  const items = pendingItems(closeTail);
   const scrubbed = closeTail.replace(NO_HANDBACK_RE, ' ').replace(NOTHING_PENDING_RE, ' ');
-  if (OWN_MOVE_RE.test(closeTail) || HANDBACK_RE.test(scrubbed) || PERSON_ASK_RE.test(scrubbed) || PERSON_ASK_CYR.test(scrubbed)) return false;
-  // a pending STEP ('the next step is task 5', 'left to do') is the model's own move; only a reported state passes
-  if (!pendingItems(closeTail).every((m) => STATE_ITEM_RE.test(m[0]))) return false;
+  if (!items.length && DECISION_HANDOFF_RE.test(scrubbed)) return false;
+  if (items.length) {
+    if (OWN_MOVE_RE.test(closeTail) || HANDBACK_RE.test(scrubbed) || PERSON_ASK_RE.test(scrubbed)) return false;
+    // a pending STEP ('the next step is task 5', 'left to do') is the model's own move; only a reported state passes
+    if (!items.every((m) => STATE_ITEM_RE.test(m[0]))) return false;
+  }
   const prompt = turnPrompt().trim();
   return !!prompt && INFO_PROMPT_RE.test(prompt) && readOnlyTurn();
 }
@@ -996,6 +852,21 @@ function resultText(b) {
 function rowText(o) {
   const c = o && o.message && o.message.content;
   return typeof c === 'string' ? c : Array.isArray(c) ? c.map((b) => (b && b.type === 'text' && b.text) || '').join('\n') : '';
+}
+// A MESSAGE the user typed, for typedTurnsBeforeThisReply - a turn boundary is not always one: a harness row (a task
+// notice, a command's output, a seat's hand-back - hook-prelude.js harnessPrompt), an interrupt marker, and a built-in
+// local command (/exit, /model, /reload-plugins), whose row the command's own output row follows, reach the model as no
+// request (hooks review 2026-10-16: 42 'more than one message' notes in two weeks, none over two typed messages; 25
+// still fired after the live-branch fix). Declared here, above the top-level branches that call it.
+const INTERRUPT_ROW_RE = /^\s*\[Request interrupted by user/;
+const LOCAL_OUTPUT_RE = /^\s*<local-command-(?:stdout|stderr)>/;
+// the command's output row: a `system` row of subtype `local_command` (/reload-plugins), or a user row (/exit, /model)
+const localOutput = (n) => !!n && (n.subtype === 'local_command' || LOCAL_OUTPUT_RE.test(n.message ? rowText(n) : String(n.content || '')));
+function typedMessage(o, next) {
+  if (!isTypedTurn(o)) return false;
+  const t = rowText(o);
+  if (harnessPrompt(t) || INTERRUPT_ROW_RE.test(t)) return false;
+  return !(/^\s*<command-name>/.test(t) && localOutput(next));
 }
 // The transcript's rows, NEWEST first, from a 256KB tail widened once to 8MB when the walk has not settled. Each pass
 // takes a fresh visitor from `start()`; a visitor returns undefined to keep walking and anything else to answer.
@@ -1184,42 +1055,70 @@ function visibleRow(line) {
     return at < 0 ? line : line.slice(0, at);
   }
 }
-// The window is the whole session up to 64MB, read once per run: pilot 3's ecc guard-02 cells read the
-// JWT 250-300KB before a print turn ended, outside the old 256KB tail (only the Edit's stored copy near
-// the end had caught them). A 32MB transcript scans in about 110 ms.
-let TAIL = null;
-function transcriptTail() {
-  if (TAIL !== null) return TAIL;
-  const p = payload.transcript_path;
-  if (!p) return (TAIL = '');
-  const size = fs.statSync(p).size;
-  const start = Math.max(0, size - 64 * 1024 * 1024);
-  const fd = fs.openSync(p, 'r');
-  const buf = Buffer.alloc(size - start);
-  fs.readSync(fd, buf, 0, buf.length, start);
-  fs.closeSync(fd);
-  return (TAIL = buf.toString('utf8'));
+// The window is the whole session, the first read capped at its last 64MB: pilot 3's ecc guard-02 cells read the JWT
+// 250-300KB before a print turn ended, outside the old 256KB tail (only the Edit's stored copy near the end had caught
+// them). The read is INCREMENTAL (hooks review 2026-10-16: re-reading the 64MB tail was ~450 ms of a 561 ms Stop on a
+// 114MB transcript, paid again by every Stop and every ask). One pass over the lines not scanned yet moves four
+// positions - the newest shape a user-role row put in front of the model (`user`, with its row's key), the newest shape
+// in any row (`any`), the newest rotate-ask block and the newest answer - kept as line numbers in a per-session state
+// file beside the hook's log (`guard-stop-scan-*`, swept with its markers). The state is reused only for the same file
+// (path and inode) at its scanned size or larger; a shrunk, replaced, torn or missing one is scanned cold. The row still
+// being written is judged on every run and never cached.
+const SCAN_COLD_BYTES = 64 * 1024 * 1024;
+let SCAN = null;
+function scanStateFile(p) {
+  const sid = String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_').slice(-80);
+  const tag = require('crypto').createHash('sha1').update(p).digest('hex').slice(0, 8);
+  return require('path').join(envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir(), `guard-stop-scan-${sid}-${tag}.json`);
 }
-// The newest row that put a credential shape in front of the model, or null. A token inside a link that states an hour
-// of life or less (hook-prelude.js shortLivedLinks - a Jira media `?token=`, an S3 presigned URL) is that link's own
-// capability and expires by itself, so it is blanked before the shape test: rotating it is no answer to anything.
-const exposedShape = (row) => SECRET_SHAPE.test(withoutShortLived(row));
-function secretExposure() {
+// One row's effect on the four positions: a rotate-ask block, an answer after one (or naming rotation), a shape.
+function scanRow(line, n, into) {
+  if (isRotateBlock(line)) into.block = n;
+  if (ROTATE_ANSWER_RE.test(line) || (into.block >= 0 && ANY_ANSWER_RE.test(line))) into.answer = n;
+  if (!SECRET_SHAPE.test(line)) return;
+  const seen = visibleRow(line);
+  if (!exposedShape(seen)) return;
+  into.any = n;
+  // USER-role rows: both the tool_results the model's own reads returned, and the user's own typed or pasted text. The
+  // assistant's own text is judged separately, by ROTATE_RE.
+  if (seen.includes('"tool_result"') || /"type"\s*:\s*"user"/.test(seen)) into.user = { at: n, key: require('crypto').createHash('sha1').update(line).digest('hex').slice(0, 16) };
+}
+function credentialScan() {
+  if (SCAN) return SCAN;
+  const empty = { user: null, any: -1, block: -1, answer: -1 };
+  const p = payload.transcript_path;
+  if (!p) return (SCAN = empty);
   try {
-    let found = null;
-    for (const line of transcriptTail().split('\n')) {
-      if (!SECRET_SHAPE.test(line)) continue;
-      const seen = visibleRow(line);
-      // USER-role rows: both the tool_results the model's own reads returned, and the user's own
-      // typed or pasted text. The assistant's own text is judged separately, by ROTATE_RE.
-      if (!seen.includes('"tool_result"') && !/"type"\s*:\s*"user"/.test(seen)) continue;
-      if (exposedShape(seen)) found = line;
-    }
-    return found;
+    const st = fs.statSync(p);
+    const file = scanStateFile(p);
+    let state = null;
+    try {
+      const o = JSON.parse(fs.readFileSync(file, 'utf8'));
+      if (o && o.v === 1 && o.path === p && o.ino === st.ino && Number.isInteger(o.scanned) && o.scanned <= st.size && Number.isInteger(o.lines)) state = o;
+    } catch { /* absent or torn: a cold scan */ }
+    if (!state) state = { v: 1, path: p, ino: st.ino, scanned: Math.max(0, st.size - SCAN_COLD_BYTES), lines: 0, ...empty };
+    const buf = Buffer.alloc(st.size - state.scanned);
+    const fd = fs.openSync(p, 'r');
+    try { fs.readSync(fd, buf, 0, buf.length, state.scanned); } finally { fs.closeSync(fd); }
+    const cut = buf.lastIndexOf(10) + 1;
+    const done = cut ? buf.toString('utf8', 0, cut).split('\n') : [];
+    done.pop();   // the empty string after the last newline
+    done.forEach((line, i) => scanRow(line, state.lines + i, state));
+    state.lines += done.length;
+    state.scanned += cut;
+    try { const tmp = `${file}.${process.pid}`; fs.writeFileSync(tmp, JSON.stringify(state)); fs.renameSync(tmp, file); } catch { /* the next run scans cold */ }
+    const result = { user: state.user, any: state.any, block: state.block, answer: state.answer };
+    if (cut < buf.length) scanRow(buf.toString('utf8', cut), state.lines, result);
+    return (SCAN = result);
   } catch {
-    return null;
+    return (SCAN = empty);
   }
 }
+// The newest row that put a credential shape in front of the model, as `{ at, key }`, or null. A token inside a link that
+// states an hour of life or less (hook-prelude.js shortLivedLinks - a Jira media `?token=`, an S3 presigned URL) is that
+// link's own capability and expires by itself, so it is blanked before the shape test: rotating it is no answer to anything.
+const exposedShape = (row) => SECRET_SHAPE.test(withoutShortLived(row));
+const secretExposure = () => credentialScan().user;
 const secretInSession = () => secretExposure() !== null;
 
 // The secret guard's receipt is the user's CONSENT to a value being in this transcript - the remote
@@ -1268,19 +1167,8 @@ const ROTATE_ASK_HEAD = 'A credential appears to have entered this session';
 const ANY_ANSWER_RE = /"(?:content|text)"\s*:\s*"(?:Your questions have been answered:|The user answered:|The user (?:declined|chose not) to answer)/;
 const isRotateBlock = (line) => line.includes(ROTATE_ASK_HEAD) && !line.includes('"tool_result"') && /Stop hook feedback|"stop_hook_summary"/.test(line);
 function rotateAskAnswered() {
-  try {
-    let lastAnswer = -1;
-    let lastShape = -1;
-    let lastBlock = -1;
-    transcriptTail().split('\n').forEach((line, i) => {
-      if (isRotateBlock(line)) lastBlock = i;
-      if (ROTATE_ANSWER_RE.test(line) || (lastBlock >= 0 && ANY_ANSWER_RE.test(line))) lastAnswer = i;
-      if (SECRET_SHAPE.test(line) && exposedShape(visibleRow(line))) lastShape = i;
-    });
-    return lastAnswer >= 0 && lastAnswer > lastShape;
-  } catch {
-    return false;
-  }
+  const { answer, any } = credentialScan();
+  return answer >= 0 && answer > any;
 }
 
 // The auto-continue count per stamp (HK05): this Stop's number under the live stamp, 1 for the first. The key is the stamp's
@@ -1394,7 +1282,7 @@ if (payload.hook_event_name === 'SubagentStop') {
 // write route. What a rule-following close writes after its check is none either (C2): a path git
 // ignores (one `git check-ignore`, at a Stop that holds a claim over edits past the last run), and a
 // path this turn created and then deleted - the scratch the quality-gates baseline says to delete.
-// A RUN is wider than the root-cause list above,
+// A RUN is wider than the RUNNERS list above,
 // because here a miss counts an honest close as unrun: any shell command that is not a read, a write, git or a
 // package install counts, and so does a dispatched agent (its own runs are in its own transcript).
 // A run's own output file is no edit. A call a hook denied before it ran counts as neither.
@@ -1597,7 +1485,7 @@ function turnWork() {
   const edits = []; // { at, rel, file, make, del, mkdir }, in order
   let lastRun = null;
   let skill = false;
-  const red = [];      // build / test runs of this turn that went red (the root-cause list's runners)
+  const red = [];      // build / test runs of this turn that went red (the RUNNERS list's runners)
   const skipped = [];  // ... and those whose summary reports a skipped test
   let skipEdit = false; // a source edit this turn that ADDED a skip marker
   for (const o of turn) {
@@ -1624,8 +1512,7 @@ function turnWork() {
       } else if (DISPATCH_TOOL_RE.test(name)) {
         if (!res || !res.error) lastRun = { at, kind: `the dispatched ${input.subagent_type || 'agent'}` };
       } else if (shellWrites ? shellWrites.isShellTool(name) : SHELL_TOOL_RE.test(name)) {
-        // The whole shell route (R8): Monitor runs its command under Bash's rules. The PostToolUse probes above
-        // stay on Bash|PowerShell, the shell tools they are wired on.
+        // The whole shell route (R8): Monitor runs its command under Bash's rules.
         if (res && res.error && !ranCode(res)) continue;
         const command = String(typeof input === 'string' ? input : input.command || '');
         const bt = res ? buildTestRun(command) : null;
@@ -1848,8 +1735,9 @@ if (payload.hook_event_name === 'Stop') {
     || /\b(which|what|who|where|when|how|should|do you|would you|prefer)\b[^?]{0,120}\?\s*$/i.test(tail.trim());
   // ...but a question ABOUT something already settled, or a rhetorical aside mid-report, is not a
   // stop: require the question to be the turn's last word, which the tests above already encode.
-  const doneClose = (DONE_RE.test(closeWhole) || DONE_RE_CYR.test(closeWhole))
-    && (PENDING_RE.test(closeTail) || PENDING_RE_CYR.test(closeTail) || handsBackAhead(closeTail)) && !/\?/.test(tail)
+  const closeDone = doneProse(closeWhole);
+  const doneClose = DONE_RE.test(closeDone)
+    && (PENDING_RE.test(closeTail) || handsBackAhead(closeTail)) && !/\?/.test(tail)
     // A background job the user has no say over is a status line, not a pending decision -
     // blocking it forced an AskUserQuestion over 'tests are still running in CI' (reproduced).
     // ...and the harness's own idiom for a backgrounded job is part of that shape. Without these
@@ -1960,13 +1848,13 @@ if (payload.hook_event_name === 'Stop') {
   // undone by a later turn, and the transcript keeps the value whatever happens next. This branch
   // runs FIRST and fires on a clean close too - three measured exposures ended exactly there.
   const exposure = ROTATE_ASK_ON && !askJustAnswered() && !rotateAskAnswered()
-    ? (ROTATE_RE.test(prose) ? { route: 'close' } : (() => { const row = secretExposure(); return row && !secretReadAllowed() ? { route: 'shape', row } : null; })())
+    ? (ROTATE_RE.test(prose) ? { route: 'close' } : (() => { const row = secretExposure(); return row && !secretReadAllowed() ? { route: 'shape', key: row.key } : null; })())
     : null;
   // With nobody at the terminal (hook-prelude.js unattended - print mode, never an SDK session) the ask
   // cannot be answered and only replaced the final answer (pilot 3, 2 of 12 finals): one ledger row per
   // exposure records it instead, keyed on the row that exposed it, and the close stands.
   if (exposure && unattended(payload)) {
-    const key = require('crypto').createHash('sha1').update(exposure.row || prose).digest('hex').slice(0, 16);
+    const key = exposure.key || require('crypto').createHash('sha1').update(prose).digest('hex').slice(0, 16);
     const safe = (s) => String(s).replace(/[^a-zA-Z0-9-]/g, '_').slice(-80);
     const marker = `${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-rotate-${safe(payload.session_id || 'nosession')}-${key}.logged`;
     if (!fs.existsSync(marker)) {
@@ -1996,7 +1884,7 @@ if (payload.hook_event_name === 'Stop') {
   // waived close went out with none of Result / Progress / Leftovers, its headline contradicting its own leftovers (audit
   // 2026-10-10 C09, c6142301). The fields are the MODEL's to write - no person is asked - so this one holds a done close
   // even with nobody at the terminal, once per Stop cycle (the chain marker).
-  if (!continuation && autoLive(payload) && (DONE_RE.test(closeWhole) || DONE_RE_CYR.test(closeWhole) || /\b(?:built|verified|implemented|pushed|merged|shipped)\b/i.test(closeWhole))
+  if (!continuation && autoLive(payload) && (DONE_RE.test(closeDone) || /\b(?:built|verified|implemented|pushed|merged|shipped)\b/i.test(closeDone))
     && !fieldsStamped(prose) && solveTaskCycle()) {
     blockDetail('auto-fields', 'solve-task close under AUTO without Result / Progress / Leftovers');
     process.stderr.write('This solve-task close went out under the AUTO waiver without its THREE named fields. A waived stop still\n'
@@ -2127,7 +2015,7 @@ if (payload.hook_event_name === 'Stop') {
     process.exit(0);
   }
   if (doneClose && !proseAsk(tail)) {
-    blockDetail('done-close', `${(closeWhole.match(DONE_RE) || closeWhole.match(DONE_RE_CYR) || [])[0]} + ${(closeTail.match(PENDING_RE) || closeTail.match(PENDING_RE_CYR) || [])[0] || handBackText(closeTail)}`);
+    blockDetail('done-close', `${(closeDone.match(DONE_RE) || [])[0]} + ${(closeTail.match(PENDING_RE) || [])[0] || handBackText(closeTail)}`);
     process.stderr.write(
       'This turn reports the step done and leaves the next action pending, stated as a fact\n' +
       'rather than asked. Measured across four projects: that close draws a literal "are you\n' +
@@ -2167,7 +2055,7 @@ if (payload.hook_event_name === 'Stop') {
         + 'same ask.\n'
       : `This window's fresh-session trigger is ${Math.round(_trigger / 1000)}k per message and this turn's own\n`
         + 'carry could not be read - past the trigger, the resume option belongs in the same ask.\n');
-  const pendingOwed = ((closeTail.match(PENDING_RE) || closeTail.match(PENDING_RE_CYR) || [])[0] || '').trim();
+  const pendingOwed = ((closeTail.match(PENDING_RE) || [])[0] || '').trim();
   process.stderr.write(
     'This turn ends on a decision-shaped question in prose. Per alfred-interaction.md a\n' +
     'blocking ask goes through the AskUserQuestion tool - a prose-only question gets skipped\n' +
@@ -2269,8 +2157,6 @@ const AUTO_OUTWARD_RE = new RegExp([
   String.raw`\b(?:drop(?:s|ped|ping)?|truncat(?:e|es|ed|ing))\b[^.;?\n]{0,10}\b(?:it|them)\b[^\n]{0,80}\b(?:database|db|tables?|schemas?)\b`,
   String.raw`\b(?:databases?|db|tables?|schemas?)\b[^\n]{0,80}\bdrop(?:s|ped|ping)?\b`,
   String.raw`\bforce[- ]?push|--force\b|\brotat(?:e|es|ed|ing|ion)\b|\brevok(?:e|es|ed|ing)\b|\b(?:pay|purchas(?:e|es|ed|ing)|buy|charg(?:e|ed|ing))\b`,
-  // Ukrainian (alfred-interaction: answer in the language of the user's prompts).
-  '(?:запуш|пуш|змерж|мерж|задеплой|деплой|опублік|надісл|відправ|реліз|видали\\S*\\s+\\S*\\s*(?:гілк|ремоут|remote))',
 ].join('|'), 'i');
 function autoAnswers(questions) {
   if (!Array.isArray(questions) || !questions.length) return null;
@@ -2285,6 +2171,8 @@ function autoAnswers(questions) {
       ? q.options.find((o) => o && typeof o.label === 'string' && o !== marked[0] && !AUTO_FRESH_RE.test(o.label)) : marked[0];
     if (!pick) return null;
     if (AUTO_OUTWARD_RE.test(`${q.question} ${pick.label} ${pick.description || ''}`)) return null;
+    // an ask the English list cannot read waits for the user: a miss could push or post for them, a wait costs one click
+    if (unreadable(`${q.question} ${pick.label}`)) return null;
     answers[q.question] = pick.label;
   }
   return answers;
@@ -2481,15 +2369,12 @@ if (payload.tool_name === 'AskUserQuestion') {
       // merged, so such an ask is backed only by a remote-aware read (audit 2026-10-11 SD10, session 2ca8e8ee: 'wait
       // until the earlier ticket is merged' rested on a day-old read and one `git status --short`; it had merged - and
       // 'merged' was no word of the list above, so that ask drew no note at all).
-      if (REMOTE_STATE_RE.test(askText)) notes.push('The ask just answered named repository, remote or job state that lives past '
-        + 'the local clone (a merge, a pull request, a remote branch, a CI run), and no remote-aware read in this turn backed '
-        + 'it (`git fetch` then `git log origin/<branch>`, `git branch -r --merged`, `gh pr view` / `gh run`) - `git status` '
-        + 'reads only the clone. Before acting on the answer, read that state FRESH; if it moved, say so and re-ask - a '
-        + 'merge-order answer resting on a day-old read was discarded when the user found the branch already merged.');
-      else notes.push('The ask just answered named repository, remote or job state, and no `git status` / ' +
-        '`git diff` / `gh` call in this turn backed it. Before acting on the answer, read that state FRESH; ' +
-        'if it moved, say so and re-ask - a fifty-minute-old read had already been overtaken by another ' +
-        'agent while an ask was on screen, and the answer it produced was discarded whole.');
+      // Each note is its imperative alone (deep hooks review 2026-10-16, ~67k chars a window): the two stories - a
+      // day-old merge read, a fifty-minute-old status overtaken by another agent - are in docs/baseline-rules-evidence.md.
+      if (REMOTE_STATE_RE.test(askText)) notes.push('This ask named remote or job state that no remote-aware read in this turn backed. '
+        + 'Read it fresh (`git fetch` then `git log origin/<branch>`, `gh pr view`, `gh run`) before acting; if it moved, say so and re-ask.');
+      else notes.push('This ask named git state that no `git status` / `git diff` / `gh` call in this turn backed. '
+        + 'Read it fresh before acting; if it moved, say so and re-ask.');
     }
 
     // 2. CONTRADICTED REQUEST: the presence signal is two typed turns arriving before one reply.
@@ -2874,7 +2759,7 @@ function isTypedTurn(o) {
   return !o.isMeta && c.some((b) => b && b.type === 'text' && String(b.text || '').trim());
 }
 
-// How many typed turns the user sent before the reply now in progress. Two or more is the shape
+// How many typed messages the user sent before the reply now in progress. Two or more is the shape
 // that produced the contradicted-recommendation failure.
 function typedTurnsBeforeThisReply() {
   try {
@@ -2908,11 +2793,11 @@ function typedTurnsBeforeThisReply() {
       for (let o = newest; o && !seen.has(o.uuid); o = o.parentUuid ? byId.get(o.parentUuid) : null) { seen.add(o.uuid); chain.push(o); }
       chain.reverse();
     }
-    for (const o of chain) {
-      if (!o.message) continue;
-      if (o.type === 'user' && isTypedTurn(o)) { run += 1; continue; }
-      if (o.type === 'assistant' && run > 0) { last = run; run = 0; }
-    }
+    chain.forEach((o, i) => {
+      if (!o.message) return;
+      if (o.type === 'user' && typedMessage(o, chain[i + 1])) run += 1;
+      else if (o.type === 'assistant' && run > 0) { last = run; run = 0; }
+    });
     return run > 0 ? run : last;
   } catch {
     return 0;

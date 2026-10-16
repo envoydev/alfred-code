@@ -536,7 +536,7 @@
             ]
           },
           {
-            "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob",
+            "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit|Grep",
             "hooks": [
               {
                 "type": "command",
@@ -637,11 +637,6 @@
               },
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer-length.js\"",
-                "timeout": 10
-              },
-              {
-                "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
                 "timeout": 10
               },
@@ -663,6 +658,11 @@
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer-length.js\"",
                 "timeout": 10
               }
             ]
@@ -715,71 +715,6 @@
             ]
           }
         ],
-        "PostToolUseFailure": [
-          {
-            "matcher": "Bash|PowerShell",
-            "hooks": [
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js\"",
-                "timeout": 10,
-                "async": true
-              }
-            ]
-          }
-        ],
-        "PostToolUse": [
-          {
-            "matcher": "Bash|PowerShell",
-            "hooks": [
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js\"",
-                "timeout": 10,
-                "async": true
-              }
-            ]
-          },
-          {
-            "matcher": "AskUserQuestion",
-            "hooks": [
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer-length.js\"",
-                "timeout": 10
-              }
-            ]
-          },
-          {
-            "hooks": [
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/monitor-session.js\"",
-                "timeout": 10
-              }
-            ]
-          },
-          {
-            "matcher": "Write|Edit|MultiEdit",
-            "hooks": [
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/check-turn-build.js\"",
-                "timeout": 10
-              }
-            ]
-          },
-          {
-            "matcher": "^mcp__(plugin_(alfred-)?navigation_)?(alfred-)?navigation__(rename_symbol|safe_delete_symbol)$",
-            "hooks": [
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/check-turn-build.js\"",
-                "timeout": 10
-              }
-            ]
-          }
-        ],
         "UserPromptExpansion": [
           {
             "matcher": "(^|[^A-Za-z0-9_-])((alfred-)?(loop-[a-z][a-z0-9-]*|capture-[a-z][a-z0-9-]*|task-[a-z][a-z0-9-]*|issue-[a-z][a-z0-9-]*)|security-review|init|setup|update|configure|validate)$",
@@ -804,11 +739,6 @@
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer-length.js\"",
                 "timeout": 10
-              },
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/monitor-session.js\"",
-                "timeout": 10
               }
             ]
           }
@@ -819,6 +749,18 @@
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
+                "timeout": 10
+              }
+            ]
+          }
+        ],
+        "PostToolUse": [
+          {
+            "matcher": "AskUserQuestion",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer-length.js\"",
                 "timeout": 10
               }
             ]

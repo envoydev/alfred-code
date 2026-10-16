@@ -232,6 +232,41 @@ test('guard-stop-contract: the rotate ask is asked ONCE per exposure, and ALFRED
   assert.equal(stop('r4', [leak, assistantRow('a4', 'Wired the token as asked; tests green.')], { ALFRED_CODE_ROTATE_ASK: '0' }).status, 0, 'the switch turns the ask off');
 });
 
+// hooks review 2026-10-16: the scan reads only the lines a previous run of this session has not, from a state file
+// beside the hook's log - the whole-tail rescan was ~450 ms of a Stop on a long session. The same verdicts as a cold read.
+test('guard-stop-contract: the credential scan reads only what is new, and falls back to a cold read', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'projI-'));
+  const logDir = fs.mkdtempSync(path.join(TMP, 'logI-'));
+  const tp = path.join(TMP, 'grow-scan.jsonl');
+  const line = (r) => `${JSON.stringify(r)}\n`;
+  const leak = { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'g1', content: `TOKEN=${'ghp_' + 'G'.repeat(24)}` }] } };
+  const answered = { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'g2', content: 'Your questions have been answered: "Rotate the GitHub token now?"="Acknowledge and defer"' }] } };
+  const filler = [1, 2, 3, 4].flatMap((n) => [
+    { type: 'assistant', message: { id: `gf${n}`, content: [{ type: 'tool_use', id: `gtf${n}`, name: 'Bash', input: { command: 'ls' } }] } },
+    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: `gtf${n}`, content: 'ok' }] } },
+  ]);
+  const stop = () => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'grow', transcript_path: tp },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_HOOK_LOG_DIR: logDir } }).status;
+  const state = () => fs.readdirSync(logDir).filter((f) => f.startsWith('guard-stop-scan-grow-'));
+  fs.writeFileSync(tp, line(assistantRow('g0', 'Read the config; nothing changed.')));
+  assert.equal(stop(), 0, 'no shape yet');
+  assert.equal(state().length, 1, 'the scan left its state');
+  fs.appendFileSync(tp, line(leak) + line(assistantRow('g3', 'Wired the token as asked; tests green.')));
+  assert.equal(stop(), 2, 'a shape in the new lines asks');
+  fs.appendFileSync(tp, [answered, ...filler, assistantRow('g4', 'Deferred as you chose; the rest is done.')].map(line).join(''));
+  assert.equal(stop(), 0, 'the answer in the new lines covers the shape in the scanned ones');
+  fs.writeFileSync(path.join(logDir, state()[0]), '{torn');
+  assert.equal(stop(), 0, 'a torn state reads cold, to the same verdict');
+  const torn = JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'g5', content: `K=${'ghp_' + 'H'.repeat(24)}` }] } });
+  fs.appendFileSync(tp, torn.slice(0, 120));
+  assert.equal(stop(), 2, 'a row still being written is judged');
+  fs.appendFileSync(tp, `${torn.slice(120)}\n${line(assistantRow('g6', 'Copied the second token; done.'))}`);
+  assert.equal(stop(), 2, 'and judged again once complete - it was never cached half-read');
+  fs.rmSync(tp);
+  fs.writeFileSync(tp, line(assistantRow('g7', 'Fresh file; nothing read.')));
+  assert.equal(stop(), 0, 'a replaced file is read cold, never through the old state');
+});
+
 // The user's ruling 2026-10-14: a Jira issue read returned an image's media link carrying a ten-minute `?token=<JWT>`,
 // and the close asked to rotate a token that expires by itself. A link stating an hour of life or less asks nothing; the
 // same session with a long-lived token beside it still asks.
@@ -914,6 +949,13 @@ test('guard-catastrophic-rm: the gate reads the PATHSPEC, and honours a discard 
 
   assert.equal(rm('git restore b.txt').status, 0, 'a CLEAN path has nothing to lose, dirty tree or not');
   assert.equal(rm('git restore a.txt').status, 2, 'the dirty one it names is still blocked');
+  // hooks review 2026-10-16 (7376ac10, 9968046e): a variable the command assigned a literal names that literal; a loop,
+  // a command substitution and an unset name stay the whole tree
+  assert.equal(rm("F=b.txt; sed -i.bak 's/two/2/' $F; npm test; git checkout -- $F").status, 0, 'a literal $F names b.txt');
+  assert.equal(rm('F="b.txt" && git restore "${F}"').status, 0, 'quoted and braced');
+  assert.equal(rm('F=a.txt; git checkout -- $F').status, 2, 'a literal naming the dirty file still blocks');
+  for (const c of ['F=$(git ls-files -m); git checkout -- $F', 'for F in b.txt; do git checkout -- $F; done', 'F=b.txt; for F in a.txt; do git checkout -- "$F"; done', 'git checkout -- $UNSET'])
+    assert.equal(rm(c).status, 2, `unknowable, the whole tree: ${c}`);
   assert.equal(rm('git checkout -- .').status, 2, 'and the whole tree keeps the old arithmetic');
   assert.match(rm('git restore a.txt').stderr, /the path\(s\) this command names/, 'the denial says which scope it judged');
 
@@ -1990,8 +2032,8 @@ test('guard-cross-project-write: a linked worktree of the project\'s own reposit
 test('guard-cross-project-write: the retired fork-liveness probe reads no transcript head and writes no probe row', () => {
   const src = fs.readFileSync(path.join(HOOKS, 'guard-cross-project-write.js'), 'utf8');
   assert.doesNotMatch(src, /forkProbe|fork-liveness|FORK_LIVE_MS|FORK_HEAD_BYTES/, 'no fork probe code is left in the hook');
-  // the one probe it writes now is the interpreter-write count (audit 2026-10-10)
-  assert.deepStrictEqual([...src.matchAll(/reason: 'probe: ([\w-]+)'/g)].map((m) => m[1]), ['interpreter-write']);
+  // and since the deep hooks review 2026-10-16 no probe at all - the interpreter-write count went too
+  assert.deepStrictEqual([...src.matchAll(/reason: 'probe: ([\w-]+)'/g)].map((m) => m[1]), []);
 });
 
 test('guard-cross-project-write: a relocated CLAUDE_CONFIG_DIR and the harness scratch root stay writable (audit 2026-10-08)', (t) => {
@@ -2764,7 +2806,7 @@ test('guard-read-whole-file: a runtime script is judged by what it PRINTS, over 
   // test only knew a method chained straight onto the read call.
   const call = (command) => runIn('guard-read-whole-file.js', { tool_name: 'Bash', tool_input: { command } }, {}).status;
   const html = path.join(TMP, 'minors.html');
-  fs.writeFileSync(html, ['<html>', ...Array.from({ length: 300 }, (_, i) => `<p>row ${i}</p>`), '<script>var a=1;</script>', '</html>'].join('\n'));
+  fs.writeFileSync(html, ['<html>', ...Array.from({ length: 500 }, (_, i) => `<p>row ${i}</p>`), '<script>var a=1;</script>', '</html>'].join('\n'));
   const read = `const h=require("fs").readFileSync("${html}","utf8");`;
   const scripts = `const s=[...h.matchAll(/<script>([\\s\\S]*?)<\\/script>/g)].map(m=>m[1]);`;
   assert.equal(call(`node -e '${read}${scripts}for(const c of s){new Function(c)};console.log("scripts parse:",s.length)'`), 0, 'the measured count-only script');
@@ -2793,7 +2835,7 @@ test('guard-read-whole-file: every count-only print passes, and every alias or c
   // bracket, and content gathered into a collection first).
   const call = (command) => runIn('guard-read-whole-file.js', { tool_name: 'Bash', tool_input: { command } }, {}).status;
   const html = path.join(TMP, 'minors-c3.html');
-  fs.writeFileSync(html, ['<html>', ...Array.from({ length: 300 }, (_, i) => `<p>row ${i}</p>`), '<script>var a=1;</script>', '</html>'].join('\n'));
+  fs.writeFileSync(html, ['<html>', ...Array.from({ length: 500 }, (_, i) => `<p>row ${i}</p>`), '<script>var a=1;</script>', '</html>'].join('\n'));
   const R = `const h=require("fs").readFileSync("${html}","utf8");`;
   const S = 'const s=[...h.matchAll(/<script>([\\s\\S]*?)<\\/script>/g)].map(m=>m[1]);';
   const node = (body) => `node -e '${R}${S}${body}'`;
@@ -2850,7 +2892,7 @@ test('guard-read-whole-file: the corpus shapes - a call result, one element and 
   // print no content of the heavy file - and beside them the ones that do.
   const call = (command) => runIn('guard-read-whole-file.js', { tool_name: 'Bash', tool_input: { command } }, {}).status;
   const big = path.join(TMP, 'corpus-big.js');
-  fs.writeFileSync(big, Array.from({ length: 400 }, (_, i) => `const DONE_RE${i} = /done ${i}/i;`).join('\n'));
+  fs.writeFileSync(big, Array.from({ length: 600 }, (_, i) => `const DONE_RE${i} = /done ${i}/i;`).join('\n'));
   const note = path.join(TMP, 'corpus-note.txt');
   fs.writeFileSync(note, 'a close with done 3 in it\n');
   const R = `const src=require("fs").readFileSync("${big}","utf8");`;
@@ -2869,7 +2911,7 @@ test('guard-read-whole-file: the corpus shapes - a call result, one element and 
   for (const [what, command] of passes) assert.equal(call(command), 0, `no dump: ${what}`);
   const blocks = [
     ['every line of a destructured entries() loop, printed', `node -e '${R}for (const [i, l] of src.split("\\n").entries()) console.log(i, l)'`],
-    ['more lines than the ranged-read cap', `node -e '${R}console.log(src.split("\\n").slice(0, 400).join("\\n"))'`],
+    ['more lines than the ranged-read cap', `node -e '${R}console.log(src.split("\\n").slice(0, 500).join("\\n"))'`],
     ['a heavy read printed after a small one', `node -e 'const t=require("fs").readFileSync("${note}","utf8");const s=require("fs").readFileSync("${big}","utf8");console.log(t.length, s)'`],
     ['a serializer handed the content', `node -e '${R}console.log(JSON.stringify(src))'`],
   ];
@@ -2911,7 +2953,7 @@ test('guard-read-whole-file: a slice with literal bounds within the ranged-read 
   const dumps = [
     ['an open end', `node -e '${R}console.log(src.slice(5000))'`],
     ['an open end of lines', `node -e '${R}console.log(src.split("\\n").slice(40).join("\\n"))'`],
-    ['more lines than the cap', `node -e '${R}console.log(src.split("\\n").slice(0, 400).join("\\n"))'`],
+    ['more lines than the cap', `node -e '${R}console.log(src.split("\\n").slice(0, 500).join("\\n"))'`],
     ['more characters than the cap', `node -e '${R}console.log(src.substring(0, 100000))'`],
     ['a window between two computed bounds', `node -e '${R}const i=src.indexOf("x"), j=src.indexOf("y");console.log(src.slice(i, j))'`],
     ['a computed end', `node -e '${R}console.log(src.slice(0, src.length))'`],
@@ -3346,7 +3388,7 @@ test('guard-read-whole-file: the denial names the call that LOADS the serena too
   // BIG in a tree the navigation server ignores, where the denial rightly names grep instead of the load call.
   // audit 2026-10-11 SD16: and inside the project - a file outside it is in no index either, and takes the grep route
   const big = path.join(process.env.CLAUDE_PROJECT_DIR, 'navigable.ts');
-  fs.writeFileSync(big, Array.from({ length: 400 }, (_, i) => `export const v${i} = ${i};`).join('\n'));
+  fs.writeFileSync(big, Array.from({ length: 600 }, (_, i) => `export const v${i} = ${i};`).join('\n'));
   const r = runIn('guard-read-whole-file.js', { tool_name: 'Read', tool_input: { file_path: big } }, {});
   assert.equal(r.status, 2);
   assert.match(r.stderr, /ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview,mcp__plugin_alfred-navigation_alfred-navigation__find_symbol/);
@@ -3368,13 +3410,13 @@ test('guard-read-whole-file: a file is as long as its lines - the trailing newli
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lines-'));
   const at = path.join(dir, 'at.ts');
   const over = path.join(dir, 'over.ts');
-  fs.writeFileSync(at, Array.from({ length: 200 }, (_, i) => `const a${i} = ${i};`).join('\n') + '\n');
-  fs.writeFileSync(over, Array.from({ length: 201 }, (_, i) => `const a${i} = ${i};`).join('\n') + '\n');
+  fs.writeFileSync(at, Array.from({ length: 400 }, (_, i) => `const a${i} = ${i};`).join('\n') + '\n');
+  fs.writeFileSync(over, Array.from({ length: 401 }, (_, i) => `const a${i} = ${i};`).join('\n') + '\n');
   assert.equal(bash('guard-read-whole-file.js', `cat ${at}`), 0, 'exactly the threshold passes');
   assert.equal(run('guard-read-whole-file.js', { tool_name: 'Read', tool_input: { file_path: at } }), 0, 'on the Read route too');
   const r = runIn('guard-read-whole-file.js', { tool_name: 'Bash', tool_input: { command: `cat ${over}` } }, {});
   assert.equal(r.status, 2, 'one line over blocks');
-  assert.match(r.stderr, /\(201 lines\)/, 'and the denial counts it right');
+  assert.match(r.stderr, /\(401 lines\)/, 'and the denial counts it right');
 });
 
 test('guard-read-whole-file: the PowerShell reads and anchors are judged like their Bash twins', () => {
@@ -3394,7 +3436,7 @@ test('guard-read-whole-file: the PowerShell reads and anchors are judged like th
 test('guard-read-whole-file: every source-read denial carries the call that loads serena', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loadline-'));
   const big = path.join(dir, 'big.ts');
-  fs.writeFileSync(big, Array.from({ length: 400 }, (_, i) => `const a${i} = ${i};`).join('\n') + '\n');
+  fs.writeFileSync(big, Array.from({ length: 600 }, (_, i) => `const a${i} = ${i};`).join('\n') + '\n');
   const deny = (command) => runIn('guard-read-whole-file.js', { tool_name: 'Bash', tool_input: { command } }, { cwd: dir });
   for (const c of [`for f in ${dir}/*.ts; do cat $f; done`, `node -e "console.log(require('fs').readFileSync('${big}','utf8'))"`, `head -n 99999 ${big}`]) {
     const r = deny(c);
@@ -4425,9 +4467,8 @@ test('guard-desktop-exec: the csv opt-out switches it off, and garbage input nev
   assert.equal(desktopRun(root, WIN_APP[0], null).status, 0, 'no tool_input');
 });
 
-// audit 2026-10-10 (0498718d, 349e4825 - T5 cross-track): an interpreter script writing a source file of this project is
-// the shell route around Edit / Write - one log-only probe row per command, never a verdict.
-test('guard-cross-project-write: an interpreter write to an in-project source file writes one probe row and passes', () => {
+// The interpreter-write probe (audit 2026-10-10 T5) was dropped in the deep hooks review 2026-10-16: 622 rows nobody read.
+test('deep review: guard-cross-project-write passes an in-project interpreter write and writes no probe row', () => {
   const ledger = fs.mkdtempSync(path.join(os.tmpdir(), 'xp-probe-'));
   const runP = (command, agent) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
     input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, session_id: 'xp-probe', ...(agent ? { agent_id: agent } : {}) }),
@@ -4439,14 +4480,13 @@ test('guard-cross-project-write: an interpreter write to an in-project source fi
     assert.strictEqual(runP("python3 - <<'EOF'\nfrom pathlib import Path\nfor f in files: Path(f).write_text('x')\nEOF", 'seat-1').status, 0);
     assert.strictEqual(runP("python3 - <<'EOF'\nopen('notes.txt','w').write('x')\nEOF").status, 0, 'not a source file');
     assert.strictEqual(runP('echo x > src/b.cs').status, 0, 'a redirect is no interpreter write');
-    assert.deepStrictEqual(rows().map((r) => [r.mode, r.detail.branch, r.detail.files, r.detail.unknown, r.detail.agent]),
-      [['probe', 'interpreter-write', 1, false, 'main'], ['probe', 'interpreter-write', 1, true, 'seat']]);
+    assert.deepStrictEqual(rows(), [], 'no probe row');
   } finally { fs.rmSync(ledger, { recursive: true, force: true }); }
 });
 
-// audit 2026-10-10 (f24eb967 - T5 cross-track): the main session's first dispatch with no execution verdict before it is
-// counted, never judged.
-test('guard-unapproved-dispatch: a first dispatch with no Execution: verdict writes one probe row and passes', () => {
+// The no-execution-verdict probe (audit 2026-10-10 T5) was dropped in the deep hooks review 2026-10-16: 85 rows nobody read,
+// and an 8MB transcript read on every main-session Agent call.
+test('deep review: guard-unapproved-dispatch passes a first dispatch with no Execution: verdict and writes no probe row', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'exec-probe-'));
   fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
   fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), 'version: 2.0.0\n');
@@ -4464,6 +4504,6 @@ test('guard-unapproved-dispatch: a first dispatch with no Execution: verdict wri
     go(tp('with-skill', [{ type: 'assistant', message: { content: [{ type: 'tool_use', id: 's1', name: 'Skill', input: { skill: 'alfred-code:habits-execution-strategy' } }] } }]));
     go(tp('second', [dispatch('toolu_before'), dispatch('toolu_now')]));
     go(tp('seat', []), { agent_id: 'seat-1' });
-    assert.deepStrictEqual(rows().map((r) => [r.mode, r.detail.branch]), [['probe', 'no-execution-verdict']], 'only the bare first dispatch');
+    assert.deepStrictEqual(rows(), [], 'no probe row');
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

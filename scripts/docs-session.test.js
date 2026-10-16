@@ -176,6 +176,33 @@ test('subagent start gets the orientation without branch lines or promotion', ()
   } finally { r.rm(); }
 });
 
+test('deep review: a built-in seat that writes no project code gets no orientation and no snapshot', () => {
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS, 'ORIENTATION.md': ORIENT } });
+  try {
+    for (const seat of ['Explore', 'Plan', 'claude-code-guide', 'statusline-setup']) {
+      const s = sid();
+      const out = r.hook({ hook_event_name: 'SubagentStart', session_id: s, agent_id: `b-${seat}`, agent_type: seat });
+      assert.strictEqual(out.status, 0); assert.strictEqual(out.stdout, '', `${seat} is silent`);
+      const stop = r.hook({ hook_event_name: 'SubagentStop', session_id: s, agent_id: `b-${seat}`, agent_type: seat, last_assistant_message: 'Found it.' });
+      assert.strictEqual(stop.status, 0); assert.strictEqual(stop.stdout, '', `${seat} is never asked`);
+    }
+    for (const seat of ['general-purpose', 'dotnet-implementer']) assert.match(ctx(r.hook({ hook_event_name: 'SubagentStart', session_id: sid(), agent_type: seat })), /Orders own refunds/, `${seat} is oriented`);
+  } finally { r.rm(); }
+});
+
+test('deep review: a footer copy inside ORIENTATION.md is pushed once, with the live domain list, and lint names it', () => {
+  const stale = `${ORIENT}\nThe docs live under \`.claude/docs/\` (architecture, related-projects). Read them by section, not whole files:\n\`node docs.js where <path>\` names the sections covering a file; \`node docs.js show <file>#<id>\` prints one.\nFor a specific symbol the CODE wins; the docs give the decisions, the conventions and the reasons.\n`;
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS, 'ORIENTATION.md': stale } });
+  try {
+    const text = ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() }));
+    assert.match(text, /Orders own refunds/);
+    assert.strictEqual(text.match(/The docs live under/g).length, 1, 'one footer');
+    assert.strictEqual(text.match(/the CODE wins/g).length, 1);
+    assert.doesNotMatch(text, /related-projects/, 'the stale domain list is gone');
+    assert.match(r.cli(['lint']).stdout, /repeats 3 line\(s\) of the session hook's own footer/);
+  } finally { r.rm(); }
+});
+
 test('no docs folder, garbage stdin, unknown event: silent and exit 0', () => {
   const r = repo({});
   try {
@@ -370,7 +397,7 @@ test('shell reads are never held; shell writes are', () => {
   } finally { r.rm(); }
 });
 
-// Both installer twins wire this hook on `Read|Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|Grep|Glob`.
+// Both installer twins wire this hook on `Read|Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|Grep` (Glob left 2026-10-16).
 // Judging only `Bash` left the gate open on every Windows session and earned a doc read no consult credit.
 test('PowerShell is the same shell route as Bash: its writes are held and its doc reads count', () => {
   const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'x\n' }, docs: { 'references/patterns.md': PATTERNS } });
@@ -411,11 +438,12 @@ test('the navigation server\'s two kept edit tools are held like an Edit, on bot
   } finally { r.rm(); }
 });
 
-test('the manifest wires docs-session and check-turn-build on the two kept navigation edit tools, both spellings', () => {
+test('the manifest wires docs-session on the two kept navigation edit tools, both spellings; check-turn-build reads git at Stop instead', () => {
   const rows = require('../meta/stack-manifest.json').hooks;
   const re = (file, event) => rows.filter((row) => row.file === file && (event ? row.matcher.startsWith(`@${event}:`) : !row.matcher.startsWith('@')))
     .map((row) => row.matcher.replace(/^@\w+:/, ''));
-  for (const [file, event] of [['docs-session.js', null], ['check-turn-build.js', 'PostToolUse']]) {
+  assert.deepStrictEqual(rows.filter((row) => row.file === 'check-turn-build.js').map((row) => row.matcher), ['@Stop'], 'no per-edit wiring left');
+  for (const [file, event] of [['docs-session.js', null]]) {
     const matchers = re(file, event);
     for (const server of ['plugin_alfred-navigation_alfred-navigation', 'alfred-navigation', 'plugin_navigation_navigation', 'navigation'])
       for (const tool of ['rename_symbol', 'safe_delete_symbol', 'replace_symbol_body']) {

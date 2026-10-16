@@ -51,11 +51,10 @@ const timeoutFor = (file, event) => (HOOK_TIMEOUTS[file] || {})[event] || HOOK_T
 // A hook whose only work is a side effect runs with `async: true`: the call never waits on its node spawn, and an async
 // hook can neither block nor decide ('Async hooks can't block or control Claude's behavior', code.claude.com/docs/en/hooks,
 // 'Run hooks in the background'). Keyed by file and EVENT, `*` for every event: the tool-usage log (23.9ms on every tool
-// call, audit 2026-10-08 row 28), and the stop contract's PostToolUse / PostToolUseFailure halves - a red-run probe row
-// and its streak file, nothing said to the model (32.1ms on every shell result, ~20,000 a week; audit 2026-10-14 HK12) -
-// while its Stop, SubagentStop and AskUserQuestion halves must block, so they stay synchronous. The plugin entry's
-// generator reads the same table.
-const ASYNC_HOOKS = { 'instrument-tool-usage.js': '*', 'guard-stop-contract.js': ['PostToolUse', 'PostToolUseFailure'] };
+// call, audit 2026-10-08 row 28). The stop contract's PostToolUse / PostToolUseFailure probe rode here until the deep
+// hooks review 2026-10-16 dropped it (27,380 runs for 250 rows nobody read). The plugin entry's generator reads the same
+// table.
+const ASYNC_HOOKS = { 'instrument-tool-usage.js': '*' };
 const asyncFor = (file, event) => { const on = ASYNC_HOOKS[file]; return on === '*' || (Array.isArray(on) && on.includes(event)); };
 // A hook that FAILS - cannot start, times out, exits other than 0 / 2, prints invalid output - lets the call through by
 // default; `onFailure: "block"` blocks it instead, as an exit 2 would (code.claude.com/docs/en/hooks, 'Block the action

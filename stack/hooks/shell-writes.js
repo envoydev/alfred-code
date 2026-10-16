@@ -940,6 +940,38 @@ function psTargets(words) {
 const FS_CHANGE = new Set(['rm', 'rmdir', 'mkdir', 'touch', 'truncate', 'chmod', 'chown', 'rimraf']);
 const COPY_VERBS = new Set(['cp', 'mv', 'ln', 'install', 'rsync']);
 const IN_PLACE = /^-[A-Za-z]*i(?![A-Za-z0-9_])/;
+// sed's own argument grammar (GNU and BSD): which words are its in-place TARGETS. The script is the first operand unless
+// -e / -f (or --expression / --file) name it, so every other operand is a file, whatever its text looks like - reading
+// the script by its SHAPE missed `/a/d;/b/d` and `/x/s/a/b/` and blocked 27 of 47 cross-project writes as an
+// out-of-project path (hooks review 2026-10-16). `-i` / `-I` end their flag word (the rest is the backup suffix:
+// `-i.bak`, `-ie`); a bare one takes the next word as BSD's suffix only when it is one (`''`, `.bak`), so GNU's
+// `sed -i 's/a/b/' f` keeps its script. `--` ends the options.
+const SED_SUFFIX = /^(?:\.[\w.~-]*)?$/;
+function sedTargets(argv) {
+  let inPlace = false;
+  let scripted = false;
+  const operands = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--') { operands.push(...argv.slice(i + 1)); break; }
+    if (a.startsWith('--')) {
+      const m = /^--([a-z-]+)(=?)/.exec(a) || ['', '', ''];
+      if (m[1] === 'in-place') inPlace = true;
+      else if (m[1] === 'expression' || m[1] === 'file') { scripted = true; if (!m[2]) i++; }
+      else if (m[1] === 'line-length' && !m[2]) i++;
+      continue;
+    }
+    if (a.length < 2 || a[0] !== '-') { operands.push(a); continue; }
+    for (let k = 1; k < a.length; k++) {
+      const flag = a[k];
+      const last = k === a.length - 1;
+      if (flag === 'e' || flag === 'f') { scripted = true; if (last) i++; break; }
+      if (flag === 'i' || flag === 'I') { inPlace = true; if (last && i + 1 < argv.length && SED_SUFFIX.test(argv[i + 1])) i++; break; }
+      if (flag === 'l') { if (last && /^\d+$/.test(argv[i + 1] || '')) i++; break; }
+    }
+  }
+  return inPlace ? (scripted ? operands : operands.slice(1)) : [];
+}
 const WRITE_REDIRS = new Set(['>', '>>', '>|', '&>', '&>>', '<>']);
 // `>&word` is `&>word` unless the word is a descriptor (`>&2`, `>&-`).
 const isFileRedir = (r) => r.target && (WRITE_REDIRS.has(r.op) || (r.op === '>&' && !/^(?:\d+|-)$/.test(r.target.raw)));
@@ -954,8 +986,10 @@ function writesOf(cmd, c, out) {
   const plain = (a) => a && !a.startsWith('-');
   if (name === 'tee') {
     for (const a of c.argv) if (plain(a)) push(a, 'a `tee` write');
-  } else if ((name === 'sed' || name === 'perl') && c.argv.some((a) => IN_PLACE.test(a) || a === '--in-place' || a.startsWith('--in-place='))) {
-    // in-place edits: every path argument, not just the last - `sed -i 's/a/b/' ../other/f x`
+  } else if (name === 'sed') {
+    // in-place edits: every file operand, not just the last - `sed -i 's/a/b/' ../other/f x`
+    for (const a of sedTargets(c.argv)) if (a) push(a, 'an in-place edit');
+  } else if (name === 'perl' && c.argv.some((a) => IN_PLACE.test(a))) {
     for (const a of c.argv) if (plain(a) && !SED_SCRIPT.test(a) && !SED_SCRIPT_ARG.test(a)) push(a, 'an in-place edit');
   } else if (FS_CHANGE.has(name)) {
     // every argument counts: `rm -f a ../other/b`, `chmod +x ../other/x` - but chmod's MODE and chown's OWNER are the
@@ -2104,7 +2138,7 @@ function gitText(raw, cwd) {
     try { dir = fs.realpathSync.native(dir); } catch { /* git reports the missing directory itself */ }
     return dir;
   }
-  return { command, parsed, calls, regions, unreadAt, callDir };
+  return { command, parsed, calls, regions, unreadAt, callDir, literalAt };
 }
 
 // Read a command's writes. `opts` (all optional): `cwd` resolves a script file a shell runs (without one only an

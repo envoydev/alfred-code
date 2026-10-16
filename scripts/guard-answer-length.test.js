@@ -65,16 +65,21 @@ test('Stop allows a wall of text when the user asked for depth', () => {
     }
 });
 
-test('Stop allows a wall of text when the depth request is Ukrainian', () => {
+// Deep hooks review 2026-10-16: the depth list is English only; a prompt it cannot read (30% or more of its letters outside
+// ASCII) lifts the cap with a length-unread row, so a depth ask in any language keeps its answer.
+test('Stop allows a wall of text after a prompt the depth list cannot read', () => {
     for (const ask of ['розкажи детально', 'опиши покроково', 'розпиши будь ласка', 'напиши план']) {
         const p = transcript('depth-cyr', ask, [{ type: 'text', text: WALL }]);
         assert.strictEqual(run({ hook_event_name: 'Stop', transcript_path: p }).status, 0, `'${ask}' must lift the cap`);
     }
 });
 
-test('Stop still blocks a Ukrainian question that asked for no depth', () => {
+test('a long answer to an unreadable prompt is logged as length-unread, never held; a Latin-script one is judged as English', () => {
     const p = transcript('short-cyr', 'що робить цей хук?', [{ type: 'text', text: WALL }]);
-    assert.strictEqual(run({ hook_event_name: 'Stop', transcript_path: p }).status, 2);
+    const sid = `unread-${process.pid}`;
+    assert.strictEqual(run({ hook_event_name: 'Stop', transcript_path: p, session_id: sid }).status, 0, 'not held');
+    assert.strictEqual(run({ hook_event_name: 'Stop', transcript_path: transcript('short-fr', 'que fait ce hook ?', [{ type: 'text', text: WALL }]) }).status, 2, 'French reads as English: held');
+    assert.strictEqual(run({ hook_event_name: 'Stop', transcript_path: transcript('mixed', 'fix the label Зберегти in the dialog', [{ type: 'text', text: WALL }]) }).status, 2, 'English quoting a word under 30%: held');
 });
 
 test("Stop still blocks on a bare 'explain' - an explanation is capped like any other answer", () => {
@@ -306,7 +311,7 @@ test('the correction test counts a short turn carrying a correction marker, afte
     for (const prompt of ['I meant the CI pipeline', 'no, shorter', 'shorter', 'But there is no resume block', 'Why did you stop?',
         'I told you to use the org token', 'Do not commit when you finish the whole work', 'Elementor updated, but the error is still there',
         'It’s wrong approach of CI', 'you forgot the tests', 'I do not want the host in that url', 'that name does not fit',
-        'Okay but do not forget to verify changes', 'you said 30 minutes, but they have passed', 'ні, не так', 'ні, я просив інше']) {
+        'Okay but do not forget to verify changes', 'you said 30 minutes, but they have passed']) {
         const { rows } = prompted(prompt);
         assert.strictEqual(rows.length, 1, `a correction: ${prompt}`);
         assert.strictEqual(rows[0].hook, 'guard-answer-length.js');

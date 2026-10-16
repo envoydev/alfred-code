@@ -327,22 +327,21 @@ function idleGapOffer() {
 // Auto-mode ends on the user's word or the run's own close, never on a message typed mid-run (the user's ruling,
 // 2026-10-15: the 2026-10-14 rule ended it on ANY typed prompt, so a remark added mid-run sent every later ask back to
 // the user and offered a fresh session the run would have compacted past). A typed prompt is input to the run, and is
-// told so. Three prompts end it: one asking to stop auto-mode ('stop auto-mode', 'auto-mode off', 'вимкни auto-mode' -
-// audit 2026-10-14 HK13), a bare stop ('stop', 'stop, I will take it from here' - never 'stop using X', which is input),
+// told so. Three prompts end it: one asking to stop auto-mode ('stop auto-mode', 'auto-mode off' - audit 2026-10-14
+// HK13; English only since the deep hooks review of 2026-10-16 - a stop asked in another language is the model's to act on,
+// as the injected note says), a bare stop ('stop', 'stop, I will take it from here' - never 'stop using X', which is input),
 // and a typed /task-*, /capture-*, /loop-* or /issue-* command that starts no new auto-mode run (no `auto-mode` as its
 // first word) - its banner says OFF, so the old stamp must not answer its asks. A harness prompt (a task notice, a
 // command's output, a seat's hand-back - hook-prelude.js harnessPrompt, HK14) is nobody typing; any other slash command
 // (`/compact`) leaves the run alone. Only this session's own AUTO stamp is read. Returns true when it wrote the prompt's context.
-const AUTO_NAME = String.raw`(?:auto[- ]?mode|авто[- ]?режим[а-яіїєґ]*)`;
+const AUTO_NAME = String.raw`(?:auto[- ]?mode)`;
 const AUTO_OFF_RE = new RegExp([
   String.raw`(?:^|[^\w-])(?:stop|end|disable|exit|quit|cancel|halt|pause|kill|leave)\s+(?:the\s+|this\s+)?${AUTO_NAME}`,
   String.raw`${AUTO_NAME}\s*[:,-]?\s*(?:off|stop|end|disabled?)(?![\w-])`,
   String.raw`(?:^|[^\w-])(?:turn|switch|shut)\s+(?:the\s+)?${AUTO_NAME}\s+off\b`,
   String.raw`(?:^|[^\w-])(?:turn|switch|shut)\s+off\s+(?:the\s+)?${AUTO_NAME}`,
-  String.raw`(?:^|[^\wа-яіїєґ'-])(?:вимкн|зупин|припин|скасу)[а-яіїєґ']*\s+${AUTO_NAME}`,
-  String.raw`${AUTO_NAME}\s*[:,-]?\s*(?:вимкн|стоп)`,
 ].join('|'), 'i');
-const BARE_STOP_RE = /^\s*(?:please\s+)?(?:stop|halt|pause|cancel|abort|enough|стоп|зупинись|зупини|досить|пауза)(?:\s+(?:it|now|the run|here|everything|please))?\s*(?:[.!,;:]|-\s|$)/i;
+const BARE_STOP_RE = /^\s*(?:please\s+)?(?:stop|halt|pause|cancel|abort|enough)(?:\s+(?:it|now|the run|here|everything|please))?\s*(?:[.!,;:]|-\s|$)/i;
 const FLOW_CMD_RE = /^\s*\/(?:alfred-code:)?(?:alfred-)?(?:task|capture|loop|issue)-[a-z][a-z0-9-]*(?=\s|$)/i;
 const AUTO_RUN_CMD_RE = /^\s*\/(?:alfred-code:)?(?:alfred-)?(?:task|loop|issue)-[a-z][a-z0-9-]*\s+auto-mode(?=\s|$)/i;
 function autoModeEnd() {
@@ -426,8 +425,9 @@ function flowStamps() {
   try {
     const dir = nodePath.dirname(COMPACT_STATE());
     return fs.readdirSync(dir)
-      // the monitor's state (its turn log and context marker) and the turn check's edit list are working state, not stamps
-      .filter((f) => f !== 'COMPACT-STATE' && f !== 'compact-points.json' && !/^monitor-.*\.(?:json|jsonl|context)$/.test(f) && !/^turn-edits-/.test(f))
+      // the retired monitor's state (its turn log and context marker) and the turn check's marker (an edit list before
+      // 2026-10-16) are working state, not stamps
+      .filter((f) => f !== 'COMPACT-STATE' && f !== 'compact-points.json' && !/^monitor-.*\.(?:json|jsonl|context)$/.test(f) && !/^turn-(?:edits|check)-/.test(f))
       .map((f) => ({ f, age: Math.round((Date.now() - fs.statSync(nodePath.join(dir, f)).mtimeMs) / 60000) }))
       .sort((a, b) => a.f.localeCompare(b.f));
   } catch { return []; }

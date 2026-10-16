@@ -142,34 +142,9 @@ test('corpus-replay: a transcript-reading guard is actually given its transcript
   assert.doesNotMatch(row, /DEAD/, 'an orchestration run started at 190k must trip the gate');
 });
 
-test('corpus-replay: a shell call\'s RESULT is replayed on the PostToolUse routes, red ones on the failure route', () => {
-  // The root-cause probe is judged on the result, not the call: without the result the harness would
-  // hand the hook nothing to read, and the route would read silent for the harness's reason. The route
-  // is log-only, so it fires when its probe row lands in the job's own session ledger.
-  const use = (id, command) => ({ type: 'assistant', cwd: '/tmp/p', message: { content: [{ type: 'tool_use', id, name: 'Bash', input: { command } }] } });
-  const res = (id, content, isError) => ({ type: 'user', cwd: '/tmp/p', message: { content: [{ type: 'tool_result', tool_use_id: id, content, ...(isError ? { is_error: true } : {}) }] } });
-  const dir = corpus([use('a', 'npm test'), res('a', 'Exit code 1\nnot ok 1 - cart', true), use('b', 'ls'), res('b', 'README.md'), use('c', 'npm test | tail -3'), res('c', 'ℹ pass 3\nℹ fail 0')]);
-  const { out } = run(dir, '--hook', 'guard-stop-contract.js::PostToolUse');
-  assert.match(rowFor(out, 'guard-stop-contract.js::PostToolUseFailure'), /\| 1 \| 1 \|/, 'the red npm test writes its probe row');
-  assert.match(rowFor(out, 'guard-stop-contract.js::PostToolUse'), /\| 2 \| 0 \|/, 'a green run and a plain ls log nothing');
-});
-
-test('corpus-replay: the result rides where the hook reads it, and only a shell call gets a PostToolUse payload', () => {
-  // The route counts above cannot tell a dropped field from a silent hook; the extracted payload can.
-  const { extract } = require('./corpus-replay.js');
-  const use = (id, name, input) => ({ type: 'assistant', cwd: '/tmp/p', message: { content: [{ type: 'tool_use', id, name, input }] } });
-  const res = (id, content, isError) => ({ type: 'user', cwd: '/tmp/p', message: { content: [{ type: 'tool_result', tool_use_id: id, content, ...(isError ? { is_error: true } : {}) }] } });
-  const dir = corpus([use('a', 'Bash', { command: 'npm test' }), res('a', 'Exit code 1\nnot ok 1 - cart', true),
-    use('b', 'PowerShell', { command: 'npm test | Select-Object -Last 3' }), res('b', 'ℹ pass 2\nℹ fail 1'),
-    use('c', 'Read', { file_path: '/tmp/p/a.js' }), res('c', 'Exit code 1', true), use('d', 'Grep', { pattern: 'x' }), res('d', 'ℹ fail 1')]);
-  const post = extract([path.join(dir, 'session.jsonl')], { stops: 10 }).jobs.filter((j) => /::PostToolUse/.test(j.route));
-  assert.deepStrictEqual(post.map((j) => j.payload.tool_name).sort(), ['Bash', 'PowerShell'], 'a Read or Grep result is no shell run');
-  const red = post.find((j) => j.payload.hook_event_name === 'PostToolUseFailure');
-  assert.strictEqual(red.payload.error, 'Exit code 1\nnot ok 1 - cart');
-  assert.strictEqual(red.payload.tool_response, undefined);
-  const green = post.find((j) => j.payload.hook_event_name === 'PostToolUse');
-  assert.deepStrictEqual(green.payload.tool_response, { stdout: 'ℹ pass 2\nℹ fail 1', stderr: '', interrupted: false });
-  assert.strictEqual(green.payload.error, undefined);
+test('corpus-replay: no route replays a shell result since the stop contract\'s probe was dropped (deep review 2026-10-16)', () => {
+  const { ROUTES } = require('./corpus-replay.js');
+  assert.deepStrictEqual(ROUTES.filter((r) => /^PostToolUse/.test(r.event) && !r.noShell).map((r) => r.hook), []);
 });
 
 test('corpus-replay: a mid-turn answer is not a stop point', () => {

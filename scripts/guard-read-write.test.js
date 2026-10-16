@@ -35,7 +35,7 @@ const sid = () => `rw-${Math.random().toString(36).slice(2)}`;
 // `.claude/rules` too, and this checkout's holds only the repo's own rules since 2.1.6 (no convention rule),
 // so a run left at the checkout's cwd announced nothing - red here and in CI.
 const announce = (command, session_id, hook = READ, opts = { cwd: ROOT }) => ctxOf(run(hook, { tool_name: 'Bash', tool_input: { command }, session_id }, opts));
-const LONG_JS = 'const a = 1;\n'.repeat(400); // over the 200-line threshold
+const LONG_JS = 'const a = 1;\n'.repeat(500); // over the 400-line threshold
 
 test('guard-read-whole-file: the convention rule is announced for the WRITE TARGET, never for an executed script or a 2>/dev/null', () => {
   // 5 findings in 5 bundles, three defects in one announcer: `2>/dev/null` tested TRUE as 'a
@@ -231,6 +231,14 @@ test('audit 2026-10-08: a screenshot Read and a PDF Read naming its pages pass; 
   fs.writeFileSync(path.join(dir, 'doc.pdf'), Buffer.alloc(100 * 1024, 1));
   assert.equal(read(path.join(dir, 'doc.pdf'), { pages: '1-2' }), 0, 'a PDF read by its pages is a range');
   assert.equal(read(path.join(dir, 'doc.pdf')), 2, 'a whole one is still its whole size');
+  // hooks review 2026-10-16: the Read tool pages a PDF itself - one of 10 pages or fewer reads whole, a longer one is
+  // sent to `pages`, never to the binary remedy
+  const pdf = (n) => Buffer.concat([Buffer.from('%PDF-1.4\n'), ...Array.from({ length: n }, (_, i) => Buffer.from(`${i + 3} 0 obj << /Type /Page /Parent 2 0 R >> endobj\n`)),
+    Buffer.from('2 0 obj << /Type /Pages /Count 1 >> endobj\n'), Buffer.alloc(100 * 1024, 32)]);
+  fs.writeFileSync(path.join(dir, 'short.pdf'), pdf(3));
+  assert.equal(read(path.join(dir, 'short.pdf')), 0, 'a 3-page PDF reads whole');
+  fs.writeFileSync(path.join(dir, 'long.pdf'), pdf(12));
+  assert.equal(read(path.join(dir, 'long.pdf')), 2, 'a 12-page PDF is sent to its pages');
   fs.writeFileSync(path.join(dir, 'BIG.TS'), 'const a = 1;\n'.repeat(500));
   assert.equal(read(path.join(dir, 'BIG.TS')), 2, 'an upper-case extension is the same source file');
 });
@@ -417,84 +425,84 @@ const readAt = (file, offset, limit, session_id, agent_id) => run(READ, { tool_n
 const shellAt = (dir, command, session_id, agent_id) => run(READ, { tool_name: 'Bash', tool_input: { command }, session_id, cwd: dir, ...(agent_id ? { agent_id } : {}) }, { cwd: dir });
 
 test('audit 2026-10-10 C11: a seat\'s ranges are its own - the parent\'s rows never block its first read', () => {
-  const dir = capDir(); const f = path.join(dir, 'InviteHandlers.ts'); fs.writeFileSync(f, linesOf(369));
+  const dir = capDir(); const f = path.join(dir, 'InviteHandlers.ts'); fs.writeFileSync(f, linesOf(738));
   const s = sid();
-  assert.equal(readAt(f, 1, 130, s).status, 0, 'the main session reads 35%');
-  assert.equal(readAt(f, 150, 190, s, 'aced94b8').status, 0, 'the seat\'s first read, 51% alone, passes (3ce6b036 was blocked at 87%)');
-  assert.equal(readAt(f, 1, 60, s, 'aced94b8').status, 2, 'the seat\'s OWN second range past 60% still blocks');
-  assert.equal(readAt(f, 200, 100, s).status, 2, 'and the main session\'s own past 60% too');
+  assert.equal(readAt(f, 1, 260, s).status, 0, 'the main session reads 35%');
+  assert.equal(readAt(f, 299, 380, s, 'aced94b8').status, 0, 'the seat\'s first read, 51% alone, passes (3ce6b036 was blocked at 87%)');
+  assert.equal(readAt(f, 1, 120, s, 'aced94b8').status, 2, 'the seat\'s OWN second range past 60% still blocks');
+  assert.equal(readAt(f, 399, 200, s).status, 2, 'and the main session\'s own past 60% too');
 });
 
 // audit 2026-10-14 HK16 (the user's ruling): code-quality-analyzer made 143 of 277 range-cap blocks over 85 runs in a week,
 // the verifiers 9 - the cap does not bind that seat; the whole-file size gate still does, and every other seat stays capped.
 test('audit 2026-10-14 HK16: code-quality-analyzer reads past the range cap; other seats and the size gate still bind', () => {
-  const dir = capDir(); const f = path.join(dir, 'OrderService.ts'); fs.writeFileSync(f, linesOf(369));
+  const dir = capDir(); const f = path.join(dir, 'OrderService.ts'); fs.writeFileSync(f, linesOf(738));
   const s = sid();
   const seatRead = (offset, limit, agent_id, agent_type) => run(READ, { tool_name: 'Read', tool_input: { file_path: f, ...(offset ? { offset, limit } : {}) }, session_id: s, agent_id, agent_type }, { cwd: dir });
-  assert.equal(seatRead(1, 200, 'cqa1', 'alfred-code:code-quality-analyzer').status, 0);
-  assert.equal(seatRead(200, 170, 'cqa1', 'alfred-code:code-quality-analyzer').status, 0, 'the house seat reads the rest past 60%');
-  assert.equal(seatRead(1, 200, 'cqa2', 'code-quality-analyzer').status, 0);
-  assert.equal(seatRead(200, 170, 'cqa2', 'code-quality-analyzer').status, 0, 'and so does its bare spelling');
-  assert.equal(seatRead(1, 200, 'ver1', 'alfred-code:aspnet-verifier').status, 0);
-  assert.equal(seatRead(200, 170, 'ver1', 'alfred-code:aspnet-verifier').status, 2, 'a verifier stays capped');
-  assert.equal(seatRead(1, 200, 'oth1', 'other:code-quality-analyzer').status, 0);
-  assert.equal(seatRead(200, 170, 'oth1', 'other:code-quality-analyzer').status, 2, 'another plugin\'s seat of that name stays capped');
-  assert.equal(readAt(f, 1, 200, s).status, 0);
-  assert.equal(run(READ, { tool_name: 'Read', tool_input: { file_path: f, offset: 200, limit: 170 }, session_id: s, agent_type: 'code-quality-analyzer' }, { cwd: dir }).status, 2, 'a type with no agent id is no seat');
+  assert.equal(seatRead(1, 400, 'cqa1', 'alfred-code:code-quality-analyzer').status, 0);
+  assert.equal(seatRead(399, 340, 'cqa1', 'alfred-code:code-quality-analyzer').status, 0, 'the house seat reads the rest past 60%');
+  assert.equal(seatRead(1, 400, 'cqa2', 'code-quality-analyzer').status, 0);
+  assert.equal(seatRead(399, 340, 'cqa2', 'code-quality-analyzer').status, 0, 'and so does its bare spelling');
+  assert.equal(seatRead(1, 400, 'ver1', 'alfred-code:aspnet-verifier').status, 0);
+  assert.equal(seatRead(399, 340, 'ver1', 'alfred-code:aspnet-verifier').status, 2, 'a verifier stays capped');
+  assert.equal(seatRead(1, 400, 'oth1', 'other:code-quality-analyzer').status, 0);
+  assert.equal(seatRead(399, 340, 'oth1', 'other:code-quality-analyzer').status, 2, 'another plugin\'s seat of that name stays capped');
+  assert.equal(readAt(f, 1, 400, s).status, 0);
+  assert.equal(run(READ, { tool_name: 'Read', tool_input: { file_path: f, offset: 399, limit: 340 }, session_id: s, agent_type: 'code-quality-analyzer' }, { cwd: dir }).status, 2, 'a type with no agent id is no seat');
   assert.equal(seatRead(undefined, undefined, 'cqa3', 'alfred-code:code-quality-analyzer').status, 2, 'its whole-file Read of an oversized file still blocks');
 });
 
 test('audit 2026-10-10 C11: rows read before an edit do not count against the edited file', () => {
-  const dir = capDir(); const f = path.join(dir, 'projects-list.page.ts'); fs.writeFileSync(f, linesOf(734));
+  const dir = capDir(); const f = path.join(dir, 'projects-list.page.ts'); fs.writeFileSync(f, linesOf(1468));
   const s = sid();
-  for (const [o, l] of [[1, 100], [101, 100], [681, 21]]) assert.equal(readAt(f, o, l, s).status, 0, `range ${o}+${l} of the 734-line version`);
-  fs.writeFileSync(f, linesOf(395)); const t = Date.now() / 1000 + 5; fs.utimesSync(f, t, t);
-  assert.equal(readAt(f, 301, 60, s).status, 0, 'a 15% read of the edited 395-line file is not blocked by the old version\'s rows (e499fc94)');
-  assert.equal(readAt(f, 1, 200, s).status, 2, 'the new version\'s own rows still reach the cap');
+  for (const [o, l] of [[1, 200], [201, 200], [1361, 42]]) assert.equal(readAt(f, o, l, s).status, 0, `range ${o}+${l} of the 1468-line version`);
+  fs.writeFileSync(f, linesOf(790)); const t = Date.now() / 1000 + 5; fs.utimesSync(f, t, t);
+  assert.equal(readAt(f, 601, 120, s).status, 0, 'a 15% read of the edited 790-line file is not blocked by the old version\'s rows (e499fc94)');
+  assert.equal(readAt(f, 1, 400, s).status, 2, 'the new version\'s own rows still reach the cap');
 });
 
 test('audit 2026-10-10 C11: shell spans join the Read tool\'s range cap', () => {
-  const dir = capDir(); const f = path.join(dir, 'server-messages.ts'); fs.writeFileSync(f, linesOf(326));
+  const dir = capDir(); const f = path.join(dir, 'server-messages.ts'); fs.writeFileSync(f, linesOf(652));
   const s = sid();
-  assert.equal(readAt(f, 1, 98, s).status, 0, 'Read 1-98 (30%)');
-  assert.equal(readAt(f, 130, 197, s).status, 2, 'Read 130-326 blocked (90%)');
-  assert.equal(shellAt(dir, 'sed -n 99,250p server-messages.ts', s).status, 2, 'the sed span of the same file now blocks too: 77% (c5000cb1)');
-  assert.equal(shellAt(dir, "awk 'NR>=110 && NR<=245' server-messages.ts", s).status, 2, 'and an awk NR span (c6142301)');
-  assert.equal(shellAt(dir, 'tail -n 150 server-messages.ts', s).status, 2, 'and a tail');
-  assert.equal(shellAt(dir, 'sed -n 99,120p server-messages.ts | grep -n foo', s).status, 0, 'a span into a filter prints nothing whole');
-  assert.equal(shellAt(dir, 'sed -n 99,120p server-messages.ts', s).status, 0, 'a span inside the cap passes (37%)');
+  assert.equal(readAt(f, 1, 196, s).status, 0, 'Read 1-196 (30%)');
+  assert.equal(readAt(f, 259, 394, s).status, 2, 'Read 259-652 blocked (90%)');
+  assert.equal(shellAt(dir, 'sed -n 197,500p server-messages.ts', s).status, 2, 'the sed span of the same file now blocks too: 77% (c5000cb1)');
+  assert.equal(shellAt(dir, "awk 'NR>=219 && NR<=490' server-messages.ts", s).status, 2, 'and an awk NR span (c6142301)');
+  assert.equal(shellAt(dir, 'tail -n 300 server-messages.ts', s).status, 2, 'and a tail');
+  assert.equal(shellAt(dir, 'sed -n 197,240p server-messages.ts | grep -n foo', s).status, 0, 'a span into a filter prints nothing whole');
+  assert.equal(shellAt(dir, 'sed -n 197,240p server-messages.ts', s).status, 0, 'a span inside the cap passes (37%)');
   // a fresh session reading through the shell alone hits the same cap
   const s2 = sid();
-  assert.equal(shellAt(dir, 'sed -n 1,150p server-messages.ts', s2).status, 0, 'sed 1-150 (46%)');
-  const second = shellAt(dir, 'sed -n 151,260p server-messages.ts', s2);
-  assert.equal(second.status, 2, 'sed 151-260 makes 80%');
+  assert.equal(shellAt(dir, 'sed -n 1,300p server-messages.ts', s2).status, 0, 'sed 1-300 (46%)');
+  const second = shellAt(dir, 'sed -n 301,520p server-messages.ts', s2);
+  assert.equal(second.status, 2, 'sed 301-520 makes 80%');
   assert.match(second.stderr, /at most 60%/, 'the denial states the cap');
 });
 
 // Audit 2026-10-11 SD16, session 5984019e: a sibling repo's 316-line service worker, Read 200+150 denied at 61% with the
 // navigation remedy (that repo is in no index); the grep -C 3 fallback cut the handler at line 250 that held the answer.
 test('audit 2026-10-11 SD16: an out-of-project file is located with grep, and the cap denial says how many lines are left', () => {
-  const dir = capDir(); const f = path.join(dir, 'index.js'); fs.writeFileSync(f, linesOf(316, 'js'));
+  const dir = capDir(); const f = path.join(dir, 'index.js'); fs.writeFileSync(f, linesOf(632, 'js'));
   const s = sid();
-  assert.equal(readAt(f, 1, 100, s).status, 0, 'a first range (32%)');
-  const r = readAt(f, 200, 150, s);
+  assert.equal(readAt(f, 1, 200, s).status, 0, 'a first range (32%)');
+  const r = readAt(f, 399, 300, s);
   assert.equal(r.status, 2, 'the measured second range still blocks - the 60% cap is unchanged');
-  assert.match(r.stderr, /89 of its 316 lines are still readable by range here/, 'floor(316 x 0.6) = 189, less the 100 read');
+  assert.match(r.stderr, /179 of its 632 lines are still readable by range here/, 'floor(632 x 0.6) = 379, less the 200 read');
   assert.match(r.stderr, /outside the project, so the navigation server has not indexed it/);
   assert.match(r.stderr, /grep -n '<function, handler or key you need>'/);
   assert.doesNotMatch(r.stderr, /get_symbols_overview|ToolSearch select/, 'no navigation remedy for a tree it never indexed');
-  assert.equal(readAt(f, 237, 24, s).status, 0, 'the targeted range the denial points at passes (39%)');
-  const inside = path.join(ROOT, 'svc.ts'); fs.writeFileSync(inside, linesOf(316));
+  assert.equal(readAt(f, 473, 48, s).status, 0, 'the targeted range the denial points at passes (39%)');
+  const inside = path.join(ROOT, 'svc.ts'); fs.writeFileSync(inside, linesOf(632));
   const s2 = sid();
-  assert.equal(readAt(inside, 1, 100, s2).status, 0);
-  const own = readAt(inside, 200, 150, s2);
+  assert.equal(readAt(inside, 1, 200, s2).status, 0);
+  const own = readAt(inside, 399, 300, s2);
   assert.equal(own.status, 2);
   assert.match(own.stderr, /ToolSearch select:/, 'a file in the project keeps the navigation remedy');
-  assert.match(own.stderr, /89 of its 316 lines are still readable/);
+  assert.match(own.stderr, /179 of its 632 lines are still readable/);
 });
 
 test('audit 2026-10-10 C11: a markup template\'s denial names grep, never the symbol overview', () => {
-  const dir = capDir(); const f = path.join(dir, 'project-detail.page.html'); fs.writeFileSync(f, linesOf(326, 'html'));
+  const dir = capDir(); const f = path.join(dir, 'project-detail.page.html'); fs.writeFileSync(f, linesOf(652, 'html'));
   const r = readAt(f, undefined, undefined, sid());
   assert.equal(r.status, 2, 'the whole read still blocks');
   assert.match(r.stderr, /grep -n/, 'the remedy is grep then a range');
@@ -504,8 +512,8 @@ test('audit 2026-10-10 C11: a markup template\'s denial names grep, never the sy
 });
 
 test('audit 2026-10-10 C11: an inverted grep prints the file minus its matches - judged like cat', () => {
-  const dir = capDir(); fs.writeFileSync(path.join(dir, 'order-detail.page.ts'), linesOf(235)); fs.writeFileSync(path.join(dir, 'small.ts'), linesOf(50));
-  assert.equal(shellAt(dir, 'grep -v "^import" order-detail.page.ts', sid()).status, 2, 'grep -v over a 235-line source (0498718d)');
+  const dir = capDir(); fs.writeFileSync(path.join(dir, 'order-detail.page.ts'), linesOf(470)); fs.writeFileSync(path.join(dir, 'small.ts'), linesOf(50));
+  assert.equal(shellAt(dir, 'grep -v "^import" order-detail.page.ts', sid()).status, 2, 'grep -v over a 470-line source (0498718d, at twice its size since the 400-line threshold)');
   assert.equal(shellAt(dir, 'cat order-detail.page.ts | grep -v "^import"', sid()).status, 2, 'and a cat piped into one');
   assert.equal(shellAt(dir, 'grep -vc "^import" order-detail.page.ts', sid()).status, 0, 'a count prints none of it');
   assert.equal(shellAt(dir, 'grep -v "^import" small.ts', sid()).status, 0, 'a small file is under the threshold');
@@ -519,7 +527,7 @@ test('audit 2026-10-10 C11: a loop over a few small literal files is sized per f
   fs.writeFileSync(path.join(cards, 'one.md'), '# one\n' + 'text\n'.repeat(40)); fs.writeFileSync(path.join(cards, 'two.md'), '# two\n' + 'text\n'.repeat(40));
   assert.equal(shellAt(dir, 'for f in Notifications/*.cs; do echo "== $f"; cat "$f"; done', sid()).status, 0, 'four 40-line files, 160 lines in all (49cb4b82)');
   assert.equal(shellAt(dir, 'for f in cards/one.md cards/two.md; do cat "$f"; done', sid()).status, 0, 'two named task cards (fbfc2de4)');
-  fs.writeFileSync(path.join(sub, 'E.cs'), linesOf(120));
+  fs.writeFileSync(path.join(sub, 'E.cs'), linesOf(260));
   assert.equal(shellAt(dir, 'for f in Notifications/*.cs; do cat "$f"; done', sid()).status, 2, 'past THRESHOLD lines in all it is the sweep');
   assert.equal(shellAt(dir, 'for f in src/**/*.cs; do cat "$f"; done', sid()).status, 2, 'a recursive glob cannot be sized');
   assert.equal(shellAt(dir, 'for d in Notifications; do cat ${d}/A.cs; done', sid()).status, 2, 'a path built on the variable is not sized per file');
@@ -529,14 +537,14 @@ test('audit 2026-10-10 C11: a file the working tree adds completes past the cap;
   const dir = capDir();
   const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
   git('init', '-q'); git('config', 'user.email', 't@example.com'); git('config', 'user.name', 't');
-  fs.writeFileSync(path.join(dir, 'Old.cs'), linesOf(300)); git('add', '-A'); git('commit', '-qm', 'seed');
-  fs.writeFileSync(path.join(dir, 'AdminPlanLimitsTests.cs'), linesOf(251));
+  fs.writeFileSync(path.join(dir, 'Old.cs'), linesOf(600)); git('add', '-A'); git('commit', '-qm', 'seed');
+  fs.writeFileSync(path.join(dir, 'AdminPlanLimitsTests.cs'), linesOf(502));
   const s = sid();
-  assert.equal(readAt(path.join(dir, 'AdminPlanLimitsTests.cs'), 1, 126, s).status, 0, 'first half of a NEW file');
-  assert.equal(readAt(path.join(dir, 'AdminPlanLimitsTests.cs'), 127, 125, s).status, 0, 'its second half - under review whole (05c925e9)');
+  assert.equal(readAt(path.join(dir, 'AdminPlanLimitsTests.cs'), 1, 252, s).status, 0, 'first half of a NEW file');
+  assert.equal(readAt(path.join(dir, 'AdminPlanLimitsTests.cs'), 253, 250, s).status, 0, 'its second half - under review whole (05c925e9)');
   fs.appendFileSync(path.join(dir, 'Old.cs'), 'const changed = 1;\n');
-  assert.equal(readAt(path.join(dir, 'Old.cs'), 1, 150, s).status, 0, 'half of a changed file');
-  const r = readAt(path.join(dir, 'Old.cs'), 151, 151, s);
+  assert.equal(readAt(path.join(dir, 'Old.cs'), 1, 300, s).status, 0, 'half of a changed file');
+  const r = readAt(path.join(dir, 'Old.cs'), 301, 301, s);
   assert.equal(r.status, 2, 'a changed tracked file keeps the cap');
   assert.match(r.stderr, /git diff HEAD -- 'Old\.cs'|git diff HEAD -- '.*Old\.cs'/, 'and names its diff as the review route');
 });
@@ -568,4 +576,25 @@ test('audit 2026-10-10 C11/C13: the rule notice reads no redirect inside quotes 
   assert.equal(announce(`cd ${away} && printf x > tool.mjs`, sid()), '', 'a redirect after a cd out of the project');
   assert.match(announce('cd src && printf x > app/tool.mjs', sid()), /javascript-conventions\.md/, 'a cd inside the project still announces');
   assert.equal(announce("sed -n '1,20p' src/app/tool.mjs | grep -i x", sid()), '', 'sed -n reads');
+});
+
+// Deep hooks review 2026-10-16 (the user's ruling): THRESHOLD 200 -> 400. 485 of 590 sized blocks in two weeks hit files of
+// 200-400 lines, which the model then read anyway one request later. At, one under and one over the line; the range cap
+// binds only above it, on both routes.
+test('deep review: the whole-file threshold is 400 lines, and the range cap binds only above it', () => {
+  const dir = capDir();
+  for (const n of [399, 400, 401]) fs.writeFileSync(path.join(dir, `f${n}.ts`), linesOf(n));
+  const whole = (n) => readAt(path.join(dir, `f${n}.ts`), undefined, undefined, sid()).status;
+  assert.equal(whole(399), 0, 'one under');
+  assert.equal(whole(400), 0, 'at the line');
+  assert.equal(whole(401), 2, 'one over');
+  const s = sid();
+  assert.equal(readAt(path.join(dir, 'f400.ts'), 1, 200, s).status, 0);
+  assert.equal(readAt(path.join(dir, 'f400.ts'), 201, 200, s).status, 0, 'no cap on a file read whole anyway');
+  assert.equal(readAt(path.join(dir, 'f401.ts'), 1, 200, s).status, 0);
+  assert.equal(readAt(path.join(dir, 'f401.ts'), 201, 100, s).status, 2, 'past 60% of a 401-line file');
+  assert.equal(shellAt(dir, 'cat f400.ts', sid()).status, 0, 'the shell route at the line');
+  assert.equal(shellAt(dir, 'cat f401.ts', sid()).status, 2, 'and one over');
+  const r = readAt(path.join(dir, 'f401.ts'), undefined, undefined, sid());
+  assert.ok(r.stderr.length < 900, `the whole-file denial stays short: ${r.stderr.length} chars`);
 });

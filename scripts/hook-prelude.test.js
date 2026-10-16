@@ -107,7 +107,7 @@ test('both gates FAIL OPEN - a missing, empty or malformed settings file yields 
 // CLAUDE_PLUGIN_OPTION_HOOK_PROFILE; the project's csv still wins over it.
 const PROFILE = 'CLAUDE_PLUGIN_OPTION_HOOK_PROFILE';
 const EVERY_HOOK = ['guard-catastrophic-rm', 'guard-secret-value', 'guard-protected-force-push', 'guard-desktop-exec', 'guard-read-whole-file', 'guard-ungated-commit',
-    'guard-stop-contract', 'guard-cross-project-write', 'docs-session', 'history-session', 'check-turn-build', 'monitor-session'];
+    'guard-stop-contract', 'guard-cross-project-write', 'docs-session', 'history-session', 'check-turn-build'];
 
 test('profile minimal keeps only the rm, secret, force-push and desktop exec guards; every other hook stands down', () => {
     const { PROTECTIVE } = require(PRELUDE);
@@ -157,10 +157,10 @@ test('the profile the prelude reads is the userConfig key the core entry declare
 
 test('envOf: the ALFRED_CODE_ value answers, and an empty one reads as unset', () => {
     const { envOf } = require(PRELUDE);
-    assert.strictEqual(envOf({ ALFRED_CODE_MONITOR: 'inject' }, 'MONITOR'), 'inject');
-    assert.strictEqual(envOf({ ALFRED_CODE_MONITOR: '' }, 'MONITOR'), undefined);
-    assert.strictEqual(envOf({}, 'MONITOR'), undefined);
-    assert.strictEqual(envOf({ MONITOR: 'log' }, 'MONITOR'), undefined, 'only the prefixed key answers');
+    assert.strictEqual(envOf({ ALFRED_CODE_CORRECTION_NUDGE: 'inject' }, 'CORRECTION_NUDGE'), 'inject');
+    assert.strictEqual(envOf({ ALFRED_CODE_CORRECTION_NUDGE: '' }, 'CORRECTION_NUDGE'), undefined);
+    assert.strictEqual(envOf({}, 'CORRECTION_NUDGE'), undefined);
+    assert.strictEqual(envOf({ CORRECTION_NUDGE: 'log' }, 'CORRECTION_NUDGE'), undefined, 'only the prefixed key answers');
 });
 
 test('the prelude reads process.env when no env is handed in', () => {

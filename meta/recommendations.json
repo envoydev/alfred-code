@@ -46,7 +46,6 @@
    "instrument-tool-usage",
    "docs-session",
    "memory-session",
-   "monitor-session",
    "check-turn-build",
    "history-session"
   ],

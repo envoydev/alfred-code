@@ -319,3 +319,29 @@ test('audit 2026-10-10 C13: a git tag listing reads; a new or deleted tag writes
     assert.equal(writes(c), 0, c);
   for (const c of [`${G} tag v1.2.3`, `${G} tag -a v1 -m x`, `${G} tag -d v1`, `${G} tag --delete v1 --contains x`]) assert.equal(writes(c), 1, c);
 });
+
+// Hooks review 2026-10-16: the in-place targets come from sed's own argument grammar, not the script's shape - 27 of 47
+// cross-project blocks were a sed script read as an out-of-project path (`/a/d;/b/d`, `/x/s/a/b/`).
+test('sed: the script is the first operand unless -e / -f name it, and every other operand is an in-place target', () => {
+  const targets = (c) => shell.scanShell(c, {}).targets.map((t) => t.raw);
+  assert.deepStrictEqual(targets("sed -i '/a/d;/b/d' f"), ['f'], 'two commands joined by ;');
+  assert.deepStrictEqual(targets(`sed -i "" -E '/x/s/a/b/' f`), ['f'], 'an address then a substitution');
+  assert.deepStrictEqual(targets("sed -i '' -e '/a/d' -e '/b/d' f g"), ['f', 'g'], 'every -e value is a script, every operand a file');
+  assert.deepStrictEqual(targets("sed -i -e '/a/d' f"), ['f']);
+  assert.deepStrictEqual(targets("sed -ne '/a/p' -i f"), ['f'], '-e at the end of a flag cluster takes the next word');
+  assert.deepStrictEqual(targets("sed -i -es/a/b/ f"), ['f'], 'an attached -e value');
+  assert.deepStrictEqual(targets("sed --in-place --expression='/a/d' f"), ['f']);
+  assert.deepStrictEqual(targets("sed --in-place=.bak --expression '/a/d' f"), ['f']);
+  assert.deepStrictEqual(targets("sed -i -f /tmp/edits.sed f"), ['f'], 'a -f script file is read, never written');
+  assert.deepStrictEqual(targets("sed -i.bak '/a/d' f"), ['f'], 'an attached suffix');
+  assert.deepStrictEqual(targets("sed -i .bak '/a/d' f"), ['f'], "BSD's separate suffix");
+  assert.deepStrictEqual(targets("sed -ie '/a/d' f"), ['f'], '-ie is in-place with the suffix e');
+  assert.deepStrictEqual(targets("sed -Ei '' '/a/{N;d;}' f"), ['f'], 'i at the end of a cluster');
+  assert.deepStrictEqual(targets("sed -I '' '/a/d' f"), ['f'], "BSD's -I");
+  assert.deepStrictEqual(targets("sed -i '' -- '/a/d' -f"), ['-f'], 'after -- a dash word is an operand');
+  assert.deepStrictEqual(targets("sed -i 's/a/b/' /abs/other/f.ts x"), ['/abs/other/f.ts', 'x'], 'GNU spelling: no suffix word');
+  // no in-place flag: sed writes nothing, whatever its operands look like
+  assert.deepStrictEqual(targets("sed -n '/a/p' /abs/other/f"), []);
+  assert.deepStrictEqual(targets("sed -e 's/i/x/' f"), [], 'an i inside a script is no flag');
+  assert.deepStrictEqual(targets("sed -n -e '/a/d' -- -i"), [], 'an operand spelled -i after -- is a file, not the flag');
+});

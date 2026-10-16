@@ -87,6 +87,19 @@
    },
    "why": "2.0.0 cut the sentry MCP server from the stack (R26), and with it the headers helper this key told which auth mode to send - nothing reads it any more, and a dead key in the env block reads as a knob that still works. The account file's SENTRY_SLUG and SENTRY_ACCESS_TOKEN are the user's credentials and are left exactly where they are",
    "then": "nothing - to keep a Sentry server, add it yourself at the scope the install uses: claude mcp add --transport http --scope project sentry https://mcp.sentry.dev/mcp on a project install, or the same line with --scope user on a global one"
+  },
+  {
+   "id": "monitor-session-retired",
+   "since": "2.6.0",
+   "detect": {
+    "settings_env_key": "ALFRED_CODE_MONITOR"
+   },
+   "remove": [],
+   "remove_settings_env": {
+    "key": "ALFRED_CODE_MONITOR"
+   },
+   "why": "the monitor-session hook is gone (the user's ruling of 2026-10-16): seeded `log`, its notes never reached the model, and ten days of rows (87 notes in 70 sessions - 67 of them the 80% context note fresh-session-start already covers) did not pay for the wait it added to every tool call. Nothing reads the key any more, and a dead key in the env block reads as a knob that still works",
+   "then": "nothing - its old `<docs-path>/flow/monitor-*` turn logs are inert and can be deleted by hand"
   }
  ]
 }

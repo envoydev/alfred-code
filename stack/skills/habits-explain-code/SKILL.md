@@ -1,6 +1,6 @@
 ---
 name: habits-explain-code
-description: "Use only when asked to explain in depth - 'walk me through this', 'explain in detail', 'step by step', 'покроково'. Not for quick lookups or fixes."
+description: "Use only when asked to explain in depth - 'walk me through this', 'explain in detail', 'step by step'. Not for quick lookups or fixes."
 ---
 
 # Explain code - a patient walkthrough for someone new to the stack
