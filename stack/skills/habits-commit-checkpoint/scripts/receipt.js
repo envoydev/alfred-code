@@ -89,7 +89,9 @@ function commitFiles(ctx, args, head) {
   const set = new Set();
   const diff = (base, paths) => { for (const f of lines(ctx.git(['diff', ...base, '--name-only', '-z', ...(paths.length ? ['--', ...paths] : [])]), '\0')) if (keep(f)) set.add(f); };
   const others = (paths) => { for (const f of lines(ctx.git(['ls-files', '-z', '--full-name', '--others', '--exclude-standard', ...(paths.length ? ['--', ...paths] : [])]), '\0')) if (keep(f) && !before.has(f)) set.add(f); };
-  const paths = args.paths.map((p) => path.relative(ctx.top, path.resolve(process.cwd(), p)).split(path.sep).join('/') || '.');
+  // against the cwd's REAL path, as ctx.top is: Windows keeps an 8.3 or junction spelling in process.cwd()
+  const cwd = real(process.cwd());
+  const paths = args.paths.map((p) => path.relative(ctx.top, path.resolve(cwd, p)).split(path.sep).join('/') || '.');
   diff(['--cached'], []);
   if (args.tree || (!set.size && !args.all && !paths.length)) { diff(['HEAD'], []); others([]); }
   else if (args.all) diff(['HEAD'], []);

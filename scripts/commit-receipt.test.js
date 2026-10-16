@@ -77,6 +77,23 @@ test('--all is commit -a; --paths is what a chained git add names', () => {
   assert.equal(guard(dir, 'git add a.txt new.txt && git commit -m x').status, 0);
 });
 
+// GitHub's Windows runner: the temp dir is an 8.3 path (RUNNER~1) and Windows keeps that spelling, or a junction's, in
+// process.cwd(), while the repo top is the long real path - `--paths` came out as '../..' names and git threw (exit 1).
+// POSIX hands the process its physical cwd, so a preload stands in for the Windows spelling here.
+test('--paths from a cwd spelled through a link is placed in the repo', () => {
+  const { dir } = repo();
+  for (const f of ['a.txt', 'new.txt']) fs.writeFileSync(path.join(dir, f), forty());
+  const link = `${dir}-link`;
+  fs.symlinkSync(dir, link, 'junction');
+  const preload = path.join(TMP, 'cwd-as-link.js');
+  fs.writeFileSync(preload, 'const l = process.env.RECEIPT_TEST_CWD; if (l) process.cwd = () => l;\n');
+  const r = spawnSync(process.execPath, ['-r', preload, HELPER, ...COMMIT, '--paths', 'a.txt', 'new.txt'], {
+    cwd: link, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir, RECEIPT_TEST_CWD: link } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(receiptOf(dir), /^spec: 2 files - a\.txt, new\.txt$/m);
+  assert.equal(guard(link, 'git add a.txt new.txt && git commit -m x').status, 0);
+});
+
 test('what was untracked when the session began stays out of the count', () => {
   const { dir, git } = repo();
   fs.writeFileSync(path.join(dir, 'old.txt'), forty());
