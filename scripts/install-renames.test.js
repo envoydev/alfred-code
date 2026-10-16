@@ -812,6 +812,41 @@ test('seed update: a retired skill name whose copy is git-tracked is kept and na
     assert.match(outs[0], /skills\/plugin-authoring: kept - .*git tracks it here/, 'and names it');
 });
 
+// M3, 2026-10-16: a stack skill copied before the stamp recorded skills carries an OLDER stack heading - the pre-2.1.2
+// javascript one below, as 14 and 28 such copies in two installs still held - and was read as the project's own, so no
+// update ever touched it. Its heading is in meta/skill-headings.json, so update takes it over; a project's own skill
+// under a catalog name, in words of its own, is still kept and never recorded.
+const OLD_JAVASCRIPT = '---\nname: javascript\ndescription: "JavaScript language conventions, framework-agnostic - the base layer for all JS-family code. Load before writing or editing any .js, .jsx, .mjs, or .cjs file in any runtime - browser, Node, build script, service worker, extension. Covers ES modules only, named exports and boundary barrels, async/await discipline with cancellation, the two failure channels (returned result vs thrown Error), modern-feature adoption (structuredClone, iterator helpers, Temporal), untrusted-input rules, naming and shape. The type layer (TypeScript, and checked JS via JSDoc) stacks on this baseline in the type-conventions skill where the project has one; frameworks add their own layer above that. Not for C#/.NET or other languages."\n---\n\nan older body that names context7\n';
+test('seed update: an unrecorded skill copy under an OLDER stack heading is taken over and recorded; the project\'s own is kept (M3)', POSIX_ONLY, () =>
+{
+    const { headingOf, headingHash, pastHeadings } = require('./install/skill-headings.js');
+    assert.ok(pastHeadings(ROOT).get('javascript').has(headingHash(headingOf(OLD_JAVASCRIPT))), 'the old heading is in meta/skill-headings.json');
+    const own = skill('typescript');
+    const unrecord = (stamp) => fs.writeFileSync(stamp, fs.readFileSync(stamp, 'utf8').replace(/^(library-skills|picked-skills): (.*)$/gm,
+        (_, k, v) => `${k}: ${v.split(',').filter((e) => !/^(javascript|typescript)\b/.test(e)).join(',')}`));
+    const each = (repo, i) =>
+    {
+        const dir = path.join(repo, '.claude', 'skills');
+        if (i === 0)
+        {
+            fs.writeFileSync(path.join(dir, 'javascript', 'SKILL.md'), OLD_JAVASCRIPT);
+            fs.writeFileSync(path.join(dir, 'typescript', 'SKILL.md'), own);
+            unrecord(path.join(repo, '.claude', 'alfred-code.stamp'));
+        }
+        return { ...inspect(repo), js: fs.readFileSync(path.join(dir, 'javascript', 'SKILL.md'), 'utf8'), ts: fs.readFileSync(path.join(dir, 'typescript', 'SKILL.md'), 'utf8') };
+    };
+    const { steps, outs } = seedRun(['install', 'update', 'update'], 'skill javascript\nskill typescript\n', { args: [[], ['--installed-only'], ['--installed-only']], each });
+    const [, first, second] = steps;
+    assert.strictEqual(first.js, fs.readFileSync(path.join(ROOT, 'stack', 'skills', 'javascript', 'SKILL.md'), 'utf8'), 'the older copy is the stack\'s current one now');
+    assert.ok(first.librarySkills.includes('javascript'), `and recorded: ${first.librarySkills.join(',')}`);
+    assert.match(outs[1], /taking over a copy the stamp did not record: skill javascript/, outs[1]);
+    assert.strictEqual(first.ts, own, 'the project\'s own typescript is not rewritten');
+    assert.ok(![...first.librarySkills, ...first.pickedSkills].some((e) => /^typescript\b/.test(e)), `nor recorded: ${first.librarySkills.join(',')}`);
+    assert.match(outs[1], /skill kept[^\n]*typescript/, outs[1]);
+    assert.deepStrictEqual([second.js, second.ts, second.librarySkills, second.pickedSkills], [first.js, first.ts, first.librarySkills, first.pickedSkills], 'a re-run changes nothing');
+    assert.doesNotMatch(outs[2], /taking over a copy/, 'and takes nothing over again');
+});
+
 // installer:F2 - a retired name is pruned only where the stack's own record holds it: a project's own untracked copy under one
 // of the generic retired names (skill `frontend`, seat `mobile-implementer.md`, hook `inject-code-style.js`) survives, and a
 // copy the ledger records at its hash still goes.

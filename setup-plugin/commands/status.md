@@ -177,7 +177,9 @@ for an agent or a rule row), `on` when unset. When `stale` is true, put one line
 takes them'. When `invalid` is above 0, one more line: `invalid: <n> stamp name(s) are not valid
 item names - skipped, never read` (a hand-edited stamp; `/alfred-code:update` rewrites it). For each
 `blocked` entry, one line: `blocked: skill <skill> is '<mode>' in skillOverrides, but <rules> send the
-model to it` (that Skill call fails; `name-only` keeps it callable).
+model to it` (that Skill call fails; `name-only` keeps it callable). For each `unrecorded` name, one
+line: `unrecorded: skill <name> - an older stack copy the stamp does not record; /alfred-code:update
+takes it over` (the model reads that older text, description included, until it does).
 `library: no library stamp` prints instead of JSON on an install older than the library route -
 say so in one line and skip the table.
 

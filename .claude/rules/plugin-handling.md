@@ -22,6 +22,7 @@ Adding, changing, renaming or removing anything the plugin ships. `CLAUDE.md` ho
 ## Generated files are regenerated, never edited
 
 - `meta/plugin-entries.json`, the `plugins[]` of `.claude-plugin/marketplace.json` and `meta/stack-graph.json` come from `npm run marketplace` and `npm run graph`.
+- `meta/skill-headings.json` comes from `npm run skill-headings`: run it after a skill's `name` or `description` changes (lint 64), so update still knows the copies made under the old heading.
 - Run them after any item is added, renamed or removed, then `npm run lint`. A stale generated file fails lint; fixing the output by hand is overwritten by the next run.
 - The repo root is a plugin source. Never add `skills/`, `commands/`, `agents/`, `hooks/hooks.json`, `bin/` or another reserved root name (`CLAUDE.md` lists them); declare hooks and servers inline in the entry.
 

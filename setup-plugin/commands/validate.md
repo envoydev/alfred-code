@@ -126,8 +126,10 @@ every update overwrite that copy, so the edit belongs upstream or in a skill of 
 An `invalid: N stamp name(s) ...` line is a finding too (the check exits 1 on it): the stamp names
 an item that failed the name check - a hand edit or a bad merge - and the check withholds the name
 rather than joining it into a path. Report the count and route it to `/alfred-code:update`, whose
-next stamp rewrite drops it; never go looking for the withheld name. Step 12 runs the same check
-again over the result.
+next stamp rewrite drops it; never go looking for the withheld name. An `unrecorded: skill <name>`
+line is a stack copy made before the stamp recorded skills (its heading is one the stack shipped):
+the step-11 apply takes it over, so name it with the drift rows. Step 12 runs the same check again
+over the result.
 
 ## 2. Detect the project's stacks - and show the evidence
 

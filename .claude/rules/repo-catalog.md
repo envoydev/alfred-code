@@ -22,8 +22,14 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   2026-09-24 library test). `scripts/library-check.js` reports drift and staleness for validate and
   status. A folder already under a catalog skill name that the stamp does not record (a library hash or a
   pick), whose name a project uses too and whose SKILL.md heading (frontmatter `name` + `description`) is not
-  the stack's, is the project's own (M3): never overwritten, pruned, dropped or read back as a pick - named
-  once with `!!` where it was picked, and left out of the stamp. The core's SessionStart line
+  one the stack has shipped under that name, is the project's own (M3): never overwritten, pruned, dropped or
+  read back as a pick - named once with `!!` where it was picked, and left out of the stamp. 'Shipped' is the
+  current heading or a past one in `meta/skill-headings.json` (every heading in git history, `npm run
+  skill-headings`, lint 64 holds the current ones to it): checking only the current heading read every copy made
+  before the stamp recorded skills as the project's own, so no update touched it (2026-10-16: 14 and 28 such copies
+  in two installs, still naming `context7`, ~700-char descriptions on every call). Update now takes such a copy
+  over and says so (`taking over a copy the stamp did not record`); `library-check.js` names it `unrecorded`
+  before then. The core's SessionStart line
   (`setup-plugin/hooks/library-stamp.js`) says when the copies
   are older than the stack - and, for a stamp from before 2.1.0 (no `seats-route:`) under a core at or
   past it, that the skills and seat denies wait for `/alfred-code:update` (the skew window: the core

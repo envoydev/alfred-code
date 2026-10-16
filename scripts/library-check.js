@@ -14,6 +14,8 @@
 //             project, every seat into the core - since until the update the house skills are not here
 //   blocked - a skill set to 'off' or 'user-invocable-only' in skillOverrides that a rule copy still sends
 //             the model to (a backticked name): that Skill call fails
+//   unrecorded - (with --source) a skill folder the stamp does not record whose heading the stack has shipped
+//             under that name: a copy made before the stamp recorded skills; /alfred-code:update takes it over
 //
 // T16 (R29): every scope's stamp and library copies live in the PROJECT - `--config-dir` names the
 // account dir only for the shadow check below. `--scope` is gone - an install never puts either in
@@ -23,7 +25,8 @@
 // lines (an older release, the shell twin, a project the stack never installed): nothing to check.
 const fs = require('node:fs');
 const path = require('node:path');
-const { readLibrary, validItemName, readSeatsRoute } = require('./install/stamp.js');
+const { readLibrary, readPicked, validItemName, readSeatsRoute } = require('./install/stamp.js');
+const { headingOf, headingHash, pastHeadings } = require('./install/skill-headings.js');
 const { stampFile } = require('./install/brand.js');
 const { hashItem, hashBuffer } = require('./install/library.js');
 const { parseJson } = require('./install/json-file.js');
@@ -135,10 +138,30 @@ function check({ project, source, configDir })
         });
         if (rules.length) blocked.push({ skill, mode, rules });
     }
+    // A skill folder the stamp does not record whose heading the stack has shipped under that name (meta/skill-headings.json):
+    // a copy made before the stamp recorded skills. Update takes it over (M3) - until then it is an older stack text the
+    // model reads (2026-10-16: 14 and 28 such copies in two installs, ~700-char descriptions on every call).
+    const unrecorded = [];
+    if (source)
+    {
+        const past = pastHeadings(source);
+        const held = new Set([...Object.keys(stamp.skills || {}), ...((readPicked(own) || {}).skills || []).map((e) => e.split('@')[0])]);
+        let names = [];
+        try { names = fs.readdirSync(dirs.skills).sort(); } catch { names = []; }
+        for (const name of names)
+        {
+            // Only a name the stack still ships: a retired one's old copy is update's prune to report, not a take-over.
+            if (held.has(name) || !past.has(name) || !validItemName(name, dirs.skills)
+                || !fs.existsSync(path.join(source, 'stack', 'skills', name, 'SKILL.md'))) continue;
+            let heading = null;
+            try { heading = headingOf(fs.readFileSync(path.join(dirs.skills, name, 'SKILL.md'), 'utf8')); } catch { heading = null; }
+            if (heading && past.get(name).has(headingHash(heading))) unrecorded.push(name);
+        }
+    }
     const stale = Boolean(sourceVersion && stamp.version && newer(sourceVersion, stamp.version));
     // The 2.1.0 move: a stamp from before it names no `seats-route:`.
     const moved = stale && !newer('2.1.0', sourceVersion) && newer('2.1.0', stamp.version) && !readSeatsRoute(own);
-    return { version: stamp.version, sourceVersion, rows, invalid, stale, moved, blocked };
+    return { version: stamp.version, sourceVersion, rows, invalid, stale, moved, blocked, unrecorded };
 }
 
 function main(argv)
@@ -151,12 +174,13 @@ function main(argv)
     if (!res) { console.log('library: no library stamp - nothing to check'); return 0; }
     const bad = res.rows.filter((r) => r.state !== 'ok');
     const shadowed = res.rows.filter((r) => r.shadowedByAccount);
-    const findings = bad.length + (res.stale ? 1 : 0) + shadowed.length + res.invalid + res.blocked.length;
+    const findings = bad.length + (res.stale ? 1 : 0) + shadowed.length + res.invalid + res.blocked.length + res.unrecorded.length;
     if (argv.includes('--json')) { console.log(JSON.stringify(res)); return findings ? 1 : 0; }
     if (res.stale) console.log(`stale stamp: the project copies are from ${res.version}, the stack is ${res.sourceVersion} - run /alfred-code:update${res.moved
         ? ' (2.1.0 moved every skill into the project and every seat into the core - until the update runs here, the house skills are not copied and every seat is listed undenied)' : ''}`);
     const say = { drift: 'edited in the project since update wrote it', missing: 'listed in the stamp, absent from the project', behind: 'the running stack ships a newer version' };
     for (const r of bad) console.log(`${r.state}: ${r.kind} ${r.name} - ${say[r.state]}`);
+    for (const name of res.unrecorded) console.log(`unrecorded: skill ${name} - an older stack copy the stamp does not record; /alfred-code:update takes it over`);
     if (res.invalid) console.log(`invalid: ${res.invalid} stamp name(s) are not valid item names - skipped, never read`);
     for (const r of res.rows.filter((row) => row.mode && row.mode !== 'on')) console.log(`switched: skill ${r.name} is '${r.mode}' in skillOverrides`);
     for (const b of res.blocked)

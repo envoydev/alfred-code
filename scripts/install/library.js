@@ -90,6 +90,7 @@ function copyLibrary({ sourceDir, skillsDir, agentsDir, rulesDir, skills = [], a
             continue;
         }
         if (have && was && have !== was) log(`  overwriting a hand-edited copy: ${item.label} ${item.name}`);
+        else if (have && !was && claims) log(`  taking over a copy the stamp did not record: ${item.label} ${item.name} - its heading or name is the stack's`);
         fs.rmSync(item.dst, { recursive: true, force: true });
         fs.mkdirSync(path.dirname(item.dst), { recursive: true });
         if (body) fs.writeFileSync(item.dst, body);

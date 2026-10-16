@@ -335,3 +335,30 @@ test('name-only, a local on over a shared off, an unnamed skill and a malformed 
         assert.deepStrictEqual(JSON.parse(run(f, ['--json']).out).blocked, [], label);
     }
 });
+
+// M3, 2026-10-16: a skill folder the stamp does not record whose heading the stack shipped under that name (an older
+// copy, made before the stamp recorded skills) is reported - update takes it over. A folder under a stack name in words
+// of its own, a name the stack never shipped and a recorded copy are not.
+test('an unrecorded copy under a heading the stack shipped is reported unrecorded; the project\'s own is not', () =>
+{
+    const { headingOf, headingHash } = require('./install/skill-headings.js');
+    const f = fx();
+    const older = '---\nname: langy\ndescription: an older, much longer description\n---\nold body\n';
+    fs.mkdirSync(path.join(f.src, 'stack/skills/langy'), { recursive: true });
+    fs.writeFileSync(path.join(f.src, 'stack/skills/langy/SKILL.md'), '---\nname: langy\ndescription: short\n---\nbody\n');
+    fs.mkdirSync(path.join(f.src, 'meta'));
+    fs.writeFileSync(path.join(f.src, 'meta/skill-headings.json'), JSON.stringify({ skills: {
+        langy: [headingHash(headingOf(older))], other: [headingHash('other\nx')], demo: [headingHash('demo\nd')] } }));
+    const put = (name, text) => { fs.mkdirSync(path.join(f.skills, name), { recursive: true }); fs.writeFileSync(path.join(f.skills, name, 'SKILL.md'), text); };
+    put('langy', older);
+    put('other', '---\nname: other\ndescription: our own words\n---\n');
+    put('never-shipped', '---\nname: never-shipped\ndescription: x\n---\n');
+    const r = run(f);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /unrecorded: skill langy - an older stack copy the stamp does not record; \/alfred-code:update takes it over/);
+    assert.doesNotMatch(r.out, /unrecorded: skill (other|never-shipped|demo)/, 'own words, an unknown name and a recorded copy are not reported');
+    assert.match(r.out, /library: 1 finding\(s\)/);
+    assert.deepEqual(JSON.parse(run(f, ['--json']).out).unrecorded, ['langy']);
+    fs.rmSync(path.join(f.src, 'meta'), { recursive: true });
+    assert.equal(run(f).code, 0, 'a source with no headings file reports none');
+});

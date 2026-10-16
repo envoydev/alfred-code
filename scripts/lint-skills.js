@@ -1113,6 +1113,29 @@ function lintAgentTools(label, text)
             + `spelling or drop it (tool names: https://code.claude.com/docs/en/tools-reference)`);
 }
 
+// 64. The installer knows an older stack copy of a skill from a project's own by its heading (frontmatter `name` +
+// `description`): meta/skill-headings.json hashes every heading the stack has shipped, generated from git history by
+// scripts/skill-headings.js. A current heading missing from it means a description changed without the generator run -
+// the copies made under it would read as the project's own once the next change lands (M3, 2026-10-16: 42 such copies
+// in two installs were never updated).
+function lintSkillHeadings(root = ROOT)
+{
+    const { headingOf, headingHash, pastHeadings } = require('./install/skill-headings.js');
+    const past = pastHeadings(root);
+    if (!past.size) return ['meta/skill-headings.json is missing or unreadable - run `npm run skill-headings` (check 64)'];
+    const skillsDir = path.join(root, 'stack', 'skills');
+    const out = [];
+    for (const name of fs.readdirSync(skillsDir).sort())
+    {
+        const file = path.join(skillsDir, name, 'SKILL.md');
+        if (!fs.existsSync(file)) continue;
+        const heading = headingOf(fs.readFileSync(file, 'utf8'));
+        if (heading && !(past.get(name) && past.get(name).has(headingHash(heading))))
+            out.push(`stack/skills/${name}/SKILL.md: its heading (name + description) is not in meta/skill-headings.json - run \`npm run skill-headings\` (check 64)`);
+    }
+    return out;
+}
+
 // 43. Every agent's `tools:` allowlist must grant the shared memory MCP's store, search and list
 // tools. The memory MCP is the required shared memory (CLAUDE.md's MCP catalog): a seat that can
 // search but not save, or save but not search, defeats the point - the spec gives every seat both,
@@ -2492,6 +2515,9 @@ function main()
     try { seatDrift = require('./seat-tools.js').drift(); }
     catch (err) { seatDrift = [`meta/seat-tools.json or meta/mcp-tools.json could not be read (${err.message}), so no seat's tool lines were checked`]; }
     for (const finding of seatDrift) flag(finding);
+    // 64. meta/skill-headings.json holds every stack skill's CURRENT heading, so the next description change still knows
+    // this one (the installer's M3 claim of an older copy the stamp does not record, scripts/install/skill-headings.js).
+    for (const finding of lintSkillHeadings()) flag(finding);
     // 60. The inventory page's inline script parses - a broken string there renders an empty page.
     for (const finding of lintPageScripts()) flag(finding);
     // 60b. The inventory page shows every seat at its frontmatter pin.
@@ -3177,6 +3203,7 @@ function lintEnvironmentCatalog(catalog, seedSrc, migrations, commandSrc)
 
 module.exports = {
     hiddenChars,
+    lintSkillHeadings,
     lintWorkflows,
     lintPluginPlacement,
     lintHooksEntry,

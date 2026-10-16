@@ -42,6 +42,7 @@ const seeds = require('./seeds.js');
 const pinsLayer = require('./pins.js');
 const stampLayer = require('./stamp.js');
 const library = require('./library.js');
+const skillHeadings = require('./skill-headings.js');
 const { shippedText } = require('./retired-rules.js');
 const uninstallLayer = require('./uninstall.js');
 const toolIgnoresLayer = require('./tool-ignores.js');
@@ -1381,28 +1382,28 @@ function retiredKeep(ctx, kind, dir)
 
 // M3: a skill folder already in `.claude/skills` the stack may treat as its own copy (`claims`) - the stamp
 // records it (a library hash, or a pick), only the stack uses the name (manifest.js stackOwnName), or its
-// SKILL.md carries the stack's own heading (the shipped frontmatter `name` and `description`: a copy whose body,
-// references or tool spellings moved on is still the stack's; a project's own skill has words of its own). Any
-// other folder under a catalog name is the project's (`foreign`): never overwritten, pruned, dropped or read back
-// as a pick - named, and left out of the stamp. Read once per run, from the stamp as the run found it.
+// SKILL.md carries a heading the stack has shipped under that name (the frontmatter `name` and `description`, the
+// current one or a past one from meta/skill-headings.json: a copy whose body, references or tool spellings moved on
+// is still the stack's, and so is one copied before the stamp recorded skills; a project's own skill has words of its
+// own). Any other folder under a catalog name is the project's (`foreign`): never overwritten, pruned, dropped or read
+// back as a pick - named, and left out of the stamp. Read once per run, from the stamp as the run found it.
 function skillTest({ skillsDir, stampFile, manifest, sourceDir })
 {
     const lib = stampLayer.readLibrary(stampFile) || {};
     const picked = stampLayer.readPicked(stampFile) || { skills: [] };
     const recorded = new Set([...Object.keys(lib.skills || {}), ...picked.skills.map((e) => e.split('@')[0])]);
     const names = stackNames(manifest);
+    const past = skillHeadings.pastHeadings(sourceDir);
     const heading = (file) =>
     {
-        let text;
-        try { text = fs.readFileSync(file, 'utf8'); } catch { return null; }
-        const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
-        const key = (k) => ((front && new RegExp(`^${k}:[ \\t]*(.*)$`, 'm').exec(front[1])) || [])[1];
-        return front ? `${key('name')}\n${key('description')}` : null;
+        try { return skillHeadings.headingOf(fs.readFileSync(file, 'utf8')); } catch { return null; }
     };
     const stackText = (name) =>
     {
-        const ours = heading(path.join(sourceDir, 'stack', 'skills', name, 'SKILL.md'));
-        return Boolean(ours) && heading(path.join(skillsDir, name, 'SKILL.md')) === ours;
+        const theirs = heading(path.join(skillsDir, name, 'SKILL.md'));
+        if (!theirs) return false;
+        return theirs === heading(path.join(sourceDir, 'stack', 'skills', name, 'SKILL.md'))
+            || Boolean(past.get(name) && past.get(name).has(skillHeadings.headingHash(theirs)));
     };
     const claims = (name) => recorded.has(name) || stackOwnName(names, 'skills', name) || stackText(name);
     const foreign = (name) => fs.existsSync(path.join(skillsDir, name)) && !claims(name);
