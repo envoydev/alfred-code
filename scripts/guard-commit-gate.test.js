@@ -19,7 +19,7 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-commit-gate-'));
 // account settings and this checkout's own `.alfred/docs/hook-blocks/` must never be touched by
 // a test run (the same containment guard-hooks.test.js's head applies).
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
-delete process.env.ALFRED_CODE_DEFAULT_CONTEXT_WINDOW;
+delete process.env.ALFRED_CODE_CONTEXT_WINDOW_DEFAULT;
 process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
 
 const runIn = (hook, payload, opts) =>

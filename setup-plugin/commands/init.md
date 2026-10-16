@@ -29,12 +29,13 @@ main checkout; its second, `unattended: on|off`, says whether anyone answers thi
 is actually loaded.** Measure before you ask: this session's own per-message context is `input +
 cache_read + cache_creation` off the last assistant message in the transcript. Ask ONLY when that
 figure is past the same trigger `guard-fresh-session-start.js` uses - the tier's own absolute
-trigger, `ALFRED_CODE_FRESH_SESSION_200K` (default 150,000) or `ALFRED_CODE_FRESH_SESSION_1M`
-(default 400,000), or `ALFRED_CODE_FRESH_SESSION_DEFAULT` (default 300,000) when the window is
-neither of those two sizes or cannot be read at all - which one applies comes from the session
-model's row in `.claude/hooks/model-windows.json`, else `ALFRED_CODE_DEFAULT_CONTEXT_WINDOW` - or
+trigger, `ALFRED_CODE_CONTEXT_WINDOW_FOR_1M` (default 400,000) on a window of 1M or more,
+`ALFRED_CODE_CONTEXT_WINDOW_FOR_300K` (default 280,000) on one of 300k up to 1M, or
+`ALFRED_CODE_CONTEXT_WINDOW_FOR_200K` (default 180,000) below that - the window comes from the session
+model's row in `.claude/hooks/model-windows.json`, else `ALFRED_CODE_CONTEXT_WINDOW_DEFAULT` (default 300,000) - or
 when that hook has already injected the ask into this turn. Below the trigger, or when the figure
-cannot be read at all, SKIP the ask silently and start step 1. When it fires, put it through
+cannot be read at all, or with `ALFRED_CODE_AUTO_COMPACT=1` or the tier's trigger at `0` (no fresh-session offer
+then), SKIP the ask silently and start step 1. When it fires, put it through
 AskUserQuestion: run here anyway, or run in a fresh session (recommended), quoting the figure you
 measured; fresh session -> give the paste-ready one-liner and end the turn. Unattended, it is never
 asked: `unattended: fresh session -> run here (the recommended one hands the run to a person)`.

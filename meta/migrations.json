@@ -1,5 +1,5 @@
 {
- "_comment": "Retirements of GENERATED per-project artifacts - the cleanup the upstream file compare can never name, because generated output was never a stack-shipped file. The update command applies these (with the same one-gate consent as its prune list) and validate flags them; detection is existence-based, never version math, so a leftover is caught no matter how old the install. `unwire_settings_hook` names the hook file whose settings.json entry goes, optionally scoped to one matcher as `<file>::<Matcher>` when the file stays wired for its other events. Paths resolve against the install root (the project's .claude/ parent, or the account dir in global mode); a path that does not exist simply does not detect. Every entry names why the artifact is redundant and what regenerates its replacement. Some of these act on the scope's settings.json `env` rather than on a file: `detect.settings_env_key` fires when that key is present, `detect.settings_env_value` ({key, equals}) fires only when it still holds that exact value, `rename_settings_env` ({from, to}) moves the user's VALUE to the new key and drops the old one, `remove_settings_env` ({key, when_value}) DROPS a key this stack RETIRED - nothing reads it any more, so the value is not moved anywhere; `when_value` is optional and narrows the removal to the exact value the installer itself seeded, which is what a key that still means something OUTSIDE this stack must carry, and `clear_settings_env` ({key, when_value, to}) RESETS a key whose SEEDED DEFAULT turned out to be wrong - only when the value is still that seed, so a value the user set by hand is never touched; `to` names the value it resets to (absent means empty). The installers' env pass applies the same pair on every install and update (the list is mirrored in both twins), so an env migration is REPORTED by the update command, never confirmed as a prune - nothing is deleted and a hand-set value is carried over, not reset to the default. New env keys need no entry: the installers seed them absent-only in the same pass. An entry is REMOVED from this list when the artifact it retires comes back under a new contract: `stop-contract-askuserquestion-observe-only` unwired guard-stop-contract.js's AskUserQuestion matcher because that branch DENIED mid-response; the matcher is wired again from 0.2.55 as an injection-only branch, so leaving the migration in place would have had the update unwire, in the same run, what the installer had just wired.",
+ "_comment": "Retirements of GENERATED per-project artifacts - the cleanup the upstream file compare can never name, because generated output was never a stack-shipped file. The update command applies these (with the same one-gate consent as its prune list) and validate flags them; detection is existence-based, never version math, so a leftover is caught no matter how old the install. `unwire_settings_hook` names the hook file whose settings.json entry goes, optionally scoped to one matcher as `<file>::<Matcher>` when the file stays wired for its other events. Paths resolve against the install root (the project's .claude/ parent, or the account dir in global mode); a path that does not exist simply does not detect. Every entry names why the artifact is redundant and what regenerates its replacement. Some of these act on the scope's settings.json `env` rather than on a file: `detect.settings_env_key` fires when that key is present, `detect.settings_env_value` ({key, equals}) fires only when it still holds that exact value, `rename_settings_env` ({from, to}) moves the user's VALUE to the new key and drops the old one, `remove_settings_env` ({key, when_value}) DROPS a key this stack RETIRED - nothing reads it any more, so the value is not moved anywhere; `when_value` is optional and narrows the removal to the exact value the installer itself seeded, which is what a key that still means something OUTSIDE this stack must carry, and `clear_settings_env` ({key, when_value, to}) RESETS a key whose SEEDED DEFAULT turned out to be wrong - only when the value is still that seed and the install ledger says the stack wrote it there (with no ledger, the value alone), so a value the user set by hand is never touched, one equal to the old seed included; `to` names the value it resets to (absent means empty). The installers' env pass applies the same pair on every install and update (the list is mirrored in both twins), so an env migration is REPORTED by the update command, never confirmed as a prune - nothing is deleted and a hand-set value is carried over, not reset to the default. New env keys need no entry: the installers seed them absent-only in the same pass. An entry is REMOVED from this list when the artifact it retires comes back under a new contract: `stop-contract-askuserquestion-observe-only` unwired guard-stop-contract.js's AskUserQuestion matcher because that branch DENIED mid-response; the matcher is wired again from 0.2.55 as an injection-only branch, so leaving the migration in place would have had the update unwire, in the same run, what the installer had just wired.",
  "migrations": [
   {
    "id": "inject-code-style-hook-to-rule",
@@ -24,8 +24,8 @@
    "remove_settings_env": {
     "key": "ALFRED_CODE_FRESH_SESSION_PCT"
    },
-   "why": "the fresh-session gate fires on an ABSOLUTE token count per window - 150000 on a 200k window, 400000 on a 1M one, 180000 on any other or unreadable one - so a percentage of the window is not read by anything any more. It was inert at its own default on both real tiers before it was retired, and a dead key in the env block reads as a knob that still works",
-   "then": "nothing - set ALFRED_CODE_FRESH_SESSION_200K / _1M / _DEFAULT instead, or 0 on all three to turn the offer off"
+   "why": "the fresh-session gate fires on an ABSOLUTE token count per window tier, so a percentage of the window is not read by anything any more. It was inert at its own default on both real tiers before it was retired, and a dead key in the env block reads as a knob that still works",
+   "then": "nothing - set ALFRED_CODE_CONTEXT_WINDOW_FOR_1M / _FOR_300K / _FOR_200K instead, or ALFRED_CODE_AUTO_COMPACT=1 to turn the offers off"
   },
   {
    "id": "context-window-retired",
@@ -37,8 +37,8 @@
    "remove_settings_env": {
     "key": "ALFRED_CODE_CONTEXT_WINDOW"
    },
-   "why": "the window is the session model's row in the shipped hooks/model-windows.json, else ALFRED_CODE_DEFAULT_CONTEXT_WINDOW; with neither, ALFRED_CODE_FRESH_SESSION_DEFAULT applies. The key was the first resolution layer and is read by nothing now - it was also seeded 1000000 for several releases, which declared a 1M window on every install",
-   "then": "nothing - the window comes from hooks/model-windows.json, with ALFRED_CODE_DEFAULT_CONTEXT_WINDOW for an unlisted model; put the trigger you want in the three FRESH_SESSION keys"
+   "why": "the window is the session model's row in the shipped hooks/model-windows.json, else ALFRED_CODE_CONTEXT_WINDOW_DEFAULT. The key was the first resolution layer and is read by nothing now",
+   "then": "nothing - the window comes from hooks/model-windows.json, with ALFRED_CODE_CONTEXT_WINDOW_DEFAULT for an unlisted model; put the trigger you want in the three CONTEXT_WINDOW_FOR_* keys"
   },
   {
    "id": "autocompact-seed-dropped",
@@ -56,24 +56,6 @@
    },
    "why": "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE is Claude Code's own auto-compaction trigger, not a stack setting, and the installers wrote 40 into every project - a value nobody chose. It is dropped ONLY where it still holds that seed, so a value the user set by hand is theirs and stays",
    "then": "nothing - auto-compaction returns to the harness default; set the key yourself to pin a percentage"
-  },
-  {
-   "id": "fresh-session-default-reseed",
-   "since": "0.2.73",
-   "detect": {
-    "settings_env_value": {
-     "key": "ALFRED_CODE_FRESH_SESSION_DEFAULT",
-     "equals": "250000"
-    }
-   },
-   "remove": [],
-   "clear_settings_env": {
-    "key": "ALFRED_CODE_FRESH_SESSION_DEFAULT",
-    "when_value": "250000",
-    "to": "180000"
-   },
-   "why": "the DEFAULT tier applies when the context window cannot be read at all, and 250000 sat ABOVE a 200k window entirely, so on that tier the fresh-session gate could never fire and silently did not exist. The seed is absent-only and ctxThreshold() clamps a too-large trigger only when the window is KNOWN - which by definition it is not on this tier - so no other mechanism reaches an install carrying it (measured 2026-09-12: 3 of 3 current-shape installs still on 250000). Reset ONLY where the value is still that seed; a trigger the user chose is theirs and stays",
-   "then": "nothing - the next session on an unreadable window is offered the fresh-session resume at 180,000 tokens of carry"
   },
   {
    "id": "sentry-auth-retired",
@@ -100,6 +82,66 @@
    },
    "why": "the monitor-session hook is gone (the user's ruling of 2026-10-16): seeded `log`, its notes never reached the model, and ten days of rows (87 notes in 70 sessions - 67 of them the 80% context note fresh-session-start already covers) did not pay for the wait it added to every tool call. Nothing reads the key any more, and a dead key in the env block reads as a knob that still works",
    "then": "nothing - its old `<docs-path>/flow/monitor-*` turn logs are inert and can be deleted by hand"
+  },
+  {
+   "id": "fresh-session-1m-renamed",
+   "since": "2.6.0",
+   "detect": {
+    "settings_env_key": "ALFRED_CODE_FRESH_SESSION_1M"
+   },
+   "remove": [],
+   "rename_settings_env": {
+    "from": "ALFRED_CODE_FRESH_SESSION_1M",
+    "to": "ALFRED_CODE_CONTEXT_WINDOW_FOR_1M"
+   },
+   "why": "the fresh-session triggers are named for the window tier they serve (the user's ruling of 2026-10-16): ALFRED_CODE_CONTEXT_WINDOW_FOR_1M / _FOR_300K / _FOR_200K, with ALFRED_CODE_CONTEXT_WINDOW_DEFAULT as the window an unlisted model runs in. The value moves to the new key",
+   "then": "nothing - the trigger reads ALFRED_CODE_CONTEXT_WINDOW_FOR_1M"
+  },
+  {
+   "id": "fresh-session-200k-renamed",
+   "since": "2.6.0",
+   "detect": {
+    "settings_env_key": "ALFRED_CODE_FRESH_SESSION_200K"
+   },
+   "remove": [],
+   "rename_settings_env": {
+    "from": "ALFRED_CODE_FRESH_SESSION_200K",
+    "to": "ALFRED_CODE_CONTEXT_WINDOW_FOR_200K"
+   },
+   "clear_settings_env": {
+    "key": "ALFRED_CODE_CONTEXT_WINDOW_FOR_200K",
+    "when_value": "150000",
+    "to": "180000"
+   },
+   "why": "the fresh-session triggers are named for the window tier they serve (the user's ruling of 2026-10-16): ALFRED_CODE_CONTEXT_WINDOW_FOR_1M / _FOR_300K / _FOR_200K, with ALFRED_CODE_CONTEXT_WINDOW_DEFAULT as the window an unlisted model runs in. The value moves to the new key; the 200K tier's seed is 180000 now, so the old seed 150000 is reset to it - a value set by hand is carried over as it is",
+   "then": "nothing - the trigger reads ALFRED_CODE_CONTEXT_WINDOW_FOR_200K"
+  },
+  {
+   "id": "default-context-window-renamed",
+   "since": "2.6.0",
+   "detect": {
+    "settings_env_key": "ALFRED_CODE_DEFAULT_CONTEXT_WINDOW"
+   },
+   "remove": [],
+   "rename_settings_env": {
+    "from": "ALFRED_CODE_DEFAULT_CONTEXT_WINDOW",
+    "to": "ALFRED_CODE_CONTEXT_WINDOW_DEFAULT"
+   },
+   "why": "the fresh-session triggers are named for the window tier they serve (the user's ruling of 2026-10-16): ALFRED_CODE_CONTEXT_WINDOW_FOR_1M / _FOR_300K / _FOR_200K, with ALFRED_CODE_CONTEXT_WINDOW_DEFAULT as the window an unlisted model runs in. The value moves to the new key",
+   "then": "nothing - an unlisted model's window reads ALFRED_CODE_CONTEXT_WINDOW_DEFAULT"
+  },
+  {
+   "id": "fresh-session-default-retired",
+   "since": "2.6.0",
+   "detect": {
+    "settings_env_key": "ALFRED_CODE_FRESH_SESSION_DEFAULT"
+   },
+   "remove": [],
+   "remove_settings_env": {
+    "key": "ALFRED_CODE_FRESH_SESSION_DEFAULT"
+   },
+   "why": "every window now takes the largest named tier it reaches (1M, 300K, else 200K) and an unlisted model runs in ALFRED_CODE_CONTEXT_WINDOW_DEFAULT, so no case is left for a catch-all trigger (the user's ruling of 2026-10-16). Nothing reads the key, and a dead key in the env block reads as a knob that still works",
+   "then": "nothing - set ALFRED_CODE_CONTEXT_WINDOW_FOR_300K for the tier an unlisted model lands on"
   }
  ]
 }

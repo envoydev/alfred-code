@@ -17,6 +17,8 @@ const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 const SELECTION = 'skill csharp\nrule markdown-docs\n';
 
 const json = (repo, rel) => JSON.parse(fs.readFileSync(path.join(repo, rel), 'utf8'));
+// The hook count is read off the manifest, never written here: two cases still said 18 after monitor-session left (2026-10-16).
+const HOOK_COUNT = new Set(require('../meta/stack-manifest.json').hooks.map((h) => h.file)).size;
 const exists = (repo, ...rel) => fs.existsSync(path.join(repo, ...rel));
 
 for (const [scope, wantCliScope] of [['project', 'project'], ['user', 'user'], ['local', 'local'], ['global', 'user']])
@@ -402,7 +404,7 @@ test('install-scope: a local-scope update --installed-only keeps the hooks the u
         inspect: (repo) => json(repo, path.join('.claude', 'settings.local.json')).env.ALFRED_CODE_HOOKS_OFF,
     });
     assert.match(outs[1], /action: update \[scope=local,/, outs[1]);
-    assert.ok(before && before.split(',').length === 17, `setup did not switch 17 hooks off: ${before}`);
+    assert.ok(before && before.split(',').length === HOOK_COUNT - 1, `setup did not switch every hook but the picked one off: ${before}`);
     assert.strictEqual(result, before, `a local-scope update --installed-only must keep the hooks the user switched off; before='${before}' after='${result}'`);
 });
 
@@ -547,7 +549,7 @@ test('install-scope: a user-scope project reads only its OWN stamp for the hooks
         // Project A is untouched by B's later run - still its own real None.
         const aSettings = JSON.parse(fs.readFileSync(path.join(projectA, '.claude', 'settings.json'), 'utf8'));
         const aOff = String((aSettings.env && aSettings.env.ALFRED_CODE_HOOKS_OFF) || '').split(',').filter(Boolean);
-        assert.strictEqual(aOff.length, 18, `project A's own None must stay 18, unaffected by B: ${aOff.join(',')}`);
+        assert.strictEqual(aOff.length, HOOK_COUNT, `project A's own None must stay every hook, unaffected by B: ${aOff.join(',')}`);
     }
     finally { fs.rmSync(work, { recursive: true, force: true }); }
 });
@@ -696,7 +698,7 @@ test('install-scope: a move off local removes an older shipped seed and the docs
             const file = path.join(repo, '.claude', 'settings.local.json');
             const local = JSON.parse(fs.readFileSync(file, 'utf8'));
             assert.strictEqual(local.env.ALFRED_CODE_DOCS_VERSIONING, 'local', 'the rule answered local for docs git ignores');
-            local.env.ALFRED_CODE_FRESH_SESSION_DEFAULT = '250000';
+            local.env.ALFRED_CODE_CONTEXT_WINDOW_FOR_200K = '150000';
             fs.writeFileSync(file, JSON.stringify(local));
             // An older shipped seed on disk is an OLDER install's state - one from before the ledger
             // (R10), which the seed match answers; with a ledger, a value changed by hand is the user's.
@@ -707,11 +709,11 @@ test('install-scope: a move off local removes an older shipped seed and the docs
         inspect: (repo) => ({ shared: json(repo, path.join('.claude', 'settings.json')), local: json(repo, path.join('.claude', 'settings.local.json')) }),
     });
     const local = result.local.env || {};
-    assert.ok(!('ALFRED_CODE_FRESH_SESSION_DEFAULT' in local), `an older shipped seed survived the move: ${local.ALFRED_CODE_FRESH_SESSION_DEFAULT}`);
+    assert.ok(!('ALFRED_CODE_CONTEXT_WINDOW_FOR_200K' in local), `an older shipped seed survived the move: ${local.ALFRED_CODE_CONTEXT_WINDOW_FOR_200K}`);
     assert.ok(!('ALFRED_CODE_DOCS_VERSIONING' in local), 'the rule\'s own seed survived the move as a user value');
-    assert.strictEqual(result.shared.env.ALFRED_CODE_FRESH_SESSION_DEFAULT, '300000');
+    assert.strictEqual(result.shared.env.ALFRED_CODE_CONTEXT_WINDOW_FOR_200K, '180000');
     assert.strictEqual(result.shared.env.ALFRED_CODE_DOCS_VERSIONING, 'local');
-    assert.match(outs[1], /stack env keys removed - each held the stack's own seed[^\n]*ALFRED_CODE_FRESH_SESSION_DEFAULT/, outs[1]);
+    assert.match(outs[1], /stack env keys removed - each held the stack's own seed[^\n]*ALFRED_CODE_CONTEXT_WINDOW_FOR_200K/, outs[1]);
     assert.match(outs[1], /stack env keys removed - each held the stack's own seed[^\n]*ALFRED_CODE_DOCS_VERSIONING/, outs[1]);
 });
 

@@ -11,13 +11,14 @@ You are installing Alfred Code FROM SCRATCH. First run `node "${CLAUDE_PLUGIN_RO
 is actually loaded.** Measure before you ask: this session's own per-message context is `input +
 cache_read + cache_creation` off the last assistant message in the transcript. Ask ONLY when that
 figure is past the same trigger `guard-fresh-session-start.js` uses - the tier's own absolute
-trigger, `ALFRED_CODE_FRESH_SESSION_200K` (default 150,000) or `ALFRED_CODE_FRESH_SESSION_1M`
-(default 400,000), or `ALFRED_CODE_FRESH_SESSION_DEFAULT` (default 300,000) when the window is
-neither of those two sizes or cannot be read at all - which one applies comes from the session
-model's row in `.claude/hooks/model-windows.json`, else `ALFRED_CODE_DEFAULT_CONTEXT_WINDOW` (a FIRST setup has neither yet: take
-the window this session's own model line states - '1M context' is 1,000,000 - and the DEFAULT trigger only when it states none) - or when that hook has already
+trigger, `ALFRED_CODE_CONTEXT_WINDOW_FOR_1M` (default 400,000) on a window of 1M or more,
+`ALFRED_CODE_CONTEXT_WINDOW_FOR_300K` (default 280,000) on one of 300k up to 1M, or
+`ALFRED_CODE_CONTEXT_WINDOW_FOR_200K` (default 180,000) below that - the window comes from the session
+model's row in `.claude/hooks/model-windows.json`, else `ALFRED_CODE_CONTEXT_WINDOW_DEFAULT` (default 300,000) (a FIRST setup has neither yet: take
+the window this session's own model line states - '1M context' is 1,000,000 - and the 300,000 default window only when it states none) - or when that hook has already
 injected the ask into this turn. Below the
-trigger, or when the figure cannot be read at all, SKIP the ask silently and start step 1: an ask
+trigger, or when the figure cannot be read at all, or with `ALFRED_CODE_AUTO_COMPACT=1` or the tier's trigger at `0` (no fresh-session offer
+then), SKIP the ask silently and start step 1: an ask
 with no measurement behind it is the failure this replaced (measured: it fired on the FIRST message
 of a brand-new session, twice in one run, and could quote no number when the user challenged it).
 Never author the decision in prose either way.

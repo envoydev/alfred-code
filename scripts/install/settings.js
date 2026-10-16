@@ -31,6 +31,7 @@ const { BRAND } = require('./brand.js');
 const { valueHash } = require('./stamp.js');
 const shellGuards = require('../../stack/hooks/shell-guards.js');
 const fileGuards = require('../../stack/hooks/file-guards.js');
+const { tierKeyOf } = require('../../stack/hooks/fresh-session.js');
 // Both dispatchers fold their guards' rows into one row each (R11 for the shell tools, 2.1.5 M3 for the file tools).
 const foldDispatchers = (rows, opts) => fileGuards.wiringRows(shellGuards.wiringRows(rows, opts), opts);
 
@@ -73,12 +74,11 @@ const SEEDED_SETTINGS = [...ATTRIBUTION_OFF.map(([k, v]) => [`attribution.${k}`,
 
 // THE AUTO-COMPACT WINDOW PER MODEL (the user's rulings, 2026-10-14): where the project compacts instead of offering a
 // fresh session (ALFRED_CODE_AUTO_COMPACT=1), each model `hooks/model-windows.json` lists compacts where the fresh-session
-// gate would have offered a resume - its window tier's ALFRED_CODE_FRESH_SESSION_* value (200k -> _200K, 1M -> _1M, any
-// other -> _DEFAULT), read from the env this file applies - instead of at the window Claude Code tunes for the model
+// gate would have offered a resume - its window tier's ALFRED_CODE_CONTEXT_WINDOW_FOR_* value (fresh-session.js tierKeyOf:
+// 1M and up -> _1M, 300K and up -> _300K, else _200K), read from the env this file applies - instead of at the window Claude Code tunes for the model
 // (settings reference: unset by default; measured near 390k on a 1M window, fresh-session.js). A tier switched off (`0`) seeds nothing;
 // a trigger at or past its window is held at 90% of it (fresh-session.js ctxThreshold's clamp), and the value stays inside
 // the 100,000-1,000,000 Claude Code accepts (settings-reference `modelSettings`). Returns { <model id>: <tokens> }.
-const COMPACT_TIER_KEYS = { 200000: 'ALFRED_CODE_FRESH_SESSION_200K', 1000000: 'ALFRED_CODE_FRESH_SESSION_1M' };
 function compactWindowSeeds(models, env = {}, catalog = [])
 {
     // Only where the project compacts instead of offering a fresh session (ALFRED_CODE_AUTO_COMPACT, seeded `0`): with the
@@ -97,7 +97,7 @@ function compactWindowSeeds(models, env = {}, catalog = [])
         const window = Number(n);
         // only an id the stamp's ledger reads back (stamp.js SETTINGS_PATH), or its window could never be taken back
         if (!(window >= 100000) || !/^[a-z0-9][a-z0-9-]{0,99}$/.test(id)) continue;
-        let at = tier(COMPACT_TIER_KEYS[window] || 'ALFRED_CODE_FRESH_SESSION_DEFAULT');
+        let at = tier(tierKeyOf(window));
         if (!(at > 0)) continue;
         if (at >= window) at = Math.floor(window * 0.9);
         out[id] = Math.max(100000, Math.min(1000000, at));
@@ -287,8 +287,9 @@ const isStackKey = (key) => key.startsWith('ALFRED_CODE_');
 // every scope they live in settings.local.json, never in the committed settings.json.
 const PERSONAL_KEYS = ['ALFRED_CODE_MEMORY_DB'];
 
-// Steps 2 and 3 of the env pass, in place, over the keys `only` admits.
-function retireAndReseed(env, migrations, log, label, only = () => true)
+// Steps 2 and 3 of the env pass, in place, over the keys `only` admits. `stackWrote(label, key, value)` answers from the
+// install ledger whether the stack wrote that value there; with none given (no ledger) the value match alone decides.
+function retireAndReseed(env, migrations, log, label, only = () => true, stackWrote = null)
 {
     let changed = false;
     // 2. RETIREMENTS - unconditional, or only while the value is still the stack's own old seed.
@@ -300,9 +301,11 @@ function retireAndReseed(env, migrations, log, label, only = () => true)
             log(`  ${label} env: ${key} removed (${onlyWhen == null ? 'retired - nothing reads it' : `the old stack seed ${onlyWhen} - the default applies`})`);
         }
 
-    // 3. BAD SEEDS - corrected only while the key still holds the wrong default.
+    // 3. BAD SEEDS - corrected only while the key still holds the wrong default AND the stack wrote it there: a value the user
+    // typed is theirs even when it equals an old seed (2026-10-16 matrix: a hand-set ALFRED_CODE_CONTEXT_WINDOW_FOR_200K of
+    // 150000 was reset to 180000 on every update).
     for (const [key, badSeed, to] of migrations.reseed || [])
-        if (only(key) && env[key] === badSeed) { env[key] = to; changed = true; log(`  ${label} env: ${key} reset to ${to} (auto-detect)`); }
+        if (only(key) && env[key] === badSeed && (!stackWrote || stackWrote(label, key, badSeed))) { env[key] = to; changed = true; log(`  ${label} env: ${key} reset to ${to} (auto-detect)`); }
     return changed;
 }
 
@@ -320,7 +323,7 @@ function retireAndReseed(env, migrations, log, label, only = () => true)
 // C8: a PERSONAL_KEYS value always goes to the overlay when there is one, and leaves this file.
 // `sharedKeys` (C5): a decision that shapes committed state lands in THIS file even when the overlay
 // holds the key - the hooks copy route's HOOKS_OFF complement, which is the committed wiring's mirror.
-function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath, autoCompact = null, memoryDb, hooksOff, hooksAnswered, inherited, overlay, overlayUnreadable = false, sharedKeys = [], log, label = 'settings.json', overlayLabel = 'settings.local.json' })
+function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath, autoCompact = null, memoryDb, hooksOff, hooksAnswered, inherited, overlay, overlayUnreadable = false, sharedKeys = [], log, label = 'settings.json', overlayLabel = 'settings.local.json', stackWrote = null })
 {
     let changed = renameEnv(env, migrations, log, label);
     const beneath = inherited && typeof inherited === 'object' && !Array.isArray(inherited) ? { ...inherited } : {};
@@ -329,14 +332,14 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
     if (held)
     {
         renameEnv(held, migrations, log, overlayLabel);
-        retireAndReseed(held, migrations, log, overlayLabel, isStackKey);
+        retireAndReseed(held, migrations, log, overlayLabel, isStackKey, stackWrote);
     }
     const heldHere = (key) => Boolean(held) && isStackKey(key) && key in held && !sharedKeys.includes(key);
     const present = (key) => key in env || key in beneath;
     // Where a decision about `key` lands: the overlay when it holds the key, else this file.
     const at = (key) => (heldHere(key) ? { into: held, lab: overlayLabel, mine: false } : { into: env, lab: label, mine: true });
 
-    if (retireAndReseed(env, migrations, log, label)) changed = true;
+    if (retireAndReseed(env, migrations, log, label, undefined, stackWrote)) changed = true;
 
     // 3b. THE DOCS ROOT DECISION (docs.docsMovePlan) - before the seeds, so the absent-only default never
     // lands first: a moved or re-pointed root, a kept old one, or the old root held while its move is offered.
@@ -751,8 +754,17 @@ function writeSettings(opts)
     }
     const overlay = local && local.env && typeof local.env === 'object' && !Array.isArray(local.env) ? local.env : null;
     const overlayBefore = overlay && !createdLocal ? JSON.stringify(overlay) : null;
+    // The ledger row of a key in a file - under the name it had before this run's renames, when it was renamed. A file the
+    // ledger holds no env for (no stamp, or one from before the ledger) leaves the reseed to the value match, as it was.
+    const stackWrote = (fileLabel, key, value) =>
+    {
+        const rows = prior && prior.env ? prior.env[fileLabel] : null;
+        if (!rows) return true;
+        const names = [key, ...(migrations.renames || []).filter(([, to]) => to === key).map(([from]) => from)];
+        return names.some((n) => rows[n] === valueHash(value));
+    };
     if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, docsPath, dataPath, autoCompact, memoryDb, hooksOff, hooksAnswered, inherited: inheritedEnv, overlay, overlayUnreadable: localUnreadable, sharedKeys, log, label,
-        overlayLabel: localFile ? path.basename(localFile) : undefined })) changed = true;
+        overlayLabel: localFile ? path.basename(localFile) : undefined, stackWrote })) changed = true;
     // The auto-compact window per model (compactWindowSeeds). Claude Code reads it at session START only - measured
     // 2026-10-14: written mid-session it changed nothing in print or interactive mode, set before the start it compacted
     // at 76k of a 100k window - so it is this project's standing setting, never a per-run one, written in the project's

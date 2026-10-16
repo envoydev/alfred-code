@@ -18,8 +18,8 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'compact-state-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 
 const BASE_ENV = { ...process.env, CLAUDE_CONFIG_DIR: fs.mkdtempSync(path.join(TMP, 'acct-')) };
-for (const k of ['ALFRED_CODE_DOCS_PATH', 'ALFRED_CODE_HOOKS_OFF', 'ALFRED_CODE_DEFAULT_CONTEXT_WINDOW', 'ALFRED_CODE_DOCS_ASK',
-    'ALFRED_CODE_FRESH_SESSION_200K', 'ALFRED_CODE_FRESH_SESSION_1M', 'ALFRED_CODE_FRESH_SESSION_DEFAULT'])
+for (const k of ['ALFRED_CODE_DOCS_PATH', 'ALFRED_CODE_HOOKS_OFF', 'ALFRED_CODE_CONTEXT_WINDOW_DEFAULT', 'ALFRED_CODE_DOCS_ASK',
+    'ALFRED_CODE_CONTEXT_WINDOW_FOR_200K', 'ALFRED_CODE_CONTEXT_WINDOW_FOR_1M', 'ALFRED_CODE_CONTEXT_WINDOW_FOR_300K', 'ALFRED_CODE_AUTO_COMPACT'])
     delete BASE_ENV[k];
 
 let seq = 0;
@@ -157,7 +157,7 @@ test('compact-state: the compact injection points at the snapshot of THIS sessio
 test('compact-state: with every fresh-session offer off, the compact start still points at the snapshot - and says nothing else', () =>
 {
     const p = project();
-    const off = { ALFRED_CODE_FRESH_SESSION_200K: '0', ALFRED_CODE_FRESH_SESSION_1M: '0', ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' };
+    const off = { ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '0', ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '0', ALFRED_CODE_CONTEXT_WINDOW_FOR_300K: '0' };
     p.run({ hook_event_name: 'PreCompact', trigger: 'auto' }, off);
     const r = p.run({ hook_event_name: 'SessionStart', source: 'compact' }, off);
     const text = JSON.parse(r.stdout).hookSpecificOutput.additionalContext;
@@ -235,7 +235,7 @@ test('compact-state: an automatic compaction records its context, and the trigge
     {
         process.env.CLAUDE_PROJECT_DIR = p.root;
         process.env.CLAUDE_CONFIG_DIR = BASE_ENV.CLAUDE_CONFIG_DIR;
-        delete process.env.ALFRED_CODE_FRESH_SESSION_1M;
+        delete process.env.ALFRED_CODE_CONTEXT_WINDOW_FOR_1M;
         delete process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW;
         delete process.env.CLAUDE_CODE_AUTOCOMPACT_WINDOW;
         fresh.use({ transcript_path: tp, cwd: p.root });

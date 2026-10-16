@@ -52,11 +52,11 @@ test('SD12 ae38c08f#3: past the fresh-session trigger the batch closes at this b
 test('SD12 ae38c08f#3: the 12-bundle bound still closes on its own; a switched-off trigger or an unreadable context leaves only it', () =>
 {
     assert.match(gate(['--done', '12', '--transcript', transcript('bound', 150000)]).out, /^BUNDLE-GATE: CLOSE - 12 of 12 bundles, the batch bound/);
-    assert.match(gate(['--done', '11', '--transcript', transcript('off', 900000)], { env: { ALFRED_CODE_FRESH_SESSION_1M: '0', ALFRED_CODE_FRESH_SESSION_200K: '0', ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' } }).out,
+    assert.match(gate(['--done', '11', '--transcript', transcript('off', 900000)], { env: { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '0', ALFRED_CODE_CONTEXT_WINDOW_FOR_300K: '0', ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '0' } }).out,
         /^BUNDLE-GATE: next - the fresh-session trigger is off in this install; 11 of 12 bundles done$/);
     assert.match(gate(['--done', '3']).out, /^BUNDLE-GATE: next - this session's transcript was not found \(no --transcript, no CLAUDE_CODE_SESSION_ID match\), so only the 12-bundle bound applies; 3 of 12 bundles done$/);
     assert.match(gate(['--done', '3', '--transcript', transcript('crlf', 450000, { crlf: true })]).out, /^BUNDLE-GATE: CLOSE - context 450,000/, 'a Windows-saved transcript reads the same');
-    assert.match(gate(['--done', '2', '--transcript', transcript('opus45', 160000, { model: 'claude-opus-4-5' })]).out, /^BUNDLE-GATE: CLOSE - context 160,000 is past the fresh-session trigger 150,000/, 'a 200k window takes its own tier');
+    assert.match(gate(['--done', '2', '--transcript', transcript('opus45', 190000, { model: 'claude-opus-4-5' })]).out, /^BUNDLE-GATE: CLOSE - context 190,000 is past the fresh-session trigger 180,000/, 'a 200k window takes its own tier');
     const compacted = transcript('compacted', 450000);
     fs.appendFileSync(compacted, JSON.stringify({ type: 'system', subtype: 'compact_boundary', content: 'Conversation compacted' }) + '\n');
     assert.match(gate(['--done', '6', '--transcript', compacted]).out, /^BUNDLE-GATE: next - context unknown \(no usage row since the last compaction\), so only the 12-bundle bound applies; 6 of 12 bundles done$/);

@@ -148,7 +148,7 @@ if (!IS_SKILL_CALL && !IS_HOLD_CALL && !['UserPromptExpansion', 'UserPromptSubmi
 let fresh;
 try { fresh = require(require('path').join(__dirname, 'fresh-session.js')); } catch {
   fresh = {
-    use() {}, freshAt: (k, d) => d, FRESH_AT_200K: 0, FRESH_AT_1M: 0, FRESH_AT_DEFAULT: 0, FRESH_OFF: true, COMPACT_INSTEAD: false,
+    use() {}, freshAt: (k, d) => d, FRESH_AT_200K: 0, FRESH_AT_300K: 0, FRESH_AT_1M: 0, FRESH_OFF: true, COMPACT_INSTEAD: false,
     sessionModelId: () => null, tableWindow: () => null, envWindow: () => null, knownWindow: () => null,
     ctxThreshold: () => null, MIN_RECOVERABLE_SHARE: 0.4, coldFloor: () => null, worthResuming: () => false,
     transcriptSize: () => 0, freshAskAnsweredThisTurn: () => false, askAnsweredSince: () => true,
@@ -854,8 +854,10 @@ const BANNER_HEAD = 'Open your reply to this command with these two lines, exact
 const tokens = (n) => (n >= 1000000 && n % 1000000 === 0 ? `${n / 1000000}M` : `${Math.round(n / 1000)}k`);
 function modeBanner(autoOn) {
   const model = fresh.sessionModelId();
-  const window = fresh.tableWindow() || fresh.envWindow();
-  const room = `its ${window ? `${tokens(window)} ` : ''}context window${model ? ` (${model})` : ''}`;
+  const listed = fresh.tableWindow();
+  // an unlisted model runs in ALFRED_CODE_CONTEXT_WINDOW_DEFAULT - said as the default, never as the model's own size
+  const window = listed || fresh.envWindow();
+  const room = `its ${window ? `${tokens(window)} ${listed ? '' : 'default '}` : ''}context window${model ? ` (${model})` : ''}`;
   const acw = fresh.autoCompactWindow();
   const where = acw
     ? `as it nears its ${tokens(acw)} auto-compact window (${window ? `of ${tokens(window)}` : 'context'}${model ? `, ${model}` : ''})`

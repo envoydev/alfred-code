@@ -293,10 +293,10 @@ test('mode banner: auto-mode OFF says each ask waits, then the fresh-session ref
         '**Context:** session refresh - past ~400k tokens of its 1M context window (claude-sonnet-5-5), the run offers to resume in a fresh session from its state file instead of compacting.',
     ]);
     // a 200k model takes its own tier's trigger
-    assert.match(bannerOf(typedRun(p, 'c2', '/capture-architecture', transcript([], 'claude-haiku-4-5')))[1], /past ~150k tokens of its 200k context window \(claude-haiku-4-5\)/);
+    assert.match(bannerOf(typedRun(p, 'c2', '/capture-architecture', transcript([], 'claude-haiku-4-5')))[1], /past ~180k tokens of its 200k context window \(claude-haiku-4-5\)/);
     assert.strictEqual(bannerOf(typedRun(p, 'c3', '/loop-test-coverage', t, { ALFRED_CODE_AUTO_COMPACT: '1' }))[1],
         "**Context:** auto-compact is on (ALFRED_CODE_AUTO_COMPACT=1) - the session compacts at Claude Code's own point in its 1M context window (claude-sonnet-5-5) instead of offering a fresh session.");
-    assert.strictEqual(bannerOf(typedRun(p, 'c4', '/issue-diagnoser the login 500', t, { ALFRED_CODE_FRESH_SESSION_1M: '0' }))[1],
+    assert.strictEqual(bannerOf(typedRun(p, 'c4', '/issue-diagnoser the login 500', t, { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '0' }))[1],
         "**Context:** the fresh-session offers are off - the session compacts at Claude Code's own point in its 1M context window (claude-sonnet-5-5).");
     // the word on a command auto-mode does not run on is said, never silently dropped
     assert.strictEqual(bannerOf(typedRun(p, 'c5', '/capture-code-style auto-mode', t))[0],
@@ -308,7 +308,7 @@ test('mode banner: auto-mode OFF says each ask waits, then the fresh-session ref
     assert.match(bannerOf(typedRun(project(), 'c10', '/issue-diagnoser auto-mode the login 500', t))[0], /^\*\*Auto-mode: ON\*\* for \/issue-diagnoser - /);
     // an unknown model and no window: no number is invented for the window
     const bare = project();
-    assert.match(bannerOf(typedRun(bare, 'c6', '/task-design', path.join(TMP, 'no-such.jsonl')))[1], /past ~300k tokens of its context window, the run offers/);
+    assert.match(bannerOf(typedRun(bare, 'c6', '/task-design', path.join(TMP, 'no-such.jsonl')))[1], /past ~280k tokens of its 300k default context window, the run offers/);
     // the fresh-session offer keeps its text and its place; the banner follows it
     const big = transcript([], 'claude-opus-5-5', 450000);
     const offered = context(typedRun(p, 'c7', '/loop-code-quality src/', big));
@@ -381,6 +381,44 @@ test('auto-mode asks: every question marking one Recommended option is answered 
     assert.strictEqual(answered(ask(p, 'a1', two, { agent_id: 'seat-1' })), null, 'a seat');
     fs.rmSync(p.gate);
     assert.strictEqual(answered(ask(p, 'a1', two)), null, 'no stamp - the user answers');
+});
+
+// 2026-10-16, the user's bug report: an auto-mode task-solve approval reached the user. 'too small to pay for seats' read
+// as an outward money act, so the ask waited; the shape check then sent it back for a fresh-session option (a new cycle in
+// a finished cycle's chat), and the re-sent ask waited on the same word.
+test('auto-mode asks: the pay-for-seats idiom and the fresh-session cost line are no outward act, and no new-cycle deny under auto-mode', () =>
+{
+    const p = project();
+    autoStamp(p, 'pay1');
+    const approve = q('Plan ready: 4 steps in 2 files, too small to pay for seats. Approve it?',
+        ['Approve - build in this session (Recommended)', 'Approve - dispatch the agent seats', 'Not yet - changes needed']);
+    assert.deepStrictEqual(answered(ask(p, 'pay1', [approve])), { [approve.question]: 'Approve - build in this session (Recommended)' }, 'the reported ask is answered');
+    for (const question of ['This chat re-sends about 401k tokens per message. Where next?', 'This chat sends about 226k tokens with every message. Go on?',
+        'Run it where? ~254k tokens re-sent per message here.', 'Seats would not pay for themselves here. Build?'])
+    {
+        const cost = q(question, ['Resume in a fresh session (Recommended)', 'Run in this session']);
+        assert.deepStrictEqual(answered(ask(p, 'pay1', [cost])), { [question]: 'Run in this session' }, `answered: ${question}`);
+    }
+    // a real outward act still waits
+    for (const [question, label] of [['Licence needed. Buy it?', 'Pay for the licence (Recommended)'], ['Done. Next?', 'Send the report to the client (Recommended)'],
+        ['Next?', 'Push to origin (Recommended)'], ['Order ready. Next?', 'Charge the customer card (Recommended)']])
+        assert.strictEqual(answered(ask(p, 'pay1', [q(question, [label, 'Not now'])])), null, `waits: ${label}`);
+
+    // the new-cycle deny: a typed prompt after this session's plan was stamped Completed:, then an ask with no fresh option
+    const completed = { type: 'assistant', message: { id: 'done', content: [{ type: 'tool_use', id: 'w1', name: 'Edit',
+        input: { file_path: path.join(p.root, '.alfred/docs/plans/2026-10-16-x.md'), old_string: 'Approved:', new_string: 'Approved: yes\nCompleted: 2026-10-16' } }] } };
+    const cycle = () => transcript([{ type: 'user', message: { role: 'user', content: '<command-name>/task-solve</command-name>' } }, completed,
+        { type: 'user', entrypoint: 'cli', message: { role: 'user', content: [{ type: 'text', text: 'now the manager view' }] } },
+        { type: 'assistant', entrypoint: 'cli', message: { id: `m${++n}`, model: 'claude-opus-5-5', role: 'assistant', content: [{ type: 'text', text: 'ok' }], usage: { cache_read_input_tokens: 362000 } } }]);
+    const outward = q('Result: design done. Ship it?', ['Push the branch (Recommended)', 'Stop']);
+    const waits = ask(p, 'pay1', [outward], { transcript_path: cycle() });
+    assert.strictEqual(waits.status, 0, `auto-mode: an outward ask waits for the user, never sent back for a fresh option: ${waits.stderr}`);
+    assert.strictEqual(answered(waits), null);
+    assert.doesNotMatch(context(waits), /fresh session/i, 'nor noted with one');
+    fs.rmSync(p.gate);
+    const attended = ask(p, 'pay2', [outward], { transcript_path: cycle() });
+    assert.strictEqual(attended.status, 2, 'off auto-mode the new cycle\'s first ask is still sent back');
+    assert.match(attended.stderr, /Resume in a fresh session \(Recommended\)/);
 });
 
 // audit 2026-10-14 SKF-04 (the user's ruling, option A): the upgrade's hard stop is a rail. Put as the attended run puts
@@ -510,13 +548,13 @@ const MODELS = { 'claude-opus-5-5': 1000000, 'claude-haiku-4-5': 200000, 'claude
 const ON = { ALFRED_CODE_AUTO_COMPACT: '1' };
 test('auto-mode window: each model compacts at its window tier\'s fresh-session trigger, only where the project compacts instead', () =>
 {
-    assert.deepStrictEqual(settings.compactWindowSeeds(MODELS, ON, CATALOG), { 'claude-opus-5-5': 400000, 'claude-haiku-4-5': 150000, 'claude-x-500k': 300000 }, 'the seeded triggers');
+    assert.deepStrictEqual(settings.compactWindowSeeds(MODELS, ON, CATALOG), { 'claude-opus-5-5': 400000, 'claude-haiku-4-5': 180000, 'claude-x-500k': 280000 }, 'the seeded triggers');
     assert.deepStrictEqual(settings.compactWindowSeeds(MODELS, {}, CATALOG), {}, 'the catalog seeds ALFRED_CODE_AUTO_COMPACT 0: the fresh-session offers stay, nothing compacts early');
     for (const v of ['0', 'yes', 'true', ''])
         assert.deepStrictEqual(settings.compactWindowSeeds(MODELS, { ALFRED_CODE_AUTO_COMPACT: v }, CATALOG), {}, `'${v}' is not 1`);
-    assert.deepStrictEqual(settings.compactWindowSeeds(MODELS, { ...ON, ALFRED_CODE_FRESH_SESSION_1M: '350000', ALFRED_CODE_FRESH_SESSION_200K: '0', ALFRED_CODE_FRESH_SESSION_DEFAULT: 'x' }, CATALOG),
-        { 'claude-opus-5-5': 350000, 'claude-x-500k': 300000 }, 'the env the file applies; a tier switched off seeds nothing; garbage reads as the seed');
-    assert.deepStrictEqual(settings.compactWindowSeeds({ a: 200000, b: 1000000 }, { ...ON, ALFRED_CODE_FRESH_SESSION_200K: '250000', ALFRED_CODE_FRESH_SESSION_1M: '50000' }, CATALOG),
+    assert.deepStrictEqual(settings.compactWindowSeeds(MODELS, { ...ON, ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '350000', ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '0', ALFRED_CODE_CONTEXT_WINDOW_FOR_300K: 'x' }, CATALOG),
+        { 'claude-opus-5-5': 350000, 'claude-x-500k': 280000 }, 'the env the file applies; a tier switched off seeds nothing; garbage reads as the seed');
+    assert.deepStrictEqual(settings.compactWindowSeeds({ a: 200000, b: 1000000 }, { ...ON, ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '250000', ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '50000' }, CATALOG),
         { a: 180000, b: 100000 }, 'a trigger past its window is held at 90% of it, and the value never under Claude Code\'s 100,000');
     assert.deepStrictEqual(settings.compactWindowSeeds({ tiny: 50000, junk: 'x' }, ON, CATALOG), {}, 'a row under 100k or not a number seeds nothing');
     assert.deepStrictEqual(settings.compactWindowSeeds({ 'us.anthropic.claude-x': 200000, 'Claude-X': 200000 }, ON, CATALOG), {}, 'nor an id the stamp could not read back');
@@ -549,8 +587,8 @@ test('auto-mode window: install seeds it per model in the project file, ledgers 
     fs.mkdirSync(path.join(dir, '.claude'));
     const said = [];
     const first = writer(dir, { log: (l) => said.push(l) });
-    assert.deepStrictEqual(read(dir).modelSettings, { 'claude-opus-5-5': { autoCompactWindow: 400000 }, 'claude-haiku-4-5': { autoCompactWindow: 150000 }, 'claude-x-500k': { autoCompactWindow: 300000 } });
-    assert.ok(said.some((l) => /settings\.json: autoCompactWindow per model - 150000 on 1 model, 300000 on 1 model, 400000 on 1 model/.test(l)), said.join('\n'));
+    assert.deepStrictEqual(read(dir).modelSettings, { 'claude-opus-5-5': { autoCompactWindow: 400000 }, 'claude-haiku-4-5': { autoCompactWindow: 180000 }, 'claude-x-500k': { autoCompactWindow: 280000 } });
+    assert.ok(said.some((l) => /settings\.json: autoCompactWindow per model - 180000 on 1 model, 280000 on 1 model, 400000 on 1 model/.test(l)), said.join('\n'));
     const ledger = first.managed.settings['settings.json'];
     assert.strictEqual(ledger['modelSettings.claude-opus-5-5.autoCompactWindow'], valueHash('400000'));
     // a re-run changes nothing
@@ -561,7 +599,7 @@ test('auto-mode window: install seeds it per model in the project file, ledgers 
     // the user changes one, the trigger moves: the stack's two follow, the user's stays
     const data = read(dir);
     data.modelSettings['claude-haiku-4-5'].autoCompactWindow = 120000;
-    data.env = { ...data.env, ALFRED_CODE_FRESH_SESSION_1M: '350000' };
+    data.env = { ...data.env, ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '350000' };
     data.modelSettings['claude-opus-5-5'].effortLevel = 'high';
     fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify(data));
     const third = writer(dir, { prior: throughStamp(second.managed) });

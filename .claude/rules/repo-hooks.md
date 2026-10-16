@@ -64,7 +64,11 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
   hand-off, and leaving to the user an ask with an unmarked question or a recommended OUTWARD act (`AUTO_OUTWARD_RE`:
   push, merge, deploy, publish, release, ship, a PR, an issue or ticket filed, post, send, upload, a remote branch or tag
   deleted, a hard reset, a database dropped, rotate, revoke, pay - audit HK01: an auto-answered 'Open the PR' was push
-  consent to the commit gate);
+  consent to the commit gate; 2026-10-16, the user's report: 'pay for seats' and the fresh-session cost line 're-sends
+  about 401k tokens per message' read as outward and sent an approval ask to the user - over 2,656 recommended questions
+  in real transcripts the narrowed pattern drops 91 hits, all of those shapes or a `/purchases/` path, and adds none);
+  under a live auto-mode stamp of this session (`autoRun`) the new-cycle fresh-option deny and the fresh-session note
+  route stand down too, so no deny turns an auto-answered ask into one that waits;
   and it sends a Stop back to the run while the stamp stands (`auto-continue`, bounded by the Stop chain's `workSince`:
   held again only after a tool call; counted per stamp beside the chain marker, `<marker>.auto` keyed on the stamp's
   session and mtime, and the 50th Stop passes with one `auto-continue-cap` row - audit HK05: Claude Code's own
@@ -569,7 +573,7 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     dir, so a missing dir never re-denies), carrying the corrected strings (I3); a fresh-session option quoting no number
     within 20% of the measured carry (both numbers appended to its description); and, with no mechanical fix, an option
     telling the user to type into Other, a single-select question without exactly one '(Recommended)' listed first (an
-    unmarked one whose text says why none is recommended passes), and a new cycle's
+    unmarked one whose text says why none is recommended passes), and - off auto-mode and with offers on - a new cycle's
     first ask with no fresh option after a typed prompt followed this session's plan `Completed:` stamp (once per stamp;
     audit 2026-10-10 C08 / C09 / C26); a question shaped as an approval (approve, as shown, is ready, post / file /
     publish / send this) with no chat text since the user's last typed turn that carries its subject - 200 characters or
@@ -668,19 +672,22 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     across 2+ files with no habits-execution-strategy load before the first, read from the same whole-transcript flow
     state, one `no-execution-strategy` row (audit 2026-10-11, session 7f8803eb: 21 Edits over 5 files, never loaded).
     Fresh-session offer on a clean close past the window's ABSOLUTE trigger:
-    `ALFRED_CODE_FRESH_SESSION_200K` (default 150000), `_1M` (400000), `_DEFAULT` (300000, any other or
-    unreadable window); `0` switches that case off; seeded absent-only. The window comes from ONE table (the session
-    model's row in the shipped `model-windows.json`, else `ALFRED_CODE_DEFAULT_CONTEXT_WINDOW`, seeded 300000; no id
-    suffix or carry is read), never declared - only LOWERED by two measured facts (audit 2026-10-10 C08): the install's
+    `ALFRED_CODE_CONTEXT_WINDOW_FOR_1M` (default 400000, a window of 1M or more), `_FOR_300K` (280000, 300k up to
+    1M), `_FOR_200K` (180000, below 300k); `0` switches that tier off; seeded absent-only (2026-10-16, the user's ruling:
+    renamed from `ALFRED_CODE_FRESH_SESSION_1M` / `_200K`, the 150000 seed moved to 180000, `_DEFAULT` retired - every
+    window lands in one of three tiers - and `ALFRED_CODE_DEFAULT_CONTEXT_WINDOW` renamed `ALFRED_CODE_CONTEXT_WINDOW_DEFAULT`;
+    `meta/migrations.json` carries each). The window comes from ONE table (the session
+    model's row in the shipped `model-windows.json`, else `ALFRED_CODE_CONTEXT_WINDOW_DEFAULT`, seeded 300000 - the 300K
+    tier; no id suffix or carry is read), never declared - only LOWERED by two measured facts (audit 2026-10-10 C08): the install's
     documented auto-compact window (`CLAUDE_CODE_AUTO_COMPACT_WINDOW`, else the highest settings file naming one - its
     `modelSettings` entry for the model first, then its top-level `autoCompactWindow` - the USER file's included, 'Scope:
     Any file' with no model limit in the settings reference; the Opus 5 / Fable 5.1 limit is `effortLevel`'s, audit HK03)
     and 90% of the lowest automatic compaction this project recorded for the model
     (`<docs-path>/flow/compact-points.json`, 30 days). The TIER is the model's own window (its table row, else the declared
     default): a lowered window only clamps the trigger inside it, so a 1M model under the 400k window the installer seeds
-    keeps its 1M trigger, held at 360k - tiering by the lowered window had dropped it to the DEFAULT 300k (2026-10-14). A context read stops at a `compact_boundary` row (unknown until
+    keeps its 1M trigger, held at 360k - tiering by the lowered window had dropped it to the 300k DEFAULT trigger of that time (2026-10-14). A context read stops at a `compact_boundary` row (unknown until
     the next model call), and the model id read widens to 8MB and takes the harness's `model` attachment row. A key matches its id, a dated snapshot, a Bedrock version, the `[1m]` suffix and a provider prefix, never a point release: `claude-opus-5-5` took `claude-opus-5`'s row until every model got its own (2.1.5 M6, which added Opus 4.5 and Sonnet 4.5 at 200K). A trigger at or above its window is clamped
-    inside it, and `_DEFAULT` must stay below the smallest window it can land on. The offer fires only
+    inside it (90% of it). The offer fires only
     when a resume recovers something (carry minus the session's first-message floor >= 40% of carry),
     re-arms at 1.5x growth - counted from its own block or the newest fresh-session ask answered in ANY turn, at that
     ask's carry (`fresh-session.js` `freshAskAnsweredCtx`; audit 2026-10-11 SD11, 7f8803eb) - and never mid-response. A long-idle or long-span session takes the same

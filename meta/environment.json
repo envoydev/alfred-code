@@ -143,11 +143,12 @@
       }
     },
     {
-      "key": "ALFRED_CODE_FRESH_SESSION_1M",
+      "key": "ALFRED_CODE_CONTEXT_WINDOW_FOR_1M",
       "default": "400000",
+      "renamed_from": "ALFRED_CODE_FRESH_SESSION_1M",
       "ask": true,
       "group_off": "0",
-      "what": "the per-message context, in TOKENS, at which a session on a 1M window is offered a fresh session instead of carrying on (an orchestration run is gated, a finished turn is offered). This row OWNS the whole gate: the two rows riding with it are the other window sizes, and `group_off` means the question also offers turning the feature off, which writes `0` to all three. The 400,000 default sits ABOVE the harness's own auto-compaction (measured preTokens 387,619-397,171), so on this window the turn-end offer is usually unreachable and the SessionStart compact route is what reaches you - lower it (250000, 350000) to be asked before the harness decides.",
+      "what": "the per-message context, in TOKENS, at which a session on a 1M window is offered a fresh session instead of carrying on (an orchestration run is gated, a finished turn is offered). This row OWNS the whole gate: the rows riding with it are the 300K and 200K windows, and `group_off` means the question also offers turning the feature off, which writes `0` to all three. A window takes the largest tier it reaches (1M and up, 300K and up, else 200K). The 400,000 default sits ABOVE the harness's own auto-compaction (measured preTokens 387,619-397,171), so on this window the turn-end offer is usually unreachable and the SessionStart compact route is what reaches you - lower it (250000, 350000) to be asked before the harness decides. To stop every fresh-session offer, set ALFRED_CODE_AUTO_COMPACT=1 rather than a tier to 0.",
       "validate": {
         "type": "tokens",
         "min": 0,
@@ -155,11 +156,11 @@
       }
     },
     {
-      "key": "ALFRED_CODE_FRESH_SESSION_200K",
-      "default": "150000",
+      "key": "ALFRED_CODE_CONTEXT_WINDOW_FOR_300K",
+      "default": "280000",
       "ask": true,
-      "asked_with": "ALFRED_CODE_FRESH_SESSION_1M",
-      "what": "the same trigger in TOKENS for a 200k window. 150,000 is the measured figure - below it the offer nags, above it a 200k session has little room left to carry. `0` turns that tier off. The two tiers never interfere: each window size reads only its own variable.",
+      "asked_with": "ALFRED_CODE_CONTEXT_WINDOW_FOR_1M",
+      "what": "the same trigger in TOKENS for a window of 300K up to 1M - the tier a model the shipped `model-windows.json` does not list lands on, since it runs in ALFRED_CODE_CONTEXT_WINDOW_DEFAULT (300,000). `0` turns that tier off.",
       "validate": {
         "type": "tokens",
         "min": 0,
@@ -167,11 +168,15 @@
       }
     },
     {
-      "key": "ALFRED_CODE_FRESH_SESSION_DEFAULT",
-      "default": "300000",
+      "key": "ALFRED_CODE_CONTEXT_WINDOW_FOR_200K",
+      "default": "180000",
+      "renamed_from": "ALFRED_CODE_FRESH_SESSION_200K",
+      "former_defaults": [
+        "150000"
+      ],
       "ask": true,
-      "asked_with": "ALFRED_CODE_FRESH_SESSION_1M",
-      "what": "the same trigger in TOKENS for every OTHER case - a window the gate cannot read (the model is not in the `model-windows.json` shipped beside the hooks (the plugin's own on the plugin route) and ALFRED_CODE_DEFAULT_CONTEXT_WINDOW is unset) and a window that is neither of those two sizes. 300,000 matches the seeded ALFRED_CODE_DEFAULT_CONTEXT_WINDOW, and a trigger at or above its window is clamped to 90% of it (270,000 there). On a window that cannot be read at all, or one below 300,000 (a 200k model the table lacks), it can sit above the window and never fire - lower it if you run such models. `0` turns the offer off wherever the window is not one of the two named sizes.",
+      "asked_with": "ALFRED_CODE_CONTEXT_WINDOW_FOR_1M",
+      "what": "the same trigger in TOKENS for a window under 300K (a 200K model). A window below the trigger holds it at 90% of the window. `0` turns that tier off. Each window size reads only its own variable.",
       "validate": {
         "type": "tokens",
         "min": 0,
@@ -179,10 +184,11 @@
       }
     },
     {
-      "key": "ALFRED_CODE_DEFAULT_CONTEXT_WINDOW",
+      "key": "ALFRED_CODE_CONTEXT_WINDOW_DEFAULT",
       "default": "300000",
+      "renamed_from": "ALFRED_CODE_DEFAULT_CONTEXT_WINDOW",
       "ask": false,
-      "what": "the context WINDOW, in tokens, the fresh-session gate uses for a model the `model-windows.json` shipped beside the hooks (the plugin's own on the plugin route) does not list. That table (replaced on every update from the Claude models docs) is the ONLY other source - no id suffix, carry or compaction is read. Remove the key and an unlisted model takes ALFRED_CODE_FRESH_SESSION_DEFAULT.",
+      "what": "the context WINDOW, in tokens, the fresh-session gate uses for a model the `model-windows.json` shipped beside the hooks (the plugin's own on the plugin route) does not list - it then takes that window's tier trigger (300,000 -> ALFRED_CODE_CONTEXT_WINDOW_FOR_300K). That table (replaced on every update from the Claude models docs) is the ONLY other source - no id suffix, carry or compaction is read. Unset or garbage reads as 300,000.",
       "validate": {
         "type": "window",
         "min": 100000
@@ -192,7 +198,7 @@
       "key": "ALFRED_CODE_AUTO_COMPACT",
       "default": "0",
       "ask": true,
-      "asked_with": "ALFRED_CODE_FRESH_SESSION_1M",
+      "asked_with": "ALFRED_CODE_CONTEXT_WINDOW_FOR_1M",
       "what": "what a long session does at the fresh-session trigger above. `0` (the seed) offers a fresh session there: an ask hands the work to a new session with a paste-ready resume, and Claude Code compacts at its own point. `1` compacts instead: the installer sets each model's `autoCompactWindow` in this project's settings to its trigger, no fresh-session ask is ever made, and the work goes on from the summary - read at session start, so it applies from the next session. Asked with the triggers; setup passes the answer as `--auto-compact on|off`.",
       "validate": {
         "type": "enum",

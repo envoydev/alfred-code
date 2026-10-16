@@ -27,7 +27,7 @@ const CATALOG = require('../meta/environment.json').env;
 const MIGRATIONS = {
     renames: [['ALFRED_CODE_DOCS_DIR', 'ALFRED_CODE_DOCS_PATH']],
     retired: [['ALFRED_CODE_FRESH_SESSION_PCT', null], ['CLAUDE_AUTOCOMPACT_PCT_OVERRIDE', '40']],
-    reseed: [['ALFRED_CODE_FRESH_SESSION_DEFAULT', '250000', '180000']],
+    reseed: [['ALFRED_CODE_CONTEXT_WINDOW_FOR_200K', '150000', '180000']],
 };
 
 let seq = 0;
@@ -275,9 +275,27 @@ test('settings-env: a RETIRED key is dropped, and a conditional one only at its 
 
 test('settings-env: a BAD SEED is corrected only while it still holds that seed', () =>
 {
-    assert.strictEqual(envPass({ ALFRED_CODE_FRESH_SESSION_DEFAULT: '250000' }).env.ALFRED_CODE_FRESH_SESSION_DEFAULT, '180000');
-    assert.strictEqual(envPass({ ALFRED_CODE_FRESH_SESSION_DEFAULT: '120000' }).env.ALFRED_CODE_FRESH_SESSION_DEFAULT, '120000',
+    assert.strictEqual(envPass({ ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '150000' }).env.ALFRED_CODE_CONTEXT_WINDOW_FOR_200K, '180000');
+    assert.strictEqual(envPass({ ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '120000' }).env.ALFRED_CODE_CONTEXT_WINDOW_FOR_200K, '120000',
         'a tuned value was reset to the stack\'s number');
+});
+
+// 2026-10-16 matrix: a value the user typed equal to an old seed was reset on EVERY update - the reseed now asks the ledger.
+test('settings-env: a BAD SEED the user typed is theirs - the ledger decides, under the key\'s old name too', () =>
+{
+    const K = 'ALFRED_CODE_CONTEXT_WINDOW_FOR_200K';
+    const OLD = 'ALFRED_CODE_FRESH_SESSION_200K';
+    const migrations = { ...MIGRATIONS, renames: [...MIGRATIONS.renames, [OLD, K]] };
+    const run = (env, prior) => { const file = settingsFile({ env }); write(file, { migrations, ledger: { prior, releaseHooks: [] } }); return JSON.parse(fs.readFileSync(file, 'utf8')).env; };
+    const ledgered = (rows) => ({ env: { 'settings.json': rows }, deny: [], hooks: [] });
+    assert.strictEqual(run({ [K]: '150000' }, ledgered({ [K]: valueHash('180000') }))[K], '150000', 'the stack wrote 180000, the user set 150000: kept');
+    assert.strictEqual(run({ [K]: '150000' }, ledgered({ [K]: valueHash('150000') }))[K], '180000', 'the stack wrote 150000: reset');
+    assert.strictEqual(run({ [K]: '150000' }, ledgered({ MY: 'x' }))[K], '150000', 'a key the ledger never recorded is the user\'s');
+    assert.strictEqual(run({ [K]: '150000' }, null)[K], '180000', 'no ledger (an older stamp): the value match alone');
+    const renamed = run({ [OLD]: '150000' }, ledgered({ [OLD]: valueHash('150000') }));
+    assert.deepStrictEqual([renamed[K], OLD in renamed], ['180000', false], 'renamed this run: the old name\'s row says the stack wrote it');
+    const typed = run({ [OLD]: '150000' }, ledgered({ [OLD]: valueHash('120000') }));
+    assert.deepStrictEqual([typed[K], OLD in typed], ['150000', false], '... and a typed value under the old name moves and is kept');
 });
 
 test('settings-env: the SEEDS come from the catalog, absent-only, and never touch a set value', () =>
@@ -467,7 +485,7 @@ test('settings-writer: at project scope a write to a stack key settings.local.js
     const localFile = path.join(dir, 'settings.local.json');
     fs.writeFileSync(sharedFile, JSON.stringify({ env: { TEAM: 'y' } }));
     fs.writeFileSync(localFile, JSON.stringify({
-        env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', ALFRED_CODE_FRESH_SESSION_DEFAULT: '250000', ALFRED_CODE_DOCS_VERSIONING: 'local', ALFRED_CODE_CORRECTION_NUDGE_MODE: 'inject', MY_OWN: 'x' },
+        env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '150000', ALFRED_CODE_DOCS_VERSIONING: 'local', ALFRED_CODE_CORRECTION_NUDGE_MODE: 'inject', MY_OWN: 'x' },
         permissions: { allow: ['Bash(ls)'] },
     }));
     const logs = [];
@@ -479,20 +497,20 @@ test('settings-writer: at project scope a write to a stack key settings.local.js
     const shared = JSON.parse(fs.readFileSync(sharedFile, 'utf8'));
     const local = JSON.parse(fs.readFileSync(localFile, 'utf8'));
     assert.deepStrictEqual(local.env, {
-        ALFRED_CODE_HOOKS_OFF: 'guard-answer-length,guard-secret-value', ALFRED_CODE_FRESH_SESSION_DEFAULT: '180000',
+        ALFRED_CODE_HOOKS_OFF: 'guard-answer-length,guard-secret-value', ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '180000',
         ALFRED_CODE_DOCS_VERSIONING: 'git', ALFRED_CODE_CORRECTION_NUDGE: 'inject', MY_OWN: 'x',
     }, 'the answer, the decision, the reseed and the rename land where the key applies');
     assert.deepStrictEqual(local.permissions, { allow: ['Bash(ls)'] }, 'nothing else of the local file is touched');
     for (const key of ['ALFRED_CODE_HOOKS_OFF', 'ALFRED_CODE_DOCS_VERSIONING'])
         assert.ok(!(key in shared.env), `the decision on ${key} reached settings.json, where the local value shadows it`);
     // C6 (R101 N7): a SEED is absent-only against settings.json itself - what every teammate reads.
-    assert.strictEqual(shared.env.ALFRED_CODE_FRESH_SESSION_DEFAULT, '300000');
+    assert.strictEqual(shared.env.ALFRED_CODE_CONTEXT_WINDOW_FOR_200K, '180000');
     assert.strictEqual(shared.env.ALFRED_CODE_CORRECTION_NUDGE, 'log');
     assert.strictEqual(shared.env.ALFRED_CODE_PUSH_GATE, '1', 'a key the local file lacks is seeded in settings.json as before');
     assert.strictEqual(shared.env.TEAM, 'y');
     const text = logs.join('\n');
     assert.match(text, /settings\.local\.json env: ALFRED_CODE_HOOKS_OFF = guard-answer-length,guard-secret-value/);
-    assert.match(text, /settings\.local\.json env: ALFRED_CODE_FRESH_SESSION_DEFAULT reset to 180000/);
+    assert.match(text, /settings\.local\.json env: ALFRED_CODE_CONTEXT_WINDOW_FOR_200K reset to 180000/);
     assert.match(text, /settings\.local\.json env: ALFRED_CODE_CORRECTION_NUDGE_MODE renamed to ALFRED_CODE_CORRECTION_NUDGE/);
     assert.match(text, /settings\.json env: ALFRED_CODE_PUSH_GATE seeded/);
 
@@ -599,7 +617,7 @@ test('leaveLocalScope: seed-valued stack keys leave, a value the user set stays 
             ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '/elsewhere/other-repo', ALFRED_CODE_API_TOKEN: 'abc123',
             ALFRED_CODE_INSTRUMENT: '0', ALFRED_CODE_CORRECTION_NUDGE: 'log', ALFRED_CODE_TURN_CHECK: 0,
             ALFRED_CODE_MEMORY_DB: '/elsewhere/.memory-mcp/memory.db', MY_OWN: 'x',
-            ALFRED_CODE_FRESH_SESSION_DEFAULT: '250000', ALFRED_CODE_REPO_URL: 'https://user:tok3n@host/fork',
+            ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '150000', ALFRED_CODE_REPO_URL: 'https://user:tok3n@host/fork',
         },
         permissions: { allow: ['Bash(ls)'], deny: ['Agent(alfred-code:evidence-gatherer)', 'Read(.env)', 'Bash(rm:*)'] },
         enabledMcpjsonServers: ['serena', 'mine'],
@@ -607,7 +625,7 @@ test('leaveLocalScope: seed-valued stack keys leave, a value the user set stays 
         autoMemoryEnabled: false,
     }));
     const seeds = { ALFRED_CODE_PUSH_GATE: '1', ALFRED_CODE_DOCS_PATH: '.claude/docs', ALFRED_CODE_HOOKS_OFF: '', ALFRED_CODE_INSTRUMENT: '0', ALFRED_CODE_CORRECTION_NUDGE: 'log', ALFRED_CODE_TURN_CHECK: '0',
-        ALFRED_CODE_FRESH_SESSION_DEFAULT: ['180000', '250000'] };
+        ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: ['180000', '150000'] };
     const opts = { claudeDir: dir, hookFiles: ['guard-catastrophic-rm.js'], mcpNames: ['serena'], denySpecs: ['Read(.env)'], seeds, written: ['ALFRED_CODE_MEMORY_DB'] };
     const logs = [];
     const out = leaveLocalScope({ ...opts, log: (m) => logs.push(m) });
@@ -636,7 +654,7 @@ test('leaveLocalScope: seed-valued stack keys leave, a value the user set stays 
     for (const value of ['guard-answer-length', '/elsewhere/other-repo', 'abc123', 'tok3n', 'docs/mine'])
         assert.ok(!text.includes(value), `a kept value reached the log: ${value}`);
     // C18 (R98): the removed seeds are ONE line - a count and the keys - never a line per key.
-    assert.match(text, /^  settings\.local\.json: 3 stack env keys removed - each held the stack's own seed, so settings\.json's value or its seed applies from here on: ALFRED_CODE_INSTRUMENT, ALFRED_CODE_CORRECTION_NUDGE, ALFRED_CODE_FRESH_SESSION_DEFAULT$/m);
+    assert.match(text, /^  settings\.local\.json: 3 stack env keys removed - each held the stack's own seed, so settings\.json's value or its seed applies from here on: ALFRED_CODE_INSTRUMENT, ALFRED_CODE_CORRECTION_NUDGE, ALFRED_CODE_CONTEXT_WINDOW_FOR_200K$/m);
     assert.strictEqual(logs.filter((l) => / removed/.test(l)).length, 1, logs.join('\n'));
     // C8: the memory path lives in settings.local.json at every scope, so the move leaves it silently.
     assert.doesNotMatch(text, /MEMORY_DB/);
@@ -723,15 +741,15 @@ function pair(shared, local)
 // and is what every teammate reads; before, the committed file depended on who ran the install.
 test('settings-writer: at project scope a key settings.local.json holds is still seeded into settings.json, and the local value is untouched (C6)', () =>
 {
-    const p = pair({ env: { TEAM: 'y' } }, { env: { ALFRED_CODE_DEFAULT_CONTEXT_WINDOW: '200000', ALFRED_CODE_CORRECTION_NUDGE: 'inject', ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', ALFRED_CODE_DOCS_VERSIONING: 'local' } });
+    const p = pair({ env: { TEAM: 'y' } }, { env: { ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '200000', ALFRED_CODE_CORRECTION_NUDGE: 'inject', ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', ALFRED_CODE_DOCS_VERSIONING: 'local' } });
     const logs = [];
     writeSettings({ file: p.sharedFile, localFile: p.localFile, catalog: CATALOG, migrations: MIGRATIONS, docsVersioning: { seed: 'git' }, log: (m) => logs.push(m) });
     const shared = p.shared().env;
-    assert.strictEqual(shared.ALFRED_CODE_DEFAULT_CONTEXT_WINDOW, '300000', 'the committed file lacks the seed because the runner holds a personal value');
+    assert.strictEqual(shared.ALFRED_CODE_CONTEXT_WINDOW_DEFAULT, '300000', 'the committed file lacks the seed because the runner holds a personal value');
     assert.strictEqual(shared.ALFRED_CODE_CORRECTION_NUDGE, 'log');
     assert.strictEqual(shared.ALFRED_CODE_HOOKS_OFF, '', 'the unanswered HOOKS_OFF seed');
     assert.strictEqual(shared.ALFRED_CODE_DOCS_VERSIONING, 'git', 'the docs-versioning seed');
-    assert.deepStrictEqual(p.local().env, { ALFRED_CODE_DEFAULT_CONTEXT_WINDOW: '200000', ALFRED_CODE_CORRECTION_NUDGE: 'inject', ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', ALFRED_CODE_DOCS_VERSIONING: 'local' });
+    assert.deepStrictEqual(p.local().env, { ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '200000', ALFRED_CODE_CORRECTION_NUDGE: 'inject', ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', ALFRED_CODE_DOCS_VERSIONING: 'local' });
     assert.match(logs.join('\n'), /settings\.json env: ALFRED_CODE_CORRECTION_NUDGE seeded \(log\)/);
     // Idempotent.
     const before = [fs.readFileSync(p.sharedFile, 'utf8'), fs.readFileSync(p.localFile, 'utf8')];
@@ -955,7 +973,7 @@ test('settings-ledger: a stamp with no ledger adopts what the stack itself shipp
 {
     const cmd = hookCommand('guard-a.js').command;
     const file = settingsFile({
-        env: { ALFRED_CODE_INSTRUMENT: '0', ALFRED_CODE_PUSH_GATE: '0', ALFRED_CODE_FRESH_SESSION_DEFAULT: '250000', ALFRED_CODE_MEMORY_DB: '/m.db', MY_KEY: 'x' },
+        env: { ALFRED_CODE_INSTRUMENT: '0', ALFRED_CODE_PUSH_GATE: '0', ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '150000', ALFRED_CODE_MEMORY_DB: '/m.db', MY_KEY: 'x' },
         permissions: { deny: ['Read(.env)', 'Agent(alfred-code:angular-verifier)', 'Bash(rm:*)'] },
         hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: cmd, timeout: 10 }] }, { matcher: 'Bash', hooks: [{ type: 'command', command: 'node mine.js' }] }] },
     });
@@ -966,7 +984,7 @@ test('settings-ledger: a stamp with no ledger adopts what the stack itself shipp
     const env = result.managed.env['settings.json'];
     assert.strictEqual(env.ALFRED_CODE_INSTRUMENT, valueHash('0'), 'at the catalog seed: the stack\'s');
     assert.ok(!('ALFRED_CODE_PUSH_GATE' in env), 'a value the stack never shipped is the user\'s');
-    assert.strictEqual(env.ALFRED_CODE_FRESH_SESSION_DEFAULT, valueHash('180000'), 'reseeded this run: written by the stack');
+    assert.strictEqual(env.ALFRED_CODE_CONTEXT_WINDOW_FOR_200K, valueHash('180000'), 'reseeded this run: written by the stack');
     assert.strictEqual(env.ALFRED_CODE_MEMORY_DB, valueHash('/m.db'), 'the written key is the stack\'s by contract');
     assert.ok(!('MY_KEY' in env));
     // Review finding 6: with no ledger a secret-file deny already there may be the team's, so it is never

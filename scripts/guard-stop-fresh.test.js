@@ -23,8 +23,8 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-stop-fresh-'));
 // fixture of their own.
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
 // ... and a Claude Code session's own settings env reaches this process: the seeded
-// ALFRED_CODE_DEFAULT_CONTEXT_WINDOW=1000000 would resolve every unproven window below as 1M.
-delete process.env.ALFRED_CODE_DEFAULT_CONTEXT_WINDOW;
+// ALFRED_CODE_CONTEXT_WINDOW_DEFAULT=1000000 would resolve every unproven window below as 1M.
+delete process.env.ALFRED_CODE_CONTEXT_WINDOW_DEFAULT;
 // Every guard appends a block row under CLAUDE_PROJECT_DIR, falling back to the process cwd - so an
 // unpinned run forges field ledger rows into this repo's own docs root. Pin a scratch root.
 process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));

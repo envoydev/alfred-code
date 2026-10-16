@@ -205,7 +205,7 @@ const SKIP_MARKER_RE = /\b(?:it|test|describe|context)\.skip\s*\(|\bx(?:it|test|
 let fresh;
 try { fresh = require(require('path').join(__dirname, 'fresh-session.js')); } catch {
   fresh = {
-    use() {}, freshAt: (k, d) => d, FRESH_AT_200K: 0, FRESH_AT_1M: 0, FRESH_AT_DEFAULT: 0, FRESH_OFF: true, COMPACT_INSTEAD: false,
+    use() {}, freshAt: (k, d) => d, FRESH_AT_200K: 0, FRESH_AT_300K: 0, FRESH_AT_1M: 0, FRESH_OFF: true, COMPACT_INSTEAD: false,
     sessionModelId: () => null, tableWindow: () => null, envWindow: () => null, knownWindow: () => null,
     ctxThreshold: () => null, MIN_RECOVERABLE_SHARE: 0.4, coldFloor: () => null, worthResuming: () => false,
   };
@@ -2145,18 +2145,24 @@ const REMOTE_READ_RE = /\bgit\s+(?:fetch|pull|ls-remote|remote\s+(?:update|show)
 // 'Post the comment', 'Send it to the team channel', 'Create the GitHub issue', 'Delete the 4 remote branches', 'Ship',
 // 'Rotate it now', 'Reset the branch to origin/main' and a database 'Drop it' were all answered, and an answered 'Open
 // the PR' is push consent to the commit gate). The ask waits: a false hit costs one wait, a miss acts for the user.
+// A money word counts outside a path segment ('/purchases/' in a URL) and not as the cost idiom 'too small to pay for
+// seats' - a task-solve approval in auto-mode waited for the user on it (2026-10-16, the user's bug report).
 const AUTO_FRESH_RE = /\bfresh session\b|\bresume (?:it |this |the run )?(?:in|from) a (?:new|fresh)\b/i;
 const AUTO_OUTWARD_RE = new RegExp([
   String.raw`\b(?:push(?:es|ed|ing)?|merg(?:e|es|ed|ing)|deploy(?:s|ed|ing|ment)?|publish(?:es|ed|ing)?|release[sd]?|ship(?:s|ped|ping)?)\b`,
   String.raw`\b(?:pull requests?|merge requests?|PRs?|MRs?)\b`,
   String.raw`\b(?:open|create|raise|submit|file|report)\b[^.;?\n]{0,40}\b(?:issues?|tickets?|bugs?|incidents?)\b`,
-  String.raw`\b(?:post(?:s|ed|ing)?|send(?:s|ing)?|sent|e-?mail(?:s|ed|ing)?|upload(?:s|ed|ing)?|announc(?:e|es|ed|ing)|notif(?:y|ies|ied))\b(?!-)`,
+  // ... but not the fresh-session cost line ('this chat sends about 226k tokens with every message', '~254k tokens re-sent
+  // per message'), so auto-mode can step past a fresh-session ask. Measured over the 2,656 real recommended questions to
+  // 2026-10-16: this and the money-word narrowing below drop 91 of 955 hits, every one a cost line, the pay idiom or a URL
+  // path, and add none.
+  String.raw`(?<!\btokens\s(?:re-)?)\b(?:post(?:s|ed|ing)?|send(?:s|ing)?|sent|e-?mail(?:s|ed|ing)?|upload(?:s|ed|ing)?|announc(?:e|es|ed|ing)|notif(?:y|ies|ied))\b(?!-)(?!\s+(?:about\s+|roughly\s+|~)?\d[\d.,]*\s?k?\s+tokens\b)`,
   String.raw`\b(?:delet(?:e|es|ed|ing)|remov(?:e|es|ed|ing)|prun(?:e|es|ed|ing))\b[^.;?\n]{0,40}\b(?:remote|origin|upstream|branch(?:es)?|tags?|releases?|repo(?:sitor(?:y|ies))?|environments?)\b`,
   String.raw`\breset\b[^.;?\n]{0,40}(?:--hard|\bhard\b|\borigin\b|\bupstream\b|\bbranch\b)`,
   String.raw`\b(?:drop(?:s|ped|ping)?|truncat(?:e|es|ed|ing)|wip(?:e|es|ed|ing))\b[^.;?\n]{0,40}\b(?:database|db|tables?|schemas?|collections?|data)\b`,
   String.raw`\b(?:drop(?:s|ped|ping)?|truncat(?:e|es|ed|ing))\b[^.;?\n]{0,10}\b(?:it|them)\b[^\n]{0,80}\b(?:database|db|tables?|schemas?)\b`,
   String.raw`\b(?:databases?|db|tables?|schemas?)\b[^\n]{0,80}\bdrop(?:s|ped|ping)?\b`,
-  String.raw`\bforce[- ]?push|--force\b|\brotat(?:e|es|ed|ing|ion)\b|\brevok(?:e|es|ed|ing)\b|\b(?:pay|purchas(?:e|es|ed|ing)|buy|charg(?:e|ed|ing))\b`,
+  String.raw`\bforce[- ]?push|--force\b|\brotat(?:e|es|ed|ing|ion)\b|\brevok(?:e|es|ed|ing)\b|(?<![/\w.-])(?:pay(?!\s+for\s+(?:itself|themselves|(?:the\s+|its\s+|their\s+)?(?:agent\s+)?seats?)\b)|purchas(?:e|es|ed|ing)|buy|charg(?:e|ed|ing))\b`,
 ].join('|'), 'i');
 function autoAnswers(questions) {
   if (!Array.isArray(questions) || !questions.length) return null;
@@ -2181,7 +2187,11 @@ function autoAnswers(questions) {
 // only such a stamp holds its Stop. A hand-written AUTO stamp (task-solve's waiver, no session line) is live for every
 // session born before it, so it answered a second session's asks in the same project (audit 2026-10-14 HK02, replayed).
 const askStamp = payload.tool_name === 'AskUserQuestion' && !payload.agent_id ? stampOf(payload) : null;
-if (askStamp && askStamp.live && askStamp.session && /^AUTO\b/.test(askStamp.first)) {
+// A live auto-mode run of this session takes no fresh-session offer at all - the run's own contract says so (nobody is
+// there to paste the resume block), and demanding the option made an approval the run could have answered wait for the
+// user (2026-10-16, the user's bug report: task-solve's second cycle in one session). The shape checks below read it.
+const autoRun = !!(askStamp && askStamp.live && askStamp.session && /^AUTO\b/.test(askStamp.first));
+if (autoRun) {
   const input = payload.tool_input || {};
   const answers = autoAnswers(input.questions);
   if (answers) {
@@ -2274,7 +2284,7 @@ if (payload.tool_name === 'AskUserQuestion') {
     // typed prompt after this session's plan was stamped `Completed:`, then an ask with no fresh option and a carry a
     // resume would recover, is that ask.
     let newCycle = null;
-    if (!FRESH_OFF && !questions.some((q) => q && Array.isArray(q.options) && q.options.some(isFreshOpt))) {
+    if (!FRESH_OFF && !autoRun && !questions.some((q) => q && Array.isArray(q.options) && q.options.some(isFreshOpt))) {
       const fs2 = flowState();
       if (fs2.flow && fs2.completed !== null && fs2.typedAfter) {
         const u = (() => { const l = lastAssistantMessage(); return (l && l.contextUsage) || null; })();
@@ -2393,7 +2403,7 @@ if (payload.tool_name === 'AskUserQuestion') {
     // and the resume then re-carried ~346k. The clock route makes no offer the resume would not pay
     // for: worthResuming() is the same arithmetic the size trigger uses, so a carry that is mostly
     // this install's own cold floor stays quiet however long the session has been open.
-    if (!FRESH_OFF && !FRESH_RE.test(askText)) {
+    if (!FRESH_OFF && !autoRun && !FRESH_RE.test(askText)) {
       const u = (() => { const l = lastAssistantMessage(); return (l && l.contextUsage) || null; })();
       const ctx = u ? (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0) : 0;
       const since = lastBlockCtx();

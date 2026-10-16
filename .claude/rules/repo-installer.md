@@ -149,7 +149,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   switches - every run writes
   `modelSettings.<id>.autoCompactWindow` into the project's own settings file (settings.json, settings.local.json at local
   scope - never the account's) for each `model-windows.json` row, at its window tier's fresh-session trigger
-  (`settings.js compactWindowSeeds`: `_200K` / `_1M` / `_DEFAULT` from the env the file applies, `0` skips the tier, past
+  (`settings.js compactWindowSeeds`: `ALFRED_CODE_CONTEXT_WINDOW_FOR_200K` / `_FOR_300K` / `_FOR_1M` from the env the file
+  applies, the tier by `fresh-session.js tierKeyOf`, `0` skips the tier, past
   the window held at 90%, inside 100k-1M), so an auto-mode run compacts where the fresh-session gate would offer a resume
   and goes on. Claude Code reads the key at session start only. Add-only and ledgered (`managed-settings:
   <file>:modelSettings.<id>.autoCompactWindow=<hash>`; `stamp.js SETTINGS_PATH` must read the path back, or no update,

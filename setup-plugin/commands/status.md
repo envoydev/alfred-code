@@ -275,11 +275,11 @@ engine whose only record was another project's, and the session searched for its
 | ALFRED_CODE_INSTRUMENT | 0 (default - off) |
 | ALFRED_CODE_PUSH_GATE | 1 (default - on) - the publish half of the commit gate; 0 where the remote is already gated |
 | ALFRED_CODE_ROTATE_ASK | 1 (default - on) - the stop contract's once-per-exposure rotate ask |
-| ALFRED_CODE_FRESH_SESSION_1M | 400000 (default) - the fresh-session gate's trigger on a window above 200k; 0 = off for that tier |
-| ALFRED_CODE_FRESH_SESSION_200K | 150000 (default) - the same trigger on a 200k window; 0 = off for that tier |
-| ALFRED_CODE_FRESH_SESSION_DEFAULT | 300000 (default) - the same trigger for every other case: a window that is neither of those sizes, or one the gate cannot read. Which one applies comes from the session model's row in `.claude/hooks/model-windows.json` |
+| ALFRED_CODE_CONTEXT_WINDOW_FOR_1M | 400000 (default) - the fresh-session gate's trigger on a window of 1M or more; 0 = off for that tier |
+| ALFRED_CODE_CONTEXT_WINDOW_FOR_300K | 280000 (default) - the same trigger on a window of 300k up to 1M; 0 = off for that tier |
+| ALFRED_CODE_CONTEXT_WINDOW_FOR_200K | 180000 (default) - the same trigger on a window below 300k; 0 = off for that tier. The window comes from the session model's row in `.claude/hooks/model-windows.json` |
 | ALFRED_CODE_AUTO_COMPACT | 0 (default) - offer a fresh session at the trigger; 1 = compact there instead (each model's `autoCompactWindow` set, no fresh-session ask) |
-| ALFRED_CODE_DEFAULT_CONTEXT_WINDOW | 300000 (default) - the window for a model `.claude/hooks/model-windows.json` does not list |
+| ALFRED_CODE_CONTEXT_WINDOW_DEFAULT | 300000 (default) - the window for a model `.claude/hooks/model-windows.json` does not list, or one the gate cannot read |
 | CONTEXT7_API_KEY (account env) | set (N chars) / absent - absent = the keyless free tier |
 
 Mark `(default)` when the key is absent and a house default applies. `autoMemoryEnabled` is a

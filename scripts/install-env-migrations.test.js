@@ -13,20 +13,31 @@ test('every settings-env migration in the real file reaches applyEnv', () =>
 {
     const m = envMigrations(REAL);
     assert.deepEqual(Object.keys(m).sort(), ['renames', 'reseed', 'retired']);
-    assert.deepEqual(m.renames, []);
+    assert.deepEqual(m.renames, [
+        ['ALFRED_CODE_FRESH_SESSION_1M', 'ALFRED_CODE_CONTEXT_WINDOW_FOR_1M'],
+        ['ALFRED_CODE_FRESH_SESSION_200K', 'ALFRED_CODE_CONTEXT_WINDOW_FOR_200K'],
+        ['ALFRED_CODE_DEFAULT_CONTEXT_WINDOW', 'ALFRED_CODE_CONTEXT_WINDOW_DEFAULT'],
+    ]);
     assert.ok(m.retired.some(([k]) => k === 'ALFRED_CODE_FRESH_SESSION_PCT'));
     assert.ok(m.retired.some(([k]) => k === 'ALFRED_CODE_CONTEXT_WINDOW'));
     assert.ok(m.retired.some(([k, when]) => k === 'ALFRED_CODE_MONITOR' && when === null), 'the retired monitor hook\'s key goes whatever it held');
-    assert.ok(m.reseed.some(([k]) => k === 'ALFRED_CODE_FRESH_SESSION_DEFAULT'));
+    assert.ok(m.retired.some(([k, when]) => k === 'ALFRED_CODE_FRESH_SESSION_DEFAULT' && when === null), 'the retired catch-all trigger goes whatever it held');
+    assert.ok(m.reseed.some(([k, bad, to]) => k === 'ALFRED_CODE_CONTEXT_WINDOW_FOR_200K' && bad === '150000' && to === '180000'));
 });
 
 test('an old install is migrated by the real file', () =>
 {
-    const env = { ALFRED_CODE_DOCS_PATH: 'docs', ALFRED_CODE_FRESH_SESSION_PCT: '60', ALFRED_CODE_FRESH_SESSION_DEFAULT: '250000', ALFRED_CODE_MONITOR: 'inject', ALFRED_CODE_CORRECTION_NUDGE: 'log', OTHER: 'x' };
+    const env = { ALFRED_CODE_DOCS_PATH: 'docs', ALFRED_CODE_FRESH_SESSION_PCT: '60', ALFRED_CODE_FRESH_SESSION_DEFAULT: '250000', ALFRED_CODE_FRESH_SESSION_1M: '350000', ALFRED_CODE_FRESH_SESSION_200K: '150000', ALFRED_CODE_DEFAULT_CONTEXT_WINDOW: '200000', ALFRED_CODE_MONITOR: 'inject', ALFRED_CODE_CORRECTION_NUDGE: 'log', OTHER: 'x' };
     applyEnv(env, { catalog: [], migrations: envMigrations(REAL), log: () => {} });
     assert.equal(env.ALFRED_CODE_DOCS_PATH, 'docs');
     assert.ok(!('ALFRED_CODE_FRESH_SESSION_PCT' in env));
-    assert.equal(env.ALFRED_CODE_FRESH_SESSION_DEFAULT, '180000');
+    assert.ok(!('ALFRED_CODE_FRESH_SESSION_DEFAULT' in env), 'the retired catch-all trigger goes');
+    assert.equal(env.ALFRED_CODE_CONTEXT_WINDOW_FOR_1M, '350000', 'a renamed trigger keeps its value');
+    assert.ok(!('ALFRED_CODE_FRESH_SESSION_1M' in env));
+    assert.equal(env.ALFRED_CODE_CONTEXT_WINDOW_FOR_200K, '180000', 'the old 200K seed moves to the new one');
+    assert.ok(!('ALFRED_CODE_FRESH_SESSION_200K' in env));
+    assert.equal(env.ALFRED_CODE_CONTEXT_WINDOW_DEFAULT, '200000', 'the renamed window keeps its value');
+    assert.ok(!('ALFRED_CODE_DEFAULT_CONTEXT_WINDOW' in env));
     assert.ok(!('ALFRED_CODE_MONITOR' in env), 'the retired monitor key goes, even off its seed');
     assert.equal(env.ALFRED_CODE_CORRECTION_NUDGE, 'log', 'a key no migration names is left alone');
     assert.equal(env.OTHER, 'x');
