@@ -14,7 +14,6 @@ Then, for each plugin still below A / 9, a bounded loop:
    - `plugin-settings.json` row stale: re-read the keys from the installed version and update `verified`.
    - Scope wrong for the audience: correct the installer's scope rule for that plugin.
    - Manifest / HTML / README drift: fix the source and let the lint prove it.
-   - Own plugin: the `plugin-authoring` skill's loop - validate, the details number with its caveats, the eval suite or its named substitute, the README statements, one version home.
 4. Re-score from scratch. Do not carry the previous score forward.
 5. Repeat until A / 9, `MAX_ITERATIONS`, or a pass with no material gain.
 
@@ -23,12 +22,11 @@ Machine-state changes are collected, not run: uninstalling a dropped plugin from
 ## Anti-gaming guards (hard invariants)
 
 - Unobservable is not unused. A hooks-only plugin scores D1 on its own output shape or is reported as 'not observable', never dropped for silence alone.
+- A dependency leaves with its parent. Dropping one the parent still declares disables the parent at load; the fix is the parent (dropped, replaced, or pinned to a version that no longer needs it), never the dependency alone.
 - A cite is use only with its content clause. A bare `plugin:skill` name in a house artifact does not earn the plugin a citer.
 - No move inside an observation week. A seeded default or hook behaviour under observation is recorded with its week's end date.
 - Validate is not a safety check. No D3 point for a passing `--strict` alone.
 - `allowed-tools` earns no security point. It is a one-turn pre-approval, not a restriction.
-- Preserve the display-driven split of the own plugin. Commands that list namespaced-only and a router skill that lists bare are a measured choice; do not convert either to gain a component-fit point.
-- One version home. Never add a `version` to a marketplace entry whose source holds a `plugin.json` to 'be safe' - the manifest wins and validate warns on the pair. An entry with no `plugin.json` behind it IS the manifest, and its `version` is the one home.
 - No private names. A finding about a specific consuming project is stated as a shape ('one project carries an older version').
 - The root wins by default, never silently. A house rule is amended to fit a child only with a measurement and a recorded reason; a child is never kept by weakening the rule it contradicts.
 - A fit finding quotes both sides. 'Overlaps with the house' without the two lines is noise, not a deduction.
