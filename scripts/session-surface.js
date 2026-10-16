@@ -16,6 +16,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const { spawnCommand } = require('./install/runtime.js');
 const { frontmatterOf, frontmatterValue, injectedRuleText, listedTools } = require('./always-on-surface.js');
 const { findDuplicates } = require('./find-duplicate-rules.js');
@@ -257,8 +258,13 @@ function runHook(hook, payload, ctx)
         .replace(/\$\{?CLAUDE_PROJECT_DIR\}?/g, ctx.projectRoot);
     const seconds = Math.min(Number(hook.timeout) || 600, HOOK_TIMEOUT_CAP);
     const started = Date.now();
-    // A hook command is a shell line - started through the one spawn route (M6), bash on Windows where no sh is on PATH.
-    const r = spawnCommand(process.platform === 'win32' ? 'bash' : 'sh', ['-c', command], { cwd: ctx.projectRoot, env, input: JSON.stringify(payload), encoding: 'utf8', timeout: seconds * 1000 });
+    // A plain `node "<script>" [args]` line - every hook the stack ships - starts node itself: on Windows a timeout kills
+    // only the shell, and the node child it started holds the pipes open until it ends on its own (the gate's Windows leg,
+    // 2026-10-16). Any other line is a shell line, through the one spawn route (M6) - bash on Windows, where no sh is.
+    const opts = { cwd: ctx.projectRoot, env, input: JSON.stringify(payload), encoding: 'utf8', timeout: seconds * 1000 };
+    const plain = /^node\s+("[^"]+"|\S+)((?:\s+(?:"[^"]*"|\S+))*)\s*$/.exec(command.trim());
+    const argv = plain && !/[|&;<>$`]/.test(command) ? [...command.trim().slice(4).matchAll(/"([^"]*)"|(\S+)/g)].map((m) => (m[1] === undefined ? m[2] : m[1])) : null;
+    const r = argv ? spawnSync(process.execPath, argv, opts) : spawnCommand(process.platform === 'win32' ? 'bash' : 'sh', ['-c', command], opts);
     const ms = Date.now() - started;
     if (r.error && r.error.code === 'ETIMEDOUT') return { timedOut: true, ms, seconds };
     const stdout = String(r.stdout || '').trim();
@@ -647,8 +653,9 @@ function surface(projectRoot, options = {})
     if (listingBudget !== null) notMeasured.push(`Claude Code's own bundled skills share the ${listingBudget}-char listing budget and are not counted - '${totals.skillListing.status}' is the stack's and its plugins' share alone (/doctor estimates the whole listing)`);
     // No machine path leaves the map: the account dir, the project and the home dir print as names, so a report
     // pasted from it carries shapes, never a local path (the repo is public, and so is what is said about it).
+    // Every path prints with forward slashes, so a map reads the same on every OS (the gate's Windows leg, 2026-10-16).
     const tidy = (text) => [[account.dir, '~config'], [projectRoot, '<project>'], [os.homedir(), '~']]
-        .reduce((t, [from, to]) => t.split(from).join(to), String(text));
+        .reduce((t, [from, to]) => t.split(from).join(to), String(text)).split(path.sep).join('/');
     for (const f of flags) f.detail = tidy(f.detail);
     for (const r of rows) { r.source = tidy(r.source); r.note = tidy(r.note); }
     return { project: path.basename(projectRoot), rows, flags, totals, notMeasured: notMeasured.map(tidy), writes };

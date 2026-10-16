@@ -342,7 +342,7 @@ test('an @import in a memory file is followed; a bare @word is not an import', (
 {
     const fx = install({ project: { 'CLAUDE.md': '# Top\n\n@docs/run-book.md\n@Stop is an event name.\n', 'docs/run-book.md': 'Run npm test.\n', '.claude/AGENTS.md': 'ignored beside a CLAUDE.md\n' } });
     const start = rowsAt(fx.run(), 'session-start');
-    assert.deepEqual(start.map((r) => r.source), ['CLAUDE.md', path.join('docs', 'run-book.md')]);
+    assert.deepEqual(start.map((r) => r.source), ['CLAUDE.md', 'docs/run-book.md'], 'a path prints with forward slashes on every OS');
     assert.match(start[1].note, /imported by CLAUDE\.md/);
 });
 
@@ -360,7 +360,7 @@ test('a CLAUDE.md above the project still loads, and it keeps AGENTS.md out', ()
     const fx = install({ project: { '.claude/AGENTS.md': 'the seeded instructions\n' } });
     fs.writeFileSync(path.join(fx.root, 'CLAUDE.md'), 'a parent note\n');
     const sources = rowsAt(fx.run(), 'session-start').map((r) => r.source);
-    assert.deepEqual(sources, [path.join('..', 'CLAUDE.md')]);
+    assert.deepEqual(sources, ['../CLAUDE.md']);
 });
 
 test('usage: no project is exit 2, a missing directory exit 1', () =>

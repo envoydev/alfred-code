@@ -1937,7 +1937,9 @@ test('2026-10-16: a change another session on this checkout recorded as its own 
     start(r, mine); start(r, theirs);
     edit(theirs, 'src/Api/Program.cs'); change();
     const state = JSON.parse(fs.readFileSync(p.join(os.tmpdir(), `docs-session-${theirs}--main.session.json`), 'utf8'));
-    assert.strictEqual(state.root, r.root, 'the writer records the checkout beside its paths');
+    // Recorded as the hook keys it: forward slashes, and on Windows case-folded as the file system compares.
+    const key = p.resolve(r.root).split(p.sep).join('/');
+    assert.strictEqual(state.root, process.platform === 'win32' ? key.toLowerCase() : key, 'the writer records the checkout beside its paths');
     assert.strictEqual(ask(mine), '', 'the measured case: the read-only session is not asked about the other session\'s write');
     assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"changed-by-other-session","files":\["src\/Api\/Program\.cs"\]/);
     assert.match(ask(theirs), /you changed src\/Api\/Program\.cs/, 'the session that wrote it is still asked');

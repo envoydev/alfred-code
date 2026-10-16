@@ -18,6 +18,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const { spawnCommand } = require('./install/runtime.js');
 
 const ROOT = path.join(__dirname, '..');
@@ -73,8 +74,11 @@ function writeFiles(root, files)
 // One step's command: spawned with the fixture's env, its output kept in the step's log for the report.
 function step(name, cmd, args, { cwd, env, log })
 {
-    // Through the one spawn route (M6): on Windows a `claude.cmd` is resolved and escaped, never handed to a shell.
-    const r = spawnCommand(cmd, args, { cwd, env, encoding: 'utf8', timeout: 15 * 60 * 1000 });
+    // Node itself is started as itself; anything else through the one spawn route (M6), where a Windows `claude.cmd` is
+    // resolved and escaped, never handed to a shell. That route resolves a bare name on PATH, so an absolute node.exe
+    // would come back 'not found' (the gate's Windows leg, 2026-10-16).
+    const opts = { cwd, env, encoding: 'utf8', timeout: 15 * 60 * 1000 };
+    const r = cmd === process.execPath ? spawnSync(process.execPath, args, opts) : spawnCommand(cmd, args, opts);
     fs.appendFileSync(log, `$ ${[cmd, ...args].join(' ')}\n${r.stdout || ''}${r.stderr || ''}\n[exit ${r.status}]\n\n`);
     if (r.status !== 0) throw new Error(`profile-fixture: ${name} failed (exit ${r.status}${r.error ? `, ${r.error.code || r.error.message}` : ''}) - see ${log}`);
 }
