@@ -62,10 +62,10 @@ test('a rule pulls its skills', () => {
 test('a kept rule makes its mcp required; the capabilities skill locks none', () => {
     const c = computeClosure(graph, { rules: ['alfred-navigation'] });
     assert.ok(c.mcps.includes('alfred-navigation'), 'the alfred-navigation rule genuinely depends on its server');
-    // The routing-map mentions in capture-agent-awareness are subject matter, not needs -
+    // The routing-map mentions in capture-awareness are subject matter, not needs -
     // picking it must never lock the whole MCP baseline into an install.
-    const cap = computeClosure(graph, { skills: ['capture-agent-awareness'] });
-    assert.deepStrictEqual(cap.mcps, [], 'the capabilities skill pulls no MCPs');
+    const cap = computeClosure(graph, { skills: ['capture-awareness'] });
+    assert.deepStrictEqual(cap.mcps, [], 'the awareness skill pulls no MCPs');
 });
 
 // memory is locked the SAME way serena is: alfred-memory.md names the server in backticks, the
@@ -568,12 +568,12 @@ test('a general-listed skill is never redundant even when its only owner is abse
     const installed = {
         rules: [],
         agents: [],
-        skills: ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'capture-related-projects', 'dotnet-wpf'],
+        skills: ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'capture-usage-report', 'dotnet-wpf'],
         mcps: [], plugins: [], hooks: [],
     };
     const redundant = findStackRedundant(graph, recommendations, installed, ['aspnet']);
     const names = new Set(redundant.map(r => r.name));
-    for (const s of ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'capture-related-projects'])
+    for (const s of ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'capture-usage-report'])
     {
         assert.ok(!names.has(s), `${s} is general - never redundant`);
     }

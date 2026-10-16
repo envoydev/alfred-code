@@ -47,7 +47,7 @@ test('the core is the only plugin; every item has exactly one home', () => {
 });
 
 test('the opt-in skills and the opt-in agent are placed like every stack item', () => {
-    for (const s of ['postgres', 'capture-related-projects', 'dotnet-web-backend'])
+    for (const s of ['postgres', 'capture-usage-report', 'dotnet-web-backend'])
         assert.ok(p.library.skills.includes(s), `${s} is library`);
     assert.ok(!p.library.skills.includes('plugin-authoring') && !p.plugins[CORE].skills.includes('plugin-authoring'), 'plugin-authoring left the shipped catalog (2.1.0)');
     assert.ok(p.plugins[CORE].agents.includes('related-project-analyzer'), 'the opt-in seat rides the core, denied until picked');
@@ -60,7 +60,7 @@ test('formerCore is the always closure: the skills and seats the core carried be
     const former = formerCore();
     assert.deepStrictEqual(former.skills, [...want.skills].sort());
     assert.deepStrictEqual(former.agents, [...want.agents].sort());
-    for (const s of ['habits-done-gate', 'capture-agent-awareness', 'task-solve-cross', 'habits-adjust-agents-md'])
+    for (const s of ['habits-done-gate', 'capture-awareness', 'task-solve-cross', 'habits-adjust-agents-md'])
         assert.ok(former.skills.includes(s), `${s} is always-closure, so the former core carried it`);
     assert.ok(former.agents.includes('security-auditor') && former.agents.includes('integration-reviewer'));
     assert.ok(!former.agents.includes('aspnet-implementer'), 'a stack seat was library then');

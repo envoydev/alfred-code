@@ -144,10 +144,10 @@ test('init: the bootstrap order - read, plan, one machine ask, memory, captures 
     assert.match(flat(init), /`# adds <n> claude-hud keys: <names>`/);
     assert.match(flat(init), /settings\.json\.bak\.<time>/);
     assert.match(flat(init), /follow it inline, start to finish - never a Skill call/);
-    // The five captures, in the brief's order, are the SCRIPT's table - the body cites the script.
+    // The three captures, in the brief's order, are the SCRIPT's table - the body cites the script.
     const { CAPTURES } = require('./init-plan.js');
-    assert.deepStrictEqual(CAPTURES.map((c) => c.skill), ['capture-related-projects', 'capture-architecture', 'capture-code-style', 'capture-project-awareness', 'capture-agent-awareness']);
-    assert.deepStrictEqual(CAPTURES.map((c) => c.seat), ['related-project-analyzer', 'architecture-analyzer', 'code-style-analyzer', null, null]);
+    assert.deepStrictEqual(CAPTURES.map((c) => c.skill), ['capture-architecture', 'capture-code-style', 'capture-awareness']);
+    assert.deepStrictEqual(CAPTURES.map((c) => c.seat), ['architecture-analyzer', 'code-style-analyzer', null]);
     assert.ok(!/sentry/i.test(init), 'no sentry step (R28)');
     assert.ok(!/allowed-tools/.test(init.split('---')[1]), 'no command carries allowed-tools');
 });
@@ -283,7 +283,6 @@ test('every always-seeded capture skill seeds the seat it fans out', () => {
         'capture-code-quality': 'code-quality-analyzer',
         'capture-code-style': 'code-style-analyzer',
         'capture-test-coverage': 'test-coverage-analyzer',
-        'capture-related-projects': 'related-project-analyzer',
     };
     for (const [skill, seat] of Object.entries(PAIRS))
     {
@@ -296,20 +295,20 @@ test('every always-seeded capture skill seeds the seat it fans out', () => {
 });
 
 // Sibling repos are a property of the PROJECT, not of a stack or of the baseline - a standalone
-// repo has none, and no manifest signal can prove otherwise. So the related-context pair is
-// opt-in: it sits in `general` (addable in any walk, never flagged redundant, never reported
-// missing) instead of `always`, which would install it for everyone and have validate re-add it.
-test('the related-context capture is optional, never an always-baseline seed', () => {
+// repo has none, and no manifest signal can prove otherwise. So the sibling seat is opt-in: it sits
+// in `general` (addable in any walk, never flagged redundant, never reported missing) instead of
+// `always`, which would install it for everyone and have validate re-add it. The awareness capture
+// itself is always (the user's ruling of 2026-10-16 merged the sibling capture into it), and maps the
+// siblings in-session where the seat is absent.
+test('the sibling seat is optional, never an always-baseline seed - the always awareness capture works without it', () => {
     const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
-    assert.ok(!(recs.always.skills || []).includes('capture-related-projects'), 'always must not seed the skill');
+    assert.ok((recs.always.skills || []).includes('capture-awareness'), 'always seeds the awareness capture');
     assert.ok(!(recs.always.agents || []).includes('related-project-analyzer'), 'always must not seed the seat');
-    assert.ok((recs.general.skills || []).includes('capture-related-projects'), 'general carries the skill');
     assert.ok((recs.general.agents || []).includes('related-project-analyzer'), 'general carries the seat');
     for (const sel of Object.values(recs.stacks))
-    {
-        assert.ok(!(sel.skills || []).includes('capture-related-projects'), 'no stack seeds the skill');
         assert.ok(!(sel.agents || []).includes('related-project-analyzer'), 'no stack seeds the seat');
-    }
+    const related = flat(fs.readFileSync(path.join(__dirname, '..', 'stack', 'skills', 'capture-awareness', 'references', 'related-projects.md'), 'utf8'));
+    assert.match(related, /\*\*INLINE\*\* \(chosen - or forced, no question asked: no dispatch, or that seat is absent - it is an opt-in pick, so a project can carry this capture without it\)/);
 });
 
 // An always-baseline artifact installs into EVERY project, so it must be stack-neutral. A browser

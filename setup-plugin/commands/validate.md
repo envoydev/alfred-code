@@ -206,8 +206,8 @@ candidates, the signal as the reason - already deduped against the `missing:` li
 The tool already excludes shared items, deliberate non-stack extras, already-installed baseline,
 anything the scan matched, and the curated `general` set in recommendations.json (artifacts no stack owns: cross-stack skills a
 narrow seat happens to preload - e.g. dotnet-data-access - and the project-conditional opt-ins whose
-applicability no manifest can prove, e.g. the `capture-related-projects` / `related-project-analyzer`
-pair, which apply only where the project has sibling repos) - present its output as printed above.
+applicability no manifest can prove, e.g. the `related-project-analyzer`
+seat, which applies only where the project has sibling repos) - present its output as printed above.
 
 One addition of your own, in ONE call - never by opening the catalog, which is a maintainer file
 whose comment alone is 2,000 characters:
@@ -222,7 +222,8 @@ Each fired entry prints its own indented `why:` / `then:` / `remove:` / `unwire:
 `env-rename:` / `env-remove:` lines and an entry that did not fire prints nothing. Each detected
 entry joins the matching layer's REDUNDANT rows labeled `(migration: <why>)`; removing one also
 applies its `unwire:` edit and puts its `then:` follow-up in the report. (The version and diff
-lines the same call prints are update's business, not validate's - ignore them here.) An entry acting
+lines the same call prints are update's business, not validate's - ignore them here; its `policy-rev:` row is the
+post-check's.) An entry acting
 on the settings.json `env` (`rename_settings_env`, `remove_settings_env`) belongs to the ENVIRONMENT
 layer instead: a retired key still on disk is a RETIRED row there, reported with its `why`, and
 accepting it drops the key - the installers' own env pass does the same on their next run.
@@ -519,21 +520,16 @@ profile), output to `$TMP/select.out` - then:
   beside the core any more - claude-hud is a pick like the LSP pair). The removal ask that proposed it
   NAMES that scope ('enabled at USER scope - removing it removes it for every
   project'), since account-wide and project-local are different consents.
-- **Check the generated rule's stamped policy against this release, mechanically.** The usage-policy
-  block inside `.claude/rules/alfred-agent-awareness.md` ships verbatim from the skill
+- **Check the inventory's stamped policy against this release, mechanically.** The usage-policy
+  block inside `<docs-path>/awareness/AGENTS-AWARENESS.md` ships verbatim from the skill
   and is never re-fetched, so a project can carry a two-release-old policy with nothing to notice it.
-  One comparison:
-
-  ```bash
-  grep -m1 -o 'policy-rev: [0-9a-f]*' .claude/rules/alfred-agent-awareness.md
-  grep -m1 -o 'policy-rev: [0-9a-f]*' "$TMP/repo/stack/skills/capture-agent-awareness/SKILL.md"
-  ```
-
-  Equal - say `capabilities policy: current`. Different, or the project's rule carries no rev at all
-  (written before the stamp existed) - report it as a finding with both values and name the re-run as
-  the fix. No rule on disk is not a finding here; it is the capture never having run.
-- Then name `/capture-agent-awareness` (when installed) in the post-check report as the
-  USER's next step, so the generated awareness rule reflects the reconciled inventory - the
+  The preflight's `policy-rev:` row is the one comparison (the doc against the snapshot's
+  `stack/skills/capture-awareness/references/agents.md`, an older install's awareness rule while update has
+  not moved it): `current` - say `capabilities policy: current`. `stale installed=<a> snapshot=<b>` -
+  report it as a finding with both values and name the re-run as the fix (`installed=none`: written before
+  the stamp existed). `none` is not a finding here; it is the capture never having run.
+- Then name `/capture-awareness` (when installed) in the post-check report as the
+  USER's next step, so the generated inventory reflects the reconciled install - the
   skill is manual-only (`disable-model-invocation`), a Skill call from this run is denied by `guard-fresh-session-start.js`;
   never attempt it. `alfred-code.stamp` is rewritten ONLY by an installer invocation - the apply step's
   own run writes it. A validate run that added nothing leaves the stamp exactly as it found it and never
@@ -541,11 +537,11 @@ profile), output to `$TMP/select.out` - then:
   fabricated install time that every later stamp compare then trusts (measured: one run did exactly this).
 
 **The run closes on a suggestion card, never on a question.** After the report, list the
-follow-ups that are the USER's to run - restart for an MCP change, `/capture-agent-awareness`
+follow-ups that are the USER's to run - restart for an MCP change, `/capture-awareness`
 (when installed and this run added or removed something it lists), a manual-only capture whose
 output this run made stale, the navigation-server re-index, a credential to rotate or set by
 hand - as `Suggested next steps`, the recommended one first and each with the one reason it
-matters ('`/capture-agent-awareness` - validate added 3 skills, so the generated rule's
+matters ('`/capture-awareness` - validate added 3 skills, so the generated
 inventory is short'). No AskUserQuestion over them: the walk's asks end with the installer (a
 write still gets its consent ask where it happens), and the closing ask over follow-ups was
 dropped as friction - the user's call, made knowing a prose next step was ignored 3 of 3 in one
@@ -613,8 +609,9 @@ node "$TMP/repo/scripts/agents-md-check.js" --root .
 
 Paste the output byte-for-byte in the same fenced block (`agents-md-check: clean (...)` or `no
 AGENTS.md or CLAUDE.md in this project` is the whole paste). Each row is `<file>:<line> <kind>: ...` - a named path
-that is gone, a command whose program is not on PATH, a placeholder or TODO left, or a line still
-carrying the template's authoring text. Rows get ONE ask, leaving them marked and first - the check is
+that is gone, a command whose program is not on PATH, a placeholder or TODO left, a line still
+carrying the template's authoring text, or a CLAUDE.md that keeps an AGENTS.md from loading (`shadowed`, the import it
+needs named in the row). Rows get ONE ask, leaving them marked and first - the check is
 heuristic, a row can be correct text it could not resolve (a folder under a prefixed name, a program a
 script installs), and the approver takes the first option (audit 2026-10-11, session 6288ad94: 'Review'
 listed first and unmarked was taken, and the review of 4 rows that were all false positives cost ~825k):

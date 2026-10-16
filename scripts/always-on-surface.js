@@ -92,11 +92,23 @@ function capabilitiesFixedText(skillText, templateText)
     return { policy: injectedRuleText(policy.join('\n')), locked };
 }
 
+// The generated awareness rule's own text: SKILL.md's copy target as injected, its import slot left out - the docs it
+// imports are the project's own run book and siblings, never the stack's fixed text.
+function awarenessRuleText(skillText)
+{
+    const lines = String(skillText || '').split(/\r?\n/);
+    const marker = lines.findIndex((l) => /COPY TARGET/.test(l));
+    const open = marker === -1 ? -1 : lines.findIndex((l, i) => i > marker && /^```markdown\s*$/.test(l));
+    const close = open === -1 ? -1 : lines.findIndex((l, i) => i > open && /^```\s*$/.test(l));
+    if (close === -1) return '';
+    return injectedRuleText(lines.slice(open + 1, close).filter((l) => !/^<the script's import lines/.test(l)).join('\n'));
+}
+
 function alwaysOnSurface({
     rulesDir = path.join(STACK, 'rules'),
     agentsDir = path.join(STACK, 'agents'),
     skillsDir = path.join(STACK, 'skills'),
-    capabilitiesDir = path.join(skillsDir, 'capture-agent-awareness'),
+    capabilitiesDir = path.join(skillsDir, 'capture-awareness'),
 } = {})
 {
     const read = (file) => fs.readFileSync(file, 'utf8');
@@ -128,8 +140,10 @@ function alwaysOnSurface({
         skills += frontmatterValue(fm, 'description').length + frontmatterValue(fm, 'when_to_use').length;
     }
     const readSoft = (file) => { try { return read(file); } catch { return ''; } };
-    const fixed = capabilitiesFixedText(readSoft(path.join(capabilitiesDir, 'SKILL.md')), readSoft(path.join(capabilitiesDir, 'references', 'generated-rule-template.md')));
-    const generated = fixed.policy.length + fixed.locked.length;
+    // The agents reference holds both: the stamped usage policy in its copy target and the routing map's locked row.
+    const agentsRef = readSoft(path.join(capabilitiesDir, 'references', 'agents.md'));
+    const fixed = capabilitiesFixedText(agentsRef, agentsRef);
+    const generated = fixed.policy.length + fixed.locked.length + awarenessRuleText(readSoft(path.join(capabilitiesDir, 'SKILL.md'))).length;
     return { rules, agents, agentTools, skills, manualOnly, generated, total: rules + agents + agentTools + skills + generated };
 }
 
@@ -153,4 +167,4 @@ const alwaysOnParts = (s) => `pathless rules ${s.rules} (as injected), agent des
     + ` (${s.manualOnly} manual-only not in context), generated capabilities fixed text ${s.generated}`
     + `, agent tools lists ${s.agentTools} (listed beside each description)`;
 
-module.exports = { frontmatterOf, frontmatterValue, injectedRuleText, capabilitiesFixedText, alwaysOnSurface, alwaysOnParts, listedTools };
+module.exports = { frontmatterOf, frontmatterValue, injectedRuleText, capabilitiesFixedText, awarenessRuleText, alwaysOnSurface, alwaysOnParts, listedTools };

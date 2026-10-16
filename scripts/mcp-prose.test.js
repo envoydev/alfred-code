@@ -254,7 +254,7 @@ test('M37 the inventory page claims no call-hierarchy tool for the navigation se
 test('M40 both desktop ToolSearch lines say the session\'s listing names more tools', () =>
 {
     const skill = read('stack/skills/desktop-automation/SKILL.md');
-    const rule = read('stack/skills/capture-agent-awareness/references/generated-rule-template.md');
+    const rule = read('stack/skills/capture-awareness/references/agents.md');
     for (const server of ['windows-control', 'macos-control'])
     {
         assert.match(skill, new RegExp(`plus the other \`mcp__plugin_${server}_${server}__\\*\` names the session's own listing shows`), server);
@@ -323,7 +323,7 @@ test('R3 no page says MacOS-MCP cannot switch a tool off; each names the config.
 // R13: MacOS-MCP 0.4.6 has no Screenshot tool - the image is Snapshot with use_vision (its __main__.py tool list).
 test('R13 the macOS lines name a black vision snapshot, never a screenshot the server does not have', () =>
 {
-    for (const file of ['stack/mcp/desktop-launch.js', 'stack/skills/capture-agent-awareness/references/generated-rule-template.md'])
+    for (const file of ['stack/mcp/desktop-launch.js', 'stack/skills/capture-awareness/references/agents.md'])
     {
         const text = read(file);
         assert.doesNotMatch(text, /black screenshots/, file);

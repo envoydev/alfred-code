@@ -97,8 +97,8 @@ The memory levels and stores, where the docs root and the data root live, and th
   `memory/*.md`) is SWITCHED OFF (`autoMemoryEnabled: false`) by the install when the project has no
   notes, else by `/alfred-code:init` after a one-time import of its existing notes into the `memory` MCP - it has no search and is not shared
   with Cursor, which is why the MCP replaces it rather than sitting beside it. Which repos are
-  related lives in the generated `.claude/rules/alfred-related-context.md` (the
-  `/capture-related-projects` skill), not memory. The session HISTORY (`<docs-path>/history/`,
+  related lives in `<docs-path>/awareness/RELATED-PROJECTS-AWARENESS.md` (the `/capture-awareness` skill, imported by the
+  generated `alfred-awareness.md`), not memory. The session HISTORY (`<docs-path>/history/`,
   `history-session.js`) is the third, machine-local and never shared: what each session did and what
   the user ruled, script-written, read back at the next start on the same branch - a record, not memory.
 - **The docs root lives outside `.claude/`** (2.0.0, the user's decision of 2026-09-26). Claude Code
@@ -187,11 +187,10 @@ The memory levels and stores, where the docs root and the data root live, and th
   deliberately (that skill or `loop-architecture-quality`), never after each change. The code
   style lives in `<docs-path>/code-style/CODE-STYLE.md` + the path-scoped `project-code-style.md` rule
   (owned by `capture-code-style`). The run book lives in
-  `<docs-path>/project-awareness/PROJECT-AWARENESS.md` (owned by
-  `capture-project-awareness`, repo facts first, the user's answers for the gaps;
-  `project-capabilities/PROJECT-CAPABILITIES.md` until 2026-10-15, moved by `docs.migrateRunBook` with its
-  `watch.json`, section ids and branch versions, and the generated rule `@`-imports it so every session loads it at
-  its start): a
+  `<docs-path>/awareness/PROJECT-AWARENESS.md` (owned by `capture-awareness`, repo facts first, the user's answers for
+  the gaps; `project-capabilities/PROJECT-CAPABILITIES.md` through 2.5.0, moved by `docs.migrateDocsDomains` with its
+  `watch.json`, then `docs.migrateAwareness` re-spells its section ids and moves its branch versions; the generated
+  `alfred-awareness.md` `@`-imports it so every session loads it at its start): a
   credential appears there only as WHERE it lives - an env var, a vault item, or a key in the
   project's `<data root>/.sensitive-data` (the capture writes its keys empty only when the file is absent) - never
   as a value. The capture's own `credentials.local.env` before 2026-10-13 is moved into that store by every install

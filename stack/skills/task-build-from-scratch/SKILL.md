@@ -80,7 +80,7 @@ Slices:    <n> built, <n> verified green - <the milestone reached>
 Baseline:  build <green|red>, tests <n passed / n failed>, quoted from the command that produced it
 Leftovers: APPROVAL stamp <deleted|still present>; <anything this run started and left up - a container, seeded data, a background process - or `none started`>
 Commit:    <the commit `git log -1 --stat` read back | held - the diff is uncommitted | no git - the scaffold is not a repository>
-Next run:  <each capture whose output does not exist yet, in order: /capture-architecture (no architecture docs under <docs-path>/architecture/), /capture-code-style (no <docs-path>/code-style/CODE-STYLE.md), /capture-project-awareness (no <docs-path>/project-awareness/PROJECT-AWARENESS.md - the run book every session loads), /capture-agent-awareness LAST (no .claude/rules/alfred-agent-awareness.md) - each in a FRESH session; `none` when all four exist>
+Next run:  <each capture whose output does not exist yet, in order: /capture-architecture (no architecture docs under <docs-path>/architecture/), /capture-code-style (no <docs-path>/code-style/CODE-STYLE.md), /capture-awareness LAST (no .claude/rules/alfred-awareness.md - the inventory, the run book and the sibling repos every session loads) - each in a FRESH session; `none` when all three exist>
 ```
 
 Then the commit decision, ONE AskUserQuestion after the close prints, when the scaffold is a git repository (no git: the `Commit:` field says so and nothing is asked):

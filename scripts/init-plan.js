@@ -20,8 +20,8 @@
 //     The command is the exact one to run; init puts every missing one through ONE ask.
 //
 //   capture: <skill> - run: read <SKILL.md> | done: <output> exists | skip: <why>
-//     The five captures in their fixed order, each only when the install lists its skill AND its seat
-//     (project-awareness and agent-awareness have none). init READS the SKILL.md and follows it inline: these skills are
+//     The three captures in their fixed order, each only when the install lists its skill AND its seat
+//     (capture-awareness has none). init READS the SKILL.md and follows it inline: these skills are
 //     manual-only, so a Skill call is denied. An existing output is done - re-capturing is the user's
 //     call, later. The library copy in .claude/skills wins over the plugin's.
 //
@@ -53,13 +53,12 @@ const MACHINE_BROWSERS = {
     msedge: { need: 'Microsoft Edge', bins: ['msedge', 'microsoft-edge'] },
 };
 const CAPTURES = [
-    { skill: 'capture-related-projects', seat: 'related-project-analyzer', output: () => '.claude/rules/alfred-related-context.md' },
     { skill: 'capture-architecture', seat: 'architecture-analyzer', output: (docs) => `${docs}/architecture/ARCHITECTURE.md` },
     { skill: 'capture-code-style', seat: 'code-style-analyzer', output: (docs) => `${docs}/code-style/CODE-STYLE.md` },
-    // The run book: no seat - it reads the repo and asks for the gaps in the main session.
-    { skill: 'capture-project-awareness', seat: null, output: (docs) => `${docs}/project-awareness/PROJECT-AWARENESS.md` },
-    // Its own precheck decides whether the generated rule is current - always run when installed.
-    { skill: 'capture-agent-awareness', seat: null, output: null },
+    // The inventory, the run book and the sibling repos in one run (the user's ruling of 2026-10-16), no seat of its own -
+    // its related-projects part dispatches the opt-in seat only where it is installed. LAST, so the inventory reflects
+    // every capture above; each part decides from disk whether it has work, so it always runs when installed.
+    { skill: 'capture-awareness', seat: null, output: null },
 ];
 
 // Playwright's own registry location (PLAYWRIGHT_BROWSERS_PATH, else the per-OS cache dir).
@@ -202,9 +201,6 @@ function unattended({ machine, captures })
     for (const m of machine.filter((x) => DESTRUCTIVE_MACHINE.includes(x.state)))
         lines.push(`unattended: machine installs -> skip ${m.what} (a refresh replaces the account's existing status line - destructive)`);
     lines.push('unattended: memory level -> global (Recommended)');
-    // Its only real answer is a sibling list someone types - an unattended run would be inventing one.
-    if (captures.some((c) => c.skill === 'capture-related-projects' && c.state === 'run'))
-        lines.push('unattended: related projects -> none - skip it (naming the siblings needs a person)');
     lines.push('unattended: AGENTS.md -> fill it in (Recommended)');
     return lines;
 }

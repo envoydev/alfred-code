@@ -14,9 +14,10 @@ const { spawnSync } = require('node:child_process');
 const ROOT = path.join(__dirname, '..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const squash = (text) => text.replace(/\s+/g, ' ');
-const CAPS_DIR = 'stack/skills/capture-agent-awareness';
+const CAPS_DIR = 'stack/skills/capture-awareness';
 const SCRIPT = path.join(ROOT, CAPS_DIR, 'scripts', 'capabilities-inventory.js');
-const TEMPLATE = `${CAPS_DIR}/references/generated-rule-template.md`;
+// The agents reference holds the doc's copy target, the stamped usage policy and the routing map.
+const TEMPLATE = `${CAPS_DIR}/references/agents.md`;
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'capabilities-rule-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 
@@ -30,7 +31,7 @@ function write(p, text)
 // The usage-policy block as the skill stamps it: the lines under the policy-rev stamp, up to the next heading.
 function policyBlock()
 {
-    const lines = read(`${CAPS_DIR}/SKILL.md`).split('\n');
+    const lines = read(TEMPLATE).split('\n');
     const at = lines.findIndex((l) => /<!--\s*policy-rev:/.test(l));
     const out = [];
     for (let i = at + 1; i < lines.length && !/^#{1,6} /.test(lines[i]) && !/^```/.test(lines[i]); i++) out.push(lines[i]);
@@ -41,7 +42,7 @@ function policyBlock()
 function routingMapText()
 {
     const text = read(TEMPLATE);
-    const from = text.indexOf('The routing map');
+    const from = text.search(/^The routing map/m);
     const rest = text.slice(from);
     const end = rest.search(/\n#{1,6} /);
     return end === -1 ? rest : rest.slice(0, end);
@@ -51,7 +52,7 @@ function routingMapText()
 function project(name, { servers = ['alfred-navigation', 'alfred-documentation', 'alfred-memory', 'chrome-control'], settings, local, account } = {})
 {
     const root = path.join(TMP, name);
-    write(path.join(root, '.claude', 'skills', 'capture-agent-awareness', 'SKILL.md'), '---\nname: capture-agent-awareness\ndescription: "x"\ndisable-model-invocation: true\n---\n');
+    write(path.join(root, '.claude', 'skills', 'capture-awareness', 'SKILL.md'), '---\nname: capture-awareness\ndescription: "x"\ndisable-model-invocation: true\n---\n');
     write(path.join(root, '.claude', 'agents', 'aspnet-verifier.md'), '---\nname: aspnet-verifier\n---\n');
     write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: Object.fromEntries(servers.map((s) => [s, {}])) }));
     if (settings) write(path.join(root, '.claude', 'settings.json'), JSON.stringify(settings));
@@ -188,15 +189,17 @@ test('I21: the always-on surface skips manual-only descriptions and prices the g
     write(path.join(base, 'agents', 'seat.md'), '---\nname: seat\ndescription: "12345"\n---\n');
     write(path.join(base, 'skills', 'on', 'SKILL.md'), '---\nname: on\ndescription: "1234"\nwhen_to_use: "56"\n---\n');
     write(path.join(base, 'skills', 'manual', 'SKILL.md'), '---\nname: manual\ndescription: "a long manual-only description"\ndisable-model-invocation: true\n---\n');
-    write(path.join(base, 'caps', 'SKILL.md'), '# caps\n\n```markdown\n## Usage policy (fixed - stamped verbatim, every run)\n<!-- policy-rev: 00000000 -->\n- P1\n\n## Orchestration skills\n```\n');
-    write(path.join(base, 'caps', 'references', 'generated-rule-template.md'), 'The routing map (only for servers actually present):\n- `alfred-navigation`, `alfred-documentation`, `alfred-memory` - LOCKED. first call: see the baselines.\n- `browser` - not fixed text.\n');
+    // The agents reference holds the doc's policy and the routing map; SKILL.md the rule's copy target, its import slot left out.
+    write(path.join(base, 'caps', 'SKILL.md'), '# caps\n\nCOPY TARGET - the rule:\n\n```markdown\n---\ndescription: d\n---\n\n# R\n\nText.\n\n<the script\'s import lines, one per awareness doc>\n```\n');
+    write(path.join(base, 'caps', 'references', 'agents.md'), '# caps\n\n```markdown\n## Usage policy (fixed - stamped verbatim, every run)\n<!-- policy-rev: 00000000 -->\n- P1\n\n## Orchestration skills\n```\n\nThe routing map (only for servers actually present):\n- `alfred-navigation`, `alfred-documentation`, `alfred-memory` - LOCKED. first call: see the baselines.\n- `browser` - not fixed text.\n');
     const s = alwaysOnSurface({ rulesDir: path.join(base, 'rules'), agentsDir: path.join(base, 'agents'), skillsDir: path.join(base, 'skills'), capabilitiesDir: path.join(base, 'caps') });
     assert.equal(s.rules, 'ABCDE'.length, 'the body only - no frontmatter, no comment, no blank-line padding');
     assert.equal(s.agents, 5);
     assert.equal(s.skills, 6, 'description plus when_to_use, the manual-only skill not counted');
     assert.equal(s.manualOnly, 1);
-    const fixed = '## Usage policy (fixed - stamped verbatim, every run)\n- P1'.length + '- `alfred-navigation`, `alfred-documentation`, `alfred-memory` - LOCKED. first call: see the baselines.'.length;
-    assert.equal(s.generated, fixed, 'the policy section (its stamp comment is stripped) plus the locked-server row');
+    const fixed = '## Usage policy (fixed - stamped verbatim, every run)\n- P1'.length + '- `alfred-navigation`, `alfred-documentation`, `alfred-memory` - LOCKED. first call: see the baselines.'.length
+        + '# R\n\nText.'.length;
+    assert.equal(s.generated, fixed, 'the policy section (its stamp comment is stripped), the locked-server row and the awareness rule\'s own text');
     assert.equal(s.total, s.rules + s.agents + s.agentTools + s.skills + s.generated);
 });
 
@@ -287,12 +290,12 @@ test('I24: the report prints one locked-server row, and --verify passes a rule b
     const partial = rowsOf(run([], { cwd: project('locked-partial', { servers: ['alfred-memory', 'alfred-navigation'] }).root, home }).out);
     assert.deepStrictEqual(partial.map((r) => /^- ((?:`[^`]+`(?:, )?)+) - /.exec(r)[1]), ['`alfred-navigation`, `alfred-memory`'], 'a locked server the install lacks is not named');
 
-    const skill = read(`${CAPS_DIR}/SKILL.md`).split('\n');
+    const skill = read(TEMPLATE).split('\n');
     const at = skill.findIndex((l) => /<!--\s*policy-rev:/.test(l));
     const rule = write(path.join(root, 'composed.md'), [
-        '---', 'description: generated', '---', '', '# This project\'s capabilities', '', 'Captured: 2026-09-29 from 2.1.3@abcdef1', '',
+        '# This project\'s capabilities', '', 'Captured: 2026-09-29 from 2.1.3@abcdef1', '',
         '## Usage policy (fixed - stamped verbatim, every run)', skill[at], policyBlock(), '',
-        '## Orchestration skills (slash-only - invisible until invoked)', '/capture-agent-awareness - x', '',
+        '## Orchestration skills (slash-only - invisible until invoked)', '/capture-awareness - x', '',
         '## Subagent seats', 'aspnet-verifier', '', '## MCP routing', ...rows, '',
     ].join('\n'));
     const verified = run(['--verify', rule], { cwd: root, home });

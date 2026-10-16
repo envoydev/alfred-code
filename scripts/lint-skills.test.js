@@ -338,7 +338,7 @@ test('check 29: the capabilities usage policy carries a stamp that matches its o
     const fs = require('node:fs');
     const path = require('node:path');
     const { paths } = require('./lint-skills.js');
-    const file = path.join(paths.SKILLS_DIR, 'capture-agent-awareness', 'SKILL.md');
+    const file = path.join(paths.SKILLS_DIR, 'capture-awareness', 'references', 'agents.md');
     const lines = fs.readFileSync(file, 'utf8').split('\n');
     const start = lines.findIndex((l) => l.startsWith('## Usage policy (fixed'));
     assert.ok(start >= 0, 'the stamped block is still where the lint and the skill both look for it');
@@ -349,9 +349,11 @@ test('check 29: the capabilities usage policy carries a stamp that matches its o
     const actual = require('crypto').createHash('sha1')
         .update(lines.slice(start + 2, end).join('\n').trim()).digest('hex').slice(0, 8);
     assert.strictEqual(declared, actual, 'the shipped rev is the block\'s own hash - bump it when the policy moves');
-    // and validate must look for the same token, or the comparison it prescribes finds nothing
+    // and the preflight both validate and update read must look for the same token, or the comparison finds nothing
+    const pre = fs.readFileSync(path.join(paths.ROOT, 'scripts', 'update-preflight.js'), 'utf8');
+    assert.ok(pre.includes('/policy-rev: ([0-9a-f]+)/'), 'the preflight reads the token this lint maintains');
     const val = fs.readFileSync(path.join(paths.ROOT, 'setup-plugin', 'commands', 'validate.md'), 'utf8');
-    assert.match(val, /policy-rev: \[0-9a-f\]\*/, 'validate greps for the token this lint maintains');
+    assert.match(val, /The preflight's `policy-rev:` row is the one comparison/, 'validate reads that row');
 });
 
 test('check 34: a references/ pointer at a sibling skill must resolve in that sibling; a capability-described one in some skill', () => {

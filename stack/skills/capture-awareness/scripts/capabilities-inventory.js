@@ -1,16 +1,18 @@
 #!/usr/bin/env node
-// capabilities-inventory.js - the whole of /capture-agent-awareness in ONE node pass: the precheck,
-// the full inventory with a printed COUNT per layer (skills, seats, rules, MCP, plugins), the LIVE
-// `claude mcp list`, the MCP routing rows, and with --write the rule composed from the skill's copy
-// target, the compare, the write on differs, the legacy rule's removal, the post-write verify and the
-// report lines. Node built-ins only - no install, no network, and no per-skill fork (the shell loop it
-// replaces measured 4m13s on Git Bash).
+// capabilities-inventory.js - the scripted half of /capture-awareness in ONE node pass: the precheck, the full
+// inventory with a printed COUNT per layer (skills, seats, rules, MCP, plugins), the LIVE `claude mcp list`, the
+// MCP routing rows, and with --write <docs-path>/awareness/AGENTS-AWARENESS.md composed from the agents reference's
+// copy target, the compare, the write on differs, the post-write verify and the report lines; with --rule the
+// generated .claude/rules/alfred-awareness.md, one @ import per awareness doc, and the removal of the rules it
+// supersedes. Node built-ins only - no install, no network, and no per-skill fork (the shell loop it replaces
+// measured 4m13s on Git Bash).
 //
 // Usage, from the project root:
-//   node .claude/skills/capture-agent-awareness/scripts/capabilities-inventory.js --write [--refresh]
+//   node .claude/skills/capture-awareness/scripts/capabilities-inventory.js --write [--refresh]
+//   node .../capabilities-inventory.js --rule                           the awareness rule, after the three docs
 //   node .../capabilities-inventory.js                                  the inventory alone, nothing written
-//   node .../capabilities-inventory.js --body <composed-rule-file|->     the compare verdict for a hand-composed body
-//   node .../capabilities-inventory.js --verify <rule-file>             exits 1 on failure
+//   node .../capabilities-inventory.js --body <composed-doc-file|->      the compare verdict for a hand-composed body
+//   node .../capabilities-inventory.js --verify <doc-file>              exits 1 on failure
 //   --refresh         write over an empty precheck (the user asked, or the plugin state moved)
 //   --project <dir>   the project root (default: the current directory)
 //
@@ -23,10 +25,25 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const SKILL_DIR = path.resolve(__dirname, '..');
-const TEMPLATE_REL = 'references/generated-rule-template.md';
-const RULE_REL = '.claude/rules/alfred-agent-awareness.md';
-// The 1.x project-capabilities skill's output, superseded by this rule and removed by the run that writes it.
-const LEGACY_RULE_REL = '.claude/rules/baseline-project-capabilities.md';
+// The agents reference is the ONE home of the doc's copy target, the stamped usage policy and the routing map;
+// SKILL.md holds the rule's copy target.
+const AGENTS_REF = 'references/agents.md';
+const AWARENESS_DIR = 'awareness';
+const AGENTS_DOC = 'AGENTS-AWARENESS.md';
+const PROJECT_DOC = 'PROJECT-AWARENESS.md';
+const RELATED_DOC = 'RELATED-PROJECTS-AWARENESS.md';
+const RULE_REL = '.claude/rules/alfred-awareness.md';
+// The rules the three docs replace (the user's ruling of 2026-10-16: one rule of @ imports), each removed by --rule
+// once its doc exists and is imported; the 1.x project-capabilities rule went the same way before them.
+const SUPERSEDED_RULES = [
+    ['alfred-agent-awareness.md', AGENTS_DOC],
+    ['alfred-project-awareness.md', PROJECT_DOC],
+    ['alfred-related-context.md', RELATED_DOC],
+    ['baseline-project-capabilities.md', AGENTS_DOC],
+];
+// Where AGENTS-AWARENESS.md lives, from the docs root as the settings name it (relative or absolute).
+const agentsDocPath = (projectRoot, docs) => path.resolve(projectRoot, String(docs), AWARENESS_DIR, AGENTS_DOC);
+const docLabel = (projectRoot, file) => { const rel = relTo(projectRoot, file); return rel.startsWith('..') ? slash(file) : rel; };
 // The orchestration skills that carry NO `disable-model-invocation` by design, so the architecture, code-quality
 // and coverage loops can invoke them - they belong with the slash-only set in the rule, marked as the exception.
 const MODEL_INVOCABLE_BY_DESIGN = new Set(['capture-architecture', 'capture-architecture-quality', 'capture-code-quality', 'capture-test-coverage']);
@@ -416,7 +433,7 @@ const routingKey = (name) => (PLAYWRIGHT_SERVER.test(name) ? 'browser' : name);
 // the locked three, whose load lines live in their always-on baselines): every name maps to the same entry.
 function routingMap()
 {
-    const lines = (readText(path.join(SKILL_DIR, TEMPLATE_REL)) || '').split(/\r?\n/);
+    const lines = (readText(path.join(SKILL_DIR, AGENTS_REF)) || '').split(/\r?\n/);
     const start = lines.findIndex((l) => /^The routing map/.test(l));
     const map = new Map();
     if (start === -1) return map;
@@ -637,7 +654,7 @@ function precheck(projectRoot, rulePath)
 {
     const ruleStat = statOf(rulePath);
     if (!ruleStat) return { first: true, hits: [] };
-    const skipName = (n) => /^(alfred|baseline)-project-/.test(n) || n === 'project-code-style.md';
+    const skipName = (n) => /^(alfred|baseline)-project-/.test(n) || ['project-code-style.md', 'alfred-awareness.md', 'alfred-agent-awareness.md', 'alfred-related-context.md'].includes(n);
     const hits = [];
     const visit = (p, depth) =>
     {
@@ -736,36 +753,38 @@ function inventory(projectRoot)
     const say = (label, value) => out.push(`${(`${label}:`).padEnd(11)}${value}`);
     const sub = (line) => out.push(`  ${line}`);
 
-    const rulePath = path.join(projectRoot, RULE_REL);
-    const ruleText = readText(rulePath);
     const docs = docsRoot(projectRoot);
+    const rulePath = agentsDocPath(projectRoot, docs.value);
+    const docRel = docLabel(projectRoot, rulePath);
+    const ruleText = readText(rulePath);
     const stamp = installStamp(projectRoot);
     const map = routingMap();
     const slots = { dataRoot: dataRoot(projectRoot), docsRoot: docs.value };
-    const skillPolicy = policyBlock(readText(path.join(SKILL_DIR, 'SKILL.md')));
+    const skillPolicy = policyBlock(readText(path.join(SKILL_DIR, AGENTS_REF)));
 
-    out.push('=== capture-agent-awareness - inventory (one node pass, no per-skill fork) ===');
+    out.push('=== capture-awareness - agents inventory (one node pass, no per-skill fork) ===');
     say('PROJECT', projectRoot);
     say('DOCS ROOT', `${docs.value}  (from ${docs.from}) - every \`<docs-path>\` in the template is this literal`);
     facts.captured = `${today()} from ${stamp || 'no stamp'}`;
     facts.docs = docs.value;
     facts.rulePath = rulePath;
+    facts.docRel = docRel;
     facts.ruleText = ruleText;
     say('CAPTURED', facts.captured);
-    say('TEMPLATE', `${TEMPLATE_REL} - ${map.size} routing rows read`);
+    say('TEMPLATE', `${AGENTS_REF} - ${map.size} routing rows read`);
 
     const liveRev = policyBlock(ruleText).rev;
-    say('RULE', ruleText === null
-        ? `${RULE_REL} - absent, this is the FIRST capture`
-        : `${RULE_REL} - ${Buffer.byteLength(ruleText)} bytes, policy-rev ${liveRev || 'none'} (skill: ${skillPolicy.rev || 'none'}${liveRev && skillPolicy.rev ? (liveRev === skillPolicy.rev ? ', current' : ', STALE - the stamped policy moved') : ''})`);
+    say('DOC', ruleText === null
+        ? `${docRel} - absent, this is the FIRST capture`
+        : `${docRel} - ${Buffer.byteLength(ruleText)} bytes, policy-rev ${liveRev || 'none'} (skill: ${skillPolicy.rev || 'none'}${liveRev && skillPolicy.rev ? (liveRev === skillPolicy.rev ? ', current' : ', STALE - the stamped policy moved') : ''})`);
 
     const pre = precheck(projectRoot, rulePath);
     facts.pre = pre;
-    if (pre.first) say('PRECHECK', 'FIRST - no rule yet, capture everything');
-    else if (pre.hits.length === 0) say('PRECHECK', `empty - 0 files newer than the rule (Captured: ${pre.captured}${pre.stampSame ? `; a stamp rewrite at the same revision ${pre.stampSame} is not drift` : ''}). Say so in one line and STOP, unless the user asked for a refresh or the machine-global plugin state is what changed.`);
+    if (pre.first) say('PRECHECK', 'FIRST - no doc yet, capture everything');
+    else if (pre.hits.length === 0) say('PRECHECK', `empty - 0 files newer than the doc (Captured: ${pre.captured}${pre.stampSame ? `; a stamp rewrite at the same revision ${pre.stampSame} is not drift` : ''}). Say so in one line and STOP, unless the user asked for a refresh or the machine-global plugin state is what changed.`);
     else
     {
-        say('PRECHECK', `drift - ${pre.hits.length} file(s) newer than the rule (Captured: ${pre.captured})`);
+        say('PRECHECK', `drift - ${pre.hits.length} file(s) newer than the doc (Captured: ${pre.captured})`);
         for (const h of pre.hits.slice(0, 3)) sub(h.path);
         if (pre.hits.length > 3) sub(`... and ${pre.hits.length - 3} more`);
     }
@@ -796,7 +815,7 @@ function inventory(projectRoot)
     else if (localCount.skills === 0 || localCount.seats === 0)
     {
         facts.noSource = true;
-        say('SOURCE', `no local .claude/skills or .claude/agents${pluginProbe.ok ? ' and no enabled plugin carries them' : ' and the CLI is absent, so a plugin source cannot be read'} - say so and STOP rather than generate an empty rule over a good one`);
+        say('SOURCE', `no local .claude/skills or .claude/agents${pluginProbe.ok ? ' and no enabled plugin carries them' : ' and the CLI is absent, so a plugin source cannot be read'} - say so and STOP rather than generate an empty doc over a good one`);
     }
 
     const orchestration = skills.filter((s) => s.slashOnly || s.byDesign);
@@ -848,7 +867,7 @@ function inventory(projectRoot)
     for (const row of facts.routingRows) sub(row);
 
     facts.pluginsLine = null;
-    if (!pluginProbe.ok) say('PLUGINS', `${pluginProbe.reason} - OMIT the Plugins section from the rule rather than guess`);
+    if (!pluginProbe.ok) say('PLUGINS', `${pluginProbe.reason} - OMIT the Plugins section from the doc rather than guess`);
     else
     {
         say('PLUGINS', `${plugins.checked.rows.length} after dedupe (state only - \`claude plugin list\` is machine-global, so it never says WHY)`);
@@ -868,15 +887,15 @@ function inventory(projectRoot)
 function report(projectRoot)
 {
     const { out, say } = inventory(projectRoot);
-    say('COMPARE', 'no verdict yet - `--write` composes the rule from these lines, compares it, writes only on differs and verifies what it wrote');
+    say('COMPARE', 'no verdict yet - `--write` composes the doc from these lines, compares it, writes only on differs and verifies what it wrote');
     console.log(out.join('\n'));
     return 0;
 }
 
 // ---------------------------------------------------------------- --write: compose, compare, write, verify
 
-// The copy target in SKILL.md is the ONE home of the rule's shape; --write fills its slots from the inventory's own
-// lines, so no row, count or sentence passes through the model (audit 2026-10-10, session b91d6135: the read-template,
+// The copy target in the agents reference is the ONE home of the doc's shape (SKILL.md's, of the rule's); --write fills
+// its slots from the inventory's own lines, so no row, count or sentence passes through the model (audit 2026-10-10, session b91d6135: the read-template,
 // compose, compare and write turns copied script lines by hand for ~60% of the run's context tokens).
 function copyTarget(skillText)
 {
@@ -907,26 +926,26 @@ function writeRule(projectRoot, refresh)
 {
     const { out, say, facts } = inventory(projectRoot);
     const pre = facts.pre;
-    const drift = pre.first ? 'first capture - no rule before this run'
+    const drift = pre.first ? 'first capture - no doc before this run'
         : pre.hits.length ? `${pre.hits.length} file(s): ${pre.hits.slice(0, 3).map((h) => h.path).join(', ')}${pre.hits.length > 3 ? ` and ${pre.hits.length - 3} more` : ''}`
             : refresh ? 'none in the tree - a --refresh run' : 'none - PRECHECK empty';
     const finish = (rule, verified, code) =>
     {
-        out.push('REPORT - copy these four lines as they stand, then add Live from and Flags:');
-        out.push(`Rule:       ${rule}`, `Verify:     ${verified}`, `Inventory:  ${facts.inventoryLine}`, `Drift:      ${drift}`);
+        out.push('REPORT - copy these four lines as they stand into the Agents and Inventory lines:');
+        out.push(`Doc:        ${rule}`, `Verify:     ${verified}`, `Inventory:  ${facts.inventoryLine}`, `Drift:      ${drift}`);
         console.log(out.join('\n'));
         return code;
     };
     if (facts.noSource)
     {
-        say('WRITE', 'refused - no local skills or seats and no plugin carrying them; the rule is left as it is. Say so and STOP.');
+        say('WRITE', 'refused - no local skills or seats and no plugin carrying them; the doc is left as it is. Say so and STOP.');
         return finish('not written - no inventory source', 'not run - nothing written', 1);
     }
-    const template = copyTarget(readText(path.join(SKILL_DIR, 'SKILL.md')));
+    const template = copyTarget(readText(path.join(SKILL_DIR, AGENTS_REF)));
     const body = template === null ? null : composeRule(template, facts);
     if (body === null || body.left)
     {
-        say('COMPOSE', `FAIL - ${body === null ? 'no COPY TARGET block in the skill\'s SKILL.md' : `the copy target holds a slot this script does not fill: ${body.left.slice(0, 80)}`}; nothing written - a stack defect, report it, never hand-write the rule`);
+        say('COMPOSE', `FAIL - ${body === null ? `no COPY TARGET block in the skill's ${AGENTS_REF}` : `the copy target holds a slot this script does not fill: ${body.left.slice(0, 80)}`}; nothing written - a stack defect, report it, never hand-write the doc`);
         return finish('not written - COMPOSE failed', 'not run - nothing written', 1);
     }
     const live = facts.ruleText;
@@ -934,7 +953,8 @@ function writeRule(projectRoot, refresh)
     if (live !== null && withoutCaptured(normalize(live)) === withoutCaptured(body.text))
     {
         say('COMPARE', `identical - not rewritten (${Buffer.byteLength(live)} bytes)`);
-        removeLegacy(projectRoot, say);
+        ensureNotOwned(path.dirname(facts.rulePath), say);
+        ignoredLine(projectRoot, facts.rulePath, say);
         return finish(`unchanged, not rewritten - ${Buffer.byteLength(live)} bytes`, 'not run - nothing written', 0);
     }
     const changed = live === null ? '' : sectionsChanged(live, body.text);
@@ -945,9 +965,10 @@ function writeRule(projectRoot, refresh)
     }
     fs.mkdirSync(path.dirname(facts.rulePath), { recursive: true });
     fs.writeFileSync(facts.rulePath, body.text);
-    say('COMPARE', live === null ? `differs - no rule yet, WRITTEN ${RULE_REL} (${bytes} bytes)`
-        : `differs - WRITTEN ${RULE_REL}, the whole file (live ${Buffer.byteLength(live)} bytes, now ${bytes}); sections changed: ${changed}`);
-    removeLegacy(projectRoot, say);
+    say('COMPARE', live === null ? `differs - no doc yet, WRITTEN ${facts.docRel} (${bytes} bytes)`
+        : `differs - WRITTEN ${facts.docRel}, the whole file (live ${Buffer.byteLength(live)} bytes, now ${bytes}); sections changed: ${changed}`);
+    ensureNotOwned(path.dirname(facts.rulePath), say);
+    ignoredLine(projectRoot, facts.rulePath, say);
     console.log(out.splice(0).join('\n'));
     const result = {};
     const code = verify(projectRoot, facts.rulePath, result, { pluginsLine: facts.pluginsLine });
@@ -961,17 +982,41 @@ function sectionsChanged(live, composed)
     return [...new Set([...a.keys(), ...b.keys()])].filter((k) => a.get(k) !== b.get(k)).join(' | ') || '(whitespace only)';
 }
 
-function removeLegacy(projectRoot, say)
+// The awareness domain's watch.json carries `notOwned` for the script's own doc, so the docs engine never sections,
+// lints or writes it. Read-modify-write here, never by the model: the run book's write of the same file may drop it,
+// and the rule step puts it back. A malformed file is the user's to fix - said, never overwritten.
+function ensureNotOwned(dir, say = () => {})
 {
-    const legacy = path.join(projectRoot, LEGACY_RULE_REL);
-    if (!statOf(legacy)) return;
-    try { fs.rmSync(legacy); say('LEGACY', `removed ${LEGACY_RULE_REL} - this rule supersedes it`); }
-    catch (err) { say('LEGACY', `${LEGACY_RULE_REL} is still there - ${err.code || err.message}; name it in the report`); }
+    const file = path.join(dir, 'watch.json');
+    const raw = readText(file);
+    let j = {};
+    if (raw !== null)
+    {
+        try { j = JSON.parse(raw.replace(/^\uFEFF/, '')); }
+        catch (err) { say('WATCH', `${slash(file)} is not valid JSON (${err.message}) - left as it is; the docs engine sections ${AGENTS_DOC} until it is fixed`); return false; }
+        if (!j || typeof j !== 'object' || Array.isArray(j)) { say('WATCH', `${slash(file)} is not a JSON object - left as it is`); return false; }
+    }
+    const owned = Array.isArray(j.notOwned) ? j.notOwned : [];
+    if (owned.includes(AGENTS_DOC)) return false;
+    j.notOwned = [...owned, AGENTS_DOC];
+    try { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(file, `${JSON.stringify(j, null, 2)}\n`); }
+    catch (err) { say('WATCH', `${slash(file)} could not be written (${err.code || err.message})`); return false; }
+    say('WATCH', `${raw === null ? 'created' : 'updated'} the awareness domain's watch.json - notOwned: ${AGENTS_DOC}`);
+    return true;
+}
+
+// The doc names this machine's plugins, so it never belongs in a shared commit: `git check-ignore` says whether
+// git would take it. Outside git, or with no git to ask, there is nothing to say.
+function ignoredLine(projectRoot, file, say)
+{
+    const r = spawnSync('git', ['check-ignore', '-q', file], { cwd: projectRoot, encoding: 'utf8', timeout: 5000 });
+    if (r.status === 0) say('IGNORED', 'yes - git keeps the doc out of a commit');
+    else if (r.status === 1) say('IGNORED', `no - git would commit ${docLabel(projectRoot, file)}, which names this machine's plugins: a Flags row with /alfred-code:update, which writes the data root's ignore line`);
 }
 
 function compare(projectRoot, bodyArg)
 {
-    const rulePath = path.join(projectRoot, RULE_REL);
+    const rulePath = agentsDocPath(projectRoot, docsRoot(projectRoot).value);
     const composed = normalize(bodyArg === '-' ? fs.readFileSync(0, 'utf8') : readText(path.resolve(bodyArg)));
     if (composed === null || composed.trim() === '')
     {
@@ -981,15 +1026,15 @@ function compare(projectRoot, bodyArg)
     const live = readText(rulePath);
     if (live === null)
     {
-        console.log(`COMPARE:   differs - no rule yet, WRITE ${RULE_REL} (composed ${Buffer.byteLength(composed)} bytes)`);
+        console.log(`COMPARE:   differs - no doc yet, WRITE ${docLabel(projectRoot, rulePath)} (composed ${Buffer.byteLength(composed)} bytes)`);
         return 0;
     }
     if (withoutCaptured(normalize(live)) === withoutCaptured(composed))
     {
-        console.log(`COMPARE:   identical - DO NOT WRITE (${Buffer.byteLength(live)} bytes). Report \`rule unchanged - ${Buffer.byteLength(live)} bytes, not rewritten\`.`);
+        console.log(`COMPARE:   identical - DO NOT WRITE (${Buffer.byteLength(live)} bytes). Report \`doc unchanged - ${Buffer.byteLength(live)} bytes, not rewritten\`.`);
         return 0;
     }
-    console.log(`COMPARE:   differs - WRITE ${RULE_REL} in ONE call, whole file (live ${Buffer.byteLength(live)} bytes, composed ${Buffer.byteLength(composed)} bytes)`);
+    console.log(`COMPARE:   differs - WRITE ${docLabel(projectRoot, rulePath)} in ONE call, whole file (live ${Buffer.byteLength(live)} bytes, composed ${Buffer.byteLength(composed)} bytes)`);
     console.log(`  sections changed: ${sectionsChanged(live, composed)}`);
     return 0;
 }
@@ -1010,16 +1055,13 @@ function verify(projectRoot, ruleArg, result = {}, known = {})
     {
         console.log('file:          FAIL - absent or empty');
         console.log('VERIFY:        FAIL (1 check)');
-        result.verdict = 'FAIL (1 check) - the rule file is absent or empty';
+        result.verdict = 'FAIL (1 check) - the doc is absent or empty';
         return 1;
     }
 
-    const fm = parseFrontmatter(text);
-    line('frontmatter', fm.ok, fm.ok ? `parsed by node, keys: ${Object.keys(fm.keys).join(', ')}` : fm.error);
-    line('description', !!(fm.ok && fm.keys.description), fm.ok && fm.keys.description ? 'present' : 'the generated rule needs a `description:` key');
-    line('paths key', !(fm.ok && Object.prototype.hasOwnProperty.call(fm.keys, 'paths')), fm.ok && fm.keys.paths ? 'present - this rule is PATHLESS, a `paths:` key makes it a scoped rule' : 'absent, as a pathless rule needs');
+    line('frontmatter', !/^---\r?\n/.test(text), /^---\r?\n/.test(text) ? 'present - the doc is imported whole, so a frontmatter block reaches every session as text' : 'none, as an imported doc needs');
 
-    const skillPolicy = policyBlock(readText(path.join(SKILL_DIR, 'SKILL.md')));
+    const skillPolicy = policyBlock(readText(path.join(SKILL_DIR, AGENTS_REF)));
     const rulePolicy = policyBlock(text);
     line('policy-rev', !!(rulePolicy.rev && skillPolicy.rev && rulePolicy.rev === skillPolicy.rev),
         rulePolicy.rev ? `${rulePolicy.rev} vs the skill's ${skillPolicy.rev || 'none'}` : 'no `<!-- policy-rev: ... -->` line - the stamped block was not copied with it');
@@ -1069,6 +1111,124 @@ function verify(projectRoot, ruleArg, result = {}, known = {})
     return fails.length ? 1 : 0;
 }
 
+// ---------------------------------------------------------------- --rule: the one generated rule of @ imports
+
+// The import line's path. Claude Code resolves an @ import from the folder of the file holding it
+// (code.claude.com/docs/en/memory, 'Import additional files'), so a project-relative docs root is reached from
+// .claude/rules/ through ../../; an absolute one is written as it is, and a space is escaped (a bare one ends the path).
+function awarenessImport(docs, file)
+{
+    const r = String(docs || '').replace(/\\/g, '/').replace(/\/+$/, '');
+    const abs = /^(?:\/|[A-Za-z]:\/|~\/)/.test(r);
+    return `@${abs ? '' : '../../'}${r}/${AWARENESS_DIR}/${file}`.replace(/ /g, '\\ ');
+}
+
+// Which docs the rule imports: each that exists, the related one only once it holds an entry - a standalone repo's
+// 'none' answer is a doc with no section, and importing it would cost every session for nothing.
+function awarenessDocs(projectRoot, docs)
+{
+    const dir = path.resolve(projectRoot, String(docs), AWARENESS_DIR);
+    return [AGENTS_DOC, PROJECT_DOC, RELATED_DOC].filter((name) =>
+    {
+        const text = readText(path.join(dir, name));
+        if (text === null || text.trim() === '') return false;
+        return name !== RELATED_DOC || /^## \S/m.test(text);
+    });
+}
+
+// The rule from SKILL.md's copy target: the docs root stamped in, one import line per doc. No doc, no rule.
+function composeAwarenessRule({ projectRoot, docs, skillText } = {})
+{
+    const root = docs === undefined ? docsRoot(projectRoot).value : docs;
+    const template = copyTarget(skillText === undefined ? readText(path.join(SKILL_DIR, 'SKILL.md')) : skillText);
+    if (template === null) return { text: null, imports: [], error: "no COPY TARGET block in the skill's SKILL.md" };
+    const imports = awarenessDocs(projectRoot, root);
+    if (!imports.length) return { text: null, imports, error: null };
+    let text = template.replace(/^<the script's import lines[^\n]*>$/m, () => imports.map((n) => awarenessImport(root, n)).join('\n'));
+    text = text.split('<docs-path>').join(String(root).replace(/\\/g, '/').replace(/\/+$/, ''));
+    const left = /^<the script's[^\n]*/m.exec(text);
+    if (left) return { text: null, imports, error: `the copy target holds a slot this script does not fill: ${left[0].slice(0, 80)}` };
+    return { text: normalize(`${text}\n`), imports, error: null };
+}
+
+// --rule: compose, compare, write on differs, put the notOwned entry back, remove the superseded rules whose doc is
+// now imported. Also the installer's route on an update that moved an older layout in (scripts/install/docs.js), so
+// both write the same bytes; `say` takes its log there.
+// A superseded rule goes only when it holds the capture's own text - its stamp, or a description naming the capture
+// that generated it; one the user wrote or changed past that still loads, so it is named and kept. The 1.x rule's
+// removal was unconditional before this, and stays so. The run-book pointer carries nothing a doc holds, and its shape
+// is fixed in every release (one `Run book:` line, the 2026-10-15 one an `@` import beside it), so its body is held to
+// that shape too: a line past it is the user's, and deleting the rule would lose it. The inventory rule's body moves into
+// AGENTS-AWARENESS.md, and the sibling rule was composed from the entries its doc keeps.
+const RUN_BOOK_LINE = /^(?:Run book: `[^`]+` - (?:read it before you build, start, log into or hand-check the app\.|the project's workflow, imported below at every session start; follow it before you build, start, log into or hand-check the app, and if its text is not below, Read it first\.)|@\S+)$/;
+function capturesOwn(name, text)
+{
+    if (name === 'baseline-project-capabilities.md') return true;
+    const stamped = /<!--\s*policy-rev:/.test(text) || /^description: [^\n]*generated by \/[a-z-]+/m.test(text);
+    if (!stamped || name !== 'alfred-project-awareness.md') return stamped;
+    const body = text.replace(/\r\n/g, '\n').replace(/^---\n[\s\S]*?\n---\n/, '');
+    return body.split('\n').map((l) => l.trim()).filter(Boolean).every((l) => RUN_BOOK_LINE.test(l));
+}
+
+function writeAwarenessRule(projectRoot, { say: sayArg, print = true, docs: docsArg } = {})
+{
+    const out = [];
+    const say = sayArg || ((label, value) => out.push(`${(`${label}:`).padEnd(11)}${value}`));
+    const docs = docsArg === undefined ? docsRoot(projectRoot).value : docsArg;
+    const rulePath = path.join(projectRoot, RULE_REL);
+    const done = (rule, code, extra = {}) =>
+    {
+        out.push(`Rule:       ${rule}`);
+        if (print && out.length) console.log(out.join('\n'));
+        return { code, rule, ...extra };
+    };
+    const composed = composeAwarenessRule({ projectRoot, docs });
+    if (composed.error)
+    {
+        say('RULE', `FAIL - ${composed.error}; nothing written - a stack defect, report it, never hand-write the rule`);
+        return done('not written - RULE failed', 1);
+    }
+    // The folder is a docs domain whenever an awareness doc sits in it, an imported one or not: a sibling doc moved in
+    // by an update with no entry yet is still the engine's to section.
+    const dir = path.resolve(projectRoot, String(docs), AWARENESS_DIR);
+    const anyDoc = [AGENTS_DOC, PROJECT_DOC, RELATED_DOC].some((n) => statOf(path.join(dir, n)));
+    if (anyDoc) ensureNotOwned(dir, say);
+    if (composed.text === null)
+    {
+        say('RULE', anyDoc ? `not written - nothing to import yet: ${RELATED_DOC} holds no entry and no other awareness doc exists`
+            : `not written - no awareness doc under ${slash(String(docs))}/${AWARENESS_DIR}/ yet; the rules it would supersede are left in place`);
+        return done(anyDoc ? 'not written - nothing to import yet' : 'not written - no awareness doc yet', 0, { imports: [] });
+    }
+    say('IMPORTS', composed.imports.join(', '));
+    const live = readText(rulePath);
+    let verdict;
+    if (live !== null && normalize(live) === composed.text) verdict = `unchanged, not rewritten - ${RULE_REL}, ${Buffer.byteLength(live)} bytes`;
+    else
+    {
+        try { fs.mkdirSync(path.dirname(rulePath), { recursive: true }); fs.writeFileSync(rulePath, composed.text); }
+        catch (err) { say('RULE', `FAIL - ${RULE_REL} could not be written (${err.code || err.message})`); return done('not written - the write failed', 1); }
+        verdict = `${live === null ? 'created' : 'refreshed'} - ${RULE_REL}, ${Buffer.byteLength(composed.text)} bytes, imports ${composed.imports.length}`;
+    }
+    say('RULE', verdict);
+    const removed = [];
+    for (const [name, doc] of SUPERSEDED_RULES)
+    {
+        const file = path.join(projectRoot, '.claude', 'rules', name);
+        // the related rule goes once the doc records the user's answer, an empty 'none' doc included
+        const covered = composed.imports.includes(doc) || (doc === RELATED_DOC && readText(path.resolve(projectRoot, String(docs), AWARENESS_DIR, RELATED_DOC)) !== null);
+        if (!covered || !statOf(file)) continue;
+        if (!capturesOwn(name, readText(file) || ''))
+        {
+            say('REMOVED', `kept .claude/rules/${name} - it is not the capture's own text, so it still loads beside alfred-awareness.md: merge what you need into the awareness docs and remove it`);
+            continue;
+        }
+        try { fs.rmSync(file); removed.push(name); }
+        catch (err) { say('REMOVED', `.claude/rules/${name} is still there - ${err.code || err.message}; name it in the report`); }
+    }
+    if (removed.length) say('REMOVED', `removed ${removed.map((n) => `.claude/rules/${n}`).join(', ')} - alfred-awareness.md imports their content`);
+    return done(`${verdict}${removed.length ? `; superseded removed: ${removed.join(', ')}` : ''}`, 0, { imports: composed.imports, removed });
+}
+
 // ---------------------------------------------------------------- entry
 
 function main()
@@ -1080,11 +1240,12 @@ function main()
     }
     const projectRoot = path.resolve(argOf('--project') || process.cwd());
     const ruleArg = argOf('--verify');
-    if (process.argv.includes('--verify') && !ruleArg) { console.log('--verify needs a rule file path'); return 2; }
+    if (process.argv.includes('--verify') && !ruleArg) { console.log('--verify needs a doc file path'); return 2; }
     if (ruleArg) return verify(projectRoot, ruleArg);
     const bodyArg = argOf('--body');
     if (process.argv.includes('--body') && !bodyArg) { console.log('--body needs a file path (or `-` for stdin)'); return 2; }
     if (bodyArg) return compare(projectRoot, bodyArg);
+    if (process.argv.includes('--rule')) return writeAwarenessRule(projectRoot).code;
     if (process.argv.includes('--write')) return writeRule(projectRoot, process.argv.includes('--refresh'));
     return report(projectRoot);
 }
@@ -1106,4 +1267,4 @@ if (require.main === module)
     process.exitCode = main();
 }
 
-module.exports = { dataRoot, fillSlots, routingMap, routingRow, pluginRoutingRow, routingRowsFor, parsePluginList, projectKey, crossCheckPlugins, settingsPluginState, pluginEntries };
+module.exports = { composeAwarenessRule, writeAwarenessRule, awarenessImport, ensureNotOwned, docsRoot, dataRoot, fillSlots, routingMap, routingRow, pluginRoutingRow, routingRowsFor, parsePluginList, projectKey, crossCheckPlugins, settingsPluginState, pluginEntries };

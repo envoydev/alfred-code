@@ -461,14 +461,16 @@ const headingName = (line) => { const m = /^##\s+(.+?)\s*$/.exec(line); return m
 const ruleFieldName = (line) => { const m = /^\s*-?\s*name:\s*(.+?)\s*$/.exec(line); return m ? m[1].replace(/^['"]|['"]$/g, '').trim() : null; };
 const linesOf = (text, pick) => String(text).split(/\r?\n/).map(pick).filter(Boolean);
 
-// Names from the related-projects domain (shape: stack/skills/capture-related-projects/references/artifact-shapes.md):
-// `<docsRoot>/related-projects/RELATED-PROJECTS.md` first - one '## <name>' heading per sibling - else
-// the generated awareness rule `.claude/rules/alfred-related-context.md` (a 'name:' field per
-// sibling entry). Neither PRESENT (not neither non-empty) -> []; the doc wins whenever it exists at all,
-// so an emptied doc is read as "no siblings", never silently backed by a stale rule copy.
+// Names from the related-projects doc (shape: stack/skills/capture-awareness/references/related-projects.md):
+// `<docsRoot>/awareness/RELATED-PROJECTS-AWARENESS.md` first - one '## <name>' heading per sibling - then its
+// 2026-10-15 home `related-projects/RELATED-PROJECTS.md`, else the generated rule it replaced,
+// `.claude/rules/alfred-related-context.md` (a 'name:' field per sibling entry). None PRESENT (not none
+// non-empty) -> []; a doc wins whenever it exists at all, so an emptied doc - a standalone repo's 'none' answer
+// included - is read as "no siblings", never silently backed by a stale rule copy.
 function relatedProjects(projectRoot, docsRoot) {
-  const docFile = path.join(docsRoot, 'related-projects', 'RELATED-PROJECTS.md');
-  if (fs.existsSync(docFile)) {
+  const docFile = [path.join(docsRoot, 'awareness', 'RELATED-PROJECTS-AWARENESS.md'), path.join(docsRoot, 'related-projects', 'RELATED-PROJECTS.md')]
+    .find((f) => fs.existsSync(f));
+  if (docFile) {
     try { return linesOf(fs.readFileSync(docFile, 'utf8'), headingName); } catch { return []; }
   }
   // The 2.x line reads the pre-2.1.6 name too: an install the update has not moved yet still holds it.

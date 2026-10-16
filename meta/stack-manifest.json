@@ -73,18 +73,8 @@
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "capture-agent-awareness",
-      "note": "deliberate capabilities capture - inventories installed skills/agents/MCPs/plugins, generates the awareness rule alfred-agent-awareness.md; manual /-only"
-    },
-    {
-      "repo": "envoydev/alfred-code",
-      "name": "capture-project-awareness",
-      "note": "deliberate run-book capture - reads the repo first (the first-look scan, launch configs, compose, README), asks only for the gaps (start and reach, login and where the credentials live, flows and edge cases, before-you-run and debugging), writes docs/project-awareness/PROJECT-AWARENESS.md (its own docs domain) + the generated rule alfred-project-awareness.md, whose @ import loads the run book at every session start; credentials by location, never by value; manual /-only"
-    },
-    {
-      "repo": "envoydev/alfred-code",
-      "name": "capture-related-projects",
-      "note": "deliberate related-projects capture - args paths/URLs, fans out related-project-analyzer per sibling, writes the awareness rule alfred-related-context.md + docs/related-projects/RELATED-PROJECTS.md (its own docs domain; docs/related-context/ stays the plain drop box for every other sibling-repo paper); manual /-only"
+      "name": "capture-awareness",
+      "note": "deliberate awareness capture (the user's ruling of 2026-10-16: three captures in one) - inventories installed skills/agents/MCPs/plugins into docs/awareness/AGENTS-AWARENESS.md (script-written, out of git), writes the run book docs/awareness/PROJECT-AWARENESS.md from the repo plus the asked gaps (credentials by location, never by value), maps the sibling repos the user names into docs/awareness/RELATED-PROJECTS-AWARENESS.md (fanning out related-project-analyzer where it is picked), and generates the one rule alfred-awareness.md whose @ imports load all three at every session start; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -492,7 +482,7 @@
     },
     {
       "file": "related-project-analyzer.md",
-      "note": "analysis support (sonnet/medium): read-only sibling-repo characterizer (name/relation/first_read/seam, URL siblings shallow-cloned to scratch) - the capture-related-projects skill fans it out per sibling and merges docs/related-projects/RELATED-PROJECTS.md"
+      "note": "analysis support (sonnet/medium): read-only sibling-repo characterizer (name/relation/first_read/seam, URL siblings shallow-cloned to scratch) - the capture-awareness skill fans it out per sibling and merges docs/awareness/RELATED-PROJECTS-AWARENESS.md"
     },
     {
       "file": "issue-diagnoser-ci.md",
@@ -1126,7 +1116,10 @@
       "alfred-task-solve-cross",
       "alfred-task-verify-code",
       "alfred-task-verify-plan",
-      "alfred-task-version-upgrade"
+      "alfred-task-version-upgrade",
+      "capture-agent-awareness",
+      "capture-project-awareness",
+      "capture-related-projects"
     ],
     "agents": [
       "angular-solution-designer.md",
@@ -1200,8 +1193,8 @@
       "project-architecture-quality-analyzer": "capture-architecture-quality",
       "project-code-style-analyzer": "capture-code-style",
       "project-test-coverage-analyzer": "capture-test-coverage",
-      "project-related-context": "capture-related-projects",
-      "project-agent-capabilities": "capture-agent-awareness",
+      "project-related-context": "capture-awareness",
+      "project-agent-capabilities": "capture-awareness",
       "project-stack-usage-analyzer": "capture-usage-report",
       "project-first-look": "capture-first-look",
       "project-quality-loop": "loop-code-quality",
@@ -1213,16 +1206,16 @@
       "alfred-capture-stack-usage": "capture-usage-report",
       "create-ticket": "habits-create-ticket",
       "explain-code-tutor": "habits-explain-code",
-      "alfred-capture-agent-capabilities": "capture-agent-awareness",
-      "capture-agent-capabilities": "capture-agent-awareness",
+      "alfred-capture-agent-capabilities": "capture-awareness",
+      "capture-agent-capabilities": "capture-awareness",
       "alfred-capture-architecture": "capture-architecture",
       "alfred-capture-architecture-quality": "capture-architecture-quality",
       "alfred-capture-code-quality": "capture-code-quality",
       "alfred-capture-code-style": "capture-code-style",
       "alfred-capture-first-look": "capture-first-look",
-      "alfred-capture-project-capabilities": "capture-project-awareness",
-      "capture-project-capabilities": "capture-project-awareness",
-      "alfred-capture-related-projects": "capture-related-projects",
+      "alfred-capture-project-capabilities": "capture-awareness",
+      "capture-project-capabilities": "capture-awareness",
+      "alfred-capture-related-projects": "capture-awareness",
       "alfred-capture-test-coverage": "capture-test-coverage",
       "alfred-capture-usage-report": "capture-usage-report",
       "alfred-habits-adjust-agents-md": "habits-adjust-agents-md",
@@ -1251,7 +1244,10 @@
       "alfred-task-solve-cross": "task-solve-cross",
       "alfred-task-verify-code": "task-verify-code",
       "alfred-task-verify-plan": "task-verify-plan",
-      "alfred-task-version-upgrade": "task-version-upgrade"
+      "alfred-task-version-upgrade": "task-version-upgrade",
+      "capture-agent-awareness": "capture-awareness",
+      "capture-project-awareness": "capture-awareness",
+      "capture-related-projects": "capture-awareness"
     },
     "agents": {
       "ci-failure-diagnoser": "issue-diagnoser-ci",

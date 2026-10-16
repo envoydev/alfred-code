@@ -14,10 +14,9 @@ ends on the deterministic check; by hand, the steps are:
    row whose capture skill this install skipped (its /command will not resolve).
 3. The rows marked GENERATED come from captures /alfred-code:init already ran for the installed ones -
    filling this file never re-runs one whose file exists. A row whose file is missing takes its capture, in the post-install
-   order: /capture-related-projects ONLY when this project has sibling repos (a standalone repo
-   drops that row instead), then /capture-architecture, /capture-code-style,
-   /capture-project-awareness, then
-   /capture-agent-awareness LAST, so its generated inventory reflects the final install. All but
+   order: /capture-architecture, /capture-code-style, then
+   /capture-awareness LAST, so its generated inventory reflects the final install (it writes the
+   run book and maps the sibling repos too, where the project has any). All but
    /capture-architecture are slash-only: the user types them - a model Skill call is refused.
 If the repo already has a root AGENTS.md (for other agent tooling), it IS the project's file: the
 installer seeds nothing beside it, and it is improved in place, never replaced by this template. Claude
@@ -57,9 +56,9 @@ map, a dependency rule's why - plus a pointer to its sections, never a second co
    differ, so a request in the business words lands on the right type.
 2. Stack - languages, frameworks and key libraries at their EXACT versions ('EF Core 10', not
    'EF Core'), test stack + coverage gate, the LSP plugin for the primary language(s). MCP routing
-   is NOT hand-filled here - it lives in the generated
-   .claude/rules/alfred-agent-awareness.md (user-run /capture-agent-awareness; if
-   that skill was not installed, a lean hand-filled routing list here is the fallback).
+   is NOT hand-filled here - it lives in the generated <docs-path>/awareness/AGENTS-AWARENESS.md,
+   which .claude/rules/alfred-awareness.md imports (user-run /capture-awareness; if that skill was
+   not installed, a lean hand-filled routing list here is the fallback).
 3. Setup - what a machine needs before build and test work: the SDK / runtime versions (a
    global.json or .nvmrc pin), Docker for the integration tests, the services a test run starts, and
    the env vars a test reads (names only - where the values live is item 10). One line each.
@@ -99,8 +98,6 @@ running it.
 
 | Rule | What it governs |
 |---|---|
-| `.claude/rules/alfred-agent-awareness.md` (GENERATED - user-run /capture-agent-awareness after install, update, or a trim) | the skill / agent usage policy (dispatch is explicit-only) plus this project's real skill / seat / MCP inventory |
+| `.claude/rules/alfred-awareness.md` (GENERATED - user-run /capture-awareness after install, update, or a trim) | imports `<docs-path>/awareness/` into every session: the skill / agent usage policy (dispatch is explicit-only) and this project's real skill / seat / MCP inventory, the run book (how to build, start, log into and hand-check the app), and the sibling repos with their seams where the project has any |
 | `.claude/rules/alfred-architecture.md` (GENERATED - run /capture-architecture) | architecture capture marker - the docs exist, read them before a structural change; where they live is the navigation baseline's, the orientation itself arrives through the docs hook |
-| `.claude/rules/alfred-related-context.md` (GENERATED, OPTIONAL - only where the project has sibling repos; user-run /capture-related-projects with their paths/URLs) | sibling-repo awareness - name / location / relation / seam per sibling |
-| `.claude/rules/alfred-project-awareness.md` (GENERATED - user-run /capture-project-awareness) | run book import - loads `<docs-path>/project-awareness/PROJECT-AWARENESS.md` into every session: how to build, start, log into and hand-check the app |
 | `.claude/rules/project-code-style.md` (GENERATED - user-run /capture-code-style; path-scoped, plus the full doc) | the project's actual code style - the condensed core auto-attaches on any matching file touch (main session and subagents); the full capture stays in `<docs-path>/code-style/CODE-STYLE.md` |

@@ -142,6 +142,6 @@ coverage doc absent or stamped before the change names `/capture-test-coverage`.
 
 A build, test or run command this cycle proved wrong - a red the documented command gave and a changed
 flag or path turned green - is doc drift too, whatever the code surface: the close line names the
-AGENTS.md line or the run-book section (`<docs-path>/project-awareness/PROJECT-AWARENESS.md`) that still
+AGENTS.md line or the run-book section (`<docs-path>/awareness/PROJECT-AWARENESS.md`) that still
 prints the old command, beside the command that worked. A plan's `## Decisions` entry is not that
 record - the plan closes, the run book is what the next session reads.

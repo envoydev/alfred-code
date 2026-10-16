@@ -8,6 +8,8 @@ paths:
   - "scripts/skill-comply*"
   - "scripts/plugin-*"
   - "scripts/gate*"
+  - "scripts/session-surface*"
+  - "scripts/profile-fixture*"
   - "scripts/git-hooks/**"
 ---
 
@@ -42,7 +44,7 @@ What each meta file owns and what the repo-level scripts (lint, usage analysis, 
     one row plus the seed's own (lint check 58 - not check 27, which is the `suggests:` removal
     check below).
   - `recommendations.json` - seeds + the never-flag `general` list (project-conditional opt-ins, e.g.
-    `capture-related-projects` / `related-project-analyzer`: addable, never seeded or re-added); its
+    `related-project-analyzer`: addable, never seeded or re-added); its
     `notes` give an opt-in row nothing selects its walk-table why.
   - `evidence.json` - need-signals `scripts/scan-evidence.js` matches against manifests; evidence rows
     arrive pre-selected, absence is advisory, evidence never creates a `required` lock.
@@ -71,5 +73,13 @@ What each meta file owns and what the repo-level scripts (lint, usage analysis, 
   manual-only skill counts as a skill run, its body read from the expansion's `Base directory for this skill:` row. Its rollup skips the live session (`CLAUDE_CODE_SESSION_ID`,
   `--exclude-session <id>`) and counts a plugin only where a registry record reaches or it was used.
   `scripts/agents-md-check.js` - a project's AGENTS.md (and CLAUDE.md) files against the tree they describe, read-only
-  and no model call. `scripts/scan-evidence.js` - deterministic manifest-only
+  and no model call. `scripts/profile-fixture.js` - one throwaway project per tech profile (a `stacks` key or `bare`), installed
+  from this tree on an isolated account dir: the export is registered as the stack's marketplace BEFORE the installer runs, or the
+  installer takes the released core from GitHub (measured 2026-10-16); its `MARKERS` must cover every `stacks` key (its test fails
+  otherwise). `--clean <workdir>` deletes the test data it wrote (each fixture, the export, the shared home - a linked export as the
+  link) and prints `removed:` / `left:`, refusing a filesystem root, the home dir or a git checkout. `scripts/session-surface.js` - what a fresh session in ONE install is sent, per load point (session start, a turn,
+  per tool, path rule, seat dispatch, compaction, stop) and owner, with mechanical collision flags; read-only unless `--run-hooks`,
+  which runs each hook once on a synthetic payload and fails (exit 1) on a write outside the project - for a fixture only. Its
+  harness rules (load order, matchers, the listing budget) cite the docs page they came from; `/repo-audit-system` stands on both.
+  `scripts/scan-evidence.js` - deterministic manifest-only
   evidence scan; `--orientation` prints the provisional `ORIENTATION.md` the `capture-first-look` skill writes. `scripts/skill-comply.js` - grades whether a skill's steps were followed in a transcript (`check` / `grade`, offline, over the expectation files in `meta/skill-comply/`); `replay` runs the fixtures through `claude -p` only on `--live`, which is billed; `compare` applies the A/B ship rule over two replay outputs (a step failing on both arms is INCONCLUSIVE, never not-worse; one graded by nothing offline is NOT GRADED). `scripts/gate.js` - the local CI gate: lint + tests on the committed tree, the three legs in parallel (macOS native on the Node major `ci.yml` pins, a `node:<major>` container as its `node` user, a Parallels VM through `prlctl exec` as SYSTEM - elevated like a runner, so symlinks work - with the bundle on a host shared folder and Git's `bin\bash.exe` launcher on PATH as the runner image has it, the VM put back stopped or suspended as found); each leg is `scripts/gate-leg.js`, which fails on zero tests even when `npm test` exits 0. Fidelity rules, each one a measured false failure: the clone sits outside the temp tree, the machine's own temp dir and git config stay (an override broke a `HOME` alias test), and each leg's test workers are its share of the cores (three suites at full width ran 7 timing and output-size tests red that pass alone). Machine-local config only: `git config gate.windowsVm` (an isolated VM cannot be reached), `gate.legs` or `GATE_LEGS`. A pass is stamped per commit in `<git dir>/alfred-gate/pass/`, so a push after a manual run skips it; logs sit beside it. One gate runs per machine (a lock in the temp dir), since every clone and worktree shares the one VM. `scripts/git-hooks/pre-push` is the hook `--install-hook` points `core.hooksPath` at. `README.md` stays compact (headline counts lint-checked; inventories live in the HTML).

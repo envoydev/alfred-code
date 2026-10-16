@@ -94,11 +94,10 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   seat with a `## Loop` section and no cap. Captures are deliberate-only
   (`capture-architecture` writes `architecture/ARCHITECTURE.md` and
   `alfred-architecture.md`; the findings go to `capture-architecture-quality`
-  (`quality/ARCHITECTURE-ASSESSMENT.md`), the code's to `capture-code-quality` (`quality/CODE-ASSESSMENT.md`), and the
-  run book to `capture-project-awareness` (`project-awareness/PROJECT-AWARENESS.md` - until 2026-10-15
-  `project-capabilities/PROJECT-CAPABILITIES.md`, which `docs.migrateRunBook` moves - and
-  `alfred-project-awareness.md`, whose `@` import loads the whole run book at every session start, the user's
-  ruling of 2026-10-15: how to build, start, reach, log into and hand-check the app, which the
+  (`quality/ARCHITECTURE-ASSESSMENT.md`), the code's to `capture-code-quality` (`quality/CODE-ASSESSMENT.md`), and the awareness to `capture-awareness` (the user's ruling of 2026-10-16 merged the three captures that wrote
+  the inventory rule, the run book and the sibling doc: `awareness/AGENTS-AWARENESS.md`, `awareness/PROJECT-AWARENESS.md`
+  and `awareness/RELATED-PROJECTS-AWARENESS.md`, plus ONE rule `alfred-awareness.md` whose `@` imports load all three at
+  every session start - an older install's docs and rules are moved by `docs.migrateAwareness`; the run book says how to build, start, reach, log into and hand-check the app, which the
   ten verifiers, `issue-diagnoser-runtime`, `evidence-gatherer` and `integration-reviewer` follow
   before they run it, reading the file only when it is not in context, pinned as `run-book-read-first`); never in a build flow).
   `task-solve-cross` is the single entry-point orchestrator (single-stack vertical per
@@ -116,14 +115,15 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   `__DOCS_ROOT__` on every run),
   memory (what belongs in the shared `memory` MCP, when to save it, and to search before asking or
   reading - locks the server in the way `alfred-navigation` locks the navigation server).
-  Skill/agent usage policy + MCP routing live in the GENERATED `alfred-agent-awareness.md`.
+  Skill/agent usage policy + MCP routing live in the GENERATED
+  `<docs-path>/awareness/AGENTS-AWARENESS.md`, which the generated `alfred-awareness.md` imports.
   Thirteen path-scoped: `markdown-docs.md`, `skill-authoring.md`, the repair routers
   (`dotnet-repair-agents.md`, `angular-repair-agents.md`) and nine convention rules, each
   glob-attaching ONE file family to its house-style skill. Every convention rule uses the imperative form pinned as
   `convention-rule-first-action` in shared-rules.json, and the load receipt pinned as `convention-rule-load-receipt`
   in the same eleven files (`scripts/rule-prose.test.js` fails a mismatch) - a new one copies both, never paraphrases them.
   The `baseline-` prefix is retired (2.1.6, the user's ruling): the seven shipped rules and the generated
-  `project-*` ones are `alfred-*` (`alfred-git`, `alfred-project-awareness`, ...), and `baseline-*` names live only in
+  `project-*` ones are `alfred-*` (`alfred-git`, `alfred-awareness`, ...), and `baseline-*` names live only in
   `retired.rules`, `renamed.rules`, the migration code and its tests, and the `docs/*-evidence.md` history. An update over
   an older install prunes the seven old library copies by the `retired` list (the existing policy: by name, hand-edited
   or not, one `rule pruned (retired upstream)` line each) and writes the new ones - an old copy the stamp holds no hash

@@ -931,7 +931,7 @@ function runLayers(ctx)
     const seedRow = (rel) => (rel === '.claude/AGENTS.md' ? 'AGENTS.md' : rel === '.claude/CLAUDE.md' ? 'CLAUDE.md' : '');
     ctx.respelledSeeds = new Set();
     selection.respellRenamed({
-        projectRoot: ctx.projectRoot, renamed: ctx.manifest.renamed, engines: pwEngines(ctx),
+        projectRoot: ctx.projectRoot, renamed: ctx.manifest.renamed, engines: pwEngines(ctx), docsPath,
         owned: (rel) =>
         {
             const row = seedRow(rel);
@@ -944,7 +944,7 @@ function runLayers(ctx)
         log: ctx.log, note: ctx.note,
     });
     if (plugins.corePluginOn(ctx.routes))
-        selection.respellRosterSeats({ projectRoot: ctx.projectRoot, core: CORE, seats: placement().plugins[CORE].agents, log: ctx.log, note: ctx.note });
+        selection.respellRosterSeats({ projectRoot: ctx.projectRoot, core: CORE, seats: placement().plugins[CORE].agents, docsPath, log: ctx.log, note: ctx.note });
     // A registration of the name answers the bare spelling, the stack's own (bareNames) or the project's in .mcp.json.
     const servers = (readJson(ctx.mcpFile) || {}).mcpServers;
     const registered = new Set([...bareNames(ctx), ...(servers && typeof servers === 'object' && !Array.isArray(servers) ? Object.keys(servers) : [])]);
@@ -952,7 +952,7 @@ function runLayers(ctx)
         projectRoot: ctx.projectRoot,
         plugin: ctx.lists.mcps.map((e) => String(e).split('|')[0]).filter((name) => !registered.has(name)),
         outputs: Object.fromEntries(pwEngines(ctx).map((e) => [e, `${dataRoot.targetOf(dataRoot.engineServer(e), ctx.dataInfo.root)}/output/`])),
-        log: ctx.log, note: ctx.note,
+        docsPath, log: ctx.log, note: ctx.note,
     });
     dataRootLayer(ctx, docsPath);
     seeds.playwrightDownloads({

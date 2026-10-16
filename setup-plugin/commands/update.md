@@ -50,12 +50,15 @@ generated file both exist, and the old one is the user's to remove.
 **Renamed after 2.3.0.** The generated rules take their awareness names - `alfred-project-architecture.md` ->
 `alfred-architecture.md`, `alfred-project-related-context.md` -> `alfred-related-context.md`,
 `alfred-project-agent-capabilities.md` -> `alfred-agent-awareness.md`, `alfred-project-run-book.md` ->
-`alfred-project-awareness.md` - each MOVED with its content kept, and the two captures that write them are
-`/capture-agent-awareness` and `/capture-project-awareness`. After 2.5.0 the run book's doc follows its capture's
-name: `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` moves to
-`<docs-path>/project-awareness/PROJECT-AWARENESS.md` (its `watch.json` and branch versions with it, the section ids
-re-spelled), and a run-book rule still holding the capture's own pointer text is rewritten to import it, so every
-session loads the run book at its start. The desktop servers are `windows-control` and
+`alfred-project-awareness.md` - each MOVED with its content kept.
+**Merged after 2.5.0.** The three awareness captures are one, `/capture-awareness`, and their docs share one
+domain, `<docs-path>/awareness/`: the run book moves there from `project-capabilities/PROJECT-CAPABILITIES.md` (or
+`project-awareness/PROJECT-AWARENESS.md`) with its `watch.json` and branch versions, the section ids re-spelled; the
+sibling doc from `related-projects/RELATED-PROJECTS.md` as `RELATED-PROJECTS-AWARENESS.md`; and the inventory rule's
+body becomes `AGENTS-AWARENESS.md`. ONE generated rule, `alfred-awareness.md`, `@`-imports them, so every session
+loads them at its start; it replaces `alfred-agent-awareness.md`, `alfred-project-awareness.md` and
+`alfred-related-context.md`, each removed only while it still holds the capture's own text - one the user changed is
+named and kept. Report the `docs migration (awareness)` and `awareness:` lines. The desktop servers are `windows-control` and
 `macos-control` (were `windows-desktop` / `macos-desktop`): update swaps the plugin with its on/off kept, re-spells
 their tools in the generated rules, and `ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE` is the gate key - the old
 `ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE` is still read while the new one is unset, with a line saying to rename it.
@@ -103,8 +106,8 @@ prompts as its rules; `/loop-code-quality staged` is the stage-by-stage run a pr
 | `/project-architecture-quality-analyzer` | `/capture-architecture-quality` |
 | `/project-code-style-analyzer` | `/capture-code-style` |
 | `/project-test-coverage-analyzer` | `/capture-test-coverage` |
-| `/project-related-context` | `/capture-related-projects` |
-| `/project-agent-capabilities` | `/capture-agent-awareness` |
+| `/project-related-context` | `/capture-awareness` |
+| `/project-agent-capabilities` | `/capture-awareness` |
 | `/project-stack-usage-analyzer` | `/capture-usage-report` |
 | `/project-first-look` | `/capture-first-look` |
 | `/project-quality-loop` | `/loop-code-quality` |
@@ -118,16 +121,16 @@ prompts as its rules; `/loop-code-quality staged` is the stage-by-stage run a pr
 | `/explain-code-tutor` | `/habits-explain-code` |
 | seat `ci-failure-diagnoser` | seat `issue-diagnoser-ci` |
 | seat `runtime-failure-diagnoser` | seat `issue-diagnoser-runtime` |
-| `/capture-agent-capabilities` | `/capture-agent-awareness` |
-| `/capture-project-capabilities` | `/capture-project-awareness` |
-| `/alfred-capture-agent-capabilities` | `/capture-agent-awareness` |
+| `/capture-agent-capabilities` | `/capture-awareness` |
+| `/capture-project-capabilities` | `/capture-awareness` |
+| `/alfred-capture-agent-capabilities` | `/capture-awareness` |
 | `/alfred-capture-architecture` | `/capture-architecture` |
 | `/alfred-capture-architecture-quality` | `/capture-architecture-quality` |
 | `/alfred-capture-code-quality` | `/capture-code-quality` |
 | `/alfred-capture-code-style` | `/capture-code-style` |
 | `/alfred-capture-first-look` | `/capture-first-look` |
-| `/alfred-capture-project-capabilities` | `/capture-project-awareness` |
-| `/alfred-capture-related-projects` | `/capture-related-projects` |
+| `/alfred-capture-project-capabilities` | `/capture-awareness` |
+| `/alfred-capture-related-projects` | `/capture-awareness` |
 | `/alfred-capture-test-coverage` | `/capture-test-coverage` |
 | `/alfred-capture-usage-report` | `/capture-usage-report` |
 | `/alfred-habits-adjust-agents-md` | `/habits-adjust-agents-md` |
@@ -157,6 +160,9 @@ prompts as its rules; `/loop-code-quality staged` is the stage-by-stage run a pr
 | `/alfred-task-verify-plan` | `/task-verify-plan` |
 | `/alfred-task-version-upgrade` | `/task-version-upgrade` |
 | `/loop-quality` | `/loop-code-quality` |
+| `/capture-agent-awareness` | `/capture-awareness` |
+| `/capture-project-awareness` | `/capture-awareness` |
+| `/capture-related-projects` | `/capture-awareness` |
 | seat `alfred-issue-diagnoser-ci` | seat `issue-diagnoser-ci` |
 | seat `alfred-issue-diagnoser-runtime` | seat `issue-diagnoser-runtime` |
 
@@ -270,8 +276,7 @@ It prints, in order:
   so it can never answer 'what changed'.
 - `changed-here: skills=<n> agents=<n> rules=<n> hooks=<n>` - the part of that delta THIS install carries (a
   copy on disk, a seat on the core no deny names, a hook the plugin route carries and `ALFRED_CODE_HOOKS_OFF`
-  does not name). Step 7 names THIS as the refresh, and it gates the `/capture-agent-awareness`
-  suggestion (measured: a close named 'skills=10 agents=44' as this install's refresh where the installer
+  does not name). Step 7 names THIS as the refresh, and it gates the `/capture-awareness` suggestion (measured: a close named 'skills=10 agents=44' as this install's refresh where the installer
   copied 9 of the 10 and the install enables 21 seats).
 - `migration: <id><TAB><detect kind>` per DETECTED entry, or `migrations: none detected`, each
   followed by its own indented `why:` / `then:` / `remove:` / `unwire:` / `env-rename:` /
@@ -743,15 +748,15 @@ what was taken, what stays off or was left, each by name), step 6's `agents-md:`
   this project stopped needing is validate's whole-stack-absent pass, unmentioned by this command.
 
 The run rewrote `alfred-code.stamp` - the next update or configure diffs from here. Name
-`/capture-agent-awareness` (when installed) as the USER's next step when step 2's `changed-here:`
+`/capture-awareness` (when installed) as the USER's next step when step 2's `changed-here:`
 line shows `skills=` or `agents=` above 0 (this install's half - a change to a skill it never copied
-stales nothing it carries) - the generated rule stamps each skill's first sentence,
+stales nothing it carries) - the generated inventory stamps each skill's first sentence,
 which drifts with content-only updates (measured: a 'roster unchanged, rule still accurate' skip
 left 7 of 10 stamped sentences stale and the user caught it manually). Gate it on THAT number and
 nothing else: keyed on 'the release refreshed any installed skill or agent file' the clause was
 permanently true, because the installer re-copies all of them every run - so the suggestion fired on
 runs where no skill had changed at all, and a user acted on one. The usage policy inside that
-generated rule ships verbatim from the skill and is never re-fetched, so a project can carry a
+inventory ships verbatim from the skill and is never re-fetched, so a project can carry a
 two-release-old policy with nothing to notice it (measured: one project's rule still described the
 fresh-session gate as '40% of the context window, 150k floor', a spelling retired at 0.2.70) - that
 is the VALIDATE bullet's `policy-rev:` trigger above, one printed row, not a re-confirmed grep pair
@@ -767,7 +772,7 @@ frontmatter. Do not lean on the harness for it: measured both ways, one update r
 refused and another slipped through. The report line is the mechanism.
 
 **The run closes on a suggestion card, never on a question.** After the report, list the
-follow-ups that are the USER's to run - restart for an MCP change, `/capture-agent-awareness`
+follow-ups that are the USER's to run - restart for an MCP change, `/capture-awareness`
 (when installed and the step-2 gate above fires), a manual-only capture whose output is stale, the
 Navigation-server re-index, a credential to rotate or set by
 hand - as `Suggested next steps`, the recommended one first and each with the one reason it
@@ -778,8 +783,8 @@ ran without them with nothing reporting it) -
 every other follow-up runs against the session that is still holding the OLD ones, and a card that
 ranks a capture above it tells the user to re-capture an inventory that is not loaded yet (measured:
 a run that replaced two guard hooks and re-registered all four servers listed the re-capture first,
-and the user ran that first) ('`/capture-agent-awareness` - the update refreshed 12 skill files, so the generated
-rule's stamped sentences are stale'). A follow-up that is itself a deliberate run - any of the
+and the user ran that first) ('`/capture-awareness` - the update refreshed 12 skill files, so the generated
+inventory's stamped sentences are stale'). A follow-up that is itself a deliberate run - any of the
 captures, a loop - carries a fresh-session note beside it: 'run it in a fresh session; started
 here it re-sends this walk's history on every one of its turns'. Under a restart row the note reads 'run it
 in the session the restart opens' instead - one action, not two the user can order wrongly (measured: a
@@ -812,7 +817,7 @@ the close-out, not silently ignored.
 
 ## Do not
 - Never delete anything the upstream diff or the migrations catalog did not name - user-authored
-  skills/agents/rules/hooks and the generated rules (`alfred-architecture.md`, `alfred-related-context.md`, `alfred-agent-awareness.md`, `alfred-project-awareness.md`,
+  skills/agents/rules/hooks and the generated rules (`alfred-architecture.md`, `alfred-awareness.md`, the awareness docs,
   `project-code-style.md`) appear in neither; if a candidate is in neither list, it stays.
 - Never install an addition the step-2 ask did not take, and never remove an MCP or plugin the
   diff did not retire - dropping by choice, and adopting anything the release did not add, is

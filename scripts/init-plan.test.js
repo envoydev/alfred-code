@@ -25,7 +25,7 @@ function project({ settings } = {})
     return root;
 }
 const INV = (over = {}) => ({
-    skills: ['capture-related-projects', 'capture-architecture', 'capture-code-style', 'capture-project-awareness', 'capture-agent-awareness'],
+    skills: ['capture-architecture', 'capture-code-style', 'capture-awareness'],
     agents: ['related-project-analyzer', 'architecture-analyzer', 'code-style-analyzer'],
     mcps: ['alfred-navigation', 'alfred-documentation', 'alfred-memory', 'playwright'],
     plugins: [{ name: 'alfred-code', scope: 'project' }, { name: 'csharp-lsp', scope: 'project' }],
@@ -253,36 +253,33 @@ test('captures: the fixed order; run, done and skip each say why; the library co
     const root = project({ settings: { env: { ALFRED_CODE_DOCS_PATH: 'notes/ai' } } });
     fs.mkdirSync(path.join(root, 'notes', 'ai', 'architecture'), { recursive: true });
     fs.writeFileSync(path.join(root, 'notes', 'ai', 'architecture', 'ARCHITECTURE.md'), '# map\n');
-    fs.mkdirSync(path.join(root, '.claude', 'skills', 'capture-related-projects'), { recursive: true });
-    fs.writeFileSync(path.join(root, '.claude', 'skills', 'capture-related-projects', 'SKILL.md'), '---\nname: x\n---\n');
     const inv = INV({ left_out: ['agent code-style-analyzer'] });
-    const lines = render(plan({ inv, root, platform: 'linux', env: E(), probe: NONE, pluginRoot: path.join(__dirname, '..') }))
+    const captures = () => render(plan({ inv, root, platform: 'linux', env: E(), probe: NONE, pluginRoot: path.join(__dirname, '..') }))
         .filter((l) => l.startsWith('capture:'));
-    assert.deepStrictEqual(lines.map((l) => l.split(' - ')[0]), [
-        'capture: capture-related-projects', 'capture: capture-architecture',
-        'capture: capture-code-style', 'capture: capture-project-awareness', 'capture: capture-agent-awareness',
-    ]);
-    assert.strictEqual(lines[0], 'capture: capture-related-projects - run: read .claude/skills/capture-related-projects/SKILL.md');
-    assert.strictEqual(lines[1], 'capture: capture-architecture - done: notes/ai/architecture/ARCHITECTURE.md exists');
-    assert.strictEqual(lines[2], 'capture: capture-code-style - skip: its seat code-style-analyzer is switched off');
+    const lines = captures();
+    assert.deepStrictEqual(lines.map((l) => l.split(' - ')[0]), ['capture: capture-architecture', 'capture: capture-code-style', 'capture: capture-awareness']);
+    assert.strictEqual(lines[0], 'capture: capture-architecture - done: notes/ai/architecture/ARCHITECTURE.md exists');
+    assert.strictEqual(lines[1], 'capture: capture-code-style - skip: its seat code-style-analyzer is switched off');
     // A path outside the project is printed with forward slashes on every OS: init reads it through Bash, where a
     // backslash is an escape (windows-2025 CI printed `D:/a/...` against a native-separator expectation).
     const libPath = (skill) => path.join(__dirname, '..', 'stack', 'skills', skill, 'SKILL.md').split(path.sep).join('/');
-    // The run book has no seat: the capture reads the repo and asks in the main session.
-    assert.strictEqual(lines[3], `capture: capture-project-awareness - run: read ${libPath('capture-project-awareness')}`);
-    assert.strictEqual(lines[4], `capture: capture-agent-awareness - run: read ${libPath('capture-agent-awareness')}`);
-    fs.mkdirSync(path.join(root, 'notes', 'ai', 'project-awareness'), { recursive: true });
-    fs.writeFileSync(path.join(root, 'notes', 'ai', 'project-awareness', 'PROJECT-AWARENESS.md'), '# run book\n');
-    const again = render(plan({ inv, root, platform: 'linux', env: E(), probe: NONE })).filter((l) => l.startsWith('capture:'));
-    assert.strictEqual(again[3], 'capture: capture-project-awareness - done: notes/ai/project-awareness/PROJECT-AWARENESS.md exists');
+    // The awareness capture has no seat: it reads the repo and asks in the main session.
+    assert.strictEqual(lines[2], `capture: capture-awareness - run: read ${libPath('capture-awareness')}`);
+    // A library copy wins over the plugin's; an awareness doc on disk is no 'done' - each part decides from disk.
+    fs.mkdirSync(path.join(root, '.claude', 'skills', 'capture-awareness'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.claude', 'skills', 'capture-awareness', 'SKILL.md'), '---\nname: x\n---\n');
+    fs.mkdirSync(path.join(root, 'notes', 'ai', 'awareness'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'notes', 'ai', 'awareness', 'PROJECT-AWARENESS.md'), '# run book\n');
+    assert.strictEqual(captures()[2], 'capture: capture-awareness - run: read .claude/skills/capture-awareness/SKILL.md');
 
-    const bare = render(plan({ inv: INV({ skills: ['capture-agent-awareness'], agents: [] }), root, platform: 'linux', env: E(), probe: NONE }))
+    const bare = render(plan({ inv: INV({ skills: ['capture-awareness'], agents: [] }), root, platform: 'linux', env: E(), probe: NONE }))
         .filter((l) => l.startsWith('capture:'));
-    assert.strictEqual(bare[0], 'capture: capture-related-projects - skip: the skill is not installed');
-    assert.strictEqual(bare[1], 'capture: capture-architecture - skip: the skill is not installed');
+    assert.strictEqual(bare[0], 'capture: capture-architecture - skip: the skill is not installed');
+    assert.strictEqual(bare[1], 'capture: capture-code-style - skip: the skill is not installed');
+    assert.strictEqual(bare[2], 'capture: capture-awareness - run: read .claude/skills/capture-awareness/SKILL.md', 'no seat to need');
     const noSeat = render(plan({ inv: INV({ agents: [] }), root: project(), platform: 'linux', env: E(), probe: NONE }))
         .filter((l) => l.startsWith('capture:'));
-    assert.strictEqual(noSeat[2], 'capture: capture-code-style - skip: its seat code-style-analyzer is not installed');
+    assert.strictEqual(noSeat[1], 'capture: capture-code-style - skip: its seat code-style-analyzer is not installed');
 });
 
 // End to end through the CLI, on a stubbed PATH: the real probes, the real pins file.
@@ -303,7 +300,7 @@ test('CLI: probes the machine on PATH, reads the plan-out file, refuses a missin
     assert.ok(lines.includes('machine: uv - present'), r.stdout);
     assert.ok(lines.includes('machine: python 3.13 - missing: uv python install 3.13'), 'uv present, so no after-uv');
     assert.ok(lines.includes('machine: csharp-ls - missing: dotnet tool install --global csharp-ls'));
-    assert.match(lines[lines.length - 1], /^init-plan: 5 to install, 0 blocked, 5 captures to run$/);
+    assert.match(lines[lines.length - 1], /^init-plan: 5 to install, 0 blocked, 3 captures to run$/);
 
     const missing = spawnSync(process.execPath, [SCRIPT, '--installed', path.join(root, 'nope.json'), '--root', root], { env, encoding: 'utf8' });
     assert.strictEqual(missing.status, 2);
@@ -388,20 +385,19 @@ test('unattended: each of init\'s own asks gets one line - additive installs tak
         { what: 'csharp-ls', state: 'blocked', detail: 'needs .NET' },
         { what: 'serena index', state: 'present', detail: '' },
         { what: 'claude-hud status line + compact layout', state: 'refresh', detail: 'node hud ...' },
-    ], captures: [{ skill: 'capture-related-projects', state: 'run', detail: 'read x' }, { skill: 'capture-architecture', state: 'run', detail: 'read y' }] };
+    ], captures: [{ skill: 'capture-architecture', state: 'run', detail: 'read y' }, { skill: 'capture-awareness', state: 'run', detail: 'read x' }] };
     assert.deepStrictEqual(DESTRUCTIVE_MACHINE, ['refresh']);
     assert.deepStrictEqual(unattended(p), [
         'unattended: machine installs -> install uv, python 3.13',
         'unattended: machine installs -> skip claude-hud status line + compact layout (a refresh replaces the account\'s existing status line - destructive)',
         'unattended: memory level -> global (Recommended)',
-        'unattended: related projects -> none - skip it (naming the siblings needs a person)',
         'unattended: AGENTS.md -> fill it in (Recommended)',
-    ]);
+    ], 'the sibling ask is the awareness capture\'s own, answered inline by init.md\'s rule (its Recommended option is None)');
 });
 
-test('unattended: nothing to install and no related-projects capture - no line for an ask that never fires', () =>
+test('unattended: nothing to install - no line for an ask that never fires', () =>
 {
-    const lines = unattended({ machine: [{ what: 'uv', state: 'present', detail: '' }], captures: [{ skill: 'capture-related-projects', state: 'done', detail: 'x exists' }] });
+    const lines = unattended({ machine: [{ what: 'uv', state: 'present', detail: '' }], captures: [{ skill: 'capture-architecture', state: 'done', detail: 'x exists' }] });
     assert.deepStrictEqual(lines, ['unattended: memory level -> global (Recommended)', 'unattended: AGENTS.md -> fill it in (Recommended)']);
 });
 

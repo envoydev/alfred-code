@@ -1,5 +1,5 @@
 ---
-description: "One-time bootstrap of an Alfred Code install, run in the session AFTER setup's restart - installs what the kept MCP servers need to start (uv, the pinned Python, csharp-ls when csharp-lsp is kept, the picked browsers, the navigation-server index, claude-hud's status line in its compact layout - every machine-level install through ONE ask first), sets this project's shared-memory level and imports Claude's old notes (no reinstall), runs the captures the install carries (related projects, architecture, code style, the run book, agent capabilities) by following each SKILL.md inline, then offers the AGENTS.md fill. Nothing installed yet routes to /alfred-code:setup."
+description: "One-time bootstrap of an Alfred Code install, run in the session AFTER setup's restart - installs what the kept MCP servers need to start (uv, the pinned Python, csharp-ls when csharp-lsp is kept, the picked browsers, the navigation-server index, claude-hud's status line in its compact layout - every machine-level install through ONE ask first), sets this project's shared-memory level and imports Claude's old notes (no reinstall), runs the captures the install carries (architecture, code style, awareness - the inventory, the run book and the sibling repos) by following each SKILL.md inline, then offers the AGENTS.md fill. Nothing installed yet routes to /alfred-code:setup."
 disable-model-invocation: true
 ---
 
@@ -74,9 +74,9 @@ One call, nothing changed: `node "$TMP/repo/scripts/install/alfred-code.js" upda
   browsers (a firefox / webkit setup's install failed to download; a chrome / msedge the
   machine does not have), the navigation-server index, then claude-hud's status line and compact
   layout (the account's, or this project's `settings.local.json` for a claude-hud installed for this project alone). The command is the exact one to run.
-- `capture: <skill> - run: read <SKILL.md> | done: <output> exists | skip: <why>` - the five
-  captures in their fixed order, each only when the install lists its skill AND its seat (the run
-  book and agent capabilities have none).
+- `capture: <skill> - run: read <SKILL.md> | done: <output> exists | skip: <why>` - the three
+  captures in their fixed order, each only when the install lists its skill AND its seat
+  (`capture-awareness` has none, and runs whenever it is installed - each of its parts decides from disk).
 
 Nothing is inferred beyond those lines: a machine item the plan does not name is not this run's.
 
@@ -126,8 +126,8 @@ server's launcher moves the folder at its next start once no server holds it, an
 so Cursor and an install not yet updated reach the same file; until then the level names it where it is.
 
 Then ONE AskUserQuestion with those three options, `global` marked Recommended - the whole point of
-shared memory. Picking `project` while this project's related-projects domain names sibling repos
-(`.claude/rules/alfred-related-context.md`) means their memories are not visible from
+shared memory. Picking `project` while this project's awareness docs name sibling repos
+(`<docs-path>/awareness/RELATED-PROJECTS-AWARENESS.md`) means their memories are not visible from
 here - one caveat line in the close.
 
 Apply it with the init-only entry point - no reinstall; under `.claude/` only the settings key and the
@@ -160,11 +160,9 @@ carries. Its seat is installed (the plan checked), so a dispatch it names is mad
 `done` or `skip` line is one narration line each - a done capture is re-run later by the user, never
 here.
 
-`capture-related-projects` takes its sibling list as arguments: ONE AskUserQuestion first - type the
-siblings via Other in the capture's own form (`<name> - <local path or git URL>`, several separated
-by commas), or 'none - skip it' (recommended only when the repo names no sibling). 'none' skips the
-capture. `capture-agent-awareness` runs LAST, so its generated rule reflects everything the
-captures above added; its own precheck decides whether the rule needs regenerating.
+`capture-awareness` runs LAST, so its inventory reflects everything the captures above added. It asks
+its own questions on the way - the run book's gaps, and the sibling repos (typed via Other, or 'None' for a
+standalone repo) - and its script decides what needs rewriting.
 
 ## 6. AGENTS.md - the user's call
 
@@ -213,7 +211,7 @@ is answered by the run itself, never AskUserQuestion, by one rule:
   it. A multi-select ask takes every pre-selected option that is not destructive.
 - Log each answer as one line, `unattended: <question> -> <choice>`, with `(<why>)` when the choice is
   not the Recommended option. Step 2's plan already carries the lines for init's own asks (machine
-  installs, memory level, related projects, AGENTS.md) - apply exactly those, never re-judge them.
+  installs, memory level, AGENTS.md) - apply exactly those, never re-judge them.
 - The stack's files are read through the Bash tool, never the Read tool (above): outside the working
   directory the Read tool asks first, and here nobody answers.
 

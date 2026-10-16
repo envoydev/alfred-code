@@ -2,7 +2,7 @@
 'use strict';
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
-require('./hook-test-env').isolateHookSuite();
+require('./hook-test-env').isolateHookSuite({ ownTmp: true }); // its per-session state files left 138 per run in the machine's temp dir (2026-10-16)
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -1919,4 +1919,44 @@ test('audit 2026-10-11 SD09: an unclaimed change made while the session sat idle
     const out = r2.hook({ ...stopEv(s), transcript_path: p.join(r2.root, 'missing.jsonl') }).stdout;
     assert.match(out ? JSON.parse(out).reason : '', /you changed src\/Api\/Program\.cs/, 'no transcript to read: the change stays the session\'s');
   } finally { r2.rm(); }
+});
+
+// 2026-10-16, an aspnet project on 2.5.0: a read-only session's Stop said 'you changed' four migration files a second
+// session on the same checkout had written while it ran.
+test('2026-10-16: a change another session on this checkout recorded as its own write is not asked about', () => {
+  const os = require('node:os');
+  const p = require('node:path');
+  const r = watched();
+  const edit = (s, file) => r.hook({ hook_event_name: 'PreToolUse', session_id: s, tool_name: 'Edit', tool_input: { file_path: file } }, { ...GIT, ...ALLOW });
+  const ask = (s) => { const out = r.hook(stopEv(s), GIT).stdout; return out ? JSON.parse(out).reason : ''; };
+  const claim = (s, v) => fs.writeFileSync(p.join(os.tmpdir(), `docs-session-${s}--main.session.json`), JSON.stringify(v));
+  let body = 0;
+  const change = () => r.write('src/Api/Program.cs', `app.UseStep(${++body});\napp.Run();\n`);
+  try {
+    const mine = sid(); const theirs = sid();
+    start(r, mine); start(r, theirs);
+    edit(theirs, 'src/Api/Program.cs'); change();
+    const state = JSON.parse(fs.readFileSync(p.join(os.tmpdir(), `docs-session-${theirs}--main.session.json`), 'utf8'));
+    assert.strictEqual(state.root, r.root, 'the writer records the checkout beside its paths');
+    assert.strictEqual(ask(mine), '', 'the measured case: the read-only session is not asked about the other session\'s write');
+    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"changed-by-other-session","files":\["src\/Api\/Program\.cs"\]/);
+    assert.match(ask(theirs), /you changed src\/Api\/Program\.cs/, 'the session that wrote it is still asked');
+    const own = sid(); start(r, own);
+    edit(own, 'src/Api/Program.cs'); change();
+    assert.match(ask(own), /you changed src\/Api\/Program\.cs/, 'a file both sessions wrote is still this session\'s own');
+    const past = new Date(Date.now() - 3600e3);
+    fs.utimesSync(p.join(os.tmpdir(), `docs-session-${theirs}--main.session.json`), past, past);
+    fs.utimesSync(p.join(os.tmpdir(), `docs-session-${own}--main.session.json`), past, past);
+    const late = sid(); start(r, late); change();
+    assert.match(ask(late), /you changed src\/Api\/Program\.cs/, 'a claim last written before this session\'s snapshot claims nothing');
+    const foreign = sid(); const other = sid(); start(r, foreign); change();
+    claim(other, { wrote: ['src/Api/Program.cs'], root: '/another/checkout' });
+    assert.match(ask(foreign), /you changed src\/Api\/Program\.cs/, 'another project\'s session claims nothing here');
+    const legacy = sid(); const old = sid(); start(r, legacy); change();
+    claim(old, { wrote: ['src/Api/Program.cs'] });
+    assert.match(ask(legacy), /you changed src\/Api\/Program\.cs/, 'a state file with no root (written before the record) claims nothing');
+    const torn = sid(); const bad = sid(); start(r, torn); change();
+    fs.writeFileSync(p.join(os.tmpdir(), `docs-session-${bad}--main.session.json`), '{"wrote": [');
+    assert.match(ask(torn), /you changed src\/Api\/Program\.cs/, 'an unreadable state file claims nothing');
+  } finally { r.rm(); }
 });

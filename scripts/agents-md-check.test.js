@@ -411,8 +411,8 @@ test('cli: a hand copy of the shipped template is flagged unfilled and by its pl
 {
     const template = fs.readFileSync(path.join(__dirname, '..', 'stack', 'AGENTS.template.md'), 'utf8');
     const rules = ['alfred-interaction', 'alfred-quality-gates', 'alfred-security', 'alfred-git', 'alfred-navigation', 'alfred-docs-root', 'alfred-memory',
-        'alfred-agent-awareness', 'alfred-architecture', 'alfred-related-context', 'alfred-project-awareness', 'project-code-style'];
-    const files = { '.claude/AGENTS.md': template, '.alfred/docs/code-style/CODE-STYLE.md': '', '.alfred/docs/project-awareness/PROJECT-AWARENESS.md': '' };
+        'alfred-awareness', 'alfred-architecture', 'project-code-style'];
+    const files = { '.claude/AGENTS.md': template, '.alfred/docs/code-style/CODE-STYLE.md': '', '.alfred/docs/awareness/PROJECT-AWARENESS.md': '' };
     for (const r of rules) files[`.claude/rules/${r}.md`] = '';
     const root = tree(files, { git: true });
     const r = cli(root);
@@ -535,4 +535,31 @@ test('SD04 --outline: each numbered outline section with the heading that holds 
     assert.strictEqual(rows.filter((l) => / - lacks$/.test(l)).length, 9);
     const bare = tree({ 'CLAUDE.md': '# Orders\n\n## Stack\n' }, { git: true });
     assert.match(cli(bare, ['--outline']).stdout, /^CLAUDE\.md: outline 1\. What this project is - lacks$/m, 'an H1 with no paragraph under it says nothing about the project');
+});
+
+test('shadowed: a CLAUDE.md on the seed\'s path keeps .claude/AGENTS.md from loading - unless it imports it or carries the keep marker', () =>
+{
+    const { shadowedRows } = require('./agents-md-check.js');
+    const seed = { '.claude/AGENTS.md': '# Orders\n' };
+    // Rows inside the tree only: a CLAUDE.md the machine keeps above its temp dir counts too, and is not this case's.
+    const rows = (files, targets = ['.claude/AGENTS.md']) => shadowedRows(tree({ ...seed, ...files }), targets).filter((f) => !f.file.startsWith('../')).map((f) => `${f.file}:${f.line} ${f.kind} ${f.what}`);
+    assert.deepStrictEqual(rows({}), [], 'no CLAUDE.md, nothing hides the seed');
+    assert.deepStrictEqual(rows({ 'CLAUDE.md': '# Notes\n' }), ['CLAUDE.md:1 shadowed .claude/AGENTS.md']);
+    assert.deepStrictEqual(rows({ 'CLAUDE.local.md': 'mine\n', '.claude/CLAUDE.md': 'team\n' }), ['.claude/CLAUDE.md:1 shadowed .claude/AGENTS.md', 'CLAUDE.local.md:1 shadowed .claude/AGENTS.md'], 'every one of the three counts');
+    assert.deepStrictEqual(rows({ 'CLAUDE.md': '@.claude/AGENTS.md\n' }), [], 'an import loads it');
+    assert.deepStrictEqual(rows({ 'CLAUDE.md': 'See `@.claude/AGENTS.md`.\n\n```\n@.claude/AGENTS.md\n```\n<!-- @.claude/AGENTS.md -->\n' }), ['CLAUDE.md:1 shadowed .claude/AGENTS.md'], 'a code span, a fence and a comment import nothing');
+    assert.deepStrictEqual(rows({ 'CLAUDE.md': '@AGENTS.md\n' }), ['CLAUDE.md:1 shadowed .claude/AGENTS.md'], 'importing another file is not importing this one');
+    assert.deepStrictEqual(rows({ 'CLAUDE.md': 'Ours. <!-- agents-md-check: keep -->\n' }), [], 'the keep marker is the user\'s choice');
+    assert.deepStrictEqual(rows({ 'web/AGENTS.md': '# Web\n', 'web/CLAUDE.md': 'web\n', 'CLAUDE.md': '@.claude/AGENTS.md\n' }, ['.claude/AGENTS.md', 'web/AGENTS.md']), ['web/CLAUDE.md:1 shadowed web/AGENTS.md'], "a part's file is hidden only by its own folder's");
+    const parent = tree({ 'CLAUDE.md': 'above\n', 'proj/.claude/AGENTS.md': '# Orders\n' });
+    assert.ok(shadowedRows(path.join(parent, 'proj'), ['.claude/AGENTS.md']).some((f) => f.file === '../CLAUDE.md'), 'a folder above the project counts too');
+});
+
+test('shadowed: the CLI prints the row with its fix and exits 1; a re-run says the same', () =>
+{
+    const root = tree({ '.claude/AGENTS.md': '# Orders\n', 'CLAUDE.md': '# Notes\n' }, { git: true });
+    const first = cli(root);
+    assert.strictEqual(first.status, 1, first.stdout + first.stderr);
+    assert.match(first.stdout, /^CLAUDE\.md:1 shadowed: \.claude\/AGENTS\.md - is not loaded while this file sits on its path - import it \(`@\.claude\/AGENTS\.md`\) or set Project instructions to claude-md-and-agents-md in \/config$/m);
+    assert.strictEqual(cli(root).stdout, first.stdout, 'read-only: a second run changes nothing');
 });

@@ -77,8 +77,8 @@ const domains = () => {
     // three different answers for one file. PERMANENT, not a migration stopgap: an earlier draft of
     // this comment said the installer's migration seeds a watch.json into every architecture/ that
     // lacks one, so this line could then be deleted. It does NOT - the migration writes an empty
-    // watch.json into code-style/ and related-projects/ only (the folders it moves a doc into), never
-    // into architecture/. A pre-domains install therefore still has an architecture/ with no
+    // watch.json into code-style/ only (the folder it moves a doc into; the awareness move writes awareness/'s with
+    // its notOwned entry), never into architecture/. A pre-domains install therefore still has an architecture/ with no
     // watch.json, and deleting this line would make its docs unreachable. Do not delete it on the
     // strength of a comment.
     if (!found.includes('architecture') && fs.existsSync(path.join(DOCS_ROOT, 'architecture'))) found.push('architecture');
@@ -418,7 +418,7 @@ function merge3(ours, base, theirs, name) {
 // mismatch report, which exists precisely to say that this fact and the declared mode disagree. Everything that
 // DECIDES behaviour asks gitVersioned() instead.
 // Every DOMAIN is probed, never one folder: a watch.json is what makes a domain and nothing requires
-// architecture/ to be one of them, so a project documented in code-style/, related-projects/ or decisions/
+// architecture/ to be one of them, so a project documented in code-style/, awareness/ or decisions/
 // alone is an ordinary shape. Probing architecture/ alone answered 'not committed' for exactly that project -
 // which then wrote per-branch OVERLAYS into a docs root git is versioning, and had `status` call committed
 // docs ignored. ANY tracked domain is enough: the doc text is committed where it matters, and a domain added

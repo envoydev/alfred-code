@@ -112,6 +112,11 @@ const agentKey = (input) => String(input.agent_id || input.agent_type || 'agent'
 // key and no seat can land in the main session's file. Structural, not a convention to remember.
 const MAIN_ACTOR = 'main.session';
 const actorKey = (input) => (input.agent_id || input.agent_type ? agentKey(input) : MAIN_ACTOR);
+// The checkout an actor's writes belong to, recorded beside them so another session on the same project can tell its
+// own paths from one of another project's (both are project-relative). On win32 the case is folded, as the file system does.
+const rootKey = (root) => { const k = toPosix(path.resolve(String(root || '.'))); return process.platform === 'win32' ? k.toLowerCase() : k; };
+// The temp dir listed once per Stop and shared by both attribution reads below (52,840 entries cost 78ms to list twice).
+const tmpEntries = () => { try { return fs.readdirSync(os.tmpdir()); } catch { return []; } };
 // A write, attributed to the actor that made it. Banked only where the call is allowed to PROCEED (see preToolUse):
 // a write this hook denies never lands, and crediting it would let a neighbour's change read as this seat's work.
 const WROTE_CAP = 500;
@@ -121,7 +126,8 @@ function recordWrite(root, input, wrote) {
   const a = loadAgent(input.session_id, key);
   const had = (a.wrote || []).length;
   const union = [...new Set([...(a.wrote || []), ...wrote])];
-  if (union.length === had) return;
+  if (union.length === had && a.root === rootKey(root)) return;
+  a.root = rootKey(root);
   // Past the cap an actor keeps its first WROTE_CAP paths and later ones are dropped, so a busy seat goes SILENT
   // rather than answering for files it never wrote. Right direction, invisible without this row.
   if (union.length > WROTE_CAP && had < WROTE_CAP) log(root, input, { event: 'wrote-cap', actor: key, cap: WROTE_CAP, dropped: union.length - WROTE_CAP });
@@ -130,15 +136,34 @@ function recordWrite(root, input, wrote) {
 }
 // Every path the OTHER actors of this session recorded. READ only: writing here would race preToolUse, and a file
 // that cannot be read simply leaves its paths unclaimed, which is the safe direction.
-function otherActorWrites(session, exceptKey) {
+function otherActorWrites(session, exceptKey, entries = tmpEntries()) {
   const prefix = `docs-session-${String(session || 'none').replace(/[^\w-]/g, '')}--`;
   const out = new Set();
-  try {
-    for (const f of fs.readdirSync(os.tmpdir())) {
-      if (!f.startsWith(prefix) || !f.endsWith('.json') || f === `${prefix}${exceptKey}.json`) continue;
-      try { for (const p of JSON.parse(fs.readFileSync(path.join(os.tmpdir(), f), 'utf8')).wrote || []) out.add(p); } catch {}
-    }
-  } catch {}
+  for (const f of entries) {
+    if (!f.startsWith(prefix) || !f.endsWith('.json') || f === `${prefix}${exceptKey}.json`) continue;
+    try { for (const p of JSON.parse(fs.readFileSync(path.join(os.tmpdir(), f), 'utf8')).wrote || []) out.add(p); } catch {}
+  }
+  return out;
+}
+// Every path an actor of ANOTHER session recorded on this same checkout since `since` (the snapshot's epoch seconds).
+// Two sessions on one project - a second terminal, a parallel run - each saw the other's edits as a change no actor of
+// their own claimed, so a read-only session was asked about a migration the other session wrote (2026-10-16, an aspnet
+// project on 2.5.0). A state file last written before the snapshot, or one with no `root` (written before this record),
+// claims nothing: an unread claim leaves the change the session's, the safe direction. READ only, like the seats' read.
+function otherSessionWrites(session, root, since, entries = tmpEntries()) {
+  const own = `docs-session-${String(session || 'none').replace(/[^\w-]/g, '')}--`;
+  const key = rootKey(root);
+  const out = new Set();
+  if (!Number.isFinite(since)) return out;
+  for (const f of entries) {
+    if (!f.startsWith('docs-session-') || !f.includes('--') || !f.endsWith('.json') || f.startsWith(own)) continue;
+    try {
+      const file = path.join(os.tmpdir(), f);
+      if (fs.statSync(file).mtimeMs / 1000 < since) continue;
+      const v = JSON.parse(fs.readFileSync(file, 'utf8'));
+      if (v.root === key) for (const p of v.wrote || []) out.add(p);
+    } catch {}
+  }
   return out;
 }
 // The untracked-at-start line rides the SessionStart block when there is one, and goes out alone when there is not.
@@ -184,7 +209,7 @@ function orientation(root, docs) {
   if (block.length > BLOCK_CAP) block = `${block.slice(0, BLOCK_CAP)}\n... (ORIENTATION.md continues past its 4KB cap - \`${READ} lint\` names the overrun; read the rest by section)`;
   // ORIENTATION.md stays architecture's own file, read exactly as before - a domain gets no per-domain twin.
   // The one line below is the part that used to name architecture/ as if it were the only docs folder; a
-  // project whose docs are code-style/ and related-projects/ (no architecture/ at all) is named correctly here.
+  // project whose docs are code-style/ and awareness/ (no architecture/ at all) is named correctly here.
   let doms = [];
   try { doms = docs.domains(); } catch {}
   const rootRel = path.relative(root, docs.DOCS_ROOT).split(path.sep).join('/');
@@ -290,7 +315,7 @@ function main() {
   try { docs = require('./docs.js'); }
   catch (e) { if (e.code === 'MODULE_NOT_FOUND' && /docs\.js/.test(e.message)) return; throw e; }
   // A domain is any top-level folder under the docs root holding a watch.json (architecture counts even
-  // without one - see docs.js's own domains()). A project whose docs are code-style/ and related-projects/,
+  // without one - see docs.js's own domains()). A project whose docs are code-style/ and awareness/,
   // with no architecture/ at all, must still get the SessionStart block, the gate and the finish ask - so the
   // whole-hook gate reads every domain, not one hardcoded folder. An empty list is still the right reason to
   // return: nothing under the docs root declares itself a domain.
@@ -735,7 +760,7 @@ const relative = (root, paths) => [...new Set(paths.map((p) => toPosix(path.rela
 
 // Only reading a section's text is a consult: `where`, `toc` and listings point at sections without reading them.
 // `docRoots` is a LIST now, one entry per domain (each domain's own root, project-relative) - a project can be
-// documented in code-style/ or related-projects/ alone, and a read under any one of them is a real consult, not
+// documented in code-style/ or awareness/ alone, and a read under any one of them is a real consult, not
 // just one under architecture/. Deliberately NOT the whole docs root: DOCS_ROOT also holds hook-blocks/,
 // docs-log.jsonl, .branches/ and cross-project-tasks/, none of which is a section covering a file, and crediting
 // any of them would turn the gate off by accident for a session that merely happens to touch one. A branch
@@ -1102,8 +1127,13 @@ function stop(input, root, docs, state) {
     // earns itself a ALFRED_CODE_DOCS_ASK=0. Attribution, not a subtraction: the session is asked about its own
     // later change to a section a seat answered for earlier.
     const mine = new Set(loadAgent(input.session_id, MAIN_ACTOR).wrote || []);
-    const seats = otherActorWrites(input.session_id, MAIN_ACTOR);
-    const claimed = changed.files.filter((f) => mine.has(f) || !seats.has(f));
+    const entries = tmpEntries();
+    const seats = otherActorWrites(input.session_id, MAIN_ACTOR, entries);
+    // a change another session on this checkout recorded as its own write is that session's to answer for: logged, not asked
+    const others = otherSessionWrites(input.session_id, root, state.snapshot.at, entries);
+    const theirs = changed.files.filter((f) => !mine.has(f) && !seats.has(f) && others.has(f));
+    if (theirs.length) log(root, input, { event: 'changed-by-other-session', files: theirs.slice(0, 5) });
+    const claimed = changed.files.filter((f) => mine.has(f) || (!seats.has(f) && !others.has(f)));
     // an unclaimed change made while the session sat idle is the user's own, outside this session: logged, not asked
     const outside = changedWhileIdle(root, claimed.filter((f) => !mine.has(f)), input.transcript_path);
     if (outside.size) log(root, input, { event: 'changed-outside-session', files: [...outside].slice(0, 5) });
@@ -1132,7 +1162,7 @@ function stop(input, root, docs, state) {
   process.stdout.write(JSON.stringify({ decision: 'block', reason }));
 }
 
-module.exports = { writeTargets, consultedBy, toolPaths, toPosix, sweepOldState, saveState, loadState, sectionRefs };
+module.exports = { writeTargets, consultedBy, toolPaths, toPosix, sweepOldState, saveState, loadState, sectionRefs, otherSessionWrites };
 if (require.main === module) {
   try { main(); if (startNote) { const note = startNote; startNote = ''; emit('SessionStart', note); } } catch (error) { process.stderr.write(`docs-session: ${error.message}\n`); }
 }

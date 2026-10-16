@@ -164,19 +164,18 @@ missing one); do not shuffle it. A later re-run is yours to type: all but the tw
 (`capture-architecture`, `capture-test-coverage`) are manual-only
 (`disable-model-invocation`), so the assistant cannot invoke one on your behalf:
 
-1. `/capture-related-projects <name - path> ...` - OPTIONAL, only when this project has sibling
-   repos: sibling-repo awareness, args only (local paths or git URLs, e.g. `frontend - ../client`);
-   it never scans on its own. A standalone repo skips it and installs neither the skill nor the
-   `related-project-analyzer` seat - both are opt-in adds via `/alfred-code:configure`.
-2. `/capture-architecture` - writes the durable architecture docs every seat reads to
+1. `/capture-architecture` - writes the durable architecture docs every seat reads to
    orient. Runs after the navigation-server index above, because the capture navigates by symbol.
-3. `/capture-code-style` - captures how the codebase really writes each language and
+2. `/capture-code-style` - captures how the codebase really writes each language and
    generates the path-scoped project-code-style rule.
-4. `/capture-project-awareness` - the run book: how to build, start, reach and log into the
-   app, the flows and edge cases a manual check exercises, where debugging starts. It reads the repo
-   first and asks only for the gaps; credentials are recorded by where they live, never by value.
-5. `/capture-agent-awareness` - LAST, so the generated usage-policy rule reflects the final
-   inventory including anything the captures above added.
+3. `/capture-awareness` - LAST, so its generated inventory reflects the final install, including
+   anything the captures above added. One run writes the three awareness docs and the rule that loads
+   them into every session: what this install carries and how to use it; the run book - how to build,
+   start, reach and log into the app, the flows and edge cases a manual check exercises, where
+   debugging starts (it reads the repo first and asks only for the gaps; credentials are recorded by
+   where they live, never by value); and the sibling repos, asked as typed paths or git URLs (e.g.
+   `../client`), never scanned for. The `related-project-analyzer` seat that characterizes a sibling
+   is an opt-in add via `/alfred-code:configure`.
 
 Optional, whenever you want the coverage picture: `/capture-test-coverage` - it
 measures the suite and asks for YOUR coverage bar on first capture, recording it for every later
@@ -202,7 +201,7 @@ Which one this install uses is `ALFRED_CODE_DOCS_VERSIONING` in the settings.jso
 ## Done looks like
 
 A restarted session where the MCPs answer, every stack plugin reads enabled, the generated rules exist under `.claude/rules/`
-(`alfred-agent-awareness.md` plus the captures' awareness rules), the docs root
-holds the architecture / code-style docs the seats orient from, and `autoMemoryEnabled` reads
+(`alfred-awareness.md` plus the captures' own rules), the docs root
+holds the architecture / code-style / awareness docs the seats orient from, and `autoMemoryEnabled` reads
 `false` - the shared memory carries what Claude's own notes used to. From here, work normally - the
 stack routes itself.

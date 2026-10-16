@@ -116,7 +116,7 @@ Skills you start by name. Every install has these.
 | `/task-version-upgrade` | A breaking upgrade, like .NET 10 |
 | `/capture-first-look` | A quick map of an unfamiliar project |
 | `/capture-architecture` | Write or refresh the architecture docs |
-| `/capture-project-awareness` | A run book: build, start, log in |
+| `/capture-awareness` | What is installed, the run book, sibling repos |
 | `/loop-code-quality` | Find and fix code-quality issues in rounds |
 
 Add what you want after the name:
@@ -142,7 +142,7 @@ More on the two task flows: [`docs/solve-skills-guide.md`](docs/solve-skills-gui
 
 | | Count | What it is |
 | --- | --- | --- |
-| **Skills** | 91 | house conventions and workflows |
+| **Skills** | 89 | house conventions and workflows |
 | **Agents** | 44 | designers, implementers, verifiers, reviewers |
 | **Rules** | 20 | always-on basics and per-file conventions |
 | **Hooks** | 17 | the guards, plus the docs, memory and history hooks |

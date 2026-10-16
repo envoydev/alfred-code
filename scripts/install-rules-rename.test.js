@@ -297,7 +297,10 @@ test('the seeded AGENTS.md rows naming the old rule files are re-spelled, the us
         },
     });
     for (const n of ['git', 'interaction', 'docs-root']) assert.ok(steps[1].includes(`.claude/rules/alfred-${n}.md`), `alfred-${n}.md not written into AGENTS.md`);
-    for (const g of GENERATED) assert.ok(steps[1].includes(`.claude/rules/${NOW[g]}.md`), `${NOW[g]}.md not written into AGENTS.md`);
+    // In the text the three awareness pointers take their final name, the one rule that replaced them (2026-10-16).
+    const FINAL = { ...NOW, 'agent-capabilities': 'alfred-awareness', 'related-context': 'alfred-awareness', 'run-book': 'alfred-awareness' };
+    for (const g of GENERATED) assert.ok(steps[1].includes(`.claude/rules/${FINAL[g]}.md`), `${FINAL[g]}.md not written into AGENTS.md`);
+    assert.ok(!/alfred-(agent-awareness|related-context|project-awareness)\.md/.test(steps[1]), 'a superseded pointer survived in AGENTS.md');
     assert.ok(!/baseline-(git|interaction|docs-root|project-)/.test(steps[1]), 'an old stack rule path survived in AGENTS.md');
     assert.ok(steps[1].includes('.claude/rules/baseline-mine.md'), "the user's own rule row was re-spelled");
     assert.strictEqual(steps[2], steps[1]);

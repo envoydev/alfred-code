@@ -78,12 +78,12 @@ const mech = () => flat(read('stack/skills/task-solve/references/step-mechanics.
 
 test('C20 a1fa1b2b#5 e6a68237#7 f24eb967#8: a sibling hand-off is printed as one paste-ready block beside the card', () => {
     assert.match(mech(), /prints it beside the card as ONE fenced markdown block ready to paste into the sibling's session - first line `Open in: <the sibling's root>`/);
-    assert.match(flat(read('stack/skills/capture-related-projects/references/sibling-handoff.md')), /ONE fenced markdown block, ready to paste there, its first line `Open in: <the sibling's root>`/);
+    assert.match(flat(read('stack/skills/capture-awareness/references/related-projects.md')), /ONE fenced markdown block, ready to paste there, its first line `Open in: <the sibling's root>`/);
     assert.match(skill('task-solve'), /printed as a paste-ready block, by the step mechanics' hand-off rules/);
 });
 
-test('C20 69dbed46#4: the generated related-context rule says where a card addressed to this repo sits', () => {
-    assert.match(flat(read('stack/skills/capture-related-projects/references/artifact-shapes.md')), /A task card addressed to THIS repo is written in the SIBLING's tree, under its own docs root's `cross-project-tasks\/<this repo>\.md` - search there before calling a named card absent/);
+test('C20 69dbed46#4: the related-projects doc says where a card addressed to this repo sits', () => {
+    assert.match(flat(read('stack/skills/capture-awareness/references/related-projects.md')), /A task card addressed to THIS repo is written in the SIBLING's tree, under its own docs root's `cross-project-tasks\/<this repo>\.md` - search there before calling a named card absent/);
 });
 
 test('C20 close receipts (390aebcb#8 3ce6b036#2 49cb4b82#6 a1fa1b2b#3 f24eb967#9 e499fc94#5 a6a24815#4 3b53e0e8#3): they ride the Result field', () => {

@@ -123,7 +123,7 @@ for a carried seat).
 | project-code-style | paths: `**/*.js` | GENERATED |
 
 `scope` comes from the `paths:` frontmatter (absent = always-on). `origin`: `GENERATED` for the
-capture-written rules (`alfred-architecture.md`, `alfred-related-context.md`, `alfred-agent-awareness.md`, `alfred-project-awareness.md`, `project-code-style.md`), `stack` otherwise,
+capture-written rules (`alfred-architecture.md`, `alfred-awareness.md`, `project-code-style.md`), `stack` otherwise,
 `user-authored` when clearly neither.
 
 Then ONE extra line under that table - the always-on FLOOR this install pays, because nothing
@@ -345,19 +345,22 @@ the seat handoff notes still in the memory database (`node .claude/hooks/memory.
 | quality/ARCHITECTURE-ASSESSMENT.md | yes | as of main@a1b2c3d, 2026-07-24 (recomputed, not a domain) | 2026-07-24 |
 | quality/CODE-ASSESSMENT.md | no | - | - |
 | code-style/CODE-STYLE.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
-| related-projects/RELATED-PROJECTS.md | no | - | - |
+| awareness/AGENTS-AWARENESS.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
+| awareness/PROJECT-AWARENESS.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
+| awareness/RELATED-PROJECTS-AWARENESS.md | no | - | - |
 | test-coverage/COVERAGE.md | yes | (bar 85%) | 2026-07-25 |
 | loops/ | yes | 3 prompt files | 2026-07-24 |
 | handoff notes (alfred-memory) | yes | 4 notes | - |
 
-`captured` is the doc's own `Captured:` stamp line read from the file (the related-projects doc
-stamps per entry - show the newest); the two `quality/` docs carry no `Captured:` stamp at all -
+`captured` is the doc's own `Captured:` stamp line read from the file (the related-projects
+awareness doc stamps per entry - show the newest); the two `quality/` docs carry no `Captured:` stamp at all -
 each recomputes every run with no domain of its own, so this column shows its `As of:` freshness
 line instead; `file updated` is the file's mtime date. A `Captured:` stamp older than the file
 mtime is normal (loops edit docs without re-capturing) - render both, judge nothing. Rows are
 fixed - a capture never run shows `no`, so the user sees what is MISSING as clearly as what
-exists. One row is conditional, not a gap: related-projects/RELATED-PROJECTS.md
-applies only to a project with sibling repos - a standalone repo reads `no` there permanently.
+exists. One row is conditional, not a gap: awareness/RELATED-PROJECTS-AWARENESS.md
+applies only to a project with sibling repos - a standalone repo reads `no` there, or `yes` with no entry once the
+capture recorded it as standalone.
 A leftover architecture/BRANCH-DELTA.md from an older capture is listed as a note, never deleted.
 
 ## 5. Close

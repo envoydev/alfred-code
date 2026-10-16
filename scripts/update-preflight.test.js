@@ -180,27 +180,38 @@ test('policy-rev: none when the generated rule is not installed', () => {
     assert.match(out, /^policy-rev: none$/m);
 });
 
+// The shipped policy is the awareness capture's agents reference; the installed one its doc, or a rule it replaced.
+const policyAt = (snap) =>
+{
+    const f = path.join(snap, 'stack', 'skills', 'capture-awareness', 'references', 'agents.md');
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    return f;
+};
+
 test('policy-rev: current when the stamped rev matches the shipped skill; stale otherwise', () => {
     const { snap, install, fixtureFile } = scaffold();
     fs.mkdirSync(path.join(install, '.claude', 'rules'), { recursive: true });
-    fs.mkdirSync(path.join(snap, 'stack', 'skills', 'capture-agent-awareness'), { recursive: true });
     fs.writeFileSync(path.join(install, '.claude', 'rules', 'alfred-agent-awareness.md'), 'policy-rev: abc123\nsome text');
-    fs.writeFileSync(path.join(snap, 'stack', 'skills', 'capture-agent-awareness', 'SKILL.md'), 'policy-rev: abc123\nsome text');
+    fs.writeFileSync(policyAt(snap), 'policy-rev: abc123\nsome text');
     assert.match(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out, /^policy-rev: current$/m);
 
-    fs.writeFileSync(path.join(snap, 'stack', 'skills', 'capture-agent-awareness', 'SKILL.md'), 'policy-rev: def456\nsome text');
+    fs.writeFileSync(policyAt(snap), 'policy-rev: def456\nsome text');
     assert.match(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out, /^policy-rev: stale installed=abc123 snapshot=def456$/m);
 
     fs.writeFileSync(path.join(install, '.claude', 'rules', 'alfred-agent-awareness.md'), 'no rev stamped here');
     assert.match(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out, /^policy-rev: stale installed=none snapshot=def456$/m, 'a rule with no rev at all IS the mismatch, nothing further to check');
+
+    // The awareness doc, once the update has written it, is read before any rule it replaced.
+    fs.mkdirSync(path.join(install, '.alfred', 'docs', 'awareness'), { recursive: true });
+    fs.writeFileSync(path.join(install, '.alfred', 'docs', 'awareness', 'AGENTS-AWARENESS.md'), 'policy-rev: def456\nsome text');
+    assert.match(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out, /^policy-rev: current$/m, 'the doc answers first');
 });
 
 test('policy-rev: an install still holding the pre-2.1.6 file name is read, not reported as none', () => {
     const { snap, install, fixtureFile } = scaffold();
     fs.mkdirSync(path.join(install, '.claude', 'rules'), { recursive: true });
-    fs.mkdirSync(path.join(snap, 'stack', 'skills', 'capture-agent-awareness'), { recursive: true });
     fs.writeFileSync(path.join(install, '.claude', 'rules', 'baseline-project-agent-capabilities.md'), 'policy-rev: abc123\nsome text');
-    fs.writeFileSync(path.join(snap, 'stack', 'skills', 'capture-agent-awareness', 'SKILL.md'), 'policy-rev: abc123\nsome text');
+    fs.writeFileSync(policyAt(snap), 'policy-rev: abc123\nsome text');
     assert.match(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out, /^policy-rev: current$/m);
 });
 
@@ -453,18 +464,18 @@ test('new items: the snapshot\'s renamed map names the old spelling when the com
     const renamed = loadManifest(path.join(__dirname, '..')).renamed;
     const oldOf = (to) => Object.keys(renamed.skills).find((k) => renamed.skills[k] === to);
     const { snap, install, fixtureFile } = scaffold({ fixture: { files: [
-        { status: 'added', filename: 'stack/skills/capture-related-projects/SKILL.md' },
+        { status: 'added', filename: 'stack/skills/capture-usage-report/SKILL.md' },
         { status: 'added', filename: 'stack/skills/task-solve/SKILL.md' },
     ] } });
     fs.writeFileSync(path.join(snap, 'meta', 'stack-manifest.json'), JSON.stringify({ renamed }));
-    const old = oldOf('capture-related-projects');
+    const old = oldOf('capture-usage-report');
     fs.mkdirSync(path.join(install, '.claude', 'skills', old), { recursive: true });
     fs.writeFileSync(path.join(install, '.claude', 'skills', old, 'SKILL.md'), `---\nname: ${old}\n---\n`);
     const listing = path.join(install, 'listing.json');
     fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }]));
     const { out, code } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]);
     assert.strictEqual(code, 0, out);
-    assert.match(out, new RegExp(`^new: skill capture-related-projects\\trenamed\\t-\\tfrom=${old}\\told-on-disk$`, 'm'), out);
+    assert.match(out, new RegExp(`^new: skill capture-usage-report\\trenamed\\t-\\tfrom=${old}\\told-on-disk$`, 'm'), out);
     assert.match(out, new RegExp(`^new: skill task-solve\\tarrives\\t-\\tfrom=${oldOf('task-solve')}$`, 'm'), out);
 });
 
@@ -474,8 +485,8 @@ test('new items: the snapshot\'s renamed map names the old spelling when the com
 test('new items: a renamed library item the stamp never picked, with no old copy, is not offered as new', () => {
     const { loadManifest } = require('./install/manifest.js');
     const renamed = loadManifest(path.join(__dirname, '..')).renamed;
-    const old = Object.keys(renamed.skills).find((k) => renamed.skills[k] === 'capture-related-projects');
-    const fixture = { files: [{ status: 'added', filename: 'stack/skills/capture-related-projects/SKILL.md' }] };
+    const old = Object.keys(renamed.skills).find((k) => renamed.skills[k] === 'capture-usage-report');
+    const fixture = { files: [{ status: 'added', filename: 'stack/skills/capture-usage-report/SKILL.md' }] };
     const newLines = (stamp) =>
     {
         const { snap, install, fixtureFile } = scaffold({ fixture, stamp });
@@ -489,9 +500,9 @@ test('new items: a renamed library item the stamp never picked, with no old copy
     const base = 'sha: aaa111\nversion: 0.2.60\n';
     assert.strictEqual(newLines(`${base}picked-skills: markdown-style@alfred-code\n`), 'new: none',
         'an old name the picks never named, with no copy, is not offered under its new one');
-    assert.match(newLines(`${base}picked-skills: ${old}\n`), new RegExp(`^new: skill capture-related-projects\\toffer\\t.*from=${old}`, 'm'),
+    assert.match(newLines(`${base}picked-skills: ${old}\n`), new RegExp(`^new: skill capture-usage-report\\toffer\\t.*from=${old}`, 'm'),
         'a picked old name with no copy on disk is still offered');
-    assert.match(newLines(base), /^new: skill capture-related-projects\toffer\t/m,
+    assert.match(newLines(base), /^new: skill capture-usage-report\toffer\t/m,
         'a stamp with no picks line judges nothing - still an offer');
 });
 

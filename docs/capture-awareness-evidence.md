@@ -1,4 +1,7 @@
-# capture-agent-awareness - evidence appendix
+# capture-awareness - evidence appendix (the inventory part)
+
+Written for capture-agent-awareness, which the capture-awareness skill replaced on 2026-10-16; the skill names below
+are the ones in effect when each was measured.
 
 The measured anecdotes behind this skill's rules, kept out of the run-time body so every session stops paying
 for them. Audit material: read it to learn WHY a rule is shaped the way it is, never to run the skill.

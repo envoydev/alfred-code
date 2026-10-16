@@ -609,9 +609,9 @@ const SCENARIOS = [
     name: 'related project reads',
     agents: [],
     async setup(mcpConfigPath, projectDir) {
-      const docDir = path.join(projectDir, '.claude', 'docs', 'related-projects');
+      const docDir = path.join(projectDir, '.claude', 'docs', 'awareness');
       fs.mkdirSync(docDir, { recursive: true });
-      fs.writeFileSync(path.join(docDir, 'RELATED-PROJECTS.md'), relatedProjectsMd());
+      fs.writeFileSync(path.join(docDir, 'RELATED-PROJECTS-AWARENESS.md'), relatedProjectsMd());
       await seedMemory(mcpConfigPath, projectDir, [
         { content: 'billing-service exposes invoices on port 7081.', tags: ['project:billing-service'], type: 'reference' },
       ]);
