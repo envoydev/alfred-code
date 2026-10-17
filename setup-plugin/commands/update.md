@@ -633,9 +633,9 @@ sections the template gained and OFFERS a fix for what its check reports (never 
 option - a check row is heuristic, applied only when the user picks it), this run's own part is the rules
 table for what it pruned, the project's own prose is never overwritten, and every change is shown
 before writing.
-The installer re-spells the renamed skill and seat names only where the stack wrote them - an instruction
-file it seeded and still holds at its hash, and the generated rules (one `renamed: <file> - <n> ...` line per
-file) - report those lines. A file that is the project's own it only NAMES, and step 3's `--log` call carries
+The installer touches the old names only where the stack wrote them: an instruction file it seeded and still
+holds at its hash it rewrites from this release's template (`AGENTS.md: the unfilled seed refreshed ...`), and
+the generated rules it re-spells (one `renamed: <file> - <n> ...` line per file) - report those lines. A file that is the project's own it only NAMES, and step 3's `--log` call carries
 that as `warn: !! <file> is yours and names <n> old stack name(s) ...`. Never splice those by hand (audit
 2026-10-11, session b3f8193f: a hand `sed -i` after an ask that showed no diff, on a file git did not track).
 Print the edit instead:

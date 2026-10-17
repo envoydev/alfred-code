@@ -928,6 +928,16 @@ function runLayers(ctx)
             force: Boolean(args.renameClaudeMd), ignoreFiles: args.renameClaudeMd ? excludeFileOf(ctx) : [],
             log: ctx.log, note: ctx.note,
         }) === 'moved';
+    // An update brings a seed the stack still owns - just moved, or held by the ledger at its hash - onto this release's
+    // template, so a template change reaches it; an edited one is the project's and only re-spelled below.
+    if (args.action === 'update')
+    {
+        const held = ctx.ledger && ctx.ledger.files && ctx.ledger.files['AGENTS.md'];
+        let unedited = false;
+        try { unedited = Boolean(held) && library.hashItem(ledgerPath(ctx, 'AGENTS.md')) === held; } catch { /* unreadable: not ours to judge */ }
+        if (ctx.stackAgentsMd || unedited)
+            ctx.stackAgentsMd = seeds.refreshSeededAgentsMd({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, log: ctx.log, note: ctx.note }) || ctx.stackAgentsMd;
+    }
     // Only a seed the ledger still holds at its hash is the stack's to re-spell; a re-spelled one keeps its ledger row.
     const seedRow = (rel) => (rel === '.claude/AGENTS.md' ? 'AGENTS.md' : rel === '.claude/CLAUDE.md' ? 'CLAUDE.md' : '');
     ctx.respelledSeeds = new Set();

@@ -9,6 +9,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 const { hashItem } = require('./install/library.js');
+const seeds = require('./install/seeds.js');
 
 const SHIPPED = ['docs-root', 'git', 'interaction', 'memory', 'navigation', 'quality-gates', 'security'];
 const SEL = `skill markdown-style\nrule markdown-docs\n${SHIPPED.map((n) => `rule alfred-${n}`).join('\n')}\n`;
@@ -277,34 +278,50 @@ test('an empty rules folder holding only an old generated file: the file moves, 
 const OLD_TABLE = ['git', 'interaction', 'docs-root'].map((n) => `| \`.claude/rules/baseline-${n}.md\` | the ${n} rule |`)
     .concat(GENERATED.map((g) => `| \`.claude/rules/baseline-project-${g}.md\` (GENERATED) | the ${g} pointer |`), '| `.claude/rules/baseline-mine.md` | my own |').join('\n');
 
-test('the seeded AGENTS.md rows naming the old rule files are re-spelled, the user\'s own rule row is not, and a re-run is quiet', POSIX_ONLY, () =>
+// An unedited seed is the stack's until init fills it in, so an update rewrites it from the release's template - the
+// re-spell alone left the 2.5.0 seed's three capture steps as three lines naming the one capture that replaced them
+// (the 2026-10-17 update matrix). An edited seed is the project's: kept byte for byte, its old names only named.
+test('a seeded AGENTS.md the ledger still holds is rewritten from this release\'s template, an edited one is kept, and a re-run is quiet', POSIX_ONLY, () =>
 {
     const seedAt = (repo) => path.join(repo, '.claude', 'AGENTS.md');
     const agentsMd = (repo) => fs.readFileSync(seedAt(repo), 'utf8');
+    const ledgered = (repo) => (/AGENTS\.md=([0-9a-f]+)/.exec(fs.readFileSync(stampOf(repo), 'utf8')) || [])[1];
     // The 2.1.5 seed the ledger still holds: the old table appended, its ledger row moved to the new bytes.
-    const plant = (repo) =>
+    const plant = (repo, { edited = false } = {}) =>
     {
         fs.appendFileSync(seedAt(repo), `\n${OLD_TABLE}\n`);
+        if (edited) return;
         const stamp = stampOf(repo);
         fs.writeFileSync(stamp, fs.readFileSync(stamp, 'utf8').replace(/AGENTS\.md=[0-9a-f]+/, `AGENTS.md=${hashItem(seedAt(repo))}`));
     };
-    const { steps, outs } = seedRun(['install', 'update', 'update'], SEL, {
+    const template = (repo) => seeds.agentsMdBody({ projectRoot: repo, sourceDir: path.join(__dirname, '..') });
+    const ours = seedRun(['install', 'update', 'update'], SEL, {
         args: [[], UPDATE(), UPDATE()],
         each: (repo, i) =>
         {
             if (i === 0) { makeOld(repo); plant(repo); }
+            return { text: agentsMd(repo), template: template(repo), hash: hashItem(seedAt(repo)), ledgered: ledgered(repo) };
+        },
+    });
+    const [, a, b] = ours.steps;
+    assert.strictEqual(a.text, a.template, 'the held seed is not the release template after the update');
+    assert.ok(!/baseline-|alfred-(agent-awareness|related-context|project-awareness)\.md/.test(a.text), 'an old name survived the refresh');
+    assert.strictEqual(a.ledgered, a.hash, 'the ledger does not hold the refreshed seed');
+    assert.match(ours.outs[1], /AGENTS\.md: the unfilled seed refreshed from this release's template/);
+    assert.strictEqual(b.text, a.text);
+    assert.ok(!/AGENTS\.md: the unfilled seed refreshed/.test(ours.outs[2]), 'the re-run refreshed again');
+    const yours = seedRun(['install', 'update', 'update'], SEL, {
+        args: [[], UPDATE(), UPDATE()],
+        each: (repo, i) =>
+        {
+            if (i === 0) { makeOld(repo); plant(repo, { edited: true }); }
             return agentsMd(repo);
         },
     });
-    for (const n of ['git', 'interaction', 'docs-root']) assert.ok(steps[1].includes(`.claude/rules/alfred-${n}.md`), `alfred-${n}.md not written into AGENTS.md`);
-    // In the text the three awareness pointers take their final name, the one rule that replaced them (2026-10-16).
-    const FINAL = { ...NOW, 'agent-capabilities': 'alfred-awareness', 'related-context': 'alfred-awareness', 'run-book': 'alfred-awareness' };
-    for (const g of GENERATED) assert.ok(steps[1].includes(`.claude/rules/${FINAL[g]}.md`), `${FINAL[g]}.md not written into AGENTS.md`);
-    assert.ok(!/alfred-(agent-awareness|related-context|project-awareness)\.md/.test(steps[1]), 'a superseded pointer survived in AGENTS.md');
-    assert.ok(!/baseline-(git|interaction|docs-root|project-)/.test(steps[1]), 'an old stack rule path survived in AGENTS.md');
-    assert.ok(steps[1].includes('.claude/rules/baseline-mine.md'), "the user's own rule row was re-spelled");
-    assert.strictEqual(steps[2], steps[1]);
-    assert.ok(!/renamed: \.claude\/AGENTS\.md/.test(outs[2]), 'the re-run re-spelled again');
+    assert.strictEqual(yours.steps[1], yours.steps[0], 'an edited seed was changed');
+    assert.ok(yours.steps[1].includes('.claude/rules/baseline-mine.md') && yours.steps[1].includes('.claude/rules/baseline-git.md'), 'an edited seed lost its rows');
+    assert.ok(!/unfilled seed refreshed/.test(yours.outs[1]), 'an edited seed was refreshed');
+    assert.strictEqual(yours.steps[2], yours.steps[1]);
 });
 
 test('an unreadable settings file on the migrating run keeps the root the OLD docs-root rule was stamped with', POSIX_ONLY, () =>

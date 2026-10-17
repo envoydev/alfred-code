@@ -202,8 +202,9 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
     same name, a reaching record and an unreadable file or listing leave it. The full copy route stands the old ids down instead. Old copy-route registrations
     go on every route by the stack's own shape (the user's own server under an old name is kept), the
     approval lists follow, the read-back and selection lines read old names under the new ones, and
-    the generated project files are re-spelled (`selection.respellRenamed`; a seeded AGENTS.md / CLAUDE.md only while the ledger
-    still holds it at its hash - the user's own is named, never rewritten). A capture never re-runs by itself, so
+    the generated project files are re-spelled (`selection.respellRenamed`; a seeded AGENTS.md the ledger still holds at its
+    hash is rewritten from the release's template instead - `seeds.refreshSeededAgentsMd`, 2026-10-17: a re-spelled 2.5.0
+    seed named one capture three times - and the user's own is named, never rewritten). A capture never re-runs by itself, so
     each update also re-spells the generated rules' routing rows to the route this run serves (`selection.respellMcpRows`):
     a bare `mcp__<server>__` of a server on the plugin route with no registration of its name takes the plugin
     spelling (the copy route's downconvert is the reverse), and an `<engine>-control` row's backticked `.../output/`

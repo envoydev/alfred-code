@@ -650,9 +650,10 @@ test('seed update --installed-only (I2): a generated rule names the new commands
     assert.deepStrictEqual(lines(outs[1]), [], 'and prints no line');
 });
 
-// installer:F1 end to end: an install's seed the ledger still holds at its hash is the stack's and follows a rename (its
-// ledger row following the new bytes, so the next run still owns it); a seed edited since is the user's: named, left.
-test('seed update (audit F1): a ledger-held seed is re-spelled and stays owned, a hand-edited one is named and left', POSIX_ONLY, () =>
+// installer:F1 end to end: an install's seed the ledger still holds at its hash is the stack's - since 2026-10-17 it is
+// rewritten from the release's template (no old name left to re-spell), its ledger row following the new bytes so the
+// next run still owns it; a seed edited since is the user's: named, left.
+test('seed update (audit F1): a ledger-held seed takes the release template and stays owned, a hand-edited one is named and left', POSIX_ONLY, () =>
 {
     const stampOf = (repo) => path.join(repo, '.claude', 'alfred-code.stamp');
     const seedAt = (repo) => path.join(repo, '.claude', 'AGENTS.md');
@@ -669,8 +670,9 @@ test('seed update (audit F1): a ledger-held seed is re-spelled and stays owned, 
         each: (repo, i) => { if (i === 0) plant(repo, held); return { text: fs.readFileSync(seedAt(repo), 'utf8'), row: rowOf(repo), own: hashItem(seedAt(repo)) }; },
     });
     const held = run(true);
-    assert.match(held.steps[1].text, /Run \/task-solve first\./, held.outs[1]);
-    assert.ok(held.steps[1].row.includes(`AGENTS.md=${held.steps[1].own}`), 'the ledger row follows the re-spelled bytes');
+    assert.doesNotMatch(held.steps[1].text, /project-solve-task|Run \/task-solve first/, held.outs[1]);
+    assert.strictEqual(held.steps[1].text.replace(/^# .*\n/, ''), fs.readFileSync(path.join(ROOT, 'stack', 'AGENTS.template.md'), 'utf8').replace(/^# .*\n/, '').split('__PROJECT_NAME__').join('repo'), 'the held seed is the release template');
+    assert.ok(held.steps[1].row.includes(`AGENTS.md=${held.steps[1].own}`), 'the ledger row follows the refreshed bytes');
     assert.deepStrictEqual(held.steps[2], held.steps[1], 'a re-run changes nothing');
     const edited = run(false);
     assert.match(edited.steps[1].text, /Run \/project-solve-task first\./, 'an edited seed is the project\'s');
