@@ -527,7 +527,10 @@ test('writeTargets: the paths a shell command writes, from real runs', () => {
 });
 
 const WATCH = (extra = {}) => JSON.stringify({ watch: [{ kind: 'composition root', globs: ['src/*/Program.cs'], sections: ['patterns#orders'] }], ...extra });
-const start = (r, s) => r.hook({ hook_event_name: 'SessionStart', session_id: s });
+// A session that changed files runs a command that may write (a build, a generator): the Stop ask's unclaimed bucket counts
+// only past one (recordRun, the 2026-10-17 usage audit). The cases below model that session; a read-only one has its own.
+const ran = (r, s, env) => r.hook(pre('Bash', { command: 'npm run generate' }, s), env);
+const start = (r, s, env) => { const out = r.hook({ hook_event_name: 'SessionStart', session_id: s }, env); ran(r, s, env); return out; };
 const stopEv = (s, active) => ({ hook_event_name: 'Stop', session_id: s, stop_hook_active: Boolean(active) });
 
 test('a change to a watched file asks once, naming the section; a second stop is silent', () => {
@@ -1185,6 +1188,7 @@ test('a project with code-style/ and no architecture/ still gets a SessionStart 
     r.write('.claude/docs/code-style/STYLE.md', section('format', 'src/**/*.cs', 'Braces open on the same line.'));
     const s = sid();
     const startOut = r.hook({ hook_event_name: 'SessionStart', session_id: s });
+    ran(r, s);
     const text = ctx(startOut);
     assert.match(startOut.stdout, /"hookEventName":"SessionStart"/, 'a SessionStart block even with no architecture/ at all');
     assert.match(text, /How this project is documented/);
@@ -1686,6 +1690,7 @@ test('an unattended hold and an unattended Stop ask each write one mode: unatten
   try {
     const s = sid();
     r.hook({ hook_event_name: 'SessionStart', session_id: s }, U);
+    ran(r, s, U);
     assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s), U)), 'never held unattended');
     r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
     assert.strictEqual(r.hook(stopEv(s), U).stdout, '', 'never asked unattended');
@@ -1707,6 +1712,7 @@ test('with no watch entry Stop never diffs the tree', { skip: process.platform =
     const env = { PATH: `${bin}${path.delimiter}${process.env.PATH}` };
     const s = sid();
     r.hook({ hook_event_name: 'SessionStart', session_id: s }, env);
+    ran(r, s, env);
     r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
     fs.writeFileSync(calls, '');
     assert.strictEqual(r.hook(stopEv(s), env).stdout, '');
@@ -1735,6 +1741,40 @@ test('a write to a plan stamped Completed: is denied unless it changes only stam
     assert.ok(!denied(r.hook(pre('Bash', { command: 'grep -c Task .claude/docs/plans/csv-export.md' }, s))), 'a read');
     const rows = r.read(`.claude/docs/hook-blocks/${s}.jsonl`).trim().split('\n').map((l) => JSON.parse(l));
     assert.ok(rows.length >= 4 && rows.every((x) => /stamped Completed/.test(x.reason)), 'one block row per denial');
+  } finally { r.rm(); }
+});
+
+// The 2026-10-17 usage audit: the close that writes `Completed:` kept writing its own lines after it (the memories line, a
+// tick, the leftovers) and each was denied. The actor that added the stamp edits that plan freely until the close stop is
+// put to the user - an ask answered or a prompt typed after the stamp - then the record holds.
+test('the close that stamps Completed: finishes its own edits; after its stop is answered the record holds', () => {
+  const path = require('node:path');
+  const OPEN = '# Plan: csv export\nGated: 2026-10-09\nApproved: 2026-10-09 - build inline\n\n## Tasks\n- [x] Task 1 - export\n';
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.write('.claude/docs/plans/csv-export.md', OPEN);
+    const s = sid();
+    const tp = path.join(r.root, `${s}.jsonl`);
+    const rows = (...xs) => fs.appendFileSync(tp, xs.map((x) => JSON.stringify(x)).join('\n') + '\n');
+    rows({ type: 'user', message: { role: 'user', content: 'close it' } });
+    const file = `${r.root}/.claude/docs/plans/csv-export.md`;
+    const edit = (o, nw, session = s) => r.hook({ ...pre('Edit', { file_path: file, old_string: o, new_string: nw }, session), transcript_path: tp });
+    assert.ok(!denied(edit('Approved: 2026-10-09 - build inline\n', 'Approved: 2026-10-09 - build inline\nCompleted: 2026-10-17\n')), 'the stamp itself');
+    r.write('.claude/docs/plans/csv-export.md', OPEN.replace('build inline\n', 'build inline\nCompleted: 2026-10-17\n'));
+    rows({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'e1', name: 'Edit', input: {} }] } }, { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'e1', content: 'ok' }] } });
+    assert.ok(!denied(edit('- [x] Task 1 - export\n', '- [x] Task 1 - export\nmemories purged: none\n')), 'the close\'s own line after the stamp');
+    assert.ok(denied(edit('- [x] Task 1 - export\n', '- [x] Task 1 - export\n- [ ] Task 2\n', sid())), 'another session is still refused');
+    rows({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'a1', name: 'AskUserQuestion', input: {} }] } },
+      { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'a1', content: 'Your questions have been answered: "Close?"="Close (Recommended)"' }] } });
+    assert.ok(denied(edit('- [x] Task 1 - export\n', '- [x] Task 1 - export\n- [ ] Task 2\n')), 'the close stop answered: the record holds');
+    const s2 = sid();
+    const tp2 = path.join(r.root, `${s2}.jsonl`);
+    fs.writeFileSync(tp2, JSON.stringify({ type: 'user', message: { role: 'user', content: 'close' } }) + '\n');
+    r.write('.claude/docs/plans/csv-export.md', OPEN);
+    r.hook({ ...pre('Edit', { file_path: file, old_string: 'build inline\n', new_string: 'build inline\nCompleted: 2026-10-17\n' }, s2), transcript_path: tp2 });
+    r.write('.claude/docs/plans/csv-export.md', OPEN.replace('build inline\n', 'build inline\nCompleted: 2026-10-17\n'));
+    fs.appendFileSync(tp2, JSON.stringify({ type: 'user', message: { role: 'user', content: 'and add the pdf export' } }) + '\n');
+    assert.ok(denied(r.hook({ ...pre('Edit', { file_path: file, old_string: '- [x] Task 1 - export\n', new_string: '- [x] Task 1 - export\n- [ ] Task 2 - pdf\n' }, s2), transcript_path: tp2 })), 'a typed prompt after the stamp ends the close');
   } finally { r.rm(); }
 });
 
@@ -1919,6 +1959,32 @@ test('audit 2026-10-11 SD09: an unclaimed change made while the session sat idle
     const out = r2.hook({ ...stopEv(s), transcript_path: p.join(r2.root, 'missing.jsonl') }).stdout;
     assert.match(out ? JSON.parse(out).reason : '', /you changed src\/Api\/Program\.cs/, 'no transcript to read: the change stays the session\'s');
   } finally { r2.rm(); }
+});
+
+// The 2026-10-17 usage audit: a session that only read and edited through its tools was asked about another session's
+// uncommitted diff that no claim of that session named. The unclaimed bucket now needs this session to have run a command
+// that may write; a read-only shell step does not count, and its own tool edits are still asked about.
+test('a session that ran nothing that writes is not asked about a change no actor claimed; one that ran a build is', () => {
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n', 'src/Web/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH() } });
+  const ALLOW_GATE = { ALFRED_CODE_DOCS_GATE: '0' };
+  try {
+    const s = sid();
+    r.hook({ hook_event_name: 'SessionStart', session_id: s }, ALLOW_GATE);
+    for (const command of ['git status --short', 'grep -rn Refund src | head -5', 'git diff HEAD -- src', 'node .claude/hooks/docs.js show patterns#orders', 'ls -la src/Api'])
+      r.hook(pre('Bash', { command }, s), ALLOW_GATE);
+    r.write('src/Api/Program.cs', 'app.UseOtherSession();\napp.Run();\n');
+    assert.strictEqual(r.hook(stopEv(s), ALLOW_GATE).stdout, '', 'another writer\'s diff, read-only session: not asked');
+    const s2 = sid();
+    r.hook({ hook_event_name: 'SessionStart', session_id: s2 }, ALLOW_GATE);
+    r.hook(pre('Edit', { file_path: 'src/Api/Program.cs' }, s2), ALLOW_GATE);
+    r.write('src/Api/Program.cs', 'app.UseMine();\napp.Run();\n');
+    assert.match(JSON.parse(r.hook(stopEv(s2), ALLOW_GATE).stdout).reason, /you changed src\/Api\/Program\.cs/, 'its own tool edit is still asked about');
+    const s3 = sid();
+    r.hook({ hook_event_name: 'SessionStart', session_id: s3 }, ALLOW_GATE);
+    r.hook(pre('Bash', { command: 'dotnet ef migrations add Orders' }, s3), ALLOW_GATE);
+    r.write('src/Web/Program.cs', 'app.UseGenerated();\napp.Run();\n');
+    assert.match(JSON.parse(r.hook(stopEv(s3), ALLOW_GATE).stdout).reason, /you changed src\/Web\/Program\.cs/, 'a generator\'s output is still the session\'s');
+  } finally { r.rm(); }
 });
 
 // 2026-10-16, an aspnet project on 2.5.0: a read-only session's Stop said 'you changed' four migration files a second

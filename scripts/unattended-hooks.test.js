@@ -432,6 +432,8 @@ test('docs-session: print mode ends without the FINISH ask; interactive still ge
             const s = `u-${process.pid}-${++n}`;
             const tp = transcripts()[kind];
             r.hook({ hook_event_name: 'SessionStart', session_id: s, transcript_path: tp });
+            // a generator the session ran: the unclaimed bucket counts only past one (docs-session recordRun, 2026-10-17)
+            r.hook({ hook_event_name: 'PreToolUse', session_id: s, tool_name: 'Bash', tool_input: { command: 'npm run generate' }, transcript_path: tp });
             r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
             const out = r.hook({ hook_event_name: 'Stop', session_id: s, stop_hook_active: false, transcript_path: tp });
             assert.strictEqual(/"decision":"block"/.test(out.stdout), blocks, `${kind} transcript`);

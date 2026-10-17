@@ -44,10 +44,10 @@ test('I2: CLAUDE.md states the comparison verbs and the probed git redactor', ()
 test('I3: the ask wiring is no longer described as injection-only, never denying', () => {
   const text = claude();
   assert.doesNotMatch(text, /INJECTION-ONLY, never denying: PreToolUse `AskUserQuestion`/);
-  assert.match(text, /the one DENY, once per ask text, is the ask's own SHAPE - its house voice/);
+  assert.match(text, /the ask's own SHAPE is FIXED IN PLACE when every reason is\s+mechanical/);
   const note = manifestRows().find((r) => r.file === 'guard-stop-contract.js' && r.matcher === 'AskUserQuestion').note;
   assert.doesNotMatch(note, /never denies|INJECT context into the ask being built/);
-  assert.match(note, /DENY once per ask text/);
+  assert.match(note, /FIX IN PLACE an ask whose own shape is mechanically wrong .* through updatedInput with no decision; DENY once per ask text/);
   assert.doesNotMatch(read('docs/alfred-code.html'), /AskUserQuestion wiring that remains never denies/);
 });
 

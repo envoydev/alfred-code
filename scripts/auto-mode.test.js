@@ -733,18 +733,23 @@ test('compact instead: no fresh-session offer at Stop, at a run\'s start or afte
     assert.ok(!fs.readdirSync(log).some((f) => /^guard-fresh-compact-.*\.hold$/.test(f)), 'and no hold is left for the next change');
 });
 
-test('compact instead: an ask still carrying a fresh-session option is handed back with it dropped and the mark moved', () =>
+test('compact instead: an ask still carrying a fresh-session option goes out with it dropped and the mark moved', () =>
 {
     const p = project();
     const log = fs.mkdtempSync(path.join(TMP, 'ca-'));
     const questions = [q('Stage 1 is closed. Next?', ['Resume in a fresh session (Recommended)', 'Run stage 2 here', 'Stop here'])];
     const send = (extra = {}, on = true) => run('guard-stop-contract.js', { hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: { questions },
         session_id: 'k1', cwd: p.root, transcript_path: transcript(), ...extra }, { CLAUDE_PROJECT_DIR: p.root, ALFRED_CODE_HOOK_LOG_DIR: log, ALFRED_CODE_AUTO_COMPACT: on ? '1' : '0' });
-    const denied = send();
-    assert.strictEqual(denied.status, 2, denied.stderr);
-    assert.match(denied.stderr, /a fresh-session option, while this project compacts instead/);
-    const fixed = JSON.parse(denied.stderr.slice(denied.stderr.indexOf('\n[') + 1));
-    assert.deepStrictEqual(fixed[0].options.map((o) => o.label), ['Run stage 2 here (Recommended)', 'Stop here']);
-    assert.strictEqual(send().status, 0, 'once per ask text');
-    assert.strictEqual(send({ agent_id: 'seat-1', session_id: 'k2' }).status, 0, 'a seat is never judged for it');
+    const upd = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.updatedInput || null; } catch { return null; } };
+    const sent = send();
+    assert.strictEqual(sent.status, 0, sent.stderr);
+    assert.deepStrictEqual(upd(sent).questions[0].options.map((o) => o.label), ['Run stage 2 here (Recommended)', 'Stop here'], 'fixed in place (the 2026-10-17 usage audit)');
+    assert.match(JSON.parse(sent.stdout).hookSpecificOutput.additionalContext, /fresh-session option dropped/);
+    const seat = send({ agent_id: 'seat-1', session_id: 'k2' });
+    assert.strictEqual(seat.status, 0);
+    assert.strictEqual(upd(seat), null, 'a seat is never judged for it');
+    const lone = run('guard-stop-contract.js', { hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: { questions: [q('Next?', ['Resume in a fresh session (Recommended)', 'Run stage 2 here'])] },
+        session_id: 'k3', cwd: p.root, transcript_path: transcript() }, { CLAUDE_PROJECT_DIR: p.root, ALFRED_CODE_HOOK_LOG_DIR: log, ALFRED_CODE_AUTO_COMPACT: '1' });
+    assert.strictEqual(lone.status, 2, 'a question the drop leaves with one option is still handed back');
+    assert.match(lone.stderr, /A question left with one option is no question/);
 });

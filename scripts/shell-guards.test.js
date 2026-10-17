@@ -732,6 +732,9 @@ test('audit 2026-10-14 RU04: the first background Bash call of each actor carrie
   assert.match(first.context, /`ToolSearch select:Monitor`/);
   assert.match(first.context, /Poll it through `Monitor` or its new lines, never a whole-log re-read\./);
   assert.match(first.context, /never a bare process-name grep; task lists track tasks, not shells\./);
+  // the 2026-10-17 usage audit: progress narrated sample by sample (35 finals ~5.07M) or left silent (users asked 3 and 2 times)
+  assert.match(first.context, /ONE start line - what runs and when it should finish - then nothing until the result or a failure: one watch whose command ends on either/);
+  assert.match(first.context, /never a reply per sample, never silence past the finish time you gave/);
   assert.equal(call('bg1', bg).context, '', 'once per actor');
   assert.equal(call('bg1', bg, { agent: 'a1' }).context, shell.BACKGROUND_NOTE, 'a seat is its own actor');
   assert.equal(call('bg1', bg, { agent: 'a1' }).context, '', 'and hears it once too');

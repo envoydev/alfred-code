@@ -351,7 +351,9 @@ const BACKGROUND_NOTE = 'Background wait (alfred-quality-gates.md): one command 
     + 'arms takes the `Monitor` tool when you start it - on the failure lines plus an alert when the output goes quiet (deferred: '
     + '`ToolSearch select:Monitor` first). Poll it through `Monitor` or its new lines, never a whole-log re-read. A \'what is '
     + 'running\' check keys on a specific PID, marker file or output sentinel, never a bare process-name grep; task lists track '
-    + 'tasks, not shells.';
+    + 'tasks, not shells. Tell the user ONE start line - what runs and when it should finish - then nothing until the result or a '
+    + 'failure: one watch whose command ends on either (an `until` on the result line or a crash signature), never a reply per '
+    + 'sample, never silence past the finish time you gave.';
 
 function ownChecks(stdin)
 {

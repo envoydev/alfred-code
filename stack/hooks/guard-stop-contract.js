@@ -953,6 +953,12 @@ function resumePickedThisTurn() {
     }, false);
   } catch { return false; }
 }
+// A text that POINTS at a resume block 'above' (the 2026-10-17 usage audit: task-solve's compaction ask said 'the
+// paste-ready block above', no block was on screen, and the close after the pick printed none). The block is printed
+// AFTER the pick (the ruling above), so an ask's pointer is rewritten to say so, and a close that points at one is held
+// like a pick when nothing since the user's last typed turn carries a fence.
+const RESUME_ABOVE_RE = /\b(?:paste(?:-ready)?|resume)\s+(?:block|command|prompt)\s+above\b|\bpaste\b[^.;:\n]{0,40}\b(?:block|command|prompt)\s+above\b/i;
+const ASK_ABOVE_RE = /\b(?:the\s+)?(?:(?:paste(?:-ready)?|resume)\s+)?(?:block|command|prompt)\s+above\b/gi;
 function fencedPasteShown(t) {
   const re = /(`{3,}|~{3,})[^\n]*\n([\s\S]*?)\n[ \t]*\1/g;
   for (let m = re.exec(String(t || '')); m; m = re.exec(String(t || ''))) if (m[2].trim()) return true;
@@ -1932,9 +1938,11 @@ if (payload.hook_event_name === 'Stop') {
     process.exit(0);
   }
   // The fresh-session pick's close carries the paste text in a fenced block (RESUME_PICK_RE above) - held once per cycle.
-  if (resumePickedThisTurn() && !fencedPasteShown(text)) {
-    blockDetail('resume-block', 'a fresh-session pick closed with no fenced paste text');
-    process.stderr.write('The user picked the fresh session, and this close gives them nothing to paste. Rewrite it as the\n'
+  const pointsAbove = !fencedPasteShown(text) && RESUME_ABOVE_RE.test(text.replace(/```[\s\S]*?```/g, ' ')) && !fencedPasteShown(shownSinceTyped());
+  if ((pointsAbove || resumePickedThisTurn()) && !fencedPasteShown(text)) {
+    blockDetail('resume-block', pointsAbove ? 'a close pointing at a resume block above with none shown' : 'a fresh-session pick closed with no fenced paste text');
+    process.stderr.write((pointsAbove ? 'This close points at a resume block above, and none is on screen. Rewrite it as the\n'
+      : 'The user picked the fresh session, and this close gives them nothing to paste. Rewrite it as the\n')
       + 'RESUME BLOCK: one line saying where to run it (the project root) and to type /clear first; then the paste text\n'
       + 'ALONE in its own fenced block - the flow\'s command naming its plan or state file and nothing more (the file says\n'
       + 'where it picks up), or the prompt that carries the work on; then at most two lines, outside the fence, on what the\n'
@@ -2211,6 +2219,7 @@ if (autoRun) {
 }
 if (payload.tool_name === 'AskUserQuestion') {
   const notes = [];
+  let askFixed = null;
   try {
     // Build the ask's text from its FIELDS. JSON.stringify would introduce double quotes of its
     // own and make the house-voice check fire on every ask ever made.
@@ -2306,8 +2315,13 @@ if (payload.tool_name === 'AskUserQuestion') {
     // the option is dropped - mechanical, so the fix is handed back: a '(Recommended)' mark it carried moves to the first
     // option left, listed first.
     const compactFresh = COMPACT_INSTEAD && !payload.agent_id && questions.some((q) => q && Array.isArray(q.options) && q.options.some(isFreshOpt));
-    if (voice.length || numbers || typeIntoOther || unmarked || newCycle || blind || noReview || compactFresh) {
+    // 14. A FRESH OPTION POINTING AT A BLOCK 'ABOVE' that the chat never showed (RESUME_ABOVE_RE, the 2026-10-17 usage
+    // audit) - the block comes after the pick, so the pointer is rewritten to say that. Mechanical, fixed in place.
+    const pointsAbove = !compactFresh && questions.some((q) => q && Array.isArray(q.options) && q.options.some((o) => isFreshOpt(o)
+      && new RegExp(ASK_ABOVE_RE.source, 'i').test(`${o.label || ''} ${o.description || ''}`))) && !fencedPasteShown(shownSinceTyped());
+    if (voice.length || numbers || typeIntoOther || unmarked || newCycle || blind || noReview || compactFresh || pointsAbove) {
       const fixProse = (t) => (voice.length ? String(t).replace(new RegExp(`\\s*${DASH}\\s*`, 'g'), ' - ').replace(/["“”]/g, "'") : String(t));
+      const fixAbove = (t) => (pointsAbove ? String(t).replace(ASK_ABOVE_RE, 'the resume block, printed after this answer') : String(t));
       const fix = (t) => String(t).split(/(```[\s\S]*?```|`[^`\n]*`)/).map((s, i) => (i % 2 ? s : fixProse(s))).join('');
       const k = (n) => `~${Math.round(n / 1000)}k`;
       const numberLine = numbers ? ` Measured now: ${k(numbers.ctx)} tokens per message in this session; a fresh one starts at ${numbers.floor ? k(numbers.floor) : 'this install\'s cold floor'}.` : '';
@@ -2322,7 +2336,7 @@ if (payload.tool_name === 'AskUserQuestion') {
         ...q,
         ...(q.question !== undefined ? { question: fix(q.question) } : {}),
         ...(q.header !== undefined ? { header: fix(q.header) } : {}),
-        ...(Array.isArray(q.options) ? { options: (compactFresh ? dropFresh(q.options) : q.options).map((o) => (o && typeof o === 'object' ? { ...o, label: fix(o.label || ''), description: fix(o.description || '') + (numbers && isFreshOpt(o) ? numberLine : '') } : o)) } : {}),
+        ...(Array.isArray(q.options) ? { options: (compactFresh ? dropFresh(q.options) : q.options).map((o) => (o && typeof o === 'object' ? { ...o, label: fix(o.label || ''), description: (isFreshOpt(o) ? fixAbove(fix(o.description || '')) : fix(o.description || '')) + (numbers && isFreshOpt(o) ? numberLine : '') } : o)) } : {}),
       } : q));
       const tooFew = compactFresh && fixed.some((q) => q && Array.isArray(q.options) && q.options.length < 2);
       const key = require('crypto').createHash('sha1').update(askText).digest('hex').slice(0, 16);
@@ -2341,8 +2355,22 @@ if (payload.tool_name === 'AskUserQuestion') {
         try { fs.writeFileSync(`${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-newcycle-${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}-${newCycle.at}.denied`, '', { flag: 'wx' }); }
         catch { newCycle = null; }
       }
-      const mechanical = voice.length || numbers || compactFresh;
-      if (first && (mechanical || typeIntoOther || unmarked || newCycle || blind || noReview)) {
+      const mechanical = voice.length || numbers || compactFresh || pointsAbove;
+      // A MECHANICAL-ONLY ask is fixed IN PLACE (the 2026-10-17 usage audit: an ask refused only for its missing
+      // fresh-session numbers cost a red block and a re-sent ask, and the hook already held the corrected one). The
+      // questions go out as `fixed` through `updatedInput` with no permissionDecision, so the dialog is the user's as
+      // ever (the guard-unapproved-dispatch.js Explore-brief route; code.claude.com/docs/en/hooks: updatedInput 'replaces
+      // the entire input object'), and one `mode: rewrite` row counts it apart from the block rate. A question the drop
+      // would leave with one option, or any reason with no mechanical fix, still denies once below.
+      if (mechanical && !tooFew && !(typeIntoOther || unmarked || newCycle || blind || noReview)) {
+        askFixed = fixed;
+        const what = [voice.length ? 'its dashes and double quotes' : '', numbers ? 'the fresh option\'s two measured numbers' : '', compactFresh ? 'the fresh-session option dropped (this project compacts instead)' : '', pointsAbove ? 'its pointer at a resume block above (none is on screen) reworded' : ''].filter(Boolean);
+        ledgerRow({ tool: 'AskUserQuestion', mode: 'rewrite', kind: 'ask-fixed', reason: `ask fixed in place: ${what.join(', ')}`, detail: { voice: voice.map((v) => v.split(' (')[0]), numbers: !!numbers, compactFresh, pointsAbove } });
+        notes.push(`The ask just answered went out with ${what.join(' and ')} fixed in place by the hook - the user saw the fixed text. `
+          + (voice.length ? 'Keep the house voice (alfred-interaction.md) in every later ask: single dashes, single quotes. ' : '')
+          + (numbers ? 'Quote this session\'s carry and a fresh start\'s floor in any later fresh-session option. ' : '')
+          + (pointsAbove ? 'If the user picks the fresh session, this turn ends with the resume block in its own fenced block. ' : ''));
+      } else if (first && (mechanical || typeIntoOther || unmarked || newCycle || blind || noReview)) {
         const reasons = [...voice];
         if (compactFresh) reasons.push('a fresh-session option, while this project compacts instead (ALFRED_CODE_AUTO_COMPACT=1)');
         if (noReview) reasons.push('a small solve-task close whose `Result:` line has no `review:` field');
@@ -2351,7 +2379,8 @@ if (payload.tool_name === 'AskUserQuestion') {
         if (typeIntoOther) reasons.push('an option that tells the user to type into Other');
         if (unmarked) reasons.push(`${unmarked} question(s) without exactly one option marked '(Recommended)', listed first`);
         if (newCycle) reasons.push('no fresh-session option, while this ask opens new work after this session already finished a solve-task cycle');
-        global.BLOCK_DETAIL = { branch: 'ask-voice', voice: voice.map((v) => v.split(' (')[0]), numbers: !!numbers, other: typeIntoOther, unmarked, newCycle: !!newCycle, blind: !!blind, noReview: !!noReview, compactFresh };
+        if (pointsAbove) reasons.push('a fresh-session option pointing at a resume block above that the chat never showed');
+        global.BLOCK_DETAIL = { branch: 'ask-voice', voice: voice.map((v) => v.split(' (')[0]), numbers: !!numbers, other: typeIntoOther, unmarked, newCycle: !!newCycle, blind: !!blind, noReview: !!noReview, compactFresh, pointsAbove };
         process.stderr.write(`Blocked: this AskUserQuestion carries ${reasons.join('; ')}.`
           + (voice.length ? ` The house voice (alfred-interaction.md) covers an ask's question, header, labels and descriptions, and the user reads them as written.` : '')
           + (typeIntoOther ? ` A picked option returns only its LABEL - a value the user must type goes in plain prose that ends the turn, and the ask carries what they can PICK ('I have them' / 'Someone else owns them' / 'Defer').` : '')
@@ -2360,10 +2389,10 @@ if (payload.tool_name === 'AskUserQuestion') {
           + (blind ? ` The user approves what the chat SHOWS: put ${blind.noun ? `the ${blind.noun}` : 'what the ask approves'} in your reply text first (the stages, the draft as it will be posted, the edit made), then ask about 'the ${blind.noun || 'draft'} above' - or, if it sits in a file the user has open, re-send the ask unchanged.` : '')
           + (newCycle ? ` A new cycle after a finished one recommends the fresh-session hand-off first: add 'Resume in a fresh session (Recommended)' quoting ${newCycle.ctx ? `${k(newCycle.ctx)} per message here` : 'this session\'s carry'} and ${newCycle.floor ? `${k(newCycle.floor)} for a fresh start` : 'the fresh start\'s floor'}, and state the new cycle's \`Size:\` line in the question - or, if this ask still belongs to the finished cycle, re-send it unchanged.` : '')
           + (compactFresh ? ` Here the session compacts past its window's trigger and the work goes on, so no ask offers a new session.${tooFew ? ' A question left with one option is no question: take that option and drop the question.' : ''}` : '')
-          + (mechanical ? ` Re-send the ask with these questions - only ${[voice.length ? 'the dashes and quotes' : '', numbers ? 'the fresh option\'s numbers' : '', compactFresh ? 'the fresh-session option dropped' : ''].filter(Boolean).join(' and ')} changed:\n${JSON.stringify(fixed, null, 1)}\n` : '\n'));
+          + (mechanical ? ` Re-send the ask with these questions - only ${[voice.length ? 'the dashes and quotes' : '', numbers ? 'the fresh option\'s numbers' : '', compactFresh ? 'the fresh-session option dropped' : '', pointsAbove ? 'the resume-block pointer' : ''].filter(Boolean).join(' and ')} changed:\n${JSON.stringify(fixed, null, 1)}\n` : '\n'));
         process.exit(2);
       }
-      if (voice.length) notes.push(`The ask just sent carried ${voice.join(' and ')} after its first denial. Keep the house voice `
+      else if (voice.length) notes.push(`The ask just sent carried ${voice.join(' and ')} after its first denial. Keep the house voice `
         + `(alfred-interaction.md) in every later ask: single dashes, single quotes.`);
     }
 
@@ -2471,9 +2500,13 @@ if (payload.tool_name === 'AskUserQuestion') {
     }
   } catch { /* fail-open: an injection is never worth breaking an ask over */ }
 
-  if (notes.length) {
+  if (notes.length || askFixed) {
     process.stdout.write(JSON.stringify({
-      hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: notes.join('\n\n') },
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        ...(askFixed ? { updatedInput: { ...(payload.tool_input || {}), questions: askFixed } } : {}),
+        ...(notes.length ? { additionalContext: notes.join('\n\n') } : {}),
+      },
     }));
   }
   process.exit(0);

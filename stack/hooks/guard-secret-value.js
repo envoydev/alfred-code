@@ -1746,7 +1746,9 @@ function jqReduces(stage) {
 function isReducer(stage) {
   const s = stage.replace(PREFIX_WORDS, '');
   if (/^wc\b/.test(s)) return true;
-  if (/^(?:grep|rg|egrep|fgrep)\s+(?:-\w*[clLq]\b|--count\b|--files-with-matches\b|--quiet\b)/.test(s)) return true;
+  // a count, quiet or list flag anywhere in a cluster of grep's no-value flags (`-ci`, `-qE` - the 2026-10-17 usage audit's
+  // host check); a letter that takes a value (`-d recurse`, `-e`, `-A 3`) ends the cluster, so `-drecurse` is no count
+  if (/^(?:grep|rg|egrep|fgrep)\s+(?:-[EFGPiyvwxsbHhnTZzrRUaIo]*[clLq][EFGPiyvwxsbHhnTZzrRUaIoclLq]*\b|--count\b|--files-with-matches\b|--quiet\b)/.test(s)) return true;
   if (/^cut\s+(?:-d\s*['"]?=['"]?|--delimiter[= ]['"]?=['"]?)\s+-f\s*1(?![\d,\-])/.test(s)) return true; // -f1 is the NAME; -f2 and -f1- carry the value
   if (/^awk\s+-F\s*['"]?=/.test(s) && /\$1\b/.test(s) && !/\$(?:0|[2-9])/.test(s)) return true;
   if (/^sed\s+['"]?s\/=\.\*\/\//.test(s)) return true;
@@ -2800,10 +2802,12 @@ if (isShellTool(payload.tool_name)) {
       'in the file by hand, or runs a copy-ready command in their own terminal (getpass, not an argument).\n');
   }
   let judged = raw; // the command with its heredoc bodies blanked - the steps the shell runs, read by the store refusal
+  let runBodies = []; // the heredoc bodies a shell or runtime runs
   try {
   const code = [];
   const command = stripHeredocsOf(raw, code);
   judged = command;
+  runBodies = code;
   // A whole-environment dump is replaced WHERE IT STANDS - its filter and every other step kept - and the
   // result is judged like any command, so a credential printed elsewhere still takes its own form.
   // A git command that prints file content gets the stream redactor piped in the same way (redactGitStages).
@@ -2832,7 +2836,9 @@ if (isShellTool(payload.tool_name)) {
       `(${err.message === 'depth' ? `brackets nested past ${JUDGE_MAX_DEPTH} levels` : `${JUDGE_WORK.max} characters of judging`}) - nothing ran. A command it cannot judge might print a\n` +
       `credential, so it is judged the safe way. Split it into smaller commands, or flatten the nesting.\n`);
   }
-  refuseSensitiveMention(raw, judged);
+  // a data heredoc's body is text the command writes (a plan line naming the store), never a step (the 2026-10-17 usage
+  // audit); a body a shell or runtime runs is still read for the name
+  refuseSensitiveMention([judged, ...runBodies.map((h) => h.body)].join('\n'), judged);
   process.exit(0);
 }
 
@@ -2852,6 +2858,25 @@ function refuseSensitiveMention(text, steps = text) {
   if (allowAll) return;
   const MENTION = /(?:^|[\s"'=/\\])\.sensitive-data(?=$|[\s"';&|)<>])/;
   const SENSITIVE_LOOKS = new Set(['test', '[', '[[', 'ls', 'stat', 'wc', 'Test-Path', 'Get-Item', 'Get-ChildItem']);
+  // The 2026-10-17 usage audit's false refusals, each reading no value: git's own looks at a path (is it ignored, tracked,
+  // which attributes - `git check-ignore -q` is the check the session-start warning itself runs), a count-only or quiet
+  // grep or another reducer (isReducer: a count, a key-name list), and an echo / printf whose words NAME the store - text,
+  // unless a substitution in it runs something or its output is redirected onto the store. Each only as the LAST stage of
+  // its pipe: a name printed into `| xargs cat` is a read.
+  const GIT_LOOKS = /^(?:check-ignore|check-attr|ls-files|status)$/;
+  const looks = (words, stage, pipedOn) => {
+    const v = baseOf(words[0] || '');
+    if (SENSITIVE_LOOKS.has(v)) return true;
+    if (pipedOn) return false;
+    if (v === 'git') {
+      let i = 1;
+      while (i < words.length && words[i].startsWith('-')) i += /^-[Cc]$|^--(?:git-dir|work-tree)$/.test(words[i]) ? 2 : 1;
+      return GIT_LOOKS.test(words[i] || '');
+    }
+    if (/^(?:grep|rg|egrep|fgrep|cut|awk|sed|jq)$/.test(v)) return isReducer(String(stage).trim());
+    if (/^(?:echo|printf)$/.test(v)) return !/\$\(|`|<\(/.test(stage) && !/>\s*\S*\.sensitive-data\b/.test(stage);
+    return false;
+  };
   const SENSITIVE_ARCHIVE = /^(?:tar|gtar|bsdtar|zip|7z|7za|7zz|rar|cpio|pax|rsync|scp|compress-archive)$/i;
   const joinQuoted = (s) => String(s).replace(/(["'])([^"'\n]*)\1/g, '$2');
   const refuse = (verb) => {
@@ -2870,11 +2895,13 @@ function refuseSensitiveMention(text, steps = text) {
   const EXCLUDE_FLAG = /^--exclude(?:-from|-dir)?$/;
   const EXCLUDED = /(^|\s)--exclude(?:-from|-dir)?(?:=|\s+)("[^"]*"|'[^']*'|\S+)/g;
   // the literal name, quoted spans joined
-  for (const seg of String(text).split(/[;&|\n]+/)) {
+  const parts = String(text).split(/(\|\||&&|[;&|\n])/);
+  for (let i = 0; i < parts.length; i += 2) {
+    const seg = parts[i];
     const joined = joinQuoted(seg.replace(EXCLUDED, '$1'));
     if (!MENTION.test(joined) || /guard-secret-value\.js/.test(seg)) continue;
     const words = joined.trim().split(/\s+/).filter(plain);
-    if (SENSITIVE_LOOKS.has(words[0] || '')) continue;
+    if (looks(words, joined, parts[i + 1] === '|')) continue;
     refuse(words[0]);
   }
   // the spelled name: each operand resolved the way the dump half resolves it
@@ -2886,7 +2913,7 @@ function refuseSensitiveMention(text, steps = text) {
     }
     return null;
   };
-  const judgeStage = (stage, depth) => {
+  const judgeStage = (stage, depth, pipedOn) => {
     const words = shellTokens(stage.trim()).map(joinQuoted).filter(plain);
     const verb = baseOf(words[0] || '');
     if (!verb || /guard-secret-value\.js/.test(stage)) return;
@@ -2897,7 +2924,7 @@ function refuseSensitiveMention(text, steps = text) {
       if (d && d !== '-') cwdAnchor = pathMod.isAbsolute(d) ? d : pathMod.join(from, d);
       return;
     }
-    if (SENSITIVE_LOOKS.has(verb)) return;
+    if (looks(words, stage, pipedOn)) return;
     // a shell's -c string is a command of its own
     const c = words.indexOf('-c');
     if (/^(?:ba|z|da|k)?sh$/.test(verb) && c > 0 && words[c + 1] && depth < 2) { judgeAll(words[c + 1], depth + 1); return; }
@@ -2964,7 +2991,7 @@ function refuseSensitiveMention(text, steps = text) {
     }
   };
   const judgeAll = (cmd, depth) => {
-    for (const seg of splitSegments(String(cmd))) for (const stage of splitPipes(seg)) judgeStage(stage, depth);
+    for (const seg of splitSegments(String(cmd))) { const stages = splitPipes(seg); stages.forEach((stage, k) => judgeStage(stage, depth, k < stages.length - 1)); }
   };
   cwdAnchor = null;
   try { judgeAll(steps, 0); } catch (err) { if (err instanceof JudgeBudget) return; throw err; }

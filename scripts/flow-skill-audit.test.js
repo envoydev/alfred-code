@@ -432,6 +432,16 @@ test('SKF-09 + SKF-15: the design and plan-audit descriptions each exclude the o
     for (const n of ['task-design', 'task-verify-plan', 'task-solve-cross']) assert.ok(description(n).length <= 160, `${n}: ${description(n).length}`);
 });
 
+// The 2026-10-17 usage audit: a customer-side bug was fixed before its symptom was ever reproduced; task-design opens such a
+// plan with a reproduce task, and step 3's background runs get one start line (task-solve's step mechanics).
+test('2026-10-17: a customer-side bug opens with its symptom reproduced; a background run gets one start line', () => {
+    assert.match(skill('task-design'), /A bug seen only on the customer's side .* opens with a task whose acceptance is the reported symptom reproduced, its exact error text or log row quoted, before any fix task/);
+    const mech = read('stack/skills/task-solve/references/step-mechanics.md');
+    assert.match(mech, /^## Background runs - the one start line$/m);
+    assert.match(mech, /ONE wait whose\ncommand ends on the result or a crash/);
+    assert.match(mech, /no reply per sample or per poll/);
+});
+
 // SKF-11: both closes left a large uncommitted diff with no commit decision, while every sibling flow asks one.
 test('SKF-11: the greenfield and upgrade closes put the commit through a marked ask', () => {
     for (const n of ['task-build-from-scratch', 'task-version-upgrade']) {

@@ -1438,10 +1438,11 @@ test("guard-unapproved-dispatch: a stamp written before this session began is an
   assert.equal(disp(), 0, 'a stamp written during the session');
 });
 
-test('guard-stop-contract: the AskUserQuestion branch injects its notes, and denies only a house-voice slip', () => {
+test('guard-stop-contract: the AskUserQuestion branch injects its notes, and fixes a house-voice slip in place', () => {
   // It used to deny an ask carrying no fresh-session option, which stopped Claude mid-response to
   // rebuild the question. The judgement notes are injected (`hookSpecificOutput.additionalContext`, read with
-  // the answer); only the ask's own house voice is denied, with the corrected strings (I3, below).
+  // the answer); the ask's own house voice and fresh-session numbers are FIXED in place (`updatedInput`, the
+  // 2026-10-17 usage audit), a mechanical fix beside a reason it cannot fix still denied once.
   const logDir = fs.mkdtempSync(path.join(TMP, 'asklog-'));
   const hot = transcript('ask-hot', [assistantRow('h1', 'ok', { cache_read_input_tokens: 900000 })]);
   const cold = transcript('ask-cold', [
@@ -1453,19 +1454,27 @@ test('guard-stop-contract: the AskUserQuestion branch injects its notes, and den
     { tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', transcript_path: tp, tool_input: { questions } },
     { env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: logDir } });
   const ctxOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch { return ''; } };
+  const updOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.updatedInput || null; } catch { return null; } };
 
   const deep = ask(hot, [{ question: 'Which next?', options: [{ label: 'Continue (Recommended)', description: 'x' }, { label: 'Stop', description: 'y' }] }]);
   assert.equal(deep.status, 0, 'no fresh option, deep into a 1M session - it injects, it does not deny');
   assert.match(ctxOf(deep), /resume in a fresh session/i, 'the fresh-session offer reaches a flow whose every stop is a tool call');
   assert.equal(ask(hot, [{ question: 'Continue or resume in a fresh session?', options: [{ label: 'Fresh session', description: 'resume - ~900k per message here' }] }]).status, 0);
-  // audit 2026-10-10 C09: a fresh option quoting no measured number is denied once, its description carrying both numbers
+  // audit 2026-10-10 C09: a fresh option quoting no measured number gets both numbers - since the 2026-10-17 usage audit
+  // filled in place (`updatedInput`), never a refusal: 'fresh-session option with no measured number' cost a red block
   const bare = [{ question: 'Next?', options: [{ label: 'Resume in a fresh session (Recommended)', description: 'start clean' }, { label: 'Continue', description: 'here' }] }];
   const numbered = ask(hot, bare);
-  assert.equal(numbered.status, 2, 'a numberless fresh option is sent back once');
-  assert.match(numbered.stderr, /start clean Measured now: ~900k tokens per message in this session/, 'with the measured carry appended to its description');
-  assert.equal(ask(hot, bare).status, 0, 'the same ask re-sent passes - never a loop');
-  assert.equal(ask(hot, [{ question: 'Next?', options: [{ label: 'Resume in a fresh session (Recommended)', description: '~150k here vs ~90k fresh' }, { label: 'Continue', description: 'here' }] }]).status, 2,
-    'a stale number - 150k quoted while the carry is 900k - is sent back too');
+  assert.equal(numbered.status, 0, numbered.stderr);
+  assert.match(updOf(numbered).questions[0].options[0].description, /^start clean Measured now: ~900k tokens per message in this session/, 'the measured carry appended to its description');
+  assert.equal(updOf(numbered).questions[0].options[1].description, 'here', 'the other option untouched');
+  assert.match(ctxOf(numbered), /fixed in place by the hook/, 'and the model is told what went out');
+  assert.ok(updOf(ask(hot, bare)), 'every send is fixed - no once-per-text pass-through');
+  const staleNum = ask(hot, [{ question: 'Next?', options: [{ label: 'Resume in a fresh session (Recommended)', description: '~150k here vs ~90k fresh' }, { label: 'Continue', description: 'here' }] }]);
+  assert.equal(staleNum.status, 0);
+  assert.match(updOf(staleNum).questions[0].options[0].description, /Measured now: ~900k/, 'a stale number - 150k quoted while the carry is 900k - is corrected too');
+  const mixedReasons = ask(hot, [{ question: 'Next?', options: [{ label: 'Resume in a fresh session', description: 'start clean' }, { label: 'Continue', description: 'here' }] }]);
+  assert.equal(mixedReasons.status, 2, 'numbers beside an unmarked question still deny once - the mark is no mechanical fix');
+  assert.match(mixedReasons.stderr, /Measured now: ~900k/, 'with the numbers in the corrected questions');
   assert.doesNotMatch(ctxOf(ask(hot, [{ question: 'Next?', options: [{ label: 'Resume in a fresh session', description: 'start clean' }] }])), /offered no fresh session/i,
     'an ask that already offers it is not told to offer it');
 
@@ -1480,36 +1489,42 @@ test('guard-stop-contract: the AskUserQuestion branch injects its notes, and den
   const voice = ask(cold, [{ question: 'Target - staging or prod?', header: 'Target', options: [{ label: 'staging', description: 'the shared box' }] }]);
   assert.equal(ctxOf(voice), '', "a plain hyphen and an apostrophe are clean - and a clean ask emits nothing at all");
   // I3 (2.1.4 audit): a PreToolUse note lands next to the tool RESULT - for an ask, the user's answer - so the one
-  // deterministic check on the ask's own text is a DENY carrying the corrected strings, once per ask text.
+  // deterministic check on the ask's own text is fixed BEFORE it ships: the corrected strings go out as `updatedInput`.
   const slip = [{ question: 'Pick one \u2014 now', header: 'Pick', options: [{ label: 'the "fast" one', description: 'x \u2013 y' }] }];
-  const denied = ask(cold, slip);
-  assert.equal(denied.status, 2, 'an em-dash and a double quote in the ask text deny it before it is sent');
-  assert.match(denied.stderr, /em- or en-dash.*double quote/s, 'both are named');
-  assert.match(denied.stderr, /Pick one - now/, 'the corrected question');
-  assert.match(denied.stderr, /the 'fast' one/, 'the corrected label');
-  assert.match(denied.stderr, /x - y/, 'the corrected description');
-  assert.equal(ask(cold, slip).status, 0, 'the same ask re-sent unchanged is let through - never a loop');
+  const fixedSlip = ask(cold, slip);
+  assert.equal(fixedSlip.status, 0, 'an em-dash and a double quote are fixed, not refused');
+  const fq = updOf(fixedSlip).questions[0];
+  assert.equal(fq.question, 'Pick one - now', 'the corrected question');
+  assert.equal(fq.options[0].label, "the 'fast' one", 'the corrected label');
+  assert.equal(fq.options[0].description, 'x - y', 'the corrected description');
+  assert.match(ctxOf(fixedSlip), /dashes and double quotes fixed in place.*single dashes, single quotes/s, 'and the note keeps the voice for later asks');
+  const unmarkedSlip = [{ question: 'Pick one \u2014 now', header: 'Pick', options: [{ label: 'A', description: 'x' }, { label: 'B', description: 'y' }] }];
+  const deniedSlip = ask(cold, unmarkedSlip);
+  assert.equal(deniedSlip.status, 2, 'a slip beside an unmarked question denies once, the corrected strings carried');
+  assert.match(deniedSlip.stderr, /em- or en-dash/);
+  assert.match(deniedSlip.stderr, /Pick one - now/);
+  assert.equal(ask(cold, unmarkedSlip).status, 0, 'the same ask re-sent unchanged is let through - never a loop');
   // R5 (2.1.5 final review): a string's delimiters in code or JSON stay double (alfred-interaction.md), so a
   // backticked span is neither judged nor rewritten - the 'corrected' ask used to hand back a broken snippet.
   const code = [{ question: 'Set `"strict": true` in tsconfig?', header: 'Strict', options: [{ label: 'Yes', description: 'writes `{"a": "b"}` - kept verbatim' }] }];
   assert.equal(ask(cold, code).status, 0, 'double quotes inside backticks are code, not prose');
   const mixed = [{ question: 'Keep the "fast" path and `echo "x"`?', header: 'Path', options: [{ label: 'Keep', description: 'ok' }] }];
   const fixedMixed = ask(cold, mixed);
-  assert.equal(fixedMixed.status, 2, 'a double quote outside the code still denies');
-  assert.match(fixedMixed.stderr, /Keep the 'fast' path and `echo \\"x\\"`\?/, 'the prose is corrected, the code span is handed back as written');
+  assert.equal(fixedMixed.status, 0, fixedMixed.stderr);
+  assert.equal(updOf(fixedMixed).questions[0].question, "Keep the 'fast' path and `echo \"x\"`?", 'the prose is corrected, the code span kept as written');
   const fenced = [{ question: 'Apply this?', header: 'Apply', options: [{ label: 'Apply', description: '```\n{"k": "v"} \u2014 json\n```' }] }];
   assert.equal(ask(cold, fenced).status, 0, 'a fenced block is code too, dashes included');
   // audit 2026-10-08: a curly double quote is a double quote, the horizontal bar is a dash, and a log dir that cannot be
   // written records the once-per-ask marker under the temp dir - the same ask was denied on every re-send
   const curly = [{ question: 'Keep the \u201Cfast\u201D path \u2015 now?', header: 'Curly', options: [{ label: 'Keep', description: 'ok' }] }];
   const c1 = ask(cold, curly);
-  assert.equal(c1.status, 2, 'curly quotes and a horizontal bar deny like their plain twins');
-  assert.match(c1.stderr, /Keep the 'fast' path - now\?/, 'and are corrected the same way');
+  assert.equal(c1.status, 0, c1.stderr);
+  assert.equal(updOf(c1).questions[0].question, "Keep the 'fast' path - now?", 'curly quotes and a horizontal bar are corrected like their plain twins');
   const noDirSession = `nodir-${process.pid}-${Date.now()}`;
   const noDir = (questions) => runIn('guard-stop-contract.js',
     { tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', transcript_path: cold, session_id: noDirSession, tool_input: { questions } },
     { env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: path.join(logDir, 'missing', 'dir') } });
-  const once = [{ question: 'Ship it \u2014 today?', header: 'Ship', options: [{ label: 'Yes', description: 'ok' }] }];
+  const once = [{ question: 'Ship it \u2014 today?', header: 'Ship', options: [{ label: 'Yes', description: 'ok' }, { label: 'No', description: 'later' }] }];
   assert.equal(noDir(once).status, 2, 'the first send is denied');
   assert.equal(noDir(once).status, 0, 'the re-send passes, the marker kept under the temp dir');
   // The rule line states the bar; the deny above enforces it (audit 2026-10-14 RU06: its mechanics left the always-on rule).

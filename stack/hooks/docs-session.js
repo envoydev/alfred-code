@@ -134,6 +134,21 @@ function recordWrite(root, input, wrote) {
   a.wrote = union.slice(0, WROTE_CAP);
   saveState(input.session_id, a, key);
 }
+// When the actor first ran a shell command that may WRITE files no parser can name (a build, a generator, a script). The
+// Stop ask's 'no actor claimed' bucket - how a script's output is asked about - counts only when the main session ran
+// such a command (the 2026-10-17 usage audit: a session that only read was asked about another session's uncommitted
+// diff, which no claim of that session named). A read is every step one of READ_STEP.
+const READ_STEP = /^(?:git\s+(?:-C\s+\S+\s+)?(?:status|diff|log|show|branch|rev-parse|ls-files|ls-tree|grep|blame|remote|fetch|describe|tag\s+(?:-l|--list|--contains|--points-at)|config\s+--get|check-ignore|merge-base|rev-list|shortlog|cat-file|for-each-ref|stash\s+list|worktree\s+list)\b|(?:ls|cat|head|tail|grep|egrep|fgrep|rg|wc|echo|printf|pwd|which|type|test|\[|\[\[|stat|file|sort|uniq|cut|tr|date|jq|diff|cmp|du|df|tree|true|false|sleep|cd|pushd|popd|basename|dirname|realpath|readlink|whoami|uname|env|printenv|gh)\b|sed\s+-n\b|awk\b(?![^|;&]*>)|find\b(?![^|;&]*(?:-delete|-exec|-ok))|node\s+\S*docs\.js\s+(?:show|status|stale|lint|find)\b)/;
+function recordRun(input, command) {
+  if (envOf(process.env, 'DOCS_ASK') === '0' || !command) return;
+  const steps = String(command).split(/\|\||&&|[;|\n]/).map((x) => x.trim().replace(/^(?:[A-Za-z_]\w*=\S*\s+)+/, '')).filter(Boolean);
+  if (steps.every((x) => READ_STEP.test(x) && !/(?:^|\s)\d?>>?\s*(?!\/dev\/null|&)/.test(x))) return;
+  const key = actorKey(input);
+  const a = loadAgent(input.session_id, key);
+  if (a.ran) return;
+  a.ran = Date.now();
+  saveState(input.session_id, a, key);
+}
 // Every path the OTHER actors of this session recorded. READ only: writing here would race preToolUse, and a file
 // that cannot be read simply leaves its paths unclaimed, which is the safe direction.
 function otherActorWrites(session, exceptKey, entries = tmpEntries()) {
@@ -831,8 +846,49 @@ function blockRow(root, input, reason) {
 // 2026-10-10, session 84eedb4b). A write to `<docs-path>/plans/<name>.md` carrying a Completed stamp is denied unless
 // every line it adds or removes is a stamp line (Gated / Approved / Conformance / Completed / Status / Deviations /
 // Result) - an Edit by its strings, a Write against the file on disk, a shell write always (its change cannot be read).
+// The close that WRITES the stamp is not yet closed (the 2026-10-17 usage audit: its own edits right after `Completed:`
+// landed - the memories line, a tick, the leftovers - were denied): a write adding the stamp leaves a marker naming the
+// transcript's size, and the same actor's later writes to that plan pass until the close stop is put to the user - an
+// AskUserQuestion answered, or a prompt typed, after the marker.
 const STAMP_LINE = /^\s*(?:[>*-]\s*)*\**\s*(?:Gated|Approved|Conformance|Completed|Status|Deviations|Result)\b/i;
 const COMPLETED_STAMP = /^\s*(?:[>*-]\s*)*\**\s*Completed\**\s*:/im;
+function closeMarker(input, abs) {
+  const id = `${input.session_id || 'nosession'}-${input.agent_id || 'main'}`.replace(/[^\w.-]/g, '_');
+  const h = require('crypto').createHash('sha1').update(abs).digest('hex').slice(0, 12);
+  return path.join(require('os').tmpdir(), `alfred-close-${id}-${h}`);
+}
+function markClose(input, abs) {
+  try {
+    const size = input.transcript_path ? fs.statSync(input.transcript_path).size : 0;
+    fs.writeFileSync(closeMarker(input, abs), String(size));
+  } catch { /* no marker: the stamp guard judges as before */ }
+}
+function closeStillOpen(input, abs) {
+  let at;
+  try { at = parseInt(fs.readFileSync(closeMarker(input, abs), 'utf8'), 10); } catch { return false; }
+  if (!Number.isFinite(at) || typeof input.transcript_path !== 'string' || !input.transcript_path) return false;
+  let tail;
+  try {
+    const fd = fs.openSync(input.transcript_path, 'r');
+    try {
+      const size = fs.fstatSync(fd).size;
+      if (size < at || size - at > 8 * 1024 * 1024) return false;
+      const buf = Buffer.alloc(size - at);
+      fs.readSync(fd, buf, 0, buf.length, at);
+      tail = buf.toString('utf8');
+    } finally { fs.closeSync(fd); }
+  } catch { return false; }
+  const asks = new Set();
+  for (const line of tail.split('\n')) {
+    let o; try { o = JSON.parse(line); } catch { continue; }
+    const c = o && o.message && o.message.content;
+    if (o.type === 'assistant' && Array.isArray(c)) for (const b of c) { if (b && b.type === 'tool_use' && b.name === 'AskUserQuestion') asks.add(b.id); }
+    if (o.type !== 'user' || o.isMeta) continue;
+    if (typeof c === 'string' ? !/^\s*(?:Stop hook feedback:|<task-notification>)/.test(c) : Array.isArray(c) && c.some((b) => b && b.type === 'text' && !/^\s*(?:Stop hook feedback:|<system-reminder>)/.test(b.text || ''))) return false;
+    if (Array.isArray(c) && c.some((b) => b && b.type === 'tool_result' && asks.has(b.tool_use_id))) return false;
+  }
+  return true;
+}
 function stampedPlanWrite(input, root) {
   const name = input.tool_name || '';
   const t = input.tool_input || {};
@@ -854,7 +910,11 @@ function stampedPlanWrite(input, root) {
     if (text != null && COMPLETED_STAMP.test(text)) {
       const edits = name === 'Edit' ? [t] : name === 'MultiEdit' ? (Array.isArray(t.edits) ? t.edits : []) : null;
       const ok = edits ? edits.every((e) => e && onlyStamps(e.old_string, e.new_string)) : onlyStamps(text, t.content);
-      if (!ok) hit = abs;
+      if (!ok && !closeStillOpen(input, abs)) hit = abs;
+    } else if (text != null) {
+      const edits = name === 'Edit' ? [t] : name === 'MultiEdit' ? (Array.isArray(t.edits) ? t.edits : []) : null;
+      const adds = edits ? edits.some((e) => e && COMPLETED_STAMP.test(String(e.new_string || '')) && !COMPLETED_STAMP.test(String(e.old_string || ''))) : COMPLETED_STAMP.test(String(t.content || ''));
+      if (adds) markClose(input, abs);
     }
   } else if (isShellTool(name) && typeof t.command === 'string') {
     const base = typeof input.cwd === 'string' && input.cwd ? input.cwd : root;
@@ -862,7 +922,7 @@ function stampedPlanWrite(input, root) {
       if (w === UNKNOWN_SOURCE_WRITE) continue;
       const abs = path.resolve(base, w.replace(/^['"]|['"]$/g, ''));
       const text = isPlan(abs) ? textOf(abs) : null;
-      if (text != null && COMPLETED_STAMP.test(text)) { hit = abs; break; }
+      if (text != null && COMPLETED_STAMP.test(text) && !closeStillOpen(input, abs)) { hit = abs; break; }
     }
   }
   if (!hit) return false;
@@ -890,6 +950,7 @@ function preToolUse(input, root, docs, state) {
   let roots = ['src', 'tests'];
   if (isWrite) { try { roots = docs.loadWatch().sourceRoots; } catch {} }
   const command = typeof (input.tool_input || {}).command === 'string' ? input.tool_input.command : '';
+  if (isShellTool(name)) recordRun(input, command);
   const shellWrites = isShellTool(name) ? writeTargets(command) : null;
   let wrote = [];
   if (fileWrite) wrote = paths;
@@ -1126,14 +1187,19 @@ function stop(input, root, docs, state) {
     // for and it was already asked there; repeating it here is the same block twice in a row, which is how a gate
     // earns itself a ALFRED_CODE_DOCS_ASK=0. Attribution, not a subtraction: the session is asked about its own
     // later change to a section a seat answered for earlier.
-    const mine = new Set(loadAgent(input.session_id, MAIN_ACTOR).wrote || []);
+    const main = loadAgent(input.session_id, MAIN_ACTOR);
+    const mine = new Set(main.wrote || []);
     const entries = tmpEntries();
     const seats = otherActorWrites(input.session_id, MAIN_ACTOR, entries);
     // a change another session on this checkout recorded as its own write is that session's to answer for: logged, not asked
     const others = otherSessionWrites(input.session_id, root, state.snapshot.at, entries);
     const theirs = changed.files.filter((f) => !mine.has(f) && !seats.has(f) && others.has(f));
     if (theirs.length) log(root, input, { event: 'changed-by-other-session', files: theirs.slice(0, 5) });
-    const claimed = changed.files.filter((f) => mine.has(f) || (!seats.has(f) && !others.has(f)));
+    // an unclaimed change counts only when this session ran a command that may write (recordRun); in a session that only
+    // read and edited through its tools, it is another writer's - logged, not asked
+    const unrun = main.ran ? [] : changed.files.filter((f) => !mine.has(f) && !seats.has(f) && !others.has(f));
+    if (unrun.length) log(root, input, { event: 'changed-unclaimed', files: unrun.slice(0, 5) });
+    const claimed = changed.files.filter((f) => mine.has(f) || (!seats.has(f) && !others.has(f) && main.ran));
     // an unclaimed change made while the session sat idle is the user's own, outside this session: logged, not asked
     const outside = changedWhileIdle(root, claimed.filter((f) => !mine.has(f)), input.transcript_path);
     if (outside.size) log(root, input, { event: 'changed-outside-session', files: [...outside].slice(0, 5) });

@@ -3,7 +3,7 @@
 Read by `task-solve` at step 3 APPROVE, before the approve ask is built; complete on its own.
 The rules here are each applied at the step named: the mode-fit rule (step 3), the APPROVAL
 stamp's write mechanics and lifetime (step 3 onward), the agents-mode dispatch rules and the build
-bar (step 4), the reviewer-fit rule (the step-4 stop), and the purge, the sibling hand-off and the
+bar (step 4), the background-run line (any wait of minutes), the reviewer-fit rule (the step-4 stop), and the purge, the sibling hand-off and the
 doc-drift surface list (step 6). The
 step-3 stop's `Result:` line carries `mechanics: read` - the line that proves this file was loaded
 this cycle, not remembered from an earlier one.
@@ -14,6 +14,7 @@ this cycle, not remembered from an earlier one.
 - The APPROVAL stamp - writing it, and its lifetime
 - Agents-mode dispatch - step 4
 - The build bar - both modes
+- Background runs - the one start line
 - Reviewer fit - the step-4 stop's recommendation
 - The step-6 memory purge
 - The sibling hand-off - step 6
@@ -104,6 +105,17 @@ Build-time stops are for what the BUILD cannot decide - scope beyond the plan, a
 left open that the code now forces, an EXTERNAL blocker (a dependency down, a credential missing, a
 locked file). A tool the environment blocks is not yet a blocker: `task-implement`'s in-session route
 comes first. A return with no closing status line - a seat stopped at its `maxTurns` (Claude Code marks the output partial from 2.1.246) or killed mid-task - is never DONE and never resumed as-is, since a resume hands a runaway a fresh budget: re-dispatch it ONCE with a scoped resume brief (its handoff note and partial diff name what landed); a second status-less return from that task goes to the user as BLOCKED.
+
+## Background runs - the one start line
+
+A run of minutes (a suite, a container build, a migration, a CI run) is watched by ONE wait whose
+command ends on the result or a crash - a background `until` on the result line, or a `Monitor` whose
+filter matches the success line AND every failure signature and exits on either. Its start gets one
+line to the user: what runs, and when it should finish. Then the turn says nothing about it until
+that wait ends - no reply per sample or per poll (measured: 35 short finals of progress cost ~5.07M
+tokens in one session, 23 pings ~4.82M in another) - and never goes silent past the finish time it
+gave: a run still going then gets one line with the new estimate (measured the other way: users asked
+'is it still running?' 3 and 2 times when nothing was said).
 
 ## Reviewer fit - the step-4 stop's recommendation
 

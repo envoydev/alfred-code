@@ -86,6 +86,23 @@ test('sensitive data: a command naming the store is refused - source, copy, add,
     assert.match(r.stderr, /--with-sensitive/, 'the refusal names the run that uses the values');
 });
 
+// The 2026-10-17 usage audit: three refusals of commands that read no value - git's own check that the store is ignored
+// (the session-start warning's check), a plan line naming the store and its KEYS, and a count-only host check chained to a
+// build. Each passes now; the same verbs feeding a reader, a shell heredoc and a redirect onto the store stay refused.
+test('sensitive data: a git look, a name in written text and a count-only check pass; piped on or run they do not', () =>
+{
+    const { dir } = project('looks');
+    const rel = '.alfred/.sensitive-data';
+    for (const command of [`git check-ignore -q ${rel}`, `git check-ignore -q ${rel} || echo NOT-IGNORED`, `git -C . check-ignore -v ${rel}`, `git status --short ${rel}`,
+        `cat >> plan.md <<'EOF'\n- the deploy reads DB_HOST and API_TOKEN from ${rel} (names only)\nEOF`, `echo "keys DB_HOST, API_TOKEN live in ${rel}"`,
+        `grep -c prod ${rel} && npm run build`, `grep -qi 'DB_HOST=.*prod' ${rel} || npm run start`, `grep -ci prod ${rel}; npm run build`, `cut -d= -f1 ${rel}`])
+        assert.strictEqual(bash(dir, command), 0, command);
+    for (const command of [`echo ${rel} | xargs cat`, `grep -l x ${rel} | xargs cat`, `git ls-files ${rel} | xargs cat`, `echo x > ${rel}`,
+        `bash <<'EOF'\nsource ${rel}\necho $DB_HOST\nEOF`, `echo "$(source ${rel}; echo $DB_HOST)"`])
+        assert.strictEqual(bash(dir, command), 2, command);
+    assert.strictEqual(bash(dir, `grep prod ${rel}`), 'rewrite', 'a grep that prints lines still gets the masked view');
+});
+
 // Audit 2026-10-14 HK11 (replays sens.js, sens2.js): the refusal read the literal name only, so a glob, a quoted split or the
 // folder holding the store passed while the dump half resolved the same globs. Each replayed shape is refused now; an
 // ordinary command on the data root or the project passes.

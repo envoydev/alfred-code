@@ -183,7 +183,7 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
 
    ```ask
    Context compacted during task <N>; the plan file holds every tick. Fresh: <the cold floor>, here: <carry>.
-   - 'Resume in a fresh session (Recommended)' - the paste-ready block above; this chat stops here
+   - 'Resume in a fresh session (Recommended)' - the resume block ends this turn; this chat stops here
    - 'Continue the build here' - on the compacted summary
    ```
 
