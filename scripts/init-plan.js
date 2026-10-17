@@ -27,7 +27,7 @@
 //
 //   unattended: <question> -> <choice>
 //     Only with ALFRED_CODE_UNATTENDED=1: the answer to each ask init itself owns, after the plan -
-//     the recommended option unless it is destructive or needs a person (init.md, 'Unattended').
+//     the recommended option unless it is destructive or needs a person (references/init-bootstrap.md, 'Unattended').
 //     `--mode` alone prints `unattended: on|off` and nothing else, for init's first call.
 //
 // Exit 0 with the plan, 2 on an unreadable --installed file.
@@ -191,7 +191,7 @@ function render({ machine, captures })
 // UNATTENDED - nobody answers the asks. The switch is exactly '1', like every other stack switch.
 const isUnattended = (env = process.env) => String(env.ALFRED_CODE_UNATTENDED || '').trim() === '1';
 // A machine line whose command REPLACES something already there (claude-hud's own status line in a
-// stale shape, after a backup) is destructive; `missing` ones only add. init.md defines the word.
+// stale shape, after a backup) is destructive; `missing` ones only add. references/init-bootstrap.md defines the word.
 const DESTRUCTIVE_MACHINE = ['refresh'];
 function unattended({ machine, captures })
 {

@@ -416,9 +416,9 @@ test('unattended: the CLI prints the mode on --mode, and the decisions after the
     assert.ok(on.slice(off.length).every((l) => l.startsWith('unattended: ')) && on.length > off.length);
 });
 
-test('unattended: init.md defines destructive and the rule every other ask follows, and names the code\'s own classification', () =>
+test('unattended: init\'s bootstrap phase defines destructive and the rule every other ask follows, and names the code\'s own classification', () =>
 {
-    const body = fs.readFileSync(path.join(__dirname, '..', 'setup-plugin', 'commands', 'init.md'), 'utf8');
+    const body = fs.readFileSync(path.join(__dirname, '..', 'setup-plugin', 'references', 'init-bootstrap.md'), 'utf8');
     const section = body.slice(body.indexOf('## Unattended'), body.indexOf('\n## ', body.indexOf('## Unattended') + 3));
     assert.ok(body.includes('## Unattended'), 'the section exists');
     assert.match(section, /\*\*Destructive\*\* means/);
@@ -437,5 +437,5 @@ test('unattended: update\'s preflight says it too, so update answers its own ask
     assert.match(run({ ALFRED_CODE_UNATTENDED: '1' }), /^unattended: on$/m);
     assert.doesNotMatch(run({}), /^unattended:/m);
     const body = fs.readFileSync(path.join(__dirname, '..', 'setup-plugin', 'commands', 'update.md'), 'utf8');
-    assert.match(body, /`unattended: on`[^\n]*\n?[^\n]*init\.md/, 'update.md reads the line and points at the one rule');
+    assert.match(body, /`unattended: on`[^\n]*\n?[^\n]*init-bootstrap\.md/, 'update.md reads the line and points at the one rule');
 });

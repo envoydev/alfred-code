@@ -595,7 +595,7 @@ function main()
 
     const keys = settings && settings.env ? Object.keys(settings.env).sort() : [];
     console.log(`env-keys: ${keys.length ? keys.join(',') : 'none'}`);
-    // Nobody answers this run: the command answers its own asks by init.md's Unattended rule.
+    // Nobody answers this run: the command answers its own asks by init's Unattended rule (references/init-bootstrap.md).
     if (require('./init-plan.js').isUnattended()) console.log('unattended: on');
 
     process.exit(typeof res.status === 'number' ? res.status : 3);

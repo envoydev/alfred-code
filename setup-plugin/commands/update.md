@@ -308,7 +308,7 @@ It prints, in order:
 - `env-keys: <names>` - the scope's settings `env` KEY NAMES before the run, and the
   before-state step 7 diffs its read-back against. Names only: the script never prints a value,
   and neither do you. An `unattended: on` line closes the output: nobody answers this run, and every
-  ask below is answered by `/alfred-code:init`'s Unattended rule (init.md) instead of AskUserQuestion.
+  ask below is answered by `/alfred-code:init`'s Unattended rule (references/init-bootstrap.md) instead of AskUserQuestion.
   **Never dump that file** - a plain `cat` of it put a live 71-character
   `SENTRY_ACCESS_TOKEN` into a transcript twice in this collection. When you need to look again,
   the safe reads are `node "$TMP/repo/stack/hooks/guard-secret-value.js" --redacted <settings.json>`

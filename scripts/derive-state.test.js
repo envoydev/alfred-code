@@ -461,17 +461,17 @@ test('derive-state CLI: `written` is what THIS route writes - the full copy rout
     assert.deepStrictEqual([full.written.agentDeny, full.written.hooksOff], [[], []]);
 });
 
-test('setup reports only keys the derivation prints', () =>
+test('init\'s install phase reports only keys the derivation prints', () =>
 {
     // A renamed key would leave the walk quoting a field that no longer exists.
-    const init = fs.readFileSync(path.join(ROOT, 'setup-plugin', 'commands', 'setup.md'), 'utf8');
+    const init = fs.readFileSync(path.join(ROOT, 'setup-plugin', 'references', 'init-install.md'), 'utf8');
     const step = init.slice(init.indexOf('## 11. Install'));
     const cited = [...step.slice(0, step.indexOf('Then run the installer')).matchAll(/`((?:routes|written|plugins|skills|agents|hooks)(?:\.[A-Za-z]+)*)`/g)].map((m) => m[1]);
-    assert.ok(cited.length >= 4, `setup names the fields it reports, found ${cited.join(',')}`);
+    assert.ok(cited.length >= 4, `the install phase names the fields it reports, found ${cited.join(',')}`);
     const { execFileSync } = require('node:child_process');
     const out = JSON.parse(execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'derive-state.js'), '--selection', realSelection()], { encoding: 'utf8' }));
     for (const key of cited)
-        assert.notStrictEqual(key.split('.').reduce((o, k) => (o == null ? undefined : o[k]), out), undefined, `setup cites ${key}, which the derivation does not print`);
+        assert.notStrictEqual(key.split('.').reduce((o, k) => (o == null ? undefined : o[k]), out), undefined, `the install phase cites ${key}, which the derivation does not print`);
 });
 
 test('floor: entries it does not count come back as `skipped`, never silently dropped', () =>
