@@ -46,24 +46,29 @@ would skip its own unfinished bundles as done.
 - The INVENTORY vs USE block is the complement of every consumption table - which installed skill, agent, rule, plugin and MCP server the session never touched, the unused names collapsed per layer. A non-use finding cites that section's own row instead of the stack's full catalog, and its source line says whether the denominator came from this project's `.claude` or from the catalog. It renders with no flag: the `INVENTORY vs USE` block in the full report, `## Inventory vs use` in the skeleton, `inventory` in `--json`, and in DIRECTORY mode the corpus answer - `installed in K of M sessions, used in N` per name plus the never-used set per layer, each name carrying its own install count where the installs differ. That is the one command 'unused in this corpus' used to need a throwaway script for; point it at the collection ROOT, not one project. Read the `how` column before scoring a row: a skill can be paid for in full through a seat's frontmatter preload and show zero calls; an always-on rule is in every prompt, so its use is not observable at all and says so; a path-scoped rule is scored from the records that name it (the harness's `nested_memory` attach and `guard-read-whole-file.js`'s shell-route notice) with a glob proxy over the touched files as the floor under them; and a plugin that ships only HOOKS can never score used, because a hook leaves no transcript record.
 - Every per-session output carries the EFFICIENCY scorecard with no flag - the `EFFICIENCY` block in the full report, `## Efficiency scorecard` in the skeleton, `main.efficiency` plus `dispatchOverhead` in `--json`. A Windows session's shell calls arrive as the `PowerShell` tool and are read like Bash (measured: 34 of the 38 test runs in one collection ran through it, and every Bash-only counter reported zero for those sessions).
 
-## Reading a transcript by hand - one LINE can be 50k tokens
+## Reading a transcript - one LINE can be 50k tokens
 
 A transcript row is one JSONL line, and a single row carries a whole tool result: measured, 53,849
 tokens for ONE line, and three Reads of the same copy failed on the harness's own 25k cap - the
 last of them at `offset=6, limit=1`, which is a single line. Never Read a transcript copy to find
-something; the analyzer's `--json` answers most of it already. When a specific row is needed,
-`sed -n` it out, project it with node, never `jq` - Git for Windows ships none (exit 127 in two audited
-sessions) - and CUT the output: the whole row printed back is still the 50k-token row:
+something; the analyzer's `--json` answers most of it already, and the rest comes from the skill's
+own reader, every view bounded and every line an `L<n>` locator:
 
 ```bash
-sed -n '250p' "<transcript>" | node -e "const o=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(JSON.stringify({ type: o.type, ts: o.timestamp, role: (o.message || {}).role }))"
-sed -n '200,260p' "<transcript>" | node -e "for (const l of require('fs').readFileSync(0,'utf8').split('\n').filter(Boolean)) { const o = JSON.parse(l); console.log(o.type, o.timestamp) }"
-sed -n '250p' "<transcript>" | node -e "const o=JSON.parse(require('fs').readFileSync(0,'utf8')); for (const c of [].concat((o.message || {}).content || [])) if (c.type === 'text') console.log(c.text)" | cut -c1-2000
-sed -n '250p' "<transcript>" | node -e "const o=JSON.parse(require('fs').readFileSync(0,'utf8')); for (const c of [].concat((o.message || {}).content || [])) if (c.type === 'tool_use') console.log(c.name)"
+node <snapshot>/stack/skills/capture-usage-report/scripts/transcript-view.js pack "<transcript>" "<usage json>" --out "<tmp>/<sid>-evidence.md"
+node <snapshot>/stack/skills/capture-usage-report/scripts/transcript-view.js timeline "<transcript>" --from 200 --to 260
+node <snapshot>/stack/skills/capture-usage-report/scripts/transcript-view.js show "<transcript>" 250,312-315 --chars 2000
+node <snapshot>/stack/skills/capture-usage-report/scripts/transcript-view.js grep "<transcript>" 'size:|Approved' --role assistant
 ```
 
-`cut -c` is what bounds the result. A node pass over a 40MB transcript is seconds; a Read of it is a
-denial plus the retry.
+It is node, never `jq` - Git for Windows ships none (exit 127 in two audited sessions). `pack` is each bundle's first read: the typed prompts, every ask and its answer, the skill, command and
+dispatch runs, the errored tool results (each seat's from `subagents/` beside the transcript), and every
+moment the `--json` flagged - a context spike, a cache miss, a green claim or commit with no check, a
+compaction re-read, the five largest results - with the rows that led to it. It quotes the transcript,
+so it goes to `<tmp>`, never into the bundle. `show` prints rows whole up to `--chars`; `grep` searches
+the typed prompts, the assistant text and tool inputs, and the tool results (`--role user|assistant|result`).
+A question none of the four answers is a gap in the reader - say so in the report rather than writing a
+one-off script: the 2026-10-17 audit's authors wrote one per question, 44% of their calls.
 
 ## The ledger test - one command per session, its output quoted
 
