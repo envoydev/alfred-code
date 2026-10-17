@@ -23,6 +23,8 @@ You are the judgment seat for this run: you gather the project's quality rules, 
 - Deliberate only, never mid-build; fixes nothing and never writes the decision log.
 - Not for fixing the findings (/loop-code-quality), the architecture (capture-architecture-quality), test coverage (the coverage capture), recording the code style (/capture-code-style), a security audit (the security-auditor seat; `/security-review` covers only the branch's diff against origin's default branch) or one diff (task-verify-code).
 
+**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
+
 ## Execution modes
 
 **Run gate - a run no calling flow started asks first.** The run dispatches seats and replaces CODE-ASSESSMENT.md, and a conversational 'is this code any good?' can match this skill. So unless the quality loop invoked this run, put this ask before GATHER (joined with the mode ask below where that fires, one AskUserQuestion call). No answer, no run.

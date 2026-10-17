@@ -26,7 +26,7 @@ Both are the house review protocol; this skill just keeps it in your chat. `/cod
 - Not the parallel-angle sweep - if you want breadth or an isolated subagent, use `/code-review` or dispatch the `<stack>-verifier`. This one stays inline by design.
 - Not the done gate on your own change - `habits-done-gate` is that gate, and this review loads it before its verdict.
 
-**auto-mode.** `auto-mode` as the first word of the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it.
+**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
 
 ## The review - in order, all inline
 

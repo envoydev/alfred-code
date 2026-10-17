@@ -95,7 +95,7 @@ const PLUGIN_MARKETPLACE_URLS = new Set([
 const NON_SKILL_TOKENS = new Set([
     // the AGENTS.template.md rules table's slash-only-capture notation - a marker, not a skill.
     'user-run',
-    // the task and loop skills' mode word (`/loop-code-quality auto-mode`) - an argument the hooks read, not a skill.
+    // the old bare mode word the task, capture and loop skills name as starting nothing (`/loop-code-quality --auto-mode` is the flag) - not a skill.
     'auto-mode',
     // the commit-gate hook, referenced by name from alfred-git.md and task-verify-code - a hook, not a skill.
     'guard-ungated-commit',

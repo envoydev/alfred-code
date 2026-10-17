@@ -15,6 +15,8 @@ This is capture only: it measures, judges, and documents - it fixes nothing, wri
 - Deliberate only, never mid-build.
 - Not for writing the missing tests - that is the coverage loop (/loop-test-coverage).
 
+**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
+
 ## Execution modes
 Two halves, split differently:
 

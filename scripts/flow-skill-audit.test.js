@@ -486,13 +486,13 @@ test('SKF-16: the coverage loop vendors the anti-gaming sweep, records its basel
 // only, and this ask is prose; scripts/auto-mode.test.js replays both shapes through the hook).
 test('SKF-04: the upgrade has one auto mode, and its hard stop waits for the user under it', () => {
     const t = flat(skill('task-version-upgrade'));
-    assert.strictEqual((t.match(/--auto\b/g) || []).length, 1, 'the only --auto left is the line saying it starts nothing');
+    assert.strictEqual((t.match(/--auto(?!-mode)\b/g) || []).length, 1, 'the only --auto left is the line saying it starts nothing');
     assert.doesNotMatch(t, /Auto mode (skips|still stops|\(explicitly requested\))|auto mode included|skipping the approval gate/, 'the legacy mode is folded');
-    assert.match(t, /\*\*Under auto-mode the gate is answered, not skipped - and only when the user typed `auto-mode` on the call\.\*\*/);
-    assert.match(t, /the old `--auto` \/ 'auto mode' wording starts nothing, and the gate stands/);
+    assert.match(t, /\*\*Under auto-mode the gate is answered, not skipped - and only when the user typed `--auto-mode` on the call\.\*\*/);
+    assert.match(t, /the old `--auto`, 'auto mode' or bare `auto-mode` wording starts nothing, and the gate stands/);
     assert.match(t, /Hard stops, auto-mode included:/);
     assert.match(t, /Under auto-mode put the same three options with NO `\(Recommended\)` mark, the question opening 'no option is recommended: a hard stop waits for you under auto-mode' - the hook answers only a marked ask, so this one waits\./);
     // the attended ask keeps its mark, and the auto-mode contract paragraph is untouched
     assert.match(t, /'Re-plan from this stage \(Recommended\)' \/ 'Roll back to the last stage's rollback point' \/ 'Stop here'/);
-    assert.match(t, /\*\*auto-mode\.\*\* `auto-mode` as the first word of the arguments is a mode word, not a target/);
+    assert.match(t, /\*\*auto-mode\.\*\* `--auto-mode` as the first word of the arguments is a mode flag, not a target/);
 });

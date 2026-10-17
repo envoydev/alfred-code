@@ -54,7 +54,7 @@ are in `SKILL.md`; these are the mechanics around them.
   next dispatch asks. Step 4's
   delete-when-fan-out-completes applies to per-plan APPROVED stamps, and a step-5 punch-list
   re-dispatch under AUTO rides the still-live waiver.
-- **auto-mode.** `auto-mode` as the first word of the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it.
+- **auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
 - **Under auto-mode an unpushed commit is a `Leftovers:` line, never an ask** - the hook leaves an ask naming a push to
   the user, and in the same AskUserQuestion call it would hold the commit question too (audit 2026-10-14 SKF-03).
 - **Under AUTO nobody is at the terminal** (audit 2026-10-10, sessions c6142301 and 9a4ef375: an overnight run

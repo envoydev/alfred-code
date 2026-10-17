@@ -330,7 +330,7 @@ function idleGapOffer() {
 // told so. Three prompts end it: one asking to stop auto-mode ('stop auto-mode', 'auto-mode off' - audit 2026-10-14
 // HK13; English only since the deep hooks review of 2026-10-16 - a stop asked in another language is the model's to act on,
 // as the injected note says), a bare stop ('stop', 'stop, I will take it from here' - never 'stop using X', which is input),
-// and a typed /task-*, /capture-*, /loop-* or /issue-* command that starts no new auto-mode run (no `auto-mode` as its
+// and a typed /task-*, /capture-*, /loop-* or /issue-* command that starts no new auto-mode run (no `--auto-mode` as its
 // first word) - its banner says OFF, so the old stamp must not answer its asks. A harness prompt (a task notice, a
 // command's output, a seat's hand-back - hook-prelude.js harnessPrompt, HK14) is nobody typing; any other slash command
 // (`/compact`) leaves the run alone. Only this session's own AUTO stamp is read. Returns true when it wrote the prompt's context.
@@ -343,7 +343,7 @@ const AUTO_OFF_RE = new RegExp([
 ].join('|'), 'i');
 const BARE_STOP_RE = /^\s*(?:please\s+)?(?:stop|halt|pause|cancel|abort|enough)(?:\s+(?:it|now|the run|here|everything|please))?\s*(?:[.!,;:]|-\s|$)/i;
 const FLOW_CMD_RE = /^\s*\/(?:alfred-code:)?(?:alfred-)?(?:task|capture|loop|issue)-[a-z][a-z0-9-]*(?=\s|$)/i;
-const AUTO_RUN_CMD_RE = /^\s*\/(?:alfred-code:)?(?:alfred-)?(?:task|loop|issue)-[a-z][a-z0-9-]*\s+auto-mode(?=\s|$)/i;
+const AUTO_RUN_CMD_RE = /^\s*\/(?:alfred-code:)?(?:alfred-)?(?:task|capture|loop|issue)-[a-z][a-z0-9-]*\s+--auto-mode(?=\s|$)/i;
 function autoModeEnd() {
   const sid = String(payload.session_id || '');
   const prompt = String(payload.prompt || '');
@@ -366,11 +366,11 @@ function autoModeEnd() {
     return true;
   }
   try { fs.rmSync(stamp.file); } catch { return false; }
-  const why = slash ? 'the user typed a new flow command without auto-mode' : 'the user asked to stop it';
+  const why = slash ? 'the user typed a new flow command without --auto-mode' : 'the user asked to stop it';
   ledgerRow({ mode: 'auto', kind: 'auto-end', reason: `auto-mode ended: ${why}` });
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext:
     `auto-mode is OFF: ${why}, so each decision goes to them again and a turn is no longer sent back at its Stop. `
-    + '`auto-mode` as the first word after the next /task-*, /loop-* or /issue-* command starts a new run.' } }));
+    + '`--auto-mode` as the first word after the next /task-*, /capture-*, /loop-* or /issue-* command starts a new run.' } }));
   return true;
 }
 if (EVENT === 'UserPromptSubmit') {
@@ -757,27 +757,30 @@ function gatedStepHold() {
   process.exit(2);
 }
 
-// --- AUTO-MODE: `auto-mode` on a task, loop or issue call runs that call unattended (the user's ruling, 2026-10-14) ---
-// The word starts a run only as the FIRST word after a typed /task-*, /loop-* or /issue-* command (the user's ruling,
-// 2026-10-15, which added the issue family): anywhere else it is the task's own text - '/task-solve fix the auto-mode
-// banner' started a run - and a prose prompt never starts one. The word on the call is the user's own waiver - the one task-solve's AUTO stamp records - so this hook writes the stamp
+// --- AUTO-MODE: `--auto-mode` on a task, capture, loop or issue call runs that call unattended (the user's ruling, 2026-10-14) ---
+// The flag starts a run only as the FIRST word after a typed /task-*, /capture-*, /loop-* or /issue-* command (the user's
+// rulings: 2026-10-15 added the issue family; 2026-10-17 the capture family, and the flag spelling `--auto-mode` over the
+// bare word, which now starts nothing): anywhere else it is the task's own text - '/task-solve fix the auto-mode
+// banner' started a run - and a prose prompt never starts one. The flag on the call is the user's own waiver - the one task-solve's AUTO stamp records - so this hook writes the stamp
 // itself, naming the session (hook-prelude.js approvalStamp), BEFORE the run's first step. From there every hook that
 // asks a person reads the session as unattended - this gate's fresh-session offers below, the post-compaction hold, the
 // stop contract's prose and pending-close blocks - while the stop contract answers each ask that marks a Recommended
 // option and keeps the session going until the run's close deletes the stamp. A stamp already live for this session is
 // kept, so a second flow in the same run rides it. A seat never starts one: the session that dispatched it owns the run.
 // A digit is part of a skill name (`task-migrate-v2`): the live probe of 2026-10-14 started none for `task-probe2`.
-const AUTO_SKILL_RE = /^(?:alfred-code:)?(?:alfred-)?(?:task|loop|issue)-[a-z][a-z0-9-]*$/;
-const AUTO_WORD_RE = /(?:^|\s)auto-mode(?=\s|$)/i;
-const AUTO_FIRST_RE = /^\s*auto-mode(?=\s|$)/i;
+const AUTO_SKILL_RE = /^(?:alfred-code:)?(?:alfred-)?(?:task|capture|loop|issue)-[a-z][a-z0-9-]*$/;
+const AUTO_WORD_RE = /(?:^|\s)--auto-mode(?=\s|$)/i;
+const AUTO_FIRST_RE = /^\s*--auto-mode(?=\s|$)/i;
+// What the OFF banner names as a near miss: the flag anywhere but first, or the bare word that started a run before 2026-10-17.
+const AUTO_MISS_RE = /(?:^|\s)--auto-mode(?=\s|$)|^\s*auto-mode(?=\s|$)/i;
 function autoArgs() {
   if (IS_SKILL_CALL) return String((payload.tool_input || {}).args || '');
   if (EVENT !== 'UserPromptExpansion') return '';
   if (typeof payload.command_args === 'string') return payload.command_args;
   return String(payload.prompt || '').replace(/^\s*\/[A-Za-z0-9:_-]+/, '');
 }
-// The Skill route is the MODEL's call, so the word on its args is the model's: it starts auto-mode only when the user's
-// newest TYPED prompt is itself a task, loop or issue command with `auto-mode` as its first word (audit HK04 replayed a
+// The Skill route is the MODEL's call, so the flag on its args is the model's: it starts auto-mode only when the user's
+// newest TYPED prompt is itself a task, capture, loop or issue command with `--auto-mode` as its first word (audit HK04 replayed a
 // self-start: 'look at the cache layer' typed, then Skill(task-implement, 'auto-mode') opened the implementer gate; the
 // prose ask it also took - 'run it in auto-mode' - left on 2026-10-15, so a question mentioning the word starts nothing).
 // A harness row (a skill body, a seat's hand-back, a task notice, a tool result) is no typed prompt.
@@ -806,7 +809,7 @@ function lastTypedPrompt() {
   return '';
 }
 // A typed prompt as an auto-mode command: a slash command's transcript row (`<command-name>/x</command-name>` and its
-// `<command-args>`) or a raw `/x args` line, naming a task, loop or issue skill with `auto-mode` as its first argument.
+// `<command-args>`) or a raw `/x args` line, naming a task, capture, loop or issue skill with `--auto-mode` as its first argument.
 function typedAutoCommand(text) {
   const tagged = /<command-name>\/?([^<\s]+)<\/command-name>/.exec(text);
   const raw = tagged ? null : /^\s*\/([A-Za-z0-9:_-]+)(?:\s([\s\S]*))?$/.exec(text);
@@ -816,12 +819,12 @@ function typedAutoCommand(text) {
 }
 function autoModeStart() {
   const sid = String(payload.session_id || '');
-  // The typed command must open its arguments with the word; the model's own Skill args may carry it anywhere, since
+  // The typed command must open its arguments with the flag; the model's own Skill args may carry it anywhere, since
   // the typed prompt behind the call is held to the first-word rule below.
   const word = IS_SKILL_CALL ? AUTO_WORD_RE : AUTO_FIRST_RE;
   if (!sid || payload.agent_id || !AUTO_SKILL_RE.test(skill) || !word.test(autoArgs())) return null;
   if (IS_SKILL_CALL && !typedAutoCommand(lastTypedPrompt())) {
-    ledgerRow({ mode: 'auto', kind: 'auto-start-refused', reason: `auto-mode: ${skill} called with the word, but the user's newest typed prompt is no task, loop or issue command opening with it` });
+    ledgerRow({ mode: 'auto', kind: 'auto-start-refused', reason: `auto-mode: ${skill} called with --auto-mode, but the user's newest typed prompt is no task, capture, loop or issue command opening with it` });
     return null;
   }
   const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
@@ -849,7 +852,7 @@ const auto = (IS_SKILL_CALL && (EVENT === 'PreToolUse' || !EVENT)) || EVENT === 
 // a fresh session at its trigger - with the numbers behind it, from the same engine every offer reads. Once per typed
 // command: the expansion fires once, and the lines say they are not repeated. Never on a phase's Skill call, a seat's or
 // a session nobody is at. It rides AFTER whatever else this expansion injects, so each of those keeps its own shape.
-const BANNER_RE = /^(?:alfred-code:)?(?:alfred-)?(?:task|capture|loop|issue)-[a-z][a-z0-9-]*$/;
+const BANNER_RE = AUTO_SKILL_RE;   // every family a banner opens can run in auto-mode (capture joined 2026-10-17)
 const BANNER_HEAD = 'Open your reply to this command with these two lines, exactly as written, and never repeat them in a later reply:';
 const tokens = (n) => (n >= 1000000 && n % 1000000 === 0 ? `${n / 1000000}M` : `${Math.round(n / 1000)}k`);
 function modeBanner(autoOn) {
@@ -867,9 +870,7 @@ function modeBanner(autoOn) {
     ? `**Auto-mode: ON** for ${name} - every question takes its (Recommended) option without waiting for you; one with no `
       + 'recommended option, or whose recommendation acts outward (push, merge, deploy, publish, a PR), still waits. A message you type mid-run is input to the run; type `stop auto-mode` (or just `stop`) to end it.'
     : `**Auto-mode: OFF** for ${name} - each question waits for your answer.`
-      + (!AUTO_WORD_RE.test(autoArgs()) ? ''
-        : !AUTO_SKILL_RE.test(skill) ? ' (auto-mode runs only on /task-*, /loop-* and /issue-* commands.)'
-          : ' (auto-mode starts only as the first word after the command.)');
+      + (AUTO_MISS_RE.test(autoArgs()) ? ' (auto-mode starts only with `--auto-mode` as the first word after the command.)' : '');
   const at = ctxThreshold();
   const ctxLine = autoOn
     ? `**Context:** no fresh-session hand-off - the session auto-compacts ${where} and the run goes on from the summary and its state files.`
@@ -902,7 +903,7 @@ if (auto) {
     + '(2) Do not end a turn between steps: the Stop hook sends you back while the stamp stands. A wait on work this session started is a one-line turn end; the harness wakes you when it lands. '
     + '(3) Commit through the usual gates; never push, merge, deploy or send anything out - list those for the user in the close (an unpushed commit is a Leftovers line, never an ask). '
     + '(4) The fresh-session offers are off and the fresh-session hand-off is never taken or recommended: the session compacts at its auto-compact window and the run goes on from its own state files. '
-    + "(5) 'auto-mode' is a mode word, not a target - leave it out of the run's arguments. "
+    + "(5) '--auto-mode' is a mode flag, not a target - leave it out of the run's arguments. "
     + `(6) The stamp is the run's approval too: never write an APPROVED or AUTO line over it and never delete it before the close, unless the user asks to stop auto-mode. An answered ask is the go - carry on in the same turn. `
     + `(7) When the whole run is finished, print its close and delete ${auto.file}: that ends auto-mode. `
     + '(8) A message the user types mid-run is input to the run, never a stop: take it in and carry on.';

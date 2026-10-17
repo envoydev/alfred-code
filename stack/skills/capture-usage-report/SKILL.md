@@ -15,6 +15,8 @@ Run the audit from a FRESH session that names the target session id(s) - never f
 - The token and tool usage audit of alfred-code skill runs in THIS project; also for 'whether the stack is efficient here'.
 - Not for live session cost (claude-hud shows that), fixing the findings (route them to the owning skill), or benchmarking model choices.
 
+**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
+
 ## Privacy rule
 The report body carries aggregates, tool names, token counts, and file PATHS only - never code or file contents. The raw-data copies exist for re-analysis and follow the `git check-ignore` consent test in step 4.
 

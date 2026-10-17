@@ -29,6 +29,8 @@ The measurements behind these rules live in `references/evidence.md` - an audit 
   (capture-code-quality), code style, or test coverage - the assessment keeps only structural testability
   blockers, never coverage gaps.
 
+**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
+
 ## Execution modes
 
 **Run gate - a run no calling flow started asks first.** The run dispatches seats and replaces ARCHITECTURE-ASSESSMENT.md, and a conversational 'what are the risks here?' can match this skill. So unless the quality loop invoked this run, put this ask before GATHER (joined with the mode ask below where that fires, one AskUserQuestion call). No answer, no run.
