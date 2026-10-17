@@ -1,29 +1,46 @@
 ---
-description: "One-time bootstrap of an Alfred Code install, run in the session AFTER setup's restart - installs what the kept MCP servers need to start (uv, the pinned Python, csharp-ls when csharp-lsp is kept, the picked browsers, the navigation-server index, claude-hud's status line in its compact layout - every machine-level install through ONE ask first), sets this project's shared-memory level and imports Claude's old notes (no reinstall), runs the captures the install carries (architecture, code style, awareness - the inventory, the run book and the sibling repos) by following each SKILL.md inline, then offers the AGENTS.md fill. Nothing installed yet routes to /alfred-code:setup."
+description: "Install and bootstrap Alfred Code in a project - one command, two phases. Nothing installed: the fresh install - scope and profile up front, the project analysis (the evidence scan plus validate's missing and evidence-gap checks), the six-layer selection walk (rules -> agents -> skills -> hooks -> MCPs -> plugins: one full-catalog table and one selection ask per layer), the prerequisite check and the install, ending on a restart. Typed again in the new session: the one-time bootstrap - what the kept MCP servers need to start (uv, the pinned Python, csharp-ls, the picked browsers, the navigation-server index, claude-hud's status line - one ask first), the shared-memory level and the old notes import, the captures the install carries, the AGENTS.md fill. A later run finishes only what is left. NOT for changing an install - that is configure; a refresh is update."
 disable-model-invocation: true
 ---
 
-# Initialize Alfred Code - the one-time bootstrap
+# Alfred Code - install, then bootstrap
 
-You are bootstrapping an install `/alfred-code:setup` laid down, in a session started AFTER its
-restart - the plugins, servers and seats it installed load at session start, and this run uses
-them. Three checks come first, in order, each one line. The first is one call,
+One command, two phases, never both in one session. The INSTALL phase selects and installs, and ends on a restart:
+plugins, MCP servers, skills, seats and rules load at session start, so what it installed is not live in the session
+that installed it. The BOOTSTRAP phase - this same command, typed again in the new session - uses them. The install
+records decide which phase this run is; nothing else does.
+
+## Which phase - one call first
+
 `node "${CLAUDE_PLUGIN_ROOT}/scripts/install/stamp.js" state . ; node "${CLAUDE_PLUGIN_ROOT}/scripts/init-plan.js" --mode`:
-its first line reads the same install records the hooks read (`alfred-code.stamp`, a copied
-`hooks/docs.js`) in this repo, its git top level or a worktree's
-main checkout; its second, `unattended: on|off`, says whether anyone answers this run's asks
-(`on` - the Unattended section below governs every ask from here):
+its first line reads the same install records the hooks read (`alfred-code.stamp`, a copied `hooks/docs.js`) in this
+repo, its git top level or a worktree's main checkout; its second, `unattended: on|off`, says whether anyone answers
+this run's asks (`on` - the bootstrap file's Unattended section governs every ask).
 
-- **Nothing installed** - `not-installed`: stop and name `/alfred-code:setup` for the USER to type,
-  then end the turn. `legacy-unstamped`
-  (a legacy copy-route install that never wrote a stamp): stop the same way on `/alfred-code:update`,
-  which reads its picks off disk and writes the stamp. All are
-  `disable-model-invocation` - the user's to type, never a Skill call from this run - and each
-  belongs in its own session. `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:init from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here.
-- **Setup ran in THIS session** - stop: name the restart, then `/alfred-code:init` in the new
-  session. What setup installed is on disk but not loaded here.
-- **Run before** - go on: every step below reads what is already in place and skips it
-  (`present`, `done`), so a second run only finishes what the first left.
+- `not-installed` -> the INSTALL phase. Unattended (`on`), it is not run: print 'the install phase needs a person -
+  run /alfred-code:init in an interactive session' and stop.
+- `legacy-unstamped` (a legacy copy-route install that never wrote a stamp - no install record, but two of the
+  stack's own signatures in `.claude/`: its hook files, its env keys, three or more of its skill, seat or rule names)
+  -> ONE AskUserQuestion, so nothing the project already runs is re-picked by hand:
+
+  ```ask
+  This project holds an older install that never wrote a stamp - update it, or install from scratch?
+  - 'Update this install (Recommended)' - update reads its picks off disk, each old name under its new one, prunes the old copies and writes the stamp
+  - 'Fresh install anyway' - the install phase from scratch, its install pruning the old copies the same way
+  ```
+
+  'Update this install' -> name `/alfred-code:update` for the USER to type and end the turn; 'Fresh install anyway'
+  -> the INSTALL phase. Unattended: `/alfred-code:update` named, the run ends.
+- `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run
+  /alfred-code:init from there' and stop - a worktree shares that checkout's install, and nothing is written into
+  this tree, or into that one from here.
+- `installed` or `initialised` -> the BOOTSTRAP phase - unless the install phase ran in THIS session: then stop, name
+  the restart and `/alfred-code:init` in the new session (what it installed is on disk but not loaded here). A
+  bootstrap run after an earlier one only finishes what that one left; changing the selection is
+  `/alfred-code:configure`, a plain refresh `/alfred-code:update`.
+
+Every sibling command named here is `disable-model-invocation` - the user's to type, never a Skill call from this run
+(measured: a run asked WHICH sibling, then tried to invoke it and took the denial) - and belongs in its own session.
 
 **This run needs NO conversation context - so it is worth MOVING, but only out of a session that
 is actually loaded.** Measure before you ask: this session's own per-message context is `input +
@@ -32,196 +49,59 @@ figure is past the same trigger `guard-fresh-session-start.js` uses - the tier's
 trigger, `ALFRED_CODE_CONTEXT_WINDOW_FOR_1M` (default 400,000) on a window of 1M or more,
 `ALFRED_CODE_CONTEXT_WINDOW_FOR_300K` (default 280,000) on one of 300k up to 1M, or
 `ALFRED_CODE_CONTEXT_WINDOW_FOR_200K` (default 180,000) below that - the window comes from the session
-model's row in `.claude/hooks/model-windows.json`, else `ALFRED_CODE_CONTEXT_WINDOW_DEFAULT` (default 300,000) - or
-when that hook has already injected the ask into this turn. Below the trigger, or when the figure
-cannot be read at all, or with `ALFRED_CODE_AUTO_COMPACT=1` or the tier's trigger at `0` (no fresh-session offer
-then), SKIP the ask silently and start step 1. When it fires, put it through
-AskUserQuestion: run here anyway, or run in a fresh session (recommended), quoting the figure you
-measured; fresh session -> give the paste-ready one-liner and end the turn. Unattended, it is never
-asked: `unattended: fresh session -> run here (the recommended one hands the run to a person)`.
+model's row in `.claude/hooks/model-windows.json`, else `ALFRED_CODE_CONTEXT_WINDOW_DEFAULT` (default 300,000) (the
+install phase has neither yet: take the window this session's own model line states - '1M context' is 1,000,000 -
+and the 300,000 default window only when it states none) - or when that hook has already
+injected the ask into this turn. Below the trigger, or when the figure cannot be read at all, or with
+`ALFRED_CODE_AUTO_COMPACT=1` or the tier's trigger at `0` (no fresh-session offer then), SKIP the ask silently and
+start the phase: an ask with no measurement behind it is the failure this replaced (measured: it fired on the FIRST
+message of a brand-new session, twice in one run, and could quote no number when the user challenged it). Never
+author the decision in prose either way.
+
+When it does fire, put it through AskUserQuestion: run here anyway, or run in a fresh session
+(recommended), quoting the figure you measured - never one measured in some other session. Every
+answer names its next action: fresh session -> give the paste-ready one-liner and end the turn;
+run here -> start the phase now; not now -> say what is owed and end the turn. If a redirect displaces
+the ask, re-offer it ONCE. Unattended, it is never asked: `unattended: fresh session -> run here (the recommended
+one hands the run to a person)`.
 
 **Read the stack's own files through the Bash tool (`cat "<file>"`), never the Read tool** - this
-protocol, a SKILL.md the plan names, every `references/` file inside one. They sit outside the
-working directory (the plugin cache, `$TMP`), where the Read tool asks before every read in default
+command's phase file, the protocol, `walk.md`, a SKILL.md the plan names, every `references/` file inside one. They
+sit outside the working directory (the plugin cache, `$TMP`), where the Read tool asks before every read in default
 and acceptEdits mode, while a read-only Bash command carries the broader read access
 (code.claude.com/docs/en/security, 'Working directory boundary') and a sandboxed one runs without a
 prompt (code.claude.com/docs/en/permissions) - an unattended run has nobody to answer that ask. A
 launcher that wants the Read tool to reach them too starts the session with
 `--add-dir "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/cache" --add-dir "${TMPDIR:-/tmp}"`.
 
-**THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing but a newer release** - read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md` in ONE Bash `cat` (as above - never in ranges, never twice) before step 1 and hold the whole run to it: resolve the snapshot once into `$TMP/repo`, use every tool from that snapshot, and remove `$TMP` per its 'Clean up' section on every exit path. Its 'Narrate, don't trace' section governs every tool call: one quiet call per recompute, no pasted tool output except the plan and the tables named below, one narration line between steps.
+**THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing but a newer release** - read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md` in ONE Bash `cat` (never in ranges, never twice) before the phase starts and hold the whole run to it: resolve the snapshot once into `$TMP/repo` - copied from the newest valid plugin-cache entry, downloaded only when there is none (the reference owns the fallback), use every tool from that snapshot (the install phase hands it to the installer with `--source`), and remove `$TMP` per its 'Clean up' section on every exit path. Its 'Narrate, don't trace' section governs every tool call: one quiet call per recompute, no pasted tool output except the plan and the decision tables, one narration line between steps.
 
-**Every ask in this run goes through the AskUserQuestion tool** - concrete options, the recommended one marked, free text via Other; a prose question or a bare stop-and-wait is invalid. Unattended, no ask is put at all: the Unattended section answers each one.
+**Every ask in this run goes through the AskUserQuestion tool** - concrete options, the recommended one marked, free text via Other; a prose question or a bare stop-and-wait is invalid (measured: prose asks were skipped in live runs while tool-shaped asks were answered every time). A plain-text option list is the fallback only where the harness lacks the tool. Unattended, no ask is put at all: the bootstrap file's Unattended section answers each one.
 
 **House voice in every line this run emits** - narration, tables and the asks alike: single
-dashes, never em-dashes, and single quotes in prose.
+dashes, never em-dashes, and single quotes in prose. A fresh or refreshed install may have no
+`.claude/rules/alfred-interaction.md` loaded at all, so this command's own text is the only place
+the voice can come from (measured: a first-run narration line opened with an em-dash, on the one
+surface where the rule forbidding it cannot yet exist).
 
-Six steps, one banner line before each: `[step n/6 - <name>] <what> · next: <name>` - 1 read the
-install · 2 the plan · 3 machine installs · 4 memory · 5 captures · 6 AGENTS.md.
+## The phase - its own file, read whole
 
-## 1. Read the install
+- INSTALL -> read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/init-install.md` in ONE Bash `cat` and follow it,
+  start to finish: it is this run's instructions - eleven banner steps and the closing card.
+- BOOTSTRAP -> the same for `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/init-bootstrap.md` - six banner steps
+  and the closing card.
 
-One call, nothing changed: `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --installed-only --print-plan --plan-out "$TMP/installed.json" > "$TMP/plan.out" 2>&1` - the installer's own read-back (skills, agents, plugins, `left_out`, `browser`), under the scope the stamp records. `--installed-only found nothing installed` means there is no install: route to `/alfred-code:setup` as above.
-
-**`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell`: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
-
-## 2. The plan - a script states it, never you
-
-`node "$TMP/repo/scripts/init-plan.js" --installed "$TMP/installed.json" --root . --plugin-root "${CLAUDE_PLUGIN_ROOT}"` (plus `--space <name>` on step 4's rule) - paste its lines byte-for-byte in ONE fenced block. It probes this machine and names, in order (unattended, followed by one `unattended:` line per ask of steps 3 to 6 - the answers, taken exactly):
-
-- `machine: <what> - present | missing: <command> | missing after uv: <command> | refresh: <command> | blocked: <why> | skip: <why>` -
-  uv, the pinned Python fetched through it, `csharp-ls` when `csharp-lsp` is kept, the picked
-  browsers (a firefox / webkit setup's install failed to download; a chrome / msedge the
-  machine does not have), the navigation-server index, then claude-hud's status line and compact
-  layout (the account's, or this project's `settings.local.json` for a claude-hud installed for this project alone). The command is the exact one to run.
-- `capture: <skill> - run: read <SKILL.md> | done: <output> exists | skip: <why>` - the three
-  captures in their fixed order, each only when the install lists its skill AND its seat
-  (`capture-awareness` has none, and runs whenever it is installed - each of its parts decides from disk).
-
-Nothing is inferred beyond those lines: a machine item the plan does not name is not this run's.
-
-## 3. Machine installs - ONE ask
-
-No `missing` or `refresh` line: one narration line, next step. Otherwise ONE AskUserQuestion,
-multi-select, one option per `missing` / `missing after uv` / `refresh` line - the label names the
-item, the description carries its exact command - every one pre-selected, 'install the selected'
-recommended (the servers that need them cannot start without them). A `blocked` line is not an
-option: name its fix once (the .NET SDK for csharp-ls, the browser for a picked chrome or msedge) -
-the user installs it; never attempt one. `claude-hud status line + compact layout` is one of those
-lines: its command (`hud-statusline.js`) writes the `statusLine` claude-hud's own setup would - into the
-account `settings.json`, or into this project's `.claude/settings.local.json` when claude-hud is installed for
-this project alone (2.2.0: the user picks its scope, this project by default) - then claude-hud's row of `meta/plugin-settings.json`, add-only - a status line that is not
-claude-hud's is kept and reported with `/claude-hud:setup`. Its command ends in
-`# adds <n> claude-hud keys: <names>`, a shell comment the description keeps, so keys a setup Skip
-left out are named before they land. `refresh` is claude-hud's own line in a stale shape: the description says it
-is replaced, after the command copies the account `settings.json` to `settings.json.bak.<time>`. A
-`skip` line is not an option either: one narration line (claude-hud absent or switched off, or the
-user's own status line with nothing else to add).
-
-Run the picked commands in plan order, uv first - the `after uv` ones need it. A fresh uv lands in a
-directory the running shell may not have on PATH yet: its installer prints where. When `uv` is not
-found afterwards, EVERY later command of this run carries that directory first -
-`PATH="<dir>:$PATH" <command>` - step 3's `after uv` commands and step 4's `memory.js init` alike,
-since the import it runs needs `uvx`. The navigation-server index, a browser download and the memory
-model (the service's ~166MB embedding model, fetched so its first start fits Claude Code's 30s connect
-budget) take minutes: start them in the background and go on to step 4, collecting each result before step 5's
-architecture capture (it navigates by symbol) and the close. Report each as installed, failed (its
-error line quoted) or skipped by the answer. A server this session started before its runtime existed
-connects only after a restart - the close names it.
-
-## 4. Memory - the level, then the notes import
-
-The shared memory database the `alfred-memory` server reads. Paste this table first:
-
-```
-| level | database | who shares it |
-|---|---|---|
-| global (Recommended) | ~/.alfred-memory/memory.db | every Claude account and Cursor on this machine |
-| scoped | ~/.alfred-memory/memory_<space>.db (memory_default.db with no space) | just this one Claude account, and Cursor installed with the same space |
-| project | <project>/.alfred/.alfred-memory/memory.db (under the data root), gitignored | this project only, from any account |
-```
-
-A 2.0.0 database under `~/.memory-mcp` (or `<project>/.memory-mcp`) is the same level: the memory
-server's launcher moves the folder at its next start once no server holds it, and links the old path
-so Cursor and an install not yet updated reach the same file; until then the level names it where it is.
-
-Then ONE AskUserQuestion with those three options, `global` marked Recommended - the whole point of
-shared memory. Picking `project` while this project's awareness docs name sibling repos
-(`<docs-path>/awareness/RELATED-PROJECTS-AWARENESS.md`) means their memories are not visible from
-here - one caveat line in the close.
-
-Apply it with the init-only entry point - no reinstall; under `.claude/` only the settings key and the
-stamp's `initialised:` line change:
-`node "$TMP/repo/scripts/install/memory.js" init --project-root . --level <answer> [--space <name>]`
-(`--space` when this session's account dir is `~/.claude-<name>`; the same `PATH` prefix as step 3
-after a fresh uv). It writes the level into the
-`ALFRED_CODE_MEMORY_DB` key the server's launcher reads (the settings file the stamp's scope names),
-keeps the database folder out of git at `project` level (the data root's `.gitignore` does it; a folder outside the root gets its own), imports this project's old `MEMORY.md` /
-`memory/*.md` notes into THAT database once through the memory service, and - only when the import
-succeeds - switches Claude's own memory off (`autoMemoryEnabled: false`; an install that found no notes
-already did, and the step reports it as already off) and marks the stamp
-`initialised: <date>`, the one signal the router reads and no other run writes. Report its lines: the
-level, the import count or WHY it stopped (no `uvx` is the usual one - step 3 skipped uv), and
-whether the switch-off happened; never claim it from the answer alone. A failed import leaves Claude's
-own memory ON, and the old note files are never deleted. It refuses a copy-route registration at
-another path (`.mcp.json`, else the account `.claude.json`) - name its
-`/alfred-code:update --memory-level <level>` line. The server
-this session runs still opens the database setup pointed it at until a restart - when the level is
-not `global`, the close names the restart.
-
-## 5. Captures - each SKILL.md followed inline
-
-For every `capture: ... - run: read <path>` line, in plan order: read that `SKILL.md` (through Bash)
-and follow it inline, start to finish - never a Skill call: the reads stay in this run, and the manual-only ones
-are denied by `guard-fresh-session-start.js`. It is this step's instructions for that capture:
-its relative `references/` and `scripts/` paths resolve from the SKILL.md's own directory, and a
-plugin-root placeholder in it arrives unexpanded - read it as the plugin root the plan's path
-carries. Its seat is installed (the plan checked), so a dispatch it names is made as written. A
-`done` or `skip` line is one narration line each - a done capture is re-run later by the user, never
-here.
-
-`capture-awareness` runs LAST, so its inventory reflects everything the captures above added. It asks
-its own questions on the way - the run book's gaps, and the sibling repos (typed via Other, or 'None' for a
-standalone repo) - and its script decides what needs rewriting.
-
-## 6. AGENTS.md - the user's call
-
-Not required - open with WHERE it lives and WHAT a yes changes, then AskUserQuestion (fill it in -
-recommended / skip); a 'no' ends the step cleanly. The installer seeded `.claude/AGENTS.md` from
-`stack/AGENTS.template.md` when the project had none; a AGENTS.md with the project's own text (root,
-`.claude/` or a part's own) is NEVER overwritten. On a yes, read
-`$TMP/repo/stack/skills/habits-adjust-agents-md/SKILL.md` (through Bash) and follow it inline, start to finish,
-with `<stack>` = the `$TMP/repo` path, pasted as a literal - it is this step's instructions, the one home of the fill: its script picks
-create (the seed is still unfilled) or improve (every change shown before it is written), and the
-check closes it. The captures just run are what it cites for structure. Never offer skill, agent or
-MCP changes here - that is `/alfred-code:configure`.
-
-## Close - one card
-
-**The card restates the OUTCOME of every step** - one line each, in step order: each machine item
-(installed, failed with its reason, skipped, blocked with its fix), the memory level and database and
-whether the import and the switch-off happened, each capture (ran and what it wrote, done, skipped
-and why), AGENTS.md (created, improved or skipped, with the check's last line). Then the user's own next steps as suggestions,
-each with its one reason: a restart when step 3 installed a runtime a server needed or step 4 chose
-a level other than `global`; `claude mcp list` after it, where every row should read connected;
-`${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/post-install.md` as the durable copy. Close the card
-with this line, verbatim: 'Nothing is pending on this run - these are yours to run when you choose.'
-The line is CONDITIONAL: print it only when the card carries nothing OWED - a blocked item the
-servers need, or a failed import, IS owed: name it and put the close through the ask instead
-(unattended: name it in the card, list every `unattended:` line under it, and end the run - no ask).
-
-## Unattended - `ALFRED_CODE_UNATTENDED=1`
-
-The first call printed `unattended: on`: nobody answers this run (a print-mode session, a benchmark
-cell, a CI job). Every ask it would put - its own, and each one a SKILL.md followed inline reaches -
-is answered by the run itself, never AskUserQuestion, by one rule:
-
-- Take the option marked Recommended, unless it is destructive or needs a person.
-- **Destructive** means the option deletes, overwrites or rewrites something this run did not create
-  and the project or the account owns: a file or a line the project wrote, a doc an earlier capture
-  wrote, a setting or status line already set, a stored memory. Adding is never destructive - a new
-  file, a new line, a new install, a setting where none was - and neither is moving what the stack
-  itself manages with every byte and its git history kept (update's docs-root move). A machine line in
-  `refresh` state is destructive (its command replaces the account's existing status line); a
-  `missing` one is not.
-- **Needs a person** means the option works only with free text typed via Other (a sibling list, a
-  name), or it ends the run on something a person must do (paste a fresh-session one-liner, restart).
-- Then, and on an ask with no option marked Recommended, take the option that changes nothing (skip,
-  none, stop here, run here); an ask with no such option is skipped with its step, and the close names
-  it. A multi-select ask takes every pre-selected option that is not destructive.
-- Log each answer as one line, `unattended: <question> -> <choice>`, with `(<why>)` when the choice is
-  not the Recommended option. Step 2's plan already carries the lines for init's own asks (machine
-  installs, memory level, AGENTS.md) - apply exactly those, never re-judge them.
-- The stack's files are read through the Bash tool, never the Read tool (above): outside the working
-  directory the Read tool asks first, and here nobody answers.
+Read only the file of the phase this run is: the other one is never this run's, and its text would ride in the
+cached prefix of every message the run sends (~8k tokens for the install phase, ~3.5k for the bootstrap).
 
 ## Clean up the temp dir - ALWAYS
 
-Remove `$TMP` per `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`, on EVERY exit path of THIS command.
+Remove `$TMP` per `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`, on EVERY exit path of THIS
+command: after a finished phase, after an abort, and after a blocker or a user 'no' that stops the run early. Then
+confirm the project tree holds only installed artifacts.
 
 ## Do not
 
-- Do not install anything the plan did not name, or run a machine command the answer did not pick.
-- Do not call a capture skill - read its SKILL.md and follow it; do not re-run a `done` capture.
-- Do not reinstall or re-select - no `install`, no `--selection`, no `--add` / `--drop`: that is `/alfred-code:setup` and `/alfred-code:configure`.
+- Do not run both phases in one session, or the bootstrap in the session the install phase ran in.
+- Do not call a sibling command or a skill this run installed - name it for the user.
 - Do not write the snapshot or working files into the project tree, and do not commit anything on the user's behalf.

@@ -1898,7 +1898,7 @@
       },
       "sites": [
         {
-          "file": "setup-plugin/commands/setup.md",
+          "file": "setup-plugin/references/init-install.md",
           "marker": "- **Any OS:** `node \"$TMP/repo/scripts/install/alfred-code.js\" install --source"
         },
         {
@@ -2091,7 +2091,7 @@
           "marker": "the line is addressed to the user, never acted on"
         },
         {
-          "file": "setup-plugin/commands/init.md",
+          "file": "setup-plugin/references/init-bootstrap.md",
           "marker": "follow it inline, start to finish - never a Skill call"
         },
         {
@@ -2128,7 +2128,7 @@
           "marker": "offer the resolver through AskUserQuestion"
         },
         {
-          "file": "setup-plugin/commands/setup.md",
+          "file": "setup-plugin/commands/init.md",
           "marker": "Every ask in this run goes through the AskUserQuestion tool"
         },
         {
@@ -2137,10 +2137,6 @@
         },
         {
           "file": "setup-plugin/commands/validate.md",
-          "marker": "Every ask in this run goes through the AskUserQuestion tool"
-        },
-        {
-          "file": "setup-plugin/commands/init.md",
           "marker": "Every ask in this run goes through the AskUserQuestion tool"
         }
       ]
@@ -3411,9 +3407,9 @@
       ]
     },
     "guided-stack-detection": {
-      "_note": "The artifact-scan stack-detection list setup and validate must share (javascript, the framework-suppresses-typescript rule included) - the copies drifted twice before this pin.",
+      "_note": "The artifact-scan stack-detection list init's install phase and validate must share (javascript, the framework-suppresses-typescript rule included) - the copies drifted twice before this pin.",
       "owner": {
-        "file": "setup-plugin/commands/setup.md",
+        "file": "setup-plugin/references/init-install.md",
         "marker": "`tsconfig.json` / `jsconfig.json` -> `typescript`"
       },
       "sites": [
@@ -3956,7 +3952,7 @@
       },
       "sites": [
         {
-          "file": "setup-plugin/commands/setup.md",
+          "file": "setup-plugin/commands/init.md",
           "marker": "or when that hook has already injected the ask into this turn"
         },
         {
@@ -3965,10 +3961,6 @@
         },
         {
           "file": "setup-plugin/commands/validate.md",
-          "marker": "or when that hook has already injected the ask into this turn"
-        },
-        {
-          "file": "setup-plugin/commands/init.md",
           "marker": "or when that hook has already injected the ask into this turn"
         }
       ]
@@ -3981,7 +3973,7 @@
       },
       "sites": [
         {
-          "file": "setup-plugin/commands/setup.md",
+          "file": "setup-plugin/references/init-install.md",
           "marker": "Nothing is pending on this run - these are yours to run when you choose."
         },
         {
@@ -3997,7 +3989,7 @@
           "marker": "Nothing is pending on this run - these are yours to run when you choose."
         },
         {
-          "file": "setup-plugin/commands/init.md",
+          "file": "setup-plugin/references/init-bootstrap.md",
           "marker": "Nothing is pending on this run - these are yours to run when you choose."
         }
       ]
@@ -4107,7 +4099,7 @@
     "guided-narration-voice": {
       "_note": "The guided walks carry the house voice themselves (single dashes, single quotes) - a fresh or refreshed install may have no alfred-interaction rule loaded, so the command text is the only source (measured: a first-run narration line opened with an em-dash).",
       "owner": {
-        "file": "setup-plugin/commands/setup.md",
+        "file": "setup-plugin/commands/init.md",
         "marker": "House voice in every line this run emits"
       },
       "sites": [
@@ -4121,10 +4113,6 @@
         },
         {
           "file": "setup-plugin/commands/update.md",
-          "marker": "House voice in every line this run emits"
-        },
-        {
-          "file": "setup-plugin/commands/init.md",
           "marker": "House voice in every line this run emits"
         },
         {
@@ -5225,7 +5213,7 @@
     "guided-one-snapshot-preamble": {
       "_note": "The four source-reading commands open with the same one-snapshot contract paragraph - resolve once into $TMP/repo (the plugin cache first, a download only when there is none), every tool from it, --source to the installer, $TMP removed on every exit path. The protocol file owns the mechanics; this pins the paragraph the commands carry, since command bodies do not co-load.",
       "owner": {
-        "file": "setup-plugin/commands/setup.md",
+        "file": "setup-plugin/commands/init.md",
         "marker": "THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing"
       },
       "sites": [
@@ -5240,10 +5228,6 @@
         {
           "file": "setup-plugin/commands/validate.md",
           "marker": "THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing"
-        },
-        {
-          "file": "setup-plugin/commands/init.md",
-          "marker": "THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing"
         }
       ]
     },
@@ -5255,7 +5239,7 @@
       },
       "sites": [
         {
-          "file": "setup-plugin/commands/setup.md",
+          "file": "setup-plugin/references/init-install.md",
           "marker": "Presence, never the value"
         },
         {
@@ -5284,7 +5268,7 @@
       },
       "sites": [
         {
-          "file": "setup-plugin/commands/setup.md",
+          "file": "setup-plugin/references/init-install.md",
           "marker": "Never print, echo back, or ask for a credential VALUE"
         },
         {
@@ -5298,9 +5282,9 @@
       ]
     },
     "guided-skeleton-invariant": {
-      "_note": "Every run prints every numbered banner exactly once in order; a step that does not apply prints its banner plus one no-op line. setup and configure carry the paragraph verbatim (11 and 13 steps).",
+      "_note": "Every run prints every numbered banner exactly once in order; a step that does not apply prints its banner plus one no-op line. init's install phase and configure carry the paragraph verbatim (11 and 13 steps).",
       "owner": {
-        "file": "setup-plugin/commands/setup.md",
+        "file": "setup-plugin/references/init-install.md",
         "marker": "The skeleton is INVARIANT - the stability contract"
       },
       "sites": [
@@ -5311,9 +5295,9 @@
       ]
     },
     "guided-prereq-report-shape": {
-      "_note": "The prerequisite check output has one fixed three-block shape: the verdict line, the closed selection by category, the blocker/warning lists. setup and configure carry it verbatim.",
+      "_note": "The prerequisite check output has one fixed three-block shape: the verdict line, the closed selection by category, the blocker/warning lists. init's install phase and configure carry it verbatim.",
       "owner": {
-        "file": "setup-plugin/commands/setup.md",
+        "file": "setup-plugin/references/init-install.md",
         "marker": "Fixed shape, three blocks:** (1) one verdict line - `blockers: N · warnings: N`"
       },
       "sites": [
@@ -6280,9 +6264,9 @@
       ]
     },
     "table-before-question": {
-      "_note": "A table or report the user decides from is pasted into the message BEFORE the ask about it. Measured twice in one setup run (agents, skills): the table ran, its tool result was collapsed in the UI, and the ask went out with no table on screen. The narrate-dont-trace protocol banned pasted tool output, so the exception is stated where that ban lives; guard-layer-table.js in the plugin enforces it.",
+      "_note": "A table or report the user decides from is pasted into the message BEFORE the ask about it. Measured twice in one setup run - the install phase's predecessor (agents, skills): the table ran, its tool result was collapsed in the UI, and the ask went out with no table on screen. The narrate-dont-trace protocol banned pasted tool output, so the exception is stated where that ban lives; guard-layer-table.js in the plugin enforces it.",
       "owner": {
-        "file": "setup-plugin/commands/setup.md",
+        "file": "setup-plugin/references/init-install.md",
         "marker": "Table before question - no exceptions."
       },
       "sites": [

@@ -1,9 +1,9 @@
-# The guided walk - one text for setup and configure
+# The guided walk - one text for init's install phase and configure
 
-The six-layer selection walk, read by `/alfred-code:setup` and `/alfred-code:configure` so the two
+The six-layer selection walk, read by `/alfred-code:init`'s install phase and `/alfred-code:configure` so the two
 can never drift apart. It runs in one of two modes, and the calling command names which:
 
-- **FRESH** (setup) - a first install. The baseline is the RECOMMENDATIONS: what `always` and the
+- **FRESH** (init's install phase) - a first install. The baseline is the RECOMMENDATIONS: what `always` and the
   confirmed stacks seed, plus what the evidence scan matched. One selection round per layer.
 - **DELTA** (configure) - an existing install. The baseline is what is INSTALLED, read back by the
   installer itself (`$TMP/installed.json`, the `--plan-out` file of the command's step 1). No

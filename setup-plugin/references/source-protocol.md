@@ -1,6 +1,6 @@
-# The one-download protocol - shared by the setup, init, update, configure, validate and uninstall commands
+# The one-download protocol - shared by the init, update, configure, validate and uninstall commands
 
-The six downloading commands (`/alfred-code:setup`, `init`, `update`, `configure`, `validate`,
+The five downloading commands (`/alfred-code:init` - both phases - `update`, `configure`, `validate`,
 `uninstall`; `status` never downloads) drive their whole run from ONE source snapshot. This file is the
 shared contract - each command's steps say WHEN, this file says WHAT holds. The commands cite it as
 `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`; read it in ONE Bash `cat`, never in

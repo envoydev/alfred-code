@@ -416,7 +416,7 @@ function initMemory(argv, { which, runNode, homedir, log = console.log, err = co
     if (!out.switchedOff) return 1;
     const stamp = require('./stamp.js');
     if (stamp.markInitialised(claudeDir)) log(`memory: initialised - the stamp records it, so no later run defers to /alfred-code:init`);
-    else log('  !! memory: no install stamp to mark - run /alfred-code:setup first');
+    else log('  !! memory: no install stamp to mark - run /alfred-code:init first');
     return 0;
 }
 

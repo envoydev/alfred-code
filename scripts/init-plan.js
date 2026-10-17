@@ -9,7 +9,7 @@
 //   machine: <what> - present | missing: <command> | missing after uv: <command> | refresh: <command> | blocked: <why> | skip: <why>
 //     What the kept MCPs need before they can start, probed on this machine, in install order: uv,
 //     the pinned Python fetched through it, csharp-ls when csharp-lsp is kept, the picked playwright
-//     browsers, the serena index and the memory service's embedding model. Setup's install already downloaded a picked firefox / webkit, so
+//     browsers, the serena index and the memory service's embedding model. The install phase already downloaded a picked firefox / webkit, so
 //     one is here only when that download failed; chrome and msedge run the machine's own browser,
 //     probed like stack-select's msedge check, and one that is not there is `blocked` with its fix.
 //     Last, claude-hud's status line + compact layout (hud-statusline.js, the account dir CLAUDE_CONFIG_DIR,
@@ -144,7 +144,7 @@ function plan({ inv, root, platform = process.platform, arch = process.arch, env
 
     // The memory service's embedding model (~166MB), fetched ahead: its first start downloads it, 33s cold
     // against Claude Code's 30s connect budget, and a server that misses it is cached as failed (live check F2).
-    // Setup's install fetches it where uvx already was; here it follows the uv this init installs.
+    // The install phase fetches it where uvx already was; here it follows the uv this bootstrap installs.
     const marker = path.join(home, '.cache', 'mcp_memory', 'onnx_models', 'all-MiniLM-L6-v2', 'onnx', 'model.onnx');
     add('memory model', (probe.file || fs.existsSync)(marker) ? 'present' : afterUv,
         `node "${path.join(REPO, 'stack', 'hooks', 'memory.js')}" warm --root "${root}" --plugin-root "${REPO}"`);

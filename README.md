@@ -39,10 +39,11 @@ claude plugin install alfred-code@envoydev --scope project
 **2. Set it up** - inside Claude Code:
 
 ```text
-/alfred-code:setup
+/alfred-code:init
 ```
 
-It scans the project, shows what it recommends and why, and installs what you keep.
+It scans the project, shows what it recommends and why, and installs what you keep. Restart, then type it again: the
+second run finishes the one-time set-up.
 
 **3. Restart Claude Code, then finish:**
 
@@ -90,12 +91,11 @@ Each stack has three seats: a **designer** plans the change, an **implementer** 
 
 ## Commands
 
-The first time: **setup**, restart, **init**. After that: **update** when a release lands.
+The first time: **init**, restart, **init** again. After that: **update** when a release lands.
 
 | Command | What it does |
 | --- | --- |
-| `/alfred-code:setup` | First install: scan, recommend, install |
-| `/alfred-code:init` | One-time finish after the restart |
+| `/alfred-code:init` | First install: scan, recommend, install - then, after the restart, the one-time finish |
 | `/alfred-code:update` | Move to the newest release |
 | `/alfred-code:configure` | Add or remove skills, agents and servers |
 | `/alfred-code:status` | Show what is on and what gets used |

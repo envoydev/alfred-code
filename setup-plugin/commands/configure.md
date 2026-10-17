@@ -1,14 +1,14 @@
 ---
-description: "ADJUST an existing Alfred Code install - inventory what is actually installed, report what an update would bring (the stamp compare), pick WHICH areas to adjust, then walk the chosen areas with setup's own walk in DELTA mode (one shared walk text), in dependency order: each layer shows ONE numbered table of the whole catalog with what is installed and what is locked (the required-by reason shown), then one call of ADD and DROP option questions (a Pick option opens grouped multi-select choices); an environment area adjusts the stack's own env values (the environment.json catalog) on the same consent. Every scope - project, user or local - and a move between them. Drops cascade BOTH ways, always with consent: what a dropped item alone pulled in is offered for removal at its own layer, and dropping a required item offers the dependent rules/agents that hold it for removal with it - nothing is ever removed silently. Prerequisite check, the installer's update action, explicit removals, and an OFFERED (never forced) AGENTS.md reconcile close the run. NOT for a first install - that is the sibling setup command; for a plain refresh (+ prune of upstream removals) the sibling update command is the shorter path."
+description: "ADJUST an existing Alfred Code install - inventory what is actually installed, report what an update would bring (the stamp compare), pick WHICH areas to adjust, then walk the chosen areas with init's install-phase walk in DELTA mode (one shared walk text), in dependency order: each layer shows ONE numbered table of the whole catalog with what is installed and what is locked (the required-by reason shown), then one call of ADD and DROP option questions (a Pick option opens grouped multi-select choices); an environment area adjusts the stack's own env values (the environment.json catalog) on the same consent. Every scope - project, user or local - and a move between them. Drops cascade BOTH ways, always with consent: what a dropped item alone pulled in is offered for removal at its own layer, and dropping a required item offers the dependent rules/agents that hold it for removal with it - nothing is ever removed silently. Prerequisite check, the installer's update action, explicit removals, and an OFFERED (never forced) AGENTS.md reconcile close the run. NOT for a first install - that is the sibling init command; for a plain refresh (+ prune of upstream removals) the sibling update command is the shorter path."
 disable-model-invocation: true
 ---
 
 # Configure Alfred Code - adjust an existing install
 
 You are adjusting an Alfred Code install that already exists. Same discipline and the same walk as
-`setup`: drive it interactively, walk the selection one layer at a time, always show the
+`init`'s install phase: drive it interactively, walk the selection one layer at a time, always show the
 prerequisite report before running, never run past an unmet blocker. `stack-select.js` does the
-deterministic work; you orchestrate. Two differences from `setup`: the walk runs in DELTA mode -
+deterministic work; you orchestrate. Two differences from that install phase: the walk runs in DELTA mode -
 the baseline selection is what is INSTALLED, not the recommendations, so every layer is a straight
 modify with no recommended phase - and the action is `update`, not `install`. (For a no-questions refresh that also prunes what upstream removed, the
 sibling `update` command is the shorter path - this command is for CHOOSING what changes.)
@@ -83,7 +83,7 @@ comparable banner by banner; the content varies, the skeleton never does.
   from the install records the hooks read (`alfred-code.stamp`, a
   copied `hooks/docs.js`) in this repo, its git top level or a worktree's main checkout - never
   from `.claude/skills` or `.claude/agents`, which a plugin-route install may not have.
-  `not-installed` -> stop and route to the sibling `/alfred-code:setup` command; there is nothing
+  `not-installed` -> stop and route to the sibling `/alfred-code:init` command (its install phase); there is nothing
   to configure yet. `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:configure from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here. `legacy-unstamped` (a legacy copy-route install that never wrote a stamp) -> stop and route to `/alfred-code:update`,
   which reads its picks off disk and writes the stamp; configure runs after it. `installed` / `initialised` -> go on. Every scope keeps the stamp, the library copies and the
   settings in the project's `.claude/`, so there is one mode.
@@ -109,7 +109,7 @@ comparable banner by banner; the content varies, the skeleton never does.
   removal. `left_out` lists what the user switched off - a denied seat, an item of a parked retired entry -
   as selection lines; the walk leaves it off unless the user picks it. Three signals in
   `$TMP/plan.out`, none printed to the user: `error: --installed-only found nothing installed` means
-  there is nothing to configure - route to `/alfred-code:setup`; `plan routes: skills=<plugin|copy>
+  there is nothing to configure - route to `/alfred-code:init`; `plan routes: skills=<plugin|copy>
   hooks=<plugin|copy> mcps=<plugin|copy>` names the routes; `plan answered: hooks=<yes|no>
   agents=<yes|no>` says which off-states the read found evidence of. `agents=no` with
   `skills=plugin` means the plugin listing could not be read or the core entry is parked - stop and
@@ -192,7 +192,7 @@ installer run at step 12, which works from the whole selection - and gets one na
 Read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/walk.md` AT step 3, never earlier - a run that stops at step 1 or
 skips to step 11 never needs it (audit 2026-10-11, session a9e06780: read at the start, ~7.6k re-sent on 5 requests
 of a run that stopped at step 1) - and run it in **DELTA**
-mode - setup's own walk, over the installer's read-back instead of the recommendations, so the two
+mode - the install phase's own walk, over the installer's read-back instead of the recommendations, so the two
 cannot drift. The layers run in dependency order, rules -> agents -> skills -> hooks -> MCPs ->
 plugins (only the areas picked at step 2), over `raw.json` and `dropped.json` seeded from step 1's
 `$TMP/installed.json`, and every layer has the same three beats: recompute quietly (`stack-select.js
@@ -550,7 +550,7 @@ THIS command: after a successful update, after an abort, after a blocker, and af
 ## Do not
 
 - Do not fall back to a full re-install - this is the update path; a from-scratch install is the
-  sibling `setup` command. Never present a layer question without its
+  sibling `init` command's install phase. Never present a layer question without its
   `[step n/13 - <name>] ... · next: <name>` banner or without the full-catalog table.
 - Never drop a locked row on the user's behalf, never remove an orphan silently, and never
   re-offer an orphan the user chose to keep - the reason column is the answer, the dependent's

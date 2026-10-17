@@ -797,7 +797,7 @@
     },
     {
       "file": "guard-fresh-session-start.js",
-      "matcher": "@UserPromptExpansion:(^|[^A-Za-z0-9_-])((alfred-)?(loop-[a-z][a-z0-9-]*|capture-[a-z][a-z0-9-]*|task-[a-z][a-z0-9-]*|issue-[a-z][a-z0-9-]*)|security-review|init|setup|update|configure|validate)$",
+      "matcher": "@UserPromptExpansion:(^|[^A-Za-z0-9_-])((alfred-)?(loop-[a-z][a-z0-9-]*|capture-[a-z][a-z0-9-]*|task-[a-z][a-z0-9-]*|issue-[a-z][a-z0-9-]*)|security-review|init|update|configure|validate)$",
       "event": "",
       "note": "the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - UserPromptExpansion fires on that typed command and names it; the matcher (a regex with no colon, which the row format splits on) lists the orchestration commands under either spelling - every task-* and loop-* name, a project's own and a digit included (audit 2026-10-14 HK06: a typed /task-migrate-v2 auto-mode never spawned it) - so no ordinary prompt spawns the hook; it injects the ask, never blocks (a blocked expansion shows its reason to the user only). `auto-mode` as the first word of command_args on a task, loop or issue command (the user's ruling of 2026-10-15; anywhere else it is the task's text) writes the run's session-named AUTO stamp before the run and injects the auto-mode contract instead of any offer. Every capture-* and issue-* name spawns it too (the user's ruling of 2026-10-15): each typed task-*, capture-*, loop-* or issue-* command gets the MODE BANNER after whatever else it injects - two lines its first reply opens with, auto-mode ON or OFF and how the session meets a full context (it compacts, or offers a fresh session at its trigger), with the window numbers."
     },

@@ -1,47 +1,17 @@
----
-description: "FRESH install of Alfred Code into a project - ask scope + profile up front, then detect the OS + analyse the project, show what it needs and why (the evidence scan plus validate's missing and evidence-gap checks, in a fresh-install mode), and walk the selection in six dependency-ordered layers (rules -> agents -> skills -> hooks -> MCPs -> plugins): each layer shows ONE numbered table of the whole catalog (recommended pre-selected, locked rows carrying the required-by reason), then one selection ask - keep the marked rows, pick groups to add or drop from options, add every row, or only the locked rows. Prerequisite check, install, the environment, permission and plugin-settings merges, then a closing card that ends on the restart and /alfred-code:init, the one-time bootstrap (services, memory, captures, AGENTS.md). NOT for an existing install - that routes to configure."
-disable-model-invocation: true
----
+# The install phase - `/alfred-code:init` with nothing installed
 
-# Set up Alfred Code - fresh install
-
-You are installing Alfred Code FROM SCRATCH. First run `node "${CLAUDE_PLUGIN_ROOT}/scripts/install/stamp.js" state .` - one word (two for a worktree), read from the same install records the hooks read (`alfred-code.stamp`, a copied `hooks/docs.js`) in this repo, its git top level or a worktree's main checkout. `not-installed` -> go on. `legacy-unstamped` (a legacy copy-route install that never wrote a stamp - no install record, but two of the stack's own signatures in `.claude/`: its hook files, its env keys, three or more of its skill, seat or rule names) -> ONE AskUserQuestion: 'Update this install (Recommended)' - update reads its picks off disk, each old name under its new one, prunes the old copies and writes the stamp, so nothing the project already runs is re-picked by hand - or 'Fresh setup anyway' - this walk from scratch, its install pruning the old copies the same way. 'Update this install' -> stop and route to `/alfred-code:update`; 'Fresh setup anyway' -> go on. `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:setup from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here. `installed` or `initialised` -> stop and route to `/alfred-code:configure`, which adjusts an install; a plain refresh is `/alfred-code:update`. NAME the command for the USER to type and end the turn: both are `disable-model-invocation`, so a Skill call from this run is denied (measured: a run asked WHICH sibling, then tried to invoke it and took the denial), and the sibling is better off in a FRESH session anyway - this command's own body, ~9.4k tokens of it, stays in the cached prefix of every message the re-routed run then sends. This command selects and installs; the machine-level services, the memory level, the captures and the AGENTS.md fill are `/alfred-code:init`'s, run by the user in the session after the restart this run ends on. Work the ladder in order and drive it interactively; the deterministic work is done by `stack-select.js`, you orchestrate. Every install has a project root - the git repo's top level, else the current directory (the installer's own rule) - so there is no account-only install. Two modes, detected silently before the first question: **project mode** (the normal case - cwd is in a git repo; the selection is decided from the project itself) and **no-repo mode** (no git repo: the current directory becomes the root, confirmed first).
-
-**This run needs NO conversation context - so it is worth MOVING, but only out of a session that
-is actually loaded.** Measure before you ask: this session's own per-message context is `input +
-cache_read + cache_creation` off the last assistant message in the transcript. Ask ONLY when that
-figure is past the same trigger `guard-fresh-session-start.js` uses - the tier's own absolute
-trigger, `ALFRED_CODE_CONTEXT_WINDOW_FOR_1M` (default 400,000) on a window of 1M or more,
-`ALFRED_CODE_CONTEXT_WINDOW_FOR_300K` (default 280,000) on one of 300k up to 1M, or
-`ALFRED_CODE_CONTEXT_WINDOW_FOR_200K` (default 180,000) below that - the window comes from the session
-model's row in `.claude/hooks/model-windows.json`, else `ALFRED_CODE_CONTEXT_WINDOW_DEFAULT` (default 300,000) (a FIRST setup has neither yet: take
-the window this session's own model line states - '1M context' is 1,000,000 - and the 300,000 default window only when it states none) - or when that hook has already
-injected the ask into this turn. Below the
-trigger, or when the figure cannot be read at all, or with `ALFRED_CODE_AUTO_COMPACT=1` or the tier's trigger at `0` (no fresh-session offer
-then), SKIP the ask silently and start step 1: an ask
-with no measurement behind it is the failure this replaced (measured: it fired on the FIRST message
-of a brand-new session, twice in one run, and could quote no number when the user challenged it).
-Never author the decision in prose either way.
-
-When it does fire, put it through AskUserQuestion: run here anyway, or run in a fresh session
-(recommended), quoting the figure you measured - never one measured in some other session. Every
-answer names its next action: fresh session -> give the paste-ready one-liner and end the turn;
-run here -> start step 1 now; not now -> say what is owed and end the turn. If a redirect displaces
-the ask, re-offer it ONCE. Measured: this command's siblings entered at 131,345 and 168,516 tokens
-per message with no ask at all, and one of them authored its own prose decision that was never put
-to the user.
-
-**THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing but a newer release** - read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md` in ONE Bash `cat` before step 1 and hold the whole run to it: resolve the snapshot once into `$TMP/repo` - copied from the newest valid plugin-cache entry, downloaded only when there is none (the reference owns the fallback), use every tool from that snapshot, hand it to the installer with `--source` in step 11, and remove `$TMP` per the 'Clean up' section on every exit path. The protocol's 'Narrate, don't trace' section governs every tool call in this run: one quiet call per recompute, no pasted tool output except the decision tables, one narration line between steps.
+`/alfred-code:init` reads this file when the install records read `not-installed` (or `legacy-unstamped` and the
+user chose a fresh install). Its preamble - the fresh-session measurement, the snapshot protocol, the AskUserQuestion
+rule and the house voice - holds for every line below. This phase selects and installs; the machine-level services,
+the memory level, the captures and the AGENTS.md fill are the bootstrap phase's - `/alfred-code:init` typed again in
+the session after the restart this phase ends on. Work the ladder in order and drive it interactively; the
+deterministic work is done by `stack-select.js`, you orchestrate. Every install has a project root - the git repo's
+top level, else the current directory (the installer's own rule) - so there is no account-only install. Two modes,
+detected silently before the first question: **project mode** (the normal case - cwd is in a git repo; the selection
+is decided from the project itself) and **no-repo mode** (no git repo: the current directory becomes the root,
+confirmed first).
 
 **Table before question - no exceptions.** Any table or report the user decides from (every layer's `stack-select.js --table` catalog, the `plugin-settings.js` report) is pasted into YOUR message, byte-for-byte in a fenced block, BEFORE the AskUserQuestion that asks about it - never after, never only in the ask's preview panel, never replaced by 'shown above' or a prose summary. A tool result is collapsed in the UI, so a table you only ran is a table the user never saw (measured: agents and skills asks answered 'I do not see any table'). This is the one sanctioned exception to 'no pasted tool output', and the plugin's `guard-layer-table.js` hook denies an ask whose table is missing.
-
-**Every ask in this run goes through the AskUserQuestion tool** - concrete options, the recommended one marked, free text via Other; a prose question or a bare stop-and-wait is invalid (measured: prose asks were skipped in live runs while tool-shaped asks were answered every time). A plain-text option list is the fallback only where the harness lacks the tool.
-
-**House voice in every line this run emits** - narration, tables and the asks alike: single
-dashes, never em-dashes, and single quotes in prose. A fresh or refreshed install may have no
-`.claude/rules/alfred-interaction.md` loaded at all, so this command's own text is the only place
-the voice can come from (measured: a first-run narration line opened with an em-dash, on the one
-surface where the rule forbidding it cannot yet exist).
 
 ## The ladder - announce every step
 
@@ -144,12 +114,12 @@ print.
 ## The walk - steps 4-9, one layer at a time
 
 Read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/walk.md` before step 4 and run it in **FRESH**
-mode - the one walk text this command shares with `/alfred-code:configure`, so the two cannot drift.
+mode - the one walk text this phase shares with `/alfred-code:configure`, so the two cannot drift.
 The layers run in dependency order, rules -> agents -> skills -> hooks -> MCPs -> plugins, over one
 `raw.json` of direct picks, and every layer has the same three beats: recompute quietly, paste the
 tool's full-catalog table in a fenced block after the `[step n/11 - <layer>]` banner, then one
 selection ask (Keep the marked rows / Pick ... / Add every ... / Only the locked rows, then one grouped multi-select call on 'Pick'; typing is only through Other). The file owns the table rules, the
-selection round and each layer's notes; the steps below add only what is this command's own.
+selection round and each layer's notes; the steps below add only what is this phase's own.
 
 ## 4. Rules
 
@@ -275,20 +245,17 @@ action - revoke the old token, fill in a credential, run a rotation - IS pending
 put the close through the ask instead (measured: one close stated 'Still owed: revoke the old
 token in Sentry's dashboard' and this line in the same message).
 
-Report what still needs a hand: `/plugin` switches a picked browser off or on (on the MCP copy route every picked browser is a live `.mcp.json` server and `/mcp` switches it), and that the first `claude plugin install` may prompt to trust. The statusline itself needs no hand step - `/alfred-code:init` (item 2 below) sets it through `hud-statusline.js` and only names `/claude-hud:setup` when it finds a status line that is not claude-hud's and keeps it. Then, AFTER the summary, print the next-steps card - built from what THIS run actually installed, never naming a command whose skill is absent. The card ENDS on the restart and `/alfred-code:init` (item 2) - the one step everything else depends on. Name `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/post-install.md` as the durable copy the user can re-read later (it adds the gitignore semantics):
+Report what still needs a hand: `/plugin` switches a picked browser off or on (on the MCP copy route every picked browser is a live `.mcp.json` server and `/mcp` switches it), and that the first `claude plugin install` may prompt to trust. The statusline itself needs no hand step - `/alfred-code:init` (item 2 below) sets it through `hud-statusline.js` and only names `/claude-hud:setup` when it finds a status line that is not claude-hud's and keeps it. Then, AFTER the summary, print the next-steps card - built from what THIS run actually installed, never naming a command whose skill is absent. The card ENDS on the restart and `/alfred-code:init` again (item 2) - its bootstrap phase, the one step everything else depends on. Name `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/post-install.md` as the durable copy the user can re-read later (it adds the gitignore semantics):
 
 1. **Git hygiene (project mode - a no-repo directory skips it).** Suggest ignoring the machine-local artifacts this install creates - only entries that apply to the selection and are not already covered by the project's ignore rules: the lines `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/post-install.md` section 2 gives (`.claude/*` with `!.claude/AGENTS.md`, so the seeded instruction file stays committed; `.mcp.json` only on the MCP copy route), plus runtime dirs when present in the tree (`.slopwatch/`, or a 2.0.0 `.serena/` / `.playwright/` not moved yet). The data root (`.alfred/` by default - the docs, the navigation index, browser profiles, a project memory database) carries its own `.gitignore`, which keeps everything but the docs out of git; run `node "$TMP/repo/scripts/git-hygiene.js" --root .` before `$TMP` is removed - a `git-hygiene: offer <root>/` line (nothing under it is committed: local docs, or the docs root elsewhere, so git still lists it as untracked) adds `/<root>/` to the lines, a `none (...)` line adds nothing. Show the exact lines first, then one AskUserQuestion with BOTH homes as options: the committed `.gitignore` (recommended), `.git/info/exclude` for a local-only ignore that touches no committed file, or skip; write only on consent - the data root's line through `node "$TMP/repo/scripts/git-hygiene.js" --root . --apply gitignore|exclude` (it anchors the line and, in the exclude file, spells it from the repository's top level).
 
-2. **Restart, then `/alfred-code:init`** - restart Claude Code from the project root (MCP servers connect and skills, agents and rules are inventoried at launch; hooks and the settings.json env need no restart - they are live on the next tool call), then type `/alfred-code:init` in the NEW session: it installs what the kept MCPs need to start (uv, the pinned Python, csharp-ls, the picked browsers, the navigation-server index - one ask first; step 10's `init:` lines are the first reason when there are any), asks the memory level and imports the old notes, runs the captures this install carries, and offers the AGENTS.md fill. `claude mcp list` after the restart confirms the servers connected - one that timed out usually lacks what init installs.
-
-## Clean up the temp dir - ALWAYS
-
-Remove `$TMP` per `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`, on EVERY exit path of THIS command: after a successful install, after an abort, and after a blocker or a user 'no' that stops the run early. Then confirm the project tree holds only installed artifacts.
+2. **Restart, then `/alfred-code:init` again** - restart Claude Code from the project root (MCP servers connect and skills, agents and rules are inventoried at launch; hooks and the settings.json env need no restart - they are live on the next tool call), then type `/alfred-code:init` in the NEW session: it finds the install and runs its bootstrap phase - it installs what the kept MCPs need to start (uv, the pinned Python, csharp-ls, the picked browsers, the navigation-server index - one ask first; step 10's `init:` lines are the first reason when there are any), asks the memory level and imports the old notes, runs the captures this install carries, and offers the AGENTS.md fill. `claude mcp list` after the restart confirms the servers connected - one that timed out usually lacks what init installs.
 
 ## Do not
 
 - Do not install the full set - always go through the walk, and never present a layer question without its `[step n/11 - <name>] ... · next: <name>` banner or without the full-catalog table (a partial table hides choices; a later 'want these too?' question is the failure this shape exists to prevent).
 - Do not deselect a locked row on the user's behalf, and never drop one silently - the reason column is the answer, the reopen offer is the remedy.
 - Do not paste tool output other than the decision tables, or run chatty per-file commands - the 'Narrate, don't trace' contract holds for the whole run.
-- Do not call a skill this run just installed. Skills are inventoried at session start, so one written to disk seconds ago is not in the running registry and the call returns `Unknown skill: <name>` (measured) - a wasted round trip the reload item in the closing card already accounts for. The captures are `/alfred-code:init`'s, after the restart - name init in the card, never a capture.
+- Do not call a skill this run just installed. Skills are inventoried at session start, so one written to disk seconds ago is not in the running registry and the call returns `Unknown skill: <name>` (measured) - a wasted round trip the reload item in the closing card already accounts for. The captures are the bootstrap phase's, `/alfred-code:init` after the restart - name init in the card, never a capture.
 - Do not skip a layer, the selection round, or the prerequisite gate. Do not write the archive, the extracted repo, or the working files into the project tree, and do not leave `$TMP` behind on any exit path. Do not commit anything on the user's behalf.
+

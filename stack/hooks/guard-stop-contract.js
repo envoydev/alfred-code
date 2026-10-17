@@ -383,7 +383,7 @@ function closeProse(text) {
     .replace(NEGATED_PENDING_RE, ' ');
 }
 // The one close that names a next step WITHOUT stalling: the run says so. The guided plugin walks
-// (setup / configure / update / validate) end on a suggestion card - reload the session, re-run the
+// (init / configure / update / validate) end on a suggestion card - reload the session, re-run the
 // capabilities capture - and close it with one verbatim line (pinned in shared-rules.json):
 // 'Nothing is pending on this run - these are yours to run when you choose.'
 // That sentence is the ambiguity the doneClose branch exists to
@@ -940,7 +940,7 @@ function freshPickedThisTurn() {
 // THE RESUME BLOCK (the user's ruling, 2026-10-15): a close after the user picked the fresh-session hand-off told them to
 // 'type /clear, then paste the resume block above' with no block anywhere on screen. So that close must carry what to
 // paste in a fenced block, which copies whole. The pick is a hand-off label (resume / start / continue ... in a fresh or
-// new session), never a setting that merely names one ('Offer a fresh session', the setup walk's trigger answer).
+// new session), never a setting that merely names one ('Offer a fresh session', the install walk's trigger answer).
 const RESUME_PICK_RE = /"="\s*(?:resume|start|continue|run|open|move|hand)\b[^"\n]*\b(?:fresh|new) (?:session|chat)\b/i;
 function resumePickedThisTurn() {
   try {
@@ -1294,7 +1294,7 @@ const NAV_EDIT_RE = /^mcp__(?:plugin_(?:alfred-)?navigation_)?(?:alfred-)?naviga
 const DONE_GATE_SKILL_RE = /(?:^|:)(?:alfred-)?habits-done-gate$/;
 const DISPATCH_TOOL_RE = /^(?:Agent|Task)$/;
 const PROSE_FILE_RE = /\.(?:md|mdx|markdown|txt|rst|adoc)$/i;
-// git's own bookkeeping, never a build input: setup's git-hygiene write lands here (B-M5)
+// git's own bookkeeping, never a build input: the install phase's git-hygiene write lands here (B-M5)
 const GIT_OWN_RE = /(?:^|[\\/])\.git(?:[\\/]|$|ignore$|attributes$)/i;
 // a shell write that makes the whole file, so deleting that path later in the turn undoes it (C2)
 const MAKES_WHAT_RE = /^(?:a shell redirection|a `tee` write|a copy\/move destination|an interpreter write)$/;

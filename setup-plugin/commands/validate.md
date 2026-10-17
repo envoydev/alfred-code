@@ -1,5 +1,5 @@
 ---
-description: "RECONCILE an existing Alfred Code install to THIS project - detect the project's real stacks by artifact (setup's step-3 scan), inventory what is installed at any scope (project, user or local), then walk the selection one layer at a time (rules -> agents -> skills -> hooks -> MCPs -> plugins) showing, per layer, what is REDUNDANT (installed but its whole owning stack is absent - remove?) and what is MISSING (the detected stacks' + baseline closure not installed here - add?), each pre-marked with its reason and taken on per-item consent. Shared items, deliberate non-stack extras, and the always-baseline already installed are never touched. Detection evidence for every absent stack is shown BEFORE the walk so a mis-detection is vetoable. After the mechanical walk, a JUDGMENT step corroborates the advisory items' non-use in the code (named greps for the skill's domain, its own do-not-load exclusions, the docs' own citations of it) reviews the remainder against the project's stated conventions incl. version pins (a latest-major guidance tool fights a project pinned older - a citable conflict), mirrors gate 1 for ADDS (an uninstalled skill whose domain the code provably touches though no manifest signal covers it - only from trails the run itself surfaced, never a speculative catalog sweep), and hunts functional OVERLAP among kept items (two items covering one capability, the project docs citing only one - proposed only with the survivor's unique gap named) - drops and adds proposed only with gate evidence, each RANKED (MATERIAL/MINOR) and readable as what-it-does / why-marginal-here / the-keep-exception / recommendation, visibly labeled as judgment, never mixed with the signal tiers; plus a plain-text DORMANT advisory naming installed occasion-bound items (their own descriptions mark them release-/upgrade-/audit-time) with each one's honest idle cost and off lever - informational, acted on only by explicit request. Accepted adds and removes apply in ONE installer run over the read-back (--add / --drop) - the path configure uses; only a plugin uninstall and a copy-route MCP removal stay explicit. This is the project-relative two-way audit that setup (fresh), update (refresh), and configure (manual add/drop) do not do."
+description: "RECONCILE an existing Alfred Code install to THIS project - detect the project's real stacks by artifact (init's install-phase step-3 scan), inventory what is installed at any scope (project, user or local), then walk the selection one layer at a time (rules -> agents -> skills -> hooks -> MCPs -> plugins) showing, per layer, what is REDUNDANT (installed but its whole owning stack is absent - remove?) and what is MISSING (the detected stacks' + baseline closure not installed here - add?), each pre-marked with its reason and taken on per-item consent. Shared items, deliberate non-stack extras, and the always-baseline already installed are never touched. Detection evidence for every absent stack is shown BEFORE the walk so a mis-detection is vetoable. After the mechanical walk, a JUDGMENT step corroborates the advisory items' non-use in the code (named greps for the skill's domain, its own do-not-load exclusions, the docs' own citations of it) reviews the remainder against the project's stated conventions incl. version pins (a latest-major guidance tool fights a project pinned older - a citable conflict), mirrors gate 1 for ADDS (an uninstalled skill whose domain the code provably touches though no manifest signal covers it - only from trails the run itself surfaced, never a speculative catalog sweep), and hunts functional OVERLAP among kept items (two items covering one capability, the project docs citing only one - proposed only with the survivor's unique gap named) - drops and adds proposed only with gate evidence, each RANKED (MATERIAL/MINOR) and readable as what-it-does / why-marginal-here / the-keep-exception / recommendation, visibly labeled as judgment, never mixed with the signal tiers; plus a plain-text DORMANT advisory naming installed occasion-bound items (their own descriptions mark them release-/upgrade-/audit-time) with each one's honest idle cost and off lever - informational, acted on only by explicit request. Accepted adds and removes apply in ONE installer run over the read-back (--add / --drop) - the path configure uses; only a plugin uninstall and a copy-route MCP removal stay explicit. This is the project-relative two-way audit that init (fresh), update (refresh), and configure (manual add/drop) do not do."
 disable-model-invocation: true
 ---
 
@@ -51,7 +51,7 @@ account-only install to refuse. Find the install with `node "$TMP/repo/scripts/i
 state .`, which reads the install records the hooks read (`alfred-code.stamp`, a copied
 `hooks/docs.js`) in this repo, its git top level or a worktree's main
 checkout - never `.claude/skills` or `.claude/agents`, which a plugin-route install may not have:
-`not-installed` -> stop and route to `/alfred-code:setup`; `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:validate from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here; `legacy-unstamped` (a legacy copy-route install that never wrote a stamp) -> stop and route to
+`not-installed` -> stop and route to `/alfred-code:init`; `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:validate from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here; `legacy-unstamped` (a legacy copy-route install that never wrote a stamp) -> stop and route to
 `/alfred-code:update`, which reads its picks off disk and writes the stamp first; `installed` / `initialised` -> go on. Every installer call below carries its scope inline, `--scope "$(node "$TMP/repo/scripts/install/stamp.js" scope .)"` -
 the same script, reading the stamp, a `global` line as `user`, anything else as `project` - passed to every
 installer call so the read-back and the apply read and write the settings file that scope uses
@@ -106,7 +106,7 @@ and a validate run four minutes apart, and both runs reported nothing to do); `p
 its catalog part. `left_out` lists what the user switched off - a denied seat, an item of a parked
 retired entry - as selection lines, which `--missing` counts as present: never proposed back. Three
 signals in `$TMP/plan.out`, never printed to the user: `error: --installed-only found nothing
-installed` means there is no install - route to `/alfred-code:setup`; `plan routes:
+installed` means there is no install - route to `/alfred-code:init`; `plan routes:
 skills=<plugin|copy> hooks=<plugin|copy> mcps=<plugin|copy>` names the routes; `plan answered:
 hooks=<yes|no> agents=<yes|no>` says which off-states the read found evidence of - `agents=no` with
 `skills=plugin` means the plugin listing could not be read or the core entry is parked: stop and
@@ -133,7 +133,7 @@ over the result.
 
 ## 2. Detect the project's stacks - and show the evidence
 
-Setup's step-3 artifact scan:
+The install phase's step-3 artifact scan (`init-install.md`):
 
 - `*.csproj` / `*.sln` -> .NET, split by content, per project: `Microsoft.NET.Sdk.Web` -> `aspnet`;
   `<UseWPF>true` -> `wpf`; `<UseWindowsForms>true` -> `winforms`; a
@@ -472,7 +472,7 @@ session (lever: remove, or accept it); an MCP costs its server launch + tools ev
 (`claude plugin disable <name> --scope <the install's scope>` - from a narrower scope it switches a broader row off there alone). Act on a lever only on an explicit user request in this run -
 dormancy alone is never a removal argument.
 
-## 11. Apply - the same paths setup/configure use
+## 11. Apply - the same paths init's install phase and configure use
 
 Build the final selection = the installed set, PLUS every accepted add, MINUS every accepted
 remove, written to `$TMP/final.json` in the inventory's shape. Step 9's accepted environment rows

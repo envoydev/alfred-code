@@ -23,7 +23,7 @@
 // GATE 3 - retired: the 1.x alias gate, gone once every install moved onto the core.
 //
 // GATE 4 - a project never set up. A user-scope core enables every hook in EVERY repo the user
-// opens, and a repo nobody ran /alfred-code:setup in carries none of the rules the guards enforce -
+// opens, and a repo nobody ran /alfred-code:init in carries none of the rules the guards enforce -
 // so a plugin-launched hook there does nothing and writes nothing (no `.alfred/docs/` ledger or
 // history in a repo merely opened: R54). Set up means an install record in the project's `.claude/`,
 // or its git top level's, or - for a linked worktree - the main checkout's: the stamp, or a copied

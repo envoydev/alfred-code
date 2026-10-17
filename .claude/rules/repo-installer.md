@@ -21,24 +21,27 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
   `mdl` pin badge and row 'Pinned <model>/<effort>' to its frontmatter - 2.1.5 M57 - and a row's ', max <n> turns'
   to its `maxTurns`, 2.1.6 M59).
 
-- `setup-plugin/` - the Alfred Code plugin: seven COMMANDS and one router SKILL.
-  - `/alfred-code:setup` is the selection walk and the install (reports `derive-state.js`'s `written`
-    block first) and ends on 'restart, then /alfred-code:init'; `/alfred-code:init` is the one-time
-    bootstrap in the new session (`init-plan.js`: the machine installs behind one ask, the memory level
+- `setup-plugin/` - the Alfred Code plugin: six COMMANDS and one router SKILL.
+  - `/alfred-code:init` is ONE command in two phases (setup merged into it, the user's ruling of 2026-10-17): its first
+    call (`stamp.js state`) routes. `not-installed` runs the INSTALL phase (`references/init-install.md` - the selection
+    walk and the install, reporting `derive-state.js`'s `written` block first), which ends on 'restart, then
+    /alfred-code:init again'; `installed` / `initialised` runs the BOOTSTRAP phase (`references/init-bootstrap.md`) - the
+    one-time set-up in the new session (`init-plan.js`: the machine installs behind one ask, the memory level
     - `scripts/install/memory.js init` imports Claude's old notes, switches its own memory off and
     writes the stamp's `initialised:` line - the captures, the AGENTS.md fill through
     `habits-adjust-agents-md`). `ALFRED_CODE_UNATTENDED=1` in the launch environment (never seeded - a
-    settings value would apply over a launcher's) runs init with nobody answering: each ask takes its
+    settings value would apply over a launcher's) runs init's bootstrap with nobody answering (the install phase
+    refuses it): each ask takes its
     Recommended option unless it is destructive (loses or replaces what the project or account owns - a
     claude-hud `refresh` line) or needs a person (typed text, a restart), then the option that changes
-    nothing, one `unattended: <question> -> <choice>` line each (init.md 'Unattended'; `init-plan.js`
-    prints init's own four answers, `update-preflight.js` prints `unattended: on` for update's asks). Init
+    nothing, one `unattended: <question> -> <choice>` line each (init-bootstrap.md 'Unattended'; `init-plan.js`
+    prints the bootstrap's own four answers, `update-preflight.js` prints `unattended: on` for update's asks). Init
     reads the stack's files through the Bash tool, never the Read tool, which asks before a read outside
     the working directory. `/alfred-code:update`
     refreshes and prunes from the stamp compare (its ONE ask offers what the release ADDED -
     `update-preflight.js`'s `new:` lines, classified by `derive-state.classifyNew`; a yes is
     `--add '<category> <name>'` on `--installed-only`), `/alfred-code:configure` adds or drops through
-    the walk it shares with setup (`setup-plugin/references/walk.md`), `/alfred-code:status` (read-only, no snapshot: general info, a
+    the walk it shares with init's install phase (`setup-plugin/references/walk.md`), `/alfred-code:status` (read-only, no snapshot: general info, a
     health column from the CLI's own error fields plus a `not installed for this project` row per `plugins.js unreached`
     line - a plugin the settings switch on that no install record reaches, another project's record left out (usage
     audit 2026-10-10) - usage from `analyze-usage.js --inventory`, plus the
@@ -54,7 +57,7 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
     stack env key, three or more skill / seat / rule names only the stack uses - its `alfred-` / `project-` prefixes or a renamed
     item's old name, `manifest.js stackOwnName`, M3: a catalog name like `typescript` or `npm` is a project's own as often -
     never skills alone); update takes it as a pre-ledger install
-    (picks off disk, old names renamed, docs move offered), setup asks once with update recommended, the rest route to update, and
+    (picks off disk, old names renamed, docs move offered), init asks once with update recommended, the rest route to update, and
     the hooks' record list is NOT extended, so they stay down until that update writes the stamp.
   - configure and validate never inventory by hand: `update --installed-only --print-plan --plan-out`
     writes the installer's own read-back as their `--installed` JSON (with `left_out` - denied seats,
@@ -92,13 +95,13 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
     call since the typed prompt), a layer's own selection ask (`Agents: ...`, `Add to the installed skills?`) whose
     `--table <layer>` never ran (2.1.7, the user's report of 2026-10-06; its own valve of three per layer). Audit 2026-10-11 added
     configure step 1's `update-preflight.js --inventory` table (proof: its `total:` line) with its closing ask, which needs that
-    call to have run, and - inside a typed setup / configure / validate run that printed a banner - a gap in the `[step n/N`
-    numbers, each with its own valve. It ships in the plugin because a fresh setup
+    call to have run, and - inside a typed init / configure / validate run that printed a banner - a gap in the `[step n/N`
+    numbers, each with its own valve. It ships in the plugin because a fresh install
     has no stack hooks yet; the rule text is pinned as `table-before-question`. It and `library-stamp.js` run the
     core's prelude gates from the plugin root (2.1.5 M4: the csv, `hook_profile: minimal`, the alias and a Cursor payload
-    stand them down; GATE 4 is skipped, `setUp: false`, since the gate serves setup), and a layer-table denial writes a
+    stand them down; GATE 4 is skipped, `setUp: false`, since the gate serves init's install phase), and a layer-table denial writes a
     block row where the repo is set up; the Cursor-gate test takes its file list from the commands the core launches.
-  - None of the seven carries `allowed-tools` - settled: it is a per-turn permission pre-approval, not a
+  - None of the six carries `allowed-tools` - settled: it is a per-turn permission pre-approval, not a
     restriction or a context saving.
 
 ## The stack's delivery surfaces
@@ -136,7 +139,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   (`plugins.overrideScope` - configure's drop and both copy-route stand-downs), an MCP server through a
   `deniedMcpServers` `{ serverName }` row in the run's own settings file (`settings.applyMcpDeny`, the stamp's
   `mcp-denied:` line, lifted when it is picked again and by uninstall) - never the account `.claude.json`,
-  which the installer does not hand-edit. (6) Moves and removals come from setup and configure; update removes
+  which the installer does not hand-edit. (6) Moves and removals come from init and configure; update removes
   only what the release retired or renamed. (7) Every mutating `claude plugin` / `claude mcp` call names its
   scope - plugins default to `user`, MCP servers to `local`. (8) A managed row is updated (`--scope managed`,
   the one call that scope takes) and never installed beside, uninstalled, disabled, moved or named with a
@@ -144,7 +147,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   `managedMcpServers` from the managed folder (`ALFRED_CODE_MANAGED_DIR` overrides it): a server it provides is
   never registered over, and an exclusive `managed-mcp.json` is said `!!` - it suppresses every plugin server.
 - **The auto-compact window per model (after 2.4.0, the user's rulings of 2026-10-14).** While the project compacts
-  instead of offering a fresh session - `ALFRED_CODE_AUTO_COMPACT=1`, seeded `0`, which setup asks with the fresh-session
+  instead of offering a fresh session - `ALFRED_CODE_AUTO_COMPACT=1`, seeded `0`, which init's install phase asks with the fresh-session
   triggers and passes as `--auto-compact on|off` (written over the value there, `applyEnv` 3d) and configure's env step
   switches - every run writes
   `modelSettings.<id>.autoCompactWindow` into the project's own settings file (settings.json, settings.local.json at local

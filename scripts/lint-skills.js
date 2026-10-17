@@ -1204,13 +1204,16 @@ const ASK_FLOW_TEMPLATES = {
     'loop-architecture-quality': 10, 'loop-code-quality': 10, 'loop-test-coverage': 8, 'task-implement': 10, 'task-build-from-scratch': 5,
 };
 const ASK_FLOW_SKILLS = Object.keys(ASK_FLOW_TEMPLATES);
-// The setup / configure walk's layer asks are templates too (2026-09-29: a walk with whole-layer verdicts only left every
+// The init / configure walk's layer asks are templates too (2026-09-29: a walk with whole-layer verdicts only left every
 // per-row change to typing). Pinned per file like the flow skills, so a layer ask dropped back to prose goes red.
 const SETUP_ASK_TEMPLATES = {
     // +1: the mobile-control ask (2026-10-13).
     'setup-plugin/references/walk.md': 13,
-    // +1: screen B's compact-or-fresh-session ask (2026-10-14).
-    'setup-plugin/commands/setup.md': 3,
+    // +1: screen B's compact-or-fresh-session ask (2026-10-14). The install phase of /alfred-code:init since setup merged
+    // into it (2026-10-17).
+    'setup-plugin/references/init-install.md': 3,
+    // the legacy-unstamped ask: update this install or install from scratch (2026-10-17).
+    'setup-plugin/commands/init.md': 1,
     // +2: step 1's closing ask, one template per case (audit 2026-10-11, session a9e06780).
     'setup-plugin/commands/configure.md': 6,
     // audit 2026-10-11: update's three asks plus step 6's re-spell of the project's own AGENTS.md (session b3f8193f).
@@ -2304,9 +2307,10 @@ function main()
         try { migrationsCatalog = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'migrations.json'), 'utf8')); }
         catch { /* its own lint reports an unreadable migrations.json */ }
         const commandSrc = {};
-        for (const cmd of ['setup.md', 'configure.md', 'validate.md'])
+        // init's install phase lives in a reference file it reads (2026-10-17: setup merged into init).
+        for (const rel of ['references/init-install.md', 'commands/configure.md', 'commands/validate.md'])
         {
-            commandSrc[`commands/${cmd}`] = fs.readFileSync(path.join(ROOT, 'setup-plugin', 'commands', cmd), 'utf8');
+            commandSrc[rel] = fs.readFileSync(path.join(ROOT, 'setup-plugin', rel), 'utf8');
         }
         for (const finding of lintEnvironmentCatalog(envCatalog, seedSrc, migrationsCatalog, commandSrc))
         {
@@ -3182,11 +3186,11 @@ function lintEnvironmentCatalog(catalog, seedSrc, migrations, commandSrc)
         if (!keys.has(key)) { out.push(`scripts/install/settings.js special-cases ${key}, which environment.json does not list`); }
         if (!namedInSeed.has(key)) { out.push(`${key} is a catalog row, but scripts/install/settings.js does not name it - the special case moved or was removed`); }
     }
-    // setup asks the `ask: true` rows on ONE AskUserQuestion screen, and the tool caps a call at four
+    // init's install phase asks the `ask: true` rows on ONE AskUserQuestion screen, and the tool caps a call at four
     // questions; a row with `asked_with` rides along with another row's question. Past four, the
     // fifth question is silently dropped by the tool - so the cap is enforced here, at authoring time.
     const asked = rows.filter(r => r.ask && !r.asked_with).length;
-    if (asked > 4) { out.push(`environment.json asks ${asked} questions on setup's environment screen - the AskUserQuestion cap is 4; fold one row into another with asked_with, or stop asking it`); }
+    if (asked > 4) { out.push(`environment.json asks ${asked} questions on init's environment screen - the AskUserQuestion cap is 4; fold one row into another with asked_with, or stop asking it`); }
     // A rename in migrations.json must land on a key the catalog owns, or validate would offer to
     // migrate a value into a variable nothing reads.
     for (const m of (migrations && migrations.migrations) || [])

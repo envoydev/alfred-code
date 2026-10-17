@@ -901,7 +901,7 @@ test('guard-fresh-session-start: an abandoned or double-submitted run is not a P
   };
 
   assert.equal(slash(transcript('ab-dup', [
-    cmd('alfred-code:setup'), cmd('alfred-code:update'),
+    cmd('alfred-code:init'), cmd('alfred-code:update'),
   ]), 'alfred-code:update'), '', 'two commands 4s apart with NO assistant turn between them is one abandoned run');
   assert.equal(slash(transcript('ab-resume', [
     cmd('task-solve'), userRow('resume the build cycle, steps 1-3 are stamped'),
@@ -916,9 +916,9 @@ test('guard-fresh-session-start: an abandoned or double-submitted run is not a P
     cmd('task-solve'),
   ])), /ALREADY run one/i, 'a finished prior run, with the model\'s own turn in between, is still the measured chain');
 
-  // `setup` is the guided install and `init` the bootstrap after it (Task 18a): both are
-  // multi-phase runs, so both take the offer.
-  for (const walk of ['alfred-code:init', 'alfred-code:setup'])
+  // `init` is the guided install and, after its restart, the bootstrap (setup merged into it on 2026-10-17); update
+  // is a multi-phase run too - both take the offer.
+  for (const walk of ['alfred-code:init', 'alfred-code:update'])
     assert.match(slash(transcript(`ab-${walk.split(':')[1]}`, [
       cmd('capture-architecture'),
       assistantRow('i1', 'Captured the architecture doc.', FLOOR),

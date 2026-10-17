@@ -212,10 +212,10 @@ test('corpus-replay: a typed orchestration command is replayed on the UserPrompt
   const typedRow = (text) => ({ type: 'user', cwd: dir, message: { role: 'user', content: text } });
   fs.writeFileSync(path.join(dir, 'session.jsonl'), [
     typedRow('<command-name>/loop-code-quality</command-name>'), typedRow('<command-name>/help</command-name>'),
-    typedRow('<command-name>/alfred-code:setup</command-name>'), typedRow('fix the cart'),
+    typedRow('<command-name>/alfred-code:init</command-name>'), typedRow('fix the cart'),
   ].map((r) => JSON.stringify(r)).join('\n') + '\n');
   const jobs = extract([path.join(dir, 'session.jsonl')], { stops: 10 }).jobs.filter((j) => /UserPromptExpansion/.test(j.route));
-  assert.deepStrictEqual(jobs.map((j) => j.payload.command_name).sort(), ['alfred-code:setup', 'loop-code-quality'], 'the matcher keeps /help out');
+  assert.deepStrictEqual(jobs.map((j) => j.payload.command_name).sort(), ['alfred-code:init', 'loop-code-quality'], 'the matcher keeps /help out');
   for (const j of jobs) {
     assert.strictEqual(j.payload.hook_event_name, 'UserPromptExpansion');
     assert.strictEqual(j.payload.prompt, `/${j.payload.command_name}`);

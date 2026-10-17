@@ -63,7 +63,7 @@ Action (one is REQUIRED, positional):
 
 Named flags (any order, each optional): ${FLAG_LIST}
 
-What each flag does is documented where it is set: the guided /alfred-code:setup, :update,
+What each flag does is documented where it is set: the guided /alfred-code:init, :update,
 :configure and :validate commands (setup-plugin/commands/) name every flag they pass inline, and
 the repo's CLAUDE.md covers the install surface end to end.`;
 
@@ -588,7 +588,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             });
             if (!back.installed)
             {
-                err(`error: --installed-only found nothing installed under ${claudeDir} - run 'install' (or /alfred-code:setup) first\n`);
+                err(`error: --installed-only found nothing installed under ${claudeDir} - run 'install' (or /alfred-code:init) first\n`);
                 return 1;
             }
             leftOut = selection.leftOut({ parked: back.parked, deny: back.deny });

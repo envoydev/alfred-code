@@ -33,7 +33,7 @@ const ANGULAR = {
     'tsconfig.json': TSCONFIG,
     'src/app/app.component.ts': "import { Component } from '@angular/core';\n\n@Component({ selector: 'app-root', template: '' })\nexport class AppComponent {}\n",
 };
-// The least each stack's detection (setup.md step 3) needs to read the project as that stack.
+// The least each stack's detection (init-install.md step 3) needs to read the project as that stack.
 const MARKERS = {
     bare: { 'README.md': '# Fixture\n\nA project with no stack marker.\n' },
     typescript: { 'package.json': pkg({ build: 'tsc', test: 'node --test' }), 'tsconfig.json': TSCONFIG, 'src/index.ts': 'export const answer = 42;\n' },

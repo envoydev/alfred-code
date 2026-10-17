@@ -227,13 +227,13 @@ test('the slash route is UserPromptExpansion, its matcher naming every orchestra
     const orchestration = new RegExp(src.match(/^const ORCHESTRATION = \/(.+)\/;$/m)[1]);
     const names = ['loop-code-quality', 'loop-architecture-quality', 'loop-test-coverage', 'capture-architecture',
         'capture-awareness', 'task-solve', 'task-solve-cross', 'task-verify-code', 'issue-diagnoser',
-        'security-review', 'alfred-code:init', 'alfred-code:setup', 'alfred-code:update', 'alfred-code:configure', 'alfred-code:validate'];
+        'security-review', 'alfred-code:init', 'alfred-code:update', 'alfred-code:configure', 'alfred-code:validate'];
     for (const n of names) {
         assert.ok(orchestration.test(n), `${n} is one the hook judges`);
         assert.ok(matches(n) && matches(n.replace(/^.*:/, '')), `${n} reaches the hook under either spelling`);
         if (!n.includes(':')) assert.ok(matches(`alfred-code:${n}`), `${n} reaches it plugin-scoped too`);
     }
-    for (const n of ['help', 'clear', 'compact', 'dev-log-convert', 'my-setup', 'tasks', 'my-task-x', 'csharp', 'alfred-code:status'])
+    for (const n of ['help', 'clear', 'compact', 'dev-log-convert', 'my-setup', 'tasks', 'my-task-x', 'csharp', 'alfred-code:status', 'alfred-code:setup'])
         assert.ok(!matches(n), `${n} never spawns the hook`);
     // every task-*, loop-* and issue-* name reaches it, a project's own and a digit included: `auto-mode` opening any of them starts a
     // run, and the hook exits at once for one that is no orchestration run (audit 2026-10-14 HK06)

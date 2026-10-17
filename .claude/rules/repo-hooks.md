@@ -697,7 +697,7 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     `disable-model-invocation` skill (read from its frontmatter - the personal copy first, then the project's, then the
     running plugin's own root, then the plugin caches newest version first, the order Claude Code resolves a name in, M10; the user's slash turn is untouched;
     a plugin COMMAND and the router skill too - `commands/`, `setup-plugin/commands/`, `setup-plugin/skills/` - audit
-    2026-10-08: the seven guided commands and `alfred-code` were never resolved), and
+    2026-10-08: the guided commands - six since setup merged into init, 2026-10-17 - and `alfred-code` were never resolved), and
     offers a fresh session before a deliberate orchestration run (capture, loop, solve flow, review,
     guided walk; only the `alfred-code:` namespace is stripped, so another plugin's `other:task-solve` is not one) when the
     context is past the window trigger OR (slash route only) this session already
@@ -879,5 +879,5 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     the project's lint and the verifier's job, and a PostToolUse formatter rewrites files under the model between its
     own edits, so the next `old_string` misses.
   The guided walk's hooks layer makes them selectable, the whole catalog recommended (a selection with
-  no `hook` lines keeps every hook on; setup's None emits `hook none` through `stack-select.js
-  --hooks-answered`, setup only, which switches every hook off).
+  no `hook` lines keeps every hook on; the install phase's None emits `hook none` through `stack-select.js
+  --hooks-answered`, that phase only, which switches every hook off).

@@ -19,7 +19,7 @@ install to change.
 
 | case | target | prompt | what it proves |
 |---|---|---|---|
-| `status-no-install` | the core, `alfred-code@envoydev` | `/alfred-code:status` | with nothing installed, the command says so and routes to `/alfred-code:setup` instead of rendering its fixed table shapes from the command body |
+| `status-no-install` | the core, `alfred-code@envoydev` | `/alfred-code:status` | with nothing installed, the command says so and routes to `/alfred-code:init` instead of rendering its fixed table shapes from the command body |
 | `router-hands-back-one-command` | the core, `alfred-code@envoydev` | `/alfred-code` | the router reads the state, names ONE command, and does not start the walk itself |
 
 Both run against the CORE entry, never `setup-plugin/` alone: the router and the status command run
@@ -42,7 +42,7 @@ The cases were re-graded on 2026-09-25 (setup/init split). This run: Claude Code
 | `status-no-install` | 1.00 | 0.33 | +0.67 |
 
 Mean delta +0.83 over 12 runs, 112s, $0.84. Both cases then graded `/alfred-code:init` and ran against
-`setup-plugin/`; 2.0.0 routes a project with nothing installed to `/alfred-code:setup`, and 2.1.4 moved
+`setup-plugin/`; 2.0.0 routed a project with nothing installed to `/alfred-code:setup` (merged back into `/alfred-code:init` on 2026-10-17), and 2.1.4 moved
 the runs to the core entry below. The table is NOT re-recorded against either change - the run is
 billed, the user's call - so these numbers describe the old graders and the old target. The
 without-arm's one passing grader is `no-invented-tables`, which a session with no plugin passes for

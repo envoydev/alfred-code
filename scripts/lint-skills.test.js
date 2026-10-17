@@ -1101,7 +1101,7 @@ test('check 58: lintEnvironmentCatalog catches catalog/seed/command/migration dr
     const askRows = ['A', 'B', 'C', 'D', 'E'].map((n) => ({ key: `ALFRED_CODE_${n}`, default: '', what: n, ask: true }))
         .concat([{ key: 'ALFRED_CODE_DOCS_VERSIONING', default: 'git', what: 'x' }, { key: 'ALFRED_CODE_HOOKS_OFF', default: '', what: 'y' }]);
     assert.ok(lintEnvironmentCatalog({ env: askRows }, 'ALFRED_CODE_DOCS_VERSIONING ALFRED_CODE_HOOKS_OFF', migrationsOk, commandSrcOk)
-        .some((f) => /asks 5 questions on setup's environment screen/.test(f)));
+        .some((f) => /asks 5 questions on init's environment screen/.test(f)));
 
     // A migration renaming to a key the catalog does not list.
     const migrationsMissing = { migrations: [{ id: 'm1', rename_settings_env: { from: 'OLD_KEY', to: 'ALFRED_CODE_MISSING' } }] };

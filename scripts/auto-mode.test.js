@@ -320,7 +320,7 @@ test('mode banner: never for another command, a seat, a print-mode run or the mo
 {
     const p = project();
     const t = transcript();
-    for (const prompt of ['/security-review', '/alfred-code:setup', '/review', '/help'])
+    for (const prompt of ['/security-review', '/alfred-code:init', '/review', '/help'])
         assert.strictEqual(bannerOf(typedRun(p, 'd1', prompt, t)), null, `no banner for ${prompt}`);
     assert.strictEqual(bannerOf(typedRun(p, 'd2', '/task-solve x', t, {}, { agent_id: 'seat-1' })), null, 'a seat');
     assert.strictEqual(bannerOf(typedRun(p, 'd3', '/task-solve x', t, { CLAUDE_CODE_ENTRYPOINT: 'sdk-cli' })), null, 'claude -p: nobody to read it');

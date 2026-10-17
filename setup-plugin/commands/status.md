@@ -21,7 +21,7 @@ install records the hooks read (`alfred-code.stamp`, a copied
 `hooks/docs.js`) in this repo, its git top level or a worktree's main checkout. Never test for
 `.claude/skills` or `.claude/agents`: a plugin-route install can have neither.
 
-- `not-installed` -> say so and route to `/alfred-code:setup`.
+- `not-installed` -> say so and route to `/alfred-code:init`.
 - `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:status from there' and stop - every table below reads this tree's own `.claude`, which holds nothing.
 - `legacy-unstamped` -> say so and route to `/alfred-code:update`: a legacy copy-route install that never
   wrote a stamp (no install record, but two of the stack's own signatures in `.claude/`), whose picks

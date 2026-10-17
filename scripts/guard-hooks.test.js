@@ -399,14 +399,14 @@ test('guard-fresh-session-start: the size offer is answerable - the retry passes
 test('audit 2026-10-08: the fresh-session guard reads commands and the router skill, an answered fresh ask, and only its own namespace', () => {
   const home = fs.mkdtempSync(path.join(TMP, 'fresh-cmd-'));
   const plugin = path.join(home, 'plugins', 'cache', 'envoydev', 'alfred-code', '9.9.9');
-  for (const [rel, body] of [['setup-plugin/commands/setup.md', '---\ndescription: "x"\ndisable-model-invocation: true\n---\nbody\n'],
+  for (const [rel, body] of [['setup-plugin/commands/init.md', '---\ndescription: "x"\ndisable-model-invocation: true\n---\nbody\n'],
     ['setup-plugin/skills/alfred-code/SKILL.md', '---\nname: alfred-code\ndisable-model-invocation: true\n---\nbody\n']]) {
     fs.mkdirSync(path.dirname(path.join(plugin, rel)), { recursive: true });
     fs.writeFileSync(path.join(plugin, rel), body);
   }
   const skillCall = (skill, extra = {}) => runIn('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill }, transcript_path: transcript(`fc-${skill}`, ctxRows('fc', 1000)) },
     { env: { ...process.env, CLAUDE_CONFIG_DIR: home, ...extra } });
-  for (const s of ['alfred-code:setup', 'alfred-code:alfred-code']) {
+  for (const s of ['alfred-code:init', 'alfred-code:alfred-code']) {
     const r = skillCall(s);
     assert.equal(r.status, 2, `${s}: a flagged command or router skill in the cache`);
     assert.match(r.stderr, new RegExp(`can run /${s} themselves`), 'the escape names the command as it is typed');

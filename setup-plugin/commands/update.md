@@ -236,7 +236,7 @@ machinery, no pasted output, one narration line between steps.
 the hooks read (`alfred-code.stamp`, a copied `hooks/docs.js`) in this
 repo, its git top level or a worktree's main checkout - never from `.claude/skills` or
 `.claude/agents`, which a plugin-route install may not have. `not-installed` -> stop and route to
-the sibling `/alfred-code:setup` command. `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:update from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here; the installer refuses that tree too. `legacy-unstamped` is a legacy copy-route install that never wrote a
+the sibling `/alfred-code:init` command. `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:update from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here; the installer refuses that tree too. `legacy-unstamped` is a legacy copy-route install that never wrote a
 stamp (no install record, but two of the stack's own signatures in `.claude/`: its hook files, its env keys,
 three or more skill, seat or rule names only it uses - never a catalog name like `typescript` alone) -> go on:
 this command is its route - step 2's preflight prints `no-stamp` (the fast path) and offers its data move like
@@ -475,7 +475,7 @@ each one as `x -> y`, `installed this run` or `already newest` instead of assert
 route a registration of the stack's own at the other account-file scope is refreshed there too (`mcp refreshed
 [<scope>]: <name>`). This command moves nothing between scopes and removes no pick: it passes the stamp's own
 `--scope`, never `--scope-of`, and a `--drop` only to carry a renamed item's switch-off - scope changes and
-removals are setup's and configure's. What it does remove is what the release itself retired or renamed,
+removals are init's install phase's and configure's. What it does remove is what the release itself retired or renamed,
 because an id the catalog drops stops loading at once (docs/plugin-cli-evidence.md S25). Every optional item (a browser engine, a desktop server, mobile-control, an LSP, claude-hud) is updated where it is installed and never moved - `/alfred-code:configure` is the one place its scope changes (2.2.0); claude-hud is an optional pick since 2.2.0, so an install that never picked it gains none. On EVERY run where claude-hud is installed - this run or already - and no settings file this project reads has a `statusLine` yet, the run logs `claude-hud has no status line yet - run /alfred-code:init to set it up` - paste that line verbatim and name `/alfred-code:init` in the close. A server the 2.0.0 cut removed (`angular-cli`, `chrome-devtools`, `appium-mcp`, `sentry`, `context7-local`)
 is uninstalled by its stack spec only - a same-named plugin from another marketplace and a row at another
 scope are kept and logged with the uninstall command that removes them - and each removal prints its `add it back:`
