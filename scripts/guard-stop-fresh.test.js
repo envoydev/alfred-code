@@ -889,6 +889,10 @@ test('guard-fresh-session-start: an abandoned or double-submitted run is not a P
   const COLD = { cache_read_input_tokens: 60000 };
   const userRow = (text) => ({ type: 'user', message: { role: 'user', content: text } });
   const cmd = (name) => userRow(`<command-name>/${name}</command-name>`);
+  // A prior run counts once it WORKED - two tool calls (audit 2026-10-20 C13, 24841a36).
+  const callRow = (id, usage) => ({ type: 'assistant', message: { id, content: [{ type: 'tool_use', name: 'Bash', input: { command: 'ls' } }], usage } });
+  const result = () => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', content: 'ok' }] } });
+  const worked = (id, usage) => [callRow(`${id}-c1`, usage), result(), callRow(`${id}-c2`, usage), result()];
   // The slash route is UserPromptExpansion (2.1.5 M14): the typed command arrives by name.
   const slash = (tp, skill) => {
     const name = skill || 'task-solve';
@@ -910,6 +914,7 @@ test('guard-fresh-session-start: an abandoned or double-submitted run is not a P
   // ... and the measured chain the trigger exists for still fires: a run, an ANSWER, then a second run.
   assert.match(slash(transcript('ab-real', [
     cmd('capture-architecture'),
+    ...worked('r1', FLOOR),
     assistantRow('r1', 'Captured the architecture doc.', FLOOR),
     userRow('now run the task cycle'),
     assistantRow('r2', 'ok', COLD),
@@ -921,6 +926,7 @@ test('guard-fresh-session-start: an abandoned or double-submitted run is not a P
   for (const walk of ['alfred-code:init', 'alfred-code:update'])
     assert.match(slash(transcript(`ab-${walk.split(':')[1]}`, [
       cmd('capture-architecture'),
+      ...worked('i1', FLOOR),
       assistantRow('i1', 'Captured the architecture doc.', FLOOR),
       userRow('now install the stack'),
       assistantRow('i2', 'ok', COLD),

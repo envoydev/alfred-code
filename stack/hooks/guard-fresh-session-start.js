@@ -1053,25 +1053,30 @@ function priorOrchestrationRun() {
     // the marker needs a real ASSISTANT turn between it and the next human turn: a run nobody
     // answered carried no history for the next run to re-send, which is the whole cost this
     // trigger is about.
+    // ...and an answer is not a RUN until it WORKED: audit 2026-10-20 C13, 24841a36 - the model gate's one-line refusal
+    // ('switch to Sonnet and run it again'), after a single probe call, read as a finished run and the re-typed command was
+    // told to start a fresh session. A run counts once its answer made RUN_MIN_CALLS tool calls, the whole run's calls
+    // counted across the human turns inside it; an ask is a call, so a run that stopped to ask and went on still counts.
+    const RUN_MIN_CALLS = 2;
     let seenRun = false;
-    let answered = false;
+    let calls = 0;
     for (const line of buf.toString('utf8').split('\n')) {
       if (!line.trim()) continue;
       // A row that carries BOTH type strings is a user row quoting a transcript, not an answer:
       // it is skipped, which errs toward making no offer - the direction the measured harm was in.
-      if (seenRun && !answered && /"type"\s*:\s*"assistant"/.test(line) && !/"type"\s*:\s*"user"/.test(line)
+      if (seenRun && /"type"\s*:\s*"assistant"/.test(line) && !/"type"\s*:\s*"user"/.test(line)
           && !/"model"\s*:\s*"<synthetic>"/.test(line)) {
-        answered = true;
+        calls += (line.match(/"type"\s*:\s*"tool_use"/g) || []).length;
         continue;
       }
       if (!line.includes('"type":"user"') || line.includes('"tool_result"') || !isHumanTurn(line)) continue;
-      if (seenRun && answered) return true;
+      if (seenRun && calls >= RUN_MIN_CALLS) return true;
       const c = (JSON.parse(line).message || {}).content;
       const m = re.exec(typeof c === 'string' ? c : (Array.isArray(c) ? c.map((x) => (x && x.type === 'text' && x.text) || '').join('\n') : ''));
-      if (m && isOrchestration(m[1])) { seenRun = true; answered = false; }
+      if (m && isOrchestration(m[1])) { seenRun = true; calls = 0; }
     }
     // The command being judged, not on disk yet, is the human turn after an answered run.
-    return EVENT === 'UserPromptExpansion' && seenRun && answered;
+    return EVENT === 'UserPromptExpansion' && seenRun && calls >= RUN_MIN_CALLS;
   } catch {
     return false;   // unreadable transcript - the size trigger still covers this session
   }

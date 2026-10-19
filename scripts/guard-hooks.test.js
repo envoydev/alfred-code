@@ -3582,6 +3582,9 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
     const toolResult = () => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', content: 'ok' }] } });
     const cmd = (name) => userRow(`<command-name>/${name}</command-name>`);
     const skillRow = (id, name) => ({ type: 'assistant', message: { id, content: [{ type: 'tool_use', name: 'Skill', input: { skill: name } }], usage: COLD } });
+    // A run that WORKED: two tool calls, then its close (audit 2026-10-20 C13 - an answer with fewer calls is no run).
+    const callRow = (id, usage) => ({ type: 'assistant', message: { id, content: [{ type: 'tool_use', name: 'Bash', input: { command: 'ls' } }], usage } });
+    const worked = (id, text, usage) => [callRow(`${id}-c1`, usage), toolResult(), callRow(`${id}-c2`, usage), toolResult(), assistantRow(id, text, usage)];
     // The slash route (UserPromptExpansion) is the only route this trigger judges. Most fixtures end with
     // the command being judged, as a prompt row already on disk; one below ends without it. It never denies:
     // an offer is injected context, so the helper returns that text ('' = no offer).
@@ -3603,7 +3606,7 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
 
     // A finished run, a human turn, then a second typed one: the whole measured shape.
     const second = transcript('chain-second', [
-      cmd('capture-architecture'), assistantRow('a1', 'captured', FLOOR), toolResult(),
+      cmd('capture-architecture'), ...worked('a1', 'captured', FLOOR),
       userRow('now run the quality loop'), assistantRow('a2', 'ok', COLD), cmd('loop-code-quality'),
     ]);
     const env = winEnv();
@@ -3622,8 +3625,23 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
     // UserPromptExpansion fires as the command expands, so the typed prompt's own row may not be on disk
     // yet: the command being judged IS the human turn after the prior run's answer (2.1.5 M14).
     assert.match(slash(transcript('chain-not-on-disk', [
-      cmd('capture-architecture'), assistantRow('a1', 'captured', FLOOR), toolResult(), assistantRow('a2', 'ok', COLD),
+      cmd('capture-architecture'), ...worked('a1', 'captured', FLOOR), assistantRow('a2', 'ok', COLD),
     ])), /ALREADY run one/, 'a transcript ending on the prior run\'s answer still chains');
+
+    // Audit 2026-10-20 C13, 24841a36: the model gate's one-line refusal, after a single probe call, is no finished run -
+    // the re-typed command is the run itself. Two calls into the run, it is one.
+    assert.equal(slash(transcript('chain-refused', [
+      cmd('alfred-code:update'), callRow('r0', FLOOR), toolResult(), assistantRow('r1', 'I have not started the update - switch with /model sonnet and run it again.', FLOOR),
+      userRow('<command-name>/model</command-name>'), assistantRow('r2', 'ok', COLD), cmd('alfred-code:update'),
+    ]), winEnv(), 'alfred-code:update'), '', 'a one-call refusal is not a prior run');
+    assert.match(slash(transcript('chain-two-calls', [
+      cmd('alfred-code:update'), callRow('r0', FLOOR), toolResult(), callRow('r1', FLOOR), toolResult(), assistantRow('r2', 'halted', FLOOR),
+      userRow('go on'), assistantRow('r3', 'ok', COLD), cmd('alfred-code:update'),
+    ]), winEnv(), 'alfred-code:update'), /ALREADY run one/, 'two calls are a run');
+    assert.match(slash(transcript('chain-across-turn', [
+      cmd('capture-architecture'), callRow('r0', FLOOR), toolResult(), assistantRow('r1', 'which folder?', FLOOR),
+      userRow('src/'), callRow('r2', COLD), toolResult(), assistantRow('r3', 'captured', COLD), userRow('next'), cmd('loop-code-quality'),
+    ])), /ALREADY run one/, 'a run that asked in prose and went on counts its calls across the human turn');
 
     // ONE gated cycle is one run: its phases arrive as Skill calls, and its approval step puts a
     // human turn between them. Measured 2026-09-14: the build step of a single cycle was offered a
@@ -3637,7 +3655,7 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
 
     // Chaining the SAME command twice is still chaining.
     assert.match(slash(transcript('chain-twice', [
-      cmd('loop-code-quality'), assistantRow('a1', 'done', FLOOR), toolResult(),
+      cmd('loop-code-quality'), ...worked('a1', 'done', FLOOR),
       userRow('do it again'), assistantRow('a2', 'ok', COLD), cmd('loop-code-quality'),
     ])), /ALREADY run one/, 'the same run a second time carries the same carried history');
 
