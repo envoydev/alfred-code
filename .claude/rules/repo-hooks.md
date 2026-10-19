@@ -114,7 +114,9 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
   text - and read whole, quote-aware (the review's corpus plus the runtime and carried-script shapes,
   `scripts/fixtures/cross-write-corpus.json`, replayed in guard-hooks.test.js). Audit 2026-10-10 C13: a runtime's write
   through a NAME takes every literal the script binds it to (`p = '<file>'` then `open(p, 'w')`, `writeFileSync(f, ...)`,
-  `Path(p).write_text`), and one through a computed path is one `unknown` target spelled `$UNKNOWN_INTERPRETER_WRITE`
+  `Path(p).write_text`; a verb, open or binding inside a string literal is no write, a `$NAME` the shell expands in a
+  double-quoted `-e` or unquoted heredoc takes the latest literal the command assigned it, and `process.argv[N]` /
+  `sys.argv[N]` take the word passed to the script - audit 2026-10-20 C31 / C25), and one through a computed path is one `unknown` target spelled `$UNKNOWN_INTERPRETER_WRITE`
   (guards skip it as an unexpanded variable; docs-session counts it as a source write only under a root the command names - audit 2026-10-20 C25, 4f2bfdee: a temp-path script was held twice as a source write); a sed `s` with another
   delimiter (`s#a#b#`, `s|a|b|`) and an address's `a\` / `i\` / `c\` text are scripts, chmod's mode and chown's owner
   are no path, `NAME=( ... )` is an array assignment and never a subshell, and a `git tag` listing (`--contains`,
@@ -171,7 +173,9 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
   exclusive `alfred-bg-note-<session>-<agent|main>` marker in the hook temp dir (a dir it cannot write stays silent),
   plus a `mode: probe`, `bg-note` row (audit 2026-10-14 RU04: the text left `alfred-quality-gates.md`, 533 chars in
   every session, for the 24.8% of sessions that start a background call; a week of `bg-note` rows against the
-  background-call rate is the owed comparison); and a recursive grep for a code identifier (CamelCase, a call) in the
+  background-call rate is the owed comparison); the first `Monitor` call of each actor gets `MONITOR_NOTE` (one start
+  line, never a reply per sample) under its own marker and a `monitor-note` probe row (audit 2026-10-20 C32: a 30 s
+  sample loop woke 12 turns, 2.82M, and the Bash note never reached a Monitor start); and a recursive grep for a code identifier (CamelCase, a call) in the
   main session writes one `mode: probe` row. Each writes its row under `shell-guards.js`. Each guard body is compiled
   through V8's code cache (`compileGuard`: `alfred-v8-<guard>-<sha16>.bin` in the temp dir, keyed on the source and the
   Node version, written once after the guard ran; the helpers it requires take Node's own `enableCompileCache`) - p50
@@ -255,7 +259,9 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     two weeks hit 200-400-line files, and after a block the model read about 80% of the file anyway, one request later). A shell loop is a sweep only when a `cat` in its body
     reads the loop VARIABLE and a gated extension names what it walks, judged with quoted spans blanked (I4: a
     `cat` inside an `echo "..."` payload was denied). An unexpanded `$VAR` target is not judged; a `cat` glob
-    operand is denied as a sweep; a
+    operand is sized by what it expands to (segment by segment, at most 2,000 entries) and passes while its files
+    together stay within THRESHOLD lines and BIG_BYTES, and a loop, `find -exec cat` or `xargs cat` whose next stage is
+    `wc` is a count (audit 2026-10-20 C28: a two-file glob and a `| wc -l` were denied as sweeps); a
     leading `cd` moves the anchor; a runtime script - inline (`-e` / `-c`) or fed through a heredoc - is read whole and
     judged by what it PRINTS: a count, a length, a test, a map of those, one element, a helper's result or a slice with
     literal bounds within the Read half's own cap (THRESHOLD lines, BIG_BYTES characters) is not a dump, nor a window
@@ -323,7 +329,11 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
   - `guard-secret-value.js` (PreToolUse `Read` + `Grep` + the shell route + the browser servers' `browser_file_upload`, whose
     `tool_input.paths` each take the Read judgement - a page asking for an upload got any workspace file, audit 2026-10-14
     PL3) - credentials are read for PRESENCE, never
-    value. Judged by file CONTENT (a JSON, dotenv, INI - `~/.aws/credentials`, `~/.pypirc`, a `[section]` file,
+    value. A leading `NAME=value` word and every `$(...)` / backtick body are judged as commands of their own, quote-
+    and nesting-aware (audit 2026-10-20 C17: the source protocol's own `MARK="...$(printf ... | ...)"` read as a
+    changing step); a count or a facts-only print (a length, a boolean, a type, a label) runs as written, never one routed
+    to stderr, a throw or an assert; a store name built from literals the same command assigned is masked or refused like
+    the spelled name (a concatenated name was used to dodge a refusal). Judged by file CONTENT (a JSON, dotenv, INI - `~/.aws/credentials`, `~/.pypirc`, a `[section]` file,
     `~/.npmrc` - netrc or URL-per-line (`~/.git-credentials`) file holding a `secret_key_pattern` key with a live
     value; a key that names a key, `signingkey` or `publicKeyToken`, holds none, nor does a field named exactly `key` unless
     its value is credential-shaped (a Confluence `space.key` of `SD`, a Jira `customfield_10010` - 2.1.7), and neither does a file path, a switch
