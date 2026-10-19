@@ -533,7 +533,7 @@ test('D1: on seed=shell every command body prints the refusal and runs no twin',
 // through Bash; a 30,382-byte copy spilled past the Bash tool's output cap to a tool-results file and was read a second
 // time (~8.0k result, +13.6k context carried on every later message), and 28,910 bytes fit by ~1.1k with nothing holding
 // it there. The PowerShell route moved beside it, read only when bash cannot run; the cap keeps a third of headroom.
-const PROTOCOL_CAP = 20000;
+const PROTOCOL_CAP = 14000;
 test(`source-protocol.md, read whole by every command, stays under ${PROTOCOL_CAP} chars; the PowerShell route lives beside it`, () => {
     const protocol = fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'source-protocol.md'), 'utf8');
     assert.ok(protocol.length <= PROTOCOL_CAP, `source-protocol.md is ${protocol.length} chars, over the ${PROTOCOL_CAP} cap - move a branch out, as the PowerShell route was`);
@@ -1262,4 +1262,36 @@ test('init\'s install phase and configure read permissions.defaultMode with the 
         fs.rmSync(f);
         assert.strictEqual(read(), 'unset\n', 'a missing file');
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// Audit 2026-10-20 C16 / C46: validate reset every pin unasked, cleaned up by a glob zsh aborted on, skipped six
+// banners and a rotate ask; configure ran its installer before the placement ask its --scope-of flags come from;
+// the protocol rode every message at 17.8k chars and a run picked its temp dir with `ls -dt` past the marker.
+test('C16: validate applies with --keep-pins, cleans up by name, prints every banner and asks the rotate row', () => {
+    const v = flat(cmdBody('validate'));
+    assert.match(v, /--installed-only \[--add '<line>'\]\.\.\. \[--drop '<line>'\]\.\.\. --keep-pins /, 'the apply call keeps pins');
+    assert.match(v, /`--keep-pins` always: a reconcile never resets a deliberate local model\/effort pin/);
+    assert.match(v, /by name, `rm -rf "\$TMP" "\$MARK"` after the marker block, never a glob/);
+    assert.match(v, /a step with nothing to do prints its banner with ONE line saying why/);
+    assert.match(v, /skips the ask only when it names THIS credential in THIS file/);
+    assert.match(v, /Redirect the delta to `"\$TMP\/delta\.out"`/);
+});
+
+test('C46: configure runs its installer only after the placement ask, and names which in the narration line', () => {
+    const c = flat(cmdBody('configure'));
+    const pre = c.indexOf('**Before the call, the placement answer.**');
+    assert.ok(pre > 0, 'the precondition is there');
+    assert.ok(pre < c.indexOf('- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update'), 'and it comes before the installer call');
+    assert.match(c, /`placement: answered` \/ `placement: not asked - <why>`/);
+});
+
+test('C46: the protocol holds only what every run uses; the why and the rare branches live beside it', () => {
+    const protocol = refBody('source-protocol');
+    const notes = refBody('source-protocol-notes');
+    assert.match(flat(protocol), /`source-protocol-notes\.md` for the why and the rare branches/);
+    assert.match(flat(protocol), /`\$TMP` comes from the marker, every call, and from nowhere else\*\* - never an `ls -dt`/);
+    assert.match(flat(protocol), /by name, never a glob/);
+    for (const branch of ['## Fallbacks - no cache, or the download fails', 'A same-version re-release', 'Old version dirs in the cache'])
+        assert.ok(notes.includes(branch) && !protocol.includes(branch), `${branch} is a notes-only branch`);
+    assert.doesNotMatch(notes, /```bash/, 'no runnable block moves to the notes - the tests run the protocol\'s own');
 });

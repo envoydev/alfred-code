@@ -73,7 +73,10 @@ surface where the rule forbidding it cannot yet exist).
 
 ## The ladder - announce every step
 
-Twelve user-facing steps; the machinery between them runs silently. One banner line before each:
+Twelve user-facing steps; the machinery between them runs silently. One banner line before each - all
+twelve, every run, in order: a step with nothing to do prints its banner with ONE line saying why
+(`[step 6/12 - hooks] nothing to reconcile`), never a skipped one. The layer-table guard denies
+the next ask after a gap in the numbers (6 of 12 were missing in one run - audit 2026-10-20 C16, e43969a7):
 
 ```
 [step 3/12 - rules] reconcile the rule layer · next: agents
@@ -493,9 +496,14 @@ profile), output to `$TMP/select.out` - then:
   nothing. After it come the lines the run leaves OFF: `kept-off <line>` (a switched-off item the
   closure re-requires but no accepted add names - report it as staying off) and `keep-parked plugin
   <name>` (a parked plugin the read-back would enable - a `--drop` whenever the installer runs, no
-  reason on its own to run it). Otherwise:
-  `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope "$(node "$TMP/repo/scripts/install/stamp.js" scope .)" --installed-only [--add '<line>']... [--drop '<line>']... [--browsers <csv>] 2>&1 | tee "$TMP/install.log"`
-  - one `--add` per `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted,
+  reason on its own to run it). Redirect the delta to `"$TMP/delta.out"` and build the flags from that file
+  in the installer's own call, opened with the protocol's marker block - never a `while read ... done < <(...)`:
+  a process substitution hides a failure from `pipefail`, and one run applied `adds=0` from a temp dir it had
+  not written to (audit 2026-10-20 C46, 4f2bfdee). Otherwise:
+  `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope "$(node "$TMP/repo/scripts/install/stamp.js" scope .)" --installed-only [--add '<line>']... [--drop '<line>']... --keep-pins [--browsers <csv>] 2>&1 | tee "$TMP/install.log"`
+  - `--keep-pins` always: a reconcile never resets a deliberate local model/effort pin, and resetting one is
+  configure's ask, not this command's (a run without it logged `keep-pins=off` and reset every pin unasked -
+  audit 2026-10-20 C16, e43969a7). One `--add` per `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted,
   applied on top of the same read-back, so nothing the reconcile did not touch moves. Never
   `--selection` on this seed: that route neither removes nor disables what the reconcile dropped,
   and it stamps every carried item as a pick. On `ALFRED_CODE_SEED=shell` the frozen twin no
@@ -578,7 +586,11 @@ byte-for-byte in a fenced block (`install audit: nothing to report` is the whole
 project). A `high` row gets ONE AskUserQuestion: 'Fix the stack-owned rows' (recommended - an
 update re-run pins a stack server) or 'Leave them'. A row on a server, hook or grant the user added
 by hand is reported with its line and never edited; a credential row is the rotate ask
-`alfred-security.md` owns, never a fix here.
+`alfred-security.md` owns, never a fix here - put through AskUserQuestion in the same turn as the paste, never
+closed as 'your call' in prose. A ruling recorded earlier (memory, an answer in this run) skips the ask only
+when it names THIS credential in THIS file; then the row is one report line, 'rotation: left as you ruled',
+and any other credential row is still the ask (one run skipped it on a ruling about a different file, and its
+close was blocked and re-sent - audit 2026-10-20 C16, b1c22192).
 
 Then check the LIBRARY copies - every skill (no plugin carries one since 2.1.0), a seat on its copy
 route, and every RULE (no plugin ever carries one), is a project copy, and the stamp holds the hash of
@@ -643,8 +655,9 @@ the user sets it through `/alfred-code:configure` or by hand.
 
 ## Clean up the temp dir - ALWAYS
 
-Remove `$TMP` per `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`, on EVERY exit path of
-THIS command: after apply, after an abort, after a disputed-detection stop, and after a clean bill
+Remove `$TMP` per `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md` - by name, `rm -rf "$TMP"
+"$MARK"` after the marker block, never a glob such as `alfred-code-run.*` (zsh aborts the whole line on a glob
+that matches nothing - audit 2026-10-20 C16, 4f2bfdee) - on EVERY exit path of THIS command: after apply, after an abort, after a disputed-detection stop, and after a clean bill
 (nothing redundant or missing). Then confirm the project tree holds only installed artifacts.
 
 ## Do not

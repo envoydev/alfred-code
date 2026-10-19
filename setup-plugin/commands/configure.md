@@ -406,7 +406,13 @@ installer pass whose only real effect was resetting the agent model/effort pins)
 Otherwise, run the installer **from the snapshot**, passing it back with `--source` so the run
 lands the same revision step 1 previewed. One fixed capture form, always - `2>&1 | tee
 "$TMP/install.log"` on the call itself, so the post-install read below has a file that was actually
-written (the shared contract is in `source-protocol.md`'s 'Capture the installer's own output'):
+written (the shared contract is in `source-protocol.md`'s 'Capture the installer's own output').
+
+**Before the call, the placement answer.** The installer runs only after the walk's last ask - 'Where each
+optional item installs' (`references/walk.md`) - was answered, or when the walk asked none (nothing optional
+kept, or the plugins layer not walked); the narration line before the call names which (`placement: answered` /
+`placement: not asked - <why>`). That answer is where the `--scope-of` flags come from, so an installer run
+before it owes a second run when the answer moves an item (audit 2026-10-20 C46, 878f253d).
 
 - **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--space <name>] [--keep-pins] [--browsers <csv>] [--scope-of <item>=<global|project|local>]... [--docs-versioning git|local] [--data-path <folder> --data-move move] [--memory-level global|scoped|project] [--rename-claude-md] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. One `--scope-of` per optional item the walk's last ask moved (`references/walk.md`, 'Where each optional item installs'), plus one per newly added item made global - none for 'Keep each where it is': an update keeps every item where it lives, and this flag is the one way one moves. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
 - **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED` set to `shell`). The frozen OS twin is gone, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
