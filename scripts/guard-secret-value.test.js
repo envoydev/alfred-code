@@ -2702,6 +2702,18 @@ test('audit 2026-10-20 C17: assignments, substitutions and loop words change not
   assert.equal(bash(`python3 -c "import json; d=json.load(open('${S}')); print(d['env']['SENTRY_ACCESS_TOKEN'][:9])"`), REWRITE, 'a slice of the value');
 });
 
+// A count is no read only while the stream reaches the counter: stdout sent to stderr or the terminal before it is a print
+// the model reads (found closing C17: `echo $(cat <file> 1>&2 | wc -l)` passed unrewritten).
+test('audit 2026-10-20 C17 follow-up: stdout moved past the counter is a print, a plain count stays a count', () => {
+  const S = '.claude/settings-secret.json';
+  for (const c of [`echo $(cat ${S} 1>&2 | wc -l)`, `cat ${S} >&2 | wc -l`, `cat ${S} >/dev/stderr | wc -l`, `cat ${S} 3>&1 1>&2 2>&3 | wc -l`,
+    `cat ${S} | tee /dev/stderr | wc -l`, `for k in a; do echo $k $(grep -c x ${S} 1>&2); done`,
+    `node -e "console.log(Object.keys(require('./${S}').env))" 1>&2`, `node -e "console.log(require('./${S}').env.SENTRY_SLUG.length)" >&2`])
+    assert.equal(bash(c), REWRITE, c);
+  for (const c of [`cat ${S} | wc -l`, `cat ${S} 2>&1 | wc -l`, `echo $(cat ${S} | wc -l)`, `grep -c SENTRY ${S}`, `cat ${S} 2>/dev/null | wc -c`])
+    assert.equal(bash(c), 0, c);
+});
+
 test('audit 2026-10-20 C17 (5417afad): Claude Code\'s own feature-flag cache names no credential; a key beside it still does', () => {
   const dir = fs.mkdtempSync(path.join(TMP, 'gb-'));
   const flags = { cachedGrowthBookFeatures: { tengu_kairos_ready_nudge: { impressionKey: 'kairos-nudge-2026-10' } }, numStartups: 3 };

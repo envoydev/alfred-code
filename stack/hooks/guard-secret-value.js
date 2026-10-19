@@ -1783,6 +1783,18 @@ const TERMINAL_DEV = /^\/dev\/(?:std(?:out|err)|tty|fd\/[12])$/;
 const REDIRECT_RE = /(?:^|\s)1?>>?\s*([^&\s>|]+)/g;
 const redirectsToFile = (seg) => [...seg.matchAll(REDIRECT_RE)].some((m) => !TERMINAL_DEV.test(m[1]));
 const teesToTerminal = (stage) => /^tee\b[^|]*?(\/dev\/(?:std(?:out|err)|tty|fd\/[12]))\b/.test(stage.replace(PREFIX_WORDS, ''));
+// A stage whose stdout goes to stderr or the terminal (`1>&2`, `>&2`, a swap's `1>&2`, `>/dev/stderr`, `>/dev/tty`) prints
+// past the pipe - `2>&1` brings stderr INTO it and is no escape. The model reads stderr too.
+const STDOUT_AWAY = /(?:^|[\s;|&(])1?>&\s*2(?!\d)|(?:^|[\s;|&(])1?>>?\s*\/dev\/(?:stderr|tty|fd\/2)\b/;
+// A pipeline that only COUNTS (or lists key names): a reducer stage (isReducer), and nothing before the last one sends
+// the stream past it - a tee to a terminal, or stdout moved to stderr (audit 2026-10-20 C17 follow-up:
+// `echo $(cat <file> 1>&2 | wc -l)` printed the file on stderr and passed as a count).
+function countsOnly(stages) {
+  if (stages.some(teesToTerminal)) return false;
+  let last = -1;
+  stages.forEach((st, k) => { if (isReducer(st)) last = k; });
+  return last >= 0 && !stages.slice(0, last).some((st) => STDOUT_AWAY.test(st));
+}
 
 // Split `text` at the separators `sepAt` reports (their length at position i, 0 for none),
 // honouring quotes: an escaped char outside quotes and inside double quotes is skipped, single
@@ -2235,7 +2247,7 @@ function hasTopLevelComma(args) {
 const OTHER_OUTPUT = /\bconsole\.(?:error|warn|dir|table|debug|trace)\b|\bprocess\.stderr\b|\bthrow\b|\bassert\b|\bsys\.std(?:out|err)\b|\bpprint\b|\bfile\s*=|\$stderr|\bSTDERR\b|\bwarn\b|\b(?:print|puts|pp?)\s+[^\s(=]|\bprocess\.stdout\b(?!\.write\s*\()|\.pipe\s*\(|\bwriteSync\s*\(\s*[12]\b|\$stdout|\bSTDOUT\b|\/dev\/std/;
 function printsKeysOnly(stage) {
   const prints = [...stage.matchAll(PRINT_CALL)];
-  if (!prints.length || OTHER_OUTPUT.test(stage)) return false;
+  if (!prints.length || OTHER_OUTPUT.test(stage) || STDOUT_AWAY.test(stage)) return false;
   return prints.every((m) => {
     const args = argsOf(stage, m.index + m[0].length - 1);
     return KEYS_ARG.test(args) && !VALUE_IDIOM.test(args) && !hasTopLevelComma(args);
@@ -2276,7 +2288,7 @@ function printsFactsOnly(stage) {
   // and a script that also writes, spawns or reaches the network keeps the view, whose drop refusal names it
   // (a `require('<file>.json')` loads data, not code)
   const effects = stage.replace(/\brequire\s*\(\s*(['"])[^'"\n]*\.json\1\s*\)/g, 'data');
-  if (!prints.length || OTHER_OUTPUT.test(stage) || CODE_EFFECT.test(effects) || stageWrites(stage, null)) return false;
+  if (!prints.length || OTHER_OUTPUT.test(stage) || STDOUT_AWAY.test(stage) || CODE_EFFECT.test(effects) || stageWrites(stage, null)) return false;
   return prints.every((m) => {
     const args = argsOf(stage, m.index + m[0].length - 1);
     if (VALUE_IDIOM.test(args)) return false;
@@ -2492,11 +2504,11 @@ function blankCountSubs(stage) {
   if (!scan || !scan.spans.length) return stage;
   let out = stage;
   scan.subs.forEach((body, k) => {
-    if (/(?:^|[^2])>&\s*2|\/dev\/(?:std(?:out|err)|tty)|<\(/.test(body)) return;
+    if (/<\(/.test(body)) return;
     const segs = splitSegments(stripComments(body));
     const counts = segs.length > 0 && segs.every((sg) => {
       const st = splitPipes(sg).map((x) => x.trim()).filter(Boolean);
-      return st.length > 0 && isReducer(st[st.length - 1]) && !st.some(teesToTerminal);
+      return st.length > 0 && isReducer(st[st.length - 1]) && countsOnly(st) && !STDOUT_AWAY.test(st[st.length - 1]);
     });
     if (!counts) return;
     const [a, b] = scan.spans[k];
@@ -2792,7 +2804,7 @@ function narrowGrep(stages, words, tok, prefix) {
 // as written (judgeKept), so a print there takes its own form.
 const GIT_NAMES_ONLY = /^(?:ls-files|check-ignore|check-attr|status|rev-parse|ls-tree|rev-list|show-ref|log|whatchanged)$/;
 function printsNoContent(part, stages) {
-  if (!stages.some(teesToTerminal) && (redirectsToFile(part) || stages.some(isReducer))) return true;
+  if (!stages.some(teesToTerminal) && (redirectsToFile(part) || countsOnly(stages))) return true;
   return stages.every((st) => {
     const head = st.replace(PREFIX_WORDS, '').trim();
     if (/^(?:echo|printf)\b/.test(head) && !/\$\(|`/.test(st)) return true; // prints its own words, `echo "rc=${PIPESTATUS[0]}"`
@@ -3194,7 +3206,7 @@ function redactEnvStages(text) {
     if (stages.join('|') !== seg) return seg;
     // judgeShell's own passes: output into a file never reaches the context, and a names-only reducer
     // (`env | cut -d= -f1`) is the presence read - neither is a dump to replace.
-    if (!stages.some(teesToTerminal) && (redirectsToFile(seg) || stages.some(isReducer))) return seg;
+    if (!stages.some(teesToTerminal) && (redirectsToFile(seg) || countsOnly(stages))) return seg;
     const hits = stages.map((st) => dump.exec(st.replace(PREFIX_WORDS, '').trim()));
     if (!hits.some(Boolean)) return seg;
     changed = true;
@@ -3234,7 +3246,7 @@ function redactGitStages(text) {
     }
     const stages = splitPipes(seg);
     if (stages.join('|') !== seg || stages.some((st) => REDACT.test(st))) return seg;
-    if (!stages.some(teesToTerminal) && (redirectsToFile(seg) || stages.some(isReducer))) return seg;
+    if (!stages.some(teesToTerminal) && (redirectsToFile(seg) || countsOnly(stages))) return seg;
     // A subshell's closing paren rides the last stage (`(cd sub && git diff)` reads `git diff)`), which hid the dump from
     // every test below - it printed a credential raw (deep hooks review 2026-10-16, replayed on the old guard too). The
     // stage is judged without it, and the pipe goes inside the group. A group the stage itself opens (`(git diff)`) is no
@@ -3643,7 +3655,7 @@ function judgeShell(text, forceRuntime, main, bodyLang) {
     // redirect skip nor the presence exemption applies to a segment carrying one.
     if (!stages.some(teesToTerminal)) {
       if (redirectsToFile(seg)) continue; // output into a file never reaches the context
-      if (stages.some(isReducer)) continue;
+      if (countsOnly(stages)) continue;
     }
     if (/\bsed\s+(?:-\w*i|--in-place)\b/.test(seg) && !sedScriptLeaks(seg)) continue; // an edit, not a dump
 
