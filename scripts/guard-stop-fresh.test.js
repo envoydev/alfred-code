@@ -665,6 +665,12 @@ test('guard-stop-contract: a solve-task stop that owes a receipt is told which o
     { label: 'Not yet - changes needed', description: 'z' }] }];
   assert.match(note('rc-approve', [marker, ...answered('u2'), assistantRow('a', fields)], approve), /mechanics: read/);
   assert.equal(note('rc-approve-ok', [marker, ...answered('u3'), assistantRow('a', fields.replace('spec at', 'mechanics: read; plan at'))], approve), '');
+  // a09fc7d6#3 (audit 2026-10-20): the approval after this cycle's task-verify-plan run quotes the gate's `Passes:` line
+  const gateRun = { type: 'assistant', message: { id: 'vp', content: [{ type: 'tool_use', id: 'vp1', name: 'Skill', input: { skill: 'alfred-code:task-verify-plan' } }] } };
+  const mech = fields.replace('spec at', 'mechanics: read; plan at');
+  assert.match(note('rc-passes', [marker, ...answered('u8'), gateRun, assistantRow('a', mech)], approve), /`Passes: risk <v>/);
+  assert.equal(note('rc-passes-ok', [marker, ...answered('u9'), gateRun, assistantRow('a', `${mech} Passes: risk pass | scope pass | existence pass | edges MINOR | soundness pass`)], approve), '');
+  assert.equal(note('rc-passes-none', [marker, ...answered('u10'), assistantRow('a', mech)], approve), '', 'no gate ran this cycle, no Passes owed');
   // 390aebcb, 3ce6b036, 49cb4b82: the close with no `memories purged:`
   const completed = { type: 'assistant', message: { id: 'done', content: [{ type: 'tool_use', id: 'w1', name: 'Edit',
     input: { file_path: '/p/.alfred/docs/plans/2026-10-08-x.md', old_string: 'Approved:', new_string: 'Approved: yes\nCompleted: 2026-10-08' } }] } };

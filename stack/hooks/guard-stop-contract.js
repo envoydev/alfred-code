@@ -2749,6 +2749,11 @@ function flowReceiptsOwed(flow, text, questions) {
   if (!flow.cross && approval && !has(/\bmechanics\**\s*:\s*\**\s*read\b/i)) {
     owed.push('`mechanics: read` (the step-3 approval: `references/step-mechanics.md` read before the ask)');
   }
+  // the gate's audit record: an approval after this cycle's task-verify-plan run quotes its `Passes:` line (audit
+  // 2026-10-20, a09fc7d6#3 - the approval went out with the five verdicts nowhere in it)
+  if (!flow.cross && approval && flow.verifyPlanAt > flow.flowAt && !has(/\bPasses\**\s*:/)) {
+    owed.push('`Passes: risk <v> | scope <v> | existence <v> | edges <v> | soundness <v>` (the approval after `task-verify-plan`, its line as written)');
+  }
   const solveClose = flow.completed !== null && flow.completed > flow.askAt && !flow.typedAfter;
   const crossClose = /(?:^|\n)\s*\**final gate\**\s*:/i.test(text) && /(?:^|\n)\s*\**lanes\**\s*:/i.test(text);
   if ((solveClose || crossClose) && !has(/\bmemories purged\**\s*:/i)) owed.push('`memories purged: <names|none>` (the close)');
@@ -2811,6 +2816,14 @@ function flowLine(line, at, state) {
       }
     } catch { /* a cut row */ }
   }
+  // Where this cycle's plan gate ran - its approval quotes the gate's `Passes:` line (flowReceiptsOwed).
+  if (isAssistant && line.includes('task-verify-plan') && line.includes('"tool_use"')) {
+    try {
+      for (const b of JSON.parse(line).message.content || []) {
+        if (b && b.type === 'tool_use' && b.name === 'Skill' && /(?:^|:)(?:alfred-)?task-verify-plan$/.test(String((b.input || {}).skill || ''))) state.verifyPlanAt = at;
+      }
+    } catch { /* a cut row */ }
+  }
   // A plan read back with its `Approved:` stamp before the first source edit: the mode was chosen when it was approved,
   // in this session or an earlier one (a resumed step-4 session, fc4fec40 / 55abbb18 - audit 2026-10-20 C08).
   if (state.approvedReadAt < 0 && isUser && line.includes('"tool_result"') && line.includes('Approved')) {
@@ -2866,7 +2879,7 @@ function flowLine(line, at, state) {
 function flowState() {
   const none = { flow: false, completed: null, typedAfter: false, typedAfterAt: -1, flowAt: -1, cross: false, askAt: -1,
     completedPlan: null, planAfter: false, editAfterAt: -1, editAfterFile: null, postCloseLogged: null,
-    firstEditAt: -1, editFiles: [], strategyAt: -1, noStrategyLogged: false, approvedReadAt: -1 };
+    firstEditAt: -1, editFiles: [], strategyAt: -1, noStrategyLogged: false, approvedReadAt: -1, verifyPlanAt: -1 };
   try {
     const p = payload.transcript_path;
     if (!p) return none;
