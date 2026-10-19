@@ -16,6 +16,8 @@ let payload = {};
 function use(p) {
   payload = p && typeof p === 'object' ? p : {};
   _knownWindow = undefined;
+  _ignored = undefined;
+  _started = undefined;
 }
 
 // The trigger is an ABSOLUTE token count per WINDOW TIER, one environment variable each (the user's ruling of 2026-10-16;
@@ -142,11 +144,13 @@ function envWindow() {
 // `effortLevel`'s, and skipping it here left a user window under the trigger (390k) unread until a compaction was recorded.
 // 'auto', garbage or a value outside 100K-1M is no window. This only ever LOWERS the window: the harness caps the
 // auto-compact window at the model's own.
-function autoCompactWindow() {
+// The configured window and where it came from: `{ n, source, mtimeMs }` - the env name with no mtime, or the settings
+// file with its mtime (the moment the value could first take effect, at the next session start).
+function configuredCompactWindow() {
   const valid = (v) => { const n = typeof v === 'number' ? v : /^\d+$/.test(String(v || '').trim()) ? parseInt(v, 10) : NaN; return n >= 100000 && n <= 1000000 ? n : null; };
   for (const k of ['CLAUDE_CODE_AUTO_COMPACT_WINDOW', 'CLAUDE_CODE_AUTOCOMPACT_WINDOW']) {
     const n = valid(process.env[k]);
-    if (n) return n;
+    if (n) return { n, source: k, mtimeMs: null };
   }
   try {
     const path = require('path');
@@ -162,10 +166,54 @@ function autoCompactWindow() {
       const per = s.modelSettings && typeof s.modelSettings === 'object' && id
         ? Object.entries(s.modelSettings).find(([k]) => k.toLowerCase() === id || id.endsWith(`/${k.toLowerCase()}`) || id.endsWith(`.${k.toLowerCase()}`)) : null;
       const n = valid(per && per[1] && per[1].autoCompactWindow) || valid(s.autoCompactWindow);
-      if (n) return n;
+      if (n) { let mtimeMs = null; try { mtimeMs = fs.statSync(file).mtimeMs; } catch { /* read a moment ago */ } return { n, source: file, mtimeMs }; }
     }
   } catch { /* no root, no home */ }
   return null;
+}
+// A configured window the harness did NOT honour (audit 2026-10-20 C10, 81ebfa5f / 1aebc759 / b28289bf): a 350k
+// `modelSettings.<model>.autoCompactWindow` in the project's settings.local.json, and three sessions compacted at
+// 466.8k-469.7k while the asks quoted 350k. The settings reference does not say which scopes Claude Code reads the key
+// from, so no cause is claimed - only the measurement: an automatic compaction this project recorded for the model, more
+// than 5% above the configured window, by a session that STARTED after the value was written (the key is read at session
+// start only, so a session already running when it was written proves nothing; an env window counts this session's own
+// points). Then the key is no window: the asks stop quoting it, and the start hook says once that it was not honoured.
+const IGNORED_SLACK = 1.05;
+let _ignored;
+function compactWindowIgnored() {
+  if (_ignored !== undefined) return _ignored;
+  _ignored = null;
+  try {
+    const c = configuredCompactWindow();
+    const id = String(sessionModelId() || '').toLowerCase();
+    if (!c || !id) return _ignored;
+    const sid = String(payload.session_id || '');
+    const mine = (r) => sid && r.session === sid && (c.mtimeMs == null || (sessionStartedAt() || 0) >= c.mtimeMs);
+    const after = (r) => c.mtimeMs != null && Date.parse(r.started || '') >= c.mtimeMs;
+    const over = readCompactPoints().filter((r) => r.model === id && Number(r.tokens) > c.n * IGNORED_SLACK && (mine(r) || after(r)));
+    if (over.length) _ignored = { configured: c.n, seen: Math.max(...over.map((r) => Number(r.tokens))), source: c.source };
+  } catch { /* unreadable - the key stands */ }
+  return _ignored;
+}
+function autoCompactWindow() {
+  const c = configuredCompactWindow();
+  return c && !compactWindowIgnored() ? c.n : null;
+}
+// When this session started: the transcript's first timestamped row (its first 64KB).
+let _started;
+function sessionStartedAt() {
+  if (_started !== undefined) return _started;
+  _started = null;
+  try {
+    const fd = fs.openSync(String(payload.transcript_path || ''), 'r');
+    const buf = Buffer.alloc(64 * 1024);
+    let n = 0;
+    try { n = fs.readSync(fd, buf, 0, buf.length, 0); } finally { fs.closeSync(fd); }
+    const m = buf.toString('utf8', 0, n).match(/"timestamp"\s*:\s*"([^"]+)"/);
+    const t = m ? Date.parse(m[1]) : NaN;
+    if (Number.isFinite(t)) _started = t;
+  } catch { /* no transcript */ }
+  return _started;
 }
 // The compaction points this PROJECT has measured: each automatic compaction leaves its context in
 // `<docs>/flow/compact-points.json` (guard-fresh-session-start.js writes it at PreCompact and at the compact start), and
@@ -190,12 +238,16 @@ function recordCompactPoint(tokens, model) {
     if (!(n >= 50000) || !model) return false;
     const cut = Date.now() - COMPACT_POINTS_DAYS * 86400000;
     const rows = readCompactPoints().filter((r) => Date.parse(r.at) >= cut);
-    rows.push({ at: new Date().toISOString(), session: String(payload.session_id || ''), model: String(model).toLowerCase(), tokens: n });
+    const started = sessionStartedAt();
+    rows.push({ at: new Date().toISOString(), session: String(payload.session_id || ''), model: String(model).toLowerCase(), tokens: n,
+      ...(started ? { started: new Date(started).toISOString() } : {}) });
     const file = compactPointsFile();
     fs.mkdirSync(require('path').dirname(file), { recursive: true });
     const tmp = `${file}.${process.pid}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify(rows.slice(-40), null, 1) + '\n');
     fs.renameSync(tmp, file);
+    _ignored = undefined;
+    _knownWindow = undefined;
     return true;
   } catch { return false; }
 }
@@ -409,6 +461,6 @@ function askAnsweredSince(from) {
 module.exports = {
   use, freshAt, FRESH_AT_200K, FRESH_AT_300K, FRESH_AT_1M, TIER_DEFAULTS, WINDOW_DEFAULT, tierKeyOf, FRESH_OFF, COMPACT_INSTEAD, sessionModelId, tableWindow,
   envWindow, knownWindow, ctxThreshold, MIN_RECOVERABLE_SHARE, coldFloor, worthResuming, contextNow,
-  autoCompactWindow, recordCompactPoint, observedCompaction, compactPointsFile,
+  autoCompactWindow, configuredCompactWindow, compactWindowIgnored, sessionStartedAt, recordCompactPoint, observedCompaction, compactPointsFile,
   transcriptSize, isTypedTurn, freshAskAnsweredThisTurn, freshAskAnsweredCtx, askAnsweredSince,
 };

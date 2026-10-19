@@ -138,8 +138,54 @@ function compactHoldFile() {
   const key = String(payload.transcript_path || payload.session_id || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
   return nodePath.join(envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir(), `guard-fresh-compact-${key}.hold`);
 }
+// THE ASK-GAP ARM (audit 2026-10-20 C49, 8a1fb350): an ask answered after a long idle never reached the idle-gap offer -
+// that route reads the gap since the last reply at a TYPED prompt, and here the gap sat inside the ask (posted 01:09,
+// answered 05:57); the first call after it re-cached ~170k and 52 messages ran at 198-244k. So a changing call whose
+// newest answered AskUserQuestion waited `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS` or more leaves the idle route's hold,
+// once per ask (a marker naming its tool_use id). The common case pays one 256KB tail read and a substring test.
+function askGapArm() {
+  try {
+    const n = parseFloat(envOf(process.env, 'FRESH_SESSION_AFTER_HOURS'));
+    const hours = Number.isNaN(n) || n < 0 ? 2 : n;
+    const p = payload.transcript_path;
+    if (!(hours > 0) || !p || payload.agent_id) return null;
+    const size = fs.statSync(p).size;
+    const start = Math.max(0, size - 256 * 1024);
+    const fd = fs.openSync(p, 'r');
+    const buf = Buffer.alloc(size - start);
+    try { fs.readSync(fd, buf, 0, buf.length, start); } finally { fs.closeSync(fd); }
+    const text = buf.toString('utf8');
+    if (!text.includes('"AskUserQuestion"')) return null;
+    let ask = null;
+    let answeredAt = NaN;
+    for (const line of text.split('\n')) {
+      if (line.includes('"AskUserQuestion"') && line.includes('"assistant"')) {
+        try {
+          const o = JSON.parse(line);
+          const use = o.type === 'assistant' && Array.isArray(o.message && o.message.content)
+            && o.message.content.find((b) => b && b.type === 'tool_use' && b.name === 'AskUserQuestion');
+          if (use) { ask = { id: String(use.id || ''), at: Date.parse(o.timestamp || '') }; answeredAt = NaN; }
+        } catch { /* the window's cut first line */ }
+      } else if (ask && ask.id && line.includes('"tool_result"') && line.includes(ask.id)) {
+        try {
+          const o = JSON.parse(line);
+          if (o.type === 'user' && Array.isArray(o.message && o.message.content)
+            && o.message.content.some((b) => b && b.type === 'tool_result' && b.tool_use_id === ask.id)) answeredAt = Date.parse(o.timestamp || '');
+        } catch { /* a cut row */ }
+      }
+    }
+    if (!ask || !ask.id || !Number.isFinite(ask.at) || !Number.isFinite(answeredAt)) return null;
+    const gapH = (answeredAt - ask.at) / 3600000;
+    if (gapH < hours) return null;
+    const key = String(p || payload.session_id || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
+    const marker = nodePath.join(envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir(), `guard-fresh-askgap-${key}.armed`);
+    try { if (fs.readFileSync(marker, 'utf8').trim() === ask.id) return null; } catch { /* not armed for this ask */ }
+    return { id: ask.id, gapH: Math.round(gapH * 10) / 10, marker };
+  } catch { return null; }
+}
+const ASK_GAP = IS_HOLD_CALL && !IS_SKILL_CALL ? askGapArm() : null;
 // The common case - no hold pending - leaves before anything else is read.
-if (IS_HOLD_CALL && !IS_SKILL_CALL && !fs.existsSync(compactHoldFile())) process.exit(0);
+if (IS_HOLD_CALL && !IS_SKILL_CALL && !ASK_GAP && !fs.existsSync(compactHoldFile())) process.exit(0);
 if (!IS_SKILL_CALL && !IS_HOLD_CALL && !['UserPromptExpansion', 'UserPromptSubmit', 'SessionStart', 'PreCompact'].includes(EVENT)) process.exit(0);
 
 // The fresh-session arithmetic lives in fresh-session.js beside this hook, shared with
@@ -186,8 +232,11 @@ function shortStepSince(from) {
   } catch { /* unreadable - not stated */ }
   return false;
 }
-// The idle route's hold (audit 2026-10-11 SD11) waits for WORK: a shell command that writes nothing (no write target, no
-// git write, by shell-writes.js's reader) is the reading a question needs, so it passes and keeps the hold standing.
+// The hold waits for WORK: a shell command that writes nothing (no write target, no git write, by shell-writes.js's
+// reader) is the reading a question needs, so it passes and keeps the hold standing - on the idle route (audit 2026-10-11
+// SD11) and the compaction route alike (audit 2026-10-20 C12, add5a91e: the first call after a compaction, a read-only
+// `cat COMPACT-STATE; grep`, was denied before any post-compaction context could be read - the next call would have read
+// 82k over a 74k floor and released the hold as not worth resuming, with no ask).
 function writesNothing(command) {
   try {
     const sw = require(nodePath.join(__dirname, 'shell-writes.js'));
@@ -201,7 +250,7 @@ function compactHold() {
   try { hold = JSON.parse(fs.readFileSync(compactHoldFile(), 'utf8')); } catch { return; }
   if (payload.agent_id || !hold || typeof hold !== 'object') return;
   const idle = hold.route === 'idle';
-  if (idle && /^(?:Bash|PowerShell|Monitor)$/.test(String(payload.tool_name || '')) && writesNothing((payload.tool_input || {}).command)) return;
+  if (/^(?:Bash|PowerShell|Monitor)$/.test(String(payload.tool_name || '')) && writesNothing((payload.tool_input || {}).command)) return;
   const kind = idle ? 'idle-hold' : 'compact-hold';
   const release = (outcome, detail) => {
     try { fs.unlinkSync(compactHoldFile()); } catch { /* already gone */ }
@@ -222,8 +271,11 @@ function compactHold() {
   const start = floor ? `~${Math.round(floor / 1000)}k, this session's own first message` : 'this install\'s cold floor';
   if (idle) {
     process.stderr.write(
-      `Held once: this session sat idle ${Number(hold.gapH) || 'over the set'}h before this turn, its prompt cache went cold, and the\n`
-      + `fresh-session choice offered at the prompt has not been put to the user yet. It ${carry}; a fresh session\n`
+      (hold.via === 'ask'
+        ? `Held once: this session's last ask waited ${Number(hold.gapH) || 'over the set'}h for its answer, its prompt cache went cold, and the\n`
+          + `fresh-session choice has not been put to the user yet. It ${carry}; a fresh session\n`
+        : `Held once: this session sat idle ${Number(hold.gapH) || 'over the set'}h before this turn, its prompt cache went cold, and the\n`
+          + `fresh-session choice offered at the prompt has not been put to the user yet. It ${carry}; a fresh session\n`)
       + `restarts at ${start}. Before this first change, put the choice to the user as ONE AskUserQuestion:\n`
       + `'Resume in a fresh session (Recommended)' quoting those two numbers (end the turn with the paste-ready resume\n`
       + `block and the plan or state file it resumes from), or continue here. If the remaining work is a single short\n`
@@ -241,7 +293,25 @@ function compactHold() {
   );
   process.exit(2);
 }
+// The ask-gap arm, decided once per ask: offers on, someone at the terminal and a resume worth it leave the idle hold (a
+// standing hold is kept); either way the marker is written, so the next call does not re-read the ask.
+function armAskGap() {
+  try { fs.writeFileSync(ASK_GAP.marker, ASK_GAP.id); } catch { /* a lost marker re-judges the same ask, still once per hold */ }
+  if (FRESH_OFF) return;
+  const last = lastReply();
+  const u = (last && last.usage) || {};
+  const ctx = (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0);
+  const detail = { gapH: ASK_GAP.gapH, ctx, floor: fresh.coldFloor(), via: 'ask-answer' };
+  if (!(ctx > 0) || !worthResuming(ctx)) return;
+  if (unattended(payload)) { ledgerRow({ mode: 'unattended', kind: 'idle-gap-offer', reason: UNATTENDED_SKIP, detail }); return; }
+  try {
+    if (fs.existsSync(compactHoldFile())) return;
+    fs.writeFileSync(compactHoldFile(), JSON.stringify({ at: new Date().toISOString(), size: fresh.transcriptSize(), denied: 0, route: 'idle', via: 'ask', gapH: ASK_GAP.gapH }));
+  } catch { return; }
+  ledgerRow({ mode: 'probe', kind: 'idle-gap-offer', reason: 'probe: the idle hold armed by an ask answered after a long gap', detail });
+}
 if (IS_HOLD_CALL && !IS_SKILL_CALL) {
+  if (ASK_GAP) armAskGap();
   compactHold();
   process.exit(0);
 }
@@ -855,6 +925,25 @@ const auto = (IS_SKILL_CALL && (EVENT === 'PreToolUse' || !EVENT)) || EVENT === 
 const BANNER_RE = AUTO_SKILL_RE;   // every family a banner opens can run in auto-mode (capture joined 2026-10-17)
 const BANNER_HEAD = 'Open your reply to this command with these two lines, exactly as written, and never repeat them in a later reply:';
 const tokens = (n) => (n >= 1000000 && n % 1000000 === 0 ? `${n / 1000000}M` : `${Math.round(n / 1000)}k`);
+// A configured auto-compact window this project's own compactions show was not honoured (fresh-session.js
+// compactWindowIgnored - audit 2026-10-20 C10): said ONCE per session, wherever the session first meets it (a compaction
+// start or a banner), naming the documented route that applies a window to the running session. No cause is claimed.
+function acwIgnoredNote() {
+  try {
+    const ig = typeof fresh.compactWindowIgnored === 'function' ? fresh.compactWindowIgnored() : null;
+    if (!ig || payload.agent_id) return '';
+    const key = String(payload.transcript_path || payload.session_id || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
+    const marker = nodePath.join(envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir(), `guard-fresh-acw-${key}.said`);
+    if (fs.existsSync(marker)) return '';
+    fs.writeFileSync(marker, String(ig.seen));
+    const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+    const rel = nodePath.relative(root, ig.source);
+    const where = /^CLAUDE_CODE_/.test(ig.source) ? ig.source : rel && !rel.startsWith('..') && !nodePath.isAbsolute(rel) ? rel : ig.source;
+    return `The ${tokens(ig.configured)} autoCompactWindow in ${where} was not honoured: this project compacted at ~${tokens(ig.seen)} `
+      + 'after it was set, so it is not quoted as the window. `/autocompact <value>` saves a window for this model in the user settings '
+      + 'and applies it to the running session (code.claude.com/docs/en/model-config) - say so to the user once, never claim the old value holds.';
+  } catch { return ''; }
+}
 function modeBanner(autoOn) {
   const model = fresh.sessionModelId();
   const listed = fresh.tableWindow();
@@ -879,7 +968,8 @@ function modeBanner(autoOn) {
       : FRESH_OFF || at === null
         ? `**Context:** the fresh-session offers are off - the session compacts ${where}.`
         : `**Context:** session refresh - past ~${tokens(at)} tokens of ${room}, the run offers to resume in a fresh session from its state file instead of compacting.`;
-  return `${BANNER_HEAD}\n${mode}\n${ctxLine}`;
+  const acwNote = acwIgnoredNote();
+  return `${acwNote ? `${acwNote}\n\n` : ''}${BANNER_HEAD}\n${mode}\n${ctxLine}`;
 }
 // Nobody at the terminal is judged WITHOUT the session's own AUTO stamp (a payload with no session id reads none): that
 // stamp is the auto-mode this banner reports ON, and the person who typed the command is there to read it. A print-mode
@@ -923,6 +1013,9 @@ if (EVENT === 'SessionStart') {
   const boundary = boundaryPreTokens();
   // The boundary row's own measurement of where the harness compacted (fresh-session.js observedCompaction).
   if (boundary && boundary.trigger === 'auto' && boundary.preTokens) recordCompaction(boundary.preTokens);
+  // a configured window this compaction (or an earlier one) shows was not honoured is said here, once (C10)
+  const acwNote = acwIgnoredNote();
+  const withNote = (t) => (acwNote ? (t ? `${t} ${acwNote}` : acwNote) : t);
   // Nobody at the terminal (hook-prelude.js unattended) has nobody to ask: the pointer, never the offer - and the
   // skipped offer leaves its row (review A, M3). A compaction the USER asked for (`/compact`) is no ceiling reached.
   const quiet = !FRESH_OFF && unattended(payload);
@@ -937,7 +1030,7 @@ if (EVENT === 'SessionStart') {
   if (FRESH_OFF || quiet || manual) {
     // Compacting IS this project's answer to a full context (fresh-session.js COMPACT_INSTEAD): the summary's own
     // 'continue' line stands, and the two notes after it still apply.
-    const text = manual ? after : COMPACT_INSTEAD ? `${COMPACT_NOTE} Continue the work from the summary. ${after}` : pointer;
+    const text = withNote(manual ? after : COMPACT_INSTEAD ? `${COMPACT_NOTE} Continue the work from the summary. ${after}` : pointer);
     if (text) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: text } }));
     process.exit(0);
   }
@@ -961,7 +1054,7 @@ if (EVENT === 'SessionStart') {
         'the state file or plan file it resumes from), or continue here on the summary; when it would recover too ' +
         'little the change goes through and you continue here. Never put the choice without those two numbers. If ' +
         'the remaining work is a single short step, say so in one line (' + String.fromCharCode(39) + 'single short step: <what>' + String.fromCharCode(39) + ') and just finish it. ' +
-        after,
+        withNote(after),
     },
   }));
   process.exit(0);

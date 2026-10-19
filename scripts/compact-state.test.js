@@ -274,6 +274,71 @@ test('compact-state: an automatic compaction records its context, and the trigge
     finally { process.env = saved; }
 });
 
+// Audit 2026-10-20 C10 (81ebfa5f, 1aebc759, b28289bf): a 350k window in settings.local.json had no effect - three sessions
+// compacted at 466.8k-469.7k - while the asks quoted 350k. Once this project's own compactions show it, the key is no
+// window, and the start hook says so once.
+test('compact-state: a configured auto-compact window the compactions show was not honoured stops being quoted (audit 2026-10-20 C10)', () =>
+{
+    const fresh = require('../stack/hooks/fresh-session.js');
+    const ago = (h) => new Date(Date.now() - h * 3600000).toISOString();
+    const local = (p, mtimeHoursAgo) => {
+        const f = path.join(p.root, '.claude', 'settings.local.json');
+        fs.mkdirSync(path.dirname(f), { recursive: true });
+        fs.writeFileSync(f, JSON.stringify({ modelSettings: { 'claude-opus-5-5': { autoCompactWindow: 350000 } } }));
+        const t = new Date(Date.now() - mtimeHoursAgo * 3600000);
+        fs.utimesSync(f, t, t);
+    };
+    const rows = (startedH, pre) => [{ ...usageRow('f', { cache_creation_input_tokens: 80000 }), timestamp: ago(startedH) },
+        { ...usageRow('a', { cache_read_input_tokens: pre - 300 }), timestamp: ago(0.1) }, boundary('auto', pre)];
+    const engine = (p, tp, sid) => { fresh.use({ transcript_path: tp, cwd: p.root, session_id: sid }); return fresh; };
+    const saved = { ...process.env };
+    try
+    {
+        process.env.CLAUDE_CONFIG_DIR = BASE_ENV.CLAUDE_CONFIG_DIR;
+        delete process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW;
+        delete process.env.CLAUDE_CODE_AUTOCOMPACT_WINDOW;
+        const env = { ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'acw-')) };
+        // the key written 2h ago, a session started 1h ago compacts at 466.8k: not honoured
+        const p = project();
+        local(p, 2);
+        const tp = p.transcript(rows(1, 466800));
+        process.env.CLAUDE_PROJECT_DIR = p.root;
+        assert.strictEqual(engine(p, tp, p.sid).autoCompactWindow(), 350000, 'before any compaction the key is the window');
+        const start = startText(p.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tp }, env));
+        assert.match(start, /The 350k autoCompactWindow in \.claude\/settings\.local\.json was not honoured: this project compacted at ~467k/);
+        assert.match(start, /`\/autocompact <value>` saves a window for this model in the user settings/);
+        const point = JSON.parse(fs.readFileSync(path.join(p.flow, 'compact-points.json'), 'utf8')).pop();
+        assert.ok(Date.parse(point.started) <= Date.now() - 0.9 * 3600000, 'the point records when its session started');
+        assert.strictEqual(engine(p, tp, p.sid).autoCompactWindow(), null, 'the key is no window now');
+        assert.strictEqual(fresh.knownWindow(), 1000000, 'the model\'s own window stands');
+        assert.doesNotMatch(startText(p.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tp }, env)), /not honoured/, 'said once per session');
+        // a NEW session of the same project reads the recorded point: its banner quotes no 350k window, and says why once
+        const tp2 = path.join(p.root, 'second.jsonl');
+        fs.writeFileSync(tp2, [{ ...usageRow('g', { cache_creation_input_tokens: 80000 }), timestamp: ago(0.2) }].map((r) => JSON.stringify(r)).join('\n') + '\n');
+        const banner = () => p.run({ hook_event_name: 'UserPromptExpansion', expansion_type: 'slash_command', command_name: 'task-solve', command_args: 'fix it',
+            prompt: '/task-solve fix it', transcript_path: tp2, session_id: 'second' }, env).stdout;
+        const first = banner();
+        assert.match(first, /was not honoured: this project compacted at ~467k/);
+        assert.doesNotMatch(first, /350k auto-compact window/, 'the banner never quotes the key as the window');
+        assert.doesNotMatch(banner(), /not honoured/, 'once per session');
+        // boundary: a compaction within 5% of the window is the window honoured
+        const b = project();
+        local(b, 2);
+        const tb = b.transcript(rows(1, 367000));
+        process.env.CLAUDE_PROJECT_DIR = b.root;
+        assert.doesNotMatch(b.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tb }, env).stdout, /not honoured/);
+        assert.strictEqual(engine(b, tb, b.sid).autoCompactWindow(), 350000, '367k under a 350k window is within the slack');
+        // a key written AFTER the session started (mid-session) proves nothing about the key: Claude Code reads it at start
+        const m = project();
+        local(m, 0.5);
+        const tm = m.transcript(rows(1, 466800));
+        process.env.CLAUDE_PROJECT_DIR = m.root;
+        assert.doesNotMatch(m.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tm }, env).stdout, /not honoured/);
+        assert.strictEqual(engine(m, tm, m.sid).autoCompactWindow(), 350000);
+    }
+    finally { process.env = saved; }
+});
+
 test('compact-state: the first change after an automatic compaction is held once, with both numbers (C09)', () =>
 {
     const log = fs.mkdtempSync(path.join(TMP, 'hold-'));
@@ -286,6 +351,8 @@ test('compact-state: the first change after an automatic compaction is held once
     const tp = p.transcript(rows);
     assert.match(startText(p.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tp }, env)),
         /without asking the user any further questions' - that is the harness's default line, and this hook supersedes it/);
+    // audit 2026-10-20 C12, add5a91e: before any post-compaction reading, a shell call that writes nothing passes
+    assert.strictEqual(call(p, tp, 'Bash', { tool_input: { command: 'cat .alfred/docs/flow/COMPACT-STATE' } }), 0, 'a reading shell call passes');
     after(tp, usageRow('b', { cache_read_input_tokens: 120000 }));
     assert.strictEqual(call(p, tp, 'Read'), 0, 'a read is never held');
     assert.strictEqual(call(p, tp, 'Edit', { agent_id: 'seat-1' }), 0, "a seat's call is the parent's work in flight");
@@ -342,14 +409,16 @@ test('compact-state: the hold reaches an edit and a shell call through their one
     p.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tp }, env);
     fs.appendFileSync(tp, JSON.stringify(usageRow('b', { cache_read_input_tokens: 120000 })) + '\n');
     assert.strictEqual(via(FILES, 'Read', { file_path: path.join(p.root, 'a.txt') }).status, 0, 'a read is never held');
-    const shell = via(SHELL, 'Bash', { command: 'ls' });
-    assert.strictEqual(shell.status, 2, 'the first shell call after the compaction is held');
+    // audit 2026-10-20 C12, add5a91e: a shell call that writes nothing is the reading the ask needs - it passes
+    assert.strictEqual(via(SHELL, 'Bash', { command: 'cat .alfred/docs/flow/COMPACT-STATE; grep -rlE "x" src' }).status, 0, 'a reading shell call is never held');
+    const shell = via(SHELL, 'Bash', { command: 'echo x > a.txt' });
+    assert.strictEqual(shell.status, 2, 'the first changing shell call after the compaction is held');
     assert.match(shell.stderr, /Held once: this session AUTO-COMPACTED/);
     assert.match(shell.stderr, /~120k tokens per message/);
     const edit = via(FILES, 'Edit', { file_path: path.join(p.root, 'a.txt'), old_string: 'a', new_string: 'b' });
     assert.strictEqual(edit.status, 2, 'an edit is held through the file dispatcher');
     assert.match(edit.stderr, /Held once/);
-    assert.strictEqual(via(SHELL, 'Bash', { command: 'ls' }).status, 0, 'two denials, then it gives way - the cap is shared by both routes');
+    assert.strictEqual(via(SHELL, 'Bash', { command: 'echo y > a.txt' }).status, 0, 'two denials, then it gives way - the cap is shared by both routes');
 });
 
 test('compact-state: the prompt ending an idle gap past the clock hours is offered a fresh session once (C09, ca65b406)', () =>
@@ -438,6 +507,51 @@ test('compact-state: the idle gap leaves a hold the first change meets, released
     c.run({ hook_event_name: 'UserPromptSubmit', prompt: 'next', transcript_path: tc }, env);
     assert.match(c.run({ hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: { file_path: path.join(c.root, 'a.txt') }, transcript_path: tc }, env, FILES).stderr,
         /AUTO-COMPACTED/, 'a compaction hold already standing is kept');
+});
+
+// Audit 2026-10-20 C49, 8a1fb350: an ask posted at 01:09 and answered at 05:57 never reached the idle-gap offer - no
+// typed prompt ended the gap - and 52 messages ran at 198-244k after the cache went cold. The answer arms the idle hold.
+test('compact-state: an ask answered after a long gap leaves the idle hold for the first change (audit 2026-10-20 C49)', () =>
+{
+    const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
+    const SHELL = path.join(HOOKS, 'shell-guards.js');
+    const FILES = path.join(HOOKS, 'file-guards.js');
+    const ago = (h) => new Date(Date.now() - h * 3600000).toISOString();
+    const rows = (gapH, carry = 289900) => [
+        { ...usageRow('f', { cache_creation_input_tokens: 77600 }), timestamp: ago(gapH + 1) },
+        { type: 'assistant', timestamp: ago(gapH), message: { id: 'q', model: 'claude-opus-5-5', usage: { cache_read_input_tokens: carry },
+            content: [{ type: 'tool_use', id: 'toolu_ask1', name: 'AskUserQuestion', input: { questions: [{ question: 'Push now?' }] } }] } },
+        { type: 'user', timestamp: ago(0.01), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_ask1',
+            content: 'Your questions have been answered: "Push now?"="Push (Recommended)"' }] } },
+    ];
+    const setup = (gapH, more = {}, carry) => {
+        const env = { ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'askgap-')), ...more };
+        const p = project();
+        const tp = p.transcript(rows(gapH, carry));
+        const via = (hook, tool, input) => p.run({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, transcript_path: tp }, env, hook);
+        return { p, tp, via, edit: () => via(FILES, 'Edit', { file_path: path.join(p.root, 'a.txt'), old_string: 'a', new_string: 'b' }) };
+    };
+    const s = setup(4.8);
+    assert.strictEqual(s.via(SHELL, 'Bash', { command: 'git status --short' }).status, 0, 'a reading shell call passes - the hold stands');
+    const held = s.via(SHELL, 'Bash', { command: 'git push origin develop' });
+    assert.strictEqual(held.status, 2, 'the first change after the answer is held');
+    assert.match(held.stderr, /last ask waited 4\.8h for its answer/);
+    assert.match(held.stderr, /~290k tokens per message/);
+    assert.match(held.stderr, /~78k, this session's own first message/);
+    const ledger = fs.readFileSync(path.join(s.p.root, '.alfred', 'docs', 'hook-blocks', `${s.p.sid}.jsonl`), 'utf8');
+    assert.match(ledger, /"kind":"idle-gap-offer"[^\n]*"via":"ask-answer"/, 'one probe row says where it came from');
+    fs.appendFileSync(s.tp, JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'f2',
+        content: 'Your questions have been answered: "Fresh?"="Continue here"' }] } }) + '\n');
+    assert.strictEqual(s.edit().status, 0, 'the fresh-session ask answered releases it');
+    assert.strictEqual(s.edit().status, 0, 'and the same long ask never arms it twice');
+    assert.strictEqual(setup(1.9).edit().status, 0, 'under the 2h knob: no hold');
+    assert.strictEqual(setup(2.1).edit().status, 2, 'over it: held');
+    assert.strictEqual(setup(4.8, { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '0' }).edit().status, 0, '0 switches it off');
+    assert.strictEqual(setup(4.8, { ALFRED_CODE_UNATTENDED: '1' }).edit().status, 0, 'nobody at the terminal: no hold');
+    assert.strictEqual(setup(4.8, {}, 100000).edit().status, 0, 'a carry mostly the cold floor: no hold');
+    const seat = setup(4.8);
+    assert.strictEqual(seat.p.run({ hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: {}, transcript_path: seat.tp, agent_id: 'seat-1' },
+        { ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'askgap-')) }).status, 0, 'a seat is never held');
 });
 
 // Audit 2026-10-10 C19, b35afe70: spec-check printed `path: gated`, the plan was written and task-verify-plan ran 8s
