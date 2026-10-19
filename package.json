@@ -34,7 +34,8 @@
     "marketplace": "node scripts/build-marketplace.js --write && node scripts/build-marketplace.js --write-marketplace && node scripts/build-marketplace.js --mcp-entries",
     "eval-bundle": "node scripts/build-eval-bundle.js",
     "scope-preloads": "node scripts/scope-agent-preloads.js --write",
-    "skill-headings": "node scripts/skill-headings.js"
+    "skill-headings": "node scripts/skill-headings.js",
+    "rule-openings": "node scripts/install/rule-openings.js"
   },
   "devDependencies": {
     "js-yaml": "^4.1.0"
