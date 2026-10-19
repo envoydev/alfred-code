@@ -354,6 +354,12 @@ const BACKGROUND_NOTE = 'Background wait (alfred-quality-gates.md): one command 
     + 'tasks, not shells. Tell the user ONE start line - what runs and when it should finish - then nothing until the result or a '
     + 'failure: one watch whose command ends on either (an `until` on the result line or a crash signature), never a reply per '
     + 'sample, never silence past the finish time you gave.';
+// What the first Monitor call of an actor is told (audit 2026-10-20 C32, 7c1af769 / 9a0314ed): the note above rode only a
+// background Bash call, 1.5h before the Monitor whose per-sample lines woke 12 turns (2.8M) - every printed line is a wake.
+const MONITOR_NOTE = 'Monitor watch: every line this command prints wakes a turn. Print only on a change, a threshold, the result or a '
+    + 'failure signature - never a line per sample or per loop pass (`while true; do echo ...; sleep 30; done` wakes you every 30s) - '
+    + 'and end the command on the result or a crash. Tell the user ONE start line - what runs and when it should finish - then '
+    + 'nothing until the result or a failure: never a reply per wake, never silence past the finish time you gave.';
 
 function ownChecks(stdin)
 {
@@ -426,22 +432,26 @@ function ownChecks(stdin)
     // The always-on quality-gates rule keeps 'a wait measured in minutes runs in the background'; these mechanics ride
     // the first run_in_background Bash call of each actor (the main session or one seat), once - an exclusive marker -
     // where they apply, instead of every session's context (533 chars there; a background call in 24.8% of sessions).
-    if (tool === 'Bash' && input.run_in_background === true)
+    // The first Monitor call of each actor gets its own note under its own marker (audit 2026-10-20 C32): a session whose
+    // background Bash heard the note an hour earlier still hears the per-wake rule where the watch starts.
+    const watch = tool === 'Bash' && input.run_in_background === true ? { kind: '', branch: 'bg-note', note: BACKGROUND_NOTE }
+        : tool === 'Monitor' ? { kind: 'mon-', branch: 'monitor-note', note: MONITOR_NOTE } : null;
+    if (watch)
     {
         let first = false;
         try
         {
             const dir = (prelude && typeof prelude.envOf === 'function' && prelude.envOf(process.env, 'HOOK_LOG_DIR')) || os.tmpdir();
             const part = (v) => String(v || '').replace(/[^\w.-]/g, '_').slice(-80);
-            fs.writeFileSync(path.join(dir, `alfred-bg-note-${part(payload.session_id || 'nosession')}-${part(payload.agent_id || 'main')}`), new Date().toISOString(), { flag: 'wx' });
+            fs.writeFileSync(path.join(dir, `alfred-bg-note-${watch.kind}${part(payload.session_id || 'nosession')}-${part(payload.agent_id || 'main')}`), new Date().toISOString(), { flag: 'wx' });
             first = true;
             if (prelude && typeof prelude.sweepStale === 'function') prelude.sweepStale(dir, 'alfred-bg-note-');
         }
         catch { first = false; }
         if (first)
         {
-            row({ mode: 'probe', reason: 'probe: bg-note', detail: { branch: 'bg-note' } });
-            out.results.push({ guard: `${SELF}.js`, code: 0, stderr: '', stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: BACKGROUND_NOTE } }) });
+            row({ mode: 'probe', reason: `probe: ${watch.branch}`, detail: { branch: watch.branch } });
+            out.results.push({ guard: `${SELF}.js`, code: 0, stderr: '', stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: watch.note } }) });
         }
     }
 
@@ -654,5 +664,5 @@ function main()
     if (!pending) process.exit(verdict.code);
 }
 
-module.exports = { GUARDS, SELF, MATCHER, PROTECTIVE, RUN_ORDER, SLOW_MS, BACKGROUND_NOTE, wiringRows, runGuard, combine, parseOut, ownChecks, slowProbe };
+module.exports = { GUARDS, SELF, MATCHER, PROTECTIVE, RUN_ORDER, SLOW_MS, BACKGROUND_NOTE, MONITOR_NOTE, wiringRows, runGuard, combine, parseOut, ownChecks, slowProbe };
 if (require.main === module) main();

@@ -721,7 +721,7 @@ test('audit 2026-10-14 RU04: the first background Bash call of each actor carrie
   };
   const bg = { command: 'npm test > run.log 2>&1', run_in_background: true };
   assert.equal(call('bg1', { command: 'npm test' }).context, '', 'a foreground call says nothing');
-  assert.equal(call('bg1', { command: 'tail -f run.log' }, { tool: 'Monitor' }).context, '', 'a Monitor call IS the watch');
+  // audit 2026-10-20 C32: a Monitor call carries its own note (MONITOR_NOTE), under its own marker - tested below
   assert.equal(call('bg1', { ...bg, run_in_background: 'true' }).context, '', 'only a real true is a background call');
   const first = call('bg1', bg);
   assert.equal(first.status, 0, 'a note, never a block');
@@ -750,6 +750,38 @@ test('audit 2026-10-14 RU04: the first background Bash call of each actor carrie
   // a block still wins: the note rides beside it
   const blocked = run(DISPATCH, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'git commit -am x', run_in_background: true }, session_id: 'bg4', cwd: dir }, { cwd: dir, env });
   assert.equal(blocked.status, 2, 'the commit gate still blocks');
+});
+
+// audit 2026-10-20 C32 (7c1af769, 9a0314ed): the note rode only the first background Bash call, an hour before the Monitor
+// whose per-sample lines woke 12 and 35 turns - the first Monitor call of each actor now hears the per-wake rule itself.
+test('audit 2026-10-20 C32: the first Monitor call of each actor carries the per-wake note, once, beside the Bash note', () => {
+  const dir = project('mon-');
+  const marks = fs.mkdtempSync(path.join(TMP, 'marks-'));
+  const env = { CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_HOOK_LOG_DIR: marks };
+  const call = (session, tool, input, agent) => {
+    const r = run(DISPATCH, { hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, session_id: session, cwd: dir, ...(agent ? { agent_id: agent, agent_type: 'alfred-code:implementer' } : {}) }, { cwd: dir, env });
+    let h = {};
+    try { h = JSON.parse(r.stdout).hookSpecificOutput || {}; } catch { h = {}; }
+    return { status: r.status, context: h.additionalContext || '' };
+  };
+  const mon = { command: 'while true; do echo "$(date) $(pgrep -f node | wc -l)"; sleep 30; done', description: 'mem watch' };
+  // the shape of 7c1af769: a background Bash heard its note first, the Monitor came later
+  assert.equal(call('m1', 'Bash', { command: 'npm run build > b.log 2>&1', run_in_background: true }).context, shell.BACKGROUND_NOTE);
+  const first = call('m1', 'Monitor', mon);
+  assert.equal(first.status, 0, 'a note, never a block');
+  assert.equal(first.context, shell.MONITOR_NOTE);
+  assert.match(first.context, /every line this command prints wakes a turn/);
+  assert.match(first.context, /never a line per sample/);
+  assert.match(first.context, /ONE start line/);
+  assert.equal(call('m1', 'Monitor', mon).context, '', 'once per actor');
+  assert.equal(call('m1', 'Bash', { command: 'npm test > t.log 2>&1', run_in_background: true }).context, '', 'the Bash note stays once too');
+  assert.equal(call('m1', 'Monitor', mon, 'a1').context, shell.MONITOR_NOTE, 'a seat is its own actor');
+  // the other order: a Monitor first leaves the background Bash note unspent
+  assert.equal(call('m2', 'Monitor', mon).context, shell.MONITOR_NOTE);
+  assert.equal(call('m2', 'Bash', { command: 'npm test > t.log 2>&1', run_in_background: true }).context, shell.BACKGROUND_NOTE);
+  assert.ok(fs.readdirSync(marks).includes('alfred-bg-note-mon-m1-main'), 'its own marker, under the swept prefix');
+  const rows = ledgerRows(dir, 'm1').filter((x) => x.detail && x.detail.branch === 'monitor-note');
+  assert.deepEqual(rows.map((x) => x.mode), ['probe', 'probe'], 'one probe row per note (main, a1)');
 });
 
 test('audit 2026-10-10: an unaddressed sed -i s/// over several lines of its file gets a note naming them', () => {
