@@ -2665,3 +2665,48 @@ test('deep review: a tree-taking copy, archive or forced add of a folder above t
   const bare = fs.realpathSync(fs.mkdtempSync(path.join(TMP, 'bare-')));
   assert.equal(at(bare, 'cp -R . /tmp/x').status, 0, 'a project with no store copies freely');
 });
+
+// audit 2026-10-20 C17 (4f2bfdee, b1c22192, a8804432, 5417afad, 40c4e87c): the stack's own source-protocol preamble, a
+// loop's paren-holding substitution and a `|| continue` read as changing steps; a splice dropped the loop's `do`; a count
+// or a fact about a value came back as the whole redacted file. Each relaxation keeps the read it exists to stop.
+test('audit 2026-10-20 C17: assignments, substitutions and loop words change nothing; counts and facts print no value', () => {
+  const S = '.claude/settings-secret.json';
+  const protocol = fs.readFileSync(path.join(__dirname, '..', 'setup-plugin', 'references', 'source-protocol.md'), 'utf8');
+  const mark = protocol.split('\n').find((l) => l.startsWith('MARK="$TD/alfred-code-run.'));
+  assert.ok(mark, 'the preamble line the protocol ships');
+  const preamble = `RUN_ROOT=$(pwd)\nTD="\${TMPDIR:-/tmp}"; TD="\${TD%/}"\n${mark}\n`;
+  // the preamble beside a one-key read: rewritten (the key's filter over the view), never blocked
+  assert.equal(bash(`${preamble}grep -o '"SENTRY_SLUG": *"[a-z]*"' ${S}`), REWRITE, 'the MARK line is an assignment (4f2bfdee)');
+  assert.equal(bash(`grep -n SENTRY ${S}; ls *.json | while read f; do n=$(grep -o "^\\(public\\|internal\\) interface I[A-Za-z]*" $f | awk '{print $3}'); echo $n; done`), REWRITE, 'a substitution holding parens and quotes (a8804432)');
+  assert.equal(bash(`for f in ${S} .claude/clean.json; do [ -f "$f" ] || continue; jq '.' "$f"; done`), REWRITE, '`|| continue` moves the loop (5417afad)');
+  // ... and a step that changes something, inside an assignment's substitution or beside it, still blocks
+  assert.equal(bash(`${preamble}X="$(printf a | tee out.txt)"; cat ${S}`), 2, 'a write in an assignment\'s substitution, its read dropped whole');
+  assert.equal(bash(`M="$(printf '%s' "$(rm -rf build)")"; cat ${S} | head -3; echo x`), REWRITE, 'a nested changing step in a kept segment runs as written, beside the spliced view');
+  // a splice keeps the segment's own keyword, and the result parses
+  const loop = rewritten(`for k in a b; do cat ${S}; done`);
+  assert.match(loop, /^for k in a b; do node .*--redacted .*; done$/, 'the loop keeps its do (a8804432)');
+  assert.equal(spawnSync('bash', ['-n', '-c', loop]).status, 0, 'bash -n parses the spliced loop');
+  // counts and facts print no value: run as written
+  assert.equal(bash(`for f in ${S}; do grep -c -i sentry "$f"; done`), 0, 'a count in a loop body (40c4e87c)');
+  assert.equal(bash(`for k in SENTRY_SLUG SENTRY_ACCESS_TOKEN; do echo $k $(grep -c "$k" ${S}); done`), 0, 'a counting substitution');
+  assert.equal(bash(`node -e "const s=require('./${S}'); console.log(s.env.SENTRY_ACCESS_TOKEN.length, !!s.env.SENTRY_SLUG)"`), 0, 'a length and a boolean (40c4e87c)');
+  assert.equal(bash(`python3 -c "import json; d=json.load(open('${S}')); print(len(d['env']['SENTRY_ACCESS_TOKEN']), 'SENTRY_SLUG' in d['env'])"`), 0, 'python\'s len and in');
+  // ... while a value, a value beside a fact, or another output channel still takes the view
+  assert.equal(bash(`for k in a; do echo $(cat ${S} | wc -l) $(cat ${S}); done`), REWRITE, 'a print substitution beside the count');
+  assert.equal(bash(`echo $(grep -c x ${S}; cat ${S})`), REWRITE, 'a count then a print in one substitution');
+  assert.equal(bash(`node -e "const s=require('./${S}'); console.log(s.env.SENTRY_ACCESS_TOKEN)"`), REWRITE, 'the value itself');
+  assert.equal(bash(`node -e "const s=require('./${S}'); console.log(s.env.SENTRY_SLUG.length + s.env.SENTRY_ACCESS_TOKEN)"`), REWRITE, 'an operator joins a value to the fact');
+  assert.equal(bash(`node -e "const s=require('./${S}'); console.log(s.env.SENTRY_SLUG.length); console.error(s.env)"`), REWRITE, 'stderr carries the value');
+  assert.equal(bash(`node -e "const s=require('./${S}'); console.log(Object.keys(s.env)); console.error(s.env)"`), REWRITE, 'the key-list pass had the same stderr hole');
+  assert.equal(bash(`node -e "const s=require('./${S}'); console.log('ok'); require('fs').createReadStream('${S}').pipe(process.stdout)"`), REWRITE, 'a stream piped to stdout');
+  assert.equal(bash(`python3 -c "import json; d=json.load(open('${S}')); print(d['env']['SENTRY_ACCESS_TOKEN'][:9])"`), REWRITE, 'a slice of the value');
+});
+
+test('audit 2026-10-20 C17 (5417afad): Claude Code\'s own feature-flag cache names no credential; a key beside it still does', () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'gb-'));
+  const flags = { cachedGrowthBookFeatures: { tengu_kairos_ready_nudge: { impressionKey: 'kairos-nudge-2026-10' } }, numStartups: 3 };
+  fs.writeFileSync(path.join(dir, 'flags.json'), JSON.stringify(flags, null, 2));
+  fs.writeFileSync(path.join(dir, 'flags-token.json'), JSON.stringify({ ...flags, primaryApiKey: 'sk-ant-' + 'b'.repeat(30) }, null, 2));
+  assert.equal(bash(`cat "${path.join(dir, 'flags.json')}"`), 0, 'the flag cache alone');
+  assert.equal(bash(`cat "${path.join(dir, 'flags-token.json')}"`), REWRITE, 'a real key elsewhere in the file');
+});

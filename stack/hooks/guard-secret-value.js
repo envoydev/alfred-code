@@ -172,7 +172,14 @@ function secretKeyIn(node, prefix, depth, labels, parent = '') {
     if (typeof v === 'string') {
       if ((!labels && ((credKey(k) && holdsCredential(k, v)) || hostCredential(parent, k, v))) || (labels && SECRET_SHAPE.test(v))
         || PEM_PRIVATE.test(v) || embeddedCredential(v)) return here;
-    } else { const hit = secretKeyIn(v, here, depth + 1, labels, k); if (hit) return hit; }
+    } else {
+      // Claude Code's own feature-flag cache in `~/.claude.json` names flag fields, never a credential: its
+      // `...impressionKey` read as a camelCase `Key` and refused a read-only loop over config files (audit 2026-10-20
+      // C17, 5417afad). The cache alone - a credential anywhere else in the file still counts.
+      if (k === 'cachedGrowthBookFeatures') continue;
+      const hit = secretKeyIn(v, here, depth + 1, labels, k);
+      if (hit) return hit;
+    }
   }
   return null;
 }
@@ -558,6 +565,17 @@ const VARS = new Map([
 // walks gets its own view (judgeShell).
 const LOOP_VARS = new Set();
 const KNOWN_VARS = () => { const o = {}; for (const [k, v] of VARS) o[k] = v[0]; return o; };
+// The value a `NAME=<word>` assignment gives, as the shell builds it: a single-quoted word as written, any other with each
+// `$NAME` / `${NAME}` it holds replaced by that name's one known value - so a store name built in pieces resolves
+// (audit 2026-10-20 C17, fabea019: `f=".sensitive"; f="$f-data"; cat ".alfred/$f"` was neither masked nor refused).
+function assignedValue(word) {
+  const w = String(word);
+  if (/^'[\s\S]*'$/.test(w)) return w.slice(1, -1);
+  return w.replace(/^"([\s\S]*)"$/, '$1').replace(/\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)/g, (m, a, b) => {
+    const v = expands(a || b) && VARS.get(a || b);
+    return v && v.length === 1 && !String(v[0]).includes('$') ? v[0] : m;
+  });
+}
 // A runtime heredoc body under a QUOTED tag reaches the runtime verbatim, and node, python and ruby never expand
 // `$NAME` - it is the script's own text, not a path it opens (proven: `node <<'EOF'` reading
 // "$CLAUDE_CONFIG_DIR/.claude.json" gets ENOENT on that literal path, the unquoted tag reads the account file). Measured
@@ -1744,7 +1762,9 @@ function jqReduces(stage) {
   return /^(?:keys(?:_unsorted)?(?:\[\])?|length|type|has\([^)]*\))$/.test(filter.split('|').pop().trim());
 }
 function isReducer(stage) {
-  const s = stage.replace(PREFIX_WORDS, '');
+  // a loop body's or branch's own keyword is no verb (audit 2026-10-20 C17, 40c4e87c: `for f in ...; do grep -c -i x "$f";
+  // done` read `do grep` as no count and came back as the file's whole redacted view)
+  const s = stage.replace(/^\s*(?:(?:do|then|else|elif|!|\{)\s+)+/, '').replace(PREFIX_WORDS, '');
   if (/^wc\b/.test(s)) return true;
   // a count, quiet or list flag anywhere in a cluster of grep's no-value flags (`-ci`, `-qE` - the 2026-10-17 usage audit's
   // host check); a letter that takes a value (`-d recurse`, `-e`, `-A 3`) ends the cluster, so `-drecurse` is no count
@@ -2209,12 +2229,58 @@ function hasTopLevelComma(args) {
   }
   return false;
 }
+// Output the print calls above do not cover - stderr, a thrown error or a failed assertion carrying a value, a print
+// without parentheses - voids either exemption: `console.log(Object.keys(s)); console.error(s)` printed the whole file
+// through the key-list pass (found while widening it, audit 2026-10-20 C17).
+const OTHER_OUTPUT = /\bconsole\.(?:error|warn|dir|table|debug|trace)\b|\bprocess\.stderr\b|\bthrow\b|\bassert\b|\bsys\.std(?:out|err)\b|\bpprint\b|\bfile\s*=|\$stderr|\bSTDERR\b|\bwarn\b|\b(?:print|puts|pp?)\s+[^\s(=]|\bprocess\.stdout\b(?!\.write\s*\()|\.pipe\s*\(|\bwriteSync\s*\(\s*[12]\b|\$stdout|\bSTDOUT\b|\/dev\/std/;
 function printsKeysOnly(stage) {
   const prints = [...stage.matchAll(PRINT_CALL)];
-  if (!prints.length) return false;
+  if (!prints.length || OTHER_OUTPUT.test(stage)) return false;
   return prints.every((m) => {
     const args = argsOf(stage, m.index + m[0].length - 1);
     return KEYS_ARG.test(args) && !VALUE_IDIOM.test(args) && !hasTopLevelComma(args);
+  });
+}
+// The arguments of one print call, split at its top-level commas.
+function topLevelArgs(args) {
+  const out = [];
+  let depth = 0; let quote = null; let from = 0;
+  for (let i = 0; i < args.length; i++) {
+    const ch = args[i];
+    if (quote) { if (ch === '\\') i++; else if (ch === quote) quote = null; continue; }
+    if (ch === '"' || ch === '\'' || ch === '`') { quote = ch; continue; }
+    if (ch === '(' || ch === '[' || ch === '{') depth++;
+    else if (ch === ')' || ch === ']' || ch === '}') depth--;
+    else if (ch === ',' && depth === 0) { out.push(args.slice(from, i)); from = i + 1; }
+  }
+  out.push(args.slice(from));
+  return out;
+}
+// A FACT about a value, never the value: a length, a boolean test, a type, a key list, a membership test, a plain literal
+// (audit 2026-10-20 C17, 40c4e87c: `node -e "...console.log(s.env.TOKEN.length, !!s.env.SLUG)"` came back as a 3,411-char
+// redacted dump of the whole settings file). Each argument is one operand-free expression - an operator between two
+// names (`a.length + s.env.TOKEN`) is not one of these shapes, so it still takes the view.
+const MEMBER = String.raw`[\w$.\[\]'"]+`;
+const FACT_ARG = new RegExp([
+  String.raw`^[\w$.\[\]'"()]+\.length$`, // a length, at the end of a member or call chain
+  String.raw`^!!?\s*${MEMBER}$`, // a boolean
+  String.raw`^typeof\s+${MEMBER}$`,
+  String.raw`^(?:len|bool|Boolean|isinstance|type)\s*\(${MEMBER}(?:\s*,\s*${MEMBER})?\)$`,
+  String.raw`^(?:'[^'\n]*'|"[^"\n]*")\s+(?:not\s+)?in\s+${MEMBER}$`, // a membership test
+  // a label or number the code itself carries - never a path, which names a file the way a read does
+  String.raw`^(?:'[^'\n/\\]*'|"[^"\n/\\]*"|-?\d+(?:\.\d+)?)$`,
+].join('|'));
+function printsFactsOnly(stage) {
+  if (printsKeysOnly(stage)) return true;
+  const prints = [...stage.matchAll(PRINT_CALL)];
+  // and a script that also writes, spawns or reaches the network keeps the view, whose drop refusal names it
+  // (a `require('<file>.json')` loads data, not code)
+  const effects = stage.replace(/\brequire\s*\(\s*(['"])[^'"\n]*\.json\1\s*\)/g, 'data');
+  if (!prints.length || OTHER_OUTPUT.test(stage) || CODE_EFFECT.test(effects) || stageWrites(stage, null)) return false;
+  return prints.every((m) => {
+    const args = argsOf(stage, m.index + m[0].length - 1);
+    if (VALUE_IDIOM.test(args)) return false;
+    return topLevelArgs(args).every((a) => FACT_ARG.test(a.trim()) || (KEYS_ARG.test(a) && !hasTopLevelComma(a)));
   });
 }
 
@@ -2365,7 +2431,90 @@ function stageWrites(stage, code) {
   return m ? m[0].replace(/\s+/g, ' ').slice(0, 40) : null;
 }
 const CONTROL_LEAD = /^(?:do|then|else|elif|if|while|until|!|\{|\()\s+/;
-const CONTROL_ALONE = /^(?:done|fi|esac|else|\}|\)|for\s+\w+\s+in\b.*)$/;
+// `continue`, `break` and `:` move the loop or do nothing (audit 2026-10-20 C17, 5417afad: `[ -f "$f" ] || continue` in a
+// read-only loop was blocked as a changing step).
+const CONTROL_ALONE = /^(?:done|fi|esac|else|\}|\)|for\s+\w+\s+in\b.*|continue(?:\s+\d+)?|break(?:\s+\d+)?|:)$/;
+// One pass over shell text, quote- and nesting-aware: the bodies of its top-level `$( ... )` and backtick substitutions -
+// inside double quotes too, where `"$(printf '%s' "$X" | cut -c1-9)"` nests a quote in a quote - and, with `stopAtWord`,
+// where its first word ends. An arithmetic `$(( ... ))` runs nothing. Null when a quote or a substitution is left open.
+// Audit 2026-10-20 C17 (4f2bfdee, b1c22192, a8804432): the stack's own source-protocol preamble
+// `MARK="$TD/alfred-code-run.$(printf '%s' "$RUN_ROOT" | tr ... | cut ...)-$(... | git hash-object --stdin | ...).path"`
+// and a loop's `n=$(grep -o "^\(public\|internal\) ..." $f | awk ...)` defeated the `"[^"]*"` / `\$\([^()]*\)` regexes this
+// replaces, and the assignment read as a step that changes something.
+function shellScan(text, from, stopAtWord) {
+  judgeTick(1 + text.length - from);
+  const stack = []; // 'd' a double quote, 'p' a paren level inside a substitution, 'a' inside an arithmetic `$((`
+  let subDepth = 0; // open substitution levels on the stack
+  let open = -1; // where the outermost substitution's body starts
+  const subs = [];
+  const spans = []; // [start, end) of each top-level substitution, its `$(` / `)` or backticks included
+  for (let i = from; i < text.length; i++) {
+    const c = text[i];
+    const top = stack[stack.length - 1];
+    if (c === '\\') { i++; continue; }
+    if (top !== 'd' && c === "'") { const e = text.indexOf("'", i + 1); if (e < 0) return null; i = e; continue; }
+    if (c === '`') {
+      const e = text.indexOf('`', i + 1);
+      if (e < 0) return null;
+      if (!subDepth) { subs.push(text.slice(i + 1, e)); spans.push([i, e + 1]); }
+      i = e;
+      continue;
+    }
+    if (c === '$' && text[i + 1] === '(') {
+      if (text[i + 2] === '(') { stack.push('a'); i += 2; continue; }
+      if (!subDepth) open = i + 2;
+      stack.push('p'); subDepth++; i++;
+      continue;
+    }
+    if (top === 'd') { if (c === '"') stack.pop(); continue; }
+    if (c === '"') { stack.push('d'); continue; }
+    if (top === 'p' || top === 'a') {
+      if (c === '(') stack.push(top === 'a' ? 'a' : 'p');
+      else if (c === ')') {
+        const was = stack.pop();
+        if (was === 'a' && text[i + 1] === ')' && stack[stack.length - 1] !== 'a') i++; // `))` closes the arithmetic
+        else if (was === 'p' && !stack.includes('p') && --subDepth === 0) { subs.push(text.slice(open, i)); spans.push([open - 2, i + 1]); }
+        else if (was === 'p') subDepth--;
+      }
+      continue;
+    }
+    if (stopAtWord && /[\s;|&<>()]/.test(c)) return { end: i, subs, spans };
+  }
+  return stack.length ? null : { end: text.length, subs, spans };
+}
+// The stage with every substitution that only COUNTS blanked (spaces, same length): `echo $k $(grep -c "$k" <file>)`
+// prints a number, and its file operand is no read (audit 2026-10-20 C17, a8804432 / 40c4e87c: such loops came back as
+// the whole redacted file, once per pass). Counts only: each segment of the body ends in a reducer (isReducer) and
+// nothing in it reaches the terminal another way (a tee to a terminal, stdout moved to stderr). A key-name list is the
+// same no-value read here as on the shell route (isReducer).
+function blankCountSubs(stage) {
+  const scan = /\$\(|`/.test(stage) ? shellScan(stage, 0, false) : null;
+  if (!scan || !scan.spans.length) return stage;
+  let out = stage;
+  scan.subs.forEach((body, k) => {
+    if (/(?:^|[^2])>&\s*2|\/dev\/(?:std(?:out|err)|tty)|<\(/.test(body)) return;
+    const segs = splitSegments(stripComments(body));
+    const counts = segs.length > 0 && segs.every((sg) => {
+      const st = splitPipes(sg).map((x) => x.trim()).filter(Boolean);
+      return st.length > 0 && isReducer(st[st.length - 1]) && !st.some(teesToTerminal);
+    });
+    if (!counts) return;
+    const [a, b] = scan.spans[k];
+    out = out.slice(0, a) + ' '.repeat(b - a) + out.slice(b);
+  });
+  return out;
+}
+// A step's leading `NAME=value` words, each read whole by shellScan, removed; a word it cannot close stays.
+function stripAssignments(step) {
+  let rest = step;
+  for (;;) {
+    const m = /^[A-Za-z_]\w*(?:\[[^\]]*\])?\+?=/.exec(rest);
+    if (!m || rest[m[0].length] === '(') return rest; // an array assignment is judged as written
+    const r = shellScan(rest, m[0].length, true);
+    if (!r) return rest;
+    rest = rest.slice(r.end).replace(/^\s+/, '');
+  }
+}
 // The stream redactor counts too: `git remote -v | node <this file> --redact-stdin` changes nothing.
 const SELF_READ = /guard-secret-value\.js["']?\s+--(?:presence|redacted(?:-env)?|redact-stdin)\b/;
 // This guard's own read, its script word spelled through a variable the command assigned: `G=<path>/guard-secret-value.js;
@@ -2378,7 +2527,8 @@ const expandAssigned = (s) => s.replace(/\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)/g
 const selfRun = (stage, re = SELF_READ) => re.test(stage) || (stage.includes('$') && re.test(expandAssigned(stage)));
 // The first step of `text` that may change something, skipping the stage being rewritten; null when none. `onlySeg`:
 // judge the skipped stage's own segment alone - a splice keeps every other segment running as written.
-function changingStep(text, skipSeg, skipStage, onlySeg) {
+function changingStep(text, skipSeg, skipStage, onlySeg, depth = 0) {
+  if (depth > JUDGE_MAX_DEPTH) throw new JudgeBudget('depth');
   const segs = splitSegments(stripComments(text));
   for (let i = 0; i < segs.length; i++) {
     if (onlySeg && i !== skipSeg) continue;
@@ -2391,10 +2541,13 @@ function changingStep(text, skipSeg, skipStage, onlySeg) {
       if (i === skipSeg && j === skipStage) continue;
       let step = stages[j].trim();
       if (!step || selfRun(step) || teesToTerminal(step)) continue;
-      for (const m of step.matchAll(/\$\(([^()]*)\)/g)) { const inner = changingStep(m[1], -1, -1); if (inner) return inner; }
+      // every substitution is a command of its own, judged whole; a step the scan cannot close keeps the old paren-free read
+      const scan = shellScan(step, 0, false);
+      const bodies = scan ? scan.subs : [...step.matchAll(/\$\(([^()]*)\)/g)].map((m) => m[1]);
+      for (const body of bodies) { const inner = changingStep(body, -1, -1, false, depth + 1); if (inner) return inner; }
       step = step.replace(/^\(+\s*(?=(?:cd|pushd|popd)\b)/, ''); // a subshell's `(cd dir && cat f)` moves only the subshell
       while (CONTROL_LEAD.test(step)) step = step.replace(CONTROL_LEAD, '');
-      step = step.replace(/^(?:\w+=(?:"[^"]*"|'[^']*'|\$\([^()]*\)|[^\s;|&]*)\s*)+/, '');
+      step = stripAssignments(step);
       if (!/^command\s+-v\b/.test(step)) step = step.replace(PREFIX_WORDS, '');
       if (!step || CONTROL_ALONE.test(step)) continue;
       if (!readOnlyStep(step) || inPlaceFlag(step)) return stages[j].trim();
@@ -2643,6 +2796,9 @@ function printsNoContent(part, stages) {
   return stages.every((st) => {
     const head = st.replace(PREFIX_WORDS, '').trim();
     if (/^(?:echo|printf)\b/.test(head) && !/\$\(|`/.test(st)) return true; // prints its own words, `echo "rc=${PIPESTATUS[0]}"`
+    // a test prints nothing - `[ -f "$f" ] || continue` in a loop over credential files kept the loop from its splice
+    // (audit 2026-10-20 C17, 5417afad)
+    if (/^(?:test|\[\[?)\s/.test(head.replace(/^(?:(?:do|then|else|elif|if|while|until|!)\s+)+/, '')) && !/\$\(|`/.test(st)) return true;
     const w = shellTokens(head).map(dequoteWord);
     if (!/^git(?:\.exe)?$/i.test(w[0] || '')) return !namesCredentialStage(st);
     let i = 1;
@@ -2663,7 +2819,7 @@ function namesCredentialStage(stage) {
 }
 function namesCredentialFileIn(part) {
   const asg = part.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;|&]*)/);
-  if (asg) VARS.set(asg[1], [asg[2].replace(/^(["'])([\s\S]*)\1$/, '$2')]);
+  if (asg) VARS.set(asg[1], [assignedValue(asg[2])]);
   const stages = splitPipes(part);
   if (stages.some(namesCredentialStage) && printsNoContent(part, stages)) return false;
   for (const stage of stages) {
@@ -2695,10 +2851,12 @@ function spliceView(view, loopVar) {
   const header = loopVar ? new RegExp(`^\\s*for\\s+${loopVar}\\s+in\\b`) : null;
   if (parts.some((p, i) => i !== judging.seg && !(header && header.test(p)) && namesCredentialFileIn(p))) return null;
   // the replaced segment keeps its own surrounding whitespace, so the command reads exactly as
-  // the model wrote it with one step swapped
+  // the model wrote it with one step swapped - and its leading keyword: `for k in a b; do cat f; done` lost its `do` and
+  // the loop no longer parsed (audit 2026-10-20 C17, a8804432)
   const pad = edgeSpace(parts[judging.seg]);
+  const lead = (parts[judging.seg].trim().match(/^(?:(?:do|then|else|elif|if|while|until|!|\{)\s+|\(\s*)+/) || [''])[0];
   let out = '';
-  for (let i = 0; i < parts.length; i++) out += (i === judging.seg ? pad[0] + view + pad[1] : parts[i]) + (seps[i] || '');
+  for (let i = 0; i < parts.length; i++) out += (i === judging.seg ? pad[0] + lead + view + pad[1] : parts[i]) + (seps[i] || '');
   return out.trim();
 }
 // The segments a splice keeps run as written, so they are judged as written before the rewrite stands: a runtime or a
@@ -2914,7 +3072,13 @@ function refuseSensitiveMention(text, steps = text) {
     return null;
   };
   const judgeStage = (stage, depth, pipedOn) => {
-    const words = shellTokens(stage.trim()).map(joinQuoted).filter(plain);
+    // an assignment-only step binds its name for the steps after it, in order (assignedValue)
+    const toks = shellTokens(stage.trim());
+    if (toks.length && toks.every((t) => /^[A-Za-z_]\w*=/.test(t))) {
+      for (const t of toks) { const eq = t.indexOf('='); VARS.set(t.slice(0, eq), [assignedValue(t.slice(eq + 1))]); }
+      return;
+    }
+    const words = toks.map(joinQuoted).filter(plain);
     const verb = baseOf(words[0] || '');
     if (!verb || /guard-secret-value\.js/.test(stage)) return;
     if (verb === 'cd' || verb === 'pushd') {
@@ -3465,7 +3629,7 @@ function judgeShell(text, forceRuntime, main, bodyLang) {
     const seg = segments[si];
     // A `NAME=value` assignment, or a `for NAME in <list>`, binds the path the NEXT segment dumps.
     const asg = seg.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;|&]*)/);
-    if (asg) VARS.set(asg[1], [asg[2].replace(/^(["'])([\s\S]*)\1$/, '$2')]);
+    if (asg) VARS.set(asg[1], [assignedValue(asg[2])]);
     const loop = seg.match(/^\s*for\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+([^\n;]+)/);
     if (loop) { VARS.set(loop[1], shellTokens(loop[2]).filter((t) => t !== 'do').slice(0, 20)); LOOP_VARS.add(loop[1]); }
     const cd = seg.match(/^\s*(?:\(\s*)?(?:cd|pushd)\s+("[^"]*"|'[^']*'|[^\s;|&()]+)/); // a subshell's `(cd dir && ...)` too
@@ -3549,7 +3713,7 @@ function judgeShell(text, forceRuntime, main, bodyLang) {
       if (/^(?:echo|printf)\b/.test(stage.replace(PREFIX_WORDS, '')) && !/\$\{?[A-Za-z_]/.test(stage)) continue;
       // ...and a runtime stage that prints only a KEY LIST is the sanctioned presence read, so it
       // passes through as written rather than becoming a whole-file redacted dump.
-      if (isRuntime && printsKeysOnly(stage)) continue;
+      if (isRuntime && printsFactsOnly(stage)) continue;
 
       // What flows INTO the stream redactor comes out masked, so the stage feeding it reads no file here - its
       // printed variables and environment dumps were judged above, and the redactor masks by line, not by file.
@@ -3607,8 +3771,10 @@ function judgeShell(text, forceRuntime, main, bodyLang) {
       // sessions 7fae0c39, adaa2ef3, f450ea64, 9a4ef375, bda299a8).
       const literal = new Set();
       const codeGlobs = isRuntime && (CODE_GLOB.test(forceRuntime ? text : stage) || /\b(?:pwsh|powershell)\b/i.test(stage) || (forceRuntime && !bodyLang));
-      if (DUMP_VERB.test(stage) || isRuntime) {
-        for (const tok of shellTokens(stage)) {
+      // a substitution that only counts reads into a number, never the terminal (blankCountSubs)
+      const candStage = isRuntime || IS_PWSH ? stage : blankCountSubs(stage);
+      if (DUMP_VERB.test(candStage) || isRuntime) {
+        for (const tok of shellTokens(candStage)) {
           if (tok.startsWith('-') || !/[\/.~$]/.test(tok)) continue;
           const t = tok.replace(/^\(+/, '').replace(/(?<!\))\)+$/, '');
           candidates.push(t);
@@ -3620,7 +3786,7 @@ function judgeShell(text, forceRuntime, main, bodyLang) {
       // `env -C <dir>` in the stage, the session's own directory. The command word itself is no operand.
       const stageAnchor = cwdAnchor;
       if (!isRuntime) {
-        const bare = bareOperands(shellTokens(stage.replace(PREFIX_WORDS, '').replace(/^\s*\(+/, '')));
+        const bare = bareOperands(shellTokens(candStage.replace(PREFIX_WORDS, '').replace(/^\s*\(+/, '')));
         if (bare.dir) { const d = expandPath(bare.dir); if (d) cwdAnchor = pathMod.isAbsolute(d) ? d : pathMod.join(cwdAnchor || anchorDirs()[0] || '.', d); }
         candidates.push(...bare.names);
       }
@@ -3633,7 +3799,7 @@ function judgeShell(text, forceRuntime, main, bodyLang) {
       if (isRuntime) for (const b of builtInBody || builtPaths(inlineScripts(stage))) { candidates.push(b); if (!codeGlobs) literal.add(b); }
       // `< file` feeds the file to whatever the stage runs, `while read` and `done < file` included -
       // the same read as `cat file`, which is why `cat < file` already blocked.
-      for (const m of stage.matchAll(/(?:^|[^<])<\s*("[^"]*"|'[^']*'|[^\s;|&<>()]+)/g)) candidates.push(m[1]);
+      for (const m of candStage.matchAll(/(?:^|[^<])<\s*("[^"]*"|'[^']*'|[^\s;|&<>()]+)/g)) candidates.push(m[1]);
       for (const tok of candidates) {
         for (const p of candidatePaths(tok, literal.has(tok))) {
           const file = statFile(p);
@@ -3658,7 +3824,9 @@ function judgeShell(text, forceRuntime, main, bodyLang) {
           const spliced = spliceView(shown, loopVar);
           refuseDroppedSteps(`${file}, which holds a credential under \`${key}\``, spliced != null);
           if (spliced != null) judgeKept(spliced);
-          rewrite(spliced != null ? spliced : wholeView(shown, file), { branch: 'file', file: pathMod.basename(file) });
+          // the whole-command view drops the loop, so it names the file, never the loop's variable (audit 2026-10-20 C17)
+          const whole = loopVar ? shown.split(`"$${loopVar}"`).join(`"${shDouble(file)}"`) : shown;
+          rewrite(spliced != null ? spliced : wholeView(whole, file), { branch: 'file', file: pathMod.basename(file) });
         }
       }
       cwdAnchor = stageAnchor; // `env -C` moves only its own stage

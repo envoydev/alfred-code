@@ -224,3 +224,17 @@ test('sensitive data: the guard and data-root.js read one store the same way - B
     assert.deepStrictEqual(dataRoot.readSensitive({ projectDir: utf16.dir }), { K_ONE: 'wide value' });
     assert.strictEqual(wrapped(utf16.dir, node('hex', 'K_ONE')).stdout.trim(), `K_ONE=${Buffer.from('wide value').toString('hex')}`);
 });
+
+// audit 2026-10-20 C17 (fabea019): after a refusal the model built the store's name in pieces; the dump and the copy then
+// passed unjudged. A name assembled from literals the same command assigned resolves before either check.
+test('audit 2026-10-20 C17: a store name built by concatenation is masked when printed and refused when carried', () => {
+    const { dir } = project('concat');
+    const built = 'f=".sensitive"; f="$f-data"; ';
+    const out = run({ tool_name: 'Bash', tool_input: { command: `${built}cat ".alfred/$f"` }, cwd: dir, session_id: 'suite' });
+    assert.match(updated(out) || '', /--redacted ".*\.alfred[\\/]\.sensitive-data"/, 'the print becomes the masked view');
+    assert.strictEqual(bash(dir, `${built}cp ".alfred/$f" /tmp/x`), 2, 'a copy is refused');
+    assert.strictEqual(bash(dir, `${built}source ".alfred/$f"`), 2, 'a source is refused');
+    assert.strictEqual(bash(dir, `${built}cp ".alfred/$f" /tmp/x; f=other`), 2, 'a later reassignment does not hide it');
+    assert.strictEqual(bash(dir, `${built}git check-ignore -q ".alfred/$f"; echo ignored=$?`), 0, 'a look still passes (the evidence shape)');
+    assert.strictEqual(bash(dir, 'f=".sensitive"; f="$f-notes"; cat ".alfred/$f" 2>/dev/null'), 0, 'another name built the same way is no store');
+});
