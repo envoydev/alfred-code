@@ -618,6 +618,47 @@ test('flow probes: a session whose edits span 2+ files with no habits-execution-
     assert.strictEqual(r.status, 0, 'a continuation never holds on it');
 });
 
+// Audit 2026-10-20 C08: the probe fired on every conforming flow run - the plan written at step 2 counted as the first
+// edit (970539b7, 8a1fb350), scratch scripts under the session scratchpad (aae9d911, 8f130789), generated docs (ce3fd60a),
+// and a resumed step-4 session whose plan already carried its approved mode (fc4fec40, 55abbb18). The execution-line
+// probe missed the verdict riding the mode ask (9a0314ed, 970539b7).
+test('flow probes (C08): only source edits inside the project count, an approved plan read first settles the mode, and the mode ask carries the Execution line', () => {
+    const skill = call('Skill', { skill: 'alfred-code:habits-execution-strategy' });
+    const plan = (root) => path.join(root, '.alfred', 'docs', 'plans', '2026-10-15-pdf.md');
+    const writePlan = (root) => { const w = call('Write', { file_path: plan(root), content: '# plan' }); return [w.row, result(w.id, 'ok')]; };
+    const flowRun = project();
+    flowStop(flowRun, transcript(flowRun, [typed('<command-name>/task-solve</command-name>'), ...writePlan(flowRun), skill.row, result(skill.id, 'ok'),
+        ...steps(flowRun, [['edit', 'src/cart.ts'], ['edit', 'src/totals.ts']])]), 'Done.');
+    assert.strictEqual(flowProbes(flowRun, 'no-execution-strategy').length, 0, '8a1fb350: the plan written at step 2 is no first edit');
+    const scratch = project();
+    const tmpFile = (n) => { const e = call('Write', { file_path: path.join(os.tmpdir(), 'claude-501', 'scratchpad', n), content: 'x' }); return [e.row, result(e.id, 'ok')]; };
+    flowStop(scratch, transcript(scratch, [typed('fix it'), ...tmpFile('repro.mjs'), ...tmpFile('entry.js'), ...steps(scratch, [['edit', 'src/cart.ts']])]), 'Done.');
+    assert.strictEqual(flowProbes(scratch, 'no-execution-strategy').length, 0, 'aae9d911: scratchpad scripts and one source file');
+    const docs = project();
+    const doc = (n) => { const e = call('Write', { file_path: path.join(docs, '.alfred', 'docs', 'architecture', n), content: 'x' }); return [e.row, result(e.id, 'ok')]; };
+    flowStop(docs, transcript(docs, [typed('capture it'), ...doc('boundaries.md'), ...doc('blind-spots.md')]), 'Done.');
+    assert.strictEqual(flowProbes(docs, 'no-execution-strategy').length, 0, 'ce3fd60a: generated docs');
+    const resumed = project();
+    const read = call('Read', { file_path: plan(resumed) });
+    flowStop(resumed, transcript(resumed, [typed('/task-solve resume step 4'), read.row, result(read.id, '    16→Gated: 5 passes\n    17→Approved: build in this session - "approve"\n'),
+        ...steps(resumed, [['edit', 'src/cart.ts'], ['edit', 'src/totals.ts']])]), 'Done.');
+    assert.strictEqual(flowProbes(resumed, 'no-execution-strategy').length, 0, 'fc4fec40: the mode was approved before this session');
+    // the case the probe exists for still logs
+    const real = project();
+    flowStop(real, transcript(real, [typed('fix both'), ...writePlan(real), ...steps(real, [['edit', 'src/cart.ts'], ['edit', 'src/totals.ts']])]), 'Done.');
+    assert.deepStrictEqual(flowProbes(real, 'no-execution-strategy').map((r) => r.detail.files), [['cart.ts', 'totals.ts']], 'two source files, no load: one row naming them');
+    // execution-line: the verdict riding the mode ask is the line
+    const base = [typed('<command-name>/task-solve</command-name>'), skill.row, result(skill.id, 'Launching skill: habits-execution-strategy')];
+    const modeAsk = call('AskUserQuestion', { questions: [{ question: 'The plan passed. I recommend this session: the tasks depend on each other.', options: [{ label: 'Approve - build in this session (Recommended)' }, { label: 'Approve - dispatch the agent seats' }] }] });
+    const ok = project();
+    flowStop(ok, transcript(ok, [...base, modeAsk.row, result(modeAsk.id, 'Your questions have been answered: "x"="y"')]), 'Building.');
+    assert.strictEqual(flowProbes(ok, 'execution-line').length, 0, '9a0314ed: the mode ask carries the verdict');
+    const plain = call('AskUserQuestion', { questions: [{ question: 'The plan passed. Build it?', options: [{ label: 'Approve (Recommended)' }, { label: 'Not yet' }] }] });
+    const miss = project();
+    flowStop(miss, transcript(miss, [...base, plain.row, result(plain.id, 'Your questions have been answered: "x"="y"')]), 'Building.');
+    assert.strictEqual(flowProbes(miss, 'execution-line').length, 1, 'an ask naming no mode is still a miss');
+});
+
 test('flow probes: a Windows plan path - backslashes, as Claude Code writes file_path there - is read the same (gate, Windows leg)', () => {
     const root = project();
     const plan = 'C:\\proj\\.alfred\\docs\\plans\\2026-10-10-cart.md';

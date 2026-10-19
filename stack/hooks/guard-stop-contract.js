@@ -1639,7 +1639,15 @@ function execLineMissed() {
       if (loaded && blk.type === 'text') text += `\n${blk.text || ''}`;
       if (blk.type !== 'tool_use') continue;
       const input = blk.input || {};
-      if (loaded && blk.name === 'AskUserQuestion') for (const q of input.questions || []) text += `\n${(q && q.question) || ''}`;
+      if (loaded && blk.name === 'AskUserQuestion') {
+        for (const q of input.questions || []) {
+          text += `\n${(q && q.question) || ''}`;
+          // the verdict rides the flow's MODE ask (habits-execution-strategy: 'the line rides the flow's mode ask'): an ask
+          // whose options name the execution mode carries it - 2 of 2 conforming task-solve runs logged a miss for it
+          // (audit 2026-10-20 C08, 970539b7, 9a0314ed)
+          if (q && Array.isArray(q.options) && q.options.some((o) => o && /\b(?:in this session|inline|through the (?:agent )?seats|dispatch(?:ed)? (?:the )?(?:agent )?seats?|subagents?|worktrees?)\b/i.test(String(o.label || '')))) text += '\nExecution: the mode ask';
+        }
+      }
       if (blk.name === 'Skill' && /(?:^|:)(?:alfred-)?habits-execution-strategy$/.test(String(input.skill || ''))) loaded = true;
     }
   }
@@ -1652,10 +1660,30 @@ function execLineMissed() {
 // loaded, against the always-on clause that makes its Skill call the first action of a multi-file task, before the
 // first edit). Read from flowState's whole-transcript facts: the session edited 2+ files and loaded the skill never, or
 // only after its first edit.
+// Audit 2026-10-20 C08: 3 of 3 conforming flow runs logged it - the PLAN written at step 2 counted as the first edit
+// (970539b7, 8a1fb350, 9a0314ed), a generated doc (ce3fd60a), scratch scripts under the session scratchpad (aae9d911,
+// 8f130789), and a resumed step-4 session whose plan already carried its approved mode (fc4fec40, 55abbb18). Only a
+// SOURCE edit counts (probeSourceFile), and a plan read back with its `Approved:` stamp before the first one settles it.
 function strategySkippedOverFiles(f) {
   if (!f || f.noStrategyLogged || !Array.isArray(f.editFiles) || f.editFiles.length < 2) return null;
   if (f.strategyAt >= 0 && f.strategyAt < f.firstEditAt) return null;
+  if (f.approvedReadAt >= 0 && f.approvedReadAt < f.firstEditAt) return null;
   return { loaded: f.strategyAt >= 0 ? 'after-first-edit' : 'never', files: f.editFiles.map((x) => x.split(/[\\/]/).pop()) };
+}
+
+// A file the no-strategy probe counts: inside the project, outside the temp tree (the session scratchpad included), and
+// not prose or the stack's own state - a plan, a doc, `.claude/` or `.alfred/` (the post-close probe's own exclusions).
+function probeSourceFile(file) {
+  const p = require('path');
+  const os = require('os');
+  const abs = p.resolve(String(file || ''));
+  if (PROSE_FILE_RE.test(abs) || /(?:^|[\\/])(?:\.claude|\.alfred|docs|plans)[\\/]/.test(abs)) return false;
+  const under = (dir) => { if (!dir) return false; const d = p.resolve(dir); return abs === d || abs.startsWith(d.endsWith(p.sep) ? d : d + p.sep); };
+  const real = (dir) => { try { return fs.realpathSync(dir); } catch { return dir; } };
+  const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd;
+  if (root) return under(root) || under(real(root));
+  const tmp = os.tmpdir();
+  return !(under(tmp) || under(real(tmp)) || /^(?:\/private)?\/tmp\//.test(abs));
 }
 
 // --- rationalization phrases (ECC comparison R8; LOG-ONLY - never holds, never injects) --------
@@ -2749,10 +2777,20 @@ function flowLine(line, at, state) {
         const input = b.input || {};
         if (b.name === 'Skill' && state.strategyAt < 0 && /(?:^|:)(?:alfred-)?habits-execution-strategy$/.test(String(input.skill || ''))) state.strategyAt = at;
         const file = /^(?:Write|Edit|MultiEdit|NotebookEdit)$/.test(b.name) ? String(input.file_path || input.notebook_path || '') : '';
-        if (!file) continue;
+        if (!file || !probeSourceFile(file)) continue;
         if (state.firstEditAt < 0) state.firstEditAt = at;
         if (state.editFiles.length < 2 && !state.editFiles.includes(file)) state.editFiles.push(file);
       }
+    } catch { /* a cut row */ }
+  }
+  // A plan read back with its `Approved:` stamp before the first source edit: the mode was chosen when it was approved,
+  // in this session or an earlier one (a resumed step-4 session, fc4fec40 / 55abbb18 - audit 2026-10-20 C08).
+  if (state.approvedReadAt < 0 && isUser && line.includes('"tool_result"') && line.includes('Approved')) {
+    try {
+      const o = JSON.parse(line);
+      const text = (Array.isArray(o.message.content) ? o.message.content : []).filter((c) => c && c.type === 'tool_result')
+        .map((c) => (typeof c.content === 'string' ? c.content : Array.isArray(c.content) ? c.content.map((x) => (x && x.text) || '').join('\n') : '')).join('\n');
+      if (/(?:^|\n)\s*(?:\d+[\t→]\s*)?[-*]?\s*\**Approved\**\s*:/.test(text)) state.approvedReadAt = at;
     } catch { /* a cut row */ }
   }
   // Where the newest ANSWERED ask sits: the first stop is the ask with no answer since the newest marker, and the close
@@ -2800,16 +2838,17 @@ function flowLine(line, at, state) {
 function flowState() {
   const none = { flow: false, completed: null, typedAfter: false, typedAfterAt: -1, flowAt: -1, cross: false, askAt: -1,
     completedPlan: null, planAfter: false, editAfterAt: -1, editAfterFile: null, postCloseLogged: null,
-    firstEditAt: -1, editFiles: [], strategyAt: -1, noStrategyLogged: false };
+    firstEditAt: -1, editFiles: [], strategyAt: -1, noStrategyLogged: false, approvedReadAt: -1 };
   try {
     const p = payload.transcript_path;
     if (!p) return none;
     const size = fs.statSync(p).size;
-    let state = { v: 4, upTo: 0, ...none, editFiles: [] };
+    let state = { v: 5, upTo: 0, ...none, editFiles: [] };
     try {
       const kept = JSON.parse(fs.readFileSync(flowStateFile(), 'utf8'));
-      // a shorter file is another transcript under the same name - read it whole; v4 added the no-strategy facts
-      if (kept && kept.v === 4 && kept.upTo > 0 && kept.upTo <= size) state = kept;
+      // a shorter file is another transcript under the same name - read it whole; v4 added the no-strategy facts, v5 counts
+      // only source edits and the approved plan read (audit 2026-10-20 C08)
+      if (kept && kept.v === 5 && kept.upTo > 0 && kept.upTo <= size) state = kept;
     } catch { /* no state yet, or the old one-word format - read it all */ }
     const fd = fs.openSync(p, 'r');
     try {
