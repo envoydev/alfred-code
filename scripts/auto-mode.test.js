@@ -536,6 +536,29 @@ test('auto-mode Stop: the auto-fields hold skips a progress note over running wo
     assert.match(idle.stderr, /THREE named fields/);
 });
 
+// Audit 2026-10-20 C04 (71d5428a, 3a8a1ee3, 7ec6c7db, 8a1fb350): an auto-answered stop returned before the FLOW STOP
+// FIELDS check, so no waived stop carried Result / Progress / Leftovers. The check runs first and rides the answer's note.
+test('auto-mode asks: an auto-answered solve-task stop gets the stop-field note beside its answer (C04)', () =>
+{
+    const p = project();
+    autoStamp(p, 'k1');
+    const flowRows = [{ type: 'user', entrypoint: 'cli', message: { role: 'user', content: '<command-name>/task-solve</command-name>' } }];
+    const stopAsk = [q('Approve the gated plan? Mode: in this session.', ['Approve - build in this session (Recommended)', 'Not yet - changes needed'])];
+    const bare = run('guard-stop-contract.js', { hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: { questions: stopAsk }, session_id: 'k1', cwd: p.root,
+        transcript_path: transcript(flowRows) }, { CLAUDE_PROJECT_DIR: p.root });
+    assert.ok(answered(bare), `still auto-answered: ${bare.stdout}`);
+    const note = JSON.parse(bare.stdout).hookSpecificOutput.additionalContext;
+    assert.match(note, /auto-mode answered this ask/);
+    assert.match(note, /THREE named fields/, 'the fields are named beside the answer');
+    assert.match(note, /`mechanics: read`/, 'and the approval receipt the stop owes');
+    const stamped = [...flowRows, { type: 'assistant', entrypoint: 'cli', message: { id: 'mk', role: 'assistant', content: [{ type: 'text', text: 'Size: standard - three files\nResult: plan gated - docs/plans/x.md\nProgress: 3 of 5\nLeftovers: none\nmechanics: read' }] } }];
+    const full = run('guard-stop-contract.js', { hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: { questions: stopAsk }, session_id: 'k1', cwd: p.root,
+        transcript_path: transcript(stamped) }, { CLAUDE_PROJECT_DIR: p.root });
+    assert.doesNotMatch(JSON.parse(full.stdout).hookSpecificOutput.additionalContext, /THREE named fields|owes a receipt/, 'a stop that printed them gets no note');
+    const outside = ask(p, 'k1', stopAsk);
+    assert.doesNotMatch(JSON.parse(outside.stdout).hookSpecificOutput.additionalContext, /THREE named fields/, 'no solve-task cycle, no note');
+});
+
 // Audit 2026-10-14 HK05 (the user's ruling): Claude Code's 8-continuation cap resets on every tool call, so a run that keeps
 // calling tools was sent back for as long as its stamp stood. The holds are counted per stamp beside the chain marker; the
 // 50th Stop passes with one auto-continue-cap row, and a new stamp counts from 0.

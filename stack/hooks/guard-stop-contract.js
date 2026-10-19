@@ -2227,6 +2227,13 @@ if (autoRun) {
   const answers = autoAnswers(input.questions);
   if (answers) {
     const picked = Object.entries(answers).map(([q, a]) => `'${q}' -> '${a}'`).join('; ');
+    // The flow stop-field check runs BEFORE this return (audit 2026-10-20 C04): a waived stop still prints its fields.
+    let fieldNotes = [];
+    try {
+      const qs = Array.isArray(input.questions) ? input.questions : [];
+      const text = qs.flatMap((q) => (q ? [String(q.question || ''), String(q.header || ''), ...(q.options || []).flatMap((o) => (o ? [String(o.label || ''), String(o.description || '')] : []))] : [])).join('\n');
+      fieldNotes = flowFieldNotes(qs, text, turnProseBeforeAsk());
+    } catch { /* fail-open: the answer goes out without the note */ }
     ledgerRow({ tool: 'AskUserQuestion', mode: 'auto', kind: 'auto-answer', reason: 'auto-mode: answered with the Recommended option', detail: { answers } });
     process.stdout.write(JSON.stringify({ hookSpecificOutput: {
       hookEventName: 'PreToolUse',
@@ -2234,7 +2241,8 @@ if (autoRun) {
       permissionDecisionReason: 'auto-mode: the Recommended option',
       updatedInput: { ...input, answers },
       additionalContext: `auto-mode answered this ask with its Recommended option (${picked}) - nobody is at the terminal. `
-        + 'Log it in the run\'s close as `auto: <question> -> <choice>` and go on with the run.',
+        + 'Log it in the run\'s close as `auto: <question> -> <choice>` and go on with the run.'
+        + (fieldNotes.length ? `\n\n${fieldNotes.join('\n\n')}` : ''),
     } }));
     process.exit(0);
   }
@@ -2489,26 +2497,8 @@ if (payload.tool_name === 'AskUserQuestion') {
         + `nowhere. Use single dashes for the rest of this turn.`);
     }
 
-    // 6. FLOW STOP FIELDS: a solve-task stop names three fields before its ask. Bold counts - it is
-    // what the sessions that did comply actually wrote - and so does a field opening a sentence inside a one-line
-    // question (audit 2026-10-10, session 516e653d: 5 of 5 compliant asks wrote 'Result: ... Progress: ...' inline).
-    const flow = flowState();
-    if (flow.flow) {
-      if (!fieldsStamped(turnText) && !fieldsStamped(askText)) {
-        notes.push('The ask just answered was a stop in a solve-task cycle, and it went out without its THREE '
-          + 'named fields - `Result:` (one line plus the artifact path), `Progress:` (<N> of <M> steps), '
-          + '`Leftovers:` (what this run started and did not finish, or `none`). State them in your next '
-          + 'message, and before every later stop\'s ask. Markdown-bold spelling counts. Measured: 13 sessions '
-          + 'loaded this contract and 5 used the fields at all, across 109 asks - the named form is what '
-          + 'survives a compaction that eats the prose.');
-      }
-      const owed = flowReceiptsOwed(flow, `${turnText}\n${askText}`, questions);
-      if (owed.length) {
-        notes.push(`The ask just answered was the solve-task stop that owes ${owed.length === 1 ? 'a receipt' : 'receipts'} in its \`Result:\` line, `
-          + `and it went out without ${owed.length === 1 ? 'it' : 'them'}: ${owed.join('; ')}. State ${owed.length === 1 ? 'it' : 'them'} in your next message `
-          + '- a receipt is the proof the step\'s read or purge ran, and a stop without it reads as skipped.');
-      }
-    }
+    // 6. FLOW STOP FIELDS (flowFieldNotes, below).
+    notes.push(...flowFieldNotes(questions, askText, turnText));
 
     // 4. CREDENTIAL.
     // The Stop branch's own conditions: once per exposure, off under ROTATE_ASK=0, and not while the
@@ -2606,6 +2596,32 @@ function turnProseBeforeAsk() {
 function fieldsStamped(t) {
   const field = (name) => new RegExp(`(?:^|\\n|[.;!?)]\\s+|\\s[-|]\\s+)\\s*(?:[-*+]\\s*)?\\**${name}\\**\\s*:`, 'i');
   return field('Result').test(t) && field('Progress').test(t) && field('Leftovers').test(t);
+}
+
+// FLOW STOP FIELDS, the ask branch's check 6: a solve-task stop names three fields before its ask. Bold counts - it is
+// what the sessions that did comply actually wrote - and so does a field opening a sentence inside a one-line question
+// (audit 2026-10-10, session 516e653d: 5 of 5 compliant asks wrote 'Result: ... Progress: ...' inline). An ask auto-mode
+// answers gets the same notes beside its answer: it returned before this check, so 0 of 4 waived stops in 71d5428a,
+// 3a8a1ee3, 7ec6c7db and 8a1fb350 carried the fields or `mechanics: read` (audit 2026-10-20 C04).
+function flowFieldNotes(questions, askText, turnText) {
+  const notes = [];
+  const flow = flowState();
+  if (!flow.flow) return notes;
+  if (!fieldsStamped(turnText) && !fieldsStamped(askText)) {
+    notes.push('The ask just answered was a stop in a solve-task cycle, and it went out without its THREE '
+      + 'named fields - `Result:` (one line plus the artifact path), `Progress:` (<N> of <M> steps), '
+      + '`Leftovers:` (what this run started and did not finish, or `none`). State them in your next '
+      + 'message, and before every later stop\'s ask. Markdown-bold spelling counts. Measured: 13 sessions '
+      + 'loaded this contract and 5 used the fields at all, across 109 asks - the named form is what '
+      + 'survives a compaction that eats the prose.');
+  }
+  const owed = flowReceiptsOwed(flow, `${turnText}\n${askText}`, questions);
+  if (owed.length) {
+    notes.push(`The ask just answered was the solve-task stop that owes ${owed.length === 1 ? 'a receipt' : 'receipts'} in its \`Result:\` line, `
+      + `and it went out without ${owed.length === 1 ? 'it' : 'them'}: ${owed.join('; ')}. State ${owed.length === 1 ? 'it' : 'them'} in your next message `
+      + '- a receipt is the proof the step\'s read or purge ran, and a stop without it reads as skipped.');
+  }
+  return notes;
 }
 
 // The RECEIPTS one solve-task stop owes on top of the three fields, each the proof a step's read or purge ran (audit
