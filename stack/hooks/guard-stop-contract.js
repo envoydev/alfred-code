@@ -721,17 +721,57 @@ const OWN_MOVE_RE = /\b(?:I(?:'ll| will| can| could| am going to| plan to|'d (?:
 // login', 'from you') - answersInfoRequest's veto when the close names nothing pending.
 const DECISION_HANDOFF_RE = /\b(?:your call|up to you|over to you|your (?:move|turn|court|decision|choice|pick|go-?ahead|approval|sign-?off|green light|say-?so)|say the word|(?:when(?:ever)?|once|if|after|until|as soon as) you(?:'ve| have)? (?:approve|confirm|decide|say|choose|pick|sign|give|agree|ok)\w*)\b/i;
 const STATE_ITEM_RE = /^(?:awaiting|waiting (?:on|for)|still (?:running|building|working|going)|not pushed|nothing pushed|un-?pushed|still open|still held for (?:your )?review)$/i;
-function readOnlyCommand(command) {
-  const cmd = String(command || '');
-  if (!shellWrites || !cmd.trim() || /\$\(|`|[<>]\(/.test(cmd)) return false;
+// A survey loop is a read too (audit 2026-10-20 C03, 8a1fb350: 'is there any unfinished tasks left?' was answered from
+// four `for f in $(find ...); do s=$(grep ...); echo ...; done | sort` reads, every one judged a change, so the answer
+// was held as a done-close and a manufactured ask followed, ~2.2M re-sent). A command substitution is judged as the
+// command it runs and stands in as one word; `$((...))` is arithmetic; a `<(` / `>(` process substitution stays out.
+// The shell's own grammar words (for ... in, do, done, if, then, fi, set -o, a bare assignment) change nothing.
+const SHELL_GRAMMAR_RE = /^(?:do|then|else|elif|if|while|until|!|\{|\()\s+/;
+function substitutionsRead(cmd, depth) {
+  let out = '';
+  let dq = false;
+  for (let i = 0; i < cmd.length; i += 1) {
+    const ch = cmd[i];
+    if (ch === "'" && !dq) { const j = cmd.indexOf("'", i + 1); if (j < 0) return null; out += cmd.slice(i, j + 1); i = j; continue; }
+    if (ch === '"') dq = !dq;
+    if (ch === '`') {
+      const j = cmd.indexOf('`', i + 1);
+      if (j < 0 || !readOnlyCommand(cmd.slice(i + 1, j), depth + 1)) return null;
+      out += 'SUBST'; i = j; continue;
+    }
+    if (ch === '$' && cmd[i + 1] === '(') {
+      const arith = cmd[i + 2] === '(';
+      let level = 0;
+      let j = i + 1;
+      for (; j < cmd.length; j += 1) { if (cmd[j] === '(') level += 1; else if (cmd[j] === ')' && --level === 0) break; }
+      if (j >= cmd.length) return null;
+      if (!arith && !readOnlyCommand(cmd.slice(i + 2, j), depth + 1)) return null;
+      out += 'SUBST'; i = j; continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+function readOnlyCommand(command, depth = 0) {
+  const raw = String(command || '');
+  if (!shellWrites || !raw.trim() || depth > 3 || /[<>]\(/.test(raw)) return false;
+  const cmd = substitutionsRead(raw, depth);
+  if (cmd === null) return false;
   const scan = shellWrites.scanShell(cmd);
   if (scan.targets.some((t) => t.raw !== '/dev/null') || (scan.unread && scan.unread.length)) return false;
   const chars = scan.command.split('');
   for (const [a, b] of scan.quoted) for (let i = a; i < b; i += 1) if (chars[i] !== '\n') chars[i] = ' ';
   return chars.join('').replace(/\d*[<>]&\d*-?|&>>?|\d*>>?\s*\/dev\/null/g, ' ').split(/&&|\|\||[;|&\n]/).every((seg) => {
-    const words = seg.trim().replace(/^(?:\w+=\S*\s+)+/, '').split(/\s+/).filter(Boolean);
-    const head = words[0] || '';
+    let s = seg.trim();
+    while (SHELL_GRAMMAR_RE.test(s)) s = s.replace(SHELL_GRAMMAR_RE, '');
+    if (/^(?:done|fi|esac|\}|\)|break|continue|true|false|:)?$/.test(s) || /^for\s+\w+(?:\s+in\b|$)/.test(s)) return true;
+    if (/^set(?:\s+[-+](?:[a-zA-Z]+|o\s+\w+))*$/.test(s)) return true;
+    if (/^(?:\w+=\S*\s*)+$/.test(s)) return true; // assignments alone; a substitution in one was judged above
+    const words = s.replace(/^(?:\w+=\S*\s+)+/, '').split(/\s+/).filter(Boolean);
+    // a system binary spelled by its path is that binary (`/usr/bin/grep`); a project script is not
+    const head = (words[0] || '').replace(/^\/(?:usr\/(?:local\/)?)?bin\/|^\/opt\/homebrew\/bin\//, '');
     if (!head) return true;
+    if (head === '[' || head === '[[' || head === 'test' || head === 'seq') return true;
     if (head === 'git') {
       let i = 1;
       while (i < words.length && words[i].startsWith('-')) i += /^(?:-C|-c|--git-dir|--work-tree)$/.test(words[i]) ? 2 : 1;
@@ -2059,7 +2099,10 @@ if (payload.hook_event_name === 'Stop') {
       'overrode the mark 3 of 3 times). A deferred item either side still owes - a check the user runs, an id\n' +
       'someone sends, a step put off - is pending: it goes in the ask, never under a\n' +
       '\'nothing pending\' line - except an item the user deferred through an ask answered this\n' +
-      'turn, which goes on its own line opening \'Deferred by you:\' and is not owed. Only when\n' +
+      'turn, which goes on its own line opening \'Deferred by you:\' and is not owed. An owed action\n' +
+      'that is yours and needs no decision (a reprint, a re-run, a step a tool you hold can do) is\n' +
+      // audit 2026-10-20 C03: 7ec6c7db asked 'Reprint the block?', 1b432dd2 offered only user-side options
+      'done in this turn, never asked. Only when\n' +
       'nothing at all is owed, say so in one line with no open next action and stop.',
     );
     process.exit(2);

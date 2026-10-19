@@ -272,7 +272,8 @@ test('SD10: an answer to a request for information from a read-only turn is no d
   assert.strictEqual(over(survey('merge them in order'), answer).status, 2, 'an instruction is no request for information');
   const id = `x${seq}`;
   assert.strictEqual(over(survey('Show me the order', [call(id, 'Edit', { file_path: 'a.cs', old_string: 'a', new_string: 'b' }), result(id, 'ok')]), answer).status, 2, 'a turn that edited a file');
-  for (const command of ['git stash pop', 'git commit -qm wip', 'git branch t4', 'git status > state.txt', 'git log $(cat ref)', 'npm install', 'sed -i s/a/b/ f.txt', 'find . -name x -delete']) {
+  // a substitution is judged as the command it runs (audit 2026-10-20 C03): `git log $(cat ref)` reads, this one changes
+  for (const command of ['git stash pop', 'git commit -qm wip', 'git branch t4', 'git status > state.txt', 'git log $(git stash pop)', 'npm install', 'sed -i s/a/b/ f.txt', 'find . -name x -delete']) {
     const k = `y${seq}`;
     assert.strictEqual(over(survey('Show me the order', [call(k, 'Bash', { command }), result(k, 'ok')]), answer).status, 2, `a changing call: ${command}`);
   }
@@ -375,6 +376,35 @@ test("hooks review: a wait on running seats' fixes and checks is status; a recor
     [record('Decisions to be made:', '- Push: push it when you approve.'), 'decisions still owed'],
     [record('Decisions auto-mode made for you:', '- Commit: commit now.') + '\n\nPush it when you are ready.', 'a hand-off after the record'],
   ]) assert.strictEqual(close(text).status, 2, why);
+});
+
+// Audit 2026-10-20 C03 (8a1fb350 L2223): a typed question answered from survey loops - `for f in $(find ...); do
+// s=$(grep ...); echo ...; done | sort` - read as a changing turn, so the answer was held as a done-close. A substitution
+// is judged as the command it runs, the shell's grammar words change nothing; a write anywhere keeps the turn judged.
+test('C03: an answer to a typed question from read-only survey loops is no done-close stall; a write in the turn still is', () => {
+  const bash = (command) => { const id = `b${++seq}`; return [call(id, 'Bash', { command }), result(id, 'ok')]; };
+  const answer = 'No open work for the app right now.\n\n- Probably done, but not marked: the parity card has no status line.\n- Not app work: the two cards still open belong to this backend.\n- Every other card is marked done.';
+  const prompt = typed('is there any unfinished tasks left for the app?');
+  for (const command of [
+    "cd repo; for f in $(find docs/cards -name '*.md'); do s=$(grep -m1 -E '^status:' \"$f\"); echo \"$f | ${s:-no status line}\"; done | sort; echo \"control: $(ls docs/cards | wc -l) files\"",
+    'cd repo/docs/cards; for f in a.md b.md; do echo "== $f"; sed -n 1,10p $f | cut -c1-220; done',
+    'cd app; set -o pipefail; /usr/bin/grep -rln "order_done" libs 2>/dev/null | head -5; echo "exit $?"',
+    'n=$((3+4)); [ "$n" = 7 ] && echo ok; if git log -1 --oneline; then echo yes; fi',
+  ]) assert.strictEqual(over([prompt, ...bash(command)], answer).status, 0, command);
+  for (const command of [
+    "f=card.md; c=$(grep -c '^status: OPEN$' $f); [ \"$c\" = 1 ] && sed -i '' 's|^status: OPEN$|status: DONE|' $f",
+    'for f in $(ls); do echo x > "$f.bak"; done',
+    'echo "$(rm -rf build)"',
+    'diff <(cat a) <(cat b)',
+    './tools/grep -r x .',
+  ]) assert.strictEqual(over([prompt, ...bash(command)], answer).status, 2, `a changing or unread call keeps the close judged: ${command}`);
+  assert.strictEqual(over([typed('fix the cards'), ...bash('for f in a b; do echo $f; done')], answer).status, 2, 'an instruction is no question');
+});
+
+test("C03: the done-close escape says a step the model can do itself is done, not asked", () => {
+  const r = close("Pushed to develop as abc123.\n\n- Leftovers: none. The block I printed earlier still says 'def456 (not pushed)', so fix that line if you already pasted it.");
+  assert.strictEqual(r.status, 2);
+  assert.match(r.stderr, /An owed action\nthat is yours and needs no decision \(a reprint, a re-run, a step a tool you hold can do\) is\ndone in this turn, never asked/);
 });
 
 // Audit 2026-10-20 C02: `2>/dev/null` read as a dev server, so a finite background poll was no live work and its wait was
