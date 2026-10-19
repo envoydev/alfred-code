@@ -96,6 +96,13 @@ let WATCH_CACHE;
 const resetDomains = () => { DOMAINS_CACHE = undefined; WATCH_CACHE = undefined; };
 const MAINLINE = ['develop', 'main', 'master', 'trunk'];
 const MAX_SECTION_CHARS = 6000;
+// The architecture map's register of deliberate shortcuts, and the stamp line every doc the architecture capture writes
+// opens with (capture-architecture references/doc-shapes.md) - both read by lint below.
+const KNOWN_CEILINGS = 'known-ceilings';
+const CAPTURE_STAMP = /^[\s>*_`]*Captured:\s*\S+@[0-9a-f]{4,}/m;
+// One capture's write pass: a file written within this span of the map itself (ARCHITECTURE.md, which every capture
+// rewrites) was written by the same run.
+const WRITE_PASS_MS = 2 * 3600 * 1000;
 const SHOW_CHARS = 14000;
 const BLOCK_BYTES = 4096;
 const ID = /<!--\s*id:\s*([\w.-]+)\s*-->/i;
@@ -578,8 +585,20 @@ const stripMd = (s) => String(s).replace(/\.md$/, '');
 // spelling. Ambiguity is an error naming every candidate; a slash that resolves to no domain at all is an
 // error too - a silent pick, or a silent null, would write a section into the wrong domain (or into one
 // that was never named).
+// A filesystem path to a doc (`.alfred/docs/architecture/references/patterns.md`, absolute or project-relative) is the
+// same ref with the docs root in front: the root is stripped first, so the domain segment it leaves resolves as usual
+// (audit 2026-10-20 C27, ce3fd60a / add5a91e: 5 of 6 seats' first call was refused, the hint repeating the wrong form).
+function stripDocsRoot(ref) {
+  const s = path.sep === '\\' ? String(ref).replace(/\\/g, '/') : String(ref);
+  const abs = DOCS_ROOT.split(path.sep).join('/');
+  const rel = path.relative(ROOT, DOCS_ROOT).split(path.sep).join('/');
+  for (const prefix of [`${abs}/`, ...(rel && !rel.startsWith('..') ? [`${rel}/`, `./${rel}/`] : [])]) {
+    if (s.startsWith(prefix)) return s.slice(prefix.length);
+  }
+  return String(ref);
+}
 function parseRef(ref) {
-  const s = String(ref);
+  const s = stripDocsRoot(ref);
   const slash = s.indexOf('/');
   const first = slash < 0 ? null : s.slice(0, slash);
   const isDomain = Boolean(first) && domains().includes(first);
@@ -595,7 +614,7 @@ function parseRef(ref) {
   }
   const matches = domains().map((d) => ({ d, f: findIn(d) })).filter((m) => m.f);
   if (matches.length > 1) throw new Error(`${bare} is in ${matches.map((m) => m.d).join(' and ')} - name one, as <domain>/${bare}`);
-  if (!matches.length && first) throw new Error(`no domain or subfolder resolves ${bare} - name one, as <domain>/${bare}`);
+  if (!matches.length && first) throw new Error(`no domain or subfolder resolves ${bare} - name a file \`docs.js files\` lists, as <file>#<id> or <domain>/<file>#<id> (domains: ${domains().join(', ') || 'none'})`);
   const [hit] = matches;
   return { domain: hit ? hit.d : null, file: hit ? `${relKey(hit.f)}.md` : `${fileKey}.md`, id: bare };
 }
@@ -1502,6 +1521,9 @@ function lint(domain) {
   const notes = [];
   if (domain && !domains().includes(domain)) return { problems: [`no domain '${domain}' under the docs root (domains: ${domains().join(', ') || 'none'})`], notes };
   const inScope = (d) => !domain || d === domain;
+  const mtime = (p) => { try { return fs.statSync(p).mtimeMs; } catch { return NaN; } };
+  const mapAt = mtime(path.join(DOCS, 'ARCHITECTURE.md'));
+  const sameWritePass = (f) => Math.abs(mtime(f) - mapAt) <= WRITE_PASS_MS;
   for (const f of docFiles()) {
     if (!inScope(fileDomain(f))) continue;
     const raw = fs.readFileSync(f, 'utf8');
@@ -1513,9 +1535,22 @@ function lint(domain) {
       if (!s.declaredId) problems.push(`section without an id: ${relKey(f)} '${s.heading}' - run docs.js seed-ids`);
       else if (seen.has(s.declaredId)) problems.push(`duplicate id ${key(f)}#${s.declaredId} (lines ${seen.get(s.declaredId) + 1} and ${s.start + 1})`);
       else seen.set(s.declaredId, s.start);
-      if (!hist && s.ownChars > MAX_SECTION_CHARS) problems.push(`oversized section (${s.ownChars} chars, cap ${MAX_SECTION_CHARS}): ${key(f)}#${s.declaredId || slug(s.heading)} - split it`);
+      if (!hist && s.ownChars > MAX_SECTION_CHARS) {
+        // The map's Known ceilings is a register the build closes append rows to and the capture carries row for row
+        // (doc-shapes.md): no run may split it, so the cap would be a PROBLEM row nothing can close (audit 2026-10-20
+        // C27, add5a91e / ce3fd60a: 7,858 then 10,171 chars, red on every capture). Its size stays visible as a note.
+        if (s.declaredId === KNOWN_CEILINGS && fileDomain(f) === 'architecture' && relKey(f) === 'ARCHITECTURE') notes.push(`${key(f)}#${KNOWN_CEILINGS} is ${s.ownChars} chars (a row register: carried row for row, exempt from the ${MAX_SECTION_CHARS} cap)`);
+        else problems.push(`oversized section (${s.ownChars} chars, cap ${MAX_SECTION_CHARS}): ${key(f)}#${s.declaredId || slug(s.heading)} - split it`);
+      }
     }
-    if (!hist && secs.length && !secs.some((s) => s.covers.length)) notes.push(`no section declares covers: ${relKey(f)}`);
+    // A file the architecture capture wrote in its latest pass (its `Captured:` stamp, written within WRITE_PASS_MS of the
+    // map) owes `covers` lines by its shape, so a rewrite that dropped them is a PROBLEM that run can fix; a file it did
+    // not touch, a human-authored one or another domain's keeps the note, since the capture may not rewrite it (audit
+    // 2026-10-20 C27, 29e4002f: five rewritten reference files closed on the note alone).
+    if (!hist && secs.length && !secs.some((s) => s.covers.length)) {
+      if (fileDomain(f) === 'architecture' && CAPTURE_STAMP.test(raw.slice(0, 600)) && sameWritePass(f)) problems.push(`no section declares covers: ${relKey(f)} - the capture's shape gives every section a <!-- covers: --> line`);
+      else notes.push(`no section declares covers: ${relKey(f)}`);
+    }
   }
   // ORIENTATION.md is architecture's own file (BLOCK_FILE), so another domain's scope never reads it.
   if (inScope('architecture')) {

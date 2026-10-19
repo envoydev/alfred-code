@@ -1160,7 +1160,61 @@ test('a mistyped or unknown leading segment throws instead of composing a path i
     const docs = requireEngine(r.root);
     assert.throws(() => docs.parseRef('architcture/ARCHITECTURE#orders'),
       /no domain or subfolder resolves architcture\/ARCHITECTURE#orders/);
+    // Audit 2026-10-20 C27: the hint named the refused spelling again ('as <domain>/architcture/...'); it names the forms.
+    assert.throws(() => docs.parseRef('architcture/ARCHITECTURE#orders'),
+      (e) => /`docs\.js files` lists, as <file>#<id> or <domain>\/<file>#<id> \(domains: architecture, code-style\)/.test(e.message) && !/<domain>\/architcture/.test(e.message));
   } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
+// Audit 2026-10-20 C27 (sessions ce3fd60a, add5a91e): a filesystem path under the docs root - what a seat brief or a
+// file listing spells - was refused, 5 of 6 seats' first call. The root is stripped, so the path resolves as its ref.
+test('a docs-root-prefixed path resolves like its section ref, relative, ./ and absolute', () => {
+  const r = twoDomainFixture();
+  try {
+    r.write('.claude/docs/architecture/references/patterns.md', PATTERNS);
+    const docs = requireEngine(r.root);
+    const want = docs.parseRef('architecture/references/patterns.md#orders');
+    for (const ref of ['.claude/docs/architecture/references/patterns.md#orders', './.claude/docs/architecture/references/patterns.md#orders', `${r.root}/.claude/docs/architecture/references/patterns.md#orders`])
+      assert.deepEqual(docs.parseRef(ref), want, ref);
+    assert.ok(docs.askRef('.claude/docs/architecture/references/patterns.md#orders'), 'askRef resolves it too');
+    assert.match(r.cli(['show', '.claude/docs/architecture/references/patterns.md#orders']).stdout, /ledgered before the payment call/);
+    assert.match(r.cli(['toc', '.claude/docs/architecture/ARCHITECTURE.md']).stdout, /ARCHITECTURE#orders/);
+    assert.match(r.cli(['show', '.claude/docs/architecture/nope.md#x']).stdout, /no such doc file/, 'a path to no file is still refused');
+    assert.match(r.cli(['show', '.claude/docsx/architecture/ARCHITECTURE.md#orders']).stdout, /no domain or subfolder resolves/, 'a near spelling of the root is no root');
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
+// Audit 2026-10-20 C27 (add5a91e, ce3fd60a): Known ceilings is a row register the capture must carry row for row, so
+// its cap row could never be closed; any other section over the cap still fails.
+test('lint: the map\'s Known ceilings over the cap is a note; another oversized section is still a problem', () => {
+  const big = (id) => `## ${id.replace(/-/g, ' ')}\n<!-- id: ${id} -->\n<!-- covers: src/** -->\n${'| a | b | c |\n'.repeat(500)}`;
+  const r = repo({ docs: { 'ARCHITECTURE.md': `${section('orders', 'src/**', 'Orders rule.')}\n${big('known-ceilings')}`, 'references/patterns.md': big('known-ceilings') } });
+  try {
+    const out = r.cli(['lint', 'architecture']);
+    assert.doesNotMatch(out.stdout, /oversized section \(\d+ chars, cap 6000\): ARCHITECTURE#known-ceilings/);
+    assert.match(out.stdout, /ARCHITECTURE#known-ceilings is \d+ chars \(a row register: carried row for row, exempt from the 6000 cap\)/);
+    assert.match(out.stdout, /oversized section \(\d+ chars, cap 6000\): patterns#known-ceilings/, 'the exemption is the map\'s own section only');
+  } finally { r.rm(); }
+});
+
+// Audit 2026-10-20 C27 (29e4002f): a capture rewrote reference files without covers lines and closed on a note.
+test('lint: a capture-stamped file of this write pass with no covers is a problem; an untouched or unstamped one a note', () => {
+  const STAMP = '`Captured: develop@ad485db0, 2026-10-13`\n\n';
+  const bare = (id) => `## ${id}\n<!-- id: ${id} -->\nText.\n`;
+  const r = repo({ docs: {
+    'ARCHITECTURE.md': `${STAMP}${section('orders', 'src/**', 'Orders rule.')}`,
+    'references/rewritten.md': `${STAMP}${bare('a')}`,
+    'references/old.md': `${STAMP}${bare('b')}`,
+    'references/human.md': bare('c'),
+  } });
+  try {
+    const past = new Date(Date.now() - 3 * 24 * 3600e3);
+    fs.utimesSync(path.join(r.root, '.claude/docs/architecture/references/old.md'), past, past);
+    const out = r.cli(['lint', 'architecture']);
+    assert.match(out.stdout, /PROBLEM no section declares covers: references\/rewritten - the capture's shape gives every section a <!-- covers: --> line/);
+    assert.match(out.stdout, /note +no section declares covers: references\/old\b/, 'a file this pass did not write keeps the note');
+    assert.match(out.stdout, /note +no section declares covers: references\/human\b/, 'a file with no capture stamp keeps the note');
+  } finally { r.rm(); }
 });
 
 test('an empty ref or one ending in a slash is refused rather than composed into a file named .md', () => {
