@@ -341,6 +341,19 @@ test('the weak \'it should\' marker inside a wh-clause is no correction; standin
     }
 });
 
+// Audit 2026-10-20 C20 (4a210c3c, 3a8a1ee3): a request for an explanation and the user's remark about their own system
+// were logged as corrections of the model.
+test('C20: \'why you\' after an explain verb and a \'not working\' inside a stated reason are no correction; bare, both still are', () => {
+    for (const prompt of ['Explain why you choose such an approach', 'Can you explain why you did that?', 'tell me why you picked Redis',
+        'push without ci (because it;s not working right now)', 'merge it, because the staging deploy doesn\'t work today']) {
+        assert.deepStrictEqual(prompted(prompt).rows, [], `not a correction: ${prompt}`);
+    }
+    for (const prompt of ['why did you delete the test?', 'Why you changed the port?', 'it is not working', 'the build doesn\'t work',
+        'because your change broke it, it\'s not working']) {
+        assert.strictEqual(prompted(prompt).rows.length, 1, `a correction: ${prompt}`);
+    }
+});
+
 test('the correction test needs an answer before it, a typed turn and at most 200 characters', () => {
     const userOnly = [{ type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'hi' }] } }];
     assert.deepStrictEqual(prompted('no, use the org token', { rows: userOnly }).rows, [], 'a first turn corrects nothing');
