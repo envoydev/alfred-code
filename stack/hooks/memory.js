@@ -549,7 +549,14 @@ const isAgentTagged = (tags) => tags.some((t) => t.startsWith('agent:'));
 // A seat's handoff note (alfred-memory.md): one run's working state, read by exact tags and purged at the run's close -
 // never a memory the session-start block re-sends.
 const isHandoff = (tags) => tags.some((t) => t === 'handoff' || t.startsWith('handoff:'));
-const matchesProject = (tags, name) => tags.includes(`project:${name}`) || tags.includes(name);
+// The project tag is compared case-folded on both sides (audit 2026-10-20 C19, 8da401b1 / 79e1a1a5): the name is the
+// checkout's basename with its case, and a session tagged `project:Foo` missed every `project:foo` memory - among them
+// the one forbidding the build the session then ran. Exact on the comma-split list still: `app` never matches `app-web`.
+const isProjectTag = (t) => /^project:/i.test(t);
+const matchesProject = (tags, name) => {
+  const n = String(name == null ? '' : name).toLowerCase();
+  return tags.some((t) => { const l = t.toLowerCase(); return l === `project:${n}` || l === n; });
+};
 
 // The service validates memory_type against its OWN built-in vocabulary and silently stores anything
 // else as 'observation' (proven live) - so these four are the only kinds a preference/correction group
@@ -624,7 +631,7 @@ function selectForSession(dbPath, { project = '', related = [], capBytes = 4096,
       picked.push({ row, key });
     }
   };
-  const prefScope = (tags, row) => isPrefOrCorrection(row) && ((project && matchesProject(tags, project)) || !tags.some((t) => t.startsWith('project:')));
+  const prefScope = (tags, row) => isPrefOrCorrection(row) && ((project && matchesProject(tags, project)) || !tags.some(isProjectTag));
   const young = (row) => { const d = ageDays(row, now); return d != null && d < YOUNG_DAYS; };
   take((tags, row) => prefScope(tags, row) && young(row), 'preference');
   if (project) take((tags, row) => matchesProject(tags, project) && !isPrefOrCorrection(row), 'own');

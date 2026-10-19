@@ -867,6 +867,35 @@ test('preferences and corrections (own or global) come first, newest first, then
   } finally { rmDir(dir); }
 });
 
+test('C19: the project tag matches case-folded both ways - a project:Foo session reads project:foo rows, and the reverse', { skip: skipNoSqlite }, () => {
+  // audit 2026-10-20 C19, 8da401b1: the session was tagged with the checkout's basename (capitalised) and every
+  // lowercase-tagged memory of the project - one forbidding the build it then ran - never reached its start block.
+  const dir = tmpDir('memory-select-');
+  try {
+    const file = buildDb(dir, [
+      { content: 'lower own', tags: 'project:myapp', memory_type: 'reference', created_at: 500 },
+      { content: 'upper own', tags: 'project:MyApp', memory_type: 'reference', created_at: 400 },
+      { content: 'bare upper own', tags: 'MYAPP', memory_type: 'learning', created_at: 300 },
+      { content: 'lower correction', tags: 'project:myapp', memory_type: 'user_correction', created_at: 200 },
+      { content: 'other project correction', tags: 'Project:Other', memory_type: 'user_correction', created_at: 150 },
+      { content: 'not a substring', tags: 'project:myapp-web', memory_type: 'reference', created_at: 100 },
+      { content: 'related upper', tags: 'project:Sibling-A', memory_type: 'reference', created_at: 50 },
+    ]);
+    for (const project of ['MyApp', 'myapp', 'MYAPP']) {
+      const { text, counts } = m.selectForSession(file, { project, related: ['sibling-a'], now: NOW, capBytes: 100000 });
+      const order = text.split('\n').map((l) => l.replace(/^- \[[^\]]+\] /, ''));
+      assert.deepStrictEqual(order, ['lower correction', 'lower own', 'upper own', 'bare upper own', 'related upper'], `project ${project}`);
+      assert.deepStrictEqual(counts, { own: 3, preference: 1, related: 1 }, `project ${project}`);
+    }
+    // a correction tagged to ANOTHER project in another case stays there - the prefix test folds too
+    assert.ok(!m.selectForSession(file, { project: 'myapp', now: NOW, capBytes: 100000 }).text.includes('other project correction'));
+    // the export and the handoff count read the same compare
+    assert.deepStrictEqual(m.exportRows(file, { project: 'MyApp' }).map((r) => r.content).sort(),
+      ['bare upper own', 'lower correction', 'lower own', 'upper own']);
+    assert.deepStrictEqual(m.handoffLeft([{ tags: 'project:shopapp,handoff:f1,note:a' }], 'f1', 'ShopApp'), ['a']);
+  } finally { rmDir(dir); }
+});
+
 test('a credential-shaped literal in a memory is redacted before the session start injects it', { skip: skipNoSqlite }, () => {
   // The database is shared across accounts and projects, and a stored note can quote a token; the
   // start block re-sends every stored line into every session, a new copy of the exposure each time.
