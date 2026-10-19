@@ -73,7 +73,7 @@ tar -xzf "<tmp>/stack.tar.gz" -C "<tmp>"
 git clone --depth 1 -b main https://github.com/envoydev/alfred-code "<tmp>/repo"
 ```
 
-Run these as SEPARATE simple commands, not a piped one-liner - the harness's auto-mode classifier blocks the compound verbatim. Then Read `references/run-mechanics.md` now - the batch shape (a loop in a file, never a pipe on the command line), every analyzer flag, and the ledger test live there, and the report's Environment rows carry the receipt `Mechanics: read`. The tool is `scripts/analyze-usage.js` inside the extracted snapshot. Both fetches fail: say so and stop - never rebuild the tool from memory. Record the snapshot revision (the archive's `RELEASE-SOURCE` file, or the clone's HEAD) for the report's Environment section. Remove `<tmp>` at the end of the run, on every exit path - success, failure, or abort.
+Run these as SEPARATE simple commands, not a piped one-liner - the harness's auto-mode classifier blocks the compound verbatim. Then Read `references/run-mechanics.md` now - the batch shape (a loop in a file, never a pipe on the command line), every analyzer flag, and the ledger test live there, and the report's Environment rows carry the receipt `Mechanics: read`. The tool is `scripts/analyze-usage.js` inside the extracted snapshot. Both fetches fail: say so and stop - never rebuild the tool from memory. Record the snapshot revision (the archive's `RELEASE-SOURCE` file, or the clone's HEAD) for the report's Environment section. Remove `<tmp>` on every exit path - success, failure or abort.
 
 ### 3. RUN it
 The directory rollup once, to confirm which sessions matter; then per audited session the full report, the `--json` dump and the `--report-md` skeleton (machine-written tables plus the FILL IN judgment sections), with `--docs-root <root>` on every per-session call when `ALFRED_CODE_DOCS_PATH` names a non-default root - the exact calls are in the mechanics reference.
@@ -124,7 +124,7 @@ When this run audited more than one session, or bundles from prior runs already 
 - The spot check, when authors wrote the bundles: the two with the most flagged moments in their pack, one Waste row and the Verdict's cited `L<n>` each, re-opened with `transcript-view.js show` - a row the line does not bear out is fixed here or sent back to its author once, and the SUMMARY says which rows were checked and what held.
 - The scorecard across sessions: one row per practice with the collection's totals and their denominators (cache misses and the tokens they re-cached, compaction re-reads, build-dir reads, scoped against whole-suite runs, checked commits, green claims with no check, correction streaks beside the short-after-long count, long answers, heavy seats) - copied from the `--json` dumps, never re-derived - closing with ONE line: does this stack, in this project, waste tokens, and where.
 
-Then `rm -rf "<tmp>"`.
+Then, alone in the run's last Bash call, `rm -rf "<tmp>"` with the printed path.
 
 ## Don't game it
 Numbers come from the analyzer's output, never estimated from memory - a claim without an analyzer line behind it does not go in the report. A protocol-check verdict cites the transcript turn that proves it. If the ledger was absent, the identity attribution is marked unavailable rather than inferred. Suggest - once, briefly - that a re-run with the `instrument-tool-usage` hook active (it ships with the rest; `ALFRED_CODE_INSTRUMENT=1`, and it must not be named in `ALFRED_CODE_HOOKS_OFF`) would add the `--hook-log` join next time; do not block on it.

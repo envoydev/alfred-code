@@ -90,6 +90,10 @@ stamped later by the flow that owns it, never pre-filled:
   the modes (`Resume: step 4 BUILD - mode session - next task 2`), rewritten at every stop too.
 - `Completed: <date>` with the per-task evidence table, which closes the file.
 
+A card ticked `DONE` collapses to its title, its status line and one evidence pointer - its hypothesis logs,
+measurement rows and probes go, since every resume reads the file and every later message carries it. A resume
+reads the header, the `Resume:` line and the open cards, never the closed ones whole.
+
 A prior plan consulted as a format reference is read scoped - the header plus one task entry, never the
 whole file, and never another ticket's plan in place of this shape.
 

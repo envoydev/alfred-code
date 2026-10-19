@@ -12,7 +12,8 @@
 //   node spec-check.js [<request file>]      (the request text on stdin when no file is named)
 //   node spec-check.js --touched <size>      (the size re-check before a trivial or small close, run in the project)
 //
-// Built-ins only. Prints one line per item, the `size floor:` the request proves, then `spec:` and `path: merged|gated`;
+// Built-ins only. Prints one line per item, the `size floor:` the request proves, then `spec:`, `path: merged|gated`
+// and the `stop after design:` line that path means;
 // `--touched` prints one `size check:` line.
 const fs = require('fs');
 const path = require('path');
@@ -110,6 +111,9 @@ function report(r) {
         `size floor: ${r.sizeFloor} - ${r.sizeReason} (the Size line may raise it, never go below it)`,
         `spec: ${r.full ? 'full' : `not full - ${r.missing.join('; ')}`}`,
         `path: ${r.path}`,
+        // A gated path read as 'design and audit in one step' skipped step 1's stop (audit 2026-10-20 C37, 71d5428a):
+        // the stop is printed, so the run copies a line instead of inferring the rule.
+        `stop after design: ${r.path === 'gated' ? 'yes - the design step ends on its stop, before the plan audit' : 'no - design and plan audit run as one step'}`,
     ].join('\n');
 }
 

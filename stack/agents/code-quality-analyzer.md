@@ -54,9 +54,15 @@ Report the defects the code has, not the count a thorough-looking report would h
 ## Report
 **Report lean.** Dense and factual - every substantive item this section requires and nothing more: no prose recap, no narration of steps, no restating the task. Keep the whole report under ~1.5k tokens: past that, fold by rule - one line per rule with its count, its first three locations and the scan that lists every instance - never drop a finding to fit; a class no command can list keeps its lines. The finding lines are never trimmed to fit a size - a large class folds to one line with its count instead.
 
-Open with a literal `status: CHARACTERIZED | PARTIAL | BLOCKED` line - the capture branches on that word - then:
+Open with a literal `status: CHARACTERIZED | PARTIAL | BLOCKED` line - the capture branches on that word, and its re-gather step re-dispatches only on PARTIAL:
 
-1. `module:` the paths as handed, and the depth run.
+- **CHARACTERIZED** - every handed rule source judged over the files you read. A module sampled by risk at the depth run is CHARACTERIZED, its sample named on the `coverage:` line - sampling is no gap.
+- **PARTIAL** - a file the dispatch required, or a handed rule source, stayed unread (the pass cap, an unreadable file); name each.
+- **BLOCKED** - nothing could be judged; say why.
+
+Then:
+
+1. `module:` the paths as handed, and the depth run; `coverage: <files read> of <files in the module> - <whole | sampled by risk: what the sample took>`.
 2. `rules:` each rule source judged, with its finding count (`loops/2.code-quality.md=2, CODE-STYLE.md=0, ...`) - a source that could not be read says so.
 3. The `F` lines, sorted by severity, then file.
 4. `handoff:` architecture or coverage candidates, located - or `none`.

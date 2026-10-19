@@ -4,7 +4,7 @@ Read on the single-chat path, when the mode answer builds in this session, befor
 skill carries its own copy of the full-spec check (`scripts/spec-check.js`, byte-identical to the
 single-chat solve flow's), so the lookup never reads another skill's folder: the project copy first,
 else the newest plugin-cache entry that has it. The block prints nothing but the check's lines - one
-per item, the path last:
+per item, then the path and the stop it means:
 
 ```bash
 SPEC=.claude/skills/task-solve-cross/scripts/spec-check.js

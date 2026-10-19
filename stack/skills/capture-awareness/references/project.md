@@ -47,9 +47,14 @@ file it came from: that list becomes the sections' `covers:` lines and the `watc
    `Makefile` targets by hand instead.
 2. **Start and reach.** `**/Properties/launchSettings.json` (profile names, `applicationUrl`, and the NAMES of its
    environment variables), compose files (services, published ports), a `Procfile`, `.vscode/launch.json`
-   configuration names.
+   configuration names, and the setup, start and run scripts and task-runner files (`setup_*.sh`, `scripts/*.sh`, a
+   gulpfile, a `Makefile`) - their usage lines, flags, and what each starts or updates.
 3. **Before you run.** An `.env.example` / `.env.sample` / `.env.template` - key NAMES only (`cut -d= -f1`), never
-   a real `.env`; the services the app depends on; the migration or seed command the scripts name.
+   a real `.env`; the services the app depends on; the migration or seed command the scripts name. More than one
+   environment config (`config.*.json`, `appsettings.*.json`, `.env.*`) means a local start can reach any of those
+   data stores: the Data target line names the file that picks it and a count-only host check per environment
+   (`grep -c '<host>' <file>`, never the value) - what DISCOVER cannot settle joins the fourth question's 'The repo
+   shows'.
 4. **The prose.** `README.md`, `AGENTS.md`, `.claude/AGENTS.md`, `CLAUDE.md` and `.claude/CLAUDE.md` headings about
    setup, running, login, debugging and testing
    (`grep -niE '^#+ .*(setup|install|run|start|login|sign in|debug|test)'`), then a ranged read of each hit
@@ -73,7 +78,8 @@ Captured: <branch>@<short-sha>, <date>
 
 What an agent needs to run this app and check a change by hand. Commands, ports and names come from the
 files each line cites; the rest is the team's answer as of the stamp. A credential is named by where it
-lives, never by value.
+lives, never by value. Before a local start, run the Data target check; before a hand-check, hold a flow's
+`needs:` against the account and ask once for what is missing, before the first browser call.
 
 ## Before you run
 <!-- id: before-you-run -->
@@ -81,6 +87,7 @@ lives, never by value.
 - Services: <what must be up first, and the command that brings it up> (<source>)
 - Environment: <the variable NAMES the app reads> - values live in <where>
 - Data: <the migration or seed command, or 'none needed'> (<source>)
+- Data target: <per environment - the file or variable that picks the database a local start reaches, and the count-only check that names it, e.g. `grep -c '<host>' <file>`> (<source>)
 - Tools: <the SDK or runtime versions the manifests pin> (<source>)
 - Trips a first run: <a VPN, a busy port, a feature flag - or 'nothing known'>
 
@@ -102,11 +109,11 @@ lives, never by value.
 - Reach: <the URL and port, the window, or the CLI entry>
 - Log in: <numbered steps - the screen, the fields, the role to pick - or 'no login, the app is open'>
 - Accounts: <one line per role - its purpose and the user name's home>
-- Credentials live in: <env var `<NAME>` | `<data root>/.sensitive-data`, key `<NAME>` | vault item `<name>`> - checked for presence, never printed; a browser login types the KEY name (`<NAME>`) in `browser_type` / `browser_fill_form`, which the browser server fills from the sensitive data and shows as `<secret>NAME</secret>`; any other typed value goes through the secret guard's ask
+- Credentials live in: <env var `<NAME>` | `<data root>/.sensitive-data`, key `<NAME>` | vault item `<name>`> - checked for presence, never printed; a browser login types the KEY name (`<NAME>`) in `browser_type` / `browser_fill_form`, which the browser server fills from the sensitive data and shows as `<secret>NAME</secret>` - read that marker in the first fill's result before concluding; a key added after the browser server started needs a reconnect (`/mcp`) first; any other typed value goes through the secret guard's ask
 
 ## Flows to verify
 <!-- id: flows-to-verify -->
-1. <flow name> - <the steps and actions, in order> -> <the result that proves it works> (<source, when a spec drives it>)
+1. <flow name> - <the steps and actions, in order> -> <the result that proves it works> (<source, when a spec drives it>); needs: <the account, record or setting holding the data it reads - or 'any'>
 
 ## Edge cases
 <!-- id: edge-cases -->

@@ -14,7 +14,7 @@ Decompile a compiled assembly when you need the real implementation - a framewor
 
 ## Tool
 
-`ilspycmd`, pinned. It is a third-party tool, so running it is the user's call - ONE AskUserQuestion before any dnx or install command:
+`ilspycmd`, pinned. It is a third-party tool, so running it is the user's call - ONE AskUserQuestion before any dnx or install command, its answer good for THIS session only: a cycle note, a seat brief or a later session that carries the command asks again, so write 'ask again in a new session' beside it wherever you record it:
 
 ```ask
 Decompiling needs ilspycmd, a third-party tool. Run it once through dnx, pinned: nothing is installed and the version is fixed.

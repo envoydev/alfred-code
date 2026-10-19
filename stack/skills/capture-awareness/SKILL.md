@@ -26,7 +26,7 @@ to the skill that writes it).
 ## When to use
 
 - The deliberate awareness capture: after an install, an update, a configure run or a trim (the inventory moved), when the run book is missing or stale, or to add or refresh a sibling repo.
-- Arguments: sibling locations - local paths or git URLs, each with an optional relation hint (`../backend`, `git@github.com:org/contracts.git provides-to`) - add or refresh those related projects; `refresh` re-asks the run book and rewrites the inventory even when nothing on disk moved.
+- Arguments: sibling locations - local paths that exist or git URLs, each with an optional relation hint (`../backend`, `git@github.com:org/contracts.git provides-to`) - add or refresh those related projects; `refresh` re-asks the run book and rewrites the inventory even when nothing on disk moved. Any other text is a NOTE - a fact the user typed for the run book (step 2).
 - A re-run is cheap: the inventory is one script call, the run book is asked again only when it is missing, stale or `refresh` was passed, and the related projects only when siblings are passed or none were ever recorded.
 - Not for the architecture map (capture-architecture), the code style (capture-code-style), or dynamic cross-repo findings - those go to the shared `alfred-memory` MCP, tagged with the sibling's name.
 
@@ -69,6 +69,10 @@ how to read each one.
 Read `references/project.md`: the credentials rule, DISCOVER, the doc's shape. The mode comes from disk:
 
 - **FIRST** - no `<docs-path>/awareness/PROJECT-AWARENESS.md`: DISCOVER, the ask below, WRITE.
+- **NOTE** - the doc exists and the arguments carry a typed fact (no doc yet: FIRST, the fact answering its
+  question). The user's words are the answer, so no gate and no DISCOVER: append it to the section it belongs to
+  through `docs.js set`, ending `(the team's answer, <date>)`; what it leaves open stays `unknown`. Then the value
+  check and the lint; the report reads `Project: appended - <section>`, and step 3 asks nothing on this run.
 - **CURRENT** - the doc exists, `node .claude/hooks/docs.js stale` names no `PROJECT-AWARENESS` section, the doc
   holds no `unknown - re-run` line, and the arguments carry no `refresh`: one report line, no ask, on to step 3.
 - **UPDATE** - otherwise. This gate first; on 'Refresh', DISCOVER again and ask only the questions whose section
@@ -159,7 +163,7 @@ A literal line template, one line per field (a table where a field lists several
 ```text
 Agents:      <the script's Doc: line>; Verify: <its Verify: line>
 Inventory:   <the script's Inventory: line>; Drift: <its Drift: line>
-Project:     <created | refreshed | current | kept> - <docs-path>/awareness/PROJECT-AWARENESS.md, sections <touched, or none>
+Project:     <created | refreshed | appended | current | kept> - <docs-path>/awareness/PROJECT-AWARENESS.md, sections <touched, or none>
 From repo:   <the files DISCOVER read the facts from, or not run>
 Asked:       <each question asked with the answer's label, or none>
 Unknown:     <the run-book sections or lines still unknown, or none>

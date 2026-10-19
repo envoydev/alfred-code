@@ -152,8 +152,9 @@ there (READ it first if it exists, so the Write is legal - an `rm` first is deni
 Never Edit or `sed` it into shape: the old text is no draft to patch, whatever a calling flow's brief says changed.
 
 Open the doc with a freshness line for the human reader - `As of: <branch>@<short-sha>, <YYYY-MM-DD>` (`+dirty`
-appended when the working tree holds uncommitted changes). This is informational only, never a gate: nothing
-reads it to decide whether to skip the run, unlike the `Captured:` stamp on a real domain doc.
+appended when the working tree holds uncommitted changes). It never skips a run, unlike the `Captured:` stamp on a
+real domain doc: only the INLINE verify-and-rewrite path and the quality loop's reuse ask read it, both offered
+through an ask, and both only when its sha is HEAD on a clean tree.
 
 Create `<docs-path>/quality/` only when absent. Write ONLY `<docs-path>/quality/ARCHITECTURE-ASSESSMENT.md` - never source,
 never the map, never the decision log. After the write, `wc -l` it against the ~300-line target above and run

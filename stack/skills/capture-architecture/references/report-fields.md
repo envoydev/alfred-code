@@ -16,10 +16,10 @@ are exempt), so the receipts must survive that cap rather than be re-answered aw
 
 | Field | Content | The step it proves |
 |---|---|---|
-| `Vocabulary:` | the skills step 3 actually loaded, or `none - <role> absent, read the code` | the vocabulary load |
+| `Vocabulary:` | one cell per row of the roles table - `<role>: <skill loaded> \| ABSENT \| n/a - <its When that does not hold>`; an `always` role is never n/a | the vocabulary load |
 | `References:` | which of this skill's `references/` files this run actually Read (`hazards.md`, `doc-shapes.md`, `vocabulary-roles.md`, `report-fields.md`) | the contract reads |
 | `Write gate:` | the answer to the pre-write AskUserQuestion, verbatim - or the reason the run skipped the ask (`first capture - no doc to replace`, `zero drift - nothing written`) | the ask before the first byte |
-| `Write passes:` | what step 5's precondition allows: `ARCHITECTURE.md 1` on a clean run, `2` where the budget spill fired, `1 (overlay, N sections)` on the overlay route where the doc is written section by section through `docs.js set`, and the honest number plus one line on what was still being verified where a third pass happened - plus the `docs.js status` line quoted right after the first write, the proof no code-claim probe ran later | the verification-first precondition |
+| `Write passes:` | what step 5's precondition allows, counting every file written under the architecture folder (each Edit pass of a reference file too): `ARCHITECTURE.md 1` on a clean run, `2` where the budget spill fired, `1 (overlay, N sections)` on the overlay route where the doc is written section by section through `docs.js set`, and the honest number plus one line on what was still being verified where a third pass happened - plus the `docs.js status` line quoted right after the first write, the proof no code-claim probe ran later | the verification-first precondition |
 | `Rule:` | the awareness rule's measured byte count from `wc -c` | the 300-byte budget check |
 | `Model:` | see below | which model the judgment ran on |
 
@@ -38,7 +38,9 @@ pick the true one:
 
 When the user asks for a follow-up prompt or the run hands work to a later session, shape it as a RESUME BLOCK -
 the exact invocation to paste, the docs to read first, one line on what the next run does - the same paste-ready
-format the loop skills end on.
+format the loop skills end on. Any next command the close names for the user (the findings capture, the quality
+loop, a re-run) reads `/clear, then <command>` - in the option label when it is an ask: this run's reads leave the
+chat far past a fresh session's floor, and a command typed into it re-sends all of it.
 
 ## What the docs are for
 

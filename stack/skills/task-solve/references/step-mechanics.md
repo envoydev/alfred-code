@@ -33,7 +33,8 @@ Two build modes, the recommendation decided per plan by the `Execution:` verdict
   multiple of its dispatched build).
 
 The verdict maps straight to the mark: `parallel seats` recommends agents, `serial` or `batched`
-recommends session. A plan whose cards own their files and verify alone recommends agents - building
+recommends session. The plan's `Approved:` line is written after this ask is answered, quoting the answer - never
+in the edit that appends the gate block, ahead of the ask. A plan whose cards own their files and verify alone recommends agents - building
 it one card after another loses time and buys no quality. A fixed default is not a recommendation. Agents mode exists only where subagent dispatch is
 available; where it is not, the ask offers session only and says so.
 
@@ -138,7 +139,9 @@ this flow. The user can inspect the diff themselves at this stop before answerin
 
 A change a sibling repo must follow is written as a task card under
 `<docs-path>/cross-project-tasks/` (the cross-project write guard blocks the sibling's tree), or an
-`alfred-memory` note, after reading the sibling's actual source. The close then prints it beside
+`alfred-memory` note, after reading the sibling's actual source: for each client action the card tells the sibling
+to wire, its handler there, and each backend route that handler calls confirmed to exist in THIS repo (one grep
+over the endpoint files) - a route that does not exist leaves the bullet out. The close then prints it beside
 the card as ONE fenced markdown block ready to paste into the sibling's session - first line
 `Open in: <the sibling's root>`, then the card's text - so nobody has to ask for it inline (measured:
 the 12th 'write it here as markdown' ask in one project, each a full-context turn). A reply drafted for

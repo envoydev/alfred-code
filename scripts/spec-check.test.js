@@ -145,11 +145,16 @@ test('the CLI prints one line per item and the path last, from stdin or a file',
   const r = run(FULL_API);
   assert.strictEqual(r.status, 0, r.stderr);
   const lines = r.stdout.trim().split('\n');
-  assert.deepStrictEqual(lines.map((l) => l.split(':')[0]), ['surface', 'behaviour', 'verified', 'stacks', 'security', 'size floor', 'spec', 'path']);
+  assert.deepStrictEqual(lines.map((l) => l.split(':')[0]), ['surface', 'behaviour', 'verified', 'stacks', 'security', 'size floor', 'spec', 'path', 'stop after design']);
   assert.match(r.stdout, /^path: merged$/m);
+  // Audit 2026-10-20 C37 (71d5428a): a gated path's step-1 stop is printed, so the run copies it instead of inferring it.
+  assert.match(r.stdout, /^stop after design: no - design and plan audit run as one step$/m);
   const g = run(VAGUE);
   assert.match(g.stdout, /^spec: not full - no surface named/m);
   assert.match(g.stdout, /^path: gated$/m);
+  assert.match(g.stdout, /^stop after design: yes - the design step ends on its stop, before the plan audit$/m);
+  // The fresh-session hook still reads the spec and path pair it keys the gated stops on.
+  assert.match(JSON.stringify(g.stdout), /(?:^|\\n)spec: [^"\n]*?\\npath: (gated|merged)\b/);
   const empty = run('');
   assert.strictEqual(empty.status, 0);
   assert.match(empty.stdout, /^path: gated$/m, 'no request text is never a full spec');

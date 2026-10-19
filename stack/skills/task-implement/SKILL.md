@@ -123,7 +123,7 @@ The review-and-fix loop's five stages - structure, code quality, naming, logging
 
 ## Finish - the in-session verifier
 
-All tasks green: run the full suite once - the workspace's affected set (`nx affected -t test lint build` in an Nx workspace), else every touched project plus the projects that depend on it, never a hand-picked list - quoting the command in the report and in any verifier brief. Then review the assembled diff against the plan - the reviewer through ONE ask unless a calling flow already chose it, pointed at the plan file so it reviews against the plan, not in isolation, and apply its findings; then the done-gate on the whole feature.
+All tasks green: run the full suite once - the workspace's affected set (`nx affected -t test lint build` in an Nx workspace), else every touched project plus the projects that depend on it, never a hand-picked list - quoting the command in the report and in any verifier brief. A red called pre-existing, or a fix closed on a pass the unpatched code was never seen to fail ('uncapped', 'no longer reproduces'), needs that check run on the base (a stash or a worktree) and quoted - else the report says `unproven`. Then review the assembled diff against the plan - the reviewer through ONE ask unless a calling flow already chose it, pointed at the plan file so it reviews against the plan, not in isolation, and apply its findings; then the done-gate on the whole feature.
 
 ```ask
 All tasks green (<the suite command>). Who reviews the diff?

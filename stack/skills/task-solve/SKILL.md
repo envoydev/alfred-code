@@ -238,12 +238,12 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
    An unpushed commit is its own question too (several branches: the merge order):
 
    ```ask
-   <sha> on <branch> is not pushed to <remote><; merge <A> before <B> - why>.
+   <sha> on <branch> (<N> commits) is not pushed to <remote><; merge <A> before <B> - why>.
    - 'Hold - push later (Recommended)' - nothing leaves this machine
    - 'Push now' - the checkpoint's publish half takes this answer as its confirmation
    ```
 
-   A picked commit runs the checkpoint whole, its formatter included.
+   A picked commit runs the checkpoint whole, formatter included.
    New scope arriving in-chat after `Completed:` is a NEW cycle in a NEW plan file (a stamped file
    is a record, never appended to) - re-enter step 1, or state in one `ungated: <why>` line that the
    work runs outside the cycle; never build it on a casual 'yes, add it'. A change a sibling repo must

@@ -3,7 +3,7 @@
 Read first, on every size, to run the full-spec check - its `size floor:` line is the lowest size the
 `Size:` line may state, and on `standard` its `spec:` and `path:` lines decide the merged path. The lookup reads this skill's own
 copy of the script (`scripts/spec-check.js`): the project copy first, else the newest plugin-cache
-entry that has it. The block prints nothing but the check's lines - one per item, the path last:
+entry that has it. The block prints nothing but the check's lines - one per item, then the path and the stop it means:
 
 ```bash
 SPEC=.claude/skills/task-solve/scripts/spec-check.js
@@ -19,6 +19,20 @@ else echo 'path: gated - spec-check not found'; fi
 ```
 
 A script neither home has prints `path: gated`: keep every gate.
+
+Two stop rules every size carries, since this file is the one read on every size: a bug's `Result:` adds
+`Repro: <the reported error matched | differs: <what it showed> | not reproduced>`, and a question in the
+arguments (is it built, is it still needed) is answered in the stop's first sentence, before the fields.
+
+A request whose named files exist only in a related project (the awareness doc lists its siblings) is settled
+before the check - the check, the `Size:` line and every stop run in the repo that owns the task:
+
+```ask
+The files this names live in <sibling>, not here. Run it there: its checks and stops belong to the repo that owns it.
+- 'I open <sibling> and paste the request there (Recommended)' - this chat stops here
+- 'Run here with cross-repo writes allowed' - <what it would write there>
+- 'Stop' - nothing runs
+```
 
 ## The size re-check - before a trivial or small close
 

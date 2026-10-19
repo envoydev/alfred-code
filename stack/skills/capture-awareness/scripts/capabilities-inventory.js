@@ -860,7 +860,17 @@ function inventory(projectRoot)
     // The live list names a plugin's server `plugin:<plugin>:<server>`.
     const pluginLive = new Set(provided.map((s) => `plugin:${s.plugin}:${s.server}`));
     for (const s of provided) sub(`${s.server.padEnd(20)} plugin      live: ${liveOf(`plugin:${s.plugin}:${s.server}`)}  from ${s.plugin}${routingKey(s.server) !== s.server ? `  routing: ${routingKey(s.server)}` : ''}`);
-    for (const r of liveRows) if (!registered.includes(r.name) && !pluginLive.has(r.name)) sub(`${r.name.padEnd(20)} -           live: ${r.state}  (reaches the session from the account or the harness, not .mcp.json)`);
+    // A live-only server gets no routing row by design, and the line says so with whether the project's own
+    // instructions name it - a bare 'no routing rows for them' read as a defect and cost the user two asks
+    // (audit 2026-10-20 C44, 0738b25a), while the report's Flags rule forbids the model to add the cause itself.
+    const instructions = ['AGENTS.md', '.claude/AGENTS.md', 'CLAUDE.md', '.claude/CLAUDE.md']
+        .map((f) => readText(path.join(projectRoot, f)) || '').join('\n').toLowerCase();
+    const instructionsName = (name) =>
+    {
+        const bare = name.replace(/^claude\.ai\s+/i, '').toLowerCase();
+        return instructions.includes(name.toLowerCase()) || (bare.length >= 3 && instructions.includes(bare));
+    };
+    for (const r of liveRows) if (!registered.includes(r.name) && !pluginLive.has(r.name)) sub(`${r.name.padEnd(20)} -           live: ${r.state}  (reaches the session from the account or the harness, not .mcp.json; no routing row by design - ${instructionsName(r.name) ? 'the project\'s AGENTS.md names it' : 'name it in the project\'s AGENTS.md to route it'})`);
     sub(`MCP ROUTING rows - paste verbatim, one per registered or plugin-provided server (data root ${slots.dataRoot}):`);
     const servers = [...registered.map((name) => ({ name })), ...provided.map((s) => ({ name: s.server, plugin: s.plugin }))];
     facts.routingRows = routingRowsFor(servers, map, slots);

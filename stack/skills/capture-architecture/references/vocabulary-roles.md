@@ -28,5 +28,7 @@ project directly and never guess at a skill name.
 
 ## Receipt
 
-The report's `Vocabulary:` line names the skills actually loaded (or `none - <role> absent, read the code`).
-The line is what makes the load happen; a report without it is a run that loaded nothing.
+The report's `Vocabulary:` line carries one cell per row of the table above - `<role>: <skill loaded>`, `ABSENT`
+(nothing installed matches: read the code), or `n/a - <its When that does not hold>` - so a skipped role is a
+visible cell, not a sentence. An `always` role is never n/a: a run that reads no stack code still loads it or
+writes ABSENT. The line is what makes the load happen; a report without it is a run that loaded nothing.

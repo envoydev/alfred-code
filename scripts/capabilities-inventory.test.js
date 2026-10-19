@@ -152,6 +152,12 @@ test('inventory: the MCP block is the LIVE list, not .mcp.json alone, and every 
     // registered but NOT connected, and live but NOT registered - the two facts the file cannot give
     assert.match(out, /alfred-documentation\s+registered\s+live: not in the live list/);
     assert.match(out, /claude\.ai Notion\s+-\s+live: connected\s+\(reaches the session from the account or the harness/);
+    // Audit 2026-10-20 C44 (0738b25a): the live-only line states why it has no routing row, so the Flags line the
+    // report copies reads as information - and says whether the project's own AGENTS.md routes it.
+    assert.match(out, /claude\.ai Notion .*no routing row by design - name it in the project's AGENTS\.md to route it\)/);
+    write(path.join(root, 'AGENTS.md'), '# Agents\n\n- Tickets: use the Notion connector for the specs board.\n');
+    const named = run([], { cwd: root, bin }).out;
+    assert.match(named, /claude\.ai Notion .*no routing row by design - the project's AGENTS\.md names it\)/);
     const rows = out.split('\n').filter((l) => /^\s+- `/.test(l));
     // The locked three share one row pointing at the load line their baselines carry (audit I24).
     assert.equal(rows.length, 2, 'one routing row per registered server, the locked servers on one');
@@ -628,6 +634,11 @@ test('--write: a first capture composes the rule from the copy target, verifies 
     assert.strictEqual(reportLines(again.out).Verify, 'not run - nothing written');
     assert.strictEqual(fs.statSync(RULE(root)).mtimeMs, (BASE + 0) * 1000, 'not rewritten');
     assert.strictEqual(fs.readFileSync(RULE(root), 'utf8'), rule);
+    // Audit 2026-10-20 C44 (055f66c4): `--refresh` chosen before the precheck was read costs nothing on a current
+    // doc - the identical compare runs before the refresh switch, so the file and its mtime stay.
+    const early = run(['--write', '--refresh'], { cwd: root });
+    assert.match(early.out, /COMPARE:\s+identical - not rewritten/);
+    assert.strictEqual(fs.statSync(RULE(root)).mtimeMs, (BASE + 0) * 1000, 'not rewritten under --refresh either');
 });
 
 test('--write: with the CLI, the Plugins section and the plugin counts come off the printed lines', { skip: posixOnly }, () =>
