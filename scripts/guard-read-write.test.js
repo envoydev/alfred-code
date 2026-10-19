@@ -249,6 +249,9 @@ test('audit 2026-10-08: a span, an identity filter, a glob or a listing past the
   fs.writeFileSync(path.join(dir, 'big.md'), `${'word '.repeat(20)}\n`.repeat(1300));
   fs.mkdirSync(path.join(dir, 'skills', 'a'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'skills', 'a', 'SKILL.md'), 'x\n');
+  // audit 2026-10-20 C28: a glob is sized by what it expands to, so the skills sweep needs files past THRESHOLD in all
+  fs.mkdirSync(path.join(dir, 'skills', 'b'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'skills', 'b', 'SKILL.md'), 'line\n'.repeat(450));
   const sh = (command, tool_name = 'Bash') => run(READ, { tool_name, tool_input: { command }, session_id: sid(), cwd: dir },
     { cwd: dir, env: { ...process.env, CLAUDE_PROJECT_DIR: dir } }).status;
   for (const c of ['head -n 9999 big.ts', 'sed -n 1,99999p big.ts', 'tail -n +2 big.ts', 'cat big.ts | grep ""', 'cat big.ts | awk 1',
@@ -531,6 +534,37 @@ test('audit 2026-10-10 C11: a loop over a few small literal files is sized per f
   assert.equal(shellAt(dir, 'for f in Notifications/*.cs; do cat "$f"; done', sid()).status, 2, 'past THRESHOLD lines in all it is the sweep');
   assert.equal(shellAt(dir, 'for f in src/**/*.cs; do cat "$f"; done', sid()).status, 2, 'a recursive glob cannot be sized');
   assert.equal(shellAt(dir, 'for d in Notifications; do cat ${d}/A.cs; done', sid()).status, 2, 'a path built on the variable is not sized per file');
+});
+
+// audit 2026-10-20 C28 (3a8a1ee3, 56ca25cb, 1b432dd2, 8396b5df, a8804432): a glob of a few small files, a glob in a folder
+// name over two entry points and a sweep whose only sink is `wc` were denied as whole-file sweeps.
+test('audit 2026-10-20 C28: a glob is sized by what it expands to, and a sweep piped into wc is a count', () => {
+  const dir = capDir();
+  fs.mkdirSync(path.join(dir, 'Req')); fs.mkdirSync(path.join(dir, 'Mig'));
+  fs.writeFileSync(path.join(dir, 'A.cs'), linesOf(2));
+  fs.writeFileSync(path.join(dir, 'Req', 'ReorderCategoriesA.cs'), linesOf(2)); fs.writeFileSync(path.join(dir, 'Req', 'ReorderCategoriesB.cs'), linesOf(2));
+  fs.writeFileSync(path.join(dir, 'Mig', '2026_AddOrdersIndex.cs'), linesOf(30));
+  for (const s of ['One', 'Two']) { fs.mkdirSync(path.join(dir, 'Services', s), { recursive: true }); fs.writeFileSync(path.join(dir, 'Services', s, 'Program.cs'), linesOf(40)); }
+  const ok = (c, why) => assert.equal(shellAt(dir, c, sid()).status, 0, why || c);
+  const no = (c, why) => assert.equal(shellAt(dir, c, sid()).status, 2, why || c);
+  ok('cat A.cs Req/ReorderCategories*.cs', 'two 2-line files by glob (3a8a1ee3)');
+  ok('cat Mig/*AddOrdersIndex.cs', 'a glob matching one small file (56ca25cb)');
+  ok('cat Mig/*NoSuchName.cs', 'a glob matching nothing prints nothing');
+  ok('for f in Services/*/Program.cs; do cat -n "$f"; done', 'a glob in a folder name over two entry points (1b432dd2)');
+  ok('cat Services/*/Program.cs', 'the same glob handed to cat');
+  ok('find . -name "*.cs" | xargs cat | wc -l', 'xargs cat into wc (a8804432)');
+  ok('find . -name "*.cs" -exec cat {} + | wc -l', 'find -exec cat into wc');
+  ok('find . -name "*.cs" -exec cat {} \\; 2>/dev/null | wc -c', 'the \\; form, stderr dropped');
+  ok('for d in Req/; do echo "$d" $(cat $d*.cs | wc -l); done', 'a loop counting its files (8396b5df)');
+  // what the guard exists for still blocks
+  fs.writeFileSync(path.join(dir, 'Req', 'ReorderCategoriesBig.cs'), linesOf(450));
+  no('cat Req/ReorderCategories*.cs', 'the same glob once it expands past THRESHOLD lines');
+  no('for f in Services/*/Program.cs Req/*.cs; do cat -n "$f"; done', 'a loop past THRESHOLD in all');
+  no('find . -name "*.cs" | xargs cat', 'the bare xargs sweep');
+  no('find . -name "*.cs" -exec cat {} +', 'the bare -exec sweep');
+  no('find . -name "*.cs" | xargs cat | tee all.txt | wc -l', 'only wc as the very next stage is a count');
+  no('for d in Req/; do cat $d*.cs; done', 'the loop without its count');
+  no('cat src/**/*.cs', 'a recursive glob cannot be sized');
 });
 
 test('audit 2026-10-10 C11: a file the working tree adds completes past the cap; a changed one names its diff', () => {
