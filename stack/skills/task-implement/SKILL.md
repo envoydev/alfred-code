@@ -42,7 +42,7 @@ The plan FILE is the whole input - not the chat that produced it. Run this in a 
    ```ask
    <plan file> carries no Approved: line. Build it?
    - 'Approve - build task 1 (Recommended)' - stamped as Approved:
-   - 'Changes needed' - say what in Other
+   - 'Changes needed' - I ask what to change next, in plain text
    ```
 
 ## The protocol - per task, in plan order

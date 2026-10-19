@@ -124,7 +124,7 @@ On `path: merged`, steps 1 and 2 are ONE step, run by `references/full-spec.md`.
 Full spec - designed and audited in one step (<the Passes: line>; <the Gated: verdict>). Build it as planned <in this session | through the seats>: <the mode-fit reason>.
 - 'Build as planned - in this session (Recommended)' - <why the tasks fit one chat>
 - 'Build as planned - dispatch the agent seats' - <independent tasks that build in parallel>
-- 'Not yet - changes needed' - edit the plan, or say what changes in Other
+- 'Not yet - changes needed' - edit the plan, or I ask what to change
 ```
 
 The stamps are step 2's and step 3's (`Gated: passed`, `Approved: <date> - mode <session|agents>`), and the mark moves to the seats option on step 3's mode-fit rule.
@@ -155,7 +155,7 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
    The plan is gated. Build it <in this session | through the seats>: <the mode-fit reason>.
    - 'Approve - build in this session (Recommended)' - <why the tasks fit one chat>
    - 'Approve - dispatch the agent seats' - <independent tasks that build in parallel>
-   - 'Not yet - changes needed' - edit the plan, or say what changes in Other
+   - 'Not yet - changes needed' - edit the plan, or I ask what to change
    ```
 
    The mark moves to the seats option when the mode-fit rule picks it for THIS plan. Approval and mode arrive as one answer; a typed Other answer that

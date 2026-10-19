@@ -61,7 +61,7 @@ Take the open findings in the assessment's rank order (severity first) with the 
      ```ask
      <plan id>, <N> tasks. Build it?
      - 'Approve and build (Recommended)' - stamp, then fan out
-     - 'Changes needed' - say what in Other
+     - 'Changes needed' - I ask what to change next, in plain text
      ```
   4. **Stamp the approval**, in four parts:
      - *Shape* - write `<docs-path>/flow/APPROVAL`, first line `APPROVED <plan id> - "<the user's words, verbatim>"`; the selected answer IS those words. The dispatch hook blocks an unstamped implementer; delete the file when the run completes.

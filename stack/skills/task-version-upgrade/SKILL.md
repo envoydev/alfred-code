@@ -47,7 +47,7 @@ The staged plan above: <n> stages, each with its verification and rollback point
 - 'Approve - execute through the seats (Recommended)' - each stage goes to the implementer seat and gates green before the next
 - 'Approve - execute in this session' - the stages run in order here, no seat; each still gates green
 - 'Just the plan' - exit here and hand over the plan
-- 'Stop - changes needed' - say what changes in Other
+- 'Stop - changes needed' - I ask what to change next, in plain text
 ```
 
 The mark moves to 'in this session' when the verdict reads `serial`; the run never drops the seats on its own call. With a user-level call still open, executing would guess its answer, so the plan is the recommendation:
@@ -56,7 +56,7 @@ The mark moves to 'in this session' when the verdict reads `serial`; the run nev
 The staged plan above is ready, but <n> user-level call(s) are open. Take the plan and settle them first.
 - 'Just the plan (Recommended)' - exit here with the plan; the open calls are yours to settle
 - 'Approve - execute the stages' - run the stages on the answers given in this same call, in the mode the verdict names
-- 'Stop - changes needed' - say what changes in Other
+- 'Stop - changes needed' - I ask what to change next, in plain text
 ```
 
 ### 5. EXECUTE - stage by stage

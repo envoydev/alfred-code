@@ -998,6 +998,13 @@ function shownSinceTyped() {
 // The finding's own shapes - approve, as shown, is ready, post / file / publish / send this - never a bare action
 // ('Run it?' approves a step, not a text the user must read).
 const APPROVAL_ASK_RE = /\b(?:approve|as shown|(?:is|are) ready|(?:post|file|publish|send) (?:this|these|it|them|the (?:above |drafted |simplified |new )?(?:comment|draft|message|reply|description|summary|note|email|post))\b)/i;
+// TYPE IT INTO OTHER (the ask branch's check 8). A picked option returns only its LABEL (observed 3 of 3, audit 2026-10-10
+// C26, ecea6d56: 'Paste ids in Other (Recommended)' came back as the bare label three times, and the ids belonged to a
+// customer nobody could reach). A typed value is asked in plain prose that ends the turn. Lint check 61 runs this same
+// literal over every ask template's options (scripts/lint-skills.js hookOtherRe reads it from this line, so keep it one
+// literal on one line): the stack's own templates taught 'say what changes in Other' and every flow paid one denied round
+// trip per run (audit 2026-10-20 C01, fabea019, 7c1af769).
+const OTHER_RE = /\b(?:in|into|via|through|using) (?:the )?['‘’]?Other\b|\btype (?:it|them|\w+) (?:in|into)\b[^.]{0,20}\bOther\b/;
 const SUBJECT_RE = /\b(?:this|these|the|that)\s+(?:[\w-]+\s+){0,3}?(plan|comment|draft|message|reply|description|summary|ticket|issue|changes?|diff|patch|stages?|spec|design|report|wording|version|email|note|edits?|post)\b/i;
 const SHOWN_MIN = 200;
 // Read on the QUESTION only: an 'Approve' option label is the solve-task approval stop, whose own contract prints the
@@ -2270,10 +2277,7 @@ if (payload.tool_name === 'AskUserQuestion') {
         && !quotes([q.question, ...q.options.map((o) => `${(o && o.label) || ''} ${(o && o.description) || ''}`)].join(' ')).some(near));
       if (ctxNow > 0 && stale) numbers = { ctx: ctxNow, floor: coldFloor() };
     }
-    // 8. TYPE IT INTO OTHER. A picked option returns only its LABEL (observed 3 of 3, audit 2026-10-10 C26, ecea6d56:
-    // 'Paste ids in Other (Recommended)' came back as the bare label three times, and the ids belonged to a customer
-    // nobody could reach). A typed value is asked in plain prose that ends the turn.
-    const OTHER_RE = /\b(?:in|into|via|through|using) (?:the )?['‘’]?Other\b|\btype (?:it|them|\w+) (?:in|into)\b[^.]{0,20}\bOther\b/;
+    // 8. TYPE IT INTO OTHER (OTHER_RE, above).
     const typeIntoOther = questions.some((q) => q && Array.isArray(q.options) && q.options.some((o) => o && OTHER_RE.test(`${o.label || ''} ${o.description || ''}`)));
     // 9. THE RECOMMENDED MARK (alfred-interaction.md: 'the recommended one marked'). A single-select question with
     // options and none marked '(Recommended)', or more than one, went out in 2 of 11 questions of one session (C26,

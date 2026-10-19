@@ -56,6 +56,41 @@ test('A4: lint check 61 fails an ask template with no mark, or with two', () => 
     assert.match(lintAskTemplates([{ file: 'd.md', text: `1. **STEP** - ask:\n\n${indented}\n` }]).join('\n'), /d\.md.*no option marked/, 'an indented template is read too');
 });
 
+// Audit 2026-10-20 C01 (fabea019, 7c1af769): 'Not yet - changes needed' - say what changes in Other' was sent verbatim and
+// denied by the stop contract's OTHER_RE on every run. Check 61 runs the hook's own regex, read from its source line.
+test('C01: check 61 fails an ask option that tells the user to type into Other, with the hook\'s own OTHER_RE', () => {
+    const { hookOtherRe } = require('./lint-skills.js');
+    const re = hookOtherRe();
+    assert.ok(re instanceof RegExp, 'the regex is read from guard-stop-contract.js');
+    const hookSrc = fs.readFileSync(path.join(__dirname, '..', 'stack', 'hooks', 'guard-stop-contract.js'), 'utf8');
+    assert.ok(hookSrc.includes(`const OTHER_RE = ${re.toString()};`), 'the lint holds the very literal the hook runs');
+    const block = (...lines) => ['```ask', 'Approve the plan? The gate passed.', ...lines, '```'].join('\n');
+    for (const bad of [
+        "- 'Not yet - changes needed' - edit the plan, or say what changes in Other",
+        "- 'Apply some - name them in Other' - only the changes you list",
+        "- 'I will type them via Other' - the run maps the locations you type",
+        "- 'Changes needed' - type them into the Other box",
+    ]) {
+        const out = lintAskTemplates([{ file: 'x.md', text: block("- 'Approve (Recommended)' - build it", bad) }]).join('\n');
+        assert.match(out, /x\.md.*tells the user to type into Other/, bad);
+    }
+    // the rewritten shape: a label-only pick, the detail asked for in plain text after it
+    assert.deepStrictEqual(lintAskTemplates([{ file: 'y.md', text: block("- 'Approve (Recommended)' - build it", "- 'Not yet - changes needed' - edit the plan yourself, or I ask what to change next, in plain text") }]), []);
+    // a missing hook line is a finding, never a silent pass
+    assert.match(lintAskTemplates([{ file: 'z.md', text: block("- 'Go (Recommended)' - a", "- 'Stop' - b") }], null).join('\n'), /no one-line `const OTHER_RE/);
+    assert.strictEqual(hookOtherRe(path.join(__dirname, 'no-such-hook.js')), null);
+});
+
+test('C01: no shipped ask template tells the user to type into Other', () => {
+    const re = require('./lint-skills.js').hookOtherRe();
+    const root = path.join(__dirname, '..');
+    const hits = [];
+    const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else if (p.endsWith('.md')) for (const m of fs.readFileSync(p, 'utf8').matchAll(/^[ \t]*```ask[ \t]*\n([\s\S]*?)^[ \t]*```/gm)) for (const l of m[1].split('\n').map((x) => x.trim())) if (/^- '/.test(l) && re.test(l)) hits.push(`${path.relative(root, p)}: ${l}`); } };
+    walk(path.join(root, 'stack', 'skills'));
+    walk(path.join(root, 'setup-plugin'));
+    assert.deepStrictEqual(hits, []);
+});
+
 // Review of pilot 4, M6: a label holding an apostrophe read as unmarked, and a mark on the second option passed.
 test('A4: check 61 reads a label up to its last quote before the why, and wants the recommendation first', () => {
     const block = (...opts) => ['```ask', 'Commit it? The review passed.', ...opts.map((o) => `- '${o}' - why`), '```'].join('\n');

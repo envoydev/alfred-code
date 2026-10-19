@@ -1257,9 +1257,24 @@ function lintSetupAskPresence(files)
 // A label is the text between `- '` and the LAST quote before ` - `, so an apostrophe inside it ('Hold - don't commit')
 // stays in the label; an option with no why ends at its closing quote.
 const askLabel = (line) => { const m = line.match(/^- '(.*)' - /) || line.match(/^- '(.*)'\s*$/); return m ? m[1] : ''; };
-function lintAskTemplates(files)
+// An option that tells the user to TYPE INTO OTHER returns only its label, so the text never arrives - the stop contract
+// denies such an ask on its first send (guard-stop-contract.js OTHER_RE). The templates taught exactly that ('say what
+// changes in Other', 14 lines in 10 skills) and every flow run paid one denied round trip (audit 2026-10-20 C01). The
+// regex is READ from the hook's own line, never copied, so the two cannot drift; null when the line is gone.
+const STOP_HOOK = path.join(__dirname, '..', 'stack', 'hooks', 'guard-stop-contract.js');
+function hookOtherRe(file = STOP_HOOK, fsLike = fs)
+{
+    try
+    {
+        const m = /^const OTHER_RE = \/(.+)\/([a-z]*);\s*$/m.exec(fsLike.readFileSync(file, 'utf8'));
+        return m ? new RegExp(m[1], m[2]) : null;
+    }
+    catch { return null; }
+}
+function lintAskTemplates(files, otherRe = hookOtherRe())
 {
     const findings = [];
+    if (!otherRe) findings.push(`stack/hooks/guard-stop-contract.js: no one-line \`const OTHER_RE = /.../;\` for check 61 to read - the ask templates' type-into-Other check cannot run`);
     for (const { file, text } of files)
     {
         // A template may sit indented inside a numbered step; its lines are read without that indent.
@@ -1275,6 +1290,13 @@ function lintAskTemplates(files)
             if (marks.length === 0) findings.push(`${where} has no option marked '(Recommended)' - mark exactly one, the move this stop's rule recommends`);
             else if (marks.length > 1) findings.push(`${where} has ${marks.length} options marked '(Recommended)' - exactly one carries the mark`);
             else if (marks[0] !== 0) findings.push(`${where}: the '(Recommended)' option is listed ${marks[0] + 1}${['st', 'nd', 'rd'][marks[0]] || 'th'} - list it first, where the approver's pick lands`);
+            // the hook reads `${label} ${description}`; the template line carries both
+            for (const l of otherRe ? options : [])
+            {
+                const label = askLabel(l);
+                const why = l.slice(`- '${label}'`.length).replace(/^\s*-\s*/, '');
+                if (otherRe.test(`${label} ${why}`)) findings.push(`${where}: the option '${label}' tells the user to type into Other - a picked option returns only its label, so the stop contract denies the ask (guard-stop-contract.js OTHER_RE); make it a label-only pick and ask for the detail in plain text after it`);
+            }
         }
     }
     return findings;
@@ -3257,6 +3279,7 @@ module.exports = {
     lintReferencePointers,
     lintReferenceContents,
     lintAskTemplates,
+    hookOtherRe,
     lintFlowAskPresence,
     ASK_FLOW_SKILLS,
     ASK_FLOW_TEMPLATES,

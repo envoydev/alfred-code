@@ -50,7 +50,7 @@ No dispatch or a scaffold too small to fan out is INLINE without asking.
 ```ask
 <slice> plan, <N> tasks. Build it?
 - 'Approve and build (Recommended)' - stamp, then fan out
-- 'Changes needed' - say what in Other
+- 'Changes needed' - I ask what to change next, in plain text
 ```
 
 Before the first implementer fans out, stamp the approval gate, in four parts:

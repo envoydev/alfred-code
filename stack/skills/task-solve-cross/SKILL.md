@@ -88,7 +88,7 @@ When the mode is cross_domain_light or full_cross_domain, Read `references/cross
 ```ask
 The plan passed the audit<; the contract is recorded at v1>. Approve it to build.
 - 'Approve and build (Recommended)' - the implementers start on the gated plan
-- 'Changes needed' - edit the plan, or say what changes in Other
+- 'Changes needed' - edit the plan, or I ask what to change
 ```
  Build only on the approving answer. The stop is about the work, not the dispatch: an inline-mode run with a substantial change (a new feature, 3+ files) stops here identically - no hook guards inline edits, this ask IS the approval. Only words about the review waive it - 'run without plan review', 'no stops', or equivalent, in the ask or at any stop - and the run then continues with `plan_review: waived` in the ledger, never a silent skip. Opting into dispatch, naming a mode, or asking to run the whole flow end-to-end, in one pass or to a completion token is NOT a waiver (a CI-style ask still stops here).
 
@@ -99,7 +99,7 @@ On `path: merged` the design and the plan audit run as one step in this session,
 ```ask
 Full spec - designed and audited in one step (<the five audit verdicts>). Build it as planned in this session: <the one reason>.
 - 'Build as planned (Recommended)' - the build starts on the audited plan
-- 'Changes needed' - edit the plan, or say what changes in Other
+- 'Changes needed' - edit the plan, or I ask what to change
 ```
 
 Each dispatch brief stays lean and capability-wired: the seat's terseness discipline is `references/token-reduction.md`, and `references/capability-reuse.md` names the installed capability - house skill, documentation server, navigation server, memory handoff note - that removes a guess or a re-read.

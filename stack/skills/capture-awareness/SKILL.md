@@ -131,7 +131,7 @@ Read `references/related-projects.md`. The mode comes from the arguments and dis
   ```ask
   Does this project depend on sibling repos the capture should map? Type local paths or git URLs via Other, each with an optional relation hint (`../backend provides-to`).
   - 'None - a standalone repo (Recommended)' - the doc records the answer with no entry, so later runs ask nothing; a run with sibling paths adds them
-  - 'I will type them via Other' - the run maps the locations you type
+  - 'I will list them' - I ask for the paths or URLs next, in plain text; the run maps the locations you type
   ```
 
 ### 4. RULE - one script call

@@ -171,7 +171,7 @@ description, not just the stack list - the answer authorizes removals, and a use
 asks about a stack that was never at risk (measured: the one Other reply in an audited run asked about a
 stack the run had DETECTED). 'Detection correct' (recommended) - every detected stack keeps its
 artifacts; only the ABSENT stacks' artifacts become removal candidates, and each is still asked about
-one at a time. 'Dispute' - name the stack via Other and it is treated as present, nothing of its is
+one at a time. 'Dispute' - the run then asks in plain text which stack, and it is treated as present, nothing of its is
 proposed. Then walk. Stack names are the catalog keys of
 `$TMP/repo/meta/recommendations.json` (`web-angular`, never `angular`) - the tool names an unknown one on
 stderr (`unknown-stack`) instead of silently flagging nothing.

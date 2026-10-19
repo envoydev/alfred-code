@@ -50,7 +50,7 @@ Confirm the green baseline (build + tests) first - round 1 also records the swee
      ```ask
      <plan id>, <N> tasks. Build it?
      - 'Approve and build (Recommended)' - stamp, then fan out
-     - 'Changes needed' - say what in Other
+     - 'Changes needed' - I ask what to change next, in plain text
      ```
   3. **Record the approving answer.** DELEGATED: write `<docs-path>/flow/APPROVAL`, first line `APPROVED <plan id> - "<the user's words, verbatim>"` - the selected answer IS those words (the dispatch hook blocks an unstamped implementer; delete the file when the run completes). Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool. Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it. A relative write follows whatever cwd the shell drifted to and the dispatch then bounces. The stamp belongs to the session that dispatches - written when its own decision lands, deleted at its own close; an earlier session's leftover stamp is not consent. If BOTH the Write tool and an absolute-path Bash write are refused by the harness's classifier, stop and ask rather than retrying blind or dispatching around the gate:
 
