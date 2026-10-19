@@ -509,12 +509,21 @@ the walk owned the selection.
 
 ## Post-check
 
-Report what changed per category (refreshed / added / dropped, orphans removed vs kept), the
-AGENTS.md decision and reconcile result, anything deferred, and remind that a restart picks up
-MCP registration changes. When step 7 touched `alfred-memory`, add one line naming the level (unchanged
-or the old -> new file) and, when `project` was chosen while sibling repos are named, that those
-projects' memories are not visible from this one. The run rewrites `alfred-code.stamp` to the
-revision it installed, so the next configure diffs from here.
+The report has ONE fixed shape - a table, then labelled lines - so the answer-length cap, which leaves tables and
+fixed labels alone, never holds it (audit 2026-10-20 C21, 878f253d: a prose report with no shape was held as a
+long answer). One row per category this run touched, names in the cells, `-` for none:
+
+```
+| category | refreshed | added | dropped | kept (orphan or required) |
+|---|---|---|---|---|
+| skills | 3 | `sql-conventions` | `devops` | - |
+```
+
+Then only the labelled lines that apply, one each: `AGENTS.md:` the decision and the reconcile result; `Memory:`
+when step 7 touched `alfred-memory` - the level (unchanged, or the old -> new file) and, when `project` was chosen
+while sibling repos are named, that those projects' memories are not visible from this one; `Deferred by you:` what
+an answer put off; `Warnings:` the installer's `!!` lines; `Restart:` when an MCP registration changed. The run
+rewrites `alfred-code.stamp` to the revision it installed, so the next configure diffs from here.
 
 **Git hygiene - before `$TMP` goes.** Run `node "$TMP/repo/scripts/git-hygiene.js" --root .`. A
 `git-hygiene: offer <root>/<TAB><why>` line means git lists the data root as untracked while nothing

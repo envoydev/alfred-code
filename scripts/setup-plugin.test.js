@@ -1338,3 +1338,12 @@ test('C15: a TRUNCATED compare is named at step 2 and routes the reconcile to co
     assert.match(body, /1\. \*\*Name the compare signal\*\*/);
     assert.match(body, /\*\*COMPARE\*\* - the signal step 2 named, one line: [^.]*on `TRUNCATED`: 'the compare was capped at 300 files - run \/alfred-code:configure to reconcile what it may have missed', with configure on the suggestion card/);
 });
+
+// Audit 2026-10-20 C21 (878f253d): configure's post-check prescribed content but no shape, so the answer-length cap
+// held it as a long answer; a table plus fixed labels is the shape the cap leaves alone.
+test('C21: configure reports in a fixed shape - one table, then labelled lines', () => {
+    const c = cmdBody('configure');
+    const post = c.slice(c.indexOf('## Post-check'), c.indexOf('**Git hygiene'));
+    assert.match(post, /\| category \| refreshed \| added \| dropped \| kept \(orphan or required\) \|/);
+    for (const label of ['AGENTS.md:', 'Memory:', 'Deferred by you:', 'Warnings:', 'Restart:']) assert.ok(post.includes(`\`${label}\``), label);
+});
