@@ -43,6 +43,7 @@ const pinsLayer = require('./pins.js');
 const stampLayer = require('./stamp.js');
 const library = require('./library.js');
 const skillHeadings = require('./skill-headings.js');
+const ruleOpenings = require('./rule-openings.js');
 const { shippedText } = require('./retired-rules.js');
 const uninstallLayer = require('./uninstall.js');
 const toolIgnoresLayer = require('./tool-ignores.js');
@@ -1424,7 +1425,9 @@ const skillClaim = (ctx) => skillTestOf(ctx).claims;
 const foreignSkill = (ctx, name) => skillTestOf(ctx).foreign(name);
 const foreignLine = (name) => `  !! skill kept: ${name} - a project skill of that name the stamp does not record, so it is yours; the stack's ${name} is not installed here - rename or remove yours, then /alfred-code:configure adds it`;
 // The rule twin of the skill claim: a same-named rule file the stamp holds no hash for is the stack's when only the stack
-// uses the name (`alfred-` prefix) or it opens with the shipped rule's own first line (an older copy whose later text moved on).
+// uses the name (`alfred-` prefix) or it opens with a first line the stack has shipped under that name - the current one,
+// or a past one from meta/rule-openings.json: a pre-stamp copy of markdown-docs or devops-conventions opens with one of
+// seven or six older sentences, and the current-line test alone kept every such copy as 'yours' (audit 2026-10-20 C23).
 const ruleOpening = (file) =>
 {
     try { return fs.readFileSync(file, 'utf8').replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '').split(/\r?\n/).find((l) => l.trim()) || null; }
@@ -1433,8 +1436,9 @@ const ruleOpening = (file) =>
 const ruleClaim = (ctx) => (name) =>
 {
     if (stackOwnName(stackNames(ctx.manifest), 'rules', name)) return true;
-    const ours = ruleOpening(path.join(ctx.source.dir, 'stack', 'rules', `${name}.md`));
-    return Boolean(ours) && ruleOpening(path.join(ctx.claudeDir, 'rules', `${name}.md`)) === ours;
+    const past = (ctx.ruleOpenings ||= ruleOpenings.pastOpenings(ctx.source.dir));
+    return ruleOpenings.stackOpening(name, readText(path.join(ctx.claudeDir, 'rules', `${name}.md`)),
+        readText(path.join(ctx.source.dir, 'stack', 'rules', `${name}.md`)), past);
 };
 // A RENAMED rule's old copy the stamp holds no hash for. Under a stamp that records no rule (a 0.2.x or 1.x stamp predates
 // library-rules, or a garbled line) it is the stack's when it opens with its successor's first line: the baseline-* copies

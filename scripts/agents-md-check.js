@@ -116,6 +116,12 @@ const WHY = {
 const posix = (p) => p.split(path.sep).join('/');
 const exists = (p) => { try { fs.statSync(p); return true; } catch { return false; } };
 const isFile = (p) => { try { return fs.statSync(p).isFile(); } catch { return false; } };
+// A rule file whose frontmatter carries `paths:` - Claude Code attaches it on a matching file touch, by its own glob.
+const pathScoped = (p) =>
+{
+    try { return /^paths\s*:/m.test((/^---\r?\n([\s\S]*?)\r?\n---/.exec(fs.readFileSync(p, 'utf8')) || [])[1] || ''); }
+    catch { return false; }
+};
 const normalize = (text) => String(text).replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
 
 // The comments blanked out, every newline kept, so a line number means the same in both.
@@ -517,7 +523,10 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
         for (const f of files)
         {
             const stem = f.slice(0, -3);
-            if (!rules.named.has(stem) && !rules.globs.some((re) => re.test(stem))) add(rules.line, 0, 'rule', `.claude/rules/${f}`, WHY.ruleUnnamed);
+            // A path-scoped rule attaches by its own `paths:` glob, and the template's Rules prose says so instead of
+            // listing each one: an unnamed one is no gap. Counting them raised 11 false rows per install, asked about
+            // in update and again in validate (audit 2026-10-20 C23, e43969a7, 24841a36).
+            if (!rules.named.has(stem) && !rules.globs.some((re) => re.test(stem)) && !pathScoped(path.join(RULES_DIR, f))) add(rules.line, 0, 'rule', `.claude/rules/${f}`, WHY.ruleUnnamed);
         }
     }
     if (unfilledSeed(text, template === null ? readTemplate() : template)) add(1, -1, 'template', 'the template', 'never filled: only its H1 and ## Rules are live');

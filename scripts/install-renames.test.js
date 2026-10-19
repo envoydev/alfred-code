@@ -849,6 +849,44 @@ test('seed update: an unrecorded skill copy under an OLDER stack heading is take
     assert.doesNotMatch(outs[2], /taking over a copy/, 'and takes nothing over again');
 });
 
+// Audit 2026-10-20 C23: the rule twin of M3. A stack RULE copied before the stamp recorded rules opens with an OLDER
+// sentence (markdown-docs has shipped seven openings) and was kept as 'yours', so no update refreshed it and the report
+// told the user to rename or remove it. Its opening is in meta/rule-openings.json, so update takes it over; a project's
+// own rule under the same file name, in words of its own, is still kept and never recorded.
+const OLD_MARKDOWN_DOCS = '---\ndescription: Trigger patch - a content edit to any .md misses the doc skills\' keyword triggers, so this glob routes it.\npaths: ["**/*.md"]\n---\n\nAuthoring or restructuring any .md (README, ADR, runbook) - the FIRST action after this rule attaches is the `markdown-style` Skill call, before the write lands (measured: one session regenerated a generated doc with this rule attached and never loaded it) - skip only when it is already in context this session; its\nan older body\n';
+test('seed update: an unrecorded rule copy under an OLDER stack opening is taken over and recorded; the project\'s own rule is kept (C23)', POSIX_ONLY, () =>
+{
+    const { openingOf, openingHash, pastOpenings } = require('./install/rule-openings.js');
+    assert.ok(pastOpenings(ROOT).get('markdown-docs').has(openingHash(openingOf(OLD_MARKDOWN_DOCS))), 'the old opening is in meta/rule-openings.json');
+    const own = '---\npaths: ["**/Dockerfile"]\n---\n\nOur own container notes: pin every base image by digest.\n';
+    const unrecord = (stamp) => fs.writeFileSync(stamp, fs.readFileSync(stamp, 'utf8').replace(/^(library-rules): (.*)$/gm,
+        (_, k, v) => `${k}: ${v.split(',').filter((e) => !/^(markdown-docs|devops-conventions)\b/.test(e)).join(',')}`));
+    const rule = (repo, name) => { try { return fs.readFileSync(path.join(repo, '.claude', 'rules', `${name}.md`), 'utf8'); } catch { return null; } };
+    const libraryRules = (repo) => ((/^library-rules: (.*)$/m.exec(fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8')) || [])[1] || '').split(',').map((e) => e.split('=')[0]);
+    const each = (repo, i) =>
+    {
+        if (i === 0)
+        {
+            assert.ok(rule(repo, 'markdown-docs') && rule(repo, 'devops-conventions'), 'the install wrote both rules');
+            fs.writeFileSync(path.join(repo, '.claude', 'rules', 'markdown-docs.md'), OLD_MARKDOWN_DOCS);
+            fs.writeFileSync(path.join(repo, '.claude', 'rules', 'devops-conventions.md'), own);
+            unrecord(path.join(repo, '.claude', 'alfred-code.stamp'));
+        }
+        return { md: rule(repo, 'markdown-docs'), devops: rule(repo, 'devops-conventions'), lib: libraryRules(repo) };
+    };
+    const { steps, outs } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nskill devops\nrule markdown-docs\nrule devops-conventions\n', { args: [[], ['--installed-only'], ['--installed-only']], each });
+    const [, first, second] = steps;
+    assert.strictEqual(first.md, fs.readFileSync(path.join(ROOT, 'stack', 'rules', 'markdown-docs.md'), 'utf8'), 'the older copy is the stack\'s current one now');
+    assert.ok(first.lib.includes('markdown-docs'), `and recorded: ${first.lib.join(',')}`);
+    assert.match(outs[1], /taking over a copy the stamp did not record: rule markdown-docs/, outs[1]);
+    assert.doesNotMatch(outs[1], /rule kept: markdown-docs/, outs[1]);
+    assert.strictEqual(first.devops, own, 'the project\'s own devops-conventions is not rewritten');
+    assert.ok(!first.lib.includes('devops-conventions'), `nor recorded: ${first.lib.join(',')}`);
+    assert.match(outs[1], /!! rule kept: devops-conventions/, outs[1]);
+    assert.deepStrictEqual(second, first, 'a re-run changes nothing');
+    assert.doesNotMatch(outs[2], /taking over a copy/, 'and takes nothing over again');
+});
+
 // installer:F2 - a retired name is pruned only where the stack's own record holds it: a project's own untracked copy under one
 // of the generic retired names (skill `frontend`, seat `mobile-implementer.md`, hook `inject-code-style.js`) survives, and a
 // copy the ledger records at its hash still goes.

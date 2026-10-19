@@ -143,6 +143,21 @@ test('C24: a backticked dependency name is a package, and a line marked keep rai
     assert.deepStrictEqual(kinds(run(root, 'Name a client `x.api.ts`. <!-- keep -->\nAnd `y.api.ts`.')), ['1 path x.api.ts', '2 path y.api.ts'], 'only the exact marker, only its own line');
 });
 
+// Audit 2026-10-20 C23 (e43969a7, 24841a36): a path-scoped rule attaches by its own `paths:` glob and the Rules prose
+// says so instead of listing it - 11 such files were rows on every run, asked about in update and validate.
+test('rule: a path-scoped rule the list does not name is no row; an unnamed always-on rule still is', () =>
+{
+    const scoped = '---\ndescription: d\npaths: ["**/*.md"]\n---\n\nbody\n';
+    const root = tree({ '.claude/rules/alfred-git.md': 'x', '.claude/rules/alfred-memory.md': '---\ndescription: always\n---\nbody\n',
+        '.claude/rules/markdown-docs.md': scoped, '.claude/rules/sql-conventions.md': scoped.replace(/\n/g, '\r\n') });
+    const check = (text) => kinds(checkText({ root, file: 'AGENTS.md', text, template: TEMPLATE, locate: onPath([]), isIgnored: () => true }));
+    const table = (rows) => ['# App', '', '## Rules', '', '| Rule | What |', '|---|---|', ...rows.map((r) => `| \`${r}\` | x |`)].join('\n');
+    assert.deepStrictEqual(check(table(['.claude/rules/alfred-git.md'])), ['3 rule .claude/rules/alfred-memory.md'],
+        'the path-scoped files (LF and CRLF) are skipped, the unnamed always-on rule is still a row');
+    assert.deepStrictEqual(check(table(['.claude/rules/alfred-git.md', '.claude/rules/alfred-memory.md', '.claude/rules/gone.md'])), ['9 rule gone.md'],
+        'a NAMED rule with no file is still a row');
+});
+
 // Usage audit 2026-10-10, 65abb00a (T4 cross-track): an improve pass never compared the Rules list with
 // `.claude/rules/` - it missed the unlisted skill-authoring rule and twice called the table stale, wrongly.
 test('rule: the Rules list against .claude/rules - a named rule with no file, and an enumerating list\'s unnamed file', () =>
