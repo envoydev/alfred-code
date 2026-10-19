@@ -21,6 +21,17 @@
 const fs = require('fs');
 const path = require('path');
 
+// stdout and stderr block, so a pipe gets every byte before process.exit (macOS writes a pipe async) - the
+// prelude's blockingStdio, inline because a skill copy has no prelude beside it (blocking-stdio in meta/shared-rules.json).
+function blockingStdio(streams = [process.stdout, process.stderr])
+{
+    for (const s of streams)
+    {
+        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }
+        catch { /* a stream that cannot block keeps Node's default */ }
+    }
+}
+
 const USAGE = 'usage: transcript-view.js pack <transcript> <usage.json> [--out <file>] [--max <chars>]\n'
   + '       transcript-view.js timeline <transcript> [--from <L>] [--to <L>]\n'
   + '       transcript-view.js show <transcript> <L>[,<L>|<a>-<b>...] [--chars <n>]\n'
@@ -236,5 +247,5 @@ function main(argv) {
   process.stdout.write(out);
 }
 
-if (require.main === module) main(process.argv.slice(2));
+if (require.main === module) { blockingStdio(); main(process.argv.slice(2)); }
 module.exports = { load, typedText, flagged, pack, timeline, show, grep };
