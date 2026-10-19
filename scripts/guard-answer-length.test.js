@@ -87,6 +87,26 @@ test("Stop still blocks on a bare 'explain' - an explanation is capped like any 
     assert.strictEqual(run({ hook_event_name: 'Stop', transcript_path: p }).status, 2);
 });
 
+// Audit 2026-10-20 C21: the mandated closes the stack's contracts fix in labels - the flow's three stop fields, the
+// update report's agents-md receipt, a capture REPORT's receipt lines - and a depth skill the user named were cut by the
+// cap, each re-answer dropping a field the contract owes. One label alone, or two of the three flow fields, stays capped.
+test('C21: a mandated label close and a user-named depth skill pass the cap; a partial or look-alike close still blocks', () => {
+    const stop = (name, ask, text) => run({ hook_event_name: 'Stop', transcript_path: transcript(name, ask, [{ type: 'text', text }]) }).status;
+    const flow = `Both cards are built.\n\n**Result:** done - ${WALL}\n\n**Progress:** 6 of 6 steps.\n\nLeftovers: none.`;
+    assert.strictEqual(stop('c21-flow', 'continue', flow), 0, 'the three flow fields, bold or plain');
+    assert.strictEqual(stop('c21-flow-2', 'continue', `**Result:** done - ${WALL}\n\n**Progress:** 6 of 6 steps.`), 2, 'two of three fields');
+    assert.strictEqual(stop('c21-result-word', 'continue', `The result: ${WALL}\nProgress was good, leftovers none.`), 2, 'the words mid-line');
+    const update = `Updated from 2.4.0 to 2.5.0. ${WALL}\n\n**AGENTS.md compare:** \`agents-md: compare 0 additions - check 1 row\`.\n\nNothing is pending on this run - these are yours to run when you choose.`;
+    assert.strictEqual(stop('c21-update', '/alfred-code:update', update), 0, 'the update report carries its receipt');
+    assert.strictEqual(stop('c21-update-no', '/alfred-code:update', update.replace(/agents-md: compare[^`]*/, 'agents-md compare was clean')), 2, 'no receipt shape');
+    const capture = `Refreshed the assessment. ${WALL}\n\n- **Run gate:** answered 'Run and replace (Recommended)'.\n- **References:** \`references/doc-shape.md\`.\n- **Findings gate:** 19 considered, 6 passed.\n- **Model:** Opus 5.5 - the judgment ran on it.`;
+    assert.strictEqual(stop('c21-capture', 'run it', capture), 0, 'the capture receipts, bulleted and bold');
+    assert.strictEqual(stop('c21-capture-plain', 'run it', `${WALL}\nReferences: doc-shapes.md\nWrite gate: 'Refresh'\nModel: claude-opus-5-5`), 0, 'plain receipt lines');
+    assert.strictEqual(stop('c21-capture-one', 'run it', `${WALL}\nModel: Opus 5.5\nReferences: none`), 2, 'the two anchors with no receipt');
+    assert.strictEqual(stop('c21-skill', 'using that skill habits-explain-code explain me the issue', WALL), 0, 'the user named the depth skill');
+    assert.strictEqual(stop('c21-skill-no', 'explain me the issue', WALL), 2, 'a bare explain stays capped');
+});
+
 test('Stop ignores code blocks, tables, quotes and inline spans when measuring', () => {
     const payload = [
         SHORT,

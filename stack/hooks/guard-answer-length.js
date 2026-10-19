@@ -135,6 +135,32 @@ const SELF_CORRECTION_RE = /\b(i (was|got) (wrong|mistaken|it wrong)|my (earlier
 // house answer shape, so matching a bolded lead-in would have exempted almost every answer and
 // left the cap unenforced.
 const MANDATED_FIELD_RE = /^\s{0,3}#{2,6}\s+\S{0,40}?\b(verdict|findings?|protocol check|waste analysis|blockers?|material|minor|evidence|punch[- ]list|assumptions?|not[- ]stack|fill in)\b/im;
+// Three closes the stack's own contracts fix in LABELS rather than headings, each cut by the cap when it ran long and
+// each re-answer dropping a field the contract owes (audit 2026-10-20 C21: a72fdfbc, 71d5428a, 8396b5df, a8804432,
+// 29e4002f). Each is recognised by a set no ordinary answer carries, never by one bolded lead-in:
+//   - the solve flow's stop fields: `Result:`, `Progress:` AND `Leftovers:`, each opening a line (bold or plain);
+//   - the update command's step-7 report: step 6's receipt `agents-md: compare <clean|N additions> - check <N rows>`,
+//     which step 7 repeats verbatim and no other text prints;
+//   - a capture REPORT's receipt lines: `References:` and `Model:` plus one more receipt label, each opening a line
+//     (a bullet, bold or a table cell before it is fine).
+const labelLine = (label) => new RegExp(`^\\s{0,3}(?:[-*+]\\s+|\\|\\s*)?(?:\\*\\*|__|\`)?${label}(?::(?:\\*\\*|__|\`)?|(?:\\*\\*|__|\`)?\\s*:)`, 'im');
+const FLOW_FIELDS = ['Result', 'Progress', 'Leftovers'].map(labelLine);
+const UPDATE_RECEIPT_RE = /\bagents-md: compare (?:clean|\d+ additions?) - check \d+ rows?\b/;
+const CAPTURE_ANCHORS = ['References', 'Model'].map(labelLine);
+const CAPTURE_RECEIPTS = ['Findings gate', 'Write gate', 'Write passes', 'Run gate', 'Decisions', 'Vocabulary', 'Ceilings', 'Rules?', 'Write']
+  .map(labelLine);
+function mandatedClose(text) {
+  if (MANDATED_FIELD_RE.test(text)) return 'heading';
+  if (FLOW_FIELDS.every((re) => re.test(text))) return 'flow-fields';
+  if (UPDATE_RECEIPT_RE.test(text)) return 'update-report';
+  if (CAPTURE_ANCHORS.every((re) => re.test(text)) && CAPTURE_RECEIPTS.some((re) => re.test(text))) return 'capture-receipts';
+  return null;
+}
+// The depth skill named in the user's own words is a depth request (audit 2026-10-20 C21, 79e1a1a5: 'using that skill
+// habits-explain-code explain me ...' - the walkthrough was cut, then asked for again through an ask). The skill
+// defers to this gate ('the answer-length gate decides'), so only the USER naming it lifts the cap - a load the model
+// chose on a bare 'explain X' does not, as DEPTH_RE excludes that phrasing too.
+const DEPTH_SKILL_RE = /\bhabits-explain-code\b/i;
 
 // --- transcript tail (last ~512KB): the final assistant message and the user's last real turn ---
 function tailLines() {
@@ -548,7 +574,7 @@ if (payload.hook_event_name === 'Stop') {
   if (!overLength && !dashes) process.exit(0);
   // The three length exemptions below excuse the LENGTH only. An em-dash is a character to
   // replace, not content to drop, so no exemption reaches it and the re-answer loses nothing.
-  if (overLength && user && DEPTH_RE.test(user)) overLength = false; // depth asked this turn
+  if (overLength && user && (DEPTH_RE.test(user) || DEPTH_SKILL_RE.test(user))) overLength = false; // depth asked this turn
   if (overLength && user && unreadable(user)) {
     // the depth list cannot read this prompt: logged, never held - a forced re-answer would delete what was asked for
     ledgerRow({ mode: 'probe', kind: 'length-unread', reason: 'probe: a long answer to a prompt the depth list cannot read - logged, not held', detail: { chars: body.length } });
@@ -564,7 +590,7 @@ if (payload.hook_event_name === 'Stop') {
   // Both are deliberately narrow, and neither is reachable by a run that simply wants to write
   // more: a bare 'sorry' does not match, and neither does a heading the stack does not mandate.
   if (overLength && SELF_CORRECTION_RE.test(text)) overLength = false;
-  if (overLength && MANDATED_FIELD_RE.test(text)) overLength = false;
+  if (overLength && mandatedClose(text)) overLength = false;
   if (!overLength && !dashes) process.exit(0);
   // Nobody at the terminal (hook-prelude.js unattended): a block would only re-send a finished answer. The row
   // keeps the skipped block countable, as the stop contract's and the docs hook's do (review A, M3).
