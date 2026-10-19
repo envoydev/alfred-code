@@ -73,7 +73,9 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
   and it sends a Stop back to the run while the stamp stands (`auto-continue`, bounded by the Stop chain's `workSince`:
   held again only after a tool call; counted per stamp beside the chain marker, `<marker>.auto` keyed on the stamp's
   session and mtime, and the 50th Stop passes with one `auto-continue-cap` row - audit HK05: Claude Code's own
-  8-continuation cap resets on every tool call), until the run's close deletes the stamp - or the user's word to stop it
+  8-continuation cap resets on every tool call; a Stop while the Stop input's `background_tasks` shows the run's own work
+  out passes with one `auto-wait` row, and so does the `auto-fields` hold - audit 2026-10-20 C02: 7 of 7 holds in one
+  session sent back a turn that could only wait, ~3.4M across three sessions), until the run's close deletes the stamp - or the user's word to stop it
   (`UserPromptSubmit`, `autoModeEnd`; the user's ruling of 2026-10-15: a message typed mid-run is INPUT to the run, kept
   with an `auto-input` row and a note saying so - ending on any typed prompt, the 2026-10-14 rule, sent every later ask
   of a run the user had only added a remark to back to them). It ends on 'stop auto-mode' / 'auto-mode off'
@@ -594,7 +596,8 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     within 20% of the measured carry (both numbers appended to its description); a fresh option pointing at a resume block
     'above' that no fence since the typed turn shows (`ASK_ABOVE_RE`, reworded to 'the resume block, printed after this
     answer'); and, with no mechanical fix, an option
-    telling the user to type into Other, a single-select question without exactly one '(Recommended)' listed first (an
+    telling the user to type into Other (`OTHER_RE`, module scope - lint check 61 reads that one line and fails a shipped
+    ask template it matches, audit 2026-10-20 C01: 14 template lines in 10 skills taught the wording this denies), a single-select question without exactly one '(Recommended)' listed first (an
     unmarked one whose text says why none is recommended passes), and - off auto-mode and with offers on - a new cycle's
     first ask with no fresh option after a typed prompt followed this session's plan `Completed:` stamp (once per stamp;
     audit 2026-10-10 C08 / C09 / C26); a question shaped as an approval (approve, as shown, is ready, post / file /
@@ -695,7 +698,13 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     line after it writes one `execution-line` row, and a source edit under a new prompt after this session's plan
     `Completed:` stamp, with no new plan file, one `post-close-edit` row per stamp. A third, once per session: edits
     across 2+ files with no habits-execution-strategy load before the first, read from the same whole-transcript flow
-    state, one `no-execution-strategy` row (audit 2026-10-11, session 7f8803eb: 21 Edits over 5 files, never loaded).
+    state, one `no-execution-strategy` row (audit 2026-10-11, session 7f8803eb: 21 Edits over 5 files, never loaded) -
+    counting only source files inside the project (no plan, docs root, `.claude`, `.alfred` or scratch file), settled by an
+    `Approved:` plan read before the first edit, and a mode-naming ask after the load is the `Execution:` line (audit
+    2026-10-20 C08: the probes fired on every flow run that edited its plan). An auto-answered solve-task stop gets the
+    stop-field notes before it returns (`flowFieldNotes()`, C04), and an approval after this cycle's task-verify-plan
+    owes the gate's `Passes:` line (a09fc7d6). A read-only survey loop (`$(...)`, for / if / assignments judged as the
+    commands they run) answering the user's question is no done-close stall (C03).
     Fresh-session offer on a clean close past the window's ABSOLUTE trigger:
     `ALFRED_CODE_CONTEXT_WINDOW_FOR_1M` (default 400000, a window of 1M or more), `_FOR_300K` (280000, 300k up to
     1M), `_FOR_200K` (180000, below 300k); `0` switches that tier off; seeded absent-only (2026-10-16, the user's ruling:
