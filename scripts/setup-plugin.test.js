@@ -783,7 +783,10 @@ test('update: new items come from the preflight\'s new: lines and a yes becomes 
     assert.match(body, /`new: <category> <name><TAB><verdict>/);
     assert.match(body, /--installed-only \[--add "<category> <name>"\]\.\.\./);
     assert.ok(!/FYI `added` items/.test(body), 'the FYI-only adoption is gone');
-    const step4 = body.slice(body.indexOf('## 4. Pruning path'), body.indexOf('## 5. Prune'));
+    // Audit 2026-10-20 C15: the pruning path is the slow path's, read only on a non-empty prune list.
+    assert.match(flat(body), /\*\*NON-EMPTY\*\* -> read `update-slow-path\.md` and run its step 4/);
+    const slow = refBody('update-slow-path');
+    const step4 = slow.slice(slow.indexOf('## 4. Pruning path'), slow.indexOf('## 5. Prune'));
     assert.match(step4, /run the installer exactly as in step 3 - its `--add` already carries every `renamed`/);
     assert.match(step4, /Never rebuild the\nselection from a disk inventory/);
     assert.ok(!/run the twin as in step 3/.test(step4), 'the dead shell-route reconstruction sentence survived');
@@ -1294,4 +1297,44 @@ test('C46: the protocol holds only what every run uses; the why and the rare bra
     for (const branch of ['## Fallbacks - no cache, or the download fails', 'A same-version re-release', 'Old version dirs in the cache'])
         assert.ok(notes.includes(branch) && !protocol.includes(branch), `${branch} is a notes-only branch`);
     assert.doesNotMatch(notes, /```bash/, 'no runnable block moves to the notes - the tests run the protocol\'s own');
+});
+
+// Audit 2026-10-20 C15: a 72.5k-char update body loaded whole before its model gate, so a refused run carried it on
+// every later message and the re-run carried it twice (e43969a7 ~410k, 24841a36 ~237k); its respell diff was approved
+// three times unseen (e31af926); a TRUNCATED compare was never named (a72fdfbc); and '~10k' was 50-70% low (24841a36).
+const UPDATE_BODY_CAP = 40000;
+test(`C15: update opens on its model gate, stays under ${UPDATE_BODY_CAP} chars, and keeps its rare branches in references`, () => {
+    const body = updateBody();
+    assert.ok(body.length <= UPDATE_BODY_CAP, `update.md is ${body.length} chars, over ${UPDATE_BODY_CAP} - move a rare branch to update-slow-path.md`);
+    const afterTitle = body.slice(body.indexOf('# Update Alfred Code'));
+    assert.match(afterTitle, /^# Update Alfred Code[^\n]*\n\n## 0\. Where to run it\n\n\*\*The model gate comes first - before any tool call and before reading further\.\*\*/, 'the gate is the body\'s first section');
+    assert.match(flat(body), /\*\*When the gate stops the run, that line is the turn: no tool call, nothing below is read or summarised, and the turn ends on it\.\*\*/);
+    assert.doesNotMatch(body, /~10k|near 10k/, 'no unmeasured walk-size claim');
+    assert.match(flat(body), /measured at ~15-17k tokens of tool results in two audited runs/);
+    assert.match(body, /node "\$TMP\/repo\/scripts\/update-preflight\.js" --snapshot "\$TMP\/repo" --root \. ; node "\$TMP\/repo\/scripts\/install\/release-notes\.js" --root \./, 'the release notes come from the script, in the preflight call');
+    for (const [ref, read] of [['update-slow-path', /`update-slow-path\.md`/], ['update-history', /update-history\.md/]])
+    {
+        assert.ok(fs.existsSync(path.join(PLUGIN_DIR, 'references', `${ref}.md`)), `${ref}.md exists`);
+        assert.match(body, read, `update.md names ${ref}.md`);
+    }
+    assert.doesNotMatch(body, /\*\*Renamed in 2\.\d\.\d\.\*\*/, 'the release history left the body');
+    // every heading of the history file is one the release-notes script reads
+    const history = refBody('update-history');
+    for (const h of history.match(/^## .*$/gm)) assert.match(h, /^## (?:(?:in|after) \d+\.\d+\.\d+|table) - /, `a heading release-notes.js cannot place: ${h}`);
+});
+
+test('C15: the re-spell diff is printed as reply text before its ask, and the ask says so without pointing above', () => {
+    const body = updateBody();
+    const six = body.slice(body.indexOf('## 6. Reconcile'), body.indexOf('## 7. Post-check'));
+    const show = six.indexOf('**Show the diff as reply TEXT**');
+    assert.ok(show > six.indexOf('**Print the plan:**') && show < six.indexOf('```ask'), 'print, show, then ask');
+    const ask = askBlocks(six)[0];
+    assert.doesNotMatch(ask[0], /above/, 'the question points at no diff above');
+    assert.match(ask[0], /The diff is in the message before this question/);
+});
+
+test('C15: a TRUNCATED compare is named at step 2 and routes the reconcile to configure in step 7', () => {
+    const body = flat(updateBody());
+    assert.match(body, /1\. \*\*Name the compare signal\*\*/);
+    assert.match(body, /\*\*COMPARE\*\* - the signal step 2 named, one line: [^.]*on `TRUNCATED`: 'the compare was capped at 300 files - run \/alfred-code:configure to reconcile what it may have missed', with configure on the suggestion card/);
 });

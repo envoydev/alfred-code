@@ -1026,7 +1026,7 @@ test('seed install --selection and update --add: a line naming an old item insta
 // dispatch of an old seat finds no agent. The old names are allowed only where they are the record
 // of the rename - the manifest's retired lists and renamed map, this migration test, the history
 // docs, the byte-for-byte shipped texts the rule-rename prune is tested on (scripts/fixtures/retired-rules.js),
-// and update.md's upgrade table, each row of which must be the map's own pair. The names come
+// and the update's upgrade table (setup-plugin/references/update-history.md since audit 2026-10-20 C15), each row of which must be the map's own pair. The names come
 // from the map, so this scan cannot drift from it; the manifest itself is the positive control.
 test('no surface names an old skill or seat outside the rename\'s own homes', () =>
 {
@@ -1051,7 +1051,7 @@ test('no surface names an old skill or seat outside the rename\'s own homes', ()
             const found = line.match(old);
             if (!found) return;
             const row = /^\| (?:seat )?`\/?([a-z0-9-]+)` \| (?:seat )?`\/?([a-z0-9-]+)` \|$/.exec(line);
-            if (rel === 'setup-plugin/commands/update.md' && row && pairs[row[1]] === row[2]) { tableRows.push(row[1]); return; }
+            if (rel === 'setup-plugin/references/update-history.md' && row && pairs[row[1]] === row[2]) { tableRows.push(row[1]); return; }
             hits.push(`${rel}:${i + 1}: ${found.join(', ')}`);
         });
     };
@@ -1075,7 +1075,7 @@ test('no surface names an old skill or seat outside the rename\'s own homes', ()
     if (tracked) for (const rel of tracked) { const full = path.join(ROOT, rel); if (fs.existsSync(full) && fs.statSync(full).isFile()) scanFile(full); }
     else walk(ROOT);
     assert.deepStrictEqual(hits, [], 'an old name is back outside its homes');
-    assert.deepStrictEqual(tableRows.sort(), Object.keys(pairs).sort(), 'update.md\'s upgrade table names every rename, each as the map\'s own pair');
+    assert.deepStrictEqual(tableRows.sort(), Object.keys(pairs).sort(), 'update-history.md\'s upgrade table names every rename, each as the map\'s own pair');
 });
 
 // C3 (R133 b): at local scope settings.json is never written, so an old-keyed skillOverrides there was
