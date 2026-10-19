@@ -279,7 +279,9 @@ const FRESH_RE = new RegExp(`${FRESH_CUE}[^.!?\\n]{0,80}${FRESH_PHRASE}|${FRESH_
 // 458953b8, 7491ab75); the two-path offer with no question mark ('I can draft a plan for #9 and #10 next, or go
 // through...') and the recommendation with its alternative ('My recommendation is to skip a full triage ... Otherwise
 // this parity scope can stop here.' - the user typed 'Do recommendation' 2 minutes later, 6ed392a5).
-const PROSE_ASK_RE = /\b(say the word|say go|if you say (?:yes|go|ok|so)\b|just say so|or let me [a-z]|want me to (?:[^.?!\n]|\.(?!\s|$)){0,80}\?|shall i (?:[^.?!\n]|\.(?!\s|$)){0,80}\?|should i (?:[^.?!\n]|\.(?!\s|$)){0,80}\?|(?<!\bnot )(?<!\bnever )your call\b|let me know (when|if|whether)|give me the word|tell me (if|when|whether) you want|tell me which\b|confirm (you want|whether|if|that you)\b|or i can [^.\n]{0,60}\binstead\b|paste (this|that|it) and i'?ll|run this to unblock|i'?ll [^.\n]{0,60}(the moment|as soon as|once) you\b|worth your decision|say ['"‘’“”][^'"‘’“”\n]{1,24}['"‘’“”],? (?:when|whenever|once|if|and i)\b|if you(?:'d)? (?:want|like|prefer)\b[^.\n]{0,100}, i (?:can|could)\b|i (?:can|could) [^.\n]{0,100}\b(?:if|whenever) you(?:'d)? (?:want|like|prefer)\b|i can [^.\n]{0,80}\bnext,? or\b|my recommendation is to\b[^\n]{0,240}\botherwise\b)/i;
+// ...and the front-loaded offer 'Next I can drive the wizard in the browser, or pull the attachment first.' (audit 2026-10-20
+// C45, fcafd69c L275: a decision left in prose, answered 18 s later with no ask).
+const PROSE_ASK_RE = /\b(say the word|say go|if you say (?:yes|go|ok|so)\b|just say so|or let me [a-z]|want me to (?:[^.?!\n]|\.(?!\s|$)){0,80}\?|shall i (?:[^.?!\n]|\.(?!\s|$)){0,80}\?|should i (?:[^.?!\n]|\.(?!\s|$)){0,80}\?|(?<!\bnot )(?<!\bnever )your call\b|let me know (when|if|whether)|give me the word|tell me (if|when|whether) you want|tell me which\b|confirm (you want|whether|if|that you)\b|or i can [^.\n]{0,60}\binstead\b|paste (this|that|it) and i'?ll|run this to unblock|i'?ll [^.\n]{0,60}(the moment|as soon as|once) you\b|worth your decision|say ['"‘’“”][^'"‘’“”\n]{1,24}['"‘’“”],? (?:when|whenever|once|if|and i)\b|if you(?:'d)? (?:want|like|prefer)\b[^.\n]{0,100}, i (?:can|could)\b|i (?:can|could) [^.\n]{0,100}\b(?:if|whenever) you(?:'d)? (?:want|like|prefer)\b|i can [^.\n]{0,80}\bnext,? or\b|(?<=(?:^|[.!?\n])\s{0,3})next,? i (?:can|could) [^.\n]{0,160}\bor\b|my recommendation is to\b[^\n]{0,240}\botherwise\b)/i;
 // A RETROSPECTIVE '(your call)' is a note about a decision the user already took, not an offer of
 // one: 'Requirement recorded: 90% line coverage after exclusions (your call).' was blocked as an
 // ask on a close that held no question at all (measured). The discriminator is narrow on purpose -
@@ -315,12 +317,18 @@ const LOOP_ASK_RES = [
   /\b(?:continue|resume|start) (?:in )?a fresh session\b[^.\n?]{0,100}\bor\b[^.\n?]{0,40}\b(?:continue|stay|keep going|carry on)(?: \w+){0,2} here\b/i,
   /\b(?:continue|stay|keep going|carry on) here\b[^.\n?]{0,60}\bor\b[^.\n?]{0,40}\b(?:a )?fresh session\b/i,
 ];
+const TYPED_VALUE_RE = /^\s+(?:the |your |its |their )?(?:[\w-]+ ){0,3}?(?:ids?|urls?|links?|paths?|ports?|e-?mails?|(?:ip )?address(?:es)?|hosts?|hostnames?|usernames?|account names?|error (?:messages?|output|lines?)|log lines?)\b(?![^.\n]*\bor\b)/i;
 function proseAskMatch(text) {
   const m = (text.match(PROSE_ASK_RE) || [])[0] || '';
   if (m && /^your call$/i.test(m.trim()) && RETRO_YOUR_CALL_RE.test(text)) return null;
   if (m) return m;
-  const c = (text.match(PROSE_ASK_CLAUSE_RE) || [])[0] || '';
-  if (c) return c.trim();
+  // 'tell me THE <value>' asks for a value only the user can type - a farm id after their own login - which no option
+  // can carry (an ask's pick returns its label; type-into-Other is denied), so it is asked in prose and is no decision
+  // (audit 2026-10-20 C45, fabea019 L1746: the forced ask was rejected and the turn re-ended on the same wait)
+  for (const cm of text.matchAll(new RegExp(PROSE_ASK_CLAUSE_RE.source, 'gi'))) {
+    if (/tell me$/i.test(cm[0].trim()) && TYPED_VALUE_RE.test(text.slice(cm.index + cm[0].length))) continue;
+    return cm[0].trim();
+  }
   for (const re of LOOP_ASK_RES) { const l = (text.match(re) || [])[0]; if (l) return l.trim(); }
   return null;
 }
@@ -1043,7 +1051,10 @@ function shownSinceTyped() {
 // simplified comment ... as shown' after the user's edit request - both approved blind).
 // The finding's own shapes - approve, as shown, is ready, post / file / publish / send this - never a bare action
 // ('Run it?' approves a step, not a text the user must read).
-const APPROVAL_ASK_RE = /\b(?:approve|as shown|(?:is|are) ready|(?:post|file|publish|send) (?:this|these|it|them|the (?:above |drafted |simplified |new )?(?:comment|draft|message|reply|description|summary|note|email|post))\b)/i;
+// Audit 2026-10-20 C45: a referent counts too - 'Apply the diff above', 'the AGENTS.md fixes shown above' - since rewording
+// 'as shown' into it passed the blind approval it had just been denied (e31af926, e43969a7); and 'send it back to the build'
+// is a review verdict, never a send-this approval (fabea019).
+const APPROVAL_ASK_RE = /\b(?:approve|as shown|shown above|(?:is|are) ready|(?:post|file|publish|send) (?:this|these|it|them|the (?:above |drafted |simplified |new )?(?:comment|draft|message|reply|description|summary|note|email|post))\b(?!\s+back\b)|(?:the|this|these|those) (?:[\w.-]+ ){0,3}?(?:diff|patch|changes|edits|fixes|plan|draft|comment|message|reply|wording|stages) above\b)/i;
 // TYPE IT INTO OTHER (the ask branch's check 8). A picked option returns only its LABEL (observed 3 of 3, audit 2026-10-10
 // C26, ecea6d56: 'Paste ids in Other (Recommended)' came back as the bare label three times, and the ids belonged to a
 // customer nobody could reach). A typed value is asked in plain prose that ends the turn. Lint check 61 runs this same
@@ -2392,6 +2403,21 @@ if (payload.tool_name === 'AskUserQuestion') {
       if (!marks.length && NO_DEFAULT_RE.test(`${q.question || ''} ${q.header || ''}`)) return false;
       return marks.length !== 1 || marks[0] !== 0;
     }).length;
+    // 9b. THE MARK AGREES WITH THE QUESTION. A question saying 'Recommended: the alpha site after you deploy the fix branch'
+    // marked 'Swap the scripts on production (Recommended)'; the user rejected it to ask which one was meant (audit
+    // 2026-10-20 C45, fabea019 L2845). Read only when the question names its pick that way: the marked option shares no
+    // content word with it while another option does. Denied once, like the unmarked case.
+    const contentWords = (t) => new Set(String(t).toLowerCase().match(/[a-z][a-z0-9-]{3,}/g) || []);
+    const STOP_WORDS = new Set(['recommended', 'after', 'before', 'with', 'this', 'that', 'then', 'your', 'from', 'into', 'first', 'them', 'they', 'there', 'will', 'would', 'should', 'which', 'what', 'when', 'here', 'more', 'only', 'just', 'than']);
+    const misMarked = questions.filter((q) => {
+      if (!q || q.multiSelect || !Array.isArray(q.options) || q.options.length < 2) return false;
+      const said = /\brecommended:\s*([^.?!\n]+)/i.exec(String(q.question || ''));
+      const marked = q.options.filter((o) => o && /\(Recommended\)/i.test(String(o.label || '')));
+      if (!said || marked.length !== 1) return false;
+      const want = [...contentWords(said[1])].filter((w) => !STOP_WORDS.has(w));
+      const shares = (o) => { const have = contentWords(`${o.label || ''} ${o.description || ''}`); return want.some((w) => have.has(w)); };
+      return want.length > 0 && !shares(marked[0]) && q.options.some((o) => o && o !== marked[0] && shares(o));
+    }).length;
     // 10. A NEW CYCLE IN A FINISHED CYCLE'S CHAT. task-solve: a cycle starting after a finished one in the same session
     // recommends the fresh-session hand-off in its first ask - prose, slipped in bda299a8 (C08, ~2.0M avoidable). A
     // typed prompt after this session's plan was stamped `Completed:`, then an ask with no fresh option and a carry a
@@ -2423,7 +2449,7 @@ if (payload.tool_name === 'AskUserQuestion') {
     // audit) - the block comes after the pick, so the pointer is rewritten to say that. Mechanical, fixed in place.
     const pointsAbove = !compactFresh && questions.some((q) => q && Array.isArray(q.options) && q.options.some((o) => isFreshOpt(o)
       && new RegExp(ASK_ABOVE_RE.source, 'i').test(`${o.label || ''} ${o.description || ''}`))) && !fencedPasteShown(shownSinceTyped());
-    if (voice.length || numbers || typeIntoOther || unmarked || newCycle || blind || noReview || compactFresh || pointsAbove) {
+    if (voice.length || numbers || typeIntoOther || unmarked || misMarked || newCycle || blind || noReview || compactFresh || pointsAbove) {
       const fixProse = (t) => (voice.length ? String(t).replace(new RegExp(`\\s*${DASH}\\s*`, 'g'), ' - ').replace(/["“”]/g, "'") : String(t));
       const fixAbove = (t) => (pointsAbove ? String(t).replace(ASK_ABOVE_RE, 'the resume block, printed after this answer') : String(t));
       const fix = (t) => String(t).split(/(```[\s\S]*?```|`[^`\n]*`)/).map((s, i) => (i % 2 ? s : fixProse(s))).join('');
@@ -2466,7 +2492,7 @@ if (payload.tool_name === 'AskUserQuestion') {
       // ever (the guard-unapproved-dispatch.js Explore-brief route; code.claude.com/docs/en/hooks: updatedInput 'replaces
       // the entire input object'), and one `mode: rewrite` row counts it apart from the block rate. A question the drop
       // would leave with one option, or any reason with no mechanical fix, still denies once below.
-      if (mechanical && !tooFew && !(typeIntoOther || unmarked || newCycle || blind || noReview)) {
+      if (mechanical && !tooFew && !(typeIntoOther || unmarked || misMarked || newCycle || blind || noReview)) {
         askFixed = fixed;
         const what = [voice.length ? 'its dashes and double quotes' : '', numbers ? 'the fresh option\'s two measured numbers' : '', compactFresh ? 'the fresh-session option dropped (this project compacts instead)' : '', pointsAbove ? 'its pointer at a resume block above (none is on screen) reworded' : ''].filter(Boolean);
         ledgerRow({ tool: 'AskUserQuestion', mode: 'rewrite', kind: 'ask-fixed', reason: `ask fixed in place: ${what.join(', ')}`, detail: { voice: voice.map((v) => v.split(' (')[0]), numbers: !!numbers, compactFresh, pointsAbove } });
@@ -2474,7 +2500,7 @@ if (payload.tool_name === 'AskUserQuestion') {
           + (voice.length ? 'Keep the house voice (alfred-interaction.md) in every later ask: single dashes, single quotes. ' : '')
           + (numbers ? 'Quote this session\'s carry and a fresh start\'s floor in any later fresh-session option. ' : '')
           + (pointsAbove ? 'If the user picks the fresh session, this turn ends with the resume block in its own fenced block. ' : ''));
-      } else if (first && (mechanical || typeIntoOther || unmarked || newCycle || blind || noReview)) {
+      } else if (first && (mechanical || typeIntoOther || unmarked || misMarked || newCycle || blind || noReview)) {
         const reasons = [...voice];
         if (compactFresh) reasons.push('a fresh-session option, while this project compacts instead (ALFRED_CODE_AUTO_COMPACT=1)');
         if (noReview) reasons.push('a small solve-task close whose `Result:` line has no `review:` field');
@@ -2482,13 +2508,15 @@ if (payload.tool_name === 'AskUserQuestion') {
         if (numbers) reasons.push(`a fresh-session option with no measured number (this session carries ${k(numbers.ctx)} per message now)`);
         if (typeIntoOther) reasons.push('an option that tells the user to type into Other');
         if (unmarked) reasons.push(`${unmarked} question(s) without exactly one option marked '(Recommended)', listed first`);
+        if (misMarked) reasons.push(`${misMarked} question(s) whose 'Recommended:' text names another option than the one marked`);
         if (newCycle) reasons.push('no fresh-session option, while this ask opens new work after this session already finished a solve-task cycle');
         if (pointsAbove) reasons.push('a fresh-session option pointing at a resume block above that the chat never showed');
-        global.BLOCK_DETAIL = { branch: 'ask-voice', voice: voice.map((v) => v.split(' (')[0]), numbers: !!numbers, other: typeIntoOther, unmarked, newCycle: !!newCycle, blind: !!blind, noReview: !!noReview, compactFresh, pointsAbove };
+        global.BLOCK_DETAIL = { branch: 'ask-voice', voice: voice.map((v) => v.split(' (')[0]), numbers: !!numbers, other: typeIntoOther, unmarked, misMarked, newCycle: !!newCycle, blind: !!blind, noReview: !!noReview, compactFresh, pointsAbove };
         process.stderr.write(`Blocked: this AskUserQuestion carries ${reasons.join('; ')}.`
           + (voice.length ? ` The house voice (alfred-interaction.md) covers an ask's question, header, labels and descriptions, and the user reads them as written.` : '')
           + (typeIntoOther ? ` A picked option returns only its LABEL - a value the user must type goes in plain prose that ends the turn, and the ask carries what they can PICK ('I have them' / 'Someone else owns them' / 'Defer').` : '')
           + (unmarked ? ` Mark the recommended option '(Recommended)' and list it first - or, for a question with no default, say why in the question ('no option is recommended: <why>').` : '')
+          + (misMarked ? ` Put the mark on the option the question recommends, or reword the question so both say the same pick.` : '')
           + (noReview ? ` The small row runs \`task-verify-code\` inline before its close (task-solve SKILL.md): run it, then put \`review: <reviewer> - <its verdict>\` on the \`Result:\` line - or, if the size grew past small, restate \`Size:\`.` : '')
           + (blind ? ` The user approves what the chat SHOWS: put ${blind.noun ? `the ${blind.noun}` : 'what the ask approves'} in your reply text first (the stages, the draft as it will be posted, the edit made), then ask about 'the ${blind.noun || 'draft'} above' - or, if it sits in a file the user has open, re-send the ask unchanged.` : '')
           + (newCycle ? ` A new cycle after a finished one recommends the fresh-session hand-off first: add 'Resume in a fresh session (Recommended)' quoting ${newCycle.ctx ? `${k(newCycle.ctx)} per message here` : 'this session\'s carry'} and ${newCycle.floor ? `${k(newCycle.floor)} for a fresh start` : 'the fresh start\'s floor'}, and state the new cycle's \`Size:\` line in the question - or, if this ask still belongs to the finished cycle, re-send it unchanged.` : '')

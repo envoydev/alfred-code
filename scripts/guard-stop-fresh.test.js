@@ -1044,3 +1044,36 @@ test('guard-stop-contract: a close the hook cannot read as English is not judged
     assert.equal(closeOver(`en-ask-${state}`, rows, ask).status, 2, `a closing '?' in Ukrainian under ${state}`);
   }
 });
+
+// Audit 2026-10-20 C45: three approval-ask misses and a mark the question contradicts.
+test('guard-stop-contract (C45): a referent approval is judged on what was shown, a review verdict is no send, and the mark agrees with the question', () => {
+  const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+  const toolRow = (id) => ({ type: 'assistant', message: { id, content: [{ type: 'tool_use', id: `tu-${id}`, name: 'Read', input: { file_path: 'a.md' } }] } });
+  const q = (question) => [{ question, options: [{ label: 'Apply (Recommended)', description: 'write it' }, { label: 'Skip', description: 'nothing' }] }];
+  // e31af926 L128: reworded from 'as shown' to 'the diff above' with the diff still unshown; e43969a7 L139: 'fixes shown above'
+  for (const ask of ['Apply the diff above?', 'Apply the AGENTS.md fixes shown above?']) {
+    const r = askIn(transcript(`c45-blind-${ask.length}`, [typed('update the install'), toolRow('b1')]), q(ask));
+    assert.equal(r.status, 2, `nothing shown: ${ask}`);
+    assert.match(r.stderr, /the chat has not shown since the user's last message/);
+  }
+  const diff = 'The diff, 7 lines:\n\n```diff\n- old line one of the rule file\n+ new line one of the rule file\n- old line two\n+ new line two\n```\n' + 'Each line keeps its section. '.repeat(6);
+  for (const ask of ['Apply the diff above?', 'Apply the AGENTS.md fixes shown above?'])
+    assert.equal(askIn(transcript(`c45-shown-${ask.length}`, [typed('update the install'), assistantRow('s1', diff)]), q(ask)).status, 0, `shown first: ${ask}`);
+  // fabea019 L1421: a review verdict ask - 'send it back to the build' - is no send-this approval
+  const verdict = [{ question: 'The review found one MATERIAL gap. Fix it now, or send it back to the build?', options: [{ label: 'Fix it now (Recommended)', description: 'x' }, { label: 'Send it back', description: 'y' }] }];
+  assert.equal(askIn(transcript('c45-verdict', [typed('review it'), toolRow('v1')]), verdict).status, 0, 'send it back is no approval of a text');
+  assert.equal(askIn(transcript('c45-send', [typed('draft the reply'), toolRow('v2')]), [{ question: 'Send it to the customer?', options: [{ label: 'Send (Recommended)', description: 'x' }, { label: 'Hold', description: 'y' }] }]).status, 2,
+    "'send it' is still the approval it was");
+  // fabea019 L2845: the question recommended one option, the mark sat on another
+  const tp = transcript('c45-mark', [assistantRow('m1', 'ok', { cache_read_input_tokens: 900 })]);
+  const mis = [{ question: 'Where do we verify? Recommended: the alpha site after you deploy the fix branch.', options: [
+    { label: 'Swap the scripts on production (Recommended)', description: 'fast, risky' }, { label: 'Alpha site after the deploy', description: 'safe' }] }];
+  const env = logEnv();
+  const m = askIn(tp, mis, env);
+  assert.equal(m.status, 2, 'the mark contradicts the question');
+  assert.match(m.stderr, /names another option than the one marked/);
+  assert.equal(askIn(tp, mis, env).status, 0, 're-sent unchanged, it passes - never a loop');
+  const agree = [{ ...mis[0], options: [{ label: 'Alpha site after the deploy (Recommended)', description: 'safe' }, { label: 'Swap the scripts on production', description: 'fast' }] }];
+  assert.equal(askIn(tp, agree).status, 0, 'mark and question agree');
+  assert.equal(askIn(tp, [{ ...mis[0], question: 'Where do we verify? Recommended: a quick look first.' }]).status, 0, 'a question naming no option decides nothing');
+});

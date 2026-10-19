@@ -407,6 +407,21 @@ test("C03: the done-close escape says a step the model can do itself is done, no
   assert.match(r.stderr, /An owed action\nthat is yours and needs no decision \(a reprint, a re-run, a step a tool you hold can do\) is\ndone in this turn, never asked/);
 });
 
+// Audit 2026-10-20 C45: a value only the user can type ('tell me the farm id' after their own login) is asked in prose -
+// no option can carry it - while the front-loaded offer 'Next I can X, or Y.' is a decision left in prose.
+test("C45: 'tell me the <value>' after a user-only step is no prose ask; 'Next I can X, or Y' is one", () => {
+  const login = "Please enter your credentials there and select the test farm. Once you're logged in, tell me the farm id.";
+  assert.strictEqual(close(login).status, 0, 'fabea019 L1746: the forced ask was rejected and the turn re-ended on the same wait');
+  assert.strictEqual(close('Open the admin page and copy the webhook URL, then tell me the URL it shows.').status, 0, 'a URL to type');
+  // the hand-back shapes the clause exists for still block
+  for (const text of ['Run the migration, then tell me.', 'Check both screens and just tell me.', 'Tell me the option you prefer, or I pick the first.'])
+    assert.strictEqual(close(text).status, 2, text);
+  const next = close('The repro is written down. Next I can drive the wizard in the browser to confirm it, or pull the ticket attachment first.');
+  assert.strictEqual(next.status, 2, 'fcafd69c L275: answered 18 s later with no ask');
+  assert.match(next.stderr, /decision-shaped question in prose/);
+  assert.strictEqual(close('The repro is written down. Next I run the wizard in the browser to confirm it.').status, 0, 'a plain next step offers no alternative');
+});
+
 // Audit 2026-10-20 C02: `2>/dev/null` read as a dev server, so a finite background poll was no live work and its wait was
 // blocked (a09fc7d6); a set of checker seats ('Still waiting on 5 of the 9 checkers', a2920886) named no work word; and a
 // 'Not run:' item held behind the running wait ('Not run: the suite, waiting on the Docker daemon') read as a step.
