@@ -2028,3 +2028,123 @@ test('2026-10-16: a change another session on this checkout recorded as its own 
     assert.match(ask(torn), /you changed src\/Api\/Program\.cs/, 'an unreadable state file claims nothing');
   } finally { r.rm(); }
 });
+
+// Audit 2026-10-20 C25 (6dba16e2, b5f384d2, 1b432dd2): the first source edit of every /clear resume was held, though the
+// resume read the plan whose `Oriented:` line names the sections the design read. Those sections count as read; a plan
+// naming none, a plan-shaped file outside plans/, or no plan read at all still leaves the edit held.
+test('audit 2026-10-20 C25: a resume that reads its plan\'s Oriented sections is not held; a plan naming none still is', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'x\n', 'notes/plan.md': 'Oriented: patterns#orders\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  const plan = (name, oriented) => r.write(`.claude/docs/plans/${name}.md`, `# Plan\n\nOriented: ${oriented}\nAsked: "fix refunds"\n\n## Tasks\n`);
+  const edit = (s) => r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s));
+  try {
+    plan('refunds', 'patterns#orders, CODE-STYLE.md lines 30-99 (C#); code read - src/Api/Orders/Refund.cs');
+    const s = sid();
+    r.hook(pre('Read', { file_path: `${r.root}/.claude/docs/plans/refunds.md` }, s));
+    assert.ok(!denied(edit(s)), 'the plan\'s Oriented section counts as read');
+    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"consult","refs":\["patterns#orders"\]/);
+    const sh = sid();
+    r.hook(pre('Bash', { command: 'cat .claude/docs/plans/refunds.md' }, sh));
+    assert.ok(!denied(edit(sh)), 'a shell read of the plan counts the same');
+    plan('blind', 'none - a one-line fix');
+    const none = sid();
+    r.hook(pre('Read', { file_path: `${r.root}/.claude/docs/plans/blind.md` }, none));
+    assert.ok(denied(edit(none)), 'a plan naming no section earns nothing');
+    plan('typo', 'patterns#nope, nosuch#orders');
+    const typo = sid();
+    r.hook(pre('Read', { file_path: `${r.root}/.claude/docs/plans/typo.md` }, typo));
+    assert.ok(denied(edit(typo)), 'a section the engine cannot resolve earns nothing');
+    const outside = sid();
+    r.hook(pre('Read', { file_path: `${r.root}/notes/plan.md` }, outside));
+    assert.ok(denied(edit(outside)), 'an Oriented line outside the plans folder earns nothing');
+    assert.ok(denied(edit(sid())), 'a session that read nothing is still held');
+  } finally { r.rm(); }
+});
+
+// Audit 2026-10-20 C25 (4f2bfdee): a `node -e` writing to a computed path under a temp run dir was read as a write under
+// the first source root and held twice ('Before changing src/*'). An unnamed interpreter write is a source write only
+// under a root the command names; a patch or a migration with no project still always is.
+test('audit 2026-10-20 C25: an interpreter write to a computed temp path is not held; one naming a source root is', () => {
+  const { writeTargets, unknownRoots } = require('../stack/hooks/docs-session.js');
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'x\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  const TEMP = 'TD="${TMPDIR:-/tmp}"; TMP=$(ls -dt "$TD"/run.*/ | head -1); TMP=${TMP%/}\n'
+    + 'node -e \'\nconst fs=require("fs");const [inp,out]=process.argv.slice(1);\nfs.writeFileSync(out, fs.readFileSync(inp,"utf8"));\n\' "$TMP/in.json" "$TMP/final.json"';
+  const INTO_SRC = 'node -e \'const fs=require("fs");const [o]=process.argv.slice(1);fs.writeFileSync(o,"x")\' src/Api/Orders/Gen.cs';
+  try {
+    assert.deepStrictEqual(writeTargets(TEMP), ['<unknown interpreter write>']);
+    assert.deepStrictEqual(unknownRoots(TEMP, ['src', 'tests']), []);
+    assert.deepStrictEqual(unknownRoots(INTO_SRC, ['src', 'tests']), ['src']);
+    assert.deepStrictEqual(unknownRoots('node -e "x" ./tests/a.json', ['src', 'tests']), ['tests']);
+    assert.deepStrictEqual(unknownRoots('node -e "x" mysrc/a.json resources/b', ['src', 'tests']), [], 'a root inside another word is not named');
+    assert.deepStrictEqual(unknownRoots('node -e "x"', ['.', 'src']), ['.'], 'a root that is the project is named by every command');
+    assert.ok(!denied(r.hook(pre('Bash', { command: TEMP }, sid()))), 'the audited temp write is not held');
+    assert.ok(denied(r.hook(pre('Bash', { command: INTO_SRC }, sid()))), 'an interpreter write naming src/ is held');
+    assert.ok(denied(r.hook(pre('Bash', { command: 'git apply fix.patch' }, sid()))), 'a patch is still a source write');
+  } finally { r.rm(); }
+});
+
+// Audit 2026-10-20 C25 (0685cd0b): the once-per-session Stop ask fired on a PAUSE - 'coded, but I can't build or test it
+// yet' under a background watch - and was spent there. While the harness's registry shows work still running the ask waits
+// for a later Stop, at most three times.
+test('audit 2026-10-20 C25: the Stop ask waits while background work runs, asks at a later Stop, and waits at most three times', () => {
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH() } });
+  const running = [{ id: 'b1', type: 'shell', status: 'running', command: 'until sc.exe query Svc | grep -q STOPPED; do sleep 2; done' }];
+  const stopWith = (s, tasks) => r.hook({ ...stopEv(s), ...(tasks ? { background_tasks: tasks } : {}) }).stdout;
+  try {
+    const s = sid();
+    start(r, s);
+    r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
+    assert.strictEqual(stopWith(s, running), '', 'a pause under running work is not asked');
+    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"ask-deferred","why":"background work running","deferred":1/);
+    assert.match(JSON.parse(stopWith(s, [])).reason, /^Docs check: you changed src\/Api\/Program\.cs/, 'the next Stop with nothing in flight asks');
+    const settled = sid();
+    start(r, settled);
+    r.write('src/Api/Program.cs', 'app.UseOther();\napp.Run();\n');
+    assert.match(JSON.parse(stopWith(settled, [{ id: 'b2', type: 'subagent', status: 'completed' }])).reason, /you changed/, 'finished work is no pause');
+    const capped = sid();
+    start(r, capped);
+    r.write('src/Api/Program.cs', 'app.UseThird();\napp.Run();\n');
+    for (let i = 0; i < 3; i++) assert.strictEqual(stopWith(capped, running), '', `deferral ${i + 1}`);
+    assert.match(JSON.parse(stopWith(capped, running)).reason, /you changed/, 'the fourth Stop asks, running work or not');
+  } finally { r.rm(); }
+});
+
+// Audit 2026-10-20 C25 (c5287cc1, 7c1af769): a sibling session's `git stash push` was charged to a session that never
+// touched the file, and a stash this session only applied read as its own authoring. A stash's files are recorded as
+// MOVED by the session that ran it: claimed against the others, never asked about itself; a file it then edits still is.
+test('audit 2026-10-20 C25: a file moved by git stash is not charged to the session that only moved it, nor to a sibling', () => {
+  const os = require('node:os');
+  const p = require('node:path');
+  const r = watched();
+  const ask = (s) => { const out = r.hook(stopEv(s), GIT).stdout; return out ? JSON.parse(out).reason : ''; };
+  const bash = (s, command) => r.hook(pre('Bash', { command }, s), { ...GIT, ...ALLOW });
+  try {
+    const { stashMoves } = require('../stack/hooks/docs-session.js');
+    r.write('src/Api/Program.cs', 'app.UseSibling();\napp.Run();\n');
+    assert.deepStrictEqual(stashMoves('git stash push -m wip', r.root, r.root), ['src/Api/Program.cs']);
+    assert.deepStrictEqual(stashMoves('git stash push -m wip -- src/Api/Users', r.root, r.root), [], 'a pathspec narrows it');
+    assert.deepStrictEqual(stashMoves('git stash list', r.root, r.root), [], 'a listing moves nothing');
+    // c5287cc1: this session's snapshot holds the sibling's dirty file; the sibling then stashes it away.
+    const mine = sid(); const theirs = sid();
+    start(r, mine, GIT); start(r, theirs, GIT);
+    bash(theirs, 'git stash push -m wip');
+    r.git('stash', 'push', '-m', 'wip');
+    const state = JSON.parse(fs.readFileSync(p.join(os.tmpdir(), `docs-session-${theirs}--main.session.json`), 'utf8'));
+    assert.deepStrictEqual(state.moved, ['src/Api/Program.cs'], 'the stash records its files as moved');
+    assert.strictEqual(ask(mine), '', 'the measured case: not charged with the sibling\'s stash');
+    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"changed-by-other-session","files":\["src\/Api\/Program\.cs"\]/);
+    assert.strictEqual(ask(theirs), '', 'the stashing session moved it, never authored it');
+    // 7c1af769: a session applies a stash another session authored.
+    const applier = sid();
+    start(r, applier, GIT);
+    bash(applier, 'git stash apply stash@{0}');
+    r.git('stash', 'apply', 'stash@{0}');
+    assert.strictEqual(ask(applier), '', 'an applied stash is not this session\'s authoring');
+    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"changed-by-git-stash","files":\["src\/Api\/Program\.cs"\]/);
+    const editor = sid();
+    start(r, editor, GIT);
+    bash(editor, 'git stash apply stash@{0}');
+    r.hook(pre('Edit', { file_path: 'src/Api/Program.cs' }, editor), { ...GIT, ...ALLOW });
+    r.write('src/Api/Program.cs', 'app.UseEdited();\napp.Run();\n');
+    assert.match(ask(editor), /you changed src\/Api\/Program\.cs/, 'a file it moved and then edited is its own');
+  } finally { r.rm(); }
+});

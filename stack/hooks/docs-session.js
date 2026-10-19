@@ -149,14 +149,60 @@ function recordRun(input, command) {
   a.ran = Date.now();
   saveState(input.session_id, a, key);
 }
-// Every path the OTHER actors of this session recorded. READ only: writing here would race preToolUse, and a file
+// The files a `git stash` in this command moves into or out of the working tree, read BEFORE it runs: a push takes the
+// tree's changes (its pathspec after `--`, untracked files with -u / -a), a pop or apply brings the named entry's. No
+// parser names them as targets, so a sibling session's stash push read as this session's change at its Stop - 'you
+// changed <file>' for a file it never touched (audit 2026-10-20 C25, c5287cc1) - and a stash this session
+// applied read as its own authoring (7c1af769). Moved is not authored: recorded apart from `wrote`, it claims the file for
+// its session against the others and is never asked about itself. 1.5s per git call; a failure records nothing.
+function stashMoves(command, base, root) {
+  if (!shellReader || !/\bstash\b/.test(command)) return [];
+  const lines = (dir, args) => {
+    try {
+      return require('child_process').execFileSync('git', ['-c', 'core.quotePath=false', ...args], { cwd: dir, timeout: 1500, stdio: ['ignore', 'pipe', 'ignore'] })
+        .toString('utf8').split('\n').filter(Boolean);
+    } catch { return []; }
+  };
+  const out = new Set();
+  let calls = [];
+  try { calls = shellReader.gitCalls(command); } catch { return []; }
+  for (const g of calls) {
+    if (g.sub !== 'stash') continue;
+    const dir = g.dirs && g.dirs.length ? path.resolve(base, ...g.dirs) : base;
+    const argv = g.argv || [];
+    const verb = argv[0] && !argv[0].startsWith('-') ? argv[0] : 'push';
+    const rest = verb === argv[0] ? argv.slice(1) : argv;
+    let files = [];
+    if (verb === 'pop' || verb === 'apply') {
+      const ref = rest.find((w) => !w.startsWith('-')) || 'stash@{0}';
+      files = lines(dir, ['stash', 'show', '--name-only', '--include-untracked', '--relative', ref]);
+      if (!files.length) files = lines(dir, ['stash', 'show', '--name-only', '--relative', ref]);
+    } else if (verb === 'push' || verb === 'save') {
+      const at = rest.indexOf('--');
+      const spec = verb === 'push' && at >= 0 ? rest.slice(at + 1) : [];
+      files = lines(dir, ['diff', '--name-only', '--relative', 'HEAD', '--', ...spec]);
+      if (rest.some((w) => /^(?:-u|--include-untracked|-a|--all)$/.test(w))) files.push(...lines(dir, ['ls-files', '--others', '--exclude-standard', '--', ...spec]));
+    }
+    for (const f of files) out.add(toPosix(path.relative(root, path.resolve(dir, f))));
+  }
+  return [...out].filter((p) => p && !p.startsWith('..'));
+}
+function recordMoved(root, input, moved) {
+  if (envOf(process.env, 'DOCS_ASK') === '0' || !moved.length) return;
+  const key = actorKey(input);
+  const a = loadAgent(input.session_id, key);
+  a.root = rootKey(root);
+  a.moved = [...new Set([...(a.moved || []), ...moved])].slice(0, WROTE_CAP);
+  saveState(input.session_id, a, key);
+}
+// Every path the OTHER actors of this session recorded, written or moved. READ only: writing here would race preToolUse, and a file
 // that cannot be read simply leaves its paths unclaimed, which is the safe direction.
 function otherActorWrites(session, exceptKey, entries = tmpEntries()) {
   const prefix = `docs-session-${String(session || 'none').replace(/[^\w-]/g, '')}--`;
   const out = new Set();
   for (const f of entries) {
     if (!f.startsWith(prefix) || !f.endsWith('.json') || f === `${prefix}${exceptKey}.json`) continue;
-    try { for (const p of JSON.parse(fs.readFileSync(path.join(os.tmpdir(), f), 'utf8')).wrote || []) out.add(p); } catch {}
+    try { const v = JSON.parse(fs.readFileSync(path.join(os.tmpdir(), f), 'utf8')); for (const p of [...(v.wrote || []), ...(v.moved || [])]) out.add(p); } catch {}
   }
   return out;
 }
@@ -176,7 +222,7 @@ function otherSessionWrites(session, root, since, entries = tmpEntries()) {
       const file = path.join(os.tmpdir(), f);
       if (fs.statSync(file).mtimeMs / 1000 < since) continue;
       const v = JSON.parse(fs.readFileSync(file, 'utf8'));
-      if (v.root === key) for (const p of v.wrote || []) out.add(p);
+      if (v.root === key) for (const p of [...(v.wrote || []), ...(v.moved || [])]) out.add(p);
     } catch {}
   }
   return out;
@@ -761,15 +807,29 @@ function projectWrites(command) {
   }
   return out;
 }
-// An interpreter write through a computed path is UNKNOWN_SOURCE_WRITE; a `$NAME` target is expanded from the same
-// command's assignment, and one still holding a `$` names no file - it filled COMPACT-STATE's 'files written' with
-// `$S/demo.pw` and `$G` (audit 2026-10-10, sessions 68da4b6b, 758ce661).
+// An interpreter write through a computed path is UNKNOWN_INTERPRETER_WRITE - a source write only under a root the command
+// names (unknownRoots), where a patch or a migration with no project (UNKNOWN_SOURCE_WRITE) always is one; a `$NAME`
+// target is expanded from the same command's assignment, and one still holding a `$` names no file - it filled
+// COMPACT-STATE's 'files written' with `$S/demo.pw` and `$G` (audit 2026-10-10, sessions 68da4b6b, 758ce661).
+const UNKNOWN_INTERPRETER_WRITE = '<unknown interpreter write>';
+const isUnknown = (t) => t === UNKNOWN_SOURCE_WRITE || t === UNKNOWN_INTERPRETER_WRITE;
 function writeTargets(command) {
   if (!shellReader) return [];
   const scan = shellReader.scanShell(String(command), {});
-  const out = scan.targets.map((t) => (t.unknown ? UNKNOWN_SOURCE_WRITE : scan.expandVars(String(t.raw || ''))))
-    .filter((t) => t && !t.startsWith('/dev/null') && (t === UNKNOWN_SOURCE_WRITE || !t.includes('$')));
+  const out = scan.targets.map((t) => (t.unknown ? UNKNOWN_INTERPRETER_WRITE : scan.expandVars(String(t.raw || ''))))
+    .filter((t) => t && !t.startsWith('/dev/null') && (isUnknown(t) || !t.includes('$')));
   return [...new Set([...out, ...projectWrites(command)])];
+}
+// The source roots a write the shell route could not name may land in: each root the command itself names as a path
+// segment. A `node -e` writing to a computed `$TMP/final.json`, naming no root, writes no source (audit 2026-10-20 C25,
+// 4f2bfdee: held twice as 'Before changing src/*', five messages to clear). A root that is the project itself ('.', '')
+// is named by every command, as before.
+function unknownRoots(command, roots) {
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return roots.filter((r) => {
+    const x = String(r).replace(/^\.\//, '').replace(/\/+$/, '');
+    return !x || x === '.' || new RegExp(`(?:^|[^\\w.-])${esc(x)}(?:/|[^\\w.-]|$)`).test(String(command));
+  });
 }
 const relative = (root, paths) => [...new Set(paths.map((p) => toPosix(path.relative(root, path.resolve(root, p.replace(/^['"]|['"]$/g, ''))))).filter((p) => p && !p.startsWith('..')))];
 
@@ -788,7 +848,7 @@ const relative = (root, paths) => [...new Set(paths.map((p) => toPosix(path.rela
 // resolves; a file read counts only for a doc file (`.md`), by Read or Grep, or by a shell command that READS (a reading
 // verb, no write) - never a listing.
 const SHELL_READ_VERB = /(?:^|[\s;&|(])(?:cat|head|tail|sed|awk|grep|rg|less|more|bat|nl|type|get-content|gc|select-string)\b/i;
-function consultedBy(input, paths, docRoots, docs) {
+function consultedBy(input, paths, docRoots, docs, plansRel = '') {
   const name = input.tool_name || '';
   const t = input.tool_input || {};
   const command = typeof t.command === 'string' ? t.command : '';
@@ -808,15 +868,42 @@ function consultedBy(input, paths, docRoots, docs) {
     };
     return (run.match(/docs\.js["']?[ \t]+show[ \t]+[\w#.\/-]+(?:[ \t]+[\w#.\/-]+)*/g) || [])
       .flatMap((r) => r.split(/[ \t]+/).slice(2))
-      .filter((r) => !r.startsWith('-') && /^[A-Za-z][\w.\/-]*(#[\w-]+)?$/.test(r))
+      // a path under the docs root resolves like its ref (docs.js stripDocsRoot, audit 2026-10-20 C27)
+      .filter((r) => !r.startsWith('-') && /^[\w./][\w.\/-]*(#[\w-]+)?$/.test(r))
       .filter(resolves);
   }
   if (/docs\.js[ \t]+(toc|where|files|status|lint|watch|stale)\b/.test(command)) return [];
   const underDocs = (p) => docRoots.some((d) => p === d || p.startsWith(`${d}/`));
+  const reads = /^Read$/.test(name) || (isShellTool(name) && !writeTargets(command).length && SHELL_READ_VERB.test(run));
   // a Grep reads the text of what it searches, a doc folder included; a Read or a shell read names its file
   const hits = paths.filter((p) => underDocs(p) && (name === 'Grep' ? !/\.(?:json|jsonl)$/i.test(p) : /\.md$/i.test(p)));
-  if (hits.length && (/^(Read|Grep)$/.test(name) || (isShellTool(name) && !writeTargets(command).length && SHELL_READ_VERB.test(run)))) return hits;
+  if (hits.length && (name === 'Grep' || reads)) return hits;
+  // A resume reads its plan, and the plan's `Oriented:` line names the sections the design read: those sections count as
+  // read, so the first edit of a /clear resume is not held for docs the plan already carries (audit 2026-10-20 C25,
+  // 6dba16e2 / b5f384d2 / 1b432dd2: 3 of 3 resumes of one story opened on that hold). A plan naming none earns nothing.
+  if (plansRel && reads) {
+    const plans = paths.filter((p) => /\.md$/i.test(p) && p.startsWith(`${plansRel}/`) && !p.slice(plansRel.length + 1).includes('/'));
+    return plans.flatMap((p) => orientedRefs(path.resolve(process.env.CLAUDE_PROJECT_DIR || '.', p), docs));
+  }
   return [];
+}
+// The section refs a plan's `Oriented:` lines name that the engine resolves - `project-structure#inventory, PROJECT-CAPABILITIES#build,
+// CODE-STYLE.md lines 30-99` gives the first two. The first 64KB of the plan is read, where its header sits.
+const ORIENTED_LINE = /^[\s>*_-]*Oriented\**\s*:(.*)$/gim;
+function orientedRefs(abs, docs) {
+  if (!docs || typeof docs.askRef !== 'function') return [];
+  let text = '';
+  try {
+    const fd = fs.openSync(abs, 'r');
+    try { const buf = Buffer.alloc(64 * 1024); text = buf.toString('utf8', 0, fs.readSync(fd, buf, 0, buf.length, 0)); } finally { fs.closeSync(fd); }
+  } catch { return []; }
+  const out = new Set();
+  for (const m of text.matchAll(ORIENTED_LINE)) {
+    for (const r of m[1].match(/[A-Za-z][\w.\/-]*#[\w-]+/g) || []) {
+      try { if (docs.askRef(r)) out.add(r); } catch { /* an unresolved name earns nothing */ }
+    }
+  }
+  return [...out];
 }
 
 // No domain declares a watch entry or a new-module rule, so no change can hit one: watchHits() would return nothing.
@@ -919,7 +1006,7 @@ function stampedPlanWrite(input, root) {
   } else if (isShellTool(name) && typeof t.command === 'string') {
     const base = typeof input.cwd === 'string' && input.cwd ? input.cwd : root;
     for (const w of writeTargets(t.command)) {
-      if (w === UNKNOWN_SOURCE_WRITE) continue;
+      if (isUnknown(w)) continue;
       const abs = path.resolve(base, w.replace(/^['"]|['"]$/g, ''));
       const text = isPlan(abs) ? textOf(abs) : null;
       if (text != null && COMPLETED_STAMP.test(text) && !closeStillOpen(input, abs)) { hit = abs; break; }
@@ -950,16 +1037,26 @@ function preToolUse(input, root, docs, state) {
   let roots = ['src', 'tests'];
   if (isWrite) { try { roots = docs.loadWatch().sourceRoots; } catch {} }
   const command = typeof (input.tool_input || {}).command === 'string' ? input.tool_input.command : '';
-  if (isShellTool(name)) recordRun(input, command);
+  if (isShellTool(name)) {
+    recordRun(input, command);
+    recordMoved(root, input, stashMoves(command, typeof input.cwd === 'string' && input.cwd ? input.cwd : root, root));
+  }
   const shellWrites = isShellTool(name) ? writeTargets(command) : null;
   let wrote = [];
   if (fileWrite) wrote = paths;
-  else if (shellWrites) wrote = relative(root, shellWrites.map((x) => (x === UNKNOWN_SOURCE_WRITE ? `${roots[0]}/*` : x)));
+  else if (shellWrites) {
+    wrote = relative(root, shellWrites.flatMap((x) => (x === UNKNOWN_SOURCE_WRITE ? [`${roots[0]}/*`]
+      : x === UNKNOWN_INTERPRETER_WRITE ? unknownRoots(command, roots).map((r) => `${r}/*`) : [x])));
+  }
   // A PreToolUse write is INTENT. It is banked at each exit below that lets the call PROCEED and never on the deny,
   // so a write this hook holds is not credited to the seat that tried it. Banked before the source-root filter,
   // because a watch entry may name a path no source root covers and a write this hook never judges is still a write.
-  const attribute = () => { if (wrote.length) recordWrite(root, input, shellWrites && shellWrites.includes(UNKNOWN_SOURCE_WRITE) ? [...wrote, UNKNOWN_SOURCE_WRITE] : wrote); };
-  const consults = consultedBy(input, paths, docRoots, docs);
+  // An unnamed write still marks its actor as one that wrote (seatAsk), whether or not it maps to a source root.
+  const attribute = () => {
+    const all = shellWrites && shellWrites.some(isUnknown) ? [...wrote, UNKNOWN_SOURCE_WRITE] : wrote;
+    if (all.length) recordWrite(root, input, all);
+  };
+  const consults = consultedBy(input, paths, docRoots, docs, toPosix(path.relative(root, path.resolve(root, docsRootEnv(), 'plans'))));
   if (consults.length) {
     // One shell command can read a doc AND write a file - the shape the orientation block and the gate together
     // teach - so the read must not swallow the write.
@@ -1166,6 +1263,15 @@ function changedWhileIdle(root, files, transcriptPath) {
   return out;
 }
 
+// Work this session launched that is still out at Stop, from the harness's own registry - the Stop payload's
+// `background_tasks` (code.claude.com/docs/en/hooks, 'Stop input': empty when nothing is in flight; the stop contract
+// reads the same field). Any unsettled entry counts: a watch that resumes the build is the pause this defers for. No
+// registry in the payload (an older Claude Code) reads as none, the old behaviour.
+const MAX_DEFERS = 3;
+const SETTLED_STATUS = /^(?:completed?|done|failed|killed|stopped|cancell?ed|error|finished)$/i;
+const liveBackgroundWork = (input) => input.hook_event_name === 'Stop' && Array.isArray(input.background_tasks)
+  && input.background_tasks.some((t) => t && typeof t === 'object' && !SETTLED_STATUS.test(String(t.status || '')));
+
 // The same check for work done outside any subagent - and the only cover skills have, since a skill has no end
 // event of its own and its work lands here.
 function stop(input, root, docs, state) {
@@ -1195,11 +1301,16 @@ function stop(input, root, docs, state) {
     const others = otherSessionWrites(input.session_id, root, state.snapshot.at, entries);
     const theirs = changed.files.filter((f) => !mine.has(f) && !seats.has(f) && others.has(f));
     if (theirs.length) log(root, input, { event: 'changed-by-other-session', files: theirs.slice(0, 5) });
+    // a change this session only moved with git stash (stashMoves) was authored elsewhere: logged, not asked
+    const moved = new Set(main.moved || []);
+    const stashed = changed.files.filter((f) => !mine.has(f) && !seats.has(f) && !others.has(f) && moved.has(f));
+    if (stashed.length) log(root, input, { event: 'changed-by-git-stash', files: stashed.slice(0, 5) });
     // an unclaimed change counts only when this session ran a command that may write (recordRun); in a session that only
     // read and edited through its tools, it is another writer's - logged, not asked
-    const unrun = main.ran ? [] : changed.files.filter((f) => !mine.has(f) && !seats.has(f) && !others.has(f));
+    const unclaimed = (f) => !seats.has(f) && !others.has(f) && !moved.has(f);
+    const unrun = main.ran ? [] : changed.files.filter((f) => !mine.has(f) && unclaimed(f));
     if (unrun.length) log(root, input, { event: 'changed-unclaimed', files: unrun.slice(0, 5) });
-    const claimed = changed.files.filter((f) => mine.has(f) || (!seats.has(f) && !others.has(f) && main.ran));
+    const claimed = changed.files.filter((f) => mine.has(f) || (unclaimed(f) && main.ran));
     // an unclaimed change made while the session sat idle is the user's own, outside this session: logged, not asked
     const outside = changedWhileIdle(root, claimed.filter((f) => !mine.has(f)), input.transcript_path);
     if (outside.size) log(root, input, { event: 'changed-outside-session', files: [...outside].slice(0, 5) });
@@ -1219,6 +1330,16 @@ function stop(input, root, docs, state) {
     unattendedRow(root, input, 'docs finish ask');
     return;
   }
+  // A turn that ends while work this session launched still runs is a PAUSE, not the close: the ask waits for a later
+  // Stop, since it is made once per session and spent here it never reaches the real close (audit 2026-10-20 C25,
+  // 0685cd0b: 'coded, but I can't build or test it yet' under a background watch drew 10 messages of doc edits at ~310k
+  // for code that had not built). At most MAX_DEFERS times, so a server left running all session cannot silence it.
+  if (liveBackgroundWork(input) && (state.deferred || 0) < MAX_DEFERS) {
+    state.deferred = (state.deferred || 0) + 1;
+    saveState(input.session_id, state);
+    log(root, input, { event: 'ask-deferred', why: 'background work running', deferred: state.deferred, sections: asks.map((r) => r.id), files: files.slice(0, 5) });
+    return;
+  }
   state.asked = true;
   saveState(input.session_id, state);
   const reason = finishAsk(docs, files, asks, warnings, SUMMARY_LAST);
@@ -1228,7 +1349,7 @@ function stop(input, root, docs, state) {
   process.stdout.write(JSON.stringify({ decision: 'block', reason }));
 }
 
-module.exports = { writeTargets, consultedBy, toolPaths, toPosix, sweepOldState, saveState, loadState, sectionRefs, otherSessionWrites };
+module.exports = { writeTargets, consultedBy, toolPaths, toPosix, sweepOldState, saveState, loadState, sectionRefs, otherSessionWrites, unknownRoots, stashMoves };
 if (require.main === module) {
   try { main(); if (startNote) { const note = startNote; startNote = ''; emit('SessionStart', note); } } catch (error) { process.stderr.write(`docs-session: ${error.message}\n`); }
 }
