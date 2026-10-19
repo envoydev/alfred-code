@@ -258,7 +258,9 @@ const CHECK_RES = {
   build: new RegExp(String.raw`^${RUNNER_PATH}(?:dotnet\s+(?:build|publish)|(?:npm|pnpm|yarn)\s+(?:run\s+)?(?:build|typecheck|type-check)\S*|ng\s+build|tsc|vue-tsc|msbuild|cargo\s+build|go\s+build|mvn\s+(?:package|compile|install)|gradlew?\s+(?:build|assemble))(?![\w.-])`),
   // A formatter CHECK is a lint (`prettier --check` reads, `--write` rewrites), and so is one of the stack's own
   // read-only checkers: `agents-md-check: clean` was a claim the scorecard could not see (audit 2026-10-10, 65abb00a).
-  lint: new RegExp(String.raw`^${RUNNER_PATH}(?:(?:npm|pnpm|yarn)\s+(?:run\s+)?(?:lint|format:check)\S*|eslint|ng\s+lint|dotnet\s+format|ruff|flake8|golangci-lint|cargo\s+clippy|stylelint|biome\s+(?:check|lint|ci)|prettier\s+(?:\S+\s+)*?(?:--check|-c|--list-different|-l)(?=\s|$)|node\s+${RUNNER_PATH}(?:agents-md-check|library-check|lint-skills)\.js)(?![\w.-])`),
+  // A shell / CI / config linter and a shell syntax pass are a DevOps session's own check: without them a commit after
+  // `bash -n`, shellcheck and actionlint scored unchecked (audit 2026-10-20 C41, 685c2f93).
+  lint: new RegExp(String.raw`^${RUNNER_PATH}(?:(?:npm|pnpm|yarn)\s+(?:run\s+)?(?:lint|format:check)\S*|eslint|shellcheck|actionlint|hadolint|yamllint|markdownlint(?:-cli2)?|(?:ba|z|da)?sh\s+-n|ng\s+lint|dotnet\s+format|ruff|flake8|golangci-lint|cargo\s+clippy|stylelint|biome\s+(?:check|lint|ci)|prettier\s+(?:\S+\s+)*?(?:--check|-c|--list-different|-l)(?=\s|$)|node\s+${RUNNER_PATH}(?:agents-md-check|library-check|lint-skills)\.js)(?![\w.-])`),
   ci: /^gh\s+(?:run\s+(?:view|watch|list)|pr\s+checks)(?![\w.-])/,
 };
 const SCOPED_RE = /--filter[= ]|--test-name-pattern|--testNamePattern|--testPathPattern|\s-t\s|\s-k\s|--grep[= ]|--include[= ]|--run\s+\S|[\w./-]+\.(?:spec|test)\.[cm]?[jt]sx?\b|[\w./-]+_test\.go\b|\btest_\w+\.py\b|::\w|[\w./-]+\.csproj\b|node\s+--test\s+[\w./-]+\.[cm]?js\b|cargo\s+test\s+[\w:]+|go\s+test\s+(?!\.\/\.\.\.)[\w./-]+/;
@@ -3791,6 +3793,18 @@ function windowSource(main) {
   const rem = main.modelIdReminder || null;
   const cs = (main.modelIdsFull || []).join(', ') || null;
   if (!rem && !cs) return null;
+  // The reminder is written once, at the start: a `/model` switch after it leaves the reminder naming the model the
+  // session no longer runs on, and the line named the wrong model over 34 of 34 messages billed to the other one (audit
+  // 2026-10-20 C41, 40c4e87c). The assistant rows' majority wins when it disagrees with the reminder's base id; the
+  // window suffix is taken from cost-state's id of that model when it carries one.
+  const base = (id) => String(id).replace(/\[[^\]]*\]$/, '');
+  const ran = Object.entries(main.byModel || {}).filter(([m, t]) => m && !m.startsWith('<') && t && t.msgs).sort((a, b) => b[1].msgs - a[1].msgs);
+  if (rem && ran.length && base(rem) !== ran[0][0]) {
+    const [top, t] = ran[0];
+    const total = ran.reduce((n, [, x]) => n + x.msgs, 0);
+    const full = (main.modelIdsFull || []).find((id) => base(id) === top) || top;
+    return `${full} (the assistant messages' majority, ${t.msgs} of ${total} msgs) - the session's own model reminder says ${rem}: the model was switched mid-session, the messages win`;
+  }
   if (!rem) return `${cs} (from cost-state; the session's own model reminder is absent)`;
   if (!cs) return `${rem} (the session's own model reminder)`;
   const agree = main.modelIdsFull.includes(rem);

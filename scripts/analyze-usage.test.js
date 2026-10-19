@@ -538,6 +538,39 @@ test('the window tier names its source, and an abandoned session says so', () =>
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// Audit 2026-10-20 C41 (40c4e87c): a `/model` switch before the first assistant row left the reminder naming the
+// model the session never ran on, and the line said so over 3 of 3 messages billed to the other one.
+test('C41: after a mid-session /model the assistant messages name the model, not the stale reminder', () => {
+    const dir = tmp();
+    const file = path.join(dir, 'sess.jsonl');
+    const at = (i) => `2026-07-16T09:${String(i).padStart(2, '0')}:00.000Z`;
+    let body = line({ type: 'user', timestamp: at(1), message: { role: 'user', content: 'You are powered by the model named Sonnet 5. The exact model ID is claude-sonnet-5.' } });
+    body += line({ type: 'user', timestamp: at(2), message: { role: 'user', content: '<local-command-stdout>Set model to Opus 5</local-command-stdout>' } });
+    for (let i = 0; i < 3; i++) {
+        body += line({ type: 'assistant', timestamp: at(3 + 2 * i), message: { id: 'm' + i, model: 'claude-opus-5', usage: usage(1, 0, 900, 20), content: [{ type: 'tool_use', id: 'b' + i, name: 'Bash', input: { command: 'ls', description: 'list' } }] } });
+        body += line({ type: 'user', timestamp: at(4 + 2 * i), message: { content: [{ type: 'tool_result', tool_use_id: 'b' + i, content: 'ok' }] } });
+    }
+    body += line({ type: 'cost-state', timestamp: at(20), modelUsage: { 'claude-opus-5[1m]': { thinkingTokens: 10 } }, totalCostUSD: 0.5 });
+    fs.writeFileSync(file, body);
+    const text = execFileSync('node', [SCRIPT, file], { encoding: 'utf8' });
+    assert.match(text, /model \(with window suffix\) claude-opus-5\[1m\] \(the assistant messages' majority, 3 of 3 msgs\) - the session's own model reminder says claude-sonnet-5/,
+        'the messages win, the suffix comes from cost-state, and the stale reminder is still named');
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// Audit 2026-10-20 C41 (685c2f93): a shell / CI linter and a shell syntax pass are checks.
+test('C41: shellcheck, actionlint, hadolint, yamllint, markdownlint and bash -n score as lint; a script run does not', () => {
+    const { classifyChecks } = require('./analyze-usage.js');
+    const { maskQuotedShell } = require("./analyze-usage.js");
+    const kinds = (cmd) => classifyChecks(maskQuotedShell(cmd), cmd, new Map()).kinds.map((k) => k.kind);
+    for (const cmd of ['shellcheck deploy.sh', 'actionlint', 'hadolint Dockerfile', 'yamllint .github', 'npx markdownlint-cli2 "**/*.md"', 'bash -n deploy.sh', 'sh -n x.sh']) {
+        assert.match(JSON.stringify(kinds(cmd)), /lint/, cmd + ' is a lint');
+    }
+    for (const cmd of ['bash deploy.sh', 'cat shellcheck.log', 'ls .actionlint.yml']) {
+        assert.doesNotMatch(JSON.stringify(kinds(cmd)), /lint/, cmd + ' is not a check');
+    }
+});
+
 // A FORK's transcript opens as a copy of its parent's rows, each still carrying the parent's id
 // under `session_id` (the camel-case `sessionId` is rewritten to the fork's own): two forks of one conversation shared 90-92 assistant ids with their parent and the
 // rollup counted that run three times; the dedupe was done by hand (measured).
