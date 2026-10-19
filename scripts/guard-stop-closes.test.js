@@ -376,3 +376,23 @@ test("hooks review: a wait on running seats' fixes and checks is status; a recor
     [record('Decisions auto-mode made for you:', '- Commit: commit now.') + '\n\nPush it when you are ready.', 'a hand-off after the record'],
   ]) assert.strictEqual(close(text).status, 2, why);
 });
+
+// Audit 2026-10-20 C02: `2>/dev/null` read as a dev server, so a finite background poll was no live work and its wait was
+// blocked (a09fc7d6); a set of checker seats ('Still waiting on 5 of the 9 checkers', a2920886) named no work word; and a
+// 'Not run:' item held behind the running wait ('Not run: the suite, waiting on the Docker daemon') read as a step.
+test("C02: a '/dev/null' poll is finite live work, checkers and a daemon are work, an item behind a wait is that wait", () => {
+  const poll = (command) => [{ id: 'b1', type: 'shell', status: 'running', command }];
+  const dockerWait = 'Green so far: build and unit tests 1677/1677. Not run: the integration suite, waiting on the Docker daemon (the wait is still going).';
+  assert.strictEqual(over([typed('go')], dockerWait, { background_tasks: poll('for i in $(seq 1 36); do v=$(docker info 2>/dev/null); [ -n "$v" ] && break; sleep 5; done') }).status, 0,
+    'a09fc7d6 L896: the poll ends, and its notice wakes the session');
+  assert.strictEqual(over([typed('go')], dockerWait, { background_tasks: poll('npm test > out.log 2>/dev/null; sleep 1') }).status, 0, 'a suite redirected to /dev/null is finite');
+  // the hold is kept for what it exists for
+  assert.strictEqual(over([typed('go')], dockerWait, { background_tasks: [] }).status, 2, 'nothing out: the wait is a stall');
+  assert.strictEqual(over([typed('go')], dockerWait, { background_tasks: poll('npm run dev 2>/dev/null') }).status, 2, 'a dev server never ends, /dev/null or not');
+  assert.strictEqual(over([typed('go')], dockerWait, { background_tasks: poll('bin/dev') }).status, 2, "a 'bin/dev' launcher is still a server");
+  const checkers = 'The Common checker is done. It found no serious problems. Still waiting on 5 of the 9 checkers.';
+  assert.strictEqual(over([typed('go')], checkers, { background_tasks: running }).status, 0, 'a2920886 L519');
+  assert.strictEqual(over([typed('go')], checkers, { background_tasks: [] }).status, 2, 'with no checker running it is a stall');
+  assert.strictEqual(over([typed('go')], 'Build is done. Not run: the e2e suite. Waiting on the verifier agent.', { background_tasks: running }).status, 2,
+    "a 'Not run:' item in its own sentence is still a step");
+});

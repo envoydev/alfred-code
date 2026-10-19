@@ -425,8 +425,10 @@ const nothingPending = (tail, closeTail) => NOTHING_PENDING_RE.test(tail) && !OW
 // none (a launch may sit before it), or a notice for work this transcript never launched: a hand-off session
 // inherits its predecessor's agents (measured: the orchestrator whose closes were blocked was one).
 // A background shell that serves or watches never completes, so it is no work whose notice will wake the session (review
-// B2; re-verify N-B2 added `dotnet run`, `docker compose up` without `-d`, `uvicorn --reload`, `hugo server`).
-const NEVER_ENDS_RE = /\b(?:dev|serve|server|start|watch|preview)\b|--(?:watch|reload)\b|\btail\s+-[fF]\b|\bdotnet\s+(?:run|watch)\b|\bdocker(?:-compose|\s+compose)\s+up\b(?![^;&|]*\s(?:-d|--detach)\b)|\b(?:uvicorn|gunicorn|hypercorn|nodemon|live-server|http-server)\b|\bflask\s+run\b|\brails\s+s(?:erver)?\b|\bhttp\.server\b/;
+// B2; re-verify N-B2 added `dotnet run`, `docker compose up` without `-d`, `uvicorn --reload`, `hugo server`). A `dev`
+// between two slashes is a path segment, never a server: `2>/dev/null` made a finite `docker info ... sleep 5` poll a
+// server, and its live wait was blocked as a done-close (audit 2026-10-20 C02, a09fc7d6); `bin/dev` stays one.
+const NEVER_ENDS_RE = /\b(?:(?<!\/)dev|dev(?!\/)|serve|server|start|watch|preview)\b|--(?:watch|reload)\b|\btail\s+-[fF]\b|\bdotnet\s+(?:run|watch)\b|\bdocker(?:-compose|\s+compose)\s+up\b(?![^;&|]*\s(?:-d|--detach)\b)|\b(?:uvicorn|gunicorn|hypercorn|nodemon|live-server|http-server)\b|\bflask\s+run\b|\brails\s+s(?:erver)?\b|\bhttp\.server\b/;
 // ...and the list of servers is never complete (re-verify 2 R2-B1: `runserver`, `port-forward`, `ngrok`, `node app.js`,
 // `docker run -p` each held the exemption open), so a background shell counts as live work only when it names work that
 // FINISHES - a test, build, lint, install, migration, deploy - and no server or watch shape. An unknown command is no live
@@ -566,8 +568,9 @@ const HANDBACK_RE = /\b(?:awaiting|waiting (?:on|for)) (?:you|your|the user'?s?)
 const APPROVAL_WORDS = /\b(?:approval|allow|go-?ahead|sign-?off|confirmation|decision|answer|input|reply|ok|okay|green light|call|choice|pick|permission|feedback|instructions?)\b/i;
 // forks, subagents and workers are the async agents by another name ('Waiting on the other 3 forks', 177c5743); a
 // seat's fixes and checks are its work too ('Still waiting on the libs/ui fixes and the cheat check', hooks review
-// 2026-10-16, 899bc83d)
-const WORK_WORDS = /\b(?:forks?|subagents?|workers?|designers?|diagnosers?|analy[sz]ers?|resolvers?|gatherers?|plans?|findings|digests?|agents?|reviews?|reviewers?|implementers?|verifiers?|auditors?|seats?|jobs?|runs?|builds?|tests?|suites?|ci|pipelines?|workflows?|deploys?|reports?|verdicts?|results?|notices?|watchers?|monitors?|packages?|fix(?:es)?|checks?|it|its|them|their)\b/i;
+// 2026-10-16, 899bc83d); a seat set's checkers and a background poll's daemon too ('Still waiting on 5 of the 9
+// checkers', 'waiting on the Docker daemon' over a running poll - audit 2026-10-20 C02, a2920886, a09fc7d6)
+const WORK_WORDS = /\b(?:forks?|subagents?|workers?|designers?|diagnosers?|analy[sz]ers?|resolvers?|gatherers?|plans?|findings|digests?|agents?|reviews?|reviewers?|implementers?|verifiers?|auditors?|seats?|jobs?|runs?|builds?|tests?|suites?|ci|pipelines?|workflows?|deploys?|reports?|verdicts?|results?|notices?|watchers?|monitors?|packages?|fix(?:es)?|checks?|checkers?|daemons?|it|its|them|their)\b/i;
 const RUNNING_ITEM_RE = /^(?:still (?:running|building|working|going))$/i;
 // A hand-back needs no pending word (re-verify 2 R2-B1): 'Push when you approve', 'I need your go-ahead', 'awaiting a
 // review from you', 'waiting for it to be approved', 'Confirm and I push' each hand the next act to a person. The
@@ -647,7 +650,10 @@ function ownWorkRunning(closeTail, tail) {
   const items = pendingItems(held);
   // only the hold line stood for 'pending' - with nothing else named, the close reports on the work in flight
   const holdOnly = held !== closeTail && items.length === 0;
-  const waits = items.length > 0 && items.every((m) => itemIsAWait(held, m) || GATED_STEP_RE.test(sentenceAt(held, m.index)));
+  // ...and an item whose own sentence names the wait it is held behind ('Not run: the integration suite, waiting on the
+  // Docker daemon' over a running poll - audit 2026-10-20 C02, a09fc7d6) is that wait's status, not a step of its own
+  const waitIn = (m) => items.some((o) => o !== m && itemIsAWait(held, o) && sentenceAt(held, o.index) === sentenceAt(held, m.index));
+  const waits = items.length > 0 && items.every((m) => itemIsAWait(held, m) || GATED_STEP_RE.test(sentenceAt(held, m.index)) || waitIn(m));
   if (!holdOnly && !waits) return false;
   const live = liveBackgroundWork();
   if (live === true) return true;
@@ -1896,9 +1902,11 @@ if (payload.hook_event_name === 'Stop') {
   // Under a live AUTO waiver a solve-task run asks nothing, so the ask branch's FLOW STOP FIELDS check never runs and a
   // waived close went out with none of Result / Progress / Leftovers, its headline contradicting its own leftovers (audit
   // 2026-10-10 C09, c6142301). The fields are the MODEL's to write - no person is asked - so this one holds a done close
-  // even with nobody at the terminal, once per Stop cycle (the chain marker).
+  // even with nobody at the terminal, once per Stop cycle (the chain marker). Not while work this session launched is
+  // still out: a progress note over a running seat ('Chain A's fix delta is done ... Waiting on chain B') is no close,
+  // and the fields belong to the close that comes after the notice (audit 2026-10-20 C02, 71d5428a, 3a8a1ee3).
   if (!continuation && autoLive(payload) && (DONE_RE.test(closeDone) || /\b(?:built|verified|implemented|pushed|merged|shipped)\b/i.test(closeDone))
-    && !fieldsStamped(prose) && solveTaskCycle()) {
+    && !fieldsStamped(prose) && solveTaskCycle() && liveBackgroundWork() !== true) {
     blockDetail('auto-fields', 'solve-task close under AUTO without Result / Progress / Leftovers');
     process.stderr.write('This solve-task close went out under the AUTO waiver without its THREE named fields. A waived stop still\n'
       + 'prints them, because the morning reader has nothing else: restate the close with `Result:` (one line plus the\n'
@@ -1918,6 +1926,14 @@ if (payload.hook_event_name === 'Stop') {
   // `auto-continue-cap` row (audit 2026-10-14 HK05, the user's ruling: 50); a new stamp counts from 0 again.
   const autoStamp = payload.agent_id ? null : stampOf(payload);
   if (autoStamp && autoStamp.live && autoStamp.session && /^AUTO\b/.test(autoStamp.first)) {
+    // A run waiting on work it launched itself is not idle: that work's completion notice re-invokes the session, so
+    // nobody needs to send it back. Held anyway, every such wait cost one full-context turn that only restated the
+    // wait - 9 in 71d5428a, 5 in 8a1fb350, ~3.4M tokens across the bundles (audit 2026-10-20 C02). The registry or the
+    // transcript decides (liveBackgroundWork), never the close's wording; an idle run with nothing out is still held.
+    if (liveBackgroundWork() === true) {
+      ledgerRow({ tool: '', mode: 'auto', kind: 'auto-wait', reason: 'auto-mode: the run waits on work this session launched - its notice wakes the run, not held' });
+      process.exit(0);
+    }
     const nth = countAutoContinue(autoStamp);
     if (nth >= AUTO_CONTINUE_CAP) {
       if (nth === AUTO_CONTINUE_CAP) {

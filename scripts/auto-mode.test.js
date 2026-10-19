@@ -496,6 +496,46 @@ test('auto-mode Stop: the run is sent back until its close deletes the stamp, an
     assert.strictEqual(stop('r3', { last_assistant_message: 'Report written to docs/report.md.' }).status, 0, 'a hand-written AUTO stamp is not held here');
 });
 
+// Audit 2026-10-20 C02 (71d5428a, 3a8a1ee3, 7ec6c7db, 8a1fb350): every wait for the run's own seats was sent back once,
+// and the retry only restated the wait - ~3.4M tokens. Work this session launched that is still out wakes the run itself.
+test('auto-mode Stop: a run waiting on its own background work passes, an idle run is still sent back (C02)', () =>
+{
+    const p = project();
+    const t = transcript();
+    const wait = 'Waiting on the category-order builder agent (tasks 3-5) this session started.';
+    const stop = (sid, extra = {}) => run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: sid, cwd: p.root, transcript_path: t,
+        last_assistant_message: wait, ...extra }, { CLAUDE_PROJECT_DIR: p.root });
+    autoStamp(p, 'w1');
+    const seat = [{ id: 't1', type: 'subagent', status: 'running', description: 'builder', agent_type: 'implementer' }];
+    const waits = stop('w1', { background_tasks: seat });
+    assert.strictEqual(waits.status, 0, `a wait on a running seat is not sent back: ${waits.stderr}`);
+    assert.ok(rows(p, 'w1').some((r) => r.kind === 'auto-wait' && r.mode === 'auto'), 'one auto-wait row, a record');
+    assert.strictEqual(stop('w1', { background_tasks: [{ id: 'b1', type: 'shell', status: 'running', command: 'for i in $(seq 1 36); do docker info >/dev/null 2>&1 && break; sleep 5; done' }] }).status, 0,
+        'a finite poll redirected to /dev/null is live work too');
+    // the case the hold exists for: nothing is out, so nobody will wake the run
+    const idle = stop('w1', { background_tasks: [] });
+    assert.strictEqual(idle.status, 2, 'an idle run with nothing out is sent back');
+    assert.match(idle.stderr, /auto-mode is on and its run is not closed/);
+    assert.strictEqual(stop('w1', { background_tasks: [{ id: 's', type: 'shell', status: 'running', command: 'npm run dev' }] }).status, 2, 'a dev server never wakes the run');
+    assert.strictEqual(stop('w1', { background_tasks: [{ id: 'd', type: 'subagent', status: 'completed' }] }).status, 2, 'a settled seat wakes nothing');
+});
+
+test('auto-mode Stop: the auto-fields hold skips a progress note over running work, and still holds the idle done close (C02)', () =>
+{
+    const p = project();
+    const t = transcript([{ type: 'user', entrypoint: 'cli', message: { role: 'user', content: '<command-name>/task-solve</command-name>' } }]);
+    const note = "Chain A's fix delta is done and verified. Waiting on chain B's fix agent.";
+    const stop = (sid, extra = {}) => run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: sid, cwd: p.root, transcript_path: t,
+        last_assistant_message: note, ...extra }, { CLAUDE_PROJECT_DIR: p.root });
+    autoStamp(p, 'f1');
+    const live = stop('f1', { background_tasks: [{ id: 't1', type: 'subagent', status: 'running' }] });
+    assert.strictEqual(live.status, 0, `71d5428a L1130: no fields owed mid-wait: ${live.stderr}`);
+    assert.ok(!rows(p, 'f1').some((r) => r.detail && r.detail.branch === 'auto-fields'), 'no auto-fields row');
+    const idle = stop('f1', { background_tasks: [] });
+    assert.strictEqual(idle.status, 2, 'with nothing running the done close owes its fields');
+    assert.match(idle.stderr, /THREE named fields/);
+});
+
 // Audit 2026-10-14 HK05 (the user's ruling): Claude Code's 8-continuation cap resets on every tool call, so a run that keeps
 // calling tools was sent back for as long as its stamp stood. The holds are counted per stamp beside the chain marker; the
 // 50th Stop passes with one auto-continue-cap row, and a new stamp counts from 0.
