@@ -2332,7 +2332,11 @@ if (payload.tool_name === 'AskUserQuestion') {
     // 284.5k (e6a68237). Mechanical, so it is fixed here: the fresh option whose question quotes no number within 20%
     // of the measured carry gets both numbers appended to its description.
     const FRESH_OPT_RE = /\b(?:fresh session|new session|fresh chat)\b/i;
-    const isFreshOpt = (o) => o && typeof o === 'object' && FRESH_OPT_RE.test(`${o.label || ''} ${o.description || ''}`);
+    // The option IS the hand-off when its label says so, or its description opens on the move; a description that only
+    // mentions one ('runs the fresh-session self-check') is another option, which took the numbers line at 80k (audit
+    // 2026-10-20 C07, 8f130789).
+    const FRESH_DESC_RE = /^\s*(?:resume|start|continue|run|open|move|hand)\b[^.]{0,40}\b(?:fresh session|new session|fresh chat)\b/i;
+    const isFreshOpt = (o) => o && typeof o === 'object' && (FRESH_OPT_RE.test(String(o.label || '')) || FRESH_DESC_RE.test(String(o.description || '')));
     let numbers = null;
     if (!FRESH_OFF && questions.some((q) => q && Array.isArray(q.options) && q.options.some(isFreshOpt))) {
       const u = (() => { const l = lastAssistantMessage(); return (l && l.contextUsage) || null; })();
@@ -2342,7 +2346,8 @@ if (payload.tool_name === 'AskUserQuestion') {
       const near = (n) => Math.abs(n - ctxNow) <= ctxNow * 0.2;
       const stale = questions.some((q) => q && Array.isArray(q.options) && q.options.some(isFreshOpt)
         && !quotes([q.question, ...q.options.map((o) => `${(o && o.label) || ''} ${(o && o.description) || ''}`)].join(' ')).some(near));
-      if (ctxNow > 0 && stale) numbers = { ctx: ctxNow, floor: coldFloor() };
+      // ...and only where a resume recovers something: at a carry near the cold floor the numbers argue for nothing (C07)
+      if (ctxNow > 0 && stale && worthResuming(ctxNow)) numbers = { ctx: ctxNow, floor: coldFloor() };
     }
     // 8. TYPE IT INTO OTHER (OTHER_RE, above).
     const typeIntoOther = questions.some((q) => q && Array.isArray(q.options) && q.options.some((o) => o && OTHER_RE.test(`${o.label || ''} ${o.description || ''}`)));

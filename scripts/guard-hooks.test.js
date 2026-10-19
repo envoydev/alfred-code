@@ -1444,7 +1444,8 @@ test('guard-stop-contract: the AskUserQuestion branch injects its notes, and fix
   // the answer); the ask's own house voice and fresh-session numbers are FIXED in place (`updatedInput`, the
   // 2026-10-17 usage audit), a mechanical fix beside a reason it cannot fix still denied once.
   const logDir = fs.mkdtempSync(path.join(TMP, 'asklog-'));
-  const hot = transcript('ask-hot', [assistantRow('h1', 'ok', { cache_read_input_tokens: 900000 })]);
+  // a first message at a real cold floor: numbers go only where a resume recovers something (audit 2026-10-20 C07)
+  const hot = transcript('ask-hot', [assistantRow('h0', 'ok', { cache_creation_input_tokens: 90000 }), assistantRow('h1', 'ok', { cache_read_input_tokens: 900000 })]);
   const cold = transcript('ask-cold', [
     { type: 'user', message: { content: 'clean up the branch' } },
     { type: 'assistant', message: { id: 'c1', content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'git status --porcelain' } }], usage: { cache_read_input_tokens: 900 } } },
@@ -4548,4 +4549,25 @@ test('deep review: guard-unapproved-dispatch passes a first dispatch with no Exe
     go(tp('seat', []), { agent_id: 'seat-1' });
     assert.deepStrictEqual(rows(), [], 'no probe row');
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+// Audit 2026-10-20 C07 (8f130789 L68): an ask whose options only MENTIONED a fresh session ('noted for a fresh-session run')
+// was read as carrying the hand-off, and at ~80k - its own cold floor - got the numbers line on 'Current session only'.
+test('guard-stop-contract: only an option that IS the fresh-session hand-off takes the numbers, and only where a resume recovers something (C07)', () => {
+  const logDir = fs.mkdtempSync(path.join(TMP, 'c07-'));
+  const ask = (tp, questions) => runIn('guard-stop-contract.js',
+    { tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', transcript_path: tp, tool_input: { questions } },
+    { env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: logDir } });
+  const updOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.updatedInput || null; } catch { return null; } };
+  const hot = transcript('c07-hot', [assistantRow('f1', 'ok', { cache_creation_input_tokens: 90000 }), assistantRow('f2', 'ok', { cache_read_input_tokens: 900000 })]);
+  const mentions = [{ question: 'Which scope?', options: [{ label: 'Current session only (Recommended)', description: 'noted for a fresh-session run later' }, { label: 'All sessions', description: 'runs the fresh-session self-check' }] }];
+  const r = ask(hot, mentions);
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(!updOf(r) || !JSON.stringify(updOf(r)).includes('Measured now'), 'an option that only mentions a fresh session is not the hand-off');
+  const desc = ask(hot, [{ question: 'Next?', options: [{ label: 'Hand off (Recommended)', description: 'Resume in a fresh session from the plan file' }, { label: 'Continue', description: 'here' }] }]);
+  assert.match(JSON.stringify(updOf(desc)), /Measured now: ~900k/, 'a description that opens on the move is the hand-off');
+  const near = transcript('c07-near', [assistantRow('n1', 'ok', { cache_creation_input_tokens: 78000 }), assistantRow('n2', 'ok', { cache_read_input_tokens: 80000 })]);
+  const atFloor = ask(near, [{ question: 'Next?', options: [{ label: 'Resume in a fresh session (Recommended)', description: 'start clean' }, { label: 'Continue', description: 'here' }] }]);
+  assert.equal(atFloor.status, 0, atFloor.stderr);
+  assert.ok(!updOf(atFloor) || !JSON.stringify(updOf(atFloor)).includes('Measured now'), 'at the cold floor no numbers are appended');
 });
