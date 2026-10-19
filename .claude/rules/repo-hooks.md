@@ -716,7 +716,7 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     offers a fresh session before a deliberate orchestration run (capture, loop, solve flow, review,
     guided walk; only the `alfred-code:` namespace is stripped, so another plugin's `other:task-solve` is not one) when the
     context is past the window trigger OR (slash route only) this session already
-    TYPED a run - a Skill call is a phase of a run in flight, and harness-written user rows are no turn. The size offer
+    TYPED a run (one that made two tool calls - a one-turn model-gate refusal is no run, audit 2026-10-20 C13) - a Skill call is a phase of a run in flight, and harness-written user rows are no turn. The size offer
     stands until an ask is answered after it (its file records the transcript size; a retry with no ask between was a
     soft gate), and a Skill call whose turn already ANSWERED an ask carrying the fresh-session choice (task-solve's stop
     asks) is not offered again - `freshAskAnsweredThisTurn`, one home in `fresh-session.js`, the stop contract's too. The
@@ -749,7 +749,14 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     injection was spent on a question answered from context (audit 2026-10-11 SD11, fdce35ae / 2ca8e8ee), so the gap
     also leaves the compaction route's one-shot hold marked `idle` (a compaction hold already standing is kept): a
     shell call that writes nothing passes it, and the first CHANGING call is denied with the numbers (`idle-hold`
-    rows), released exactly as the compaction hold is.
+    rows), released exactly as the compaction hold is. The compaction hold passes a shell call that writes nothing too,
+    idle or not (audit 2026-10-20 C12: a read-only `cat COMPACT-STATE` was the first post-compaction call and forced an
+    ask); a changing call after an `AskUserQuestion` whose answer came past the clock route's hours arms the idle hold
+    once per ask (C49: an ask answered next morning never reached the prompt-route offer). A compaction point more than
+    5% over the configured `autoCompactWindow`, in a session started after the settings file was written, makes
+    `autoCompactWindow()` return null - the hook says once that the window was not honoured and names `/autocompact`
+    (C10: a 350k value in `settings.local.json` compacted at 466.8k-469.7k in three sessions; cause unproven, the docs
+    name no local-scope rule).
   - `guard-cross-project-write.js` (PreToolUse `Write`/`Edit`/`MultiEdit`/`NotebookEdit` + the shell route) - a write outside
     the project root is blocked (file tools and shell routes: redirection, `tee`, in-place `sed`/`perl`,
     `cp`/`mv` destination, `rm`/`mkdir`/`chmod`, `git -C <other>` mutating, `cd <other>` then a write);
@@ -829,13 +836,16 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     333-char delta of the rule's section, which stays its home - audit 2026-10-14 RU06; it was 751 on every prompt), and
     again after a compaction, which drops that injection - only then since the deep hooks review 2026-10-16 (startup,
     resume and clear get it from the first prompt; 256 starts paid a second copy); the
-    Stop half blocks prose past 1800 chars when the user asked for no depth (the depth words are English; a prompt the
+    Stop half blocks prose past 1800 chars when the user asked for no depth - a mandated close passes (`mandatedClose()`:
+    the flows' Result / Progress / Leftovers lines, the update's `agents-md:` receipt, a capture REPORT's receipts) and so
+    does a turn after the user named `habits-explain-code` in their own words (audit 2026-10-20 C21) - (the depth words are English; a prompt the
     hook cannot read as English - `unreadable`, 30% or more of its letters outside ASCII - is logged as a `length-unread`
     probe row and never held, deep hooks review 2026-10-16), and blocks an em-dash (en-dash and horizontal
     bar too, `HOUSE_DASH`) in prose at any length. After the third consecutive short correction following a long answer it injects
     the format ask (injection only). A correction turn (short, after an answer, carrying a correction marker -
     the test the analyzer shares, `correction-turn-test`; the weak 'it should' inside a wh-clause - 'what type of a
-    ticket it should be' - is a request, audit 2026-10-11 SD14, session 5f9fec85) writes one `correction` probe row;
+    ticket it should be' - is a request, audit 2026-10-11 SD14, session 5f9fec85; so is 'why you' after an explain / tell me
+    verb and a 'not working' inside a because-clause, audit 2026-10-20 C20) writes one `correction` probe row;
     `ALFRED_CODE_CORRECTION_NUDGE` is seeded `log`, `inject` adds the memory-save line with the `ToolSearch select:`
     line that loads the deferred `memory_store` (M11) - the line names a project fact the correction states as a
     `reference` memory beside the `user_correction` (audit 2026-10-10, T5 cross-track), and a stated preference as
