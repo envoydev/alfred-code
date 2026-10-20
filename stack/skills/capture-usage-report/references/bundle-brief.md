@@ -12,7 +12,7 @@ author cannot see the run's conversation. Every `<...>` is replaced; nothing els
 
 ```text
 You write ONE session's usage-audit bundle: session <sid>, transcript <transcript path>, bundle folder
-<docs-path>/usage-report/<sid>/. The analyzer already ran: report-usage.md is the skeleton you fill, usage-<sid>.json
+<data root>/statistics/usage-report/<sid>/. The analyzer already ran: report-usage.md is the skeleton you fill, usage-<sid>.json
 the --json dump. Work offline. Write only report-usage.md - no commit, no other file.
 
 Read first, in full: <skill folder>/references/diagnosis-discipline.md (the check every authored row passes) and

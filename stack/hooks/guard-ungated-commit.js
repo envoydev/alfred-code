@@ -82,7 +82,7 @@ if (cursorOff) process.exit(0);
         // resolve, NOT join: an ABSOLUTE ALFRED_CODE_DOCS_PATH makes path.join('/a/b','/x/y')
         // '/a/b/x/y', so every ledger row landed in a doubled path that nothing reads (measured
         // across all ten guards). resolve honours an absolute value and still joins a relative one.
-        const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
+        const dir = (() => { try { return require('./layout.js').statsPath(root, ['hook-blocks']); } catch { return path.resolve(root, docsRootEnv(), 'hook-blocks'); } })();
         fs.mkdirSync(dir, { recursive: true });
         fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
           ts: new Date().toISOString(),
@@ -668,7 +668,11 @@ function ledgerSkillRan() {
   const logs = new Set();
   const own = envOf(process.env, 'INSTRUMENT_LOG');
   if (own) logs.add(path.resolve(own));
-  for (const base of [projectDir, payload.cwd, root].filter(Boolean)) logs.add(path.resolve(base, docsRoot, 'tools-usage', `${sid}.jsonl`));
+  // the data root's statistics/ (2.8.0), then the pre-2.8.0 docs root an older instrumentation copy still writes
+  for (const base of [projectDir, payload.cwd, root].filter(Boolean)) {
+    if (layout) logs.add(layout.statsPath(base, ['tools-usage', `${sid}.jsonl`]));
+    logs.add(path.resolve(base, docsRoot, 'tools-usage', `${sid}.jsonl`));
+  }
   for (const f of logs) {
     let text = '';
     try { text = fs.readFileSync(f, 'utf8'); } catch { continue; }

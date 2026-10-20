@@ -13,8 +13,8 @@
 // Usage:
 //   node scripts/analyze-usage.js <session.jsonl>                  # full report for one session
 //   node scripts/analyze-usage.js <projects-dir>                   # one-line rollup per session
-//   node scripts/analyze-usage.js <session.jsonl> --hook-log <f>   # join a <docs-path>/tools-usage/<sid>.jsonl ledger
-//   node scripts/analyze-usage.js <session.jsonl> --hook-blocks <d> # per-HOOK block counts from <docs-path>/hook-blocks/
+//   node scripts/analyze-usage.js <session.jsonl> --hook-log <f>   # join a <data root>/statistics/tools-usage/<sid>.jsonl ledger
+//   node scripts/analyze-usage.js <session.jsonl> --hook-blocks <d> # per-HOOK block counts from <data root>/statistics/hook-blocks/
 //   node scripts/analyze-usage.js <session.jsonl> --json           # machine-readable dump
 //   node scripts/analyze-usage.js <session.jsonl> --report-md      # markdown report skeleton (machine tables + FILL IN sections)
 //   node scripts/analyze-usage.js <s.jsonl> --from <ISO> --to <ISO> # window one run inside a long session
@@ -3303,7 +3303,7 @@ function computeAggregates(main, agents) {
 // ---------- hook-block ledger (which GUARD fired, not just which tool was denied) ----------
 // The transcript shows a denied tool call, never WHICH hook denied it, so the per-hook block rate -
 // the number that says whether a gate is earning its keep or misfiring - was unmeasurable. The
-// guard hooks now append one row per block to <docs-path>/hook-blocks/<session>.jsonl; this reads
+// guard hooks now append one row per block to <data root>/statistics/hook-blocks/<session>.jsonl; this reads
 // them. A block costs the denial text plus the retried turn, so the count IS the cost signal.
 // A DIRECTORY is the project's shared collection - one file per session - so reading all of it
 // attributes every other session's blocks to the one being analyzed (measured: a bundle's report
@@ -3428,17 +3428,25 @@ function turnCheckAdvice(sessionsDir, projectRoot, exclude = new Map()) {
     .filter(([id]) => id.split('@')[0] === CORE_PLUGIN).map(([, c]) => c && c.options && c.options.hook_profile).find((v) => typeof v === 'string' && v);
   const profile = hookProfile({ CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: process.env.CLAUDE_PLUGIN_OPTION_HOOK_PROFILE || stored || '' });
   const on = String(setting('TURN_CHECK') || '').trim() === '1' || profile === 'strict';
-  const blockDir = path.resolve(root, String(setting('DOCS_PATH') || '.alfred/docs'), 'hook-blocks');
+  // 2.8.0: the ledgers live in the data root's statistics/ (stack/hooks/layout.js); a session's file not moved there yet
+  // is read from the pre-2.8.0 docs root
+  const { dataRoot } = require(path.join(__dirname, '..', 'stack', 'hooks', 'layout.js'));
+  const blockDirs = [path.resolve(root, dataRoot({ ALFRED_CODE_DATA_PATH: setting('DATA_PATH') }), 'statistics', 'hook-blocks'),
+    path.resolve(root, String(setting('DOCS_PATH') || '.alfred/docs'), 'hook-blocks')];
   const newest = findSessionFiles(sessionsDir).filter((f) => !exclude.has(path.basename(f, '.jsonl')))
     .map((f) => ({ f, at: fs.statSync(f).mtimeMs })).sort((a, b) => b.at - a.at).slice(0, TURN_CHECK_WINDOW).map((x) => x.f);
   const doneGate = newDoneGate();
-  for (const f of newest) for (const d of readBlockLedger(blockDir, path.basename(f, '.jsonl'), f).doneGateRows || []) tallyDoneGate(doneGate, d, () => false);
+  for (const f of newest) {
+    const sid = path.basename(f, '.jsonl');
+    const blockDir = blockDirs.find((d) => fs.existsSync(path.join(d, `${sid}.jsonl`))) || blockDirs[0];
+    for (const d of readBlockLedger(blockDir, sid, f).doneGateRows || []) tallyDoneGate(doneGate, d, () => false);
+  }
   const unchecked = doneGate.skillLoaded + doneGate.inContext + doneGate.missed;
   // minimal switches the build check off whatever TURN_CHECK says, so the key it would advise does nothing
   const advise = !on && profile !== 'minimal' && unchecked >= TURN_CHECK_THRESHOLD;
   const row = advise ? `turn-check: advise - ${unchecked} done claims over an edit had nothing run after it in the newest ${newest.length} sessions `
     + `(threshold ${TURN_CHECK_THRESHOLD} per ${TURN_CHECK_WINDOW}): set ALFRED_CODE_TURN_CHECK=1 to run the scoped build check at Stop` : null;
-  return { sessions: newest.length, window: TURN_CHECK_WINDOW, threshold: TURN_CHECK_THRESHOLD, blockDir, doneGate, unchecked, on, profile, advise, row };
+  return { sessions: newest.length, window: TURN_CHECK_WINDOW, threshold: TURN_CHECK_THRESHOLD, blockDir: blockDirs[0], doneGate, unchecked, on, profile, advise, row };
 }
 
 // A root-cause row is the first red build or test run of a streak. The ledger cannot know what came

@@ -112,7 +112,7 @@ function stamps(root) {
 function blocks(root, session) {
   const out = {};
   try {
-    const p = path.resolve(root, docsRootEnv(), 'hook-blocks', `${session}.jsonl`);
+    const p = layout ? layout.findStats(root, ['hook-blocks', `${session}.jsonl`]) : path.resolve(root, docsRootEnv(), 'hook-blocks', `${session}.jsonl`);
     if (fs.statSync(p).size > 1024 * 1024) return out;
     for (const line of fs.readFileSync(p, 'utf8').split('\n')) {
       if (!line) continue;

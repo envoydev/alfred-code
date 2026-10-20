@@ -46,7 +46,7 @@ function run(root, payload, extraEnv)
 }
 const ledger = (root) =>
 {
-    const f = path.join(root, '.alfred', 'docs', 'hook-blocks', 'sess-1.jsonl');
+    const f = path.join(root, '.alfred', 'statistics', 'hook-blocks', 'sess-1.jsonl');
     return fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [];
 };
 
@@ -412,7 +412,7 @@ test('done gate: the row records the skill load, the project\'s test markers and
 // sends a red shell result passes silently and writes nothing.
 test('deep review: a red shell result writes no root-cause row and says nothing', () => {
     const root = project();
-    const dir = path.join(root, '.alfred', 'docs', 'hook-blocks');
+    const dir = path.join(root, '.alfred', 'statistics', 'hook-blocks');
     for (const [event, extra] of [['PostToolUseFailure', { error: 'Exit code 1\nnot ok 1 - cart total' }],
         ['PostToolUse', { tool_response: { stdout: 'not ok 1 - cart total\n1 failing', stderr: '' } }]])
     {

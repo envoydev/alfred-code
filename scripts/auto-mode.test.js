@@ -32,7 +32,7 @@ function project()
     // 2.8.0 layout: the stamp lives in <data root>/state/approvals/; `legacy` is the pre-2.8.0 flow/ one a 2.7.0 copy writes
     const approvals = path.join(root, '.alfred', 'state', 'approvals');
     fs.mkdirSync(approvals, { recursive: true });
-    return { root, gate: path.join(approvals, 'APPROVAL'), legacy: path.join(root, '.alfred', 'docs', 'flow', 'APPROVAL'), blocks: path.join(root, '.alfred', 'docs', 'hook-blocks') };
+    return { root, gate: path.join(approvals, 'APPROVAL'), legacy: path.join(root, '.alfred', 'docs', 'flow', 'APPROVAL'), blocks: path.join(root, '.alfred', 'statistics', 'hook-blocks') };
 }
 // An interactive transcript: the first message's context, then the newest one's.
 function transcript(rows = [], model = 'claude-opus-5-5', ctx = 30000)

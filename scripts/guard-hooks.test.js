@@ -51,15 +51,16 @@ for (const k of ['ALFRED_CODE_CONTEXT_WINDOW_DEFAULT', 'ALFRED_CODE_CONTEXT_WIND
 // instead of from the case (measured 2026-09-22: red on an installed checkout, green in CI, which
 // installs nothing).
 delete process.env.ALFRED_CODE_DOCS_PATH;
-// Every guard appends a block row to `<root>/<docs-path>/hook-blocks/`, where the root falls back
+// Every guard appends a block row to `<root>/<data root>/statistics/hook-blocks/`, where the root falls back
 // to the process cwd when CLAUDE_PROJECT_DIR is unset - so a suite run from this checkout forged
-// 4MB of field ledger into the repo's own `.alfred/docs/hook-blocks/` (measured 2026-09-07: 12,480
+// 4MB of field ledger into the repo's own `.alfred/docs/hook-blocks/` - `.alfred/statistics/hook-blocks/` since 2.8.0 (measured 2026-09-07: 12,480
 // rows in nosession.jsonl alone). Pin a scratch root for the whole run; the cases that exercise the
 // ledger, or a gate that reads a receipt under the root, point it at a fixture of their own.
 process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
 // Three cases below deliberately anchor on THIS repo (a real project does not live in the temp
 // tree - that is what proves the containment rule, and the cwd fallback), so the root pin cannot
-// help them. They redirect the LEDGER instead: an absolute docs root none of those guards reads.
+// help them. They redirect the LEDGER instead: an absolute docs root and data root (the block rows' home since 2.8.0)
+// none of those guards reads.
 const LEDGER = path.join(TMP, 'ledger');
 
 const assistantRow = (id, text, usage) => ({ type: 'assistant', message: { id, content: [{ type: 'text', text }], usage: usage || { cache_read_input_tokens: 10 } } });
@@ -570,7 +571,7 @@ test('guard-read-whole-file: the Read matcher gates whole-file shapes and the cu
 });
 
 test('guard-read-whole-file: runtime dumps, file redirects, multi-file cats and unresolvable paths on Bash', () => {
-  const noRoot = { ...process.env, CLAUDE_PROJECT_DIR: '', ALFRED_CODE_DOCS_PATH: LEDGER };
+  const noRoot = { ...process.env, CLAUDE_PROJECT_DIR: '', ALFRED_CODE_DOCS_PATH: LEDGER, ALFRED_CODE_DATA_PATH: LEDGER };
   assert.equal(bash('guard-read-whole-file.js', `node -e "console.log(require('fs').readFileSync('${BIG}','utf8'))"`), 2, 'node readFileSync dump');
   assert.equal(bash('guard-read-whole-file.js', `ruby -e "puts File.read('${BIG}')"`), 2, 'ruby File.read dump');
   assert.equal(bash('guard-read-whole-file.js', `cat ${BIG} > ${path.join(TMP, 'copy.js')}`), 0, 'a redirect into a file is a copy, not a dump');
@@ -1104,7 +1105,7 @@ test('guard-catastrophic-rm: a SQL DROP or an EF database drop is counted, never
   const sid = 'probe-sql';
   const rm = (command) => runIn('guard-catastrophic-rm.js', { session_id: sid, tool_name: 'Bash', tool_input: { command } },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
-  const ledger = path.join(dir, '.alfred', 'docs', 'hook-blocks', `${sid}.jsonl`);
+  const ledger = path.join(dir, '.alfred', 'statistics', 'hook-blocks', `${sid}.jsonl`);
   const rows = () => (fs.existsSync(ledger) ? fs.readFileSync(ledger, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
 
   assert.equal(rm('psql -c "DROP TABLE users"').status, 0, 'a probe never denies');
@@ -1670,7 +1671,8 @@ test('instrument-tool-usage: off by default, one JSONL row per call when switche
   const root = fs.mkdtempSync(path.join(TMP, 'inst-'));
   assert.equal(inst({ tool_name: 'Grep', tool_input: { pattern: 'x' }, session_id: 'sid/../up' },
     { ALFRED_CODE_INSTRUMENT: '1', ALFRED_CODE_INSTRUMENT_LOG: '', CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: 'docs' }), 0);
-  assert.deepEqual(fs.readdirSync(path.join(root, 'docs', 'tools-usage')), ['sid..up.jsonl'], 'default ledger under the docs root, session id sanitized');
+  assert.deepEqual(fs.readdirSync(path.join(root, '.alfred', 'statistics', 'tools-usage')), ['sid..up.jsonl'], 'default ledger under the data root\'s statistics/, session id sanitized');
+  assert.ok(!fs.existsSync(path.join(root, 'docs', 'tools-usage')), 'never under the docs root any more');
 });
 
 // Audit 2026-10-08 row 29: a dispatch description, a search pattern and a Bash description are the model's own text, and
@@ -1792,7 +1794,7 @@ test('guard-unapproved-dispatch: the caller and definition shapes need a code na
   assert.equal(disp('Explore', 'subclasses of the BaseController'), 2, 'subclasses of a CamelCase type');
   assert.equal(disp('Explore', 'find the class Order'), 2, 'a kind word before a capitalised name');
   assert.equal(disp('Explore', 'who calls Foo'), 2, 'a capitalised name after any shape');
-  const rows = () => fs.readFileSync(path.join(root, '.alfred', 'docs', 'hook-blocks', 'disp-branch.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  const rows = () => fs.readFileSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', 'disp-branch.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   assert.deepStrictEqual(rows().at(-1).detail, { branch: 'symbol-question', asked: 'who calls Foo' });
   assert.equal(disp('alfred-code:aspnet-implementer', 'build it'), 2);
   assert.equal(rows().at(-1).detail.branch, 'implementer-unapproved');
@@ -1808,7 +1810,7 @@ test('guard-unapproved-dispatch: the caller and definition shapes need a code na
     { tool_name: 'Agent', cwd: cwdRoot, session_id: 'disp-cwd', tool_input: { subagent_type: seat, prompt: 'build it' } }, { env: noDir }).status;
   assert.equal(stamped('alfred-code:aspnet-implementer'), 0, 'the payload cwd holds the approval');
   assert.equal(stamped('general-purpose'), 2, 'and the stamp gates a generic seat there');
-  assert.equal(JSON.parse(fs.readFileSync(path.join(cwdRoot, '.alfred', 'docs', 'hook-blocks', 'disp-cwd.jsonl'), 'utf8').trim()).detail.branch, 'generic-while-stamped');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(cwdRoot, '.alfred', 'statistics', 'hook-blocks', 'disp-cwd.jsonl'), 'utf8').trim()).detail.branch, 'generic-while-stamped');
 });
 
 // The built-in Explore and Plan load none of the project's rules, so alfred-security's untrusted-content
@@ -1992,7 +1994,7 @@ test('guard-cross-project-write: the session\'s own scratch and the account dir 
   // root - the fixtures above deliberately do, which is what proves the containment rule.
   const repoRoot = path.join(__dirname, '..');
   const inRepo = (payload) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
-    { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repoRoot, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ALFRED_CODE_DOCS_PATH: LEDGER } }).status;
+    { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repoRoot, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ALFRED_CODE_DOCS_PATH: LEDGER, ALFRED_CODE_DATA_PATH: LEDGER } }).status;
   const w = (f) => inRepo({ tool_name: 'Write', tool_input: { file_path: f } });
 
   assert.equal(w(path.join(os.tmpdir(), 'scratch', 'notes.md')), 0, 'the harness scratchpad');
@@ -2335,7 +2337,7 @@ test('guard hooks record every block, and nothing on a pass', () => {
     env: { ...process.env, CLAUDE_PROJECT_DIR: proj },
   }).status;
   const ledger = () => {
-    const f = path.join(proj, '.alfred', 'docs', 'hook-blocks', 'sess1.jsonl');
+    const f = path.join(proj, '.alfred', 'statistics', 'hook-blocks', 'sess1.jsonl');
     return fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
   };
 
@@ -2362,8 +2364,8 @@ test('guard hooks record every block, and nothing on a pass', () => {
 test('block telemetry never interferes with the gate', () => {
   // An unwritable docs root must not turn a block into a pass, nor a pass into an error.
   const proj = fs.mkdtempSync(path.join(TMP, 'blockro-'));
-  fs.mkdirSync(path.join(proj, '.alfred', 'docs'), { recursive: true });
-  fs.writeFileSync(path.join(proj, '.alfred', 'docs', 'hook-blocks'), 'not a directory');
+  fs.mkdirSync(path.join(proj, '.alfred', 'statistics'), { recursive: true });
+  fs.writeFileSync(path.join(proj, '.alfred', 'statistics', 'hook-blocks'), 'not a directory');
   const run = (cmd) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-catastrophic-rm.js')], {
     input: JSON.stringify({ session_id: 's', tool_name: 'Bash', tool_input: { command: cmd } }),
     encoding: 'utf8',
@@ -2424,7 +2426,7 @@ test('guard-cross-project-write: space account dirs, ~ in the allowance, and unr
   const home = os.homedir();
   const repoRoot = path.join(__dirname, '..');
   const inRepo = (payload, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
-    { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repoRoot, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ALFRED_CODE_DOCS_PATH: LEDGER, ...env } }).status;
+    { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repoRoot, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ALFRED_CODE_DOCS_PATH: LEDGER, ALFRED_CODE_DATA_PATH: LEDGER, ...env } }).status;
   // An isolated runner points HOME inside os.tmpdir(), where every path is session scratch the guard allows - the
   // 'outside HOME' cases below then cannot block, so they run only on a real home (audit 2026-10-08: 55/56 isolated).
   const tmpReal = fs.realpathSync(os.tmpdir());
@@ -3797,7 +3799,7 @@ test('guard-stop-contract: the three block shapes the audit reproduced', () => {
     // 3. The ledger row names the BRANCH and what matched. A block whose cause cannot be
     //    reconstructed cannot be tuned - this audit hit that wall three times.
     // the H9 `done-close-exempt` probe rows (audit 2026-10-20) sit beside the blocks - a block row is what this counts
-    const rows = fs.readFileSync(path.join(ledger, 'docs', 'hook-blocks', 'shapes.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((r) => r.mode !== 'probe');
+    const rows = fs.readFileSync(path.join(ledger, '.alfred', 'statistics', 'hook-blocks', 'shapes.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((r) => r.mode !== 'probe');
     assert.deepEqual(rows.map((r) => r.detail.branch), ['prose-ask', 'prose-ask', 'prose-ask', 'done-close'], 'each block names its branch');
     assert.match(rows[0].detail.matched, /your call/, 'and the substring that fired it');
     assert.match(rows[3].detail.matched, /done \+ next step/, '... both halves, for the two-part branch');
@@ -4200,7 +4202,7 @@ test('guard-config-protection: a block writes one ledger row naming the hook', (
   fs.writeFileSync(path.join(root, '.editorconfig'), 'root = true');
   withProject(root, {}, () => {
     run('guard-config-protection.js', { session_id: 's1', tool_name: 'Write', cwd: root, tool_input: { file_path: path.join(root, '.editorconfig'), content: '' } });
-    const rows = fs.readFileSync(path.join(root, '.alfred/docs/hook-blocks/s1.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
+    const rows = fs.readFileSync(path.join(root, '.alfred/statistics/hook-blocks/s1.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
     assert.strictEqual(rows.length, 1);
     assert.strictEqual(rows[0].hook, 'guard-config-protection.js');
     assert.deepStrictEqual(rows[0].detail, { file: '.editorconfig', why: 'it is a lint / format / analyzer config' });
@@ -4272,7 +4274,7 @@ test('guard-ungated-commit: no receipt opens the staged scan, and the block name
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
   assert.equal(r.status, 2, 'the same waiver does not open the scan');
   assert.match(r.stderr, /n4\.ts:2 - a debugger statement/, 'file and line named');
-  const ledger = path.join(dir, '.alfred', 'docs', 'hook-blocks', 'scan-sess.jsonl');
+  const ledger = path.join(dir, '.alfred', 'statistics', 'hook-blocks', 'scan-sess.jsonl');
   const row = JSON.parse(fs.readFileSync(ledger, 'utf8').trim().split('\n').pop());
   assert.deepEqual(row.detail, { branch: 'staged-scan', count: 1 }, 'the block row carries the scan branch');
 });
@@ -4351,7 +4353,7 @@ test('guard-stop-contract: a turn that ends on a tool call logs one skip-tool-en
     env: { ...process.env, CLAUDE_PROJECT_DIR: dir },
   });
   assert.equal(r.status, 0);
-  const rows = fs.readFileSync(path.join(dir, '.alfred', 'docs', 'hook-blocks', 'tool-end-sess.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  const rows = fs.readFileSync(path.join(dir, '.alfred', 'statistics', 'hook-blocks', 'tool-end-sess.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   assert.equal(rows.length, 1);
   assert.equal(rows[0].mode, 'skip-tool-end');
   assert.equal(rows[0].hook, 'guard-stop-contract.js');
@@ -4413,7 +4415,7 @@ test('guard-stop-contract: a credential in the blocked text never reaches the le
     { hook_event_name: 'Stop', session_id: 'r6', cwd: ledger, last_assistant_message: `The token is ${FAKE_TOKEN} - should I rotate it or keep ${FAKE_TOKEN}?` },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: ledger, ALFRED_CODE_DOCS_PATH: path.join(ledger, 'docs'), ALFRED_CODE_HOOK_LOG_DIR: logDir } });
   assert.equal(r.status, 2, 'the close ends on a question and is held');
-  const rows = fs.readFileSync(path.join(ledger, 'docs', 'hook-blocks', 'r6.jsonl'), 'utf8');
+  const rows = fs.readFileSync(path.join(ledger, '.alfred', 'statistics', 'hook-blocks', 'r6.jsonl'), 'utf8');
   assert.ok(!rows.includes(FAKE_TOKEN), 'the ledger row carries no value');
   assert.match(rows, /<redacted>/, 'it says one was there');
   assert.ok(!fs.readFileSync(path.join(logDir, 'guard-stop-contract.log'), 'utf8').includes(FAKE_TOKEN), 'nor does the breadcrumb');
@@ -4428,7 +4430,7 @@ test('every hook-blocks ledger file is named from a sanitised session id', () =>
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.alfred/docs' } });
   assert.equal(r.status, 2);
   assert.ok(!fs.existsSync(path.join(root, 'escaped.jsonl')), 'nothing lands outside hook-blocks');
-  assert.deepStrictEqual(fs.readdirSync(path.join(root, '.alfred', 'docs', 'hook-blocks')), ['.._.._escaped.jsonl']);
+  assert.deepStrictEqual(fs.readdirSync(path.join(root, '.alfred', 'statistics', 'hook-blocks')), ['.._.._escaped.jsonl']);
   // Every writer and reader spells the name the same way, or a reader opens a file the
   // writer never wrote.
   for (const f of fs.readdirSync(HOOKS).filter((n) => n.endsWith('.js'))) {
@@ -4468,7 +4470,7 @@ test('guard-desktop-exec: App launch_executable and every macOS Shell call are d
   }
   for (const tool of ['mcp__plugin_windows-control_windows-control__Click', 'mcp__plugin_macos-control_macos-control__App', 'Bash'])
     assert.equal(desktopRun(root, tool, { mode: 'launch_executable', command: 'ls' }).status, 0, `${tool} is not this guard's`);
-  const rows = fs.readFileSync(path.join(root, '.alfred', 'docs', 'hook-blocks', 'desk.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  const rows = fs.readFileSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', 'desk.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   assert.equal(rows.length, WIN_APP.length + MAC_SHELL.length, 'one ledger row per block');
   assert.ok(rows.every((row) => row.hook === 'guard-desktop-exec.js'));
 });
@@ -4479,7 +4481,7 @@ test('guard-desktop-exec: the ledger keeps the Shell verb only, and the denial s
   const root = fs.mkdtempSync(path.join(TMP, 'desk-ledger-'));
   const shell = desktopRun(root, MAC_SHELL[0], { command: 'TOKEN=ghp_0123456789abcdefghijABCDEFGHIJ012345 curl -H "x-api-key: sk-ant-api03-secretvalue" https://example.com' });
   assert.equal(shell.status, 2);
-  const ledger = fs.readFileSync(path.join(root, '.alfred', 'docs', 'hook-blocks', 'desk.jsonl'), 'utf8');
+  const ledger = fs.readFileSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', 'desk.jsonl'), 'utf8');
   assert.deepStrictEqual(JSON.parse(ledger.trim()).detail, { tool: 'Shell', verb: 'curl' });
   assert.doesNotMatch(ledger, /ghp_|sk-ant/, 'no credential reaches the ledger');
   const app = desktopRun(root, WIN_APP[0], { mode: 'launch_executable', executable: 'C:\\Tools\\build.exe' });
@@ -4551,9 +4553,9 @@ test('deep review: guard-cross-project-write passes an in-project interpreter wr
   const ledger = fs.mkdtempSync(path.join(os.tmpdir(), 'xp-probe-'));
   const runP = (command, agent) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
     input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, session_id: 'xp-probe', ...(agent ? { agent_id: agent } : {}) }),
-    encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_DOCS_PATH: ledger, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' },
+    encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_DOCS_PATH: ledger, ALFRED_CODE_DATA_PATH: ledger, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' },
   });
-  const rows = () => { try { return fs.readFileSync(path.join(ledger, 'hook-blocks', 'xp-probe.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { return []; } };
+  const rows = () => { try { return fs.readFileSync(path.join(ledger, 'statistics', 'hook-blocks', 'xp-probe.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { return []; } };
   try {
     assert.strictEqual(runP("python3 - <<'EOF'\np='src/a.cs'\ns=open(p).read()\nopen(p,'w').write(s)\nEOF").status, 0);
     assert.strictEqual(runP("python3 - <<'EOF'\nfrom pathlib import Path\nfor f in files: Path(f).write_text('x')\nEOF", 'seat-1').status, 0);
@@ -4574,9 +4576,9 @@ test('deep review: guard-unapproved-dispatch passes a first dispatch with no Exe
   const dispatch = (id) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'Agent', input: { subagent_type: 'Explore', prompt: 'map the folders' } }] } });
   const go = (transcript, extra = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-unapproved-dispatch.js')], {
     input: JSON.stringify({ tool_name: 'Agent', tool_input: { subagent_type: 'Explore', prompt: 'map the folders' }, session_id: 'exec', tool_use_id: 'toolu_now', transcript_path: transcript, ...extra }),
-    encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: ledger },
+    encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: ledger, ALFRED_CODE_DATA_PATH: ledger },
   });
-  const rows = () => { try { return fs.readFileSync(path.join(ledger, 'hook-blocks', 'exec.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { return []; } };
+  const rows = () => { try { return fs.readFileSync(path.join(ledger, 'statistics', 'hook-blocks', 'exec.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { return []; } };
   try {
     assert.strictEqual(go(tp('bare', [{ type: 'user', message: { role: 'user', content: 'audit the docs' } }, dispatch('toolu_now')])).status, 0, 'the Explore brief still passes');
     go(tp('with-verdict', [{ type: 'assistant', message: { content: [{ type: 'text', text: 'Execution: route direct - mode parallel seats: 3 - model session - x' }] } }, dispatch('toolu_now')]));
@@ -4765,7 +4767,7 @@ test('guard-cross-project-write: PowerShell backslash paths, and the block row n
   assert.equal(xp({ tool_name: 'PowerShell', session_id: sid, tool_input: { command: `Set-Content -Path ..\\${sib}\\x.txt -Value hi` } }), 2, 'a PowerShell ..\\ path into a sibling');
   assert.equal(xp({ tool_name: 'PowerShell', session_id: sid, tool_input: { command: 'Set-Content -Path .\\src\\x.txt -Value hi' } }), 0, 'a .\\ path stays home');
   assert.equal(xp({ tool_name: 'Write', session_id: sid, tool_input: { file_path: path.join(XP_OTHER, 'y.txt') } }), 2);
-  const rows = fs.readFileSync(path.join(XP_ROOT, '.alfred', 'docs', 'hook-blocks', `${sid}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  const rows = fs.readFileSync(path.join(XP_ROOT, '.alfred', 'statistics', 'hook-blocks', `${sid}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   assert.deepStrictEqual(rows.map((r) => r.detail && r.detail.branch), ['shell-write', 'file-tool']);
 });
 
@@ -4809,7 +4811,7 @@ test('guard-stop-contract: the ask-fixed row waits for the call\'s result, and a
     return runIn('guard-stop-contract.js', { tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', session_id: 'af', tool_use_id: id, transcript_path: tp, tool_input: { questions } }, env);
   };
   const result = (id, content) => { rows.push({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content }] } }); flush(); };
-  const fixedRows = () => { try { return fs.readFileSync(path.join(root, '.alfred', 'docs', 'hook-blocks', 'af.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((r) => r.kind === 'ask-fixed'); } catch { return []; } };
+  const fixedRows = () => { try { return fs.readFileSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', 'af.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((r) => r.kind === 'ask-fixed'); } catch { return []; } };
   const r1 = slip('q1');
   assert.equal(r1.status, 0, 'fixed in place');
   assert.deepStrictEqual(fixedRows(), [], 'no row while the call has no result');

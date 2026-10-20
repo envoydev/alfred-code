@@ -398,7 +398,7 @@ test('in a repo never set up the protective guards stay live and write nothing; 
         fs.mkdirSync(path.join(dir, '.claude'));
         fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), '');
         assert.strictEqual(fireIn('guard-catastrophic-rm.js', dir, { command: 'rm -rf ~' }).status, 2);
-        assert.ok(fs.existsSync(path.join(dir, '.alfred', 'docs', 'hook-blocks', 's.jsonl')), 'a set-up repo records the block');
+        assert.ok(fs.existsSync(path.join(dir, '.alfred', 'statistics', 'hook-blocks', 's.jsonl')), 'a set-up repo records the block');
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
@@ -517,7 +517,7 @@ test('the layer-table gate runs the prelude gates and leaves a block row where t
         // Launched as the plugin launches it: CLAUDE_PLUGIN_ROOT set, which is what GATE 4's neverSetUp reads.
         const env = { PATH: process.env.PATH, HOME: root, CLAUDE_CONFIG_DIR: path.join(root, 'cfg'), CLAUDE_PROJECT_DIR: root, CLAUDE_PLUGIN_ROOT: path.join(__dirname, '..'), ALFRED_CODE_LAYER_GATE_WAIT_MS: '0' };
         const run = (extra = {}, input = ask) => spawnSync(process.execPath, [hook], { input: JSON.stringify(input), encoding: 'utf8', env: { ...env, ...extra } });
-        const ledger = path.join(root, '.alfred', 'docs', 'hook-blocks', 'lg.jsonl');
+        const ledger = path.join(root, '.alfred', 'statistics', 'hook-blocks', 'lg.jsonl');
         assert.strictEqual(run().status, 2, 'a never-set-up repo keeps the gate - it serves setup');
         assert.ok(!fs.existsSync(path.join(root, '.alfred')), 'and is written nothing (R54)');
         fs.mkdirSync(path.join(root, '.claude'), { recursive: true });

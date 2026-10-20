@@ -104,7 +104,7 @@ test('SD12 ae38c08f#3 ae38c08f#6: the batch also closes past the fresh-session t
     const t = skill('capture-usage-report');
     assert.match(t, /\*\*The batch is BOUNDED - at 12 bundles, or at the first bundle boundary past this install's fresh-session trigger, whichever comes first/);
     assert.doesNotMatch(t, /the biggest scope marked Recommended is what forces compactions/, 'the compaction rationale alone does not cover a 1M window');
-    assert.match(t, /`node <snapshot>\/stack\/skills\/capture-usage-report\/scripts\/bundle-gate\.js --done <bundles closed this run> --summary <docs-path>\/usage-report`/);
+    assert.match(t, /`node <snapshot>\/stack\/skills\/capture-usage-report\/scripts\/bundle-gate\.js --done <bundles closed this run> --summary <data root>\/statistics\/usage-report`/);
     assert.ok(fs.existsSync(path.join(ROOT, 'stack/skills/capture-usage-report/scripts/bundle-gate.js')), 'the gate the body names ships in the skill folder');
     assert.match(t, /\*\*Its bundle list is rewritten after EACH bundle, by the gate call that ends step 4\*\*/);
     assert.match(t, /keep the two markers and the rows between them as the gate wrote them, never hand-write those rows/);

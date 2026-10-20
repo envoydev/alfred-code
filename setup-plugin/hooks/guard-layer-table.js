@@ -65,13 +65,16 @@ try { cursorOff = require(PRELUDE).cursorStandDown(payload, __filename); } catch
 if (cursorOff) process.exit(0);
 if (payload.tool_name !== 'AskUserQuestion' || !payload.transcript_path) process.exit(0);
 
-// One block row in the hook-blocks ledger, so this gate's block RATE is measured like every other guard's.
+// One block row in the hook-blocks ledger, so this gate's block RATE is measured like every other guard's - in the data
+// root's statistics/ (2.8.0, stack/hooks/layout.js; this plugin's hooks ship apart from it, so the reader is inline).
 // Best-effort; a repo never set up gets none.
+// data-root-reader (meta/shared-rules.json): ALFRED_CODE_DATA_PATH, relative to the project, else .alfred.
+const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '') || '.alfred';
 function blockRow(reason, table) {
   if (unsetRepo) return;
   try {
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-    const dir = path.resolve(root, envOf(process.env, 'DOCS_PATH') || '.alfred/docs', 'hook-blocks');
+    const dir = path.resolve(root, dataRoot(), 'statistics', 'hook-blocks');
     fs.mkdirSync(dir, { recursive: true });
     fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
       ts: new Date().toISOString(), hook: path.basename(__filename), event: payload.hook_event_name || 'PreToolUse',

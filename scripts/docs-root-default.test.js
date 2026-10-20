@@ -77,7 +77,7 @@ test('every docs-root fallback in code spells .alfred/docs, and the old root app
     assert.deepStrictEqual(stray, [], 'the old root spelled as a value outside the LEGACY_DOCS_ROOT constant');
 });
 
-test('a hook with no docs path set writes its ledger under .alfred/docs', () =>
+test('a hook with no docs path set writes its ledger under .alfred/statistics', () =>
 {
     const root = repo();
     fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), 'source: x\n');
@@ -88,7 +88,7 @@ test('a hook with no docs path set writes its ledger under .alfred/docs', () =>
         env, cwd: root, encoding: 'utf8',
     });
     assert.strictEqual(res.status, 2, res.stderr);
-    assert.ok(fs.existsSync(path.join(root, '.alfred', 'docs', 'hook-blocks', 'dflt.jsonl')), 'the block row lands under the new root');
+    assert.ok(fs.existsSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', 'dflt.jsonl')), 'the block row lands under the data root\'s statistics/');
     assert.ok(!fs.existsSync(path.join(root, '.claude', 'docs')), 'nothing is written under .claude/docs');
 });
 

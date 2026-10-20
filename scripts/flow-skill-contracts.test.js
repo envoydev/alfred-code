@@ -97,7 +97,7 @@ test('C1: an update over the 2.1.3 git-mode file rewrites it, a re-run changes n
 test('C1: the usage audit keys its transcript copy on git check-ignore and asks before a committable copy', () =>
 {
     const skill = read('stack/skills/capture-usage-report/SKILL.md');
-    assert.match(flat(skill), /git check-ignore -q "<docs-path>\/usage-report\/<session-id>\/x\.jsonl"/);
+    assert.match(flat(skill), /git check-ignore -q "<data root>\/statistics\/usage-report\/<session-id>\/x\.jsonl"/);
     const ask = asks(skill).find((a) => a.options.some((o) => /raw transcripts/i.test(o)));
     assert.ok(ask, 'the consent is an ask template');
     assert.deepStrictEqual(ask.options, ['Report and --json dumps only (Recommended)', 'Copy the raw transcripts too']);

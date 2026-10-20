@@ -1378,7 +1378,7 @@ if (payload.cwd != null && (typeof payload.cwd !== 'string' || !payload.cwd)) de
         // resolve, NOT join: an ABSOLUTE ALFRED_CODE_DOCS_PATH makes path.join('/a/b','/x/y')
         // '/a/b/x/y', so every ledger row landed in a doubled path that nothing reads (measured
         // across all ten guards). resolve honours an absolute value and still joins a relative one.
-        const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
+        const dir = (() => { try { return require('./layout.js').statsPath(root, ['hook-blocks']); } catch { return path.resolve(root, docsRootEnv(), 'hook-blocks'); } })();
         fs.mkdirSync(dir, { recursive: true });
         fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
           ts: new Date().toISOString(),
@@ -1412,7 +1412,7 @@ function rewriteRow(detail) {
   if (unsetRepo) return;
   if (typeof payload.permission_mode === 'string' && payload.permission_mode) detail = { ...detail, permissionMode: payload.permission_mode };
   try {
-    const dir = pathMod.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), docsRootEnv(), 'hook-blocks');
+    const dir = (() => { try { return require('./layout.js').statsPath(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), ['hook-blocks']); } catch { return pathMod.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), docsRootEnv(), 'hook-blocks'); } })();
     fs.mkdirSync(dir, { recursive: true });
     fs.appendFileSync(pathMod.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
       ts: new Date().toISOString(), hook: pathMod.basename(__filename), event: payload.hook_event_name || payload.tool_name || '',
@@ -2976,7 +2976,7 @@ function shortLivedFetch(raw) {
 function shortLivedRow(links) {
   if (unsetRepo) return;
   try {
-    const dir = pathMod.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), docsRootEnv(), 'hook-blocks');
+    const dir = (() => { try { return require('./layout.js').statsPath(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), ['hook-blocks']); } catch { return pathMod.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), docsRootEnv(), 'hook-blocks'); } })();
     fs.mkdirSync(dir, { recursive: true });
     fs.appendFileSync(pathMod.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
       ts: new Date().toISOString(), hook: pathMod.basename(__filename), event: payload.hook_event_name || payload.tool_name || '',
@@ -3104,11 +3104,14 @@ function refuseSensitiveMention(text, steps = text) {
   // the spelled name: each operand resolved the way the dump half resolves it
   let budget = 64;
   const isStore = (p) => baseOf(p) === SENSITIVE_FILE || baseOf(realOf(p)) === SENSITIVE_FILE;
-  const statAny = (p) => {
+  // Every anchor the operand exists at, never the first alone: the project dir's own data root (no store) listed before the
+  // cwd's hid the cwd's store from a tree-taking verb.
+  const statAll = (p) => {
+    const out = [];
     for (const c of pathMod.isAbsolute(p) ? [p] : anchorDirs().map((d) => pathMod.join(d, p))) {
-      try { const st = fs.statSync(c); return { at: c, dir: st.isDirectory() }; } catch { /* next anchor */ }
+      try { const st = fs.statSync(c); out.push({ at: c, dir: st.isDirectory() }); } catch { /* next anchor */ }
     }
-    return null;
+    return out;
   };
   const judgeStage = (stage, depth, pipedOn) => {
     // an assignment-only step binds its name for the steps after it, in order (assignedValue)
@@ -3180,9 +3183,7 @@ function refuseSensitiveMention(text, steps = text) {
       const value = /^-[^=]*=/.test(word) ? word.slice(word.indexOf('=') + 1) : word;
       if (!value || value.startsWith('-') || value.length > 512) continue;
       budget--;
-      for (const p of candidatePaths(value)) {
-        const hit = statAny(p);
-        if (!hit) continue;
+      for (const p of candidatePaths(value)) for (const hit of statAll(p)) {
         if (!hit.dir && isStore(hit.at)) refuse(verb);
         if (hit.dir && bundles && !excludes([SENSITIVE_FILE])) { try { if (fs.statSync(pathMod.join(hit.at, SENSITIVE_FILE)).isFile()) refuse(verb); } catch { /* not here */ } }
         if (hit.dir && storeAt && raw !== destination) {

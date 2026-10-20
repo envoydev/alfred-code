@@ -87,18 +87,18 @@ Read `references/diagnosis-discipline.md` now, before the first authored row of 
 
 **Gather with the reader, never a helper script.** Each bundle starts with `node <snapshot>/stack/skills/capture-usage-report/scripts/transcript-view.js pack <transcript> <usage json> --out <tmp>/<sid>-evidence.md`: the typed prompts, every ask with its answer, the skill, command and dispatch runs, the errored tool results (the seats' too), and each moment the analyzer flagged with the rows before it - every line an `L<n>` locator. It quotes the transcript, so it stays in `<tmp>`, out of the bundle. A row it does not hold comes from the same script - `timeline`, `show <L>`, `grep <regex>` - never one written for the occasion.
 
-Everything for a session lands in `<docs-path>/usage-report/<session-id>/`:
+Everything for a session lands in `<data root>/statistics/usage-report/<session-id>/` (`<data root>`: `.alfred`, or `ALFRED_CODE_DATA_PATH`):
 
 - `report-usage.md` - the filled `--report-md` skeleton: the analyzer's tables stay UNTOUCHED (a number a tool prints cannot be misquoted), and you author only the FILL IN sections, shaped per the section spec below.
 - The `--json` dump(s).
 - A copy of the session `.jsonl` and its `subagents/` folder when present - the complete raw data, co-located so another agent can analyze it without hunting - only on the consent test below.
-- The session's guard-block ledger, COPIED from `<docs-path>/hook-blocks/<sid>.jsonl` and renamed `hook-blocks-<sid>.jsonl` when it exists - one row per BLOCK, naming the hook that fired. Copied, never moved: the project keeps its own record. Absent means no block fired this session - say that rather than leaving the reader to guess.
-- The session's instrumentation ledgers, MOVED (not copied) from `<docs-path>/tools-usage/` and renamed `tool-usage-<sid>.jsonl` - the session's own and its dispatched agents'. A session not audited this run keeps its ledger in place.
+- The session's guard-block ledger, COPIED from `<data root>/statistics/hook-blocks/<sid>.jsonl` and renamed `hook-blocks-<sid>.jsonl` when it exists - one row per BLOCK, naming the hook that fired. Copied, never moved: the project keeps its own record. Absent means no block fired this session - say that rather than leaving the reader to guess.
+- The session's instrumentation ledgers, MOVED (not copied) from `<data root>/statistics/tools-usage/` and renamed `tool-usage-<sid>.jsonl` - the session's own and its dispatched agents'. A session not audited this run keeps its ledger in place.
 
-Raw transcripts carry full conversation content - code, file contents, possibly secrets - so the copy is keyed on what git will do with it, never on which docs root is the default. Before the first copy run `git check-ignore -q "<docs-path>/usage-report/<session-id>/x.jsonl"`. Exit 0: git keeps the copies out (the stack's docs `.gitignore` does in both versioning modes) - copy. Any other exit (1 is a folder git can commit, 128 no repo at all): ONE ask before any copy, the answer held for the run:
+Raw transcripts carry full conversation content - code, file contents, possibly secrets - so the copy is keyed on what git will do with it. Before the first copy run `git check-ignore -q "<data root>/statistics/usage-report/<session-id>/x.jsonl"`. Exit 0: git keeps the copies out - copy. Any other exit (1 is a folder git can commit, 128 no repo at all): ONE ask before any copy, the answer held for the run:
 
 ```ask
-Raw transcripts would land in <docs-path>/usage-report/, a folder git can commit. Keep them out of the bundle.
+Raw transcripts would land in <data root>/statistics/usage-report/, a folder git can commit. Keep them out of the bundle.
 - 'Report and --json dumps only (Recommended)' - the report and the dumps carry counts, tool names and paths, never code
 - 'Copy the raw transcripts too' - the whole conversation, code and file contents included, lands where git can commit it
 ```
@@ -111,11 +111,11 @@ Then append the full-report analyzer outputs verbatim at the end of the doc (the
 
 **CHECK the filled report before the bundle is done.** `node <snapshot>/scripts/analyze-usage.js --check-report <bundle>/report-usage.md` prints one row per number in a judgment section that appears in no machine table of that same report and carries no `L<n>` locator that resolves against the transcript beside it. **The bundle is NOT done while it prints a row**: fix each - quote the machine row the number comes from, add the locator, or drop the claim - and re-run until it prints `clean`.
 
-**Then gate the batch - the bundle's last command, from the project root:** `node <snapshot>/stack/skills/capture-usage-report/scripts/bundle-gate.js --done <bundles closed this run> --summary <docs-path>/usage-report` - run here as each bundle closes, an author's too. It reads this session's context the way the fresh-session Stop offer does and rewrites SUMMARY.md's bundle list (step 5). `BUNDLE-GATE: next` runs the next bundle; `BUNDLE-GATE: CLOSE` ends the batch here - at 12 bundles, or past this install's fresh-session trigger - and the close names every session left and the invocation that resumes it from a fresh session. A line that says only the bound applies (no transcript found, context unknown after a compaction) still holds you to 12.
+**Then gate the batch - the bundle's last command, from the project root:** `node <snapshot>/stack/skills/capture-usage-report/scripts/bundle-gate.js --done <bundles closed this run> --summary <data root>/statistics/usage-report` - run here as each bundle closes, an author's too. It reads this session's context the way the fresh-session Stop offer does and rewrites SUMMARY.md's bundle list (step 5). `BUNDLE-GATE: next` runs the next bundle; `BUNDLE-GATE: CLOSE` ends the batch here - at 12 bundles, or past this install's fresh-session trigger - and the close names every session left and the invocation that resumes it from a fresh session. A line that says only the bound applies (no transcript found, context unknown after a compaction) still holds you to 12.
 
 ### 5. SUMMARIZE - the project-wide picture
 
-When this run audited more than one session, or bundles from prior runs already sit in `<docs-path>/usage-report/`, write `<docs-path>/usage-report/SUMMARY.md` - rewritten whole, never an append log.
+When this run audited more than one session, or bundles from prior runs already sit in `<data root>/statistics/usage-report/`, write `SUMMARY.md` there - rewritten whole, never an append log.
 
 **Its bundle list is rewritten after EACH bundle, by the gate call that ends step 4** (`--summary`): one row per bundle folder - id, start date, headline verdict, bundle path, an unfinished one marked in progress - between the gate's two marker comments. The sections below are written at the end of the run AROUND that block: keep the two markers and the rows between them as the gate wrote them, never hand-write those rows.
 

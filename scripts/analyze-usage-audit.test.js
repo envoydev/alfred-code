@@ -658,7 +658,7 @@ test('C07: a block row names the agent and the call, and HOOK BLOCKS splits main
       encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: proj } }).status;
     assert.strictEqual(rm({ tool_use_id: 'toolu_main' }), 2);
     assert.strictEqual(rm({ tool_use_id: 'toolu_seat', agent_id: 'a1b2', agent_type: 'Explore' }), 2);
-    const blocks = path.join(proj, '.alfred', 'docs', 'hook-blocks');
+    const blocks = path.join(proj, '.alfred', 'statistics', 'hook-blocks');
     const rows = fs.readFileSync(path.join(blocks, `${sid}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
     assert.deepStrictEqual(rows.map((r) => [r.agent, r.tool_use_id]), [[null, 'toolu_main'], ['a1b2', 'toolu_seat']]);
     // a row from before the field is counted apart, never guessed

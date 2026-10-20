@@ -12,7 +12,7 @@ const { spawnSync } = require('node:child_process');
 
 const HOOK = path.join(__dirname, '..', 'stack', 'hooks', 'guard-secret-value.js');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-secret-'));
-// Every guard appends a block row under `<root>/<docs-path>/hook-blocks/`, and the root falls back
+// Every guard appends a block row under `<root>/<data root>/statistics/hook-blocks/`, and the root falls back
 // to the process cwd - pin a scratch root so this suite never writes into the repo's own ledger.
 process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
 const LEDGER = path.join(TMP, 'ledger');
@@ -222,22 +222,22 @@ test('guard-secret-value: a variable print and a whole-environment dump are rewr
 test('guard-secret-value: a block appends one ledger row naming the hook and never the value', () => {
   const f = fixtures();
   const ledger = path.join(TMP, 'ledger-' + Date.now());
-  const rowsOf = () => fs.readFileSync(path.join(ledger, 'hook-blocks', 'suite.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
-  assert.equal(bash(`cat ${f.secret}`, { ALFRED_CODE_DOCS_PATH: ledger }), REWRITE, 'a rewrite costs no retried turn - it is not a block');
+  const rowsOf = () => fs.readFileSync(path.join(ledger, 'statistics', 'hook-blocks', 'suite.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.equal(bash(`cat ${f.secret}`, { ALFRED_CODE_DOCS_PATH: ledger, ALFRED_CODE_DATA_PATH: ledger }), REWRITE, 'a rewrite costs no retried turn - it is not a block');
   // The shell route's main verdict is the rewrite, so it is counted - as a `mode` row, which the block rate
   // skips like the probe rows (2.1.5 M17): tool, branch and the file's basename, never the value.
   const [rw] = rowsOf();
   assert.deepStrictEqual([rw.mode, rw.hook, rw.tool, rw.detail && rw.detail.branch, rw.detail && rw.detail.file],
     ['rewrite', 'guard-secret-value.js', 'Bash', 'file', 'settings.json'], 'one rewrite row');
   assert.doesNotMatch(JSON.stringify(rw), new RegExp(FAKE_TOKEN), 'and it never carries the value');
-  assert.equal(bash('env', { ALFRED_CODE_DOCS_PATH: ledger }), REWRITE);
-  assert.equal(bash('echo $SENTRY_ACCESS_TOKEN', { ALFRED_CODE_DOCS_PATH: ledger }), REWRITE);
+  assert.equal(bash('env', { ALFRED_CODE_DOCS_PATH: ledger, ALFRED_CODE_DATA_PATH: ledger }), REWRITE);
+  assert.equal(bash('echo $SENTRY_ACCESS_TOKEN', { ALFRED_CODE_DOCS_PATH: ledger, ALFRED_CODE_DATA_PATH: ledger }), REWRITE);
   assert.deepStrictEqual(rowsOf().slice(1).map((r) => [r.mode, r.detail.branch]), [['rewrite', 'env-stage'], ['rewrite', 'variable']],
     'the environment and the variable forms are counted the same way');
   // audit 2026-10-10 C09 (f24eb967): the permission mode a rewrite met is counted, so an auto-mode stall rate can be read
-  assert.equal(verdict(run({ tool_name: 'Bash', tool_input: { command: `cat ${f.secret}` }, session_id: 'suite', permission_mode: 'auto' }, { ALFRED_CODE_DOCS_PATH: ledger })), REWRITE);
+  assert.equal(verdict(run({ tool_name: 'Bash', tool_input: { command: `cat ${f.secret}` }, session_id: 'suite', permission_mode: 'auto' }, { ALFRED_CODE_DOCS_PATH: ledger, ALFRED_CODE_DATA_PATH: ledger })), REWRITE);
   assert.deepStrictEqual(rowsOf().map((r) => r.detail.permissionMode), [undefined, undefined, undefined, 'auto'], 'only a payload carrying the mode names it');
-  assert.equal(bash(`curl -H "Authorization: Bearer ${FAKE_JWT}" https://example.test/api`, { ALFRED_CODE_DOCS_PATH: ledger }), 2);
+  assert.equal(bash(`curl -H "Authorization: Bearer ${FAKE_JWT}" https://example.test/api`, { ALFRED_CODE_DOCS_PATH: ledger, ALFRED_CODE_DATA_PATH: ledger }), 2);
   const blocks = rowsOf().filter((r) => !r.mode);
   assert.equal(blocks.length, 1);
   assert.equal(blocks[0].hook, 'guard-secret-value.js');
@@ -392,8 +392,8 @@ test('guard-secret-value: a fetch of a short-lived link passes; a header, a long
 
 test('guard-secret-value: a passed short-lived fetch leaves one probe row with the host and lifetime, never the token', () => {
   const ledger = path.join(TMP, `ledger-short-${Date.now()}`);
-  assert.equal(bash(`curl -sL -o shot.png '${mediaLink(SHORT_JWT)}'`, { ALFRED_CODE_DOCS_PATH: ledger }), 0);
-  const rows = fs.readFileSync(path.join(ledger, 'hook-blocks', 'suite.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.equal(bash(`curl -sL -o shot.png '${mediaLink(SHORT_JWT)}'`, { ALFRED_CODE_DOCS_PATH: ledger, ALFRED_CODE_DATA_PATH: ledger }), 0);
+  const rows = fs.readFileSync(path.join(ledger, 'statistics', 'hook-blocks', 'suite.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   assert.deepStrictEqual(rows.map((r) => [r.mode, r.kind]), [['probe', 'short-lived-link']]);
   const [link] = rows[0].detail.links;
   assert.deepStrictEqual([link.host, link.kind, link.key], ['media.example.test', 'jwt', 'token']);
@@ -2450,9 +2450,9 @@ test('audit 2026-10-10 C12: a search that names a credential masks quoted litera
   assert.match(spawnSync('sh', ['-c', empty], { cwd: dir, encoding: 'utf8' }).stdout, /rc=1/);
   // a walk rewrite is counted as a walk, never as git (f6c591fa, 81264f0d, b35afe70, a3d497f8)
   const ledger = path.join(TMP, `ledger-c12-${Date.now()}`);
-  const w = run({ tool_name: 'Bash', tool_input: { command: 'grep -rn token .' }, session_id: 'suite', cwd: dir }, { CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_DOCS_PATH: ledger });
+  const w = run({ tool_name: 'Bash', tool_input: { command: 'grep -rn token .' }, session_id: 'suite', cwd: dir }, { CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_DOCS_PATH: ledger, ALFRED_CODE_DATA_PATH: ledger });
   assert.ok(updatedCommand(w));
-  const rows = fs.readFileSync(path.join(ledger, 'hook-blocks', 'suite.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  const rows = fs.readFileSync(path.join(ledger, 'statistics', 'hook-blocks', 'suite.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   assert.deepStrictEqual(rows.map((x) => x.detail.branch), ['walk-stage']);
 });
 
@@ -2591,7 +2591,7 @@ test('a comparison keeps both operands and its status; an exclusion of the sensi
   }
   const one = updatedCommand(at(`diff ${path.join(dir, 'nope.example')} ${a}`));
   assert.ok(one && one.startsWith(`diff ${path.join(dir, 'nope.example')} <(node `), 'a clean operand stays as written');
-  fs.mkdirSync(path.join(dir, '.alfred'));
+  fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true }); // the rewrites above wrote their ledger rows under it
   fs.writeFileSync(path.join(dir, '.alfred', '.sensitive-data'), 'DB_HOST=db.internal\n');
   for (const c of ['rsync -a --exclude .alfred ./ /tmp/x/', 'rsync -a --exclude=.alfred ./ /tmp/x/', 'tar cf /tmp/x.tar --exclude .alfred .',
     "rsync -a --exclude '.sensitive-data' .alfred/ /tmp/x/"]) assert.equal(at(c).status, 0, `an exclusion is no copy: ${c}`);

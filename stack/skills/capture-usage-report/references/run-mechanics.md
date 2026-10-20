@@ -11,8 +11,10 @@ cat > "<tmp>/run.sh" <<'EOF'
 for f in <the session files>; do
   sid=$(basename "$f" .jsonl)
   FLAGS=()                                   # optional flags go in an ARRAY, never an eval string
-  [ -f "<docs-path>/tools-usage/$sid.jsonl" ] && FLAGS+=(--hook-log "<docs-path>/tools-usage/$sid.jsonl")
-  [ -f "<docs-path>/hook-blocks/$sid.jsonl" ] && FLAGS+=(--hook-blocks "<docs-path>/hook-blocks/$sid.jsonl")
+  for d in tools-usage hook-blocks; do       # statistics/ first, then the pre-2.8.0 docs root
+    f="<data root>/statistics/$d/$sid.jsonl"; [ -f "$f" ] || f="<docs-path>/$d/$sid.jsonl"
+    [ -f "$f" ] && { [ "$d" = tools-usage ] && FLAGS+=(--hook-log "$f") || FLAGS+=(--hook-blocks "$f"); }
+  done
   node "<snapshot>/scripts/analyze-usage.js" "$f" --report-md "${FLAGS[@]}" --out "<out>/$sid/report-usage.md"
 done
 EOF
@@ -29,7 +31,7 @@ Two shapes in there are not style, they are what the harness accepts:
 ## Which sessions to skip - the previously-audited test
 
 One bound keeps repeated sweeps sane, and the test is the REPORT, not the folder: a session is previously-audited
-when `<docs-path>/usage-report/<session-id>/report-usage.md` exists AND carries no `FILL IN` section - skip that
+when `<data root>/statistics/usage-report/<session-id>/report-usage.md` exists AND carries no `FILL IN` section - skip that
 one, list it as previously-audited, and re-audit only on an explicit ask. The folder alone is not the test: it
 becomes true at the SKELETON write, long before the report is authored, so a run resumed after an interruption
 would skip its own unfinished bundles as done.
@@ -76,9 +78,9 @@ Never assert a ledger's absence from a prose instruction; run this for each audi
 
 ```bash
 for d in tools-usage hook-blocks; do
-  f="<docs-path>/$d/<sid>.jsonl"
+  f="<data root>/statistics/$d/<sid>.jsonl"; [ -f "$f" ] || f="<docs-path>/$d/<sid>.jsonl"   # the pre-2.8.0 place
   [ -f "$f" ] && echo "$d: $f ($(wc -l < "$f") rows)" || echo "$d: absent"
 done
 ```
 
-`absent` in the report means that command printed `absent` for that session. The instrumentation ledgers: `ALFRED_CODE_INSTRUMENT=1` writes one per session/agent id under `<docs-path>/tools-usage/<sid>.jsonl` (or wherever `ALFRED_CODE_INSTRUMENT_LOG` pointed) - check that folder for the session's own id and its dispatched agents' ids; on a hit add `--hook-log <ledger>` to the per-session calls - it joins the who-fired-what identity side the transcript alone cannot attribute. No ledger: skip the flag and say so in the report. The guard-block ledger: `<docs-path>/hook-blocks/<sid>.jsonl`, checked the same way; on a hit add `--hook-blocks <that file>` - the session's OWN file. The tool narrows a directory to `<session-id>.jsonl`, but name the file anyway: it says which session you meant. That ledger is the only record of WHICH guard denied a call (the transcript names the denied tool and nothing else), and a block costs its denial text plus the retried turn, so the per-hook block rate is what says a gate earns its keep.
+`absent` in the report means that command printed `absent` for that session. The instrumentation ledgers: `ALFRED_CODE_INSTRUMENT=1` writes one per session/agent id under `<data root>/statistics/tools-usage/<sid>.jsonl` (or wherever `ALFRED_CODE_INSTRUMENT_LOG` pointed) - check that folder for the session's own id and its dispatched agents' ids; on a hit add `--hook-log <ledger>` to the per-session calls - it joins the who-fired-what identity side the transcript alone cannot attribute. No ledger: skip the flag and say so in the report. The guard-block ledger: `<data root>/statistics/hook-blocks/<sid>.jsonl`, checked the same way; on a hit add `--hook-blocks <that file>` - the session's OWN file. The tool narrows a directory to `<session-id>.jsonl`, but name the file anyway: it says which session you meant. That ledger is the only record of WHICH guard denied a call (the transcript names the denied tool and nothing else), and a block costs its denial text plus the retried turn, so the per-hook block rate is what says a gate earns its keep.

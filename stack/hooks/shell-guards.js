@@ -662,7 +662,7 @@ function ledgerRow(payload, prelude, fields)
         if (prelude && prelude.neverSetUp && prelude.neverSetUp()) return;
         const envOf = prelude && prelude.envOf ? prelude.envOf : (env, k) => env[`ALFRED_CODE_${k}`];
         const root = process.env.CLAUDE_PROJECT_DIR || (typeof payload.cwd === 'string' && payload.cwd) || process.cwd();
-        const dir = path.resolve(root, envOf(process.env, 'DOCS_PATH') || '.alfred/docs', 'hook-blocks');
+        const dir = (() => { try { return require('./layout.js').statsPath(root, ['hook-blocks']); } catch { return path.resolve(root, envOf(process.env, 'DOCS_PATH') || '.alfred/docs', 'hook-blocks'); } })();
         fs.mkdirSync(dir, { recursive: true });
         fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
             ts: new Date().toISOString(), hook: `${SELF}.js`, event: payload.hook_event_name || '', tool: String(payload.tool_name || ''), ...fields,

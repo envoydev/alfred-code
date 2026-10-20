@@ -231,7 +231,7 @@ function stopCheck(payload)
   {
     try
     {
-      const dir = path.join(docs, 'hook-blocks');
+      const dir = layout ? layout.statsPath(root, ['hook-blocks']) : path.join(docs, 'hook-blocks');
       fs.mkdirSync(dir, { recursive: true });
       fs.appendFileSync(path.join(dir, `${sid}.jsonl`), `${JSON.stringify({
         ts: new Date().toISOString(), hook: path.basename(__filename), event: 'Stop', tool: '', mode: 'probe', kind: 'not-restored',
@@ -249,7 +249,7 @@ function stopCheck(payload)
     : `dotnet build --no-restore -v q ${path.relative(root, r.config)}`));
   try
   {
-    const dir = path.join(docs, 'hook-blocks');
+    const dir = layout ? layout.statsPath(root, ['hook-blocks']) : path.join(docs, 'hook-blocks');
     fs.mkdirSync(dir, { recursive: true });
     fs.appendFileSync(path.join(dir, `${sid}.jsonl`), `${JSON.stringify({
       ts: new Date().toISOString(), hook: path.basename(__filename), event: 'Stop', tool: '',

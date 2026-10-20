@@ -2075,9 +2075,16 @@ blockingStdio();
 
 const cmd = process.argv[2];
 const args = process.argv.slice(3);
-// Under the docs root, beside hook-blocks/ and tools-usage/: every other ledger in this stack lives there, and
-// under .claude/ a project that commits that folder accumulated this one in git.
-const docsLog = (row) => { try { fs.mkdirSync(DOCS_ROOT, { recursive: true }); fs.appendFileSync(path.join(DOCS_ROOT, 'docs-log.jsonl'), `${JSON.stringify({ at: new Date().toISOString(), ...row })}\n`); } catch {} };
+// Beside hook-blocks/ and tools-usage/ in the data root's statistics/ (2.8.0, layout.js copied beside this engine) - every
+// ledger in this stack lives there, never committed; an older copy route without layout.js keeps the docs root.
+const docsLog = (row) => {
+  try {
+    let file = path.join(DOCS_ROOT, 'docs-log.jsonl');
+    try { file = require('./layout.js').statsPath(ROOT, ['docs-log.jsonl']); } catch { /* an older copy route */ }
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.appendFileSync(file, `${JSON.stringify({ at: new Date().toISOString(), ...row })}\n`);
+  } catch {}
+};
 const commands = {
   toc: () => console.log(toc(args[0])),
   show: () => {

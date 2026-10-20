@@ -13,7 +13,7 @@ for (const k of Object.keys(process.env)) if (k.startsWith('ALFRED_CODE_')) dele
 
 const HOOK = path.join(__dirname, '..', 'stack', 'hooks', 'guard-answer.js');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'answer-hook-'));
-// The hook appends a block row to `<root>/<docs-path>/hook-blocks/`, and the root falls back to the
+// The hook appends a block row to `<root>/<data root>/statistics/hook-blocks/`, and the root falls back to the
 // process cwd when CLAUDE_PROJECT_DIR is unset - so a suite run from this checkout wrote its
 // fixtures into the repo's own field ledger. Pin a scratch root for the whole run.
 process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
@@ -100,7 +100,7 @@ test('UserPromptSubmit names the format ask after three short turns that each fo
 // writes one `mode: probe` / `kind: correction` row; ALFRED_CODE_CORRECTION_NUDGE=inject also hands the
 // save line back, `0` switches it off.
 const ledgerRows = (sid) => {
-    const f = path.join(process.env.CLAUDE_PROJECT_DIR, '.alfred', 'docs', 'hook-blocks', `${sid}.jsonl`);
+    const f = path.join(process.env.CLAUDE_PROJECT_DIR, '.alfred', 'statistics', 'hook-blocks', `${sid}.jsonl`);
     return fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
 };
 const correctionRows = (sid) => ledgerRows(sid).filter((r) => r.mode === 'probe' && r.kind === 'correction');

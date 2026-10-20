@@ -16,7 +16,7 @@ const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-commit-gate-'));
 
 // Pin an empty account dir and a scratch project root for the whole run - a real machine's
-// account settings and this checkout's own `.alfred/docs/hook-blocks/` must never be touched by
+// account settings and this checkout's own `.alfred/statistics/hook-blocks/` must never be touched by
 // a test run (the same containment guard-hooks.test.js's head applies).
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
 delete process.env.ALFRED_CODE_CONTEXT_WINDOW_DEFAULT;
@@ -1063,7 +1063,7 @@ test('audit 2026-10-10 C01: a verify Skill call past the old 256KB tail still co
   assert.equal(r.status, 2, 'a session with no Skill call anywhere is still refused');
   assert.match(r.stderr, /no Skill call ran in this session/);
   // the tool-usage ledger answers first: a Skill row under this session id is the run
-  const ledger = path.join(dir, '.alfred', 'docs', 'tools-usage');
+  const ledger = path.join(dir, '.alfred', 'statistics', 'tools-usage');
   fs.mkdirSync(ledger, { recursive: true });
   fs.writeFileSync(path.join(ledger, 'sess-ledger.jsonl'), JSON.stringify({ ts: 'x', session: 'sess-ledger', tool: 'Skill', detail: 'task-verify-code', cwd: dir }) + '\n');
   assert.equal(gateWith(dir, 'git commit -am x', { transcript_path: none, session_id: 'sess-ledger' }).status, 0, 'the ledger Skill row counts');

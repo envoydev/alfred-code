@@ -456,7 +456,7 @@ test('compact-state: the prompt ending an idle gap past the clock hours is offer
     assert.match(text, /Resume in a fresh session \(Recommended\)/);
     assert.strictEqual(prompt(p, tp).stdout, '', 'once per gap - the next prompt of the same gap is not offered again');
     const ledger = fs.readdirSync(log, { recursive: true }).filter((f) => String(f).endsWith('.jsonl')).map((f) => fs.readFileSync(path.join(log, String(f)), 'utf8')).join('')
-        + (fs.existsSync(path.join(p.root, '.alfred', 'docs', 'hook-blocks')) ? fs.readdirSync(path.join(p.root, '.alfred', 'docs', 'hook-blocks')).map((f) => fs.readFileSync(path.join(p.root, '.alfred', 'docs', 'hook-blocks', f), 'utf8')).join('') : '');
+        + (fs.existsSync(path.join(p.root, '.alfred', 'statistics', 'hook-blocks')) ? fs.readdirSync(path.join(p.root, '.alfred', 'statistics', 'hook-blocks')).map((f) => fs.readFileSync(path.join(p.root, '.alfred', 'statistics', 'hook-blocks', f), 'utf8')).join('') : '');
     assert.match(ledger, /"kind":"idle-gap-offer"/, 'one probe row records it');
     const q = project();
     assert.strictEqual(prompt(q, q.transcript(rows(1.9))).stdout, '', 'under the 2h knob: no offer');
@@ -553,7 +553,7 @@ test('compact-state: an ask answered after a long gap leaves the idle hold for t
     assert.match(held.stderr, /last ask waited 4\.8h for its answer/);
     assert.match(held.stderr, /~290k tokens per message/);
     assert.match(held.stderr, /~78k, this session's own first message/);
-    const ledger = fs.readFileSync(path.join(s.p.root, '.alfred', 'docs', 'hook-blocks', `${s.p.sid}.jsonl`), 'utf8');
+    const ledger = fs.readFileSync(path.join(s.p.root, '.alfred', 'statistics', 'hook-blocks', `${s.p.sid}.jsonl`), 'utf8');
     assert.match(ledger, /"kind":"idle-gap-offer"[^\n]*"via":"ask-answer"/, 'one probe row says where it came from');
     fs.appendFileSync(s.tp, JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'f2',
         content: 'Your questions have been answered: "Fresh?"="Continue here"' }] } }) + '\n');
@@ -591,7 +591,7 @@ test('gated stops: a gated cycle\'s gate and build skills wait for a stop after 
     assert.match(r.stderr, /spec check printed `path: gated`, so step 1 DESIGN ends with a STOP before task-verify-plan/);
     const again = p.run({ ...skillCall('task-verify-plan'), transcript_path: tp });
     assert.strictEqual(again.status, 0, 'held once per step call - never a loop');
-    const rows = fs.readFileSync(path.join(p.root, '.alfred', 'docs', 'hook-blocks', `${p.sid}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    const rows = fs.readFileSync(path.join(p.root, '.alfred', 'statistics', 'hook-blocks', `${p.sid}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
     assert.ok(rows.some((x) => x.mode === 'probe' && x.kind === 'gated-stop'), 'the pass after the deny is a row');
     const pass = (name, rowsOf, s = 'task-verify-plan', extra = {}, env = {}) => { const q = project(); assert.strictEqual(q.run({ ...skillCall(s, extra), transcript_path: q.transcript(rowsOf) }, env).status, 0, name); };
     pass('an answered ask after the design releases it', [...base, ...answered]);

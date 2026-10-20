@@ -519,7 +519,8 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     (audit 2026-10-14 HK11: `source .alfred/.sens*`, `git add -f .alfred/.sens*`, `--env-file`, `tar cf - .alfred | tar xOf -`
     passed): quoted spans joined, each operand of the steps the shell runs resolved through the dump judge's own resolver
     (globs, braces, list variables, a `cd`) to its real path - the store itself, or on an archive / `git add` / recursive copy
-    verb a folder holding it directly. A verb that takes a TREE whole - an archive being created, a recursive copy's source
+    verb a folder holding it directly - at EVERY anchor the operand exists at (2.8.0: the project dir's own `.alfred`, listed
+    before the cwd, hid a nested cwd's store from `tar cf - .alfred`). A verb that takes a TREE whole - an archive being created, a recursive copy's source
     (not its destination), a forced `git add` - is refused on any folder above the store too, unless the command excludes
     the store or a folder on its way (`--exclude`, zip's `-x`, matched as globs); a tar or 7z extract and a copy into the
     project pass (deep hooks review 2026-10-16, the user's ruling: `cp -R . x` and `rsync -a ./ x` copied it and passed).

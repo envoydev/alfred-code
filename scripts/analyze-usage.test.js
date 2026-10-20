@@ -952,8 +952,11 @@ function turnCheckCorpus(counts, opts = {}) {
   const root = path.join(dir, 'proj');
   const docs = opts.docsPath || '.alfred/docs';
   const blocks = path.join(root, docs, 'hook-blocks');
+  // 2.8.0: a session's ledger in the data root's statistics/ (opts.where(i) === 'statistics'), else the pre-2.8.0 docs root
+  const stats = path.join(root, '.alfred', 'statistics', 'hook-blocks');
   fs.mkdirSync(sessions, { recursive: true });
   fs.mkdirSync(blocks, { recursive: true });
+  fs.mkdirSync(stats, { recursive: true });
   counts.forEach((rows, i) => {
     const sid = `s-${String(i).padStart(2, '0')}`;
     const file = path.join(sessions, `${sid}.jsonl`);
@@ -961,7 +964,7 @@ function turnCheckCorpus(counts, opts = {}) {
     // index 0 is the NEWEST session
     const at = new Date(Date.UTC(2026, 8, 25) - i * 3600e3);
     fs.utimesSync(file, at, at);
-    if (rows.length) fs.writeFileSync(path.join(blocks, `${sid}.jsonl`), rows.join(''));
+    if (rows.length) fs.writeFileSync(path.join(opts.where && opts.where(i) === 'statistics' ? stats : blocks, `${sid}.jsonl`), rows.join(''));
   });
   fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
   if (opts.settings !== undefined) fs.writeFileSync(path.join(root, '.claude', 'settings.json'), opts.settings);
@@ -981,6 +984,12 @@ test('turn-check advice: 2 unexcused unrun claims in the newest 10 sessions stay
   assert.strictEqual(json.unchecked, 2, JSON.stringify(json));
   assert.strictEqual(json.advise, false);
   assert.strictEqual(text, '', 'one under the threshold prints nothing');
+});
+
+test('2.8.0 turn-check advice: statistics/hook-blocks is read, and the docs-root ledger of a session not moved yet', () => {
+  const { json } = turnCheck(turnCheckCorpus([[doneRow({}), doneRow({})], [doneRow({})]], { where: (i) => (i === 0 ? 'statistics' : 'legacy') }));
+  assert.strictEqual(json.unchecked, 3, JSON.stringify(json));
+  assert.strictEqual(json.advise, true);
 });
 
 test('turn-check advice: exactly 3 prints the one row; 4 prints it too', () => {

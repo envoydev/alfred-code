@@ -61,7 +61,7 @@ function run(file, payload, { cwd, env = {}, args = [] } = {})
 const bashPayload = (command, cwd, tool = 'Bash') => ({ session_id: 'sg', hook_event_name: 'PreToolUse', tool_name: tool, tool_input: { command }, cwd });
 const ledgerRows = (dir, session = 'sg') =>
 {
-  const f = path.join(dir, '.alfred', 'docs', 'hook-blocks', `${session}.jsonl`);
+  const f = path.join(dir, '.alfred', 'statistics', 'hook-blocks', `${session}.jsonl`);
   return fs.existsSync(f) ? fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [];
 };
 const hooksOf = (rows) => rows.filter((r) => !r.mode).map((r) => r.hook).sort();
@@ -252,7 +252,7 @@ test('each guard\'s block reaches the combined answer, with its own ledger row',
     const payload = { ...bashPayload(command, dir), session_id: session };
     const alone = run(path.join(HOOKS, `${guard}.js`), payload, { cwd: dir, env });
     assert.strictEqual(alone.status, 2, `${guard} blocks '${command}' on its own: ${alone.stderr}`);
-    fs.rmSync(path.join(dir, '.alfred', 'docs'), { recursive: true, force: true });
+    for (const d of ['docs', 'state', 'statistics']) fs.rmSync(path.join(dir, '.alfred', d), { recursive: true, force: true });
     const both = run(DISPATCH, payload, { cwd: dir, env });
     assert.strictEqual(both.status, 2, `${guard}: the dispatcher blocks too`);
     assert.ok(both.stderr.includes(alone.stderr.trim()), `${guard}: its own message reaches the model\n--- alone\n${alone.stderr}\n--- dispatched\n${both.stderr}`);
@@ -286,7 +286,7 @@ test('several guards blocking one command: every reason, one ledger row per bloc
   const payload = bashPayload(`cat ${BIG} && git commit -am "wip"`, dir);
   // What the separate hooks do with it: each guard standalone, its ledger cleared after.
   const alone = shell.GUARDS.map((g) => ({ g, ...run(path.join(HOOKS, `${g}.js`), payload, { cwd: dir, env }) })).filter((x) => x.status === 2);
-  fs.rmSync(path.join(dir, '.alfred', 'docs'), { recursive: true, force: true });
+  for (const d of ['docs', 'state', 'statistics']) fs.rmSync(path.join(dir, '.alfred', d), { recursive: true, force: true });
   assert.ok(alone.length >= 2 && alone.some((x) => x.g === 'guard-read-whole-file') && alone.some((x) => x.g === 'guard-ungated-commit'), alone.map((x) => x.g).join(', '));
   const out = run(DISPATCH, payload, { cwd: dir, env });
   assert.strictEqual(out.status, 2);
@@ -335,7 +335,7 @@ test('empty or malformed input: every guard fails open, the dispatcher says noth
     const r = spawnSync(process.execPath, [DISPATCH], { input, encoding: 'utf8', cwd: dir, env: { ...process.env, CLAUDE_PROJECT_DIR: dir } });
     assert.deepStrictEqual({ status: r.status, stdout: r.stdout, stderr: r.stderr }, { status: 0, stdout: '', stderr: '' }, `input ${JSON.stringify(input)}`);
   }
-  assert.ok(!fs.existsSync(path.join(dir, '.alfred', 'docs', 'hook-blocks')), 'no ledger row');
+  assert.ok(!fs.existsSync(path.join(dir, '.alfred', 'statistics', 'hook-blocks')), 'no ledger row');
 });
 
 test('PowerShell is the same shell route', () => {
@@ -395,7 +395,7 @@ test('a repo never set up keeps only the rm, secret and force-push guards, writi
   const rm = run(DISPATCH, bashPayload('rm -rf ~', dir), { cwd: dir, env });
   assert.strictEqual(rm.status, 2, 'a protective guard stays live');
   assert.strictEqual(run(DISPATCH, bashPayload('git commit -am "wip"', dir), { cwd: dir, env }).status, 0, 'the commit gate stands down');
-  assert.ok(!fs.existsSync(path.join(dir, '.alfred', 'docs')), 'nothing is written into a repo merely opened');
+  for (const d of ['docs', 'state', 'statistics']) assert.ok(!fs.existsSync(path.join(dir, '.alfred', d)), `nothing is written into a repo merely opened (${d}/)`);
 });
 
 test('hook_profile minimal keeps the protective three inside the dispatcher', () => {
@@ -532,7 +532,7 @@ test('file-guards: each guard\'s block reaches the combined answer through the d
     const payload = filePayload(tool, input, dir, session);
     const alone = run(path.join(HOOKS, `${guard}.js`), payload, { cwd: dir, env });
     assert.strictEqual(alone.status, 2, `${guard} blocks ${tool} on its own: ${alone.stderr}`);
-    fs.rmSync(path.join(dir, '.alfred', 'docs'), { recursive: true, force: true });
+    for (const d of ['docs', 'state', 'statistics']) fs.rmSync(path.join(dir, '.alfred', d), { recursive: true, force: true });
     const both = run(FILES, payload, { cwd: dir, env });
     assert.strictEqual(both.status, 2, `${guard}: the dispatcher blocks too`);
     assert.ok(both.stderr.includes(alone.stderr.trim()), `${guard}: its own message reaches the model\n--- alone\n${alone.stderr}\n--- dispatched\n${both.stderr}`);
@@ -657,7 +657,7 @@ const own = (dir, command, { env = {}, extra = {} } = {}) => {
   return { status: r.status, stderr: r.stderr, command: h.updatedInput ? h.updatedInput.command : null, context: h.additionalContext || '' };
 };
 const ZSH = { env: { SHELL: '/bin/zsh' } };
-const rowsIn = (dir) => { try { return fs.readFileSync(path.join(dir, '.alfred', 'docs', 'hook-blocks', 'own.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { return []; } };
+const rowsIn = (dir) => { try { return fs.readFileSync(path.join(dir, '.alfred', 'statistics', 'hook-blocks', 'own.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { return []; } };
 
 test('audit 2026-10-10 C14: under zsh a tool-owned glob and a bare =word are quoted before any guard reads the command', () => {
   const dir = project('zsh-');
@@ -854,7 +854,7 @@ test('HK15: a dispatcher run past 1s writes one slow row naming each guard\'s ms
   spawnSync(process.execPath, [path.join(copy, 'shell-guards.js')], {
     input: JSON.stringify(bashPayload('ls', bare)), encoding: 'utf8', cwd: bare, env: { ...process.env, CLAUDE_PROJECT_DIR: bare, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT }, timeout: 15000,
   });
-  assert.ok(!fs.existsSync(path.join(bare, '.alfred', 'docs', 'hook-blocks')), 'no row where the stack was never set up');
+  assert.ok(!fs.existsSync(path.join(bare, '.alfred', 'statistics', 'hook-blocks')), 'no row where the stack was never set up');
 });
 
 // Deep hooks review 2026-10-16: the dispatcher keeps V8's cached data per guard body under a key of its source and this

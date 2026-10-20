@@ -251,13 +251,14 @@ try { shellReader = require(path.join(__dirname, 'shell-writes.js')); ({ isShell
 // bare one, written as a pattern.
 const NAV_EDIT = /^mcp__(?:plugin_(?:alfred-)?navigation_)?(?:alfred-)?navigation__(?:rename_symbol|safe_delete_symbol)$/;
 // One log file holds every session's rows, and two sessions interleave in it, so each row carries the id that
-// tells them apart. It lives under the docs root beside hook-blocks/ and tools-usage/ - every other ledger in
-// this stack does, and under .claude/ a project that commits that folder accumulated this one in git.
+// tells them apart. It lives beside hook-blocks/ and tools-usage/ in the data root's statistics/ (2.8.0, layout.js) -
+// every ledger in this stack does, never committed; before 2.8.0, under the docs root, which is still read.
+const docsLogFile = (root) => (layout ? layout.statsPath(root, ['docs-log.jsonl']) : path.join(path.resolve(root, docsRootEnv()), 'docs-log.jsonl'));
 const log = (root, input, row) => {
   try {
-    const dir = path.resolve(root, docsRootEnv());
-    fs.mkdirSync(dir, { recursive: true });
-    fs.appendFileSync(path.join(dir, 'docs-log.jsonl'), `${JSON.stringify({ at: new Date().toISOString(), session: input.session_id || '', ...row })}\n`);
+    const file = docsLogFile(root);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.appendFileSync(file, `${JSON.stringify({ at: new Date().toISOString(), session: input.session_id || '', ...row })}\n`);
   } catch {}
 };
 
@@ -563,15 +564,18 @@ function setsSince(root, since, ids) {
   const want = new Set(ids.map(normRef));
   if (!want.size || !since) return [];
   const done = new Set();
-  try {
-    const file = path.join(path.resolve(root, docsRootEnv()), 'docs-log.jsonl');
-    const size = fs.statSync(file).size;
-    const len = Math.min(size, LEDGER_TAIL);
-    // The tail is read first, and widened to the whole file only when every row in it was NEWER than the ask - the
-    // one case where the set can still lie further back, and the one case where a window would otherwise report a
-    // rewrite that happened as a section nobody touched.
-    if (!scanLedger(file, size, len, since, want, done) && len < size) scanLedger(file, size, size, since, want, done);
-  } catch {}
+  // statistics/ first, then the pre-2.8.0 log under the docs root, which an older docs.js copy still writes until the
+  // update moves the folders - a set logged in either answers the ask
+  for (const file of new Set([docsLogFile(root), path.join(path.resolve(root, docsRootEnv()), 'docs-log.jsonl')])) {
+    try {
+      const size = fs.statSync(file).size;
+      const len = Math.min(size, LEDGER_TAIL);
+      // The tail is read first, and widened to the whole file only when every row in it was NEWER than the ask - the
+      // one case where the set can still lie further back, and the one case where a window would otherwise report a
+      // rewrite that happened as a section nobody touched.
+      if (!scanLedger(file, size, len, since, want, done) && len < size) scanLedger(file, size, size, since, want, done);
+    } catch {}
+  }
   return ids.filter((id) => done.has(normRef(id)));
 }
 // A SEPARATE signal, never the outcome: whether the agent gave the ask's own words as its answer. The phrase has to
@@ -947,14 +951,14 @@ function unattendedRow(root, input, kind) {
     } catch (e) { if (e && e.code === 'EEXIST') return; }
   } catch {}
   try {
-    const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
+    const dir = layout ? layout.statsPath(root, ['hook-blocks']) : path.resolve(root, docsRootEnv(), 'hook-blocks');
     fs.mkdirSync(dir, { recursive: true });
     fs.appendFileSync(path.join(dir, `${String(input.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), `${JSON.stringify({ ts: new Date().toISOString(), hook: 'docs-session.js', event: input.hook_event_name || '', tool: input.tool_name || '', mode: 'unattended', kind, reason: `${kind} skipped - nobody at the terminal` })}\n`);
   } catch {}
 }
 function blockRow(root, input, reason) {
   try {
-    const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
+    const dir = layout ? layout.statsPath(root, ['hook-blocks']) : path.resolve(root, docsRootEnv(), 'hook-blocks');
     fs.mkdirSync(dir, { recursive: true });
     fs.appendFileSync(path.join(dir, `${String(input.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), `${JSON.stringify({ ts: new Date().toISOString(), hook: 'docs-session.js', event: input.hook_event_name || '', tool: input.tool_name || '', reason: String(reason).split('\n')[0].slice(0, 200) })}\n`);
   } catch {}

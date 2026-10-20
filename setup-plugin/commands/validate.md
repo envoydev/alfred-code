@@ -413,9 +413,9 @@ turn polling for it. Five inputs, five gates:
    across 17 sessions, or a headless .NET backend carrying `browser` (24 tool schemas) and
    `sentry` (8). A registered server is not free: its schemas are injected into every session and
    every subagent. So judge each one the project did not prove:
-   - **Measured first, where a measurement exists.** `ls "<docs-path>/tools-usage"/*.jsonl` - the
-     instrumentation ledgers. When any exist, count per server:
-     `grep -h '"tool":"mcp__' <docs-path>/tools-usage/*.jsonl | grep -o '"detail":"[^"]*"' | sort | uniq -c`
+   - **Measured first, where a measurement exists.** `ls "<data root>/statistics/tools-usage"/*.jsonl` - the
+     instrumentation ledgers (`<data root>` is `.alfred` unless `ALFRED_CODE_DATA_PATH` names another folder). When any exist, count per server:
+     `grep -h '"tool":"mcp__' <data root>/statistics/tools-usage/*.jsonl | grep -o '"detail":"[^"]*"' | sort | uniq -c`
      (`detail` names the server). A server
      with rows is KEPT, no judgment needed; a server with zero rows across several sessions is a
      drop candidate with the count as its citation. State the number of sessions the ledgers cover.

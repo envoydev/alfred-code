@@ -295,7 +295,7 @@ test('M1 installer: a .claude/docs root the user kept in 2.0.0 moves only on an 
 });
 
 // 2.2.0 upgrade: the move's own Bash call ends in PostToolUse hooks that still hold the session's old root, and the
-// build check's Stop marker rebuilt .claude/docs/flow with a recursive mkdir (the retired monitor's turn log did the same); the next session start folds it into the live root.
+// (pre-2.8.0) build check's Stop marker rebuilt .claude/docs/flow with a recursive mkdir (the retired monitor's turn log did the same); the next session start folds it into the live root.
 test('installer: hook state a stale session writes after the move is folded in at the next session start', POSIX_ONLY, () =>
 {
     const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
@@ -307,7 +307,9 @@ test('installer: hook state a stale session writes after the move is folded in a
         inspect: (r) =>
         {
             const settings = JSON.parse(fs.readFileSync(path.join(r, '.claude', 'settings.json'), 'utf8'));
-            run(r, 'check-turn-build.js', { hook_event_name: 'Stop', session_id: 'stale', cwd: r }, { ALFRED_CODE_DOCS_PATH: '.claude/docs' });
+            // a pre-2.8.0 hook's marker, as it wrote it under the old root (a 2.8.0 hook writes <data root>/state/ instead)
+            fs.mkdirSync(path.join(r, '.claude', 'docs', 'flow'), { recursive: true });
+            fs.writeFileSync(path.join(r, '.claude', 'docs', 'flow', 'turn-check-stale'), `${new Date().toISOString()}\n`);
             const raced = fs.existsSync(path.join(r, '.claude', 'docs', 'flow', 'turn-check-stale'));
             const live = { ALFRED_CODE_DOCS_PATH: settings.env.ALFRED_CODE_DOCS_PATH };
             run(r, 'docs-session.js', { hook_event_name: 'SessionStart', session_id: 'fresh', cwd: r }, live);
@@ -316,7 +318,7 @@ test('installer: hook state a stale session writes after the move is folded in a
             return {
                 raced, docsPath: settings.env.ALFRED_CODE_DOCS_PATH,
                 old: fs.existsSync(at('.claude/docs')), row: fs.readFileSync(at('.alfred/docs/flow/turn-check-stale'), 'utf8'),
-                log: fs.readFileSync(at('.alfred/docs/docs-log.jsonl'), 'utf8'), moved: fs.existsSync(at('.alfred/docs/architecture/ARCHITECTURE.md')),
+                log: fs.readFileSync(at('.alfred/statistics/docs-log.jsonl'), 'utf8'), moved: fs.existsSync(at('.alfred/docs/architecture/ARCHITECTURE.md')),
             };
         },
     });

@@ -2170,14 +2170,15 @@ test('status reports overlays stranded by committing a previously ignored docs r
   } finally { r.rm(); }
 });
 
-// The only ledger in this stack that was not under <docs-path>: hook-blocks and tools-usage are both there,
-// and a project that commits .claude/ accumulated this one in git.
-test('the engine log lands under the docs root, beside hook-blocks', () => {
+// The engine's log is a ledger like hook-blocks and tools-usage: since 2.8.0 all three live in the data root's
+// statistics/ (stack/hooks/layout.js), never committed - a project that commits .claude/ accumulated it in git once.
+test('the engine log lands under the data root\'s statistics/, beside hook-blocks', () => {
   const r = repo({ docsPath: 'docs', files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
   try {
     assert.strictEqual(r.cli(['set', 'patterns#orders'], ORDERS('Refunds are capped at 10.')).status, 0);
-    assert.ok(r.exists('docs/docs-log.jsonl'), 'the log is written under the docs root');
-    assert.match(r.read('docs/docs-log.jsonl'), /"event":"doc-set"/);
+    assert.ok(r.exists('.alfred/statistics/docs-log.jsonl'), 'the log is written under the data root\'s statistics/');
+    assert.match(r.read('.alfred/statistics/docs-log.jsonl'), /"event":"doc-set"/);
+    assert.ok(!r.exists('docs/docs-log.jsonl'), 'and never under the docs root any more');
     assert.ok(!r.exists('.claude/docs-log.jsonl'), 'and never under .claude/ any more');
   } finally { r.rm(); }
 });

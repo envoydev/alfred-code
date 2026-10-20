@@ -18,7 +18,7 @@ const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const READ = path.join(HOOKS, 'guard-read-whole-file.js');
 const XWRITE = path.join(HOOKS, 'guard-cross-project-write.js');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-rw-'));
-// Every guard appends a block row to `<root>/<docs-path>/hook-blocks/`, where the root falls back to
+// Every guard appends a block row to `<root>/<data root>/statistics/hook-blocks/`, where the root falls back to
 // the process cwd - so a suite run from this checkout would forge field ledger into the repo's own
 // docs root (measured once at 12,480 rows). Pin a scratch root and an absolute ledger for the whole
 // run; the cases that need a different root pass one of their own.

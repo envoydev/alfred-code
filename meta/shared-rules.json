@@ -7726,6 +7726,10 @@
         {
           "file": "stack/skills/task-solve-cross/scripts/spec-check.js",
           "marker": "const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\\\/g, '/').replace(/^\\.\\//, '').replace(/\\/+$/, '') || '.alfred';"
+        },
+        {
+          "file": "setup-plugin/hooks/guard-layer-table.js",
+          "marker": "const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\\\/g, '/').replace(/^\\.\\//, '').replace(/\\/+$/, '') || '.alfred';"
         }
       ]
     }
