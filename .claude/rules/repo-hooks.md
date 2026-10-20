@@ -66,9 +66,11 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
   `guard-fresh-session-start.js` write that session-named AUTO stamp (`AUTO - "<the typed words>"`, `session:`, `skill:`,
   `at:`) before the run's first step, inject the contract as `additionalContext` and leave, so its own offers and every
   person-directed hook read the session as unattended; a stamp already live for the session is kept, and another
-  session's stamp under 8h old is never overwritten - that run starts without auto-mode and writes an
-  `auto-start-refused` row (audit 2026-10-20, the hooks track's minor list: a second session on one checkout took the
-  first's approval). `guard-stop-contract.js`
+  session's stamp is never overwritten while that session is still RUNNING (its transcript beside this one written in
+  the last 10 minutes) - that run starts without auto-mode, its mode banner says why and how to take over (delete the
+  stamp), and it writes an `auto-start-refused` row (audit 2026-10-20, the hooks track's minor list: a second session on
+  one checkout took the first's approval; narrowed the same day from 'under 8h', which silently cost a fresh-session
+  hand-off, or any start after a run that left its stamp, its auto-mode). `guard-stop-contract.js`
   then answers - under a stamp naming THIS session only, never a hand-written one (audit HK02: it answered a second
   session's asks) - each `AskUserQuestion` whose every question marks ONE `(Recommended)` option - `allow` with the questions
   echoed and an `answers` map in `updatedInput` (code.claude.com/docs/en/hooks, 'Tools that require user interaction'), a

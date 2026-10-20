@@ -891,6 +891,20 @@ function typedAutoCommand(text) {
   const args = tagged ? ((/<command-args>([\s\S]*?)(?:<\/command-args>|$)/.exec(text) || [])[1] || '') : raw ? raw[2] || '' : '';
   return AUTO_SKILL_RE.test(name) && AUTO_FIRST_RE.test(args);
 }
+// Why this command's auto-mode did not start, for the banner: a refusal the user cannot see is a run they think is
+// unattended and is not (a side review of the hooks track, 2026-10-20).
+let autoRefused = '';
+// Another session is RUNNING when its own transcript, beside this one, was written within the last ten minutes - the
+// same idle span the docs hook reads as the user being away. A stamp left by a finished run, a run that ended without
+// deleting it, or the session a fresh-session hand-off came from is no live run, so a new start replaces it.
+const OTHER_LIVE_MS = 10 * 60 * 1000;
+function otherSessionLive(other) {
+  try {
+    if (!payload.transcript_path || !/^[\w-]+$/.test(other)) return false;
+    const t = nodePath.join(nodePath.dirname(payload.transcript_path), `${other}.jsonl`);
+    return Date.now() - fs.statSync(t).mtimeMs <= OTHER_LIVE_MS;
+  } catch { return false; }
+}
 function autoModeStart() {
   const sid = String(payload.session_id || '');
   // The typed command must open its arguments with the flag; the model's own Skill args may carry it anywhere, since
@@ -906,13 +920,15 @@ function autoModeStart() {
   let current = null;
   try { current = require('./hook-prelude.js').approvalStamp({ ...payload, cwd: root }); } catch { /* no prelude: written fresh */ }
   const kept = Boolean(current && current.live && current.session === sid && /^AUTO\b/.test(current.first));
-  // Another session's stamp, young enough that its run may still be going, is never overwritten (audit 2026-10-20, the
-  // hooks track's minor list): two sessions on one checkout, and the second's auto-mode start took the first's approval.
-  // This run asks as it always has; the row says why.
-  let othersMaxMs = 8 * 60 * 60 * 1000;
-  try { othersMaxMs = require('./hook-prelude.js').AUTO_STAMP_MAX_MS || othersMaxMs; } catch { /* the 8h default */ }
-  if (current && current.session && current.session !== sid && Date.now() - current.mtimeMs <= othersMaxMs) {
-    ledgerRow({ mode: 'auto', kind: 'auto-start-refused', reason: `auto-mode: ${skill} - the APPROVAL stamp belongs to another session's run, left as it is` });
+  // Another session's stamp is never overwritten while that session is still RUNNING (audit 2026-10-20, the hooks
+  // track's minor list: two sessions on one checkout, and the second's auto-mode start took the first's approval). Only a
+  // live run counts - a stamp under 8h old was refused before, which silently cost a fresh-session hand-off its
+  // auto-mode. This run asks as it always has, and the banner says why and how to take over.
+  if (current && current.session && current.session !== sid && otherSessionLive(current.session)) {
+    const rel = nodePath.relative(root, file).split(nodePath.sep).join('/') || file;
+    autoRefused = `another session (${current.session.slice(0, 8)}) is running a stamped run in this checkout right now, and ${rel} is its approval - `
+      + `finish or stop that run, or delete ${rel} to take over, then type the command again`;
+    ledgerRow({ mode: 'auto', kind: 'auto-start-refused', reason: `auto-mode: ${skill} - the APPROVAL stamp belongs to a session still running, left as it is` });
     return null;
   }
   // The user's words, verbatim but for the line breaks and double quotes the stamp's one-line quote cannot hold.
@@ -980,7 +996,8 @@ function modeBanner(autoOn) {
     ? `**Auto-mode: ON** for ${name} - every question takes its (Recommended) option without waiting for you; one with no `
       + 'recommended option, or whose recommendation acts outward (push, merge, deploy, publish, a PR), still waits. A message you type mid-run is input to the run; type `stop auto-mode` (or just `stop`) to end it.'
     : `**Auto-mode: OFF** for ${name} - each question waits for your answer.`
-      + (AUTO_MISS_RE.test(autoArgs()) ? ' (auto-mode starts only with `--auto-mode` as the first word after the command.)' : '');
+      + (autoRefused ? ` (auto-mode did NOT start: ${autoRefused}.)`
+        : AUTO_MISS_RE.test(autoArgs()) ? ' (auto-mode starts only with `--auto-mode` as the first word after the command.)' : '');
   const at = ctxThreshold();
   const ctxLine = autoOn
     ? `**Context:** no fresh-session hand-off - the session auto-compacts ${where} and the run goes on from the summary and its state files.`
