@@ -3761,7 +3761,8 @@ test('guard-stop-contract: the three block shapes the audit reproduced', () => {
 
     // 3. The ledger row names the BRANCH and what matched. A block whose cause cannot be
     //    reconstructed cannot be tuned - this audit hit that wall three times.
-    const rows = fs.readFileSync(path.join(ledger, 'docs', 'hook-blocks', 'shapes.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    // the H9 `done-close-exempt` probe rows (audit 2026-10-20) sit beside the blocks - a block row is what this counts
+    const rows = fs.readFileSync(path.join(ledger, 'docs', 'hook-blocks', 'shapes.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((r) => r.mode !== 'probe');
     assert.deepEqual(rows.map((r) => r.detail.branch), ['prose-ask', 'prose-ask', 'prose-ask', 'done-close'], 'each block names its branch');
     assert.match(rows[0].detail.matched, /your call/, 'and the substring that fired it');
     assert.match(rows[3].detail.matched, /done \+ next step/, '... both halves, for the two-part branch');
@@ -4129,8 +4130,11 @@ test('guard-config-protection: comments, MSBuild attributes, wrappers, carried s
     assert.strictEqual(sh('echo src/ >> .eslintignore'), 2, 'an ignore file takes a path out of the check');
     assert.strictEqual(sh('Set-Content -Path .\\.eslintrc.json -Value "{}"', 'PowerShell'), 2, 'PowerShell .\\ on a POSIX host');
     assert.strictEqual(sh("echo '{}' > other.json && cat tsconfig.json"), 0, 'a read of the keyed file passes');
-    const plain = at('tsconfig.build.json', '{ "extends": "./tsconfig.json" }');
+    const plain = at('tsconfig.build.json', '{ "include": ["src"] }');
     assert.strictEqual(sh(`echo '{}' > ${path.basename(plain)}`), 0, 'replacing a keyed file that holds no strictness key passes');
+    // audit 2026-10-20 (hooks minor list): an `extends` names the base the strictness comes from, so dropping it is judged
+    at('tsconfig.lib.json', '{ "extends": "./tsconfig.json" }');
+    assert.strictEqual(sh("echo '{}' > tsconfig.lib.json"), 2, 'replacing one that extends a base drops the base');
     assert.strictEqual(run(H, { tool_name: 'Monitor', cwd: root, tool_input: { command: 'rm .eslintrc.json' } }), 2, 'Monitor');
     assert.strictEqual(run(H, { tool_name: 'NotebookEdit', cwd: root, tool_input: { notebook_path: path.join(root, '.eslintrc.json'), new_source: '{}' } }), 2, 'NotebookEdit');
     // The same file through the real path of a symlinked root is inside the project.
@@ -4449,7 +4453,12 @@ test('guard-desktop-exec: the DESKTOP-EXEC-ALLOW receipt opens it - this session
   fs.mkdirSync(path.dirname(receipt), { recursive: true });
   const launch = { mode: 'launch_executable', executable: 'C:\\Tools\\build.exe' };
   fs.writeFileSync(receipt, '# the user allowed it\nbuild.exe\n');
-  assert.equal(desktopRun(root, WIN_APP[0], launch).status, 0, 'the executable named');
+  // audit 2026-10-20 (hooks minor list): a file-name line no longer opens that name in every directory
+  assert.equal(desktopRun(root, WIN_APP[0], launch).status, 2, 'a file-name line opens no full path');
+  assert.equal(desktopRun(root, WIN_APP[0], { ...launch, executable: 'build.exe' }).status, 0, 'only the bare call it names');
+  fs.writeFileSync(receipt, '# the user allowed it\nc:/tools/BUILD.exe\n');
+  assert.equal(desktopRun(root, WIN_APP[0], launch).status, 0, 'the full path, in either slash and case on Windows');
+  assert.equal(desktopRun(root, WIN_APP[0], { ...launch, executable: 'D:\\Other\\build.exe' }).status, 2, 'the same name elsewhere is not');
   assert.equal(desktopRun(root, WIN_APP[0], { ...launch, executable: 'C:\\Tools\\other.exe' }).status, 2, 'another executable is not');
   assert.equal(desktopRun(root, MAC_SHELL[0], { command: 'ls' }).status, 2, 'nor the macOS shell');
   fs.writeFileSync(receipt, 'Shell\nApp\n');
@@ -4576,4 +4585,186 @@ test('audit 2026-10-20 H6: the home dir, the project and the cwd are caught howe
     'rmdir /s', 'cmd /c dir', 'cmd /c rd /s /q build', `rm -rf ${path.join(home, 'no-such-h6-dir')}`]) {
     assert.equal(rm(c), 0, `must allow: ${c}`);
   }
+});
+
+// Audit 2026-10-20 H5: capture-usage-report's bundle authors are generic seats on a named model, and its own `--auto-mode`
+// stamp denied them as 'generic while stamped'; the denial's escape said to clear the stamp file, and one session ran
+// `rm .../flow/APPROVAL`. A stamp naming THIS session and that skill passes the generic dispatch; every other stamped
+// generic dispatch is still denied, and the denial ends in an ask - never a stamp deletion.
+test('H5: a session-named auto-mode stamp of a skill that dispatches generic seats passes them; the denial ends in an ask', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'h5-'));
+  const flow = path.join(root, '.alfred', 'docs', 'flow');
+  fs.mkdirSync(flow, { recursive: true });
+  const stamp = (skill, session = 'h5-sess') => fs.writeFileSync(path.join(flow, 'APPROVAL'), `AUTO - "/${skill} --auto-mode"\nsession: ${session}\nskill: ${skill}\nat: ${new Date().toISOString()}\n`);
+  const disp = (seat) => runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', session_id: 'h5-sess', cwd: root, tool_input: { subagent_type: seat, prompt: 'write the bundle', model: 'sonnet' } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
+  stamp('capture-usage-report');
+  assert.equal(disp('general-purpose').status, 0, 'its authors run under its own stamp');
+  stamp('alfred-code:capture-usage-report');
+  assert.equal(disp('general-purpose').status, 0, 'the plugin-spelled skill too');
+  stamp('task-solve');
+  const denied = disp('general-purpose');
+  assert.equal(denied.status, 2, 'a solve run still dispatches its named seats');
+  assert.match(denied.stderr, /Never delete or edit the stamp/);
+  assert.match(denied.stderr, /AskUserQuestion/);
+  assert.doesNotMatch(denied.stderr, /clear the\s+stamp file first/);
+  stamp('capture-usage-report', 'another-session');
+  assert.equal(disp('general-purpose').status, 0, 'another session\'s stamp is no live stamp here at all');
+  fs.writeFileSync(path.join(flow, 'APPROVAL'), 'AUTO - "run without stops"\nskill: capture-usage-report\n');
+  assert.equal(disp('general-purpose').status, 2, 'a hand-written stamp naming no session is no exemption');
+});
+
+// Audit 2026-10-20 H10: the built-in `/init` reached the model's Skill route as the bare name `init`, matched the core's
+// flagged `commands/init.md` in the cache and was denied as disable-model-invocation. A plugin COMMAND is read only
+// under its namespace; a bare name is a personal or project command or a built-in. A plugin SKILL keeps its bare name.
+test('H10: a bare built-in name is never a plugin command, the scoped one still is', () => {
+  const home = fs.mkdtempSync(path.join(TMP, 'h10-'));
+  const plugin = path.join(home, 'plugins', 'cache', 'envoydev', 'alfred-code', '9.9.9');
+  for (const [rel, body] of [['setup-plugin/commands/init.md', '---\ndescription: "x"\ndisable-model-invocation: true\n---\nbody\n'],
+    ['stack/skills/loop-code-quality/SKILL.md', '---\nname: loop-code-quality\ndisable-model-invocation: true\n---\nbody\n']]) {
+    fs.mkdirSync(path.dirname(path.join(plugin, rel)), { recursive: true });
+    fs.writeFileSync(path.join(plugin, rel), body);
+  }
+  const call = (skill) => runIn('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill }, transcript_path: transcript(`h10-${skill.replace(':', '-')}`, ctxRows('h10', 1000)) },
+    { env: { ...process.env, CLAUDE_CONFIG_DIR: home } });
+  assert.equal(call('init').status, 0, 'the built-in /init is no plugin command');
+  assert.equal(call('alfred-code:init').status, 2, 'the core command under its own namespace is still denied');
+  assert.equal(call('loop-code-quality').status, 2, 'a plugin skill still answers to its bare name');
+  fs.rmSync(home, { recursive: true, force: true });
+});
+
+// Ruling S3 (2026-10-20): an APPROVAL stamp written after an ask the idle timeout closed records no one's approval -
+// the implementer dispatch is denied once ('the question timed out - re-ask'), the marker spent; a stamp written before
+// the timeout, or with no timeout marker, passes. Ruling S1: the unapproved denial names --auto-mode for a no-stops run
+// and keeps a hand-written AUTO waiver to the two solve flows.
+test('S3 + S1: a stamp after a timed-out ask is denied once; the unapproved denial names --auto-mode', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 's3d-'));
+  const logDir = fs.mkdtempSync(path.join(TMP, 's3d-log-'));
+  const flow = path.join(root, '.alfred', 'docs', 'flow');
+  fs.mkdirSync(flow, { recursive: true });
+  const gate = path.join(flow, 'APPROVAL');
+  const marker = path.join(logDir, 'alfred-ask-timeout-s3d-sess');
+  const disp = () => runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', session_id: 's3d-sess', cwd: root, tool_input: { subagent_type: 'wpf-implementer', prompt: 'build it' } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_HOOK_LOG_DIR: logDir } });
+  const unapproved = disp();
+  assert.equal(unapproved.status, 2);
+  assert.match(unapproved.stderr, /--auto-mode/, 'S1: a no-stops run is the typed flag');
+  assert.match(unapproved.stderr, /only under task-solve and task-solve-cross/, 'S1: a hand-written AUTO is the solve flows\' alone');
+  const past = new Date(Date.now() - 60000);
+  fs.writeFileSync(marker, past.toISOString()); fs.utimesSync(marker, past, past);
+  fs.writeFileSync(gate, 'APPROVED plan-x - "Approve (Recommended)"\n');
+  const denied = disp();
+  assert.equal(denied.status, 2, 'a stamp written after the timeout is no approval');
+  assert.match(denied.stderr, /the question timed out - re-ask/);
+  assert.ok(!fs.existsSync(marker), 'the marker is spent');
+  assert.equal(disp().status, 0, 'denied once - the re-asked approval is never held twice');
+  fs.writeFileSync(marker, new Date().toISOString());
+  const older = new Date(Date.now() - 120000);
+  fs.utimesSync(gate, older, older);
+  assert.equal(disp().status, 0, 'a stamp written before the timeout stands');
+  fs.rmSync(marker, { force: true });
+});
+
+// Audit 2026-10-20 (hooks minor list) + ruling S3: `askAnsweredSince` counts an ask's OWN tool_result - never the answer
+// wording inside a file a Read printed - and never an ask the idle timeout closed.
+test('askAnsweredSince: only an ask\'s own answer counts - not a printed file, not an idle timeout', () => {
+  const eng = require(path.join(HOOKS, 'fresh-session.js'));
+  const tp = path.join(TMP, `answered-since-${process.pid}.jsonl`);
+  const at = (rows) => { fs.writeFileSync(tp, rows.map((r) => JSON.stringify(r)).join('\n') + '\n'); eng.use({ transcript_path: tp }); return eng.askAnsweredSince(0); };
+  const res = (content, extra = {}) => ({ type: 'user', ...extra, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content }] } });
+  assert.equal(at([res('Your questions have been answered: "Go?"="Yes (Recommended)". You can now continue with these answers in mind.')]), true, 'a picked answer');
+  assert.equal(at([res('The user declined to answer the questions.')]), true, 'a declined ask is answered too');
+  assert.equal(at([res('1\t# notes\n2\tThe user answered: "x"="y" - a quoted line in a file')]), false, 'a Read printing the wording is no answer');
+  assert.equal(at([res('No response after 60s — the user may be away from keyboard. Proceed using your best judgment.\nBefore going idle the user had selected: "Go?"="Yes".')]), false, 'an idle timeout');
+  assert.equal(at([res('Your questions have been answered: "Go?"="Yes".', { toolUseResult: { answers: { 'Go?': 'Yes' }, afkTimeoutMs: 60000 } })]), false, 'a row whose result carries afkTimeoutMs');
+  eng.use({});
+});
+
+// Audit 2026-10-20 (hooks minor list): the analyzer switches are keyed; a keyword-less in-place edit is judged by the
+// pairs it leaves; a tsconfig `extends` / `exclude` change is judged like a key.
+test('guard-config-protection: analyzer switches, a keyword-less sed -i and tsconfig extends / exclude', () => {
+  const H = 'guard-config-protection.js';
+  const { root, at } = cfgProject('cfg-h2m-');
+  const edit = (file, old_string, new_string) => run(H, { tool_name: 'Edit', cwd: root, tool_input: { file_path: file, old_string, new_string } });
+  const sh = (command) => run(H, { tool_name: 'Bash', cwd: root, tool_input: { command } });
+  withProject(root, {}, () => {
+    const proj = at('Directory.Build.props', '<Project><PropertyGroup>\n<RunAnalyzers>true</RunAnalyzers>\n<EnableNETAnalyzers>true</EnableNETAnalyzers>\n<Version>1.0.0</Version>\n</PropertyGroup></Project>\n');
+    assert.strictEqual(edit(proj, '<RunAnalyzers>true</RunAnalyzers>', '<RunAnalyzers>false</RunAnalyzers>'), 2, 'RunAnalyzers switched off');
+    assert.strictEqual(edit(proj, '<EnableNETAnalyzers>true', '<EnableNETAnalyzers>false'), 2, 'EnableNETAnalyzers switched off');
+    assert.strictEqual(sh("sed -i '' '3s/true/false/' Directory.Build.props"), 2, 'a keyword-less addressed sed flips a keyed line');
+    assert.strictEqual(sh("sed -i '' 's/true/false/' Directory.Build.props"), 2, 'an unaddressed one too');
+    assert.strictEqual(sh("sed -i '' '4s/1.0.0/1.1.0/' Directory.Build.props"), 0, 'a version bump leaves every pair');
+    assert.strictEqual(sh("sed -i '' 's/<Version>1.0.0/<Version>2.0.0/' Directory.Build.props"), 0, 'by pattern too');
+    assert.strictEqual(sh("sed -i '' '/Version/s/1/2/g' Directory.Build.props"), 0, 'a regex address on another line');
+    const ts = at('tsconfig.json', '{\n  "extends": "./tsconfig.strict.json",\n  "exclude": ["dist"],\n  "compilerOptions": { "outDir": "dist" }\n}\n');
+    assert.strictEqual(edit(ts, './tsconfig.strict.json', './tsconfig.loose.json'), 2, 'extends moved to another base');
+    assert.strictEqual(edit(ts, '["dist"]', '["dist", "src/legacy"]'), 2, 'exclude grew');
+    assert.strictEqual(edit(ts, '["dist"]', '[ "dist" ]'), 0, 'whitespace inside the array is no change');
+    assert.strictEqual(edit(ts, '"outDir": "dist"', '"outDir": "build"'), 0, 'another key stays open');
+  });
+});
+
+// Audit 2026-10-20 (hooks minor list): PowerShell's backslash paths reach the reader as `/` (`..\sib\x` passed on a POSIX
+// host), and the main block's row names its branch.
+test('guard-cross-project-write: PowerShell backslash paths, and the block row names its branch', () => {
+  const sid = `xp-branch-${process.pid}`;
+  const sib = path.basename(XP_OTHER);
+  assert.equal(xp({ tool_name: 'PowerShell', session_id: sid, tool_input: { command: `Set-Content -Path ..\\${sib}\\x.txt -Value hi` } }), 2, 'a PowerShell ..\\ path into a sibling');
+  assert.equal(xp({ tool_name: 'PowerShell', session_id: sid, tool_input: { command: 'Set-Content -Path .\\src\\x.txt -Value hi' } }), 0, 'a .\\ path stays home');
+  assert.equal(xp({ tool_name: 'Write', session_id: sid, tool_input: { file_path: path.join(XP_OTHER, 'y.txt') } }), 2);
+  const rows = fs.readFileSync(path.join(XP_ROOT, '.alfred', 'docs', 'hook-blocks', `${sid}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.deepStrictEqual(rows.map((r) => r.detail && r.detail.branch), ['shell-write', 'file-tool']);
+});
+
+// Audit 2026-10-20 (hooks minor list): the remote's DEFAULT branch is protected too, read from refs/remotes/<remote>/HEAD;
+// and the denial says the push is the user's to run themselves.
+test('guard-protected-force-push: the remote default branch is protected, and the denial hands the push to the user', () => {
+  const dir = scratchRepoOn('trunk');
+  const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'fp-remote-'));
+  spawnSync('git', ['init', '-q', '--bare', bare], { encoding: 'utf8' });
+  git('remote', 'add', 'origin', bare);
+  git('update-ref', 'refs/remotes/origin/trunk', 'HEAD');
+  git('symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk');
+  const fp = (command) => runIn('guard-protected-force-push.js', { tool_name: 'Bash', cwd: dir, tool_input: { command } }, { cwd: dir });
+  const denied = fp('git push --force origin trunk');
+  assert.equal(denied.status, 2, 'a force of the remote default');
+  assert.match(denied.stderr, /theirs to run: give them the exact command to type themselves/);
+  assert.equal(fp('git push origin :trunk').status, 2, 'a delete of it');
+  assert.equal(fp('git push -f').status, 2, 'a bare force while HEAD is the default');
+  assert.equal(fp('git push origin trunk').status, 0, 'an ordinary push of it passes');
+  assert.equal(fp('git push --force origin feature/x').status, 0, 'another branch stays open');
+  git('symbolic-ref', '--delete', 'refs/remotes/origin/HEAD');
+  assert.equal(fp('git push --force origin trunk').status, 0, 'no remote HEAD recorded, no default to protect');
+  fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(bare, { recursive: true, force: true });
+});
+
+// Audit 2026-10-20 (hooks minor list): PreToolUse hooks run in parallel, so guard-layer-table.js can deny the very ask
+// this hook fixed in place. The `ask-fixed` row now waits for the call's own result and is dropped when a hook denied
+// it; a fix spends no deny marker.
+test('guard-stop-contract: the ask-fixed row waits for the call\'s result, and a sibling\'s denial drops it', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'askfixed-'));
+  const logDir = fs.mkdtempSync(path.join(TMP, 'askfixed-log-'));
+  const tp = path.join(root, 'session.jsonl');
+  const rows = [{ type: 'user', message: { content: 'set it up' } }];
+  const flush = () => fs.writeFileSync(tp, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+  const env = { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_HOOK_LOG_DIR: logDir } };
+  const slip = (id) => {
+    const questions = [{ question: `Pick ${id} — now`, header: 'Pick', options: [{ label: 'A (Recommended)', description: 'x' }, { label: 'B', description: 'y' }] }];
+    rows.push({ type: 'assistant', message: { id: `m-${id}`, content: [{ type: 'tool_use', id, name: 'AskUserQuestion', input: { questions } }] } });
+    flush();
+    return runIn('guard-stop-contract.js', { tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', session_id: 'af', tool_use_id: id, transcript_path: tp, tool_input: { questions } }, env);
+  };
+  const result = (id, content) => { rows.push({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content }] } }); flush(); };
+  const fixedRows = () => { try { return fs.readFileSync(path.join(root, '.alfred', 'docs', 'hook-blocks', 'af.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((r) => r.kind === 'ask-fixed'); } catch { return []; } };
+  const r1 = slip('q1');
+  assert.equal(r1.status, 0, 'fixed in place');
+  assert.deepStrictEqual(fixedRows(), [], 'no row while the call has no result');
+  assert.deepStrictEqual(fs.readdirSync(logDir).filter((f) => f.startsWith('guard-stop-askvoice-')), [], 'a fix spends no deny marker');
+  result('q1', 'PreToolUse:AskUserQuestion hook error: alfred-code layer-table gate: the skills table ran but its output is not in your message');
+  slip('q2');
+  assert.deepStrictEqual(fixedRows(), [], 'the denied call writes no ask-fixed row');
+  result('q2', 'Your questions have been answered: "Pick q2 - now"="A (Recommended)". You can now continue with these answers in mind.');
+  runIn('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'af', transcript_path: tp, last_assistant_message: 'Picked A.' }, env);
+  assert.deepStrictEqual(fixedRows().map((r) => r.tool_use_id), ['q2'], 'the answered one is counted at the next run');
 });

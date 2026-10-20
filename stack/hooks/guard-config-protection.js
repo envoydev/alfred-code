@@ -72,13 +72,16 @@ function stripJsonComments(s) {
 // it off and passed) - audit 2026-10-08. An unterminated comment start comments out the rest of the text.
 const KEYED = [
   { file: /^tsconfig(\..+)?\.json$/, strip: stripJsonComments,
-    pair: /"(strict\w*|alwaysStrict|noImplicit\w+|noUnused\w+|noUncheckedIndexedAccess|noFallthroughCasesInSwitch|noPropertyAccessFromIndexSignature|exactOptionalPropertyTypes|useUnknownInCatchVariables|allowUnreachableCode|allowUnusedLabels|skipLibCheck)"\s*:\s*("[^"]*"|[^,}\s]+)/g,
-    key: (m) => `${m[1]}=${m[2].trim()}` },
+    // `extends` names the base the strictness comes from and `exclude` the files no check reads (audit 2026-10-20, the
+    // hooks track's minor list): a change to either is judged like a key, an array compared without its whitespace.
+    pair: /"(strict\w*|alwaysStrict|noImplicit\w+|noUnused\w+|noUncheckedIndexedAccess|noFallthroughCasesInSwitch|noPropertyAccessFromIndexSignature|exactOptionalPropertyTypes|useUnknownInCatchVariables|allowUnreachableCode|allowUnusedLabels|skipLibCheck|extends|exclude)"\s*:\s*("[^"]*"|\[[^\]]*\]|[^,}\s]+)/g,
+    key: (m) => `${m[1]}=${tsValue(m[2])}` },
   { file: /^(Directory\.Build\.(props|targets)|.+\.(cs|fs|vb)proj)$/, strip: (s) => s.replace(/<!--[\s\S]*?(?:-->|$)/g, ' '),
-    pair: /<(TreatWarningsAsErrors|WarningsAsErrors|WarningsNotAsErrors|WarningLevel|NoWarn|Nullable|AnalysisLevel|AnalysisMode|EnforceCodeStyleInBuild)\b([^>]*)>([^<]*)<\/\1\s*>/g,
+    pair: /<(TreatWarningsAsErrors|WarningsAsErrors|WarningsNotAsErrors|WarningLevel|NoWarn|Nullable|AnalysisLevel|AnalysisMode|EnforceCodeStyleInBuild|RunAnalyzers|RunAnalyzersDuringBuild|EnableNETAnalyzers)\b([^>]*)>([^<]*)<\/\1\s*>/g,
     key: (m) => `${m[1]}${m[2].trim() ? `[${m[2].trim().replace(/\s+/g, ' ')}]` : ''}=${m[3].trim()}` },
 ];
-const KEY_WORDS = /strict|noImplicit|noUnused|noUnchecked|noFallthrough|noPropertyAccess|allowUnreachable|allowUnused|useUnknownInCatch|exactOptional|skipLibCheck|NoWarn|WarningsAsErrors|WarningsNotAsErrors|WarningLevel|Nullable|AnalysisLevel|AnalysisMode|EnforceCodeStyle/;
+const KEY_WORDS = /strict|noImplicit|noUnused|noUnchecked|noFallthrough|noPropertyAccess|allowUnreachable|allowUnused|useUnknownInCatch|exactOptional|skipLibCheck|NoWarn|WarningsAsErrors|WarningsNotAsErrors|WarningLevel|Nullable|AnalysisLevel|AnalysisMode|EnforceCodeStyle|RunAnalyzers|EnableNETAnalyzers/;
+function tsValue(v) { const t = String(v || '').trim(); return t.startsWith('[') ? t.replace(/\s+/g, '') : t; }
 const WHOLE_WHY = 'it is a lint / format / analyzer config';
 const keyPairs = (text, keyed) => [...keyed.strip(String(text || '')).matchAll(keyed.pair)].map(keyed.key).sort().join('\n');
 const unq = (s) => String(s).replace(/^["']|["']$/g, '');
@@ -192,7 +195,7 @@ function tsOnlyTightens(before, after, keyed) {
     const m = new Map();
     for (const x of keyed.strip(String(t || '')).matchAll(keyed.pair)) {
       if (m.has(x[1])) return null;
-      m.set(x[1], x[2].trim());
+      m.set(x[1], tsValue(x[2]));
     }
     return m;
   };
@@ -292,7 +295,7 @@ function onlyTightens(before, after, keyed) {
     const name = (was || now).name;
     if (name === 'NoWarn' || name === 'WarningsNotAsErrors') { if (!subset(list(now && now.value), list(was && was.value))) return false; continue; }
     if (name === 'WarningsAsErrors') { if (!now || !subset(list(was && was.value), list(now.value))) return false; continue; }
-    if (name === 'TreatWarningsAsErrors' || name === 'EnforceCodeStyleInBuild') { if (!now || !bool(now.value) || (was && bool(was.value))) return false; continue; }
+    if (name === 'TreatWarningsAsErrors' || name === 'EnforceCodeStyleInBuild' || name === 'RunAnalyzers' || name === 'RunAnalyzersDuringBuild' || name === 'EnableNETAnalyzers') { if (!now || !bool(now.value) || (was && bool(was.value))) return false; continue; }
     if (name === 'WarningLevel') { if (!now || !(Number(now.value) > (was ? Number(was.value) : -1))) return false; continue; }
     if (name === 'Nullable') {
       const r = (v) => NULLABLE[String(v || 'disable').trim().toLowerCase()];
@@ -346,6 +349,7 @@ function judgeScan(command) {
     if (whole) return { abs, why: WHOLE_WHY };
     if (t.what === 'an in-place edit' || t.verb === 'interpreter') {
       if (KEY_WORDS.test(command)) return { abs, why: 'the command names a strictness / warning setting' };
+      if (inPlaceWeakens(command, abs, keyed)) return { abs, why: 'the in-place edit changes a strictness / warning setting' };
       continue;
     }
     let text = '';
@@ -353,6 +357,48 @@ function judgeScan(command) {
     if (keyPairs(text, keyed)) return { abs, why: 'the command replaces or removes a file holding strictness / warning settings' };
   }
   return null;
+}
+// A keyword-less in-place edit names no key, yet `sed -i '3s/true/false/' tsconfig.json` flips one (audit 2026-10-20, the
+// hooks track's minor list). Each `s` script the command carries - a line or /regex/ address (a range of either) and a
+// substitution, sed's basic syntax unless -E / -r - is applied to the file in memory, and the edit is judged on the
+// pairs it leaves, the file tool's rule. A script this reader cannot apply is left to the keyword rule, as before.
+function inPlaceWeakens(command, abs, keyed) {
+  let before = '';
+  try { before = fs.readFileSync(abs, 'utf8'); } catch { return false; }
+  if (!keyPairs(before, keyed)) return false;
+  const ere = /(?:^|\s)-(?:[a-zA-Z]*[Er][a-zA-Z]*)\b/.test(command) || /\bperl\b/.test(command);
+  const toJs = (re) => (ere ? re : re.replace(/\\([(){}+?|])|([(){}+?|])/g, (m, esc, bare) => (esc ? esc : `\\${bare}`)));
+  const repl = (r) => r.replace(/\\(\d)|\\&|&|\$/g, (m, d) => (d ? `$${d}` : m === '\\&' ? '&' : m === '&' ? '$&' : '$$'));
+  const addr = '(\\d+|\\$|\\/(?:[^/\\\\]|\\\\.)*\\/)';
+  const SCRIPT = new RegExp(`^${addr}?(?:,${addr})?\\s*s([/|#,:@!])((?:(?!\\3)[^\\\\]|\\\\.)*)\\3((?:(?!\\3)[^\\\\]|\\\\.)*)\\3([gip0-9]*)$`);
+  const words = (command.match(/'[^']*'|"(?:[^"\\]|\\.)*"|\S+/g) || []).map((w) => w.replace(/^['"]|['"]$/g, ''));
+  let text = before;
+  let applied = 0;
+  for (const w of words) {
+    for (const part of w.split(/;\s*/)) {
+      const m = SCRIPT.exec(part.trim());
+      if (!m) continue;
+      let pat; let from = null; let to = null;
+      try {
+        pat = new RegExp(toJs(m[4]), `${m[6].includes('g') ? 'g' : ''}${/[iI]/.test(m[6]) ? 'i' : ''}`);
+        const at = (a) => (a === undefined ? null : /^\d+$/.test(a) ? Number(a) : a === '$' ? Infinity : new RegExp(toJs(a.slice(1, -1))));
+        from = at(m[1]); to = at(m[2]);
+      } catch { return false; }
+      const lines = text.split('\n');
+      let inRange = false;
+      const hit = (spec, i, line) => (typeof spec === 'number' ? (spec === Infinity ? i === lines.length - 1 : i + 1 === spec) : spec.test(line));
+      text = lines.map((line, i) => {
+        let on;
+        if (from === null) on = true;
+        else if (to === null) on = hit(from, i, line);
+        else { if (!inRange && hit(from, i, line)) { inRange = true; on = true; } else if (inRange) { on = true; if (hit(to, i, line)) inRange = false; } else on = false; }
+        return on ? line.replace(pat, repl(m[5])) : line;
+      }).join('\n');
+      applied += 1;
+    }
+  }
+  if (!applied || keyPairs(before, keyed) === keyPairs(text, keyed)) return false;
+  return !(keyed === KEYED[1] ? onlyTightens(before, text, keyed) : tsOnlyTightens(before, text, keyed));
 }
 function judgeShell() {
   let command = String((payload.tool_input || {}).command || '');

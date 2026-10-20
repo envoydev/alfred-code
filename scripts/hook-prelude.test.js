@@ -915,3 +915,15 @@ test('H2 replay: a foreign repository\'s fsmonitor program never runs from the r
         fs.rmSync(proj, { recursive: true, force: true });
     }
 });
+
+// Audit 2026-10-20 (hooks minor list): a user's csv naming a hook by its OLD name still switches it off - the plugin
+// route never rewrites ALFRED_CODE_HOOKS_OFF. The prelude's inline map is the manifest's renamed.hooks, held equal here.
+test('HOOKS_OFF: an old hook name in the csv still switches the renamed hook off', () => {
+  const prelude = require('../stack/hooks/hook-prelude.js');
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8'));
+  assert.deepStrictEqual({ ...prelude.HOOK_RENAMED }, (manifest.renamed && manifest.renamed.hooks) || {}, 'the inline map is the manifest\'s renamed.hooks');
+  assert.strictEqual(prelude.hookDisabled('guard-answer.js', { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' }), true, 'the old name');
+  assert.strictEqual(prelude.hookDisabled('guard-answer.js', { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length.js, history-session' }), true, 'with .js, in a list');
+  assert.strictEqual(prelude.hookDisabled('guard-answer.js', { ALFRED_CODE_HOOKS_OFF: 'guard-answer' }), true, 'the new name');
+  assert.strictEqual(prelude.hookDisabled('guard-stop-contract.js', { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' }), false, 'no other hook');
+});

@@ -74,7 +74,7 @@ test('auto-mode stamp: one naming its session is that session\'s for the whole r
     assert.strictEqual(autoStampLive({ session_id: 'sess-b', transcript_path: t }, env), true, 'a hand-written stamp is no one session\'s');
     fs.utimesSync(p.gate, old, old);
     assert.strictEqual(autoStampLive({ session_id: 'sess-b', transcript_path: t }, env), false, 'and lives 8h');
-    assert.deepStrictEqual(Object.keys(approvalStamp({ session_id: 'x' }, env)).sort(), ['file', 'first', 'live', 'mtimeMs', 'session']);
+    assert.deepStrictEqual(Object.keys(approvalStamp({ session_id: 'x' }, env)).sort(), ['file', 'first', 'live', 'mtimeMs', 'session', 'skill']);
     assert.strictEqual(approvalStamp({ session_id: 'x' }, { CLAUDE_PROJECT_DIR: fs.mkdtempSync(path.join(TMP, 'none-')) }), null, 'no stamp');
 });
 
@@ -110,7 +110,13 @@ test('auto-mode start: the typed command writes the stamp before the run, and th
     const before = fs.readFileSync(p.gate, 'utf8');
     assert.match(context(expand(p, 's2', '/task-solve --auto-mode fix the cache', big)), /auto-mode is ON for this \/task-solve run/);
     assert.strictEqual(fs.readFileSync(p.gate, 'utf8'), before, 'the live stamp is kept');
-    // another session's stamp is not this run's: it is replaced
+    // another session's stamp, young enough that its run may be going, is never overwritten (audit 2026-10-20, hooks
+    // minor list): this run asks as usual, with a refused row; past 8h it is replaced
+    assert.doesNotMatch(context(expand(p, 's3', '/task-solve-cross --auto-mode', big)), /auto-mode is ON/);
+    assert.strictEqual(fs.readFileSync(p.gate, 'utf8'), before, 'the other session\'s live stamp is left as it is');
+    assert.ok(rows(p, 's3').some((r) => r.kind === 'auto-start-refused'), 'one refused row');
+    const old = new Date(Date.now() - 9 * 3600 * 1000);
+    fs.utimesSync(p.gate, old, old);
     expand(p, 's3', '/task-solve-cross --auto-mode', big);
     assert.match(fs.readFileSync(p.gate, 'utf8'), /\nsession: s3\n/);
 });

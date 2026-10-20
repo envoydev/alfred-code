@@ -121,6 +121,10 @@ function switchOn(suffix, env)
     return String(envOf(source, suffix) || '').trim() === '1';
 }
 
+// A hook's OLD name in the csv still switches it off (audit 2026-10-20, the hooks track's minor list: the csv is the
+// user's own text, and an update never rewrites it). Old name -> new, the manifest's `renamed.hooks`, copied here so the
+// prelude stays standalone; hook-prelude.test.js holds the two equal.
+const HOOK_RENAMED = Object.freeze({ 'guard-answer-length': 'guard-answer' });
 function hookDisabled(hook, env)
 {
     const source = env || process.env;
@@ -128,7 +132,7 @@ function hookDisabled(hook, env)
     if (!off.trim()) return false;
     const wanted = baseName(hook);
     if (!wanted) return false;
-    return off.split(',').map(baseName).filter(Boolean).includes(wanted);
+    return off.split(',').map(baseName).filter(Boolean).map((n) => HOOK_RENAMED[n] || n).includes(wanted);
 }
 
 // Every command string in the settings file, whatever the event and matcher nesting.
@@ -312,6 +316,7 @@ function approvalStamp(input, env)
         const text = head.toString('utf8', 0, n);
         const first = text.split('\n')[0].trim();
         const session = (/^session:[ \t]*(\S+)/m.exec(text) || [])[1] || '';
+        const skill = (/^skill:[ \t]*(\S+)/m.exec(text) || [])[1] || '';
         const age = Date.now() - stamp.mtimeMs;
         let live;
         if (session) live = age <= SESSION_STAMP_MAX_MS && String(payload.session_id || '') === session;
@@ -329,7 +334,7 @@ function approvalStamp(input, env)
                 catch { /* no transcript - the age cap decides */ }
             }
         }
-        return { file, first, session, live, mtimeMs: stamp.mtimeMs };
+        return { file, first, session, skill, live, mtimeMs: stamp.mtimeMs };
     }
     catch { return null; }
 }
@@ -674,8 +679,29 @@ function gitSafe(argv, opts = {})
     return ['git', [...GIT_SAFE_CONFIG, ...argv], { ...opts, env: { ...(opts.env || process.env), GIT_OPTIONAL_LOCKS: '0' } }];
 }
 
+// AN ASK NOBODY ANSWERED (ruling S3, 2026-10-20): Claude Code 2.1.304 closes an AskUserQuestion left idle past its
+// auto-continue timeout itself - the tool result carries `afkTimeoutMs` ('Set when the dialog auto-resolved ...
+// Absent on every human-resolved path', the bundle's output schema) and the model reads 'No response after <N>s - the
+// user may be away from keyboard. Proceed using your best judgment ...' (code.claude.com/docs/en/tools-reference,
+// 'Question auto-continue timeout'). That is no answer: no approval, no consent, no pick. `askTimedOut` takes the PostToolUse
+// `tool_response`, a transcript row's `toolUseResult` or the result text; `askTimeoutMarker` is the per-session file the
+// answer hook writes on a timeout and removes on the next answer or typed prompt, which the dispatch guard reads.
+const ASK_TIMEOUT_RE = /\bNo response after \d+\s*s\s*(?:\u2014|\u2013|-{1,2})\s*the user may be away from keyboard/i;
+function askTimedOut(response)
+{
+    if (response && typeof response === 'object' && !Array.isArray(response) && Number(response.afkTimeoutMs) > 0) return true;
+    let text = '';
+    try { text = typeof response === 'string' ? response : JSON.stringify(response || ''); } catch { return false; }
+    return ASK_TIMEOUT_RE.test(String(text || ''));
+}
+function askTimeoutMarker(sessionId, env = process.env)
+{
+    const part = String(sessionId || 'nosession').replace(/[^\w.-]/g, '_').slice(-80);
+    return path.join(envOf(env, 'HOOK_LOG_DIR') || os.tmpdir(), `alfred-ask-timeout-${part}`);
+}
+
 // The dashes the house voice replaces with a single dash - the em-dash, the en-dash and the horizontal bar - ONE class for
 // the stop contract's ask deny (the answer hook's Stop block shared it until 2026-10-20; they disagreed before audit 2026-10-08).
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
-module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, harnessPrompt, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS };
+module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, harnessPrompt, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS };

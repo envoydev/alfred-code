@@ -9,8 +9,10 @@
 // BEFORE approval exists) and verifiers pass (read-only audits; verify-plan dispatches
 // one pre-approval). exit 2 = block (stderr fed back to the model); exit 0 = allow.
 // Stamp lifecycle: each flow/loop writes its OWN stamp when its consent lands and
-// clears it at run end; a stamp persists across a flow's resumed sessions until that
-// clear. Stamps older than MAX_STAMP_AGE_MS are treated as absent - measured: a
+// clears it at run end. A stamp is the writing session's own: one written before this
+// session began is absent (a resumed flow re-stamps), unless it names its session on a
+// `session:` line (an auto-mode stamp, that session's for up to a week - hook-prelude.js
+// approvalStamp). Stamps older than MAX_STAMP_AGE_MS are treated as absent - measured: a
 // leftover stamp from a finished flow silently authorized three later, unrelated
 // runs' dispatches in one consuming project.
 // Generic-seat rule: while a VALID stamp exists (a flow is running), an edit-capable
@@ -269,18 +271,43 @@ if (stampState !== undefined) {
   // absent or unreadable - no approval recorded
 }
 const approved = /^(APPROVED|AUTO)\b/.test(first);
+// Ruling S3 (2026-10-20): a stamp written AFTER an ask the idle timeout closed records no one's approval - nobody
+// answered (hook-prelude.js `askTimedOut`; the answer hook writes the session's marker and clears it on the next
+// answer or typed prompt). Denied once, the marker spent, so a re-asked and answered approval is never held twice.
+function stampAfterTimeout() {
+  try {
+    const pre = require('./hook-prelude.js');
+    if (typeof pre.askTimeoutMarker !== 'function') return false;
+    const marker = pre.askTimeoutMarker(payload.session_id);
+    const at = fs.statSync(marker).mtimeMs;
+    if (fs.statSync(gate).mtimeMs + 1000 < at) return false;
+    fs.rmSync(marker, { force: true });
+    return true;
+  } catch { return false; }
+}
 if (isImplementer) {
+  if (approved && stampAfterTimeout()) {
+    global.BLOCK_DETAIL = { branch: 'implementer-ask-timed-out' };
+    process.stderr.write(
+      `Blocked: dispatch of ${seat} - the question timed out - re-ask. The approval stamp at ${gate} was written after\n` +
+      `an AskUserQuestion that Claude Code closed on its idle timeout ('No response after ...'), so nobody approved\n` +
+      `anything. Re-ask through ONE AskUserQuestion when the user is back and write the stamp from their answer.\n` +
+      `Never delete or edit the stamp to get past this.`);
+    process.exit(2);
+  }
   if (approved) process.exit(0);
   global.BLOCK_DETAIL = { branch: stale ? 'implementer-stale-stamp' : 'implementer-unapproved' };
   process.stderr.write(
     (stale
       ? `Blocked: dispatch of ${seat} - the approval stamp at ${gate} is stale: older than 8h, or written before this session began, so it records another run's decision rather than this one's (measured: a 2h52m-old stamp from a closed session authorized five implementer dispatches).\n`
       : `Blocked: dispatch of ${seat} without an approval gate.\n`) +
-      `Implementer fan-out runs only on the user's explicit approval, or their explicit 'run\n` +
-      `without stops' waiver - never on an inferred or ambiguous go-ahead.\n` +
-      `If the user gave one THIS conversation, write ${gate}\n` +
-      `with one first line - APPROVED <plan/contract id> - "<their words, verbatim>" (or\n` +
-      `AUTO - "<their words, verbatim>" for a no-stops run) - then retry the dispatch.\n` +
+      `Implementer fan-out runs only on the user's explicit approval, or a no-stops run - never on an\n` +
+      `inferred or ambiguous go-ahead. A no-stops run is the user's '--auto-mode' first after the command (the hook\n` +
+      `stamps it); a hand-written AUTO waiver exists only under task-solve and task-solve-cross, in the user's typed\n` +
+      `words - anywhere else the user re-runs the command with --auto-mode.\n` +
+      `If the user approved THIS conversation, write ${gate}\n` +
+      `with one first line - APPROVED <plan/contract id> - "<their words, verbatim>" (or, under those two\n` +
+      `solve flows only, AUTO - "<their words, verbatim>") - then retry the dispatch.\n` +
       `Never fabricate the quote. Otherwise: present the plan and ask the user through ONE\n` +
       `AskUserQuestion - that stop IS the recovery path. Do NOT route around this gate by doing the seat's\n` +
       `build work inline instead: a blocked dispatch means the flow is missing its\n` +
@@ -295,13 +322,22 @@ if (isImplementer) {
 if (!approved) {
   process.exit(0);
 }
+// ... unless the run the stamp belongs to dispatches generic seats by design: an auto-mode stamp names its session and
+// its skill (`skill:`), and capture-usage-report's bundle authors are generic seats on a named model (audit 2026-10-20 H5:
+// its authors were denied under its own `--auto-mode` stamp). Only a stamp naming THIS session reads as live here.
+const GENERIC_DISPATCH_SKILLS = new Set(['capture-usage-report']);
+if (stampState && stampState.live && stampState.session && GENERIC_DISPATCH_SKILLS.has(String(stampState.skill || '').replace(/^alfred-code:/, ''))) {
+  process.exit(0);
+}
 global.BLOCK_DETAIL = { branch: 'generic-while-stamped' };
 process.stderr.write(
   `Blocked: dispatch of ${seat} while a flow is active (${gate} is stamped).\n` +
     `A stamped run dispatches its NAMED domain seats - a generic seat carries none of the\n` +
     `seat's pins, preloads, or trap-lists, and silently bypasses the implementer gate.\n` +
     `Use the matching named seat (or a read-only seat like Explore for pure research).\n` +
-    `If this generic dispatch is deliberate ad hoc work and the flow is over, clear the\n` +
-    `stamp file first, then retry.`,
+    `Never delete or edit the stamp to get past this - it is the user's consent to the run. If this\n` +
+    `generic dispatch is deliberate work outside that run, ask the user through ONE AskUserQuestion\n` +
+    `whether the run is over: 'Keep the run going (Recommended)' - use a named seat instead; 'End the run' -\n` +
+    `the run's own close then clears the stamp, and the dispatch goes after it.`,
 );
 process.exit(2);

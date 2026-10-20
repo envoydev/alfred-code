@@ -1696,6 +1696,11 @@ test('an unattended hold and an unattended Stop ask each write one mode: unatten
     assert.strictEqual(r.hook(stopEv(s), U).stdout, '', 'never asked unattended');
     const rows = r.read(`.claude/docs/hook-blocks/${s}.jsonl`).trim().split('\n').map((l) => JSON.parse(l));
     assert.deepStrictEqual(rows.map((x) => [x.mode, x.event, x.kind]), [['unattended', 'PreToolUse', 'docs hold'], ['unattended', 'Stop', 'docs finish ask']]);
+    // Audit 2026-10-20 H11: one row per kind per session - a second held write and a second Stop add none.
+    r.write('src/Api/Orders/Refund.cs', 'y\n');
+    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s), U)), 'still never held');
+    assert.strictEqual(r.hook(stopEv(s), U).stdout, '', 'still never asked');
+    assert.strictEqual(r.read(`.claude/docs/hook-blocks/${s}.jsonl`).trim().split('\n').length, 2, 'no row repeats its kind');
   } finally { r.rm(); }
 });
 
@@ -2246,4 +2251,31 @@ test('audit 2026-10-20 C43: the shell route and a docs.js set of an architecture
     assert.ok(!denied(bash('cat .claude/docs/architecture/ARCHITECTURE.md', sid())), 'a read is no write');
     assert.ok(!denied(bash('node .claude/hooks/docs.js set code-style/CODE-STYLE#naming < /tmp/x.md', sid())), 'another domain\'s set');
   } finally { r.rm(); }
+});
+
+// Audit 2026-10-20 (hooks minor list): the conflict, deleted-branch and on-mainline lists at SessionStart had no cap; each
+// is cut at six names with a count and the status command. Run against a stub engine holding nine of each.
+test('the SessionStart lists are cut at six names with a count', () => {
+  const os = require('node:os');
+  const path = require('node:path');
+  const { spawnSync } = require('node:child_process');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-cap-'));
+  const hooks = path.join(__dirname, '..', 'stack', 'hooks');
+  for (const f of ['docs-session.js', 'hook-prelude.js']) fs.copyFileSync(path.join(hooks, f), path.join(dir, f));
+  const nine = (p) => Array.from({ length: 9 }, (_, i) => `${p}${i + 1}`);
+  fs.writeFileSync(path.join(dir, 'docs.js'), `const nine = ${nine.toString()};
+module.exports = { DOCS_ROOT: require('path').join(process.env.CLAUDE_PROJECT_DIR, '.alfred', 'docs'), BLOCK_FILE: '/nonexistent-orientation', domains: () => ['architecture'], snapshot: () => ({}), refreshBaseMeta() {}, autoPromote: () => [], docFiles: () => [],
+  status: () => ({ mainline: true, conflicts: nine('c#'), deletedUnmerged: nine('del-'), liveOnMainline: nine('live-'), overrides: [], stranded: [] }),
+  orientationState: () => null, integrity: () => [], loadWatch: () => ({ watch: [], newModule: [], sourceRoots: ['src'] }) };`);
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-cap-root-'));
+  try {
+    const r = spawnSync(process.execPath, [path.join(dir, 'docs-session.js')], { input: JSON.stringify({ hook_event_name: 'SessionStart', session_id: sid(), cwd: root }),
+      encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
+    const text = ctx(r);
+    for (const [label, p] of [['Conflicts: ', 'c#'], ['never detected as merged: ', 'del-'], ['with no proof they merged: ', 'live-']]) {
+      const line = text.split('\n').find((l) => l.includes(label)) || '';
+      assert.match(line, new RegExp(`${p}6 \\(\\+3 more: \``), `${label.trim()} is cut at six`);
+      assert.doesNotMatch(line, new RegExp(`${p}7\\b`));
+    }
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(root, { recursive: true, force: true }); }
 });

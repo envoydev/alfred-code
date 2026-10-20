@@ -1441,8 +1441,8 @@ const rewrite = (command, detail) => {
 };
 const presenceHint = (file) =>
   `Read it for PRESENCE: node "${__filename}" --presence "${file}" [KEY ...]  ->  KEY=set (N chars) | empty | absent.\n` +
-  `A shell \`cat\` of it runs as the redacted view (--redacted). The user sets values by hand; one .mcp.json expands\n` +
-  `belongs in the ACCOUNT settings file (~/.claude/settings.json), never a project one.\n`;
+  `A shell \`cat\` of it runs as the redacted view (--redacted). The user sets values by hand; a value a .mcp.json\n` +
+  `expands (\`\${NAME}\`) belongs in the ACCOUNT settings file (~/.claude/settings.json), never a project one.\n`;
 
 // The verbs that print a file, and the runtimes whose inline reads do the same with a different
 // spelling. `grep` is a dump verb: `grep -n SENTRY settings.json` prints the value's whole line.
@@ -2549,8 +2549,15 @@ const SELF_READ = /guard-secret-value\.js["']?\s+--(?:presence|redacted(?:-env)?
 // This guard's own read, its script word spelled through a variable the command assigned: `G=<path>/guard-secret-value.js;
 // node "$G" --presence <file> KEY` was blocked as an opaque script. Resolved through VARS - only a one-value binding
 // whose value names no further variable - so the test sees the path the shell will run.
+// A binding the shell COMPUTES counts when it only LOCATES this guard (audit 2026-10-20, the hooks track's minor list: the
+// plugin's path is versioned, so `G=$(ls -d ~/.claude/plugins/cache/*/alfred-code/*/stack/hooks/guard-secret-value.js |
+// tail -1); node "$G" --presence .env` is how a session finds it, and it was blocked as an opaque script): a `$(...)`
+// whose every stage is a lister or picker (ls, find, head, tail, sort) and that names the guard's file at a word's end.
+const LOCATES_SELF = /^\$\(\s*(?:(?:ls|find|head|tail|sort)\b[^()`;&|<>]*)(?:\|\s*(?:ls|find|head|tail|sort)\b[^()`;&|<>]*)*\)$/;
+const locatesSelf = (v) => LOCATES_SELF.test(v.trim()) && /(?:^|[\s/*'"])guard-secret-value\.js(?=["'\s)]|$)/.test(v);
 const expandAssigned = (s) => s.replace(/\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)/g, (m, a, b) => {
   const v = VARS.get(a || b);
+  if (v && v.length === 1 && locatesSelf(v[0])) return 'guard-secret-value.js';
   return v && v.length === 1 && !v[0].includes('$') ? v[0] : m;
 });
 const selfRun = (stage, re = SELF_READ) => re.test(stage) || (stage.includes('$') && re.test(expandAssigned(stage)));
@@ -3697,7 +3704,8 @@ function judgeShell(text, forceRuntime, main, bodyLang) {
   for (let si = 0; si < segments.length; si++) {
     const seg = segments[si];
     // A `NAME=value` assignment, or a `for NAME in <list>`, binds the path the NEXT segment dumps.
-    const asg = seg.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;|&]*)/);
+    // an unquoted `$(...)` with no nested parens is ONE word, pipes and spaces inside it included (`G=$(ls -d ... | tail -1)`)
+    const asg = seg.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|\$\([^()]*\)|[^\s;|&]*)/);
     if (asg) VARS.set(asg[1], [assignedValue(asg[2])]);
     const loop = seg.match(/^\s*for\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+([^\n;]+)/);
     if (loop) { VARS.set(loop[1], shellTokens(loop[2]).filter((t) => t !== 'do').slice(0, 20)); LOOP_VARS.add(loop[1]); }

@@ -177,6 +177,45 @@ const resolvedPath = (raw) => {
   for (const abs of pathMod.isAbsolute(p) ? [p] : anchorDirs.map((d) => pathMod.join(d, p))) if (fs.existsSync(abs)) return abs;
   return null;
 };
+// The first file a `find <start ...> -name|-iname <literal>` names that is too big to print whole, sized like a `cat` of it
+// (audit 2026-10-20 H7: `find src -name big.ts -exec cat {} \;` printed a 900-line file unsized): a gated extension past
+// THRESHOLD lines, any other past BIG_BYTES. The start points are the words after `find` up to its first expression word,
+// anchored like any target; the walk skips `.git` and `node_modules` and stops judging past NAMED_FIND_CAP entries.
+const NAMED_FIND_CAP = 20000;
+function namedFindOverCap(text, name, folded) {
+  const words = text.replace(/^[\s\S]*?\bfind\b/, '').trim().split(/\s+/);
+  const starts = [];
+  for (const w of words) {
+    if (/^[-(!\\|;&]/.test(w)) { if (/^-[HLP]$/.test(w)) continue; break; }
+    starts.push(w.replace(/^["']|["']$/g, ''));
+  }
+  const want = folded ? name.toLowerCase() : name;
+  let seen = 0;
+  for (const start of starts.length ? starts : ['.']) {
+    if (isVar(start)) continue;
+    const root = resolvedPath(start);
+    if (!root) continue;
+    const stack = [root];
+    while (stack.length) {
+      const dir = stack.pop();
+      let entries = [];
+      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+      for (const e of entries) {
+        if (++seen > NAMED_FIND_CAP) return null;
+        const p = pathMod.join(dir, e.name);
+        if (e.isDirectory()) { if (e.name !== '.git' && e.name !== 'node_modules') stack.push(p); continue; }
+        if ((folded ? e.name.toLowerCase() : e.name) !== want) continue;
+        let size = 0;
+        try { size = fs.statSync(p).size; } catch { continue; }
+        if (GATED_EXT.test(p)) {
+          const lc = size > 8 * 1024 * 1024 ? Infinity : lineCountOf(p);
+          if (lc > THRESHOLD) return { file: p, why: `${lc === Infinity ? 'over 8MB' : `${lc} lines`}, past the ${THRESHOLD}-line cap` };
+        } else if (size > BIG_BYTES) return { file: p, why: `${size} bytes, past the ${BIG_BYTES}-byte cap` };
+      }
+    }
+  }
+  return null;
+}
 // Set by the shell matcher when the command cd's somewhere it cannot follow (a variable, `-`): a relative target that
 // resolves nowhere may then sit under that unknown directory.
 let unfollowedCd = false;
@@ -2409,15 +2448,31 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
   if (loop || sweepM) {
     const sweep = loop ? 'a shell loop over a file list'
       : /-exec/i.test(sweepM[0]) ? 'find -exec cat' : 'xargs cat';
-    const namedFind = loop ? null : sweepM[0].match(/-name\s+(["']?)([^"'\s*?\[\]]+)\1(?=\s|$)/);
+    // `-iname` names one file the same way, case folded (audit 2026-10-20 H7: 8 corpus rows of `-iname <literal> | xargs cat`
+    // were denied as sweeps)
+    const namedFind = loop ? null : sweepM[0].match(/-(i?)name\s+(["']?)([^"'\s*?\[\]]+)\2(?=\s|$)/);
     // The literal-name exemption rests on 'no glob metacharacter means it names ONE file'. That
     // holds for a source file and fails completely for `-name SKILL.md`, which names one file per
     // skill directory - 35 of them in the measured dump, 46 in the next. So the exemption does not
     // cover markdown: a repeated literal `.md` name across a tree is the sweep, not the idiom.
-    const namedOne = namedFind && !/\.md\b/i.test(namedFind[2] || '');
+    const namedOne = namedFind && !/\.md\b/i.test(namedFind[3] || '');
     const sweepMasked = loop ? '' : blankQuoted(sweepM[0]);
     const catAt = loop ? -1 : sweepMasked.search(/(?:-exec|\bxargs\b(?:\s+-\w+)*)\s+cat\b/i);
     const counted = catAt >= 0 && countedFrom(sweepMasked, catAt + sweepMasked.slice(catAt).search(/\bcat\b/) + 3);
+    // ... and the files it names are SIZED, as a `cat` of each would be (H7: `find src -name big.ts -exec cat {} \;` printed
+    // a 900-line file whole). Found under the find's start points, a bounded walk; one over THRESHOLD lines or BIG_BYTES is
+    // the dump the Read half blocks.
+    const bigNamed = namedOne && !counted ? namedFindOverCap(sweepM[0], namedFind[3], namedFind[1] === 'i') : null;
+    if (bigNamed) {
+      global.BLOCK_DETAIL = { branch: 'named-find-dump', file: pathMod.basename(bigNamed.file) };
+      process.stderr.write(
+        `Blocked: ${sweep} prints ${bigNamed.file} whole - ${bigNamed.why}.\n` +
+        `The find names the file, but the cat after it prints every line, which is the whole-file read the Read gate\n` +
+        `blocks. Locate what you need first (the navigation server's find_symbol / get_symbols_overview, or grep -n for a\n` +
+        `pattern), then read only the ranges that matter. The navigation tools are DEFERRED - load them first:\n` + LOAD_SERENA,
+      );
+      process.exit(2);
+    }
     if (loop || (!namedOne && !counted && SWEEP_EXT_ANY.test(sweepM[0]))) {
       global.BLOCK_DETAIL = loop ? { branch: 'sweep', var: loop.var, operand: loop.operand } : { branch: 'sweep', shape: sweep };
       process.stderr.write(

@@ -25,9 +25,10 @@
 // exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unparseable, on a root
 // that cannot be resolved, and on a target that cannot be judged (an unexpanded variable, a
 // relative path after `cd -` or `cd $DIR`).
-// Out of scope (same honesty as the sibling guards): a write hidden from a flat scan -
-// `--git-dir=`/`--work-tree=`, `bash -c '...'`, `eval`, `xargs rm`, `find ... -delete`, a
-// wrapper script - is NOT caught here; this guard reads the literal command.
+// The command is read through shell-writes.js `scanShell`: a wrapper, `bash -c '...'`, `eval`, a heredoc into a shell, a
+// script FILE a shell runs and a git alias are read as what they run, and what the reader cannot read is asked, never
+// passed (below). Out of model (audit 2026-10-20 refreshed this list): a path the shell COMPUTES (`$(...)`, a loop
+// variable), `xargs rm` fed a listing and `find ... -delete` - the rm guard judges the last two for what they destroy.
 const fs = require('fs');
 // The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
@@ -357,6 +358,9 @@ function otherProjectRoot(target) {
 // `shown` is the token the session wrote (or the resolved path after a cd); `abs` is where it lands.
 function block(what, shown, abs = shown) {
   const other = otherProjectName(abs);
+  // The main block names its branch like the unread one below (audit 2026-10-20, the hooks track's minor list: every
+  // other row of this guard carried none, so the ledger could not split a file-tool write from a shell one).
+  global.BLOCK_DETAIL = { branch: /^(?:Write|Edit|MultiEdit|NotebookEdit) of a file$/.test(what) ? 'file-tool' : /git write/.test(what) ? 'git-write' : 'shell-write' };
   const otherRoot = otherProjectRoot(abs);
   const docsRel = docsRoot.replace(/^\//, '');
   const receiptRel = path.join(docsRel, 'flow', 'CROSS-WRITE-ALLOW');
@@ -395,7 +399,9 @@ if (tool === 'Write' || tool === 'Edit' || tool === 'MultiEdit' || tool === 'Not
 let shell;
 try { shell = require(path.join(__dirname, 'shell-writes.js')); } catch { process.exit(0); }
 if (!shell.isShellTool(tool)) process.exit(0);
-const rawCommand = String(input.command || '');
+// PowerShell's path separator is the backslash and its escape the backtick (audit 2026-10-20, the hooks track's minor list:
+// `..\sib\x` named no parent on a POSIX host and passed) - read as `/`, as the config guard reads it.
+const rawCommand = /^PowerShell$/i.test(String(tool || '')) ? String(input.command || '').replace(/\\/g, '/') : String(input.command || '');
 // A script FILE a shell runs is read from disk against the shell's cwd, and a git alias is expanded to what it runs
 // (2.1.6 re-verify 2 R2-M5, R2-m1); an alias that cannot be read is not judged, like an unexpanded variable.
 const scan = shell.scanShell(rawCommand, { cwd: SHELL_CWD, aliases: true });

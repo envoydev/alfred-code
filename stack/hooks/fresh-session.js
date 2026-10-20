@@ -8,7 +8,10 @@
 const fs = require('fs');
 // Ships beside hook-prelude.js on both routes (never among the three engines copied alone), so the
 // require is unconditional, the same assumption every other cross-file require here already makes.
-const { envOf } = require('./hook-prelude.js');
+const prelude = require('./hook-prelude.js');
+const { envOf } = prelude;
+// An ask the idle timeout closed is no answer (ruling S3); a prelude without the test reads none as timed out.
+const askTimedOut = typeof prelude.askTimedOut === 'function' ? prelude.askTimedOut : () => false;
 
 // The hook's parsed payload - the transcript path and cwd the reads below need. A hook calls
 // use(payload) once, before its first call into this file.
@@ -18,6 +21,7 @@ function use(p) {
   _knownWindow = undefined;
   _ignored = undefined;
   _started = undefined;
+  _modelId = undefined;
 }
 
 // The trigger is an ABSOLUTE token count per WINDOW TIER, one environment variable each (the user's ruling of 2026-10-16;
@@ -76,7 +80,14 @@ const FRESH_OFF = (FRESH_AT_1M === 0 && FRESH_AT_300K === 0 && FRESH_AT_200K ===
 // listing) before the next assistant row, so a 512KB tail held no model and the window fell to the DEFAULT tier
 // (audit 2026-10-10 C08: 180,000 for a 1M session in 6 ledgers). The read widens once to 8MB, and the harness's
 // own `model` attachment row (`identity.modelId`, re-written after every compaction) answers as well.
+// Memoized per payload (audit 2026-10-20, the hooks track's minor list: a UserPromptExpansion read up to 8MB five or six
+// times for one answer); `use()` clears it.
+let _modelId;
 function sessionModelId() {
+  if (_modelId === undefined) _modelId = readModelId();
+  return _modelId;
+}
+function readModelId() {
   try {
     const p = payload.transcript_path;
     if (p) {
@@ -391,6 +402,11 @@ const FRESH_ASK_RE = /(?:fresh session|new session|fresh chat)/i;
 // Both answer wordings: a picked option, and a free-text one ('The user answered:' - 7 of 12 answers in audit
 // 2026-10-10 session 4f1c2ebb, whose 4-second acknowledgement the Stop branch then blocked).
 const ANSWERED_RE = /^\s*(?:Your questions have been answered:|The user answered:)/;
+const blockText = (b) => (typeof b.content === 'string' ? b.content : Array.isArray(b.content) ? b.content.map((x) => (x && x.text) || '').join('') : '');
+// A tool_result block of a user row that ANSWERS an ask: one of the two answer wordings, and no idle timeout - in the
+// text or the row's own `toolUseResult.afkTimeoutMs` (ruling S3: a dialog closed with some picks made still says so).
+const answeredBlock = (o, b, re = ANSWERED_RE) => !!b && b.type === 'tool_result' && re.test(blockText(b))
+  && !askTimedOut(blockText(b)) && !askTimedOut(o && o.toolUseResult);
 function freshAskAnsweredThisTurn() {
   try {
     const lines = transcriptText().split('\n');
@@ -404,8 +420,7 @@ function freshAskAnsweredThisTurn() {
       if (o.type === 'user') {
         if (Array.isArray(c)) {
           for (const b of c) {
-            if (b && b.type === 'tool_result' && ANSWERED_RE.test(typeof b.content === 'string' ? b.content
-              : Array.isArray(b.content) ? b.content.map((x) => (x && x.text) || '').join('') : '')) answered.add(b.tool_use_id);
+            if (answeredBlock(o, b)) answered.add(b.tool_use_id);
           }
         }
         if (isTypedTurn(o) && !(typeof c === 'string' && /^Stop hook feedback:/.test(c))) return false;
@@ -438,8 +453,7 @@ function freshAskAnsweredCtx() {
       const c = o.message.content;
       if (o.type === 'user') {
         for (const b of c) {
-          if (b && b.type === 'tool_result' && ANSWERED_RE.test(typeof b.content === 'string' ? b.content
-            : Array.isArray(b.content) ? b.content.map((x) => (x && x.text) || '').join('') : '')) answered.add(b.tool_use_id);
+          if (answeredBlock(o, b)) answered.add(b.tool_use_id);
         }
         continue;
       }
@@ -453,9 +467,19 @@ function freshAskAnsweredCtx() {
     return 0;
   }
 }
-// Was any ask answered (or declined) in the transcript past byte `from` - the size an offer recorded?
+// Was any ask answered (or declined) in the transcript past byte `from` - the size an offer recorded? Only an ask's own
+// tool_result counts - the answer wordings opening it - never the same words inside a file a Read or a shell call printed,
+// and never an ask the idle timeout closed (audit 2026-10-20, the hooks track's minor list; ruling S3).
+const ANSWERED_OR_DECLINED_RE = /^\s*(?:Your questions have been answered:|The user answered:|The user (?:declined|chose not) to answer)/i;
 function askAnsweredSince(from) {
-  return /Your questions have been answered:|The user answered:|The user (?:declined|chose not) to answer/i.test(transcriptText(from, 8 * 1024 * 1024));
+  for (const line of transcriptText(from, 8 * 1024 * 1024).split('\n')) {
+    if (!line.includes('tool_result')) continue;
+    let o;
+    try { o = JSON.parse(line); } catch { continue; }
+    if (!o || o.type !== 'user' || !o.message || !Array.isArray(o.message.content)) continue;
+    if (o.message.content.some((b) => answeredBlock(o, b, ANSWERED_OR_DECLINED_RE))) return true;
+  }
+  return false;
 }
 
 module.exports = {

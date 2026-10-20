@@ -414,7 +414,8 @@ test('C03: an answer to a typed question is no done-close stall, read-only or no
 });
 
 test("C03: the done-close escape says a step the model can do itself is done, not asked", () => {
-  const r = close("Pushed to develop as abc123.\n\n- Leftovers: none. The block I printed earlier still says 'def456 (not pushed)', so fix that line if you already pasted it.");
+  // unquoted: a single-quoted span of earlier output is no pending item since audit 2026-10-20 H9
+  const r = close("Pushed to develop as abc123.\n\n- Leftovers: none. The block I printed earlier still says def456 is not pushed, so fix that line if you already pasted it.");
   assert.strictEqual(r.status, 2);
   assert.match(r.stderr, /An owed action\nthat is yours and needs no decision \(a reprint, a re-run, a step a tool you hold can do\) is\ndone in this turn, never asked/);
 });
@@ -452,4 +453,22 @@ test("C02: a '/dev/null' poll is finite live work, checkers and a daemon are wor
   assert.strictEqual(over([typed('go')], checkers, { background_tasks: [] }).status, 2, 'with no checker running it is a stall');
   assert.strictEqual(over([typed('go')], 'Build is done. Not run: the e2e suite. Waiting on the verifier agent.', { background_tasks: running }).status, 2,
     "a 'Not run:' item in its own sentence is still a step");
+});
+
+// Audit 2026-10-20 H9: the done-close exemptions wrote no row, so a change to one (C03) could not be measured - each that
+// fires on a close the base test held now writes one `mode: probe`, `kind: done-close-exempt` row naming it; and a quoted
+// span of earlier output held a close ('15f00b6c (not pushed)', session 7ec6c7db) - the pending half now reads no
+// single-quoted span and no parenthetical right after a sha or a code span, while a real pending item still holds.
+test('H9: quoted output is no pending item, a real one still holds, and an exemption that fires writes its row', () => {
+  assert.strictEqual(close('Committed as 15f00b6c (not pushed). The suite is green.').status, 0, '7ec6c7db: git\'s own line, quoted');
+  assert.strictEqual(close("Committed the fix; the log printed 'still running' before the retry. The suite is green.").status, 0, 'a single-quoted span');
+  assert.strictEqual(close('Committed `a1b2c3d` (awaiting CI upstream). The suite is green.').status, 0, 'a parenthetical after a code span');
+  assert.strictEqual(close('Committed as 15f00b6c (not pushed). The push is still unpushed - run it when you\'re ready.').status, 2, 'a real pending item beside the quote still holds');
+  assert.strictEqual(close('Committed as 15f00b6c. Not pushed yet - next step is the push.').status, 2, 'the same words outside a quote hold');
+  const sid = `h9-${process.pid}`;
+  const r = run({ hook_event_name: 'Stop', session_id: sid, last_assistant_message: 'Pushed the fix. Nothing is pending on this run - these are yours to run when you choose.' });
+  assert.strictEqual(r.status, 0, 'the pinned nothing-pending close passes');
+  const ledger = path.join(process.env.CLAUDE_PROJECT_DIR, '.alfred', 'docs', 'hook-blocks', `${sid}.jsonl`);
+  const rows = fs.readFileSync(ledger, 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((x) => x.kind === 'done-close-exempt');
+  assert.deepStrictEqual(rows.map((x) => [x.mode, x.exempt]), [['probe', 'nothing-pending']]);
 });

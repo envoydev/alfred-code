@@ -14,8 +14,9 @@
 // Both are denied; App's `launch`, `switch` and `resize` pass. Both spellings: the plugin route's
 // `mcp__plugin_<n>_<n>__<tool>` and the MCP copy route's bare server spelling, one pattern each below.
 // 'Allow' is honoured through <docs-path>/flow/DESKTOP-EXEC-ALLOW (this session's own, under 8h): a line
-// `App` opens every launch_executable, `Shell` every macOS shell call, an executable's path or file name
-// that one executable, `*` both.
+// `App` opens every launch_executable, `Shell` every macOS shell call, an executable's FULL path that one executable
+// (a bare name only a call naming it bare - audit 2026-10-20, the hooks track's minor list: a file-name line opened that
+// name in every directory), `*` both.
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -105,7 +106,12 @@ if (!isShell && !(isApp && String(input.mode || '').trim().toLowerCase() === 'la
 const ROOT = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
 const receipt = path.resolve(ROOT, docsRootEnv(), 'flow', 'DESKTOP-EXEC-ALLOW');
 const executable = String(input.executable || input.path || input.name || '').trim();
-const exeBase = executable.split(/[\\/]/).pop();
+// The same path in either slash and, on a Windows path, either case - never a match on the file name alone.
+const winPath = (p) => /^(?:[A-Za-z]:[\\/]|\\\\)/.test(p);
+const samePath = (a, b) => {
+  const n = (p) => String(p).replace(/\\/g, '/');
+  return winPath(a) || winPath(b) ? n(a).toLowerCase() === n(b).toLowerCase() : a === b;
+};
 const allowed = (() => {
   try {
     const st = fs.statSync(receipt);
@@ -118,7 +124,7 @@ const allowed = (() => {
     const lines = fs.readFileSync(receipt, 'utf8').split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
     if (lines.includes('*')) return true;
     if (isShell) return lines.includes('Shell');
-    return lines.includes('App') || (executable !== '' && lines.some((l) => l === executable || (exeBase && l.toLowerCase() === exeBase.toLowerCase())));
+    return lines.includes('App') || (executable !== '' && lines.some((l) => samePath(l, executable)));
   } catch { return false; }
 })();
 if (allowed) process.exit(0);

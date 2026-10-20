@@ -2768,3 +2768,18 @@ test('audit 2026-10-20 H8: PowerShell env-drive reads, string statements, cmd /c
   for (const c of ['cmd /c set', 'cmd //c set', 'cmd.exe /c set API']) assert.equal(bash(c), REWRITE, `Bash: ${c}`);
   for (const c of ['cmd /c dir', 'cmd /c "set FOO=1 && run"']) assert.equal(bash(c), 0, `Bash: ${c}`);
 });
+
+// Audit 2026-10-20 (hooks minor list): the sanctioned presence read with the guard's path LOCATED by the shell - the
+// plugin's path is versioned - runs as written; a binding that does anything but list or pick stays an opaque script.
+test('guard-secret-value: node "$G" --presence passes when $G only locates the guard', () => {
+  const f = fixtures();
+  const env = `${f.dotenv}`;
+  assert.equal(bash(`G=$(ls -d ~/.claude/plugins/cache/*/alfred-code/*/stack/hooks/guard-secret-value.js | tail -1); node "$G" --presence ${env} API_KEY`), 0, 'ls | tail');
+  assert.equal(bash(`G="$(find ~/.claude/plugins -name guard-secret-value.js | sort | head -1)" && node "$G" --presence ${env}`), 0, 'find | sort | head, quoted');
+  assert.equal(bash(`G=$(ls -d ./tools/dump.js); node "$G" --presence ${env} API_KEY`), 2, 'another script located the same way');
+  assert.equal(bash(`G=$(echo ./x/guard-secret-value.js); node "$G" --presence ${env}`), 2, 'an echo is no lister');
+  assert.equal(bash(`node "$G" --presence ${env} API_KEY`), 2, 'a variable the command never binds');
+  // the garbled hint (audit 2026-10-20): it says where a value a .mcp.json expands belongs
+  const r = run({ tool_name: 'Read', tool_input: { file_path: f.dotenv }, session_id: 'suite' });
+  assert.match(r.stderr, /a value a \.mcp\.json\s+expands \(`\$\{NAME\}`\) belongs in the ACCOUNT settings file/);
+});

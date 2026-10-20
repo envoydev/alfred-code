@@ -310,7 +310,8 @@ test('a guard\'s ledger detail never leaks into the next guard\'s row', () => {
   const cross = rows.find((x) => x.hook === 'guard-cross-project-write.js');
   assert.deepStrictEqual(commit && commit.detail, { branch: 'staged-scan', count: 1 }, 'the commit guard names its branch');
   assert.ok(cross, 'the cross-project write blocks too');
-  assert.strictEqual(cross.detail, undefined, 'and its row carries none of the commit guard\'s detail');
+  // its own branch since audit 2026-10-20 (the hooks track's minor list), never the commit guard's detail
+  assert.deepStrictEqual(cross.detail, { branch: 'shell-write' }, 'and its row carries none of the commit guard\'s detail');
 
   const probe = path.join(TMP, 'detail-probe.js');
   fs.writeFileSync(probe, "process.stdout.write(global.BLOCK_DETAIL === undefined ? 'clean' : 'leaked');\nglobal.BLOCK_DETAIL = { from: 'probe' };\nprocess.exit(2);\n");

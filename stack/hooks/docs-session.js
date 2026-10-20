@@ -332,9 +332,12 @@ function sessionStart(input, root, docs, state) {
   try { broken = typeof docs.integrity === 'function' ? docs.integrity() : docs.lint().problems.filter((p) => /^(merge conflict markers|duplicate id)/.test(p)); } catch {}
   if (broken.length) extra.push(`The docs need a repair before they are trusted: ${broken.slice(0, 3).join('; ')}${broken.length > 3 ? ` (+${broken.length - 3} more: \`${READ} lint\`)` : ''}.`);
   if (st && st.overrides.length) extra.push(`You are on branch ${st.branch}. ${st.overrides.length} doc section(s) hold this branch's own decisions and replace mainline's in every read: ${st.overrides.slice(0, 6).join(', ')}${st.overrides.length > 6 ? ` ... (\`${READ} status\`)` : ''}.`);
-  if (st && st.conflicts.length) extra.push(`Conflicts: ${st.conflicts.join(', ')} - mainline changed lines this branch also changed; \`${READ} show <id> --conflict\` shows both, \`${READ} set <id>\` saves the reconciled text.`);
-  if (st && st.mainline && st.deletedUnmerged.length) extra.push(`Doc versions of deleted branches never detected as merged: ${st.deletedUnmerged.join(', ')} - \`${READ} promote <branch>\` folds one in, \`${READ} prune <branch>\` drops it.`);
-  if (st && st.mainline && st.liveOnMainline && st.liveOnMainline.length) extra.push(`Doc versions of branches sitting on mainline with no proof they merged: ${st.liveOnMainline.join(', ')} - one that was merged fast-forward looks exactly like one that only caught up, so nothing was folded in; if it landed, \`${READ} promote <branch>\`.`);
+  // Each list is cut at six names with a count and the command that lists the rest (audit 2026-10-20, the hooks track's
+  // minor list: three lists here had no cap, so a long-lived branch could push the read lines past the start cap).
+  const six = (list) => `${list.slice(0, 6).join(', ')}${list.length > 6 ? ` (+${list.length - 6} more: \`${READ} status\`)` : ''}`;
+  if (st && st.conflicts.length) extra.push(`Conflicts: ${six(st.conflicts)} - mainline changed lines this branch also changed; \`${READ} show <id> --conflict\` shows both, \`${READ} set <id>\` saves the reconciled text.`);
+  if (st && st.mainline && st.deletedUnmerged.length) extra.push(`Doc versions of deleted branches never detected as merged: ${six(st.deletedUnmerged)} - \`${READ} promote <branch>\` folds one in, \`${READ} prune <branch>\` drops it.`);
+  if (st && st.mainline && st.liveOnMainline && st.liveOnMainline.length) extra.push(`Doc versions of branches sitting on mainline with no proof they merged: ${six(st.liveOnMainline)} - one that was merged fast-forward looks exactly like one that only caught up, so nothing was folded in; if it landed, \`${READ} promote <branch>\`.`);
   if (st && st.outgrown) extra.push(`${st.outgrown} section(s) describe code that changed since they were written - each says so when opened, and the code wins there.`);
   // With no doc file to read by section (a provisional orientation alone, or a domain whose every file is protected),
   // the gate has nothing to hand over - it stands down, so the line announcing it goes too.
@@ -915,7 +918,20 @@ function noWatch(docs) {
 
 // A skip with nobody at the terminal is one `mode: unattended` row in the hook-blocks ledger, as every other asking hook
 // writes it - it went to docs-log.jsonl alone, which the block-rate tally never reads (audit 2026-10-08).
+// One row per kind per session (audit 2026-10-20 H11: a row on every Stop and every held write - 145 rows, 61 in one
+// session - said nothing the first did not): an exclusive marker in the hook temp dir claims the kind; a marker that
+// already stands skips the row, and a dir that takes no marker writes it, the old behaviour.
 function unattendedRow(root, input, kind) {
+  try {
+    let prelude = null;
+    try { prelude = require('./hook-prelude.js'); } catch { /* no prelude */ }
+    const dir = (prelude && typeof prelude.envOf === 'function' && prelude.envOf(process.env, 'HOOK_LOG_DIR')) || os.tmpdir();
+    const part = (v) => String(v || '').replace(/[^\w.-]/g, '_').slice(-80);
+    try {
+      fs.writeFileSync(path.join(dir, `alfred-docs-unattended-${part(input.session_id || 'nosession')}-${part(kind)}`), new Date().toISOString(), { flag: 'wx' });
+      if (prelude && typeof prelude.sweepStale === 'function') prelude.sweepStale(dir, 'alfred-docs-unattended-');
+    } catch (e) { if (e && e.code === 'EEXIST') return; }
+  } catch {}
   try {
     const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
     fs.mkdirSync(dir, { recursive: true });
