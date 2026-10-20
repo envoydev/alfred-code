@@ -188,7 +188,8 @@ test('M92: build-from-scratch Next run names the awareness capture, last', () =>
     assert.ok(at.every((i) => i > 0), `every capture named: ${line}`);
     assert.deepStrictEqual([...at].sort((a, b) => a - b), at, 'in the template\'s post-install order, the awareness capture last');
     assert.match(line, /alfred-awareness\.md/);
-    assert.match(line, /`none` when all three exist/);
+    assert.match(line, /\/capture-preferences \(no <docs-path>\/preferences\/\)/);
+    assert.match(line, /`none` when all four exist/);
 });
 
 // ---- M93: the over-build tags are this capture's own ---------------------------------------------------------

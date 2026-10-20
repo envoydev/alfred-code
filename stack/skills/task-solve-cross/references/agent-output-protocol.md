@@ -132,6 +132,7 @@ What the orchestrator hands each implementer:
 ```yaml
 task_id: backend-02
 domain: backend
+plan: orders-export
 contract_version: v2
 title: ...
 scope: []
@@ -143,3 +144,5 @@ forbidden_changes: []          # the shared seams this task must not touch
 dependencies: []
 implementer_model: haiku | sonnet   # designer-assigned by task difficulty; sonnet floors any risk trigger
 ```
+
+The `plan:` line is the plan or contract file's name without `.md`, alone on its line with nothing after it - the dispatch hook reads the rest of the line as the plan id and passes the brief only on that plan's stamp.

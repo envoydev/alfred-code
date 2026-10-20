@@ -10,7 +10,8 @@ the step. The staged run has its own mechanics (`stage-close.md`) and never uses
 
 - **small-tier implementer brief** - ONE brief per module batching its small findings: per finding the
   file:line, the rule it breaks, the smallest correct change already decided and the check that proves
-  it; then the `0.`-numbered fix discipline's text folded in whole; then `memory: none` - a scoped fix
+  it; then the `0.`-numbered fix discipline's text folded in whole; then the line `plan: loop-code-quality` (the small-tier
+  stamp's own id - the dispatch hook passes a brief only on its own plan's stamp); then `memory: none` - a scoped fix
   has no memory hand-off. A brief that does hand a note names it literally, read side included (memory
   hygiene: `references/domain-trio-protocol.md`).
 - **substantial-tier designer brief** - the finding, its assessment entry (rule, severity, remediation)

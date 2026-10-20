@@ -139,8 +139,8 @@ test('I26: no stamp site names a protected-path prompt, and every site names the
     assert.deepStrictEqual(stale, []);
     for (const rel of STAMP_SITES) assert.match(flat(read(rel)), /<data root>\/state\/approvals\/(?:<plan id>\/|loop-[a-z-]+\/)?APPROVAL/, `${rel}: the stamp's home`);
     // per-plan approvals (2.8.0): every APPROVED site writes its plan's own stamp and names the brief's plan line - the
-    // solve flow's step mechanics write only the root AUTO waiver
-    for (const rel of STAMP_SITES.filter((r) => !/task-solve\/references/.test(r)))
+    // solve flow's step 4 included (skill audit 2026-10-20b FFL-1); its typed AUTO waiver alone stays at the root
+    for (const rel of STAMP_SITES)
     {
         assert.match(flat(read(rel)), /state\/approvals\/(?:<plan id>|loop-[a-z-]+)\/APPROVAL/, `${rel}: the plan's own stamp`);
         assert.match(flat(read(rel)), /`plan: <plan id>`/, `${rel}: the brief's plan line`);

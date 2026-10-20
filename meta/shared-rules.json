@@ -5374,6 +5374,10 @@
         {
           "file": "stack/skills/loop-code-quality/references/staged-mode.md",
           "marker": "written with the Write tool at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/<plan id>/APPROVAL`"
+        },
+        {
+          "file": "stack/skills/task-solve/references/step-mechanics.md",
+          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>`"
         }
       ]
     },
@@ -7551,6 +7555,32 @@
         {
           "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "**Build and verify** - fan the tasks out to the domain implementers, then gate the assembled result with the domain verifier, looping its punch-list back."
+        }
+      ]
+    },
+    "loop-preference-breach": {
+      "_note": "A recorded user preference's breach is a quality-loop finding like any other, and one whose fix sweeps many modules is structural, one module per round (2.8.0). Verbatim in the two quality loops (skill audit 2026-10-20b FFL-12).",
+      "owner": {
+        "file": "stack/skills/loop-architecture-quality/SKILL.md",
+        "marker": "A user preference's breach (its rule `CODE-` or `ARCHITECTURE-PREFERENCES.md#<id>`) is fixed like any other; one whose fix sweeps many modules - wrap every external package - is structural, taken one module per round."
+      },
+      "sites": [
+        {
+          "file": "stack/skills/loop-code-quality/SKILL.md",
+          "marker": "A user preference's breach (its rule `CODE-` or `ARCHITECTURE-PREFERENCES.md#<id>`) is fixed like any other; one whose fix sweeps many modules - wrap every external package - is structural, taken one module per round."
+        }
+      ]
+    },
+    "judgment-ask": {
+      "_note": "A plan audit's `judgment` item - a tradeoff or a matter of taste, never a recorded preference's breach - keeps the plan unless the user picks the change: task-verify-plan owns the tag and its ask, and the solve flow puts the same ask at its gate stop. The two marked opposite options until skill audit 2026-10-20b FFL-6, so under auto-mode one item was applied or kept by whichever text the run followed.",
+      "owner": {
+        "file": "stack/skills/task-verify-plan/SKILL.md",
+        "marker": "- 'Keep the plan as written (Recommended)' -"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/task-solve/SKILL.md",
+          "marker": "- 'Keep the plan as written (Recommended)' -"
         }
       ]
     },
