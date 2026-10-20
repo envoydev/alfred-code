@@ -149,3 +149,22 @@ test('row 6: the .NET floor line is registered and no .NET skill states the old 
     }
     assert.doesNotMatch(read('stack/skills/dotnet-data-access/SKILL.md'), /\(\.NET 10 floor\)/);
 });
+
+// Row 7 (DRIFTED): the Agent tool takes `effort` per invocation from Claude Code 2.1.292
+// (code.claude.com/docs/en/sub-agents, 'Choose an effort level'); the tool itself says set it only on an explicit ask.
+test('row 7: a per-dispatch effort is possible, and only on the user\'s explicit ask', () =>
+{
+    const s = flat(read('stack/skills/habits-execution-strategy/SKILL.md'));
+    assert.doesNotMatch(s, /the effort cannot/);
+    assert.match(s, /the effort too \(Claude Code 2\.1\.292\+\), but only on the user's explicit ask/);
+    assert.doesNotMatch(flat(read('stack/skills/task-solve-cross/references/execution-modes.md')), /effort no -/);
+});
+
+// Row 8 (DRIFTED): `/code-review` runs as one background subagent at the typed effort; only `ultra` is multi-agent
+// (code.claude.com/docs/en/commands, /docs/en/code-review-local).
+test('row 8: task-verify-code no longer says /code-review always fans out', () =>
+{
+    const t = flat(read('stack/skills/task-verify-code/SKILL.md'));
+    assert.doesNotMatch(t, /always fans out|parallel-angle/);
+    assert.match(t, /runs as its own subagent \(in the background in a terminal session\) and, with `ultra`, as a multi-agent cloud review/);
+});

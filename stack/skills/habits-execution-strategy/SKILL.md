@@ -82,7 +82,8 @@ ones (Mode, below). When one holds, those units run in order; the rest may still
   Name a switch in the verdict only when the work's risk needs deeper reasoning than the session
   has - a cross-domain contract design, a hard root cause - never by default.
 - **A seat** runs on its frontmatter pin; that pin is the default. Where the platform takes a model
-  per dispatch, the model can be overridden for one task, the effort cannot. A lighter model only for
+  per dispatch, the model can be overridden for one task; the effort too (Claude Code 2.1.292+), but
+  only on the user's explicit ask, never on your own judgment. A lighter model only for
   a mechanical task whose correctness shows on the diff AND an independent verifier re-runs its
   gates; never below the pin on auth, a migration, concurrency, security, a shared contract seam or
   unclear legacy code. The heaviest model is for design and hard root cause, not routine edits.
