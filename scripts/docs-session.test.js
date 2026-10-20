@@ -1576,13 +1576,19 @@ test('CLAUDE.md says a navigation rename is credited to its declaring file alone
 });
 
 // 2.2.0 upgrade: the docs move's own PostToolUse hooks still read the old root and rebuilt .claude/docs/flow.
+// Since 2.8.0 each piece folds into its layout.js home - state/approvals/, state/sessions/, state/history/, statistics/ -
+// never back into the docs root's retired flow/ or hook-blocks/; a live copy the pre-2.8.0 docs root still holds counts as
+// the live one (findState), so a stale stranded stamp never lands in state/ to shadow it.
 test('session start folds hook state stranded under the old .claude/docs into the live root', () => {
   const r = repo({ docsPath: '.alfred/docs', docs: { 'ORIENTATION.md': ORIENT } });
   try {
     r.write('.claude/docs/flow/monitor-s1.jsonl', '\n{"id":"old"}\n');
     r.write('.claude/docs/flow/APPROVAL', 'stale\n');
+    r.write('.claude/docs/flow/COMMIT-GATE', 'VERIFIED x\n');
     r.write('.claude/docs/flow/turn-edits-s2', 'a.cs\n');
     r.write('.claude/docs/hook-blocks/s1.jsonl', '{"b":1}\n');
+    r.write('.claude/docs/history/s3.json', '{"session":"s3"}\n');
+    r.write('.claude/docs/tools-usage/s4.jsonl', '{"t":1}\n');
     r.write('.claude/docs/.DS_Store', 'x');
     r.write('.claude/settings.json', '{}\n');
     r.write('.alfred/docs/flow/monitor-s1.jsonl', '\n{"id":"new"}\n');
@@ -1591,11 +1597,18 @@ test('session start folds hook state stranded under the old .claude/docs into th
     assert.strictEqual(out.status, 0, out.stderr);
     assert.ok(!r.exists('.claude/docs'), 'the stranded root is gone');
     assert.ok(r.exists('.claude/settings.json'), '.claude/ itself is untouched');
-    assert.match(r.read('.alfred/docs/flow/monitor-s1.jsonl'), /"new"[\s\S]*"old"/, 'a .jsonl appends');
+    assert.match(r.read('.alfred/docs/flow/monitor-s1.jsonl'), /"new"[\s\S]*"old"/, 'a .jsonl appends to the live copy where it lives');
     assert.strictEqual(r.read('.alfred/docs/flow/APPROVAL'), 'live\n', 'the live root keeps its own state');
-    assert.strictEqual(r.read('.alfred/docs/flow/turn-edits-s2'), 'a.cs\n', 'a file the live root lacks moves');
-    assert.strictEqual(r.read('.alfred/docs/hook-blocks/s1.jsonl'), '{"b":1}\n');
-    assert.match(r.read('.alfred/statistics/docs-log.jsonl'), /"event":"stranded-root","from":".claude\/docs","files":4/);
+    assert.ok(!r.exists('.alfred/state/approvals/APPROVAL'), 'a stale stamp never lands in state/ to shadow the live one');
+    assert.strictEqual(r.read('.alfred/state/approvals/COMMIT-GATE'), 'VERIFIED x\n', 'a receipt moves to state/approvals/');
+    assert.strictEqual(r.read('.alfred/state/sessions/turn-edits-s2'), 'a.cs\n', 'session scratch moves to state/sessions/');
+    assert.strictEqual(r.read('.alfred/state/history/s3.json'), '{"session":"s3"}\n', 'a session record moves to state/history/');
+    assert.strictEqual(r.read('.alfred/statistics/hook-blocks/s1.jsonl'), '{"b":1}\n', 'a ledger moves to statistics/');
+    assert.strictEqual(r.read('.alfred/statistics/tools-usage/s4.jsonl'), '{"t":1}\n');
+    for (const gone of ['.alfred/docs/flow/COMMIT-GATE', '.alfred/docs/flow/turn-edits-s2', '.alfred/docs/hook-blocks', '.alfred/docs/history', '.alfred/docs/tools-usage']) {
+      assert.ok(!r.exists(gone), `nothing is written to the retired ${gone}`);
+    }
+    assert.match(r.read('.alfred/statistics/docs-log.jsonl'), /"event":"stranded-root","from":".claude\/docs","files":7/);
     // A re-run finds nothing and logs nothing more.
     r.hook({ hook_event_name: 'SessionStart', session_id: sid() });
     assert.strictEqual(r.read('.alfred/statistics/docs-log.jsonl').match(/stranded-root/g).length, 1);
