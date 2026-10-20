@@ -1069,6 +1069,20 @@ function spawnSyncNode(args)
     return require('node:child_process').spawnSync(process.execPath, args, { encoding: 'utf8' });
 }
 
+// Audit 2026-10-20b (plugins): typescript-lsp names a server it does not ship - the same prerequisite row as csharp-lsp,
+// init's to install, with the TypeScript 6 the server reads its tsserver.js from (7 ships none).
+test('typescript-lsp needs typescript-language-server, and init installs it with TypeScript 6', () => {
+    const bins = { node: true, npx: true, git: true, claude: true, uvx: true };
+    const selection = { skills: [], mcps: [], plugins: ['typescript-lsp'] };
+    const plain = evaluatePrereqs(selection, { bins, envs: { CONTEXT7_API_KEY: true } }, {});
+    assert.deepStrictEqual(plain.blockers, [{ need: 'typescript-language-server', how: 'npm install -g typescript-language-server typescript@6' }]);
+    const deferred = evaluatePrereqs(selection, { bins, envs: { CONTEXT7_API_KEY: true } }, { deferInit: true });
+    assert.deepStrictEqual([deferred.blockers, deferred.deferred.map(b => b.need)], [[], ['typescript-language-server']]);
+    const present = evaluatePrereqs(selection, { bins: { ...bins, 'typescript-language-server': true }, envs: { CONTEXT7_API_KEY: true } }, {});
+    assert.strictEqual(present.ok, true);
+    assert.ok(!evaluatePrereqs({ skills: [], mcps: [], plugins: [] }, { bins, envs: {} }, {}).blockers.length, 'not asked without the plugin');
+});
+
 // Task 18a: /alfred-code:init installs uv and csharp-ls in the session after setup, so setup's
 // prerequisite check must not refuse the install over them - it names them as init's instead.
 // Every other caller (configure, validate) keeps them as blockers.

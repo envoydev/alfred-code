@@ -58,7 +58,7 @@ Nothing else executes from the package itself. The package itself is six command
 
 ## What you install by hand
 
-- `csharp-ls` and `typescript-language-server`, for the two LSP plugins.
+- `csharp-ls` and `typescript-language-server`, for the two LSP plugins - each plugin names its server and ships none. `/alfred-code:init` offers both, through its one machine-install ask: `dotnet tool install --global csharp-ls` (the .NET 10 SDK first) and `npm install -g typescript-language-server typescript@6` - TypeScript 6, since TypeScript 7 ships no `tsserver.js`, the file the server reads; it needs Node 22.22.2 or later.
 
 ## Cost per message
 
