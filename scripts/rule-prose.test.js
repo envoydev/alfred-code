@@ -174,7 +174,7 @@ test('rules F3: the AGENTS template restates none of the seven always-on rules -
     const rulesSection = text.slice(text.indexOf('\n## Rules'));
     for (const name of ['interaction', 'quality-gates', 'security', 'git', 'navigation', 'docs-root', 'memory'])
         assert.ok(!rulesSection.includes(`| \`.claude/rules/alfred-${name}.md\` |`), `alfred-${name}.md has a template row`);
-    for (const generated of ['alfred-awareness', 'alfred-architecture', 'project-code-style'])
+    for (const generated of ['alfred-awareness', 'alfred-architecture', 'project-code-style', 'alfred-preferences'])
         assert.ok(rulesSection.includes(`| \`.claude/rules/${generated}.md\` (GENERATED`), `${generated}.md keeps its GENERATED row`);
 });
 
