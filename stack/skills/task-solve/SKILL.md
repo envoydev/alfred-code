@@ -71,13 +71,11 @@ concrete; free text comes through the built-in Other. Where the harness has no s
 text and END THE TURN.
 
 **The fresh-session resume.** A stop is the cheap point to run the next step in a fresh session
-(`/clear`): resume needs only the plan file, and restarts at 21.5-59.4% of the carried context with zero
-re-work - state those two absolute numbers to the user, never a ratio. Once the cycle has crossed the install's
+(`/clear`): resume needs only the plan file, with zero re-work. Once the cycle has crossed the install's
 fresh-session trigger (180,000 tokens on a window under 300k, 400,000 on one of 1M or more, 280,000 on any other window), spans hours, or resumes after a 2h+ idle gap, the fresh-session resume IS one of the next ask's
 options - every ask until it is taken or the cycle closes. Below all three (a new cycle's first ask and the compaction stop aside), no ask
-carries it and no resume block prints unless the user asks; hours and gaps are the hook's clock, never your guess
-(audit 2026-10-20 C07: 275k on a 1M window, 22 minutes in). The stop-contract hook then injects the two measured
-numbers (this session's carry per message, a fresh one's cold floor): quote THIS stop's, or say they are unmeasured.
+carries it and no resume block prints unless the user asks; hours and gaps are the hook's clock, never your guess.
+The stop-contract hook injects the two measured numbers (this session's carry per message, a fresh one's cold floor): quote THIS stop's, or say they are unmeasured.
 A CONSTRUCTION check, not a memory: before any stop's ask, 'has this cycle crossed the trigger?' - if yes
 and the option is missing, rebuild it. And HONOR the answer: when the user picks it, the turn ENDS with this
 block, after the answer - no new work in this chat. The fence holds the command alone: the plan's `Resume:`

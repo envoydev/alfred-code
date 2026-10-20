@@ -52,6 +52,7 @@ are in `SKILL.md`; these are the mechanics around them.
 - If BOTH the Write tool and an absolute-path Bash write are refused by the harness's classifier,
   stop and put the choice through AskUserQuestion - 'Retry the stamp (Recommended)' / 'Run this stage inline' -
   rather than retrying blind or dispatching around the gate.
+- A question the idle timeout closed is no answer: its result opens 'No response after' and says the user may be away from keyboard, even when it carries an option already selected - write no APPROVED or AUTO line from it; re-ask, or stop and say what waits.
 - **Lifetime.** The AUTO stamp lives until step 6's close deletes it or the session ends - a
   resumed session re-writes it only from the user's waiver words typed in THAT session, else the
   next dispatch asks. Step 4's
@@ -76,7 +77,7 @@ Each task card goes to its stack's `<stack>-implementer` seat, dispatched exactl
 spells it (`alfred-code:<seat>` where the core plugin carries it) - a flat fan-out with the main
 session the only orchestrator:
 
-- **The stamp first.** Write the approval gate file first - first line `APPROVED <contract_version> - "<the step-3 answer, verbatim>"`
+- **The stamp first.** Write the approval gate file first - first line `APPROVED <contract_version> - "<the step-3 answer, verbatim>"` (under auto-mode the hook's `AUTO` stamp already stands - leave it)
   (the dispatch hook blocks an unstamped implementer) - and DELETE it when the fan-out completes,
   before the step-5 stop: a live stamp can authorize an unrelated dispatch for up to 8h.
 - **The contract version.** MINT it - `<the plan's Approved: date>-<plan slug>` - and put it in EVERY
