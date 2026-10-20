@@ -17,7 +17,7 @@ audit and the build read it.
 
 ## The file
 
-One file per scope at `<docs-path>/work/plans/<feature>.md`. A new scope after `Completed:` starts a new file.
+One file per scope at `<docs-path>/work/plans/<feature>.md`. A new scope after `Completed:` starts a new file. `<feature>` doubles as the plan id the approval stamp and every implementer brief's `plan:` line carry, so it takes letters, digits, `.`, `_` and `-` only, starting with a letter or digit.
 
 ```text
 # <Feature> - plan

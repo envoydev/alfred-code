@@ -47,6 +47,12 @@ Use the template in the type's reference file. Write in clear, professional Engl
 - **Language**: Always output in English, regardless of input language.
 - **Tracker dialect**: Output Markdown by default - it pastes natively into GitHub, GitLab, and YouTrack, Jira Cloud converts it on paste, and Azure DevOps renders it once the large-text field is switched to Markdown. If the user names a specific tracker, adapt to its conventions (e.g. drop the `[Area]` title prefix when the tracker has a Component field that carries it).
 - **Filing**: if an issue-tracker MCP is connected (e.g. Atlassian), offer it after presenting the ticket via AskUserQuestion - file it via the connector (Recommended) vs copy-paste only (plain-text options where the harness lacks the tool); title and description map 1:1. Never file without explicit confirmation. The user named an existing empty or placeholder ticket and asked to put the content in it: that request is the confirmation - read the ticket, write the template into it, report what changed; a ticket that already holds content takes the ask first.
+
+  ```ask
+  File this ticket in <the tracker> through its connector? Title and description map 1:1.
+  - 'File it (Recommended)' - the connector creates it, and the reply names the filed ticket
+  - 'Copy-paste only' - nothing is filed; the fenced block above is the ticket
+  ```
 - **Tone**: Neutral and factual. No emotional language, no blame.
 - **Assumptions**: If the description is vague, make reasonable assumptions and note them briefly - in the Problem section for bugs, the Notes section otherwise.
 - **Two readers - QA and the developer**: the ticket describes the problem and the behaviour wanted in words a tester who has never opened the code can follow - what happens today, in which situation, and what should happen instead. Spend the length there, not on internals.

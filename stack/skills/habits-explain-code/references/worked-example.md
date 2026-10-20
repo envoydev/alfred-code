@@ -22,7 +22,7 @@ The structure below shows the shape and density, not real project code - your sn
 > `user.component.html`
 > Here we try to wear the coat while still holding the ticket.
 >
-> **Here is where it breaks:** you expect `user.name` to render the name (predict). Instead the span is blank on first paint (surprise). At line 2 of `ngOnInit`, `this.user` holds a `Promise`, not the resolved object, so `user.name` is `undefined` until it settles (explain).
+> **Here is where it breaks:** you expect `user.name` to render the name (predict). Instead the span stays blank (surprise). At line 2 of `ngOnInit`, `this.user` holds the `Promise` itself, not the user it resolves to, so `user.name` reads a property a `Promise` does not have - `undefined`, and still `undefined` once it settles, since nothing ever assigns the resolved user (explain).
 >
 > **The fix:**
 > ```diff
@@ -32,9 +32,15 @@ The structure below shows the shape and density, not real project code - your sn
 > +   this.user = await this.userService.load();
 >   }
 > ```
-> Awaiting trades the ticket for the actual coat before anyone reads it - and `await` needs the method marked `async`.
+> `user.component.ts`
+> ```diff
+> - <span>{{ user.name }}</span>
+> + <span>{{ user?.name }}</span>
+> ```
+> `user.component.html`
+> Awaiting trades the ticket for the actual coat, so `this.user` holds the user itself - `await` needs the method marked `async`, and until it lands `user` is still empty, so the template reads it with `?.`.
 >
-> Async state read before its promise resolves is always empty, however the read is written.
+> A promise stored where a value belongs stays a ticket, however long you wait - only `await` or `then` hands over the coat.
 
 **Concept mode (Ukrainian request):** same five-part shape, but step 3 carries two labeled lines - **Головна ідея:** (the mental model) and **Підводний камінь:** (the gotcha) - and step 4 shows a real call flowing through rather than a bug fix.
 
