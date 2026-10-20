@@ -375,6 +375,8 @@ function main() {
   let docs;
   try { docs = require('./docs.js'); }
   catch (e) { if (e.code === 'MODULE_NOT_FOUND' && /docs\.js/.test(e.message)) return; throw e; }
+  // before the domain gate: a first capture writes architecture/ before any domain exists
+  if (event === 'PreToolUse' && seatHold(input, root, docs)) return;
   // A domain is any top-level folder under the docs root holding a watch.json (architecture counts even
   // without one - see docs.js's own domains()). A project whose docs are code-style/ and awareness/,
   // with no architecture/ at all, must still get the SessionStart block, the gate and the finish ask - so the
@@ -1024,6 +1026,144 @@ function stampedPlanWrite(input, root) {
   return true;
 }
 
+// capture-architecture's step 5 writes only once verification is FINISHED, and prose did not hold it: the run announced
+// 'Verification is done', made its first Edit, then dispatched a sixth analyzer and kept editing while it ran (audit
+// 2026-10-20 C43, add5a91e: 114 reference Edits interleaved with probes, the context compacted mid-write). So a write
+// under `<docs-path>/architecture/` by the main session - a file tool, a shell write, a `docs.js set` of an architecture
+// ref - is denied while a capture analyzer seat this session dispatched has not handed back. Once per dispatch: the same
+// write sent again while that seat is still out passes as a logged `seat-bypass`. A seat's own call, an unreadable
+// transcript and ALFRED_CODE_DOCS_GATE=0 release it. Placed before the domain gate, since a first capture writes
+// architecture/ before any domain exists.
+const ANALYZER_SEAT = /^(?:alfred-code:)?(?:architecture|code-quality|code-style|related-project|test-coverage)-analyzer$/;
+const SEAT_WINDOW = 8 * 1024 * 1024;
+const SEAT_HELD_CAP = 200;
+function architectureWrites(input, root, docs) {
+  const name = input.tool_name || '';
+  const t = input.tool_input || {};
+  const real = (p) => { try { return fs.realpathSync.native(p); } catch { return null; } };
+  const arch = path.resolve(root, docsRootEnv(), 'architecture');
+  const archs = [...new Set([arch, real(arch) || arch])];
+  const inside = (abs) => archs.some((a) => { const rel = path.relative(a, abs); return !rel.startsWith('..') && !path.isAbsolute(rel); });
+  // a new file has no real path yet: its folder's (macOS /tmp is /private/tmp) decides
+  const under = (abs) => inside(abs) || inside(real(abs) || path.join(real(path.dirname(abs)) || path.dirname(abs), path.basename(abs)));
+  const out = [];
+  if (/^(?:Edit|Write|MultiEdit|NotebookEdit)$/.test(name)) {
+    for (const p of [t.file_path, t.notebook_path]) if (typeof p === 'string' && p && under(path.resolve(root, p))) out.push(p);
+  } else if (isShellTool(name) && typeof t.command === 'string') {
+    const base = typeof input.cwd === 'string' && input.cwd ? input.cwd : root;
+    for (const w of writeTargets(t.command)) if (!isUnknown(w) && under(path.resolve(base, w.replace(/^['"]|['"]$/g, '')))) out.push(w);
+    for (const m of t.command.matchAll(/docs\.js["']?[ \t]+set[ \t]+['"]?([\w#.\/-]+)/g)) {
+      let file = null;
+      try { file = docs && typeof docs.findFile === 'function' ? docs.findFile(m[1].split('#')[0]) : null; } catch { /* an unresolved ref */ }
+      if (/^architecture\//.test(m[1]) || (file && under(file))) out.push(m[1]);
+    }
+  }
+  return out;
+}
+// The capture analyzers this session dispatched that have not handed back, read from the transcript where the last read
+// stopped (`scan.at`), at most its newest 8MB - a dispatch before that window is unknown and holds nothing. An Agent call
+// ends with its tool_result unless the result says it went to the background; a background seat ends with a DELIVERED
+// task notification carrying a status, or its `[Subagent hand-back]` message (the stop contract's reading: a queue
+// `enqueue` row is not delivered yet), or a TaskStop naming it. null when the transcript cannot be read.
+function seatsOut(transcriptPath, scan) {
+  let at = scan && Number.isFinite(scan.at) ? scan.at : 0;
+  let out = scan && scan.out && typeof scan.out === 'object' ? { ...scan.out } : {};
+  let buf;
+  let from;
+  try {
+    const fd = fs.openSync(transcriptPath, 'r');
+    try {
+      const size = fs.fstatSync(fd).size;
+      if (size < at) { at = 0; out = {}; }
+      from = Math.max(at, size - SEAT_WINDOW);
+      if (from > at) out = {};
+      buf = Buffer.alloc(size - from);
+      fs.readSync(fd, buf, 0, buf.length, from);
+    } finally { fs.closeSync(fd); }
+  } catch { return null; }
+  const start = from > at ? buf.indexOf(0x0a) + 1 : 0; // a window cut mid-row drops that row
+  const end = buf.lastIndexOf(0x0a);
+  if (end < start) return { at: from + start, out };
+  const settle = (named) => { for (const [id, s] of Object.entries(out)) if (named(id) || (s.agent && named(s.agent))) delete out[id]; };
+  const textOf = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((b) => (b && typeof b.text === 'string' ? b.text : '')).join('\n') : '');
+  for (const line of buf.toString('utf8', start, end + 1).split('\n')) {
+    if (!line) continue;
+    const dispatch = line.includes('-analyzer') && line.includes('"tool_use"');
+    const notice = line.includes('<task-notification>') || line.includes('<agent-message');
+    const ids = Object.keys(out);
+    const touches = ids.length > 0 && ids.some((id) => line.includes(id) || (out[id].agent && line.includes(out[id].agent)));
+    if (!dispatch && !notice && !touches) continue;
+    let o;
+    try { o = JSON.parse(line); } catch { continue; }
+    if (!o || typeof o !== 'object' || o.isSidechain) continue;
+    const content = o.message && o.message.content;
+    if (o.type === 'assistant' && Array.isArray(content)) {
+      for (const b of content) {
+        if (!b || b.type !== 'tool_use') continue;
+        const inp = b.input && typeof b.input === 'object' ? b.input : {};
+        if (/^(?:Agent|Task)$/.test(b.name) && ANALYZER_SEAT.test(String(inp.subagent_type || ''))) {
+          out[b.id] = { type: String(inp.subagent_type).replace(/^alfred-code:/, ''), desc: String(inp.description || '').slice(0, 80) };
+        } else if (/^(?:TaskStop|KillShell|KillBash)$/.test(b.name)) {
+          const named = JSON.stringify(inp);
+          settle((id) => named.includes(id));
+        }
+      }
+      continue;
+    }
+    if (o.type === 'user' && Array.isArray(content)) {
+      for (const b of content) {
+        if (!b || b.type !== 'tool_result' || !out[b.tool_use_id]) continue;
+        const r = textOf(b.content);
+        const meta = o.toolUseResult && typeof o.toolUseResult === 'object' ? o.toolUseResult : {};
+        if (!b.is_error && (meta.status === 'async_launched' || meta.isAsync === true || /\bAsync agent launched\b/i.test(r))) {
+          out[b.tool_use_id].agent = String(meta.agentId || (/\bagentId:\s*([\w-]+)/.exec(r) || [])[1] || '');
+        } else delete out[b.tool_use_id]; // its report, or a launch that failed
+      }
+    }
+    if (!notice) continue;
+    const att = o.type === 'attachment' && o.attachment && o.attachment.type === 'queued_command' ? o.attachment.prompt : '';
+    const note = o.type === 'user' ? textOf(content) : o.type === 'queue-operation' ? (o.operation === 'enqueue' ? '' : o.content) : att;
+    if (typeof note !== 'string' || !note) continue;
+    for (const n of note.matchAll(/<task-notification>([\s\S]*?)<\/task-notification>/g)) {
+      if (!/<status>[^<]+<\/status>/.test(n[1])) continue;
+      const named = [/<task-id>([^<]+)<\/task-id>/.exec(n[1]), /<tool-use-id>([^<]+)<\/tool-use-id>/.exec(n[1])].filter(Boolean).map((m) => m[1].trim());
+      settle((id) => named.includes(id));
+    }
+    for (const m of note.matchAll(/<agent-message from="([\w-]+)">\s*\[Subagent hand-back\]/g)) settle((id) => id === m[1]);
+  }
+  return { at: from + end + 1, out };
+}
+function seatHold(input, root, docs) {
+  if (input.agent_id || envOf(process.env, 'DOCS_GATE') === '0') return false;
+  const writes = architectureWrites(input, root, docs);
+  if (!writes.length || typeof input.transcript_path !== 'string' || !input.transcript_path) return false;
+  const state = loadState(input.session_id);
+  const scan = seatsOut(input.transcript_path, state.seatScan);
+  if (!scan) return false;
+  state.seatScan = scan;
+  const out = Object.entries(scan.out);
+  const held = new Set(Array.isArray(state.seatHeld) ? state.seatHeld : []);
+  const fresh = out.filter(([id]) => !held.has(id));
+  const target = toPosix(String(writes[0]));
+  if (!fresh.length) {
+    if (out.length) log(root, input, { event: 'seat-bypass', target, seats: out.map(([, s]) => s.type) });
+    saveState(input.session_id, state);
+    return false;
+  }
+  state.seatHeld = [...held, ...fresh.map(([id]) => id)].slice(-SEAT_HELD_CAP);
+  saveState(input.session_id, state);
+  const named = out.map(([, s]) => (s.desc ? `${s.type} ('${s.desc}')` : s.type));
+  const reason = [
+    `Held: ${target} is an architecture doc, and ${out.length} analyzer seat(s) this session dispatched have not handed back: ${named.join(', ')}.`,
+    'The architecture write comes after verification is FINISHED (capture-architecture step 5). Wait for the hand-back - its',
+    'notification wakes this session, so no polling - fold its digest in, then write. This hold is made once per dispatch.',
+  ].join('\n');
+  log(root, input, { event: 'seat-hold', target, seats: out.map(([, s]) => s.type) });
+  blockRow(root, input, reason);
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
+  return true;
+}
+
 function preToolUse(input, root, docs, state) {
   const paths = toolPaths(input, root);
   // One root per domain, not one hardcoded architecture/ - a project documented only in code-style/ must still
@@ -1349,7 +1489,7 @@ function stop(input, root, docs, state) {
   process.stdout.write(JSON.stringify({ decision: 'block', reason }));
 }
 
-module.exports = { writeTargets, consultedBy, toolPaths, toPosix, sweepOldState, saveState, loadState, sectionRefs, otherSessionWrites, unknownRoots, stashMoves };
+module.exports = { writeTargets, consultedBy, toolPaths, toPosix, sweepOldState, saveState, loadState, sectionRefs, otherSessionWrites, unknownRoots, stashMoves, seatsOut, architectureWrites };
 if (require.main === module) {
   try { main(); if (startNote) { const note = startNote; startNote = ''; emit('SessionStart', note); } } catch (error) { process.stderr.write(`docs-session: ${error.message}\n`); }
 }

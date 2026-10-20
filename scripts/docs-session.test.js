@@ -2148,3 +2148,102 @@ test('audit 2026-10-20 C25: a file moved by git stash is not charged to the sess
     assert.match(ask(editor), /you changed src\/Api\/Program\.cs/, 'a file it moved and then edited is its own');
   } finally { r.rm(); }
 });
+
+// ---- audit 2026-10-20 C43: an architecture write waits for the analyzer seats this session dispatched ----
+// add5a91e: 'Verification is done', the first Edit, then a sixth architecture-analyzer dispatched and 42 more reference
+// Edits made while it ran. A write under <docs>/architecture/ is held once per dispatch while such a seat is out.
+const seatRows = (tp) => (...xs) => fs.appendFileSync(tp, xs.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join('\n') + '\n');
+const dispatchRow = (id, type, desc = 'Verify patterns') => ({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'Agent', input: { subagent_type: type, description: desc, prompt: 'verify' } }] } });
+const launchedRow = (id, agent) => ({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: [{ type: 'text', text: `Async agent launched successfully.\nagentId: ${agent} (internal ID)` }] }] } });
+const noticeText = (id, agent) => `<task-notification>\n<task-id>${agent}</task-id>\n<tool-use-id>${id}</tool-use-id>\n<status>completed</status>\n<summary>Agent finished</summary>\n</task-notification>`;
+
+test('audit 2026-10-20 C43: an architecture write is held once while an analyzer seat is out, and passes once it handed back', () => {
+  const p = require('node:path');
+  const r = repo({ docs: { 'ARCHITECTURE.md': '# Architecture\n', 'references/patterns.md': PATTERNS } });
+  try {
+    const s = sid();
+    const tp = p.join(r.root, `${s}.jsonl`);
+    const rows = seatRows(tp);
+    const doc = `${r.root}/.claude/docs/architecture/references/patterns.md`;
+    const edit = (session = s, extra = {}) => r.hook({ ...pre('Edit', { file_path: doc, old_string: 'a', new_string: 'b' }, session), transcript_path: tp, ...extra });
+    rows({ type: 'user', message: { role: 'user', content: '/capture-architecture' } });
+    assert.ok(!denied(edit()), 'no seat dispatched: the write passes');
+    rows(dispatchRow('t1', 'alfred-code:architecture-analyzer', 'Verify remaining patterns'), launchedRow('t1', 'a111'));
+    const held = edit();
+    assert.ok(denied(held), 'the audited case: a seat is out');
+    assert.match(held.stdout, /architecture-analyzer \('Verify remaining patterns'\)/);
+    assert.match(held.stdout, /Wait for the hand-back/);
+    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"seat-hold"/);
+    assert.match(fs.readdirSync(p.join(r.root, '.claude/docs/hook-blocks')).map((f) => r.read(`.claude/docs/hook-blocks/${f}`)).join(''), /Held: /);
+    assert.ok(!denied(edit()), 'once per dispatch: the second attempt passes');
+    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"seat-bypass"/);
+    // an enqueued notice is not delivered yet; a new dispatch is held again
+    rows(dispatchRow('t2', 'code-quality-analyzer'), launchedRow('t2', 'a222'));
+    rows({ type: 'queue-operation', operation: 'enqueue', content: noticeText('t2', 'a222') });
+    assert.ok(denied(edit()), 'a second seat out is held again, its queued notice not yet delivered');
+    rows({ type: 'user', message: { role: 'user', content: noticeText('t1', 'a111') } });
+    rows({ type: 'attachment', attachment: { type: 'queued_command', prompt: noticeText('t2', 'a222') } });
+    assert.ok(!denied(edit()), 'every seat handed back: nothing is held');
+    // a delivered hand-back message settles its seat too
+    rows(dispatchRow('t3', 'architecture-analyzer'), launchedRow('t3', 'a333'));
+    assert.ok(denied(edit()));
+    rows({ type: 'user', isMeta: true, message: { role: 'user', content: 'Another Claude session sent a message:\n<agent-message from="a333">\n[Subagent hand-back] The text below is the final report.' } });
+    assert.ok(!denied(edit()), 'the delivered hand-back ends the seat');
+    // a seat's own call, and the gate switch, are never held
+    rows(dispatchRow('t4', 'architecture-analyzer'), launchedRow('t4', 'a444'));
+    assert.ok(!denied(edit(s, { agent_id: 'a444', agent_type: 'alfred-code:architecture-analyzer' })), 'a seat caller passes');
+    assert.ok(!denied(r.hook({ ...pre('Edit', { file_path: doc }, s), transcript_path: tp }, { ALFRED_CODE_DOCS_GATE: '0' })), 'DOCS_GATE=0 passes');
+  } finally { r.rm(); }
+});
+
+test('audit 2026-10-20 C43: no false hold - a returned seat, another seat type, a write outside architecture/, a malformed or missing transcript', () => {
+  const p = require('node:path');
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    const s = sid();
+    const tp = p.join(r.root, `${s}.jsonl`);
+    const rows = seatRows(tp);
+    const arch = `${r.root}/.claude/docs/architecture/ARCHITECTURE.md`;
+    const write = (file, session = s, t = tp) => r.hook({ ...pre('Write', { file_path: file, content: '# x\n' }, session), transcript_path: t });
+    // a foreground seat whose report is its tool_result has handed back
+    rows(dispatchRow('f1', 'architecture-analyzer'), { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'f1', content: [{ type: 'text', text: 'status: done\nDigest...' }] }] } });
+    assert.ok(!denied(write(arch)), 'a foreground seat that returned');
+    // a launch that failed is no seat out
+    rows(dispatchRow('f2', 'architecture-analyzer'), { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'f2', is_error: true, content: 'Agent type not found' }] } });
+    assert.ok(!denied(write(arch)), 'a failed launch');
+    // an implementer or a foreign plugin's analyzer is no capture seat
+    rows(dispatchRow('f3', 'dotnet-implementer'), launchedRow('f3', 'b333'), dispatchRow('f4', 'other:architecture-analyzer'), launchedRow('f4', 'b444'));
+    assert.ok(!denied(write(arch)), 'not a capture analyzer');
+    // a TaskStop ends a seat
+    rows(dispatchRow('f5', 'architecture-analyzer'), launchedRow('f5', 'b555'), { type: 'assistant', message: { content: [{ type: 'tool_use', id: 'k1', name: 'TaskStop', input: { task_id: 'b555' } }] } });
+    assert.ok(!denied(write(arch)), 'a stopped seat');
+    // a seat out, but the write is not an architecture doc
+    rows(dispatchRow('f6', 'architecture-analyzer'), launchedRow('f6', 'b666'));
+    assert.ok(!denied(write(`${r.root}/.claude/docs/plans/x.md`)), 'a plan write is not held by the seat hold');
+    assert.ok(!denied(write(`${r.root}/.claude/docs/architecture-notes.md`)), 'a sibling folder sharing the prefix');
+    // malformed: garbage rows, a torn last row, a missing transcript, no transcript at all
+    const bad = p.join(r.root, `${s}-bad.jsonl`);
+    fs.writeFileSync(bad, 'not json\n{"type":"assistant","message":{"content":[{"type":"tool_use","id":"g1","name":"Agent","input":{"subagent_type":"architecture-analyzer"}}]}}\n\u0000\u0001{garbage\n{"type":"user","message":{"content":[{"type":"tool_re');
+    assert.ok(denied(write(arch, sid(), bad)), 'garbage rows around a real dispatch: the real row still counts');
+    assert.ok(!denied(write(arch, sid(), p.join(r.root, 'missing.jsonl'))), 'a missing transcript releases');
+    assert.ok(!denied(r.hook(pre('Write', { file_path: arch, content: '# x\n' }, sid()))), 'no transcript path releases');
+    fs.writeFileSync(bad, '\u0000garbage only\n[1,2]\nnull\n"str"\n');
+    assert.ok(!denied(write(arch, sid(), bad)), 'a transcript of garbage holds nothing');
+  } finally { r.rm(); }
+});
+
+test('audit 2026-10-20 C43: the shell route and a docs.js set of an architecture ref are held; a first capture with no domain yet is too', () => {
+  const p = require('node:path');
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' } });
+  try {
+    const s = sid();
+    const tp = p.join(r.root, `${s}.jsonl`);
+    seatRows(tp)(dispatchRow('h1', 'architecture-analyzer'), launchedRow('h1', 'c111'));
+    const bash = (command, session) => r.hook({ ...pre('Bash', { command }, session), transcript_path: tp, cwd: r.root });
+    assert.ok(!r.exists('.claude/docs/architecture'), 'a first capture: no architecture domain yet');
+    assert.ok(denied(bash('mkdir -p .claude/docs/architecture && cat > .claude/docs/architecture/ARCHITECTURE.md <<\'EOF\'\n# A\nEOF', sid())), 'a shell write under architecture/');
+    assert.ok(denied(bash('node .claude/hooks/docs.js set architecture/ARCHITECTURE#layers < /tmp/x.md', sid())), 'a docs.js set of an architecture ref');
+    assert.ok(!denied(bash('cat .claude/docs/architecture/ARCHITECTURE.md', sid())), 'a read is no write');
+    assert.ok(!denied(bash('node .claude/hooks/docs.js set code-style/CODE-STYLE#naming < /tmp/x.md', sid())), 'another domain\'s set');
+  } finally { r.rm(); }
+});
