@@ -350,7 +350,8 @@ test('hooks review: a read-only answer to a question that names nothing pending 
   ]) assert.strictEqual(over(rows, text).status, 0, why);
   const edited = () => { const id = `e${seq}`; return [call(id, 'Edit', { file_path: 'a.ts', old_string: 'a', new_string: 'b' }), result(id, 'ok')]; };
   const row4 = "Reconnect the connector: open its settings and sign in again. Tell me when that's done and I'll read the ticket.";
-  assert.strictEqual(over(asked('I enabled it, what is next?', edited()), row4).status, 2, 'a turn that changed a file is judged');
+  assert.strictEqual(over(asked('I enabled it, what is next?', edited()), row4).status, 0, 'a typed question is answered even after an edit (the ruling of 2026-10-20, C03)');
+  assert.strictEqual(over(asked('I enabled it, show me what is next', edited()), row4).status, 2, 'a show-request whose turn changed a file is judged');
   assert.strictEqual(over(asked('reconnect it for me'), row4).status, 2, 'an instruction is no question');
   assert.strictEqual(over(asked('what is left?'), 'Committed. The push is pending your approval.').status, 2, 'a pending item keeps the hand-back veto');
   for (const text of ['All done and committed. Up to you if we push today.', 'Committed on develop. Your call on the push.'])
@@ -381,7 +382,7 @@ test("hooks review: a wait on running seats' fixes and checks is status; a recor
 // Audit 2026-10-20 C03 (8a1fb350 L2223): a typed question answered from survey loops - `for f in $(find ...); do
 // s=$(grep ...); echo ...; done | sort` - read as a changing turn, so the answer was held as a done-close. A substitution
 // is judged as the command it runs, the shell's grammar words change nothing; a write anywhere keeps the turn judged.
-test('C03: an answer to a typed question from read-only survey loops is no done-close stall; a write in the turn still is', () => {
+test('C03: an answer to a typed question is no done-close stall, read-only or not; a show-request that wrote stays judged', () => {
   const bash = (command) => { const id = `b${++seq}`; return [call(id, 'Bash', { command }), result(id, 'ok')]; };
   const answer = 'No open work for the app right now.\n\n- Probably done, but not marked: the parity card has no status line.\n- Not app work: the two cards still open belong to this backend.\n- Every other card is marked done.';
   const prompt = typed('is there any unfinished tasks left for the app?');
@@ -397,8 +398,19 @@ test('C03: an answer to a typed question from read-only survey loops is no done-
     'echo "$(rm -rf build)"',
     'diff <(cat a) <(cat b)',
     './tools/grep -r x .',
-  ]) assert.strictEqual(over([prompt, ...bash(command)], answer).status, 2, `a changing or unread call keeps the close judged: ${command}`);
+  ]) {
+    // the user's ruling of 2026-10-20: a typed question is answered whatever the turn wrote (feb34e2b sed-edited cards)
+    assert.strictEqual(over([prompt, ...bash(command)], answer).status, 0, `a write under a typed question: ${command}`);
+    assert.strictEqual(over([typed('show me the unfinished cards'), ...bash(command)], answer).status, 2, `a write under a show-request stays judged: ${command}`);
+  }
   assert.strictEqual(over([typed('fix the cards'), ...bash('for f in a b; do echo $f; done')], answer).status, 2, 'an instruction is no question');
+  const sed = bash("sed -i '' 's|^status: OPEN$|status: DONE|' card.md");
+  assert.strictEqual(over([typed('can you mark the cards done?'), ...sed], answer).status, 2, 'a request worded as a question is an instruction');
+  assert.strictEqual(over([typed('Could you close them?'), ...sed], answer).status, 2, 'its capitalised form too');
+  assert.strictEqual(over([typed('cards look stale.\nis that the only task left?'), ...sed], answer).status, 0, 'the question on the last line counts');
+  assert.strictEqual(over([typed('is that the only task left? then fix it'), ...sed], answer).status, 2, 'a question followed by an instruction is not');
+  assert.strictEqual(over([prompt, ...sed], answer + "\n\nI'll mark the parity card next.").status, 2, 'the model\'s own next move still vetoes');
+  assert.strictEqual(over([prompt, ...sed], 'Two cards marked done. The next step is the parity card.').status, 2, 'a pending step still vetoes');
 });
 
 test("C03: the done-close escape says a step the model can do itself is done, not asked", () => {

@@ -710,7 +710,9 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     2026-10-20 C08: the probes fired on every flow run that edited its plan). An auto-answered solve-task stop gets the
     stop-field notes before it returns (`flowFieldNotes()`, C04), and an approval after this cycle's task-verify-plan
     owes the gate's `Passes:` line (a09fc7d6). A read-only survey loop (`$(...)`, for / if / assignments judged as the
-    commands they run) answering the user's question is no done-close stall (C03).
+    commands they run) answering the user's question is no done-close stall (C03), and since the user's ruling of
+    2026-10-20 neither is a write under a TYPED question (the prompt's last line ends on '?' and is no 'can / could /
+    would / will you' request): the own-move, hand-back and pending-step vetoes still hold it.
     Fresh-session offer on a clean close past the window's ABSOLUTE trigger:
     `ALFRED_CODE_CONTEXT_WINDOW_FOR_1M` (default 400000, a window of 1M or more), `_FOR_300K` (280000, 300k up to
     1M), `_FOR_200K` (180000, below 300k); `0` switches that tier off; seeded absent-only (2026-10-16, the user's ruling:

@@ -828,7 +828,16 @@ function answersInfoRequest(closeTail) {
     if (!items.every((m) => STATE_ITEM_RE.test(m[0]))) return false;
   }
   const prompt = turnPrompt().trim();
-  return !!prompt && INFO_PROMPT_RE.test(prompt) && readOnlyTurn();
+  return !!prompt && INFO_PROMPT_RE.test(prompt) && (askedQuestion(prompt) || readOnlyTurn());
+}
+// A typed QUESTION is answered, whatever the turn wrote on the way (the user's ruling of 2026-10-20 on audit C03: feb34e2b
+// asked whether one task was the only one left for a sibling app, the turn sed-edited two card statuses, and the held
+// answer became a 'What next?' ask answered 'Stop here', ~100k re-sent; 7ec6c7db drew 'I haven't understood what you want
+// from me'). A request worded as a question ('can you fix it?') is an instruction and keeps the turn judged.
+const REQUEST_QUESTION_RE = /^\s*(?:please\s+)?(?:can|could|would|will)\s+you\b/i;
+function askedQuestion(prompt) {
+  const last = prompt.split('\n').map((l) => l.trim()).filter(Boolean).pop() || '';
+  return /\?["')\]]*$/.test(last) && !REQUEST_QUESTION_RE.test(last);
 }
 
 // --- read the transcript tail (last ~512KB) and pull the last assistant message ---
