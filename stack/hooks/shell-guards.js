@@ -361,6 +361,60 @@ const MONITOR_NOTE = 'Monitor watch: every line this command prints wakes a turn
     + 'and end the command on the result or a crash. Tell the user ONE start line - what runs and when it should finish - then '
     + 'nothing until the result or a failure: never a reply per wake, never silence past the finish time you gave.';
 
+// THE READ-ONLY SEATS (audit 2026-10-20 A-T1): a seat whose brief says it only observes - a verifier, a solution designer,
+// an analyzer, the integration reviewer, the security auditor, the evidence gatherer, an issue diagnoser - still carries
+// Bash, and a verifier's `git reset -q` unstaged a user's `git rm` (audit 2026-10-10). Keyed on the payload's
+// `agent_type`, bare or the house's own prefix (another plugin's seat of that name is not ours); implementers and
+// resolvers stay free. Each literal write target (shell-writes.js scanShell: a redirect, tee, cp / mv, rm, an in-place
+// edit, a PowerShell write cmdlet, a runtime's literal write) outside the OS temp dirs and `/dev`, and each git call that
+// moves the index, the working tree, a ref or a stash (gitMutates, plus the plumbing that does), is the seat's write.
+// A target the shell expands at run time (`> "$OUT"`, a computed interpreter path) cannot be judged and passes.
+const READ_ONLY_SEAT = /^(?:alfred-code:)?(?:[a-z][\w-]*-verifier|[a-z][\w-]*-solution-designer|integration-reviewer|security-auditor|evidence-gatherer|[a-z][\w-]*-analyzer|issue-diagnoser-[a-z][\w-]*)$/;
+const SEAT_GIT_WRITES = new Set(['update-index', 'update-ref', 'symbolic-ref', 'worktree', 'gc', 'prune', 'notes', 'replace', 'filter-branch', 'read-tree', 'checkout-index']);
+function readOnlySeatWrite(payload, command, cwd, sw)
+{
+    if (!READ_ONLY_SEAT.test(String(payload.agent_type || ''))) return null;
+    const real = (p) => { try { return fs.realpathSync.native(p); } catch { return path.resolve(p); } };
+    const scratch = [os.tmpdir(), process.env.TMPDIR, process.env.TEMP, process.env.TMP, '/tmp', '/private/tmp', '/var/tmp']
+        .filter(Boolean).map((d) => real(d));
+    const inside = (p, d) => p === d || p.startsWith(d.endsWith(path.sep) ? d : d + path.sep);
+    let scan;
+    try { scan = sw.scanShell(command, { cwd }); }
+    catch { scan = null; }
+    if (scan)
+    {
+        const norm = (t) => sw.nativePath(sw.unquote(t).replace(/^~(?=$|[\\/])/, os.homedir()));
+        for (const t of scan.targets)
+        {
+            const raw = scan.expandVars(t.raw);
+            if (!raw || sw.isVar(raw) || raw === sw.UNKNOWN_WRITE) continue;
+            if (/^\/dev(?:\/|$)/.test(raw) || /^(?:nul|NUL|\$null)$/.test(raw)) continue;
+            const base = sw.anchorAt(scan.cds, t.index, cwd, norm) || cwd;
+            const name = norm(raw);
+            let abs = path.isAbsolute(name) ? name : path.resolve(base, name);
+            const dir = real(path.dirname(abs));
+            abs = path.join(dir, path.basename(abs));
+            if (scratch.some((d) => inside(abs, d))) continue;
+            return { what: `writes ${raw} (${t.what || 'a write'})`, matched: raw };
+        }
+    }
+    let read;
+    try { read = sw.gitText(command, cwd); }
+    catch { read = null; }
+    for (const call of (read && read.calls) || [])
+    {
+        const sub = call.sub;
+        const argv = (call.argv || []).map(String);
+        if (!sub) continue;
+        let writes = sw.gitMutates(sub, argv) || SEAT_GIT_WRITES.has(sub) || (sub === 'reflog' && /^(?:expire|delete)$/.test(argv[0] || ''));
+        if (sub === 'clean' && argv.some((a) => a === '--dry-run' || /^-[A-Za-z]*n[A-Za-z]*$/.test(a))) writes = false;
+        if (sub === 'apply' && argv.some((a) => /^--(?:check|stat|numstat|summary)$/.test(a)) && !argv.some((a) => /^--(?:apply|index|cached)$/.test(a))) writes = false;
+        if (sub === 'worktree' && /^(?:list)$/.test(argv[0] || '')) writes = false;
+        if (writes) return { what: `runs \`git ${[sub, ...argv].join(' ').slice(0, 80)}\`, which changes the repository`, matched: `git ${sub}` };
+    }
+    return null;
+}
+
 function ownChecks(stdin)
 {
     const out = { stdin, results: [] };
@@ -371,7 +425,7 @@ function ownChecks(stdin)
     const tool = String(payload.tool_name || '');
     const input = payload.tool_input && typeof payload.tool_input === 'object' ? payload.tool_input : {};
     const command = typeof input.command === 'string' ? input.command : '';
-    if (!command || !/^(?:Bash|Monitor)$/.test(tool)) return out;
+    if (!command || !/^(?:Bash|PowerShell|Monitor)$/.test(tool)) return out;
     let prelude = null;
     try { prelude = require('./hook-prelude.js'); }
     catch { prelude = null; }
@@ -383,6 +437,22 @@ function ownChecks(stdin)
     const root = process.env.CLAUDE_PROJECT_DIR || (typeof payload.cwd === 'string' && payload.cwd) || process.cwd();
     const cwd = typeof payload.cwd === 'string' && payload.cwd ? payload.cwd : root;
     const row = (fields) => ledgerRow(payload, prelude, fields);
+
+    // -- a read-only seat's shell write (audit 2026-10-20 A-T1) --
+    const seatWrite = readOnlySeatWrite(payload, command, cwd, sw);
+    if (seatWrite)
+    {
+        const seat = String(payload.agent_type);
+        const text = `Blocked: ${seat} is a read-only seat, and this command ${seatWrite.what} - nothing ran.\n`
+            + 'A read-only seat observes and reports: no file write outside the OS temp dir, and no git command that moves the\n'
+            + 'index, the working tree, a branch or a stash (a verifier\'s `git reset -q` unstaged a user\'s `git rm` - audit\n'
+            + '2026-10-10). Run the read form instead (`git diff`, `git status`, `git stash list`, a dry run), write scratch output\n'
+            + 'under the OS temp dir, or put the change you would make in your report for the caller to apply.';
+        row({ reason: firstLine(text).slice(0, 200), agent: payload.agent_id || null, tool_use_id: payload.tool_use_id || null, detail: { branch: 'read-only-seat', seat, matched: seatWrite.matched.slice(0, 120) } });
+        out.results.push({ guard: `${SELF}.js`, code: 2, stdout: '', stderr: text });
+        return out;
+    }
+    if (!/^(?:Bash|Monitor)$/.test(tool)) return out;
     let masked = command;
     try { masked = sw.blankComments(sw.blankHeredocs(command)); }
     catch { masked = command; }

@@ -1495,9 +1495,9 @@ function ignoredEdits(root, edits) {
   }
   let out = '';
   try {
-    const r = require('child_process').spawnSync('git', ['check-ignore', '-z', '--stdin'], {
+    const r = require('child_process').spawnSync(...require('./hook-prelude.js').gitSafe(['check-ignore', '-z', '--stdin'], {
       cwd: root, input: [...byQuery.keys()].join('\0') + '\0', encoding: 'utf8', timeout: 3000, windowsHide: true,
-    });
+    }));
     if (!r.error && r.status === 0) out = r.stdout || '';
   } catch { /* no git: nothing is ignored */ }
   const hit = new Set();

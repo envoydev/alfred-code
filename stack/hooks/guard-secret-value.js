@@ -1179,13 +1179,30 @@ function lineRedactor(grep = false, literals = false) {
   let ppk = 0;
   const reset = (f) => { file = f; kind = f ? kindByName(f) : null; pem = false; gpg = false; ppk = 0; };
   const keyLine = (pre, cr) => { masked++; return `${pre}<private key line>${cr}`; };
+  // A line of the project's `.sensitive-data` (audit 2026-10-20 H3: a diff of it or a walk through it printed every value
+  // raw, though the start line says a printed value is masked): every live value whatever its key, and a line that is no
+  // `KEY=value` pair whole - the store is the user's, its format no promise.
+  const SENSITIVE_PAIR = /^(\s*(?:export\s+)?[A-Za-z_][\w.-]*\s*=\s*)(.*?)\s*$/;
+  const SENSITIVE_PREFIX = /^(?:[A-Za-z]:)?(?:[^\s:]*:)?(?:[^\s:]*[\\/])?\.sensitive-data(?::\d+){0,2}[:-]/;
+  const sensitiveBody = (body) => {
+    if (!body.trim() || COMMENT_LINE.test(body)) return body;
+    const p = body.match(SENSITIVE_PAIR);
+    if (p) return isLive(unquote(p[2])) ? p[1] + mask(unquote(p[2])) : body;
+    masked++;
+    return '<sensitive-data line>';
+  };
   const line = (raw) => {
     const cr = raw.endsWith('\r') ? '\r' : '';
     const text = cr ? raw.slice(0, -1) : raw;
     if (/^commit [0-9a-f]{7,}\b/.test(text)) { reset(null); return raw; }
     const header = text.match(/^(?:\+\+\+ b\/|diff --git a\/.* b\/)(.+)$/);
     if (header) { reset(header[1]); return raw; }
+    // a search's line out of the store (`<path>/.sensitive-data:12:...`, `git grep`'s `HEAD:<path>:...`) is masked by its
+    // path, whatever it holds (H3)
+    const sp = SENSITIVE_PREFIX.exec(text);
+    if (sp) return `${sp[0]}${sensitiveBody(text.slice(sp[0].length))}${cr}`;
     const [, pre, body] = text.match(/^((?:[+\- ]|[<>] )?)([\s\S]*)$/);
+    if (kind === 'sensitive') return `${pre}${sensitiveBody(body)}${cr}`;
     if (pem) {
       if (PEM_END.test(body)) pem = false;
       else if (body.trim()) return keyLine(pre, cr);
@@ -1325,7 +1342,7 @@ if (payload.hook_event_name === 'SessionStart') {
     // a commit would publish every value. git's status 1 is 'not ignored' (a tracked file too); 128 is no repository.
     let exposed = '';
     try {
-      const r = require('child_process').spawnSync('git', ['check-ignore', '-q', '--', pathMod.basename(file)], { cwd: pathMod.dirname(file), timeout: 5000, stdio: 'ignore' });
+      const r = require('child_process').spawnSync(...require('./hook-prelude.js').gitSafe(['check-ignore', '-q', '--', pathMod.basename(file)], { cwd: pathMod.dirname(file), timeout: 5000, stdio: 'ignore' }));
       if (r.status === 1) exposed = ` WARNING: git does not ignore ${rel} (or it is tracked) - a commit publishes every value; tell the user to add it to .gitignore, and to untrack it with git rm --cached if it is tracked.`;
     } catch { /* no git: nothing to commit it with */ }
     process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext:
@@ -1440,7 +1457,7 @@ const presenceHint = (file) =>
 // ordinary 'which keys am I missing' move - and `rev` prints every line backwards; a hyphen ends none of them, so
 // `git rev-parse` is no `rev`. A git dump (`git diff <file>`) is not judged here: it is piped through the stream
 // redactor where it stands (redactGitStages), and only a git stage left unpiped (`--stat`) falls to this list.
-const DUMP_VERB = /\b(?:cat|head|tail|sed|less|more|[gmn]?awk|jq|bat|strings|grep|rg|egrep|fgrep|tac|nl|pr|od|xxd|hexdump|base64|paste|fold|column|sort|uniq|cut|tee|get-content|gc|type|select-string|sls|format-hex|import-csv)\b|(?<![\w-])(?:diff|sdiff|cmp|comm|rev)(?![\w-])/i;
+const DUMP_VERB = /\b(?:cat|head|tail|sed|less|more|[gmn]?awk|jq|bat|strings|grep|rg|egrep|fgrep|tac|nl|pr|od|xxd|hexdump|base64|paste|fold|column|sort|uniq|cut|tee|get-content|gc|type|select-string|sls|format-hex|import-csv|readall(?:text|lines|bytes))\b|(?<![\w-])(?:diff|sdiff|cmp|comm|rev)(?![\w-])/i;
 const RUNTIME = /\b(?:node|python3?|perl|ruby|deno|bun|pwsh|powershell|php)\b/;
 // ---- the routes that print a file under another verb's name (review item 5 of 2.1.6) ----------------------------------
 // dd's `if=`, iconv, the text filters (expand, unexpand, fmt), the gzip readers that pass a plain file through (`zcat -f`),
@@ -3329,6 +3346,30 @@ function gitPrintsContent(stage) {
 // At most four probes per call, 3s each: past them a stage is piped unprobed (the safe side), so a command of many slow
 // reads stays inside the dispatcher's budget - a timed-out PreToolUse command hook lets the call run with no verdict.
 function takeProbe() { if (takeProbe.left === undefined) takeProbe.left = 4; return takeProbe.left-- > 0; }
+// The one git spawn shape every hook uses (hook-prelude.js gitSafe: fsmonitor off, no optional locks); an install
+// without the prelude probes nothing - each stage is piped unprobed, the safe side. A declaration, like the probes.
+function gitSafeOf() { try { return require('./hook-prelude.js').gitSafe; } catch { return null; } }
+// Does the word spell one of these long options, whole or abbreviated the way git's parse-options and getopt_long take a
+// unique prefix (`--open` is `--open-files-in-pager`), with or without its `=value`? Three letters at least.
+function longOptionNames(word, names) {
+  const m = /^--([a-z][a-z-]*)(?:=|$)/.exec(word);
+  return !!m && m[1].length >= 3 && names.some((n) => n.startsWith(m[1]));
+}
+// A git read option that runs a program: grep's pager (`-O[<cmd>]`, alone or inside a short cluster before a value
+// flag takes the rest), the external diff and textconv drivers, a signature check's gpg. `--text` is grep's and diff's
+// own `-a`, never `--textconv`.
+function probeRunsProgram(sub, tail) {
+  for (const a of tail) {
+    if (a === '--') break;
+    if (a === '--text') continue;
+    if (longOptionNames(a, ['ext-diff', 'textconv', 'show-signature', 'open-files-in-pager'])) return true;
+    if (/^--submodule=diff$/.test(a)) return true;
+    if (sub === 'grep' && /^-[^-]/.test(a)) {
+      for (const c of a.slice(1)) { if (c === 'O') return true; if ('efABCm'.includes(c) || !/[A-Za-z0-9]/.test(c)) break; }
+    }
+  }
+  return false;
+}
 function probeCwd() { return (payload && typeof payload.cwd === 'string' && payload.cwd) || process.env.CLAUDE_PROJECT_DIR || process.cwd(); }
 // A shell word the shell passes on verbatim, read quote by quote the way the shell reads it, or null when the shell would
 // expand something in it (a variable, a substitution, a glob, a brace, a tilde). Inside double quotes only `$` and a
@@ -3372,9 +3413,11 @@ function localFilterConfigured(pre, cwd = probeCwd()) {
   const key = [cwd, ...pre].join('\0');
   localFilterConfigured.seen = localFilterConfigured.seen || new Map();
   if (localFilterConfigured.seen.has(key)) return localFilterConfigured.seen.get(key);
-  const r = require('child_process').spawnSync('git', [...pre, 'config', '--local', '--get-regexp', '^filter\\.'], {
-    cwd, timeout: 3000, maxBuffer: 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
-  });
+  const gitSafe = gitSafeOf();
+  if (!gitSafe) return true;
+  const r = require('child_process').spawnSync(...gitSafe([...pre, 'config', '--local', '--get-regexp', '^filter\\.'], {
+    cwd, timeout: 3000, maxBuffer: 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'],
+  }));
   // exit 1 is 'no such key', and outside a repository (128) there is no local config to hold one
   const on = !!r.error || String(r.stdout || '').trim() !== '';
   localFilterConfigured.seen.set(key, on);
@@ -3391,6 +3434,9 @@ function gitOutputLeaks(stage, cwd = probeCwd()) {
   }
   const at = w[i] === 'stash' ? i + 2 : i + 1;
   if (w.slice(at).some((a) => /^--output(?:=|$)/.test(a))) return true;
+  // An option that RUNS a program is never probed - the probe runs before the permission prompt (audit 2026-10-20 H1:
+  // `git grep -O'touch X' key` ran the command, and a `--ext-diff` after the probe's own `--no-ext-diff` won).
+  if (probeRunsProgram(w[i], w.slice(at))) return true;
   if (w[i] === 'cat-file' && w.some((a) => /^--(?:textconv|filters)$/.test(a))) return true; // runs a repository's own driver
   // a remote or config read takes none of the diff flags, and `remote show` asks the network unless told `-n`
   const plain = w[i] === 'cat-file' || w[i] === 'remote' || w[i] === 'config' || w[i] === 'grep';
@@ -3398,11 +3444,13 @@ function gitOutputLeaks(stage, cwd = probeCwd()) {
   if (!plain && localFilterConfigured(w.slice(1, i), cwd)) return true;
   if (!takeProbe()) return true;
   const tail = w[i] === 'remote' && w[at] === 'show' && !w.includes('-n') ? [w[at], '-n', ...w.slice(at + 1)] : w.slice(at);
-  const argv = ['-c', 'core.fsmonitor=false', ...w.slice(1, at), ...(plain ? [] : ['--no-ext-diff', '--no-textconv', '--no-color']), ...tail];
-  const r = require('child_process').spawnSync('git', argv, {
+  const gitSafe = gitSafeOf();
+  if (!gitSafe) return true;
+  const argv = ['-c', 'log.showSignature=false', ...w.slice(1, at), ...(plain ? [] : ['--no-ext-diff', '--no-textconv', '--no-color']), ...tail];
+  const r = require('child_process').spawnSync(...gitSafe(argv, {
     cwd, timeout: 3000, maxBuffer: 8 * 1024 * 1024,
-    stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_PAGER: 'cat', PAGER: 'cat' },
-  });
+    stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, GIT_PAGER: 'cat', PAGER: 'cat' },
+  }));
   // Exit 1 is `diff --no-index`'s 'the files differ', with the diff on stdout.
   if (r.error || (r.status !== 0 && r.status !== 1)) return true;
   const red = lineRedactor();
@@ -3459,6 +3507,9 @@ function walkLeaks(stage, cwd = probeCwd()) {
   // fd redirections that stay on the terminal or go nowhere are the shell's, not grep's arguments
   const args = w.slice(1).filter((a, k, all) => !/^(?:&|\d*)>+(?:&\d+|\/dev\/null)?$/.test(a) && !(all[k - 1] && /^(?:&|\d*)>+$/.test(all[k - 1])));
   if (args.some((a) => /^--(?:pre|hostname-bin)(?:=|$)/.test(a))) return true;
+  // ugrep (a grep some PATHs hold) runs a program through these too, and reads a config that can name one
+  // (audit 2026-10-20 H1: no probe runs a program before the permission prompt)
+  if (args.some((a) => longOptionNames(a, ['filter', 'pager', 'view', 'query', 'config', 'save-config']) || /^-[A-Za-z]*Q|^---/.test(a))) return true;
   // A path-qualified verb (`./tools/grep`, `bin/rg`) is whatever script sits there, and this probe runs before the
   // permission prompt - so it is never spawned; the stage is piped unprobed (audit 2026-10-08: a repo script ran).
   if (/[\\/]/.test(w[0])) return true;
@@ -3542,8 +3593,9 @@ function judgePwshStage(stage) {
   const PS_GETENV = /\[(?:System\.)?Environment\]::GetEnvironmentVariable\(\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]/gi;
   const s = stage.trim();
   const secretOf = (re, text) => [...text.matchAll(re)].map((m) => m[1]).find((n) => SECRET_KEY_RE.test(n));
-  // env: drive - a named item prints that variable, anything else lists the environment.
-  const drive = s.match(/^\(?\s*(?:get-item|gi|get-childitem|gci|dir|ls)\s+(?:-path\s+|-literalpath\s+)?['"]?env:\\?([^\s'")|]*)/i);
+  // env: drive - a named item prints that variable, anything else lists the environment. Get-Content and its aliases read
+  // the drive too (audit 2026-10-20 H8: `gc env:API_TOKEN`, `type env:X` passed).
+  const drive = s.match(/^\(?\s*(?:get-item|gi|get-childitem|gci|dir|ls|get-content|gc|type|cat|more)\s+(?:-(?:raw|force)\s+)*(?:-path\s+|-literalpath\s+)?['"]?env:\\?([^\s'")|]*)/i);
   if (drive) {
     if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(drive[1])) { if (SECRET_KEY_RE.test(drive[1])) blockVariable(drive[1]); } else blockEnvDump();
   }
@@ -3551,6 +3603,11 @@ function judgePwshStage(stage) {
   // A bare expression statement is printed by the host.
   const bare = s.match(/^"?\$\{?(?:env:)?([A-Za-z_][A-Za-z0-9_]*)\}?"?$/i) || s.match(/^\[(?:System\.)?Environment\]::GetEnvironmentVariable\(\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]\s*\)$/i);
   if (bare && SECRET_KEY_RE.test(bare[1])) blockVariable(bare[1]);
+  // An expandable string as a statement is printed whole, the reference inside it included (H8: `"token: $env:X"`).
+  const str = s.match(/^"((?:[^"`]|`.)*)"$/) || s.match(/^@"([\s\S]*)"@$/);
+  if (str) { const hit = secretOf(PS_ENV_REF, str[1]); if (hit) blockVariable(hit); }
+  // cmd's `set` is the whole environment (H8: `cmd /c set` passed)
+  if (/^(?:\S*[\\/])?cmd(?:\.exe)?\s+(?:\/\/?[a-z]\s+)*?\/\/?[ck]\s+["']?set(?:\s+[^\s"'=|&<>]+)?["']?\s*$/i.test(s)) blockEnvDump();
   // The print verbs, PowerShell's own included.
   if (/^(?:echo|write-output|write-host|write-information|write|out-host)\b/i.test(s)) {
     const hit = secretOf(PS_ENV_REF, s) || secretOf(PS_GETENV, s);
@@ -3701,6 +3758,8 @@ function judgeShell(text, forceRuntime, main, bodyLang) {
       // shell's OWN listings (`set`, `export`, `declare -p`) print the same values and passed every
       // probe until the review; their argument-carrying forms (`set -e`, `export FOO=x`) do not match.
       if (!forceRuntime && /^(?:env|printenv|export\s+-p|export|declare\s+-p|typeset\s+-p|set)\s*(?:(?:\d*>&\d+|\d*>\s*\/dev\/null)\s*)*(?:\||$)/.test(stage.replace(PREFIX_WORDS, ''))) blockEnvDump();
+      // cmd's own `set` - alone, or with the prefix it lists every variable under - is the same dump (audit 2026-10-20 H8)
+      if (!forceRuntime && /^(?:\S*[\\/])?cmd(?:\.exe)?\s+(?:\/\/?[a-z]\s+)*?\/\/?[ck]\s+["']?set(?:\s+[^\s"'=|&<>]+)?["']?\s*(?:\||$)/i.test(stage.replace(PREFIX_WORDS, '').trim())) blockEnvDump();
 
       // A runtime reading the environment - `node -e "console.log(process.env.SENTRY_ACCESS_TOKEN)"`
       // is `echo $SENTRY_ACCESS_TOKEN` with more syntax. The denial names the VARIABLE, never a value.
@@ -3797,6 +3856,8 @@ function judgeShell(text, forceRuntime, main, bodyLang) {
       // `cat ~/.aws/credentials` was rewritten) - tried against where the shell stands: a `cd` / `pushd` before it,
       // `env -C <dir>` in the stage, the session's own directory. The command word itself is no operand.
       const stageAnchor = cwdAnchor;
+      // .NET's file reads take their path as a string argument (audit 2026-10-20 H8: `[IO.File]::ReadAllText('.env')` passed)
+      if (IS_PWSH) for (const m of candStage.matchAll(/::\s*ReadAll(?:Text|Lines|Bytes)\s*\(\s*(["'])([^"'\n]{1,300})\1/gi)) candidates.push(m[2]);
       if (!isRuntime) {
         const bare = bareOperands(shellTokens(candStage.replace(PREFIX_WORDS, '').replace(/^\s*\(+/, '')));
         if (bare.dir) { const d = expandPath(bare.dir); if (d) cwdAnchor = pathMod.isAbsolute(d) ? d : pathMod.join(cwdAnchor || anchorDirs()[0] || '.', d); }

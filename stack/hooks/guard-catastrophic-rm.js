@@ -75,6 +75,9 @@ const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 // it lands fails open like every gate here (the parity test's copy set), rather than judging with a second, weaker reader.
 let shellWrites;
 try { shellWrites = require('./shell-writes.js'); } catch { process.exit(0); }
+// Every git this guard runs: fsmonitor off, no optional locks (hook-prelude.js gitSafe, audit 2026-10-20 H2) - the same two
+// inline when the prelude is absent, since a protective read must not skip git or run a repository's own program.
+const gitSafe = (() => { try { return require('./hook-prelude.js').gitSafe; } catch { return (argv, opts = {}) => ['git', ['-c', 'core.fsmonitor=false', ...argv], { ...opts, env: { ...(opts.env || process.env), GIT_OPTIONAL_LOCKS: '0' } }]; } })();
 
 // A recursive flag: --recursive, a short cluster of rm's own letters containing r/R (-r, -R, -rf,
 // -fr, -Rf, -rfv), or PowerShell's -Recurse and its prefixes. --force alone never recurses - and
@@ -113,6 +116,9 @@ function unquote(tok)
 function cleanTarget(tok)
 {
     let t = unquote(tok).replace(/['"]/g, '');
+    // A parameter's default or error form is the parameter when it is set (audit 2026-10-20 H6: `rm -rf "${HOME:?}"`
+    // passed), and a `$(pwd)` / backtick `pwd` is the working directory, `$PWD`.
+    t = t.replace(/\$\{([A-Za-z_]\w*):?[-?=][^}]*\}/g, '${$1}').replace(/\$\(\s*pwd(?:\s+-[LP])?\s*\)|`\s*pwd(?:\s+-[LP])?\s*`/g, '$PWD');
     // A Windows spelling uses backslashes: fold them only where the token is plainly a Windows path
     // (a drive, $env:, or ~\ / $HOME\) - in bash `\*` escapes the glob and names a file called '*'.
     if (/^(?:[A-Za-z]:|\$\{?env:|~\\|\$\{?HOME\}?\\)/i.test(t)) t = t.replace(/\\/g, '/');
@@ -141,6 +147,32 @@ function cleanTarget(tok)
     return t.replace(/\/+$/, '') || (absolute ? '/' : t);
 }
 
+// The directories a literal path may not name (audit 2026-10-20 H6: the home directory spelled absolute passed): the
+// home directory, the project root and the shell's cwd themselves, or any folder holding the home directory or the
+// project (a folder holding only the cwd is often a scratch parent). Set by main from the payload; empty in a library
+// caller. A path with a variable, a glob or a tilde is the symbolic rules' (below).
+const ANCHORS = { cwd: '', dirs: [], holds: [] };
+function isAnchorPath(t)
+{
+    if (!ANCHORS.dirs.length || /[$*?[{~`]/.test(t) || !t) return false;
+    let abs = path.resolve(ANCHORS.cwd || process.cwd(), t.replace(/\/\*$/, ''));
+    try { abs = fs.realpathSync.native(abs); } catch { /* a path that does not exist yet is judged as written */ }
+    const fold = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
+    const a = fold(abs);
+    const inside = (outer, inner) => inner === outer || inner.startsWith(outer.endsWith(path.sep) ? outer : outer + path.sep);
+    return ANCHORS.dirs.some((d) => fold(d) === a) || ANCHORS.holds.some((d) => inside(a, fold(d)));
+}
+function setAnchors(payload)
+{
+    const real = (p) => { try { return fs.realpathSync.native(p); } catch { return p ? path.resolve(p) : ''; } };
+    const cwd = typeof payload.cwd === 'string' && payload.cwd ? real(payload.cwd) : '';
+    const home = real(require('os').homedir());
+    const project = process.env.CLAUDE_PROJECT_DIR ? real(process.env.CLAUDE_PROJECT_DIR) : '';
+    ANCHORS.cwd = cwd;
+    ANCHORS.dirs = [home, project, cwd].filter(Boolean);
+    ANCHORS.holds = [home, project].filter(Boolean);
+}
+
 // Catastrophic, unrecoverable single targets: root, home, or a bare whole-dir glob.
 function isCatastrophic(tok)
 {
@@ -152,6 +184,7 @@ function isCatastrophic(tok)
     if (/^[A-Za-z]:(?:\/\*)?$/.test(t)) return true;                             // C:\  C:/  C:\*
     if (/^\/(?:cygdrive\/|mnt\/)?[A-Za-z](?:\/\*)?$/.test(t)) return true;            // /c  /cygdrive/c  /mnt/c
     if (/^\$\{?env:(?:userprofile|home|homedrive|systemdrive|systemroot|windir)\}?(?:\/\*)?$/i.test(t)) return true;
+    if (isAnchorPath(t)) return true;
     return t === '/' || t === '/*' || t === '/.'
         || t === '~' || t === '~/*'
         || t === '$HOME' || t === '${HOME}' || t === '$HOME/*' || t === '${HOME}/*'
@@ -296,8 +329,23 @@ function isCatastrophicRm(command)
     const parts = shellWrites.groupsAsCuts(command).split(/([;|&]{1,2}|\n)/); // a subshell or group's parens are cuts
     for (let k = 0; k < parts.length; k += 2)
     {
-        const { cmd, args } = commandOf(parts[k]);
-        const verb = cmd.toLowerCase();
+        let { cmd, args } = commandOf(parts[k]);
+        let verb = cmd.toLowerCase();
+        // `cmd /c <command>` (Git Bash spells it `//c`) runs its command: read it as a wrapper (audit 2026-10-20 H6:
+        // `cmd /c rd /s /q C:\` passed). A quoted command line is read as the command.
+        if (/^(?:.*[\\/])?cmd(?:\.exe)?$/i.test(cmd))
+        {
+            const at = args.findIndex((a) => /^\/\/?[ck]$/i.test(a));
+            if (at < 0) continue;
+            if (isCatastrophicRm(args.slice(at + 1).join(' ').replace(/^"([\s\S]*)"$/, '$1'))) return true;
+            continue;
+        }
+        // cmd's own `rd` / `rmdir` / `del` / `erase` take `/s` for the whole tree and `/q` for no prompt - switches, never
+        // paths (`/s /q` read as two top-level dirs)
+        if (/^(?:rd|rmdir|del|erase)$/.test(verb) && args.some((a) => /^\/[A-Za-z]$/.test(a)))
+        {
+            args = args.map((a) => (/^\/s$/i.test(a) ? '-r' : /^\/[A-Za-z]$/.test(a) ? '-f' : a));
+        }
         if (verb === 'find' || cmd.endsWith('/find'))
         {
             if (findWipes(args)) return true;
@@ -731,7 +779,7 @@ function main()
     const { execFileSync } = require('child_process');
     const budget = shellWrites.newRun().budget;
     const overCap = []; // the destructive calls past the cap: read conservatively below
-    const gitIn = (gitCwd) => (argv) => execFileSync('git', argv, { cwd: gitCwd, timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, LC_ALL: 'C' } }).toString();
+    const gitIn = (gitCwd) => (argv) => execFileSync(...gitSafe(argv, { cwd: gitCwd, timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, LC_ALL: 'C' } })).toString();
     // An abort earlier in the command, of an operation really in progress in that repo (its state file is there now),
     // keyed by the repo's top level - the reset after it is judged without that operation's rows (readLoss).
     const ABORTS = { merge: ['MERGE_HEAD'], 'cherry-pick': ['CHERRY_PICK_HEAD'], revert: ['REVERT_HEAD'], rebase: ['rebase-merge', 'rebase-apply'], am: ['rebase-apply'] };
@@ -904,6 +952,7 @@ function main()
     // PowerShell carries no `sh -c` script, and its Windows roots (`C:\`) must reach the target test as written - with
     // every backslash read as the path separator it is there (its escape is the backtick): `.\`, `.\*` and `..\` kept
     // the backslash and named no catastrophic target, so `Remove-Item -Recurse -Force .\` passed (audit 2026-10-08).
+    setAnchors(payload);
     if (!isCatastrophicRm(shellWrites.blankHeredocs(powershell ? rawCommand.replace(/\\/g, '/') : read.command)))
     {
         process.exit(0);

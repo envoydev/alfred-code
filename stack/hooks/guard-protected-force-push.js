@@ -27,6 +27,9 @@ const fs = require('fs');
 // The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 const { execFileSync } = require('child_process');
+// Every git this guard runs: fsmonitor off, no optional locks (hook-prelude.js gitSafe, audit 2026-10-20 H2) - the same two
+// inline when the prelude is absent, since a protective read must not skip git or run a repository's own program.
+const gitSafe = (() => { try { return require('./hook-prelude.js').gitSafe; } catch { return (argv, opts = {}) => ['git', ['-c', 'core.fsmonitor=false', ...argv], { ...opts, env: { ...(opts.env || process.env), GIT_OPTIONAL_LOCKS: '0' } }]; } })();
 
 // STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in every
 // hook. Fail-open on purpose - no prelude, no project dir or a malformed settings file all leave
@@ -106,7 +109,7 @@ function currentBranch(cwd)
     try
     {
         // git's stderr stays out of the hook's: on an unborn repo it printed `fatal: ambiguous argument 'HEAD'` (audit 2026-10-08).
-        return execFileSync('git', ['-C', cwd, 'rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+        return execFileSync(...gitSafe(['-C', cwd, 'rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] })).trim();
     }
     catch
     {

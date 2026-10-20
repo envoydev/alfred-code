@@ -1973,9 +1973,9 @@ function aliasTable(run, dir, args, lookup, envKey) {
   if (run.spawns >= ALIAS_TABLES || run.budget.over()) res = { error: `past ${ALIAS_TABLES} alias tables` };
   else {
     run.spawns++;
-    const env = Object.assign({}, process.env, Object.fromEntries(lookup));
+    const env = Object.assign({}, process.env, Object.fromEntries(lookup), { GIT_OPTIONAL_LOCKS: '0' });
     const cwd = dir && exists(run, dir) ? dir : undefined;
-    const r = spawnSync('git', [...args, 'config', '-z', '--get-regexp', '^alias\\.'], { cwd, env, timeout: 3000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 4 * 1024 * 1024 });
+    const r = spawnSync('git', ['-c', 'core.fsmonitor=false', ...args, 'config', '-z', '--get-regexp', '^alias\\.'], { cwd, env, timeout: 3000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 4 * 1024 * 1024 });
     if (r.error || (r.status !== 0 && r.status !== 1)) res = { error: 'a lookup git could not answer' };
     else {
       const map = new Map();
@@ -1984,7 +1984,7 @@ function aliasTable(run, dir, args, lookup, envKey) {
         const nl = rec.indexOf('\n');
         map.set((nl < 0 ? rec.slice(6) : rec.slice(6, nl)).toLowerCase(), nl < 0 ? '' : rec.slice(nl + 1));
       }
-      res = { map, run: (argv) => spawnSync('git', [...args, ...argv], { cwd, env, timeout: 3000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }) };
+      res = { map, run: (argv) => spawnSync('git', ['-c', 'core.fsmonitor=false', ...args, ...argv], { cwd, env, timeout: 3000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }) };
     }
   }
   run.aliasTables.set(key, res);

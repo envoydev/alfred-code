@@ -112,7 +112,7 @@ function runChecks(roots, { budgetMs = BUDGET_MS, spawn = spawnSync, now = Date.
 // spells it - groupRoots holds every file to that root.
 function changedSince(root, since, { spawn = spawnSync } = {})
 {
-  const git = (args) => spawn('git', ['-c', 'core.quotePath=false', ...args], { cwd: root, encoding: 'utf8', timeout: 10000, windowsHide: true, maxBuffer: 64 * 1024 * 1024 }) || {};
+  const git = (args) => spawn('git', ['-c', 'core.fsmonitor=false', '-c', 'core.quotePath=false', ...args], { cwd: root, encoding: 'utf8', timeout: 10000, windowsHide: true, maxBuffer: 64 * 1024 * 1024, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } }) || {};
   const top = git(['rev-parse', '--show-toplevel']);
   const status = top.status === 0 ? git(['status', '--porcelain=v1', '-z', '--untracked-files=all']) : null;
   if (!status || status.status !== 0) return [];

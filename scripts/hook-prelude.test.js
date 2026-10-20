@@ -851,3 +851,67 @@ test('shortLivedLinks / withoutShortLived: an hour or less, by the link\'s own l
     const both = `${link(token)} Authorization: Bearer ${long}`;
     assert.ok(withoutShortLived(both, now).includes(long) && !withoutShortLived(both, now).includes(token), 'only the short-lived token is blanked');
 });
+
+// Audit 2026-10-20 H2 (replayed): a hook runs before the permission prompt, often in a repository the model only named,
+// and git ran that repository's own `core.fsmonitor` program from the read, rm and commit guards. Every git a hook spawns
+// goes through hook-prelude.js gitSafe (fsmonitor off, no optional locks) or spells the same two inline (the engines
+// copied without the prelude).
+test('H2: every git spawn in a hook file turns the repository\'s fsmonitor off', () =>
+{
+    const dir = path.join(__dirname, '..', 'stack', 'hooks');
+    const bare = [];
+    for (const f of fs.readdirSync(dir).filter((n) => n.endsWith('.js')))
+    {
+        const lines = fs.readFileSync(path.join(dir, f), 'utf8').split('\n');
+        lines.forEach((l, i) =>
+        {
+            // git spawned as a program (`'git', [`) or a shell string opening with `git `
+            if (!/(?:spawn|spawnSync|execFileSync|execFile)\(\s*'git'\s*,|execSync\(`git /.test(l)) return;
+            if (/^\s*\+\s*"/.test(l)) return; // memory.js's launcher text: a string another process runs
+            if (!/core\.fsmonitor=false/.test(lines.slice(i, i + 2).join(' '))) bare.push(`${f}:${i + 1}`);
+        });
+    }
+    assert.deepStrictEqual(bare, [], 'a git spawn without core.fsmonitor=false and outside gitSafe');
+    const { gitSafe } = require(PRELUDE);
+    const [cmd, argv, opts] = gitSafe(['status'], { cwd: '/x', env: { A: '1' } });
+    assert.deepStrictEqual([cmd, argv, opts.cwd, opts.env.A, opts.env.GIT_OPTIONAL_LOCKS], ['git', ['-c', 'core.fsmonitor=false', 'status'], '/x', '1', '0']);
+});
+
+test('H2 replay: a foreign repository\'s fsmonitor program never runs from the read, rm or commit guard', { skip: process.platform === 'win32' && 'sh fsmonitor fixture' }, () =>
+{
+    const repo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'h2-repo-')));
+    const proj = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'h2-proj-')));
+    try
+    {
+        const g = (...a) => spawnSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
+        g('init', '-q'); g('config', 'user.email', 't@example.com'); g('config', 'user.name', 't');
+        fs.writeFileSync(path.join(repo, 'big.ts'), Array.from({ length: 500 }, (_, i) => `const v${i} = ${i};`).join('\n') + '\n');
+        fs.writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+        g('add', '.'); g('commit', '-qm', 'init');
+        fs.writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+        const mark = path.join(repo, 'FSMONITOR-RAN');
+        fs.writeFileSync(path.join(repo, 'mon.sh'), `#!/bin/sh\ntouch "${mark}"\nexit 1\n`);
+        fs.chmodSync(path.join(repo, 'mon.sh'), 0o755);
+        g('config', 'core.fsmonitor', path.join(repo, 'mon.sh'));
+        const fire = (hook, payload) => spawnSync(process.execPath, [path.join(__dirname, '..', 'stack', 'hooks', hook)],
+            { input: JSON.stringify({ session_id: 'h2', ...payload }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: proj } });
+        const cases = [
+            ['guard-read-whole-file.js', { tool_name: 'Read', tool_input: { file_path: path.join(repo, 'big.ts'), offset: 1, limit: 350 } }, 2],
+            ['guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command: 'git checkout -- a.txt' }, cwd: repo }, 2],
+            ['guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command: 'git reset --hard' }, cwd: repo }, 2],
+            ['guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: 'git commit -am x' }, cwd: repo }, 0],
+        ];
+        for (const [hook, payload, status] of cases)
+        {
+            try { fs.rmSync(mark); } catch { /* none yet */ }
+            const r = fire(hook, payload);
+            assert.ok(!fs.existsSync(mark), `${hook} ${payload.tool_input.command || 'Read'}: the repository's fsmonitor ran`);
+            assert.strictEqual(r.status, status, `${hook}: the verdict is unchanged - ${r.stderr}`);
+        }
+    }
+    finally
+    {
+        fs.rmSync(repo, { recursive: true, force: true });
+        fs.rmSync(proj, { recursive: true, force: true });
+    }
+});

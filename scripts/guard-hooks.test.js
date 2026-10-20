@@ -739,12 +739,16 @@ test('guard-ungated-commit: the receipt states', () => {
   const slash = transcript('slash-loop', [{ type: 'user', message: { role: 'user', content: '<command-name>/alfred-code:loop-code-quality</command-name>' } }, assistantRow('m1', 'round 2 green')]);
   const gateS = (cmd) => runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: cmd }, transcript_path: slash },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }).status;
+  // a receipt is the session's own only when written after its transcript began (audit 2026-10-20 H4)
+  const touch = () => { const now = Date.now() / 1000 + 1; fs.utimesSync(gate, now, now); };
+  touch();
   assert.equal(gateS('git commit -am x'), 0, 'a slash-invoked loop ran');
   // a session that typed the pre-2.2.0 spelling ran the same loop
   const loopRenamed = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8')).renamed.skills;
   const oldLoop = Object.keys(loopRenamed).find((o) => loopRenamed[o] === 'loop-code-quality' && /^alfred-/.test(o));
   assert.ok(oldLoop, 'the map renames loop-code-quality from its alfred- spelling');
   const slashOld = transcript('slash-loop-old', [{ type: 'user', message: { role: 'user', content: `<command-name>/${oldLoop}</command-name>` } }, assistantRow('m1', 'round 2 green')]);
+  touch();
   assert.equal(runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: 'git commit -am x' }, transcript_path: slashOld },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }).status, 0, 'the old spelling typed is a run too');
 
@@ -4548,4 +4552,28 @@ test('guard-stop-contract: only an option that IS the fresh-session hand-off tak
   const atFloor = ask(near, [{ question: 'Next?', options: [{ label: 'Resume in a fresh session (Recommended)', description: 'start clean' }, { label: 'Continue', description: 'here' }] }]);
   assert.equal(atFloor.status, 0, atFloor.stderr);
   assert.ok(!updOf(atFloor) || !JSON.stringify(updOf(atFloor)).includes('Measured now'), 'at the cold floor no numbers are appended');
+});
+
+// Audit 2026-10-20 H6 (replayed): `rm -rf "${HOME:?}"`, the home directory spelled absolute, `"$(pwd)"` and
+// `cmd /c rd /s /q C:\` each passed. A parameter's default / error form is the parameter, `$(pwd)` is the cwd, a literal
+// path is resolved and compared with the home directory, the project root and the cwd (or a folder holding the first
+// two), and `cmd /c` is a wrapper whose `rd /s` recurses.
+test('audit 2026-10-20 H6: the home dir, the project and the cwd are caught however they are spelled; cmd /c is a wrapper', () => {
+  const proj = fs.realpathSync(fs.mkdtempSync(path.join(TMP, 'h6-')));
+  fs.mkdirSync(path.join(proj, 'sub', 'build'), { recursive: true });
+  const rm = (command, tool = 'Bash') => spawnSync(process.execPath, [path.join(HOOKS, 'guard-catastrophic-rm.js')], {
+    input: JSON.stringify({ tool_name: tool, tool_input: { command }, cwd: path.join(proj, 'sub') }), encoding: 'utf8',
+    env: { ...process.env, CLAUDE_PROJECT_DIR: proj },
+  }).status;
+  const home = os.homedir();
+  for (const c of ['rm -rf "${HOME:?}"', 'rm -rf ${HOME:-/tmp}/', 'rm -rf "${HOME?unset}"/*', `rm -rf ${home}`, `rm -rf "${home}/"`, `rm -rf ${path.dirname(home)}`,
+    'rm -rf "$(pwd)"', 'rm -rf `pwd`', `rm -rf ${proj}`, `rm -rf ${path.dirname(proj)}`, `rm -rf ${path.join(proj, 'sub')}`, `find ${home} -delete`,
+    'cmd /c rd /s /q C:\\', 'cmd //c "rd /s /q C:\\"', 'rd /s /q C:\\', 'cmd.exe /d /c rmdir /S /Q C:\\']) {
+    assert.equal(rm(c), 2, `must block: ${c}`);
+  }
+  assert.equal(rm('cmd /c rd /s /q C:\\', 'PowerShell'), 2, 'cmd /c from PowerShell');
+  for (const c of ['rm -rf build', `rm -rf ${path.join(proj, 'sub', 'build')}`, 'rm -rf "${TMPDIR:?}/h6-scratch"', 'rm -rf ${HOME:+x}',
+    'rmdir /s', 'cmd /c dir', 'cmd /c rd /s /q build', `rm -rf ${path.join(home, 'no-such-h6-dir')}`]) {
+    assert.equal(rm(c), 0, `must allow: ${c}`);
+  }
 });

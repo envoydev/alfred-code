@@ -662,8 +662,20 @@ function scanBudget(limits = {})
     };
 }
 
+// GIT FROM A HOOK (audit 2026-10-20 H2) - the one spawn shape for every git a hook runs. A hook runs before the
+// permission prompt, often in a repository the model only NAMED (a Read of a file in a sibling clone, a `cd` into a
+// downloaded tree): a `core.fsmonitor` that repository's own config names is a program git starts on any status-like
+// read, and an optional lock is a write. `gitSafe(argv, opts)` returns spawnSync / execFileSync's arguments with both
+// switched off: `spawnSync(...gitSafe(['status'], { cwd }))`. The engines copied without this file (docs.js,
+// history.js, memory.js) spell the same two inline; a test sweeps every hook file for a git spawn that does neither.
+const GIT_SAFE_CONFIG = Object.freeze(['-c', 'core.fsmonitor=false']);
+function gitSafe(argv, opts = {})
+{
+    return ['git', [...GIT_SAFE_CONFIG, ...argv], { ...opts, env: { ...(opts.env || process.env), GIT_OPTIONAL_LOCKS: '0' } }];
+}
+
 // The dashes the house voice replaces with a single dash - the em-dash, the en-dash and the horizontal bar - ONE class for
 // the stop contract's ask deny (the answer hook's Stop block shared it until 2026-10-20; they disagreed before audit 2026-10-08).
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
-module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, harnessPrompt, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS };
+module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, harnessPrompt, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS };

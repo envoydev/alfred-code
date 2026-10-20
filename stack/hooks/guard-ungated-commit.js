@@ -27,6 +27,9 @@ const fs = require('fs');
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 const path = require('path');
 const { execSync, execFileSync, spawnSync } = require('child_process');
+// Every git this guard runs: fsmonitor off, no optional locks (hook-prelude.js gitSafe, audit 2026-10-20 H2) - the same two
+// inline when the prelude is absent, since a protective read must not skip git or run a repository's own program.
+const gitSafe = (() => { try { return require('./hook-prelude.js').gitSafe; } catch { return (argv, opts = {}) => ['git', ['-c', 'core.fsmonitor=false', ...argv], { ...opts, env: { ...(opts.env || process.env), GIT_OPTIONAL_LOCKS: '0' } }]; } })();
 
 // STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in every
 // hook. Fail-open on purpose - no prelude, no project dir or a malformed settings file all leave
@@ -214,7 +217,7 @@ const bareReset = addN && calls.find((c) => c.sub === 'reset' && c.at > addN.at 
 if (bareReset) {
   let staged = false;
   try {
-    execFileSync('git', ['diff', '--cached', '--quiet'], { cwd: gitRead.callDir(addN), timeout: 5000, stdio: 'ignore' });
+    execFileSync(...gitSafe(['diff', '--cached', '--quiet'], { cwd: gitRead.callDir(addN), timeout: 5000, stdio: 'ignore' }));
   } catch (e) { staged = e && e.status === 1; }
   if (staged) {
     process.stderr.write(
@@ -256,14 +259,14 @@ let root = callDir(firstAct);
 // project dir stays the anchor: a subfolder cwd, or a project that is a subfolder of its repo, reads
 // the receipt where the session writes it.
 const topOf = (dir) => {
-  try { return fs.realpathSync.native(execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: dir, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()); } catch { return null; }
+  try { return fs.realpathSync.native(execFileSync(...gitSafe(['rev-parse', '--show-toplevel'], { cwd: dir, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] })).toString().trim()); } catch { return null; }
 };
 const gitTop = topOf(root);
 if (projectDir && gitTop && gitTop === topOf(projectDir)) root = projectDir;
 else if (gitTop) root = gitTop;
 // git's own stderr stays out of the hook's: the @{u} probes print `fatal: no upstream` on every
 // first push, and the harness shows the model the hook's stderr as the denial reason.
-const git = (args) => execSync(`git ${args}`, { cwd: root, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+const git = (args) => execSync(`git -c core.fsmonitor=false ${args}`, { cwd: root, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } }).toString().trim();
 // The files this act would commit. The stack's own docs root is excluded: the receipt is written
 // INTO it moments before the act, so counting it inflated both the trivial-diff bar and the spec
 // check - a conformant `spec: 3 files` read as covering 3 of 4 because the fourth was the receipt.
@@ -664,7 +667,7 @@ function specPaths(spec) {
 // paths spec: names, or, when it gives only a count, no more files than that count.
 function batchProblem(h, spec, opts) {
   const top = gitTop || root;
-  const run = (args) => execFileSync('git', ['-c', 'core.quotePath=false', ...args], { cwd: top, timeout: 5000, maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }).toString('utf8');
+  const run = (args) => execFileSync(...gitSafe(['-c', 'core.quotePath=false', ...args], { cwd: top, timeout: 5000, maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] })).toString('utf8');
   const different = 'the review ran against a different commit';
   try { run(['merge-base', '--is-ancestor', h, 'HEAD']); } catch { return different; }
   const fresh = 'review the tree as it stands and write head: as the output of git rev-parse HEAD';
@@ -998,7 +1001,9 @@ function pushNamesOtherRefs(argv) {
 }
 // A receipt written before this session began is another session's decision (the dispatch guard's APPROVAL rule): a
 // push does not move HEAD, so one receipt opened every later push of that head for 2h, in any session (audit
-// 2026-10-08). birthtime counts only where the filesystem reports it (a fallback equal to the ctime is unknown).
+// 2026-10-08). The commit receipt takes the same floor (audit 2026-10-20 H4: a WAIVED one carries no `head:`, so it opened
+// every session's commits for 2h). birthtime counts only where the filesystem reports it (a fallback equal to the ctime is
+// unknown).
 function sessionStartMs() {
   try {
     const st = fs.statSync(String(payload.transcript_path || ''));
@@ -1119,7 +1124,7 @@ function sweptPaths() {
     if (quiet) continue;
     const top = topOf(cwd);
     if (!top) continue;
-    const r = spawnSync('git', ['-c', 'core.quotePath=false', 'add', '--dry-run', ...args], { cwd, timeout: 5000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const r = spawnSync(...gitSafe(['-c', 'core.quotePath=false', 'add', '--dry-run', ...args], { cwd, timeout: 5000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }));
     if (r.error || r.status !== 0) continue; // the add itself will fail the same way - never block on it
     let rest = false;
     const named = new Set(args.filter((a) => { if (a === '--') { rest = true; return false; } return rest || !a.startsWith('-'); })
@@ -1220,7 +1225,7 @@ function measure(scope) {
   const docsRel = path.relative(top, real(path.resolve(realRoot, docsRootEnv()))).split(path.sep).join('/');
   const pre = inTop(docsRel) ? `${docsRel}/` : null;
   const keep = (f) => f && !(pre && f.startsWith(pre));
-  const run = (args) => execFileSync('git', ['-c', 'core.quotePath=false', ...args], { cwd: top, timeout: 5000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }).toString('utf8');
+  const run = (args) => execFileSync(...gitSafe(['-c', 'core.quotePath=false', ...args], { cwd: top, timeout: 5000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] })).toString('utf8');
   const tracked = new Map();
   const numstat = (base, paths) => {
     const f = run([...base, '--numstat', '-z', ...(paths.length ? ['--', ...paths] : [])]).split('\0');
@@ -1338,9 +1343,9 @@ function ledgerRows(head, since) {
   if (!byKey.size) return [];
   let still;
   try {
-    still = new Set(execFileSync('git', ['-c', 'core.quotePath=false', 'diff', '--name-only', '-z', since, 'HEAD'], {
+    still = new Set(execFileSync(...gitSafe(['-c', 'core.quotePath=false', 'diff', '--name-only', '-z', since, 'HEAD'], {
       cwd: root, timeout: 5000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'],
-    }).toString('utf8').split('\0').filter(Boolean));
+    })).toString('utf8').split('\0').filter(Boolean));
   } catch { return []; }
   return [...byKey.values()].filter((row) => Object.keys(row.files).some((f) => still.has(f)));
 }
@@ -1349,7 +1354,7 @@ function ledgerRows(head, since) {
 function recordTrivial(set) {
   if (!set.own || !sessionId() || (!commitMatch.opaque && commitScope().dryRun)) return;
   try {
-    const c = readReceipt('COMMIT-GATE');
+    const c = readReceipt('COMMIT-GATE', sessionStartMs());
     if ((c.waived || c.verified) && !c.problem) return;
   } catch { /* an unreadable receipt covers nothing */ }
   const files = {};
@@ -1395,9 +1400,9 @@ function barSet() {
   const net = new Map();
   if (prior.size) {
     try {
-      const f = execFileSync('git', ['-c', 'core.quotePath=false', 'diff', '--numstat', '-z', '--no-renames', since, 'HEAD'], {
+      const f = execFileSync(...gitSafe(['-c', 'core.quotePath=false', 'diff', '--numstat', '-z', '--no-renames', since, 'HEAD'], {
         cwd: root, timeout: 5000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'],
-      }).toString('utf8').split('\0');
+      })).toString('utf8').split('\0');
       for (const rec of f) {
         const m = /^(-|\d+)\t(-|\d+)\t([\s\S]+)$/.exec(rec);
         if (m) net.set(m[3], (parseInt(m[1], 10) || 0) + (parseInt(m[2], 10) || 0));
@@ -1443,14 +1448,14 @@ function stagedFindings() {
   // git's text, cut at what the budget has left: an overflow keeps what was read, never throws it away.
   const readText = (args) => {
     if (budget <= 0) return '';
-    const r = spawnSync('git', [...q, ...args], { cwd: root, timeout: 5000, maxBuffer: budget, stdio: ['ignore', 'pipe', 'ignore'] });
+    const r = spawnSync(...gitSafe([...q, ...args], { cwd: root, timeout: 5000, maxBuffer: budget, stdio: ['ignore', 'pipe', 'ignore'] }));
     if (r.error && r.error.code !== 'ENOBUFS') throw r.error;
     if (!r.error && r.status !== 0) throw new Error(`git ${args[0]} exited ${r.status}`);
     const text = (r.stdout || Buffer.alloc(0)).subarray(0, budget).toString('utf8');
     budget -= Buffer.byteLength(text);
     return text;
   };
-  const list = (args) => execFileSync('git', [...q, args[0], '-z', ...args.slice(1)], { cwd: root, timeout: 5000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] })
+  const list = (args) => execFileSync(...gitSafe([...q, args[0], '-z', ...args.slice(1)], { cwd: root, timeout: 5000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }))
     .toString('utf8').split('\0').filter(Boolean);
   // The files a diff would carry that are binary (numstat `-`) or past the cap on their own, sized from
   // the index for a staged diff and from the disk otherwise - left out, so none eats the budget.
@@ -1464,7 +1469,7 @@ function stagedFindings() {
     }
     let sizes = new Map();
     if (fromIndex && rows.length) {
-      const r = spawnSync('git', ['cat-file', '--batch-check=%(objectsize)'], { cwd: top, input: rows.map((x) => `:${x.path}`).join('\n') + '\n', timeout: 5000, stdio: ['pipe', 'pipe', 'ignore'] });
+      const r = spawnSync(...gitSafe(['cat-file', '--batch-check=%(objectsize)'], { cwd: top, input: rows.map((x) => `:${x.path}`).join('\n') + '\n', timeout: 5000, stdio: ['pipe', 'pipe', 'ignore'] }));
       const n = String(r.stdout || '').split('\n');
       sizes = new Map(rows.map((x, k) => [x.path, Number(n[k]) || 0]));
     }
@@ -1569,7 +1574,7 @@ if (commitMatch.call && gitTop && !(projectDir && gitTop === topOf(projectDir)))
   const under = tmpRoots.some((d) => gitTop === d || gitTop.startsWith(d.endsWith(path.sep) ? d : d + path.sep));
   let detached = false;
   if (under) {
-    try { execFileSync('git', ['symbolic-ref', '-q', 'HEAD'], { cwd: gitTop, timeout: 5000, stdio: 'ignore' }); } catch (e) { detached = !!e && e.status === 1; }
+    try { execFileSync(...gitSafe(['symbolic-ref', '-q', 'HEAD'], { cwd: gitTop, timeout: 5000, stdio: 'ignore' })); } catch (e) { detached = !!e && e.status === 1; }
   }
   if (under && detached) process.exit(0);
 }
@@ -1596,11 +1601,11 @@ try {
 } catch {
   process.exit(0); // not a git repo / git unavailable - never block on our own failure
 }
-const c = readReceipt('COMMIT-GATE');
+const c = readReceipt('COMMIT-GATE', sessionStartMs());
 if ((c.waived || c.verified) && !c.problem) process.exit(0);
 process.stderr.write(
   (c.stale
-    ? `Blocked: git commit - the gate receipt at ${c.gate} is older than 2h and is treated as absent (a stale receipt from an earlier round is not this diff's review).\n`
+    ? `Blocked: git commit - the gate receipt at ${c.gate} is older than 2h or was written before this session began, and is treated as absent (a stale receipt from an earlier round or another session is not this diff's review).\n`
     : c.problem
       ? `Blocked: git commit - the gate receipt at ${c.gate} does not hold: ${c.problem}.\n`
       : `Blocked: git commit on a non-trivial diff without the pre-commit gate receipt.\n`) +

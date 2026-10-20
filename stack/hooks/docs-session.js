@@ -159,7 +159,7 @@ function stashMoves(command, base, root) {
   if (!shellReader || !/\bstash\b/.test(command)) return [];
   const lines = (dir, args) => {
     try {
-      return require('child_process').execFileSync('git', ['-c', 'core.quotePath=false', ...args], { cwd: dir, timeout: 1500, stdio: ['ignore', 'pipe', 'ignore'] })
+      return require('child_process').execFileSync(...require('./hook-prelude.js').gitSafe(['-c', 'core.quotePath=false', ...args], { cwd: dir, timeout: 1500, stdio: ['ignore', 'pipe', 'ignore'] }))
         .toString('utf8').split('\n').filter(Boolean);
     } catch { return []; }
   };
@@ -428,7 +428,7 @@ function sweepStrandedRoot(root) {
   const state = (e) => (e.isDirectory() && STATE_DIRS.has(e.name)) || (e.isFile() && (STATE_FILES.has(e.name) || OS_LITTER.has(e.name)));
   if (!entries.every(state)) return null;
   try {
-    const tracked = require('child_process').execFileSync('git', ['ls-files', '-z', '--', LEGACY_DOCS_ROOT], { cwd: root, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] });
+    const tracked = require('child_process').execFileSync(...require('./hook-prelude.js').gitSafe(['ls-files', '-z', '--', LEGACY_DOCS_ROOT], { cwd: root, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }));
     if (tracked.length) return null;
   } catch { /* no repo: nothing is tracked */ }
   let files = 0;
@@ -464,14 +464,14 @@ function recordUntracked(input, root) {
     }
     if (!file) {
       let head = '';
-      try { head = require('child_process').execFileSync('git', ['rev-parse', '--verify', '-q', 'HEAD'], { cwd: root, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { /* no commit yet, or no repo - ls-files below tells them apart */ }
+      try { head = require('child_process').execFileSync(...require('./hook-prelude.js').gitSafe(['rev-parse', '--verify', '-q', 'HEAD'], { cwd: root, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] })).toString().trim(); } catch { /* no commit yet, or no repo - ls-files below tells them apart */ }
       file = path.join(flow, `untracked-at-start-${/^[0-9a-f]{7,64}$/.test(head) ? head : 'unborn'}`);
     }
     if (fs.existsSync(file)) list = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean);
     else if (later) return '';
     else {
-      const out = require('child_process').execFileSync('git', ['-c', 'core.quotePath=false', 'ls-files', '--others', '--exclude-standard', '-z'],
-        { cwd: root, timeout: 5000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }).toString('utf8');
+      const out = require('child_process').execFileSync(...require('./hook-prelude.js').gitSafe(['-c', 'core.quotePath=false', 'ls-files', '--others', '--exclude-standard', '-z'],
+        { cwd: root, timeout: 5000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] })).toString('utf8');
       const docsRel = toPosix(path.relative(root, path.resolve(root, docsRootEnv())));
       const inDocs = (f) => !docsRel.startsWith('..') && docsRel && (f === docsRel || f.startsWith(`${docsRel}/`));
       list = out.split('\0').filter((f) => f && !f.includes('\n') && !inDocs(f)).slice(0, UNTRACKED_CAP);

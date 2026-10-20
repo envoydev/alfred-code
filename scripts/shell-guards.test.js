@@ -879,3 +879,37 @@ test('the compile cache never serves an edited guard, and a corrupt entry falls 
   for (const f of entries()) fs.writeFileSync(path.join(cacheDir, f), 'not v8 data');
   assert.ok(push(), 'a corrupt entry is a plain compile with the same verdict');
 });
+
+// Audit 2026-10-20 A-T1: a read-only seat carries Bash, and a verifier's `git reset -q` unstaged a user's `git rm` (audit
+// 2026-10-10). The dispatcher's own check denies such a seat - by the payload's agent_type, bare or house-prefixed - a
+// file write outside the OS temp dirs and any git call that moves the index, the tree, a ref or a stash; a read, a build,
+// a scratch write and every writing seat pass.
+test('A-T1: a read-only seat may not write through the shell; a writing seat, the main session and a scratch write may', () => {
+  const dir = project('seat-');
+  const scratch = fs.realpathSync(fs.mkdtempSync(path.join(TMP, 'seat-tmp-')));
+  const fire = (command, agent_type, tool = 'Bash') => spawnSync(process.execPath, [DISPATCH], {
+    input: JSON.stringify({ tool_name: tool, tool_input: { command }, session_id: 'seat', cwd: dir, ...(agent_type ? { agent_id: 'a1', agent_type } : {}) }),
+    encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir, TMPDIR: scratch, TEMP: scratch, TMP: scratch },
+  });
+  for (const seat of ['alfred-code:aspnet-verifier', 'wpf-solution-designer', 'code-quality-analyzer', 'integration-reviewer', 'security-auditor',
+    'evidence-gatherer', 'alfred-code:issue-diagnoser-ci']) {
+    for (const c of ['git reset -q', 'git restore --staged a.txt', 'git checkout -- a.txt', 'git stash', 'git rm --cached a.txt', 'git add .',
+      'git commit -m x', 'git switch main', 'git clean -fd', 'echo x > notes.txt', 'sed -i s/a/b/ a.txt', 'cp a.txt b.txt', 'rm a.txt']) {
+      const r = fire(c, seat);
+      assert.equal(r.status, 2, `${seat}: ${c} must block`);
+    }
+  }
+  const verifier = 'alfred-code:web-angular-verifier';
+  const denied = fire('git reset -q', verifier);
+  assert.match(denied.stderr, /read-only seat/);
+  assert.match(denied.stderr, /report/, 'the denial routes the change to the report');
+  for (const c of ['git status', 'git diff', 'git stash list', 'git clean -n', 'git log -p -1', 'npm test', `echo x > ${path.join(scratch, 'out.txt')}`,
+    'echo x > /dev/null', 'out=$(mktemp); echo x > "$out"']) {
+    assert.equal(fire(c, verifier).status, 0, `${verifier}: ${c} must pass`);
+  }
+  assert.equal(fire('Set-Content -Path notes.txt -Value x', verifier, 'PowerShell').status, 2, 'PowerShell: a write cmdlet');
+  for (const [c, a] of [['git reset -q', 'alfred-code:aspnet-implementer'], ['echo x > notes.txt', undefined], ['git add .', 'dotnet-build-error-resolver'],
+    ['git reset -q', 'other-plugin:aspnet-verifier']]) {
+    assert.equal(fire(c, a).status, 0, `${a || 'the main session'}: ${c} must pass`);
+  }
+});

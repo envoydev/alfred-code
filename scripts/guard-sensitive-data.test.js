@@ -238,3 +238,33 @@ test('audit 2026-10-20 C17: a store name built by concatenation is masked when p
     assert.strictEqual(bash(dir, `${built}git check-ignore -q ".alfred/$f"; echo ignored=$?`), 0, 'a look still passes (the evidence shape)');
     assert.strictEqual(bash(dir, 'f=".sensitive"; f="$f-notes"; cat ".alfred/$f" 2>/dev/null'), 0, 'another name built the same way is no store');
 });
+
+// Audit 2026-10-20 H3: a walk through the store and a diff of a tracked store printed every value raw - the stream masker
+// had no store kind, though the session start says a printed value is masked. Now a line out of the store is masked by
+// its path or its diff header, whatever its key, so the probe finds it and the stage is piped.
+test('H3: a walk through the store and a git stream of it mask every value', { skip: process.platform === 'win32' && 'sh pipeline' }, () =>
+{
+    const { dir } = project('h3-walk');
+    fs.writeFileSync(path.join(dir, 'app.js'), 'const host = process.env.DB_HOST;\n');
+    const sh = (command) => spawnSync('sh', ['-c', command], { cwd: dir, encoding: 'utf8' });
+    for (const command of ['grep -rn DB_HOST .', 'grep -rn internal .'])
+    {
+        const out = updated(run({ tool_name: 'Bash', tool_input: { command }, cwd: dir, session_id: 'suite' }));
+        assert.ok(out && out.includes('--redact-stdin'), `${command}: the walk reaches the store, so it is piped - ${out}`);
+        const r = sh(out);
+        assert.ok(!r.stdout.includes('db.internal'), `${command}: printed raw - ${r.stdout}`);
+        assert.match(r.stdout, /\.sensitive-data:\d+:DB_HOST=<set \(11 chars\)>/, r.stdout);
+    }
+    assert.strictEqual(bash(dir, 'grep -rn no_such_word_anywhere .'), 0, 'a walk that prints nothing of the store runs as written');
+    // a store tracked by hand: the diff header names it, and every changed value is masked
+    const g = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+    g('init', '-q'); g('config', 'user.email', 't@example.com'); g('config', 'user.name', 't');
+    g('add', '-f', '.'); g('commit', '-qm', 'init');
+    fs.writeFileSync(path.join(dir, '.alfred', '.sensitive-data'), STORE.replace('db.internal', 'db2.internal') + 'PLAIN line no pair\n');
+    const out = updated(run({ tool_name: 'Bash', tool_input: { command: 'git diff' }, cwd: dir, session_id: 'suite' }));
+    assert.ok(out && out.includes('--redact-stdin'), `a diff of the tracked store is piped - ${out}`);
+    const r = sh(out);
+    assert.ok(!/db2?\.internal|PLAIN line/.test(r.stdout) && !r.stdout.includes(TOKEN), r.stdout);
+    assert.match(r.stdout, /^\+DB_HOST=<set \(12 chars\)>$/m, r.stdout);
+    assert.match(r.stdout, /^\+<sensitive-data line>$/m, r.stdout);
+});

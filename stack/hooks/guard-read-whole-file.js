@@ -1714,8 +1714,8 @@ const fileVersion = (abs, lineCount) => { try { return `${Math.floor(fs.statSync
 // The file's state in the working tree: 'new' (untracked or added), 'changed', or '' (clean, or no repo).
 const treeState = (abs) => {
   try {
-    const out = require('child_process').execFileSync('git', ['status', '--porcelain', '--', pathMod.basename(abs)],
-      { cwd: pathMod.dirname(abs), timeout: 3000, stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+    const out = require('child_process').execFileSync(...require('./hook-prelude.js').gitSafe(['status', '--porcelain', '--', pathMod.basename(abs)],
+      { cwd: pathMod.dirname(abs), timeout: 3000, stdio: ['ignore', 'pipe', 'ignore'] })).toString();
     const code = out.slice(0, 2);
     return !out ? '' : code === '??' || code[0] === 'A' ? 'new' : 'changed';
   } catch { return ''; }

@@ -158,8 +158,14 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
   zod object, so the entry parses with the key stripped (the 2.1.100 and 2.1.294 bundles read 2026-10-14; the 2.1.294
   plugin validator says 'Claude Code ignores unrecognized fields at load time'). The copy route backfills the key onto
   an older entry.
-  The dispatcher makes five checks of its OWN before any guard (`ownChecks`, audit 2026-10-10 C14 / C25), where the
-  stack's non-protective hooks run (`standDown`, `cursorStandDown`): under zsh (`$SHELL`) a tool-owned glob
+  The dispatcher makes six checks of its OWN before any guard (`ownChecks`, audit 2026-10-10 C14 / C25), where the
+  stack's non-protective hooks run (`standDown`, `cursorStandDown`): a READ-ONLY SEAT (the payload's `agent_type`, bare or
+  `alfred-code:`-prefixed: `*-verifier`, `*-solution-designer`, `*-analyzer`, `integration-reviewer`, `security-auditor`,
+  `evidence-gatherer`, `issue-diagnoser-*`) is denied a literal shell write target outside the OS temp dirs and `/dev`
+  (`scanShell`'s targets, PowerShell's write cmdlets included) and every git call that moves the index, the tree, a ref or
+  a stash (`gitMutates` plus the plumbing; `stash list`, `clean -n`, `apply --check` read) - audit 2026-10-20 A-T1: a
+  verifier's `git reset -q` unstaged a user's `git rm`; a target the shell expands at run time passes, and implementers,
+  resolvers and the main session are never judged (`readOnlySeatWrite`, one `read-only-seat` block row); under zsh (`$SHELL`) a tool-owned glob
   (`--include=` / `--exclude=` / `--exclude-dir=`, `-name` / `-path` and their `i` forms, a brace list expanded one
   word per alternative) and a bare word opening with `=` (`=====`, a `==` outside `[[ ]]` / `(( ))`) are single-quoted
   and every guard judges the fixed command (`updatedInput`, a guard's own rewrite of it wins; zsh aborts the whole
@@ -212,6 +218,13 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
   (`blockingStdio`, libuv's `setBlocking`); every other entry that writes and exits calls it in its main block, the
   self-contained ones through a pinned inline copy (`blocking-stdio` in `meta/shared-rules.json`), and a sweep in
   `hook-prelude.test.js` fails an entry that does neither. Launchers under `stack/mcp/` are exempt: they hand stdio to a server.
+  GIT FROM A HOOK (audit 2026-10-20 H2): a hook runs before the permission prompt, often in a repository the model only
+  named, and the read, rm and commit guards ran that repository's own `core.fsmonitor` program (replayed). Every git a hook
+  spawns goes through `hook-prelude.js gitSafe(argv, opts)` - `-c core.fsmonitor=false` and `GIT_OPTIONAL_LOCKS=0` - or,
+  in the engines copied without the prelude (`docs.js`, `history.js`, `memory.js`) and `check-turn-build.js` /
+  `shell-writes.js`, spells the same two inline; the rm, force-push and commit guards keep an inline twin for a missing
+  prelude, and a sweep in `hook-prelude.test.js` fails a git spawn that does neither. Known ceiling: a repository-local
+  `filter.*.clean` still runs inside a status refresh (the secret guard's probe alone checks for one).
   STATE HYGIENE (audit 2026-10-08 S9): a hook that writes per-session state sweeps its own prefix's files untouched for 7
   days, inside 50ms, at most once a day per dir and prefix (`hook-prelude.js` `sweepStale`, the docs-session sweep's pattern; a
   `.alfred-sweep-<prefix>` stamp gates it, since listing a 52,840-entry temp dir twice cost 78ms of every Stop) - the stop
@@ -251,7 +264,10 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     earlier in the command, of an operation in progress in that repo, takes that operation's rows (staged-only or
     unmerged) out of a later discard's loss - its abort drops them first (audit 2026-10-10 C17, session 349e4825: 37
     merge rows blocked an approved abort-and-reset); a row the work tree also changes is still judged. PowerShell `Remove-Item -Recurse`
-    counts. A `claude plugin marketplace remove|rm` with no `--scope` - the binary by its path or inside `bash -c` too -
+    counts, and so does `cmd /c rd /s` (`cmd /c` and Git Bash's `//c` read as a wrapper, `/s` as recursion). A target is
+    read as the shell expands it where that is fixed - `${HOME:?}` / `${HOME:-x}` is `$HOME`, `$(pwd)` is `$PWD` - and a
+    literal path is resolved and compared with the home directory, the project root and the cwd, or any folder holding the
+    first two (audit 2026-10-20 H6: each spelling passed). A `claude plugin marketplace remove|rm` with no `--scope` - the binary by its path or inside `bash -c` too -
     is denied (2.1.7): the CLI then removes the
     declaration from every scope and uninstalls every plugin installed from it, in every project. A SQL `DROP` or `dotnet ef database drop` writes a log-only probe row. A 'discard it' answer
     is honoured via `<docs-path>/flow/DISCARD-ALLOW` (paths, `stash@{N}`, or `*`).
@@ -362,10 +378,12 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     post to another host keep the block; each pass writes one `short-lived-link` probe row (host, seconds, kind, key -
     never the token). The JWT is decoded, never verified: a forged short `exp` buys a forger nothing. The comparison verbs (`diff`, `sdiff`, `cmp`, `comm`, `rev`)
     are judged like `cat` (I2). A git command that prints file content (`git diff`, `git show`, `git log -p`,
-    `git stash show -p`) is PROBED - the same read run as argv, no shell, 3s / 8MB, external diff, textconv and
-    fsmonitor off, at most four probes per call - and only when its output would carry a credential, or it cannot be probed (a word the shell
-    expands, `-c` config, `--output`, a `cd` the guard cannot follow or a changing step before it - the probe runs before
-    the command, so `git add -N . && git diff HEAD` would read the tree without the new file - a failed run, a fifth probe, a
+    `git stash show -p`) is PROBED - the same read run as argv, no shell, 3s / 8MB, external diff, textconv, signature
+    checks and fsmonitor off (`hook-prelude.js gitSafe`), at most four probes per call - and only when its output would carry a credential, or it cannot be probed (a word the shell
+    expands, `-c` config, `--output`, an option that RUNS a program - grep's `-O` pager in any cluster or abbreviation,
+    `--ext-diff`, `--textconv`, `--show-signature`, `--submodule=diff`; audit 2026-10-20 H1, BLOCKER: the probe runs
+    before the permission prompt, and `git grep -O'touch X' key` created X), a `cd` the guard cannot follow or a changing step before it (the probe runs before
+    the command, so `git add -N . && git diff HEAD` would read the tree without the new file), a failed run, a fifth probe, a
     repository-local `filter.*` config that a working-tree diff would run; audit 2026-10-08). A `cd` / `pushd` to ONE
     inert word naming a directory that exists is followed, and the probe runs there (`literalCdTarget`; deep hooks review
     2026-10-16: every `cd`, the project root's own included, piped about two thirds of 3,957 stages unprobed - a replay of
@@ -398,7 +416,8 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     folders (`.venv`, `vendor`, `target`, ...) last, and unjudged past 4,000 files its filters let through, 32MB or 100,000
     entries (a stated ceiling). A path-qualified verb (`./tools/grep`,
     `bin/rg`) is never spawned - the probe runs before the permission prompt, so it would run whatever script sits there
-    (audit 2026-10-08, replayed) - and is piped unprobed. Audit 2026-10-10 (C12): a word's inner quotes count
+    (audit 2026-10-08, replayed) - and is piped unprobed, as is a walk naming a program-running option (`--pre`, `--hostname-bin`,
+    ugrep's `--filter`, `--pager`, `--view`, `-Q`, a config file; audit 2026-10-20 H1). Audit 2026-10-10 (C12): a word's inner quotes count
     (`--include='*.cs'` is probed), `l` / `c` / `q` anywhere in a flag cluster prints no line, the `--grep` pipe exits 1 on
     empty input (grep's status), a walk rewrite's row says `walk-stage`, and a pattern naming password / secret / token /
     api key adds `--literals` (every quoted literal on a matched line masked but an email, a path or a dotted name). A
@@ -421,7 +440,10 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     the per-file `git diff --no-index -- /dev/null <file>` review read ran unmasked in a `while read` loop and behind xargs). A print
     piped into a login that reads stdin (`--password-stdin`, `--with-token`) is a use, `${NAME:+word}` prints no value, a
     `{...process.env}` spread is no dump, and a command whose stdout IS a token (`gh auth token`, `op read`, a keychain `-w`)
-    is a print when it ends the pipeline. An environment dump is replaced
+    is a print when it ends the pipeline. PowerShell's own prints are judged too (audit 2026-10-20 H8): the env: drive through
+    Get-Content and its aliases (`gc env:X`, `type env:X`), an expandable string statement around a reference
+    (`"token: $env:X"`), cmd's `set` on either shell (`cmd /c set`, the masked listing) and .NET's file reads
+    (`[IO.File]::ReadAllText('.env')`, the redacted view). An environment dump is replaced
     stage by stage where it stands (`--redacted-env --note-to-stderr | <filter>`), so nothing is dropped
     and nothing blocks it (the pilot's `env | grep -i msbuild; env | grep -i dotnet_cli` was blocked). A
     lone `&` is a step boundary like `;` (`true & env` was never judged), never the `&` of `2>&1` / `&>`. A heredoc
@@ -460,7 +482,10 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     a dotenv the user fills by hand, in the checkout the call runs in, else its main worktree (`sensitiveFile`, memory.js
     `projectRootOf`; the root from `ALFRED_CODE_DATA_PATH`, relative and `..`-free, else `.alfred`). Its kind is `sensitive` by
     NAME: every value is a credential whatever its key (`DB_HOST` too), so a Read and a Grep of its content block and a dump
-    becomes the redacted view with every value masked. A shell command NAMING it is refused unless it only looks
+    becomes the redacted view with every value masked; the stream masker reads a line out of it - a walk's `<path>/.sensitive-data:N:`
+    prefix, `git grep`'s, a diff header naming it - by the same rule, a line that is no `KEY=value` pair masked whole (audit
+    2026-10-20 H3: a walk through the store and a diff of a tracked store printed every value raw), so the probe finds it
+    and the stage is piped. A shell command NAMING it is refused unless it only looks
     (`test`, `[`, `ls`, `stat`, `wc`, the PowerShell `Test-Path` / `Get-Item` / `Get-ChildItem`; and since the 2026-10-17 usage
     audit, as the LAST stage of its pipe only - a name printed into `| xargs cat` is a read - git's `check-ignore` / `check-attr`
     / `ls-files` / `status`, a count-only, quiet or list grep or another `isReducer` stage, an `echo` / `printf` naming it with
@@ -510,8 +535,9 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     unreadable git call chained ahead of the push counts as ahead (audit 2026-10-08: `git commit -am x && git push`
     published ungated). So does a push of anything but the current branch, `HEAD` or `@` under its own name (`origin
     feature`, `feature:main`, a tag, a delete) or of a set (`--all`, `--tags`, `--mirror`, `--follow-tags`), and a
-    first push's scope reads the commits no remote holds. A PUSH-GATE written before this session began is absent
-    (the transcript's birthtime, the dispatch guard's APPROVAL rule); a `WAIVED` quote must waive the review in the
+    first push's scope reads the commits no remote holds. A PUSH-GATE or COMMIT-GATE written before this session began is
+    absent (the transcript's birthtime, the dispatch guard's APPROVAL rule; the commit half since audit 2026-10-20 H4 - a
+    WAIVED commit receipt carries no `head:` and opened every session's commits for 2h); a `WAIVED` quote must waive the review in the
     user's own words (skip, without the review, just push - a bare 'commit it' is no waiver, an option label this run
     wrote is no user's words - unless a turn the user TYPED carries the quote, audit 2026-10-10 f24eb967); `head:` is the
     first sha word on its line, and one receipt covers a reviewed BATCH: a `head:` that is an ancestor of HEAD passes
