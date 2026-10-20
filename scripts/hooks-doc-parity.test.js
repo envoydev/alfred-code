@@ -44,10 +44,10 @@ test('I2: CLAUDE.md states the comparison verbs and the probed git redactor', ()
 test('I3: the ask wiring is no longer described as injection-only, never denying', () => {
   const text = claude();
   assert.doesNotMatch(text, /INJECTION-ONLY, never denying: PreToolUse `AskUserQuestion`/);
-  assert.match(text, /the one DENY, once per ask text, is the ask's own SHAPE - its house voice/);
+  assert.match(text, /the ask's own SHAPE is FIXED IN PLACE when every reason is\s+mechanical/);
   const note = manifestRows().find((r) => r.file === 'guard-stop-contract.js' && r.matcher === 'AskUserQuestion').note;
   assert.doesNotMatch(note, /never denies|INJECT context into the ask being built/);
-  assert.match(note, /DENY once per ask text/);
+  assert.match(note, /FIX IN PLACE an ask whose own shape is mechanically wrong .* through updatedInput with no decision; DENY once per ask text/);
   assert.doesNotMatch(read('docs/alfred-code.html'), /AskUserQuestion wiring that remains never denies/);
 });
 
@@ -65,18 +65,18 @@ test('I10: the desktop gate is one wired hook, counted everywhere the hooks are 
     assert.ok(re.test(name), name);
   for (const name of ['mcp__plugin_windows-control_windows-control__Click', 'mcp__plugin_macos-control_macos-control__App', `mcp__${'windows-control'}__AppX`])
     assert.ok(!re.test(name), `${name} is not matched`);
-  assert.match(claude(), /`stack\/hooks\/` - eighteen hooks/);
-  assert.match(claude(), /all eighteen, generated from the manifest's `hooks\[\]`/);
+  assert.match(claude(), /`stack\/hooks\/` - seventeen hooks/);
+  assert.match(claude(), /all seventeen, generated from the manifest's `hooks\[\]`/);
   assert.match(claude(), /`guard-desktop-exec\.js` \(PreToolUse on the desktop servers' two process launchers/);
-  assert.doesNotMatch(read('README.md'), /seventeen/);
-  assert.doesNotMatch(read('docs/install-footprint.md'), /seventeen/);
-  assert.doesNotMatch(read('setup-plugin/references/walk.md'), /all seventeen/);
+  assert.doesNotMatch(read('README.md'), /eighteen/);
+  assert.doesNotMatch(read('docs/install-footprint.md'), /eighteen/);
+  assert.doesNotMatch(read('setup-plugin/references/walk.md'), /all eighteen|monitor-session/);
 });
 
 test('I12: CLAUDE.md names the two kept navigation edit tools on docs-session and check-turn-build', () => {
   const text = claude();
   assert.match(text, /the navigation server's two kept edit tools `rename_symbol` \/ `safe_delete_symbol` - held like an Edit/);
-  assert.match(text, /`check-turn-build\.js` \(`PostToolUse` on `Write\|Edit\|MultiEdit` and the navigation server's `rename_symbol` \/\s+`safe_delete_symbol`/);
+  assert.match(text, /`check-turn-build\.js` \(`Stop` only\)[\s\S]{0,400}The turn's files come from git/, 'the build check reads git at Stop, so the navigation server\'s edits need no wiring of their own');
 });
 
 // Audit 2026-10-14 HK08: the rule, the audit skill and the HTML said 80 / 50 for the two dispatchers' timeouts, 'five' file

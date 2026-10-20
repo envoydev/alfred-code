@@ -1,5 +1,5 @@
 {
-  "_comment": "The environment values this stack owns in the scope's settings.json `env` block (the project's .claude/settings.json, or the account file for a global install). ONE source for the three guided commands: setup asks the `ask: true` rows on its environment screen, configure step 9 shows and changes them, validate reconciles what is on disk against this list - a row absent from the file is a MISSING key the release introduced, a `renamed_from` still present is the old spelling, and a value failing `validate` is flagged with the expected shape. The installers seed every row ABSENT-ONLY on install and update (and apply the renames first, value carried over), so this catalog and the two installer twins must agree - `npm run lint` fails when they drift. Adding a variable: add the row here, seed it in both twins, and, when it replaces an older name, add the rename pair to migrations.json and give every consumer an old-name fallback. A row may carry `group_off`: it and every row naming it in `asked_with` are ONE feature, so the question that asks it also offers switching the feature off, which writes that value to the whole group (the walks never invent an off answer for a row without it). A row may also carry `secret: true`, and any key matching `secret_key_pattern` is treated the same way whether or not it has a row: its VALUE is never printed, never echoed back as a default, and never asked for through the chat - the walks report `set (N chars)` or `absent` and point the user at the file. Measured: seven credential exposures across one corpus, one of them an account settings.json read whole as a session's first tool call. A row may carry `former_defaults`: the values the stack seeded before its current `default`, read as the stack's own seed wherever a key's owner is judged without a ledger - never re-seeded, and never rewritten silently (the docs root's old default is moved only on an answer, `/alfred-code:update`). One row is WRITTEN rather than seeded (`written: true` - ALFRED_CODE_MEMORY_DB): it mirrors a choice the run just made (`--memory-level`) into the file the PLUGIN route's memory launcher reads, because a plugin MCP entry cannot expand a project env key (measured, spike S10 in docs/plugin-migration-evidence.md) while a launcher whose cwd is the project can read the file itself. A changed level has to land or the server keeps the old one, so a hand-edit is overwritten by the next install or update - change it with `--memory-level`, not by hand. A change to ANY of these takes effect on the NEXT TOOL CALL - every hook reads its value per invocation - so no session restart is ever needed. State that when reporting a flip: a run once told the user to restart, and `grep -rn restart` over stack/, meta/, scripts/ and setup-plugin/ found no such claim anywhere, so the model had invented it (the instrumentation ledger's first row in fact landed 27.2 s later in the same session, covering 63 of 65 calls). A fact about the stack's own behaviour that the stack does not state gets invented.",
+  "_comment": "The environment values this stack owns in the scope's settings.json `env` block (the project's .claude/settings.json, or the account file for a global install). ONE source for the three guided commands: init's install phase asks the `ask: true` rows on its environment screen, configure step 9 shows and changes them, validate reconciles what is on disk against this list - a row absent from the file is a MISSING key the release introduced, a `renamed_from` still present is the old spelling, and a value failing `validate` is flagged with the expected shape. The installers seed every row ABSENT-ONLY on install and update (and apply the renames first, value carried over), so this catalog and the two installer twins must agree - `npm run lint` fails when they drift. Adding a variable: add the row here, seed it in both twins, and, when it replaces an older name, add the rename pair to migrations.json and give every consumer an old-name fallback. A row may carry `group_off`: it and every row naming it in `asked_with` are ONE feature, so the question that asks it also offers switching the feature off, which writes that value to the whole group (the walks never invent an off answer for a row without it). A row may also carry `secret: true`, and any key matching `secret_key_pattern` is treated the same way whether or not it has a row: its VALUE is never printed, never echoed back as a default, and never asked for through the chat - the walks report `set (N chars)` or `absent` and point the user at the file. Measured: seven credential exposures across one corpus, one of them an account settings.json read whole as a session's first tool call. A row may carry `former_defaults`: the values the stack seeded before its current `default`, read as the stack's own seed wherever a key's owner is judged without a ledger - never re-seeded, and never rewritten silently (the docs root's old default is moved only on an answer, `/alfred-code:update`). One row is WRITTEN rather than seeded (`written: true` - ALFRED_CODE_MEMORY_DB): it mirrors a choice the run just made (`--memory-level`) into the file the PLUGIN route's memory launcher reads, because a plugin MCP entry cannot expand a project env key (measured, spike S10 in docs/plugin-migration-evidence.md) while a launcher whose cwd is the project can read the file itself. A changed level has to land or the server keeps the old one, so a hand-edit is overwritten by the next install or update - change it with `--memory-level`, not by hand. A change to ANY of these takes effect on the NEXT TOOL CALL - every hook reads its value per invocation - so no session restart is ever needed. State that when reporting a flip: a run once told the user to restart, and `grep -rn restart` over stack/, meta/, scripts/ and setup-plugin/ found no such claim anywhere, so the model had invented it (the instrumentation ledger's first row in fact landed 27.2 s later in the same session, covering 63 of 65 calls). A fact about the stack's own behaviour that the stack does not state gets invented.",
   "secret_key_pattern": "(TOKEN|SECRET|KEY|PASSWORD|PASSWD|DSN|CREDENTIAL|AUTH)$",
   "env": [
     {
@@ -102,25 +102,10 @@
       }
     },
     {
-      "key": "ALFRED_CODE_MONITOR",
-      "default": "log",
-      "ask": false,
-      "what": "monitor-session.js: a live monitor that never denies - the same tool with the same input 5 times in one turn, more than 20 distinct files written in one turn, the context at 80% of the fresh-session trigger. `log` writes one `mode: monitor` row per note to the hook-blocks ledger and injects nothing (the observation week); `inject` also hands the note back to the model; `0` (or `off`, which the hook reads the same) is off.",
-      "validate": {
-        "type": "enum",
-        "values": [
-          "0",
-          "off",
-          "log",
-          "inject"
-        ]
-      }
-    },
-    {
       "key": "ALFRED_CODE_CORRECTION_NUDGE",
       "default": "log",
       "ask": false,
-      "what": "guard-answer-length.js: a correction turn (a short prompt that follows an answer and carries a correction marker - 'no, ...', 'I meant', 'why did you', 'shorter') writes one `mode: probe` / `kind: correction` row to the hook-blocks ledger. `log` writes the row and injects nothing (the count-first week); `inject` also hands back the line 'this reads as a correction - store it with memory_store (user_correction, project tag) before continuing'; `0` (or `off`, which the hook reads the same) is off.",
+      "what": "guard-answer.js: a correction turn (a short prompt that follows an answer and carries a correction marker - 'no, ...', 'I meant', 'why did you', 'shorter') writes one `mode: probe` / `kind: correction` row to the hook-blocks ledger. `log` writes the row and injects nothing (the count-first week); `inject` also hands back the line 'this reads as a correction - store it with memory_store (user_correction, project tag) before continuing'; `0` (or `off`, which the hook reads the same) is off.",
       "validate": {
         "type": "enum",
         "values": [
@@ -158,11 +143,12 @@
       }
     },
     {
-      "key": "ALFRED_CODE_FRESH_SESSION_1M",
+      "key": "ALFRED_CODE_CONTEXT_WINDOW_FOR_1M",
       "default": "400000",
+      "renamed_from": "ALFRED_CODE_FRESH_SESSION_1M",
       "ask": true,
       "group_off": "0",
-      "what": "the per-message context, in TOKENS, at which a session on a 1M window is offered a fresh session instead of carrying on (an orchestration run is gated, a finished turn is offered). This row OWNS the whole gate: the two rows riding with it are the other window sizes, and `group_off` means the question also offers turning the feature off, which writes `0` to all three. The 400,000 default sits ABOVE the harness's own auto-compaction (measured preTokens 387,619-397,171), so on this window the turn-end offer is usually unreachable and the SessionStart compact route is what reaches you - lower it (250000, 350000) to be asked before the harness decides.",
+      "what": "the per-message context, in TOKENS, at which a session on a 1M window is offered a fresh session instead of carrying on (an orchestration run is gated, a finished turn is offered). This row OWNS the whole gate: the rows riding with it are the 300K and 200K windows, and `group_off` means the question also offers turning the feature off, which writes `0` to all three. A window takes the largest tier it reaches (1M and up, 300K and up, else 200K). The 400,000 default sits ABOVE the harness's own auto-compaction (measured preTokens 387,619-397,171), so on this window the turn-end offer is usually unreachable and the SessionStart compact route is what reaches you - lower it (250000, 350000) to be asked before the harness decides. To stop every fresh-session offer, set ALFRED_CODE_AUTO_COMPACT=1 rather than a tier to 0.",
       "validate": {
         "type": "tokens",
         "min": 0,
@@ -170,11 +156,11 @@
       }
     },
     {
-      "key": "ALFRED_CODE_FRESH_SESSION_200K",
-      "default": "150000",
+      "key": "ALFRED_CODE_CONTEXT_WINDOW_FOR_300K",
+      "default": "280000",
       "ask": true,
-      "asked_with": "ALFRED_CODE_FRESH_SESSION_1M",
-      "what": "the same trigger in TOKENS for a 200k window. 150,000 is the measured figure - below it the offer nags, above it a 200k session has little room left to carry. `0` turns that tier off. The two tiers never interfere: each window size reads only its own variable.",
+      "asked_with": "ALFRED_CODE_CONTEXT_WINDOW_FOR_1M",
+      "what": "the same trigger in TOKENS for a window of 300K up to 1M - the tier a model the shipped `model-windows.json` does not list lands on, since it runs in ALFRED_CODE_CONTEXT_WINDOW_DEFAULT (300,000). `0` turns that tier off.",
       "validate": {
         "type": "tokens",
         "min": 0,
@@ -182,11 +168,15 @@
       }
     },
     {
-      "key": "ALFRED_CODE_FRESH_SESSION_DEFAULT",
-      "default": "300000",
+      "key": "ALFRED_CODE_CONTEXT_WINDOW_FOR_200K",
+      "default": "180000",
+      "renamed_from": "ALFRED_CODE_FRESH_SESSION_200K",
+      "former_defaults": [
+        "150000"
+      ],
       "ask": true,
-      "asked_with": "ALFRED_CODE_FRESH_SESSION_1M",
-      "what": "the same trigger in TOKENS for every OTHER case - a window the gate cannot read (the model is not in the `model-windows.json` shipped beside the hooks (the plugin's own on the plugin route) and ALFRED_CODE_DEFAULT_CONTEXT_WINDOW is unset) and a window that is neither of those two sizes. 300,000 matches the seeded ALFRED_CODE_DEFAULT_CONTEXT_WINDOW, and a trigger at or above its window is clamped to 90% of it (270,000 there). On a window that cannot be read at all, or one below 300,000 (a 200k model the table lacks), it can sit above the window and never fire - lower it if you run such models. `0` turns the offer off wherever the window is not one of the two named sizes.",
+      "asked_with": "ALFRED_CODE_CONTEXT_WINDOW_FOR_1M",
+      "what": "the same trigger in TOKENS for a window under 300K (a 200K model). A window below the trigger holds it at 90% of the window. `0` turns that tier off. Each window size reads only its own variable.",
       "validate": {
         "type": "tokens",
         "min": 0,
@@ -194,10 +184,11 @@
       }
     },
     {
-      "key": "ALFRED_CODE_DEFAULT_CONTEXT_WINDOW",
+      "key": "ALFRED_CODE_CONTEXT_WINDOW_DEFAULT",
       "default": "300000",
+      "renamed_from": "ALFRED_CODE_DEFAULT_CONTEXT_WINDOW",
       "ask": false,
-      "what": "the context WINDOW, in tokens, the fresh-session gate uses for a model the `model-windows.json` shipped beside the hooks (the plugin's own on the plugin route) does not list. That table (replaced on every update from the Claude models docs) is the ONLY other source - no id suffix, carry or compaction is read. Remove the key and an unlisted model takes ALFRED_CODE_FRESH_SESSION_DEFAULT.",
+      "what": "the context WINDOW, in tokens, the fresh-session gate uses for a model the `model-windows.json` shipped beside the hooks (the plugin's own on the plugin route) does not list - it then takes that window's tier trigger (300,000 -> ALFRED_CODE_CONTEXT_WINDOW_FOR_300K). That table (replaced on every update from the Claude models docs) is the ONLY other source - no id suffix, carry or compaction is read. Unset or garbage reads as 300,000.",
       "validate": {
         "type": "window",
         "min": 100000
@@ -207,8 +198,8 @@
       "key": "ALFRED_CODE_AUTO_COMPACT",
       "default": "0",
       "ask": true,
-      "asked_with": "ALFRED_CODE_FRESH_SESSION_1M",
-      "what": "what a long session does at the fresh-session trigger above. `0` (the seed) offers a fresh session there: an ask hands the work to a new session with a paste-ready resume, and Claude Code compacts at its own point. `1` compacts instead: the installer sets each model's `autoCompactWindow` in this project's settings to its trigger, no fresh-session ask is ever made, and the work goes on from the summary - read at session start, so it applies from the next session. Asked with the triggers; setup passes the answer as `--auto-compact on|off`.",
+      "asked_with": "ALFRED_CODE_CONTEXT_WINDOW_FOR_1M",
+      "what": "what a long session does at the fresh-session trigger above. `0` (the seed) offers a fresh session there: an ask hands the work to a new session with a paste-ready resume, and Claude Code compacts at its own point. `1` compacts instead: the installer sets each model's `autoCompactWindow` in this project's settings to its trigger, no fresh-session ask is ever made, and the work goes on from the summary - read at session start, so it applies from the next session. Asked with the triggers; init's install phase passes the answer as `--auto-compact on|off`.",
       "validate": {
         "type": "enum",
         "values": [
@@ -261,7 +252,7 @@
       "key": "ALFRED_CODE_HOOKS_OFF",
       "default": "",
       "ask": false,
-      "what": "a csv of hook names this project switches off, e.g. `guard-answer-length,instrument-tool-usage`. It is where the guided walk's hooks LAYER lands: every hook now arrives together inside the core alfred-code plugin, so there is no file to leave out of an install, and the rows a setup or configure run does NOT pick are written here (that answer overwrites this value; every other run seeds it only when absent). Matching is exact on the base name, `.js` optional; a prefix never matches.",
+      "what": "a csv of hook names this project switches off, e.g. `guard-answer,instrument-tool-usage`. It is where the guided walk's hooks LAYER lands: every hook now arrives together inside the core alfred-code plugin, so there is no file to leave out of an install, and the rows an init or configure run does NOT pick are written here (that answer overwrites this value; every other run seeds it only when absent). Matching is exact on the base name, `.js` optional; a prefix never matches.",
       "validate": {
         "type": "csv"
       }

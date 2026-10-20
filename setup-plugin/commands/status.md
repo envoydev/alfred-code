@@ -21,7 +21,7 @@ install records the hooks read (`alfred-code.stamp`, a copied
 `hooks/docs.js`) in this repo, its git top level or a worktree's main checkout. Never test for
 `.claude/skills` or `.claude/agents`: a plugin-route install can have neither.
 
-- `not-installed` -> say so and route to `/alfred-code:setup`.
+- `not-installed` -> say so and route to `/alfred-code:init`.
 - `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:status from there' and stop - every table below reads this tree's own `.claude`, which holds nothing.
 - `legacy-unstamped` -> say so and route to `/alfred-code:update`: a legacy copy-route install that never
   wrote a stamp (no install record, but two of the stack's own signatures in `.claude/`), whose picks
@@ -123,7 +123,7 @@ for a carried seat).
 | project-code-style | paths: `**/*.js` | GENERATED |
 
 `scope` comes from the `paths:` frontmatter (absent = always-on). `origin`: `GENERATED` for the
-capture-written rules (`alfred-architecture.md`, `alfred-related-context.md`, `alfred-agent-awareness.md`, `alfred-project-awareness.md`, `project-code-style.md`), `stack` otherwise,
+capture-written rules (`alfred-architecture.md`, `alfred-awareness.md`, `project-code-style.md`), `stack` otherwise,
 `user-authored` when clearly neither.
 
 Then ONE extra line under that table - the always-on FLOOR this install pays, because nothing
@@ -177,7 +177,9 @@ for an agent or a rule row), `on` when unset. When `stale` is true, put one line
 takes them'. When `invalid` is above 0, one more line: `invalid: <n> stamp name(s) are not valid
 item names - skipped, never read` (a hand-edited stamp; `/alfred-code:update` rewrites it). For each
 `blocked` entry, one line: `blocked: skill <skill> is '<mode>' in skillOverrides, but <rules> send the
-model to it` (that Skill call fails; `name-only` keeps it callable).
+model to it` (that Skill call fails; `name-only` keeps it callable). For each `unrecorded` name, one
+line: `unrecorded: skill <name> - an older stack copy the stamp does not record; /alfred-code:update
+takes it over` (the model reads that older text, description included, until it does).
 `library: no library stamp` prints instead of JSON on an install older than the library route -
 say so in one line and skip the table.
 
@@ -275,11 +277,11 @@ engine whose only record was another project's, and the session searched for its
 | ALFRED_CODE_INSTRUMENT | 0 (default - off) |
 | ALFRED_CODE_PUSH_GATE | 1 (default - on) - the publish half of the commit gate; 0 where the remote is already gated |
 | ALFRED_CODE_ROTATE_ASK | 1 (default - on) - the stop contract's once-per-exposure rotate ask |
-| ALFRED_CODE_FRESH_SESSION_1M | 400000 (default) - the fresh-session gate's trigger on a window above 200k; 0 = off for that tier |
-| ALFRED_CODE_FRESH_SESSION_200K | 150000 (default) - the same trigger on a 200k window; 0 = off for that tier |
-| ALFRED_CODE_FRESH_SESSION_DEFAULT | 300000 (default) - the same trigger for every other case: a window that is neither of those sizes, or one the gate cannot read. Which one applies comes from the session model's row in `.claude/hooks/model-windows.json` |
+| ALFRED_CODE_CONTEXT_WINDOW_FOR_1M | 400000 (default) - the fresh-session gate's trigger on a window of 1M or more; 0 = off for that tier |
+| ALFRED_CODE_CONTEXT_WINDOW_FOR_300K | 280000 (default) - the same trigger on a window of 300k up to 1M; 0 = off for that tier |
+| ALFRED_CODE_CONTEXT_WINDOW_FOR_200K | 180000 (default) - the same trigger on a window below 300k; 0 = off for that tier. The window comes from the session model's row in `.claude/hooks/model-windows.json` |
 | ALFRED_CODE_AUTO_COMPACT | 0 (default) - offer a fresh session at the trigger; 1 = compact there instead (each model's `autoCompactWindow` set, no fresh-session ask) |
-| ALFRED_CODE_DEFAULT_CONTEXT_WINDOW | 300000 (default) - the window for a model `.claude/hooks/model-windows.json` does not list |
+| ALFRED_CODE_CONTEXT_WINDOW_DEFAULT | 300000 (default) - the window for a model `.claude/hooks/model-windows.json` does not list, or one the gate cannot read |
 | CONTEXT7_API_KEY (account env) | set (N chars) / absent - absent = the keyless free tier |
 
 Mark `(default)` when the key is absent and a house default applies. `autoMemoryEnabled` is a
@@ -345,19 +347,22 @@ the seat handoff notes still in the memory database (`node .claude/hooks/memory.
 | quality/ARCHITECTURE-ASSESSMENT.md | yes | as of main@a1b2c3d, 2026-07-24 (recomputed, not a domain) | 2026-07-24 |
 | quality/CODE-ASSESSMENT.md | no | - | - |
 | code-style/CODE-STYLE.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
-| related-projects/RELATED-PROJECTS.md | no | - | - |
+| awareness/AGENTS-AWARENESS.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
+| awareness/PROJECT-AWARENESS.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
+| awareness/RELATED-PROJECTS-AWARENESS.md | no | - | - |
 | test-coverage/COVERAGE.md | yes | (bar 85%) | 2026-07-25 |
 | loops/ | yes | 3 prompt files | 2026-07-24 |
 | handoff notes (alfred-memory) | yes | 4 notes | - |
 
-`captured` is the doc's own `Captured:` stamp line read from the file (the related-projects doc
-stamps per entry - show the newest); the two `quality/` docs carry no `Captured:` stamp at all -
+`captured` is the doc's own `Captured:` stamp line read from the file (the related-projects
+awareness doc stamps per entry - show the newest); the two `quality/` docs carry no `Captured:` stamp at all -
 each recomputes every run with no domain of its own, so this column shows its `As of:` freshness
 line instead; `file updated` is the file's mtime date. A `Captured:` stamp older than the file
 mtime is normal (loops edit docs without re-capturing) - render both, judge nothing. Rows are
 fixed - a capture never run shows `no`, so the user sees what is MISSING as clearly as what
-exists. One row is conditional, not a gap: related-projects/RELATED-PROJECTS.md
-applies only to a project with sibling repos - a standalone repo reads `no` there permanently.
+exists. One row is conditional, not a gap: awareness/RELATED-PROJECTS-AWARENESS.md
+applies only to a project with sibling repos - a standalone repo reads `no` there, or `yes` with no entry once the
+capture recorded it as standalone.
 A leftover architecture/BRANCH-DELTA.md from an older capture is listed as a note, never deleted.
 
 ## 5. Close

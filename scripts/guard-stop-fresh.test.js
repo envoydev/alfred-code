@@ -23,8 +23,8 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-stop-fresh-'));
 // fixture of their own.
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
 // ... and a Claude Code session's own settings env reaches this process: the seeded
-// ALFRED_CODE_DEFAULT_CONTEXT_WINDOW=1000000 would resolve every unproven window below as 1M.
-delete process.env.ALFRED_CODE_DEFAULT_CONTEXT_WINDOW;
+// ALFRED_CODE_CONTEXT_WINDOW_DEFAULT=1000000 would resolve every unproven window below as 1M.
+delete process.env.ALFRED_CODE_CONTEXT_WINDOW_DEFAULT;
 // Every guard appends a block row under CLAUDE_PROJECT_DIR, falling back to the process cwd - so an
 // unpinned run forges field ledger rows into this repo's own docs root. Pin a scratch root.
 process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
@@ -278,28 +278,14 @@ test('guard-stop-contract: a background dev server or watcher is no work that re
 
 // 2.1.6 review re-verify N-B2: a hand-back whose wait names no person ('awaiting approval', 'waiting for the go-ahead')
 // passed while any work ran - 59 cells, 0 on base - and a background server (`dotnet run`, `docker compose up`) never
-// ends, so it held the exemption open for the rest of the session. The reviewer's closes and states, as fixtures. N4
-// (its stop half): an all-Ukrainian or all-Russian stall is judged like an English one.
+// ends, so it held the exemption open for the rest of the session. The reviewer's closes and states, as fixtures.
 const REVERIFY_STALLS = [
   ['X11', 'The fix is done and verified. Awaiting approval to commit.'],
   ['X12', 'Everything is ready - waiting for the go-ahead to push.'],
   ['X13', 'Migration done. Waiting on a decision about the schema.'],
   ['X14', 'Task 3 is done and the review agent is still running. Tell me whether to push.'],
-  ['X16', 'Task 3 is done; the review agent is still running. Чекаю на твоє рішення щодо push.'],
   ['X18', 'Task 3 is done. Awaiting sign-off before I push.'],
   ['X19', 'Done - the reviewer is still running. Waiting for confirmation to merge.'],
-];
-const CYRILLIC_STALLS = [
-  ['UK1', 'Задача 3 виконана. Чекаю на твоє рішення щодо push.'],
-  ['UK2', 'Готово. Наступний крок: додати сторінку налаштувань.'],
-  ['UK3', 'Міграцію завершено. Чекаю на підтвердження схеми.'],
-  ['RU1', 'Задача 3 выполнена. Жду твоего решения по push.'],
-  ['RU2', 'Готово. Следующий шаг: добавить страницу настроек.'],
-  ['RU3', 'Миграция завершена. Жду подтверждения схемы.'],
-];
-const CYRILLIC_STATUS = [
-  ['UK4', "Задача 2 готова. Агент рев'ю ще працює; продовжу, коли він відзвітує."],
-  ['RU4', 'Задача 2 выполнена. Агент ревью ещё работает; продолжу, когда он отчитается.'],
 ];
 const REVERIFY_STATUS = [
   ['P5', 'Task 3 is done; the review agent is still running, waiting on its report.'],
@@ -320,15 +306,14 @@ const RV_STATES = {
 test('guard-stop-contract: a hand-back waits on a person whatever else runs, and a server is no work that ends (2.1.6 re-verify N-B2)', () => {
   const passed = [];
   for (const [state, rows] of Object.entries(RV_STATES)) {
-    for (const [id, text] of [...REVERIFY_STALLS, ...CYRILLIC_STALLS]) if (closeOver(`nb2-${id}-${state}`, rows(), text).status !== 2) passed.push(`${id}/${state}`);
+    for (const [id, text] of REVERIFY_STALLS) if (closeOver(`nb2-${id}-${state}`, rows(), text).status !== 2) passed.push(`${id}/${state}`);
   }
-  for (const [id, text] of CYRILLIC_STALLS) if (closeOver(`nb2-${id}-none`, fgBash, text).status !== 2) passed.push(`${id}/none`);
   assert.deepStrictEqual(passed, [], 'a stall passed');
 });
-test('guard-stop-contract: a wait on the session\'s own running work is still a status line, in English, Ukrainian and Russian (2.1.6 re-verify N-B2, N4)', () => {
+test('guard-stop-contract: a wait on the session\'s own running work is still a status line (2.1.6 re-verify N-B2)', () => {
   const live = ['agent', 'tests', 'monitor', 'resumed'];
   const idle = { none: () => fgBash, dotnet: RV_STATES.dotnet, compose: RV_STATES.compose, uvicorn: RV_STATES.uvicorn, hugo: RV_STATES.hugo };
-  for (const [id, text] of [...REVERIFY_STATUS, ['P1', RUNNING_CLOSE], ['P2', WAITING_CLOSE], ...CYRILLIC_STATUS]) {
+  for (const [id, text] of [...REVERIFY_STATUS, ['P1', RUNNING_CLOSE], ['P2', WAITING_CLOSE]]) {
     for (const state of live) assert.equal(closeOver(`st-${id}-${state}`, RV_STATES[state](), text).status, 0, `${id} under ${state}`);
     for (const [state, rows] of Object.entries(idle)) assert.equal(closeOver(`st-${id}-${state}`, rows(), text).status, 2, `${id} with only ${state}`);
   }
@@ -337,9 +322,8 @@ test('guard-stop-contract: a wait on the session\'s own running work is still a 
 // 2.1.6 re-verify 2: 37 closes x 14 transcript states, the reviewer's cells. R2-B1: a hand-back the pending parser
 // cannot see ('Push when you approve', 'I need your go-ahead', 'awaiting a review from you') passed under any live work,
 // and a background server the never-ends list did not name held the exemption open. R2-M1: a hand-back beside a job
-// noun ('The build is still running; awaiting your approval') passed through the text exemptions in every state. R2-M2:
-// the first-person past ('Сделал', 'Зробив', 'Закоммитил') is how a Ukrainian or Russian close reports done. R2-m3: a
-// wait on the stack's own seats ('the designer's plan') is a wait on running work.
+// noun ('The build is still running; awaiting your approval') passed through the text exemptions in every state. R2-m3:
+// a wait on the stack's own seats ('the designer's plan') is a wait on running work.
 const R2_HANDBACKS = [
   ['HB1', 'Task 3 is done and the review agent is still running. Push when you approve.'],
   ['HB2', 'Task 3 is done and the review agent is still running. I need your go-ahead to push.'],
@@ -353,22 +337,10 @@ const R2_HANDBACKS = [
   ['HB10', 'Task 3 is done. Waiting for it to be approved.'],
   ['HB11', "Task 3 is done. Awaiting the user's review."],
   ['HB12', 'Task 3 is done. Waiting for the results of your manual test.'],
-  ['HB13', "Задача 3 готова, агент рев'ю ще працює. Пуш після твого схвалення."],
-  ['HB14', 'Задача 3 готова, агент ревью ещё работает. Пушну, когда подтвердишь.'],
-  ['HB15', "Задача 3 готова. Чекаю на рев'ю від тебе."],
-  ['HB16', 'Задача 3 готова. Жду ревью от тебя.'],
   ['PR1', 'Task 3 is done. The build is still running; awaiting your approval to push.'],
   ['PR2', 'Task 3 is done and the dev server runs in the background. Next step: push when you say so.'],
   ['PR3', 'All tests pass. CI is still running. Next steps: merge when you are ready.'],
   ['PR4', 'Task 3 is done; tests are queued in CI. Awaiting your go-ahead to merge.'],
-  ['CY1', 'Сделал задачу 3. Жду твоего решения по push.'],
-  ['CY2', 'Зробив задачу 3. Чекаю на твоє рішення щодо push.'],
-  ['CY3', 'Закоммитил. Следующий шаг: пуш.'],
-  ['CY4', 'Закомітив. Наступний крок: пуш.'],
-  ['CY5', 'Всё сделал, жду решения по пушу.'],
-  ['CY6', 'Виконав задачу 3. Залишилось запушити.'],
-  ['CY7', 'Закончил миграцию. Осталось задеплоить.'],
-  ['CY8', 'Готово. Далі - пуш, коли скажеш.'],
 ];
 const R2_STATUS = [
   ['SN1', "Task 3 is done. Awaiting the designer's plan."],
@@ -390,9 +362,9 @@ const R2_STATES = {
   dev: () => devServer,
   ...Object.fromEntries(R2_SERVERS.map((command, i) => [command, () => bgShell(`br2s${i}`, command)])),
 };
-test('guard-stop-contract: 37 closes in 14 states - a hand-back blocks whatever runs, a wait on finite work passes only while it runs (2.1.6 re-verify 2 R2-B1, R2-M1, R2-M2, R2-m3)', () => {
+test('guard-stop-contract: 25 closes in 14 states - a hand-back blocks whatever runs, a wait on finite work passes only while it runs (2.1.6 re-verify 2 R2-B1, R2-M1, R2-M2, R2-m3)', () => {
   assert.equal(Object.keys(R2_STATES).length, 14);
-  assert.equal(R2_HANDBACKS.length + R2_STATUS.length, 37);
+  assert.equal(R2_HANDBACKS.length + R2_STATUS.length, 25);
   const wrong = [];
   for (const [state, rows] of Object.entries(R2_STATES)) {
     const live = state === 'agent' || state === 'tests';
@@ -402,29 +374,24 @@ test('guard-stop-contract: 37 closes in 14 states - a hand-back blocks whatever 
       if (status !== (live ? 0 : 2)) wrong.push(`${id}/${state} ${status === 0 ? 'passed' : 'blocked'}`);
     }
   }
-  assert.deepStrictEqual(wrong, [], `${wrong.length} of 518 cells wrong`);
+  assert.deepStrictEqual(wrong, [], `${wrong.length} of 350 cells wrong`);
 });
 
 // 2.1.6 re-verify 3 R3-M2: a done close that hands the next act back with no pending word ('Push when you approve.')
 // passed in every state - the 'ready to commit when you say so' stall the contract exists for. R3-m2: a hand-back in
-// words no list named ('over to you', 'the push is yours', 'за тобою') passed while the session's own finite work ran.
+// words no list named ('over to you', 'the push is yours') passed while the session's own finite work ran.
 // R3-m3: seven status closes were read as hand-backs under live work ('tell me' in a clause about the verifier, 'your'
 // before a noun that is no approval, 'by the user' after 'requested', a hyphenated 'Pick-up').
 const R3_DONE_HANDBACKS = [
   ['P1', 'Task 3 is done. Push when you approve.'],
   ['P2', 'Task 3 is done. I need your go-ahead to push.'],
   ['P3', 'Task 3 is done. The push is yours.'],
-  ['P4', 'Готово. Запушу, коли підтвердиш.'],
-  ['P5', 'Сделал. Пушу после твоего одобрения.'],
 ];
-const R3_PAST_REPORTS = [['PP1', 'Pushed after your approval.'], ['PP2', 'Запушив після твого схвалення.']];
+const R3_PAST_REPORTS = [['PP1', 'Pushed after your approval.']];
 const R3_HANDBACK_WORDS = [
   ['N1', 'Over to you for the push'], ['N2', 'The push is yours'], ['N3', 'Ping me when to push'], ['N4', 'Ready to push on your signal'],
   ['N5', 'The push waits on you'], ['N6', 'Push is blocked on you'], ['N7', 'Your move on the push'], ['N8', 'Push once you have looked it over'],
   ['N9', 'The ball is in your court for the push'], ['N10', 'Push after your look'],
-  ['N11', 'Далі - за тобою'], ['N12', 'Дальше - за тобой'], ['N13', 'Твій хід щодо пушу'], ['N14', 'Дай знать - и я запушу'],
-  ['N15', 'Скажи - і я запушу'], ['N16', 'Напиши, коли пушити'], ['N17', 'Пуш за тобой'], ['N18', 'Запушу после твоего апрува'],
-  ['N19', 'Пушну після твого ок'], ['N20', 'Пушить - на твоё усмотрение'],
 ];
 const R3_STATUS = [
   ['S1', 'Waiting on the verifier.'],
@@ -437,9 +404,6 @@ const R3_STATUS = [
   ['S8', 'Waiting on the review agent. Pick-up of task 4 starts after it reports.'],
   ['S9', 'The review agent is still running; I read its report next.'],
   ['S10', 'Waiting on the verifier to finish your review checklist.'],
-  ['S11', "Чекаю на звіт агента рев'ю."],
-  ['S12', 'Жду отчёт агента по вашему ревью.'],
-  ['S13', 'Жду, пока агент закончит ревью.'],
 ];
 test('guard-stop-contract: a done close handing the next act back blocks in all 14 states, a past report passes (2.1.6 re-verify 3 R3-M2)', () => {
   const wrong = [];
@@ -448,9 +412,9 @@ test('guard-stop-contract: a done close handing the next act back blocks in all 
     for (const [id, text] of R3_DONE_HANDBACKS) if (closeOver(`r3-${id}-${tag}`, rows(), text).status !== 2) wrong.push(`${id}/${state} passed`);
     for (const [id, text] of R3_PAST_REPORTS) if (closeOver(`r3-${id}-${tag}`, rows(), text).status !== 0) wrong.push(`${id}/${state} blocked`);
   }
-  assert.deepStrictEqual(wrong, [], `${wrong.length} of 98 cells wrong`);
+  assert.deepStrictEqual(wrong, [], `${wrong.length} of 56 cells wrong`);
 });
-test('guard-stop-contract: a hand-back in any of 20 wordings blocks under live work (2.1.6 re-verify 3 R3-m2)', () => {
+test('guard-stop-contract: a hand-back in any of 10 wordings blocks under live work (2.1.6 re-verify 3 R3-m2)', () => {
   const wrong = [];
   for (const state of ['agent', 'tests', 'none']) {
     for (const [id, text] of R3_HANDBACK_WORDS) {
@@ -458,16 +422,16 @@ test('guard-stop-contract: a hand-back in any of 20 wordings blocks under live w
       if (closeOver(`r3-${id}-${state}`, R2_STATES[state](), close).status !== 2) wrong.push(`${id}/${state} passed`);
     }
   }
-  assert.deepStrictEqual(wrong, [], `${wrong.length} of 60 cells wrong`);
+  assert.deepStrictEqual(wrong, [], `${wrong.length} of 30 cells wrong`);
 });
 test('guard-stop-contract: a status close on running work passes under live work (2.1.6 re-verify 3 R3-m3)', () => {
   const wrong = [];
   for (const state of ['agent', 'tests']) {
     for (const [id, text] of R3_STATUS) if (closeOver(`r3-${id}-${state}`, R2_STATES[state](), `Task 3 is done. ${text}`).status !== 0) wrong.push(`${id}/${state} blocked`);
   }
-  assert.deepStrictEqual(wrong, [], `${wrong.length} of 26 cells wrong`);
+  assert.deepStrictEqual(wrong, [], `${wrong.length} of 20 cells wrong`);
 });
-// 2.1.6 re-verify 4 R4-M3: 'ping me', 'let me know' and the Russian and Ukrainian forms read as a hand-back whatever
+// 2.1.6 re-verify 4 R4-M3: 'ping me', 'let me know' and the Ukrainian forms read as a hand-back whatever
 // followed, so a finished answer signing off with an OFFER ('Ping me if anything looks off.') was blocked in every state
 // and had to be rewritten. What follows an offer word (if / in case / how / what / whether / about) is no pending act;
 // a condition with when / once / after still hands the next act back.
@@ -477,23 +441,17 @@ const R4_SIGN_OFFS = [
   ['O3', 'All done. Feel free to ping me if something looks wrong.'],
   ['O4', 'All done. Let me know how the review goes.'],
   ['O5', 'All done. Ping me about anything that looks off.'],
-  ['O6', 'Готово. Дай знати, якщо щось не так.'],
-  ['O7', 'Сделал. Напиши, если что-то не так.'],
-  ['O8', 'Готово. Скажи, якщо потрібні зміни.'],
   ['O9', 'Task 3 is done. Tell me what you think of the naming.'],
 ];
 const R4_STILL_HANDBACKS = [
   ['H1', 'Task 3 is done. Ping me when you are ready to push.'],
   ['H2', 'Task 3 is done. Let me know when to push.'],
   ['H3', 'Task 3 is done. Let me know once you have looked it over.'],
-  ['H4', 'Готово. Дай знати, коли пушити.'],
-  ['H5', 'Сделал. Напиши, когда пушить.'],
   ['H6', 'Task 3 is done. Ping me after your review.'],
   // 'whether to' / 'how to' / 'what to' ask for the decision itself: the offer words hand back before an infinitive
   ['H7', 'Task 3 is done. Tell me whether to push.'],
   ['H8', 'Task 3 is done. Let me know how to proceed.'],
   ['H9', 'Task 3 is done. Tell me what to do next.'],
-  ['H10', 'Готово. Скажи, чи пушити.'],
 ];
 test('guard-stop-contract: a finished answer signing off with an offer passes, a hand-back with a condition still blocks (2.1.6 re-verify 4 R4-M3)', () => {
   const wrong = [];
@@ -683,6 +641,93 @@ test('guard-stop-contract: a small solve-task close whose Result line has no rev
   assert.equal(askIn(transcript('small-noflow', [typed('fix it'), assistantRow('a', 'ok')]), close('fixed')).status, 0, 'no solve-task run in this session');
 });
 
+// Audit 2026-10-20 C37 (4a210c3c, 8da401b1): a small close that never stated `Size:` escaped the review check, which keyed
+// on the close's own `Size: small`. The cycle's size is read from the transcript - the size stated earlier, else the
+// `size floor:` spec-check printed - and only after a source edit, never where the standard row's steps ran.
+const specRun = (id, floor, bug) => [
+  { type: 'assistant', message: { id: `sc-${id}`, content: [{ type: 'tool_use', id: `sc${id}`, name: 'Bash', input: { command: 'node "$SPEC" <<\'REQUEST\'\nx\nREQUEST' } }] } },
+  { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: `sc${id}`,
+    content: `surface: yes - src/a.ts\nsecurity: no\nbug: ${bug || 'no'}\nsize floor: ${floor} - 2 file(s) named (the Size line may raise it, never go below it)\nspec: full\npath: merged` }] } },
+];
+const toolCall = (id, name, input) => ({ type: 'assistant', message: { id: `t-${id}`, content: [{ type: 'tool_use', id: `tu${id}`, name, input }] } });
+const sourceEdit = (id) => toolCall(id, 'Edit', { file_path: '/p/src/RetryPolicy.cs', old_string: 'a', new_string: 'b' });
+test('guard-stop-contract: a solve-task close stating no Size owes the review on the cycle\'s small or trivial size, never on a standard one (C37)', () => {
+  const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+  const marker = typed('<command-name>/task-solve</command-name>');
+  const bare = (result) => [{ question: `Result: ${result}. Progress: 5 of 5 steps. Leftovers: none. Close the run?`,
+    options: [{ label: 'Close it (Recommended)', description: 'x' }, { label: 'Keep going', description: 'y' }] }];
+  const built = assistantRow('b', 'Built and type-checked.');
+  const env = logEnv();
+  const tp = transcript('nosize-small', [marker, ...specRun(1, 'small'), sourceEdit(1), built]);
+  const r = askIn(tp, bare('restore guard added at src/RetryPolicy.cs'), env);
+  assert.equal(r.status, 2, 'the measured case: no Size line, a small floor, no review');
+  assert.match(r.stderr, /a solve-task close that states no `Size:` \(this cycle's spec-check `size floor:` is small\)/);
+  assert.match(r.stderr, /State the cycle's `Size:` on the close/);
+  assert.equal(askIn(tp, bare('restore guard added at src/RetryPolicy.cs'), env).status, 0, 're-sent unchanged, it passes - never a loop');
+  const deny = (name, rows, result) => askIn(transcript(name, rows), bare(result || 'restore guard added at src/RetryPolicy.cs')).status;
+  assert.equal(deny('nosize-review', [marker, ...specRun(2, 'small'), sourceEdit(2), built], 'guard added, review: task-verify-code - PASS'), 0, 'the receipt on the Result line');
+  assert.equal(deny('nosize-trivial', [marker, ...specRun(3, 'trivial'), sourceEdit(3), built]), 2, 'a trivial floor that reached a stop is small at least');
+  assert.equal(deny('nosize-std-floor', [marker, ...specRun(4, 'standard'), sourceEdit(4), built]), 0, 'a standard floor owes no review here');
+  assert.equal(deny('nosize-std-said', [marker, ...specRun(5, 'small'), assistantRow('s', 'Size: standard - two modules.'), typed('go on'), sourceEdit(5), built]), 0,
+    'the Size stated earlier outranks the floor');
+  const said = askIn(transcript('nosize-small-said', [marker, ...specRun(6, 'trivial'), assistantRow('s', '**Size:** small - two files.'), typed('go on'), sourceEdit(6), built]), bare('guard added'));
+  assert.equal(said.status, 2, 'a small Size stated in an earlier turn, not restated on the close');
+  assert.match(said.stderr, /this cycle's `Size:` was small/);
+  assert.equal(deny('nosize-trivial-said', [marker, ...specRun(7, 'small'), assistantRow('s', 'Size: trivial - one line.'), typed('go on'), sourceEdit(7), built]), 0,
+    'a stated trivial owes no review');
+  assert.equal(deny('nosize-design', [marker, ...specRun(8, 'small'), toolCall(8, 'Skill', { skill: 'alfred-code:task-design' }), sourceEdit(8), built]), 0,
+    'the standard row ran its design step');
+  assert.equal(deny('nosize-plan', [marker, ...specRun(9, 'small'), toolCall(9, 'Read', { file_path: '/p/.alfred/docs/plans/x.md' }), sourceEdit(9), built]), 0,
+    'a plan file read this cycle is a standard run resuming');
+  assert.equal(deny('nosize-noedit', [marker, ...specRun(10, 'small'), built]), 0, 'no source edit yet - no close');
+  assert.equal(deny('nosize-tmpedit', [marker, ...specRun(11, 'small'), toolCall(11, 'Write', { file_path: path.join(os.tmpdir(), 'scratch.js'), content: 'x' }), built]), 0,
+    'a scratch file is no build');
+  assert.equal(deny('nosize-unknown', [marker, sourceEdit(12), built]), 0, 'no floor and no stated size: nothing owed (8da401b1 ran no spec-check)');
+  const raised = { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'rz', content: 'size check: raise to standard - 4 files touched, small allows 3: a, b, c, d' }] } };
+  assert.equal(deny('nosize-raised', [marker, ...specRun(13, 'small'), sourceEdit(13), raised, built]), 0, 'the re-check raised it to standard');
+  assert.equal(deny('nosize-old-cycle', [marker, ...specRun(14, 'small'), sourceEdit(14), typed('<command-name>/task-solve</command-name>'), sourceEdit(15), built]), 0,
+    'a floor from before the newest marker is another cycle');
+  const quoted = { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'q', content: '   111\t        `size floor: small - x`,' }] } };
+  assert.equal(deny('nosize-quoted', [marker, quoted, sourceEdit(16), built]), 0, 'a read of the script is no floor');
+  assert.equal(deny('nosize-cross', [typed('<command-name>/task-solve-cross</command-name>'), ...specRun(17, 'small'), sourceEdit(17), built]), 0, 'the cross flow has no small row');
+});
+
+// Audit 2026-10-20 C37 (7c1af769): the user asked 'have you managed to reproduce?' four times - no stop of the bug run said.
+// A stop past design in a cycle spec-check called a bug, or one whose plan carries a `## Repro` section, owes `Repro:` -
+// a note beside the answer, like the other stop fields.
+test('guard-stop-contract: a bug cycle\'s stop past design owes a Repro line - a note, never a deny (C37)', () => {
+  const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+  const marker = typed('<command-name>/task-solve</command-name>');
+  const fields = 'Size: standard - one module. Result: fix designed - docs/plans/x.md. Progress: 1 of 6 steps. Leftovers: none.';
+  const design = toolCall('d', 'Skill', { skill: 'alfred-code:task-design' });
+  const note = (name, rows, q) => {
+    const r = askIn(transcript(name, rows), q || oneQ);
+    assert.equal(r.status, 0, `${name}: the Repro field is a note, never a deny`);
+    return ctxOf(r);
+  };
+  assert.match(note('repro-spec', [marker, ...specRun(1, 'standard', 'yes - the title (\'Fix\')'), design, assistantRow('a', fields)]),
+    /a stop in a bug cycle \(spec-check printed `bug: yes`\), and it went out with no `Repro:` line/);
+  assert.doesNotMatch(note('repro-said', [marker, ...specRun(2, 'standard', 'yes - x'), design, assistantRow('a', `${fields} Repro: not reproduced.`)]), /Repro/,
+    'the stop that states it');
+  assert.doesNotMatch(note('repro-nobug', [marker, ...specRun(3, 'standard', 'no'), design, assistantRow('a', fields)]), /Repro/, 'no bug, no field');
+  assert.doesNotMatch(note('repro-predesign', [marker, ...specRun(4, 'standard', 'yes - x'), assistantRow('a', fields)]), /Repro/,
+    'before design nothing was tried yet');
+  assert.match(note('repro-edit', [marker, ...specRun(5, 'small', 'yes - x'), sourceEdit(5), assistantRow('a', fields)]), /`Repro:`/, 'a small run past its build');
+  // the resumed bug cycle: no spec-check in this session, the plan read back carries the section (the 7c1af769 shape)
+  const planRead = [toolCall('pr', 'Read', { file_path: '/p/.alfred/docs/plans/2026-10-15-oom.md' }),
+    { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tupr', content: '     1\t# Firefox out of memory - plan\n   101\t## Repro - before fix\n   102\t- the report tab died at 3.5 GB' }] } }];
+  assert.match(note('repro-plan', [marker, ...planRead, assistantRow('a', fields)]), /its plan carries a `## Repro` section/);
+  const grepped = { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'g', content: '1:# plan\n101:## Repro - before fix (production build)' }] } };
+  assert.match(note('repro-grep', [marker, toolCall('g', 'Bash', { command: 'grep -n "^#" plan.md' }), grepped, toolCall('pr2', 'Read', { file_path: '/p/.alfred/docs/plans/a.md' }), assistantRow('a', fields)]), /`## Repro`/,
+    'a heading listing of the plan counts too');
+  const handOff = [{ question: 'Where?', options: [{ label: 'Resume in a fresh session (Recommended)', description: '~90k here, ~40k fresh' }, { label: 'Continue here', description: 'x' }] }];
+  assert.doesNotMatch(note('repro-handoff', [marker, ...specRun(6, 'standard', 'yes - x'), design, assistantRow('a', fields)], handOff), /Repro/, 'the opening hand-off is no stop');
+  assert.doesNotMatch(note('repro-cross', [typed('<command-name>/task-solve-cross</command-name>'), ...specRun(7, 'standard', 'yes - x'), design, assistantRow('a', fields)]), /Repro/,
+    'the cross flow carries no Repro field');
+  assert.doesNotMatch(note('repro-old', [marker, ...specRun(8, 'standard', 'yes - x'), marker, design, assistantRow('a', fields)]), /Repro/, 'a bug line from an earlier cycle');
+  assert.doesNotMatch(note('repro-noflow', [typed('fix the crash'), ...specRun(9, 'standard', 'yes - x'), design, assistantRow('a', fields)]), /Repro/, 'no solve-task run');
+});
+
 test('guard-stop-contract: a solve-task stop that owes a receipt is told which one (audit 2026-10-10, T4 cross-track)', () => {
   const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
   const marker = typed('<command-name>/task-solve</command-name>');
@@ -707,6 +752,12 @@ test('guard-stop-contract: a solve-task stop that owes a receipt is told which o
     { label: 'Not yet - changes needed', description: 'z' }] }];
   assert.match(note('rc-approve', [marker, ...answered('u2'), assistantRow('a', fields)], approve), /mechanics: read/);
   assert.equal(note('rc-approve-ok', [marker, ...answered('u3'), assistantRow('a', fields.replace('spec at', 'mechanics: read; plan at'))], approve), '');
+  // a09fc7d6#3 (audit 2026-10-20): the approval after this cycle's task-verify-plan run quotes the gate's `Passes:` line
+  const gateRun = { type: 'assistant', message: { id: 'vp', content: [{ type: 'tool_use', id: 'vp1', name: 'Skill', input: { skill: 'alfred-code:task-verify-plan' } }] } };
+  const mech = fields.replace('spec at', 'mechanics: read; plan at');
+  assert.match(note('rc-passes', [marker, ...answered('u8'), gateRun, assistantRow('a', mech)], approve), /`Passes: risk <v>/);
+  assert.equal(note('rc-passes-ok', [marker, ...answered('u9'), gateRun, assistantRow('a', `${mech} Passes: risk pass | scope pass | existence pass | edges MINOR | soundness pass`)], approve), '');
+  assert.equal(note('rc-passes-none', [marker, ...answered('u10'), assistantRow('a', mech)], approve), '', 'no gate ran this cycle, no Passes owed');
   // 390aebcb, 3ce6b036, 49cb4b82: the close with no `memories purged:`
   const completed = { type: 'assistant', message: { id: 'done', content: [{ type: 'tool_use', id: 'w1', name: 'Edit',
     input: { file_path: '/p/.alfred/docs/plans/2026-10-08-x.md', old_string: 'Approved:', new_string: 'Approved: yes\nCompleted: 2026-10-08' } }] } };
@@ -803,7 +854,7 @@ test('guard-stop-contract: a long or idle run offers the fresh session before th
 });
 
 test('guard-stop-contract: the prose written before an ask is checked for house voice', () => {
-  // guard-answer-length.js reads the turn's FINAL text only, so prose that ends on a tool call is
+  // guard-answer.js reads the turn's FINAL text only, so prose that ends on a tool call is
   // never scanned: measured 5 em-dashes in a report that preceded an AskUserQuestion, plus two more
   // bundles. This is the injection-only surface that reaches it - it never denies.
   const withDash = transcript('ask-dash', [
@@ -931,6 +982,10 @@ test('guard-fresh-session-start: an abandoned or double-submitted run is not a P
   const COLD = { cache_read_input_tokens: 60000 };
   const userRow = (text) => ({ type: 'user', message: { role: 'user', content: text } });
   const cmd = (name) => userRow(`<command-name>/${name}</command-name>`);
+  // A prior run counts once it WORKED - two tool calls (audit 2026-10-20 C13, 24841a36).
+  const callRow = (id, usage) => ({ type: 'assistant', message: { id, content: [{ type: 'tool_use', name: 'Bash', input: { command: 'ls' } }], usage } });
+  const result = () => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', content: 'ok' }] } });
+  const worked = (id, usage) => [callRow(`${id}-c1`, usage), result(), callRow(`${id}-c2`, usage), result()];
   // The slash route is UserPromptExpansion (2.1.5 M14): the typed command arrives by name.
   const slash = (tp, skill) => {
     const name = skill || 'task-solve';
@@ -938,11 +993,12 @@ test('guard-fresh-session-start: an abandoned or double-submitted run is not a P
       { hook_event_name: 'UserPromptExpansion', expansion_type: 'slash_command', command_name: name, command_args: '', prompt: `/${name}`, transcript_path: tp },
       { env: logEnv() });
     assert.equal(r.status, 0, 'the slash route never denies');
-    return r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext : '';
+    // the mode banner every typed task-* command carries (2026-10-15) is no offer
+    return (r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext : '').replace(/(?:^|\n\n)Open your reply to this command with these two lines[\s\S]*$/, '');
   };
 
   assert.equal(slash(transcript('ab-dup', [
-    cmd('alfred-code:setup'), cmd('alfred-code:update'),
+    cmd('alfred-code:init'), cmd('alfred-code:update'),
   ]), 'alfred-code:update'), '', 'two commands 4s apart with NO assistant turn between them is one abandoned run');
   assert.equal(slash(transcript('ab-resume', [
     cmd('task-solve'), userRow('resume the build cycle, steps 1-3 are stamped'),
@@ -951,17 +1007,19 @@ test('guard-fresh-session-start: an abandoned or double-submitted run is not a P
   // ... and the measured chain the trigger exists for still fires: a run, an ANSWER, then a second run.
   assert.match(slash(transcript('ab-real', [
     cmd('capture-architecture'),
+    ...worked('r1', FLOOR),
     assistantRow('r1', 'Captured the architecture doc.', FLOOR),
     userRow('now run the task cycle'),
     assistantRow('r2', 'ok', COLD),
     cmd('task-solve'),
   ])), /ALREADY run one/i, 'a finished prior run, with the model\'s own turn in between, is still the measured chain');
 
-  // `setup` is the guided install and `init` the bootstrap after it (Task 18a): both are
-  // multi-phase runs, so both take the offer.
-  for (const walk of ['alfred-code:init', 'alfred-code:setup'])
+  // `init` is the guided install and, after its restart, the bootstrap (setup merged into it on 2026-10-17); update
+  // is a multi-phase run too - both take the offer.
+  for (const walk of ['alfred-code:init', 'alfred-code:update'])
     assert.match(slash(transcript(`ab-${walk.split(':')[1]}`, [
       cmd('capture-architecture'),
+      ...worked('i1', FLOOR),
       assistantRow('i1', 'Captured the architecture doc.', FLOOR),
       userRow('now install the stack'),
       assistantRow('i2', 'ok', COLD),
@@ -970,15 +1028,15 @@ test('guard-fresh-session-start: an abandoned or double-submitted run is not a P
 });
 
 // ---------------------------------------------------------------------------------------------
-// 9 + 10. guard-answer-length: the verbatim re-ask, and the two Stop hooks no longer contradict
+// 9 + 10. guard-answer: the verbatim re-ask, and the two Stop hooks no longer contradict
 // ---------------------------------------------------------------------------------------------
 const promptSubmit = (prompt, tp, env) => {
-  const r = runIn('guard-answer-length.js', { hook_event_name: 'UserPromptSubmit', prompt, transcript_path: tp }, { env: env || logEnv() });
+  const r = runIn('guard-answer.js', { hook_event_name: 'UserPromptSubmit', prompt, transcript_path: tp }, { env: env || logEnv() });
   assert.equal(r.status, 0, 'UserPromptSubmit never denies - a denial erases the prompt');
   return ctxOf(r);
 };
 
-test('guard-answer-length: a verbatim-repeated prompt is an ambiguity signal, not a re-answer', () => {
+test('guard-answer: a verbatim-repeated prompt is an ambiguity signal, not a re-answer', () => {
   // Measured in three sessions of one day: the user re-sent an identical question 2-3 times,
   // escalating /model and /effort between them, before the model asked what was meant.
   const q = 'do we need to update claude file according to alfred code?';
@@ -1008,64 +1066,46 @@ test('guard-answer-length: a verbatim-repeated prompt is an ambiguity signal, no
   assert.doesNotMatch(promptSubmit('continue', short), /VERBATIM RE-ASK/, "a repeated 'continue' is pacing, not ambiguity");
 });
 
-test('guard-answer-length: the em-dash fix yields to a stop-contract block on the same turn', () => {
-  // Measured: guard-answer-length's 'Re-send the SAME answer' and guard-stop-contract's 'Add
-  // nothing else to this turn' answered ONE Stop event with opposite orders; the model obeyed the
-  // second and the flagged text shipped uncorrected.
-  const root = fs.mkdtempSync(path.join(TMP, 'conflict-'));
-  const tp = transcript('conf', [
-    { type: 'user', message: { role: 'user', content: 'wrap it up' } },
-    assistantRow('c9', 'The work is finished — the suite is green.'),
-  ]);
-  const stopAnswer = () => runIn('guard-answer-length.js',
-    { hook_event_name: 'Stop', session_id: 'conf', cwd: root, transcript_path: tp },
-    { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.claude/docs' } });
-
-  const alone = stopAnswer();
-  assert.equal(alone.status, 2, 'an em-dash still blocks');
-  assert.match(alone.stderr, /Re-send the SAME answer/, 'and still asks for the same answer back');
-
-  const ledger = path.join(root, '.claude', 'docs', 'hook-blocks');
-  fs.mkdirSync(ledger, { recursive: true });
-  fs.writeFileSync(path.join(ledger, 'conf.jsonl'),
-    JSON.stringify({ ts: new Date().toISOString(), hook: 'guard-stop-contract.js', event: 'Stop', reason: 'This turn ends on a decision-shaped question in prose.' }) + '\n');
-  const together = stopAnswer();
-  assert.equal(together.status, 2, 'the dash is still worth fixing');
-  assert.match(together.stderr, /guard-stop-contract/, 'but the text names the hook that already blocked this turn');
-  assert.match(together.stderr, /fold/i, '... and folds the fix into that turn instead of ordering the same answer back');
-  assert.doesNotMatch(together.stderr, /Re-send the SAME answer/, 'the contradictory order is gone');
-
-  const stale = JSON.stringify({ ts: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(), hook: 'guard-stop-contract.js', event: 'Stop', reason: 'x' }) + '\n';
-  fs.writeFileSync(path.join(ledger, 'conf.jsonl'), stale);
-  assert.match(stopAnswer().stderr, /Re-send the SAME answer/, "an earlier turn's block is not this turn's");
-
-  // Only a BLOCK yields. The contract also logs rows that block nothing - the two method probes and
-  // the skip at a tool-ended turn - and the A/B's after arm lost its verification line when a fresh
-  // log row read as a block: the model was told to obey a block it never received. The done-gate
-  // probe is a Stop row written in this very turn, the closest shape to a real block.
-  const now = new Date().toISOString();
-  for (const row of [
-    { ts: now, hook: 'guard-stop-contract.js', event: 'PostToolUseFailure', tool: 'Bash', mode: 'probe', kind: 'root-cause', reason: 'probe: a red npm test run' },
-    { ts: now, hook: 'guard-stop-contract.js', event: 'Stop', tool: '', mode: 'probe', kind: 'done-gate', reason: 'probe: a done claim, unrun - logged, not held' },
-    { ts: now, hook: 'guard-stop-contract.js', event: 'Stop', tool: '', mode: 'skip-tool-end', kind: 'tool-ended-turn', reason: 'skip: the turn ended on a tool call' },
-  ]) {
-    fs.writeFileSync(path.join(ledger, 'conf.jsonl'), JSON.stringify(row) + '\n');
-    assert.match(stopAnswer().stderr, /Re-send the SAME answer/, `a '${row.mode}' row blocked nothing, so the dash order stands`);
+// Deep hooks review 2026-10-16, the user's ruling 'English + script rule': the word lists read English only, so a close
+// in another language is not judged on its words - only on its neutral signals.
+test('guard-stop-contract: a close the hook cannot read as English is not judged on its words, a closing question mark still is (deep review: English only)', () => {
+  const stall = 'Задача 3 готова. Чекаю на твоє рішення.';
+  const ask = 'Задача 3 готова. Пушити?';
+  for (const [state, rows] of [['none', fgBash], ['agent', reviewAgent]]) {
+    assert.equal(closeOver(`en-stall-${state}`, rows, stall).status, 0, `a stall in Ukrainian under ${state}`);
+    assert.equal(closeOver(`en-ask-${state}`, rows, ask).status, 2, `a closing '?' in Ukrainian under ${state}`);
   }
+});
 
-  // the LENGTH branch carries the same yield - 'Re-answer at budget' contradicts 'add nothing else'
-  // exactly as the dash order did.
-  const wall = transcript('conf-long', [
-    { type: 'user', message: { role: 'user', content: 'wrap it up' } },
-    assistantRow('c8', 'This is filler prose that says very little but goes on and on about the process. '.repeat(30)),
-  ]);
-  const longAnswer = () => runIn('guard-answer-length.js',
-    { hook_event_name: 'Stop', session_id: 'conf', cwd: root, transcript_path: wall },
-    { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.claude/docs' } });
-  assert.doesNotMatch(longAnswer().stderr, /blocked this same turn too/, 'a stale ledger leaves the length text alone');
-  fs.writeFileSync(path.join(ledger, 'conf.jsonl'),
-    JSON.stringify({ ts: new Date().toISOString(), hook: 'guard-stop-contract.js', event: 'Stop', reason: 'fresh-session offer' }) + '\n');
-  const both = longAnswer();
-  assert.equal(both.status, 2, 'the wall of text still blocks');
-  assert.match(both.stderr, /blocked this same turn too/, '... and the two hooks now agree on one turn');
+// Audit 2026-10-20 C45: three approval-ask misses and a mark the question contradicts.
+test('guard-stop-contract (C45): a referent approval is judged on what was shown, a review verdict is no send, and the mark agrees with the question', () => {
+  const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+  const toolRow = (id) => ({ type: 'assistant', message: { id, content: [{ type: 'tool_use', id: `tu-${id}`, name: 'Read', input: { file_path: 'a.md' } }] } });
+  const q = (question) => [{ question, options: [{ label: 'Apply (Recommended)', description: 'write it' }, { label: 'Skip', description: 'nothing' }] }];
+  // e31af926 L128: reworded from 'as shown' to 'the diff above' with the diff still unshown; e43969a7 L139: 'fixes shown above'
+  for (const ask of ['Apply the diff above?', 'Apply the AGENTS.md fixes shown above?']) {
+    const r = askIn(transcript(`c45-blind-${ask.length}`, [typed('update the install'), toolRow('b1')]), q(ask));
+    assert.equal(r.status, 2, `nothing shown: ${ask}`);
+    assert.match(r.stderr, /the chat has not shown since the user's last message/);
+  }
+  const diff = 'The diff, 7 lines:\n\n```diff\n- old line one of the rule file\n+ new line one of the rule file\n- old line two\n+ new line two\n```\n' + 'Each line keeps its section. '.repeat(6);
+  for (const ask of ['Apply the diff above?', 'Apply the AGENTS.md fixes shown above?'])
+    assert.equal(askIn(transcript(`c45-shown-${ask.length}`, [typed('update the install'), assistantRow('s1', diff)]), q(ask)).status, 0, `shown first: ${ask}`);
+  // fabea019 L1421: a review verdict ask - 'send it back to the build' - is no send-this approval
+  const verdict = [{ question: 'The review found one MATERIAL gap. Fix it now, or send it back to the build?', options: [{ label: 'Fix it now (Recommended)', description: 'x' }, { label: 'Send it back', description: 'y' }] }];
+  assert.equal(askIn(transcript('c45-verdict', [typed('review it'), toolRow('v1')]), verdict).status, 0, 'send it back is no approval of a text');
+  assert.equal(askIn(transcript('c45-send', [typed('draft the reply'), toolRow('v2')]), [{ question: 'Send it to the customer?', options: [{ label: 'Send (Recommended)', description: 'x' }, { label: 'Hold', description: 'y' }] }]).status, 2,
+    "'send it' is still the approval it was");
+  // fabea019 L2845: the question recommended one option, the mark sat on another
+  const tp = transcript('c45-mark', [assistantRow('m1', 'ok', { cache_read_input_tokens: 900 })]);
+  const mis = [{ question: 'Where do we verify? Recommended: the alpha site after you deploy the fix branch.', options: [
+    { label: 'Swap the scripts on production (Recommended)', description: 'fast, risky' }, { label: 'Alpha site after the deploy', description: 'safe' }] }];
+  const env = logEnv();
+  const m = askIn(tp, mis, env);
+  assert.equal(m.status, 2, 'the mark contradicts the question');
+  assert.match(m.stderr, /names another option than the one marked/);
+  assert.equal(askIn(tp, mis, env).status, 0, 're-sent unchanged, it passes - never a loop');
+  const agree = [{ ...mis[0], options: [{ label: 'Alpha site after the deploy (Recommended)', description: 'safe' }, { label: 'Swap the scripts on production', description: 'fast' }] }];
+  assert.equal(askIn(tp, agree).status, 0, 'mark and question agree');
+  assert.equal(askIn(tp, [{ ...mis[0], question: 'Where do we verify? Recommended: a quick look first.' }]).status, 0, 'a question naming no option decides nothing');
 });

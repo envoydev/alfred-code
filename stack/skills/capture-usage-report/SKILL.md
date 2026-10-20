@@ -15,6 +15,8 @@ Run the audit from a FRESH session that names the target session id(s) - never f
 - The token and tool usage audit of alfred-code skill runs in THIS project; also for 'whether the stack is efficient here'.
 - Not for live session cost (claude-hud shows that), fixing the findings (route them to the owning skill), or benchmarking model choices.
 
+**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
+
 ## Privacy rule
 The report body carries aggregates, tool names, token counts, and file PATHS only - never code or file contents. The raw-data copies exist for re-analysis and follow the `git check-ignore` consent test in step 4.
 
@@ -71,7 +73,7 @@ tar -xzf "<tmp>/stack.tar.gz" -C "<tmp>"
 git clone --depth 1 -b main https://github.com/envoydev/alfred-code "<tmp>/repo"
 ```
 
-Run these as SEPARATE simple commands, not a piped one-liner - the harness's auto-mode classifier blocks the compound verbatim. Then Read `references/run-mechanics.md` now - the batch shape (a loop in a file, never a pipe on the command line), every analyzer flag, and the ledger test live there, and the report's Environment rows carry the receipt `Mechanics: read`. The tool is `scripts/analyze-usage.js` inside the extracted snapshot. Both fetches fail: say so and stop - never rebuild the tool from memory. Record the snapshot revision (the archive's `RELEASE-SOURCE` file, or the clone's HEAD) for the report's Environment section. Remove `<tmp>` at the end of the run, on every exit path - success, failure, or abort.
+Run these as SEPARATE simple commands, not a piped one-liner - the harness's auto-mode classifier blocks the compound verbatim. Then Read `references/run-mechanics.md` now - the batch shape (a loop in a file, never a pipe on the command line), every analyzer flag, and the ledger test live there, and the report's Environment rows carry the receipt `Mechanics: read`. The tool is `scripts/analyze-usage.js` inside the extracted snapshot. Both fetches fail: say so and stop - never rebuild the tool from memory. Record the snapshot revision (the archive's `RELEASE-SOURCE` file, or the clone's HEAD) for the report's Environment section. Remove `<tmp>` on every exit path - success, failure or abort.
 
 ### 3. RUN it
 The directory rollup once, to confirm which sessions matter; then per audited session the full report, the `--json` dump and the `--report-md` skeleton (machine-written tables plus the FILL IN judgment sections), with `--docs-root <root>` on every per-session call when `ALFRED_CODE_DOCS_PATH` names a non-default root - the exact calls are in the mechanics reference.
@@ -80,6 +82,10 @@ The directory rollup once, to confirm which sessions matter; then per audited se
 
 ### 4. WRITE - one folder per session
 Read `references/diagnosis-discipline.md` now, before the first authored row of the first bundle - its checks are this step's gate, not homework: every authored section below is written against them, and the report's Environment rows carry the receipt `Discipline: read`. The discipline is READ this run, never remembered: a bundle with no `Discipline: read` receipt was authored without the checks, and hand-written analysis is the failure mode they exist to replace. When a check and your recollection of the transcript disagree, re-open the transcript; the check wins.
+
+**Who writes each bundle.** One session to audit, or no subagent dispatch: write it here. Two or more: one AUTHOR subagent per bundle, at most six at a time, each on a mid-tier model named in the dispatch (`model: 'sonnet'` on Claude Code's Agent call) - never a default seat, which takes this session's model (cost in `references/evidence.md`). Each gets `references/bundle-brief.md` filled in and returns one line; this session keeps step 5 and its spot check.
+
+**Gather with the reader, never a helper script.** Each bundle starts with `node <snapshot>/stack/skills/capture-usage-report/scripts/transcript-view.js pack <transcript> <usage json> --out <tmp>/<sid>-evidence.md`: the typed prompts, every ask with its answer, the skill, command and dispatch runs, the errored tool results (the seats' too), and each moment the analyzer flagged with the rows before it - every line an `L<n>` locator. It quotes the transcript, so it stays in `<tmp>`, out of the bundle. A row it does not hold comes from the same script - `timeline`, `show <L>`, `grep <regex>` - never one written for the occasion.
 
 Everything for a session lands in `<docs-path>/usage-report/<session-id>/`:
 
@@ -105,7 +111,7 @@ Then append the full-report analyzer outputs verbatim at the end of the doc (the
 
 **CHECK the filled report before the bundle is done.** `node <snapshot>/scripts/analyze-usage.js --check-report <bundle>/report-usage.md` prints one row per number in a judgment section that appears in no machine table of that same report and carries no `L<n>` locator that resolves against the transcript beside it. **The bundle is NOT done while it prints a row**: fix each - quote the machine row the number comes from, add the locator, or drop the claim - and re-run until it prints `clean`.
 
-**Then gate the batch - the bundle's last command, from the project root:** `node <snapshot>/stack/skills/capture-usage-report/scripts/bundle-gate.js --done <bundles closed this run> --summary <docs-path>/usage-report`. It reads this session's context the way the fresh-session Stop offer does and rewrites SUMMARY.md's bundle list (step 5). `BUNDLE-GATE: next` runs the next bundle; `BUNDLE-GATE: CLOSE` ends the batch here - at 12 bundles, or past this install's fresh-session trigger - and the close names every session left and the invocation that resumes it from a fresh session. A line that says only the bound applies (no transcript found, context unknown after a compaction) still holds you to 12.
+**Then gate the batch - the bundle's last command, from the project root:** `node <snapshot>/stack/skills/capture-usage-report/scripts/bundle-gate.js --done <bundles closed this run> --summary <docs-path>/usage-report` - run here as each bundle closes, an author's too. It reads this session's context the way the fresh-session Stop offer does and rewrites SUMMARY.md's bundle list (step 5). `BUNDLE-GATE: next` runs the next bundle; `BUNDLE-GATE: CLOSE` ends the batch here - at 12 bundles, or past this install's fresh-session trigger - and the close names every session left and the invocation that resumes it from a fresh session. A line that says only the bound applies (no transcript found, context unknown after a compaction) still holds you to 12.
 
 ### 5. SUMMARIZE - the project-wide picture
 
@@ -115,9 +121,10 @@ When this run audited more than one session, or bundles from prior runs already 
 
 - The analyzer's directory rollup table verbatim (`node <snapshot>/scripts/analyze-usage.js <projects-dir>`) - the machine-written per-session totals.
 - A short cross-session judgment, cited from the bundles: the ctx/msg trend across sessions, waste patterns that recur in more than one session (a one-off is the session's finding; a repeat is the stack's), and per-skill cost across sessions where the same skill ran several times.
+- The spot check, when authors wrote the bundles: the two with the most flagged moments in their pack, one Waste row and the Verdict's cited `L<n>` each, re-opened with `transcript-view.js show` - a row the line does not bear out is fixed here or sent back to its author once, and the SUMMARY says which rows were checked and what held.
 - The scorecard across sessions: one row per practice with the collection's totals and their denominators (cache misses and the tokens they re-cached, compaction re-reads, build-dir reads, scoped against whole-suite runs, checked commits, green claims with no check, correction streaks beside the short-after-long count, long answers, heavy seats) - copied from the `--json` dumps, never re-derived - closing with ONE line: does this stack, in this project, waste tokens, and where.
 
-Then `rm -rf "<tmp>"`.
+Then, alone in the run's last Bash call, `rm -rf "<tmp>"` with the printed path.
 
 ## Don't game it
 Numbers come from the analyzer's output, never estimated from memory - a claim without an analyzer line behind it does not go in the report. A protocol-check verdict cites the transcript turn that proves it. If the ledger was absent, the identity attribution is marked unavailable rather than inferred. Suggest - once, briefly - that a re-run with the `instrument-tool-usage` hook active (it ships with the rest; `ALFRED_CODE_INSTRUMENT=1`, and it must not be named in `ALFRED_CODE_HOOKS_OFF`) would add the `--hook-log` join next time; do not block on it.

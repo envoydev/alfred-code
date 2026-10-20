@@ -31,8 +31,11 @@ const { BRAND } = require('./brand.js');
 const { valueHash } = require('./stamp.js');
 const shellGuards = require('../../stack/hooks/shell-guards.js');
 const fileGuards = require('../../stack/hooks/file-guards.js');
+const historySession = require('../../stack/hooks/history-session.js');
+const { tierKeyOf } = require('../../stack/hooks/fresh-session.js');
 // Both dispatchers fold their guards' rows into one row each (R11 for the shell tools, 2.1.5 M3 for the file tools).
-const foldDispatchers = (rows, opts) => fileGuards.wiringRows(shellGuards.wiringRows(rows, opts), opts);
+// The turn check's Stop row rides history-session's Stop process too (the user's ruling of 2026-10-16).
+const foldDispatchers = (rows, opts) => historySession.wiringRows(fileGuards.wiringRows(shellGuards.wiringRows(rows, opts), opts));
 
 // A hook's run is mostly its node spawn (audit 2026-10-14, cold p50 of 10 runs: a bare `node -e 0` 23.8ms, a single hook
 // 26-52ms, the stop contract's Stop 181.8ms on a 19MB transcript, the shell dispatcher 58.7-209.9ms with a commit's git
@@ -45,17 +48,17 @@ const HOOK_TIMEOUT = 10;
 // other hook. The plugin entry's generator reads the same table (build-marketplace.js).
 // The shell-guard dispatcher runs every shell guard in one process, so its budget is theirs summed:
 // each guard keeps the 10s it had as its own hook.
-const HOOK_TIMEOUTS = { 'check-turn-build.js': { Stop: 60 }, [`${shellGuards.SELF}.js`]: { PreToolUse: HOOK_TIMEOUT * shellGuards.GUARDS.length },
+// history-session's Stop carries the turn check (history-session.js wiringRows), so it takes the check's 60s.
+const HOOK_TIMEOUTS = { 'check-turn-build.js': { Stop: 60 }, 'history-session.js': { Stop: 60 }, [`${shellGuards.SELF}.js`]: { PreToolUse: HOOK_TIMEOUT * shellGuards.GUARDS.length },
     [`${fileGuards.SELF}.js`]: { PreToolUse: HOOK_TIMEOUT * fileGuards.GUARDS.length } };
 const timeoutFor = (file, event) => (HOOK_TIMEOUTS[file] || {})[event] || HOOK_TIMEOUT;
 // A hook whose only work is a side effect runs with `async: true`: the call never waits on its node spawn, and an async
 // hook can neither block nor decide ('Async hooks can't block or control Claude's behavior', code.claude.com/docs/en/hooks,
 // 'Run hooks in the background'). Keyed by file and EVENT, `*` for every event: the tool-usage log (23.9ms on every tool
-// call, audit 2026-10-08 row 28), and the stop contract's PostToolUse / PostToolUseFailure halves - a red-run probe row
-// and its streak file, nothing said to the model (32.1ms on every shell result, ~20,000 a week; audit 2026-10-14 HK12) -
-// while its Stop, SubagentStop and AskUserQuestion halves must block, so they stay synchronous. The plugin entry's
-// generator reads the same table.
-const ASYNC_HOOKS = { 'instrument-tool-usage.js': '*', 'guard-stop-contract.js': ['PostToolUse', 'PostToolUseFailure'] };
+// call, audit 2026-10-08 row 28). The stop contract's PostToolUse / PostToolUseFailure probe rode here until the deep
+// hooks review 2026-10-16 dropped it (27,380 runs for 250 rows nobody read). The plugin entry's generator reads the same
+// table.
+const ASYNC_HOOKS = { 'instrument-tool-usage.js': '*' };
 const asyncFor = (file, event) => { const on = ASYNC_HOOKS[file]; return on === '*' || (Array.isArray(on) && on.includes(event)); };
 // A hook that FAILS - cannot start, times out, exits other than 0 / 2, prints invalid output - lets the call through by
 // default; `onFailure: "block"` blocks it instead, as an exit 2 would (code.claude.com/docs/en/hooks, 'Block the action
@@ -74,12 +77,11 @@ const SEEDED_SETTINGS = [...ATTRIBUTION_OFF.map(([k, v]) => [`attribution.${k}`,
 
 // THE AUTO-COMPACT WINDOW PER MODEL (the user's rulings, 2026-10-14): where the project compacts instead of offering a
 // fresh session (ALFRED_CODE_AUTO_COMPACT=1), each model `hooks/model-windows.json` lists compacts where the fresh-session
-// gate would have offered a resume - its window tier's ALFRED_CODE_FRESH_SESSION_* value (200k -> _200K, 1M -> _1M, any
-// other -> _DEFAULT), read from the env this file applies - instead of at the window Claude Code tunes for the model
+// gate would have offered a resume - its window tier's ALFRED_CODE_CONTEXT_WINDOW_FOR_* value (fresh-session.js tierKeyOf:
+// 1M and up -> _1M, 300K and up -> _300K, else _200K), read from the env this file applies - instead of at the window Claude Code tunes for the model
 // (settings reference: unset by default; measured near 390k on a 1M window, fresh-session.js). A tier switched off (`0`) seeds nothing;
 // a trigger at or past its window is held at 90% of it (fresh-session.js ctxThreshold's clamp), and the value stays inside
 // the 100,000-1,000,000 Claude Code accepts (settings-reference `modelSettings`). Returns { <model id>: <tokens> }.
-const COMPACT_TIER_KEYS = { 200000: 'ALFRED_CODE_FRESH_SESSION_200K', 1000000: 'ALFRED_CODE_FRESH_SESSION_1M' };
 function compactWindowSeeds(models, env = {}, catalog = [])
 {
     // Only where the project compacts instead of offering a fresh session (ALFRED_CODE_AUTO_COMPACT, seeded `0`): with the
@@ -98,7 +100,7 @@ function compactWindowSeeds(models, env = {}, catalog = [])
         const window = Number(n);
         // only an id the stamp's ledger reads back (stamp.js SETTINGS_PATH), or its window could never be taken back
         if (!(window >= 100000) || !/^[a-z0-9][a-z0-9-]{0,99}$/.test(id)) continue;
-        let at = tier(COMPACT_TIER_KEYS[window] || 'ALFRED_CODE_FRESH_SESSION_DEFAULT');
+        let at = tier(tierKeyOf(window));
         if (!(at > 0)) continue;
         if (at >= window) at = Math.floor(window * 0.9);
         out[id] = Math.max(100000, Math.min(1000000, at));
@@ -140,7 +142,34 @@ function readSettings(file)
     catch (err) { const e = new Error(`${path.basename(file)} is not valid JSON (${err.message}) - left untouched; fix it and re-run`); e.leaveAlone = true; throw e; }
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
     { const e = new Error(`${path.basename(file)} top level is not an object - left untouched`); e.leaveAlone = true; throw e; }
+    // A hooks block Claude Code cannot read is the user's to fix, like bad JSON: the writer would throw half-way through it
+    // (a null entry, an event that is no list - the 2026-10-16 matrix), or wire nothing beside a list and say nothing.
+    const where = hooksShapeError(parsed.hooks);
+    if (where)
+    { const e = new Error(`${path.basename(file)} hooks block is not the shape Claude Code reads (${where}) - left untouched; fix it and re-run`); e.leaveAlone = true; throw e; }
     return { data: parsed, existed: true };
+}
+
+// Where a settings file's `hooks` value leaves the event -> [{ matcher?, hooks: [{ ... }] }] shape, or '' when it keeps it.
+// An absent or null block is no block; a group without its `hooks` key is read as an empty one.
+function hooksShapeError(hooks)
+{
+    if (hooks === undefined || hooks === null) return '';
+    const plainObject = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
+    if (!plainObject(hooks)) return 'hooks is not an object';
+    for (const [event, groups] of Object.entries(hooks))
+    {
+        if (!Array.isArray(groups)) return `hooks.${event} is not a list`;
+        for (const [i, group] of groups.entries())
+        {
+            if (!plainObject(group)) return `hooks.${event}[${i}] is not an object`;
+            if (group.hooks === undefined) continue;
+            if (!Array.isArray(group.hooks)) return `hooks.${event}[${i}].hooks is not a list`;
+            const j = group.hooks.findIndex((h) => !plainObject(h));
+            if (j >= 0) return `hooks.${event}[${i}].hooks[${j}] is not an object`;
+        }
+    }
+    return '';
 }
 
 // A hook spec is `file::matcher::args`. A matcher starting with '@' wires a non-PreToolUse
@@ -288,8 +317,9 @@ const isStackKey = (key) => key.startsWith('ALFRED_CODE_');
 // every scope they live in settings.local.json, never in the committed settings.json.
 const PERSONAL_KEYS = ['ALFRED_CODE_MEMORY_DB'];
 
-// Steps 2 and 3 of the env pass, in place, over the keys `only` admits.
-function retireAndReseed(env, migrations, log, label, only = () => true)
+// Steps 2 and 3 of the env pass, in place, over the keys `only` admits. `stackWrote(label, key, value)` answers from the
+// install ledger whether the stack wrote that value there; with none given (no ledger) the value match alone decides.
+function retireAndReseed(env, migrations, log, label, only = () => true, stackWrote = null)
 {
     let changed = false;
     // 2. RETIREMENTS - unconditional, or only while the value is still the stack's own old seed.
@@ -301,9 +331,11 @@ function retireAndReseed(env, migrations, log, label, only = () => true)
             log(`  ${label} env: ${key} removed (${onlyWhen == null ? 'retired - nothing reads it' : `the old stack seed ${onlyWhen} - the default applies`})`);
         }
 
-    // 3. BAD SEEDS - corrected only while the key still holds the wrong default.
+    // 3. BAD SEEDS - corrected only while the key still holds the wrong default AND the stack wrote it there: a value the user
+    // typed is theirs even when it equals an old seed (2026-10-16 matrix: a hand-set ALFRED_CODE_CONTEXT_WINDOW_FOR_200K of
+    // 150000 was reset to 180000 on every update).
     for (const [key, badSeed, to] of migrations.reseed || [])
-        if (only(key) && env[key] === badSeed) { env[key] = to; changed = true; log(`  ${label} env: ${key} reset to ${to} (auto-detect)`); }
+        if (only(key) && env[key] === badSeed && (!stackWrote || stackWrote(label, key, badSeed))) { env[key] = to; changed = true; log(`  ${label} env: ${key} reset to ${to} (auto-detect)`); }
     return changed;
 }
 
@@ -321,7 +353,7 @@ function retireAndReseed(env, migrations, log, label, only = () => true)
 // C8: a PERSONAL_KEYS value always goes to the overlay when there is one, and leaves this file.
 // `sharedKeys` (C5): a decision that shapes committed state lands in THIS file even when the overlay
 // holds the key - the hooks copy route's HOOKS_OFF complement, which is the committed wiring's mirror.
-function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath, autoCompact = null, memoryDb, hooksOff, hooksAnswered, inherited, overlay, overlayUnreadable = false, sharedKeys = [], log, label = 'settings.json', overlayLabel = 'settings.local.json' })
+function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath, autoCompact = null, memoryDb, hooksOff, hooksAnswered, renamedHooks = {}, inherited, overlay, overlayUnreadable = false, sharedKeys = [], log, label = 'settings.json', overlayLabel = 'settings.local.json', stackWrote = null })
 {
     let changed = renameEnv(env, migrations, log, label);
     const beneath = inherited && typeof inherited === 'object' && !Array.isArray(inherited) ? { ...inherited } : {};
@@ -330,14 +362,14 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
     if (held)
     {
         renameEnv(held, migrations, log, overlayLabel);
-        retireAndReseed(held, migrations, log, overlayLabel, isStackKey);
+        retireAndReseed(held, migrations, log, overlayLabel, isStackKey, stackWrote);
     }
     const heldHere = (key) => Boolean(held) && isStackKey(key) && key in held && !sharedKeys.includes(key);
     const present = (key) => key in env || key in beneath;
     // Where a decision about `key` lands: the overlay when it holds the key, else this file.
     const at = (key) => (heldHere(key) ? { into: held, lab: overlayLabel, mine: false } : { into: env, lab: label, mine: true });
 
-    if (retireAndReseed(env, migrations, log, label)) changed = true;
+    if (retireAndReseed(env, migrations, log, label, undefined, stackWrote)) changed = true;
 
     // 3b. THE DOCS ROOT DECISION (docs.docsMovePlan) - before the seeds, so the absent-only default never
     // lands first: a moved or re-pointed root, a kept old one, or the old root held while its move is offered.
@@ -435,8 +467,20 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
         if (into.ALFRED_CODE_HOOKS_OFF !== off)
         { into.ALFRED_CODE_HOOKS_OFF = off; if (mine) changed = true; log(`  ${lab} env: ALFRED_CODE_HOOKS_OFF = ${off || '(empty - every hook runs)'}`); }
     }
-    else if (!present('ALFRED_CODE_HOOKS_OFF'))
-    { env.ALFRED_CODE_HOOKS_OFF = ''; changed = true; log(`  ${label} env: ALFRED_CODE_HOOKS_OFF seeded (empty - every hook runs)`); }
+    else
+    {
+        // A hook a release renamed (manifest `renamed.hooks`) stays off under its new name: the stored list is re-spelled
+        // in each file that holds it, or the prelude no longer matches it and the hook the user switched off runs again.
+        for (const [into, lab, mine] of [[env, label, true], ...(held ? [[held, overlayLabel, false]] : [])])
+        {
+            const was = into.ALFRED_CODE_HOOKS_OFF;
+            if (typeof was !== 'string' || !was.trim()) continue;
+            const now = was.split(',').map((h) => { const bare = h.trim().replace(/\.js$/i, '').toLowerCase(); return Object.hasOwn(renamedHooks, bare) ? renamedHooks[bare] : h; }).join(',');
+            if (now !== was) { into.ALFRED_CODE_HOOKS_OFF = now; if (mine) changed = true; log(`  ${lab} env: ALFRED_CODE_HOOKS_OFF = ${now} (a renamed hook re-spelled)`); }
+        }
+        if (!present('ALFRED_CODE_HOOKS_OFF'))
+        { env.ALFRED_CODE_HOOKS_OFF = ''; changed = true; log(`  ${label} env: ALFRED_CODE_HOOKS_OFF seeded (empty - every hook runs)`); }
+    }
 
     return changed;
 }
@@ -752,8 +796,17 @@ function writeSettings(opts)
     }
     const overlay = local && local.env && typeof local.env === 'object' && !Array.isArray(local.env) ? local.env : null;
     const overlayBefore = overlay && !createdLocal ? JSON.stringify(overlay) : null;
-    if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, docsPath, dataPath, autoCompact, memoryDb, hooksOff, hooksAnswered, inherited: inheritedEnv, overlay, overlayUnreadable: localUnreadable, sharedKeys, log, label,
-        overlayLabel: localFile ? path.basename(localFile) : undefined })) changed = true;
+    // The ledger row of a key in a file - under the name it had before this run's renames, when it was renamed. A file the
+    // ledger holds no env for (no stamp, or one from before the ledger) leaves the reseed to the value match, as it was.
+    const stackWrote = (fileLabel, key, value) =>
+    {
+        const rows = prior && prior.env ? prior.env[fileLabel] : null;
+        if (!rows) return true;
+        const names = [key, ...(migrations.renames || []).filter(([, to]) => to === key).map(([from]) => from)];
+        return names.some((n) => rows[n] === valueHash(value));
+    };
+    if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, docsPath, dataPath, autoCompact, memoryDb, hooksOff, hooksAnswered, renamedHooks: (renamed && renamed.hooks) || {}, inherited: inheritedEnv, overlay, overlayUnreadable: localUnreadable, sharedKeys, log, label,
+        overlayLabel: localFile ? path.basename(localFile) : undefined, stackWrote })) changed = true;
     // The auto-compact window per model (compactWindowSeeds). Claude Code reads it at session START only - measured
     // 2026-10-14: written mid-session it changed nothing in print or interactive mode, set before the start it compacted
     // at 76k of a 100k window - so it is this project's standing setting, never a per-run one, written in the project's

@@ -23,7 +23,7 @@
 // GATE 3 - retired: the 1.x alias gate, gone once every install moved onto the core.
 //
 // GATE 4 - a project never set up. A user-scope core enables every hook in EVERY repo the user
-// opens, and a repo nobody ran /alfred-code:setup in carries none of the rules the guards enforce -
+// opens, and a repo nobody ran /alfred-code:init in carries none of the rules the guards enforce -
 // so a plugin-launched hook there does nothing and writes nothing (no `.alfred/docs/` ledger or
 // history in a repo merely opened: R54). Set up means an install record in the project's `.claude/`,
 // or its git top level's, or - for a linked worktree - the main checkout's: the stamp, or a copied
@@ -287,7 +287,7 @@ function transcriptEntrypoint(file)
 // seats ran under AUTO (9a4ef375), and a post-compaction 'ask the user' that a literal follower would have ended an
 // overnight run on (c6142301). The project root is the env's or the payload's own cwd, never this process's cwd.
 const AUTO_STAMP_MAX_MS = 8 * 60 * 60 * 1000;
-// A stamp an auto-mode start writes (guard-fresh-session-start.js, `auto-mode` in a task or loop call) names its session on
+// A stamp an auto-mode start writes (guard-fresh-session-start.js, `--auto-mode` opening a task, capture, loop or issue call) names its session on
 // a `session: <id>` line. It is live for THAT session for as long as the run takes - an unattended loop outlives the 8h a
 // hand-written stamp gets - and never for another session in the same project, which the age and birth checks cannot
 // tell apart from it. A week is the backstop for a stamp whose run died without its close.
@@ -343,11 +343,26 @@ function autoStampLive(input, env)
 // ('Another Claude session sent a message:' over an `<agent-message>` frame - its transcript row is `isMeta` with
 // `origin.kind: peer`, which the payload does not carry). One test for every hook that reads a prompt as someone typing
 // (audit 2026-10-14 HK14: a hand-back ended auto-mode, drew the answer budget - 351 of 960 injections in a week - and
-// reset the monitor's turn).
+// reset the turn of the since-removed session monitor).
 const HARNESS_PROMPT_RE = /^\s*(?:<(?:task-notification|local-command-stdout|local-command-caveat|agent-message)\b|Another Claude session sent a message:)/;
 function harnessPrompt(prompt)
 {
     return HARNESS_PROMPT_RE.test(String(prompt || ''));
+}
+
+// TEXT A HOOK CANNOT READ (deep hooks review 2026-10-16, the user's ruling: the hooks read English only). Their word lists
+// are English, so a text whose letters are 30% or more outside ASCII is one they cannot judge - measured, the Ukrainian the
+// user and the model wrote read 72-100%, an English prompt quoting UI copy at most 29.7% - and each hook takes its safe
+// side: an auto-mode ask waits for the user, a length is logged and not held. A Latin-script language reads as English and
+// its words are missed by the lists, as they always were. (A commit consent is stricter: any non-ASCII letter in the
+// quote, guard-ungated-commit.js.)
+const UNREADABLE_SHARE = 0.3;
+function unreadable(text)
+{
+    const letters = String(text || '').match(/\p{L}/gu) || [];
+    if (!letters.length) return false;
+    const foreign = letters.filter((c) => c > '\u007f').length;
+    return foreign / letters.length >= UNREADABLE_SHARE;
 }
 
 // SHORT-LIVED LINKS (the user's ruling, 2026-10-14). A download link that carries its own short-lived token - Jira's
@@ -468,13 +483,13 @@ function standDown(hook, env, argv, { setUp = true } = {})
     catch { return false; }
 }
 
-// THE STOP CHAIN (hooks audit 2026-10-08, S1). Four hooks can block a Stop (the stop contract, answer length,
-// docs-session, the turn build check), and `stop_hook_active` is true whenever Claude Code continues because ANY of
+// THE STOP CHAIN (hooks audit 2026-10-08, S1). Three hooks can block a Stop (the stop contract,
+// docs-session, the turn build check; answer length did until 2026-10-20), and `stop_hook_active` is true whenever Claude Code continues because ANY of
 // them blocked ('true when Claude Code is already continuing as a result of a stop hook' - code.claude.com/docs/en/
 // hooks, Stop input). A blocker that stood down on the flag alone never judged the close rewritten after a SIBLING's
 // block ('Build fixed. Should I commit?' passed the stop contract). So each blocker marks its own block
 // (markStopHeld) and stands down on a continuation only when IT held this cycle (stopHeldThisCycle): every blocker
-// judges each rewritten close once more and blocks at most ONCE per cycle, so four blockers make at most four
+// judges each rewritten close once more and blocks at most ONCE per cycle, so three blockers make at most three
 // continuations - never a loop - with Claude Code's 8-consecutive-continuation cap the outer guard. A Stop with the
 // flag false opens a new cycle and clears the hook's marker. Where a marker could not be written (an unwritable dir)
 // a continuation stands down, the old reading - judging again there could block again.
@@ -553,7 +568,7 @@ function markStopHeld(hook, input, env)
 }
 
 // STATE HYGIENE (audit 2026-10-08 S9). The hooks' per-session state - the stop contract's markers and log, the
-// fresh-session offers, the read guard's range logs, the Stop-chain markers above, `<docs>/flow/monitor-*` and
+// fresh-session offers, the read guard's range logs, the Stop-chain markers above and
 // `trivial-*` - was never pruned. sweepStale removes the FILES in `dir` named with `prefix` and untouched for 7 days,
 // once per (dir, prefix) per process, inside a 50ms budget of its own (the docs-session sweep's pattern: a bounded,
 // fail-silent pass a hook makes when it writes its own state). A file exactly at the cutoff is kept.
@@ -611,18 +626,6 @@ function capLog(file, maxBytes = 1024 * 1024, keepBytes = 256 * 1024)
     catch { return false; }
 }
 
-// Did `hook` (another Stop blocker) hold this cycle, at or after `sinceMs` (this turn's typed prompt)? Read-only - the
-// answer-length hook's yield to the stop contract. The two run in parallel on a turn's first Stop, so a false there
-// only drops the yield line; on a continuation the sibling's marker is on disk.
-function stopHeldBy(hook, input, sinceMs, env)
-{
-    try
-    {
-        const st = fs.statSync(stopMarkerFile(hook, input, env));
-        return !Number.isFinite(sinceMs) || st.mtimeMs >= sinceMs;
-    }
-    catch { return false; }
-}
 
 // THE SCAN BUDGET - how much a guard reads before it stops and judges the rest UNREAD, the one home every guard reads
 // (2.1.6 re-verify 3 R3-M3, R3-m4). A shell command a guard judges can carry scripts it reads from disk, git aliases it
@@ -660,7 +663,7 @@ function scanBudget(limits = {})
 }
 
 // The dashes the house voice replaces with a single dash - the em-dash, the en-dash and the horizontal bar - ONE class for
-// the stop contract's ask deny and the answer-length Stop block, which disagreed ([\u2014\u2013] vs [\u2014\u2015], audit 2026-10-08).
+// the stop contract's ask deny (the answer hook's Stop block shared it until 2026-10-20; they disagreed before audit 2026-10-08).
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
-module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, harnessPrompt, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopHeldBy, stopMarkerFile, scanBudget, SCAN_LIMITS, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS };
+module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, harnessPrompt, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS };

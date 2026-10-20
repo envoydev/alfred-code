@@ -39,10 +39,11 @@ claude plugin install alfred-code@envoydev --scope project
 **2. Set it up** - inside Claude Code:
 
 ```text
-/alfred-code:setup
+/alfred-code:init
 ```
 
-It scans the project, shows what it recommends and why, and installs what you keep.
+It scans the project, shows what it recommends and why, and installs what you keep. Restart, then type it again: the
+second run finishes the one-time set-up.
 
 **3. Restart Claude Code, then finish:**
 
@@ -90,12 +91,11 @@ Each stack has three seats: a **designer** plans the change, an **implementer** 
 
 ## Commands
 
-The first time: **setup**, restart, **init**. After that: **update** when a release lands.
+The first time: **init**, restart, **init** again. After that: **update** when a release lands.
 
 | Command | What it does |
 | --- | --- |
-| `/alfred-code:setup` | First install: scan, recommend, install |
-| `/alfred-code:init` | One-time finish after the restart |
+| `/alfred-code:init` | First install: scan, recommend, install - then, after the restart, the one-time finish |
 | `/alfred-code:update` | Move to the newest release |
 | `/alfred-code:configure` | Add or remove skills, agents and servers |
 | `/alfred-code:status` | Show what is on and what gets used |
@@ -116,7 +116,7 @@ Skills you start by name. Every install has these.
 | `/task-version-upgrade` | A breaking upgrade, like .NET 10 |
 | `/capture-first-look` | A quick map of an unfamiliar project |
 | `/capture-architecture` | Write or refresh the architecture docs |
-| `/capture-project-awareness` | A run book: build, start, log in |
+| `/capture-awareness` | What is installed, the run book, sibling repos |
 | `/loop-code-quality` | Find and fix code-quality issues in rounds |
 
 Add what you want after the name:
@@ -142,10 +142,10 @@ More on the two task flows: [`docs/solve-skills-guide.md`](docs/solve-skills-gui
 
 | | Count | What it is |
 | --- | --- | --- |
-| **Skills** | 91 | house conventions and workflows |
+| **Skills** | 89 | house conventions and workflows |
 | **Agents** | 44 | designers, implementers, verifiers, reviewers |
 | **Rules** | 20 | always-on basics and per-file conventions |
-| **Hooks** | 18 | the guards, plus the docs, memory and history hooks |
+| **Hooks** | 17 | the guards, plus the docs, memory and history hooks |
 | **MCP servers** | 4 | alfred-navigation, alfred-documentation, alfred-memory (required) and the browser (optional), plus the opt-in desktop pair and mobile server |
 | **Plugins** | 3 | optional: claude-hud (recommended) and the C# and TypeScript language servers |
 
@@ -243,7 +243,7 @@ Under managed settings:
 
 - `strictKnownMarketplaces` registers nothing, and Claude Code refuses an `extraKnownMarketplaces` entry it does not admit: allow `{ "source": "github", "repo": "envoydev/alfred-code" }`, `anthropics/claude-plugins-official` (the LSP pair) and `jarrodwatts/claude-hud` if you keep it, then register the same three (`envoydev`, `claude-plugins-official`, `claude-hud`) in `extraKnownMarketplaces`.
 - Enable `alfred-code` and the three servers `alfred-navigation`, `alfred-documentation` and `alfred-memory` (each `@envoydev`) in `enabledPlugins`, and `claude-hud@claude-hud` if you want its status line.
-- `allowManagedHooksOnly` silently switches off all eighteen hooks - the guards never fire.
+- `allowManagedHooksOnly` silently switches off all seventeen hooks - the guards never fire.
 
 Details: [`docs/install-footprint.md`](docs/install-footprint.md#under-managed-settings).
 

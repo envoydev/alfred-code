@@ -737,6 +737,17 @@ function main()
     const ABORTS = { merge: ['MERGE_HEAD'], 'cherry-pick': ['CHERRY_PICK_HEAD'], revert: ['REVERT_HEAD'], rebase: ['rebase-merge', 'rebase-apply'], am: ['rebase-apply'] };
     const aborted = new Set();
     const topOf = (gitCwd) => { try { return gitIn(gitCwd)(['rev-parse', '--show-toplevel']).trim(); } catch { return null; } };
+    // A pathspec variable the same command assigned a LITERAL before the call is that literal (hooks review 2026-10-16,
+    // sessions 7376ac10 and 9968046e: `F=src/big.ts; sed -i ... $F; npm test; git checkout -- $F` was judged as the whole
+    // tree and named a dirty file the command never touched). A loop or `read` variable, a `$(...)` value and an unset
+    // name stay unknowable - the whole tree.
+    const argvOf = (call) => (call.argv || []).map((a) => (!/\$/.test(a) || !read.literalAt ? a : a.replace(/\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)/g, (m, br, bare) =>
+    {
+        const name = br || bare;
+        if (new RegExp(`\\bfor\\s+${name}\\b|\\bread\\b[^;&|\\n]*\\b${name}\\b|\\b${name}\\+=`).test(read.command)) return m;
+        const v = read.literalAt(name, call.at);
+        return v === null || v === '' ? m : v;
+    })));
     for (const call of read.calls)
     {
         const verb = call.sub;
@@ -768,7 +779,7 @@ function main()
             try { run(['rev-parse', '--verify', '--quiet', `${w}^{tree}`]); return true; }
             catch { return false; }
         };
-        const plan = gitPlan(verb, call.argv, call.config, isRev);
+        const plan = gitPlan(verb, argvOf(call), call.config, isRev);
         if (!plan) continue;
         // A git that cannot answer (not a repo, git absent) is no loss - never block on our own failure.
         try { losses.push(...readLoss(plan, run, gitCwd, aborted.size > 0 && aborted.has(topOf(gitCwd)))); }
@@ -796,7 +807,7 @@ function main()
         const gitCwd = read.callDir(call);
         overCapRead({ kind: 'tree', paths: [], target: undefined }, gitCwd, seenOverCap);
         let own = null;
-        try { own = gitPlan(call.sub, call.argv, call.config, () => false); } catch { own = null; }
+        try { own = gitPlan(call.sub, argvOf(call), call.config, () => false); } catch { own = null; }
         if (own && own.kind !== 'tree') overCapRead(own, gitCwd, seenOverCap);
     }
     // Text the reader could not read (an alias git cannot answer, a subcommand xargs supplies, text past the scan budget

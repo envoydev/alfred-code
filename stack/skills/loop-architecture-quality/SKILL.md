@@ -15,7 +15,7 @@ Best run in Claude Code, where you can dispatch the analysis and build seats and
 - The deliberate architecture analyze-assess-improve loop: it recaptures the structure map and the pros/cons findings every round, works the Must-fix weaknesses by tier - structural ones flagged for a user decision, never auto-applied - proposes but never writes any decision the run turns up, and loops until the fixable cons resolve or plateau.
 - Not for a code-quality polish (loop-code-quality), a single feature build (task-solve-cross), a capture-only run with no fixes (/capture-architecture alone), or test-suite and coverage weaknesses - the deliberate coverage analyze-and-improve loop covers those.
 
-**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it.
+**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
 
 ## Execution modes
 DELEGATED vs INLINE keys on dispatch capability, not file presence - a project can carry the agent files on disk with no Agent tool to dispatch them, which is still INLINE. Detection only names what is possible; the user picks: when dispatch is available, ask ONE question before ANALYZE and hold the answer for the run; the mark sits on the mode the `habits-execution-strategy` verdict picks (`parallel seats` moves it to the seats, listed first):
@@ -33,13 +33,15 @@ No dispatch capability is INLINE without asking - never offer seats that cannot 
 ## The loop
 
 ### 1. ANALYZE + ASSESS
-Two captures, in order, both Skill calls: first the `capture-architecture` capture over the target, for the map (its own UPDATE path is diff-scoped and cheap where the stamp already matches HEAD). Then the deliberate pros/cons capture, matched from the installed skill list by what it covers (it judges weaknesses, strengths and tiers over the map, the code and the decision log, recomputing `<docs-path>/quality/ARCHITECTURE-ASSESSMENT.md` fresh - it carries no zero-drift shortcut of its own, because nothing about that doc is cached, so it always runs in full). Hand each capture the run's mode and TARGET only - never a status of the findings (which shipped, which remain): the findings capture recomputes them from the code, and a status brief turned a reconcile into a patch of the old file. Past the fresh-session trigger (the resolved window's own absolute figure - 150,000 tokens on a 200k window, 400,000 on a 1M one, 300,000 on any other window and on one that cannot be read at all) a Skill call the fresh-session guard blocks is the gate working, not a fault - on 'continue', re-issue the same Skill call: the answered offer lets it through until the context grows 1.5x past it:
+Two captures, in order, both Skill calls: first the `capture-architecture` capture over the target, for the map (its own UPDATE path is diff-scoped and cheap where the stamp already matches HEAD). Then the deliberate pros/cons capture, matched from the installed skill list by what it covers (it judges weaknesses, strengths and tiers over the map, the code and the decision log, recomputing `<docs-path>/quality/ARCHITECTURE-ASSESSMENT.md` fresh - it carries no zero-drift shortcut of its own, because nothing about that doc is cached, so it always runs in full - one exception, below). Hand each capture the run's mode and TARGET only - never a status of the findings (which shipped, which remain): the findings capture recomputes them from the code, and a status brief turned a reconcile into a patch of the old file. Past the fresh-session trigger (the resolved window's own absolute figure - 180,000 tokens on a window under 300k, 400,000 on one of 1M or more, 280,000 on any other window and on one that cannot be read at all) a Skill call the fresh-session guard blocks is the gate working, not a fault - on 'continue', re-issue the same Skill call: the answered offer lets it through until the context grows 1.5x past it:
 
 ```ask
 The fresh-session guard held the capture at <N>k; a fresh session restarts at <M>k.
 - 'Resume in a fresh session (Recommended)' - this turn ends with the RESUME BLOCK
 - 'Continue here' - the same Skill call again
 ```
+
+The exception: round 1 of a run whose assessment's `As of:` sha is HEAD, on a clean tree, with no decision record newer than the assessment, may take it as the work list - through the reuse ask in `references/loop-mechanics.md` (that section only), put before the findings capture or any of its references is read; the end-of-loop reconcile still runs in full.
 
 The findings capture's output is this loop's work list: `<docs-path>/quality/ARCHITECTURE-ASSESSMENT.md`'s Must-fix weaknesses - each with a remediation and a tier, small / substantial / structural; counts are outputs, never targets - the tier being the routing key. The Worth-knowing and Deliberate-tradeoff buckets are left alone - do not 'fix' a conscious choice, and a Must-fix entry you decline this round goes on the in-run declined set (step 2) rather than being re-asked about again before this run ends.
 
@@ -57,7 +59,7 @@ Take the open weaknesses in leverage order (the assessment's top-few first) and 
      ```ask
      <plan id>, <N> tasks. Build it?
      - 'Approve and build (Recommended)' - stamp, then fan out
-     - 'Changes needed' - say what in Other
+     - 'Changes needed' - I ask what to change next, in plain text
      ```
   4. **Stamp the approval**, in four parts:
      - *Shape* - write `<docs-path>/flow/APPROVAL`, first line `APPROVED <plan id> - "<the user's words, verbatim>"`; the selected answer IS those words. The dispatch hook blocks an unstamped implementer; delete the file when the run completes.
@@ -110,7 +112,7 @@ The reconcile reruns both captures; <the substitute> covers <what>.
 
 A run that shipped nothing skips the reconcile - there is no drift to pick up. Then emit the final report - one line per field, a table where a field lists several items - with the fields `references/loop-mechanics.md` defines: **Outcome** (verdict + round), **Resolved**, **Deferred**, **Proposed decisions**, **Docs** (which captures ran at stop, or `skipped - nothing shipped`), **Baseline**, **Memories** (`memories purged: <names|none>`, fold-first), **Next actions**, **Mechanics** (`loop-mechanics.md: read` - the receipt for this step's Read; a report without it skipped the file).
 
-When the report closes with uncommitted work and no next round queued, the commit decision is the ask below, never a prose 'your call' bullet. The same close names what this round's runs started and still have up - a Docker container or compose stack, seeded integration-test data, a background process - and puts tear-down-vs-keep through the same AskUserQuestion call (started-nothing is said plainly, and what the round did not start is never touched):
+When the report closes with uncommitted work and no next round queued, delete the round's APPROVED stamp first - every implementer and verifier has returned, and the checkpoint's generic security seat bounces off a live one (an AUTO stamp stays with its owner, and the checkpoint runs that half inline) - then the commit decision is the ask below, never a prose 'your call' bullet. The same close names what this round's runs started and still have up - a Docker container or compose stack, seeded integration-test data, a background process - and puts tear-down-vs-keep through the same AskUserQuestion call (started-nothing is said plainly, and what the round did not start is never touched):
 
 ```ask
 <N> files changed, uncommitted.

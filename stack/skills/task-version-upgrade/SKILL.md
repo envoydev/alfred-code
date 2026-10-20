@@ -16,16 +16,16 @@ Read `references/upgrade-playbooks.md` before PLAN - the stack-keyed sequencing 
 
 - The deliberate version-upgrade flow for any BREAKING version event - a framework or runtime major, an EOL, a load-bearing package's breaking major: plan in-session (the published breaking-change surface crossed against located usage - applicable changes only), present the staged plan at an approval gate, then drive the execution stage by stage with a green gate after every stage.
 - Triggers also on 'plan the framework upgrade'. Routine non-breaking bumps need no skill: just bump.
-- `auto-mode` - the run unattended - starts ONLY on the user's typed word; its hard stops still wait for the user.
+- `--auto-mode` - the run unattended - starts ONLY on the user's typed flag; its hard stops still wait for the user.
 - Not for a feature that merely needs a newer package (the feature's own flow), or a red CI pipeline (issue-diagnoser-ci, or its single-chat CI-triage twin).
 
 ## Approval gate - and auto-mode
 
 The staged plan is presented and NOTHING is edited until the user approves - an upgrade is consequential. Two answers end the run early: 'just the plan' (exit after PLAN, hand over the plan) and 'stop'.
 
-**Under auto-mode the gate is answered, not skipped - and only when the user typed `auto-mode` on the call.** Never infer it from urgency, from a clean plan, or from past runs; the old `--auto` / 'auto mode' wording starts nothing, and the gate stands. The hook takes the gate's `(Recommended)` option, so an open user-level call still ends the run at 'Just the plan'. The hard stops in step 5 stay rails: under auto-mode their ask goes out with no `(Recommended)` mark, so it waits for the user. (Side effect worth knowing: an unattended run never pauses, so the model the session is on at run start carries the whole run; an attended run can switch at the approval pause and drop to a cheaper model for execution.)
+**Under auto-mode the gate is answered, not skipped - and only when the user typed `--auto-mode` on the call.** Never infer it from urgency, from a clean plan, or from past runs; the old `--auto`, 'auto mode' or bare `auto-mode` wording starts nothing, and the gate stands. The hook takes the gate's `(Recommended)` option, so an open user-level call still ends the run at 'Just the plan'. The hard stops in step 5 stay rails: under auto-mode their ask goes out with no `(Recommended)` mark, so it waits for the user. (Side effect worth knowing: an unattended run never pauses, so the model the session is on at run start carries the whole run; an attended run can switch at the approval pause and drop to a cheaper model for execution.)
 
-**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it.
+**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
 
 ## The run
 
@@ -47,7 +47,7 @@ The staged plan above: <n> stages, each with its verification and rollback point
 - 'Approve - execute through the seats (Recommended)' - each stage goes to the implementer seat and gates green before the next
 - 'Approve - execute in this session' - the stages run in order here, no seat; each still gates green
 - 'Just the plan' - exit here and hand over the plan
-- 'Stop - changes needed' - say what changes in Other
+- 'Stop - changes needed' - I ask what to change next, in plain text
 ```
 
 The mark moves to 'in this session' when the verdict reads `serial`; the run never drops the seats on its own call. With a user-level call still open, executing would guess its answer, so the plan is the recommendation:
@@ -56,7 +56,7 @@ The mark moves to 'in this session' when the verdict reads `serial`; the run nev
 The staged plan above is ready, but <n> user-level call(s) are open. Take the plan and settle them first.
 - 'Just the plan (Recommended)' - exit here with the plan; the open calls are yours to settle
 - 'Approve - execute the stages' - run the stages on the answers given in this same call, in the mode the verdict names
-- 'Stop - changes needed' - say what changes in Other
+- 'Stop - changes needed' - I ask what to change next, in plain text
 ```
 
 ### 5. EXECUTE - stage by stage

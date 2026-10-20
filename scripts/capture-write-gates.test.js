@@ -15,9 +15,9 @@ const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const squash = (s) => s.replace(/\s+/g, ' ');
 
 const ROUTE_FILES = [
-    'stack/skills/capture-project-awareness/references/doc-shape.md',
+    'stack/skills/capture-awareness/references/project.md',
     'stack/skills/capture-code-style/references/doc-shape.md',
-    'stack/skills/capture-related-projects/references/artifact-shapes.md',
+    'stack/skills/capture-awareness/references/related-projects.md',
 ];
 
 test('C9: every capture states one docs-engine write route - whole on a first capture, `set` on a re-run', () => {
@@ -85,11 +85,12 @@ test('audit 2026-10-08: each capture close is a literal template with its post-w
     for (const field of ['Doc:', 'Raw:', 'Verdicts:', 'Weak points:', 'Unmeasured:', 'Leftovers:'])
         assert.match(cov, new RegExp(`^${field} +\\S`, 'm'), `coverage close carries ${field}`);
     assert.ok(squash(cov).includes('`wc -l` COVERAGE.md after the write; a missing `## Resume` section is fixed before the report'), 'coverage measures its write');
-    const rel = read('stack/skills/capture-related-projects/SKILL.md');
-    for (const field of ['Rule:', 'Doc:', 'Skipped:', 'first_read:', 'Landed:'])
-        assert.match(rel, new RegExp(`^${field} +<`, 'm'), `related-projects close carries ${field}`);
-    assert.ok(squash(rel).includes('`node .claude/hooks/docs.js lint related-projects`'), 'related-projects lints its domain');
-    assert.ok(!rel.includes('Verify before reporting:'), 'the prose close is gone');
+    const aware = read('stack/skills/capture-awareness/SKILL.md');
+    for (const field of ['Agents:', 'Inventory:', 'Project:', 'Asked:', 'Unknown:', 'Credentials:', 'Value check:', 'Watch:', 'Related:', 'Landed:', 'Rule:'])
+        assert.match(aware, new RegExp(`^${field} +<`, 'm'), `awareness close carries ${field}`);
+    for (const ref of ['project', 'related-projects'])
+        assert.ok(squash(read(`stack/skills/capture-awareness/references/${ref}.md`)).includes('node .claude/hooks/docs.js lint awareness'), `${ref} lints the awareness domain`);
+    assert.ok(!aware.includes('Verify before reporting:'), 'the prose close is gone');
     const style = read('stack/skills/capture-code-style/SKILL.md');
     assert.match(style, /^Verify: +</m, 'code-style close carries Verify:');
     assert.ok(squash(style).includes('`node .claude/hooks/docs.js lint code-style`'), 'code-style lints its domain');
@@ -98,8 +99,7 @@ test('audit 2026-10-08: each capture close is a literal template with its post-w
     const look = read('stack/skills/capture-first-look/SKILL.md');
     for (const field of ['File:', 'Stack:', 'Modules:', 'Not declared:', 'Lint:', 'Replaced by:'])
         assert.match(look, new RegExp(`^${field} +`, 'm'), `first-look close carries ${field}`);
-    const caps = read('stack/skills/capture-project-awareness/SKILL.md');
-    assert.ok(caps.includes('node .claude/hooks/docs.js watch <one file DISCOVER cited>') && /^Watch: +</m.test(caps), 'the run book checks its watch globs');
+    assert.ok(read('stack/skills/capture-awareness/references/project.md').includes('node .claude/hooks/docs.js watch <one file DISCOVER cited>') && /^Watch: +</m.test(aware), 'the run book checks its watch globs');
 });
 
 // C12: the fresh-session figures the usage audit judges a session against are the hook's seeded defaults,
@@ -113,10 +113,10 @@ test('audit 2026-10-08: the usage audit quotes the fresh-session seeds the env c
         return Number(m[1]).toLocaleString('en-US');
     };
     const line = squash(read('stack/skills/capture-usage-report/references/diagnosis-discipline.md'));
-    assert.ok(line.includes(`\`ALFRED_CODE_DEFAULT_CONTEXT_WINDOW\`, ${seed('ALFRED_CODE_DEFAULT_CONTEXT_WINDOW')} seeded`), 'the default window');
-    assert.ok(line.includes(`\`ALFRED_CODE_FRESH_SESSION_1M\` (${seed('ALFRED_CODE_FRESH_SESSION_1M')} seeded)`), 'the 1M trigger');
-    assert.ok(line.includes(`\`ALFRED_CODE_FRESH_SESSION_200K\` (${seed('ALFRED_CODE_FRESH_SESSION_200K')})`), 'the 200k trigger');
-    assert.ok(line.includes(`\`ALFRED_CODE_FRESH_SESSION_DEFAULT\` (${seed('ALFRED_CODE_FRESH_SESSION_DEFAULT')} - a trigger at or above the window clamps to 90% of it`), 'the default trigger and its clamp');
+    assert.ok(line.includes(`\`ALFRED_CODE_CONTEXT_WINDOW_DEFAULT\`, ${seed('ALFRED_CODE_CONTEXT_WINDOW_DEFAULT')} seeded`), 'the default window');
+    assert.ok(line.includes(`\`ALFRED_CODE_CONTEXT_WINDOW_FOR_1M\` (${seed('ALFRED_CODE_CONTEXT_WINDOW_FOR_1M')} seeded)`), 'the 1M trigger');
+    assert.ok(line.includes(`\`ALFRED_CODE_CONTEXT_WINDOW_FOR_300K\` (${seed('ALFRED_CODE_CONTEXT_WINDOW_FOR_300K')} - the unlisted model's tier)`), 'the 300K trigger');
+    assert.ok(line.includes(`\`ALFRED_CODE_CONTEXT_WINDOW_FOR_200K\` (${seed('ALFRED_CODE_CONTEXT_WINDOW_FOR_200K')}; a trigger at or above the window clamps to 90% of it)`), 'the 200K trigger and its clamp');
     assert.match(read('stack/hooks/fresh-session.js'), /at >= window\) at = Math\.floor\(window \* 0\.9\)/, 'the clamp the line names is the hook\'s');
     // the privacy invariant sits where compaction never cuts it - before the run, not after ~18k chars
     const skill = read('stack/skills/capture-usage-report/SKILL.md');
@@ -126,7 +126,7 @@ test('audit 2026-10-08: the usage audit quotes the fresh-session seeds the env c
 });
 
 test('audit 2026-10-08: the inventory marks every capture a loop invokes as model-invocable by design', () => {
-    const inv = read('stack/skills/capture-agent-awareness/scripts/capabilities-inventory.js');
+    const inv = read('stack/skills/capture-awareness/scripts/capabilities-inventory.js');
     const set = /const MODEL_INVOCABLE_BY_DESIGN = new Set\(\[([^\]]*)\]\)/.exec(inv);
     const names = [...set[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
     for (const loop of ['loop-architecture-quality', 'loop-code-quality', 'loop-test-coverage'])
@@ -151,7 +151,7 @@ test('audit 2026-10-08: capture-architecture keeps its anecdotes in the evidence
 
 // Audit 2026-10-14 SKC01: three captures told the run to apply markdown-style to their doc under the docs root,
 // which markdown-docs.md and markdown-style itself exclude (the root belongs to the skill that writes it).
-// e1b790fe fixed capture-related-projects; the same wording now covers the other three.
+// e1b790fe fixed the related-projects capture; the same wording now covers the other three.
 test('audit 2026-10-14 SKC01: no capture loads markdown-style for its docs-root doc', () => {
     const files = [
         'stack/skills/capture-code-style/SKILL.md',
@@ -171,13 +171,14 @@ test('audit 2026-10-14 SKC01: no capture loads markdown-style for its docs-root 
 // Audit 2026-10-14 SKC05: the login ask's recommended option promised to add the account's keys to the sensitive
 // data, but every install writes that file and the run may never append to it - the report hands KEY= lines instead.
 test('audit 2026-10-14 SKC05: the login ask names the KEY= handoff, never a write to an existing sensitive-data file', () => {
-    const raw = read('stack/skills/capture-project-awareness/SKILL.md');
+    const raw = read('stack/skills/capture-awareness/SKILL.md');
     const ask = (raw.match(/```ask\nHow does an agent log in\?[\s\S]*?```/) || [''])[0];
     assert.ok(ask, 'the login ask is a template');
     const first = ask.split('\n').find((l) => l.startsWith('- '));
     assert.match(first, /\(Recommended\)' - the report hands one `KEY=` line per key for `<data root>\/\.sensitive-data`/, 'the recommended option names the handoff');
     assert.doesNotMatch(ask, /its keys, empty, in/, 'no promised write');
-    assert.ok(squash(raw).includes('absent (an older install), Write it with the keys empty'), 'the absent-file write stays the stated exception');
+    const ref = squash(read('stack/skills/capture-awareness/references/project.md'));
+    assert.ok(ref.includes('The capture writes it only when the login answer asked for the keys and it is absent (an install older than that)') && ref.includes('every value EMPTY'), 'the absent-file write stays the stated exception');
 });
 
 // Audit 2026-10-14 SKC06: the usage-report body sat at the compaction re-attach cut with the `Discipline: read`

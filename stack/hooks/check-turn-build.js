@@ -1,14 +1,18 @@
 #!/usr/bin/env node
-// check-turn-build.js - PostToolUse (Write|Edit|MultiEdit, and the navigation server's rename_symbol /
-// safe_delete_symbol) + Stop. ONE scoped build check per turn,
+// check-turn-build.js - Stop only. ONE scoped build check per turn,
 // seeded OFF: nothing runs unless ALFRED_CODE_TURN_CHECK=1, and it turns on per project only after a
 // measured week shows 'green' claims with no check behind them.
-//   PostToolUse  appends the written path to <docs-path>/flow/turn-edits-<session>.
-//   Stop         when that list holds source files, runs ONE check per nearest root - `tsc --noEmit -p
-//                <tsconfig>` (the project's own node_modules/.bin/tsc) for TypeScript, `dotnet build
-//                --no-restore -v q <csproj>` for C# - and hands the first 20 error lines back as a
-//                Stop block. Once per turn: the continuation Stop after ITS OWN block (the Stop chain)
-//                passes, and its fix-up edits wait in the list for the next turn's check.
+//   Stop  reads the turn's changed files from git - every path `git status` lists whose mtime is past the
+//         previous Stop's marker (<docs-path>/flow/turn-check-<session>), or past the session's start on its
+//         first Stop - and when they hold source files, runs ONE check per nearest root - `tsc --noEmit -p
+//         <tsconfig>` (the project's own node_modules/.bin/tsc) for TypeScript, `dotnet build --no-restore
+//         -v q <csproj>` for C# - and hands the first 20 error lines back as a Stop block. Once per turn: the
+//         continuation Stop after ITS OWN block (the Stop chain) passes and leaves the marker alone, so its
+//         fix-up edits are the next turn's check.
+// It was a PostToolUse hook on every edit too, listing the written paths - a process the model waited on after
+// each edit, in every project, while no project had the check on (hooks review 2026-10-16). Git already knows
+// what changed; the marker's time says which changes are this turn's. Outside a git work tree, or with no
+// marker and no readable session start, nothing is this turn's and the check passes.
 // A missing compiler, a timeout or anything unreadable is a pass: this hook reports errors, it never
 // guesses them. It carries its OWN declared timeout (60s, install/settings.js HOOK_TIMEOUTS) - the one
 // documented exception to the 10s rule - and keeps its checks inside BUDGET_MS of it.
@@ -19,10 +23,6 @@ const { spawnSync } = require('child_process');
 
 const MAX_LINES = 20;
 const BUDGET_MS = 50000;
-const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit']);
-// The navigation server's two edit tools the stack keeps on (I12, the user's ruling of 2026-09-29): each changes the
-// file its `relative_path` names, relative to the project root. Both routes' spellings, written as a pattern.
-const NAV_EDIT = /^mcp__(?:plugin_(?:alfred-)?navigation_)?(?:alfred-)?navigation__(?:rename_symbol|safe_delete_symbol)$/;
 const TS_FILE = /\.(ts|tsx|mts|cts)$/i;
 const CS_FILE = /\.cs$/i;
 const WIN = process.platform === 'win32';
@@ -105,9 +105,58 @@ function runChecks(roots, { budgetMs = BUDGET_MS, spawn = spawnSync, now = Date.
   return { errors, outcomes };
 }
 
-module.exports = { groupRoots, runChecks, commandFor, MAX_LINES, BUDGET_MS };
+// This turn's changed files, absolute: every path `git status` lists under the repo - tracked changes and untracked
+// files, a rename by its new name - whose mtime is past `since`. A deleted file has no mtime and is skipped: the
+// edits that removed its uses are listed. Not a git work tree, or git failing: none. Git prints the repo top's REAL
+// path (macOS: /private/var/... for a /var/... project dir), so the files are spelled from `root` as the caller
+// spells it - groupRoots holds every file to that root.
+function changedSince(root, since, { spawn = spawnSync } = {})
+{
+  const git = (args) => spawn('git', ['-c', 'core.quotePath=false', ...args], { cwd: root, encoding: 'utf8', timeout: 10000, windowsHide: true, maxBuffer: 64 * 1024 * 1024 }) || {};
+  const top = git(['rev-parse', '--show-toplevel']);
+  const status = top.status === 0 ? git(['status', '--porcelain=v1', '-z', '--untracked-files=all']) : null;
+  if (!status || status.status !== 0) return [];
+  let realRoot = root;
+  try { realRoot = fs.realpathSync.native(root); } catch { /* a root that cannot be resolved keeps its spelling */ }
+  const base = path.resolve(root, path.relative(realRoot, String(top.stdout).trim()));
+  const entries = String(status.stdout || '').split('\0');
+  const files = [];
+  for (let i = 0; i < entries.length; i++)
+  {
+    const e = entries[i];
+    if (e.length < 4) continue;
+    if (/^[RC]/.test(e)) i++; // the rename's or copy's old path follows its new one
+    const file = path.resolve(base, e.slice(3));
+    try { if (fs.statSync(file).mtimeMs > since) files.push(file); } catch { /* deleted: no mtime */ }
+  }
+  return files;
+}
 
-if (require.main === module)
+// When this session began: the transcript's first timestamp, else the file's birth time, else 0 (unknown).
+function sessionStartMs(transcript)
+{
+  if (!transcript) return 0;
+  try
+  {
+    const fd = fs.openSync(transcript, 'r');
+    const buf = Buffer.alloc(65536);
+    const n = fs.readSync(fd, buf, 0, buf.length, 0);
+    fs.closeSync(fd);
+    const m = /"timestamp"\s*:\s*"([^"]+)"/.exec(buf.toString('utf8', 0, n));
+    const at = m ? Date.parse(m[1]) : NaN;
+    if (at > 0) return at;
+    const born = fs.statSync(transcript).birthtimeMs;
+    return born > 0 ? born : 0;
+  }
+  catch { return 0; }
+}
+
+// THE STOP STEP - run by history-session.js inside its own Stop process (the user's ruling of 2026-10-16: this hook
+// started a node process every turn to read a switch that is off in every project), or by this file's own wiring where
+// history-session is not wired. Its gates are its own, so history switched off leaves the check alone and the reverse.
+// Returns { code, stderr }: 2 blocks the stop with the text; 0 passes. Never throws, never exits.
+const PASS = Object.freeze({ code: 0, stderr: '' });
+function stopCheck(payload)
 {
   // STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in
   // every hook. Fail-open: envOf falls back to the bare ALFRED_CODE_ read (pre-2.0.0 behaviour: 'an
@@ -129,50 +178,45 @@ if (require.main === module)
     }
     // the hook profile applies here: strict reads the seeded 0 as on
     if (typeof prelude.switchOn === 'function') switchOn = (suffix) => prelude.switchOn(suffix);
-    if (prelude.standDown('check-turn-build')) process.exit(0);
+    if (prelude.standDown('check-turn-build')) return PASS;
+    // The plugin's copy also steps aside for a copied history-session: on the copy route that copy carries the check
+    // (its row folds into history-session's), so the plugin's would run it a second time.
+    if (typeof prelude.yieldToCopiedTwin === 'function' && prelude.yieldToCopiedTwin('history-session')) return PASS;
   }
   catch { /* an install without the prelude runs the hook unchanged */ }
-  if (!switchOn('TURN_CHECK')) process.exit(0);
-
-  let payload;
-  try { payload = JSON.parse(fs.readFileSync(0, 'utf8')); } catch { process.exit(0); }
-  if (!payload || typeof payload !== 'object') process.exit(0);
-  // GATE 6 (hook-prelude.js): a Cursor payload runs only the protective guards - outside the try, a caller's exit must not be swallowed.
+  if (!switchOn('TURN_CHECK')) return PASS;
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return PASS;
+  // GATE 6 (hook-prelude.js): a Cursor payload runs only the protective guards.
   let cursorOff = false;
   try { cursorOff = require('./hook-prelude.js').cursorStandDown(payload, __filename); } catch { /* no prelude: run */ }
-  if (cursorOff) process.exit(0);
+  if (cursorOff) return PASS;
   const event = payload.hook_event_name;
   const root = path.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd());
   const docs = path.resolve(root, envOf(process.env, 'DOCS_PATH') || '.alfred/docs');
   const sid = String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_');
-  const list = path.join(docs, 'flow', `turn-edits-${sid.replace(/[^A-Za-z0-9_-]/g, '_')}`);
+  const marker = path.join(docs, 'flow', `turn-check-${sid.replace(/[^A-Za-z0-9_-]/g, '_')}`);
 
-  if (event === 'PostToolUse')
+  if (event !== 'Stop') return PASS;
+  // The continuation after OUR block passes and leaves the marker where the blocked Stop set it, so the fix-up edits
+  // are the next turn's check - once per turn. One a sibling Stop hook caused is checked: its fix-up edits are this
+  // turn's (hook-prelude.js, the Stop chain - audit 2026-10-08 S1).
+  if (stopHeld(payload)) return PASS;
+
+  // This turn began at the previous Stop's marker, or - the session's first Stop - when the session began. The marker
+  // moves to now before the check, so an edit made after this Stop is the next turn's.
+  let since = 0;
+  try { since = fs.statSync(marker).mtimeMs; } catch { since = sessionStartMs(String(payload.transcript_path || '')); }
+  try
   {
-    const input = payload.tool_input && typeof payload.tool_input === 'object' ? payload.tool_input : {};
-    const written = WRITE_TOOLS.has(payload.tool_name) && input.file_path ? path.resolve(String(payload.cwd || root), String(input.file_path))
-      : NAV_EDIT.test(String(payload.tool_name || '')) && input.relative_path ? path.resolve(root, String(input.relative_path)) : null;
-    if (!written) process.exit(0);
-    try
-    {
-      fs.mkdirSync(path.dirname(list), { recursive: true });
-      fs.appendFileSync(list, `${written}\n`);
-    }
-    catch { /* a lost path only skips that file's check */ }
-    process.exit(0);
+    fs.mkdirSync(path.dirname(marker), { recursive: true });
+    fs.writeFileSync(marker, `${new Date().toISOString()}\n`);
+    const prelude = require('./hook-prelude.js');
+    if (typeof prelude.sweepStale === 'function') prelude.sweepStale(path.dirname(marker), 'turn-check-');
   }
-  if (event !== 'Stop') process.exit(0);
-  // The continuation after OUR block passes, and keeps what it wrote for the next turn's check - once per turn. One a
-  // sibling Stop hook caused is checked: its fix-up edits are this turn's (hook-prelude.js, the Stop chain - audit
-  // 2026-10-08 S1).
-  if (stopHeld(payload)) process.exit(0);
-
-  let files = [];
-  try { files = [...new Set(fs.readFileSync(list, 'utf8').split('\n').map((l) => l.trim()).filter((l) => path.isAbsolute(l)))]; }
-  catch { process.exit(0); }
-  try { fs.rmSync(list, { force: true }); } catch { /* the next turn re-checks these files, no harm */ }
-  const roots = groupRoots(files, root);
-  if (!roots.length) process.exit(0);
+  catch { /* no marker: the next Stop measures from the session start again */ }
+  if (!since) return PASS;
+  const roots = groupRoots(changedSince(root, since), root);
+  if (!roots.length) return PASS;
   const { errors, outcomes } = runChecks(roots);
   // A root left unchecked because it was never restored is one `mode: probe` row, so the week's tally can tell a
   // checked turn from one the check could not judge; the block rate skips it like every mode row.
@@ -190,7 +234,7 @@ if (require.main === module)
     }
     catch { /* a log row never throws */ }
   }
-  if (!errors.length) process.exit(0);
+  if (!errors.length) return PASS;
 
   const ran = outcomes.filter((o) => o.outcome === 'errors').map((o) => o.root);
   const commands = roots.filter((r) => ran.includes(r.config)).map((r) => (r.kind === 'ts'
@@ -206,12 +250,24 @@ if (require.main === module)
     })}\n`);
   }
   catch { /* a log row never throws */ }
-  process.stderr.write(
-    `This turn changed source files and the build check for them fails - ${commands.join('; ')}.\n` +
-    `The first ${errors.length} error line(s):\n${errors.join('\n')}\n` +
-    'Fix them, or say plainly why they stand, before ending the turn. The check runs once per turn;\n' +
-    'ALFRED_CODE_TURN_CHECK=0 in the settings.json env switches it off.\n',
-  );
   markHeld(payload);
-  process.exit(2);
+  return {
+    code: 2,
+    stderr: `This turn changed source files and the build check for them fails - ${commands.join('; ')}.\n` +
+      `The first ${errors.length} error line(s):\n${errors.join('\n')}\n` +
+      'Fix them, or say plainly why they stand, before ending the turn. The check runs once per turn;\n' +
+      'ALFRED_CODE_TURN_CHECK=0 in the settings.json env switches it off.\n',
+  };
+}
+
+module.exports = { groupRoots, runChecks, commandFor, changedSince, sessionStartMs, stopCheck, MAX_LINES, BUDGET_MS };
+
+// Its own wiring - the copy route with history-session not picked, or an install the fold has not reached yet.
+if (require.main === module)
+{
+  let payload = null;
+  try { payload = JSON.parse(fs.readFileSync(0, 'utf8')); } catch { process.exit(0); }
+  const r = stopCheck(payload);
+  if (r.stderr) process.stderr.write(r.stderr);
+  process.exit(r.code);
 }

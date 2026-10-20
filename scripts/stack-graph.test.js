@@ -63,19 +63,19 @@ test('the committed stack-graph.json is in sync with a fresh build', () => {
         'run `node scripts/stack-graph.js --write` and commit the result');
 });
 
-test('capture-agent-awareness documents every MCP without pulling a single edge (doc-mention exception)', () => {
+test('capture-awareness documents every MCP without pulling a single edge (doc-mention exception)', () => {
     // Its body backticks all 8 servers as the routing map it stamps into the generated
     // rule - treating those as dependencies used to lock the whole MCP baseline into any
     // install that picked it. The graph builder strips the edges for doc-mention skills.
-    const s = graph.skills['capture-agent-awareness'];
-    assert.ok(s, 'capture-agent-awareness must be in the graph');
+    const s = graph.skills['capture-awareness'];
+    assert.ok(s, 'capture-awareness must be in the graph');
     assert.deepStrictEqual(s.mcps, [], 'no skill->mcp edges - the mentions are subject matter, not needs');
     assert.deepStrictEqual(s.plugins, [], 'no skill->plugin edges either');
 });
 
 test('the hook catalog carries the installer HOOKS block basenames', () => {
     assert.deepStrictEqual(graph.catalog.hooks,
-        ['check-turn-build', 'docs-session', 'guard-answer-length', 'guard-catastrophic-rm', 'guard-config-protection', 'guard-cross-project-write', 'guard-desktop-exec', 'guard-fresh-session-start', 'guard-protected-force-push', 'guard-read-whole-file', 'guard-secret-value', 'guard-stop-contract', 'guard-unapproved-dispatch', 'guard-ungated-commit', 'history-session', 'instrument-tool-usage', 'memory-session', 'monitor-session'],
+        ['check-turn-build', 'docs-session', 'guard-answer', 'guard-catastrophic-rm', 'guard-config-protection', 'guard-cross-project-write', 'guard-desktop-exec', 'guard-fresh-session-start', 'guard-protected-force-push', 'guard-read-whole-file', 'guard-secret-value', 'guard-stop-contract', 'guard-unapproved-dispatch', 'guard-ungated-commit', 'history-session', 'instrument-tool-usage', 'memory-session'],
         'catalog.hooks mirrors HOOKS=( ... ) sans .js, sorted');
 });
 

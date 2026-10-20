@@ -95,7 +95,7 @@ const PLUGIN_MARKETPLACE_URLS = new Set([
 const NON_SKILL_TOKENS = new Set([
     // the AGENTS.template.md rules table's slash-only-capture notation - a marker, not a skill.
     'user-run',
-    // the task and loop skills' mode word (`/loop-code-quality auto-mode`) - an argument the hooks read, not a skill.
+    // the old bare mode word the task, capture and loop skills name as starting nothing (`/loop-code-quality --auto-mode` is the flag) - not a skill.
     'auto-mode',
     // the commit-gate hook, referenced by name from alfred-git.md and task-verify-code - a hook, not a skill.
     'guard-ungated-commit',
@@ -136,11 +136,10 @@ const NON_SKILL_TOKENS = new Set([
     // Claude Code SKILL.md frontmatter field (manual-only skills), backticked in
     // prose in task-solve-cross + the base template - a field name, not a skill.
     'disable-model-invocation',
-    // the two GENERATED per-project awareness rules (written by the capture skills,
-    // never in the installer manifest) - rule file names, not skills; referenced by
-    // task-solve-cross's in-session scoping step.
+    // the two GENERATED per-project rules task-solve-cross's in-session scoping step reads
+    // (written by the capture skills, never in the installer manifest) - rule file names, not skills.
     'alfred-architecture',
-    'alfred-related-context',
+    'alfred-awareness',
     // built-in Claude Code agent type named in the base template's navigation
     // guidance (don't delegate single-symbol lookups to it) - not a house skill.
     'general-purpose',
@@ -1114,6 +1113,29 @@ function lintAgentTools(label, text)
             + `spelling or drop it (tool names: https://code.claude.com/docs/en/tools-reference)`);
 }
 
+// 64. The installer knows an older stack copy of a skill from a project's own by its heading (frontmatter `name` +
+// `description`): meta/skill-headings.json hashes every heading the stack has shipped, generated from git history by
+// scripts/skill-headings.js. A current heading missing from it means a description changed without the generator run -
+// the copies made under it would read as the project's own once the next change lands (M3, 2026-10-16: 42 such copies
+// in two installs were never updated).
+function lintSkillHeadings(root = ROOT)
+{
+    const { headingOf, headingHash, pastHeadings } = require('./install/skill-headings.js');
+    const past = pastHeadings(root);
+    if (!past.size) return ['meta/skill-headings.json is missing or unreadable - run `npm run skill-headings` (check 64)'];
+    const skillsDir = path.join(root, 'stack', 'skills');
+    const out = [];
+    for (const name of fs.readdirSync(skillsDir).sort())
+    {
+        const file = path.join(skillsDir, name, 'SKILL.md');
+        if (!fs.existsSync(file)) continue;
+        const heading = headingOf(fs.readFileSync(file, 'utf8'));
+        if (heading && !(past.get(name) && past.get(name).has(headingHash(heading))))
+            out.push(`stack/skills/${name}/SKILL.md: its heading (name + description) is not in meta/skill-headings.json - run \`npm run skill-headings\` (check 64)`);
+    }
+    return out;
+}
+
 // 43. Every agent's `tools:` allowlist must grant the shared memory MCP's store, search and list
 // tools. The memory MCP is the required shared memory (CLAUDE.md's MCP catalog): a seat that can
 // search but not save, or save but not search, defeats the point - the spec gives every seat both,
@@ -1182,17 +1204,24 @@ const ASK_FLOW_TEMPLATES = {
     'loop-architecture-quality': 10, 'loop-code-quality': 10, 'loop-test-coverage': 8, 'task-implement': 10, 'task-build-from-scratch': 5,
 };
 const ASK_FLOW_SKILLS = Object.keys(ASK_FLOW_TEMPLATES);
-// The setup / configure walk's layer asks are templates too (2026-09-29: a walk with whole-layer verdicts only left every
+// The init / configure walk's layer asks are templates too (2026-09-29: a walk with whole-layer verdicts only left every
 // per-row change to typing). Pinned per file like the flow skills, so a layer ask dropped back to prose goes red.
 const SETUP_ASK_TEMPLATES = {
     // +1: the mobile-control ask (2026-10-13).
     'setup-plugin/references/walk.md': 13,
-    // +1: screen B's compact-or-fresh-session ask (2026-10-14).
-    'setup-plugin/commands/setup.md': 3,
+    // +1: screen B's compact-or-fresh-session ask (2026-10-14). The install phase of /alfred-code:init since setup merged
+    // into it (2026-10-17).
+    'setup-plugin/references/init-install.md': 3,
+    // the legacy-unstamped ask: update this install or install from scratch (2026-10-17).
+    'setup-plugin/commands/init.md': 1,
     // +2: step 1's closing ask, one template per case (audit 2026-10-11, session a9e06780).
     'setup-plugin/commands/configure.md': 6,
     // audit 2026-10-11: update's three asks plus step 6's re-spell of the project's own AGENTS.md (session b3f8193f).
-    'setup-plugin/commands/update.md': 4,
+    // Audit 2026-10-20 C15: update.md is a router, so a gate-refused run carries none of them - the data-root and
+    // instruction-file asks ride the walk (steps 1-3), the re-spell and git-hygiene asks the close (steps 6-8).
+    'setup-plugin/commands/update.md': 0,
+    'setup-plugin/references/update-walk.md': 2,
+    'setup-plugin/references/update-close.md': 2,
     // validate's AGENTS.md check ask, 'Leave them' recommended and first (audit 2026-10-11, session 6288ad94).
     'setup-plugin/commands/validate.md': 1,
 };
@@ -1232,9 +1261,24 @@ function lintSetupAskPresence(files)
 // A label is the text between `- '` and the LAST quote before ` - `, so an apostrophe inside it ('Hold - don't commit')
 // stays in the label; an option with no why ends at its closing quote.
 const askLabel = (line) => { const m = line.match(/^- '(.*)' - /) || line.match(/^- '(.*)'\s*$/); return m ? m[1] : ''; };
-function lintAskTemplates(files)
+// An option that tells the user to TYPE INTO OTHER returns only its label, so the text never arrives - the stop contract
+// denies such an ask on its first send (guard-stop-contract.js OTHER_RE). The templates taught exactly that ('say what
+// changes in Other', 14 lines in 10 skills) and every flow run paid one denied round trip (audit 2026-10-20 C01). The
+// regex is READ from the hook's own line, never copied, so the two cannot drift; null when the line is gone.
+const STOP_HOOK = path.join(__dirname, '..', 'stack', 'hooks', 'guard-stop-contract.js');
+function hookOtherRe(file = STOP_HOOK, fsLike = fs)
+{
+    try
+    {
+        const m = /^const OTHER_RE = \/(.+)\/([a-z]*);\s*$/m.exec(fsLike.readFileSync(file, 'utf8'));
+        return m ? new RegExp(m[1], m[2]) : null;
+    }
+    catch { return null; }
+}
+function lintAskTemplates(files, otherRe = hookOtherRe())
 {
     const findings = [];
+    if (!otherRe) findings.push(`stack/hooks/guard-stop-contract.js: no one-line \`const OTHER_RE = /.../;\` for check 61 to read - the ask templates' type-into-Other check cannot run`);
     for (const { file, text } of files)
     {
         // A template may sit indented inside a numbered step; its lines are read without that indent.
@@ -1250,6 +1294,13 @@ function lintAskTemplates(files)
             if (marks.length === 0) findings.push(`${where} has no option marked '(Recommended)' - mark exactly one, the move this stop's rule recommends`);
             else if (marks.length > 1) findings.push(`${where} has ${marks.length} options marked '(Recommended)' - exactly one carries the mark`);
             else if (marks[0] !== 0) findings.push(`${where}: the '(Recommended)' option is listed ${marks[0] + 1}${['st', 'nd', 'rd'][marks[0]] || 'th'} - list it first, where the approver's pick lands`);
+            // the hook reads `${label} ${description}`; the template line carries both
+            for (const l of otherRe ? options : [])
+            {
+                const label = askLabel(l);
+                const why = l.slice(`- '${label}'`.length).replace(/^\s*-\s*/, '');
+                if (otherRe.test(`${label} ${why}`)) findings.push(`${where}: the option '${label}' tells the user to type into Other - a picked option returns only its label, so the stop contract denies the ask (guard-stop-contract.js OTHER_RE); make it a label-only pick and ask for the detail in plain text after it`);
+            }
         }
     }
     return findings;
@@ -2228,16 +2279,16 @@ function main()
     }
 
     // 29. The capabilities usage policy carries a content stamp, and the stamp matches the block.
-    //     That block ships VERBATIM into every project's generated alfred-agent-awareness.md,
+    //     That block ships VERBATIM into every project's generated awareness/AGENTS-AWARENESS.md,
     //     and nothing could tell a project carrying a two-release-old copy from a current one - the
     //     generated rule is never re-fetched, only re-generated by a user re-run. The stamp is what
     //     `/alfred-code:validate` compares a project's copy against, so it has to be true here first.
     try
     {
-        const capPath = path.join(SKILLS_DIR, 'capture-agent-awareness', 'SKILL.md');
+        const capPath = path.join(SKILLS_DIR, 'capture-awareness', 'references', 'agents.md');
         const capLines = fs.readFileSync(capPath, 'utf8').split('\n');
         const start = capLines.findIndex((l) => l.startsWith('## Usage policy (fixed'));
-        if (start < 0) { flag('capture-agent-awareness/SKILL.md has no `## Usage policy (fixed ...)` heading - the stamped block moved or was renamed'); }
+        if (start < 0) { flag('capture-awareness/references/agents.md has no `## Usage policy (fixed ...)` heading - the stamped block moved or was renamed'); }
         else
         {
             const revLine = capLines[start + 1] || '';
@@ -2246,13 +2297,13 @@ function main()
             while (end < capLines.length && !capLines[end].startsWith('## ')) end += 1;
             const block = capLines.slice(start + 2, end).join('\n').trim();
             const actual = crypto.createHash('sha1').update(block).digest('hex').slice(0, 8);
-            if (!declared) flag('capture-agent-awareness/SKILL.md: the usage-policy block carries no `<!-- policy-rev: ... -->` line directly under its heading');
-            else if (declared !== actual) flag(`capture-agent-awareness/SKILL.md: policy-rev is ${declared} but the block hashes to ${actual} - the stamped policy changed, so bump the rev (projects compare their generated copy against it)`);
+            if (!declared) flag('capture-awareness/references/agents.md: the usage-policy block carries no `<!-- policy-rev: ... -->` line directly under its heading');
+            else if (declared !== actual) flag(`capture-awareness/references/agents.md: policy-rev is ${declared} but the block hashes to ${actual} - the stamped policy changed, so bump the rev (projects compare their generated copy against it)`);
         }
     }
     catch (err)
     {
-        flag(`capture-agent-awareness/SKILL.md is unreadable: ${err.message}`);
+        flag(`capture-awareness/references/agents.md is unreadable: ${err.message}`);
     }
 
     // 24. The shared-rules registry (meta/shared-rules.json) - the sanctioned multi-home
@@ -2282,9 +2333,10 @@ function main()
         try { migrationsCatalog = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'migrations.json'), 'utf8')); }
         catch { /* its own lint reports an unreadable migrations.json */ }
         const commandSrc = {};
-        for (const cmd of ['setup.md', 'configure.md', 'validate.md'])
+        // init's install phase lives in a reference file it reads (2026-10-17: setup merged into init).
+        for (const rel of ['references/init-install.md', 'commands/configure.md', 'commands/validate.md'])
         {
-            commandSrc[`commands/${cmd}`] = fs.readFileSync(path.join(ROOT, 'setup-plugin', 'commands', cmd), 'utf8');
+            commandSrc[rel] = fs.readFileSync(path.join(ROOT, 'setup-plugin', rel), 'utf8');
         }
         for (const finding of lintEnvironmentCatalog(envCatalog, seedSrc, migrationsCatalog, commandSrc))
         {
@@ -2493,6 +2545,9 @@ function main()
     try { seatDrift = require('./seat-tools.js').drift(); }
     catch (err) { seatDrift = [`meta/seat-tools.json or meta/mcp-tools.json could not be read (${err.message}), so no seat's tool lines were checked`]; }
     for (const finding of seatDrift) flag(finding);
+    // 64. meta/skill-headings.json holds every stack skill's CURRENT heading, so the next description change still knows
+    // this one (the installer's M3 claim of an older copy the stamp does not record, scripts/install/skill-headings.js).
+    for (const finding of lintSkillHeadings()) flag(finding);
     // 60. The inventory page's inline script parses - a broken string there renders an empty page.
     for (const finding of lintPageScripts()) flag(finding);
     // 60b. The inventory page shows every seat at its frontmatter pin.
@@ -2995,6 +3050,9 @@ function lintHooksEntry(liveIn)
         for (const guard of dispatcher.GUARDS) wired.add(`${guard}.js`);
     if (wired.has(`${fileDispatcher.SELF}.js`))
         for (const guard of fileDispatcher.NAMES) wired.add(`${guard}.js`);
+    // So does history-session's Stop process, for the hooks that ride it (the turn build check, 2026-10-16).
+    if (wired.has('history-session.js'))
+        for (const rider of require(path.join(ROOT, 'stack/hooks/history-session.js')).RIDERS) wired.add(`${rider}.js`);
     for (const file of fs.readdirSync(path.join(ROOT, 'stack/hooks')))
     {
         if (!file.endsWith('.js') || ENGINES.has(file) || wired.has(file)) continue;
@@ -3154,11 +3212,11 @@ function lintEnvironmentCatalog(catalog, seedSrc, migrations, commandSrc)
         if (!keys.has(key)) { out.push(`scripts/install/settings.js special-cases ${key}, which environment.json does not list`); }
         if (!namedInSeed.has(key)) { out.push(`${key} is a catalog row, but scripts/install/settings.js does not name it - the special case moved or was removed`); }
     }
-    // setup asks the `ask: true` rows on ONE AskUserQuestion screen, and the tool caps a call at four
+    // init's install phase asks the `ask: true` rows on ONE AskUserQuestion screen, and the tool caps a call at four
     // questions; a row with `asked_with` rides along with another row's question. Past four, the
     // fifth question is silently dropped by the tool - so the cap is enforced here, at authoring time.
     const asked = rows.filter(r => r.ask && !r.asked_with).length;
-    if (asked > 4) { out.push(`environment.json asks ${asked} questions on setup's environment screen - the AskUserQuestion cap is 4; fold one row into another with asked_with, or stop asking it`); }
+    if (asked > 4) { out.push(`environment.json asks ${asked} questions on init's environment screen - the AskUserQuestion cap is 4; fold one row into another with asked_with, or stop asking it`); }
     // A rename in migrations.json must land on a key the catalog owns, or validate would offer to
     // migrate a value into a variable nothing reads.
     for (const m of (migrations && migrations.migrations) || [])
@@ -3175,6 +3233,7 @@ function lintEnvironmentCatalog(catalog, seedSrc, migrations, commandSrc)
 
 module.exports = {
     hiddenChars,
+    lintSkillHeadings,
     lintWorkflows,
     lintPluginPlacement,
     lintHooksEntry,
@@ -3224,6 +3283,7 @@ module.exports = {
     lintReferencePointers,
     lintReferenceContents,
     lintAskTemplates,
+    hookOtherRe,
     lintFlowAskPresence,
     ASK_FLOW_SKILLS,
     ASK_FLOW_TEMPLATES,

@@ -1,6 +1,6 @@
 ---
 name: habits-root-cause
-description: "Use when a failure's cause is unproven, before the first fix - red test, build error, stack trace, flaky run. Not for a known error code, which catalogs hold."
+description: "Use when a failure's cause is unproven, before any fix - red test, build or auth error, stack trace, flaky run. Not for a known error code, which catalogs hold."
 ---
 
 # Root cause - one hypothesis, one change, then the fix
@@ -9,9 +9,9 @@ A fix aimed at a symptom moves the failure somewhere nobody is looking. It finds
 
 ## When to use
 
-- Fires BEFORE the first fix is written, for: a red test, a build or compile error, a stack trace, an exception, a crash, a flaky or intermittent failure, a regression, wrong output, 'it worked yesterday' - and again when a fix did not hold.
+- Fires BEFORE the first fix is written, for: a red test, a build or compile error, an auth or connection failure (a 401 / 403, a rejected token), a stack trace, an exception, a crash, a flaky or intermittent failure, a regression, wrong output, 'it worked yesterday' - and again when a fix did not hold.
 - The debugging method that proves the cause before any change is made to fix it.
-- Not for what a known failure signature usually means, which the signature catalogs cover, or a whole investigation from scattered evidence (logs, monitors, a customer report), which is the gated diagnose flow's job.
+- Not for what a known failure signature or error code usually means, which the signature catalogs cover, or a whole investigation from scattered evidence (logs, monitors, a customer report), which is the gated diagnose flow's job.
 
 ## The loop
 
@@ -21,7 +21,7 @@ A fix aimed at a symptom moves the failure somewhere nobody is looking. It finds
 4. **Compare with a case that works.** A sibling path in the same code, a passing test, the last green commit. List every difference, small ones included - that list is where the hypotheses come from.
 5. **One hypothesis, one change.** Write it as one line in your reply BEFORE the change - 'X fails because Y' - then make the smallest change or check that confirms or kills it, re-run, and read the result before the next. A cause worked out silently and stated only in the close is not a hypothesis - it is the fix explaining itself afterwards. Two changes at once prove nothing. A killed hypothesis is progress: revert its change before the next one, and note it so it is not tried twice.
 6. **Fix at the root, test first.** Where writing tests is in scope, a test that fails for the reason you found lands first. Then ONE fix for the cause - never a guard around the symptom, never a bundle of 'while I am here' edits - then the repro and the relevant suite, output quoted, per `habits-done-gate`. The repro still red after the fix means the hypothesis was wrong: revert the fix and go back to step 3.
-7. **Three fixes that did not hold: stop.** Three fixes that left the repro red, or that each surfaced a failure somewhere else, mean the shape is wrong, not the line. Put the design question to whoever owns the design - in a chat, ONE AskUserQuestion with the redesign recommended; a seat returns it in its report - instead of forcing a fourth fix.
+7. **Three fixes that did not hold: stop.** Three fixes that left the repro red, or that each surfaced a failure somewhere else, mean the shape is wrong, not the line. Put the design question to whoever owns the design - in a chat, ONE AskUserQuestion with the redesign recommended; a seat returns it in its report - instead of forcing a fourth fix. Each option names the measured quantity it changes, and what it claims about it ('memory stays bounded') agrees with the runs so far.
 
 No root cause in the code - the evidence points at the environment, timing or an outside service: say what was ruled out, then handle it where it surfaces (a retry, a timeout, a clear error) and add a log point that catches it next time.
 

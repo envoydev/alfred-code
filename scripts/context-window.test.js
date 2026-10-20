@@ -21,8 +21,8 @@ test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 
 // A Claude Code session hands its settings env to this process; every knob the arithmetic reads is
 // cleared so each case states exactly the values it runs with.
-const KNOBS = ['ALFRED_CODE_FRESH_SESSION_1M', 'ALFRED_CODE_FRESH_SESSION_200K', 'ALFRED_CODE_FRESH_SESSION_DEFAULT',
-  'ALFRED_CODE_DEFAULT_CONTEXT_WINDOW', 'ALFRED_CODE_HOOK_LOG_DIR', 'CLAUDE_CONFIG_DIR', 'CLAUDE_PROJECT_DIR',
+const KNOBS = ['ALFRED_CODE_CONTEXT_WINDOW_FOR_1M', 'ALFRED_CODE_CONTEXT_WINDOW_FOR_300K', 'ALFRED_CODE_CONTEXT_WINDOW_FOR_200K',
+  'ALFRED_CODE_CONTEXT_WINDOW_DEFAULT', 'ALFRED_CODE_AUTO_COMPACT', 'ALFRED_CODE_HOOK_LOG_DIR', 'CLAUDE_CONFIG_DIR', 'CLAUDE_PROJECT_DIR',
   'CLAUDE_CODE_AUTO_COMPACT_WINDOW', 'CLAUDE_CODE_AUTOCOMPACT_WINDOW'];
 const baseEnv = () => {
   const env = { ...process.env };
@@ -61,8 +61,8 @@ function offered(route, tp, extra = {}, logDir) {
   assert.ok(status === 0 || status === 2, `${route}: exit ${status} is neither pass nor offer`);
   return status === 2;
 }
-// The trigger a window takes with the seeded defaults.
-const triggerFor = (window) => (window === 1000000 ? 400000 : window === 200000 ? 150000 : 300000);
+// The trigger a window takes with the seeded defaults: the largest tier it reaches (fresh-session.js tierKeyOf).
+const triggerFor = (window) => (window >= 1000000 ? 400000 : window >= 300000 ? 280000 : 180000);
 
 // Every id the models pages list (platform.claude.com models overview and each legacy model's page, fetched
 // 2026-09-29), spelled as each platform spells it, against the page's context window. The fallback is the
@@ -82,7 +82,7 @@ test('every model id on the models pages takes its own window, not a sibling\'s 
   const route = Object.keys(HOOK_ROUTES)[0];
   for (const [id, window] of PAGE_IDS) {
     const at = triggerFor(window);
-    const extra = { ALFRED_CODE_DEFAULT_CONTEXT_WINDOW: '1000000' };
+    const extra = { ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '1000000' };
     assert.equal(offered(route, session(id, carry(at)), extra), false, `${id} (${window}): ${at} is AT its trigger`);
     assert.equal(offered(route, session(id, carry(at + 1)), extra), true, `${id} (${window}): ${at + 1} is past it`);
   }
@@ -108,28 +108,41 @@ for (const route of Object.keys(HOOK_ROUTES)) {
       'output tokens are not context - 399,999 read plus 90,000 output stays under');
   });
 
-  test(`${route}: a model the table lacks takes ALFRED_CODE_DEFAULT_CONTEXT_WINDOW, else the DEFAULT trigger`, () => {
+  test(`${route}: a model the table lacks runs in ALFRED_CODE_CONTEXT_WINDOW_DEFAULT and takes that window's tier`, () => {
     const cases = [
       ['1000000', 400000, 'the 1M fallback takes the 1M trigger'],
-      ['200000', 150000, 'a 200k fallback takes the 200k trigger'],
-      ['500000', 300000, 'a window that is neither named size takes the DEFAULT trigger'],
-      [undefined, 300000, 'no fallback set: the DEFAULT trigger'],
-      ['lots', 300000, 'a garbage fallback is no fallback'],
+      ['2000000', 400000, 'a window past 1M is still the 1M tier'],
+      ['999999', 280000, 'one under 1M is the 300K tier'],
+      ['500000', 280000, 'a window between 300k and 1M takes the 300K trigger'],
+      ['300000', 280000, 'a window AT 300k is the 300K tier'],
+      ['299999', 180000, 'one under 300k is the 200K tier'],
+      ['200000', 180000, 'a 200k fallback takes the 200K trigger'],
+      [undefined, 280000, 'no fallback set: the seeded 300,000 window, the 300K trigger'],
+      ['lots', 280000, 'a garbage fallback reads as 300,000'],
+      ['99999', 280000, 'a window under 100,000 reads as 300,000'],
     ];
     for (const [fallback, at, why] of cases) {
-      const extra = fallback === undefined ? {} : { ALFRED_CODE_DEFAULT_CONTEXT_WINDOW: fallback };
+      const extra = fallback === undefined ? {} : { ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: fallback };
       assert.equal(offered(route, session('claude-nova-9', carry(at)), extra), false, `${why}: ${at} passes`);
       assert.equal(offered(route, session('claude-nova-9', carry(at + 1)), extra), true, `${why}: ${at + 1} offers`);
     }
   });
 
   test(`${route}: the tier variables move the trigger, and 0 switches that tier off`, () => {
-    assert.equal(offered(route, session('claude-sonnet-5', carry(250001)), { ALFRED_CODE_FRESH_SESSION_1M: '250000' }), true, '_1M=250000: 250,001 offers');
-    assert.equal(offered(route, session('claude-sonnet-5', carry(250000)), { ALFRED_CODE_FRESH_SESSION_1M: '250000' }), false, '... 250,000 does not');
-    assert.equal(offered(route, session('claude-haiku-4-5', carry(120001)), { ALFRED_CODE_FRESH_SESSION_200K: '120000' }), true, '_200K=120000: 120,001 offers');
-    assert.equal(offered(route, session('claude-opus-5', carry(900000)), { ALFRED_CODE_FRESH_SESSION_1M: '0' }), false, '_1M=0: no offer at any size');
-    assert.equal(offered(route, session('claude-opus-5', carry(900000)), { ALFRED_CODE_FRESH_SESSION_200K: '0', ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' }), true,
+    assert.equal(offered(route, session('claude-sonnet-5', carry(250001)), { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '250000' }), true, '_FOR_1M=250000: 250,001 offers');
+    assert.equal(offered(route, session('claude-sonnet-5', carry(250000)), { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '250000' }), false, '... 250,000 does not');
+    assert.equal(offered(route, session('claude-haiku-4-5', carry(120001)), { ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '120000' }), true, '_FOR_200K=120000: 120,001 offers');
+    assert.equal(offered(route, session('claude-nova-9', carry(200001)), { ALFRED_CODE_CONTEXT_WINDOW_FOR_300K: '200000' }), true, '_FOR_300K=200000: an unlisted model offers at 200,001');
+    assert.equal(offered(route, session('claude-nova-9', carry(200000)), { ALFRED_CODE_CONTEXT_WINDOW_FOR_300K: '200000' }), false, '... 200,000 does not');
+    assert.equal(offered(route, session('claude-opus-5', carry(900000)), { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '0' }), false, '_FOR_1M=0: no offer at any size');
+    assert.equal(offered(route, session('claude-nova-9', carry(290000)), { ALFRED_CODE_CONTEXT_WINDOW_FOR_300K: '0' }), false, '_FOR_300K=0: no offer for an unlisted model');
+    assert.equal(offered(route, session('claude-opus-5', carry(900000)), { ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '0', ALFRED_CODE_CONTEXT_WINDOW_FOR_300K: '0' }), true,
       'the other tiers\' off switches do not reach a 1M row');
+    assert.equal(offered(route, session('claude-opus-5', carry(900000)), { ALFRED_CODE_FRESH_SESSION_1M: '0', ALFRED_CODE_FRESH_SESSION_DEFAULT: '0', ALFRED_CODE_DEFAULT_CONTEXT_WINDOW: '200000' }), true,
+      'the retired names are read by nothing');
+    assert.equal(offered(route, session('claude-opus-5', carry(900000)), { ALFRED_CODE_AUTO_COMPACT: '1' }), false, 'AUTO_COMPACT=1: no offer at any size');
+    assert.equal(offered(route, session('claude-haiku-4-5', carry(190000)), { ALFRED_CODE_AUTO_COMPACT: '1' }), false, '... on any tier');
+    assert.equal(offered(route, session('claude-opus-5', carry(900000)), { ALFRED_CODE_AUTO_COMPACT: '0' }), true, 'AUTO_COMPACT=0 keeps the offer');
   });
 
   test(`${route}: the account file's top-level autoCompactWindow lowers an Opus 5.5 window (audit HK03)`, () => {
@@ -143,8 +156,8 @@ for (const route of Object.keys(HOOK_ROUTES)) {
   });
 
   test(`${route}: a trigger at or above its window is clamped to 90% of the window`, () => {
-    // _200K=250000 can never be reached on a 200k window, so it becomes floor(200,000 x 0.9) = 180,000.
-    const env = { ALFRED_CODE_FRESH_SESSION_200K: '250000' };
+    // _FOR_200K=250000 can never be reached on a 200k window, so it becomes floor(200,000 x 0.9) = 180,000.
+    const env = { ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '250000' };
     assert.equal(offered(route, session('claude-haiku-4-5', carry(180000)), env), false, 'clamped trigger 180,000 - at it');
     assert.equal(offered(route, session('claude-haiku-4-5', carry(180001)), env), true, '180,001 is past it');
   });

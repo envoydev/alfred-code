@@ -199,7 +199,7 @@ test('M58: the six support seats each return a literal status: line', () =>
     assert.ok(squash(body('related-project-analyzer')).includes('Open with a literal `status: CHARACTERIZED | UNVERIFIED` line'));
 });
 
-// --- M60 lives in capture-project-awareness.test.js (the run-book line's trigger) --------------------
+// --- M60 lives in capture-awareness.test.js (the run-book line's trigger) --------------------
 
 // --- M59: the runaway caps are measured, not guessed -------------------------------------------------
 // Turns per run from 802 subagent transcripts on the maintainer's machine (by real path - 537 more were the same
@@ -337,7 +337,7 @@ test('agents F13: the diagnoser and analyzer copies are pinned', () =>
 
 test('agents F14 + F16: the run-book line leads with its condition, and the gatherer skips it when it never runs the app', () =>
 {
-    const line = 'When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app';
+    const line = 'When the run book `<docs-path>/awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app';
     for (const s of [...seats.filter((x) => x.endsWith('-verifier')), 'issue-diagnoser-runtime', 'evidence-gatherer', 'integration-reviewer'])
     {
         const text = squash(body(s));

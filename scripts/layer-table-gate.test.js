@@ -31,13 +31,13 @@ function run(rows, input = ask) {
 }
 
 test('denies the layer ask when the table ran but was never pasted', () => {
-  const r = run([typed('/alfred-code:setup'), say('[step 5/12 - agents] adjust the agent roster · next: skills'), table('agents'), result('t1', ' 1  x\ntotal: 43 agents - if fewer')]);
+  const r = run([typed('/alfred-code:init'), say('[step 5/12 - agents] adjust the agent roster · next: skills'), table('agents'), result('t1', ' 1  x\ntotal: 43 agents - if fewer')]);
   assert.strictEqual(r.status, 2);
   assert.match(r.stderr, /agents table ran/);
 });
 
 test('allows the ask once the footer line is in the assistant text', () => {
-  const r = run([typed('/alfred-code:setup'), table('agents'), result('t1', 'total: 43 agents'), say('```\n 1  x\ntotal: 43 agents - if fewer rows are visible above\n```')]);
+  const r = run([typed('/alfred-code:init'), table('agents'), result('t1', 'total: 43 agents'), say('```\n 1  x\ntotal: 43 agents - if fewer rows are visible above\n```')]);
   assert.strictEqual(r.status, 0);
 });
 
@@ -155,7 +155,7 @@ const own = (text) => [
   { type: 'assistant', message: { id: 'm9', role: 'assistant', content: [{ type: 'tool_use', id: OWN, name: 'AskUserQuestion', input: ask }] } },
 ];
 const footer = '```\n 1  x\ntotal: 20 rules\n```';
-const base = () => [typed('/alfred-code:setup'), table('rules'), result('t1', ' 1  x\ntotal: 20 rules')];
+const base = () => [typed('/alfred-code:init'), table('rules'), result('t1', ' 1  x\ntotal: 20 rules')];
 const write = (rows) => {
   const p = path.join(TMP, `${Math.random().toString(36).slice(2)}.jsonl`);
   fs.writeFileSync(p, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
@@ -212,12 +212,12 @@ test('a paste split into a text row and a tool_use row sharing one message.id pa
 
 test('a CRLF paste passes (Windows)', () => {
   const crlf = footer.replace(/\n/g, '\r\n');
-  const rows = [typed('/alfred-code:setup'), table('rules'), result('t1', ' 1  x\r\ntotal: 20 rules\r\n'), ...own(crlf)];
+  const rows = [typed('/alfred-code:init'), table('rules'), result('t1', ' 1  x\r\ntotal: 20 rules\r\n'), ...own(crlf)];
   assert.strictEqual(runWith(rows).status, 0);
 });
 
 test('a table re-run does not reset the valve', () => {
-  const rows = [typed('/alfred-code:setup'), table('rules'), ...denied(1, 'rules'), table('rules'), ...denied(2, 'rules'), table('rules'), ...denied(3, 'rules'), table('rules'), result('t1', 'total: 20 rules')];
+  const rows = [typed('/alfred-code:init'), table('rules'), ...denied(1, 'rules'), table('rules'), ...denied(2, 'rules'), table('rules'), ...denied(3, 'rules'), table('rules'), result('t1', 'total: 20 rules')];
   assert.strictEqual(run(rows).status, 0);
 });
 
@@ -252,7 +252,7 @@ test('the DELTA add / drop ask names its layer too', () => {
 });
 
 test('a layer ask passes once that layer table ran and was pasted', () => {
-  const r = run([typed('/alfred-code:setup'), recompute, result('r1', ''), table('hooks'), result('t1', 'total: 18 hooks'), say('```\n 1 | x\ntotal: 18 hooks\n```')], layerAsk('Hooks: keep all 18 on?'));
+  const r = run([typed('/alfred-code:init'), recompute, result('r1', ''), table('hooks'), result('t1', 'total: 17 hooks'), say('```\n 1 | x\ntotal: 17 hooks\n```')], layerAsk('Hooks: keep all 17 on?'));
   assert.strictEqual(r.status, 0);
 });
 
@@ -262,7 +262,7 @@ test('a layer-shaped ask outside a walk (no stack-select call) is untouched', ()
 
 test('the never-ran denial has its own valve of three', () => {
   const nr = (n) => [call(`n${n}`, 'AskUserQuestion', layerAsk('Rules: install?')), result(`n${n}`, 'alfred-code layer-table gate: the rules table never ran - x', true)];
-  const rows = [typed('/alfred-code:setup'), recompute, result('r1', ''), ...nr(1), ...nr(2)];
+  const rows = [typed('/alfred-code:init'), recompute, result('r1', ''), ...nr(1), ...nr(2)];
   assert.strictEqual(run(rows, layerAsk('Rules: install?')).status, 2);
   assert.strictEqual(run([...rows, ...nr(3)], layerAsk('Rules: install?')).status, 0);
 });

@@ -37,10 +37,10 @@ Before you scope a feature or dispatch any designer, load `habits-clarify` (the 
 
 Scoping is yours, not a seat's. Establish the task's true blast radius from what is already in context, plus a bounded look at the code:
 
-1. **Read what is pre-loaded.** The docs hook's start block carries the map (`alfred-architecture` points at the docs when the hook is off), and `alfred-related-context` the sibling entries with their `relation` and `seam` - the dependency directions; follow into the architecture map for the area the task names, by the route `alfred-navigation.md` sets.
+1. **Read what is pre-loaded.** The docs hook's start block carries the map (`alfred-architecture` points at the docs when the hook is off), and `alfred-awareness` the sibling entries with their `relation` and `seam` - the dependency directions; follow into the architecture map for the area the task names, by the route `alfred-navigation.md` sets.
 2. **Locate, bounded.** Verify the touched symbols and their one-level callers with the navigation server - **hard cap: 2 locating passes**; past that, dispatch architecture-analyzer (sonnet/medium), exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it), for a digest instead of reading on - the cheap seat absorbs the reads, you keep the judgment.
 3. **Walk the seam catalog.** Read `references/seam-catalog.md` - the stack-keyed traps that turn a 'local' task cross-domain (a shared DTO edit, a migration, an app-wide singleton service, an event contract); a discovered shared-interface edit is itself the cross-domain signal.
-4. **State the verdict:** the size line first, by the size table below (a trivial or small single-domain task runs that row's steps, never this pipeline), then the affected domains, the dependency direction (who produces, who consumes - from the related-context entries or the map), the risks the plan must absorb, and open questions (back to the clarify gate). The verdict CARRIES the seam check - one line naming the catalog traps the task touches, or 'no catalog trap applies - <why>'; a verdict without that line skipped step 3, not summarized it.
+4. **State the verdict:** the size line first, by the size table below (a trivial or small single-domain task runs that row's steps, never this pipeline), then the affected domains, the dependency direction (who produces, who consumes - from the sibling entries or the map), the risks the plan must absorb, and open questions (back to the clarify gate). The verdict CARRIES the seam check - one line naming the catalog traps the task touches, or 'no catalog trap applies - <why>'; a verdict without that line skipped step 3, not summarized it.
 
 The size line is `Size: <trivial|small|standard|cross> - <the signal that decided it>`; the size can be raised mid-run, never lowered.
 
@@ -68,10 +68,10 @@ Size <size> across <domains>. Run it <in this session | through the seats>: <the
 - **The answer is a precondition, not a formality.** Delivering a verdict and continuing into design, build, or any edit without the recorded answer is a protocol violation - record the answer in the ledger as `mode: <answer> - "<user words>"` before anything past this line runs, and a headless or CI-style invocation changes nothing: the turn still ends at the ask.
 - **A mode already named IS the answer.** An invocation that already names the mode (an agents opt-in, an explicit 'inline') is never re-asked - record it and continue. No dispatch capability is the current session without asking.
 - **Cross-domain carries its own recommendation.** The dispatched producer-first recommendation goes inside the ask; the user's pick stands.
-- **The recommended slot follows the session's state, not habit.** The smallest safe mode normally; past a chained-run trigger (a prior plan approval, APPROVAL stamp, or cycle/run ledger from THIS session is in context) or the install's fresh-session trigger for its context window (150,000 tokens on a 200k window, 400,000 on a 1M one, 300,000 on any other window), the fresh-session hand-off TAKES the recommended slot - and every ask this skill fires past that trigger carries the fresh-session option (this skill's job per ask; the stop hook backs it only at a clean close).
+- **The recommended slot follows the session's state, not habit.** The smallest safe mode normally; past a chained-run trigger (a prior plan approval, APPROVAL stamp, or cycle/run ledger from THIS session is in context) or the install's fresh-session trigger for its context window (180,000 tokens on a window under 300k, 400,000 on one of 1M or more, 280,000 on any other window), the fresh-session hand-off TAKES the recommended slot - and every ask this skill fires past that trigger carries the fresh-session option (this skill's job per ask; the stop hook backs it only at a clean close).
 - **Read the routing policy before you pick.** Dispatch is explicit-only house-wide; the modes (`single_chat`, `implementer_only`, `domain_trio`, `fanout_domain_trio`, `cross_domain_light`, `full_cross_domain`) with their flows and triggers, the seat pins, the 3-implementer fan-out cap, the decision ladder and the escalation guardrails are `references/execution-modes.md` - Read it before you pick, then pick the smallest mode, and write `routing policy: read` into the ledger beside the mode answer. Read `references/model-routing.md` with it when the pick lands on a dispatching mode: task class and risk -> the seat and effort to dispatch, the frontmatter pins as the defaults, and when to escalate.
 
-**Honor a fresh-session answer.** When any ask's answer picks the fresh-session hand-off, the turn ends with a short ack plus the paste-ready resume block - nothing else: no 'one more step', no new work in this chat. If the user keeps typing here afterwards, answer questions plainly, but route new WORK back to the hand-off once - then follow their explicit choice.
+**Honor a fresh-session answer.** When any ask's answer picks the fresh-session hand-off, the turn ends with the resume block - `/clear` in the project root, then `/task-solve-cross <its ledger>` ALONE in a fenced block, no step or task text in it - nothing else: no 'one more step', no new work in this chat. If the user keeps typing here afterwards, answer questions plainly, but route new WORK back to the hand-off once - then follow their explicit choice.
 
 For any single-stack mode, Read `references/domain-trio-protocol.md` and drive that stack's seats from the main session per it - its plan gate, fan-out, bounded verify loop and status routing are that file, never re-improvised. A user hint that names the surface ('frontend only', 'just the API') pins the stack up front: scoping shrinks to the change-scope read that feeds the designer brief, and routing goes straight down the trio ladder. Escalate the moment the guardrails in `references/execution-modes.md` trip.
 
@@ -88,7 +88,7 @@ When the mode is cross_domain_light or full_cross_domain, Read `references/cross
 ```ask
 The plan passed the audit<; the contract is recorded at v1>. Approve it to build.
 - 'Approve and build (Recommended)' - the implementers start on the gated plan
-- 'Changes needed' - edit the plan, or say what changes in Other
+- 'Changes needed' - edit the plan, or I ask what to change
 ```
  Build only on the approving answer. The stop is about the work, not the dispatch: an inline-mode run with a substantial change (a new feature, 3+ files) stops here identically - no hook guards inline edits, this ask IS the approval. Only words about the review waive it - 'run without plan review', 'no stops', or equivalent, in the ask or at any stop - and the run then continues with `plan_review: waived` in the ledger, never a silent skip. Opting into dispatch, naming a mode, or asking to run the whole flow end-to-end, in one pass or to a completion token is NOT a waiver (a CI-style ask still stops here).
 
@@ -99,7 +99,7 @@ On `path: merged` the design and the plan audit run as one step in this session,
 ```ask
 Full spec - designed and audited in one step (<the five audit verdicts>). Build it as planned in this session: <the one reason>.
 - 'Build as planned (Recommended)' - the build starts on the audited plan
-- 'Changes needed' - edit the plan, or say what changes in Other
+- 'Changes needed' - edit the plan, or I ask what to change
 ```
 
 Each dispatch brief stays lean and capability-wired: the seat's terseness discipline is `references/token-reduction.md`, and `references/capability-reuse.md` names the installed capability - house skill, documentation server, navigation server, memory handoff note - that removes a guess or a re-read.

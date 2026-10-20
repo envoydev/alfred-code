@@ -5,8 +5,10 @@
 //                    overrides and conflicts, and how to read by section; snapshots the tree for the end check
 //   SubagentStart -> the same orientation for a dispatched subagent (SessionStart context never reaches one), and
 //                    the snapshot the finish ask below compares against
-//   SubagentStop  -> what THAT agent WROTE, once: a file it wrote that also changed and hits watch.json blocks with
-//                    the owning sections quoted, so whoever made the change says whether the docs still hold
+//   PreToolUse SubagentHandback -> what THAT agent WROTE, once, before its report leaves: a file it wrote that also
+//                    changed and hits watch.json denies the hand-back with the owning sections quoted, so whoever made
+//                    the change says whether the docs still hold, and the retried hand-back carries the answer
+//   SubagentStop  -> the same ask for a seat that stopped without a hand-back (a harness with no such tool)
 //   PreToolUse    -> records reads of the docs and attributes each write to the agent that made it; holds the FIRST
 //                    change under a source root until a section was read, handing the covering section over inline -
 //                    what a merge just folded into mainline comes first
@@ -110,6 +112,11 @@ const agentKey = (input) => String(input.agent_id || input.agent_type || 'agent'
 // key and no seat can land in the main session's file. Structural, not a convention to remember.
 const MAIN_ACTOR = 'main.session';
 const actorKey = (input) => (input.agent_id || input.agent_type ? agentKey(input) : MAIN_ACTOR);
+// The checkout an actor's writes belong to, recorded beside them so another session on the same project can tell its
+// own paths from one of another project's (both are project-relative). On win32 the case is folded, as the file system does.
+const rootKey = (root) => { const k = toPosix(path.resolve(String(root || '.'))); return process.platform === 'win32' ? k.toLowerCase() : k; };
+// The temp dir listed once per Stop and shared by both attribution reads below (52,840 entries cost 78ms to list twice).
+const tmpEntries = () => { try { return fs.readdirSync(os.tmpdir()); } catch { return []; } };
 // A write, attributed to the actor that made it. Banked only where the call is allowed to PROCEED (see preToolUse):
 // a write this hook denies never lands, and crediting it would let a neighbour's change read as this seat's work.
 const WROTE_CAP = 500;
@@ -119,24 +126,105 @@ function recordWrite(root, input, wrote) {
   const a = loadAgent(input.session_id, key);
   const had = (a.wrote || []).length;
   const union = [...new Set([...(a.wrote || []), ...wrote])];
-  if (union.length === had) return;
+  if (union.length === had && a.root === rootKey(root)) return;
+  a.root = rootKey(root);
   // Past the cap an actor keeps its first WROTE_CAP paths and later ones are dropped, so a busy seat goes SILENT
   // rather than answering for files it never wrote. Right direction, invisible without this row.
   if (union.length > WROTE_CAP && had < WROTE_CAP) log(root, input, { event: 'wrote-cap', actor: key, cap: WROTE_CAP, dropped: union.length - WROTE_CAP });
   a.wrote = union.slice(0, WROTE_CAP);
   saveState(input.session_id, a, key);
 }
-// Every path the OTHER actors of this session recorded. READ only: writing here would race preToolUse, and a file
+// When the actor first ran a shell command that may WRITE files no parser can name (a build, a generator, a script). The
+// Stop ask's 'no actor claimed' bucket - how a script's output is asked about - counts only when the main session ran
+// such a command (the 2026-10-17 usage audit: a session that only read was asked about another session's uncommitted
+// diff, which no claim of that session named). A read is every step one of READ_STEP.
+const READ_STEP = /^(?:git\s+(?:-C\s+\S+\s+)?(?:status|diff|log|show|branch|rev-parse|ls-files|ls-tree|grep|blame|remote|fetch|describe|tag\s+(?:-l|--list|--contains|--points-at)|config\s+--get|check-ignore|merge-base|rev-list|shortlog|cat-file|for-each-ref|stash\s+list|worktree\s+list)\b|(?:ls|cat|head|tail|grep|egrep|fgrep|rg|wc|echo|printf|pwd|which|type|test|\[|\[\[|stat|file|sort|uniq|cut|tr|date|jq|diff|cmp|du|df|tree|true|false|sleep|cd|pushd|popd|basename|dirname|realpath|readlink|whoami|uname|env|printenv|gh)\b|sed\s+-n\b|awk\b(?![^|;&]*>)|find\b(?![^|;&]*(?:-delete|-exec|-ok))|node\s+\S*docs\.js\s+(?:show|status|stale|lint|find)\b)/;
+function recordRun(input, command) {
+  if (envOf(process.env, 'DOCS_ASK') === '0' || !command) return;
+  const steps = String(command).split(/\|\||&&|[;|\n]/).map((x) => x.trim().replace(/^(?:[A-Za-z_]\w*=\S*\s+)+/, '')).filter(Boolean);
+  if (steps.every((x) => READ_STEP.test(x) && !/(?:^|\s)\d?>>?\s*(?!\/dev\/null|&)/.test(x))) return;
+  const key = actorKey(input);
+  const a = loadAgent(input.session_id, key);
+  if (a.ran) return;
+  a.ran = Date.now();
+  saveState(input.session_id, a, key);
+}
+// The files a `git stash` in this command moves into or out of the working tree, read BEFORE it runs: a push takes the
+// tree's changes (its pathspec after `--`, untracked files with -u / -a), a pop or apply brings the named entry's. No
+// parser names them as targets, so a sibling session's stash push read as this session's change at its Stop - 'you
+// changed <file>' for a file it never touched (audit 2026-10-20 C25, c5287cc1) - and a stash this session
+// applied read as its own authoring (7c1af769). Moved is not authored: recorded apart from `wrote`, it claims the file for
+// its session against the others and is never asked about itself. 1.5s per git call; a failure records nothing.
+function stashMoves(command, base, root) {
+  if (!shellReader || !/\bstash\b/.test(command)) return [];
+  const lines = (dir, args) => {
+    try {
+      return require('child_process').execFileSync('git', ['-c', 'core.quotePath=false', ...args], { cwd: dir, timeout: 1500, stdio: ['ignore', 'pipe', 'ignore'] })
+        .toString('utf8').split('\n').filter(Boolean);
+    } catch { return []; }
+  };
+  const out = new Set();
+  let calls = [];
+  try { calls = shellReader.gitCalls(command); } catch { return []; }
+  for (const g of calls) {
+    if (g.sub !== 'stash') continue;
+    const dir = g.dirs && g.dirs.length ? path.resolve(base, ...g.dirs) : base;
+    const argv = g.argv || [];
+    const verb = argv[0] && !argv[0].startsWith('-') ? argv[0] : 'push';
+    const rest = verb === argv[0] ? argv.slice(1) : argv;
+    let files = [];
+    if (verb === 'pop' || verb === 'apply') {
+      const ref = rest.find((w) => !w.startsWith('-')) || 'stash@{0}';
+      files = lines(dir, ['stash', 'show', '--name-only', '--include-untracked', '--relative', ref]);
+      if (!files.length) files = lines(dir, ['stash', 'show', '--name-only', '--relative', ref]);
+    } else if (verb === 'push' || verb === 'save') {
+      const at = rest.indexOf('--');
+      const spec = verb === 'push' && at >= 0 ? rest.slice(at + 1) : [];
+      files = lines(dir, ['diff', '--name-only', '--relative', 'HEAD', '--', ...spec]);
+      if (rest.some((w) => /^(?:-u|--include-untracked|-a|--all)$/.test(w))) files.push(...lines(dir, ['ls-files', '--others', '--exclude-standard', '--', ...spec]));
+    }
+    for (const f of files) out.add(toPosix(path.relative(root, path.resolve(dir, f))));
+  }
+  return [...out].filter((p) => p && !p.startsWith('..'));
+}
+function recordMoved(root, input, moved) {
+  if (envOf(process.env, 'DOCS_ASK') === '0' || !moved.length) return;
+  const key = actorKey(input);
+  const a = loadAgent(input.session_id, key);
+  a.root = rootKey(root);
+  a.moved = [...new Set([...(a.moved || []), ...moved])].slice(0, WROTE_CAP);
+  saveState(input.session_id, a, key);
+}
+// Every path the OTHER actors of this session recorded, written or moved. READ only: writing here would race preToolUse, and a file
 // that cannot be read simply leaves its paths unclaimed, which is the safe direction.
-function otherActorWrites(session, exceptKey) {
+function otherActorWrites(session, exceptKey, entries = tmpEntries()) {
   const prefix = `docs-session-${String(session || 'none').replace(/[^\w-]/g, '')}--`;
   const out = new Set();
-  try {
-    for (const f of fs.readdirSync(os.tmpdir())) {
-      if (!f.startsWith(prefix) || !f.endsWith('.json') || f === `${prefix}${exceptKey}.json`) continue;
-      try { for (const p of JSON.parse(fs.readFileSync(path.join(os.tmpdir(), f), 'utf8')).wrote || []) out.add(p); } catch {}
-    }
-  } catch {}
+  for (const f of entries) {
+    if (!f.startsWith(prefix) || !f.endsWith('.json') || f === `${prefix}${exceptKey}.json`) continue;
+    try { const v = JSON.parse(fs.readFileSync(path.join(os.tmpdir(), f), 'utf8')); for (const p of [...(v.wrote || []), ...(v.moved || [])]) out.add(p); } catch {}
+  }
+  return out;
+}
+// Every path an actor of ANOTHER session recorded on this same checkout since `since` (the snapshot's epoch seconds).
+// Two sessions on one project - a second terminal, a parallel run - each saw the other's edits as a change no actor of
+// their own claimed, so a read-only session was asked about a migration the other session wrote (2026-10-16, an aspnet
+// project on 2.5.0). A state file last written before the snapshot, or one with no `root` (written before this record),
+// claims nothing: an unread claim leaves the change the session's, the safe direction. READ only, like the seats' read.
+function otherSessionWrites(session, root, since, entries = tmpEntries()) {
+  const own = `docs-session-${String(session || 'none').replace(/[^\w-]/g, '')}--`;
+  const key = rootKey(root);
+  const out = new Set();
+  if (!Number.isFinite(since)) return out;
+  for (const f of entries) {
+    if (!f.startsWith('docs-session-') || !f.includes('--') || !f.endsWith('.json') || f.startsWith(own)) continue;
+    try {
+      const file = path.join(os.tmpdir(), f);
+      if (fs.statSync(file).mtimeMs / 1000 < since) continue;
+      const v = JSON.parse(fs.readFileSync(file, 'utf8'));
+      if (v.root === key) for (const p of [...(v.wrote || []), ...(v.moved || [])]) out.add(p);
+    } catch {}
+  }
   return out;
 }
 // The untracked-at-start line rides the SessionStart block when there is one, and goes out alone when there is not.
@@ -172,6 +260,9 @@ const log = (root, input, row) => {
 function orientation(root, docs) {
   let block = '';
   try { block = fs.readFileSync(docs.BLOCK_FILE, 'utf8').trim(); } catch {}
+  // A copy of the footer below pasted into the file is dropped, not pushed twice (docs.js HOOK_FOOTER; an older engine
+  // beside this hook has none, and the block goes out as written).
+  if (docs.HOOK_FOOTER) block = block.split('\n').filter((l) => !docs.HOOK_FOOTER.test(l)).join('\n').trim();
   // The 4KB cap is enforced here, not only reported by lint: an 11,901-byte file pushed the block past the harness's
   // 10,000-character context cap, which swaps it for a path and a preview - the where / show lines at its end were
   // lost (audit 2026-10-08).
@@ -179,7 +270,7 @@ function orientation(root, docs) {
   if (block.length > BLOCK_CAP) block = `${block.slice(0, BLOCK_CAP)}\n... (ORIENTATION.md continues past its 4KB cap - \`${READ} lint\` names the overrun; read the rest by section)`;
   // ORIENTATION.md stays architecture's own file, read exactly as before - a domain gets no per-domain twin.
   // The one line below is the part that used to name architecture/ as if it were the only docs folder; a
-  // project whose docs are code-style/ and related-projects/ (no architecture/ at all) is named correctly here.
+  // project whose docs are code-style/ and awareness/ (no architecture/ at all) is named correctly here.
   let doms = [];
   try { doms = docs.domains(); } catch {}
   const rootRel = path.relative(root, docs.DOCS_ROOT).split(path.sep).join('/');
@@ -284,8 +375,10 @@ function main() {
   let docs;
   try { docs = require('./docs.js'); }
   catch (e) { if (e.code === 'MODULE_NOT_FOUND' && /docs\.js/.test(e.message)) return; throw e; }
+  // before the domain gate: a first capture writes architecture/ before any domain exists
+  if (event === 'PreToolUse' && seatHold(input, root, docs)) return;
   // A domain is any top-level folder under the docs root holding a watch.json (architecture counts even
-  // without one - see docs.js's own domains()). A project whose docs are code-style/ and related-projects/,
+  // without one - see docs.js's own domains()). A project whose docs are code-style/ and awareness/,
   // with no architecture/ at all, must still get the SessionStart block, the gate and the finish ask - so the
   // whole-hook gate reads every domain, not one hardcoded folder. An empty list is still the right reason to
   // return: nothing under the docs root declares itself a domain.
@@ -294,6 +387,7 @@ function main() {
   if (event === 'SessionStart') return sessionStart(input, root, docs, state);
   if (event === 'SubagentStart') return subagentStart(input, root, docs);
   if (event === 'SubagentStop') return subagentStop(input, root, docs);
+  if (event === 'PreToolUse' && input.tool_name === HANDBACK_TOOL) return handback(input, root, docs);
   if (event === 'PreToolUse') return preToolUse(input, root, docs, state);
   if (event === 'Stop') return stop(input, root, docs, state);
 }
@@ -401,7 +495,12 @@ function sweepRecords(dir, now = Date.now()) {
   } catch { /* a sweep never fails the start */ }
 }
 
+// Claude Code's own seats that write no project code: the orientation block is ~1-4KB they never use and the snapshot
+// feeds an ask they never earn (deep hooks review 2026-10-16). A stack seat or general-purpose still gets both.
+const NO_DOCS_SEATS = new Set(['Explore', 'Plan', 'claude-code-guide', 'statusline-setup']);
+
 function subagentStart(input, root, docs) {
+  if (NO_DOCS_SEATS.has(input.agent_type)) return;
   // The snapshot is what makes the finish ask possible, and it is NOT the orientation block: the block's switch
   // must not blind the ask, and the ask's switch must not cost a snapshot nobody will read.
   if (envOf(process.env, 'DOCS_ASK') !== '0') {
@@ -556,35 +655,64 @@ function sectionRefs(docs, hits, limit, exclude = () => false) {
 }
 
 // The agent that made a change is the only context that knows why it was made - the main session usually does not -
-// so the ask lands here, once, for the files THAT agent changed (its start snapshot against the tree now).
+// so the ask lands with that agent, once, for the files THAT agent changed (its start snapshot against the tree now).
+// WHEN it lands decides whether it counts: a seat reports through its SubagentHandback tool call, and the report is
+// with the caller the moment that call returns. Asked at SubagentStop, all 48 asks of two weeks came after the hand-back
+// and 41 of them were the transcript's last row - nothing acted on them (deep hooks review 2026-10-16). So the ask is a
+// PreToolUse deny of the FIRST hand-back that owes one (the seat stays in its turn, answers, and sends the report again
+// with the docs line), and SubagentStop asks only a seat that stopped without a hand-back. PreToolUse fires on that tool:
+// 35 hook runs recorded in seat transcripts. Cursor has no such tool, so its seats keep the SubagentStop route.
+const HANDBACK_TOOL = 'SubagentHandback';
+
+// The row an answered ask writes. It states what HAPPENED to the sections we asked about - which of them the agent
+// rewrote through `docs.js set` - and nothing claims to know what it meant. Logged once and nothing more: no dedupe rests
+// on it, because an agent that simply went on and one that rewrote every section are otherwise the same event.
+function answerRow(root, input, a, key, reply) {
+  a.answered = true;
+  saveState(input.session_id, a, key);
+  const asked = a.asked || [];
+  const rewrote = setsSince(root, a.askedAt, asked);
+  // Three states because two cannot tell them apart: where several sections were asked about, rewriting one of
+  // them is neither the job done nor nothing done, and that middle case is the one worth counting.
+  const outcome = rewrote.length === 0 ? 'unchanged' : rewrote.length === asked.length ? 'rewritten' : 'partial';
+  // Separate from `sections` on purpose (see the comment on a.warned below): a warning-only turn reads
+  // sections: [], outcome: 'unchanged' - true, not false, but indistinguishable from a turn nothing ever
+  // asked about at all. `warned` is what lets the block ledger tell the two apart without joining back
+  // to the ask-update row that named them.
+  log(root, input, { event: 'ask-answer', agent: key, via: a.via || 'stop', sections: asked, warned: a.warned || [], rewrote, outcome, saidDocsOk: saidDocsOk(reply) });
+}
+
+function handback(input, root, docs) {
+  if (envOf(process.env, 'DOCS_ASK') === '0' || !input.agent_id) return;
+  const key = agentKey(input);
+  const a = loadAgent(input.session_id, key);
+  const report = (input.tool_input || {}).message;
+  // the hand-back sent after our ask: it passes, and says what the ask came to
+  if (a.blocked) { if (!a.answered) answerRow(root, input, a, key, report); return; }
+  const reason = seatAsk(input, root, docs, a, key, HANDBACK_LAST);
+  if (!reason) return;
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
+}
+
 function subagentStop(input, root, docs) {
   if (envOf(process.env, 'DOCS_ASK') === '0') return;
   const key = agentKey(input);
   const a = loadAgent(input.session_id, key);
-  // The stop our own block caused. The row it writes states what HAPPENED to the sections we asked about - which of
-  // them the agent rewrote through `docs.js set` - and nothing claims to know what it meant by stopping. Logged once
-  // and nothing more: no dedupe rests on it, because an agent that simply stopped and one that rewrote every section
-  // are otherwise the same event.
-  if (input.stop_hook_active) {
-    if (a.blocked && !a.answered) {
-      a.answered = true;
-      saveState(input.session_id, a, key);
-      const asked = a.asked || [];
-      const rewrote = setsSince(root, a.askedAt, asked);
-      // Three states because two cannot tell them apart: where several sections were asked about, rewriting one of
-      // them is neither the job done nor nothing done, and that middle case is the one worth counting.
-      const outcome = rewrote.length === 0 ? 'unchanged' : rewrote.length === asked.length ? 'rewritten' : 'partial';
-      // Separate from `sections` on purpose (see the comment on a.warned below): a warning-only turn reads
-      // sections: [], outcome: 'unchanged' - true, not false, but indistinguishable from a turn nothing ever
-      // asked about at all. `warned` is what lets the block ledger tell the two apart without joining back
-      // to the ask-update row that named them.
-      log(root, input, { event: 'ask-answer', agent: key, sections: asked, warned: a.warned || [], rewrote, outcome, saidDocsOk: saidDocsOk(input.last_assistant_message) });
-    }
+  // The stop our own block caused, or a seat asked at its hand-back that stopped without sending it again.
+  if (input.stop_hook_active || a.blocked) {
+    if (a.blocked && !a.answered) answerRow(root, input, a, key, input.last_assistant_message);
     return;
   }
+  const reason = seatAsk(input, root, docs, a, key, SEAT_REPORT_LAST);
+  if (reason) process.stdout.write(JSON.stringify({ decision: 'block', reason }));
+}
+
+// The ask itself, shared by both routes: null when this agent owes none, else the reason - and the agent's state then
+// records it (blocked, the asked ids, the instant), so neither route asks it twice.
+function seatAsk(input, root, docs, a, key, closing) {
   // One block per agent, whatever it answered, and never one for an agent whose start was never seen: with no
   // snapshot there is nothing that says what this agent changed, and a guess would ask the wrong seat.
-  if (a.blocked || !a.snapshot || typeof docs.askRef !== 'function') return;
+  if (a.blocked || !a.snapshot || typeof docs.askRef !== 'function') return null;
   // What THIS agent wrote, not what the tree did. `changedSince` is a whole-TREE diff, so a seat that opened nothing
   // was otherwise told it changed whatever the writer running BESIDE it changed - and this stack dispatches in
   // parallel by design. A seat that wrote nothing is silent (the brief's read-only seats, now true under parallel
@@ -596,14 +724,14 @@ function subagentStop(input, root, docs) {
     // The block RATE is what says a gate earns its keep, so the silence is logged rather than looking like a gate
     // nobody needed. A read-only seat logs one row too - that is the same fact, honestly counted.
     log(root, input, { event: 'ask-skipped', why: 'no write attributed to this agent', agent: key, agentType: input.agent_type || '' });
-    return;
+    return null;
   }
-  if (noWatch(docs)) return;
+  if (noWatch(docs)) return null;
   let changed;
   let hits = [];
   try {
     changed = docs.changedSince(a.snapshot);
-    if (!changed.files.length && !changed.dirs.length) return;
+    if (!changed.files.length && !changed.dirs.length) return null;
     let mineFiles;
     if (own.includes(UNKNOWN_SOURCE_WRITE)) {
       // A write the shell route could not name ('git apply', 'dotnet ef migrations add' with no --project). The seat
@@ -618,18 +746,19 @@ function subagentStop(input, root, docs) {
     const mineDirs = changed.dirs.filter((d) => mineFiles.some((f) => f.startsWith(`${d}/`)));
     if (!mineFiles.length && !mineDirs.length) {
       log(root, input, { event: 'ask-skipped', why: 'nothing this agent wrote changed', agent: key, wrote: own.length });
-      return;
+      return null;
     }
     hits = docs.watchHits(mineFiles, mineDirs);
-  } catch { return; }
-  if (!hits.length) return;
+  } catch { return null; }
+  if (!hits.length) return null;
   // Dedupe on the pair (agent, section), never the section alone: two agents in one run often touch the same
   // section, and the second is the one most likely to notice the first's rewrite only covered half the change.
   const { asks, warnings } = sectionRefs(docs, namedFirst(docs, hits), ASK_SECTIONS, (id) => a.asked.includes(id));
-  if (!asks.length && !warnings.length) return;
+  if (!asks.length && !warnings.length) return null;
   const files = [...new Set(hits.flatMap((h) => h.files))];
-  const reason = finishAsk(docs, files, asks, warnings, SEAT_REPORT_LAST);
+  const reason = finishAsk(docs, files, asks, warnings, closing);
   a.blocked = true;
+  a.via = input.hook_event_name === 'PreToolUse' ? 'handback' : 'stop';
   // Only ASK ids: a warning can never appear in setsSince (the write refusal means `docs.js set` never
   // records one), so folding its id in here would only ever pull the outcome below toward 'partial' or
   // 'unchanged' for a section nothing was ever asking to be rewritten. Warning ids are tracked separately,
@@ -639,9 +768,9 @@ function subagentStop(input, root, docs) {
   // The instant the ask was made, so a rewrite that landed before it is never counted as an answer to it.
   a.askedAt = new Date().toISOString();
   saveState(input.session_id, a, key);
-  log(root, input, { event: 'ask-update', agent: key, agentType: input.agent_type || '', sections: asks.map((r) => r.id), warnings: warnings.map((r) => r.id), files: files.slice(0, 5), kinds: [...new Set(hits.map((h) => h.kind))] });
+  log(root, input, { event: 'ask-update', agent: key, agentType: input.agent_type || '', via: a.via, sections: asks.map((r) => r.id), warnings: warnings.map((r) => r.id), files: files.slice(0, 5), kinds: [...new Set(hits.map((h) => h.kind))] });
   blockRow(root, input, reason);
-  process.stdout.write(JSON.stringify({ decision: 'block', reason }));
+  return reason;
 }
 
 // What the tool is about to touch, project-relative.
@@ -680,21 +809,35 @@ function projectWrites(command) {
   }
   return out;
 }
-// An interpreter write through a computed path is UNKNOWN_SOURCE_WRITE; a `$NAME` target is expanded from the same
-// command's assignment, and one still holding a `$` names no file - it filled COMPACT-STATE's 'files written' with
-// `$S/demo.pw` and `$G` (audit 2026-10-10, sessions 68da4b6b, 758ce661).
+// An interpreter write through a computed path is UNKNOWN_INTERPRETER_WRITE - a source write only under a root the command
+// names (unknownRoots), where a patch or a migration with no project (UNKNOWN_SOURCE_WRITE) always is one; a `$NAME`
+// target is expanded from the same command's assignment, and one still holding a `$` names no file - it filled
+// COMPACT-STATE's 'files written' with `$S/demo.pw` and `$G` (audit 2026-10-10, sessions 68da4b6b, 758ce661).
+const UNKNOWN_INTERPRETER_WRITE = '<unknown interpreter write>';
+const isUnknown = (t) => t === UNKNOWN_SOURCE_WRITE || t === UNKNOWN_INTERPRETER_WRITE;
 function writeTargets(command) {
   if (!shellReader) return [];
   const scan = shellReader.scanShell(String(command), {});
-  const out = scan.targets.map((t) => (t.unknown ? UNKNOWN_SOURCE_WRITE : scan.expandVars(String(t.raw || ''))))
-    .filter((t) => t && !t.startsWith('/dev/null') && (t === UNKNOWN_SOURCE_WRITE || !t.includes('$')));
+  const out = scan.targets.map((t) => (t.unknown ? UNKNOWN_INTERPRETER_WRITE : scan.expandVars(String(t.raw || ''))))
+    .filter((t) => t && !t.startsWith('/dev/null') && (isUnknown(t) || !t.includes('$')));
   return [...new Set([...out, ...projectWrites(command)])];
+}
+// The source roots a write the shell route could not name may land in: each root the command itself names as a path
+// segment. A `node -e` writing to a computed `$TMP/final.json`, naming no root, writes no source (audit 2026-10-20 C25,
+// 4f2bfdee: held twice as 'Before changing src/*', five messages to clear). A root that is the project itself ('.', '')
+// is named by every command, as before.
+function unknownRoots(command, roots) {
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return roots.filter((r) => {
+    const x = String(r).replace(/^\.\//, '').replace(/\/+$/, '');
+    return !x || x === '.' || new RegExp(`(?:^|[^\\w.-])${esc(x)}(?:/|[^\\w.-]|$)`).test(String(command));
+  });
 }
 const relative = (root, paths) => [...new Set(paths.map((p) => toPosix(path.relative(root, path.resolve(root, p.replace(/^['"]|['"]$/g, ''))))).filter((p) => p && !p.startsWith('..')))];
 
 // Only reading a section's text is a consult: `where`, `toc` and listings point at sections without reading them.
 // `docRoots` is a LIST now, one entry per domain (each domain's own root, project-relative) - a project can be
-// documented in code-style/ or related-projects/ alone, and a read under any one of them is a real consult, not
+// documented in code-style/ or awareness/ alone, and a read under any one of them is a real consult, not
 // just one under architecture/. Deliberately NOT the whole docs root: DOCS_ROOT also holds hook-blocks/,
 // docs-log.jsonl, .branches/ and cross-project-tasks/, none of which is a section covering a file, and crediting
 // any of them would turn the gate off by accident for a session that merely happens to touch one. A branch
@@ -707,7 +850,7 @@ const relative = (root, paths) => [...new Set(paths.map((p) => toPosix(path.rela
 // resolves; a file read counts only for a doc file (`.md`), by Read or Grep, or by a shell command that READS (a reading
 // verb, no write) - never a listing.
 const SHELL_READ_VERB = /(?:^|[\s;&|(])(?:cat|head|tail|sed|awk|grep|rg|less|more|bat|nl|type|get-content|gc|select-string)\b/i;
-function consultedBy(input, paths, docRoots, docs) {
+function consultedBy(input, paths, docRoots, docs, plansRel = '') {
   const name = input.tool_name || '';
   const t = input.tool_input || {};
   const command = typeof t.command === 'string' ? t.command : '';
@@ -727,15 +870,42 @@ function consultedBy(input, paths, docRoots, docs) {
     };
     return (run.match(/docs\.js["']?[ \t]+show[ \t]+[\w#.\/-]+(?:[ \t]+[\w#.\/-]+)*/g) || [])
       .flatMap((r) => r.split(/[ \t]+/).slice(2))
-      .filter((r) => !r.startsWith('-') && /^[A-Za-z][\w.\/-]*(#[\w-]+)?$/.test(r))
+      // a path under the docs root resolves like its ref (docs.js stripDocsRoot, audit 2026-10-20 C27)
+      .filter((r) => !r.startsWith('-') && /^[\w./][\w.\/-]*(#[\w-]+)?$/.test(r))
       .filter(resolves);
   }
   if (/docs\.js[ \t]+(toc|where|files|status|lint|watch|stale)\b/.test(command)) return [];
   const underDocs = (p) => docRoots.some((d) => p === d || p.startsWith(`${d}/`));
+  const reads = /^Read$/.test(name) || (isShellTool(name) && !writeTargets(command).length && SHELL_READ_VERB.test(run));
   // a Grep reads the text of what it searches, a doc folder included; a Read or a shell read names its file
   const hits = paths.filter((p) => underDocs(p) && (name === 'Grep' ? !/\.(?:json|jsonl)$/i.test(p) : /\.md$/i.test(p)));
-  if (hits.length && (/^(Read|Grep)$/.test(name) || (isShellTool(name) && !writeTargets(command).length && SHELL_READ_VERB.test(run)))) return hits;
+  if (hits.length && (name === 'Grep' || reads)) return hits;
+  // A resume reads its plan, and the plan's `Oriented:` line names the sections the design read: those sections count as
+  // read, so the first edit of a /clear resume is not held for docs the plan already carries (audit 2026-10-20 C25,
+  // 6dba16e2 / b5f384d2 / 1b432dd2: 3 of 3 resumes of one story opened on that hold). A plan naming none earns nothing.
+  if (plansRel && reads) {
+    const plans = paths.filter((p) => /\.md$/i.test(p) && p.startsWith(`${plansRel}/`) && !p.slice(plansRel.length + 1).includes('/'));
+    return plans.flatMap((p) => orientedRefs(path.resolve(process.env.CLAUDE_PROJECT_DIR || '.', p), docs));
+  }
   return [];
+}
+// The section refs a plan's `Oriented:` lines name that the engine resolves - `project-structure#inventory, PROJECT-CAPABILITIES#build,
+// CODE-STYLE.md lines 30-99` gives the first two. The first 64KB of the plan is read, where its header sits.
+const ORIENTED_LINE = /^[\s>*_-]*Oriented\**\s*:(.*)$/gim;
+function orientedRefs(abs, docs) {
+  if (!docs || typeof docs.askRef !== 'function') return [];
+  let text = '';
+  try {
+    const fd = fs.openSync(abs, 'r');
+    try { const buf = Buffer.alloc(64 * 1024); text = buf.toString('utf8', 0, fs.readSync(fd, buf, 0, buf.length, 0)); } finally { fs.closeSync(fd); }
+  } catch { return []; }
+  const out = new Set();
+  for (const m of text.matchAll(ORIENTED_LINE)) {
+    for (const r of m[1].match(/[A-Za-z][\w.\/-]*#[\w-]+/g) || []) {
+      try { if (docs.askRef(r)) out.add(r); } catch { /* an unresolved name earns nothing */ }
+    }
+  }
+  return [...out];
 }
 
 // No domain declares a watch entry or a new-module rule, so no change can hit one: watchHits() would return nothing.
@@ -765,8 +935,49 @@ function blockRow(root, input, reason) {
 // 2026-10-10, session 84eedb4b). A write to `<docs-path>/plans/<name>.md` carrying a Completed stamp is denied unless
 // every line it adds or removes is a stamp line (Gated / Approved / Conformance / Completed / Status / Deviations /
 // Result) - an Edit by its strings, a Write against the file on disk, a shell write always (its change cannot be read).
+// The close that WRITES the stamp is not yet closed (the 2026-10-17 usage audit: its own edits right after `Completed:`
+// landed - the memories line, a tick, the leftovers - were denied): a write adding the stamp leaves a marker naming the
+// transcript's size, and the same actor's later writes to that plan pass until the close stop is put to the user - an
+// AskUserQuestion answered, or a prompt typed, after the marker.
 const STAMP_LINE = /^\s*(?:[>*-]\s*)*\**\s*(?:Gated|Approved|Conformance|Completed|Status|Deviations|Result)\b/i;
 const COMPLETED_STAMP = /^\s*(?:[>*-]\s*)*\**\s*Completed\**\s*:/im;
+function closeMarker(input, abs) {
+  const id = `${input.session_id || 'nosession'}-${input.agent_id || 'main'}`.replace(/[^\w.-]/g, '_');
+  const h = require('crypto').createHash('sha1').update(abs).digest('hex').slice(0, 12);
+  return path.join(require('os').tmpdir(), `alfred-close-${id}-${h}`);
+}
+function markClose(input, abs) {
+  try {
+    const size = input.transcript_path ? fs.statSync(input.transcript_path).size : 0;
+    fs.writeFileSync(closeMarker(input, abs), String(size));
+  } catch { /* no marker: the stamp guard judges as before */ }
+}
+function closeStillOpen(input, abs) {
+  let at;
+  try { at = parseInt(fs.readFileSync(closeMarker(input, abs), 'utf8'), 10); } catch { return false; }
+  if (!Number.isFinite(at) || typeof input.transcript_path !== 'string' || !input.transcript_path) return false;
+  let tail;
+  try {
+    const fd = fs.openSync(input.transcript_path, 'r');
+    try {
+      const size = fs.fstatSync(fd).size;
+      if (size < at || size - at > 8 * 1024 * 1024) return false;
+      const buf = Buffer.alloc(size - at);
+      fs.readSync(fd, buf, 0, buf.length, at);
+      tail = buf.toString('utf8');
+    } finally { fs.closeSync(fd); }
+  } catch { return false; }
+  const asks = new Set();
+  for (const line of tail.split('\n')) {
+    let o; try { o = JSON.parse(line); } catch { continue; }
+    const c = o && o.message && o.message.content;
+    if (o.type === 'assistant' && Array.isArray(c)) for (const b of c) { if (b && b.type === 'tool_use' && b.name === 'AskUserQuestion') asks.add(b.id); }
+    if (o.type !== 'user' || o.isMeta) continue;
+    if (typeof c === 'string' ? !/^\s*(?:Stop hook feedback:|<task-notification>)/.test(c) : Array.isArray(c) && c.some((b) => b && b.type === 'text' && !/^\s*(?:Stop hook feedback:|<system-reminder>)/.test(b.text || ''))) return false;
+    if (Array.isArray(c) && c.some((b) => b && b.type === 'tool_result' && asks.has(b.tool_use_id))) return false;
+  }
+  return true;
+}
 function stampedPlanWrite(input, root) {
   const name = input.tool_name || '';
   const t = input.tool_input || {};
@@ -788,15 +999,19 @@ function stampedPlanWrite(input, root) {
     if (text != null && COMPLETED_STAMP.test(text)) {
       const edits = name === 'Edit' ? [t] : name === 'MultiEdit' ? (Array.isArray(t.edits) ? t.edits : []) : null;
       const ok = edits ? edits.every((e) => e && onlyStamps(e.old_string, e.new_string)) : onlyStamps(text, t.content);
-      if (!ok) hit = abs;
+      if (!ok && !closeStillOpen(input, abs)) hit = abs;
+    } else if (text != null) {
+      const edits = name === 'Edit' ? [t] : name === 'MultiEdit' ? (Array.isArray(t.edits) ? t.edits : []) : null;
+      const adds = edits ? edits.some((e) => e && COMPLETED_STAMP.test(String(e.new_string || '')) && !COMPLETED_STAMP.test(String(e.old_string || ''))) : COMPLETED_STAMP.test(String(t.content || ''));
+      if (adds) markClose(input, abs);
     }
   } else if (isShellTool(name) && typeof t.command === 'string') {
     const base = typeof input.cwd === 'string' && input.cwd ? input.cwd : root;
     for (const w of writeTargets(t.command)) {
-      if (w === UNKNOWN_SOURCE_WRITE) continue;
+      if (isUnknown(w)) continue;
       const abs = path.resolve(base, w.replace(/^['"]|['"]$/g, ''));
       const text = isPlan(abs) ? textOf(abs) : null;
-      if (text != null && COMPLETED_STAMP.test(text)) { hit = abs; break; }
+      if (text != null && COMPLETED_STAMP.test(text) && !closeStillOpen(input, abs)) { hit = abs; break; }
     }
   }
   if (!hit) return false;
@@ -806,6 +1021,144 @@ function stampedPlanWrite(input, root) {
     + 'the cycle in one `ungated: <why>` line. Only a stamp line (Gated, Approved, Conformance, Completed, Status, Deviations)\n'
     + 'may change in this file, through the Edit tool.';
   log(root, input, { event: 'stamped-plan', target: rel });
+  blockRow(root, input, reason);
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
+  return true;
+}
+
+// capture-architecture's step 5 writes only once verification is FINISHED, and prose did not hold it: the run announced
+// 'Verification is done', made its first Edit, then dispatched a sixth analyzer and kept editing while it ran (audit
+// 2026-10-20 C43, add5a91e: 114 reference Edits interleaved with probes, the context compacted mid-write). So a write
+// under `<docs-path>/architecture/` by the main session - a file tool, a shell write, a `docs.js set` of an architecture
+// ref - is denied while a capture analyzer seat this session dispatched has not handed back. Once per dispatch: the same
+// write sent again while that seat is still out passes as a logged `seat-bypass`. A seat's own call, an unreadable
+// transcript and ALFRED_CODE_DOCS_GATE=0 release it. Placed before the domain gate, since a first capture writes
+// architecture/ before any domain exists.
+const ANALYZER_SEAT = /^(?:alfred-code:)?(?:architecture|code-quality|code-style|related-project|test-coverage)-analyzer$/;
+const SEAT_WINDOW = 8 * 1024 * 1024;
+const SEAT_HELD_CAP = 200;
+function architectureWrites(input, root, docs) {
+  const name = input.tool_name || '';
+  const t = input.tool_input || {};
+  const real = (p) => { try { return fs.realpathSync.native(p); } catch { return null; } };
+  const arch = path.resolve(root, docsRootEnv(), 'architecture');
+  const archs = [...new Set([arch, real(arch) || arch])];
+  const inside = (abs) => archs.some((a) => { const rel = path.relative(a, abs); return !rel.startsWith('..') && !path.isAbsolute(rel); });
+  // a new file has no real path yet: its folder's (macOS /tmp is /private/tmp) decides
+  const under = (abs) => inside(abs) || inside(real(abs) || path.join(real(path.dirname(abs)) || path.dirname(abs), path.basename(abs)));
+  const out = [];
+  if (/^(?:Edit|Write|MultiEdit|NotebookEdit)$/.test(name)) {
+    for (const p of [t.file_path, t.notebook_path]) if (typeof p === 'string' && p && under(path.resolve(root, p))) out.push(p);
+  } else if (isShellTool(name) && typeof t.command === 'string') {
+    const base = typeof input.cwd === 'string' && input.cwd ? input.cwd : root;
+    for (const w of writeTargets(t.command)) if (!isUnknown(w) && under(path.resolve(base, w.replace(/^['"]|['"]$/g, '')))) out.push(w);
+    for (const m of t.command.matchAll(/docs\.js["']?[ \t]+set[ \t]+['"]?([\w#.\/-]+)/g)) {
+      let file = null;
+      try { file = docs && typeof docs.findFile === 'function' ? docs.findFile(m[1].split('#')[0]) : null; } catch { /* an unresolved ref */ }
+      if (/^architecture\//.test(m[1]) || (file && under(file))) out.push(m[1]);
+    }
+  }
+  return out;
+}
+// The capture analyzers this session dispatched that have not handed back, read from the transcript where the last read
+// stopped (`scan.at`), at most its newest 8MB - a dispatch before that window is unknown and holds nothing. An Agent call
+// ends with its tool_result unless the result says it went to the background; a background seat ends with a DELIVERED
+// task notification carrying a status, or its `[Subagent hand-back]` message (the stop contract's reading: a queue
+// `enqueue` row is not delivered yet), or a TaskStop naming it. null when the transcript cannot be read.
+function seatsOut(transcriptPath, scan) {
+  let at = scan && Number.isFinite(scan.at) ? scan.at : 0;
+  let out = scan && scan.out && typeof scan.out === 'object' ? { ...scan.out } : {};
+  let buf;
+  let from;
+  try {
+    const fd = fs.openSync(transcriptPath, 'r');
+    try {
+      const size = fs.fstatSync(fd).size;
+      if (size < at) { at = 0; out = {}; }
+      from = Math.max(at, size - SEAT_WINDOW);
+      if (from > at) out = {};
+      buf = Buffer.alloc(size - from);
+      fs.readSync(fd, buf, 0, buf.length, from);
+    } finally { fs.closeSync(fd); }
+  } catch { return null; }
+  const start = from > at ? buf.indexOf(0x0a) + 1 : 0; // a window cut mid-row drops that row
+  const end = buf.lastIndexOf(0x0a);
+  if (end < start) return { at: from + start, out };
+  const settle = (named) => { for (const [id, s] of Object.entries(out)) if (named(id) || (s.agent && named(s.agent))) delete out[id]; };
+  const textOf = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((b) => (b && typeof b.text === 'string' ? b.text : '')).join('\n') : '');
+  for (const line of buf.toString('utf8', start, end + 1).split('\n')) {
+    if (!line) continue;
+    const dispatch = line.includes('-analyzer') && line.includes('"tool_use"');
+    const notice = line.includes('<task-notification>') || line.includes('<agent-message');
+    const ids = Object.keys(out);
+    const touches = ids.length > 0 && ids.some((id) => line.includes(id) || (out[id].agent && line.includes(out[id].agent)));
+    if (!dispatch && !notice && !touches) continue;
+    let o;
+    try { o = JSON.parse(line); } catch { continue; }
+    if (!o || typeof o !== 'object' || o.isSidechain) continue;
+    const content = o.message && o.message.content;
+    if (o.type === 'assistant' && Array.isArray(content)) {
+      for (const b of content) {
+        if (!b || b.type !== 'tool_use') continue;
+        const inp = b.input && typeof b.input === 'object' ? b.input : {};
+        if (/^(?:Agent|Task)$/.test(b.name) && ANALYZER_SEAT.test(String(inp.subagent_type || ''))) {
+          out[b.id] = { type: String(inp.subagent_type).replace(/^alfred-code:/, ''), desc: String(inp.description || '').slice(0, 80) };
+        } else if (/^(?:TaskStop|KillShell|KillBash)$/.test(b.name)) {
+          const named = JSON.stringify(inp);
+          settle((id) => named.includes(id));
+        }
+      }
+      continue;
+    }
+    if (o.type === 'user' && Array.isArray(content)) {
+      for (const b of content) {
+        if (!b || b.type !== 'tool_result' || !out[b.tool_use_id]) continue;
+        const r = textOf(b.content);
+        const meta = o.toolUseResult && typeof o.toolUseResult === 'object' ? o.toolUseResult : {};
+        if (!b.is_error && (meta.status === 'async_launched' || meta.isAsync === true || /\bAsync agent launched\b/i.test(r))) {
+          out[b.tool_use_id].agent = String(meta.agentId || (/\bagentId:\s*([\w-]+)/.exec(r) || [])[1] || '');
+        } else delete out[b.tool_use_id]; // its report, or a launch that failed
+      }
+    }
+    if (!notice) continue;
+    const att = o.type === 'attachment' && o.attachment && o.attachment.type === 'queued_command' ? o.attachment.prompt : '';
+    const note = o.type === 'user' ? textOf(content) : o.type === 'queue-operation' ? (o.operation === 'enqueue' ? '' : o.content) : att;
+    if (typeof note !== 'string' || !note) continue;
+    for (const n of note.matchAll(/<task-notification>([\s\S]*?)<\/task-notification>/g)) {
+      if (!/<status>[^<]+<\/status>/.test(n[1])) continue;
+      const named = [/<task-id>([^<]+)<\/task-id>/.exec(n[1]), /<tool-use-id>([^<]+)<\/tool-use-id>/.exec(n[1])].filter(Boolean).map((m) => m[1].trim());
+      settle((id) => named.includes(id));
+    }
+    for (const m of note.matchAll(/<agent-message from="([\w-]+)">\s*\[Subagent hand-back\]/g)) settle((id) => id === m[1]);
+  }
+  return { at: from + end + 1, out };
+}
+function seatHold(input, root, docs) {
+  if (input.agent_id || envOf(process.env, 'DOCS_GATE') === '0') return false;
+  const writes = architectureWrites(input, root, docs);
+  if (!writes.length || typeof input.transcript_path !== 'string' || !input.transcript_path) return false;
+  const state = loadState(input.session_id);
+  const scan = seatsOut(input.transcript_path, state.seatScan);
+  if (!scan) return false;
+  state.seatScan = scan;
+  const out = Object.entries(scan.out);
+  const held = new Set(Array.isArray(state.seatHeld) ? state.seatHeld : []);
+  const fresh = out.filter(([id]) => !held.has(id));
+  const target = toPosix(String(writes[0]));
+  if (!fresh.length) {
+    if (out.length) log(root, input, { event: 'seat-bypass', target, seats: out.map(([, s]) => s.type) });
+    saveState(input.session_id, state);
+    return false;
+  }
+  state.seatHeld = [...held, ...fresh.map(([id]) => id)].slice(-SEAT_HELD_CAP);
+  saveState(input.session_id, state);
+  const named = out.map(([, s]) => (s.desc ? `${s.type} ('${s.desc}')` : s.type));
+  const reason = [
+    `Held: ${target} is an architecture doc, and ${out.length} analyzer seat(s) this session dispatched have not handed back: ${named.join(', ')}.`,
+    'The architecture write comes after verification is FINISHED (capture-architecture step 5). Wait for the hand-back - its',
+    'notification wakes this session, so no polling - fold its digest in, then write. This hold is made once per dispatch.',
+  ].join('\n');
+  log(root, input, { event: 'seat-hold', target, seats: out.map(([, s]) => s.type) });
   blockRow(root, input, reason);
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
   return true;
@@ -824,15 +1177,26 @@ function preToolUse(input, root, docs, state) {
   let roots = ['src', 'tests'];
   if (isWrite) { try { roots = docs.loadWatch().sourceRoots; } catch {} }
   const command = typeof (input.tool_input || {}).command === 'string' ? input.tool_input.command : '';
+  if (isShellTool(name)) {
+    recordRun(input, command);
+    recordMoved(root, input, stashMoves(command, typeof input.cwd === 'string' && input.cwd ? input.cwd : root, root));
+  }
   const shellWrites = isShellTool(name) ? writeTargets(command) : null;
   let wrote = [];
   if (fileWrite) wrote = paths;
-  else if (shellWrites) wrote = relative(root, shellWrites.map((x) => (x === UNKNOWN_SOURCE_WRITE ? `${roots[0]}/*` : x)));
+  else if (shellWrites) {
+    wrote = relative(root, shellWrites.flatMap((x) => (x === UNKNOWN_SOURCE_WRITE ? [`${roots[0]}/*`]
+      : x === UNKNOWN_INTERPRETER_WRITE ? unknownRoots(command, roots).map((r) => `${r}/*`) : [x])));
+  }
   // A PreToolUse write is INTENT. It is banked at each exit below that lets the call PROCEED and never on the deny,
   // so a write this hook holds is not credited to the seat that tried it. Banked before the source-root filter,
   // because a watch entry may name a path no source root covers and a write this hook never judges is still a write.
-  const attribute = () => { if (wrote.length) recordWrite(root, input, shellWrites && shellWrites.includes(UNKNOWN_SOURCE_WRITE) ? [...wrote, UNKNOWN_SOURCE_WRITE] : wrote); };
-  const consults = consultedBy(input, paths, docRoots, docs);
+  // An unnamed write still marks its actor as one that wrote (seatAsk), whether or not it maps to a source root.
+  const attribute = () => {
+    const all = shellWrites && shellWrites.some(isUnknown) ? [...wrote, UNKNOWN_SOURCE_WRITE] : wrote;
+    if (all.length) recordWrite(root, input, all);
+  };
+  const consults = consultedBy(input, paths, docRoots, docs, toPosix(path.relative(root, path.resolve(root, docsRootEnv(), 'plans'))));
   if (consults.length) {
     // One shell command can read a doc AND write a file - the shape the orientation block and the gate together
     // teach - so the read must not swallow the write.
@@ -990,6 +1354,12 @@ const SEAT_REPORT_LAST = [
   'This reply is what your caller receives: the docs line first, then your report as your brief asks for it -',
   'its status: and contract_version: lines, where it has them, unchanged.',
 ];
+// ...and at the hand-back the report has not left yet: it goes again, with the docs line, once the ask is answered.
+const HANDBACK_LAST = [
+  'Your report was NOT delivered. Answer this first, then call SubagentHandback again: the docs line first',
+  '(docs ok, or the section you rewrote), then your report unchanged - its status: and contract_version: lines,',
+  'where it has them, as they were.',
+];
 function finishAsk(docs, files, asks, warnings = [], closing = []) {
   const named = `${files.slice(0, FILES_NAMED).join(', ')}${files.length > FILES_NAMED ? ` and ${files.length - FILES_NAMED} more` : ''}`;
   const parts = [`Docs check: you changed ${named}`];
@@ -1033,6 +1403,15 @@ function changedWhileIdle(root, files, transcriptPath) {
   return out;
 }
 
+// Work this session launched that is still out at Stop, from the harness's own registry - the Stop payload's
+// `background_tasks` (code.claude.com/docs/en/hooks, 'Stop input': empty when nothing is in flight; the stop contract
+// reads the same field). Any unsettled entry counts: a watch that resumes the build is the pause this defers for. No
+// registry in the payload (an older Claude Code) reads as none, the old behaviour.
+const MAX_DEFERS = 3;
+const SETTLED_STATUS = /^(?:completed?|done|failed|killed|stopped|cancell?ed|error|finished)$/i;
+const liveBackgroundWork = (input) => input.hook_event_name === 'Stop' && Array.isArray(input.background_tasks)
+  && input.background_tasks.some((t) => t && typeof t === 'object' && !SETTLED_STATUS.test(String(t.status || '')));
+
 // The same check for work done outside any subagent - and the only cover skills have, since a skill has no end
 // event of its own and its work lands here.
 function stop(input, root, docs, state) {
@@ -1054,9 +1433,24 @@ function stop(input, root, docs, state) {
     // for and it was already asked there; repeating it here is the same block twice in a row, which is how a gate
     // earns itself a ALFRED_CODE_DOCS_ASK=0. Attribution, not a subtraction: the session is asked about its own
     // later change to a section a seat answered for earlier.
-    const mine = new Set(loadAgent(input.session_id, MAIN_ACTOR).wrote || []);
-    const seats = otherActorWrites(input.session_id, MAIN_ACTOR);
-    const claimed = changed.files.filter((f) => mine.has(f) || !seats.has(f));
+    const main = loadAgent(input.session_id, MAIN_ACTOR);
+    const mine = new Set(main.wrote || []);
+    const entries = tmpEntries();
+    const seats = otherActorWrites(input.session_id, MAIN_ACTOR, entries);
+    // a change another session on this checkout recorded as its own write is that session's to answer for: logged, not asked
+    const others = otherSessionWrites(input.session_id, root, state.snapshot.at, entries);
+    const theirs = changed.files.filter((f) => !mine.has(f) && !seats.has(f) && others.has(f));
+    if (theirs.length) log(root, input, { event: 'changed-by-other-session', files: theirs.slice(0, 5) });
+    // a change this session only moved with git stash (stashMoves) was authored elsewhere: logged, not asked
+    const moved = new Set(main.moved || []);
+    const stashed = changed.files.filter((f) => !mine.has(f) && !seats.has(f) && !others.has(f) && moved.has(f));
+    if (stashed.length) log(root, input, { event: 'changed-by-git-stash', files: stashed.slice(0, 5) });
+    // an unclaimed change counts only when this session ran a command that may write (recordRun); in a session that only
+    // read and edited through its tools, it is another writer's - logged, not asked
+    const unclaimed = (f) => !seats.has(f) && !others.has(f) && !moved.has(f);
+    const unrun = main.ran ? [] : changed.files.filter((f) => !mine.has(f) && unclaimed(f));
+    if (unrun.length) log(root, input, { event: 'changed-unclaimed', files: unrun.slice(0, 5) });
+    const claimed = changed.files.filter((f) => mine.has(f) || (unclaimed(f) && main.ran));
     // an unclaimed change made while the session sat idle is the user's own, outside this session: logged, not asked
     const outside = changedWhileIdle(root, claimed.filter((f) => !mine.has(f)), input.transcript_path);
     if (outside.size) log(root, input, { event: 'changed-outside-session', files: [...outside].slice(0, 5) });
@@ -1076,6 +1470,16 @@ function stop(input, root, docs, state) {
     unattendedRow(root, input, 'docs finish ask');
     return;
   }
+  // A turn that ends while work this session launched still runs is a PAUSE, not the close: the ask waits for a later
+  // Stop, since it is made once per session and spent here it never reaches the real close (audit 2026-10-20 C25,
+  // 0685cd0b: 'coded, but I can't build or test it yet' under a background watch drew 10 messages of doc edits at ~310k
+  // for code that had not built). At most MAX_DEFERS times, so a server left running all session cannot silence it.
+  if (liveBackgroundWork(input) && (state.deferred || 0) < MAX_DEFERS) {
+    state.deferred = (state.deferred || 0) + 1;
+    saveState(input.session_id, state);
+    log(root, input, { event: 'ask-deferred', why: 'background work running', deferred: state.deferred, sections: asks.map((r) => r.id), files: files.slice(0, 5) });
+    return;
+  }
   state.asked = true;
   saveState(input.session_id, state);
   const reason = finishAsk(docs, files, asks, warnings, SUMMARY_LAST);
@@ -1085,7 +1489,7 @@ function stop(input, root, docs, state) {
   process.stdout.write(JSON.stringify({ decision: 'block', reason }));
 }
 
-module.exports = { writeTargets, consultedBy, toolPaths, toPosix, sweepOldState, saveState, loadState, sectionRefs };
+module.exports = { writeTargets, consultedBy, toolPaths, toPosix, sweepOldState, saveState, loadState, sectionRefs, otherSessionWrites, unknownRoots, stashMoves, seatsOut, architectureWrites };
 if (require.main === module) {
   try { main(); if (startNote) { const note = startNote; startNote = ''; emit('SessionStart', note); } } catch (error) { process.stderr.write(`docs-session: ${error.message}\n`); }
 }

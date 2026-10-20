@@ -74,7 +74,7 @@ Total time: <sum across all groups>.
 - If the input is entirely in English, keep the output in English.
 - If the input is in Ukrainian or mixed Ukrainian/English, translate everything to English by default.
 - If the user explicitly asks to keep the output in Ukrainian (e.g. 'keep in Ukrainian', 'залиш українською', 'не перекладай', 'output in Ukrainian'), produce the log in Ukrainian instead. In that case, translate any English fragments in the input to Ukrainian for consistency. This preference applies only to the current request unless the user says otherwise.
-- Never use Russian under any circumstances.
+- Output only English or Ukrainian.
 - Use past tense only.
 - Each task summary is 1-2 short sentences.
 - Use a normal dash `-` instead of an em dash.

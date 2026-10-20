@@ -67,11 +67,11 @@ function seedAccountKeys({ configDir, env = {}, log, note })
 // clobbered.
 // The body the seed writes into .claude/AGENTS.md for this project, or null with no template - also the
 // ledger fallback's test that an AGENTS.md is still the unfilled seed (R10).
-function agentsMdBody({ projectRoot, sourceDir })
+function agentsMdBody({ projectRoot, sourceDir, name = path.basename(projectRoot) })
 {
     let body;
     try { body = fs.readFileSync(path.join(sourceDir, 'stack', 'AGENTS.template.md'), 'utf8'); } catch { return null; }
-    return body.split(PROJECT_NAME_TOKEN).join(path.basename(projectRoot));
+    return body.split(PROJECT_NAME_TOKEN).join(name);
 }
 
 // Claude Code 2.1.277 is the first release that reads AGENTS.md itself (code.claude.com/docs/en/memory,
@@ -108,6 +108,28 @@ function seedAgentsMd({ projectRoot, sourceDir, log = () => {}, note = () => {} 
     catch (err) { note(`AGENTS.md could not be seeded (${err.message})`); return false; }
     log("  AGENTS.md: seeded to .claude/AGENTS.md - write the project top from its authoring-outline comment, and keep the '.claude/*' + '!.claude/AGENTS.md' gitignore lines so it stays committed");
     log(`  ${AGENTS_MD_NOTE}${fs.existsSync(path.join(projectRoot, 'CLAUDE.local.md')) ? ' - the CLAUDE.local.md here already switches it off (Project instructions: claude-md-and-agents-md in /config reads both)' : ''}`);
+    return true;
+}
+
+// UPDATE: a seed the stack still owns - unedited since the run that wrote it (the caller checks the ledger's hash) - is
+// the template's until init fills it in, so it is rewritten from THIS release's template. Re-spelling the old body
+// alone left the 2.5.0 seed's three capture steps as three lines naming the one capture that replaced them (the
+// 2026-10-17 update matrix). True when the file now holds this release's seed.
+function refreshSeededAgentsMd({ projectRoot, sourceDir, log = () => {}, note = () => {} })
+{
+    const dest = path.join(projectRoot, '.claude', 'AGENTS.md');
+    let now;
+    try { now = fs.readFileSync(dest, 'utf8'); } catch { return false; }
+    // The name the seed was stamped with, not this folder's: a second checkout under another folder name rewrote the
+    // committed file's H1 on every update (install-memory.test.js). A seed whose H1 is gone is not refreshed.
+    const h1 = /^# (.*)\r?\n/.exec(now);
+    if (!h1) return false;
+    const body = agentsMdBody({ projectRoot, sourceDir, name: h1[1] });
+    if (body === null) return false;
+    if (now === body) return true;
+    try { fs.writeFileSync(dest, body); }
+    catch (err) { note(`.claude/AGENTS.md could not be refreshed from this release's template (${err.message}) - it keeps the earlier seed`); return false; }
+    log("  AGENTS.md: the unfilled seed refreshed from this release's template - nothing in it was yours");
     return true;
 }
 
@@ -217,4 +239,4 @@ function playwrightDownloads({ browsers = [], pin = '', run, log = () => {} })
     return done;
 }
 
-module.exports = { seedAccountEnv, seedAccountKeys, seedAgentsMd, agentsMdBody, moveSeededClaudeMd, claudeMdOffer, respellReinclude, playwrightDownloads };
+module.exports = { seedAccountEnv, seedAccountKeys, seedAgentsMd, refreshSeededAgentsMd, agentsMdBody, moveSeededClaudeMd, claudeMdOffer, respellReinclude, playwrightDownloads };

@@ -364,6 +364,35 @@ test('C07: --check-report fails a TOKEN VERDICT that states no avoidable <N> of 
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// Audit 2026-10-20 C40 (fc4fec40): a report's Sweep 1 said 'none printed in the Environment table' while its own
+// Environment row printed 6 unheld-stop candidates, and --check-report printed clean.
+test('C40: --check-report flags a judgment line saying a table printed nothing while that table has rows', () => {
+  const dir = tmp();
+  try {
+    const report = (env, claim) => {
+      const f = path.join(dir, 'report-usage.md');
+      fs.writeFileSync(f, ['# Stack usage report', '', '## Environment', '', '| | |', '|---|---|', '| Hook ledger | absent - identity attribution unavailable |', ...env, '',
+        '## Guard blocks - FILL IN (which guard fired)', '', '| hook | blocks |', '|---|---|', '| docs-session | 2 |', '',
+        '## Protocol check - FILL IN', '', claim, ''].join('\n'));
+      try { return { status: 0, out: execFileSync('node', [SCRIPT, '--check-report', f], { encoding: 'utf8' }) }; } catch (e) { return { status: e.status, out: String(e.stdout) }; }
+    };
+    const six = ['| Unheld-stop candidates | 6 (free-text user turn right after a no-tool end_turn): 2026-10-16T06:15:43Z→2026-10-16T06:16:00Z |'];
+    const slip = report(six, '- Sweep - unheld-stop candidates: none printed in the Environment table.');
+    assert.strictEqual(slip.status, 1, slip.out);
+    assert.match(slip.out, /says nothing printed +line 18 - this report's 'Unheld-stop candidates' \(line 8\) prints 6/);
+    // the audited case's boundary: with no candidates the row is not printed, so the same sentence is true
+    const none = report([], '- Sweep - unheld-stop candidates: none printed in the Environment table.');
+    assert.strictEqual(none.status, 0, `an absent row is no contradiction, and a key-value table's heading is no subject:\n${none.out}`);
+    // a column table named by its heading
+    const guard = report([], '- Guard blocks: no rows this session.');
+    assert.strictEqual(guard.status, 1);
+    assert.match(guard.out, /this report's 'Guard blocks' \(line 9\) prints 1/);
+    // a row that always prints says nothing about rows; a judged count of what it lists is the fix
+    assert.strictEqual(report([], '- Hook ledger: nothing flagged.').status, 0, 'an always-printed key row states no count');
+    assert.strictEqual(report(six, '- Sweep - unheld-stop candidates: the 6 printed are each user-initiated.').status, 0);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 // C07 (516e653d): the compaction re-read row counted 7 files for 1 - a pipe's `| tail -40` keyed `-40` as a file, and
 // a relative shell read and an absolute Read of one file keyed apart.
 test('C07: a pipe option is no read target, and one file read by two spellings is one re-read', () => {

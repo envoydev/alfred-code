@@ -66,17 +66,10 @@ const ROUTES = [
     pattern: '^mcp__(plugin_(chrome|msedge|firefox|webkit)-control_)?(chrome|msedge|firefox|webkit)-control__browser_file_upload$',
     tools: ['chrome', 'msedge', 'firefox', 'webkit'].flatMap((e) => [`mcp__plugin_${e}-control_${e}-control__browser_file_upload`, `mcp__${e}-control__browser_file_upload`]) },
   { hook: 'guard-stop-contract.js', event: 'Stop', deny: true },
-  // One job per recorded shell call's RESULT: an error result is the PostToolUseFailure payload, any
-  // other the PostToolUse one. Each job is its own session, so the rate is the per-run upper bound -
-  // in the field the once-per-streak latch lowers it. Log-only since 2026-09-25: a red run writes a
-  // `root-cause` probe row and injects nothing.
-  { hook: 'guard-stop-contract.js', event: 'PostToolUseFailure', deny: false, probe: 'root-cause' },
-  { hook: 'guard-stop-contract.js', event: 'PostToolUse', deny: false, probe: 'root-cause' },
   // One stop per recorded SUBAGENT transcript (<session>/subagents/agent-*.jsonl): its final text, the
   // whole file as agent_transcript_path, and agent_type from the sibling .meta.json - the payload the
   // harness sends when that agent finished.
   { hook: 'guard-stop-contract.js', event: 'SubagentStop', deny: true },
-  { hook: 'guard-answer-length.js', event: 'Stop', deny: true },
   // The slash route (2.1.5 M14): one job per typed command the wired matcher lets through, built from the
   // harness's `<command-name>` marker, with the transcript up to that row.
   { hook: 'guard-fresh-session-start.js', event: 'UserPromptExpansion', deny: false, needsTranscript: true },
@@ -84,11 +77,11 @@ const ROUTES = [
   // injection for a replay to count, so it is declared in UNEXERCISED below.
   { hook: 'guard-fresh-session-start.js', event: 'PreCompact', deny: false },
   // Injects the budget on EVERY prompt by design - 100% is correct here, not a false-positive rate.
-  { hook: 'guard-answer-length.js', event: 'UserPromptSubmit', deny: false, always: true },
+  { hook: 'guard-answer.js', event: 'UserPromptSubmit', deny: false, always: true },
   // Audit 2026-10-10 C09 / C15: the post-compaction hold, the idle-gap offer and the typed-answer probe (declared below).
   { hook: 'guard-fresh-session-start.js', event: 'PreToolUse', tools: HOLD_TOOLS, deny: true, needsTranscript: true },
   { hook: 'guard-fresh-session-start.js', event: 'UserPromptSubmit', deny: false },
-  { hook: 'guard-answer-length.js', event: 'PostToolUse', deny: false, probe: 'ask-answer-typed', noShell: true },
+  { hook: 'guard-answer.js', event: 'PostToolUse', deny: false, probe: 'ask-answer-typed', noShell: true },
 ];
 // A route can be silent on the corpus for two very different reasons: the gate is broken, or the
 // thing it guards simply never happened. Only the second is acceptable, and declaring it here is
@@ -138,9 +131,9 @@ const UNEXERCISED = {
   'guard-fresh-session-start.js::UserPromptSubmit':
     'judged against the wall clock, so a later replay reads every prompt as idle; the offer is pinned in compact-state.test.js',
   // Wired 2026-10-10 (audit C15 / C07). The replay builds a PostToolUse payload for shell calls only; the typed-answer
-  // probe is pinned in guard-answer-length.test.js.
-  'guard-answer-length.js::PostToolUse':
-    'the replay builds PostToolUse payloads for shell calls only; the typed-answer probe is pinned in guard-answer-length.test.js',
+  // probe is pinned in guard-answer.test.js.
+  'guard-answer.js::PostToolUse':
+    'the replay builds PostToolUse payloads for shell calls only; the typed-answer probe is pinned in guard-answer.test.js',
 };
 // Wired 2026-10-10 (audit C09): the post-compaction hold denies only after a compact start wrote its marker, which a
 // per-call replay never runs; the hold is pinned in compact-state.test.js.
@@ -219,7 +212,6 @@ function extract(files, opts) {
     const answerRows = [];   // every long assistant text
     const typedUserRows = []; // where the user actually took the turn back
     let cwd = '';
-    const shellUses = new Map(); // tool_use id -> the shell call, for its result's PostToolUse payload
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
@@ -234,7 +226,6 @@ function extract(files, opts) {
         for (const b of content) {
           if (b && b.type === 'tool_use') {
             counts.toolUse++;
-            if (b.id && /^(?:Bash|PowerShell)$/.test(b.name)) shellUses.set(b.id, b);
             for (const r of ROUTES) {
               if (r.event !== 'PreToolUse' || !r.tools.includes(b.name)) continue;
               const payload = { hook_event_name: 'PreToolUse', tool_name: b.name, tool_input: b.input || {}, cwd };
@@ -244,23 +235,6 @@ function extract(files, opts) {
           }
           // A text block long enough to be a real answer is a Stop point: the turn ended there.
           if (b && b.type === 'text' && String(b.text || '').length > 200) answerRows.push(i);
-        }
-      }
-
-      if (o.type === 'user' && Array.isArray(content)) {
-        for (const b of content) {
-          const use = b && b.type === 'tool_result' && shellUses.get(b.tool_use_id);
-          if (!use) continue;
-          const text = typeof b.content === 'string' ? b.content
-            : Array.isArray(b.content) ? b.content.map((x) => (x && typeof x.text === 'string' ? x.text : '')).join('\n') : '';
-          const event = b.is_error === true ? 'PostToolUseFailure' : 'PostToolUse';
-          for (const r of ROUTES) {
-            if (r.event !== event || r.noShell) continue;
-            const key = routeId(r) + '|' + sha(JSON.stringify([use.name, use.input, text.slice(-512), cwd]));
-            const payload = { hook_event_name: event, session_id: `replay-${sha(key).slice(0, 12)}`, tool_name: use.name, tool_input: use.input || {}, cwd,
-              ...(event === 'PostToolUseFailure' ? { error: text.slice(0, 4096) } : { tool_response: { stdout: text.slice(-4096), stderr: '', interrupted: false } }) };
-            if (!jobs.has(key)) jobs.set(key, { key, route: routeId(r), hook: r.hook, deny: r.deny, probe: r.probe, payload, cwd });
-          }
         }
       }
 

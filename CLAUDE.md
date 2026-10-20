@@ -24,8 +24,8 @@ change (see the invariants below).
 The mechanism notes for each part live in a path-scoped rule in `.claude/rules/` and load when you edit its files. Read the named rule before you change that part; it holds the why, the measurements and the edge cases this file leaves out.
 
 - `stack/skills/` (library skills, each copied per pick), `stack/agents/` (44 seats in the core plugin), `stack/rules/` (twenty shipped rules) and `stack/AGENTS.template.md` (the per-project instruction skeleton): `repo-catalog.md`.
-- `stack/hooks/` - eighteen hooks folded into the core `alfred-code` plugin, generated from the manifest's `hooks[]`: `repo-hooks.md`.
-- `scripts/install/` - THE INSTALLER, the ONLY route, one `node` command on every OS - and `setup-plugin/`, the seven commands and the router skill. The delivery-surfaces table, the install stamp and the snapshot gotchas are there too: `repo-installer.md`.
+- `stack/hooks/` - seventeen hooks folded into the core `alfred-code` plugin, generated from the manifest's `hooks[]`: `repo-hooks.md`.
+- `scripts/install/` - THE INSTALLER, the ONLY route, one `node` command on every OS - and `setup-plugin/`, the six commands and the router skill. The delivery-surfaces table, the install stamp and the snapshot gotchas are there too: `repo-installer.md`.
 - `stack/mcp/` and the generated MCP plugin entries (one plugin, one server, same name): `repo-mcp.md`.
 - Memory levels, the docs root, the data root and the two stores: `repo-memory-data.md`.
 - `meta/` (never installed) and the repo scripts (`lint-skills.js`, `analyze-usage.js`, `scan-evidence.js`): `repo-meta.md`.
@@ -144,6 +144,6 @@ The mechanism notes for each part live in a path-scoped rule in `.claude/rules/`
   but first (a label runs to its last quote before ` - `, so an apostrophe stays in it); the three flow skills
   (`task-solve`, `-cross`, `issue-diagnoser`) carry theirs in SKILL.md at a count pinned in
   `ASK_FLOW_TEMPLATES`, so one stop dropped back to prose goes red (pilot 3: 18 of 40 flow asks had no mark,
-  and the approver took the first option each time). The setup / configure walk's layer asks are templates too (`setup-plugin/references/walk.md` and `commands/setup.md`, pinned in `SETUP_ASK_TEMPLATES`): each layer's first ask is a single-select (keep the marked rows / pick / add every / only the locked rows) and 'Pick' opens ONE call of up to 4 multi-select questions grouped from the table's own labels, so no per-row change is typed.
+  and the approver took the first option each time). The init / configure walk's layer asks are templates too (`setup-plugin/references/walk.md` and `references/init-install.md`, pinned in `SETUP_ASK_TEMPLATES`): each layer's first ask is a single-select (keep the marked rows / pick / add every / only the locked rows) and 'Pick' opens ONE call of up to 4 multi-select questions grouped from the table's own labels, so no per-row change is typed.
 - Skills are shared with Cursor: a skill body stays platform-neutral (conditionals like 'INLINE when no
   dispatch'), never forked per platform.

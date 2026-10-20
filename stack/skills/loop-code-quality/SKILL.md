@@ -15,7 +15,7 @@ Best run in Claude Code, where you can dispatch the analysis and build seats and
 - The deliberate analyze-triage-fix loop over the code: each round recomputes the code-quality assessment against the project's own rules (the numbered prompts under the loops folder, the convention rules, the recorded code style) and works its fixable findings by tier. `staged` keeps the numbered-prompt pipeline, one stage at a time.
 - Not for architecture restructuring (loop-architecture-quality), measuring or raising test coverage (the coverage capture and loop), an assessment with no fixes (capture-code-quality alone), or a single diff (task-verify-code or /security-review).
 
-**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it.
+**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
 
 ## Execution modes
 DELEGATED vs INLINE keys on dispatch capability, not file presence - a project can carry the agent files on disk with no Agent tool to dispatch them, which is still INLINE. When dispatch is available, ask ONE question before ANALYZE and hold the answer for the run - the capture inherits it and never re-asks; the mark sits on the mode the `habits-execution-strategy` verdict picks (`parallel seats` moves it to the seats, listed first):
@@ -28,7 +28,7 @@ Run this loop here or through the stack seats? <the verdict's reason>
 No dispatch capability is INLINE without asking. Every AskUserQuestion below falls back to plain-text options where the harness lacks the tool.
 
 - **DELEGATED** (the user chose agents) - the main session dispatches every seat, exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it) - the capture's code-quality-analyzers, then an implementer for a small fix or the domain designer / implementers / verifier for a substantial one - never doing their work itself. Seats are always the NAMED domain seats, never a generic one; a surface with no matching installed seat is fixed INLINE and said so.
-- **INLINE** (the user chose the current session - or forced: no dispatch, a non-stack project, a scope too small to fan out) - the same steps in-session: the capture judges in-session, then you apply the fixable findings directly, smallest blast radius first, loading the convention skill of each file family you edit.
+- **INLINE** (the user chose the current session - or forced: no dispatch, a non-stack project, a scope too small to fan out - one module, never several slices) - the same steps in-session: the capture judges in-session, then you apply the fixable findings directly, smallest blast radius first, loading the convention skill of each file family you edit.
 - **STAGED** (the pre-2.0.0 numbered-prompt run, kept for a project that relies on it) - each stage prompt runs in numeric order as its own review-fix loop to that prompt's bar, with no assessment and no tiers. Reached ONLY when the invocation names it (`/loop-code-quality staged [TARGET]`) or resumes a staged run (its RESUME BLOCK names `RUN-STATE.md`); then Read `references/staged-mode.md` and run it exactly as written - its own mode ask, stages, stage closes and final report - instead of everything below. Its companions, each Read at its step and never up front: `references/rules.md` (before the first stage's first pass), `references/stage-close.md` (at each stage STOP or pause, and on resume), `references/delegated-mode.md` (DELEGATED only, before the first dispatch), `references/worked-example.md` (optional, when the inner loop's shape is unclear) and `references/bootstrap.md` (a missing or empty loops folder). The default run never switches into it on its own.
 
 ## The rule source - the loops folder
@@ -61,7 +61,7 @@ Take the open findings in the assessment's rank order (severity first) with the 
      ```ask
      <plan id>, <N> tasks. Build it?
      - 'Approve and build (Recommended)' - stamp, then fan out
-     - 'Changes needed' - say what in Other
+     - 'Changes needed' - I ask what to change next, in plain text
      ```
   4. **Stamp the approval**, in four parts:
      - *Shape* - write `<docs-path>/flow/APPROVAL`, first line `APPROVED <plan id> - "<the user's words, verbatim>"`; the selected answer IS those words. The dispatch hook blocks an unstamped implementer; delete the file when the run completes.
@@ -114,7 +114,7 @@ The reconcile reruns the capture; <the substitute> covers <what>.
 
 A run that shipped nothing skips both. Then emit the final report with the fields `references/loop-mechanics.md` defines: **Outcome**, **Resolved**, **Deferred**, **Proposed decisions**, **Docs**, **Baseline**, **Anti-gaming**, **Memories** (`memories purged: <names|none>`, fold-first), **Next actions**, **Mechanics**.
 
-When the report closes with uncommitted work and no next round queued, the commit decision is the ask below, never a prose 'your call' bullet. The same close names what this round's runs started and still have up - a Docker container or compose stack, seeded integration-test data, a background process - and puts tear-down-vs-keep through the same AskUserQuestion call (started-nothing is said plainly, and what the round did not start is never touched):
+When the report closes with uncommitted work and no next round queued, delete the round's APPROVED stamp first - every implementer and verifier has returned, and the checkpoint's generic security seat bounces off a live one (an AUTO stamp stays with its owner, and the checkpoint runs that half inline) - then the commit decision is the ask below, never a prose 'your call' bullet. The same close names what this round's runs started and still have up - a Docker container or compose stack, seeded integration-test data, a background process - and puts tear-down-vs-keep through the same AskUserQuestion call (started-nothing is said plainly, and what the round did not start is never touched):
 
 ```ask
 <N> files changed, uncommitted.
@@ -136,7 +136,7 @@ DELEGATED, one run over `src/Orders/`, with the 1.x starter prompts in `loops/`:
 3. **LOOP or STOP** - the round-2 capture returns no fixable finding -> **SATISFIED**; the sweep is clean, the capture reconciles the doc, then the report.
 
 ## Bounded and honest
-- **Hard cap: 3 improve rounds.** Do not loop indefinitely chasing the last debatable finding.
+- **Hard cap: 3 improve rounds.** Do not loop indefinitely chasing the last debatable finding. Say it in the first reply, unattended runs included: '3 rounds, then STOP with the remainder listed'.
 - **Each round boundary is a fresh-session resume point** - carried-forward conversation (not tool output) dominates session cost, and the loops folder plus a fresh capture is the handoff. A step, not advice: at each LOOP decision, ask - the fresh-session option ALWAYS one of its options; on 'fresh', end the turn with the RESUME BLOCK shaped in `references/loop-mechanics.md` and nothing else.
 
   ```ask

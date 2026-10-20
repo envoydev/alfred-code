@@ -146,7 +146,7 @@ Either way the report names every file written with its line count.
    Apply these changes to <the files>? <N> additions and <N> verified fixes rest on facts read this run; <N> check fixes are heuristic - read each diff above.
    - 'Apply the additions and verified fixes (Recommended)' - every line backed by a fact or a target confirmed on disk
    - 'Also apply the check fixes' - the heuristic rows too, each one read first
-   - 'Apply some - name them in Other' - only the changes you list; a check row named 'keep' gets the keep marker
+   - 'Apply some' - I ask which changes next, in plain text; a check row named 'keep' gets the keep marker
    - 'Skip' - nothing is written
    ```
 
@@ -160,7 +160,7 @@ Either way the report names every file written with its line count.
    - 'Skip (Recommended)' - nothing is written; the rows come back on the next run
    - 'Keep the lines as written for good' - each flagged line ends with the keep marker, and no later run raises it
    - 'Apply the check fixes' - every diff above is written
-   - 'Apply some - name them in Other' - only the changes you list
+   - 'Apply some' - I ask which changes next, in plain text; only those are written
    ```
 
    A dispatched seat has no user channel: it returns the diffs in its report instead.

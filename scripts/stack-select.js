@@ -14,6 +14,19 @@ const path = require('path');
 const { USER_OFF_WINS } = require('./install/plugins.js');
 const { parseJson } = require('./install/json-file.js');
 const { offeredOn, platformOf, osLabel, DESKTOP_OS } = require('../stack/mcp/desktop-launch.js');
+const { ENGINES, engineServer, engineOfServer } = require('../stack/mcp/data-root.js');
+
+// The ONE manifest entry `browser` is installed as a plugin per engine, so the MCP table shows each engine as its own
+// row and the walk picks them there (the user's ruling of 2026-10-15: 'browser' alone hid which browsers exist).
+// What each engine costs the machine, for its row's last column.
+const ENGINE_NOTES = {
+    chrome: "runs the machine's Google Chrome",
+    msedge: "runs the machine's Microsoft Edge",
+    firefox: "downloads Playwright's Firefox build",
+    webkit: "downloads Playwright's WebKit build (Safari's engine)",
+};
+// The engines a raw selection names as `<engine>-control`, read before normalizeInventory folds them onto `browser`.
+const enginesOf = list => ENGINES.filter(e => (Array.isArray(list) ? list : []).map(String).includes(engineServer(e)));
 
 // Expand raw = { skills?, agents?, rules?, mcps?, plugins?, hooks? } into the
 // dependency-complete set. Edges (skills never pull skills): rule -> skill/agent,
@@ -413,9 +426,8 @@ function emitTable(graph, layer, opts)
     const orphanWhy = {};
     for (const o of opts.orphans || []) if (o.category === layer.slice(0, -1)) orphanWhy[o.name] = o.why;
 
-    const rows = [];
     const singular = { rules: 'rule', agents: 'agent', skills: 'skill', hooks: 'hook', mcps: 'mcp', plugins: 'plugin' }[layer];
-    catalog.sort().forEach((name, i) =>
+    const judge = (name) =>
     {
         let status, why;
         if (installed)
@@ -444,7 +456,42 @@ function emitTable(graph, layer, opts)
             else { status = '-'; why = noteOf(name) || '-'; }
         }
 
-        rows.push([String(i + 1), name, status, why.replace(/^required by /, '')]);
+        return [status, why];
+    };
+
+    // A browser engine's row: installed, its on/off from the read-back's `browser` block ({installed, enabled});
+    // FRESH, what `browser` earned (a seed, evidence) lands on chrome - the engine the walk pre-selects - unless the
+    // selection names engines, which are then the picks.
+    const picked = opts.engines || [];
+    const engineRow = (engine) =>
+    {
+        const [status, why] = judge('browser');
+        const note = ENGINE_NOTES[engine];
+        if (installed)
+        {
+            const info = (opts.installed || {}).browser;
+            if (!info) return [installed.has('browser') ? '?' : '-', installed.has('browser') ? 'the read-back names no engine' : note];
+            const kept = (info.installed || []).includes(engine);
+            const on = (info.enabled || []).includes(engine);
+            return [!kept ? '-' : status === 'orphaned' ? 'orphaned' : on ? 'yes' : 'yes (off)', why !== '-' && kept ? `${why}; ${note}` : note];
+        }
+        const earned = status !== '-' && status !== 'added';
+        if (picked.length)
+        {
+            if (!picked.includes(engine)) return ['-', note];
+            return engine === 'chrome' && earned ? [status, `${why}; ${note}`.replace(/^-; /, '')] : ['added', note];
+        }
+        return engine === 'chrome' && status !== '-' ? [status, `${why}; ${note}`.replace(/^-; /, '')] : ['-', note];
+    };
+
+    const names = layer === 'mcps' && catalog.includes('browser')
+        ? [...catalog.filter(n => n !== 'browser'), ...ENGINES.map(engineServer)]
+        : catalog;
+    const rows = names.sort().map((name, i) =>
+    {
+        const engine = layer === 'mcps' ? engineOfServer(name) : undefined;
+        const [status, why] = engine ? engineRow(engine) : judge(name);
+        return [String(i + 1), name, status, why.replace(/^required by /, '')];
     });
 
     const header = ['#', singular, installed ? 'installed' : 'selected', 'required by'];
@@ -771,6 +818,8 @@ function main(argv)
     // The same boundary as --installed: validate builds its final.json FROM the step-1 inventory, so
     // a {name,scope} plugin read as `[object Object]` and was dropped from the emit (measured
     // 2026-09-15), and a `.claude/hooks/*.js` filename misclassified every hook as unknown.
+    // The engines the walk picked as rows of their own (`chrome-control`, ...), before the fold below makes them `browser`.
+    const engines = enginesOf(raw.mcps);
     raw = normalizeInventory(raw);
     const unknownOut = argv.includes('--table') ? console.error : console.log;   // keep the table paste-clean
     const desktop = gateMcps(raw.mcps, platform);
@@ -782,6 +831,8 @@ function main(argv)
 
     const emit = arg('--emit');
     if (emit) fs.writeFileSync(emit, emitSelectionFile(closure, { hooksAnswered: argv.includes('--hooks-answered') }));
+    // The installer takes the engines as `--browsers <csv>`, never as selection lines: say the csv, so the walk copies it.
+    if (emit && engines.length && (closure.mcps || []).includes('browser')) console.log(`browsers: ${engines.join(',')}`);
 
     // --table is a pure presentation mode: stdout carries ONLY the table, so the
     // guided walks can paste it verbatim; the required:/orphan: diagnostics are
@@ -812,7 +863,7 @@ function main(argv)
         const recs = gateRecs(rawRecs, platform);
         const foundFile = readJsonSoft('--found', arg('--found'));
         const evidence = foundFile ? (foundFile.found || foundFile) : null;
-        const table = emitTable(graph, tableLayer, { raw, recs, stacks, installed, orphans, evidence, platform });
+        const table = emitTable(graph, tableLayer, { raw, recs, stacks, installed, orphans, evidence, platform, engines });
         if (table === null) { console.error(`stack-select: unknown table layer '${tableLayer}'`); process.exit(2); }
         process.stdout.write(table);
     }
@@ -829,7 +880,7 @@ function main(argv)
 
     if (has('--check'))
     {
-        const report = evaluatePrereqs(closure, detectEnvironment({ configDir: arg('--config-dir') }), { playwrightBrowsers: browsersOption(arg), githubCli: has('--github-cli'), deferInit: has('--defer-init') });
+        const report = evaluatePrereqs(closure, detectEnvironment({ configDir: arg('--config-dir') }), { playwrightBrowsers: browsersOption(arg).length ? browsersOption(arg) : engines, githubCli: has('--github-cli'), deferInit: has('--defer-init') });
         for (const b of report.blockers) console.log(`BLOCKER: ${b.need} -> ${b.how}`);
         for (const w of report.warnings) console.log(`warning: ${w.need} -> ${w.how}`);
         for (const d of report.deferred) console.log(`init: ${d.need} -> /alfred-code:init installs it in the next session`);

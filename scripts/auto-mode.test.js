@@ -1,4 +1,4 @@
-// auto-mode (the user's ruling, 2026-10-14): `auto-mode` on a task or loop call runs it unattended. The fresh-session
+// auto-mode (the user's ruling, 2026-10-14): `--auto-mode` on a task, capture, loop or issue call runs it unattended (the flag and the capture family since 2026-10-17). The fresh-session
 // hook writes the AUTO stamp naming the session before the run's first step, the stop contract answers each ask that
 // marks one Recommended option and sends a Stop back to the run until its close deletes the stamp, and the installer
 // seeds each model's auto-compact window at its fresh-session trigger, because Claude Code reads that key at session
@@ -49,7 +49,7 @@ function transcript(rows = [], model = 'claude-opus-5-5', ctx = 30000)
 const run = (hook, payload, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, hook)],
     { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: env.ALFRED_CODE_HOOK_LOG_DIR || fs.mkdtempSync(path.join(TMP, 'log-')), ...env } });
 const rows = (p, sid) => { try { return fs.readFileSync(path.join(p.blocks, `${sid}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { return []; } };
-const autoStamp = (p, sid, extra = '') => fs.writeFileSync(p.gate, `AUTO - "/loop-code-quality auto-mode"\nsession: ${sid}\nskill: loop-code-quality\n${extra}`);
+const autoStamp = (p, sid, extra = '') => fs.writeFileSync(p.gate, `AUTO - "/loop-code-quality --auto-mode"\nsession: ${sid}\nskill: loop-code-quality\n${extra}`);
 
 // ---------------------------------------------------------------------------------------------
 // the stamp
@@ -95,7 +95,7 @@ test('auto-mode start: the typed command writes the stamp before the run, and th
     const plain = expand(p, 's1', '/loop-code-quality src/', big);
     assert.match(context(plain), /Do NOT start the run yet/, 'the offer, without auto-mode');
     assert.ok(!fs.existsSync(p.gate), 'and no stamp');
-    const auto = expand(p, 's2', '/loop-code-quality auto-mode src/', big);
+    const auto = expand(p, 's2', '/loop-code-quality --auto-mode src/', big);
     assert.strictEqual(auto.status, 0);
     const said = context(auto);
     assert.match(said, /^auto-mode is ON for this \/loop-code-quality run/);
@@ -104,57 +104,79 @@ test('auto-mode start: the typed command writes the stamp before the run, and th
         /never write an APPROVED or AUTO line over it/, /an unpushed commit is a Leftovers line/, /delete \.alfred\/docs\/flow\/APPROVAL: that ends auto-mode/])
         assert.match(said, rule);
     const stamp = fs.readFileSync(p.gate, 'utf8');
-    assert.match(stamp, /^AUTO - "\/loop-code-quality auto-mode src\/"\nsession: s2\nskill: loop-code-quality\nat: \d{4}-/);
+    assert.match(stamp, /^AUTO - "\/loop-code-quality --auto-mode src\/"\nsession: s2\nskill: loop-code-quality\nat: \d{4}-/);
     assert.ok(rows(p, 's2').some((r) => r.mode === 'auto' && r.kind === 'auto-start'), 'one auto-start row');
     // a second flow in the same run rides the live stamp: its words and time stay
     const before = fs.readFileSync(p.gate, 'utf8');
-    assert.match(context(expand(p, 's2', '/task-solve auto-mode fix the cache', big)), /auto-mode is ON for this \/task-solve run/);
+    assert.match(context(expand(p, 's2', '/task-solve --auto-mode fix the cache', big)), /auto-mode is ON for this \/task-solve run/);
     assert.strictEqual(fs.readFileSync(p.gate, 'utf8'), before, 'the live stamp is kept');
     // another session's stamp is not this run's: it is replaced
-    expand(p, 's3', '/task-solve-cross auto-mode', big);
+    expand(p, 's3', '/task-solve-cross --auto-mode', big);
     assert.match(fs.readFileSync(p.gate, 'utf8'), /\nsession: s3\n/);
 });
 
-test('auto-mode start: only a task or loop, only the exact word, never a seat, and the model\'s Skill call only on the user\'s typed word', () =>
+test('auto-mode start: a task, capture, loop or issue, only the exact `--auto-mode` as the FIRST word, never a seat, and the model\'s Skill call only on the user\'s typed auto-mode command', () =>
 {
     const t = transcript();
     const none = (prompt, extra) => { const p = project(); const r = expand(p, 'sx', prompt, t, extra); return !fs.existsSync(p.gate) && !/auto-mode is ON/.test(context(r)); };
-    assert.ok(none('/capture-architecture auto-mode'), 'a capture is no flow of steps');
-    assert.ok(none('/loop-code-quality automode'), 'the word is exact');
-    assert.ok(none('/loop-code-quality no-auto-mode'), 'and whole');
-    assert.ok(none('/loop-code-quality auto-mode', { agent_id: 'seat-1' }), 'a seat never starts one');
-    assert.ok(none('/loop-code-quality auto-mode', { session_id: '' }), 'no session, nothing to name');
+    // the bare word of 2.4.0-2.5.0 starts nothing: the flag is `--auto-mode` (the user's ruling, 2026-10-17)
+    assert.ok(none('/task-solve auto-mode fix it'), 'the bare word, on a task');
+    assert.ok(none('/capture-architecture auto-mode'), 'and on a capture');
+    assert.ok(none('/loop-code-quality --automode'), 'the flag is exact');
+    assert.ok(none('/loop-code-quality -auto-mode'), 'two dashes');
+    assert.ok(none('/loop-code-quality --auto-modes'), 'and whole');
+    assert.ok(none('/loop-code-quality --no-auto-mode'), 'no prefix');
+    // the word starts a run only as the first word after the command (the user's ruling, 2026-10-15)
+    assert.ok(none('/task-solve fix the auto-mode banner wording'), 'inside the task text it is the task');
+    assert.ok(none('/task-solve fix the --auto-mode flag wording'), 'the flag inside the task text is the task');
+    assert.ok(none('/loop-code-quality src/ --auto-mode'), 'and trailing it starts nothing');
+    assert.ok(none('/loop-code-quality --auto-mode', { agent_id: 'seat-1' }), 'a seat never starts one');
+    assert.ok(none('/loop-code-quality --auto-mode', { session_id: '' }), 'no session, nothing to name');
     const p = project();
-    assert.match(context(expand(p, 'sy', '/alfred-code:loop-test-coverage AUTO-MODE', t)), /auto-mode is ON/, 'a scoped name, any case');
-    // the model's own Skill call, with the word in its args: it starts auto-mode only on the user's newest TYPED prompt
-    // carrying the word (the user's ruling, 2026-10-14, audit HK04)
+    assert.match(context(expand(p, 'sy', '/alfred-code:loop-test-coverage --AUTO-MODE', t)), /auto-mode is ON/, 'a scoped name, any case');
+    // a capture command runs it too (the user's ruling, 2026-10-17)
+    const cap = project();
+    assert.match(context(expand(cap, 'sc', '/capture-architecture --auto-mode', t)), /auto-mode is ON for this \/capture-architecture run/);
+    assert.match(fs.readFileSync(cap.gate, 'utf8'), /^AUTO - "\/capture-architecture --auto-mode"\nsession: sc\nskill: capture-architecture\n/);
+    // an issue command runs it too (the user's ruling, 2026-10-15), the word on its own line as typed in a real session
+    const iss = project();
+    assert.match(context(expand(iss, 'si', '/issue-diagnoser --auto-mode\n\nthe login 500', t)), /auto-mode is ON for this \/issue-diagnoser run/);
+    assert.match(fs.readFileSync(iss.gate, 'utf8'), /^AUTO - "\/issue-diagnoser --auto-mode the login 500"\nsession: si\nskill: issue-diagnoser\n/);
+    // the model's own Skill call, with the word in its args: it starts auto-mode only when the user's newest TYPED prompt
+    // is a task, capture, loop or issue command opening with the flag (audit HK04; the prose route left on 2026-10-15)
     const typed = (text) => ({ type: 'user', entrypoint: 'cli', timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'text', text }] } });
     const skillCall = (skill, args, tp, sid = 'sz') => { const pr = project(); const r = run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill',
         tool_input: { skill, args }, session_id: sid, cwd: pr.root, transcript_path: tp }, { CLAUDE_PROJECT_DIR: pr.root }); return { pr, r }; };
-    const asked = transcript([typed('design the cache plan in auto-mode please')]);
-    const { pr: q, r: call } = skillCall('task-design', 'auto-mode the cache plan', asked);
+    const asked = transcript([typed('/task-design --auto-mode the cache plan')]);
+    const { pr: q, r: call } = skillCall('task-design', '--auto-mode the cache plan', asked);
     assert.strictEqual(call.status, 0, call.stderr);
     assert.strictEqual(JSON.parse(call.stdout).hookSpecificOutput.hookEventName, 'PreToolUse');
     assert.match(context(call), /auto-mode is ON for this \/task-design run/);
-    assert.match(fs.readFileSync(q.gate, 'utf8'), /^AUTO - "\/task-design auto-mode the cache plan"\nsession: sz\n/);
-    // a slash command's own row carries the word in its args markup
-    assert.match(context(skillCall('task-implement', 'auto-mode', transcript([typed('<command-name>/task-solve</command-name>\n<command-args>auto-mode fix it</command-args>')])).r),
-        /auto-mode is ON/, 'a typed slash run');
+    assert.match(fs.readFileSync(q.gate, 'utf8'), /^AUTO - "\/task-design --auto-mode the cache plan"\nsession: sz\n/);
+    // a slash command's own row carries the word in its args markup - the shape a real transcript stores
+    const cmdRow = (name, args) => typed(`<command-message>${name}</command-message>\n<command-name>/${name}</command-name>\n<command-args>${args}</command-args>`);
+    assert.match(context(skillCall('task-implement', '--auto-mode', transcript([cmdRow('task-solve', '--auto-mode\n\nfix it')])).r), /auto-mode is ON/, 'a typed slash run');
+    assert.match(context(skillCall('issue-signatures-runtime', '--auto-mode', transcript([cmdRow('issue-diagnoser', '--auto-mode the 500')])).r), /auto-mode is ON/, 'a typed issue run');
+    assert.match(context(skillCall('capture-code-quality', '--auto-mode', transcript([cmdRow('capture-code-quality', '--auto-mode')])).r), /auto-mode is ON for this \/capture-code-quality run/, 'a typed capture run');
     // a project's own task skill, a digit in its name, through the Skill call
-    const { pr: v, r: own } = skillCall('task-migrate-v2', 'auto-mode', transcript([typed('/task-migrate-v2 auto-mode')]), 'sv');
+    const { pr: v, r: own } = skillCall('task-migrate-v2', '--auto-mode', transcript([typed('/task-migrate-v2 --auto-mode')]), 'sv');
     assert.match(context(own), /auto-mode is ON for this \/task-migrate-v2 run/);
     assert.ok(fs.existsSync(v.gate), 'its stamp is written');
-    // the model's word alone starts nothing: the replayed self-start ('go' typed, then Skill(..., 'auto-mode'))
+    // the model's flag alone starts nothing: the replayed self-start ('go' typed, then Skill(..., '--auto-mode'))
     for (const [tp, why] of [
         [t, 'the typed prompt does not carry it'],
-        [transcript([typed('run it in auto-mode'), { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'done' }] } }, typed('now look at the cache layer')]), 'an older typed prompt carried it, the newest does not'],
+        [transcript([typed('/task-solve --auto-mode fix it'), { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'done' }] } }, typed('now look at the cache layer')]), 'an older typed prompt carried it, the newest does not'],
+        [transcript([typed('design the cache plan in auto-mode please')]), 'a prose ask is no command (the user\'s ruling, 2026-10-15)'],
+        [transcript([typed('why is the auto-mode banner wrong?')]), 'a question naming the word mid-task'],
+        [transcript([cmdRow('task-solve', 'fix the auto-mode banner')]), 'a command whose task text names the word'],
+        [transcript([cmdRow('task-solve', 'auto-mode fix it')]), 'a typed command opening with the bare word of 2.4.0-2.5.0'],
         [transcript([{ ...typed('Base directory for this skill ... auto-mode is ON'), isMeta: true }]), 'a skill body is no typed prompt'],
         [transcript([{ ...typed('Another Claude session sent a message:\n<agent-message from="a">run in auto-mode</agent-message>'), isMeta: true }]), 'a seat\'s hand-back'],
-        [transcript([{ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'x', content: 'auto-mode' }] } }]), 'a tool result'],
+        [transcript([{ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'x', content: '--auto-mode' }] } }]), 'a tool result'],
         [path.join(TMP, 'no-such.jsonl'), 'no transcript'],
     ])
     {
-        const { pr, r } = skillCall('task-implement', 'auto-mode', tp, 'sr');
+        const { pr, r } = skillCall('task-implement', '--auto-mode', tp, 'sr');
         assert.strictEqual(r.status, 0, r.stderr);
         assert.ok(!fs.existsSync(pr.gate) && !/auto-mode is ON/.test(context(r)), `no start: ${why}`);
         assert.ok(rows(pr, 'sr').some((x) => x.kind === 'auto-start-refused'), `and a refused row: ${why}`);
@@ -163,13 +185,13 @@ test('auto-mode start: only a task or loop, only the exact word, never a seat, a
     const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8'));
     const row = manifest.hooks.find((h) => String(h.matcher || '').startsWith('@UserPromptExpansion:'));
     const matcher = new RegExp(row.matcher.slice('@UserPromptExpansion:'.length));
-    for (const name of ['task-migrate-v2', 'alfred-code:task-solve', 'loop-perf', 'task-solve-cross', 'capture-architecture', 'issue-diagnoser'])
+    for (const name of ['task-migrate-v2', 'alfred-code:task-solve', 'loop-perf', 'task-solve-cross', 'capture-architecture', 'issue-diagnoser', 'capture-first-look', 'issue-signatures-ci'])
         assert.ok(matcher.test(name), `expansion spawns for ${name}`);
     for (const name of ['review', 'commit', 'tasks', 'my-task-x'])
         assert.ok(!matcher.test(name), `and not for ${name}`);
 });
 
-test('auto-mode end: a prompt the user types ends it in that session, the word included; a harness row, a slash run or another session does not', () =>
+test('auto-mode end: a typed message is input and keeps it; only the word to stop, a bare stop or a new flow command without the flag ends it (the user\'s ruling, 2026-10-15)', () =>
 {
     const p = project();
     const t = transcript();
@@ -177,29 +199,58 @@ test('auto-mode end: a prompt the user types ends it in that session, the word i
         { CLAUDE_PROJECT_DIR: p.root });
     autoStamp(p, 'e1');
     for (const [sid, prompt, why] of [['e2', 'take over here', "another session's prompt"], ['e1', '<task-notification>\n<task-id>x</task-id>', 'a task notice'],
-        ['e1', '/loop-code-quality auto-mode src/', 'the next auto-mode run'],
+        ['e1', '/loop-code-quality --auto-mode src/', 'the next auto-mode run'], ['e1', '/issue-diagnoser --auto-mode the 500', 'the next auto-mode run, an issue command'],
+        ['e1', '/capture-code-style --auto-mode', 'the next auto-mode run, a capture command'],
+        ['e1', '/compact', 'a slash command that is no flow command'],
         ['e1', 'Another Claude session sent a message:\n<agent-message from="a1b2">\n[Subagent hand-back] done\n</agent-message>', 'a seat\'s hand-back (audit HK14)']])
     {
-        assert.strictEqual(submit(sid, prompt).status, 0);
+        const r = submit(sid, prompt);
+        assert.strictEqual(r.status, 0);
         assert.ok(fs.existsSync(p.gate), `kept: ${why}`);
+        assert.doesNotMatch(context(r), /auto-mode is OFF/, `and nothing says it ended: ${why}`);
     }
-    // the word itself is no reason to keep it: the likeliest off-switches name it (audit HK13)
-    for (const prompt of ['stop auto-mode', 'auto-mode off', 'turn auto-mode off, I am back'])
+    // a message typed mid-run is input to the run: the stamp stands and the model is told to carry on
+    for (const prompt of ['use the v2 endpoint for the fix instead', 'stop using lodash in the fix', 'what is the status?', 'the end of the auto-mode run should commit too'])
+    {
+        const kept = submit('e1', prompt);
+        assert.strictEqual(kept.status, 0, kept.stderr);
+        assert.ok(fs.existsSync(p.gate), `kept: ${prompt}`);
+        assert.match(context(kept), /^auto-mode stays ON \(\.alfred\/docs\/flow\/APPROVAL\): the user typed this message while the run goes on, so it is INPUT to the run/);
+        assert.match(context(kept), /delete \.alfred\/docs\/flow\/APPROVAL - that ends auto-mode/, 'a stop in other words is the model\'s to honor');
+    }
+    assert.ok(rows(p, 'e1').some((r) => r.kind === 'auto-input'), 'an auto-input row');
+    // a stop in another language is input, and the note hands it to the model (English only since 2026-10-16)
+    for (const prompt of ['вимкни авто-режим', 'стоп'])
+    {
+        const kept = submit('e1', prompt);
+        assert.ok(fs.existsSync(p.gate), `kept: ${prompt}`);
+        assert.match(context(kept), /delete \.alfred\/docs\/flow\/APPROVAL - that ends auto-mode/, `the model honors it: ${prompt}`);
+    }
+    // the word to stop ends it, and so does a bare stop (audit HK13)
+    for (const prompt of ['stop auto-mode', 'auto-mode off', 'turn auto-mode off, I am back', 'Please disable auto mode', 'stop, I will take it from here', 'stop', 'Stop - let me check'])
     {
         const off = submit('e1', prompt);
         assert.strictEqual(off.status, 0, off.stderr);
         assert.ok(!fs.existsSync(p.gate), `ended: ${prompt}`);
-        assert.match(context(off), /^auto-mode is OFF/);
+        assert.match(context(off), /^auto-mode is OFF: the user asked to stop it/);
         autoStamp(p, 'e1');
     }
-    const typed = submit('e1', 'stop, I will take it from here');
-    assert.strictEqual(typed.status, 0);
-    assert.ok(!fs.existsSync(p.gate), 'the stamp is gone');
-    assert.match(context(typed), /^auto-mode is OFF: the user typed this prompt/);
-    assert.ok(rows(p, 'e1').some((r) => r.kind === 'auto-end'), 'one auto-end row');
+    // a new flow command without the flag starts an attended run: its banner says OFF, so the old stamp goes - the bare
+    // word of 2.4.0-2.5.0 included
+    for (const prompt of ['/task-solve .alfred/docs/plans/x.md - resume at step 5', '/alfred-code:capture-architecture', '/capture-architecture auto-mode',
+        '/task-solve auto-mode fix it', '/task-solve fix the auto-mode banner', '/loop-code-quality src/ --auto-mode'])
+    {
+        const off = submit('e1', prompt);
+        assert.strictEqual(off.status, 0, off.stderr);
+        assert.ok(!fs.existsSync(p.gate), `ended: ${prompt}`);
+        assert.match(context(off), /^auto-mode is OFF: the user typed a new flow command without --auto-mode/);
+        assert.match(context(off), /`--auto-mode` as the first word after the next \/task-\*, \/capture-\*, \/loop-\* or \/issue-\* command starts a new run/);
+        autoStamp(p, 'e1');
+    }
+    assert.ok(rows(p, 'e1').some((r) => r.kind === 'auto-end'), 'an auto-end row');
     // a stamp written by hand (task-solve's waiver, no session line) is no auto-mode run of this hook's
     fs.writeFileSync(p.gate, 'AUTO - "take every recommendation"\n');
-    submit('e1', 'next thing');
+    assert.strictEqual(context(submit('e1', 'stop auto-mode')), '', 'nothing said');
     assert.ok(fs.existsSync(p.gate), 'a hand-written stamp stays');
 });
 
@@ -211,6 +262,92 @@ const ask = (p, sid, questions, extra = {}) => run('guard-stop-contract.js', {
 }, { CLAUDE_PROJECT_DIR: p.root });
 const q = (question, labels, multiSelect = false) => ({ question, header: 'H', multiSelect, options: labels.map((label) => ({ label, description: 'd' })) });
 const answered = (r) => { try { const o = JSON.parse(r.stdout).hookSpecificOutput; return o.permissionDecision === 'allow' ? o.updatedInput.answers : null; } catch { return null; } };
+
+// THE MODE BANNER (the user's ruling, 2026-10-15): a typed /task-*, /capture-*, /loop-* or /issue-* command opens its
+// first reply with two lines - auto-mode ON or OFF, and how the session meets a full context, with its numbers - said
+// once per typed command, after whatever else the expansion injects.
+const BANNER_HEAD = 'Open your reply to this command with these two lines, exactly as written, and never repeat them in a later reply:';
+const bannerOf = (r) => { const t = context(r); const at = t.indexOf(BANNER_HEAD); return at < 0 ? null : t.slice(at).split('\n').slice(1); };
+const typedRun = (p, sid, prompt, t, env = {}, extra = {}) => run('guard-fresh-session-start.js', {
+    hook_event_name: 'UserPromptExpansion', session_id: sid, cwd: p.root, transcript_path: t, expansion_type: 'slash_command',
+    command_name: prompt.slice(1).split(' ')[0], command_args: prompt.split(' ').slice(1).join(' '), prompt, ...extra,
+}, { CLAUDE_PROJECT_DIR: p.root, ...env });
+
+test('mode banner: auto-mode ON says every ask takes its Recommended option and the session compacts, at the window it will', () =>
+{
+    const p = project();
+    const t = transcript();
+    const on = typedRun(p, 'b1', '/loop-code-quality --auto-mode src/', t);
+    assert.strictEqual(on.status, 0, on.stderr);
+    const said = context(on);
+    assert.match(said, /^auto-mode is ON for this \/loop-code-quality run/, 'the contract first, its shape unchanged');
+    assert.strictEqual(said.split(BANNER_HEAD).length, 2, 'the banner once');
+    assert.deepStrictEqual(bannerOf(on), [
+        '**Auto-mode: ON** for /loop-code-quality - every question takes its (Recommended) option without waiting for you; one with no recommended option, or whose recommendation acts outward (push, merge, deploy, publish, a PR), still waits. A message you type mid-run is input to the run; type `stop auto-mode` (or just `stop`) to end it.',
+        "**Context:** no fresh-session hand-off - the session auto-compacts at Claude Code's own point in its 1M context window (claude-opus-5-5) and the run goes on from the summary and its state files.",
+    ]);
+    // the second flow of the same run rides the live stamp, and says so too
+    assert.match(bannerOf(typedRun(p, 'b1', '/task-solve --auto-mode fix the cache', t))[0], /^\*\*Auto-mode: ON\*\* for \/task-solve /);
+    // the window the installer seeded for this model (ALFRED_CODE_AUTO_COMPACT=1) is the one named
+    const q = project();
+    fs.mkdirSync(path.join(q.root, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(q.root, '.claude', 'settings.json'), JSON.stringify({ modelSettings: { 'claude-opus-5-5': { autoCompactWindow: 400000 } } }));
+    assert.strictEqual(bannerOf(typedRun(q, 'b2', '/task-solve --auto-mode x', t))[1],
+        '**Context:** no fresh-session hand-off - the session auto-compacts as it nears its 400k auto-compact window (of 1M, claude-opus-5-5) and the run goes on from the summary and its state files.');
+});
+
+test('mode banner: auto-mode OFF says each ask waits, then the fresh-session refresh, the compaction, or the offers off', () =>
+{
+    const p = project();
+    const t = transcript([], 'claude-sonnet-5-5');
+    const off = bannerOf(typedRun(p, 'c1', '/task-solve fix the cache', t));
+    assert.deepStrictEqual(off, [
+        '**Auto-mode: OFF** for /task-solve - each question waits for your answer.',
+        '**Context:** session refresh - past ~400k tokens of its 1M context window (claude-sonnet-5-5), the run offers to resume in a fresh session from its state file instead of compacting.',
+    ]);
+    // a 200k model takes its own tier's trigger
+    assert.match(bannerOf(typedRun(p, 'c2', '/capture-architecture', transcript([], 'claude-haiku-4-5')))[1], /past ~180k tokens of its 200k context window \(claude-haiku-4-5\)/);
+    assert.strictEqual(bannerOf(typedRun(p, 'c3', '/loop-test-coverage', t, { ALFRED_CODE_AUTO_COMPACT: '1' }))[1],
+        "**Context:** auto-compact is on (ALFRED_CODE_AUTO_COMPACT=1) - the session compacts at Claude Code's own point in its 1M context window (claude-sonnet-5-5) instead of offering a fresh session.");
+    assert.strictEqual(bannerOf(typedRun(p, 'c4', '/issue-diagnoser the login 500', t, { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '0' }))[1],
+        "**Context:** the fresh-session offers are off - the session compacts at Claude Code's own point in its 1M context window (claude-sonnet-5-5).");
+    // the bare word of 2.4.0-2.5.0 is said, never silently dropped: the flag is `--auto-mode` (the user's ruling, 2026-10-17)
+    const HINT = ' (auto-mode starts only with `--auto-mode` as the first word after the command.)';
+    assert.strictEqual(bannerOf(typedRun(p, 'c5', '/capture-code-style auto-mode', t))[0],
+        `**Auto-mode: OFF** for /capture-code-style - each question waits for your answer.${HINT}`);
+    // and the flag past the command's first argument is said too: it starts nothing there (the user's ruling, 2026-10-15)
+    assert.strictEqual(bannerOf(typedRun(p, 'c8', '/task-solve fix the cache --auto-mode', t))[0],
+        `**Auto-mode: OFF** for /task-solve - each question waits for your answer.${HINT}`);
+    // the bare word inside the task text is the task's own, and says nothing
+    assert.strictEqual(bannerOf(typedRun(p, 'c11', '/task-solve fix the auto-mode banner', t))[0], '**Auto-mode: OFF** for /task-solve - each question waits for your answer.');
+    assert.match(bannerOf(typedRun(project(), 'c12', '/capture-code-style --auto-mode', t))[0], /^\*\*Auto-mode: ON\*\* for \/capture-code-style - /);
+    assert.strictEqual(bannerOf(typedRun(p, 'c9', '/issue-diagnoser the login 500', t))[0], '**Auto-mode: OFF** for /issue-diagnoser - each question waits for your answer.');
+    assert.match(bannerOf(typedRun(project(), 'c10', '/issue-diagnoser --auto-mode the login 500', t))[0], /^\*\*Auto-mode: ON\*\* for \/issue-diagnoser - /);
+    // an unknown model and no window: no number is invented for the window
+    const bare = project();
+    assert.match(bannerOf(typedRun(bare, 'c6', '/task-design', path.join(TMP, 'no-such.jsonl')))[1], /past ~280k tokens of its 300k default context window, the run offers/);
+    // the fresh-session offer keeps its text and its place; the banner follows it
+    const big = transcript([], 'claude-opus-5-5', 450000);
+    const offered = context(typedRun(p, 'c7', '/loop-code-quality src/', big));
+    assert.match(offered, /^\/loop-code-quality is a deliberate orchestration run .* Do NOT start the run yet/);
+    assert.ok(offered.indexOf(BANNER_HEAD) > offered.indexOf('Do NOT start the run yet'), 'after the offer');
+});
+
+test('mode banner: never for another command, a seat, a print-mode run or the model\'s Skill call', () =>
+{
+    const p = project();
+    const t = transcript();
+    for (const prompt of ['/security-review', '/alfred-code:init', '/review', '/help'])
+        assert.strictEqual(bannerOf(typedRun(p, 'd1', prompt, t)), null, `no banner for ${prompt}`);
+    assert.strictEqual(bannerOf(typedRun(p, 'd2', '/task-solve x', t, {}, { agent_id: 'seat-1' })), null, 'a seat');
+    assert.strictEqual(bannerOf(typedRun(p, 'd3', '/task-solve x', t, { CLAUDE_CODE_ENTRYPOINT: 'sdk-cli' })), null, 'claude -p: nobody to read it');
+    assert.strictEqual(bannerOf(typedRun(p, 'd4', '/task-solve x', t, { ALFRED_CODE_UNATTENDED: '1' })), null, 'an unattended launch');
+    const typed = { type: 'user', entrypoint: 'cli', timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'text', text: '/task-design --auto-mode' }] } };
+    const call = run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'task-design', args: '--auto-mode' },
+        session_id: 'd5', cwd: p.root, transcript_path: transcript([typed]) }, { CLAUDE_PROJECT_DIR: p.root });
+    assert.match(context(call), /auto-mode is ON/);
+    assert.ok(!context(call).includes(BANNER_HEAD), 'a Skill call is a phase of a run, never a typed command');
+});
 
 test('auto-mode asks: every question marking one Recommended option is answered with it; anything else waits for the user', () =>
 {
@@ -245,7 +382,9 @@ test('auto-mode asks: every question marking one Recommended option is answered 
         ['Ticket comment drafted. Post it?', 'Post the comment to the ticket (Recommended)'], ['Send the summary?', 'Send it to the team channel (Recommended)'],
         ['File the bug upstream?', 'Create the GitHub issue (Recommended)'], ['Stale branches found. Clean up?', 'Delete the 4 remote branches (Recommended)'],
         ['Ship it?', 'Ship v2.5.0 (Recommended)'], ['A token leaked. Rotate?', 'Rotate it now (Recommended)'], ['Diverged. Reset?', 'Reset the branch to origin/main (Recommended)'],
-        ['Drop the test database?', 'Drop it (Recommended)'], ['Що далі?', 'Запушити гілку (Recommended)']])
+        ['Drop the test database?', 'Drop it (Recommended)'],
+        // an ask the English list cannot read waits too (deep hooks review 2026-10-16, the script rule)
+        ['Що далі?', 'Запушити гілку (Recommended)'], ['Що далі?', 'Оновити документацію (Recommended)']])
         assert.strictEqual(answered(ask(p, 'a1', [q(question, [label, 'Not now'])])), null, `waits: ${label}`);
     for (const [question, label] of [['Fix the issue now?', 'Fix it (Recommended)'], ['Drop the unused import?', 'Drop it (Recommended)'], ['Dead code found.', 'Remove the dead code (Recommended)']])
         assert.ok(answered(ask(p, 'a1', [q(question, [label, 'Not now'])])), `answered, a local act: ${label}`);
@@ -261,13 +400,51 @@ test('auto-mode asks: every question marking one Recommended option is answered 
     assert.strictEqual(answered(ask(p, 'a1', two)), null, 'no stamp - the user answers');
 });
 
+// 2026-10-16, the user's bug report: an auto-mode task-solve approval reached the user. 'too small to pay for seats' read
+// as an outward money act, so the ask waited; the shape check then sent it back for a fresh-session option (a new cycle in
+// a finished cycle's chat), and the re-sent ask waited on the same word.
+test('auto-mode asks: the pay-for-seats idiom and the fresh-session cost line are no outward act, and no new-cycle deny under auto-mode', () =>
+{
+    const p = project();
+    autoStamp(p, 'pay1');
+    const approve = q('Plan ready: 4 steps in 2 files, too small to pay for seats. Approve it?',
+        ['Approve - build in this session (Recommended)', 'Approve - dispatch the agent seats', 'Not yet - changes needed']);
+    assert.deepStrictEqual(answered(ask(p, 'pay1', [approve])), { [approve.question]: 'Approve - build in this session (Recommended)' }, 'the reported ask is answered');
+    for (const question of ['This chat re-sends about 401k tokens per message. Where next?', 'This chat sends about 226k tokens with every message. Go on?',
+        'Run it where? ~254k tokens re-sent per message here.', 'Seats would not pay for themselves here. Build?'])
+    {
+        const cost = q(question, ['Resume in a fresh session (Recommended)', 'Run in this session']);
+        assert.deepStrictEqual(answered(ask(p, 'pay1', [cost])), { [question]: 'Run in this session' }, `answered: ${question}`);
+    }
+    // a real outward act still waits
+    for (const [question, label] of [['Licence needed. Buy it?', 'Pay for the licence (Recommended)'], ['Done. Next?', 'Send the report to the client (Recommended)'],
+        ['Next?', 'Push to origin (Recommended)'], ['Order ready. Next?', 'Charge the customer card (Recommended)']])
+        assert.strictEqual(answered(ask(p, 'pay1', [q(question, [label, 'Not now'])])), null, `waits: ${label}`);
+
+    // the new-cycle deny: a typed prompt after this session's plan was stamped Completed:, then an ask with no fresh option
+    const completed = { type: 'assistant', message: { id: 'done', content: [{ type: 'tool_use', id: 'w1', name: 'Edit',
+        input: { file_path: path.join(p.root, '.alfred/docs/plans/2026-10-16-x.md'), old_string: 'Approved:', new_string: 'Approved: yes\nCompleted: 2026-10-16' } }] } };
+    const cycle = () => transcript([{ type: 'user', message: { role: 'user', content: '<command-name>/task-solve</command-name>' } }, completed,
+        { type: 'user', entrypoint: 'cli', message: { role: 'user', content: [{ type: 'text', text: 'now the manager view' }] } },
+        { type: 'assistant', entrypoint: 'cli', message: { id: `m${++n}`, model: 'claude-opus-5-5', role: 'assistant', content: [{ type: 'text', text: 'ok' }], usage: { cache_read_input_tokens: 362000 } } }]);
+    const outward = q('Result: design done. Ship it?', ['Push the branch (Recommended)', 'Stop']);
+    const waits = ask(p, 'pay1', [outward], { transcript_path: cycle() });
+    assert.strictEqual(waits.status, 0, `auto-mode: an outward ask waits for the user, never sent back for a fresh option: ${waits.stderr}`);
+    assert.strictEqual(answered(waits), null);
+    assert.doesNotMatch(context(waits), /fresh session/i, 'nor noted with one');
+    fs.rmSync(p.gate);
+    const attended = ask(p, 'pay2', [outward], { transcript_path: cycle() });
+    assert.strictEqual(attended.status, 2, 'off auto-mode the new cycle\'s first ask is still sent back');
+    assert.match(attended.stderr, /Resume in a fresh session \(Recommended\)/);
+});
+
 // audit 2026-10-14 SKF-04 (the user's ruling, option A): the upgrade's hard stop is a rail. Put as the attended run puts
 // it, the hook answers its marked 'Re-plan' and a stage that stays red re-plans unattended; so under auto-mode the skill
 // puts it with no mark and the question saying why, and the hook leaves it for the user without denying it.
 test('auto-mode asks: the upgrade hard stop waits when put unmarked with its reason, as task-version-upgrade says', () =>
 {
     const p = project();
-    fs.writeFileSync(p.gate, 'AUTO - "/task-version-upgrade auto-mode"\nsession: u1\nskill: task-version-upgrade\n');
+    fs.writeFileSync(p.gate, 'AUTO - "/task-version-upgrade --auto-mode"\nsession: u1\nskill: task-version-upgrade\n');
     const labels = ['Re-plan from this stage', "Roll back to the last stage's rollback point", 'Stop here'];
     const marked = q('Stage 3 stays red after its resolver pass. How do we go on?', [`${labels[0]} (Recommended)`, ...labels.slice(1)]);
     assert.deepStrictEqual(answered(ask(p, 'u1', [marked])), { [marked.question]: 'Re-plan from this stage (Recommended)' },
@@ -319,6 +496,69 @@ test('auto-mode Stop: the run is sent back until its close deletes the stamp, an
     assert.strictEqual(stop('r3', { last_assistant_message: 'Report written to docs/report.md.' }).status, 0, 'a hand-written AUTO stamp is not held here');
 });
 
+// Audit 2026-10-20 C02 (71d5428a, 3a8a1ee3, 7ec6c7db, 8a1fb350): every wait for the run's own seats was sent back once,
+// and the retry only restated the wait - ~3.4M tokens. Work this session launched that is still out wakes the run itself.
+test('auto-mode Stop: a run waiting on its own background work passes, an idle run is still sent back (C02)', () =>
+{
+    const p = project();
+    const t = transcript();
+    const wait = 'Waiting on the category-order builder agent (tasks 3-5) this session started.';
+    const stop = (sid, extra = {}) => run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: sid, cwd: p.root, transcript_path: t,
+        last_assistant_message: wait, ...extra }, { CLAUDE_PROJECT_DIR: p.root });
+    autoStamp(p, 'w1');
+    const seat = [{ id: 't1', type: 'subagent', status: 'running', description: 'builder', agent_type: 'implementer' }];
+    const waits = stop('w1', { background_tasks: seat });
+    assert.strictEqual(waits.status, 0, `a wait on a running seat is not sent back: ${waits.stderr}`);
+    assert.ok(rows(p, 'w1').some((r) => r.kind === 'auto-wait' && r.mode === 'auto'), 'one auto-wait row, a record');
+    assert.strictEqual(stop('w1', { background_tasks: [{ id: 'b1', type: 'shell', status: 'running', command: 'for i in $(seq 1 36); do docker info >/dev/null 2>&1 && break; sleep 5; done' }] }).status, 0,
+        'a finite poll redirected to /dev/null is live work too');
+    // the case the hold exists for: nothing is out, so nobody will wake the run
+    const idle = stop('w1', { background_tasks: [] });
+    assert.strictEqual(idle.status, 2, 'an idle run with nothing out is sent back');
+    assert.match(idle.stderr, /auto-mode is on and its run is not closed/);
+    assert.strictEqual(stop('w1', { background_tasks: [{ id: 's', type: 'shell', status: 'running', command: 'npm run dev' }] }).status, 2, 'a dev server never wakes the run');
+    assert.strictEqual(stop('w1', { background_tasks: [{ id: 'd', type: 'subagent', status: 'completed' }] }).status, 2, 'a settled seat wakes nothing');
+});
+
+test('auto-mode Stop: the auto-fields hold skips a progress note over running work, and still holds the idle done close (C02)', () =>
+{
+    const p = project();
+    const t = transcript([{ type: 'user', entrypoint: 'cli', message: { role: 'user', content: '<command-name>/task-solve</command-name>' } }]);
+    const note = "Chain A's fix delta is done and verified. Waiting on chain B's fix agent.";
+    const stop = (sid, extra = {}) => run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: sid, cwd: p.root, transcript_path: t,
+        last_assistant_message: note, ...extra }, { CLAUDE_PROJECT_DIR: p.root });
+    autoStamp(p, 'f1');
+    const live = stop('f1', { background_tasks: [{ id: 't1', type: 'subagent', status: 'running' }] });
+    assert.strictEqual(live.status, 0, `71d5428a L1130: no fields owed mid-wait: ${live.stderr}`);
+    assert.ok(!rows(p, 'f1').some((r) => r.detail && r.detail.branch === 'auto-fields'), 'no auto-fields row');
+    const idle = stop('f1', { background_tasks: [] });
+    assert.strictEqual(idle.status, 2, 'with nothing running the done close owes its fields');
+    assert.match(idle.stderr, /THREE named fields/);
+});
+
+// Audit 2026-10-20 C04 (71d5428a, 3a8a1ee3, 7ec6c7db, 8a1fb350): an auto-answered stop returned before the FLOW STOP
+// FIELDS check, so no waived stop carried Result / Progress / Leftovers. The check runs first and rides the answer's note.
+test('auto-mode asks: an auto-answered solve-task stop gets the stop-field note beside its answer (C04)', () =>
+{
+    const p = project();
+    autoStamp(p, 'k1');
+    const flowRows = [{ type: 'user', entrypoint: 'cli', message: { role: 'user', content: '<command-name>/task-solve</command-name>' } }];
+    const stopAsk = [q('Approve the gated plan? Mode: in this session.', ['Approve - build in this session (Recommended)', 'Not yet - changes needed'])];
+    const bare = run('guard-stop-contract.js', { hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: { questions: stopAsk }, session_id: 'k1', cwd: p.root,
+        transcript_path: transcript(flowRows) }, { CLAUDE_PROJECT_DIR: p.root });
+    assert.ok(answered(bare), `still auto-answered: ${bare.stdout}`);
+    const note = JSON.parse(bare.stdout).hookSpecificOutput.additionalContext;
+    assert.match(note, /auto-mode answered this ask/);
+    assert.match(note, /THREE named fields/, 'the fields are named beside the answer');
+    assert.match(note, /`mechanics: read`/, 'and the approval receipt the stop owes');
+    const stamped = [...flowRows, { type: 'assistant', entrypoint: 'cli', message: { id: 'mk', role: 'assistant', content: [{ type: 'text', text: 'Size: standard - three files\nResult: plan gated - docs/plans/x.md\nProgress: 3 of 5\nLeftovers: none\nmechanics: read' }] } }];
+    const full = run('guard-stop-contract.js', { hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: { questions: stopAsk }, session_id: 'k1', cwd: p.root,
+        transcript_path: transcript(stamped) }, { CLAUDE_PROJECT_DIR: p.root });
+    assert.doesNotMatch(JSON.parse(full.stdout).hookSpecificOutput.additionalContext, /THREE named fields|owes a receipt/, 'a stop that printed them gets no note');
+    const outside = ask(p, 'k1', stopAsk);
+    assert.doesNotMatch(JSON.parse(outside.stdout).hookSpecificOutput.additionalContext, /THREE named fields/, 'no solve-task cycle, no note');
+});
+
 // Audit 2026-10-14 HK05 (the user's ruling): Claude Code's 8-continuation cap resets on every tool call, so a run that keeps
 // calling tools was sent back for as long as its stamp stood. The holds are counted per stamp beside the chain marker; the
 // 50th Stop passes with one auto-continue-cap row, and a new stamp counts from 0.
@@ -352,7 +592,7 @@ test('auto-mode Stop: the 50th Stop under one stamp passes with one auto-continu
     assert.strictEqual(capRows()[0].detail.count, 50);
     assert.strictEqual(stop().status, 0, '51: passes');
     assert.strictEqual(capRows().length, 1, 'still the one row');
-    assert.ok(fs.existsSync(p.gate), 'the stamp stands - only its close or a typed prompt ends auto-mode');
+    assert.ok(fs.existsSync(p.gate), 'the stamp stands - only its close or the user\'s word to stop ends auto-mode');
     // a new auto-mode start writes a new stamp: its count starts over
     autoStamp(p, 'c1', 'at: 2026-10-14T12:00:00.000Z\n');
     const past = new Date(Date.now() - 30000);
@@ -388,13 +628,13 @@ const MODELS = { 'claude-opus-5-5': 1000000, 'claude-haiku-4-5': 200000, 'claude
 const ON = { ALFRED_CODE_AUTO_COMPACT: '1' };
 test('auto-mode window: each model compacts at its window tier\'s fresh-session trigger, only where the project compacts instead', () =>
 {
-    assert.deepStrictEqual(settings.compactWindowSeeds(MODELS, ON, CATALOG), { 'claude-opus-5-5': 400000, 'claude-haiku-4-5': 150000, 'claude-x-500k': 300000 }, 'the seeded triggers');
+    assert.deepStrictEqual(settings.compactWindowSeeds(MODELS, ON, CATALOG), { 'claude-opus-5-5': 400000, 'claude-haiku-4-5': 180000, 'claude-x-500k': 280000 }, 'the seeded triggers');
     assert.deepStrictEqual(settings.compactWindowSeeds(MODELS, {}, CATALOG), {}, 'the catalog seeds ALFRED_CODE_AUTO_COMPACT 0: the fresh-session offers stay, nothing compacts early');
     for (const v of ['0', 'yes', 'true', ''])
         assert.deepStrictEqual(settings.compactWindowSeeds(MODELS, { ALFRED_CODE_AUTO_COMPACT: v }, CATALOG), {}, `'${v}' is not 1`);
-    assert.deepStrictEqual(settings.compactWindowSeeds(MODELS, { ...ON, ALFRED_CODE_FRESH_SESSION_1M: '350000', ALFRED_CODE_FRESH_SESSION_200K: '0', ALFRED_CODE_FRESH_SESSION_DEFAULT: 'x' }, CATALOG),
-        { 'claude-opus-5-5': 350000, 'claude-x-500k': 300000 }, 'the env the file applies; a tier switched off seeds nothing; garbage reads as the seed');
-    assert.deepStrictEqual(settings.compactWindowSeeds({ a: 200000, b: 1000000 }, { ...ON, ALFRED_CODE_FRESH_SESSION_200K: '250000', ALFRED_CODE_FRESH_SESSION_1M: '50000' }, CATALOG),
+    assert.deepStrictEqual(settings.compactWindowSeeds(MODELS, { ...ON, ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '350000', ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '0', ALFRED_CODE_CONTEXT_WINDOW_FOR_300K: 'x' }, CATALOG),
+        { 'claude-opus-5-5': 350000, 'claude-x-500k': 280000 }, 'the env the file applies; a tier switched off seeds nothing; garbage reads as the seed');
+    assert.deepStrictEqual(settings.compactWindowSeeds({ a: 200000, b: 1000000 }, { ...ON, ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '250000', ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '50000' }, CATALOG),
         { a: 180000, b: 100000 }, 'a trigger past its window is held at 90% of it, and the value never under Claude Code\'s 100,000');
     assert.deepStrictEqual(settings.compactWindowSeeds({ tiny: 50000, junk: 'x' }, ON, CATALOG), {}, 'a row under 100k or not a number seeds nothing');
     assert.deepStrictEqual(settings.compactWindowSeeds({ 'us.anthropic.claude-x': 200000, 'Claude-X': 200000 }, ON, CATALOG), {}, 'nor an id the stamp could not read back');
@@ -427,8 +667,8 @@ test('auto-mode window: install seeds it per model in the project file, ledgers 
     fs.mkdirSync(path.join(dir, '.claude'));
     const said = [];
     const first = writer(dir, { log: (l) => said.push(l) });
-    assert.deepStrictEqual(read(dir).modelSettings, { 'claude-opus-5-5': { autoCompactWindow: 400000 }, 'claude-haiku-4-5': { autoCompactWindow: 150000 }, 'claude-x-500k': { autoCompactWindow: 300000 } });
-    assert.ok(said.some((l) => /settings\.json: autoCompactWindow per model - 150000 on 1 model, 300000 on 1 model, 400000 on 1 model/.test(l)), said.join('\n'));
+    assert.deepStrictEqual(read(dir).modelSettings, { 'claude-opus-5-5': { autoCompactWindow: 400000 }, 'claude-haiku-4-5': { autoCompactWindow: 180000 }, 'claude-x-500k': { autoCompactWindow: 280000 } });
+    assert.ok(said.some((l) => /settings\.json: autoCompactWindow per model - 180000 on 1 model, 280000 on 1 model, 400000 on 1 model/.test(l)), said.join('\n'));
     const ledger = first.managed.settings['settings.json'];
     assert.strictEqual(ledger['modelSettings.claude-opus-5-5.autoCompactWindow'], valueHash('400000'));
     // a re-run changes nothing
@@ -439,7 +679,7 @@ test('auto-mode window: install seeds it per model in the project file, ledgers 
     // the user changes one, the trigger moves: the stack's two follow, the user's stays
     const data = read(dir);
     data.modelSettings['claude-haiku-4-5'].autoCompactWindow = 120000;
-    data.env = { ...data.env, ALFRED_CODE_FRESH_SESSION_1M: '350000' };
+    data.env = { ...data.env, ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '350000' };
     data.modelSettings['claude-opus-5-5'].effortLevel = 'high';
     fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify(data));
     const third = writer(dir, { prior: throughStamp(second.managed) });
@@ -544,7 +784,9 @@ test('compact instead: no fresh-session offer at Stop, at a run\'s start or afte
     assert.doesNotMatch(told, /Do NOT start the run yet/);
     assert.match(told, /^This project compacts instead of offering a fresh session \(ALFRED_CODE_AUTO_COMPACT=1\)/);
     assert.match(told, /puts no fresh-session option in any ask/);
-    assert.strictEqual(context(start(true, 's1')), '', 'once per session');
+    const again = context(start(true, 's1'));
+    assert.doesNotMatch(again, /compacts instead of offering a fresh session \(ALFRED_CODE_AUTO_COMPACT=1\): past/, 'the note is said once per session');
+    assert.match(again, /^Open your reply to this command with these two lines/, 'the mode banner still opens each typed run');
     const compacted = run('guard-fresh-session-start.js', { hook_event_name: 'SessionStart', source: 'compact', session_id: 's2', cwd: p.root, transcript_path: big }, env(true));
     assert.strictEqual(compacted.status, 0);
     const said = context(compacted);
@@ -554,18 +796,23 @@ test('compact instead: no fresh-session offer at Stop, at a run\'s start or afte
     assert.ok(!fs.readdirSync(log).some((f) => /^guard-fresh-compact-.*\.hold$/.test(f)), 'and no hold is left for the next change');
 });
 
-test('compact instead: an ask still carrying a fresh-session option is handed back with it dropped and the mark moved', () =>
+test('compact instead: an ask still carrying a fresh-session option goes out with it dropped and the mark moved', () =>
 {
     const p = project();
     const log = fs.mkdtempSync(path.join(TMP, 'ca-'));
     const questions = [q('Stage 1 is closed. Next?', ['Resume in a fresh session (Recommended)', 'Run stage 2 here', 'Stop here'])];
     const send = (extra = {}, on = true) => run('guard-stop-contract.js', { hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: { questions },
         session_id: 'k1', cwd: p.root, transcript_path: transcript(), ...extra }, { CLAUDE_PROJECT_DIR: p.root, ALFRED_CODE_HOOK_LOG_DIR: log, ALFRED_CODE_AUTO_COMPACT: on ? '1' : '0' });
-    const denied = send();
-    assert.strictEqual(denied.status, 2, denied.stderr);
-    assert.match(denied.stderr, /a fresh-session option, while this project compacts instead/);
-    const fixed = JSON.parse(denied.stderr.slice(denied.stderr.indexOf('\n[') + 1));
-    assert.deepStrictEqual(fixed[0].options.map((o) => o.label), ['Run stage 2 here (Recommended)', 'Stop here']);
-    assert.strictEqual(send().status, 0, 'once per ask text');
-    assert.strictEqual(send({ agent_id: 'seat-1', session_id: 'k2' }).status, 0, 'a seat is never judged for it');
+    const upd = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.updatedInput || null; } catch { return null; } };
+    const sent = send();
+    assert.strictEqual(sent.status, 0, sent.stderr);
+    assert.deepStrictEqual(upd(sent).questions[0].options.map((o) => o.label), ['Run stage 2 here (Recommended)', 'Stop here'], 'fixed in place (the 2026-10-17 usage audit)');
+    assert.match(JSON.parse(sent.stdout).hookSpecificOutput.additionalContext, /fresh-session option dropped/);
+    const seat = send({ agent_id: 'seat-1', session_id: 'k2' });
+    assert.strictEqual(seat.status, 0);
+    assert.strictEqual(upd(seat), null, 'a seat is never judged for it');
+    const lone = run('guard-stop-contract.js', { hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: { questions: [q('Next?', ['Resume in a fresh session (Recommended)', 'Run stage 2 here'])] },
+        session_id: 'k3', cwd: p.root, transcript_path: transcript() }, { CLAUDE_PROJECT_DIR: p.root, ALFRED_CODE_HOOK_LOG_DIR: log, ALFRED_CODE_AUTO_COMPACT: '1' });
+    assert.strictEqual(lone.status, 2, 'a question the drop leaves with one option is still handed back');
+    assert.match(lone.stderr, /A question left with one option is no question/);
 });

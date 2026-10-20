@@ -86,6 +86,23 @@ test('sensitive data: a command naming the store is refused - source, copy, add,
     assert.match(r.stderr, /--with-sensitive/, 'the refusal names the run that uses the values');
 });
 
+// The 2026-10-17 usage audit: three refusals of commands that read no value - git's own check that the store is ignored
+// (the session-start warning's check), a plan line naming the store and its KEYS, and a count-only host check chained to a
+// build. Each passes now; the same verbs feeding a reader, a shell heredoc and a redirect onto the store stay refused.
+test('sensitive data: a git look, a name in written text and a count-only check pass; piped on or run they do not', () =>
+{
+    const { dir } = project('looks');
+    const rel = '.alfred/.sensitive-data';
+    for (const command of [`git check-ignore -q ${rel}`, `git check-ignore -q ${rel} || echo NOT-IGNORED`, `git -C . check-ignore -v ${rel}`, `git status --short ${rel}`,
+        `cat >> plan.md <<'EOF'\n- the deploy reads DB_HOST and API_TOKEN from ${rel} (names only)\nEOF`, `echo "keys DB_HOST, API_TOKEN live in ${rel}"`,
+        `grep -c prod ${rel} && npm run build`, `grep -qi 'DB_HOST=.*prod' ${rel} || npm run start`, `grep -ci prod ${rel}; npm run build`, `cut -d= -f1 ${rel}`])
+        assert.strictEqual(bash(dir, command), 0, command);
+    for (const command of [`echo ${rel} | xargs cat`, `grep -l x ${rel} | xargs cat`, `git ls-files ${rel} | xargs cat`, `echo x > ${rel}`,
+        `bash <<'EOF'\nsource ${rel}\necho $DB_HOST\nEOF`, `echo "$(source ${rel}; echo $DB_HOST)"`])
+        assert.strictEqual(bash(dir, command), 2, command);
+    assert.strictEqual(bash(dir, `grep prod ${rel}`), 'rewrite', 'a grep that prints lines still gets the masked view');
+});
+
 // Audit 2026-10-14 HK11 (replays sens.js, sens2.js): the refusal read the literal name only, so a glob, a quoted split or the
 // folder holding the store passed while the dump half resolved the same globs. Each replayed shape is refused now; an
 // ordinary command on the data root or the project passes.
@@ -206,4 +223,18 @@ test('sensitive data: the guard and data-root.js read one store the same way - B
     fs.writeFileSync(utf16.file, Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('K_ONE=wide value\r\n', 'utf16le')]));
     assert.deepStrictEqual(dataRoot.readSensitive({ projectDir: utf16.dir }), { K_ONE: 'wide value' });
     assert.strictEqual(wrapped(utf16.dir, node('hex', 'K_ONE')).stdout.trim(), `K_ONE=${Buffer.from('wide value').toString('hex')}`);
+});
+
+// audit 2026-10-20 C17 (fabea019): after a refusal the model built the store's name in pieces; the dump and the copy then
+// passed unjudged. A name assembled from literals the same command assigned resolves before either check.
+test('audit 2026-10-20 C17: a store name built by concatenation is masked when printed and refused when carried', () => {
+    const { dir } = project('concat');
+    const built = 'f=".sensitive"; f="$f-data"; ';
+    const out = run({ tool_name: 'Bash', tool_input: { command: `${built}cat ".alfred/$f"` }, cwd: dir, session_id: 'suite' });
+    assert.match(updated(out) || '', /--redacted ".*\.alfred[\\/]\.sensitive-data"/, 'the print becomes the masked view');
+    assert.strictEqual(bash(dir, `${built}cp ".alfred/$f" /tmp/x`), 2, 'a copy is refused');
+    assert.strictEqual(bash(dir, `${built}source ".alfred/$f"`), 2, 'a source is refused');
+    assert.strictEqual(bash(dir, `${built}cp ".alfred/$f" /tmp/x; f=other`), 2, 'a later reassignment does not hide it');
+    assert.strictEqual(bash(dir, `${built}git check-ignore -q ".alfred/$f"; echo ignored=$?`), 0, 'a look still passes (the evidence shape)');
+    assert.strictEqual(bash(dir, 'f=".sensitive"; f="$f-notes"; cat ".alfred/$f" 2>/dev/null'), 0, 'another name built the same way is no store');
 });

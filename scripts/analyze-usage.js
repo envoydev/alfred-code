@@ -154,7 +154,7 @@ const maskSecrets = (s) => String(s == null ? '' : s)
 // the stack's own audits agree on, as NUMBERS with denominators - the report judges them. Every
 // classifier here is a measurement, never a gate: a hook grows a class only after these rows have
 // shown its rate for a week.
-// Prose as guard-answer-length.js defines it (fences, tables, quotes, inline code stripped), so
+// Prose as guard-answer.js defines it (fences, tables, quotes, inline code stripped), so
 // the analyzer counts what the hook would see.
 // A PLUGIN server's tools are `mcp__plugin_<plugin>_<server>__<tool>`, so the segment between the
 // double underscores is `plugin_<plugin>_<server>`. Server names carry no underscore, so dropping
@@ -176,18 +176,17 @@ function proseOf(text) {
     .replace(/\s+/g, ' ')
     .trim();
 }
-const LONG_ANSWER = 1800;   // guard-answer-length's HARD_CAP
+const LONG_ANSWER = 1800;   // twice the 900-char budget - the cap the answer hook's Stop half held until 2026-10-20
 const STREAK_TURNS = 3, STREAK_SHORT = 200, STREAK_LONG = 1500;   // its correction-streak detector
 // Its single-turn correction test, copied verbatim (shared-rules.json `correction-turn-test`): a
 // short typed turn that follows an answer of any length and carries a correction marker - the
 // turns the corrections-saved row counts.
 // --- correction-turn test
-const CORRECTION_STRONG_RE = /^\W*(?:no|nope|nah|wrong|incorrect|not (?:that|this|what|quite|like that|right|correct)|undo|revert|roll ?back)\b|(?:^|[.,;:!?]\s*|\b(?:but|and|please|pls|so|then|also|just)\s+)(?:do not|don'?t|dont|never|stop \w+ing)\b|\byou (?:did not|didn'?t|didnt|have not|haven'?t|havent|should not|shouldn'?t|forgot|missed|ignored|broke|skipped|removed|deleted|dropped|lost|said|told)\b|\bwhy (?:did |do |are |have |haven'?t |didn'?t |would |were )?you\b(?! (?:cannot|can'?t|can not|couldn'?t)\b)|\bi (?:said|asked|told you|meant|wanted|did not ask|didn'?t ask|never asked|already (?:said|told|asked))\b|\b(?:still|again) (?:there|broken|fail\w*|wrong|the same|red|happen\w*|error\w*|doesn'?t|does not|isn'?t|is not|not)\b|\bsame (?:error|issue|problem|bug)\b|\b(?:that'?s|that is|this is|it'?s|it is) (?:wrong|incorrect|not (?:right|correct|what|how|it))\b|\bnot what i\b|\bi (?:do not|don'?t|dont|did not|didn'?t) (?:want|need|like)\b|\b(?:does not|doesn'?t|did not|didn'?t) (?:fit|work|help|make sense)\b|\bnot working\b|\b(?:too (?:long|much text|verbose|many words|complicated|complex)|a lot of text|less text|shorter|simpler|more concise)\b/i;
+const CORRECTION_STRONG_RE = /^\W*(?:no|nope|nah|wrong|incorrect|not (?:that|this|what|quite|like that|right|correct)|undo|revert|roll ?back)\b|(?:^|[.,;:!?]\s*|\b(?:but|and|please|pls|so|then|also|just)\s+)(?:do not|don'?t|dont|never|stop \w+ing)\b|\byou (?:did not|didn'?t|didnt|have not|haven'?t|havent|should not|shouldn'?t|forgot|missed|ignored|broke|skipped|removed|deleted|dropped|lost|said|told)\b|(?<!\b(?:explain|describe|tell me|show me|clarify|walk me through)\b[^.!?\n]{0,40})\bwhy (?:did |do |are |have |haven'?t |didn'?t |would |were )?you\b(?! (?:cannot|can'?t|can not|couldn'?t)\b)|\bi (?:said|asked|told you|meant|wanted|did not ask|didn'?t ask|never asked|already (?:said|told|asked))\b|\b(?:still|again) (?:there|broken|fail\w*|wrong|the same|red|happen\w*|error\w*|doesn'?t|does not|isn'?t|is not|not)\b|\bsame (?:error|issue|problem|bug)\b|\b(?:that'?s|that is|this is|it'?s|it is) (?:wrong|incorrect|not (?:right|correct|what|how|it))\b|\bnot what i\b|\bi (?:do not|don'?t|dont|did not|didn'?t) (?:want|need|like)\b|(?<!\b(?:because|cause|coz|cuz)\b[^.,!?\n]{0,40})(?:\b(?:does not|doesn'?t|did not|didn'?t) (?:fit|work|help|make sense)\b|\bnot working\b)|\b(?:too (?:long|much text|verbose|many words|complicated|complex)|a lot of text|less text|shorter|simpler|more concise)\b/i;
 const CORRECTION_WEAK_RE = /^\W*but\b|^\W*(?:ok(?:ay)?|yes|yeah|fine|sure|good|right)\b\W*but\b|^\W*stop\b|\binstead\b|(?<!\b(?:what|which|how|whether|where|when|who|why)\b[^.,;:!?\n]{0,60})\b(?:it|this|that|they|these|those|there) should(?:n'?t| not| have| be| stay| use| go)\b/i;
-const CORRECTION_CYR_RE = /(?<![\p{L}])(?:ні(?=[\s,.!]|$)|нет(?=[\s,.!]|$)|не (?:так|те|то)(?![\p{L}])|не ?правильн|не (?:треба|потрібно|надо|нужно|роби|делай)(?![\p{L}])|я (?:ж )?(?:казав|просив|говорив|сказав|говорил|просил|сказал)|(?:чому ти|почему ты)(?! не мож)|навіщо ти|зачем ты|коротше|покороче|простіше|проще|забагато|слишком|(?:та сама|та ж|та же|та самая) (?:помилк|ошибк|проблем)|не (?:працює|работает)|(?:досі|все ще|всё ещё|все еще) не(?![\p{L}]))/iu;
 function correctionMarker(text) {
   const t = String(text || '').replace(/[‘’]/g, "'").trim();
-  const m = t.match(CORRECTION_STRONG_RE) || t.match(CORRECTION_CYR_RE) || (!t.includes('?') && t.match(CORRECTION_WEAK_RE));
+  const m = t.match(CORRECTION_STRONG_RE) || (!t.includes('?') && t.match(CORRECTION_WEAK_RE));
   return m ? m[0].trim().slice(0, 40) : null;
 }
 // --- end correction-turn test
@@ -259,7 +258,9 @@ const CHECK_RES = {
   build: new RegExp(String.raw`^${RUNNER_PATH}(?:dotnet\s+(?:build|publish)|(?:npm|pnpm|yarn)\s+(?:run\s+)?(?:build|typecheck|type-check)\S*|ng\s+build|tsc|vue-tsc|msbuild|cargo\s+build|go\s+build|mvn\s+(?:package|compile|install)|gradlew?\s+(?:build|assemble))(?![\w.-])`),
   // A formatter CHECK is a lint (`prettier --check` reads, `--write` rewrites), and so is one of the stack's own
   // read-only checkers: `agents-md-check: clean` was a claim the scorecard could not see (audit 2026-10-10, 65abb00a).
-  lint: new RegExp(String.raw`^${RUNNER_PATH}(?:(?:npm|pnpm|yarn)\s+(?:run\s+)?(?:lint|format:check)\S*|eslint|ng\s+lint|dotnet\s+format|ruff|flake8|golangci-lint|cargo\s+clippy|stylelint|biome\s+(?:check|lint|ci)|prettier\s+(?:\S+\s+)*?(?:--check|-c|--list-different|-l)(?=\s|$)|node\s+${RUNNER_PATH}(?:agents-md-check|library-check|lint-skills)\.js)(?![\w.-])`),
+  // A shell / CI / config linter and a shell syntax pass are a DevOps session's own check: without them a commit after
+  // `bash -n`, shellcheck and actionlint scored unchecked (audit 2026-10-20 C41, 685c2f93).
+  lint: new RegExp(String.raw`^${RUNNER_PATH}(?:(?:npm|pnpm|yarn)\s+(?:run\s+)?(?:lint|format:check)\S*|eslint|shellcheck|actionlint|hadolint|yamllint|markdownlint(?:-cli2)?|(?:ba|z|da)?sh\s+-n|ng\s+lint|dotnet\s+format|ruff|flake8|golangci-lint|cargo\s+clippy|stylelint|biome\s+(?:check|lint|ci)|prettier\s+(?:\S+\s+)*?(?:--check|-c|--list-different|-l)(?=\s|$)|node\s+${RUNNER_PATH}(?:agents-md-check|library-check|lint-skills)\.js)(?![\w.-])`),
   ci: /^gh\s+(?:run\s+(?:view|watch|list)|pr\s+checks)(?![\w.-])/,
 };
 const SCOPED_RE = /--filter[= ]|--test-name-pattern|--testNamePattern|--testPathPattern|\s-t\s|\s-k\s|--grep[= ]|--include[= ]|--run\s+\S|[\w./-]+\.(?:spec|test)\.[cm]?[jt]sx?\b|[\w./-]+_test\.go\b|\btest_\w+\.py\b|::\w|[\w./-]+\.csproj\b|node\s+--test\s+[\w./-]+\.[cm]?js\b|cargo\s+test\s+[\w:]+|go\s+test\s+(?!\.\/\.\.\.)[\w./-]+/;
@@ -1936,7 +1937,7 @@ async function analyzeTranscript(file, window) {
   // next Skill call: a new request is a new phase, and the carry otherwise charged that phase to
   // whatever skill was last active (measured: one run's later phases billed to a skill that had
   // stopped). A continuation says only 'keep going' - it opens nothing, so the stamp survives it.
-  const CONTINUATION_RE = /^(?:y|yes|yep|yeah|ok|okay|k|sure|go|go on|go ahead|continue|proceed|next|do it|carry on|again|да|так|ок|давай|продовжуй|продолжай)\b[\s.!,]*$/i;
+  const CONTINUATION_RE = /^(?:y|yes|yep|yeah|ok|okay|k|sure|go|go on|go ahead|continue|proceed|next|do it|carry on|again)\b[\s.!,]*$/i;
   const continuesRun = (t) => t.length <= 60 && CONTINUATION_RE.test(t);
   const onHumanTurn = (typed, ts) => {
     turnHadCheck = false;
@@ -2787,7 +2788,7 @@ async function analyzeTranscript(file, window) {
         if (imgs && info && s.toolCalls[info.name]) s.toolCalls[info.name].images = (s.toolCalls[info.name].images || 0) + imgs;
         if (!info) continue;
         // A correction TYPED into an ask (its Other field) waits on a save like a typed prompt (audit 2026-10-10 C15,
-        // 4f1c2ebb): guard-answer-length logs it as a `correction` row `via: ask-answer`, so the row reading the
+        // 4f1c2ebb): guard-answer logs it as a `correction` row `via: ask-answer`, so the row reading the
         // transcript reads it too - the same marker test, the same length cap, an offered label never counted.
         if (info.name === 'AskUserQuestion' && !c.is_error)
           for (const a of typedAskAnswers(info.questions, o.toolUseResult, text))
@@ -3575,7 +3576,7 @@ const rootCauseLine = (t) => `ROOT CAUSE (probe): ${t.streaks} red streak(s) - $
   + `${t.preloaded} preloaded by the seat, ${t.afterFix} loaded after the fix, ${t.missed} MISSED, ${t.noFix} with no fix after, ${t.unmatched} unmatched`
   + (t.intended ? `; ${t.intended} intended red (expected red after habits-test-first, not counted)` : '')
   + (t.testFirstRed ? `; ${t.testFirstRed} test-first red run(s) logged apart (test-first-red rows, not streaks)` : '');
-// The correction probe (guard-answer-length.js, log-only unless ALFRED_CODE_CORRECTION_NUDGE=inject):
+// The correction probe (guard-answer.js, log-only unless ALFRED_CODE_CORRECTION_NUDGE=inject):
 // one row per correction turn. Whether it was then SAVED is the scorecard's corrections-saved row,
 // read from the transcript with the same test.
 const newCorrection = () => ({ turns: 0, injected: 0 });
@@ -3792,6 +3793,18 @@ function windowSource(main) {
   const rem = main.modelIdReminder || null;
   const cs = (main.modelIdsFull || []).join(', ') || null;
   if (!rem && !cs) return null;
+  // The reminder is written once, at the start: a `/model` switch after it leaves the reminder naming the model the
+  // session no longer runs on, and the line named the wrong model over 34 of 34 messages billed to the other one (audit
+  // 2026-10-20 C41, 40c4e87c). The assistant rows' majority wins when it disagrees with the reminder's base id; the
+  // window suffix is taken from cost-state's id of that model when it carries one.
+  const base = (id) => String(id).replace(/\[[^\]]*\]$/, '');
+  const ran = Object.entries(main.byModel || {}).filter(([m, t]) => m && !m.startsWith('<') && t && t.msgs).sort((a, b) => b[1].msgs - a[1].msgs);
+  if (rem && ran.length && base(rem) !== ran[0][0]) {
+    const [top, t] = ran[0];
+    const total = ran.reduce((n, [, x]) => n + x.msgs, 0);
+    const full = (main.modelIdsFull || []).find((id) => base(id) === top) || top;
+    return `${full} (the assistant messages' majority, ${t.msgs} of ${total} msgs) - the session's own model reminder says ${rem}: the model was switched mid-session, the messages win`;
+  }
   if (!rem) return `${cs} (from cost-state; the session's own model reminder is absent)`;
   if (!cs) return `${rem} (the session's own model reminder)`;
   const agree = main.modelIdsFull.includes(rem);
@@ -3872,11 +3885,11 @@ function efficiencyRows(main, agg, blockLedger) {
     rows.push({ practice: 'checked commits', measured: n ? `${k} of ${n} commit(s) had a test, build, lint or ci-status call in the ${CHECK_WINDOW} tool calls before${(e.commitsUnchecked || []).length ? ` - unchecked at: ${tsList(e.commitsUnchecked)}` : ''}` : 'no commit', tests: 'a check the session can run, before the work is called done - ran, not necessarily green; open the run' });
   }
   rows.push({ practice: 'green claims', measured: `${(e.unverifiedGreenClaims || []).length} of ${e.greenClaims || 0} claim(s) that a check passed landed in a turn that ran no check${e.greenClaimsInAsks ? ` (${e.greenClaimsInAsks} of the claims in an ask's question)` : ''}${(e.unverifiedGreenClaims || []).length ? ` - at: ${tsList(e.unverifiedGreenClaims)}` : ''}`, tests: "evidence, not assertion - open each turn: a check run in an EARLIER turn, or in a dispatched seat's own transcript, is evidence the regex cannot see" });
-  rows.push({ practice: 'correction streaks', measured: `${(e.correctionStreaks || []).length} streak(s) (${STREAK_TURNS} short user turns in a row, each after a ${fmt(STREAK_LONG)}+ char answer, as guard-answer-length counts them)${(e.correctionStreaks || []).length ? ` at: ${tsList(e.correctionStreaks)}` : ''}; ${e.correctionTurns || 0} of ${e.longAnswered || 0} answer(s) over ${fmt(STREAK_LONG)} chars drew a short (under ${STREAK_SHORT} char) user turn`, tests: 'after two corrections the context holds the failed drafts: the format ask, or /clear with a prompt that carries what was learned; the second number is what the strict walk did not chain' });
+  rows.push({ practice: 'correction streaks', measured: `${(e.correctionStreaks || []).length} streak(s) (${STREAK_TURNS} short user turns in a row, each after a ${fmt(STREAK_LONG)}+ char answer, as guard-answer counts them)${(e.correctionStreaks || []).length ? ` at: ${tsList(e.correctionStreaks)}` : ''}; ${e.correctionTurns || 0} of ${e.longAnswered || 0} answer(s) over ${fmt(STREAK_LONG)} chars drew a short (under ${STREAK_SHORT} char) user turn`, tests: 'after two corrections the context holds the failed drafts: the format ask, or /clear with a prompt that carries what was learned; the second number is what the strict walk did not chain' });
   {
     const total = (e.correctionsSaved || 0) + (e.correctionsUnsaved || []).length;
     const unsaved = (e.correctionsUnsaved || []).length;
-    rows.push({ practice: 'corrections saved to memory', measured: `${e.correctionsSaved || 0} of ${total} correction(s) saved within ${SAVE_WINDOW} replies; ${unsaved} unsaved${total ? ` (${Math.round((100 * unsaved) / total)}%)` : ''}${unsaved ? ` at: ${tsList(e.correctionsUnsaved)}` : ''}`, tests: 'a correction the user had to make (a short turn carrying a correction marker, as guard-answer-length reads it) is a preference or a lesson; one never stored is made again next session' });
+    rows.push({ practice: 'corrections saved to memory', measured: `${e.correctionsSaved || 0} of ${total} correction(s) saved within ${SAVE_WINDOW} replies; ${unsaved} unsaved${total ? ` (${Math.round((100 * unsaved) / total)}%)` : ''}${unsaved ? ` at: ${tsList(e.correctionsUnsaved)}` : ''}`, tests: 'a correction the user had to make (a short turn carrying a correction marker, as guard-answer reads it) is a preference or a lesson; one never stored is made again next session' });
   }
   rows.push({ practice: 'long answers', measured: `${e.longAnswers || 0} of ${e.finalAnswers || 0} final answer(s) over ${fmt(LONG_ANSWER)} chars of prose`, tests: "the answer budget - the user's own ask may have lifted it, check the prompt before scoring" });
   {
@@ -4611,7 +4624,60 @@ function checkReport(file) {
     const share = after != null && AVOIDABLE_SHARE_RE.test(after) && /\d(?:[\d.,]*)\s*%/.test(after);
     if (!share) verdicts.push({ line: i + 1, text: line.trim().replace(/\s+/g, ' ').slice(0, 120) });
   });
-  return { file, rows: judgment, badLocators, verdicts, transcript, transcriptLines };
+  return { file, rows: judgment, badLocators, verdicts, emptyClaims: emptyTableClaims(lines, authored), transcript, transcriptLines };
+}
+// A judgment line that says a machine table printed nothing ('none printed', 'no rows', 'nothing flagged') while this
+// report's own table of that name has rows (audit 2026-10-20 C40, fc4fec40: 'Sweep 1 - unheld-stop candidates: none
+// printed in the Environment table' over an Environment row printing 6). The name is a key row's label in a key-value
+// table (`| | |` header - the row is printed only when it has something, so an absent label is never judged), or the
+// heading of a machine section holding a column table ('Guard blocks', 'Skills').
+const EMPTY_CLAIM_RE = /\b(?:none (?:printed|listed|flagged|shown)|(?:printed|listed|flagged|shows?) (?:none|nothing)|nothing (?:printed|listed|flagged)|no rows?|zero rows|0 rows)\b/i;
+const normName = (s) => String(s).toLowerCase().replace(/[`*_]/g, '').replace(/[-\s]+/g, ' ').trim();
+function emptyTableClaims(lines, authored) {
+  const tables = [];   // { name, rows, line }
+  let section = null;
+  let judgmentSection = false;
+  let header = null;   // the current table's header cells, null outside a table
+  let kv = false;
+  lines.forEach((line, i) => {
+    const h = /^#{2,6}\s+(.*)$/.exec(line);
+    if (h) {
+      judgmentSection = JUDGMENT_HEAD_RE.test(line) && !MACHINE_TABLE_SECTION_RE.test(line);
+      // 'Tokens (deduped ...)' and 'Guard blocks - FILL IN (...)' are named by their words before the qualifier.
+      section = judgmentSection ? null : { name: h[1].split(/\s+[-(:]\s*|\s*\(/)[0].trim(), rows: 0, line: i + 1 };
+      if (section) tables.push(section);
+      header = null;
+      return;
+    }
+    const t = line.trim();
+    if (!t.startsWith('|')) { header = null; return; }
+    if (!section) return;
+    const cells = t.replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
+    if (!header) { header = cells; kv = cells.every((c) => !c); return; }
+    if (cells.every((c) => /^:?-+:?$/.test(c))) return;
+    // A key row is a subject only when its value opens on a count above 0 ('| Unheld-stop candidates | 6 (...) |'); a
+    // row that always prints ('| Hook ledger | absent ... |') states no rows to contradict.
+    if (kv) {
+      const n = /^~?(\d[\d,]*)(?![\d.,]*[kKmM%])/.exec(cells[1] || '');
+      const count = n ? Number(n[1].replace(/,/g, '')) : 0;
+      if (cells[0] && count > 0) tables.push({ name: cells[0], rows: count, line: i + 1, key: true });
+      return;
+    }
+    section.rows++;
+  });
+  // A key-value table's section counts no rows of its own (its rows are the keys), so its heading is never a subject:
+  // 'none printed in the Environment table' is judged by the key row it names, or not at all.
+  const named = tables.filter((tb) => tb.rows > 0 && normName(tb.name).length > 2);
+  const out = [];
+  for (const i of authored) {
+    const text = String(lines[i]);
+    if (!EMPTY_CLAIM_RE.test(text)) continue;
+    const said = normName(text);
+    const hit = named.find((tb) => tb.key && said.includes(normName(tb.name)))
+      || named.find((tb) => !tb.key && said.includes(normName(tb.name)));
+    if (hit) out.push({ line: i + 1, name: hit.name, rows: hit.rows, at: hit.line, text: text.trim().replace(/\s+/g, ' ').slice(0, 120) });
+  }
+  return out;
 }
 // `<N> of <M>`: two measured amounts, each a number with an optional unit (`~4.8M of 16.5M`, `672k of 40.2M tok`).
 const AVOIDABLE_SHARE_RE = /~?\$?\d[\d.,]*\s*[kKmMbB]?\s*(?:tok(?:ens)?\s*)?of\s+~?\$?\d[\d.,]*/;
@@ -4625,9 +4691,10 @@ function printCheckReport(res) {
   }
   for (const b of res.badLocators) console.log(`  locator out of range  line ${b.line}  ${b.locator} - the transcript has ${res.transcriptLines} rows: ${b.text}`);
   for (const v of res.verdicts || []) console.log(`  TOKEN VERDICT without a share  line ${v.line} - needs 'avoidable <N> of <M> tok, <P>%' from the rows above: ${v.text}`);
-  const n = res.rows.length + res.badLocators.length + (res.verdicts || []).length;
+  for (const e of res.emptyClaims || []) console.log(`  says nothing printed  line ${e.line} - this report's '${e.name}' (line ${e.at}) prints ${e.rows}; judge each one: ${e.text}`);
+  const n = res.rows.length + res.badLocators.length + (res.verdicts || []).length + (res.emptyClaims || []).length;
   if (!n) { console.log('  clean - every number in a judgment section traces to a machine row of this report or carries a resolvable L<n>, and the TOKEN VERDICT states its avoidable share'); return 0; }
-  console.log(`  ${n} finding(s) - each number must quote a machine table row of THIS report or carry an L<n> locator that resolves, and the TOKEN VERDICT must state 'avoidable <N> of <M> tok, <P>%'. The run is not done while this prints a row.`);
+  console.log(`  ${n} finding(s) - each number must quote a machine table row of THIS report or carry an L<n> locator that resolves, the TOKEN VERDICT must state 'avoidable <N> of <M> tok, <P>%', and a 'nothing printed' line must agree with the table it names. The run is not done while this prints a row.`);
   return 1;
 }
 

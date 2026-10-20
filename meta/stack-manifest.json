@@ -73,18 +73,8 @@
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "capture-agent-awareness",
-      "note": "deliberate capabilities capture - inventories installed skills/agents/MCPs/plugins, generates the awareness rule alfred-agent-awareness.md; manual /-only"
-    },
-    {
-      "repo": "envoydev/alfred-code",
-      "name": "capture-project-awareness",
-      "note": "deliberate run-book capture - reads the repo first (the first-look scan, launch configs, compose, README), asks only for the gaps (start and reach, login and where the credentials live, flows and edge cases, before-you-run and debugging), writes docs/project-capabilities/PROJECT-CAPABILITIES.md (its own docs domain) + the generated pointer rule alfred-project-awareness.md; credentials by location, never by value; manual /-only"
-    },
-    {
-      "repo": "envoydev/alfred-code",
-      "name": "capture-related-projects",
-      "note": "deliberate related-projects capture - args paths/URLs, fans out related-project-analyzer per sibling, writes the awareness rule alfred-related-context.md + docs/related-projects/RELATED-PROJECTS.md (its own docs domain; docs/related-context/ stays the plain drop box for every other sibling-repo paper); manual /-only"
+      "name": "capture-awareness",
+      "note": "deliberate awareness capture (the user's ruling of 2026-10-16: three captures in one) - inventories installed skills/agents/MCPs/plugins into docs/awareness/AGENTS-AWARENESS.md (script-written, out of git), writes the run book docs/awareness/PROJECT-AWARENESS.md from the repo plus the asked gaps (credentials by location, never by value), maps the sibling repos the user names into docs/awareness/RELATED-PROJECTS-AWARENESS.md (fanning out related-project-analyzer where it is picked), and generates the one rule alfred-awareness.md whose @ imports load all three at every session start; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -492,7 +482,7 @@
     },
     {
       "file": "related-project-analyzer.md",
-      "note": "analysis support (sonnet/medium): read-only sibling-repo characterizer (name/relation/first_read/seam, URL siblings shallow-cloned to scratch) - the capture-related-projects skill fans it out per sibling and merges docs/related-projects/RELATED-PROJECTS.md"
+      "note": "analysis support (sonnet/medium): read-only sibling-repo characterizer (name/relation/first_read/seam, URL siblings shallow-cloned to scratch) - the capture-awareness skill fans it out per sibling and merges docs/awareness/RELATED-PROJECTS-AWARENESS.md"
     },
     {
       "file": "issue-diagnoser-ci.md",
@@ -785,7 +775,7 @@
       "file": "guard-stop-contract.js",
       "matcher": "@Stop",
       "event": "",
-      "note": "Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, past the window's absolute trigger, re-armed at 1.5x growth; and two log-only probes the analyzer counts - a done claim over a source edit (a file tool's or a shell write), unrun when nothing ran after it (ALFRED_CODE_DONE_GATE=0 off), and the first red build or test run of a streak; and a close dismissing a failure ('pre-existing', 'unrelated to my change', 'flaky') in a turn with a red run or a skipped test. Under an auto-mode run's stamp (a `session:` line naming this session) a Stop is sent back to the run until its close deletes the stamp - held again only after a tool call (the Stop chain's workSince), and at most 49 times per stamp: the 50th Stop passes with one auto-continue-cap row (audit 2026-10-14 HK05). Where the project compacts instead (ALFRED_CODE_AUTO_COMPACT=1) every fresh-session offer and note stands down, and an ask still carrying a fresh-session option is denied once, handed back with it dropped."
+      "note": "Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, past the window's absolute trigger, re-armed at 1.5x growth, and holds once a close after a fresh-session pick that carries no fenced paste text; and two log-only probes the analyzer counts - a done claim over a source edit (a file tool's or a shell write), unrun when nothing ran after it (ALFRED_CODE_DONE_GATE=0 off), and the first red build or test run of a streak; and a close dismissing a failure ('pre-existing', 'unrelated to my change', 'flaky') in a turn with a red run or a skipped test. Under an auto-mode run's stamp (a `session:` line naming this session) a Stop is sent back to the run until its close deletes the stamp - held again only after a tool call (the Stop chain's workSince), and at most 49 times per stamp: the 50th Stop passes with one auto-continue-cap row (audit 2026-10-14 HK05). Where the project compacts instead (ALFRED_CODE_AUTO_COMPACT=1) every fresh-session offer and note stands down, and an ask still carrying a fresh-session option is denied once, handed back with it dropped."
     },
     {
       "file": "guard-stop-contract.js",
@@ -797,31 +787,19 @@
       "file": "guard-stop-contract.js",
       "matcher": "AskUserQuestion",
       "event": "",
-      "note": "PreToolUse AskUserQuestion: DENY once per ask text an ask whose own shape is wrong - its house voice (an em- or en-dash, a double quote), a fresh-session option quoting no number near the measured carry (both carrying the corrected strings), an option telling the user to type into Other, a single-select question without exactly one (Recommended), a new cycle's first ask with no fresh option; INJECT the judgement notes, which land beside the user's answer and are worded for it - stale scope (an option naming repo/remote/job state with no fresh read this turn: verify before acting, re-ask if it moved), a recommendation contradicting an un-actioned earlier prompt, the fresh-session offer for the next ask, a live credential. Presence only. Under a live AUTO stamp it ANSWERS an ask whose every question marks one (Recommended) option - allow plus an answers map in updatedInput - except a recommended push, merge, deploy or publish, and takes the next option over a recommended fresh-session hand-off; anything else waits for the user."
-    },
-    {
-      "file": "guard-stop-contract.js",
-      "matcher": "@PostToolUseFailure:Bash|PowerShell",
-      "event": "",
-      "note": "PostToolUseFailure: LOG-ONLY and async (it never blocks or decides, so no shell result waits on it) - the first red build or test run (npm / node --test / jest / vitest / pytest / dotnet / ng / go / cargo / mvn / gradle) of a failure streak writes one root-cause probe row with its tool_use_id, which analyze-usage.js --hook-blocks resolves against the transcript; nothing injected, never a block"
-    },
-    {
-      "file": "guard-stop-contract.js",
-      "matcher": "@PostToolUse:Bash|PowerShell",
-      "event": "",
-      "note": "PostToolUse: the same streak read from a run that exited 0 - a red runner summary behind a pipe is logged the same way; one streak per actor, ended when every run that went red in it is green again (or an hour with no red run)"
+      "note": "PreToolUse AskUserQuestion: FIX IN PLACE an ask whose own shape is mechanically wrong - its house voice (an em- or en-dash, a double quote), a fresh-session option quoting no number near the measured carry, a fresh option pointing at a resume block above that no fence shows - the corrected questions sent through updatedInput with no decision; DENY once per ask text, carrying any such fix, an option telling the user to type into Other, a single-select question without exactly one (Recommended), a new cycle's first ask with no fresh option; INJECT the judgement notes, which land beside the user's answer and are worded for it - stale scope (an option naming repo/remote/job state with no fresh read this turn: verify before acting, re-ask if it moved), a recommendation contradicting an un-actioned earlier prompt, the fresh-session offer for the next ask, a live credential. Presence only. Under a live AUTO stamp it ANSWERS an ask whose every question marks one (Recommended) option - allow plus an answers map in updatedInput - except a recommended push, merge, deploy or publish, and takes the next option over a recommended fresh-session hand-off; anything else waits for the user."
     },
     {
       "file": "guard-fresh-session-start.js",
       "matcher": "Skill",
       "event": "",
-      "note": "PreToolUse Skill: block a deliberate orchestration run starting on another run's carried history past the window-scaled trigger - route it through an AskUserQuestion fresh-session choice. `auto-mode` in the call's args on a task or loop skill writes the run's session-named AUTO stamp first and injects the auto-mode contract instead. A prompt the user types in that session ends the run's auto-mode (its stamp deleted). COMPACT INSTEAD: under ALFRED_CODE_AUTO_COMPACT=1 nothing is offered or held; the session's first orchestration run and an automatic compaction's start are told the session compacts and goes on."
+      "note": "PreToolUse Skill: block a deliberate orchestration run starting on another run's carried history past the window-scaled trigger - route it through an AskUserQuestion fresh-session choice. `--auto-mode` in the call's args on a task, capture, loop or issue skill writes the run's session-named AUTO stamp first and injects the auto-mode contract instead - only when the user's newest typed prompt is such a command opening with the flag (the user's rulings: 2026-10-15, a prose mention starts nothing; 2026-10-17, captures joined and the flag replaced the bare word). A message the user types mid-run is input to the run and keeps auto-mode on; it ends only on the user's word to stop ('stop auto-mode', a bare 'stop', or a new flow command without the flag) or the run's own close. COMPACT INSTEAD: under ALFRED_CODE_AUTO_COMPACT=1 nothing is offered or held; the session's first orchestration run and an automatic compaction's start are told the session compacts and goes on."
     },
     {
       "file": "guard-fresh-session-start.js",
-      "matcher": "@UserPromptExpansion:(^|[^A-Za-z0-9_-])((alfred-)?(loop-[a-z][a-z0-9-]*|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|usage-report|related-projects|agent-awareness|project-awareness|agent-capabilities|project-capabilities)|task-[a-z][a-z0-9-]*|issue-diagnoser)|security-review|init|setup|update|configure|validate)$",
+      "matcher": "@UserPromptExpansion:(^|[^A-Za-z0-9_-])((alfred-)?(loop-[a-z][a-z0-9-]*|capture-[a-z][a-z0-9-]*|task-[a-z][a-z0-9-]*|issue-[a-z][a-z0-9-]*)|security-review|init|update|configure|validate)$",
       "event": "",
-      "note": "the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - UserPromptExpansion fires on that typed command and names it; the matcher (a regex with no colon, which the row format splits on) lists the orchestration commands under either spelling - every task-* and loop-* name, a project's own and a digit included (audit 2026-10-14 HK06: a typed /task-migrate-v2 auto-mode never spawned it) - so no ordinary prompt spawns the hook; it injects the ask, never blocks (a blocked expansion shows its reason to the user only). `auto-mode` in command_args on a task or loop command writes the run's session-named AUTO stamp before the run and injects the auto-mode contract instead of any offer."
+      "note": "the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - UserPromptExpansion fires on that typed command and names it; the matcher (a regex with no colon, which the row format splits on) lists the orchestration commands under either spelling - every task-* and loop-* name, a project's own and a digit included (audit 2026-10-14 HK06: a typed /task-migrate-v2 auto-mode never spawned it) - so no ordinary prompt spawns the hook; it injects the ask, never blocks (a blocked expansion shows its reason to the user only). `auto-mode` as the first word of command_args on a task, loop or issue command (the user's ruling of 2026-10-15; anywhere else it is the task's text) writes the run's session-named AUTO stamp before the run and injects the auto-mode contract instead of any offer. Every capture-* and issue-* name spawns it too (the user's ruling of 2026-10-15): each typed task-*, capture-*, loop-* or issue-* command gets the MODE BANNER after whatever else it injects - two lines its first reply opens with, auto-mode ON or OFF and how the session meets a full context (it compacts, or offers a fresh session at its trigger), with the window numbers."
     },
     {
       "file": "guard-fresh-session-start.js",
@@ -890,25 +868,19 @@
       "note": "the desktop servers' process launchers, both routes' spellings: deny Windows-MCP App with mode launch_executable (any executable, caller-given args - the server excludes by tool name, never by mode) and every MacOS-MCP Shell call (a shell command no shell guard sees); App's launch / switch / resize pass; the DESKTOP-EXEC-ALLOW receipt (App, Shell, an executable, or *) honours a wanted launch"
     },
     {
-      "file": "guard-answer-length.js",
+      "file": "guard-answer.js",
       "matcher": "@UserPromptSubmit",
       "event": "",
       "note": "inject the answer budget (~3 sentences plus points) at the end of the turn's context - the short-answer rule mechanized; a correction turn writes one log-only probe row (ALFRED_CODE_CORRECTION_NUDGE=inject adds the memory-save line)"
     },
     {
-      "file": "guard-answer-length.js",
-      "matcher": "@SessionStart",
+      "file": "guard-answer.js",
+      "matcher": "@SessionStart:compact",
       "event": "",
-      "note": "re-inject the budget after a COMPACTION rebuilds the context without it (measured absent for 277 of 366 messages in one session) - a startup/resume session gets it before the first prompt too"
+      "note": "re-inject the budget after a COMPACTION rebuilds the context without it (measured absent for 277 of 366 messages in one session); startup, resume and clear get it from the first prompt's UserPromptSubmit injection, so the start no longer pays for a second copy (deep hooks review 2026-10-16)"
     },
     {
-      "file": "guard-answer-length.js",
-      "matcher": "@Stop",
-      "event": "",
-      "note": "Stop event: block a wall-of-text answer (prose past the hard cap, no depth request in the user's message) - re-answer at budget"
-    },
-    {
-      "file": "guard-answer-length.js",
+      "file": "guard-answer.js",
       "matcher": "@PostToolUse:AskUserQuestion",
       "event": "",
       "note": "an answer TYPED into an ask (matching none of the offered labels) is the user speaking: one ask-answer-typed probe row; a short one carrying a correction marker also writes the correction row (the same test and nudge mode as a typed prompt); one naming a path gets a note to open it and restate what it changes before acting (audit 2026-10-10 C15 / C07: corrections typed into asks were never counted, and a folder named in an answer was never opened). Never blocks"
@@ -929,11 +901,17 @@
       "file": "docs-session.js",
       "matcher": "@SubagentStop",
       "event": "",
-      "note": "the finish ask, per agent: what THAT agent changed, once - the seat that made the change is the only context that knows why"
+      "note": "the finish ask for a seat that stopped WITHOUT a hand-back (a harness with no SubagentHandback tool, Cursor among them): what THAT agent changed, once - the seat that made the change is the only context that knows why"
     },
     {
       "file": "docs-session.js",
-      "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob",
+      "matcher": "SubagentHandback",
+      "event": "",
+      "note": "the finish ask, per agent, BEFORE its report leaves: the seat's first SubagentHandback that owes one is denied with the ask, and the retried hand-back carries the docs line (deep hooks review 2026-10-16: 48 of 48 SubagentStop asks came after the hand-back, 41 never acted on)"
+    },
+    {
+      "file": "docs-session.js",
+      "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit|Grep",
       "event": "",
       "note": "doc reads recorded; the FIRST change under a source root held until a covering section was read, that section handed over inline"
     },
@@ -968,34 +946,10 @@
       "note": "the project's memory tag line for a dispatched subagent - SessionStart context never reaches one, and a seat stores and reads its handoff note under that tag - and the memory tools line, which a seat whose tools grant the server skips: it calls them directly; then this host's shell traps (win32: the Git Bash line; a zsh $SHELL: the two zsh lines)"
     },
     {
-      "file": "monitor-session.js",
-      "matcher": "@PostToolUse",
-      "event": "",
-      "note": "a live monitor that never denies: the same call repeated 5 times with identical input, over 20 files written in one turn, the context at 80% of the fresh-session trigger - one row each, injected only when ALFRED_CODE_MONITOR=inject"
-    },
-    {
-      "file": "monitor-session.js",
-      "matcher": "@UserPromptSubmit",
-      "event": "",
-      "note": "a new turn: the monitor's per-turn counts reset"
-    },
-    {
-      "file": "check-turn-build.js",
-      "matcher": "@PostToolUse:Write|Edit|MultiEdit",
-      "event": "",
-      "note": "seeded OFF (ALFRED_CODE_TURN_CHECK=0): records each written path for the turn's one build check"
-    },
-    {
-      "file": "check-turn-build.js",
-      "matcher": "@PostToolUse:^mcp__(plugin_(alfred-)?navigation_)?(alfred-)?navigation__(rename_symbol|safe_delete_symbol)$",
-      "event": "",
-      "note": "the same record for the navigation server's two kept edit tools - the path is tool_input.relative_path, from the project root; both routes' spellings"
-    },
-    {
       "file": "check-turn-build.js",
       "matcher": "@Stop",
       "event": "",
-      "note": "the turn's ONE scoped tsc / dotnet build per root, first 20 error lines as a block, once per turn; timeout 60 on this Stop wiring alone, the one declared exception - its PostToolUse half keeps 10"
+      "note": "seeded OFF (ALFRED_CODE_TURN_CHECK=0): the turn's changed files from git (mtime past the previous Stop's marker), then ONE scoped tsc / dotnet build per root, first 20 error lines as a block, once per turn; it runs inside history-session's Stop process where that row is wired (2026-10-16: no node start of its own), its timeout 60 moving onto that wiring"
     },
     {
       "file": "history-session.js",
@@ -1156,7 +1110,10 @@
       "alfred-task-solve-cross",
       "alfred-task-verify-code",
       "alfred-task-verify-plan",
-      "alfred-task-version-upgrade"
+      "alfred-task-version-upgrade",
+      "capture-agent-awareness",
+      "capture-project-awareness",
+      "capture-related-projects"
     ],
     "agents": [
       "angular-solution-designer.md",
@@ -1197,7 +1154,9 @@
     ],
     "hooks": [
       "require-convention-skill.js",
-      "inject-code-style.js"
+      "inject-code-style.js",
+      "monitor-session.js",
+      "guard-answer-length.js"
     ],
     "mcps": [
       "angular-cli",
@@ -1229,8 +1188,8 @@
       "project-architecture-quality-analyzer": "capture-architecture-quality",
       "project-code-style-analyzer": "capture-code-style",
       "project-test-coverage-analyzer": "capture-test-coverage",
-      "project-related-context": "capture-related-projects",
-      "project-agent-capabilities": "capture-agent-awareness",
+      "project-related-context": "capture-awareness",
+      "project-agent-capabilities": "capture-awareness",
       "project-stack-usage-analyzer": "capture-usage-report",
       "project-first-look": "capture-first-look",
       "project-quality-loop": "loop-code-quality",
@@ -1242,16 +1201,16 @@
       "alfred-capture-stack-usage": "capture-usage-report",
       "create-ticket": "habits-create-ticket",
       "explain-code-tutor": "habits-explain-code",
-      "alfred-capture-agent-capabilities": "capture-agent-awareness",
-      "capture-agent-capabilities": "capture-agent-awareness",
+      "alfred-capture-agent-capabilities": "capture-awareness",
+      "capture-agent-capabilities": "capture-awareness",
       "alfred-capture-architecture": "capture-architecture",
       "alfred-capture-architecture-quality": "capture-architecture-quality",
       "alfred-capture-code-quality": "capture-code-quality",
       "alfred-capture-code-style": "capture-code-style",
       "alfred-capture-first-look": "capture-first-look",
-      "alfred-capture-project-capabilities": "capture-project-awareness",
-      "capture-project-capabilities": "capture-project-awareness",
-      "alfred-capture-related-projects": "capture-related-projects",
+      "alfred-capture-project-capabilities": "capture-awareness",
+      "capture-project-capabilities": "capture-awareness",
+      "alfred-capture-related-projects": "capture-awareness",
       "alfred-capture-test-coverage": "capture-test-coverage",
       "alfred-capture-usage-report": "capture-usage-report",
       "alfred-habits-adjust-agents-md": "habits-adjust-agents-md",
@@ -1280,7 +1239,10 @@
       "alfred-task-solve-cross": "task-solve-cross",
       "alfred-task-verify-code": "task-verify-code",
       "alfred-task-verify-plan": "task-verify-plan",
-      "alfred-task-version-upgrade": "task-version-upgrade"
+      "alfred-task-version-upgrade": "task-version-upgrade",
+      "capture-agent-awareness": "capture-awareness",
+      "capture-project-awareness": "capture-awareness",
+      "capture-related-projects": "capture-awareness"
     },
     "agents": {
       "ci-failure-diagnoser": "issue-diagnoser-ci",
@@ -1314,6 +1276,9 @@
       "memory": "alfred-memory",
       "windows-desktop": "windows-control",
       "macos-desktop": "macos-control"
+    },
+    "hooks": {
+      "guard-answer-length": "guard-answer"
     }
   }
 }

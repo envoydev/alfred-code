@@ -16,48 +16,52 @@ let payload = {};
 function use(p) {
   payload = p && typeof p === 'object' ? p : {};
   _knownWindow = undefined;
+  _ignored = undefined;
+  _started = undefined;
 }
 
-// The trigger is an ABSOLUTE token count per WINDOW TIER, one environment variable each - the
-// percentage knob it replaces was inert at its default on both real tiers (200k x 40% fell under
-// the floor, 1M x 40% sat over the ceiling), so the clamps decided and the setting lied about what
-// it controlled. Three numbers, no arithmetic: say when you want to be asked.
-//   ALFRED_CODE_FRESH_SESSION_200K    - the trigger on a 200k window (default 150,000, measured)
-//   ALFRED_CODE_FRESH_SESSION_1M      - the trigger on a 1M window (default 400,000)
-//   ALFRED_CODE_FRESH_SESSION_DEFAULT - the trigger on anything else (default 300,000)
-// `0` on any of them turns that case's offer off. NOTE the 1M default sits ABOVE the harness's own
-// auto-compaction (measured preTokens 387,619 / 391,290 / 393,516 / 393,969 / 395,112 / 396,651 /
-// 396,954 / 397,171 across three projects), so on that tier the Stop offer is usually unreachable
-// by design and the SessionStart `compact` route is what reaches the user - lower the variable to
-// be asked before the harness decides. Which WINDOW this session runs in is resolved below.
-// Read through envOf - the key is passed with the ALFRED_CODE_ prefix and read by its suffix.
+// The trigger is an ABSOLUTE token count per WINDOW TIER, one environment variable each (the user's ruling of 2026-10-16;
+// the percentage knob before them was inert at its default on both real tiers, so the clamps decided and the setting lied
+// about what it controlled). Say when you want to be asked:
+//   ALFRED_CODE_CONTEXT_WINDOW_FOR_1M   - the trigger on a 1M window (default 400,000)
+//   ALFRED_CODE_CONTEXT_WINDOW_FOR_300K - the trigger on a 300K window (default 280,000)
+//   ALFRED_CODE_CONTEXT_WINDOW_FOR_200K - the trigger on a 200K window (default 180,000)
+//   ALFRED_CODE_CONTEXT_WINDOW_DEFAULT  - the WINDOW a model model-windows.json does not list runs in (default 300,000)
+// A window takes the largest tier it reaches (tierKeyOf: 1M and up, 300K and up, else 200K), so every window has a
+// trigger and one below its own tier's number is clamped inside it (ctxThreshold). `0` on a tier turns that tier's offer
+// off. NOTE the 1M default sits ABOVE the harness's own auto-compaction (measured preTokens 387,619 / 391,290 / 393,516 /
+// 393,969 / 395,112 / 396,651 / 396,954 / 397,171 across three projects), so on that tier the Stop offer is usually
+// unreachable by design and the SessionStart `compact` route is what reaches the user - lower the variable to be asked
+// before the harness decides. Read through envOf - the key is passed with the ALFRED_CODE_ prefix, read by its suffix.
 function freshAt(key, dflt) {
   const n = parseInt(envOf(process.env, String(key).replace(/^ALFRED_CODE_/, '')), 10);
   return Number.isNaN(n) || n < 0 ? dflt : n;   // garbage takes the default; 0 is a real answer (off)
 }
-const FRESH_AT_200K = freshAt('ALFRED_CODE_FRESH_SESSION_200K', 150000);
-const FRESH_AT_1M = freshAt('ALFRED_CODE_FRESH_SESSION_1M', 400000);
-// The DEFAULT covers every case that is not one of the two named windows: a window that cannot be
-// read at all, and one that is neither 200k nor 1M (a `[500k]` model id, say). Seeded at 300,000 to
-// match ALFRED_CODE_DEFAULT_CONTEXT_WINDOW: on that window ctxThreshold clamps it to 90% (270,000).
-// It is NOT reachable on a window below it - a 200k window that cannot be read, say - so a session
-// there can run past its window without an offer; lower the variable for such models (it sat at
-// 180,000 until 2.1.6 for exactly that reason).
-const FRESH_AT_DEFAULT = freshAt('ALFRED_CODE_FRESH_SESSION_DEFAULT', 300000);
-// COMPACT INSTEAD (the user's ruling, 2026-10-14): ALFRED_CODE_AUTO_COMPACT=1 makes the project compact where it would
-// have been offered a fresh session - the installer seeds each model's autoCompactWindow at its tier's trigger above
-// (settings.js compactWindowSeeds), and every offer, ask and hold reads the gate as off. `0` (the seed) keeps the
-// offers; anything but `1` reads as `0`.
+const TIER_DEFAULTS = { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: 400000, ALFRED_CODE_CONTEXT_WINDOW_FOR_300K: 280000, ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: 180000 };
+const WINDOW_DEFAULT = 300000;
+// The tier a window belongs to - the one rule the hooks and the installer's auto-compact seeding (settings.js
+// compactWindowSeeds) both read.
+function tierKeyOf(window) {
+  const w = Number(window) || 0;
+  return w >= 1000000 ? 'ALFRED_CODE_CONTEXT_WINDOW_FOR_1M' : w >= 300000 ? 'ALFRED_CODE_CONTEXT_WINDOW_FOR_300K' : 'ALFRED_CODE_CONTEXT_WINDOW_FOR_200K';
+}
+const FRESH_AT_1M = freshAt('ALFRED_CODE_CONTEXT_WINDOW_FOR_1M', TIER_DEFAULTS.ALFRED_CODE_CONTEXT_WINDOW_FOR_1M);
+const FRESH_AT_300K = freshAt('ALFRED_CODE_CONTEXT_WINDOW_FOR_300K', TIER_DEFAULTS.ALFRED_CODE_CONTEXT_WINDOW_FOR_300K);
+const FRESH_AT_200K = freshAt('ALFRED_CODE_CONTEXT_WINDOW_FOR_200K', TIER_DEFAULTS.ALFRED_CODE_CONTEXT_WINDOW_FOR_200K);
+const FRESH_AT = { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: FRESH_AT_1M, ALFRED_CODE_CONTEXT_WINDOW_FOR_300K: FRESH_AT_300K, ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: FRESH_AT_200K };
+// COMPACT INSTEAD (the user's rulings, 2026-10-14 and 2026-10-16): ALFRED_CODE_AUTO_COMPACT=1 makes the project compact where
+// it would have been offered a fresh session - the installer seeds each model's autoCompactWindow at its tier's trigger
+// above (settings.js compactWindowSeeds), and every offer, ask, note and hold reads the gate as OFF: the switch, never a
+// tier set to 0, is what turns the fresh-session hook off. `0` (the seed) keeps the offers; anything but `1` reads as `0`.
 const COMPACT_INSTEAD = String(envOf(process.env, 'AUTO_COMPACT') || '').trim() === '1';
-// `0` on ALL THREE is the whole off switch, and so is COMPACT_INSTEAD. The retired ALFRED_CODE_FRESH_SESSION_PCT is not
-// read at all any more - a percentage of a window is not what this gate fires on.
-const FRESH_OFF = (FRESH_AT_200K === 0 && FRESH_AT_1M === 0 && FRESH_AT_DEFAULT === 0) || COMPACT_INSTEAD;
+// `0` on ALL THREE tiers is the other whole off switch. The retired ALFRED_CODE_FRESH_SESSION_PCT / _DEFAULT are not read.
+const FRESH_OFF = (FRESH_AT_1M === 0 && FRESH_AT_300K === 0 && FRESH_AT_200K === 0) || COMPACT_INSTEAD;
 
 // --- which context WINDOW is this session running in? -------------------------------------
 // ONE rule: the session's model id is looked up in `model-windows.json`, shipped beside this hook
 // and replaced on every update, so a new model arrives with the release that lists it. A model the
-// table does not list takes ALFRED_CODE_DEFAULT_CONTEXT_WINDOW (seeded 300000); with that unset or
-// garbage, no window is known and the DEFAULT trigger applies. Two MEASURED facts can only lower it (audit
+// table does not list takes ALFRED_CODE_CONTEXT_WINDOW_DEFAULT (seeded 300000; unset or garbage reads as 300000), so a
+// window is always known. Two MEASURED facts can only lower it (audit
 // 2026-10-10 C08): the install's own auto-compact window when a setting names it, and the lowest compaction point
 // this project recorded for the model (autoCompactWindow / observedCompaction below). Nothing else decides - not a
 // `[1m]`/`[200k]` id suffix, not the carry. Those inferences each fixed one case
@@ -128,8 +132,8 @@ function tableWindow() {
   return best ? best.n : null;
 }
 function envWindow() {
-  const n = parseInt(envOf(process.env, 'DEFAULT_CONTEXT_WINDOW'), 10);
-  return n >= 100000 ? n : null;
+  const n = parseInt(envOf(process.env, 'CONTEXT_WINDOW_DEFAULT'), 10);
+  return n >= 100000 ? n : WINDOW_DEFAULT;
 }
 // The install's own AUTO-COMPACT window, when it is set (code.claude.com/docs/en/model-config, 'Set the auto-compact
 // window': 'how full the context window can get before Claude Code compacts'; settings-reference `autoCompactWindow` /
@@ -140,11 +144,13 @@ function envWindow() {
 // `effortLevel`'s, and skipping it here left a user window under the trigger (390k) unread until a compaction was recorded.
 // 'auto', garbage or a value outside 100K-1M is no window. This only ever LOWERS the window: the harness caps the
 // auto-compact window at the model's own.
-function autoCompactWindow() {
+// The configured window and where it came from: `{ n, source, mtimeMs }` - the env name with no mtime, or the settings
+// file with its mtime (the moment the value could first take effect, at the next session start).
+function configuredCompactWindow() {
   const valid = (v) => { const n = typeof v === 'number' ? v : /^\d+$/.test(String(v || '').trim()) ? parseInt(v, 10) : NaN; return n >= 100000 && n <= 1000000 ? n : null; };
   for (const k of ['CLAUDE_CODE_AUTO_COMPACT_WINDOW', 'CLAUDE_CODE_AUTOCOMPACT_WINDOW']) {
     const n = valid(process.env[k]);
-    if (n) return n;
+    if (n) return { n, source: k, mtimeMs: null };
   }
   try {
     const path = require('path');
@@ -160,16 +166,60 @@ function autoCompactWindow() {
       const per = s.modelSettings && typeof s.modelSettings === 'object' && id
         ? Object.entries(s.modelSettings).find(([k]) => k.toLowerCase() === id || id.endsWith(`/${k.toLowerCase()}`) || id.endsWith(`.${k.toLowerCase()}`)) : null;
       const n = valid(per && per[1] && per[1].autoCompactWindow) || valid(s.autoCompactWindow);
-      if (n) return n;
+      if (n) { let mtimeMs = null; try { mtimeMs = fs.statSync(file).mtimeMs; } catch { /* read a moment ago */ } return { n, source: file, mtimeMs }; }
     }
   } catch { /* no root, no home */ }
   return null;
+}
+// A configured window the harness did NOT honour (audit 2026-10-20 C10, 81ebfa5f / 1aebc759 / b28289bf): a 350k
+// `modelSettings.<model>.autoCompactWindow` in the project's settings.local.json, and three sessions compacted at
+// 466.8k-469.7k while the asks quoted 350k. The settings reference does not say which scopes Claude Code reads the key
+// from, so no cause is claimed - only the measurement: an automatic compaction this project recorded for the model, more
+// than 5% above the configured window, by a session that STARTED after the value was written (the key is read at session
+// start only, so a session already running when it was written proves nothing; an env window counts this session's own
+// points). Then the key is no window: the asks stop quoting it, and the start hook says once that it was not honoured.
+const IGNORED_SLACK = 1.05;
+let _ignored;
+function compactWindowIgnored() {
+  if (_ignored !== undefined) return _ignored;
+  _ignored = null;
+  try {
+    const c = configuredCompactWindow();
+    const id = String(sessionModelId() || '').toLowerCase();
+    if (!c || !id) return _ignored;
+    const sid = String(payload.session_id || '');
+    const mine = (r) => sid && r.session === sid && (c.mtimeMs == null || (sessionStartedAt() || 0) >= c.mtimeMs);
+    const after = (r) => c.mtimeMs != null && Date.parse(r.started || '') >= c.mtimeMs;
+    const over = readCompactPoints().filter((r) => r.model === id && Number(r.tokens) > c.n * IGNORED_SLACK && (mine(r) || after(r)));
+    if (over.length) _ignored = { configured: c.n, seen: Math.max(...over.map((r) => Number(r.tokens))), source: c.source };
+  } catch { /* unreadable - the key stands */ }
+  return _ignored;
+}
+function autoCompactWindow() {
+  const c = configuredCompactWindow();
+  return c && !compactWindowIgnored() ? c.n : null;
+}
+// When this session started: the transcript's first timestamped row (its first 64KB).
+let _started;
+function sessionStartedAt() {
+  if (_started !== undefined) return _started;
+  _started = null;
+  try {
+    const fd = fs.openSync(String(payload.transcript_path || ''), 'r');
+    const buf = Buffer.alloc(64 * 1024);
+    let n = 0;
+    try { n = fs.readSync(fd, buf, 0, buf.length, 0); } finally { fs.closeSync(fd); }
+    const m = buf.toString('utf8', 0, n).match(/"timestamp"\s*:\s*"([^"]+)"/);
+    const t = m ? Date.parse(m[1]) : NaN;
+    if (Number.isFinite(t)) _started = t;
+  } catch { /* no transcript */ }
+  return _started;
 }
 // The compaction points this PROJECT has measured: each automatic compaction leaves its context in
 // `<docs>/flow/compact-points.json` (guard-fresh-session-start.js writes it at PreCompact and at the compact start), and
 // the lowest one for this session's model in the last 30 days is a fact about where the harness compacts here - which
 // the model's row cannot know (audit 2026-10-10 C08: 29 compactions of one project at 300-400k against a 400k trigger,
-// so neither the Stop offer nor the monitor's note could fire before the harness compacted).
+// so the Stop offer could not fire before the harness compacted).
 const COMPACT_POINTS_DAYS = 30;
 function compactPointsFile() {
   const path = require('path');
@@ -188,12 +238,16 @@ function recordCompactPoint(tokens, model) {
     if (!(n >= 50000) || !model) return false;
     const cut = Date.now() - COMPACT_POINTS_DAYS * 86400000;
     const rows = readCompactPoints().filter((r) => Date.parse(r.at) >= cut);
-    rows.push({ at: new Date().toISOString(), session: String(payload.session_id || ''), model: String(model).toLowerCase(), tokens: n });
+    const started = sessionStartedAt();
+    rows.push({ at: new Date().toISOString(), session: String(payload.session_id || ''), model: String(model).toLowerCase(), tokens: n,
+      ...(started ? { started: new Date(started).toISOString() } : {}) });
     const file = compactPointsFile();
     fs.mkdirSync(require('path').dirname(file), { recursive: true });
     const tmp = `${file}.${process.pid}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify(rows.slice(-40), null, 1) + '\n');
     fs.renameSync(tmp, file);
+    _ignored = undefined;
+    _knownWindow = undefined;
     return true;
   } catch { return false; }
 }
@@ -213,21 +267,14 @@ function knownWindow() {
   }
   return _knownWindow;
 }
-// The trigger this session is judged against. The two named tiers each own a variable; every
-// other answer - including 'the window could not be read' - takes the DEFAULT one, so the offer
-// always has a number behind it. Guessing a TIER instead was the failure: reading an unknown
-// window as 200k offered a 1M account the resume at 150k, and reading it as 1M never offered a
-// 200k account anything at all.
+// The trigger this session is judged against: the tier of the model's own window (tierKeyOf), so the offer always has a
+// number behind it - a model the table does not list runs in ALFRED_CODE_CONTEXT_WINDOW_DEFAULT.
 function ctxThreshold() {
   const window = knownWindow();
   // The TIER is the model's own window - the table row, else the declared default - and an auto-compact window only
   // lowers the room the trigger must fit in (the clamp below). Tiering by the lowered window put a 1M model under a 400k
-  // compaction window on the DEFAULT trigger, so the window the installer seeds from the 1M trigger (settings.js,
-  // compactWindowSeeds) moved that trigger to 300k (2026-10-14).
-  const tier = tableWindow() || envWindow() || window;
-  let at = tier === 200000 ? FRESH_AT_200K
-    : tier === 1000000 ? FRESH_AT_1M
-      : FRESH_AT_DEFAULT;
+  // compaction window on another tier's trigger (2026-10-14).
+  let at = FRESH_AT[tierKeyOf(tableWindow() || envWindow())];
   // A trigger at or above the window it applies to can never be reached, and a gate that cannot
   // fire is the gate not existing. Honour the number that was set up to the point it goes
   // unreachable, then clamp it back inside the window.
@@ -310,15 +357,6 @@ function contextNow(tail = 64 * 1024) {
     return start > 0 && tail < 1024 * 1024 ? contextNow(1024 * 1024) : 0;
   } catch { return 0; }
 }
-// The LOWEST trigger any window could resolve to, without reading the model: every live tier's own
-// number, or 90% of the smallest window the table accepts when the clamp would bring it down. A
-// context under a share of this cannot be past that share of the real trigger, so the per-call
-// caller skips the model lookup (a second 512KB scan) until it can matter. null = every tier off.
-function lowestTrigger() {
-  const live = [FRESH_AT_200K, FRESH_AT_1M, FRESH_AT_DEFAULT].filter((n) => n > 0);
-  return live.length ? Math.min(...live, 90000) : null;
-}
-
 // ---- the asks this session answered (moved from guard-stop-contract.js, audit 2026-10-08) ------------------------------
 // The transcript's bytes from `from` on, the newest `max` at most; '' when there is none.
 function transcriptText(from = 0, max = 512 * 1024) {
@@ -421,8 +459,8 @@ function askAnsweredSince(from) {
 }
 
 module.exports = {
-  use, freshAt, FRESH_AT_200K, FRESH_AT_1M, FRESH_AT_DEFAULT, FRESH_OFF, COMPACT_INSTEAD, sessionModelId, tableWindow,
-  envWindow, knownWindow, ctxThreshold, MIN_RECOVERABLE_SHARE, coldFloor, worthResuming, contextNow, lowestTrigger,
-  autoCompactWindow, recordCompactPoint, observedCompaction, compactPointsFile,
+  use, freshAt, FRESH_AT_200K, FRESH_AT_300K, FRESH_AT_1M, TIER_DEFAULTS, WINDOW_DEFAULT, tierKeyOf, FRESH_OFF, COMPACT_INSTEAD, sessionModelId, tableWindow,
+  envWindow, knownWindow, ctxThreshold, MIN_RECOVERABLE_SHARE, coldFloor, worthResuming, contextNow,
+  autoCompactWindow, configuredCompactWindow, compactWindowIgnored, sessionStartedAt, recordCompactPoint, observedCompaction, compactPointsFile,
   transcriptSize, isTypedTurn, freshAskAnsweredThisTurn, freshAskAnsweredCtx, askAnsweredSince,
 };

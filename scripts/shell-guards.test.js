@@ -475,9 +475,9 @@ test('file-guards wiringRows: every guard\'s own file-tool row folds into ONE di
   const fg = require(FILES);
   const rows = ['a.js::@Stop', 'guard-read-whole-file.js::Read', 'guard-secret-value.js::Read', 'guard-read-whole-file.js::Bash|PowerShell|Monitor',
     'guard-secret-value.js::Grep', 'guard-config-protection.js::Write|Edit|MultiEdit|NotebookEdit', 'guard-cross-project-write.js::Write|Edit|MultiEdit|NotebookEdit',
-    'docs-session.js::Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob', 'docs-session.js::@Stop', 'instrument-tool-usage.js::.*'];
+    'docs-session.js::Read|Edit|Write|MultiEdit|NotebookEdit|Grep', 'docs-session.js::@Stop', 'instrument-tool-usage.js::.*'];
   assert.deepStrictEqual(fg.wiringRows(rows), ['a.js::@Stop', `file-guards.js::${fg.MATCHER}`, 'guard-read-whole-file.js::Bash|PowerShell|Monitor', 'docs-session.js::@Stop', 'instrument-tool-usage.js::.*']);
-  assert.strictEqual(fg.MATCHER, 'Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob');
+  assert.strictEqual(fg.MATCHER, 'Read|Edit|Write|MultiEdit|NotebookEdit|Grep', 'no Glob: nothing in the dispatcher judges one');
   // A strict subset is named in the args, and the wiring matches only the tools those guards judge.
   assert.deepStrictEqual(fg.wiringRows(['guard-config-protection.js::Write|Edit|MultiEdit|NotebookEdit'], { listGuards: true }),
     ['file-guards.js::Edit|Write|MultiEdit|NotebookEdit::guard-config-protection'], 'no Read spawn for a write guard');
@@ -505,8 +505,9 @@ test('file-guards: the core entry launches ONE process per file-tool call, with 
   const build = require('./build-marketplace.js');
   const block = build.hooksBlock(build.parseHookWirings());
   const onFile = (tool) => block.PreToolUse.filter((g) => g.matcher === undefined || new RegExp(`^(?:${g.matcher})$`).test(tool)).flatMap((g) => g.hooks.map((h) => h.command));
-  for (const tool of ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Grep', 'Glob'])
+  for (const tool of ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Grep'])
     assert.deepStrictEqual(onFile(tool), ['node "${CLAUDE_PLUGIN_ROOT}/stack/hooks/file-guards.js"', 'node "${CLAUDE_PLUGIN_ROOT}/stack/hooks/instrument-tool-usage.js"'], `${tool}: the dispatcher and instrumentation only`);
+  assert.deepStrictEqual(onFile('Glob'), ['node "${CLAUDE_PLUGIN_ROOT}/stack/hooks/instrument-tool-usage.js"'], 'a Glob starts no dispatcher (deep hooks review 2026-10-16)');
   const group = block.PreToolUse.find((g) => g.matcher === fg.MATCHER);
   assert.strictEqual(group.hooks[0].timeout, 10 * fg.GUARDS.length, 'every guard keeps the 10s it had as its own hook');
   assert.strictEqual(require('./install/settings.js').timeoutFor('file-guards.js', 'PreToolUse'), 10 * fg.GUARDS.length);
@@ -679,15 +680,30 @@ test('audit 2026-10-10 C25: a foreground until / while loop that sleeps is block
   const dir = project('poll-');
   const r = own(dir, 'until grep -q READY run.log; do sleep 5; done');
   assert.equal(r.status, 2, '516e653d, 3b53e0e8');
-  assert.match(r.stderr, /FOREGROUND `until` \/ `while` loop[\s\S]*run_in_background: true[\s\S]*ToolSearch select:Monitor/);
+  assert.match(r.stderr, /FOREGROUND wait[\s\S]*run_in_background: true[\s\S]*ToolSearch select:Monitor/, 'the background routes lead');
+  assert.doesNotMatch(r.stderr, /timeout 60 <the loop>/, 'no bounded-loop hint - the model chained them (deep hooks review 2026-10-16)');
   assert.equal(own(dir, 'while true; do curl -s localhost:1 && break; sleep 2; done').status, 2);
   assert.equal(own(dir, "bash -c 'until test -f done.flag; do sleep 1; done'").status, 2, 'inside a shell -c string');
   assert.equal(own(dir, 'until grep -q READY run.log; do sleep 5; done', { extra: { run_in_background: true } }).status, 0, 'in the background');
   assert.equal(own(dir, 'timeout 60 bash -c "until test -f done.flag; do sleep 1; done"').status, 0, 'bounded at 60s');
   assert.equal(own(dir, 'timeout 600 bash -c "until test -f done.flag; do sleep 1; done"').status, 2, 'a 600s bound is the wait it replaces');
+  // hooks review 2026-10-16: the duration takes its unit and the options before it
+  for (const t of ['timeout 2m', 'timeout -s KILL 60', 'timeout --signal=KILL 90s', 'timeout -k 5 1m'])
+    assert.equal(own(dir, `${t} bash -c "until test -f done.flag; do sleep 1; done"`).status, 0, `bounded: ${t}`);
+  assert.equal(own(dir, 'timeout 3m bash -c "until test -f done.flag; do sleep 1; done"').status, 2, 'three minutes is past the bound');
   assert.equal(own(dir, 'while read -r l; do echo "$l"; sleep 0.1; done < a.txt').status, 0, 'a read loop reads input');
   assert.equal(own(dir, 'echo "until x; do sleep 1; done"').status, 0, 'text in quotes');
   assert.equal(own(dir, 'for i in 1 2 3; do sleep 1; done').status, 0, 'a for loop is bounded by its list');
+  // deep hooks review 2026-10-16: the turn was freed in 2 of 11 episodes - the loop came back as a tail -f or a chain
+  assert.equal(own(dir, 'timeout 280 tail -f run.log').status, 2, 'a long follow');
+  assert.equal(own(dir, 'tail -n 50 -f run.log').status, 2, 'an unbounded follow');
+  assert.equal(own(dir, 'tail -F run.log | grep -m1 READY').status, 2, 'a follow piped into its sentinel');
+  assert.equal(own(dir, 'timeout 90 tail -f run.log').status, 0, 'a follow bounded at 90s');
+  assert.equal(own(dir, 'tail -n 50 run.log').status, 0, 'a plain tail');
+  assert.equal(own(dir, 'tail -f run.log', { extra: { run_in_background: true } }).status, 0, 'a background follow');
+  const chain = 'timeout 110 bash -c "until test -f a; do sleep 5; done"; timeout 110 bash -c "until test -f b; do sleep 5; done"';
+  assert.equal(own(dir, chain).status, 2, 'two 110s waits hold 220s');
+  assert.equal(own(dir, 'timeout 60 bash -c "until test -f a; do sleep 1; done"; timeout 60 bash -c "until test -f b; do sleep 1; done"').status, 0, 'two 60s waits stay inside 120s');
   assert.ok(rowsIn(dir).some((x) => !x.mode && x.detail && x.detail.branch === 'poll-loop'), 'a block row');
 });
 
@@ -705,7 +721,7 @@ test('audit 2026-10-14 RU04: the first background Bash call of each actor carrie
   };
   const bg = { command: 'npm test > run.log 2>&1', run_in_background: true };
   assert.equal(call('bg1', { command: 'npm test' }).context, '', 'a foreground call says nothing');
-  assert.equal(call('bg1', { command: 'tail -f run.log' }, { tool: 'Monitor' }).context, '', 'a Monitor call IS the watch');
+  // audit 2026-10-20 C32: a Monitor call carries its own note (MONITOR_NOTE), under its own marker - tested below
   assert.equal(call('bg1', { ...bg, run_in_background: 'true' }).context, '', 'only a real true is a background call');
   const first = call('bg1', bg);
   assert.equal(first.status, 0, 'a note, never a block');
@@ -716,6 +732,9 @@ test('audit 2026-10-14 RU04: the first background Bash call of each actor carrie
   assert.match(first.context, /`ToolSearch select:Monitor`/);
   assert.match(first.context, /Poll it through `Monitor` or its new lines, never a whole-log re-read\./);
   assert.match(first.context, /never a bare process-name grep; task lists track tasks, not shells\./);
+  // the 2026-10-17 usage audit: progress narrated sample by sample (35 finals ~5.07M) or left silent (users asked 3 and 2 times)
+  assert.match(first.context, /ONE start line - what runs and when it should finish - then nothing until the result or a failure: one watch whose command ends on either/);
+  assert.match(first.context, /never a reply per sample, never silence past the finish time you gave/);
   assert.equal(call('bg1', bg).context, '', 'once per actor');
   assert.equal(call('bg1', bg, { agent: 'a1' }).context, shell.BACKGROUND_NOTE, 'a seat is its own actor');
   assert.equal(call('bg1', bg, { agent: 'a1' }).context, '', 'and hears it once too');
@@ -731,6 +750,38 @@ test('audit 2026-10-14 RU04: the first background Bash call of each actor carrie
   // a block still wins: the note rides beside it
   const blocked = run(DISPATCH, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'git commit -am x', run_in_background: true }, session_id: 'bg4', cwd: dir }, { cwd: dir, env });
   assert.equal(blocked.status, 2, 'the commit gate still blocks');
+});
+
+// audit 2026-10-20 C32 (7c1af769, 9a0314ed): the note rode only the first background Bash call, an hour before the Monitor
+// whose per-sample lines woke 12 and 35 turns - the first Monitor call of each actor now hears the per-wake rule itself.
+test('audit 2026-10-20 C32: the first Monitor call of each actor carries the per-wake note, once, beside the Bash note', () => {
+  const dir = project('mon-');
+  const marks = fs.mkdtempSync(path.join(TMP, 'marks-'));
+  const env = { CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_HOOK_LOG_DIR: marks };
+  const call = (session, tool, input, agent) => {
+    const r = run(DISPATCH, { hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, session_id: session, cwd: dir, ...(agent ? { agent_id: agent, agent_type: 'alfred-code:implementer' } : {}) }, { cwd: dir, env });
+    let h = {};
+    try { h = JSON.parse(r.stdout).hookSpecificOutput || {}; } catch { h = {}; }
+    return { status: r.status, context: h.additionalContext || '' };
+  };
+  const mon = { command: 'while true; do echo "$(date) $(pgrep -f node | wc -l)"; sleep 30; done', description: 'mem watch' };
+  // the shape of 7c1af769: a background Bash heard its note first, the Monitor came later
+  assert.equal(call('m1', 'Bash', { command: 'npm run build > b.log 2>&1', run_in_background: true }).context, shell.BACKGROUND_NOTE);
+  const first = call('m1', 'Monitor', mon);
+  assert.equal(first.status, 0, 'a note, never a block');
+  assert.equal(first.context, shell.MONITOR_NOTE);
+  assert.match(first.context, /every line this command prints wakes a turn/);
+  assert.match(first.context, /never a line per sample/);
+  assert.match(first.context, /ONE start line/);
+  assert.equal(call('m1', 'Monitor', mon).context, '', 'once per actor');
+  assert.equal(call('m1', 'Bash', { command: 'npm test > t.log 2>&1', run_in_background: true }).context, '', 'the Bash note stays once too');
+  assert.equal(call('m1', 'Monitor', mon, 'a1').context, shell.MONITOR_NOTE, 'a seat is its own actor');
+  // the other order: a Monitor first leaves the background Bash note unspent
+  assert.equal(call('m2', 'Monitor', mon).context, shell.MONITOR_NOTE);
+  assert.equal(call('m2', 'Bash', { command: 'npm test > t.log 2>&1', run_in_background: true }).context, shell.BACKGROUND_NOTE);
+  assert.ok(fs.readdirSync(marks).includes('alfred-bg-note-mon-m1-main'), 'its own marker, under the swept prefix');
+  const rows = ledgerRows(dir, 'm1').filter((x) => x.detail && x.detail.branch === 'monitor-note');
+  assert.deepEqual(rows.map((x) => x.mode), ['probe', 'probe'], 'one probe row per note (main, a1)');
 });
 
 test('audit 2026-10-10: an unaddressed sed -i s/// over several lines of its file gets a note naming them', () => {
@@ -803,4 +854,28 @@ test('HK15: a dispatcher run past 1s writes one slow row naming each guard\'s ms
     input: JSON.stringify(bashPayload('ls', bare)), encoding: 'utf8', cwd: bare, env: { ...process.env, CLAUDE_PROJECT_DIR: bare, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT }, timeout: 15000,
   });
   assert.ok(!fs.existsSync(path.join(bare, '.alfred', 'docs', 'hook-blocks')), 'no row where the stack was never set up');
+});
+
+// Deep hooks review 2026-10-16: the dispatcher keeps V8's cached data per guard body under a key of its source and this
+// Node. An edited guard compiles afresh (its new verdict, never the cached one), and a corrupt entry is a plain compile.
+test('the compile cache never serves an edited guard, and a corrupt entry falls back to a plain compile', () => {
+  const dir = project();
+  const hooks = fs.mkdtempSync(path.join(TMP, 'hooks-copy-'));
+  for (const f of fs.readdirSync(HOOKS)) if (f.endsWith('.js') || f.endsWith('.json')) fs.copyFileSync(path.join(HOOKS, f), path.join(hooks, f));
+  const cacheDir = fs.mkdtempSync(path.join(TMP, 'v8-'));
+  const env = { CLAUDE_PROJECT_DIR: dir, TMPDIR: cacheDir, TMP: cacheDir, TEMP: cacheDir };
+  const SHARED = /rewriting or deleting a shared branch/;
+  const push = () => SHARED.test(run(path.join(hooks, 'shell-guards.js'), bashPayload('git push --force origin main', dir), { cwd: dir, env }).stderr);
+  assert.ok(push(), 'a cold run blocks');
+  const entries = () => fs.readdirSync(cacheDir).filter((f) => /^alfred-v8-guard-protected-force-push-[0-9a-f]{16}\.bin$/.test(f));
+  assert.equal(entries().length, 1, 'and leaves one entry for the guard');
+  assert.ok(push(), 'a warm run blocks the same');
+  const guard = path.join(hooks, 'guard-protected-force-push.js');
+  const src = fs.readFileSync(guard, 'utf8');
+  fs.writeFileSync(guard, src.replace(/^(#!.*\n)?/, (m) => `${m}process.exit(0);\n`));
+  assert.ok(!push(), 'the edited guard runs as edited - no stale entry');
+  assert.equal(entries().length, 2, 'under a key of its own');
+  fs.writeFileSync(guard, src);
+  for (const f of entries()) fs.writeFileSync(path.join(cacheDir, f), 'not v8 data');
+  assert.ok(push(), 'a corrupt entry is a plain compile with the same verdict');
 });

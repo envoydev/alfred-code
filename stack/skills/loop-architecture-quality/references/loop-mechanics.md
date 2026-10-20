@@ -1,6 +1,17 @@
 # Architecture Quality Loop - loop mechanics
 
-Step-scoped mechanics for `loop-architecture-quality`: the lens sweep (step 1, when the work list is drained), the seat brief shapes (step 2), the RESUME BLOCK (step 3, on a 'fresh' answer) and the final report's field rules (step 3, on STOP). The body's step 3 Reads this file whole and the report's `Mechanics` line is the receipt; step 1 and step 2 read their own sections when they need them. Every rule here is binding - this file holds the shape, the body holds the step.
+Step-scoped mechanics for `loop-architecture-quality`: the reuse ask (step 1, round 1 over a current assessment), the lens sweep (step 1, when the work list is drained), the seat brief shapes (step 2), the RESUME BLOCK (step 3, on a 'fresh' answer) and the final report's field rules (step 3, on STOP). The body's step 3 Reads this file whole and the report's `Mechanics` line is the receipt; step 1 and step 2 read their own sections when they need them. Every rule here is binding - this file holds the shape, the body holds the step.
+
+## Reuse ask - step 1, round 1 over a current assessment
+
+Put before the findings capture or any of its references is read, only when the assessment's `As of:` sha is HEAD,
+the tree is clean and no decision record is newer than the assessment:
+
+```ask
+ARCHITECTURE-ASSESSMENT.md is current: As of <sha> = HEAD, clean tree, no newer decision - reusing it skips a full capture.
+- 'Reuse it as the work list (Recommended)' - no findings capture this round
+- 'Recompute it' - the findings capture runs in full
+```
 
 ## Lens sweep - step 1, when the work list is drained
 
@@ -37,7 +48,7 @@ The invocation names the rounds already consumed so the 3-round cap survives the
 
 ## Final report - field rules, step 3 on STOP
 
-One line per field, a table where a field lists several items - the close is an answer like any other and the answer-length hook blocks a wall of prose; tables are exempt.
+One line per field, a table where a field lists several items - the close is an answer like any other and the answer budget caps prose; tables are exempt.
 
 - **Outcome** - SATISFIED / PLATEAU / CAPPED / BLOCKED, and on which round. CAPPED means the CUMULATIVE improve-round cap was reached - rounds count across sessions via the resume invocation's round numbering. A session ending because the user chose the fresh-session option with fixable weaknesses left is a LOOP handoff, not CAPPED - this rule is the tiebreak.
 - **Resolved** - each weakness fixed, its tier, and the change that closed it.

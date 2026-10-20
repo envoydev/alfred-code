@@ -432,6 +432,16 @@ test('SKF-09 + SKF-15: the design and plan-audit descriptions each exclude the o
     for (const n of ['task-design', 'task-verify-plan', 'task-solve-cross']) assert.ok(description(n).length <= 160, `${n}: ${description(n).length}`);
 });
 
+// The 2026-10-17 usage audit: a customer-side bug was fixed before its symptom was ever reproduced; task-design opens such a
+// plan with a reproduce task, and step 3's background runs get one start line (task-solve's step mechanics).
+test('2026-10-17: a customer-side bug opens with its symptom reproduced; a background run gets one start line', () => {
+    assert.match(skill('task-design'), /A bug seen only on the customer's side .* opens with a task whose acceptance is the reported symptom reproduced, its exact error text or log row quoted, before any fix task/);
+    const mech = read('stack/skills/task-solve/references/step-mechanics.md');
+    assert.match(mech, /^## Background runs - the one start line$/m);
+    assert.match(mech, /ONE wait whose\ncommand ends on the result or a crash/);
+    assert.match(mech, /no reply per sample or per poll/);
+});
+
 // SKF-11: both closes left a large uncommitted diff with no commit decision, while every sibling flow asks one.
 test('SKF-11: the greenfield and upgrade closes put the commit through a marked ask', () => {
     for (const n of ['task-build-from-scratch', 'task-version-upgrade']) {
@@ -486,13 +496,13 @@ test('SKF-16: the coverage loop vendors the anti-gaming sweep, records its basel
 // only, and this ask is prose; scripts/auto-mode.test.js replays both shapes through the hook).
 test('SKF-04: the upgrade has one auto mode, and its hard stop waits for the user under it', () => {
     const t = flat(skill('task-version-upgrade'));
-    assert.strictEqual((t.match(/--auto\b/g) || []).length, 1, 'the only --auto left is the line saying it starts nothing');
+    assert.strictEqual((t.match(/--auto(?!-mode)\b/g) || []).length, 1, 'the only --auto left is the line saying it starts nothing');
     assert.doesNotMatch(t, /Auto mode (skips|still stops|\(explicitly requested\))|auto mode included|skipping the approval gate/, 'the legacy mode is folded');
-    assert.match(t, /\*\*Under auto-mode the gate is answered, not skipped - and only when the user typed `auto-mode` on the call\.\*\*/);
-    assert.match(t, /the old `--auto` \/ 'auto mode' wording starts nothing, and the gate stands/);
+    assert.match(t, /\*\*Under auto-mode the gate is answered, not skipped - and only when the user typed `--auto-mode` on the call\.\*\*/);
+    assert.match(t, /the old `--auto`, 'auto mode' or bare `auto-mode` wording starts nothing, and the gate stands/);
     assert.match(t, /Hard stops, auto-mode included:/);
     assert.match(t, /Under auto-mode put the same three options with NO `\(Recommended\)` mark, the question opening 'no option is recommended: a hard stop waits for you under auto-mode' - the hook answers only a marked ask, so this one waits\./);
     // the attended ask keeps its mark, and the auto-mode contract paragraph is untouched
     assert.match(t, /'Re-plan from this stage \(Recommended\)' \/ 'Roll back to the last stage's rollback point' \/ 'Stop here'/);
-    assert.match(t, /\*\*auto-mode\.\*\* `auto-mode` in the arguments is a mode word, not a target/);
+    assert.match(t, /\*\*auto-mode\.\*\* `--auto-mode` as the first word of the arguments is a mode flag, not a target/);
 });

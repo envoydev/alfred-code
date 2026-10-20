@@ -42,6 +42,8 @@ const seeds = require('./seeds.js');
 const pinsLayer = require('./pins.js');
 const stampLayer = require('./stamp.js');
 const library = require('./library.js');
+const skillHeadings = require('./skill-headings.js');
+const ruleOpenings = require('./rule-openings.js');
 const { shippedText } = require('./retired-rules.js');
 const uninstallLayer = require('./uninstall.js');
 const toolIgnoresLayer = require('./tool-ignores.js');
@@ -62,7 +64,7 @@ Action (one is REQUIRED, positional):
 
 Named flags (any order, each optional): ${FLAG_LIST}
 
-What each flag does is documented where it is set: the guided /alfred-code:setup, :update,
+What each flag does is documented where it is set: the guided /alfred-code:init, :update,
 :configure and :validate commands (setup-plugin/commands/) name every flag they pass inline, and
 the repo's CLAUDE.md covers the install surface end to end.`;
 
@@ -587,7 +589,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             });
             if (!back.installed)
             {
-                err(`error: --installed-only found nothing installed under ${claudeDir} - run 'install' (or /alfred-code:setup) first\n`);
+                err(`error: --installed-only found nothing installed under ${claudeDir} - run 'install' (or /alfred-code:init) first\n`);
                 return 1;
             }
             leftOut = selection.leftOut({ parked: back.parked, deny: back.deny });
@@ -927,11 +929,21 @@ function runLayers(ctx)
             force: Boolean(args.renameClaudeMd), ignoreFiles: args.renameClaudeMd ? excludeFileOf(ctx) : [],
             log: ctx.log, note: ctx.note,
         }) === 'moved';
+    // An update brings a seed the stack still owns - just moved, or held by the ledger at its hash - onto this release's
+    // template, so a template change reaches it; an edited one is the project's and only re-spelled below.
+    if (args.action === 'update')
+    {
+        const held = ctx.ledger && ctx.ledger.files && ctx.ledger.files['AGENTS.md'];
+        let unedited = false;
+        try { unedited = Boolean(held) && library.hashItem(ledgerPath(ctx, 'AGENTS.md')) === held; } catch { /* unreadable: not ours to judge */ }
+        if (ctx.stackAgentsMd || unedited)
+            ctx.stackAgentsMd = seeds.refreshSeededAgentsMd({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, log: ctx.log, note: ctx.note }) || ctx.stackAgentsMd;
+    }
     // Only a seed the ledger still holds at its hash is the stack's to re-spell; a re-spelled one keeps its ledger row.
     const seedRow = (rel) => (rel === '.claude/AGENTS.md' ? 'AGENTS.md' : rel === '.claude/CLAUDE.md' ? 'CLAUDE.md' : '');
     ctx.respelledSeeds = new Set();
     selection.respellRenamed({
-        projectRoot: ctx.projectRoot, renamed: ctx.manifest.renamed, engines: pwEngines(ctx),
+        projectRoot: ctx.projectRoot, renamed: ctx.manifest.renamed, engines: pwEngines(ctx), docsPath,
         owned: (rel) =>
         {
             const row = seedRow(rel);
@@ -944,7 +956,7 @@ function runLayers(ctx)
         log: ctx.log, note: ctx.note,
     });
     if (plugins.corePluginOn(ctx.routes))
-        selection.respellRosterSeats({ projectRoot: ctx.projectRoot, core: CORE, seats: placement().plugins[CORE].agents, log: ctx.log, note: ctx.note });
+        selection.respellRosterSeats({ projectRoot: ctx.projectRoot, core: CORE, seats: placement().plugins[CORE].agents, docsPath, log: ctx.log, note: ctx.note });
     // A registration of the name answers the bare spelling, the stack's own (bareNames) or the project's in .mcp.json.
     const servers = (readJson(ctx.mcpFile) || {}).mcpServers;
     const registered = new Set([...bareNames(ctx), ...(servers && typeof servers === 'object' && !Array.isArray(servers) ? Object.keys(servers) : [])]);
@@ -952,7 +964,7 @@ function runLayers(ctx)
         projectRoot: ctx.projectRoot,
         plugin: ctx.lists.mcps.map((e) => String(e).split('|')[0]).filter((name) => !registered.has(name)),
         outputs: Object.fromEntries(pwEngines(ctx).map((e) => [e, `${dataRoot.targetOf(dataRoot.engineServer(e), ctx.dataInfo.root)}/output/`])),
-        log: ctx.log, note: ctx.note,
+        docsPath, log: ctx.log, note: ctx.note,
     });
     dataRootLayer(ctx, docsPath);
     seeds.playwrightDownloads({
@@ -1381,28 +1393,28 @@ function retiredKeep(ctx, kind, dir)
 
 // M3: a skill folder already in `.claude/skills` the stack may treat as its own copy (`claims`) - the stamp
 // records it (a library hash, or a pick), only the stack uses the name (manifest.js stackOwnName), or its
-// SKILL.md carries the stack's own heading (the shipped frontmatter `name` and `description`: a copy whose body,
-// references or tool spellings moved on is still the stack's; a project's own skill has words of its own). Any
-// other folder under a catalog name is the project's (`foreign`): never overwritten, pruned, dropped or read back
-// as a pick - named, and left out of the stamp. Read once per run, from the stamp as the run found it.
+// SKILL.md carries a heading the stack has shipped under that name (the frontmatter `name` and `description`, the
+// current one or a past one from meta/skill-headings.json: a copy whose body, references or tool spellings moved on
+// is still the stack's, and so is one copied before the stamp recorded skills; a project's own skill has words of its
+// own). Any other folder under a catalog name is the project's (`foreign`): never overwritten, pruned, dropped or read
+// back as a pick - named, and left out of the stamp. Read once per run, from the stamp as the run found it.
 function skillTest({ skillsDir, stampFile, manifest, sourceDir })
 {
     const lib = stampLayer.readLibrary(stampFile) || {};
     const picked = stampLayer.readPicked(stampFile) || { skills: [] };
     const recorded = new Set([...Object.keys(lib.skills || {}), ...picked.skills.map((e) => e.split('@')[0])]);
     const names = stackNames(manifest);
+    const past = skillHeadings.pastHeadings(sourceDir);
     const heading = (file) =>
     {
-        let text;
-        try { text = fs.readFileSync(file, 'utf8'); } catch { return null; }
-        const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
-        const key = (k) => ((front && new RegExp(`^${k}:[ \\t]*(.*)$`, 'm').exec(front[1])) || [])[1];
-        return front ? `${key('name')}\n${key('description')}` : null;
+        try { return skillHeadings.headingOf(fs.readFileSync(file, 'utf8')); } catch { return null; }
     };
     const stackText = (name) =>
     {
-        const ours = heading(path.join(sourceDir, 'stack', 'skills', name, 'SKILL.md'));
-        return Boolean(ours) && heading(path.join(skillsDir, name, 'SKILL.md')) === ours;
+        const theirs = heading(path.join(skillsDir, name, 'SKILL.md'));
+        if (!theirs) return false;
+        return theirs === heading(path.join(sourceDir, 'stack', 'skills', name, 'SKILL.md'))
+            || Boolean(past.get(name) && past.get(name).has(skillHeadings.headingHash(theirs)));
     };
     const claims = (name) => recorded.has(name) || stackOwnName(names, 'skills', name) || stackText(name);
     const foreign = (name) => fs.existsSync(path.join(skillsDir, name)) && !claims(name);
@@ -1413,7 +1425,9 @@ const skillClaim = (ctx) => skillTestOf(ctx).claims;
 const foreignSkill = (ctx, name) => skillTestOf(ctx).foreign(name);
 const foreignLine = (name) => `  !! skill kept: ${name} - a project skill of that name the stamp does not record, so it is yours; the stack's ${name} is not installed here - rename or remove yours, then /alfred-code:configure adds it`;
 // The rule twin of the skill claim: a same-named rule file the stamp holds no hash for is the stack's when only the stack
-// uses the name (`alfred-` prefix) or it opens with the shipped rule's own first line (an older copy whose later text moved on).
+// uses the name (`alfred-` prefix) or it opens with a first line the stack has shipped under that name - the current one,
+// or a past one from meta/rule-openings.json: a pre-stamp copy of markdown-docs or devops-conventions opens with one of
+// seven or six older sentences, and the current-line test alone kept every such copy as 'yours' (audit 2026-10-20 C23).
 const ruleOpening = (file) =>
 {
     try { return fs.readFileSync(file, 'utf8').replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '').split(/\r?\n/).find((l) => l.trim()) || null; }
@@ -1422,8 +1436,9 @@ const ruleOpening = (file) =>
 const ruleClaim = (ctx) => (name) =>
 {
     if (stackOwnName(stackNames(ctx.manifest), 'rules', name)) return true;
-    const ours = ruleOpening(path.join(ctx.source.dir, 'stack', 'rules', `${name}.md`));
-    return Boolean(ours) && ruleOpening(path.join(ctx.claudeDir, 'rules', `${name}.md`)) === ours;
+    const past = (ctx.ruleOpenings ||= ruleOpenings.pastOpenings(ctx.source.dir));
+    return ruleOpenings.stackOpening(name, readText(path.join(ctx.claudeDir, 'rules', `${name}.md`)),
+        readText(path.join(ctx.source.dir, 'stack', 'rules', `${name}.md`)), past);
 };
 // A RENAMED rule's old copy the stamp holds no hash for. Under a stamp that records no rule (a 0.2.x or 1.x stamp predates
 // library-rules, or a garbled line) it is the stack's when it opens with its successor's first line: the baseline-* copies

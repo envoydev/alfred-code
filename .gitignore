@@ -40,9 +40,10 @@ Thumbs.db
 !.claude/skills/repo-audit-agents/
 !.claude/skills/repo-audit-claude-md/
 !.claude/skills/repo-audit-hooks/
-!.claude/skills/repo-audit-plugin/
+!.claude/skills/repo-audit-plugins/
 !.claude/skills/repo-audit-rules/
 !.claude/skills/repo-audit-skills/
+!.claude/skills/repo-audit-system/
 !.claude/skills/repo-audit-usage/
 # this repo's own data root when a worktree carries no settings (hook receipts, docs state)
 /.alfred/

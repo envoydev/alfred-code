@@ -1268,7 +1268,7 @@
           "marker": "Captured: <branch>@<short-sha>, <date>"
         },
         {
-          "file": "stack/skills/capture-related-projects/SKILL.md",
+          "file": "stack/skills/capture-awareness/references/related-projects.md",
           "marker": "Captured: <branch>@<short-sha>, <date>"
         },
         {
@@ -1276,7 +1276,7 @@
           "marker": "Captured: <branch>@<short-sha>, <YYYY-MM-DD>"
         },
         {
-          "file": "stack/skills/capture-project-awareness/SKILL.md",
+          "file": "stack/skills/capture-awareness/references/project.md",
           "marker": "Captured: <branch>@<short-sha>, <date>"
         }
       ]
@@ -1715,16 +1715,8 @@
           "marker": "deliberately NOT in the stack's RULES set"
         },
         {
-          "file": "stack/skills/capture-related-projects/SKILL.md",
-          "marker": "deliberately NOT in the stack installer's catalog"
-        },
-        {
-          "file": "stack/skills/capture-agent-awareness/SKILL.md",
+          "file": "stack/skills/capture-awareness/SKILL.md",
           "marker": "stays out of the installer's catalog"
-        },
-        {
-          "file": "stack/skills/capture-project-awareness/SKILL.md",
-          "marker": "It stays out of the installer's catalog"
         }
       ]
     },
@@ -1780,7 +1772,7 @@
           "marker": "ask ONE question before the fan-out"
         },
         {
-          "file": "stack/skills/capture-related-projects/SKILL.md",
+          "file": "stack/skills/capture-awareness/references/related-projects.md",
           "marker": "ask ONE question before the fan-out"
         },
         {
@@ -1906,11 +1898,11 @@
       },
       "sites": [
         {
-          "file": "setup-plugin/commands/setup.md",
+          "file": "setup-plugin/references/init-install.md",
           "marker": "- **Any OS:** `node \"$TMP/repo/scripts/install/alfred-code.js\" install --source"
         },
         {
-          "file": "setup-plugin/commands/update.md",
+          "file": "setup-plugin/references/update-walk.md",
           "marker": "- **Any OS:** `node \"$TMP/repo/scripts/install/alfred-code.js\" update --source"
         },
         {
@@ -2084,9 +2076,9 @@
       ]
     },
     "capabilities-refresh-user-run": {
-      "_note": "The manual-only captures are the USER's to type, never invoked from a guided run: all of them except capture-architecture and capture-architecture-quality carry disable-model-invocation, and a model's own Skill call on one is DENIED by guard-fresh-session-start.js, which reads that flag from the skill's own frontmatter. The HARNESS is not the gate - measured both ways, one update run's call was refused and one slipped through (the user had typed the command with a leading space, so no command marker fired), which is why the stack stopped asserting harness behaviour and wired its own. So every command NAMES them in its report or next-steps card as the user's next step and never attempts one - except /alfred-code:init (R30), which runs the captures the install lists by READING each SKILL.md and following it inline: still never a Skill call. One statement per command because each runs standalone; the behavioural half of the rule - never attempt, never narrate the attempt - is stamped into every project by capture-agent-awareness' usage policy.",
+      "_note": "The manual-only captures are the USER's to type, never invoked from a guided run: all of them except capture-architecture and capture-architecture-quality carry disable-model-invocation, and a model's own Skill call on one is DENIED by guard-fresh-session-start.js, which reads that flag from the skill's own frontmatter. The HARNESS is not the gate - measured both ways, one update run's call was refused and one slipped through (the user had typed the command with a leading space, so no command marker fired), which is why the stack stopped asserting harness behaviour and wired its own. So every command NAMES them in its report or next-steps card as the user's next step and never attempts one - except /alfred-code:init (R30), which runs the captures the install lists by READING each SKILL.md and following it inline: still never a Skill call. One statement per command because each runs standalone; the behavioural half of the rule - never attempt, never narrate the attempt - is stamped into every project by capture-awareness' usage policy.",
       "owner": {
-        "file": "setup-plugin/commands/update.md",
+        "file": "setup-plugin/references/update-close.md",
         "marker": "Never invoke it from this run - the skill is manual-only"
       },
       "sites": [
@@ -2099,7 +2091,7 @@
           "marker": "the line is addressed to the user, never acted on"
         },
         {
-          "file": "setup-plugin/commands/init.md",
+          "file": "setup-plugin/references/init-bootstrap.md",
           "marker": "follow it inline, start to finish - never a Skill call"
         },
         {
@@ -2107,7 +2099,7 @@
           "marker": "the assistant cannot invoke one on your behalf"
         },
         {
-          "file": "stack/skills/capture-agent-awareness/SKILL.md",
+          "file": "stack/skills/capture-awareness/references/agents.md",
           "marker": "is the USER's to type - never call it yourself"
         }
       ]
@@ -2136,7 +2128,7 @@
           "marker": "offer the resolver through AskUserQuestion"
         },
         {
-          "file": "setup-plugin/commands/setup.md",
+          "file": "setup-plugin/commands/init.md",
           "marker": "Every ask in this run goes through the AskUserQuestion tool"
         },
         {
@@ -2145,10 +2137,6 @@
         },
         {
           "file": "setup-plugin/commands/validate.md",
-          "marker": "Every ask in this run goes through the AskUserQuestion tool"
-        },
-        {
-          "file": "setup-plugin/commands/init.md",
           "marker": "Every ask in this run goes through the AskUserQuestion tool"
         }
       ]
@@ -2231,9 +2219,9 @@
       ]
     },
     "capture-docs-engine-write-route": {
-      "_note": "How a capture lands its doc through the docs engine: a first capture writes the file whole, because `docs.js set` refuses a file that does not exist yet (stack/hooks/docs.js `no such doc file`); a re-run lands each changed section through `docs.js set`, and the ENGINE picks in place (mainline, no git, git versioning) or the branch overlay - the capture never checks the mode. Two copies once said both 'writes directly' and 'calls set unconditionally' (audit 2026-10-08 C9), so a first capture on an overlay branch failed. Owned by the run-book capture's doc shape; restated in the code-style and related-projects write mechanics.",
+      "_note": "How a capture lands its doc through the docs engine: a first capture writes the file whole, because `docs.js set` refuses a file that does not exist yet (stack/hooks/docs.js `no such doc file`); a re-run lands each changed section through `docs.js set`, and the ENGINE picks in place (mainline, no git, git versioning) or the branch overlay - the capture never checks the mode. Two copies once said both 'writes directly' and 'calls set unconditionally' (audit 2026-10-08 C9), so a first capture on an overlay branch failed. Owned by the awareness capture's run-book reference; restated in the code-style doc shape and the related-projects reference.",
       "owner": {
-        "file": "stack/skills/capture-project-awareness/references/doc-shape.md",
+        "file": "stack/skills/capture-awareness/references/project.md",
         "marker": "and into this branch's overlay otherwise - the capture never decides which"
       },
       "sites": [
@@ -2242,7 +2230,7 @@
           "marker": "and into this branch's overlay otherwise - the capture never decides which"
         },
         {
-          "file": "stack/skills/capture-related-projects/references/artifact-shapes.md",
+          "file": "stack/skills/capture-awareness/references/related-projects.md",
           "marker": "and into this branch's overlay otherwise - the capture never decides which"
         }
       ]
@@ -2375,14 +2363,14 @@
       ]
     },
     "generated-docs-root-placement": {
-      "_note": "Every assistant-created doc lands under <docs-path>; the sibling-repo orientation doc lives in the related-projects/ domain, every OTHER sibling-repo doc (cross-repo plans/change requests/issue notes/run recipes) in the plain related-context/ folder, and a location outside the root only on the user's asked-first approval - never silently. Canonical in the docs-root baseline; the related-projects capture restates only the outside-root approval (its related-context/ copy went in the 2026-10-08 audit - the always-on baseline carries it). The capabilities rule template carried a copy until the 2026-09-29 audit (I24): both are always-on in the same session, so the copy was pure rent.",
+      "_note": "Every assistant-created doc lands under <docs-path>; the sibling-repo orientation doc lives in the awareness/ domain, every OTHER sibling-repo doc (cross-repo plans/change requests/issue notes/run recipes) in the plain related-context/ folder, and a location outside the root only on the user's asked-first approval - never silently. Canonical in the docs-root baseline; the awareness capture's related-projects reference restates only the outside-root approval (its related-context/ copy went in the 2026-10-08 audit - the always-on baseline carries it). The capabilities rule template carried a copy until the 2026-09-29 audit (I24): both are always-on in the same session, so the copy was pure rent.",
       "owner": {
         "file": "stack/rules/alfred-docs-root.md",
         "marker": "only on the user's asked-first approval"
       },
       "sites": [
         {
-          "file": "stack/skills/capture-related-projects/SKILL.md",
+          "file": "stack/skills/capture-awareness/references/related-projects.md",
           "marker": "takes the user's explicit approval first"
         }
       ]
@@ -2626,15 +2614,42 @@
         "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
       },
       "sites": [
-        { "file": "stack/agents/web-angular-implementer.md", "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first." },
-        { "file": "stack/agents/ionic-angular-implementer.md", "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first." },
-        { "file": "stack/agents/wpf-implementer.md", "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first." },
-        { "file": "stack/agents/winforms-implementer.md", "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first." },
-        { "file": "stack/agents/console-implementer.md", "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first." },
-        { "file": "stack/agents/windows-service-implementer.md", "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first." },
-        { "file": "stack/agents/data-implementer.md", "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first." },
-        { "file": "stack/agents/devops-implementer.md", "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first." },
-        { "file": "stack/agents/browser-extension-implementer.md", "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first." }
+        {
+          "file": "stack/agents/web-angular-implementer.md",
+          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+        },
+        {
+          "file": "stack/agents/ionic-angular-implementer.md",
+          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+        },
+        {
+          "file": "stack/agents/wpf-implementer.md",
+          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+        },
+        {
+          "file": "stack/agents/winforms-implementer.md",
+          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+        },
+        {
+          "file": "stack/agents/console-implementer.md",
+          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+        },
+        {
+          "file": "stack/agents/windows-service-implementer.md",
+          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+        },
+        {
+          "file": "stack/agents/data-implementer.md",
+          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+        },
+        {
+          "file": "stack/agents/devops-implementer.md",
+          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+        },
+        {
+          "file": "stack/agents/browser-extension-implementer.md",
+          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+        }
       ]
     },
     "implementer-worktree-step-zero": {
@@ -2838,7 +2853,7 @@
       ]
     },
     "honor-fresh-session-answer": {
-      "_note": "A fresh-session answer is honored: the turn ends on a short ack + paste-ready resume block, no new work in the old chat - measured: a tool-held 'Fresh session' answer was ignored and the run continued 1h51m to 490k ctx.",
+      "_note": "A fresh-session answer is honored: the turn ends on the resume block, printed after the answer with the paste text alone in a fenced block, no new work in the old chat - measured: a tool-held 'Fresh session' answer was ignored and the run continued 1h51m to 490k ctx.",
       "owner": {
         "file": "stack/skills/task-solve-cross/SKILL.md",
         "marker": "Honor a fresh-session answer"
@@ -3381,7 +3396,7 @@
     "answer-budget": {
       "_note": "The short-answer budget - ~900 characters of prose, ~3 sentences plus points, lifted only by the user's own depth ask. The hook is canonical (BUDGET drives the reminder and the 2x block cap); alfred-interaction states the same number, so a budget change re-syncs the rule.",
       "owner": {
-        "file": "stack/hooks/guard-answer-length.js",
+        "file": "stack/hooks/guard-answer.js",
         "marker": "const BUDGET = 900;"
       },
       "sites": [
@@ -3392,9 +3407,9 @@
       ]
     },
     "guided-stack-detection": {
-      "_note": "The artifact-scan stack-detection list setup and validate must share (javascript, the framework-suppresses-typescript rule included) - the copies drifted twice before this pin.",
+      "_note": "The artifact-scan stack-detection list init's install phase and validate must share (javascript, the framework-suppresses-typescript rule included) - the copies drifted twice before this pin.",
       "owner": {
-        "file": "setup-plugin/commands/setup.md",
+        "file": "setup-plugin/references/init-install.md",
         "marker": "`tsconfig.json` / `jsconfig.json` -> `typescript`"
       },
       "sites": [
@@ -3593,7 +3608,7 @@
       },
       "sites": [
         {
-          "file": "stack/hooks/guard-answer-length.js",
+          "file": "stack/hooks/guard-answer.js",
           "marker": "block telemetry (shared by every guard hook; keep the copies identical)"
         },
         {
@@ -3862,7 +3877,7 @@
           "marker": "a task card under `<docs-path>/cross-project-tasks/`"
         },
         {
-          "file": "stack/skills/capture-related-projects/references/sibling-handoff.md",
+          "file": "stack/skills/capture-awareness/references/related-projects.md",
           "marker": "Write the card at `<docs-path>/cross-project-tasks/<other-project>.md`"
         }
       ]
@@ -3924,20 +3939,20 @@
       },
       "sites": [
         {
-          "file": "setup-plugin/commands/update.md",
+          "file": "setup-plugin/references/update-walk.md",
           "marker": "renames, then removals, then the absent-only seeds"
         }
       ]
     },
     "where-to-run-ask-threshold": {
-      "_note": "The guided commands' step-0 'where to run it' ask is THRESHOLDED, not unconditional: it fires only past the same trigger guard-fresh-session-start.js uses (the resolved window's own trigger - ALFRED_CODE_FRESH_SESSION_200K, default 150000, ALFRED_CODE_FRESH_SESSION_1M, default 400000, or ALFRED_CODE_FRESH_SESSION_DEFAULT, default 180000, for any other or unreadable window), or when that hook has already injected it. Below the trigger, or with no readable context figure at all, the run starts silently - measured: the unconditional prose form fired on the FIRST message of a brand-new session, twice in one run, with no number behind it. The hook owns the trigger; each command body restates it so the walk and the gate can never sit on different numbers. update.md carries no copy: its step 0 acts on the hook note alone and never measures (audit 2026-10-11, session bca100bd: a prose-measured step 0 narrated its own skip), and setup-plugin.test.js holds the note text it quotes to the hook.",
+      "_note": "The guided commands' step-0 'where to run it' ask is THRESHOLDED, not unconditional: it fires only past the same trigger guard-fresh-session-start.js uses (the resolved window's own tier trigger - ALFRED_CODE_CONTEXT_WINDOW_FOR_1M, default 400000, _FOR_300K, default 280000, or _FOR_200K, default 180000; a window takes the largest tier it reaches, and a model the shipped table does not list runs in ALFRED_CODE_CONTEXT_WINDOW_DEFAULT, default 300000), or when that hook has already injected it. Below the trigger, or with no readable context figure at all, the run starts silently - measured: the unconditional prose form fired on the FIRST message of a brand-new session, twice in one run, with no number behind it. The hook owns the trigger; each command body restates it so the walk and the gate can never sit on different numbers. update.md carries no copy: its step 0 acts on the hook note alone and never measures (audit 2026-10-11, session bca100bd: a prose-measured step 0 narrated its own skip), and setup-plugin.test.js holds the note text it quotes to the hook.",
       "owner": {
         "file": "stack/hooks/fresh-session.js",
         "marker": "The trigger is an ABSOLUTE token count per WINDOW TIER"
       },
       "sites": [
         {
-          "file": "setup-plugin/commands/setup.md",
+          "file": "setup-plugin/commands/init.md",
           "marker": "or when that hook has already injected the ask into this turn"
         },
         {
@@ -3946,10 +3961,6 @@
         },
         {
           "file": "setup-plugin/commands/validate.md",
-          "marker": "or when that hook has already injected the ask into this turn"
-        },
-        {
-          "file": "setup-plugin/commands/init.md",
           "marker": "or when that hook has already injected the ask into this turn"
         }
       ]
@@ -3962,7 +3973,7 @@
       },
       "sites": [
         {
-          "file": "setup-plugin/commands/setup.md",
+          "file": "setup-plugin/references/init-install.md",
           "marker": "Nothing is pending on this run - these are yours to run when you choose."
         },
         {
@@ -3970,7 +3981,7 @@
           "marker": "Nothing is pending on this run - these are yours to run when you choose."
         },
         {
-          "file": "setup-plugin/commands/update.md",
+          "file": "setup-plugin/references/update-close.md",
           "marker": "Nothing is pending on this run - these are yours to run when you choose."
         },
         {
@@ -3978,33 +3989,33 @@
           "marker": "Nothing is pending on this run - these are yours to run when you choose."
         },
         {
-          "file": "setup-plugin/commands/init.md",
+          "file": "setup-plugin/references/init-bootstrap.md",
           "marker": "Nothing is pending on this run - these are yours to run when you choose."
         }
       ]
     },
     "fresh-session-trigger-tiers": {
-      "_note": "The three fresh-session trigger figures, wherever an artifact states them in prose. The engine comment block (stack/hooks/fresh-session.js, shared by both fresh-session hooks) is canonical (the code enforces the numbers); the skills that quote them to the model are pinned copies, because a copy naming only two tiers ships a stale rule into every project that reads it - measured: two of them said '150,000 on a 200k window, 400,000 above it' and omitted the DEFAULT tier entirely, which is the one that covers a window the gate cannot read. A number change re-syncs every copy. The capabilities usage policy states no number since the 2026-09-29 audit (I24): it is stamped into a generated rule only a re-run refreshes, and an ALFRED_CODE_FRESH_SESSION_* override made its figures wrong, so it names 'the window trigger' instead.",
+      "_note": "The three fresh-session trigger figures, wherever an artifact states them in prose. The engine comment block (stack/hooks/fresh-session.js, shared by both fresh-session hooks) is canonical (the code enforces the numbers); the skills that quote them to the model are pinned copies, because a copy naming only two tiers ships a stale rule into every project that reads it - measured: two of them said '150,000 on a 200k window, 400,000 above it' and omitted the DEFAULT tier entirely, which is the one that covers a window the gate cannot read (since 2026-10-16 the 300K tier, through ALFRED_CODE_CONTEXT_WINDOW_DEFAULT). A number change re-syncs every copy. The capabilities usage policy states no number since the 2026-09-29 audit (I24): it is stamped into a generated rule only a re-run refreshes, and an ALFRED_CODE_CONTEXT_WINDOW_FOR_* override made its figures wrong, so it names 'the window trigger' instead.",
       "owner": {
         "file": "stack/hooks/fresh-session.js",
-        "marker": "the trigger on anything else (default 300,000)"
+        "marker": "the trigger on a 300K window (default 280,000)"
       },
       "sites": [
         {
           "file": "stack/skills/loop-architecture-quality/SKILL.md",
-          "marker": "150,000 tokens on a 200k window, 400,000 on a 1M one, 300,000 on any other window"
+          "marker": "180,000 tokens on a window under 300k, 400,000 on one of 1M or more, 280,000 on any other window"
         },
         {
           "file": "stack/skills/issue-diagnoser/SKILL.md",
-          "marker": "150,000 tokens on a 200k window, 400,000 on a 1M one, 300,000 on any other window"
+          "marker": "180,000 tokens on a window under 300k, 400,000 on one of 1M or more, 280,000 on any other window"
         },
         {
           "file": "stack/skills/task-solve/SKILL.md",
-          "marker": "150,000 tokens on a 200k window, 400,000 on a 1M one, 300,000 on any other window"
+          "marker": "180,000 tokens on a window under 300k, 400,000 on one of 1M or more, 280,000 on any other window"
         },
         {
           "file": "stack/skills/task-solve-cross/SKILL.md",
-          "marker": "150,000 tokens on a 200k window, 400,000 on a 1M one, 300,000 on any other window"
+          "marker": "180,000 tokens on a window under 300k, 400,000 on one of 1M or more, 280,000 on any other window"
         }
       ]
     },
@@ -4056,18 +4067,18 @@
       ]
     },
     "capabilities-policy-rev-check": {
-      "_note": "The generated capabilities rule carries the usage policy VERBATIM from the skill and is never re-fetched - only a user re-run regenerates it - so a project can carry a two-release-old policy with nothing to notice it (measured: one project's rule still described the fresh-session gate as '40% of the context window, 150k floor', retired at 0.2.70). The `<!-- policy-rev: ... -->` content stamp is what makes that detectable, and the comparison lives in the two commands that can see both sides: validate runs the two greps and reports a finding, update reads the `policy-rev:` row update-preflight.js prints (the hand-run pair was re-confirmed 3 extra times in one audited run, ~275k tokens) and makes it a second trigger for the re-run row. The skill owns the stamp itself; lint check 29 recomputes it when the block moves.",
+      "_note": "The generated inventory (AGENTS-AWARENESS.md) carries the usage policy VERBATIM from the skill and is never re-fetched - only a user re-run regenerates it - so a project can carry a two-release-old policy with nothing to notice it (measured: one project's rule still described the fresh-session gate as '40% of the context window, 150k floor', retired at 0.2.70). The `<!-- policy-rev: ... -->` content stamp is what makes that detectable, and the comparison lives in the two commands that can see both sides: both read the `policy-rev:` row update-preflight.js prints (a hand-run grep pair was re-confirmed 3 extra times in one audited run, ~275k tokens) - validate reports a finding, update makes it a second trigger for the re-run row. The skill owns the stamp itself; lint check 29 recomputes it when the block moves.",
       "owner": {
         "file": "setup-plugin/commands/validate.md",
-        "marker": "grep -m1 -o 'policy-rev: [0-9a-f]*' .claude/rules/alfred-agent-awareness.md"
+        "marker": "The preflight's `policy-rev:` row is the one comparison"
       },
       "sites": [
         {
-          "file": "setup-plugin/commands/update.md",
+          "file": "setup-plugin/references/update-close.md",
           "marker": "`policy-rev: stale ...` (the installed usage-policy rule's stamped revision is behind the shipped"
         },
         {
-          "file": "stack/skills/capture-agent-awareness/SKILL.md",
+          "file": "stack/skills/capture-awareness/references/agents.md",
           "marker": "`/alfred-code:validate` compares a project's stamp against the snapshot's"
         }
       ]
@@ -4088,7 +4099,7 @@
     "guided-narration-voice": {
       "_note": "The guided walks carry the house voice themselves (single dashes, single quotes) - a fresh or refreshed install may have no alfred-interaction rule loaded, so the command text is the only source (measured: a first-run narration line opened with an em-dash).",
       "owner": {
-        "file": "setup-plugin/commands/setup.md",
+        "file": "setup-plugin/commands/init.md",
         "marker": "House voice in every line this run emits"
       },
       "sites": [
@@ -4102,10 +4113,6 @@
         },
         {
           "file": "setup-plugin/commands/update.md",
-          "marker": "House voice in every line this run emits"
-        },
-        {
-          "file": "setup-plugin/commands/init.md",
           "marker": "House voice in every line this run emits"
         },
         {
@@ -5206,7 +5213,7 @@
     "guided-one-snapshot-preamble": {
       "_note": "The four source-reading commands open with the same one-snapshot contract paragraph - resolve once into $TMP/repo (the plugin cache first, a download only when there is none), every tool from it, --source to the installer, $TMP removed on every exit path. The protocol file owns the mechanics; this pins the paragraph the commands carry, since command bodies do not co-load.",
       "owner": {
-        "file": "setup-plugin/commands/setup.md",
+        "file": "setup-plugin/commands/init.md",
         "marker": "THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing"
       },
       "sites": [
@@ -5221,10 +5228,6 @@
         {
           "file": "setup-plugin/commands/validate.md",
           "marker": "THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing"
-        },
-        {
-          "file": "setup-plugin/commands/init.md",
-          "marker": "THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing"
         }
       ]
     },
@@ -5236,7 +5239,7 @@
       },
       "sites": [
         {
-          "file": "setup-plugin/commands/setup.md",
+          "file": "setup-plugin/references/init-install.md",
           "marker": "Presence, never the value"
         },
         {
@@ -5244,7 +5247,7 @@
           "marker": "Presence, never the value"
         },
         {
-          "file": "setup-plugin/commands/update.md",
+          "file": "setup-plugin/references/update-walk.md",
           "marker": "Presence, never the value"
         },
         {
@@ -5265,7 +5268,7 @@
       },
       "sites": [
         {
-          "file": "setup-plugin/commands/setup.md",
+          "file": "setup-plugin/references/init-install.md",
           "marker": "Never print, echo back, or ask for a credential VALUE"
         },
         {
@@ -5279,9 +5282,9 @@
       ]
     },
     "guided-skeleton-invariant": {
-      "_note": "Every run prints every numbered banner exactly once in order; a step that does not apply prints its banner plus one no-op line. setup and configure carry the paragraph verbatim (11 and 13 steps).",
+      "_note": "Every run prints every numbered banner exactly once in order; a step that does not apply prints its banner plus one no-op line. init's install phase and configure carry the paragraph verbatim (11 and 13 steps).",
       "owner": {
-        "file": "setup-plugin/commands/setup.md",
+        "file": "setup-plugin/references/init-install.md",
         "marker": "The skeleton is INVARIANT - the stability contract"
       },
       "sites": [
@@ -5292,9 +5295,9 @@
       ]
     },
     "guided-prereq-report-shape": {
-      "_note": "The prerequisite check output has one fixed three-block shape: the verdict line, the closed selection by category, the blocker/warning lists. setup and configure carry it verbatim.",
+      "_note": "The prerequisite check output has one fixed three-block shape: the verdict line, the closed selection by category, the blocker/warning lists. init's install phase and configure carry it verbatim.",
       "owner": {
-        "file": "setup-plugin/commands/setup.md",
+        "file": "setup-plugin/references/init-install.md",
         "marker": "Fixed shape, three blocks:** (1) one verdict line - `blockers: N · warnings: N`"
       },
       "sites": [
@@ -5477,15 +5480,15 @@
       ]
     },
     "post-install-capture-order": {
-      "_note": "The post-install capture ORDER and its manual-only property: the four deliberate captures run related-context (only where the project has siblings) -> architecture -> code-style -> agent-capabilities LAST, the order init-plan.js CAPTURES runs, so the generated inventory reflects the final install, and the user types them because they carry disable-model-invocation. It lives in two homes because each one reaches a different reader at a different moment - the reference the guided walks open, and the seeded CLAUDE.md the adopter fills in. Phase 7b (R33) deleted the frozen shell/PowerShell twins, which used to print this same order in their own next-steps log as a third and fourth home; the Node seed never carried this text (the walk's own report covers it).",
+      "_note": "The post-install capture ORDER and its manual-only property: the three deliberate captures run architecture -> code-style -> awareness LAST (the inventory, the run book and the sibling repos in one run), the order init-plan.js CAPTURES runs, so the generated inventory reflects the final install, and the user types them because they carry disable-model-invocation. It lives in two homes because each one reaches a different reader at a different moment - the reference the guided walks open, and the seeded CLAUDE.md the adopter fills in. Phase 7b (R33) deleted the frozen shell/PowerShell twins, which used to print this same order in their own next-steps log as a third and fourth home; the Node seed never carried this text (the walk's own report covers it).",
       "owner": {
         "file": "setup-plugin/references/post-install.md",
-        "marker": "`/capture-agent-awareness` - LAST, so the generated usage-policy rule reflects the final inventory"
+        "marker": "`/capture-awareness` - LAST, so its generated inventory reflects the final install"
       },
       "sites": [
         {
           "file": "stack/AGENTS.template.md",
-          "marker": "/capture-agent-awareness LAST, so its generated inventory reflects the final install"
+          "marker": "/capture-awareness LAST, so its generated inventory reflects the final install"
         }
       ]
     },
@@ -5628,16 +5631,12 @@
       },
       "sites": [
         {
-          "file": "stack/skills/capture-agent-awareness/SKILL.md",
+          "file": "stack/skills/capture-awareness/references/agents.md",
           "marker": "Do NOT `rm` it first"
         },
         {
           "file": "stack/skills/capture-code-style/SKILL.md",
           "marker": "READ the existing rule first (it is short), then Write the fresh one over it"
-        },
-        {
-          "file": "stack/skills/capture-project-awareness/SKILL.md",
-          "marker": "READ the existing rule first, then Write the fresh one over it"
         }
       ]
     },
@@ -5709,7 +5708,7 @@
           "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
         },
         {
-          "file": "stack/skills/capture-related-projects/SKILL.md",
+          "file": "stack/skills/capture-awareness/references/related-projects.md",
           "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
         },
         {
@@ -6265,9 +6264,9 @@
       ]
     },
     "table-before-question": {
-      "_note": "A table or report the user decides from is pasted into the message BEFORE the ask about it. Measured twice in one setup run (agents, skills): the table ran, its tool result was collapsed in the UI, and the ask went out with no table on screen. The narrate-dont-trace protocol banned pasted tool output, so the exception is stated where that ban lives; guard-layer-table.js in the plugin enforces it.",
+      "_note": "A table or report the user decides from is pasted into the message BEFORE the ask about it. Measured twice in one setup run - the install phase's predecessor (agents, skills): the table ran, its tool result was collapsed in the UI, and the ask went out with no table on screen. The narrate-dont-trace protocol banned pasted tool output, so the exception is stated where that ban lives; guard-layer-table.js in the plugin enforces it.",
       "owner": {
-        "file": "setup-plugin/commands/setup.md",
+        "file": "setup-plugin/references/init-install.md",
         "marker": "Table before question - no exceptions."
       },
       "sites": [
@@ -6661,76 +6660,76 @@
       ]
     },
     "correction-turn-test": {
-      "_note": "The single-turn correction test - a short typed turn that follows an answer of any length and carries a correction marker. guard-answer-length.js writes its correction probe row on it, and analyze-usage.js counts the corrections-saved row with it, so the probe rate and the saved share are measured over the SAME turns. The hook reads stdin on load, so the analyzer cannot require it - which is why the analyzer carries a verbatim copy.",
+      "_note": "The single-turn correction test - a short typed turn that follows an answer of any length and carries a correction marker. guard-answer.js writes its correction probe row on it, and analyze-usage.js counts the corrections-saved row with it, so the probe rate and the saved share are measured over the SAME turns. The hook reads stdin on load, so the analyzer cannot require it - which is why the analyzer carries a verbatim copy.",
       "owner": {
-        "file": "stack/hooks/guard-answer-length.js",
-        "marker": "const CORRECTION_STRONG_RE = /^\\W*(?:no|nope|nah|wrong|incorrect|not (?:that|this|what|quite|like that|right|correct)|undo|revert|roll ?back)\\b|(?:^|[.,;:!?]\\s*|\\b(?:but|and|please|pls|so|then|also|just)\\s+)(?:do not|don'?t|dont|never|stop \\w+ing)\\b|\\byou (?:did not|didn'?t|didnt|have not|haven'?t|havent|should not|shouldn'?t|forgot|missed|ignored|broke|skipped|removed|deleted|dropped|lost|said|told)\\b|\\bwhy (?:did |do |are |have |haven'?t |didn'?t |would |were )?you\\b(?! (?:cannot|can'?t|can not|couldn'?t)\\b)|\\bi (?:said|asked|told you|meant|wanted|did not ask|didn'?t ask|never asked|already (?:said|told|asked))\\b|\\b(?:still|again) (?:there|broken|fail\\w*|wrong|the same|red|happen\\w*|error\\w*|doesn'?t|does not|isn'?t|is not|not)\\b|\\bsame (?:error|issue|problem|bug)\\b|\\b(?:that'?s|that is|this is|it'?s|it is) (?:wrong|incorrect|not (?:right|correct|what|how|it))\\b|\\bnot what i\\b|\\bi (?:do not|don'?t|dont|did not|didn'?t) (?:want|need|like)\\b|\\b(?:does not|doesn'?t|did not|didn'?t) (?:fit|work|help|make sense)\\b|\\bnot working\\b|\\b(?:too (?:long|much text|verbose|many words|complicated|complex)|a lot of text|less text|shorter|simpler|more concise)\\b/i;\nconst CORRECTION_WEAK_RE = /^\\W*but\\b|^\\W*(?:ok(?:ay)?|yes|yeah|fine|sure|good|right)\\b\\W*but\\b|^\\W*stop\\b|\\binstead\\b|(?<!\\b(?:what|which|how|whether|where|when|who|why)\\b[^.,;:!?\\n]{0,60})\\b(?:it|this|that|they|these|those|there) should(?:n'?t| not| have| be| stay| use| go)\\b/i;\nconst CORRECTION_CYR_RE = /(?<![\\p{L}])(?:ні(?=[\\s,.!]|$)|нет(?=[\\s,.!]|$)|не (?:так|те|то)(?![\\p{L}])|не ?правильн|не (?:треба|потрібно|надо|нужно|роби|делай)(?![\\p{L}])|я (?:ж )?(?:казав|просив|говорив|сказав|говорил|просил|сказал)|(?:чому ти|почему ты)(?! не мож)|навіщо ти|зачем ты|коротше|покороче|простіше|проще|забагато|слишком|(?:та сама|та ж|та же|та самая) (?:помилк|ошибк|проблем)|не (?:працює|работает)|(?:досі|все ще|всё ещё|все еще) не(?![\\p{L}]))/iu;\nfunction correctionMarker(text) {\n  const t = String(text || '').replace(/[‘’]/g, \"'\").trim();\n  const m = t.match(CORRECTION_STRONG_RE) || t.match(CORRECTION_CYR_RE) || (!t.includes('?') && t.match(CORRECTION_WEAK_RE));\n  return m ? m[0].trim().slice(0, 40) : null;\n}\n// --- end correction-turn test"
+        "file": "stack/hooks/guard-answer.js",
+        "marker": "const CORRECTION_STRONG_RE = /^\\W*(?:no|nope|nah|wrong|incorrect|not (?:that|this|what|quite|like that|right|correct)|undo|revert|roll ?back)\\b|(?:^|[.,;:!?]\\s*|\\b(?:but|and|please|pls|so|then|also|just)\\s+)(?:do not|don'?t|dont|never|stop \\w+ing)\\b|\\byou (?:did not|didn'?t|didnt|have not|haven'?t|havent|should not|shouldn'?t|forgot|missed|ignored|broke|skipped|removed|deleted|dropped|lost|said|told)\\b|(?<!\\b(?:explain|describe|tell me|show me|clarify|walk me through)\\b[^.!?\\n]{0,40})\\bwhy (?:did |do |are |have |haven'?t |didn'?t |would |were )?you\\b(?! (?:cannot|can'?t|can not|couldn'?t)\\b)|\\bi (?:said|asked|told you|meant|wanted|did not ask|didn'?t ask|never asked|already (?:said|told|asked))\\b|\\b(?:still|again) (?:there|broken|fail\\w*|wrong|the same|red|happen\\w*|error\\w*|doesn'?t|does not|isn'?t|is not|not)\\b|\\bsame (?:error|issue|problem|bug)\\b|\\b(?:that'?s|that is|this is|it'?s|it is) (?:wrong|incorrect|not (?:right|correct|what|how|it))\\b|\\bnot what i\\b|\\bi (?:do not|don'?t|dont|did not|didn'?t) (?:want|need|like)\\b|(?<!\\b(?:because|cause|coz|cuz)\\b[^.,!?\\n]{0,40})(?:\\b(?:does not|doesn'?t|did not|didn'?t) (?:fit|work|help|make sense)\\b|\\bnot working\\b)|\\b(?:too (?:long|much text|verbose|many words|complicated|complex)|a lot of text|less text|shorter|simpler|more concise)\\b/i;\nconst CORRECTION_WEAK_RE = /^\\W*but\\b|^\\W*(?:ok(?:ay)?|yes|yeah|fine|sure|good|right)\\b\\W*but\\b|^\\W*stop\\b|\\binstead\\b|(?<!\\b(?:what|which|how|whether|where|when|who|why)\\b[^.,;:!?\\n]{0,60})\\b(?:it|this|that|they|these|those|there) should(?:n'?t| not| have| be| stay| use| go)\\b/i;\nfunction correctionMarker(text) {\n  const t = String(text || '').replace(/[‘’]/g, \"'\").trim();\n  const m = t.match(CORRECTION_STRONG_RE) || (!t.includes('?') && t.match(CORRECTION_WEAK_RE));\n  return m ? m[0].trim().slice(0, 40) : null;\n}\n// --- end correction-turn test"
       },
       "sites": [
         {
           "file": "scripts/analyze-usage.js",
-          "marker": "const CORRECTION_STRONG_RE = /^\\W*(?:no|nope|nah|wrong|incorrect|not (?:that|this|what|quite|like that|right|correct)|undo|revert|roll ?back)\\b|(?:^|[.,;:!?]\\s*|\\b(?:but|and|please|pls|so|then|also|just)\\s+)(?:do not|don'?t|dont|never|stop \\w+ing)\\b|\\byou (?:did not|didn'?t|didnt|have not|haven'?t|havent|should not|shouldn'?t|forgot|missed|ignored|broke|skipped|removed|deleted|dropped|lost|said|told)\\b|\\bwhy (?:did |do |are |have |haven'?t |didn'?t |would |were )?you\\b(?! (?:cannot|can'?t|can not|couldn'?t)\\b)|\\bi (?:said|asked|told you|meant|wanted|did not ask|didn'?t ask|never asked|already (?:said|told|asked))\\b|\\b(?:still|again) (?:there|broken|fail\\w*|wrong|the same|red|happen\\w*|error\\w*|doesn'?t|does not|isn'?t|is not|not)\\b|\\bsame (?:error|issue|problem|bug)\\b|\\b(?:that'?s|that is|this is|it'?s|it is) (?:wrong|incorrect|not (?:right|correct|what|how|it))\\b|\\bnot what i\\b|\\bi (?:do not|don'?t|dont|did not|didn'?t) (?:want|need|like)\\b|\\b(?:does not|doesn'?t|did not|didn'?t) (?:fit|work|help|make sense)\\b|\\bnot working\\b|\\b(?:too (?:long|much text|verbose|many words|complicated|complex)|a lot of text|less text|shorter|simpler|more concise)\\b/i;\nconst CORRECTION_WEAK_RE = /^\\W*but\\b|^\\W*(?:ok(?:ay)?|yes|yeah|fine|sure|good|right)\\b\\W*but\\b|^\\W*stop\\b|\\binstead\\b|(?<!\\b(?:what|which|how|whether|where|when|who|why)\\b[^.,;:!?\\n]{0,60})\\b(?:it|this|that|they|these|those|there) should(?:n'?t| not| have| be| stay| use| go)\\b/i;\nconst CORRECTION_CYR_RE = /(?<![\\p{L}])(?:ні(?=[\\s,.!]|$)|нет(?=[\\s,.!]|$)|не (?:так|те|то)(?![\\p{L}])|не ?правильн|не (?:треба|потрібно|надо|нужно|роби|делай)(?![\\p{L}])|я (?:ж )?(?:казав|просив|говорив|сказав|говорил|просил|сказал)|(?:чому ти|почему ты)(?! не мож)|навіщо ти|зачем ты|коротше|покороче|простіше|проще|забагато|слишком|(?:та сама|та ж|та же|та самая) (?:помилк|ошибк|проблем)|не (?:працює|работает)|(?:досі|все ще|всё ещё|все еще) не(?![\\p{L}]))/iu;\nfunction correctionMarker(text) {\n  const t = String(text || '').replace(/[‘’]/g, \"'\").trim();\n  const m = t.match(CORRECTION_STRONG_RE) || t.match(CORRECTION_CYR_RE) || (!t.includes('?') && t.match(CORRECTION_WEAK_RE));\n  return m ? m[0].trim().slice(0, 40) : null;\n}\n// --- end correction-turn test"
+          "marker": "const CORRECTION_STRONG_RE = /^\\W*(?:no|nope|nah|wrong|incorrect|not (?:that|this|what|quite|like that|right|correct)|undo|revert|roll ?back)\\b|(?:^|[.,;:!?]\\s*|\\b(?:but|and|please|pls|so|then|also|just)\\s+)(?:do not|don'?t|dont|never|stop \\w+ing)\\b|\\byou (?:did not|didn'?t|didnt|have not|haven'?t|havent|should not|shouldn'?t|forgot|missed|ignored|broke|skipped|removed|deleted|dropped|lost|said|told)\\b|(?<!\\b(?:explain|describe|tell me|show me|clarify|walk me through)\\b[^.!?\\n]{0,40})\\bwhy (?:did |do |are |have |haven'?t |didn'?t |would |were )?you\\b(?! (?:cannot|can'?t|can not|couldn'?t)\\b)|\\bi (?:said|asked|told you|meant|wanted|did not ask|didn'?t ask|never asked|already (?:said|told|asked))\\b|\\b(?:still|again) (?:there|broken|fail\\w*|wrong|the same|red|happen\\w*|error\\w*|doesn'?t|does not|isn'?t|is not|not)\\b|\\bsame (?:error|issue|problem|bug)\\b|\\b(?:that'?s|that is|this is|it'?s|it is) (?:wrong|incorrect|not (?:right|correct|what|how|it))\\b|\\bnot what i\\b|\\bi (?:do not|don'?t|dont|did not|didn'?t) (?:want|need|like)\\b|(?<!\\b(?:because|cause|coz|cuz)\\b[^.,!?\\n]{0,40})(?:\\b(?:does not|doesn'?t|did not|didn'?t) (?:fit|work|help|make sense)\\b|\\bnot working\\b)|\\b(?:too (?:long|much text|verbose|many words|complicated|complex)|a lot of text|less text|shorter|simpler|more concise)\\b/i;\nconst CORRECTION_WEAK_RE = /^\\W*but\\b|^\\W*(?:ok(?:ay)?|yes|yeah|fine|sure|good|right)\\b\\W*but\\b|^\\W*stop\\b|\\binstead\\b|(?<!\\b(?:what|which|how|whether|where|when|who|why)\\b[^.,;:!?\\n]{0,60})\\b(?:it|this|that|they|these|those|there) should(?:n'?t| not| have| be| stay| use| go)\\b/i;\nfunction correctionMarker(text) {\n  const t = String(text || '').replace(/[‘’]/g, \"'\").trim();\n  const m = t.match(CORRECTION_STRONG_RE) || (!t.includes('?') && t.match(CORRECTION_WEAK_RE));\n  return m ? m[0].trim().slice(0, 40) : null;\n}\n// --- end correction-turn test"
         }
       ]
     },
     "run-book-read-first": {
-      "_note": "The run book is read before a seat builds, starts, logs into or hand-checks the app. The generated pointer rule (alfred-project-awareness.md, from the capture's template) is canonical and reaches every session and subagent once the capture ran; the seats that run the app restate it as a step, because a seat dispatched before the capture ran still needs to know where the doc will be. The seat line leaves 'build' to the generated rule (2.1.5 M60): the resolvers and implementers build too and carry no seat line.",
+      "_note": "The run book is followed before a seat builds, starts, logs into or hand-checks the app. The generated rule (alfred-awareness.md, from the capture's copy target) is canonical: its @ import loads the whole run book into every session and subagent once the capture ran (the user's ruling of 2026-10-15: read before the session starts, no matter what). The seats that run the app restate it as a step, Read only when the text is not in context, because a seat dispatched before the capture ran, or without project instructions, still needs to know where the doc will be. The seat line leaves 'build' to the generated rule (2.1.5 M60): the resolvers and implementers build too and carry no seat line.",
       "owner": {
-        "file": "stack/skills/capture-project-awareness/references/run-book-rule.template.md",
-        "marker": "read it before you build, start, log into or hand-check the app"
+        "file": "stack/skills/capture-awareness/SKILL.md",
+        "marker": "follow it before you build, start, log into or hand-check the app"
       },
       "sites": [
         {
           "file": "stack/agents/aspnet-verifier.md",
-          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/issue-diagnoser-runtime.md",
-          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/evidence-gatherer.md",
-          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/integration-reviewer.md",
-          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
+          "marker": "When the run book `<docs-path>/awareness/PROJECT-AWARENESS.md` exists, follow it before you start, log into or hand-check the app"
         }
       ]
     },
@@ -6774,7 +6773,7 @@
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/capture-related-projects/SKILL.md",
+          "file": "stack/skills/capture-awareness/references/related-projects.md",
           "marker": "exactly as the roster spells it"
         },
         {
@@ -6864,7 +6863,7 @@
       ]
     },
     "blocking-stdio": {
-      "_note": "hook-prelude.js blockingStdio makes stdout and stderr blocking, so a pipe gets every byte before process.exit - Node writes a pipe async on macOS, and a hook decision or CLI report past the pipe buffer reached its reader cut off (2026-10-10: the secret guard rewrite of a 100 KB command arrived as 65,536 bytes and ran unredacted). Every hook loads the prelude; a CLI beside it calls it in its main block. The two engines that ship without the prelude on one route, the three skill scripts a skill copy carries alone and the gate leg (copied to a VM with only install/runtime.js) each carry this byte-identical copy. A change to it is eight edits, not one.",
+      "_note": "hook-prelude.js blockingStdio makes stdout and stderr blocking, so a pipe gets every byte before process.exit - Node writes a pipe async on macOS, and a hook decision or CLI report past the pipe buffer reached its reader cut off (2026-10-10: the secret guard rewrite of a 100 KB command arrived as 65,536 bytes and ran unredacted). Every hook loads the prelude; a CLI beside it calls it in its main block. The two engines that ship without the prelude on one route, the five skill scripts a skill copy carries alone and the gate leg (copied to a VM with only install/runtime.js) each carry this byte-identical copy. A change to it is nine edits, not one.",
       "owner": {
         "file": "stack/hooks/hook-prelude.js",
         "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
@@ -6879,7 +6878,7 @@
           "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
         },
         {
-          "file": "stack/skills/capture-agent-awareness/scripts/capabilities-inventory.js",
+          "file": "stack/skills/capture-awareness/scripts/capabilities-inventory.js",
           "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
         },
         {
@@ -6895,44 +6894,148 @@
           "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
         },
         {
+          "file": "stack/skills/habits-commit-checkpoint/scripts/receipt.js",
+          "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
+        },
+        {
           "file": "scripts/gate-leg.js",
+          "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
+        },
+        {
+          "file": "stack/skills/capture-usage-report/scripts/transcript-view.js",
           "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
         }
       ]
     },
     "auto-mode-contract": {
-      "_note": "auto-mode's contract in every task and loop skill (the user's ruling, 2026-10-14): the hooks stamp the run, answer each ask that marks one Recommended option and keep the session going (guard-fresh-session-start.js injects the full contract at the run's start, guard-stop-contract.js) - each skill carries the same short paragraph, so the word reads as a mode and never a target wherever the skill is copied; the two flows whose SKILL.md sits at its size cap carry it in the reference they read before their first stop, and task-design - preloaded into every designer seat, which never runs one - not at all.",
-      "owner": { "file": "stack/skills/loop-code-quality/SKILL.md", "marker": "**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it." },
+      "_note": "auto-mode's contract in every task, capture and loop skill and issue-diagnoser (the user's rulings, 2026-10-14, 2026-10-15 - the issue family joined, and the word counts only as the first one after the command - and 2026-10-17: the capture family joined, the flag is spelled `--auto-mode`, and only the close of the run the stamp's `skill:` line names deletes it, so a capture a loop runs leaves the loop's stamp): the hooks stamp the run, answer each ask that marks one Recommended option and keep the session going (guard-fresh-session-start.js injects the full contract at the run's start, guard-stop-contract.js) - each skill carries the same short paragraph, so the word reads as a mode and never a target wherever the skill is copied; the two flows whose SKILL.md sits at its size cap carry it in the reference they read before their first stop, and task-design - preloaded into every designer seat, which never runs one - not at all.",
+      "owner": {
+        "file": "stack/skills/loop-code-quality/SKILL.md",
+        "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+      },
       "sites": [
-        { "file": "stack/skills/task-build-from-scratch/SKILL.md", "marker": "**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it." },
-        { "file": "stack/skills/task-version-upgrade/SKILL.md", "marker": "**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it." },
-        { "file": "stack/skills/task-implement/SKILL.md", "marker": "**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it." },
-        { "file": "stack/skills/task-verify-plan/SKILL.md", "marker": "**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it." },
-        { "file": "stack/skills/task-verify-code/SKILL.md", "marker": "**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it." },
-        { "file": "stack/skills/loop-architecture-quality/SKILL.md", "marker": "**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it." },
-        { "file": "stack/skills/loop-test-coverage/SKILL.md", "marker": "**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it." },
-        { "file": "stack/skills/task-solve/references/step-mechanics.md", "marker": "**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it." },
-        { "file": "stack/skills/task-solve-cross/references/execution-modes.md", "marker": "**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it." }
+        {
+          "file": "stack/skills/task-build-from-scratch/SKILL.md",
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+        },
+        {
+          "file": "stack/skills/task-version-upgrade/SKILL.md",
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+        },
+        {
+          "file": "stack/skills/task-implement/SKILL.md",
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+        },
+        {
+          "file": "stack/skills/task-verify-plan/SKILL.md",
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+        },
+        {
+          "file": "stack/skills/task-verify-code/SKILL.md",
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+        },
+        {
+          "file": "stack/skills/loop-architecture-quality/SKILL.md",
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+        },
+        {
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+        },
+        {
+          "file": "stack/skills/task-solve/references/step-mechanics.md",
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+        },
+        {
+          "file": "stack/skills/task-solve-cross/references/execution-modes.md",
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+        },
+        {
+          "file": "stack/skills/issue-diagnoser/SKILL.md",
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+        },
+        {
+          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+        },
+        {
+          "file": "stack/skills/capture-architecture/SKILL.md",
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+        },
+        {
+          "file": "stack/skills/capture-awareness/SKILL.md",
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+        },
+        {
+          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+        },
+        {
+          "file": "stack/skills/capture-code-style/SKILL.md",
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+        },
+        {
+          "file": "stack/skills/capture-first-look/SKILL.md",
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+        },
+        {
+          "file": "stack/skills/capture-test-coverage/SKILL.md",
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+        },
+        {
+          "file": "stack/skills/capture-usage-report/SKILL.md",
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+        }
       ]
     },
     "plugin-cache-newest-entry": {
       "_note": "The plugin-cache resolver a skill body or the source protocol runs to find the stack's newest core entry when no project copy holds the file it needs (audit 2026-10-14 SKC10): one glob over every marketplace key (`plugins/cache/*/*/*`), the plugin name read off the path, the newest version by `sort -V`, and a dir the CLI marked `.orphaned_at` never taken - a stale copy never serves a run. Each site checks the file it needs; the orphan test is the shared rule.",
-      "owner": { "file": "setup-plugin/references/source-protocol.md", "marker": "[ ! -e \"$d/.orphaned_at\" ]" },
+      "owner": {
+        "file": "setup-plugin/references/source-protocol.md",
+        "marker": "[ ! -e \"$d/.orphaned_at\" ]"
+      },
       "sites": [
-        { "file": "stack/skills/capture-agent-awareness/SKILL.md", "marker": "[ ! -e \"$d/.orphaned_at\" ]" },
-        { "file": "stack/skills/capture-first-look/SKILL.md", "marker": "[ ! -e \"$d/.orphaned_at\" ]" },
-        { "file": "stack/skills/capture-usage-report/SKILL.md", "marker": "[ ! -e \"$d/.orphaned_at\" ]" },
-        { "file": "stack/skills/capture-project-awareness/SKILL.md", "marker": "[ ! -e \"$d/.orphaned_at\" ]" },
-        { "file": "stack/skills/habits-adjust-agents-md/SKILL.md", "marker": "[ ! -e \"$d/.orphaned_at\" ]" },
-        { "file": "stack/skills/task-solve/references/full-spec.md", "marker": "[ ! -e \"$d/.orphaned_at\" ]" },
-        { "file": "stack/skills/task-solve-cross/references/full-spec.md", "marker": "[ ! -e \"$d/.orphaned_at\" ]" }
+        {
+          "file": "stack/skills/capture-awareness/SKILL.md",
+          "marker": "[ ! -e \"$d/.orphaned_at\" ]"
+        },
+        {
+          "file": "stack/skills/capture-first-look/SKILL.md",
+          "marker": "[ ! -e \"$d/.orphaned_at\" ]"
+        },
+        {
+          "file": "stack/skills/capture-usage-report/SKILL.md",
+          "marker": "[ ! -e \"$d/.orphaned_at\" ]"
+        },
+        {
+          "file": "stack/skills/capture-awareness/references/project.md",
+          "marker": "[ ! -e \"$d/.orphaned_at\" ]"
+        },
+        {
+          "file": "stack/skills/habits-adjust-agents-md/SKILL.md",
+          "marker": "[ ! -e \"$d/.orphaned_at\" ]"
+        },
+        {
+          "file": "stack/skills/task-solve/references/full-spec.md",
+          "marker": "[ ! -e \"$d/.orphaned_at\" ]"
+        },
+        {
+          "file": "stack/skills/task-solve-cross/references/full-spec.md",
+          "marker": "[ ! -e \"$d/.orphaned_at\" ]"
+        }
       ]
     },
     "anti-gaming-sweep-commands": {
       "_note": "The final-gate anti-gaming sweep's four commands (audit 2026-10-14 SKF-16): the code-quality loop owns them, and the coverage loop vendors the same list, since either loop may be installed alone and its never-weaken rule needs a mechanical check behind it. Each copy keeps its own intro (where the baseline is recorded) and report line; the commands are the shared rule.",
-      "owner": { "file": "stack/skills/loop-code-quality/references/anti-gaming-sweep.md", "marker": "1. `git diff -M --stat <BASE>` - the shape of the run. Rename detection is not optional: a structure stage makes the diff rename-heavy, and a pure rename (R100, no content change) is verified by name alone. 2. `git diff -M <BASE>` - every remaining content hunk, paged deterministically until exhausted. Never cap it (`head`, first-N lines): a gamed bar past the cap is exactly the one that survives. 3. `git ls-files --others --exclude-standard`, minus the paths in `<docs-path>/flow/untracked-at-start-<HEAD sha>` (the record the session start wrote; absent = none to subtract) - the files untracked since the run began. A plain diff is blind to brand-new files, so a gamed bar added in one would never surface. 4. Read each file left by 3 in full - it has no diff to page." },
+      "owner": {
+        "file": "stack/skills/loop-code-quality/references/anti-gaming-sweep.md",
+        "marker": "1. `git diff -M --stat <BASE>` - the shape of the run. Rename detection is not optional: a structure stage makes the diff rename-heavy, and a pure rename (R100, no content change) is verified by name alone. 2. `git diff -M <BASE>` - every remaining content hunk, paged deterministically until exhausted. Never cap it (`head`, first-N lines): a gamed bar past the cap is exactly the one that survives. 3. `git ls-files --others --exclude-standard`, minus the paths in `<docs-path>/flow/untracked-at-start-<HEAD sha>` (the record the session start wrote; absent = none to subtract) - the files untracked since the run began. A plain diff is blind to brand-new files, so a gamed bar added in one would never surface. 4. Read each file left by 3 in full - it has no diff to page."
+      },
       "sites": [
-        { "file": "stack/skills/loop-test-coverage/references/anti-gaming-sweep.md", "marker": "1. `git diff -M --stat <BASE>` - the shape of the run. Rename detection is not optional: a structure stage makes the diff rename-heavy, and a pure rename (R100, no content change) is verified by name alone. 2. `git diff -M <BASE>` - every remaining content hunk, paged deterministically until exhausted. Never cap it (`head`, first-N lines): a gamed bar past the cap is exactly the one that survives. 3. `git ls-files --others --exclude-standard`, minus the paths in `<docs-path>/flow/untracked-at-start-<HEAD sha>` (the record the session start wrote; absent = none to subtract) - the files untracked since the run began. A plain diff is blind to brand-new files, so a gamed bar added in one would never surface. 4. Read each file left by 3 in full - it has no diff to page." }
+        {
+          "file": "stack/skills/loop-test-coverage/references/anti-gaming-sweep.md",
+          "marker": "1. `git diff -M --stat <BASE>` - the shape of the run. Rename detection is not optional: a structure stage makes the diff rename-heavy, and a pure rename (R100, no content change) is verified by name alone. 2. `git diff -M <BASE>` - every remaining content hunk, paged deterministically until exhausted. Never cap it (`head`, first-N lines): a gamed bar past the cap is exactly the one that survives. 3. `git ls-files --others --exclude-standard`, minus the paths in `<docs-path>/flow/untracked-at-start-<HEAD sha>` (the record the session start wrote; absent = none to subtract) - the files untracked since the run began. A plain diff is blind to brand-new files, so a gamed bar added in one would never surface. 4. Read each file left by 3 in full - it has no diff to page."
+        }
       ]
     }
   }

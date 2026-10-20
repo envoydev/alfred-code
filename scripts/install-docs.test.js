@@ -6,6 +6,8 @@
 // together. The migration half is absent-only in both directions, which is what keeps an update
 // from eating a project's documents.
 const test = require('node:test');
+// the run-book tests spawn the docs engine (its lint), so the suite takes the hook containment (2.1.5 M5)
+require('./hook-test-env').isolateHookSuite();
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -45,6 +47,8 @@ function project({ domains = {}, files = {}, ignore, commit = [] } = {})
 }
 
 const seed = (root) => docs.docsVersioningSeed({ projectRoot: root, docsPath: '.claude/docs' });
+// No awareness doc under the docs root: the awareness step moves nothing and writes no rule.
+const NO_AWARENESS = { respelled: [], overlays: [], agents: 'none', rule: 'not written - no awareness doc yet' };
 
 // --- the versioning seed, the four-home rule ------------------------------
 
@@ -150,8 +154,8 @@ test('migration: an EXISTING watch.json is never overwritten, a dangling link in
     docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs' });
     assert.strictEqual(fs.readFileSync(path.join(root, '.claude/docs/code-style/watch.json'), 'utf8'), '{"src":["app"]}');
 
-    const root2 = project({ files: { '.claude/docs/related-projects/RELATED-PROJECTS.md': '# r\n' } });
-    fs.symlinkSync(path.join(root2, 'nowhere.json'), path.join(root2, '.claude/docs/related-projects/watch.json'));
+    const root2 = project({ files: { '.claude/docs/code-style/CODE-STYLE.md': '# r\n' } });
+    fs.symlinkSync(path.join(root2, 'nowhere.json'), path.join(root2, '.claude/docs/code-style/watch.json'));
     const out = docs.migrateDocsDomains({ projectRoot: root2, docsPath: '.claude/docs' });
     assert.deepStrictEqual(out.switched, [], 'a dangling watch.json symlink was replaced - it is still theirs');
 });
@@ -166,8 +170,11 @@ test('migration: quality/ and related-context/ are watch-less BY DESIGN and stay
     const out = docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs' });
     assert.ok(!fs.existsSync(path.join(root, '.claude/docs/quality/watch.json')), 'quality/ became a domain');
     assert.ok(!fs.existsSync(path.join(root, '.claude/docs/related-context/watch.json')), 'the drop box became a domain');
-    // related-projects/ IS switched on, and the drop box keeps every other paper it holds.
-    assert.deepStrictEqual(out.switched, ['related-projects']);
+    // The orientation doc moves on to awareness/, a docs domain from there; the drop box keeps every other paper it holds.
+    assert.deepStrictEqual(out.switched, []);
+    assert.deepStrictEqual(out.moved, ['quality/ARCHITECTURE-ASSESSMENT.md', 'related-projects/RELATED-PROJECTS.md', 'awareness/RELATED-PROJECTS-AWARENESS.md']);
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(root, '.claude/docs/awareness/watch.json'), 'utf8')), { notOwned: ['AGENTS-AWARENESS.md'] }, 'the doc sits in a domain the engine sections');
+    assert.ok(!fs.existsSync(path.join(root, '.claude/docs/related-projects')), 'the passing folder is gone');
     assert.strictEqual(fs.readFileSync(path.join(root, '.claude/docs/related-context/sibling-notes.md'), 'utf8'), '# keep me\n');
 });
 
@@ -201,7 +208,7 @@ test('migration: a second run moves nothing and switches nothing on', () =>
     const root = project({ files: { '.claude/docs/PROJECT-CODE-STYLE.md': '# s\n' } });
     docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs' });
     const again = docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs' });
-    assert.deepStrictEqual(again, { moved: [], switched: [], repointed: [] });
+    assert.deepStrictEqual(again, { moved: [], switched: [], repointed: [], awareness: NO_AWARENESS });
 });
 
 test('migration: a doc that already carries section ids is switched on WITHOUT the lint note', () =>
@@ -216,7 +223,7 @@ test('migration: a doc that already carries section ids is switched on WITHOUT t
 test('migration: an absent docs root is nothing to do, never a crash', () =>
 {
     assert.deepStrictEqual(docs.migrateDocsDomains({ projectRoot: path.join(TMP, 'nope'), docsPath: '.claude/docs' }),
-        { moved: [], switched: [], repointed: [] });
+        { moved: [], switched: [], repointed: [], awareness: NO_AWARENESS });
 });
 
 // 2026-10-10: a 0.2.x project kept the orientation doc loose at the docs root - its pre-folder home - and the data
@@ -226,7 +233,7 @@ const RC_RULE = (p) => `---\ndescription: generated\n---\n\nEverything past awar
 const rulesOf = (root) => require('./install/selection.js').generatedRules(root);
 const instructionsOf = (root) => require('./install/selection.js').instructionFiles(root);
 
-test('migration: the orientation doc loose at the docs root moves into related-projects/, its pointer rule follows, the project\'s AGENTS.md is named, and a re-run is quiet', () =>
+test('migration: the orientation doc loose at the docs root moves on to awareness/, its pointer rule follows, the project\'s AGENTS.md is named, and a re-run is quiet', () =>
 {
     const root = project({ files: {
         '.alfred/docs/PROJECT-RELATED-CONTEXT.md': '# Related projects\n\n## sample-app\n',
@@ -239,18 +246,24 @@ test('migration: the orientation doc loose at the docs root moves into related-p
     const run = () => docs.migrateDocsDomains({ projectRoot: root, docsPath: '.alfred/docs', rules: rulesOf(root), instructions: instructionsOf(root), log: (m) => logs.push(m) });
     const out = run();
     const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
-    assert.deepStrictEqual(out, { moved: ['related-projects/RELATED-PROJECTS.md'], switched: ['related-projects'], repointed: ['.claude/rules/alfred-related-context.md'] });
-    assert.strictEqual(read('.alfred/docs/related-projects/RELATED-PROJECTS.md'), '# Related projects\n\n## sample-app\n');
+    assert.deepStrictEqual({ ...out, awareness: { ...out.awareness, rule: out.awareness.rule.replace(/\d+ bytes/, 'N bytes') } }, {
+        moved: ['related-projects/RELATED-PROJECTS.md', 'awareness/RELATED-PROJECTS-AWARENESS.md'], switched: [], repointed: ['.claude/rules/alfred-related-context.md'],
+        awareness: { respelled: [], overlays: [], agents: 'none', rule: 'created - .claude/rules/alfred-awareness.md, N bytes, imports 1' },
+    }, 'two hops in one run, and the one rule imports the doc');
+    assert.strictEqual(read('.alfred/docs/awareness/RELATED-PROJECTS-AWARENESS.md'), '# Related projects\n\n## sample-app\n');
     assert.ok(!fs.existsSync(path.join(root, '.alfred/docs/PROJECT-RELATED-CONTEXT.md')));
     assert.strictEqual(read('.alfred/docs/related-context/2026-09-27-handoff.md'), '# a sibling paper\n', 'a sibling paper stays');
-    assert.strictEqual(read('.claude/rules/alfred-related-context.md'), RC_RULE('.alfred/docs/related-projects/RELATED-PROJECTS.md'));
+    assert.strictEqual(read('.claude/rules/alfred-related-context.md'), RC_RULE('.alfred/docs/awareness/RELATED-PROJECTS-AWARENESS.md'), 're-pointed to the last home; the rule is not the capture\'s own text, so it is kept');
     assert.strictEqual(read('.claude/rules/my-notes.md'), RC_RULE('.alfred/docs/PROJECT-RELATED-CONTEXT.md'), 'a rule of the project\'s own is never rewritten');
     assert.strictEqual(read('.claude/AGENTS.md'), 'See `.alfred/docs/PROJECT-RELATED-CONTEXT.md`.\n', 'the project\'s AGENTS.md is named, never rewritten');
-    assert.ok(logs.includes('  !! .claude/AGENTS.md is yours and names .alfred/docs/PROJECT-RELATED-CONTEXT.md, which moved to .alfred/docs/related-projects/RELATED-PROJECTS.md - re-point it by hand'), logs.join(' | '));
+    assert.ok(logs.includes('  !! .claude/AGENTS.md is yours and names .alfred/docs/PROJECT-RELATED-CONTEXT.md, which moved to .alfred/docs/awareness/RELATED-PROJECTS-AWARENESS.md - re-point it by hand'), logs.join(' | '));
+    assert.ok(logs.some((m) => /^ {2}!! awareness: removed - kept \.claude\/rules\/alfred-related-context\.md - it is not the capture's own text/.test(m)), logs.join(' | '));
     assert.ok(logs.includes('  docs migration: .claude/rules/alfred-related-context.md - 1 path(s) re-pointed to the moved doc'), logs.join(' | '));
     logs.length = 0;
-    assert.deepStrictEqual(run(), { moved: [], switched: [], repointed: [] });
-    assert.ok(logs.every((m) => m.startsWith('  !! .claude/AGENTS.md')), `a re-run said more than the AGENTS.md reminder: ${logs.join(' | ')}`);
+    const again = run();
+    assert.deepStrictEqual([again.moved, again.repointed, again.awareness.respelled], [[], [], []]);
+    assert.match(again.awareness.rule, /^unchanged, not rewritten - /);
+    assert.ok(logs.every((m) => m.startsWith('  !! .claude/AGENTS.md') || m.startsWith('  !! awareness: removed - kept')), `a re-run said more than the two reminders: ${logs.join(' | ')}`);
 });
 
 test('migration: both homes present - the folder form wins, the loose one stays and the rule naming it is left', () =>
@@ -262,11 +275,16 @@ test('migration: both homes present - the folder form wins, the loose one stays 
     } });
     const logs = [];
     const out = docs.migrateDocsDomains({ projectRoot: root, docsPath: '.alfred/docs', rules: rulesOf(root), log: (m) => logs.push(m) });
-    assert.deepStrictEqual(out.moved, ['related-projects/RELATED-PROJECTS.md']);
-    assert.strictEqual(fs.readFileSync(path.join(root, '.alfred/docs/related-projects/RELATED-PROJECTS.md'), 'utf8'), '# folder\n');
+    assert.deepStrictEqual(out.moved, ['related-projects/RELATED-PROJECTS.md', 'awareness/RELATED-PROJECTS-AWARENESS.md']);
+    assert.strictEqual(fs.readFileSync(path.join(root, '.alfred/docs/awareness/RELATED-PROJECTS-AWARENESS.md'), 'utf8'), '# folder\n');
     assert.strictEqual(fs.readFileSync(path.join(root, '.alfred/docs/PROJECT-RELATED-CONTEXT.md'), 'utf8'), '# loose\n');
     assert.ok(logs.some((m) => /PROJECT-RELATED-CONTEXT\.md left in place, nothing overwritten/.test(m)), logs.join(' | '));
     assert.strictEqual(fs.readFileSync(path.join(root, '.claude/rules/alfred-related-context.md'), 'utf8'), RC_RULE('.alfred/docs/PROJECT-RELATED-CONTEXT.md'), 'the loose file still exists, so its pointer is not dangling');
+    // A re-run leaves the loose copy where it is - its last home holds the folder form - never one hop on.
+    const second = docs.migrateDocsDomains({ projectRoot: root, docsPath: '.alfred/docs', rules: rulesOf(root), log: () => {} });
+    assert.deepStrictEqual(second.moved, []);
+    assert.strictEqual(fs.readFileSync(path.join(root, '.alfred/docs/PROJECT-RELATED-CONTEXT.md'), 'utf8'), '# loose\n');
+    assert.ok(!fs.existsSync(path.join(root, '.alfred/docs/related-projects')));
 });
 
 test('migration: a move an earlier run made without re-pointing heals - the code-style rule follows; a path inside a longer one is no hit', () =>
@@ -319,4 +337,222 @@ test('migration: a superpowers/ entry still there (a clash kept it) is no stale 
     assert.ok(fs.existsSync(path.join(root, '.alfred/docs/superpowers/plans/a.md')), 'the clash stays');
     assert.ok(!logs.some((m) => /AGENTS\.md is yours/.test(m)), `a path that still exists was named stale: ${logs.join(' | ')}`);
     assert.deepStrictEqual(docs.migratePlans({ projectRoot: root, docsPath: '', instructions: instructionsOf(root) }), {});
+});
+
+// THE AWARENESS LAYOUT (the user's ruling of 2026-10-16): the inventory, the run book and the sibling doc share ONE
+// domain, `awareness/`, and ONE generated rule imports them, so Claude Code loads all three at every session start.
+// An update moves an older install in: the 2.5.0 homes (`project-capabilities/`, `related-projects/`, the inventory
+// rule) and the develop-only 2026-10-15 one (`project-awareness/`, its import rule). Driven through migrateDocsDomains,
+// the installer's own entry, then read back: the files, the rule, and the docs engine's own lint.
+// The old rules named the capture that wrote them; those names are assembled so the rename sweep
+// (install-renames.test.js) reads them as the shipped text they are, not a cite.
+const oldCapture = (part) => `/${['capture', part].join('-')}`;
+const OLD_POINTER = (root, shape = 'current') => (shape === 'first'
+    ? `---\ndescription: Project run book pointer - generated by ${oldCapture('project-awareness')}; edit via a re-run.\n---\nRun book: \`${root}/project-capabilities/PROJECT-CAPABILITIES.md\` - read it before you build, start, log into or hand-check the app.\n`
+    : `---\ndescription: Project run book pointer - generated by ${oldCapture('project-awareness')}; edit via a re-run.\n---\n\nRun book: \`${root}/project-capabilities/PROJECT-CAPABILITIES.md\` - read it before you build, start, log into or hand-check the app.\n`);
+// The 2026-10-15 rule (develop only): it imported the run book from project-awareness/.
+const IMPORT_RULE = (root) => `---\ndescription: Project run book import - generated by ${oldCapture('project-awareness')}; edit via a re-run.\n---\n\nRun book: \`${root}/project-awareness/PROJECT-AWARENESS.md\` - the project's workflow, imported below at every session start; follow it before you build, start, log into or hand-check the app, and if its text is not below, Read it first.\n\n@../../${root}/project-awareness/PROJECT-AWARENESS.md\n`;
+const INVENTORY_BODY = '# This project\'s capabilities\n\nCaptured: 2026-10-01 from 2.5.0@abc1234\n\n## Usage policy (fixed - stamped verbatim, every run)\n<!-- policy-rev: 508df73f -->\n- Load a skill for the work at hand.\n\n## Subagent seats\nalfred-code:aspnet-verifier\n';
+const INVENTORY_RULE = `---\ndescription: Project capabilities awareness - generated by ${oldCapture('agent-awareness')}; edit via a re-run, not by hand.\n---\n\n${INVENTORY_BODY}`;
+const RELATED_RULE = (root) => `---\ndescription: Related projects awareness - generated by ${oldCapture('related-projects')}; edit via a re-run, not by hand.\n---\n\n- acme-api - ../acme-api, provides-to. Everything past awareness lives in \`${root}/related-projects/RELATED-PROJECTS.md\`.\n`;
+const RUN_BOOK_DOC = 'Captured: main@abc1234, 2026-10-01\n\n# Run book\n\n## Build\n<!-- id: build -->\n<!-- covers: **package.json -->\n- `npm run build` (package.json)\n\n## Start\n<!-- id: start -->\n- `npm start` - see PROJECT-CAPABILITIES#build first\n- Credentials live in: `.alfred/docs/project-capabilities/credentials.local.env`\n';
+const RUN_BOOK_WATCH = '{\n  "sourceRoots": ["src"],\n  "watch": [\n    { "kind": "build", "globs": ["**package.json"], "sections": ["PROJECT-CAPABILITIES#build", "project-capabilities/PROJECT-CAPABILITIES.md#start"] }\n  ]\n}\n';
+const RELATED_DOC = 'Captured: main@abc1234, 2026-10-01\n\n# Related projects\n\n## acme-api\n<!-- id: acme-api -->\n\n```yaml\nlocation:   ../acme-api\nrelation:   provides-to\n```\n\nSee RELATED-PROJECTS#acme-api for the seam.\n';
+const engineLint = (root, docsPath) => require('node:child_process').spawnSync(process.execPath, [path.join(__dirname, '..', 'stack', 'hooks', 'docs.js'), 'lint'],
+    { cwd: root, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: docsPath, ALFRED_CODE_DOCS_VERSIONING: '' } });
+const importsOf = (text) => text.split(/\r?\n/).filter((l) => l.startsWith('@')).map((l) => l.slice(1));
+const awarenessRuleOf = (root) => fs.readFileSync(path.join(root, '.claude', 'rules', 'alfred-awareness.md'), 'utf8');
+const N = (s) => String(s).replace(/\d+ bytes/g, 'N bytes');
+const write = (root, rel, text) => { fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true }); fs.writeFileSync(path.join(root, rel), text); };
+
+test('awareness: an update over the 2.5.0 layout - the three docs land in awareness/, the ids follow, ONE rule imports them, the old rules go, a re-run is quiet', () =>
+{
+    const root = project({ files: {
+        'package.json': '{}\n',
+        '.alfred/docs/project-capabilities/PROJECT-CAPABILITIES.md': RUN_BOOK_DOC,
+        '.alfred/docs/project-capabilities/watch.json': RUN_BOOK_WATCH,
+        '.alfred/docs/related-projects/RELATED-PROJECTS.md': RELATED_DOC,
+        '.alfred/docs/related-projects/watch.json': '{}\n',
+        '.claude/rules/alfred-agent-awareness.md': INVENTORY_RULE,
+        '.claude/rules/alfred-project-awareness.md': OLD_POINTER('.alfred/docs'),
+        '.claude/rules/alfred-related-context.md': RELATED_RULE('.alfred/docs'),
+        '.claude/rules/alfred-git.md': '# shipped\n',
+        '.claude/AGENTS.md': 'Run book: `.alfred/docs/project-capabilities/PROJECT-CAPABILITIES.md`\n',
+    } });
+    const logs = [];
+    const run = () => docs.migrateDocsDomains({ projectRoot: root, docsPath: '.alfred/docs', rules: rulesOf(root), instructions: instructionsOf(root), log: (m) => logs.push(m) });
+    const out = run();
+    const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
+    const at = (rel) => path.join(root, '.alfred/docs', rel);
+    assert.deepStrictEqual(out.moved, ['project-awareness/PROJECT-AWARENESS.md', 'project-awareness/watch.json', 'awareness/PROJECT-AWARENESS.md', 'awareness/watch.json', 'awareness/RELATED-PROJECTS-AWARENESS.md']);
+    assert.deepStrictEqual(out.repointed.slice().sort(), ['.claude/rules/alfred-project-awareness.md', '.claude/rules/alfred-related-context.md']);
+    assert.deepStrictEqual(out.awareness.respelled, ['.alfred/docs/awareness/watch.json', '.alfred/docs/awareness/PROJECT-AWARENESS.md', '.alfred/docs/awareness/RELATED-PROJECTS-AWARENESS.md']);
+    assert.strictEqual(out.awareness.agents, 'moved');
+    assert.strictEqual(N(out.awareness.rule), 'created - .claude/rules/alfred-awareness.md, N bytes, imports 3; superseded removed: alfred-agent-awareness.md, alfred-project-awareness.md, alfred-related-context.md');
+    for (const old of ['project-capabilities', 'project-awareness', 'related-projects']) assert.ok(!fs.existsSync(at(old)), `the emptied ${old}/ goes`);
+    // the docs: the ids follow the file keys, the inventory is the old rule's body without its frontmatter
+    assert.strictEqual(read('.alfred/docs/awareness/PROJECT-AWARENESS.md'), RUN_BOOK_DOC.replace('see PROJECT-CAPABILITIES#build', 'see PROJECT-AWARENESS#build'), 'only the section ref changes - the credentials line is adoptCredentials\' to re-point');
+    assert.strictEqual(read('.alfred/docs/awareness/RELATED-PROJECTS-AWARENESS.md'), RELATED_DOC.replace('See RELATED-PROJECTS#acme-api', 'See RELATED-PROJECTS-AWARENESS#acme-api'));
+    assert.strictEqual(read('.alfred/docs/awareness/AGENTS-AWARENESS.md'), INVENTORY_BODY);
+    assert.deepStrictEqual(JSON.parse(read('.alfred/docs/awareness/watch.json')), {
+        sourceRoots: ['src'],
+        watch: [{ kind: 'build', globs: ['**package.json'], sections: ['PROJECT-AWARENESS#build', 'awareness/PROJECT-AWARENESS.md#start'] }],
+        notOwned: ['AGENTS-AWARENESS.md'],
+    });
+    // the rule: one import per doc, each resolving from .claude/rules/ to the moved file; the three old rules gone
+    const rule = awarenessRuleOf(root);
+    assert.deepStrictEqual(importsOf(rule), ['AGENTS-AWARENESS.md', 'PROJECT-AWARENESS.md', 'RELATED-PROJECTS-AWARENESS.md'].map((n) => `../../.alfred/docs/awareness/${n}`));
+    for (const imp of importsOf(rule)) assert.ok(fs.existsSync(path.resolve(root, '.claude', 'rules', imp)), `${imp} resolves`);
+    for (const gone of ['alfred-agent-awareness.md', 'alfred-project-awareness.md', 'alfred-related-context.md']) assert.ok(!fs.existsSync(path.join(root, '.claude/rules', gone)), `${gone} goes`);
+    assert.strictEqual(read('.claude/rules/alfred-git.md'), '# shipped\n', 'a shipped rule is not the awareness step\'s');
+    assert.ok(logs.includes('  !! .claude/AGENTS.md is yours and names .alfred/docs/project-capabilities/PROJECT-CAPABILITIES.md, which moved to .alfred/docs/awareness/PROJECT-AWARENESS.md - re-point it by hand'), logs.join(' | '));
+    assert.strictEqual(read('.claude/AGENTS.md'), 'Run book: `.alfred/docs/project-capabilities/PROJECT-CAPABILITIES.md`\n', 'the project\'s AGENTS.md is never rewritten');
+    // the docs engine reads the moved domain: every watch entry names a section that exists, the inventory not linted
+    const lint = engineLint(root, '.alfred/docs');
+    assert.doesNotMatch(lint.stdout, /PROBLEM/, lint.stdout);
+    // a second run: nothing moves, the rule is current, and only the AGENTS.md reminder is said
+    logs.length = 0;
+    const again = run();
+    assert.deepStrictEqual({ ...again, awareness: { ...again.awareness, rule: N(again.awareness.rule) } },
+        { moved: [], switched: [], repointed: [], awareness: { respelled: [], overlays: [], agents: 'none', rule: 'unchanged, not rewritten - .claude/rules/alfred-awareness.md, N bytes' } });
+    assert.strictEqual(awarenessRuleOf(root), rule, 'idempotent');
+    assert.ok(logs.every((m) => m.startsWith('  !! .claude/AGENTS.md')), `a re-run said more than the AGENTS.md reminder: ${logs.join(' | ')}`);
+});
+
+test('awareness: the 2026-10-15 layout moves the same way; a rule the user wrote is named and kept; an absolute docs root imports by its own path', () =>
+{
+    const first = project({ files: {
+        'docs/ai/project-awareness/PROJECT-AWARENESS.md': '# Run book\n',
+        'docs/ai/project-awareness/watch.json': '{\n  "watch": []\n}\n',
+        '.claude/rules/alfred-project-awareness.md': IMPORT_RULE('docs/ai').replace(/\n/g, '\r\n'),
+    } });
+    const r1 = docs.migrateDocsDomains({ projectRoot: first, docsPath: 'docs/ai', rules: rulesOf(first) });
+    assert.deepStrictEqual(r1.moved, ['awareness/PROJECT-AWARENESS.md', 'awareness/watch.json']);
+    assert.match(r1.awareness.rule, /^created - .*imports 1; superseded removed: alfred-project-awareness\.md$/, 'a CRLF copy of the capture\'s own rule is still its own');
+    assert.deepStrictEqual(importsOf(awarenessRuleOf(first)), ['../../docs/ai/awareness/PROJECT-AWARENESS.md']);
+    assert.ok(!fs.existsSync(path.join(first, 'docs/ai/project-awareness')));
+
+    // the user's own run-book rule (no capture stamp) still loads: named on every run, never removed; an inventory rule
+    // with no policy stamp is not the capture's either, so it stays a rule and no doc is made from it
+    const own = '# Our run book notes\n\nThe staging login is in 1Password.\n';
+    const yours = project({ files: {
+        '.alfred/docs/project-capabilities/PROJECT-CAPABILITIES.md': '# Run book\n',
+        '.claude/rules/alfred-project-awareness.md': own,
+        '.claude/rules/alfred-agent-awareness.md': '# My capabilities notes\n',
+    } });
+    const logs = [];
+    const r2 = docs.migrateDocsDomains({ projectRoot: yours, docsPath: '.alfred/docs', rules: rulesOf(yours), log: (m) => logs.push(m) });
+    assert.strictEqual(r2.awareness.agents, 'yours');
+    assert.match(r2.awareness.rule, /^created - .*imports 1$/);
+    assert.strictEqual(fs.readFileSync(path.join(yours, '.claude/rules/alfred-project-awareness.md'), 'utf8'), own);
+    assert.ok(fs.existsSync(path.join(yours, '.claude/rules/alfred-agent-awareness.md')), 'its doc is not imported, so it stays');
+    assert.ok(!fs.existsSync(path.join(yours, '.alfred/docs/awareness/AGENTS-AWARENESS.md')));
+    assert.ok(logs.includes('  !! .claude/rules/alfred-agent-awareness.md carries no policy stamp, so it is not the capture\'s own text and was not moved - re-run /capture-awareness'), logs.join(' | '));
+    assert.ok(logs.some((m) => m.startsWith('  !! awareness: removed - kept .claude/rules/alfred-project-awareness.md - it is not the capture\'s own text')), logs.join(' | '));
+
+    const abs = path.join(TMP, `abs-docs-${seq++}`);
+    const outside = project({ files: { '.claude/rules/alfred-project-awareness.md': OLD_POINTER(abs.split(path.sep).join('/')) } });
+    fs.mkdirSync(path.join(abs, 'project-awareness'), { recursive: true });
+    fs.writeFileSync(path.join(abs, 'project-awareness', 'PROJECT-AWARENESS.md'), '# Run book\n');
+    docs.migrateDocsDomains({ projectRoot: outside, docsPath: abs, rules: rulesOf(outside) });
+    assert.deepStrictEqual(importsOf(awarenessRuleOf(outside)), [`${abs.split(path.sep).join('/')}/awareness/PROJECT-AWARENESS.md`]);
+    assert.ok(!fs.existsSync(path.join(outside, '.claude/rules/alfred-project-awareness.md')));
+});
+
+test('awareness: a copy at the new home wins and stops the move; branch versions move with the doc; a credentials file keeps the old folder', () =>
+{
+    const both = project({ files: {
+        '.alfred/docs/project-capabilities/PROJECT-CAPABILITIES.md': '# old\n',
+        '.alfred/docs/awareness/PROJECT-AWARENESS.md': '# new\n',
+    } });
+    const logs = [];
+    const r = docs.migrateDocsDomains({ projectRoot: both, docsPath: '.alfred/docs', rules: rulesOf(both), log: (m) => logs.push(m) });
+    assert.deepStrictEqual(r.moved, [], 'the old copy stays where it is - never one hop on');
+    assert.deepStrictEqual(r.awareness.respelled, [], 'nothing is re-spelled while an old copy is left');
+    assert.strictEqual(fs.readFileSync(path.join(both, '.alfred/docs/project-capabilities/PROJECT-CAPABILITIES.md'), 'utf8'), '# old\n');
+    assert.strictEqual(fs.readFileSync(path.join(both, '.alfred/docs/awareness/PROJECT-AWARENESS.md'), 'utf8'), '# new\n');
+    assert.ok(logs.some((m) => /docs migration \(project awareness\): .*awareness[\\/]PROJECT-AWARENESS\.md already exists - .* left in place, nothing overwritten/.test(m)), logs.join(' | '));
+
+    const branched = project({ files: {
+        '.alfred/docs/project-capabilities/PROJECT-CAPABILITIES.md': RUN_BOOK_DOC,
+        '.alfred/docs/project-capabilities/watch.json': RUN_BOOK_WATCH,
+        '.alfred/docs/project-capabilities/credentials.local.env': 'ADMIN_PASSWORD=x\n',
+        '.alfred/docs/.branches/feat-a/project-capabilities/PROJECT-CAPABILITIES/build.md': '## Build\n- branch text\n',
+        '.alfred/docs/.branches/feat-a/.base/project-capabilities/PROJECT-CAPABILITIES/build.md': '## Build\n- base text\n',
+        '.alfred/docs/.branches/feat-b/project-capabilities/PROJECT-CAPABILITIES/start.md': '## Start\n- older\n',
+        '.alfred/docs/.branches/feat-b/project-awareness/PROJECT-AWARENESS/start.md': '## Start\n',
+        '.alfred/docs/.branches/feat-c/related-projects/RELATED-PROJECTS/acme.md': '## acme\n',
+    } });
+    write(branched, '.alfred/docs/related-projects/RELATED-PROJECTS.md', RELATED_DOC);
+    const blogs = [];
+    const out = docs.migrateDocsDomains({ projectRoot: branched, docsPath: '.alfred/docs', rules: rulesOf(branched), log: (m) => blogs.push(m) });
+    const at = (rel) => path.join(branched, '.alfred/docs', rel);
+    assert.deepStrictEqual(out.awareness.overlays, ['.branches/feat-a/awareness/PROJECT-AWARENESS', '.branches/feat-a/.base/awareness/PROJECT-AWARENESS',
+        '.branches/feat-b/awareness/PROJECT-AWARENESS', '.branches/feat-c/awareness/RELATED-PROJECTS-AWARENESS']);
+    assert.strictEqual(fs.readFileSync(at('.branches/feat-a/awareness/PROJECT-AWARENESS/build.md'), 'utf8'), '## Build\n- branch text\n');
+    assert.strictEqual(fs.readFileSync(at('.branches/feat-a/.base/awareness/PROJECT-AWARENESS/build.md'), 'utf8'), '## Build\n- base text\n');
+    assert.ok(!fs.existsSync(at('.branches/feat-a/project-capabilities')), 'the emptied branch folder goes');
+    assert.strictEqual(fs.readFileSync(at('.branches/feat-b/awareness/PROJECT-AWARENESS/start.md'), 'utf8'), '## Start\n- older\n', 'the older home moves first');
+    assert.ok(fs.existsSync(at('.branches/feat-b/project-awareness/PROJECT-AWARENESS/start.md')), 'a second version for the same key is left, never merged');
+    assert.ok(blogs.some((m) => /!! docs migration \(awareness\): \.branches\/feat-b\/awareness\/PROJECT-AWARENESS\/ already exists/.test(m)), blogs.join(' | '));
+    assert.ok(fs.existsSync(at('project-capabilities/credentials.local.env')), 'the credentials file stays where adoptCredentials and the ignore line expect it');
+    assert.match(out.awareness.rule, /^created - .*imports 2$/, 'the run book and the sibling doc, no inventory rule to move');
+});
+
+test('awareness: a malformed watch.json moves as it is, is said and left; the rule is still written', () =>
+{
+    const root = project({ files: {
+        '.alfred/docs/project-capabilities/PROJECT-CAPABILITIES.md': '# Run book\n',
+        '.alfred/docs/project-capabilities/watch.json': '{ not json',
+    } });
+    const logs = [];
+    const out = docs.migrateDocsDomains({ projectRoot: root, docsPath: '.alfred/docs', rules: rulesOf(root), log: (m) => logs.push(m) });
+    assert.strictEqual(fs.readFileSync(path.join(root, '.alfred/docs/awareness/watch.json'), 'utf8'), '{ not json', 'the user\'s file is never overwritten');
+    assert.ok(logs.some((m) => /^ {2}!! awareness: watch - .*watch\.json is not valid JSON .* left as it is/.test(m)), logs.join(' | '));
+    assert.match(out.awareness.rule, /^created - /);
+});
+
+// The 2026-10-16 matrix: a 0-byte watch.json is not the stack's `{}`, so it kept its old folder - silently, which read
+// as a live domain. What the move leaves is named every run until the user acts; the files later steps take are not.
+test('awareness: an old folder kept by a file the move does not take is named, every run', () =>
+{
+    const root = project({ files: {
+        '.alfred/docs/related-projects/RELATED-PROJECTS.md': RELATED_DOC,
+        '.alfred/docs/related-projects/watch.json': '',
+        '.alfred/docs/related-projects/references/notes.md': '# mine\n',
+        '.alfred/docs/project-capabilities/PROJECT-CAPABILITIES.md': '# Run book\n',
+        '.alfred/docs/project-capabilities/credentials.local.env': 'ADMIN_PASSWORD=x\n',
+    } });
+    const said = () =>
+    {
+        const logs = [];
+        docs.migrateDocsDomains({ projectRoot: root, docsPath: '.alfred/docs', rules: rulesOf(root), log: (m) => logs.push(m) });
+        return logs.filter((m) => /kept - it still holds/.test(m));
+    };
+    const want = ['  !! docs migration (awareness): related-projects/ kept - it still holds references, watch.json, which the move does not take; compare with awareness/ and remove it by hand'];
+    assert.deepStrictEqual(said(), want, 'the credentials file is adoptCredentials\' to move, so project-capabilities/ is not named');
+    assert.ok(fs.existsSync(path.join(root, '.alfred/docs/awareness/RELATED-PROJECTS-AWARENESS.md')), 'the doc itself moved');
+    assert.strictEqual(fs.readFileSync(path.join(root, '.alfred/docs/related-projects/references/notes.md'), 'utf8'), '# mine\n');
+    assert.deepStrictEqual(said(), want, 'and again on the next run');
+});
+
+test('awareness: a docs-root move re-stamps the rule\'s import lines and the inventory doc, relative or absolute', () =>
+{
+    const { respellDocsRoot } = require('./install/selection.js');
+    const { composeAwarenessRule } = require('../stack/skills/capture-awareness/scripts/capabilities-inventory.js');
+    const root = project({ files: {
+        '.claude/docs/awareness/AGENTS-AWARENESS.md': '# x\n',
+        '.claude/docs/awareness/PROJECT-AWARENESS.md': '# x\n',
+    } });
+    const composed = (docsRoot) => composeAwarenessRule({ projectRoot: root, docs: docsRoot }).text;
+    write(root, '.claude/rules/alfred-awareness.md', composed('.claude/docs'));
+    fs.cpSync(path.join(root, '.claude/docs'), path.join(root, '.alfred/docs'), { recursive: true });
+    write(root, '.alfred/docs/awareness/AGENTS-AWARENESS.md', '- `chrome-control` - screenshots under `.claude/docs/flow/` stay out of git\n');
+    assert.strictEqual(respellDocsRoot({ projectRoot: root, from: '.claude/docs', to: '.alfred/docs' }), 2, 'the rule and the inventory doc at the new root');
+    assert.strictEqual(awarenessRuleOf(root), composed('.alfred/docs'), 'the same bytes the capture writes for the new root');
+    assert.match(fs.readFileSync(path.join(root, '.alfred/docs/awareness/AGENTS-AWARENESS.md'), 'utf8'), /under `\.alfred\/docs\/flow\/`/);
+    assert.strictEqual(respellDocsRoot({ projectRoot: root, from: '.alfred/docs', to: '/srv/docs' }), 1);
+    const text = awarenessRuleOf(root);
+    assert.deepStrictEqual(importsOf(text), ['/srv/docs/awareness/AGENTS-AWARENESS.md', '/srv/docs/awareness/PROJECT-AWARENESS.md']);
+    assert.match(text, /from `\/srv\/docs\/awareness\/`/);
 });

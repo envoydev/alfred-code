@@ -111,7 +111,10 @@ const SWEEP_EXT_ANY = /\.(ts|tsx|js|jsx|mjs|cjs|cs|go|razor|cshtml|xaml|html|md)
 // Small files are cheap to read whole. 200, not 100: measured across four real
 // sessions (315 blocks), ~71% of blocks hit 100-200-line files where the forced
 // navigation-server detour costs about what the whole-file read would - the guard only pays above 200.
-const THRESHOLD = 200;
+// 400, not 200 (deep hooks review 2026-10-16, the user's ruling): 485 of 590 sized blocks (82%) in two weeks hit 200-400-line
+// files, and after a block the model read about 80% of the file anyway, one request later. The range cap and every shell
+// span rule bind only above this line count too.
+const THRESHOLD = 400;
 // The Read-tool half's size cap for a file with no line count to judge (below); the shell route's slice rule reads it too.
 const BIG_BYTES = 60 * 1024;
 const lineCountOf = (p) => {
@@ -177,8 +180,54 @@ const resolvedPath = (raw) => {
 // Set by the shell matcher when the command cd's somewhere it cannot follow (a variable, `-`): a relative target that
 // resolves nowhere may then sit under that unknown directory.
 let unfollowedCd = false;
-// A loop's `in` list the guard can size: literal paths, and globs in ONE directory (no `**`, no glob in a folder name),
-// with no substitution or variable. True when every file it names together prints no more than one cat the size gate
+// The files a glob names, expanded one path segment at a time the way the shell does (a dotfile only for a segment
+// opening with a dot), from the first anchor holding its literal head. Null when it cannot be sized: `**`, a bracket
+// class the regex cannot take, a head no anchor holds, or past GLOB_SIZE_CAP entries read (audit 2026-10-20 C28: `WindowsServices/*/Program.cs`,
+// a glob in a folder name, was denied as a sweep over two small entry points).
+const GLOB_SIZE_CAP = 2000;
+function globFiles(p) {
+  if (p.includes('**')) return null;
+  const parts = p.split('/');
+  const first = parts.findIndex((s) => /[*?[]/.test(s));
+  if (first < 0) return null;
+  const head = parts.slice(0, first).join('/');
+  const root = pathMod.isAbsolute(p) ? (head || '/') : anchorDirs.map((d) => pathMod.join(d, head)).find((d) => fs.existsSync(d));
+  if (!root) return null;
+  let level = [root];
+  let read = 0;
+  for (let k = first; k < parts.length; k++) {
+    const seg = parts[k];
+    if (!seg) continue;
+    const next = [];
+    if (!/[*?[]/.test(seg)) { for (const d of level) { const q = pathMod.join(d, seg); if (fs.existsSync(q)) next.push(q); } level = next; continue; }
+    let re;
+    try { re = new RegExp(`^${seg.replace(/[.+^${}()|\\]/g, '\\$&').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]').replace(/\[!/g, '[^')}$`); } catch { return null; }
+    for (const d of level) {
+      let names = [];
+      try { names = fs.readdirSync(d); } catch { continue; }
+      read += names.length;
+      if (read > GLOB_SIZE_CAP) return null;
+      for (const n of names) if (re.test(n) && (seg.startsWith('.') || !n.startsWith('.'))) next.push(pathMod.join(d, n));
+    }
+    level = next;
+  }
+  return level;
+}
+// Do these files together print no more than one cat the size gate lets through (THRESHOLD lines, BIG_BYTES bytes)?
+function smallFiles(files) {
+  let lines = 0; let bytes = 0;
+  for (const f of files) {
+    let st;
+    try { st = fs.statSync(f); } catch { continue; }
+    if (!st.isFile()) continue;
+    bytes += st.size;
+    lines += lineCountOf(f);
+    if (lines > THRESHOLD || bytes > BIG_BYTES) return false;
+  }
+  return true;
+}
+// A loop's `in` list the guard can size: literal paths, and globs `globFiles` expands (no `**`; a glob in a folder name
+// too since audit 2026-10-20 C28), with no substitution or variable. True when every file it names together prints no more than one cat the size gate
 // lets through - at most THRESHOLD lines and BIG_BYTES bytes in all - so the loop is no sweep: a loop over four small
 // files, and one over two named task cards, were denied and the next calls cat the same files whole (audit
 // 2026-10-10, sessions 49cb4b82 and fbfc2de4).
@@ -190,25 +239,11 @@ function smallLiteralLoop(list) {
   for (const w of words) {
     const p = nativePath(w);
     if (!/[*?[]/.test(p)) { const at = resolvedPath(p); if (at) files.push(at); else if (unfollowedCd) return false; continue; }
-    const dir = pathMod.dirname(p); const base = pathMod.basename(p);
-    if (/[*?[]/.test(dir) || base.includes('**')) return false;
-    const dirAbs = pathMod.isAbsolute(dir) ? dir : anchorDirs.map((d) => pathMod.join(d, dir)).find((d) => fs.existsSync(d));
-    if (!dirAbs) return false; // a folder the guard cannot find cannot be sized
-    const re = new RegExp(`^${base.replace(/[.+^${}()|\\]/g, '\\$&').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]')}$`);
-    let names = [];
-    try { names = fs.readdirSync(dirAbs); } catch { return false; }
-    for (const n of names) if (re.test(n) && !n.startsWith('.')) files.push(pathMod.join(dirAbs, n));
+    const matched = globFiles(p);
+    if (!matched) return false; // a glob the guard cannot expand cannot be sized
+    files.push(...matched);
   }
-  let lines = 0; let bytes = 0;
-  for (const f of files) {
-    let st;
-    try { st = fs.statSync(f); } catch { continue; }
-    if (!st.isFile()) continue;
-    bytes += st.size;
-    lines += lineCountOf(f);
-    if (lines > THRESHOLD || bytes > BIG_BYTES) return false;
-  }
-  return true;
+  return smallFiles(files);
 }
 // The trees the installers seed into the navigation server's OWN `ignored_paths` (its project.yml): the data
 // root (ALFRED_CODE_DATA_PATH, default .alfred - serena's own home, the browser profiles, the docs), `.claude`,
@@ -2330,10 +2365,26 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
   // one audit), and a `done` inside one ends nothing. It is a sweep only when a `cat` in its body reads the
   // loop VARIABLE and a gated extension names what that variable walks - in the `in` list or in the operand
   // itself. Every other loop that happens to mention a `.js` (`node x.js`, a `*.jsonl` ledger) passes.
+  const blankQuoted = (text) => {
+    const chars = text.split('');
+    for (const [a, b] of shellWrites ? shellWrites.quotedSpans(text) : []) for (let i = a; i < b; i++) if (chars[i] !== '\n') chars[i] = ' ';
+    return chars.join('');
+  };
+  // Does the stage at `from` (quotes blanked) pipe straight into `wc`? Then the sweep prints a count, never the files
+  // (audit 2026-10-20 C28, 8396b5df / a8804432: eight `... | xargs cat | wc -l`, `find -exec cat {} + | wc -l` and loop
+  // `$(cat $d*.cs | wc -l)` line counts denied as dumps). find's `\;` ends its -exec, not the stage.
+  const countedFrom = (masked, from) => {
+    for (let i = from; i < masked.length; i++) {
+      const ch = masked[i];
+      if (ch === '\\') { i++; continue; }
+      if (ch === '>' && masked[i - 1] === '2') { i += masked[i + 1] === '&' ? 2 : 0; continue; } // stderr goes elsewhere
+      if (ch === ';' || ch === '&' || ch === '\n' || ch === ')' || ch === '>' || ch === '<') return false;
+      if (ch === '|') return masked[i + 1] !== '|' && /^\s*wc\b/.test(masked.slice(i + 1, i + 40));
+    }
+    return false;
+  };
   const loop = (() => {
-    const chars = command.split('');
-    for (const [a, b] of shellWrites ? shellWrites.quotedSpans(command) : []) for (let i = a; i < b; i++) if (chars[i] !== '\n') chars[i] = ' ';
-    const masked = chars.join('');
+    const masked = blankQuoted(command);
     const LOOP_RE = /\bfor\s+([A-Za-z_]\w*)\s+in\b((?:(?!\bdo\b)[\s\S])*?)\bdo\b((?:(?!\bdone\b)[\s\S])*)/dgi;
     for (const m of masked.matchAll(LOOP_RE)) {
       const [listFrom, listTo] = m.indices[2];
@@ -2347,7 +2398,7 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
         // sized per file only when cat reads the variable itself (`cat "$f"`), never a path built on it (`${d}/SKILL.md`)
         const bare = new RegExp(`^(?:-\\w+\\s+)*["']?\\$(?:\\{${m[1]}\\}|${m[1]}\\b)["']?$`).test(operand);
         if (new RegExp(`\\$\\{?${m[1]}\\b`).test(operand) && (SWEEP_EXT_ANY.test(list) || SWEEP_EXT_ANY.test(operand))
-          && !(bare && smallLiteralLoop(list)))
+          && !(bare && smallLiteralLoop(list)) && !countedFrom(masked, from))
           return { var: m[1], operand: operand.slice(0, 120) };
       }
     }
@@ -2364,7 +2415,10 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
     // skill directory - 35 of them in the measured dump, 46 in the next. So the exemption does not
     // cover markdown: a repeated literal `.md` name across a tree is the sweep, not the idiom.
     const namedOne = namedFind && !/\.md\b/i.test(namedFind[2] || '');
-    if (loop || (!namedOne && SWEEP_EXT_ANY.test(sweepM[0]))) {
+    const sweepMasked = loop ? '' : blankQuoted(sweepM[0]);
+    const catAt = loop ? -1 : sweepMasked.search(/(?:-exec|\bxargs\b(?:\s+-\w+)*)\s+cat\b/i);
+    const counted = catAt >= 0 && countedFrom(sweepMasked, catAt + sweepMasked.slice(catAt).search(/\bcat\b/) + 3);
+    if (loop || (!namedOne && !counted && SWEEP_EXT_ANY.test(sweepM[0]))) {
       global.BLOCK_DETAIL = loop ? { branch: 'sweep', var: loop.var, operand: loop.operand } : { branch: 'sweep', shape: sweep };
       process.stderr.write(
         `Blocked: whole-file sweep of source files via ${sweep}.\n` +
@@ -2524,8 +2578,13 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
     // judge nothing rather than deny on a guess. This failed CLOSED before, and half the denials
     // in one measured project were `$R/...` paths the session had every right to read.
     if (isVar(f)) continue;
-    // A glob is a sweep whatever each file weighs - markdown included, the most measured sweep (`cat skills/*/SKILL.md`).
+    // A glob is a sweep - markdown included, the most measured sweep (`cat skills/*/SKILL.md`) - unless it expands to
+    // files that together print no more than one cat the size gate lets through (audit 2026-10-20 C28, 3a8a1ee3 /
+    // 56ca25cb: `cat Req/ReorderCategories*.cs` over two 2-line files, and a glob matching one generated migration or
+    // none, were denied and the next call read the same files by name). A glob it cannot expand stays a sweep.
     if (/[*?[]/.test(f) && (GATED_EXT.test(f) || SWEEP_EXT_ANY.test(f))) {
+      const matched = unfollowedCd ? null : globFiles(nativePath(f));
+      if (matched && smallFiles(matched)) continue;
       process.stderr.write(
         `Blocked: a glob (${f}) hands every matching file to cat - a whole-file sweep, whatever each one weighs.\n` +
         `Name the one file and read a range, or locate the symbol first:\n` + serenaHint(f),
@@ -2621,6 +2680,23 @@ if (!GATED_EXT.test(path)) {
   // session 05c925e9).
   const docsRel = docsRootEnv().replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
   const planFile = /\.md$/i.test(path) && String(path).replace(/\\/g, '/').includes(`${docsRel}/plans/`);
+  if (size > BIG_BYTES && whole && !planFile && /\.pdf$/i.test(path)) {
+    // A PDF is read by PAGE: the Read tool takes one of 10 pages or fewer whole, and a longer one only through `pages`,
+    // at most 20 a call - the binary remedy below ('head -c', 'file') answered nothing for one (hooks review 2026-10-16).
+    // The page count is the document's own page objects; a count it hides (compressed object streams) asks for pages.
+    let pages = 0;
+    try {
+      const fd = fs.openSync(path, 'r');
+      const buf = Buffer.alloc(Math.min(size, 8 * 1024 * 1024));
+      fs.readSync(fd, buf, 0, buf.length, 0);
+      fs.closeSync(fd);
+      pages = (buf.toString('latin1').match(/\/Type\s*\/Page(?![A-Za-z])/g) || []).length;
+    } catch { pages = 0; }
+    if (pages > 0 && pages <= 10) process.exit(0);
+    process.stderr.write(`Blocked: whole-file Read of ${path} (${Math.round(size / 1024)}KB, ${pages ? `${pages} pages` : 'page count unknown'}).\n`
+      + 'Read a PDF by page: Read with `pages: "1-5"` (at most 20 pages a call), then the next range only if the first did not answer.\n');
+    process.exit(2);
+  }
   if (size > BIG_BYTES && whole && !planFile) {
     // A grep remedy needs LINES. This branch judges size, not language, so it also catches the 93KB
     // PNG and the one-line minified bundle, where `grep -n` and an offset+limit Read both answer
@@ -2661,12 +2737,9 @@ const wholeShape = (input.offset ?? 0) <= 1 && (input.limit == null || input.lim
 if (wholeShape) {
   const state = treeState(pathMod.resolve(anchorDirs[0] || process.cwd(), path));
   process.stderr.write(
-    `Blocked: whole-file Read of ${path} (${lineCount} lines).\n` +
-      `Per alfred-navigation.md, Read is for code you've ALREADY located - never to find a symbol.\n` +
-      `A limit that covers the whole file is still a whole-file Read - and so is\n` +
-      `offset 1 with limit = the file's line count (measured: that exact retry got\n` +
-      `blocked twice in a row). Ranged reads of one file may cover at most ${Math.round(CAP * 100)}% of it per session -\n` +
-      `read the located symbol's range, never halves (a second half is blocked next).\n` +
+    `Blocked: whole-file Read of ${path} (${lineCount} lines). Read is for code you've ALREADY located: locate the\n` +
+      `symbol, then Read its range with offset+limit. A limit covering the whole file is still a whole read, and ranges\n` +
+      `of one file may cover at most ${Math.round(CAP * 100)}% of it per session - never read it in halves.\n` +
       (state === 'changed' ? `Reviewing this change? Its diff is the review route: git diff HEAD -- '${path}'\n` : '') +
       serenaHint(path),
   );

@@ -24,6 +24,9 @@
 //   template    - a live line still carries the template's own authoring text
 //   rule        - the `## Rules` list names a rule `.claude/rules/` does not hold; or, once it names a rule
 //                 the install copies, a rule file there it neither names nor covers with a glob (`alfred-*`)
+//   shadowed    - a CLAUDE.md, .claude/CLAUDE.md or CLAUDE.local.md on an AGENTS.md's path keeps Claude Code
+//                 from reading it (the project's or any folder above for the root file, a part's own folder for a
+//                 part's), unless it imports that AGENTS.md; the row names the CLAUDE.md, line 1
 //
 // Only the LIVE text is read: HTML comments are stripped from what Claude loads, so they are stripped
 // here too, line numbers kept. With no --file it checks the root and .claude/ AGENTS.md and CLAUDE.md and
@@ -113,6 +116,12 @@ const WHY = {
 const posix = (p) => p.split(path.sep).join('/');
 const exists = (p) => { try { fs.statSync(p); return true; } catch { return false; } };
 const isFile = (p) => { try { return fs.statSync(p).isFile(); } catch { return false; } };
+// A rule file whose frontmatter carries `paths:` - Claude Code attaches it on a matching file touch, by its own glob.
+const pathScoped = (p) =>
+{
+    try { return /^paths\s*:/m.test((/^---\r?\n([\s\S]*?)\r?\n---/.exec(fs.readFileSync(p, 'utf8')) || [])[1] || ''); }
+    catch { return false; }
+};
 const normalize = (text) => String(text).replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
 
 // The comments blanked out, every newline kept, so a line number means the same in both.
@@ -514,7 +523,10 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
         for (const f of files)
         {
             const stem = f.slice(0, -3);
-            if (!rules.named.has(stem) && !rules.globs.some((re) => re.test(stem))) add(rules.line, 0, 'rule', `.claude/rules/${f}`, WHY.ruleUnnamed);
+            // A path-scoped rule attaches by its own `paths:` glob, and the template's Rules prose says so instead of
+            // listing each one: an unnamed one is no gap. Counting them raised 11 false rows per install, asked about
+            // in update and again in validate (audit 2026-10-20 C23, e43969a7, 24841a36).
+            if (!rules.named.has(stem) && !rules.globs.some((re) => re.test(stem)) && !pathScoped(path.join(RULES_DIR, f))) add(rules.line, 0, 'rule', `.claude/rules/${f}`, WHY.ruleUnnamed);
         }
     }
     if (unfilledSeed(text, template === null ? readTemplate() : template)) add(1, -1, 'template', 'the template', 'never filled: only its H1 and ## Rules are live');
@@ -574,6 +586,60 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
     }
 }
 
+// The files that make Claude Code read the CLAUDE.md files instead of an AGENTS.md on their path
+// (code.claude.com/docs/en/memory, 'When Claude Code reads AGENTS.md', read 2026-10-16): ~/.claude/CLAUDE.md, a
+// managed CLAUDE.md and .claude/rules/ do not count. The seed lives at .claude/AGENTS.md, so the CLAUDE.md the
+// harness's own `init` writes, or one a user adds, turns the project's file off with no message (system audit
+// 2026-10-16).
+const SHADOWING = ['CLAUDE.md', path.join('.claude', 'CLAUDE.md'), 'CLAUDE.local.md'];
+
+// The files a memory file imports: `@path` on a live line, read from the importing file's folder - never in an
+// HTML comment, a fenced block or a code span, which the harness does not import from either.
+function importsOf(file)
+{
+    const text = readFileOrNull(file);
+    if (text === null) return new Set();
+    const out = new Set();
+    let inFence = false;
+    for (const line of stripComments(normalize(text)).live.split('\n'))
+    {
+        if (/^\s*(`{3,}|~{3,})/.test(line)) { inFence = !inFence; continue; }
+        if (inFence) continue;
+        for (const m of line.replace(/`[^`\n]+`/g, (s) => ' '.repeat(s.length)).matchAll(/(^|\s)@([^\s`]+)/g))
+        {
+            const target = m[2].replace(/[.,;:)]+$/, '');
+            if (target && !target.startsWith('~')) out.add(path.resolve(path.dirname(file), target));
+        }
+    }
+    return out;
+}
+
+// An AGENTS.md a CLAUDE.md keeps from loading. The root file (and .claude/'s) is read only while none of the three sits
+// in the project or any folder above it; a part's only while its own folder holds none. A CLAUDE.md that imports the
+// AGENTS.md loads it, and one carrying the keep marker is a choice the user made.
+function shadowedRows(root, targets)
+{
+    const rows = [];
+    const top = path.resolve(root);
+    for (const target of targets.filter((t) => path.basename(t) === 'AGENTS.md'))
+    {
+        const agents = path.join(top, target);
+        const own = path.dirname(target) === '.' || target === posix(path.join('.claude', 'AGENTS.md'));
+        const dirs = [];
+        if (own) for (let d = top; ; d = path.dirname(d)) { dirs.push(d); if (path.dirname(d) === d) break; }
+        else dirs.push(path.join(top, path.dirname(target)));
+        for (const dir of dirs)
+            for (const name of SHADOWING)
+            {
+                const file = path.join(dir, name);
+                if (!isFile(file) || importsOf(file).has(agents) || KEEP_MARKER.test(readFileOrNull(file) || '')) continue;
+                rows.push({ file: posix(path.relative(top, file)), line: 1, kind: 'shadowed', what: target,
+                    why: `is not loaded while this file sits on its path - import it (\`@${posix(path.relative(path.dirname(file), agents))}\`) or set Project instructions to claude-md-and-agents-md in /config` });
+            }
+    }
+    return rows;
+}
+
 function main(argv, { out = (s) => process.stdout.write(s), err = (s) => process.stderr.write(s) } = {})
 {
     let root = process.cwd();
@@ -614,6 +680,7 @@ function main(argv, { out = (s) => process.stdout.write(s), err = (s) => process
         catch (e) { err(`agents-md-check: ${file} unreadable (${e.code || e.message})\n`); return 2; }
         findings.push(...checkText({ root, file, text, template, docsRoot, index }));
     }
+    findings.push(...shadowedRows(root, targets));
     for (const f of findings) out(`${f.file}:${f.line} ${f.kind}: ${f.what} - ${f.why}\n`);
     if (!findings.length) { out(`agents-md-check: clean (${targets.length} file(s))\n`); return 0; }
     out(`agents-md-check: ${findings.length} finding(s) in ${new Set(findings.map((f) => f.file)).size} file(s)\n`);
@@ -696,4 +763,4 @@ if (require.main === module)
     require('../stack/hooks/hook-prelude.js').blockingStdio();
     process.exit(main(process.argv.slice(2)));
 }
-module.exports = { checkText, findFiles, main, stripComments };
+module.exports = { checkText, findFiles, main, shadowedRows, stripComments };

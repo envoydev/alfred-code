@@ -1,6 +1,6 @@
 ---
 name: alfred-code
-description: "Route to the right Alfred Code action when unsure which fits - inspects the install state and answers with the exact command to run: /alfred-code:setup (fresh install - the selection and the install), /alfred-code:init (the one-time bootstrap after setup's restart - services, memory level, captures, AGENTS.md), /alfred-code:update (no-questions refresh + prune of upstream removals), /alfred-code:configure (adjust an existing install - add or drop), /alfred-code:validate (reconcile an install against THIS project - prune what its frameworks do not use and add the detected stacks' missing artifacts), /alfred-code:status (read-only per-area tables of what is installed), /alfred-code:uninstall (remove the stack from this project, keeping the user's own config). Trigger by invoking /alfred-code."
+description: "Route to the right Alfred Code action when unsure which fits - inspects the install state and answers with the exact command to run: /alfred-code:init (nothing installed: the selection and the install, ending on a restart; typed again after it: the one-time bootstrap - services, memory level, captures, AGENTS.md), /alfred-code:update (no-questions refresh + prune of upstream removals), /alfred-code:configure (adjust an existing install - add or drop), /alfred-code:validate (reconcile an install against THIS project - prune what its frameworks do not use and add the detected stacks' missing artifacts), /alfred-code:status (read-only per-area tables of what is installed), /alfred-code:uninstall (remove the stack from this project, keeping the user's own config). Trigger by invoking /alfred-code."
 disable-model-invocation: true
 ---
 
@@ -19,21 +19,21 @@ yourself. The state is one script read of the project's `.claude/`, nothing infe
 - **Legacy unstamped** = no install record, but a legacy copy-route install's signatures in `.claude/` -
   two of: the stack's hook files, its env keys, three or more of its skill, seat or rule names.
 - **Initialised** = the stamp's `initialised:` line holds a date - init's memory step writes it once
-  the old notes are in the shared memory, and no other run does. Setup writes
+  the old notes are in the shared memory, and no other run does. The install phase writes
   `initialised: pending`; a stamp from before that line counts as initialised when
   `autoMemoryEnabled: false` sits in `settings.json` or `settings.local.json`.
 
 Then:
 
-- Not installed -> `/alfred-code:setup` (fresh install: the selection and the install; it ends on a
-  restart).
+- Not installed -> `/alfred-code:init` (its install phase: the selection and the install; it ends on a
+  restart, and the same command typed in the new session runs the bootstrap).
 - Worktree of an installed checkout -> no command here: 'This is a git worktree of <main>, which
   holds the install - run /alfred-code:<the command the ask needs> from there' - every command stops
   on this tree, and the installer refuses it.
 - Legacy unstamped -> `/alfred-code:update`, whatever the ask: it reads the picks off disk, each old
   name under its new one, and writes the stamp every other command reads.
-- Installed, never initialised -> `/alfred-code:init` (the one-time bootstrap, in a session started
-  after setup's restart: the services the MCP servers need, the memory level, the captures, the
+- Installed, never initialised -> `/alfred-code:init` (its bootstrap phase, in a session started
+  after the install's restart: the services the MCP servers need, the memory level, the captures, the
   AGENTS.md fill). Initialised -> no bootstrap; one of the lines below.
 - Installed and the ask is a plain refresh (no items named) -> `/alfred-code:update` (refresh
   everything installed + prune what upstream removed).
@@ -54,6 +54,6 @@ Then:
   `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/post-install.md`.
 
 Answer with the command plus one line naming the state you found (for example: 'no install record
-in `.claude/` - run `/alfred-code:setup`'). When more than one reading is plausible, put the
+in `.claude/` - run `/alfred-code:init`'). When more than one reading is plausible, put the
 candidates through AskUserQuestion - one option per plausible command, the likeliest marked
 Recommended - instead of guessing or asking in prose.

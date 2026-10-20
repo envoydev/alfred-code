@@ -23,7 +23,8 @@ process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'account-'));
 
 fs.mkdirSync(path.join(ROOT, 'src'), { recursive: true });
 fs.writeFileSync(path.join(ROOT, '.env'), 'DB_HOST=localhost\nAPI_KEY=abc123\n');
-fs.writeFileSync(path.join(ROOT, 'src', 'big.js'), 'const a = 1;\n'.repeat(400));
+// twice the read guard's THRESHOLD (400 lines since the 2026-10-16 deep review), so a whole dump is past it, not at it
+fs.writeFileSync(path.join(ROOT, 'src', 'big.js'), 'const a = 1;\n'.repeat(800));
 fs.writeFileSync(path.join(ROOT, 'package.json'), '{}\n');
 
 const call = (hook, command) => spawnSync(process.execPath, [hook], {

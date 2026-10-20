@@ -96,7 +96,7 @@ test('M68: the browser-only screenshot line leaves the always-on navigation rule
 {
     const nav = injected('alfred-navigation');
     assert.ok(!/screenshot/i.test(nav), 'the browser row owns screenshot readback');
-    const row = read('stack/skills/capture-agent-awareness/references/generated-rule-template.md').split('\n').find((l) => l.startsWith('- `browser` - '));
+    const row = read('stack/skills/capture-awareness/references/agents.md').split('\n').find((l) => l.startsWith('- `browser` - '));
     assert.ok(row && row.includes('never the iteration loop'), 'the browser row carries the mid-loop rule');
     // The M68 ruling stands - one rule text for every teammate, never a per-OS rule COPY. Audit 2026-10-14 RU13 (the
     // user's ruling): a per-host hook line is no copy, so the Windows line rides memory-session.js on win32 only, and the
@@ -173,7 +173,7 @@ test('rules F3: the AGENTS template restates none of the seven always-on rules -
     const rulesSection = text.slice(text.indexOf('\n## Rules'));
     for (const name of ['interaction', 'quality-gates', 'security', 'git', 'navigation', 'docs-root', 'memory'])
         assert.ok(!rulesSection.includes(`| \`.claude/rules/alfred-${name}.md\` |`), `alfred-${name}.md has a template row`);
-    for (const generated of ['alfred-agent-awareness', 'alfred-architecture', 'alfred-related-context', 'alfred-project-awareness', 'project-code-style'])
+    for (const generated of ['alfred-awareness', 'alfred-architecture', 'project-code-style'])
         assert.ok(rulesSection.includes(`| \`.claude/rules/${generated}.md\` (GENERATED`), `${generated}.md keeps its GENERATED row`);
 });
 
@@ -342,7 +342,7 @@ test('C23: the docs-root rule names the ignore-honouring grep and the two search
 // `## ` heading diff, never the check. 0cdb0c1d: 'a fresh session' beside a separate restart row let /clear satisfy it.
 test('C29: update passes the running plugin root, runs the AGENTS.md check itself, and folds the capture into the restart', () =>
 {
-    const update = squash(read('setup-plugin/commands/update.md'));
+    const update = squash(['setup-plugin/commands/update.md', 'setup-plugin/references/update-walk.md', 'setup-plugin/references/update-close.md'].map(read).join('\n'));
     assert.match(update, /update-preflight\.js" --log "\$TMP\/install\.log" --hooks <step 2's changed: hooks=N> --running "\$\{CLAUDE_PLUGIN_ROOT\}"/);
     const six = update.slice(update.indexOf('## 6. Reconcile'), update.indexOf('## 7. Post-check'));
     const check = six.indexOf('agents-md-check.js" --root .');

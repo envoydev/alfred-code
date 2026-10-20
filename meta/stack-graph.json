@@ -31,15 +31,15 @@
       "mcps": [],
       "plugins": []
     },
-    "capture-agent-awareness": {
-      "mcps": [],
-      "plugins": []
-    },
     "capture-architecture": {
       "mcps": [],
       "plugins": []
     },
     "capture-architecture-quality": {
+      "mcps": [],
+      "plugins": []
+    },
+    "capture-awareness": {
       "mcps": [],
       "plugins": []
     },
@@ -53,16 +53,6 @@
     },
     "capture-first-look": {
       "mcps": [],
-      "plugins": []
-    },
-    "capture-project-awareness": {
-      "mcps": [],
-      "plugins": []
-    },
-    "capture-related-projects": {
-      "mcps": [
-        "alfred-memory"
-      ],
       "plugins": []
     },
     "capture-test-coverage": {
@@ -1211,7 +1201,7 @@
     "hooks": [
       "check-turn-build",
       "docs-session",
-      "guard-answer-length",
+      "guard-answer",
       "guard-catastrophic-rm",
       "guard-config-protection",
       "guard-cross-project-write",
@@ -1225,8 +1215,7 @@
       "guard-ungated-commit",
       "history-session",
       "instrument-tool-usage",
-      "memory-session",
-      "monitor-session"
+      "memory-session"
     ]
   },
   "mcps": {

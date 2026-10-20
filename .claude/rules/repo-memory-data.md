@@ -66,12 +66,12 @@ The memory levels and stores, where the docs root and the data root live, and th
   delta-sync tables (off unless `MCP_SYNC_EVENTLOG` is set); measured on a copy of a real database: 11.14.0 then stored,
   listed and searched over the migrated file, `memory.js export` read it, and both versions returned the same top hit.
   So installs on either pin may share one file; the readers here use columns by name (the re-embed's whole-row read only
-  carries the new one into its backup, and re-stores through the service). SETUP never
-  imports: `/alfred-code:init`, in the session after setup's restart (`scripts/install/memory.js
+  carries the new one into its backup, and re-stores through the service). The INSTALL phase never
+  imports: `/alfred-code:init`'s bootstrap phase, in the session after the install's restart (`scripts/install/memory.js
   init`), imports the project's existing `MEMORY.md` / `memory/*.md` notes into the chosen database
   once, through the service (idempotent), and only after that import succeeds switches Claude's own
   memory off (`autoMemoryEnabled: false`) and writes the stamp's `initialised:` line. With NO notes to
-  import, setup's install switches it off itself, behind the same gate (the memory server and
+  import, the install phase switches it off itself, behind the same gate (the memory server and
   `alfred-memory.md` selected and on disk; an unreadable notes folder counts as notes), and init only
   reports it - init runs inside the session, where the pilot-2 sandbox refused its settings write. The switch-off
   lands in THIS project's own `.claude/settings.json` at project and user scope, and in
@@ -97,8 +97,8 @@ The memory levels and stores, where the docs root and the data root live, and th
   `memory/*.md`) is SWITCHED OFF (`autoMemoryEnabled: false`) by the install when the project has no
   notes, else by `/alfred-code:init` after a one-time import of its existing notes into the `memory` MCP - it has no search and is not shared
   with Cursor, which is why the MCP replaces it rather than sitting beside it. Which repos are
-  related lives in the generated `.claude/rules/alfred-related-context.md` (the
-  `/capture-related-projects` skill), not memory. The session HISTORY (`<docs-path>/history/`,
+  related lives in `<docs-path>/awareness/RELATED-PROJECTS-AWARENESS.md` (the `/capture-awareness` skill, imported by the
+  generated `alfred-awareness.md`), not memory. The session HISTORY (`<docs-path>/history/`,
   `history-session.js`) is the third, machine-local and never shared: what each session did and what
   the user ruled, script-written, read back at the next start on the same branch - a record, not memory.
 - **The docs root lives outside `.claude/`** (2.0.0, the user's decision of 2026-09-26). Claude Code
@@ -187,8 +187,10 @@ The memory levels and stores, where the docs root and the data root live, and th
   deliberately (that skill or `loop-architecture-quality`), never after each change. The code
   style lives in `<docs-path>/code-style/CODE-STYLE.md` + the path-scoped `project-code-style.md` rule
   (owned by `capture-code-style`). The run book lives in
-  `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` (owned by
-  `capture-project-awareness`, repo facts first, the user's answers for the gaps): a
+  `<docs-path>/awareness/PROJECT-AWARENESS.md` (owned by `capture-awareness`, repo facts first, the user's answers for
+  the gaps; `project-capabilities/PROJECT-CAPABILITIES.md` through 2.5.0, moved by `docs.migrateDocsDomains` with its
+  `watch.json`, then `docs.migrateAwareness` re-spells its section ids and moves its branch versions; the generated
+  `alfred-awareness.md` `@`-imports it so every session loads it at its start): a
   credential appears there only as WHERE it lives - an env var, a vault item, or a key in the
   project's `<data root>/.sensitive-data` (the capture writes its keys empty only when the file is absent) - never
   as a value. The capture's own `credentials.local.env` before 2026-10-13 is moved into that store by every install

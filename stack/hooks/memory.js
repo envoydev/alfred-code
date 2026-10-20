@@ -461,14 +461,16 @@ const headingName = (line) => { const m = /^##\s+(.+?)\s*$/.exec(line); return m
 const ruleFieldName = (line) => { const m = /^\s*-?\s*name:\s*(.+?)\s*$/.exec(line); return m ? m[1].replace(/^['"]|['"]$/g, '').trim() : null; };
 const linesOf = (text, pick) => String(text).split(/\r?\n/).map(pick).filter(Boolean);
 
-// Names from the related-projects domain (shape: stack/skills/capture-related-projects/references/artifact-shapes.md):
-// `<docsRoot>/related-projects/RELATED-PROJECTS.md` first - one '## <name>' heading per sibling - else
-// the generated awareness rule `.claude/rules/alfred-related-context.md` (a 'name:' field per
-// sibling entry). Neither PRESENT (not neither non-empty) -> []; the doc wins whenever it exists at all,
-// so an emptied doc is read as "no siblings", never silently backed by a stale rule copy.
+// Names from the related-projects doc (shape: stack/skills/capture-awareness/references/related-projects.md):
+// `<docsRoot>/awareness/RELATED-PROJECTS-AWARENESS.md` first - one '## <name>' heading per sibling - then its
+// 2026-10-15 home `related-projects/RELATED-PROJECTS.md`, else the generated rule it replaced,
+// `.claude/rules/alfred-related-context.md` (a 'name:' field per sibling entry). None PRESENT (not none
+// non-empty) -> []; a doc wins whenever it exists at all, so an emptied doc - a standalone repo's 'none' answer
+// included - is read as "no siblings", never silently backed by a stale rule copy.
 function relatedProjects(projectRoot, docsRoot) {
-  const docFile = path.join(docsRoot, 'related-projects', 'RELATED-PROJECTS.md');
-  if (fs.existsSync(docFile)) {
+  const docFile = [path.join(docsRoot, 'awareness', 'RELATED-PROJECTS-AWARENESS.md'), path.join(docsRoot, 'related-projects', 'RELATED-PROJECTS.md')]
+    .find((f) => fs.existsSync(f));
+  if (docFile) {
     try { return linesOf(fs.readFileSync(docFile, 'utf8'), headingName); } catch { return []; }
   }
   // The 2.x line reads the pre-2.1.6 name too: an install the update has not moved yet still holds it.
@@ -547,7 +549,14 @@ const isAgentTagged = (tags) => tags.some((t) => t.startsWith('agent:'));
 // A seat's handoff note (alfred-memory.md): one run's working state, read by exact tags and purged at the run's close -
 // never a memory the session-start block re-sends.
 const isHandoff = (tags) => tags.some((t) => t === 'handoff' || t.startsWith('handoff:'));
-const matchesProject = (tags, name) => tags.includes(`project:${name}`) || tags.includes(name);
+// The project tag is compared case-folded on both sides (audit 2026-10-20 C19, 8da401b1 / 79e1a1a5): the name is the
+// checkout's basename with its case, and a session tagged `project:Foo` missed every `project:foo` memory - among them
+// the one forbidding the build the session then ran. Exact on the comma-split list still: `app` never matches `app-web`.
+const isProjectTag = (t) => /^project:/i.test(t);
+const matchesProject = (tags, name) => {
+  const n = String(name == null ? '' : name).toLowerCase();
+  return tags.some((t) => { const l = t.toLowerCase(); return l === `project:${n}` || l === n; });
+};
 
 // The service validates memory_type against its OWN built-in vocabulary and silently stores anything
 // else as 'observation' (proven live) - so these four are the only kinds a preference/correction group
@@ -622,7 +631,7 @@ function selectForSession(dbPath, { project = '', related = [], capBytes = 4096,
       picked.push({ row, key });
     }
   };
-  const prefScope = (tags, row) => isPrefOrCorrection(row) && ((project && matchesProject(tags, project)) || !tags.some((t) => t.startsWith('project:')));
+  const prefScope = (tags, row) => isPrefOrCorrection(row) && ((project && matchesProject(tags, project)) || !tags.some(isProjectTag));
   const young = (row) => { const d = ageDays(row, now); return d != null && d < YOUNG_DAYS; };
   take((tags, row) => prefScope(tags, row) && young(row), 'preference');
   if (project) take((tags, row) => matchesProject(tags, project) && !isPrefOrCorrection(row), 'own');

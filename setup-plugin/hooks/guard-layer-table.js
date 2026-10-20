@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // PreToolUse (AskUserQuestion): a guided-walk ask must follow the PASTED table it asks about.
-// setup / configure / validate render each layer's catalog with `stack-select.js --table <layer>`
+// init's install phase / configure / validate render each layer's catalog with `stack-select.js --table <layer>`
 // and the command body mandates pasting that output before the selection ask. As prose it failed:
 // a real setup run asked the agents question naming rows '3-5, 11-19, 32-34' with no table on
 // screen, and the user had to answer 'I do not see any table'. The tool result is collapsed in the
 // UI, so only the assistant's own text reaches the user.
-// Lives in the PLUGIN, not stack/hooks: a fresh setup has no stack hooks until its install step.
+// Lives in the PLUGIN, not stack/hooks: a fresh install has no stack hooks until its install step.
 // Decision tables: `stack-select.js --table <layer>` (proof: its `total: N <layer>` footer), the
 // four validate-only audit flags `--redundant`/`--missing`/`--evidence-gaps`/`--judgment` (proof: the
 // rendered table's own state words - REDUNDANT/MISSING/DISABLED or JUDGMENT-DROP/JUDGMENT-ADD - since
@@ -24,13 +24,13 @@
 // selection ask ('Agents: ...', 'Add to the installed skills?') inside a walk also needs that layer's
 // table to have RUN since the typed prompt - same valve, counted per layer (2.1.7). Audit 2026-10-11: configure step 1's
 // `update-preflight.js --inventory` table is a decision table too (proof: its `total: <n> installed` line), and step 1's
-// closing ask ('Adjust the installed selection?') needs it to have run; inside a typed setup / configure / validate run
+// closing ask ('Adjust the installed selection?') needs it to have run; inside a typed init / configure / validate run
 // that has printed a step banner, a gap in the banner numbers denies the next ask. Each has its own valve of three.
 // exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unreadable.
 //
 // STACK HOOK GATES (2.1.5 M4) - the core's hook-prelude.js, reached from the plugin root (the core entry ships
 // the whole repo). The csv opt-out, `hook_profile: minimal` and a Cursor payload all stand it down
-// like any non-protective hook; GATE 4 is skipped (`setUp: false`), since it serves the setup walk before any
+// like any non-protective hook; GATE 4 is skipped (`setUp: false`), since it serves the install walk before any
 // install record exists - and such a repo is written nothing (R54), so the block row waits for an installed one.
 const fs = require('fs');
 const path = require('path');
@@ -112,7 +112,7 @@ const TABLE_RE = /stack-select\.js\b(?:[^\n]|\\\r?\n)*?--table\s+["']?([a-z]+)/;
 const AUDIT_RE = /stack-select\.js\b(?:[^\n]|\\\r?\n)*?--(redundant|missing|evidence-gaps|judgment)\b/;
 const AUDIT_PROOF = /\b(REDUNDANT|MISSING|DISABLED|JUDGMENT-DROP|JUDGMENT-ADD)\b/;
 // Reports proven by their LAST line in the assistant text. `skip` is the flag that makes the same
-// script print no table; `empty` is the all-clear line, which setup and validate pass over silently.
+// script print no table; `empty` is the all-clear line, which init's install phase and validate pass over silently.
 const NEVER = /(?!)/;
 const INVENTORY_RE = /update-preflight\.js\b(?:[^\n]|\\\r?\n)*?--inventory\b/;
 const LAST_LINE_REPORTS = [
@@ -220,12 +220,13 @@ const span = (rs, kind) => {
 const STEP1_ASK = /^\s*Adjust the installed selection\?/i;
 const asksStep1 = (input) => (input && Array.isArray(input.questions) ? input.questions : []).some((q) => STEP1_ASK.test(String((q && q.question) || '')));
 
-// THE SKELETON (audit 2026-10-11): setup, configure and validate print one `[step n/N - <name>]` banner per step, a
+// THE SKELETON (audit 2026-10-11): init (both phases), configure and validate print one `[step n/N - <name>]` banner per step, a
 // skipped step's banner with one line saying why. Six of six guided runs in one consuming project skipped banners
 // (session 5f9fec85 printed 6 of 13, 6288ad94 2 of 12), and nothing read the clause. Judged only inside such a run once
 // it has printed a banner: every step number from the first banner seen since the typed prompt to the highest must have
 // printed one. A run that prints none is not judged here (configure step 1's inventory gate catches its first ask).
-const GUIDED = /\balfred-code:(setup|configure|validate)\b/;
+// setup merged into init on 2026-10-17; init's bootstrap phase prints banners too.
+const GUIDED = /\balfred-code:(init|configure|validate)\b/;
 const BANNER = /\[step (\d+)\/(\d+) - /g;
 const bannerGap = (rs) => {
   const s = span(rs, 'step banner');

@@ -940,6 +940,38 @@ function psTargets(words) {
 const FS_CHANGE = new Set(['rm', 'rmdir', 'mkdir', 'touch', 'truncate', 'chmod', 'chown', 'rimraf']);
 const COPY_VERBS = new Set(['cp', 'mv', 'ln', 'install', 'rsync']);
 const IN_PLACE = /^-[A-Za-z]*i(?![A-Za-z0-9_])/;
+// sed's own argument grammar (GNU and BSD): which words are its in-place TARGETS. The script is the first operand unless
+// -e / -f (or --expression / --file) name it, so every other operand is a file, whatever its text looks like - reading
+// the script by its SHAPE missed `/a/d;/b/d` and `/x/s/a/b/` and blocked 27 of 47 cross-project writes as an
+// out-of-project path (hooks review 2026-10-16). `-i` / `-I` end their flag word (the rest is the backup suffix:
+// `-i.bak`, `-ie`); a bare one takes the next word as BSD's suffix only when it is one (`''`, `.bak`), so GNU's
+// `sed -i 's/a/b/' f` keeps its script. `--` ends the options.
+const SED_SUFFIX = /^(?:\.[\w.~-]*)?$/;
+function sedTargets(argv) {
+  let inPlace = false;
+  let scripted = false;
+  const operands = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--') { operands.push(...argv.slice(i + 1)); break; }
+    if (a.startsWith('--')) {
+      const m = /^--([a-z-]+)(=?)/.exec(a) || ['', '', ''];
+      if (m[1] === 'in-place') inPlace = true;
+      else if (m[1] === 'expression' || m[1] === 'file') { scripted = true; if (!m[2]) i++; }
+      else if (m[1] === 'line-length' && !m[2]) i++;
+      continue;
+    }
+    if (a.length < 2 || a[0] !== '-') { operands.push(a); continue; }
+    for (let k = 1; k < a.length; k++) {
+      const flag = a[k];
+      const last = k === a.length - 1;
+      if (flag === 'e' || flag === 'f') { scripted = true; if (last) i++; break; }
+      if (flag === 'i' || flag === 'I') { inPlace = true; if (last && i + 1 < argv.length && SED_SUFFIX.test(argv[i + 1])) i++; break; }
+      if (flag === 'l') { if (last && /^\d+$/.test(argv[i + 1] || '')) i++; break; }
+    }
+  }
+  return inPlace ? (scripted ? operands : operands.slice(1)) : [];
+}
 const WRITE_REDIRS = new Set(['>', '>>', '>|', '&>', '&>>', '<>']);
 // `>&word` is `&>word` unless the word is a descriptor (`>&2`, `>&-`).
 const isFileRedir = (r) => r.target && (WRITE_REDIRS.has(r.op) || (r.op === '>&' && !/^(?:\d+|-)$/.test(r.target.raw)));
@@ -954,8 +986,10 @@ function writesOf(cmd, c, out) {
   const plain = (a) => a && !a.startsWith('-');
   if (name === 'tee') {
     for (const a of c.argv) if (plain(a)) push(a, 'a `tee` write');
-  } else if ((name === 'sed' || name === 'perl') && c.argv.some((a) => IN_PLACE.test(a) || a === '--in-place' || a.startsWith('--in-place='))) {
-    // in-place edits: every path argument, not just the last - `sed -i 's/a/b/' ../other/f x`
+  } else if (name === 'sed') {
+    // in-place edits: every file operand, not just the last - `sed -i 's/a/b/' ../other/f x`
+    for (const a of sedTargets(c.argv)) if (a) push(a, 'an in-place edit');
+  } else if (name === 'perl' && c.argv.some((a) => IN_PLACE.test(a))) {
     for (const a of c.argv) if (plain(a) && !SED_SCRIPT.test(a) && !SED_SCRIPT_ARG.test(a)) push(a, 'an in-place edit');
   } else if (FS_CHANGE.has(name)) {
     // every argument counts: `rm -f a ../other/b`, `chmod +x ../other/x` - but chmod's MODE and chown's OWNER are the
@@ -1077,12 +1111,16 @@ function commandWords(text, P) {
 const INTERP = /^(?:python[\d.]*|node|nodejs|ruby|perl|php|deno|bun|osascript|pwsh|powershell)$/;
 const SCRIPT_FLAG = /^(?:-[A-Za-z]*[eEcr]|-p|--eval|--print|-Command|-command)$/;
 // The shell words after `from` up to the command's end, each unquoted: a double-quoted word drops its escapes (`\"` is
-// `"`), a single-quoted or `$'...'` one is taken as written.
-function wordsFrom(text, from) {
+// `"`), a single-quoted or `$'...'` one is taken as written. `expands`, when given, gets one flag per word: a `$` the
+// shell expands (unquoted or double-quoted) is in it.
+function wordsFrom(text, from, expands) {
   const words = [];
   let cur = null;
+  let exp = false;
+  const flush = () => { words.push(cur); if (expands) expands.push(exp); cur = null; exp = false; };
   for (let i = from; i < text.length; i++) {
     const c = text[i];
+    if (c === '$' && text[i + 1] !== "'") exp = true;
     if (c === "'" || (c === '$' && text[i + 1] === "'")) {
       if (c === '$') i++;
       const end = text.indexOf("'", i + 1);
@@ -1093,15 +1131,18 @@ function wordsFrom(text, from) {
     }
     if (c === '"') {
       cur = cur || '';
-      for (i++; i < text.length && text[i] !== '"'; i++) cur += text[i] === '\\' && i + 1 < text.length ? text[++i] : text[i];
+      for (i++; i < text.length && text[i] !== '"'; i++) {
+        if (text[i] === '$') exp = true;
+        cur += text[i] === '\\' && i + 1 < text.length ? text[++i] : text[i];
+      }
       continue;
     }
     if (c === '\\' && i + 1 < text.length) { cur = (cur || '') + text[++i]; continue; }
     if (c === ';' || c === '&' || c === '|' || c === '\n' || c === ')' || c === '<' || c === '>') break;
-    if (c === ' ' || c === '\t' || c === '\r') { if (cur !== null) { words.push(cur); cur = null; } continue; }
+    if (c === ' ' || c === '\t' || c === '\r') { if (cur !== null) flush(); continue; }
     cur = (cur || '') + c;
   }
-  if (cur !== null) words.push(cur);
+  if (cur !== null) flush();
   return words;
 }
 const LIT = String.raw`(["'])([^"'\n]+)\1`;
@@ -1121,8 +1162,37 @@ const STR_BIND = /(?:^|[\s;{(,])(?:(?:const|let|var)\s+)?([A-Za-z_$][\w$]*)\s*=\
 const OPEN_NAME = /\b(?:open|fopen)\s*\(\s*([A-Za-z_$][\w$]*)\s*,\s*(?:mode\s*=\s*)?(["'])([^"'\n]*)\2/g;
 const WRITE_NAME = /\b(?:writeFileSync|appendFileSync|createWriteStream|writeFile|appendFile)\s*\(\s*([A-Za-z_$][\w$]*)\s*[,)]/g;
 const PATH_NAME_CALL = new RegExp(String.raw`\bPath\s*\(\s*([A-Za-z_$][\w$]*)\s*\)\s*\.\s*(?:write_text|write_bytes)\b`, 'g');
+// A write whose path is the script's own argument (`process.argv[1]`, `sys.argv[1]`) takes the shell word handed to it,
+// and one whose path is any other expression (`path.join(...)`, a template) is computed (audit 2026-10-20, found beside
+// C25: `node -e 'require("fs").writeFileSync(process.argv[1], ...)' <path>` registered no write at all).
+const WRITE_ARGV = /\b(?:writeFileSync|appendFileSync|createWriteStream|writeFile|appendFile)\s*\(\s*(?:process|sys)\.argv\[(\d+)\]/g;
+const OPEN_ARGV = /\b(?:open|fopen)\s*\(\s*sys\.argv\[(\d+)\]\s*,\s*(?:mode\s*=\s*)?(["'])([^"'\n]*)\2/g;
+const WRITE_EXPR = /\b(?:writeFileSync|appendFileSync|createWriteStream|writeFile|appendFile)\s*\(\s*(?!["']|[A-Za-z_$][\w$]*\s*[,)]|(?:process|sys)\.argv\[\d+\])(?=\S)/g;
 // The target a script's computed write reports: a variable spelling, so a guard that cannot judge `$NAME` skips it.
 const UNKNOWN_WRITE = '$UNKNOWN_INTERPRETER_WRITE';
+// Where a script's string literals sit, so a write verb only counts in CODE (audit 2026-10-20 C31, 970539b7: a python
+// heredoc's `s.replace("...", "fs.mkdirSync('/work/out/dumps', ...)")` - text the script writes into a file - was read as
+// a node write outside the project). Quote-aware over ', ", ` and the triple forms; a one-quote string ends at its line's
+// end, so a comment's apostrophe (`# don't`) costs at most the rest of its own line. A verb inside a string is text.
+function codeStrings(body) {
+  const mark = new Uint8Array(body.length);
+  for (let i = 0; i < body.length; i++) {
+    const c = body[i];
+    if (c !== "'" && c !== '"' && c !== '`') continue;
+    const triple = c !== '`' && body[i + 1] === c && body[i + 2] === c;
+    const close = triple ? c + c + c : c;
+    let j = i + close.length;
+    for (; j < body.length; j++) {
+      if (body[j] === '\\') { j++; continue; }
+      if (!triple && c !== '`' && body[j] === '\n') break;
+      if (body.startsWith(close, j)) break;
+    }
+    const stop = Math.min(body.length, j + (body.startsWith(close, j) ? close.length : 0));
+    mark.fill(1, i, stop);
+    i = stop - 1;
+  }
+  return (at) => mark[at] === 1;
+}
 function interpreterTargets(raw, P, heredocs) {
   const scripts = [];
   const runtimes = [];
@@ -1133,15 +1203,28 @@ function interpreterTargets(raw, P, heredocs) {
   const heredocCmd = heredocOwners(P, heredocs);
   for (const h of heredocs) {
     const owner = heredocCmd.get(h.index);
-    if (owner && runElems.has(owner.elem)) scripts.push({ body: bodyOf(raw, h), index: h.index });
+    // an unquoted tag's body is expanded by the shell; `<<'EOF'` / `<<\EOF` hands it over verbatim
+    if (owner && runElems.has(owner.elem)) scripts.push({ body: bodyOf(raw, h), index: h.index, shellExpands: !/['"\\]/.test(raw.slice(h.index, h.openEnd)) });
   }
   // `node -e "…"` / `python3 -c '…'` - the whole script argument after its flag
   for (const r of runtimes) {
-    const words = wordsFrom(raw, r.cmd.words[r.c.at].e);
+    const expands = [];
+    const words = wordsFrom(raw, r.cmd.words[r.c.at].e, expands);
     for (let i = 0; i < words.length - 1; i++) {
-      if (SCRIPT_FLAG.test(words[i]) && !words[i + 1].startsWith('-')) scripts.push({ body: words[i + 1], index: r.at });
+      // the words after the script are its argv: node's process.argv[1] and python's sys.argv[1] are the first of them
+      if (SCRIPT_FLAG.test(words[i]) && !words[i + 1].startsWith('-')) scripts.push({ body: words[i + 1], index: r.at, shellExpands: expands[i + 1], argv: words.slice(i + 2) });
     }
   }
+  // A `$NAME` the SHELL expands in the script (a double-quoted `-e "..."`, an unquoted heredoc) takes the newest literal
+  // the same command assigned it before the runtime (audit 2026-10-20 C25, 4d71a1b3: `D=<docs>/x; node -e "...
+  // writeFileSync('$D/SUMMARY.md', ...)"` was an unknown write, held by the docs gate as a source edit). Anything else
+  // stays computed.
+  const events = P.assignEvents || [];
+  const shellValue = (name, at) => {
+    let v = null;
+    for (const e of events) if (e.kind === 'set' && e.name === name && e.at < at) v = /[$`]/.test(String(e.value)) || !e.value ? null : e.value;
+    return v;
+  };
   const out = [];
   // A write whose path the script computes (a loop variable, a parameter, an f-string) is still a write: one row per
   // script, `unknown`, spelled as a variable so every guard that skips an unexpanded `$NAME` skips it and the docs hook
@@ -1153,24 +1236,34 @@ function interpreterTargets(raw, P, heredocs) {
     unknown.add(index);
     out.push({ raw: UNKNOWN_WRITE, index, what: 'an interpreter write', verb: 'interpreter', unknown: true });
   };
+  let expandHere = false;
   const literal = (p, index) => {
+    if (expandHere && /\$/.test(p)) p = p.replace(/\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)/g, (m, br, bare) => { const v = shellValue(br || bare, index); return v === null ? m : v; });
     if (/[${]/.test(p)) { computed(index); return; } // interpolated - the path is computed, don't guess it
     out.push({ raw: p, index, what: 'an interpreter write', verb: 'interpreter' });
   };
-  for (const { body, index } of scripts) {
-    for (const m of body.matchAll(WRITE_CALL)) literal(m[2], index);
-    for (const m of body.matchAll(OPEN_CALL)) if (/[wax+]/.test(m[4])) literal(m[2], index);
-    for (const m of body.matchAll(PATH_CALL)) literal(m[2], index);
-    const destroyed = new Set([...body.matchAll(DESTROYED)].map((d) => d[1]));
-    for (const b of body.matchAll(PATH_BIND)) if (destroyed.has(b[1])) literal(b[3], index);
+  for (const { body, index, shellExpands, argv } of scripts) {
+    expandHere = !!shellExpands;
+    const inStr = codeStrings(body);
+    // a match counts only where its verb (or bound name) sits in code, never inside a string literal
+    const code = (m, word) => !inStr(m.index + Math.max(0, m[0].indexOf(word)));
+    for (const m of body.matchAll(WRITE_CALL)) if (!inStr(m.index)) literal(m[2], index);
+    for (const m of body.matchAll(OPEN_CALL)) if (!inStr(m.index) && /[wax+]/.test(m[4])) literal(m[2], index);
+    for (const m of body.matchAll(PATH_CALL)) if (!inStr(m.index)) literal(m[2], index);
+    const destroyed = new Set([...body.matchAll(DESTROYED)].filter((d) => !inStr(d.index)).map((d) => d[1]));
+    for (const b of body.matchAll(PATH_BIND)) if (!inStr(b.index) && destroyed.has(b[1])) literal(b[3], index);
     // `p = '<literal>'` ... `open(p, 'w')` / `writeFileSync(f, ...)` / `Path(p).write_text(...)`: the name resolves to every
     // literal the script binds it to (81264f0d: 14 such edits to 13 files reached no rule and no docs gate)
     const bound = new Map();
-    for (const b of body.matchAll(STR_BIND)) { if (!bound.has(b[1])) bound.set(b[1], []); bound.get(b[1]).push(b[3]); }
+    for (const b of body.matchAll(STR_BIND)) { if (!code(b, b[1])) continue; if (!bound.has(b[1])) bound.set(b[1], []); bound.get(b[1]).push(b[3]); }
     const byName = (name, index) => { const lits = bound.get(name); if (lits) for (const l of lits) literal(l, index); else computed(index); };
-    for (const m of body.matchAll(OPEN_NAME)) if (/[wax+]/.test(m[3])) byName(m[1], index);
-    for (const m of body.matchAll(WRITE_NAME)) byName(m[1], index);
-    for (const m of body.matchAll(PATH_NAME_CALL)) byName(m[1], index);
+    for (const m of body.matchAll(OPEN_NAME)) if (!inStr(m.index) && /[wax+]/.test(m[3])) byName(m[1], index);
+    for (const m of body.matchAll(WRITE_NAME)) if (!inStr(m.index)) byName(m[1], index);
+    for (const m of body.matchAll(PATH_NAME_CALL)) if (!inStr(m.index)) byName(m[1], index);
+    const byArg = (k, index) => { const w = argv && argv[Number(k) - 1]; if (w && Number(k) > 0) literal(w, index); else computed(index); };
+    for (const m of body.matchAll(WRITE_ARGV)) if (!inStr(m.index)) byArg(m[1], index);
+    for (const m of body.matchAll(OPEN_ARGV)) if (!inStr(m.index) && /[wax+]/.test(m[3])) byArg(m[1], index);
+    for (const m of body.matchAll(WRITE_EXPR)) if (!inStr(m.index)) computed(index);
   }
   return out;
 }
@@ -2104,7 +2197,7 @@ function gitText(raw, cwd) {
     try { dir = fs.realpathSync.native(dir); } catch { /* git reports the missing directory itself */ }
     return dir;
   }
-  return { command, parsed, calls, regions, unreadAt, callDir };
+  return { command, parsed, calls, regions, unreadAt, callDir, literalAt };
 }
 
 // Read a command's writes. `opts` (all optional): `cwd` resolves a script file a shell runs (without one only an

@@ -105,12 +105,57 @@ test("C15: an answer to the user's own question listing others' or deferred item
   // 69dbed46: the user picked the fresh session; the mandated close read 'committed' + 'next steps'
   const fresh = [typed('continue'), call('ask1', 'AskUserQuestion', { questions: [{ question: 'Resume?', options: [{ label: 'Resume in a fresh session (Recommended)' }, { label: 'Continue here' }] }] }),
     result('ask1', 'Your questions have been answered: "Resume?"="Resume in a fresh session (Recommended)"'), ...work(4)];
-  const resume = 'Result: state is saved for a fresh session. Nothing is committed or pushed.\n\nNext steps: T1 src work, then T2 to T7.';
+  const resume = 'Result: state is saved for a fresh session. Nothing is committed or pushed.\n\n1. Type `/clear`.\n2. Paste:\n\n```text\n/task-solve plans/x.md - resume at step 4\n```\n\nNext steps: T1 src work, then T2 to T7.';
   assert.strictEqual(over(fresh, resume).status, 0, 'the close the fresh-session answer asked for');
   assert.strictEqual(over([typed('continue'), ...work(4)], resume).status, 2, 'the same close with no such answer is the stall');
   const offeredOnly = [typed('continue'), call('ask2', 'AskUserQuestion', { questions: [{ question: 'Next?', options: [{ label: 'Commit now (Recommended)' }, { label: 'Resume in a fresh session' }] }] }),
     result('ask2', 'Your questions have been answered: "Next?"="Commit now (Recommended)"'), ...work(4)];
   assert.strictEqual(over(offeredOnly, resume).status, 2, 'an ask that only offered the fresh session, answered another way, is no pick');
+});
+
+test('resume block (the user\'s ruling, 2026-10-15): a fresh-session pick closes with the paste text in a fenced block, held once without it', () => {
+  const picked = (label, id) => [typed('continue'), call(id, 'AskUserQuestion', { questions: [{ question: 'Resume?', options: [{ label }, { label: 'Continue here' }] }] }),
+    result(id, `Your questions have been answered: "Resume?"="${label}"`), ...work(2)];
+  const pointer = 'Result: the plan file now holds the punch list.\nProgress: 4 of 6 steps\nLeftovers: punch list P1-P9 for the fresh session.\n\nStopping here: type /clear, then paste the resume block above.';
+  const held = over(picked('Resume in a fresh session (Recommended)', 'r1'), pointer);
+  assert.strictEqual(held.status, 2, 'the measured close: a pointer at a block nobody can see');
+  assert.match(held.stderr, /RESUME BLOCK/);
+  assert.match(held.stderr, /ALONE in its own fenced block - the flow's command naming its plan or state file and nothing more/);
+  const block = 'Result: the plan file now holds the punch list.\n\n**Resume in a fresh session**\n1. In the project root, type `/clear`.\n2. Paste this line and send it:\n\n```text\n/task-solve plans/audit.md\n```\n\nNext: step 5 CONFORMANCE - fix P1-P9, re-review -> close.';
+  assert.strictEqual(over(picked('Resume in a fresh session (Recommended)', 'r2'), block).status, 0, 'the block passes');
+  assert.strictEqual(over(picked('Start it in a fresh session (Recommended)', 'r3'), 'Leaving this chat here.').status, 2, 'a new cycle\'s hand-off owes it too');
+  assert.strictEqual(over(picked('Resume in a fresh session (Recommended)', 'r4'), 'Paste:\n\n```\n```').status, 2, 'an empty fence is no paste text');
+  // a setting that names a fresh session is no hand-off (the setup walk's trigger answer), nor an ask answered another way
+  assert.strictEqual(over(picked('Offer a fresh session (Recommended)', 'r5'), 'Setup is complete. Nothing is pending.').status, 0, 'a setting, not a pick');
+  assert.strictEqual(over([typed('go'), ...work(2)], 'Result: done, nothing pending.').status, 0, 'no ask, no block');
+});
+
+test('resume block (the 2026-10-17 usage audit): a pointer at a block above is held with none shown, and an ask\'s pointer is reworded', () => {
+  // the Stop half: no pick this turn, the close still points at a resume block nobody printed
+  const pointer = 'Context compacted; the plan file holds every tick. Type /clear, then paste the resume block above.';
+  const held = over([typed('continue'), ...work(2)], pointer);
+  assert.strictEqual(held.status, 2, 'a pointer with no fence anywhere since the typed turn');
+  assert.match(held.stderr, /points at a resume block above, and none is on screen/);
+  const earlier = [typed('continue'), say('e1', 'Resume later with:\n\n```text\n/task-solve plans/x.md\n```'), ...work(2)];
+  assert.strictEqual(over(earlier, 'Stopping here - paste the resume block above after /clear.').status, 0, 'a block this turn already printed is above');
+  assert.strictEqual(over([typed('go'), ...work(2)], 'Fixed the paste handler; the command above now trims input. Nothing pending.').status, 0, 'a code pointer is no resume pointer');
+  // the ask half: task-solve's compaction ask promised 'the paste-ready block above' with no block on screen
+  const askRun = (rows, label, description) => spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: `ask${++seq}`, hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion',
+    transcript_path: transcript(rows), tool_input: { questions: [{ question: 'Context compacted during task 3. Fresh: ~40k, here: ~45k.', header: 'Resume',
+      options: [{ label, description }, { label: 'Continue the build here', description: 'on the compacted summary' }] }] } }), encoding: 'utf8', env: logEnv() });
+  const upd = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.updatedInput || null; } catch { return null; } };
+  const at45k = (id, text) => ({ type: 'assistant', message: { id, content: [{ type: 'text', text }], usage: { cache_read_input_tokens: 45000 } } });
+  const plain = [typed('continue'), at45k('p1', 'Build goes on.')];
+  const fixedAsk = askRun(plain, 'Resume in a fresh session (Recommended)', 'the paste-ready block above; this chat stops here');
+  assert.strictEqual(fixedAsk.status, 0, fixedAsk.stderr);
+  assert.strictEqual(upd(fixedAsk).questions[0].options[0].description, 'the resume block, printed after this answer; this chat stops here', 'reworded in place');
+  assert.strictEqual(upd(fixedAsk).questions[0].options[1].description, 'on the compacted summary', 'the other option untouched');
+  assert.match(JSON.parse(fixedAsk.stdout).hookSpecificOutput.additionalContext, /ends with the resume block in its own fenced block/);
+  const shown = [typed('continue'), at45k('p2', 'Resume block:\n\n```text\n/task-solve plans/x.md\n```')];
+  assert.strictEqual(upd(askRun(shown, 'Resume in a fresh session (Recommended)', 'the paste-ready block above; this chat stops here')), null, 'a block on screen is above');
+  assert.strictEqual(upd(askRun(plain, 'Resume in a fresh session (Recommended)', 'the resume block ends this turn; this chat stops here')), null, 'the template wording passes untouched');
+  const skill = fs.readFileSync(path.join(__dirname, '..', 'stack', 'skills', 'task-solve', 'SKILL.md'), 'utf8');
+  assert.doesNotMatch(skill, /block above/, 'task-solve\'s own asks point at no block above');
 });
 
 test('C15: the corpus replay neighbours stay clean', () => {
@@ -160,11 +205,23 @@ test('C15: the ask branch counts typed turns on the live branch, and push as git
   const reply2 = { type: 'assistant', uuid: 'r2', parentUuid: 'l2', message: { id: 'r2', content: [{ type: 'text', text: 'on it' }] } };
   assert.match(ask([p, live, second, reply2], q), /more than one message/, 'two typed turns on one chain still count');
   assert.match(ask([typed('a'), typed('b'), say('r3', 'ok')], q), /more than one message/, 'a transcript with no uuids is read in order');
+  // hooks review 2026-10-16: 42 notes in two weeks, none over two typed messages - harness rows, interrupts and built-in
+  // local commands (their output row follows them) are no message
+  const stdout = (t) => typed(`<local-command-stdout>${t}</local-command-stdout>`);
+  for (const [rows, why] of [
+    [[typed('[Request interrupted by user]'), typed('fix the header too')], 'an interrupt and one message'],
+    [[typed('<command-name>/exit</command-name>'), stdout('Goodbye!'), typed('carry on with task 4')], '/exit and its output, then one message'],
+    [[typed('<command-name>/reload-plugins</command-name>'), { type: 'system', subtype: 'local_command', content: '<local-command-stdout>Reloaded: 7 plugins</local-command-stdout>' },
+      typed('<command-name>/alfred-code:update</command-name>')], '/reload-plugins (a system output row), then a command'],
+    [[typed('<task-notification><task-id>a1</task-id></task-notification>'), typed('<task-notification><task-id>a2</task-id></task-notification>')], 'two task notices'],
+  ]) assert.doesNotMatch(ask([...rows, say(`h${seq}`, 'ok')], q), /more than one message/, why);
+  assert.match(ask([typed('<command-name>/task-solve</command-name> the view'), typed('and the admin view'), say('h9', 'ok')], q), /more than one message/,
+    'a command with no output row of its own is a typed message');
   // ecea6d56: a push NOTIFICATION check is not git state
   const pushCheck = [{ question: 'Run the push check on the Android emulator against staging?', options: [{ label: 'Run it (Recommended)', description: 'x' }, { label: 'Defer', description: 'y' }] }];
-  assert.doesNotMatch(ask([typed('go'), say('s1', 'ok')], pushCheck), /named repository, remote or job state/);
+  assert.doesNotMatch(ask([typed('go'), say('s1', 'ok')], pushCheck), /This ask named (?:remote or job|git) state/);
   const gitPush = [{ question: 'Push to origin/develop?', options: [{ label: 'Push now (Recommended)', description: 'x' }, { label: 'Hold', description: 'y' }] }];
-  assert.match(ask([typed('go'), say('s2', 'ok')], gitPush), /named repository, remote or job state/);
+  assert.match(ask([typed('go'), say('s2', 'ok')], gitPush), /This ask named (?:remote or job|git) state/);
 });
 
 // Audit 2026-10-10 C18, 0824440b: the commit / publish ask carried three different recommended options across three
@@ -215,7 +272,8 @@ test('SD10: an answer to a request for information from a read-only turn is no d
   assert.strictEqual(over(survey('merge them in order'), answer).status, 2, 'an instruction is no request for information');
   const id = `x${seq}`;
   assert.strictEqual(over(survey('Show me the order', [call(id, 'Edit', { file_path: 'a.cs', old_string: 'a', new_string: 'b' }), result(id, 'ok')]), answer).status, 2, 'a turn that edited a file');
-  for (const command of ['git stash pop', 'git commit -qm wip', 'git branch t4', 'git status > state.txt', 'git log $(cat ref)', 'npm install', 'sed -i s/a/b/ f.txt', 'find . -name x -delete']) {
+  // a substitution is judged as the command it runs (audit 2026-10-20 C03): `git log $(cat ref)` reads, this one changes
+  for (const command of ['git stash pop', 'git commit -qm wip', 'git branch t4', 'git status > state.txt', 'git log $(git stash pop)', 'npm install', 'sed -i s/a/b/ f.txt', 'find . -name x -delete']) {
     const k = `y${seq}`;
     assert.strictEqual(over(survey('Show me the order', [call(k, 'Bash', { command }), result(k, 'ok')]), answer).status, 2, `a changing call: ${command}`);
   }
@@ -233,10 +291,10 @@ test('SD10: a merge, PR or remote ask is backed only by a remote-aware read', ()
   };
   const ran = (command) => { const id = `r${seq}`; return [typed('go'), call(id, 'Bash', { command }), result(id, 'ok')]; };
   const merged = 'The check needs the new services. Recommended: wait until ticket 3 is merged and install that build.';
-  assert.match(ask(ran('git status --short'), merged), /lives past the local clone/, 'the measured ask: git status cannot see a merge');
+  assert.match(ask(ran('git status --short'), merged), /no remote-aware read in this turn/, 'the measured ask: git status cannot see a merge');
   for (const command of ['git fetch -q && git log origin/develop --oneline -5', 'git branch -r --merged origin/develop', 'gh pr view 42'])
-    assert.doesNotMatch(ask(ran(command), merged), /named repository, remote or job state/, `a remote-aware read: ${command}`);
-  assert.doesNotMatch(ask(ran('git status --short'), 'Commit the staged files now?'), /named repository/, 'a local ask keeps the local read');
+    assert.doesNotMatch(ask(ran(command), merged), /This ask named (?:remote or job|git) state/, `a remote-aware read: ${command}`);
+  assert.doesNotMatch(ask(ran('git status --short'), 'Commit the staged files now?'), /This ask named/, 'a local ask keeps the local read');
   assert.match(ask(ran('ls'), 'Commit the staged files now?'), /no `git status`/, '... and its own note without one');
 });
 
@@ -257,4 +315,141 @@ test('SD10: a continuation that made a tool call after this hook\'s block is jud
   now(result('e1', 'ok'));
   assert.strictEqual(stop(ask2, true).status, 2, 'the measured miss: new work, a new prose question, judged');
   assert.strictEqual(stop(ask2, true).status, 0, 'and it holds once more, until the next call');
+});
+
+// Hooks review 2026-10-16: 20 done-close blocks read against their transcripts - 3 right, 15 wrong. The two causes behind 9
+// of the wrong ones: a NEGATED done word read as a done report, and a read-only answer to a question vetoed by any
+// hand-back phrase although it named nothing pending. Each close below is a measured one's load-bearing clause, reworded.
+test('hooks review: a negated done word reports nothing done, and a negated unpushed / uncommitted is no pending item', () => {
+  for (const [text, why] of [
+    ['The method parses the header first. Nothing is committed. Nobody has run it in the real app. You can check by opening the settings page.', 'row 14: an explanation'],
+    ["Nothing is committed or pushed. I'll report the full-suite result when it finishes, and then you can decide on committing.", "row 15: 'committed or pushed' after the negation"],
+    ['You do not need to be present for each round: nothing gets pushed until the last one. Your auto instruction covers the rest.', "row 12: 'gets'"],
+    ["Added it as a task in the open-items file. That file isn't committed. The order that matters: confirm a deploy works first.", "row 10: 'isn't committed'"],
+    ['Nothing is left to implement, and nothing is unpushed or uncommitted. Develop CI is green.', 'row 3: the pending side'],
+    ['Зміни у файлі, ще не закомічено. Скажи, якщо треба запушити.', 'a close in another language is not judged (English only, 2026-10-16)'],
+    ['Закомітив. Ще не запушено - чекаю на твоє рішення.', '... a done word beside a pending one included'],
+  ]) assert.strictEqual(close(text).status, 0, why);
+  for (const [text, why] of [
+    ['Committed on develop, 1 ahead of origin, not pushed. Next: /clear, then paste the block.', 'row 2: right, and stays'],
+    ['I pushed the fix. The optional tidy-up is still waiting for your yes or no.', 'row 8: right, and stays'],
+    ['Nothing broke and everything is committed. Push when you approve.', 'a negation that is not about the done word'],
+    ['Tests are not failing anymore, all green. Waiting for your review.', 'a negated failure is still a green report'],
+  ]) assert.strictEqual(close(text).status, 2, why);
+});
+
+test('hooks review: a read-only answer to a question that names nothing pending is no done-close stall, whatever hand-back phrase it carries', () => {
+  const asked = (prompt, extra) => [typed(prompt), ...(extra || [])];
+  const fetched = (prompt) => { const id = `f${seq}`; return asked(prompt, [call(id, 'WebFetch', { url: 'https://example.com/docs', prompt: 'x' }), result(id, 'ok')]); };
+  for (const [rows, text, why] of [
+    [asked('I enabled it, what is next?'), "Reconnect the connector: open its settings and sign in again. Tell me when that's done and I'll read the ticket.", 'row 4'],
+    [asked('can we consider the task as finished?'), 'Yes - finished and verified.\n\nOpen:\n- The diff is uncommitted, because I commit only on your explicit word.', 'row 5: the mandated hold line'],
+    [fetched('can the token reach the private repos?'), 'Yes. The token is tied to your own login, so anything done through it is done as you.', 'row 13: a WebFetch turn'],
+    [asked('how do I add the key to GitHub?'), "Add it in the repository settings, or run the gh command below. Either way, tell me when it's done. I'll confirm the next run picks it up.", 'row 16'],
+    [asked('you want me to start the invoker?'), "Yes - it needs to come from you. Run the start command in a terminal.\n\nReady when the terminal shows 'listening'. Then: /clear and paste the block.", 'row 18'],
+  ]) assert.strictEqual(over(rows, text).status, 0, why);
+  const edited = () => { const id = `e${seq}`; return [call(id, 'Edit', { file_path: 'a.ts', old_string: 'a', new_string: 'b' }), result(id, 'ok')]; };
+  const row4 = "Reconnect the connector: open its settings and sign in again. Tell me when that's done and I'll read the ticket.";
+  assert.strictEqual(over(asked('I enabled it, what is next?', edited()), row4).status, 0, 'a typed question is answered even after an edit (the ruling of 2026-10-20, C03)');
+  assert.strictEqual(over(asked('I enabled it, show me what is next', edited()), row4).status, 2, 'a show-request whose turn changed a file is judged');
+  assert.strictEqual(over(asked('reconnect it for me'), row4).status, 2, 'an instruction is no question');
+  assert.strictEqual(over(asked('what is left?'), 'Committed. The push is pending your approval.').status, 2, 'a pending item keeps the hand-back veto');
+  for (const text of ['All done and committed. Up to you if we push today.', 'Committed on develop. Your call on the push.'])
+    assert.strictEqual(over(asked('what is the status?'), text).status, 2, `a decision handed over in prose still blocks: ${text}`);
+});
+
+// The two single-row causes the sample left (hooks review 2026-10-16, rows 11 and 19): a wait on the running seats' FIXES
+// and CHECKS read as a stall, and the list of decisions an auto-mode run took read as a commit handed to the user.
+test("hooks review: a wait on running seats' fixes and checks is status; a record of decisions taken is no hand-off", () => {
+  const fixes = 'The admin and chat fixes landed. Lint and typecheck pass. Still waiting on the `libs/ui` fixes and the cheat check; the final full gate runs after both report.';
+  assert.strictEqual(over([typed('go')], fixes, { background_tasks: running }).status, 0, 'row 11: the seats are still running');
+  assert.strictEqual(over([typed('go')], fixes, { background_tasks: [] }).status, 2, 'with nothing running it is a stall');
+  assert.strictEqual(over([typed('go')], 'Тести пройшли, готово. Ще чекаю на виправлення від агента.', { background_tasks: running }).status, 0, 'a wait in another language is not judged');
+  assert.strictEqual(over([typed('go')], 'The fixes landed. Still waiting for your check of the login page.', { background_tasks: running }).status, 2,
+    "'your check' is the user's, whatever runs");
+  const record = (heading, items) => `I finished the conformance check and committed the fixes. All checks passed.\n\n${heading}\n${items}`;
+  for (const [text, why] of [
+    [record('Decisions auto-mode made for you:', '- Scope: re-audit, then build the gaps.\n- Commit: commit now.\n- Leftover services: shut down.'), 'row 19'],
+    [record('**Choices taken:**', '1. Commit: commit now.\n2. Push: push later.'), 'a numbered record'],
+    [record('Рішення, які auto-mode ухвалив за тебе:', '- Коміт: закомітити зараз.'), 'a record in another language is not judged'],
+  ]) assert.strictEqual(close(text).status, 0, why);
+  for (const [text, why] of [
+    [record('Decisions to be made:', '- Push: push it when you approve.'), 'decisions still owed'],
+    [record('Decisions auto-mode made for you:', '- Commit: commit now.') + '\n\nPush it when you are ready.', 'a hand-off after the record'],
+  ]) assert.strictEqual(close(text).status, 2, why);
+});
+
+// Audit 2026-10-20 C03 (8a1fb350 L2223): a typed question answered from survey loops - `for f in $(find ...); do
+// s=$(grep ...); echo ...; done | sort` - read as a changing turn, so the answer was held as a done-close. A substitution
+// is judged as the command it runs, the shell's grammar words change nothing; a write anywhere keeps the turn judged.
+test('C03: an answer to a typed question is no done-close stall, read-only or not; a show-request that wrote stays judged', () => {
+  const bash = (command) => { const id = `b${++seq}`; return [call(id, 'Bash', { command }), result(id, 'ok')]; };
+  const answer = 'No open work for the app right now.\n\n- Probably done, but not marked: the parity card has no status line.\n- Not app work: the two cards still open belong to this backend.\n- Every other card is marked done.';
+  const prompt = typed('is there any unfinished tasks left for the app?');
+  for (const command of [
+    "cd repo; for f in $(find docs/cards -name '*.md'); do s=$(grep -m1 -E '^status:' \"$f\"); echo \"$f | ${s:-no status line}\"; done | sort; echo \"control: $(ls docs/cards | wc -l) files\"",
+    'cd repo/docs/cards; for f in a.md b.md; do echo "== $f"; sed -n 1,10p $f | cut -c1-220; done',
+    'cd app; set -o pipefail; /usr/bin/grep -rln "order_done" libs 2>/dev/null | head -5; echo "exit $?"',
+    'n=$((3+4)); [ "$n" = 7 ] && echo ok; if git log -1 --oneline; then echo yes; fi',
+  ]) assert.strictEqual(over([prompt, ...bash(command)], answer).status, 0, command);
+  for (const command of [
+    "f=card.md; c=$(grep -c '^status: OPEN$' $f); [ \"$c\" = 1 ] && sed -i '' 's|^status: OPEN$|status: DONE|' $f",
+    'for f in $(ls); do echo x > "$f.bak"; done',
+    'echo "$(rm -rf build)"',
+    'diff <(cat a) <(cat b)',
+    './tools/grep -r x .',
+  ]) {
+    // the user's ruling of 2026-10-20: a typed question is answered whatever the turn wrote (feb34e2b sed-edited cards)
+    assert.strictEqual(over([prompt, ...bash(command)], answer).status, 0, `a write under a typed question: ${command}`);
+    assert.strictEqual(over([typed('show me the unfinished cards'), ...bash(command)], answer).status, 2, `a write under a show-request stays judged: ${command}`);
+  }
+  assert.strictEqual(over([typed('fix the cards'), ...bash('for f in a b; do echo $f; done')], answer).status, 2, 'an instruction is no question');
+  const sed = bash("sed -i '' 's|^status: OPEN$|status: DONE|' card.md");
+  assert.strictEqual(over([typed('can you mark the cards done?'), ...sed], answer).status, 2, 'a request worded as a question is an instruction');
+  assert.strictEqual(over([typed('Could you close them?'), ...sed], answer).status, 2, 'its capitalised form too');
+  assert.strictEqual(over([typed('cards look stale.\nis that the only task left?'), ...sed], answer).status, 0, 'the question on the last line counts');
+  assert.strictEqual(over([typed('is that the only task left? then fix it'), ...sed], answer).status, 2, 'a question followed by an instruction is not');
+  assert.strictEqual(over([prompt, ...sed], answer + "\n\nI'll mark the parity card next.").status, 2, 'the model\'s own next move still vetoes');
+  assert.strictEqual(over([prompt, ...sed], 'Two cards marked done. The next step is the parity card.').status, 2, 'a pending step still vetoes');
+});
+
+test("C03: the done-close escape says a step the model can do itself is done, not asked", () => {
+  const r = close("Pushed to develop as abc123.\n\n- Leftovers: none. The block I printed earlier still says 'def456 (not pushed)', so fix that line if you already pasted it.");
+  assert.strictEqual(r.status, 2);
+  assert.match(r.stderr, /An owed action\nthat is yours and needs no decision \(a reprint, a re-run, a step a tool you hold can do\) is\ndone in this turn, never asked/);
+});
+
+// Audit 2026-10-20 C45: a value only the user can type ('tell me the farm id' after their own login) is asked in prose -
+// no option can carry it - while the front-loaded offer 'Next I can X, or Y.' is a decision left in prose.
+test("C45: 'tell me the <value>' after a user-only step is no prose ask; 'Next I can X, or Y' is one", () => {
+  const login = "Please enter your credentials there and select the test farm. Once you're logged in, tell me the farm id.";
+  assert.strictEqual(close(login).status, 0, 'fabea019 L1746: the forced ask was rejected and the turn re-ended on the same wait');
+  assert.strictEqual(close('Open the admin page and copy the webhook URL, then tell me the URL it shows.').status, 0, 'a URL to type');
+  // the hand-back shapes the clause exists for still block
+  for (const text of ['Run the migration, then tell me.', 'Check both screens and just tell me.', 'Tell me the option you prefer, or I pick the first.'])
+    assert.strictEqual(close(text).status, 2, text);
+  const next = close('The repro is written down. Next I can drive the wizard in the browser to confirm it, or pull the ticket attachment first.');
+  assert.strictEqual(next.status, 2, 'fcafd69c L275: answered 18 s later with no ask');
+  assert.match(next.stderr, /decision-shaped question in prose/);
+  assert.strictEqual(close('The repro is written down. Next I run the wizard in the browser to confirm it.').status, 0, 'a plain next step offers no alternative');
+});
+
+// Audit 2026-10-20 C02: `2>/dev/null` read as a dev server, so a finite background poll was no live work and its wait was
+// blocked (a09fc7d6); a set of checker seats ('Still waiting on 5 of the 9 checkers', a2920886) named no work word; and a
+// 'Not run:' item held behind the running wait ('Not run: the suite, waiting on the Docker daemon') read as a step.
+test("C02: a '/dev/null' poll is finite live work, checkers and a daemon are work, an item behind a wait is that wait", () => {
+  const poll = (command) => [{ id: 'b1', type: 'shell', status: 'running', command }];
+  const dockerWait = 'Green so far: build and unit tests 1677/1677. Not run: the integration suite, waiting on the Docker daemon (the wait is still going).';
+  assert.strictEqual(over([typed('go')], dockerWait, { background_tasks: poll('for i in $(seq 1 36); do v=$(docker info 2>/dev/null); [ -n "$v" ] && break; sleep 5; done') }).status, 0,
+    'a09fc7d6 L896: the poll ends, and its notice wakes the session');
+  assert.strictEqual(over([typed('go')], dockerWait, { background_tasks: poll('npm test > out.log 2>/dev/null; sleep 1') }).status, 0, 'a suite redirected to /dev/null is finite');
+  // the hold is kept for what it exists for
+  assert.strictEqual(over([typed('go')], dockerWait, { background_tasks: [] }).status, 2, 'nothing out: the wait is a stall');
+  assert.strictEqual(over([typed('go')], dockerWait, { background_tasks: poll('npm run dev 2>/dev/null') }).status, 2, 'a dev server never ends, /dev/null or not');
+  assert.strictEqual(over([typed('go')], dockerWait, { background_tasks: poll('bin/dev') }).status, 2, "a 'bin/dev' launcher is still a server");
+  const checkers = 'The Common checker is done. It found no serious problems. Still waiting on 5 of the 9 checkers.';
+  assert.strictEqual(over([typed('go')], checkers, { background_tasks: running }).status, 0, 'a2920886 L519');
+  assert.strictEqual(over([typed('go')], checkers, { background_tasks: [] }).status, 2, 'with no checker running it is a stall');
+  assert.strictEqual(over([typed('go')], 'Build is done. Not run: the e2e suite. Waiting on the verifier agent.', { background_tasks: running }).status, 2,
+    "a 'Not run:' item in its own sentence is still a step");
 });

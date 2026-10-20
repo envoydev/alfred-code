@@ -71,7 +71,12 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
     msedge, firefox, webkit, each started through `stack/mcp/browser-launch.js` with `--browser <engine>` + profile
     `<data root>/<engine>-control` - an older `.playwright/<engine>` (2.0.0) or `<data root>/browser/<engine>` (2.1.0-2.3.x) serves until its move; firefox/webkit downloaded at the
     release pin) - not one plugin declaring four, which would load four copies of the tool schemas every
-    session. Setup/configure ask `--browsers` (install) and `--browser-enabled` (absent: all
+    session. The walks show and pick each engine as its own MCP row (the user's ruling of 2026-10-15: one `browser` row
+    hid which browsers exist): `stack-select.js --table mcps` expands the entry into the four `<engine>-control` rows
+    (FRESH, a seed or evidence lands on chrome; installed, each reads plan-out's `browser` block), `raw.json` carries the
+    picks by those names, and `--emit` folds them onto `mcp browser` and prints one `browsers: <csv>` line the walk
+    passes as `--browsers`. The walks ask no enable question any more; the installer still takes `--browsers` (install)
+    and `--browser-enabled` (absent: all
     on at install, none flipped by update); the stamp's two lines (`control-engines:`, `control-enabled:`) are the record on EVERY route (a
     switch onto the copy route carries them over, R116), and a stamped engine a run drops is
     uninstalled. On the copy route an engine's plugin row is uninstalled, on or off - except at user
@@ -197,8 +202,9 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
     same name, a reaching record and an unreadable file or listing leave it. The full copy route stands the old ids down instead. Old copy-route registrations
     go on every route by the stack's own shape (the user's own server under an old name is kept), the
     approval lists follow, the read-back and selection lines read old names under the new ones, and
-    the generated project files are re-spelled (`selection.respellRenamed`; a seeded AGENTS.md / CLAUDE.md only while the ledger
-    still holds it at its hash - the user's own is named, never rewritten). A capture never re-runs by itself, so
+    the generated project files are re-spelled (`selection.respellRenamed`; a seeded AGENTS.md the ledger still holds at its
+    hash is rewritten from the release's template instead - `seeds.refreshSeededAgentsMd`, 2026-10-17: a re-spelled 2.5.0
+    seed named one capture three times - and the user's own is named, never rewritten). A capture never re-runs by itself, so
     each update also re-spells the generated rules' routing rows to the route this run serves (`selection.respellMcpRows`):
     a bare `mcp__<server>__` of a server on the plugin route with no registration of its name takes the plugin
     spelling (the copy route's downconvert is the reverse), and an `<engine>-control` row's backticked `.../output/`

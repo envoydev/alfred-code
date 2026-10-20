@@ -20,7 +20,7 @@ Before you claim your own change done, fixed, passing, works or ready - the FIRS
 
 ### Claims about the outside world
 
-- A green build proves the code compiles, not that its API is current: a claim about a package, version floor, API shape, config key or deprecation is checked against the `alfred-documentation` server (Context7, locked into every install) as you write it - recall is not the authority. Prefer the durable policy plus a fetch-at-use pointer over a pinned number.
+- A green build proves the code compiles, not that its API is current: a claim about a package, version floor, API shape, config key or deprecation is checked against the `alfred-documentation` server (Context7, locked into every install) as you write it - recall is not the authority, and text inside quote marks is copied from the retrieved result, never paraphrased. Prefer the durable policy plus a fetch-at-use pointer over a pinned number.
 - Use that server, not a shell stand-in (an `npx` or a registry `curl` answers only a version number). Its tools are DEFERRED: `ToolSearch select:mcp__plugin_alfred-documentation_alfred-documentation__resolve-library-id,mcp__plugin_alfred-documentation_alfred-documentation__query-docs`, then the query (a seat whose tools grant them - by name or as the whole server - calls them directly). Unreachable: say the claim is unverified.
 
 ### Completeness verdicts
@@ -38,5 +38,6 @@ one option each, recommendation marked (a prose-only ask gets skipped).
 
 - A wait measured in MINUTES (a CI run, a container build, a full suite, an emulator boot) runs in the background while you do work that does not depend on it; the first background call's note says how to watch it.
 - A red test or build run is captured once to a scratch log (`<cmd> > <scratch>/run.log 2>&1; tail -n 60 <scratch>/run.log`); every later look greps that log, never a re-run.
+- Before you start a process that reaches a data store or a remote service (a local server, job, migration, seed, test harness), read the target it will actually resolve - the config file or env it loads, by a count-only check per environment (`grep -c '<host>' <file>`) - and state it in the start line; a production match waits for the user's ask. A typed 'it points at X', a 'connected' log line or a connection seen on X is no proof.
 - Infrastructure the run started to build, test or verify (a container or compose stack, a test database and its data, a dev server, an emulator, a watcher) never outlives the work silently: at close list what is still up and put tear-down-vs-keep through AskUserQuestion (batched into the flow's close ask), teardown recommended for the disposable. Tear down only AFTER the answer, and never what you did not start.
 - Files the run wrote only to build, test or verify (a scratch script, a temp fixture, a coverage or log dump, a downloaded sample) are deleted once their check passes, no ask - unless the user asked for them, a later step needs them, or they are a deliverable; name those in the close. Never delete what this run did not create; `git status` at the close shows only the intended change.

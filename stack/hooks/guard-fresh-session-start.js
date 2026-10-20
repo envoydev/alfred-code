@@ -12,7 +12,9 @@
 //                             which fired on every prompt and parsed a `<command-name>` marker, missing
 //                             one typed with a leading space). This route INJECTS the ask; it never
 //                             blocks, because a blocked expansion shows its reason to the user only -
-//                             the run would be lost and the model would never learn why.
+//                             the run would be lost and the model would never learn why. Every typed
+//                             task-* / capture-* / loop-* / issue-* command also gets the MODE BANNER
+//                             (auto-mode ON or OFF, and how the session meets a full context).
 //   SessionStart (compact)  - the harness has just auto-compacted, which is PROOF the session
 //                             reached the ceiling the gate exists for (the harness's own compaction
 //                             point, which moves with the window), at a moment a Stop may never come (measured: 23m27s /
@@ -136,8 +138,54 @@ function compactHoldFile() {
   const key = String(payload.transcript_path || payload.session_id || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
   return nodePath.join(envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir(), `guard-fresh-compact-${key}.hold`);
 }
+// THE ASK-GAP ARM (audit 2026-10-20 C49, 8a1fb350): an ask answered after a long idle never reached the idle-gap offer -
+// that route reads the gap since the last reply at a TYPED prompt, and here the gap sat inside the ask (posted 01:09,
+// answered 05:57); the first call after it re-cached ~170k and 52 messages ran at 198-244k. So a changing call whose
+// newest answered AskUserQuestion waited `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS` or more leaves the idle route's hold,
+// once per ask (a marker naming its tool_use id). The common case pays one 256KB tail read and a substring test.
+function askGapArm() {
+  try {
+    const n = parseFloat(envOf(process.env, 'FRESH_SESSION_AFTER_HOURS'));
+    const hours = Number.isNaN(n) || n < 0 ? 2 : n;
+    const p = payload.transcript_path;
+    if (!(hours > 0) || !p || payload.agent_id) return null;
+    const size = fs.statSync(p).size;
+    const start = Math.max(0, size - 256 * 1024);
+    const fd = fs.openSync(p, 'r');
+    const buf = Buffer.alloc(size - start);
+    try { fs.readSync(fd, buf, 0, buf.length, start); } finally { fs.closeSync(fd); }
+    const text = buf.toString('utf8');
+    if (!text.includes('"AskUserQuestion"')) return null;
+    let ask = null;
+    let answeredAt = NaN;
+    for (const line of text.split('\n')) {
+      if (line.includes('"AskUserQuestion"') && line.includes('"assistant"')) {
+        try {
+          const o = JSON.parse(line);
+          const use = o.type === 'assistant' && Array.isArray(o.message && o.message.content)
+            && o.message.content.find((b) => b && b.type === 'tool_use' && b.name === 'AskUserQuestion');
+          if (use) { ask = { id: String(use.id || ''), at: Date.parse(o.timestamp || '') }; answeredAt = NaN; }
+        } catch { /* the window's cut first line */ }
+      } else if (ask && ask.id && line.includes('"tool_result"') && line.includes(ask.id)) {
+        try {
+          const o = JSON.parse(line);
+          if (o.type === 'user' && Array.isArray(o.message && o.message.content)
+            && o.message.content.some((b) => b && b.type === 'tool_result' && b.tool_use_id === ask.id)) answeredAt = Date.parse(o.timestamp || '');
+        } catch { /* a cut row */ }
+      }
+    }
+    if (!ask || !ask.id || !Number.isFinite(ask.at) || !Number.isFinite(answeredAt)) return null;
+    const gapH = (answeredAt - ask.at) / 3600000;
+    if (gapH < hours) return null;
+    const key = String(p || payload.session_id || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
+    const marker = nodePath.join(envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir(), `guard-fresh-askgap-${key}.armed`);
+    try { if (fs.readFileSync(marker, 'utf8').trim() === ask.id) return null; } catch { /* not armed for this ask */ }
+    return { id: ask.id, gapH: Math.round(gapH * 10) / 10, marker };
+  } catch { return null; }
+}
+const ASK_GAP = IS_HOLD_CALL && !IS_SKILL_CALL ? askGapArm() : null;
 // The common case - no hold pending - leaves before anything else is read.
-if (IS_HOLD_CALL && !IS_SKILL_CALL && !fs.existsSync(compactHoldFile())) process.exit(0);
+if (IS_HOLD_CALL && !IS_SKILL_CALL && !ASK_GAP && !fs.existsSync(compactHoldFile())) process.exit(0);
 if (!IS_SKILL_CALL && !IS_HOLD_CALL && !['UserPromptExpansion', 'UserPromptSubmit', 'SessionStart', 'PreCompact'].includes(EVENT)) process.exit(0);
 
 // The fresh-session arithmetic lives in fresh-session.js beside this hook, shared with
@@ -146,7 +194,7 @@ if (!IS_SKILL_CALL && !IS_HOLD_CALL && !['UserPromptExpansion', 'UserPromptSubmi
 let fresh;
 try { fresh = require(require('path').join(__dirname, 'fresh-session.js')); } catch {
   fresh = {
-    use() {}, freshAt: (k, d) => d, FRESH_AT_200K: 0, FRESH_AT_1M: 0, FRESH_AT_DEFAULT: 0, FRESH_OFF: true, COMPACT_INSTEAD: false,
+    use() {}, freshAt: (k, d) => d, FRESH_AT_200K: 0, FRESH_AT_300K: 0, FRESH_AT_1M: 0, FRESH_OFF: true, COMPACT_INSTEAD: false,
     sessionModelId: () => null, tableWindow: () => null, envWindow: () => null, knownWindow: () => null,
     ctxThreshold: () => null, MIN_RECOVERABLE_SHARE: 0.4, coldFloor: () => null, worthResuming: () => false,
     transcriptSize: () => 0, freshAskAnsweredThisTurn: () => false, askAnsweredSince: () => true,
@@ -184,8 +232,11 @@ function shortStepSince(from) {
   } catch { /* unreadable - not stated */ }
   return false;
 }
-// The idle route's hold (audit 2026-10-11 SD11) waits for WORK: a shell command that writes nothing (no write target, no
-// git write, by shell-writes.js's reader) is the reading a question needs, so it passes and keeps the hold standing.
+// The hold waits for WORK: a shell command that writes nothing (no write target, no git write, by shell-writes.js's
+// reader) is the reading a question needs, so it passes and keeps the hold standing - on the idle route (audit 2026-10-11
+// SD11) and the compaction route alike (audit 2026-10-20 C12, add5a91e: the first call after a compaction, a read-only
+// `cat COMPACT-STATE; grep`, was denied before any post-compaction context could be read - the next call would have read
+// 82k over a 74k floor and released the hold as not worth resuming, with no ask).
 function writesNothing(command) {
   try {
     const sw = require(nodePath.join(__dirname, 'shell-writes.js'));
@@ -199,7 +250,7 @@ function compactHold() {
   try { hold = JSON.parse(fs.readFileSync(compactHoldFile(), 'utf8')); } catch { return; }
   if (payload.agent_id || !hold || typeof hold !== 'object') return;
   const idle = hold.route === 'idle';
-  if (idle && /^(?:Bash|PowerShell|Monitor)$/.test(String(payload.tool_name || '')) && writesNothing((payload.tool_input || {}).command)) return;
+  if (/^(?:Bash|PowerShell|Monitor)$/.test(String(payload.tool_name || '')) && writesNothing((payload.tool_input || {}).command)) return;
   const kind = idle ? 'idle-hold' : 'compact-hold';
   const release = (outcome, detail) => {
     try { fs.unlinkSync(compactHoldFile()); } catch { /* already gone */ }
@@ -220,8 +271,11 @@ function compactHold() {
   const start = floor ? `~${Math.round(floor / 1000)}k, this session's own first message` : 'this install\'s cold floor';
   if (idle) {
     process.stderr.write(
-      `Held once: this session sat idle ${Number(hold.gapH) || 'over the set'}h before this turn, its prompt cache went cold, and the\n`
-      + `fresh-session choice offered at the prompt has not been put to the user yet. It ${carry}; a fresh session\n`
+      (hold.via === 'ask'
+        ? `Held once: this session's last ask waited ${Number(hold.gapH) || 'over the set'}h for its answer, its prompt cache went cold, and the\n`
+          + `fresh-session choice has not been put to the user yet. It ${carry}; a fresh session\n`
+        : `Held once: this session sat idle ${Number(hold.gapH) || 'over the set'}h before this turn, its prompt cache went cold, and the\n`
+          + `fresh-session choice offered at the prompt has not been put to the user yet. It ${carry}; a fresh session\n`)
       + `restarts at ${start}. Before this first change, put the choice to the user as ONE AskUserQuestion:\n`
       + `'Resume in a fresh session (Recommended)' quoting those two numbers (end the turn with the paste-ready resume\n`
       + `block and the plan or state file it resumes from), or continue here. If the remaining work is a single short\n`
@@ -239,7 +293,25 @@ function compactHold() {
   );
   process.exit(2);
 }
+// The ask-gap arm, decided once per ask: offers on, someone at the terminal and a resume worth it leave the idle hold (a
+// standing hold is kept); either way the marker is written, so the next call does not re-read the ask.
+function armAskGap() {
+  try { fs.writeFileSync(ASK_GAP.marker, ASK_GAP.id); } catch { /* a lost marker re-judges the same ask, still once per hold */ }
+  if (FRESH_OFF) return;
+  const last = lastReply();
+  const u = (last && last.usage) || {};
+  const ctx = (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0);
+  const detail = { gapH: ASK_GAP.gapH, ctx, floor: fresh.coldFloor(), via: 'ask-answer' };
+  if (!(ctx > 0) || !worthResuming(ctx)) return;
+  if (unattended(payload)) { ledgerRow({ mode: 'unattended', kind: 'idle-gap-offer', reason: UNATTENDED_SKIP, detail }); return; }
+  try {
+    if (fs.existsSync(compactHoldFile())) return;
+    fs.writeFileSync(compactHoldFile(), JSON.stringify({ at: new Date().toISOString(), size: fresh.transcriptSize(), denied: 0, route: 'idle', via: 'ask', gapH: ASK_GAP.gapH }));
+  } catch { return; }
+  ledgerRow({ mode: 'probe', kind: 'idle-gap-offer', reason: 'probe: the idle hold armed by an ask answered after a long gap', detail });
+}
 if (IS_HOLD_CALL && !IS_SKILL_CALL) {
+  if (ASK_GAP) armAskGap();
   compactHold();
   process.exit(0);
 }
@@ -322,26 +394,53 @@ function idleGapOffer() {
     },
   }));
 }
-// A prompt the user TYPES ends auto-mode in this session (the 2026-10-14 review): someone is at the terminal, so each
-// decision goes to them again and the Stop hold stops - an interrupted run's stamp lived on for the week, answering the
-// user's own later asks. A harness prompt (a task notice, a command's output, a seat's hand-back - hook-prelude.js
-// harnessPrompt) is nobody typing, and a SLASH command carrying the word is the next auto-mode run, which the expansion
-// route starts. Any other prompt ends it, one naming the word included: 'stop auto-mode' and 'auto-mode off' are the
-// likeliest off-switches (audit 2026-10-14 HK13, HK14). Only this session's own AUTO stamp is taken back.
-const AUTO_SLASH_RE = /^\s*\/[A-Za-z0-9:_-]+\b.*(?:^|\s)auto-mode(?=\s|$)/is;
+// Auto-mode ends on the user's word or the run's own close, never on a message typed mid-run (the user's ruling,
+// 2026-10-15: the 2026-10-14 rule ended it on ANY typed prompt, so a remark added mid-run sent every later ask back to
+// the user and offered a fresh session the run would have compacted past). A typed prompt is input to the run, and is
+// told so. Three prompts end it: one asking to stop auto-mode ('stop auto-mode', 'auto-mode off' - audit 2026-10-14
+// HK13; English only since the deep hooks review of 2026-10-16 - a stop asked in another language is the model's to act on,
+// as the injected note says), a bare stop ('stop', 'stop, I will take it from here' - never 'stop using X', which is input),
+// and a typed /task-*, /capture-*, /loop-* or /issue-* command that starts no new auto-mode run (no `--auto-mode` as its
+// first word) - its banner says OFF, so the old stamp must not answer its asks. A harness prompt (a task notice, a
+// command's output, a seat's hand-back - hook-prelude.js harnessPrompt, HK14) is nobody typing; any other slash command
+// (`/compact`) leaves the run alone. Only this session's own AUTO stamp is read. Returns true when it wrote the prompt's context.
+const AUTO_NAME = String.raw`(?:auto[- ]?mode)`;
+const AUTO_OFF_RE = new RegExp([
+  String.raw`(?:^|[^\w-])(?:stop|end|disable|exit|quit|cancel|halt|pause|kill|leave)\s+(?:the\s+|this\s+)?${AUTO_NAME}`,
+  String.raw`${AUTO_NAME}\s*[:,-]?\s*(?:off|stop|end|disabled?)(?![\w-])`,
+  String.raw`(?:^|[^\w-])(?:turn|switch|shut)\s+(?:the\s+)?${AUTO_NAME}\s+off\b`,
+  String.raw`(?:^|[^\w-])(?:turn|switch|shut)\s+off\s+(?:the\s+)?${AUTO_NAME}`,
+].join('|'), 'i');
+const BARE_STOP_RE = /^\s*(?:please\s+)?(?:stop|halt|pause|cancel|abort|enough)(?:\s+(?:it|now|the run|here|everything|please))?\s*(?:[.!,;:]|-\s|$)/i;
+const FLOW_CMD_RE = /^\s*\/(?:alfred-code:)?(?:alfred-)?(?:task|capture|loop|issue)-[a-z][a-z0-9-]*(?=\s|$)/i;
+const AUTO_RUN_CMD_RE = /^\s*\/(?:alfred-code:)?(?:alfred-)?(?:task|capture|loop|issue)-[a-z][a-z0-9-]*\s+--auto-mode(?=\s|$)/i;
 function autoModeEnd() {
   const sid = String(payload.session_id || '');
   const prompt = String(payload.prompt || '');
-  if (!sid || payload.agent_id || harnessPrompt(prompt) || AUTO_SLASH_RE.test(prompt)) return false;
+  if (!sid || payload.agent_id || harnessPrompt(prompt)) return false;
+  const slash = /^\s*\//.test(prompt);
+  // A slash command other than a flow command (`/compact`, a project's own) is no word about the run.
+  if (slash && (!FLOW_CMD_RE.test(prompt) || AUTO_RUN_CMD_RE.test(prompt))) return false;
   const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
   let stamp = null;
   try { stamp = require('./hook-prelude.js').approvalStamp({ ...payload, cwd: root }); } catch { return false; }
   if (!stamp || stamp.session !== sid || !/^AUTO\b/.test(stamp.first)) return false;
+  const file = nodePath.relative(root, stamp.file).split(nodePath.sep).join('/') || stamp.file;
+  if (!slash && !AUTO_OFF_RE.test(prompt) && !BARE_STOP_RE.test(prompt)) {
+    ledgerRow({ mode: 'auto', kind: 'auto-input', reason: 'auto-mode kept: a prompt typed mid-run is input to the run' });
+    process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext:
+      `auto-mode stays ON (${file}): the user typed this message while the run goes on, so it is INPUT to the run - answer `
+      + 'or apply it, then carry on with the run\'s next step; each ask still takes its (Recommended) option. A typed message '
+      + "never ends auto-mode: only the user's word to stop it, or the run's own close, does. If this message asks to stop "
+      + `or pause the run in other words, or the run is already finished, delete ${file} - that ends auto-mode - and say so in one line.` } }));
+    return true;
+  }
   try { fs.rmSync(stamp.file); } catch { return false; }
-  ledgerRow({ mode: 'auto', kind: 'auto-end', reason: 'auto-mode ended: the user typed a prompt' });
+  const why = slash ? 'the user typed a new flow command without --auto-mode' : 'the user asked to stop it';
+  ledgerRow({ mode: 'auto', kind: 'auto-end', reason: `auto-mode ended: ${why}` });
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext:
-    'auto-mode is OFF: the user typed this prompt, so they are at the terminal - put each decision to them again, and a '
-    + 'turn is no longer sent back at its Stop. `auto-mode` on the next task or loop call starts a new run.' } }));
+    `auto-mode is OFF: ${why}, so each decision goes to them again and a turn is no longer sent back at its Stop. `
+    + '`--auto-mode` as the first word after the next /task-*, /capture-*, /loop-* or /issue-* command starts a new run.' } }));
   return true;
 }
 if (EVENT === 'UserPromptSubmit') {
@@ -396,8 +495,9 @@ function flowStamps() {
   try {
     const dir = nodePath.dirname(COMPACT_STATE());
     return fs.readdirSync(dir)
-      // the monitor's state (its turn log and context marker) and the turn check's edit list are working state, not stamps
-      .filter((f) => f !== 'COMPACT-STATE' && f !== 'compact-points.json' && !/^monitor-.*\.(?:json|jsonl|context)$/.test(f) && !/^turn-edits-/.test(f))
+      // the retired monitor's state (its turn log and context marker) and the turn check's marker (an edit list before
+      // 2026-10-16) are working state, not stamps
+      .filter((f) => f !== 'COMPACT-STATE' && f !== 'compact-points.json' && !/^monitor-.*\.(?:json|jsonl|context)$/.test(f) && !/^turn-(?:edits|check)-/.test(f))
       .map((f) => ({ f, age: Math.round((Date.now() - fs.statSync(nodePath.join(dir, f)).mtimeMs) / 60000) }))
       .sort((a, b) => a.f.localeCompare(b.f));
   } catch { return []; }
@@ -420,10 +520,10 @@ function sessionWrites() {
 // The review and per-phase seats are here because they are the same population, measured: one
 // session started `task-verify-code` at 364.6k and `security-review` at 383.1k, together 13.7M
 // cache-read - 27% of the whole session - for 20.5k of output, and the offer arrived nine minutes
-// after that spend. `capture-agent-awareness` is here because the stack's own next-steps card
-// tells the user to run it after every update. The guided plugin commands are here because
+// after that spend. `capture-awareness` is here because the stack's own next-steps card
+// tells the user to run it after every update (its 2026-10-16 parts keep their old names here for an old copy). The guided plugin commands are here because
 // they are multi-phase walks too, and the slash route is what finally reaches them.
-const ORCHESTRATION = /^((alfred-)?(loop-(quality|code-quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|usage-report|related-projects|agent-awareness|project-awareness|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|alfred-code:(init|setup|update|configure|validate))$/;
+const ORCHESTRATION = /^((alfred-)?(loop-(quality|code-quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|awareness|code-quality|code-style|test-coverage|usage-report|related-projects|agent-awareness|project-awareness|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|alfred-code:(init|update|configure|validate))$/;
 // a plugin-namespaced Skill call arrives as `<plugin>:<skill>`; the guided commands are
 // matched on their FULL name, so a bare `/setup` from some other plugin is not read as one of them - and only this
 // stack's own namespace is stripped, so another plugin's `other:task-solve` is not this stack's run (audit 2026-10-08)
@@ -727,27 +827,33 @@ function gatedStepHold() {
   process.exit(2);
 }
 
-// --- AUTO-MODE: `auto-mode` on a task or loop call runs that call unattended (the user's ruling, 2026-10-14) ----------
-// The word on the call is the user's own waiver - the one task-solve's AUTO stamp records - so this hook writes the stamp
+// --- AUTO-MODE: `--auto-mode` on a task, capture, loop or issue call runs that call unattended (the user's ruling, 2026-10-14) ---
+// The flag starts a run only as the FIRST word after a typed /task-*, /capture-*, /loop-* or /issue-* command (the user's
+// rulings: 2026-10-15 added the issue family; 2026-10-17 the capture family, and the flag spelling `--auto-mode` over the
+// bare word, which now starts nothing): anywhere else it is the task's own text - '/task-solve fix the auto-mode
+// banner' started a run - and a prose prompt never starts one. The flag on the call is the user's own waiver - the one task-solve's AUTO stamp records - so this hook writes the stamp
 // itself, naming the session (hook-prelude.js approvalStamp), BEFORE the run's first step. From there every hook that
 // asks a person reads the session as unattended - this gate's fresh-session offers below, the post-compaction hold, the
 // stop contract's prose and pending-close blocks - while the stop contract answers each ask that marks a Recommended
 // option and keeps the session going until the run's close deletes the stamp. A stamp already live for this session is
 // kept, so a second flow in the same run rides it. A seat never starts one: the session that dispatched it owns the run.
 // A digit is part of a skill name (`task-migrate-v2`): the live probe of 2026-10-14 started none for `task-probe2`.
-const AUTO_SKILL_RE = /^(?:alfred-code:)?(?:alfred-)?(?:task|loop)-[a-z][a-z0-9-]*$/;
-const AUTO_WORD_RE = /(?:^|\s)auto-mode(?=\s|$)/i;
+const AUTO_SKILL_RE = /^(?:alfred-code:)?(?:alfred-)?(?:task|capture|loop|issue)-[a-z][a-z0-9-]*$/;
+const AUTO_WORD_RE = /(?:^|\s)--auto-mode(?=\s|$)/i;
+const AUTO_FIRST_RE = /^\s*--auto-mode(?=\s|$)/i;
+// What the OFF banner names as a near miss: the flag anywhere but first, or the bare word that started a run before 2026-10-17.
+const AUTO_MISS_RE = /(?:^|\s)--auto-mode(?=\s|$)|^\s*auto-mode(?=\s|$)/i;
 function autoArgs() {
   if (IS_SKILL_CALL) return String((payload.tool_input || {}).args || '');
   if (EVENT !== 'UserPromptExpansion') return '';
   if (typeof payload.command_args === 'string') return payload.command_args;
   return String(payload.prompt || '').replace(/^\s*\/[A-Za-z0-9:_-]+/, '');
 }
-// The Skill route is the MODEL's call, so the word on its args is the model's: it starts auto-mode only when the user's
-// newest TYPED prompt carries the word too - a slash command's args or a prose ask (the user's ruling, 2026-10-14, after
-// audit HK04 replayed a self-start: 'look at the cache layer' typed, then Skill(task-implement, 'auto-mode') opened the
-// implementer gate). A harness row (a skill body, a seat's hand-back, a task notice, a tool result) is no typed prompt.
-const TYPED_WORD_RE = /(?:^|[^\w-])auto-mode(?![\w-])/i;
+// The Skill route is the MODEL's call, so the flag on its args is the model's: it starts auto-mode only when the user's
+// newest TYPED prompt is itself a task, capture, loop or issue command with `--auto-mode` as its first word (audit HK04 replayed a
+// self-start: 'look at the cache layer' typed, then Skill(task-implement, 'auto-mode') opened the implementer gate; the
+// prose ask it also took - 'run it in auto-mode' - left on 2026-10-15, so a question mentioning the word starts nothing).
+// A harness row (a skill body, a seat's hand-back, a task notice, a tool result) is no typed prompt.
 function lastTypedPrompt() {
   try {
     const p = payload.transcript_path;
@@ -772,11 +878,23 @@ function lastTypedPrompt() {
   } catch { /* no transcript - no typed word */ }
   return '';
 }
+// A typed prompt as an auto-mode command: a slash command's transcript row (`<command-name>/x</command-name>` and its
+// `<command-args>`) or a raw `/x args` line, naming a task, capture, loop or issue skill with `--auto-mode` as its first argument.
+function typedAutoCommand(text) {
+  const tagged = /<command-name>\/?([^<\s]+)<\/command-name>/.exec(text);
+  const raw = tagged ? null : /^\s*\/([A-Za-z0-9:_-]+)(?:\s([\s\S]*))?$/.exec(text);
+  const name = tagged ? tagged[1] : raw ? raw[1] : '';
+  const args = tagged ? ((/<command-args>([\s\S]*?)(?:<\/command-args>|$)/.exec(text) || [])[1] || '') : raw ? raw[2] || '' : '';
+  return AUTO_SKILL_RE.test(name) && AUTO_FIRST_RE.test(args);
+}
 function autoModeStart() {
   const sid = String(payload.session_id || '');
-  if (!sid || payload.agent_id || !AUTO_SKILL_RE.test(skill) || !AUTO_WORD_RE.test(autoArgs())) return null;
-  if (IS_SKILL_CALL && !TYPED_WORD_RE.test(lastTypedPrompt())) {
-    ledgerRow({ mode: 'auto', kind: 'auto-start-refused', reason: `auto-mode: ${skill} called with the word, but the user's newest typed prompt does not carry it` });
+  // The typed command must open its arguments with the flag; the model's own Skill args may carry it anywhere, since
+  // the typed prompt behind the call is held to the first-word rule below.
+  const word = IS_SKILL_CALL ? AUTO_WORD_RE : AUTO_FIRST_RE;
+  if (!sid || payload.agent_id || !AUTO_SKILL_RE.test(skill) || !word.test(autoArgs())) return null;
+  if (IS_SKILL_CALL && !typedAutoCommand(lastTypedPrompt())) {
+    ledgerRow({ mode: 'auto', kind: 'auto-start-refused', reason: `auto-mode: ${skill} called with --auto-mode, but the user's newest typed prompt is no task, capture, loop or issue command opening with it` });
     return null;
   }
   const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
@@ -797,6 +915,77 @@ function autoModeStart() {
   return { file: nodePath.relative(root, file).split(nodePath.sep).join('/') || file };
 }
 const auto = (IS_SKILL_CALL && (EVENT === 'PreToolUse' || !EVENT)) || EVENT === 'UserPromptExpansion' ? autoModeStart() : null;
+// --- the MODE BANNER (the user's ruling, 2026-10-15) ---
+// A typed /task-*, /capture-*, /loop-* or /issue-* command opens its first reply with two lines saying how this session
+// will behave during the run: whether auto-mode is on (each ask answered with its Recommended option, or each one waiting
+// for the user), and how it meets a full context - it compacts (auto-mode, or ALFRED_CODE_AUTO_COMPACT=1), or it offers
+// a fresh session at its trigger - with the numbers behind it, from the same engine every offer reads. Once per typed
+// command: the expansion fires once, and the lines say they are not repeated. Never on a phase's Skill call, a seat's or
+// a session nobody is at. It rides AFTER whatever else this expansion injects, so each of those keeps its own shape.
+const BANNER_RE = AUTO_SKILL_RE;   // every family a banner opens can run in auto-mode (capture joined 2026-10-17)
+const BANNER_HEAD = 'Open your reply to this command with these two lines, exactly as written, and never repeat them in a later reply:';
+const tokens = (n) => (n >= 1000000 && n % 1000000 === 0 ? `${n / 1000000}M` : `${Math.round(n / 1000)}k`);
+// A configured auto-compact window this project's own compactions show was not honoured (fresh-session.js
+// compactWindowIgnored - audit 2026-10-20 C10): said ONCE per session, wherever the session first meets it (a compaction
+// start or a banner), naming the documented route that applies a window to the running session. No cause is claimed.
+function acwIgnoredNote() {
+  try {
+    const ig = typeof fresh.compactWindowIgnored === 'function' ? fresh.compactWindowIgnored() : null;
+    if (!ig || payload.agent_id) return '';
+    const key = String(payload.transcript_path || payload.session_id || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
+    const marker = nodePath.join(envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir(), `guard-fresh-acw-${key}.said`);
+    if (fs.existsSync(marker)) return '';
+    fs.writeFileSync(marker, String(ig.seen));
+    const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+    const rel = nodePath.relative(root, ig.source);
+    // in git's spelling on every platform, so a Windows session reads the same path the docs and the user's own commands use
+    const where = /^CLAUDE_CODE_/.test(ig.source) ? ig.source : rel && !rel.startsWith('..') && !nodePath.isAbsolute(rel) ? rel.split(nodePath.sep).join('/') : ig.source;
+    return `The ${tokens(ig.configured)} autoCompactWindow in ${where} was not honoured: this project compacted at ~${tokens(ig.seen)} `
+      + 'after it was set, so it is not quoted as the window. `/autocompact <value>` saves a window for this model in the user settings '
+      + 'and applies it to the running session (code.claude.com/docs/en/model-config) - say so to the user once, never claim the old value holds.';
+  } catch { return ''; }
+}
+function modeBanner(autoOn) {
+  const model = fresh.sessionModelId();
+  const listed = fresh.tableWindow();
+  // an unlisted model runs in ALFRED_CODE_CONTEXT_WINDOW_DEFAULT - said as the default, never as the model's own size
+  const window = listed || fresh.envWindow();
+  const room = `its ${window ? `${tokens(window)} ${listed ? '' : 'default '}` : ''}context window${model ? ` (${model})` : ''}`;
+  const acw = fresh.autoCompactWindow();
+  const where = acw
+    ? `as it nears its ${tokens(acw)} auto-compact window (${window ? `of ${tokens(window)}` : 'context'}${model ? `, ${model}` : ''})`
+    : `at Claude Code's own point in ${room}`;
+  const name = `/${skill.replace(/^alfred-code:/, '')}`;
+  const mode = autoOn
+    ? `**Auto-mode: ON** for ${name} - every question takes its (Recommended) option without waiting for you; one with no `
+      + 'recommended option, or whose recommendation acts outward (push, merge, deploy, publish, a PR), still waits. A message you type mid-run is input to the run; type `stop auto-mode` (or just `stop`) to end it.'
+    : `**Auto-mode: OFF** for ${name} - each question waits for your answer.`
+      + (AUTO_MISS_RE.test(autoArgs()) ? ' (auto-mode starts only with `--auto-mode` as the first word after the command.)' : '');
+  const at = ctxThreshold();
+  const ctxLine = autoOn
+    ? `**Context:** no fresh-session hand-off - the session auto-compacts ${where} and the run goes on from the summary and its state files.`
+    : COMPACT_INSTEAD
+      ? `**Context:** auto-compact is on (ALFRED_CODE_AUTO_COMPACT=1) - the session compacts ${where} instead of offering a fresh session.`
+      : FRESH_OFF || at === null
+        ? `**Context:** the fresh-session offers are off - the session compacts ${where}.`
+        : `**Context:** session refresh - past ~${tokens(at)} tokens of ${room}, the run offers to resume in a fresh session from its state file instead of compacting.`;
+  const acwNote = acwIgnoredNote();
+  return `${acwNote ? `${acwNote}\n\n` : ''}${BANNER_HEAD}\n${mode}\n${ctxLine}`;
+}
+// Nobody at the terminal is judged WITHOUT the session's own AUTO stamp (a payload with no session id reads none): that
+// stamp is the auto-mode this banner reports ON, and the person who typed the command is there to read it. A print-mode
+// run, ALFRED_CODE_UNATTENDED=1 or a hand-written stamp still reads as nobody.
+const banner = EVENT === 'UserPromptExpansion' && !payload.agent_id && BANNER_RE.test(skill) && !unattended({ ...payload, session_id: '' })
+  ? modeBanner(Boolean(auto)) : '';
+// Every UserPromptExpansion output goes through here, the banner after the text; `leave` is an exit with nothing else to say.
+function expansionOut(text) {
+  const body = [text, banner].filter(Boolean).join('\n\n');
+  if (body) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptExpansion', additionalContext: body } }));
+}
+function leave() {
+  if (EVENT === 'UserPromptExpansion') expansionOut('');
+  process.exit(0);
+}
 if (auto) {
   const contract = `auto-mode is ON for this /${skill} run: the user typed it on the call, and ${auto.file} holds their words for this session. `
     + 'Nobody answers until the run ends. '
@@ -805,16 +994,17 @@ if (auto) {
     + '(2) Do not end a turn between steps: the Stop hook sends you back while the stamp stands. A wait on work this session started is a one-line turn end; the harness wakes you when it lands. '
     + '(3) Commit through the usual gates; never push, merge, deploy or send anything out - list those for the user in the close (an unpushed commit is a Leftovers line, never an ask). '
     + '(4) The fresh-session offers are off and the fresh-session hand-off is never taken or recommended: the session compacts at its auto-compact window and the run goes on from its own state files. '
-    + "(5) 'auto-mode' is a mode word, not a target - leave it out of the run's arguments. "
-    + `(6) The stamp is the run's approval too: never write an APPROVED or AUTO line over it and never delete it before the close. An answered ask is the go - carry on in the same turn. `
-    + `(7) When the whole run is finished, print its close and delete ${auto.file}: that ends auto-mode.`;
-  const event = EVENT === 'UserPromptExpansion' ? 'UserPromptExpansion' : 'PreToolUse';
-  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: contract } }));
+    + "(5) '--auto-mode' is a mode flag, not a target - leave it out of the run's arguments. "
+    + `(6) The stamp is the run's approval too: never write an APPROVED or AUTO line over it and never delete it before the close, unless the user asks to stop auto-mode. An answered ask is the go - carry on in the same turn. `
+    + `(7) When the whole run is finished, print its close and delete ${auto.file}: that ends auto-mode. `
+    + '(8) A message the user types mid-run is input to the run, never a stop: take it in and carry on.';
+  if (EVENT === 'UserPromptExpansion') expansionOut(contract);
+  else process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: contract } }));
   process.exit(0);
 }
 if (IS_SKILL_CALL && (EVENT === 'PreToolUse' || !EVENT)) gatedStepHold();
 
-if (EVENT !== 'SessionStart' && !isOrchestration(skill)) process.exit(0);
+if (EVENT !== 'SessionStart' && !isOrchestration(skill)) leave();
 
 // SessionStart carries no run name and nothing measurable - the transcript has just been REPLACED
 // by its summary - so the compaction event itself is the evidence, and the offer goes out on it.
@@ -824,6 +1014,9 @@ if (EVENT === 'SessionStart') {
   const boundary = boundaryPreTokens();
   // The boundary row's own measurement of where the harness compacted (fresh-session.js observedCompaction).
   if (boundary && boundary.trigger === 'auto' && boundary.preTokens) recordCompaction(boundary.preTokens);
+  // a configured window this compaction (or an earlier one) shows was not honoured is said here, once (C10)
+  const acwNote = acwIgnoredNote();
+  const withNote = (t) => (acwNote ? (t ? `${t} ${acwNote}` : acwNote) : t);
   // Nobody at the terminal (hook-prelude.js unattended) has nobody to ask: the pointer, never the offer - and the
   // skipped offer leaves its row (review A, M3). A compaction the USER asked for (`/compact`) is no ceiling reached.
   const quiet = !FRESH_OFF && unattended(payload);
@@ -838,7 +1031,7 @@ if (EVENT === 'SessionStart') {
   if (FRESH_OFF || quiet || manual) {
     // Compacting IS this project's answer to a full context (fresh-session.js COMPACT_INSTEAD): the summary's own
     // 'continue' line stands, and the two notes after it still apply.
-    const text = manual ? after : COMPACT_INSTEAD ? `${COMPACT_NOTE} Continue the work from the summary. ${after}` : pointer;
+    const text = withNote(manual ? after : COMPACT_INSTEAD ? `${COMPACT_NOTE} Continue the work from the summary. ${after}` : pointer);
     if (text) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: text } }));
     process.exit(0);
   }
@@ -862,7 +1055,7 @@ if (EVENT === 'SessionStart') {
         'the state file or plan file it resumes from), or continue here on the summary; when it would recover too ' +
         'little the change goes through and you continue here. Never put the choice without those two numbers. If ' +
         'the remaining work is a single short step, say so in one line (' + String.fromCharCode(39) + 'single short step: <what>' + String.fromCharCode(39) + ') and just finish it. ' +
-        after,
+        withNote(after),
     },
   }));
   process.exit(0);
@@ -954,25 +1147,30 @@ function priorOrchestrationRun() {
     // the marker needs a real ASSISTANT turn between it and the next human turn: a run nobody
     // answered carried no history for the next run to re-send, which is the whole cost this
     // trigger is about.
+    // ...and an answer is not a RUN until it WORKED: audit 2026-10-20 C13, 24841a36 - the model gate's one-line refusal
+    // ('switch to Sonnet and run it again'), after a single probe call, read as a finished run and the re-typed command was
+    // told to start a fresh session. A run counts once its answer made RUN_MIN_CALLS tool calls, the whole run's calls
+    // counted across the human turns inside it; an ask is a call, so a run that stopped to ask and went on still counts.
+    const RUN_MIN_CALLS = 2;
     let seenRun = false;
-    let answered = false;
+    let calls = 0;
     for (const line of buf.toString('utf8').split('\n')) {
       if (!line.trim()) continue;
       // A row that carries BOTH type strings is a user row quoting a transcript, not an answer:
       // it is skipped, which errs toward making no offer - the direction the measured harm was in.
-      if (seenRun && !answered && /"type"\s*:\s*"assistant"/.test(line) && !/"type"\s*:\s*"user"/.test(line)
+      if (seenRun && /"type"\s*:\s*"assistant"/.test(line) && !/"type"\s*:\s*"user"/.test(line)
           && !/"model"\s*:\s*"<synthetic>"/.test(line)) {
-        answered = true;
+        calls += (line.match(/"type"\s*:\s*"tool_use"/g) || []).length;
         continue;
       }
       if (!line.includes('"type":"user"') || line.includes('"tool_result"') || !isHumanTurn(line)) continue;
-      if (seenRun && answered) return true;
+      if (seenRun && calls >= RUN_MIN_CALLS) return true;
       const c = (JSON.parse(line).message || {}).content;
       const m = re.exec(typeof c === 'string' ? c : (Array.isArray(c) ? c.map((x) => (x && x.type === 'text' && x.text) || '').join('\n') : ''));
-      if (m && isOrchestration(m[1])) { seenRun = true; answered = false; }
+      if (m && isOrchestration(m[1])) { seenRun = true; calls = 0; }
     }
     // The command being judged, not on disk yet, is the human turn after an answered run.
-    return EVENT === 'UserPromptExpansion' && seenRun && answered;
+    return EVENT === 'UserPromptExpansion' && seenRun && calls >= RUN_MIN_CALLS;
   } catch {
     return false;   // unreadable transcript - the size trigger still covers this session
   }
@@ -1042,16 +1240,15 @@ function sweepOffers() {
 // A SUBAGENT's Skill call (the payload carries agent_id) is a phase of work its parent dispatched:
 // the carry read here is the parent session's, and a seat has no user to answer the offer - so
 // neither trigger judges it.
-if (payload.agent_id) process.exit(0);
+if (payload.agent_id) leave();
 // COMPACT INSTEAD: no offer is made here, and the run is told once per session - its own stop asks offer the
 // fresh-session hand-off past the trigger, and the stop contract denies an ask that still carries one.
 if (COMPACT_INSTEAD) {
   let first = true;
   try { fs.writeFileSync(compactNoteFile(), new Date().toISOString(), { flag: 'wx' }); sweepOffers(); } catch (e) { first = !(e && e.code === 'EEXIST'); }
-  if (first) process.stdout.write(JSON.stringify({ hookSpecificOutput: {
-    hookEventName: EVENT === 'UserPromptExpansion' ? 'UserPromptExpansion' : 'PreToolUse',
-    additionalContext: `${COMPACT_NOTE} So /${skill} puts no fresh-session option in any ask and never ends a turn to move to a new session.`,
-  } }));
+  const note = first ? `${COMPACT_NOTE} So /${skill} puts no fresh-session option in any ask and never ends a turn to move to a new session.` : '';
+  if (EVENT === 'UserPromptExpansion') expansionOut(note);
+  else if (note) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: note } }));
   process.exit(0);
 }
 const usage = lastUsage();
@@ -1072,12 +1269,12 @@ const overSize = !FRESH_OFF && FRESH_AT !== null && ctx > FRESH_AT && worthResum
 // of a run already in flight, and the size trigger still covers that route.
 const chained = EVENT === 'UserPromptExpansion' && !FRESH_OFF && !overSize && worthResuming(ctx)
   && !chainedOfferSpent() && priorOrchestrationRun();
-if (!overSize && !chained) process.exit(0);
+if (!overSize && !chained) leave();
 // Nobody at the terminal (hook-prelude.js unattended) has nobody to offer it to: one row, and no offer state is
 // spent, so a person resuming the session later is still offered it (review A, M3).
 if (unattended(payload)) {
   ledgerRow({ mode: 'unattended', kind: chained ? 'chained-offer' : 'size-offer', reason: UNATTENDED_SKIP, detail: { skill, ctx } });
-  process.exit(0);
+  leave();
 }
 if (chained) {
   try { fs.writeFileSync(chainedOfferFile(), `size ${fresh.transcriptSize()} ${new Date().toISOString()}`); } catch { /* never let state break the gate */ }
@@ -1101,16 +1298,12 @@ const why = chained
 // The slash route only ADDS context - a blocked expansion shows its reason to the user, not the
 // model - so it states the same thing as an instruction and lets the model ask.
 if (EVENT === 'UserPromptExpansion') {
-  process.stdout.write(JSON.stringify({
-    hookSpecificOutput: {
-      hookEventName: 'UserPromptExpansion',
-      additionalContext:
-        `/${skill} ${why.replace(/\n/g, ' ')} ` +
-        `Do NOT start the run yet. Put it to the user as ONE AskUserQuestion: start it in a fresh ` +
-        `session (recommended - end this turn with the paste-ready invocation and the state file it ` +
-        `resumes from), or run it here anyway with the cost stated.`,
-    },
-  }));
+  expansionOut(
+    `/${skill} ${why.replace(/\n/g, ' ')} ` +
+    `Do NOT start the run yet. Put it to the user as ONE AskUserQuestion: start it in a fresh ` +
+    `session (recommended - end this turn with the paste-ready invocation and the state file it ` +
+    `resumes from), or run it here anyway with the cost stated.`,
+  );
   process.exit(0);
 }
 

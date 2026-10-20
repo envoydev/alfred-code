@@ -428,17 +428,17 @@ test('the capabilities script resolves to the NEWEST cached entry', () => {
             for (const v of versions)
             {
                 const skills = path.join(home, 'acct', 'plugins', 'cache', 'envoydev', 'alfred-code', v, 'stack', 'skills');
-                fs.mkdirSync(path.join(skills, 'capture-agent-awareness', 'scripts'), { recursive: true });
-                fs.writeFileSync(path.join(skills, 'capture-agent-awareness', 'scripts', 'capabilities-inventory.js'), '');
+                fs.mkdirSync(path.join(skills, 'capture-awareness', 'scripts'), { recursive: true });
+                fs.writeFileSync(path.join(skills, 'capture-awareness', 'scripts', 'capabilities-inventory.js'), '');
                 fs.mkdirSync(path.join(skills, 'task-solve-cross', 'references'), { recursive: true });
                 fs.writeFileSync(path.join(skills, 'task-solve-cross', 'references', 'contract-protocol.md'), '');
             }
             const newest = versions[versions.length - 1].replace(/\./g, '\\.');
             const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, 'acct') };
             // The capabilities block with its last line - the run - swapped for a print.
-            const caps = bodySnippet('stack/skills/capture-agent-awareness/SKILL.md', /```bash\n(CAPS=[\s\S]*?)node "\$CAPS" --write\n```/);
+            const caps = bodySnippet('stack/skills/capture-awareness/SKILL.md', /```bash\n(CAPS=[\s\S]*?)echo "caps: \$\{CAPS:-absent\}"\n```/);
             assert.match(execFileSync('bash', ['-c', `${caps}printf %s "$CAPS"`], { cwd: home, env, encoding: 'utf8' }),
-                new RegExp(`/${newest}/stack/skills/capture-agent-awareness/scripts/capabilities-inventory\\.js$`), `capabilities: not the newest of ${versions}`);
+                new RegExp(`/${newest}/stack/skills/capture-awareness/scripts/capabilities-inventory\\.js$`), `capabilities: not the newest of ${versions}`);
         }
         finally { fs.rmSync(home, { recursive: true, force: true }); }
     }
@@ -454,10 +454,10 @@ const OTHER_KEY = 'other-key';
 // A bare cache entry: the two trees the validity test reads, and the RELEASE-SOURCE the snippets print.
 function plantBare(cfg, marketplace, plugin, version, { orphaned = false, file } = {}) {
     const dir = path.join(cfg, 'plugins', 'cache', marketplace, plugin, version);
-    for (const sub of ['stack/skills', 'stack/agents', 'scripts', 'stack/skills/capture-agent-awareness/scripts', 'stack/skills/task-solve-cross/references'])
+    for (const sub of ['stack/skills', 'stack/agents', 'scripts', 'stack/skills/capture-awareness/scripts', 'stack/skills/task-solve-cross/references'])
         fs.mkdirSync(path.join(dir, sub), { recursive: true });
     plantVersion(dir, version);   // a real cache entry: the version in plugin.json, no RELEASE-SOURCE
-    for (const f of ['scripts/scan-evidence.js', 'stack/skills/capture-agent-awareness/scripts/capabilities-inventory.js', 'stack/skills/task-solve-cross/references/contract-protocol.md'])
+    for (const f of ['scripts/scan-evidence.js', 'stack/skills/capture-awareness/scripts/capabilities-inventory.js', 'stack/skills/task-solve-cross/references/contract-protocol.md'])
         fs.writeFileSync(path.join(dir, f), file || '');
     if (orphaned) fs.writeFileSync(path.join(dir, '.orphaned_at'), '1790246851942');
     return dir;
@@ -567,7 +567,7 @@ test("the protocol's PowerShell snippet reads a core cached under another key, s
 // others, registered as `plugin-cache-newest-entry`; each still takes the newest entry and never an orphaned one.
 test('the aligned lookups (run book, AGENTS.md check, both spec checks) read a core cached under any key, never an orphaned one', () => {
     const snippets = {
-        runBook: [bodySnippet('stack/skills/capture-project-awareness/SKILL.md', /```bash\n( *SCAN=\$\(for d in[\s\S]*?cut -f2\))\n/) + '\nprintf %s "$SCAN"', '/scripts/scan-evidence.js'],
+        runBook: [bodySnippet('stack/skills/capture-awareness/references/project.md', /```bash\n( *SCAN=\$\(for d in[\s\S]*?cut -f2\))\n/) + '\nprintf %s "$SCAN"', '/scripts/scan-evidence.js'],
         agentsMd: [bodySnippet('stack/skills/habits-adjust-agents-md/SKILL.md', /```bash\n(STACK=[\s\S]*?cut -f2\))\n/) + '\nprintf %s "$STACK"', ''],
         solve: ['SPEC=.claude/skills/task-solve/scripts/spec-check.js\n' + bodySnippet('stack/skills/task-solve/references/full-spec.md', /\n(\[ -f "\$SPEC" \] \|\| SPEC=[\s\S]*?cut -f2\))\n/) + '\nprintf %s "$SPEC"', '/stack/skills/task-solve/scripts/spec-check.js'],
         cross: ['SPEC=.claude/skills/task-solve-cross/scripts/spec-check.js\n' + bodySnippet('stack/skills/task-solve-cross/references/full-spec.md', /\n(\[ -f "\$SPEC" \] \|\| SPEC=[\s\S]*?cut -f2\))\n/) + '\nprintf %s "$SPEC"', '/stack/skills/task-solve-cross/scripts/spec-check.js'],
@@ -605,7 +605,7 @@ test('the aligned lookups (run book, AGENTS.md check, both spec checks) read a c
 
 test('the three body snippets read a core cached under any key, and never an orphaned one', () => {
     const snippets = {
-        capabilities: [bodySnippet('stack/skills/capture-agent-awareness/SKILL.md', /```bash\n(CAPS=[\s\S]*?)node "\$CAPS" --write\n```/) + 'printf %s "$CAPS"', '/stack/skills/capture-agent-awareness/scripts/capabilities-inventory.js'],
+        capabilities: [bodySnippet('stack/skills/capture-awareness/SKILL.md', /```bash\n(CAPS=[\s\S]*?)echo "caps: \$\{CAPS:-absent\}"\n```/) + 'printf %s "$CAPS"', '/stack/skills/capture-awareness/scripts/capabilities-inventory.js'],
         firstLook: [bodySnippet('stack/skills/capture-first-look/SKILL.md', /```bash\n(SCAN=[\s\S]*?cut -f2\))\n/) + '\nprintf %s "$SCAN"', '/scripts/scan-evidence.js'],
         usage: [bodySnippet('stack/skills/capture-usage-report/SKILL.md', /```bash\n(TMP=\$\(mktemp -d "\$\{TMPDIR:-\/tmp\}\/alfred-code\.XXXXXX"\)[^\n]*\nCFG=[\s\S]*?cut -f2\))\n/) + '\nrm -rf "$TMP"; printf %s "$SRC"', ''],
     };

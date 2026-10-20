@@ -1160,7 +1160,145 @@ test('a mistyped or unknown leading segment throws instead of composing a path i
     const docs = requireEngine(r.root);
     assert.throws(() => docs.parseRef('architcture/ARCHITECTURE#orders'),
       /no domain or subfolder resolves architcture\/ARCHITECTURE#orders/);
+    // Audit 2026-10-20 C27: the hint named the refused spelling again ('as <domain>/architcture/...'); it names the forms.
+    assert.throws(() => docs.parseRef('architcture/ARCHITECTURE#orders'),
+      (e) => /`docs\.js files` lists, as <file>#<id> or <domain>\/<file>#<id> \(domains: architecture, code-style\)/.test(e.message) && !/<domain>\/architcture/.test(e.message));
   } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
+// Audit 2026-10-20 C27 (sessions ce3fd60a, add5a91e): a filesystem path under the docs root - what a seat brief or a
+// file listing spells - was refused, 5 of 6 seats' first call. The root is stripped, so the path resolves as its ref.
+test('a docs-root-prefixed path resolves like its section ref, relative, ./ and absolute', () => {
+  const r = twoDomainFixture();
+  try {
+    r.write('.claude/docs/architecture/references/patterns.md', PATTERNS);
+    const docs = requireEngine(r.root);
+    const want = docs.parseRef('architecture/references/patterns.md#orders');
+    for (const ref of ['.claude/docs/architecture/references/patterns.md#orders', './.claude/docs/architecture/references/patterns.md#orders', `${r.root}/.claude/docs/architecture/references/patterns.md#orders`])
+      assert.deepEqual(docs.parseRef(ref), want, ref);
+    assert.ok(docs.askRef('.claude/docs/architecture/references/patterns.md#orders'), 'askRef resolves it too');
+    assert.match(r.cli(['show', '.claude/docs/architecture/references/patterns.md#orders']).stdout, /ledgered before the payment call/);
+    assert.match(r.cli(['toc', '.claude/docs/architecture/ARCHITECTURE.md']).stdout, /ARCHITECTURE#orders/);
+    assert.match(r.cli(['show', '.claude/docs/architecture/nope.md#x']).stdout, /no such doc file/, 'a path to no file is still refused');
+    assert.match(r.cli(['show', '.claude/docsx/architecture/ARCHITECTURE.md#orders']).stdout, /no domain or subfolder resolves/, 'a near spelling of the root is no root');
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
+// Audit 2026-10-20 C27 (add5a91e, ce3fd60a): Known ceilings is a row register the capture must carry row for row, so
+// its cap row could never be closed; any other section over the cap still fails.
+test('lint: the map\'s Known ceilings over the cap is a note; another oversized section is still a problem', () => {
+  const big = (id) => `## ${id.replace(/-/g, ' ')}\n<!-- id: ${id} -->\n<!-- covers: src/** -->\n${'| a | b | c |\n'.repeat(500)}`;
+  const r = repo({ docs: { 'ARCHITECTURE.md': `${section('orders', 'src/**', 'Orders rule.')}\n${big('known-ceilings')}`, 'references/patterns.md': big('known-ceilings') } });
+  try {
+    const out = r.cli(['lint', 'architecture']);
+    assert.doesNotMatch(out.stdout, /oversized section \(\d+ chars, cap 6000\): ARCHITECTURE#known-ceilings/);
+    assert.match(out.stdout, /ARCHITECTURE#known-ceilings is \d+ chars \(a row register: carried row for row, exempt from the 6000 cap; 'docs\.js ceilings --prune' moves its closed rows to history\)/);
+    assert.match(out.stdout, /oversized section \(\d+ chars, cap 6000\): patterns#known-ceilings/, 'the exemption is the map\'s own section only');
+  } finally { r.rm(); }
+});
+
+// Audit 2026-10-20 C27 residual (the user's ruling of 2026-10-20, 'prune only'): nothing removed a closed row, so the
+// register only grew. `ceilings` names a row marked lifted / closed / resolved / done, and `--prune` moves them to
+// history and rewrites the section. A row whose where path is gone is only named stale and kept - a rename or move in a
+// refactor leaves the shortcut in the code (review of d8cc65e0) - and a bare name, a glob and an open row stay.
+test('ceilings: marked Known-ceilings rows are listed and --prune moves them to history; a gone path is stale, never moved', () => {
+  const table = [
+    '| where | limit | revisit when |', '| --- | --- | --- |',
+    '| `src/app/live.ts:load` | loads all rows | over 10k rows |',
+    '| `src/app/gone.ts:save` | no retry | retries are asked |',
+    '| `src/app/live.ts:sync` | sync only | **Lifted** in 3e881be |',
+    '| src/app/live.ts | cache | Closed by the cache rework |',
+    '| `Program.cs:Main` | one host | a second host |',
+    '| `src/**/*.ts` | glob | never |',
+  ].join('\n');
+  const r = repo({ files: { 'src/app/live.ts': 'x\n' }, docs: { 'ARCHITECTURE.md': `${section('orders', 'src/**', 'Orders rule.')}\n${section('known-ceilings', 'src/**', table)}` } });
+  try {
+    const list = r.cli(['ceilings']);
+    assert.strictEqual(list.status, 0, list.stdout);
+    assert.match(list.stdout, /stale: {2}src\/app\/gone\.ts is gone - kept; re-anchor the where cell, or mark the revisit cell lifted if the shortcut went with it - \| `src\/app\/gone\.ts:save`/);
+    assert.doesNotMatch(list.stdout, /closed: src\/app\/gone/);
+    assert.match(list.stdout, /closed: marked lifted - /);
+    assert.match(list.stdout, /closed: marked closed - /);
+    assert.match(list.stdout, /2 of 6 rows closed - 'docs\.js ceilings --prune' moves them to history/);
+    const map = '.claude/docs/architecture/ARCHITECTURE.md';
+    assert.ok(r.read(map).includes('Lifted'), 'a listing writes nothing');
+    const pruned = r.cli(['ceilings', '--prune']);
+    assert.strictEqual(pruned.status, 0, pruned.stdout);
+    assert.match(pruned.stdout, /moved 2 of 6 rows to \.claude\/docs\/architecture\/history\/known-ceilings-closed\.md/);
+    const after = r.read(map);
+    for (const gone of ['Lifted', 'Closed by']) assert.ok(!after.includes(gone), gone);
+    for (const kept of ['live.ts:load', 'gone.ts:save', 'Program.cs:Main', 'src/**/*.ts', '<!-- id: known-ceilings -->', '<!-- covers: src/** -->', 'Orders rule.']) assert.ok(after.includes(kept), kept);
+    const hist = r.read('.claude/docs/architecture/history/known-ceilings-closed.md');
+    assert.match(hist, /<!-- id: closed-rows -->\n(?:<!-- captured: \w+ -->\n)?\n\| where \| limit \| revisit when \| pruned \|\n\| --- \| --- \| --- \| --- \|\n/);
+    assert.match(hist, /\| `src\/app\/live\.ts:sync` \| sync only \| \*\*Lifted\*\* in 3e881be \| pruned \d{4}-\d\d-\d\d: marked lifted \|/);
+    assert.ok(!hist.includes('gone.ts'), 'a stale row is never filed');
+    assert.match(r.cli(['ceilings', '--prune']).stdout, /^stale: .*gone\.ts.*\n0 of 4 rows closed \(section \d+ chars, cap 6000\)\n$/, 'a re-run moves nothing');
+    // a later prune appends under the same table
+    r.write(map, after.replace('| `Program.cs:Main` | one host | a second host |', '| `Program.cs:Main` | one host | done - a second host landed |'));
+    assert.match(r.cli(['ceilings', '--prune']).stdout, /moved 1 of 4 rows/);
+    const hist2 = r.read('.claude/docs/architecture/history/known-ceilings-closed.md');
+    assert.strictEqual((hist2.match(/<!-- id: closed-rows -->/g) || []).length, 1, 'one table, appended');
+    assert.match(hist2, /Program\.cs:Main` \| one host \| done - a second host landed \| pruned \S+: marked done \|\n$/);
+    const lint = r.cli(['lint', 'architecture']);
+    assert.doesNotMatch(lint.stdout, /PROBLEM .*(?:closed-rows|known-ceilings)/, lint.stdout);
+  } finally { r.rm(); }
+  // on a branch of a local install both halves land in the branch's version; mainline keeps every row until it merges
+  const b = repo({ files: { 'src/app/live.ts': 'x\n' }, docs: { 'ARCHITECTURE.md': section('known-ceilings', 'src/**', table) } });
+  try {
+    b.git('checkout', '-q', '-b', 'feature');
+    const out = b.cli(['ceilings', '--prune']);
+    assert.match(out.stdout, /moved 2 of 6 rows to \.claude\/docs\/\.branches\/feature\/.*closed-rows.*; .* rewritten in \.claude\/docs\/\.branches\/feature\//, out.stdout);
+    assert.ok(b.read('.claude/docs/architecture/ARCHITECTURE.md').includes('Lifted'), 'mainline keeps the rows');
+    assert.ok(!b.read('.claude/docs/architecture/history/known-ceilings-closed.md').includes('Lifted'), 'mainline history holds the empty table only');
+    assert.doesNotMatch(b.cli(['show', 'ARCHITECTURE.md#known-ceilings']).stdout, /Lifted/, 'the branch reads the pruned section');
+    assert.match(b.cli(['show', 'known-ceilings-closed.md#closed-rows']).stdout, /marked lifted/, 'and its filed rows');
+  } finally { b.rm(); }
+  const none = repo({ docs: { 'ARCHITECTURE.md': section('orders', 'src/**', 'Orders rule.') } });
+  try {
+    const out = none.cli(['ceilings', '--prune']);
+    assert.strictEqual(out.status, 1);
+    assert.match(out.stdout, /no architecture\/ARCHITECTURE\.md#known-ceilings section - nothing to read/);
+  } finally { none.rm(); }
+});
+
+// Found by the C27 temp-project matrix (2026-10-20): in a repo with no commit yet the branch read null, and a `set`
+// wrote `.branches/null`, an overlay no reader serves. HEAD names the unborn branch; a mainline one writes in place.
+test('set: a repo with no commit yet writes for its named branch, never .branches/null', () => {
+  for (const [name, inPlace] of [['main', true], ['feature', false]]) {
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'docs-unborn-')));
+    try {
+      spawnSync('git', ['init', '-q', '-b', name], { cwd: root });
+      fs.mkdirSync(path.join(root, '.claude/docs/architecture'), { recursive: true });
+      fs.writeFileSync(path.join(root, '.claude/docs/architecture/ARCHITECTURE.md'), '# Map\n\n## Orders\n<!-- id: orders -->\nOld.\n');
+      const env = { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.claude/docs', ALFRED_CODE_DOCS_VERSIONING: 'local' };
+      const out = spawnSync(process.execPath, [path.join(HOOKS, 'docs.js'), 'set', 'ARCHITECTURE.md#orders'], { cwd: root, input: '## Orders\nNew.\n', encoding: 'utf8', env });
+      assert.strictEqual(out.status, 0, out.stdout);
+      assert.ok(!fs.existsSync(path.join(root, '.claude/docs/.branches/null')), `${name}: no null overlay`);
+      assert.strictEqual(fs.readFileSync(path.join(root, '.claude/docs/architecture/ARCHITECTURE.md'), 'utf8').includes('New.'), inPlace, `${name}: ${out.stdout}`);
+      const shown = spawnSync(process.execPath, [path.join(HOOKS, 'docs.js'), 'show', 'ARCHITECTURE.md#orders'], { cwd: root, encoding: 'utf8', env }).stdout;
+      assert.match(shown, /New\./, `${name}: the reader serves what was written`);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+// Audit 2026-10-20 C27 (29e4002f): a capture rewrote reference files without covers lines and closed on a note.
+test('lint: a capture-stamped file of this write pass with no covers is a problem; an untouched or unstamped one a note', () => {
+  const STAMP = '`Captured: develop@ad485db0, 2026-10-13`\n\n';
+  const bare = (id) => `## ${id}\n<!-- id: ${id} -->\nText.\n`;
+  const r = repo({ docs: {
+    'ARCHITECTURE.md': `${STAMP}${section('orders', 'src/**', 'Orders rule.')}`,
+    'references/rewritten.md': `${STAMP}${bare('a')}`,
+    'references/old.md': `${STAMP}${bare('b')}`,
+    'references/human.md': bare('c'),
+  } });
+  try {
+    const past = new Date(Date.now() - 3 * 24 * 3600e3);
+    fs.utimesSync(path.join(r.root, '.claude/docs/architecture/references/old.md'), past, past);
+    const out = r.cli(['lint', 'architecture']);
+    assert.match(out.stdout, /PROBLEM no section declares covers: references\/rewritten - the capture's shape gives every section a <!-- covers: --> line/);
+    assert.match(out.stdout, /note +no section declares covers: references\/old\b/, 'a file this pass did not write keeps the note');
+    assert.match(out.stdout, /note +no section declares covers: references\/human\b/, 'a file with no capture stamp keeps the note');
+  } finally { r.rm(); }
 });
 
 test('an empty ref or one ending in a slash is refused rather than composed into a file named .md', () => {

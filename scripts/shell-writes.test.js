@@ -313,9 +313,62 @@ test('audit 2026-10-10 C13: an interpreter write through a bound name, a compute
   assert.deepStrictEqual(targets('arr+=(a "b c)" d); (cd x && rm -f y)', dir), ['y'], 'a quoted ) inside it, then a real subshell');
 });
 
+// audit 2026-10-20 C31 (970539b7): a write verb inside a string literal is text the script writes, never a write it makes;
+// C25 (4d71a1b3): a `$NAME` the shell expands in a runtime's script takes the literal the same command assigned it.
+test('audit 2026-10-20 C31 / C25: a write verb in a string is text; a shell-expanded $NAME in a runtime script resolves', () => {
+  const targets = (c) => shell.scanShell(c, {}).targets.map((t) => (t.unknown ? '<unknown>' : t.raw));
+  // the audited shape: python edits a scratch .mjs, the node call it inserts is a string argument
+  assert.deepStrictEqual(targets("python3 - <<'EOF'\ns=open('scratch/r.mjs').read()\ns=s.replace(\"const a=1\", \"fs.mkdirSync('/work/out/dumps', {recursive:true})\")\nopen('scratch/r.mjs','w').write(s)\nEOF"), ['scratch/r.mjs']);
+  assert.deepStrictEqual(targets("python3 - <<'EOF'\n\"\"\"doc: open('/a/b','w')\"\"\"\nopen('/real/x','w').write('y')\nEOF"), ['/real/x'], 'a docstring is text, the call after it is code');
+  assert.deepStrictEqual(targets("python3 - <<'EOF'\nx = \"p = '/q'\"\nopen(p,'w')\nEOF"), ['<unknown>'], 'a binding inside a string binds nothing');
+  // what the guard exists for still reads
+  assert.deepStrictEqual(targets("python3 - <<'EOF'\nimport os\nos.makedirs('/elsewhere/out')\nEOF"), ['/elsewhere/out']);
+  assert.deepStrictEqual(targets("python3 - <<'EOF'\n# don't touch\nopen('/out/x','w').write('y')\nEOF"), ['/out/x'], 'a comment apostrophe ends with its line');
+  assert.deepStrictEqual(targets("node -e \"require('fs').writeFileSync('/out/y', 'x')\""), ['/out/y']);
+  // C25: the shell expands $D in a double-quoted -e and an unquoted heredoc - never in a single-quoted -e or a quoted tag
+  assert.deepStrictEqual(targets("D=/p/.alfred/docs/usage-report; node -e \"require('fs').writeFileSync('$D/SUMMARY.md', 'x')\""), ['/p/.alfred/docs/usage-report/SUMMARY.md']);
+  assert.deepStrictEqual(targets("D=/x/y; python3 - <<EOF\nopen('${D}/a.md','w').write('x')\nEOF"), ['/x/y/a.md']);
+  assert.deepStrictEqual(targets("D=/x/y; node -e 'require(\"fs\").writeFileSync(\"$D/a.md\", \"x\")'"), ['<unknown>'], 'single-quoted: $D is the script\'s own text');
+  assert.deepStrictEqual(targets("D=/x/y; python3 - <<'EOF'\nopen('$D/a.md','w').write('x')\nEOF"), ['<unknown>'], 'a quoted tag hands $D over verbatim');
+  assert.deepStrictEqual(targets("D=$(pwd); node -e \"require('fs').writeFileSync('$D/a.md','x')\""), ['<unknown>'], 'a computed value stays computed');
+  assert.deepStrictEqual(targets("node -e \"require('fs').writeFileSync('$D/a.md','x')\"; D=/x"), ['<unknown>'], 'an assignment after the runtime is no value for it');
+  // the script's own argument is its path; any other expression is computed - none registered a write before
+  assert.deepStrictEqual(targets("node -e 'require(\"fs\").writeFileSync(process.argv[1], \"x\")' /out/a.txt"), ['/out/a.txt']);
+  assert.deepStrictEqual(targets("python3 -c 'import sys; open(sys.argv[1], \"w\").write(\"x\")' /out/b.txt"), ['/out/b.txt']);
+  assert.deepStrictEqual(targets("python3 -c 'import sys; print(open(sys.argv[1]).read())' /out/b.txt"), [], 'a read of the argument is no write');
+  assert.deepStrictEqual(targets("node -e 'require(\"fs\").writeFileSync(process.argv[2], \"x\")' /out/a.txt"), ['<unknown>'], 'an argument not given is computed');
+  assert.deepStrictEqual(targets("node -e 'require(\"fs\").writeFileSync(require(\"path\").join(\"/out\", \"c\"), \"x\")'"), ['<unknown>'], 'a built path is computed');
+});
+
 test('audit 2026-10-10 C13: a git tag listing reads; a new or deleted tag writes', () => {
   const writes = (c) => shell.scanShell(c, {}).gitWrites.length;
   for (const c of [`${G} tag --contains abc123`, `${G} tag -l 'v*'`, `${G} tag --points-at HEAD`, `${G} tag --merged main`, `${G} tag -n5`, `${G} tag`, `${G} tag --sort=-creatordate`])
     assert.equal(writes(c), 0, c);
   for (const c of [`${G} tag v1.2.3`, `${G} tag -a v1 -m x`, `${G} tag -d v1`, `${G} tag --delete v1 --contains x`]) assert.equal(writes(c), 1, c);
+});
+
+// Hooks review 2026-10-16: the in-place targets come from sed's own argument grammar, not the script's shape - 27 of 47
+// cross-project blocks were a sed script read as an out-of-project path (`/a/d;/b/d`, `/x/s/a/b/`).
+test('sed: the script is the first operand unless -e / -f name it, and every other operand is an in-place target', () => {
+  const targets = (c) => shell.scanShell(c, {}).targets.map((t) => t.raw);
+  assert.deepStrictEqual(targets("sed -i '/a/d;/b/d' f"), ['f'], 'two commands joined by ;');
+  assert.deepStrictEqual(targets(`sed -i "" -E '/x/s/a/b/' f`), ['f'], 'an address then a substitution');
+  assert.deepStrictEqual(targets("sed -i '' -e '/a/d' -e '/b/d' f g"), ['f', 'g'], 'every -e value is a script, every operand a file');
+  assert.deepStrictEqual(targets("sed -i -e '/a/d' f"), ['f']);
+  assert.deepStrictEqual(targets("sed -ne '/a/p' -i f"), ['f'], '-e at the end of a flag cluster takes the next word');
+  assert.deepStrictEqual(targets("sed -i -es/a/b/ f"), ['f'], 'an attached -e value');
+  assert.deepStrictEqual(targets("sed --in-place --expression='/a/d' f"), ['f']);
+  assert.deepStrictEqual(targets("sed --in-place=.bak --expression '/a/d' f"), ['f']);
+  assert.deepStrictEqual(targets("sed -i -f /tmp/edits.sed f"), ['f'], 'a -f script file is read, never written');
+  assert.deepStrictEqual(targets("sed -i.bak '/a/d' f"), ['f'], 'an attached suffix');
+  assert.deepStrictEqual(targets("sed -i .bak '/a/d' f"), ['f'], "BSD's separate suffix");
+  assert.deepStrictEqual(targets("sed -ie '/a/d' f"), ['f'], '-ie is in-place with the suffix e');
+  assert.deepStrictEqual(targets("sed -Ei '' '/a/{N;d;}' f"), ['f'], 'i at the end of a cluster');
+  assert.deepStrictEqual(targets("sed -I '' '/a/d' f"), ['f'], "BSD's -I");
+  assert.deepStrictEqual(targets("sed -i '' -- '/a/d' -f"), ['-f'], 'after -- a dash word is an operand');
+  assert.deepStrictEqual(targets("sed -i 's/a/b/' /abs/other/f.ts x"), ['/abs/other/f.ts', 'x'], 'GNU spelling: no suffix word');
+  // no in-place flag: sed writes nothing, whatever its operands look like
+  assert.deepStrictEqual(targets("sed -n '/a/p' /abs/other/f"), []);
+  assert.deepStrictEqual(targets("sed -e 's/i/x/' f"), [], 'an i inside a script is no flag');
+  assert.deepStrictEqual(targets("sed -n -e '/a/d' -- -i"), [], 'an operand spelled -i after -- is a file, not the flag');
 });

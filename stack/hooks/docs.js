@@ -77,8 +77,8 @@ const domains = () => {
     // three different answers for one file. PERMANENT, not a migration stopgap: an earlier draft of
     // this comment said the installer's migration seeds a watch.json into every architecture/ that
     // lacks one, so this line could then be deleted. It does NOT - the migration writes an empty
-    // watch.json into code-style/ and related-projects/ only (the folders it moves a doc into), never
-    // into architecture/. A pre-domains install therefore still has an architecture/ with no
+    // watch.json into code-style/ only (the folder it moves a doc into; the awareness move writes awareness/'s with
+    // its notOwned entry), never into architecture/. A pre-domains install therefore still has an architecture/ with no
     // watch.json, and deleting this line would make its docs unreachable. Do not delete it on the
     // strength of a comment.
     if (!found.includes('architecture') && fs.existsSync(path.join(DOCS_ROOT, 'architecture'))) found.push('architecture');
@@ -96,6 +96,13 @@ let WATCH_CACHE;
 const resetDomains = () => { DOMAINS_CACHE = undefined; WATCH_CACHE = undefined; };
 const MAINLINE = ['develop', 'main', 'master', 'trunk'];
 const MAX_SECTION_CHARS = 6000;
+// The architecture map's register of deliberate shortcuts, and the stamp line every doc the architecture capture writes
+// opens with (capture-architecture references/doc-shapes.md) - both read by lint below.
+const KNOWN_CEILINGS = 'known-ceilings';
+const CAPTURE_STAMP = /^[\s>*_`]*Captured:\s*\S+@[0-9a-f]{4,}/m;
+// One capture's write pass: a file written within this span of the map itself (ARCHITECTURE.md, which every capture
+// rewrites) was written by the same run.
+const WRITE_PASS_MS = 2 * 3600 * 1000;
 const SHOW_CHARS = 14000;
 const BLOCK_BYTES = 4096;
 const ID = /<!--\s*id:\s*([\w.-]+)\s*-->/i;
@@ -106,6 +113,9 @@ const HISTORY = /<!--\s*orient:\s*history\s*-->/i;
 // exists. It describes the tree from manifests only, so every reader treats it as stale by definition: status and
 // stale say so, and the session hook pushes it with that warning, until the architecture capture replaces the file.
 const PROVISIONAL = /provisional - replaced by the architecture capture/i;
+// The lines docs-session.js wraps around the block on every push. A copy pasted INTO ORIENTATION.md reached every
+// session twice (deep hooks review 2026-10-16), so the hook drops such a line and lint names it.
+const HOOK_FOOTER = /^\s*(?:How this project is documented - read this before|The docs live under `|`[^`]*\bwhere <path>` names the sections covering a file|For a specific symbol the CODE wins)/;
 const COMMENT = /^\s*<!--.*-->\s*$/;
 const STOP = new Set(['test', 'tests', 'common', 'features', 'endpoints', 'endpoint', 'src', 'file', 'class', 'async', 'http', 'json', 'with', 'from', 'this', 'that', 'into', 'over', 'core', 'main', 'code']);
 const norm = (t) => String(t).replace(/\r\n/g, '\n').replace(/\n+$/, '');
@@ -123,8 +133,13 @@ const safe = (b) => String(b).replace(/[^\w.-]+/g, '-').replace(/^-|-$/g, '') ||
 // caller (autoPromote, refreshBaseMeta, status, lint and loadWatch each ask again). A process runs one CLI command
 // or one hook event and nothing here changes underfoot, so the first answer is cached for the rest of the process.
 let BRANCH_CACHE;
+// A repo with no commit yet has no HEAD to resolve, but HEAD still names its branch: without the symbolic-ref read a
+// first `set` there went to `.branches/null`, an overlay no reader serves (found by the C27 temp-project matrix, 2026-10-20).
 function branch() {
-  if (BRANCH_CACHE === undefined) { const b = git(['rev-parse', '--abbrev-ref', 'HEAD']); BRANCH_CACHE = !b || b === 'HEAD' ? null : b; }
+  if (BRANCH_CACHE === undefined) {
+    const b = git(['rev-parse', '--abbrev-ref', 'HEAD']) || git(['symbolic-ref', '--short', '-q', 'HEAD']);
+    BRANCH_CACHE = !b || b === 'HEAD' ? null : b;
+  }
   return BRANCH_CACHE;
 }
 
@@ -415,7 +430,7 @@ function merge3(ours, base, theirs, name) {
 // mismatch report, which exists precisely to say that this fact and the declared mode disagree. Everything that
 // DECIDES behaviour asks gitVersioned() instead.
 // Every DOMAIN is probed, never one folder: a watch.json is what makes a domain and nothing requires
-// architecture/ to be one of them, so a project documented in code-style/, related-projects/ or decisions/
+// architecture/ to be one of them, so a project documented in code-style/, awareness/ or decisions/
 // alone is an ordinary shape. Probing architecture/ alone answered 'not committed' for exactly that project -
 // which then wrote per-branch OVERLAYS into a docs root git is versioning, and had `status` call committed
 // docs ignored. ANY tracked domain is enough: the doc text is committed where it matters, and a domain added
@@ -575,8 +590,20 @@ const stripMd = (s) => String(s).replace(/\.md$/, '');
 // spelling. Ambiguity is an error naming every candidate; a slash that resolves to no domain at all is an
 // error too - a silent pick, or a silent null, would write a section into the wrong domain (or into one
 // that was never named).
+// A filesystem path to a doc (`.alfred/docs/architecture/references/patterns.md`, absolute or project-relative) is the
+// same ref with the docs root in front: the root is stripped first, so the domain segment it leaves resolves as usual
+// (audit 2026-10-20 C27, ce3fd60a / add5a91e: 5 of 6 seats' first call was refused, the hint repeating the wrong form).
+function stripDocsRoot(ref) {
+  const s = path.sep === '\\' ? String(ref).replace(/\\/g, '/') : String(ref);
+  const abs = DOCS_ROOT.split(path.sep).join('/');
+  const rel = path.relative(ROOT, DOCS_ROOT).split(path.sep).join('/');
+  for (const prefix of [`${abs}/`, ...(rel && !rel.startsWith('..') ? [`${rel}/`, `./${rel}/`] : [])]) {
+    if (s.startsWith(prefix)) return s.slice(prefix.length);
+  }
+  return String(ref);
+}
 function parseRef(ref) {
-  const s = String(ref);
+  const s = stripDocsRoot(ref);
   const slash = s.indexOf('/');
   const first = slash < 0 ? null : s.slice(0, slash);
   const isDomain = Boolean(first) && domains().includes(first);
@@ -592,7 +619,7 @@ function parseRef(ref) {
   }
   const matches = domains().map((d) => ({ d, f: findIn(d) })).filter((m) => m.f);
   if (matches.length > 1) throw new Error(`${bare} is in ${matches.map((m) => m.d).join(' and ')} - name one, as <domain>/${bare}`);
-  if (!matches.length && first) throw new Error(`no domain or subfolder resolves ${bare} - name one, as <domain>/${bare}`);
+  if (!matches.length && first) throw new Error(`no domain or subfolder resolves ${bare} - name a file \`docs.js files\` lists, as <file>#<id> or <domain>/<file>#<id> (domains: ${domains().join(', ') || 'none'})`);
   const [hit] = matches;
   return { domain: hit ? hit.d : null, file: hit ? `${relKey(hit.f)}.md` : `${fileKey}.md`, id: bare };
 }
@@ -1045,6 +1072,67 @@ function allSections() {
 // and the hash a later `set --expect` refuses a stale rewrite against. Takes a ref (bare or <domain>/<file>#<id>),
 // not a bare section id directly - a section's own id never carries a domain, so a domain-qualified ref must be
 // routed through findFile like every other reader before it can be matched against one.
+// The Known ceilings register only grows: the build closes append rows and the capture carries them row for row, so the
+// section passed its size cap and stayed there (audit 2026-10-20 C27, ce3fd60a: 10,171 chars). A row is CLOSED when its
+// revisit cell opens on lifted / closed / resolved / done (the build that lifted it marks it so). `ceilings` lists them;
+// `--prune` moves them to history/known-ceilings-closed.md (history, never read at orientation) and rewrites the section
+// without them. A row whose where path (one holding a '/') is gone is only named STALE, never moved: a rename or a move
+// in a refactor leaves the shortcut in the code, so the row is re-anchored or marked by whoever knows.
+const CEILINGS_REF = `architecture/ARCHITECTURE.md#${KNOWN_CEILINGS}`;
+const CEILINGS_HISTORY = 'known-ceilings-closed.md';
+const CLOSED_CELL_RE = /^\s*\**(?:lifted|closed|resolved|done)\b/i;
+const tableCells = (line) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+function ceilingRows() {
+  const file = path.join(DOCS, 'ARCHITECTURE.md');
+  const s = allSections().find((x) => x.file === file && x.id === `${key(file)}#${KNOWN_CEILINGS}`);
+  if (!s) return null;
+  const lines = norm(s.text).split('\n');
+  const rows = [];
+  let header = -1;
+  lines.forEach((line, i) => {
+    if (!/^\s*\|/.test(line)) return;
+    if (header < 0) { header = i; return; }
+    if (/^\s*\|[\s:|-]+\|?\s*$/.test(line)) return;
+    const cells = tableCells(line);
+    let why = '';
+    let stale = '';
+    if (CLOSED_CELL_RE.test(cells[cells.length - 1] || '')) why = `marked ${cells[cells.length - 1].replace(/\*/g, '').split(/\s+/)[0].toLowerCase()}`;
+    else {
+      const named = ((/`([^`]+)`/.exec(cells[0] || '') || [])[1] || cells[0] || '').split(/[:#\s]/)[0];
+      if (named.includes('/') && !/[*?{[]/.test(named) && !fs.existsSync(path.join(ROOT, named))) stale = `${named} is gone`;
+    }
+    rows.push({ i, line, why, stale });
+  });
+  return { s, lines, header: header < 0 ? '' : lines[header], rows };
+}
+function ceilings(pruneRows) {
+  const r = ceilingRows();
+  if (!r) return { error: `no ${CEILINGS_REF} section - nothing to read` };
+  const closed = r.rows.filter((x) => x.why);
+  const stale = r.rows.filter((x) => x.stale);
+  if (!pruneRows || !closed.length) return { closed, stale, total: r.rows.length, chars: r.s.ownChars };
+  const drop = new Set(closed.map((x) => x.i));
+  const res = set(CEILINGS_REF, r.lines.filter((_, i) => !drop.has(i)).join('\n'), sectionHash(r.s.text));
+  if (res.error) return { error: res.error };
+  // The history rows go through set() as well, so on a branch of a `local` install both halves land in that branch's
+  // version and fold into mainline together; the file itself, an empty table, is made on mainline the first time.
+  const hist = path.join(DOCS, 'history', CEILINGS_HISTORY);
+  const day = new Date().toISOString().slice(0, 10);
+  const rowsOut = closed.map((x) => `${x.line.trim().replace(/\s*\|?\s*$/, '')} | pruned ${day}: ${x.why} |`);
+  if (!fs.existsSync(hist)) {
+    const cols = tableCells(r.header).length + 1;
+    fs.mkdirSync(path.dirname(hist), { recursive: true });
+    fs.writeFileSync(hist, `# Known ceilings - closed rows\n\nRows \`docs.js ceilings --prune\` moved out of ARCHITECTURE.md#${KNOWN_CEILINGS}, oldest first.\n\n## Closed rows\n<!-- id: closed-rows -->\n\n${r.header.trim().replace(/\s*\|?\s*$/, '')} | pruned |\n|${' --- |'.repeat(cols)}\n`);
+  }
+  const histRef = `architecture/history/${CEILINGS_HISTORY}#closed-rows`;
+  const cur = askRef(histRef);
+  const curText = cur && allSections().find((x) => x.file === hist && x.id === `${key(hist)}#closed-rows`);
+  if (!curText) return { error: `${shown(hist)} has no closed-rows section - the section was pruned but its rows are not filed: ${rowsOut.join(' ')}` };
+  const h = set(histRef, `${norm(curText.text)}\n${rowsOut.join('\n')}`, cur.hash);
+  if (h.error) return { error: `${h.error} - the section was pruned but its rows are not filed: ${rowsOut.join(' ')}` };
+  return { closed, stale, total: r.rows.length, moved: closed.length, wrote: res.wrote, history: h.wrote };
+}
+
 function askRef(ref) {
   const [fileKey, sec] = String(ref).split('#');
   if (!sec) return null;
@@ -1499,6 +1587,9 @@ function lint(domain) {
   const notes = [];
   if (domain && !domains().includes(domain)) return { problems: [`no domain '${domain}' under the docs root (domains: ${domains().join(', ') || 'none'})`], notes };
   const inScope = (d) => !domain || d === domain;
+  const mtime = (p) => { try { return fs.statSync(p).mtimeMs; } catch { return NaN; } };
+  const mapAt = mtime(path.join(DOCS, 'ARCHITECTURE.md'));
+  const sameWritePass = (f) => Math.abs(mtime(f) - mapAt) <= WRITE_PASS_MS;
   for (const f of docFiles()) {
     if (!inScope(fileDomain(f))) continue;
     const raw = fs.readFileSync(f, 'utf8');
@@ -1510,9 +1601,22 @@ function lint(domain) {
       if (!s.declaredId) problems.push(`section without an id: ${relKey(f)} '${s.heading}' - run docs.js seed-ids`);
       else if (seen.has(s.declaredId)) problems.push(`duplicate id ${key(f)}#${s.declaredId} (lines ${seen.get(s.declaredId) + 1} and ${s.start + 1})`);
       else seen.set(s.declaredId, s.start);
-      if (!hist && s.ownChars > MAX_SECTION_CHARS) problems.push(`oversized section (${s.ownChars} chars, cap ${MAX_SECTION_CHARS}): ${key(f)}#${s.declaredId || slug(s.heading)} - split it`);
+      if (!hist && s.ownChars > MAX_SECTION_CHARS) {
+        // The map's Known ceilings is a register the build closes append rows to and the capture carries row for row
+        // (doc-shapes.md): no run may split it, so the cap would be a PROBLEM row nothing can close (audit 2026-10-20
+        // C27, add5a91e / ce3fd60a: 7,858 then 10,171 chars, red on every capture). Its size stays visible as a note.
+        if (s.declaredId === KNOWN_CEILINGS && fileDomain(f) === 'architecture' && relKey(f) === 'ARCHITECTURE') notes.push(`${key(f)}#${KNOWN_CEILINGS} is ${s.ownChars} chars (a row register: carried row for row, exempt from the ${MAX_SECTION_CHARS} cap; 'docs.js ceilings --prune' moves its closed rows to history)`);
+        else problems.push(`oversized section (${s.ownChars} chars, cap ${MAX_SECTION_CHARS}): ${key(f)}#${s.declaredId || slug(s.heading)} - split it`);
+      }
     }
-    if (!hist && secs.length && !secs.some((s) => s.covers.length)) notes.push(`no section declares covers: ${relKey(f)}`);
+    // A file the architecture capture wrote in its latest pass (its `Captured:` stamp, written within WRITE_PASS_MS of the
+    // map) owes `covers` lines by its shape, so a rewrite that dropped them is a PROBLEM that run can fix; a file it did
+    // not touch, a human-authored one or another domain's keeps the note, since the capture may not rewrite it (audit
+    // 2026-10-20 C27, 29e4002f: five rewritten reference files closed on the note alone).
+    if (!hist && secs.length && !secs.some((s) => s.covers.length)) {
+      if (fileDomain(f) === 'architecture' && CAPTURE_STAMP.test(raw.slice(0, 600)) && sameWritePass(f)) problems.push(`no section declares covers: ${relKey(f)} - the capture's shape gives every section a <!-- covers: --> line`);
+      else notes.push(`no section declares covers: ${relKey(f)}`);
+    }
   }
   // ORIENTATION.md is architecture's own file (BLOCK_FILE), so another domain's scope never reads it.
   if (inScope('architecture')) {
@@ -1520,6 +1624,8 @@ function lint(domain) {
       const bytes = fs.statSync(BLOCK_FILE).size;
       if (bytes > BLOCK_BYTES) problems.push(`ORIENTATION.md is ${bytes} bytes, cap ${BLOCK_BYTES} - every session pays for it`);
       for (const p of verifyBlock()) problems.push(`ORIENTATION.md ${p}`);
+      const footer = fs.readFileSync(BLOCK_FILE, 'utf8').split('\n').filter((l) => HOOK_FOOTER.test(l)).length;
+      if (footer) notes.push(`ORIENTATION.md repeats ${footer} line(s) of the session hook's own footer - delete them, the hook adds them`);
       if (orientationState() === 'provisional') notes.push('ORIENTATION.md is provisional - a first-look scan the architecture capture replaces');
     } else notes.push('no ORIENTATION.md: sessions start with no map');
   }
@@ -1944,14 +2050,14 @@ function adrNew(title) {
 }
 
 module.exports = {
-  ROOT, DOCS_ROOT, DOCS, BLOCK_FILE, BRANCHES, domains, domainDir, resetDomains,
+  ROOT, DOCS_ROOT, DOCS, BLOCK_FILE, HOOK_FOOTER, BRANCHES, domains, domainDir, resetDomains,
   git, tracked, VERSIONING_KEYS, docsMode, gitVersioned, versioningMismatch, hasGit, branch, isMainline, safe, overlayDir, docFiles, relKey, key, findFile, parseRef, isHistory,
   parse, sections, allSections, where, namingSections, show, toc, matches, outgrownFiles, stale,
   set, writeBaseMeta, refreshBaseMeta, readMeta, mainlineRefs, porcelainPaths, blobOf, blobsOf, overlayOwner,
   stripStamp, stampLineOf, withStamp, conflictView,
   overlayNames, mergedBranches, promote, autoPromote, deletedUnmerged, prune, status,
   lint, integrity, seedIds, loadWatch, watchHits, watchOf, unowned, notOwnedOf, snapshot, changedSince,
-  sectionHash, firstSentence, askRef, protectedRef, shownFrom, adrRecords, adrIndex, adrNew, orientationState,
+  sectionHash, firstSentence, ceilings, askRef, protectedRef, shownFrom, adrRecords, adrIndex, adrNew, orientationState,
 };
 if (require.main !== module) return;
 
@@ -2062,6 +2168,16 @@ const commands = {
     console.log(`${problems.length} problems, ${notes.length} notes`);
     process.exit(problems.length ? 1 : 0);
   },
+  ceilings: () => {
+    const r = ceilings(args.includes('--prune'));
+    if (r.error) { console.log(r.error); process.exit(1); }
+    for (const x of r.closed) console.log(`closed: ${x.why} - ${x.line.trim().slice(0, 160)}`);
+    for (const x of r.stale) console.log(`stale:  ${x.stale} - kept; re-anchor the where cell, or mark the revisit cell lifted if the shortcut went with it - ${x.line.trim().slice(0, 160)}`);
+    if (r.moved) {
+      docsLog({ event: 'ceilings-prune', moved: r.moved, wrote: r.wrote });
+      console.log(`moved ${r.moved} of ${r.total} rows to ${r.history}; ${CEILINGS_REF} rewritten in ${r.wrote}`);
+    } else console.log(`${r.closed.length} of ${r.total} rows closed${r.closed.length ? " - 'docs.js ceilings --prune' moves them to history" : ''} (section ${r.chars} chars, cap ${MAX_SECTION_CHARS})`);
+  },
   // one `ids added: <file> (+n)` line per file rewritten, then the total - the line analyze-usage.js reads
   'seed-ids': () => console.log(`${seedIds((f, n) => console.log(`ids added: ${shown(f)} (+${n})`))} ids added`),
   watch: () => {
@@ -2091,6 +2207,6 @@ const commands = {
 };
 if (commands[cmd]) commands[cmd]();
 else {
-  console.log('usage: docs.js where <path...> | toc <file> | show <file>#<id>... [--conflict [branch]] | files | set <file>#<id> [textfile] [--expect <hash>] | hash <file>#<id> | status | stale | promote <branch>|--merged | prune [branch] | lint [domain] | seed-ids | watch <path...> [--dir <dir...>] | adr new \'<title>\' | adr index');
+  console.log('usage: docs.js where <path...> | toc <file> | show <file>#<id>... [--conflict [branch]] | files | set <file>#<id> [textfile] [--expect <hash>] | hash <file>#<id> | status | stale | promote <branch>|--merged | prune [branch] | lint [domain] | ceilings [--prune] | seed-ids | watch <path...> [--dir <dir...>] | adr new \'<title>\' | adr index');
   process.exit(cmd ? 1 : 0);
 }

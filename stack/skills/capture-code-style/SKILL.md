@@ -19,6 +19,8 @@ The per-language configs (`.editorconfig`, eslint/prettier, `tsconfig`, the SQL 
 - It fans out code-style-analyzer agents (one per detected language), merges their reports into `code-style/CODE-STYLE.md` under the docs root, and generates the path-scoped project-code-style rule that auto-attaches the style core whenever a matching file is touched - in the main session AND in dispatched subagents.
 - Not for architecture (capture-architecture), one language's style question (the code-style-analyzer seat alone, picked from the @ typeahead), or enforcing style (the per-language configs stay the enforced source).
 
+**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
+
 ## Execution modes
 DELEGATED vs INLINE keys on dispatch capability, not file presence - agent files on disk with no Agent tool to dispatch them is still INLINE. When dispatch is available, ask ONE question before a first capture's fan-out, via AskUserQuestion - characterize via code-style-analyzer seats (recommend it: the seats absorb the reads), or in-session? - unless a calling flow already picked the run's mode, which is inherited, never re-asked. Pick once, hold for the run:
 
@@ -48,7 +50,7 @@ Regenerate on every run - the rule is derived output, cheap to rebuild, and rebu
 This generated rule is per-project output, deliberately NOT in the stack's RULES set - no installer ledger records this generated rule, so `/alfred-code:update` never touches it.
 
 ### 5. REPORT
-A literal line template, not prose to remember - the close is filled in, field by field, one line each (a table where a field lists several items, since the answer-length hook blocks a wall of prose and tables are exempt):
+A literal line template, not prose to remember - the close is filled in, field by field, one line each (a table where a field lists several items, since the answer budget caps prose and tables are exempt):
 
 ```
 Doc:         <created | refreshed> - <docs-path>/code-style/CODE-STYLE.md, sections <the ones touched>

@@ -211,10 +211,10 @@ test('adopt-hooks: a hook the PREVIOUS stamp shipped and disk no longer has stay
     const logs = [];
     const out = sel.adoptHooks({
         lines: ['hook docs-session'],
-        catalog: ['docs-session.js::SessionStart', 'guard-answer-length.js::Stop'],
-        shippedBefore: ['docs-session', 'guard-answer-length'], log: (m) => logs.push(m),
+        catalog: ['docs-session.js::SessionStart', 'guard-answer.js::Stop'],
+        shippedBefore: ['docs-session', 'guard-answer'], log: (m) => logs.push(m),
     });
-    assert.ok(!out.includes('hook guard-answer-length'), 'a deliberate drop was re-adopted');
+    assert.ok(!out.includes('hook guard-answer'), 'a deliberate drop was re-adopted');
     assert.ok(logs.some((m) => /was dropped from this install/.test(m)), logs.join(' | '));
 });
 
@@ -272,10 +272,10 @@ test('read-back: a healthy listing reads seats, hooks and MCP entries back, and 
 {
     const r = readBackCase({
         listing: [row('alfred-code@envoydev'), row('alfred-navigation@envoydev')],
-        settings: { permissions: { deny: ['Agent(alfred-code:security-auditor)'] }, env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } },
+        settings: { permissions: { deny: ['Agent(alfred-code:security-auditor)'] }, env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer' } },
     });
     assert.ok(r.lines.includes('agent evidence-gatherer') && !r.lines.includes('agent security-auditor'));
-    assert.ok(r.lines.includes('hook docs-session') && !r.lines.includes('hook guard-answer-length'));
+    assert.ok(r.lines.includes('hook docs-session') && !r.lines.includes('hook guard-answer'));
     assert.ok(r.lines.includes('mcp alfred-navigation'));
     assert.deepStrictEqual(r.answered, { hooks: true, agents: true });
 });
@@ -398,13 +398,13 @@ test('read-back: the core reads as enabled whatever the listing flag says (S22) 
     const stale = { enabled: false };
     const r = readBackCase({
         listing: [row('alfred-code@envoydev', stale)],
-        settings: { permissions: { deny: [`Agent(alfred-code:${seat})`] }, env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } },
+        settings: { permissions: { deny: [`Agent(alfred-code:${seat})`] }, env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer' } },
     });
     assert.deepStrictEqual(r.parked, [], 'the core is not parked by its flag');
     assert.deepStrictEqual(r.answered, { hooks: true, agents: true });
     assert.ok(r.lines.includes('skill markdown-style'), r.lines.join(', '));
     assert.ok(!r.lines.includes(`agent ${seat}`), 'the denied seat stays off');
-    assert.ok(r.lines.includes('hook docs-session') && !r.lines.includes('hook guard-answer-length'), 'HOOKS_OFF still holds');
+    assert.ok(r.lines.includes('hook docs-session') && !r.lines.includes('hook guard-answer'), 'HOOKS_OFF still holds');
     assert.deepStrictEqual(sel.leftOut({ parked: r.parked, deny: r.deny }), [`agent ${seat}`], 'only the denied seat is left out - no core item for the flag');
     const inv = sel.planInventory({ lists: {}, listing: [row('alfred-code@envoydev', stale), row('csharp-lsp@claude-plugins-official', stale)], answered: r.answered, pluginCatalog: ['csharp-lsp'] });
     assert.deepStrictEqual(inv.plugins_disabled, ['csharp-lsp'], 'validate shows no DISABLED row for the core');
@@ -547,8 +547,8 @@ test('read-back: a copy-route install that kept no hook reads back `hook none` o
         const bare = readBackCase({ listing: [core], routes: copy, hooks: ['hook-prelude', 'fresh-session'], stampHooks: shipped, lastHooksRoute });
         assert.deepStrictEqual(hookLines(bare), [], `${lastHooksRoute}: a leftover prelude is no None - nothing stored, every hook stays on`);
         const stored = readBackCase({ listing: [core], routes: copy, hooks: ['hook-prelude'], stampHooks: shipped, lastHooksRoute,
-            settings: { env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } } });
-        assert.deepStrictEqual(hookLines(stored).sort(), shipped.filter((h) => h !== 'guard-answer-length').map((h) => `hook ${h}`).sort(),
+            settings: { env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer' } } });
+        assert.deepStrictEqual(hookLines(stored).sort(), shipped.filter((h) => h !== 'guard-answer').map((h) => `hook ${h}`).sort(),
             `${lastHooksRoute}: the stored off list is kept`);
     }
     const plugin = readBackCase({ listing: [core], hooks: ['hook-prelude'], stampHooks: shipped, lastHooksRoute: 'copy' });
@@ -585,7 +585,7 @@ test('read-back: a partial hook folder is no pick unless the copy route made it 
     const partial = shipped.slice(0, 5);
     const core = row('alfred-code@envoydev');
     const hookLines = (r) => r.lines.filter((l) => l.startsWith('hook ')).sort();
-    const offOne = shipped.filter((h) => h !== 'guard-answer-length').map((h) => `hook ${h}`).sort();
+    const offOne = shipped.filter((h) => h !== 'guard-answer').map((h) => `hook ${h}`).sort();
     const wiring = (names) => ({ PreToolUse: names.map((h) => ({ matcher: 'Bash', hooks: [{ type: 'command', command: `"$CLAUDE_PROJECT_DIR/.claude/hooks/${h}.js"`, timeout: 10 }] })) });
     for (const copy of [{ hooks: false, skills: true, mcps: true }, { hooks: false, skills: false, mcps: false }])
     {
@@ -597,7 +597,7 @@ test('read-back: a partial hook folder is no pick unless the copy route made it 
             assert.deepStrictEqual(hookLines(bare), [], `${at}, nothing stored: every hook stays on`);
             assert.ok(!bare.closeFrom.some((l) => l.startsWith('hook ')), `${at}: a set-aside file never reaches the closure`);
             const stored = readBackCase({ listing: [core], routes: copy, hooks: partial, stampHooks: shipped, lastHooksRoute,
-                settings: { env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } } });
+                settings: { env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer' } } });
             assert.deepStrictEqual(hookLines(stored), offOne, `${at}: the stored list`);
         }
         const disk = partial.map((h) => `hook ${h}`).sort();
@@ -613,7 +613,7 @@ test('read-back: a partial hook folder is no pick unless the copy route made it 
     // The R56 probe the review measured: no line, ONE stack hook left in the folder, the stored off list,
     // the run on the hooks copy route - every hook but the one named off stays on, never the one left in the folder alone.
     const probe = readBackCase({ listing: [core], routes: { hooks: false, skills: true, mcps: true }, hooks: ['guard-secret-value'], stampHooks: shipped, lastHooksRoute: null,
-        settings: { env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } } });
+        settings: { env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer' } } });
     assert.strictEqual(hookLines(probe).length, shipped.length - 1, hookLines(probe).join(', '));
     assert.deepStrictEqual(hookLines(probe), offOne);
     const said = [];
@@ -644,8 +644,8 @@ test('read-back: a user\'s own hook file never answers the hooks layer - a blind
     assert.strictEqual(unknown.answered.hooks, false);
     const shipped = [...new Set(MANIFEST.catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
     const stored = readBackCase({ listing: [row('alfred-code@envoydev')], routes: copyRoute, hooks: ['my-own-check'], lastHooksRoute: null, stampHooks: shipped,
-        settings: { env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } } });
-    assert.deepStrictEqual(stored.lines.filter((l) => l.startsWith('hook ')).sort(), shipped.filter((h) => h !== 'guard-answer-length').map((h) => `hook ${h}`).sort());
+        settings: { env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer' } } });
+    assert.deepStrictEqual(stored.lines.filter((l) => l.startsWith('hook ')).sort(), shipped.filter((h) => h !== 'guard-answer').map((h) => `hook ${h}`).sort());
 });
 
 // A flip from the plugin route to the copies leaves no hook on disk and the off-state in
@@ -818,12 +818,12 @@ test('read-back: an install under another marketplace key is the same install, a
 {
     const KEY = 'other-key';
     const stampPicked = { skills: ['task-solve-cross@alfred-code'], agents: ['security-auditor@alfred-code'] };
-    const settings = { permissions: { deny: ['Agent(alfred-code:code-style-analyzer)'] }, env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } };
+    const settings = { permissions: { deny: ['Agent(alfred-code:code-style-analyzer)'] }, env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer' } };
     const now = readBackCase({ listing: [row('alfred-code@envoydev'), row('alfred-navigation@envoydev')], stampPicked, settings });
     const r = readBackCase({ listing: [row(`alfred-code@${KEY}`), row(`alfred-navigation@${KEY}`)], stampPicked, settings, marketplace: KEY });
     assert.deepStrictEqual(r.answered, { hooks: true, agents: true });
     assert.ok(r.lines.includes('agent evidence-gatherer') && !r.lines.includes('agent code-style-analyzer'), 'the core seats, the deny honoured');
-    assert.ok(r.lines.includes('hook docs-session') && !r.lines.includes('hook guard-answer-length'));
+    assert.ok(r.lines.includes('hook docs-session') && !r.lines.includes('hook guard-answer'));
     assert.ok(r.closeFrom.includes('skill task-solve-cross') && r.closeFrom.includes('agent security-auditor'), 'the stamp picks are kept');
     assert.strictEqual(r.blind, false);
     assert.deepStrictEqual(r.lines.slice().sort(), now.lines.slice().sort(), 'the same read-back as under the default key');
@@ -974,4 +974,30 @@ test('planInventory: scopes - global for a user row, project and local as such, 
     const inv = sel.planInventory({ lists: {}, listing: [r('claude-hud', 'user'), r('claude-hud', 'project'), r('webkit-control', 'local'), r('windows-control', 'user'),
         r('alfred-navigation', 'user'), r('alfred-code', 'user'), r('typescript-lsp', 'project', '')] });
     assert.deepStrictEqual(inv.scopes, { 'claude-hud': 'project', 'webkit-control': 'local', 'windows-control': 'global' }, 'a row with no version is not installed');
+});
+
+// 2026-10-20: a hook a release renamed reads under its new name - a selection line, and in the read-back a copied file,
+// the stamp's shipped list and a stored HOOKS_OFF - so a switched-off hook stays off and a kept one is no new hook.
+test('renamed hooks: a hook line is re-spelled once, and the read-back reads the old name as the new one', () =>
+{
+    const logs = [];
+    const renaming = { renamed: { hooks: { 'guard-answer-length': 'guard-answer' } }, log: (m) => logs.push(m), said: new Set() };
+    assert.deepStrictEqual(sel.renameLines(['hook guard-answer-length', 'hook guard-a', 'skill x'], renaming), ['hook guard-answer', 'hook guard-a', 'skill x']);
+    sel.renameLines(['hook guard-answer-length'], renaming);
+    assert.deepStrictEqual(logs, ['renamed: hook guard-answer-length -> guard-answer'], 'one line per rename per run');
+    const manifest = loadManifest(path.join(__dirname, '..'));
+    assert.strictEqual(manifest.renamed.hooks['guard-answer-length'], 'guard-answer', 'the manifest carries the rename');
+    assert.ok(manifest.retired.hooks.includes('guard-answer-length.js'), 'and retires the old file, so its copy and wiring go');
+    assert.ok(manifest.catalogs.hooks.some((e) => e.startsWith('guard-answer.js::')) && !manifest.catalogs.hooks.some((e) => e.startsWith('guard-answer-length.js::')));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hook-rename-'));
+    try
+    {
+        const claudeDir = path.join(root, '.claude');
+        fs.mkdirSync(path.join(claudeDir, 'hooks'), { recursive: true });
+        fs.writeFileSync(path.join(claudeDir, 'hooks', 'guard-answer-length.js'), '// v2.5.0 copy\n');
+        const back = sel.readBack({ claudeDir, settings: { env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } }, routes: { hooks: false }, manifest,
+            sourceDir: path.join(__dirname, '..'), stampHooks: ['guard-answer-length'], lastHooksRoute: 'copy', log: () => {} });
+        assert.ok(back.lines.includes('hook guard-answer') && !back.lines.includes('hook guard-answer-length'), back.lines.filter((l) => l.startsWith('hook ')).join(', '));
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

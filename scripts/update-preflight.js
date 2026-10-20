@@ -358,10 +358,15 @@ function newItemLines({ root, claudeDir, snapshot, settings, stampFile, compareL
 // re-confirmed 3 extra times in one audited run (~275k tokens): one printed row instead.
 function policyRevLine(root, snapshot)
 {
-    // The pre-2.1.6 name is read too, until the update this preflight precedes has moved it.
-    const installedFile = ['alfred-agent-awareness.md', 'baseline-project-agent-capabilities.md']
-        .map((n) => path.join(root, '.claude', 'rules', n)).find((f) => fs.existsSync(f)) || path.join(root, '.claude', 'rules', 'alfred-agent-awareness.md');
-    const snapshotFile = path.join(snapshot, 'stack', 'skills', 'capture-agent-awareness', 'SKILL.md');
+    // The awareness doc first (the user's ruling of 2026-10-16); the rules it replaced are read too - the pre-2.1.6 name
+    // among them - until the update this preflight precedes has moved them. The snapshot is the one this script runs
+    // from, so its policy is always the merged skill's agents reference.
+    let docs = '.alfred/docs';
+    try { docs = require('./install/copy.js').resolveDocsRoot(root).replace(/[\\/]+$/, ''); } catch { /* the default root */ }
+    const installedFile = [path.resolve(root, docs, 'awareness', 'AGENTS-AWARENESS.md'),
+        ...['alfred-agent-awareness.md', 'baseline-project-agent-capabilities.md'].map((n) => path.join(root, '.claude', 'rules', n))]
+        .find((f) => fs.existsSync(f)) || path.join(root, '.claude', 'rules', 'alfred-agent-awareness.md');
+    const snapshotFile = path.join(snapshot, 'stack', 'skills', 'capture-awareness', 'references', 'agents.md');
     const readRev = f => { try { return (fs.readFileSync(f, 'utf8').match(/policy-rev: ([0-9a-f]+)/) || [])[1]; } catch { return undefined; } };
     if (!fs.existsSync(installedFile)) return 'policy-rev: none';
     const installed = readRev(installedFile);
@@ -590,7 +595,7 @@ function main()
 
     const keys = settings && settings.env ? Object.keys(settings.env).sort() : [];
     console.log(`env-keys: ${keys.length ? keys.join(',') : 'none'}`);
-    // Nobody answers this run: the command answers its own asks by init.md's Unattended rule.
+    // Nobody answers this run: the command answers its own asks by init's Unattended rule (references/init-bootstrap.md).
     if (require('./init-plan.js').isUnattended()) console.log('unattended: on');
 
     process.exit(typeof res.status === 'number' ? res.status : 3);

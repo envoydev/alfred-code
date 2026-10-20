@@ -84,11 +84,11 @@ test('the checkpoint review read keeps a merge and the index, reads a brand-new 
 // ------------------------------------------------------------------ JSON on Windows (SD13 contract, the skill texts)
 
 // Git for Windows ships no jq (e90a1845 and 177c5743 hit exit 127): a skill or seat that parses JSON says `node -e`.
-// `gh ... --jq` is gh's own built-in filter and needs no jq binary. The capture-agent-awareness, capture-usage-report and
-// habits-adjust-agents-md folders are pinned by usage-audit-sd-t5.test.js: their prose says 'never `jq`', which this pattern reads as a call.
+// `gh ... --jq` is gh's own built-in filter and needs no jq binary. The capture-usage-report and habits-adjust-agents-md
+// folders are pinned by usage-audit-sd-t5.test.js: their prose says 'never `jq`', which this pattern reads as a call.
 test('no skill or seat text runs a bare jq', () =>
 {
-    const OTHER_TRACK = new Set(['capture-agent-awareness', 'capture-usage-report', 'habits-adjust-agents-md']);
+    const OTHER_TRACK = new Set(['capture-usage-report', 'habits-adjust-agents-md']);
     const files = [];
     const walk = (dir) => { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { const p = path.join(dir, e.name); if (e.isDirectory()) walk(p); else if (/\.md$/.test(e.name)) files.push(p); } };
     for (const d of fs.readdirSync(path.join(ROOT, 'stack', 'skills'), { withFileTypes: true }))
@@ -124,7 +124,7 @@ test('42951e5b#10: a command the cycle proved wrong is doc drift, named against 
 {
     const mech = flat(read('stack/skills/task-solve/references/step-mechanics.md'));
     assert.match(mech, /A build, test or run command this cycle proved wrong[^.]*is doc drift too/);
-    assert.match(mech, /names the AGENTS\.md line or the run-book section \(`<docs-path>\/project-capabilities\/PROJECT-CAPABILITIES\.md`\)/);
+    assert.match(mech, /names the AGENTS\.md line or the run-book section \(`<docs-path>\/awareness\/PROJECT-AWARENESS\.md`\)/);
 });
 
 // ------------------------------------------------------------------ SD15 - the upgrade gate and the execution verdict
@@ -186,19 +186,19 @@ test('d9035363#3: the analyzer stamps the sibling\'s read_at and may read its gi
     assert.match(seat, /no checkout, fetch, pull, reset or stash/);
     assert.match(seat, /read_at: <sibling branch>@<short sha> \| n\/a - not a git checkout/);
     assert.match(seat, /the house schema minus `captured:` \(the caller stamps that per entry at merge, from the host's branch and sha - never you\)/, 'captured: stays the host stamp');
-    const shapes = flat(read('stack/skills/capture-related-projects/references/artifact-shapes.md'));
-    assert.match(shapes, /read_at: main@9f8e7d6 captured: develop@a1b2c3d, 2026-07-24/);
-    assert.match(shapes, /`read_at:` is the other side's provenance: the SIBLING's own `<branch>@<short-sha>`/);
-    const skill = flat(read('stack/skills/capture-related-projects/SKILL.md'));
-    assert.match(skill, /the `read_at:` its entry already carries in the doc \(a re-capture starts from what changed since\)/);
+    const related = flat(read('stack/skills/capture-awareness/references/related-projects.md'));
+    assert.match(related, /read_at: main@9f8e7d6 captured: develop@a1b2c3d, 2026-07-24/);
+    assert.match(related, /`read_at:` is the other side's provenance: the SIBLING's own `<branch>@<short-sha>`/);
+    assert.match(related, /the `read_at:` its entry already carries in the doc \(a re-capture starts from what changed since\)/);
 });
 
 // d9035363#4: the skill said apply markdown-style to the doc; the markdown-docs rule says the generated docs root takes no load.
-test('d9035363#4: the related-projects doc loads no formatting skill - its shape is fixed in artifact-shapes.md', () =>
+test('d9035363#4: the awareness docs load no formatting skill - each shape is fixed in its reference', () =>
 {
-    const skill = read('stack/skills/capture-related-projects/SKILL.md');
-    assert.doesNotMatch(skill, /markdown-style/);
-    assert.match(flat(skill), /a quick reference whose shape is fixed verbatim in `references\/artifact-shapes\.md` - no formatting skill loads for it/);
+    const skill = read('stack/skills/capture-awareness/SKILL.md');
+    for (const f of ['SKILL.md', 'references/agents.md', 'references/project.md', 'references/related-projects.md'])
+        assert.doesNotMatch(read(`stack/skills/capture-awareness/${f}`), /markdown-style/, f);
+    assert.match(flat(skill), /Each doc's shape is fixed verbatim in its reference - no formatting skill loads for them/);
 });
 
 // ------------------------------------------------------------------ SD09 - the architecture capture's zero-drift exit

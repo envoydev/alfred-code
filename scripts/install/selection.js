@@ -34,14 +34,29 @@ const { stackNames } = require('./manifest.js');
 
 // The rules a capture GENERATES into a project, by name - a list, never a prefix: the 2026-10-13 rename (the user's
 // to-do: the alfred-project-* rules to alfred-*, the run book to alfred-project-awareness, agent capabilities to
-// alfred-agent-awareness) left them beside the shipped alfred-*.md baseline, so a pattern would take one for the
+// alfred-agent-awareness - three of which alfred-awareness replaced on 2026-10-16) left them beside the shipped alfred-*.md baseline, so a pattern would take one for the
 // other. Keyed by the name the stack generated first (`baseline-project-<key>`, then `alfred-project-<key>`), which
 // moveGeneratedRules carries forward; project-code-style is capture-code-style's and never moved.
 const GENERATED_RULES = { 'agent-capabilities': 'alfred-agent-awareness', 'related-context': 'alfred-related-context', architecture: 'alfred-architecture', 'run-book': 'alfred-project-awareness' };
 const GENERATED_RULE_NAMES = Object.keys(GENERATED_RULES);
 // Newest legacy spelling first: a project holding both moves the newer file, and the older one is judged against it.
 const LEGACY_GENERATED = GENERATED_RULE_NAMES.flatMap((key) => [[`alfred-project-${key}`, GENERATED_RULES[key]], [`baseline-project-${key}`, GENERATED_RULES[key]]]);
-const GENERATED_FILES = new Set([...Object.values(GENERATED_RULES), 'project-code-style', ...LEGACY_GENERATED.filter(([old]) => old.startsWith('alfred-project-')).map(([old]) => old)]);
+// The one awareness rule replaced three of them (the user's ruling of 2026-10-16): the capture-awareness script writes it,
+// and an update writes it from the moved docs (docs.js migrateAwareness). Its successors are named here for the text
+// re-spell alone - the files are moved by migrateAwareness, never by moveGeneratedRules, since `alfred-project-awareness`
+// is itself a current name there.
+const AWARENESS_RULE = 'alfred-awareness';
+const AWARENESS_SUCCEEDS = { 'alfred-agent-awareness': AWARENESS_RULE, 'alfred-project-awareness': AWARENESS_RULE, 'alfred-related-context': AWARENESS_RULE };
+const GENERATED_FILES = new Set([...Object.values(GENERATED_RULES), AWARENESS_RULE, 'project-code-style', ...LEGACY_GENERATED.filter(([old]) => old.startsWith('alfred-project-')).map(([old]) => old)]);
+// The awareness docs an update re-spells beside the generated rules: the capture writes them, so they name the stack's
+// own skills, servers and docs root too. `agentsOnly`: the inventory alone, which names the seats and the MCP rows.
+function awarenessDocs(projectRoot, docsPath, { agentsOnly = false } = {})
+{
+    if (!docsPath) return [];
+    const dir = path.resolve(projectRoot, String(docsPath), 'awareness');
+    return (agentsOnly ? ['AGENTS-AWARENESS.md'] : ['AGENTS-AWARENESS.md', 'PROJECT-AWARENESS.md', 'RELATED-PROJECTS-AWARENESS.md'])
+        .map((n) => path.join(dir, n)).filter((p) => fs.existsSync(p));
+}
 // A generated, project-owned file is not a stack item: the captures rewrite those.
 const RULE_EXCLUDE = { test: (name) => GENERATED_FILES.has(name) };
 // docs.js / memory.js / history.js / fresh-session.js / shell-writes.js / hidden-chars.js are ENGINES, hook-prelude.js the shared gate
@@ -226,10 +241,19 @@ function readBack({ claudeDir, skillsDir, foreignSkill = () => false, mcpServers
     const shipped = [...new Set(manifest.catalogs.hooks.map(nameOfFile))];
     // A copy an older release wrote under a name this one renamed is the renamed item (`renamed` below).
     const renaming = { renamed: manifest.renamed, log, said };
+    // A hook a release renamed (manifest `renamed.hooks`) reads under its new name wherever an older install names it -
+    // a copied file (deriveFromDisk below), the stamp's shipped list and an ALFRED_CODE_HOOKS_OFF value - so a hook the
+    // user switched off stays off under its new name, and one they kept is no new hook to adopt.
+    const hookRenames = (manifest.renamed && manifest.renamed.hooks) || {};
+    const hookNow = (h) => { const bare = String(h).trim().replace(/\.js$/, ''); return Object.hasOwn(hookRenames, bare) ? hookRenames[bare] : h; };
+    const offNow = (e) => (e && typeof e === 'object' && envOf(e, 'HOOKS_OFF') != null
+        ? { ...e, ALFRED_CODE_HOOKS_OFF: String(envOf(e, 'HOOKS_OFF')).split(',').map((h) => (h.trim() ? hookNow(h) : h)).join(',') } : e);
+    stampHooks = [...new Set((stampHooks || []).map(hookNow))];
+    committedEnv = offNow(committedEnv);
     // An MCP name from before the 2.0.0 rename - a listing row, a .mcp.json server - is read under its
     // new one: the same server the user picked (manifest `renamed.mcps`).
     const cur = (name) => currentMcp(name, (manifest.renamed && manifest.renamed.mcps) || {});
-    let lines = renameLines(deriveFromDisk({ claudeDir, skillsDir, mcpServers: mcpServers.map(cur), plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins, shippedHooks: shipped, known: stackNames(manifest), foreignSkill }), renaming);
+    let lines = renameLines(deriveFromDisk({ claudeDir, skillsDir, mcpServers: mcpServers.map(cur), plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins, shippedHooks: shipped.concat(Object.keys(hookRenames)), known: stackNames(manifest), foreignSkill }), renaming);
     const none = { lines, closeFrom: [], parked: [], deny: [], installed: false, answered: { hooks: false, agents: false }, engines: [] };
     const ours = (stackListing || listing).filter((r) => r.marketplace === marketplace);
     // On the plugin routes an install whose every pick an entry carries, with no rule copied, leaves
@@ -251,7 +275,7 @@ function readBack({ claudeDir, skillsDir, foreignSkill = () => false, mcpServers
         log(`installed-only: ${r.name}@${r.marketplace} is installed but not among the browsers the last install kept - left as it is, not kept; remove it: claude plugin uninstall ${r.name}@${r.marketplace} --scope ${r.scope || 'project'}, or pick it again in /alfred-code:configure`);
     const names = ours.filter((r) => rowOn(r) && !unrecorded(r)).map((r) => cur(r.name));
     const stored = renameDeny(settings && typeof settings === 'object' ? settings : {}, { ...renaming, sharedOnly: sharedOnlyDeny });
-    const env = stored.env && typeof stored.env === 'object' ? stored.env : {};
+    const env = offNow(stored.env && typeof stored.env === 'object' ? stored.env : {});
     const deny = stored.permissions && Array.isArray(stored.permissions.deny) ? stored.permissions.deny : [];
     // The browser engines the last install INSTALLED (the stamp's `control-engines:`): a
     // disabled row of one is the user's choice to leave it off (R67), still installed and kept, never
@@ -447,7 +471,7 @@ function dropFormerPicks({ lines = [], listing = [], lastVersion = '', compare, 
 // (--selection, --add, --drop); each is read under the new name here, so a pick is carried and a
 // switch-off holds, and the old copy goes with the retired list. `said` makes it one line per rename
 // per run, whichever of those places names it first.
-const RENAMED_KIND = { skill: 'skills', agent: 'agents', rule: 'rules', mcp: 'mcps' };
+const RENAMED_KIND = { skill: 'skills', agent: 'agents', rule: 'rules', mcp: 'mcps', hook: 'hooks' };
 function renamedTo({ renamed, kind, name, log = () => {}, said = new Set() })
 {
     const to = ((renamed && renamed[RENAMED_KIND[kind]]) || {})[name];
@@ -460,7 +484,7 @@ function renameLines(lines = [], opts = {})
 {
     return lines.map((l) =>
     {
-        const m = /^\s*(skill|agent|rule|mcp)\s+(\S+)\s*$/.exec(String(l));
+        const m = /^\s*(skill|agent|rule|mcp|hook)\s+(\S+)\s*$/.exec(String(l));
         return m ? `${m[1]} ${renamedTo({ ...opts, kind: m[1], name: m[2] })}` : l;
     });
 }
@@ -470,7 +494,9 @@ function renamePicked(picked, opts = {})
 {
     if (!picked) return picked;
     const each = (kind) => (entry) => { const { name, home } = splitPick(entry); const to = renamedTo({ ...opts, kind, name }); return home ? `${to}@${home}` : to; };
-    return { ...picked, skills: (picked.skills || []).map(each('skill')), agents: (picked.agents || []).map(each('agent')) };
+    // A merge maps several old picks to one name (the three awareness captures, 2026-10-16): it is one pick.
+    const unique = (list) => [...new Set(list)];
+    return { ...picked, skills: unique((picked.skills || []).map(each('skill'))), agents: unique((picked.agents || []).map(each('agent'))) };
 }
 
 // The read-back's VIEW of the settings: a stack seat deny under any stack spelling reads under the
@@ -574,12 +600,18 @@ function respellDocsRoot({ projectRoot, from, to, log = () => {}, note = () => {
     if (!from || !to || from === to) return 0;
     const escape = (o) => o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const re = new RegExp(`(?<![A-Za-z0-9_./-])${escape(from)}(?![A-Za-z0-9_.-])`, 'g');
+    // The awareness rule's @ imports reach the root from .claude/rules/ (`@../../<root>/...`), so the root there sits
+    // after a slash the pattern above refuses; it takes the import spelling of the new root (the capture script's
+    // awarenessImport).
+    const importRe = new RegExp(`^@\\.\\./\\.\\./${escape(from)}(?=/)`, 'gm');
+    const importOf = (root) => (/^(?:\/|[A-Za-z]:\/|~\/)/.test(String(root).replace(/\\/g, '/')) ? '' : '../../') + root;
     const done = [];
-    for (const file of generatedRules(projectRoot))
+    // The inventory doc moved with the docs, so it is read at the new root; its routing rows name the old one.
+    for (const file of [...generatedRules(projectRoot), ...awarenessDocs(projectRoot, to, { agentsOnly: true })])
     {
         let text;
         try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
-        const out = text.replace(re, to);
+        const out = text.replace(re, to).replace(importRe, () => `@${importOf(to)}`);
         if (out === text) continue;
         try { fs.writeFileSync(file, out); done.push(path.basename(file)); }
         catch (err) { note(`${path.basename(file)} still names the docs root ${from} and could not be re-stamped (${err.message}) - re-run its capture`); }
@@ -598,7 +630,8 @@ function respellPatterns(renamed, engines = [])
     // A rule is named in a seeded AGENTS.md by its path (`.claude/rules/baseline-git.md`), so its pairs are the
     // file names without the extension; the four generated pointers moved by moveGeneratedRules follow the same way.
     const rules = Object.fromEntries(Object.entries((renamed && renamed.rules) || {}).map(([o, n]) => [o.replace(/\.md$/, ''), n.replace(/\.md$/, '')]));
-    const generated = Object.fromEntries(LEGACY_GENERATED);
+    // An old generated name takes its successor's final name: `alfred-project-agent-capabilities` -> `alfred-awareness`.
+    const generated = Object.fromEntries([...LEGACY_GENERATED.map(([o, n]) => [o, AWARENESS_SUCCEEDS[n] || n]), ...Object.entries(AWARENESS_SUCCEEDS)]);
     const pairs = { ...((renamed && renamed.skills) || {}), ...((renamed && renamed.agents) || {}), ...rules, ...generated };
     const olds = Object.keys(pairs).sort((a, b) => b.length - a.length);
     const escape = (o) => o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -659,7 +692,7 @@ function respellOwnApply({ projectRoot, plan })
     return done;
 }
 
-function respellRenamed({ projectRoot, renamed, engines = [], owned = () => false, onWrite = () => {}, log = () => {}, note = () => {} })
+function respellRenamed({ projectRoot, renamed, engines = [], docsPath = '', owned = () => false, onWrite = () => {}, log = () => {}, note = () => {} })
 {
     const patterns = respellPatterns(renamed, engines);
     if (!patterns) return 0;
@@ -667,7 +700,7 @@ function respellRenamed({ projectRoot, renamed, engines = [], owned = () => fals
     const rel = (file) => path.relative(projectRoot, file).split(path.sep).join('/');
     const instructions = instructionFiles(projectRoot);
     let total = 0;
-    for (const file of [...instructions, ...generatedRules(projectRoot)])
+    for (const file of [...instructions, ...generatedRules(projectRoot), ...awarenessDocs(projectRoot, docsPath)])
     {
         let text;
         try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
@@ -700,9 +733,11 @@ function respellRenamed({ projectRoot, renamed, engines = [], owned = () => fals
 // a bare core seat with no project copy takes the core's name; a seat whose project copy is kept (a tuned or
 // edited seat, `.claude/agents/<seat>.md`) is named bare, the copy's own name - the one a flow should run. A
 // name the core does not carry, and every line that is not a plain name list, is left as written.
-function respellRosterSeats({ projectRoot, core, seats = [], log = () => {}, note = () => {} })
+function respellRosterSeats({ projectRoot, core, seats = [], docsPath = '', log = () => {}, note = () => {} })
 {
-    const file = path.join(projectRoot, '.claude', 'rules', 'alfred-agent-awareness.md');
+    // The inventory doc since 2026-10-16; the rule it replaced while an update has not moved it yet.
+    const file = awarenessDocs(projectRoot, docsPath, { agentsOnly: true })[0] || path.join(projectRoot, '.claude', 'rules', 'alfred-agent-awareness.md');
+    const shown = path.relative(projectRoot, file).split(path.sep).join('/');
     let text;
     try { text = fs.readFileSync(file, 'utf8'); } catch { return 0; }
     const carried = new Set(seats);
@@ -730,8 +765,8 @@ function respellRosterSeats({ projectRoot, core, seats = [], log = () => {}, not
     }
     if (!changed) return 0;
     try { fs.writeFileSync(file, lines.join('\n')); }
-    catch (err) { note(`.claude/rules/alfred-agent-awareness.md names ${changed} seat(s) the core answers under ${core}:<seat> and could not be re-spelled (${err.message}) - re-run /capture-agent-awareness`); return 0; }
-    log(`  roster: alfred-agent-awareness.md - ${changed} seat name(s) re-spelled to how they resolve (${core}:<seat> on the core, bare for a kept project copy)`);
+    catch (err) { note(`${shown} names ${changed} seat(s) the core answers under ${core}:<seat> and could not be re-spelled (${err.message}) - re-run /capture-awareness`); return 0; }
+    log(`  roster: ${shown} - ${changed} seat name(s) re-spelled to how they resolve (${core}:<seat> on the core, bare for a kept project copy)`);
     return changed;
 }
 
@@ -743,14 +778,14 @@ function respellRosterSeats({ projectRoot, core, seats = [], log = () => {}, not
 //   plugin spelling `mcp__plugin_<server>_<server>__` - the bare one names no tool, so the row's first call loads
 //   nothing. The reverse, plugin to bare for a registration, is the copy route's downconvert.
 // - in an `<engine>-control` row, each backticked `.../output/` dir takes `outputs[engine]`, the dir a capture names now.
-function respellMcpRows({ projectRoot, plugin = [], outputs = {}, log = () => {}, note = () => {} })
+function respellMcpRows({ projectRoot, plugin = [], outputs = {}, docsPath = '', log = () => {}, note = () => {} })
 {
     const escape = (o) => o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const toolRe = plugin.length ? new RegExp(`(?<![A-Za-z0-9_])mcp__(${plugin.map(escape).join('|')})__`, 'g') : null;
     const rowRe = /^\s*[-*]\s+`(chrome|msedge|firefox|webkit)-control`/;
     const dirRe = /`(?:[A-Za-z0-9_.-]+\/)+output\/`/g;
     let total = 0;
-    for (const file of generatedRules(projectRoot))
+    for (const file of [...generatedRules(projectRoot), ...awarenessDocs(projectRoot, docsPath, { agentsOnly: true })])
     {
         let text;
         try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
@@ -764,8 +799,9 @@ function respellMcpRows({ projectRoot, plugin = [], outputs = {}, log = () => {}
             }).join('\n');
         if (out === text) continue;
         const name = path.basename(file);
+        const shown = path.relative(projectRoot, file).split(path.sep).join('/');
         try { fs.writeFileSync(file, out); }
-        catch (err) { note(`.claude/rules/${name} names ${tools + dirs} stale MCP tool name(s) or browser output dir(s) and could not be re-spelled (${err.message}) - re-run /capture-agent-awareness`); continue; }
+        catch (err) { note(`${shown} names ${tools + dirs} stale MCP tool name(s) or browser output dir(s) and could not be re-spelled (${err.message}) - re-run /capture-awareness`); continue; }
         total += tools + dirs;
         if (tools) log(`  route: ${name} - ${tools} MCP tool name(s) re-spelled to the plugin spelling (mcp__plugin_<server>_<server>__) their servers answer to`);
         if (dirs) log(`  browser: ${name} - ${dirs} output dir(s) re-stamped to the engine's dir under the data root`);
@@ -949,6 +985,6 @@ function droppedEntries({ before, after, listing = [], deps = {}, marketplace })
 }
 
 module.exports = {
-    addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, moveGeneratedRules, respellRenamed, respellOwnPlan, respellOwnApply, respellRosterSeats, respellMcpRows, respellDocsRoot, generatedRules, instructionFiles, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
+    addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, moveGeneratedRules, awarenessDocs, respellRenamed, respellOwnPlan, respellOwnApply, respellRosterSeats, respellMcpRows, respellDocsRoot, generatedRules, instructionFiles, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
     adoptHooks, adoptAlways, readBack, planInventory, itemScopes, leftOut, droppedEntries, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE, GENERATED_RULES, FORMER_PLUGINS,
 };

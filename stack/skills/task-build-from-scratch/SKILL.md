@@ -14,7 +14,7 @@ Use this skill to build a new application or a major new module from scratch, be
 - DESIGN runs IN-SESSION on the session's model: the spec becomes 2-3 reasoned architecture options and the user picks, and nothing is scaffolded before that pick. Then the stack's real new-project command + baseline wiring, then the build slice by slice, through the domain seats or in-session per the run-start ask.
 - Not for changing an existing codebase - a feature inside a live app goes to the cross-domain task flow, and a new module in an existing repo is the architecture capture plus that stack's solution-designer.
 
-**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it.
+**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
 
 ## Steps
 
@@ -50,7 +50,7 @@ No dispatch or a scaffold too small to fan out is INLINE without asking.
 ```ask
 <slice> plan, <N> tasks. Build it?
 - 'Approve and build (Recommended)' - stamp, then fan out
-- 'Changes needed' - say what in Other
+- 'Changes needed' - I ask what to change next, in plain text
 ```
 
 Before the first implementer fans out, stamp the approval gate, in four parts:
@@ -80,7 +80,7 @@ Slices:    <n> built, <n> verified green - <the milestone reached>
 Baseline:  build <green|red>, tests <n passed / n failed>, quoted from the command that produced it
 Leftovers: APPROVAL stamp <deleted|still present>; <anything this run started and left up - a container, seeded data, a background process - or `none started`>
 Commit:    <the commit `git log -1 --stat` read back | held - the diff is uncommitted | no git - the scaffold is not a repository>
-Next run:  <each capture whose output does not exist yet, in order: /capture-architecture (no architecture docs under <docs-path>/architecture/), /capture-code-style (no <docs-path>/code-style/CODE-STYLE.md), /capture-project-awareness (no <docs-path>/project-capabilities/PROJECT-CAPABILITIES.md - the run book the verifiers read first), /capture-agent-awareness LAST (no .claude/rules/alfred-agent-awareness.md) - each in a FRESH session; `none` when all four exist>
+Next run:  <each capture whose output does not exist yet, in order: /capture-architecture (no architecture docs under <docs-path>/architecture/), /capture-code-style (no <docs-path>/code-style/CODE-STYLE.md), /capture-awareness LAST (no .claude/rules/alfred-awareness.md - the inventory, the run book and the sibling repos every session loads) - each in a FRESH session; `none` when all three exist>
 ```
 
 Then the commit decision, ONE AskUserQuestion after the close prints, when the scaffold is a git repository (no git: the `Commit:` field says so and nothing is asked):

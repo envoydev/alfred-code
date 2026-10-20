@@ -78,12 +78,12 @@ const mech = () => flat(read('stack/skills/task-solve/references/step-mechanics.
 
 test('C20 a1fa1b2b#5 e6a68237#7 f24eb967#8: a sibling hand-off is printed as one paste-ready block beside the card', () => {
     assert.match(mech(), /prints it beside the card as ONE fenced markdown block ready to paste into the sibling's session - first line `Open in: <the sibling's root>`/);
-    assert.match(flat(read('stack/skills/capture-related-projects/references/sibling-handoff.md')), /ONE fenced markdown block, ready to paste there, its first line `Open in: <the sibling's root>`/);
+    assert.match(flat(read('stack/skills/capture-awareness/references/related-projects.md')), /ONE fenced markdown block, ready to paste there, its first line `Open in: <the sibling's root>`/);
     assert.match(skill('task-solve'), /printed as a paste-ready block, by the step mechanics' hand-off rules/);
 });
 
-test('C20 69dbed46#4: the generated related-context rule says where a card addressed to this repo sits', () => {
-    assert.match(flat(read('stack/skills/capture-related-projects/references/artifact-shapes.md')), /A task card addressed to THIS repo is written in the SIBLING's tree, under its own docs root's `cross-project-tasks\/<this repo>\.md` - search there before calling a named card absent/);
+test('C20 69dbed46#4: the related-projects doc says where a card addressed to this repo sits', () => {
+    assert.match(flat(read('stack/skills/capture-awareness/references/related-projects.md')), /A task card addressed to THIS repo is written in the SIBLING's tree, under its own docs root's `cross-project-tasks\/<this repo>\.md` - search there before calling a named card absent/);
 });
 
 test('C20 close receipts (390aebcb#8 3ce6b036#2 49cb4b82#6 a1fa1b2b#3 f24eb967#9 e499fc94#5 a6a24815#4 3b53e0e8#3): they ride the Result field', () => {
@@ -113,9 +113,11 @@ test('C20 a6a24815#3 + C09 e6a68237#5: the close puts the diff and the next scop
     assert.match(skill('task-solve'), /A deferred item or follow-up is a SECOND question in the same AskUserQuestion call/);
 });
 
-test('C20 adaa2ef3#8 bda299a8#8 ab61627f#6 4f1c2ebb#4: the resume block is printed above the ask, names where it runs, and a paste into a full chat is sent back', () => {
+test('C20 adaa2ef3#8 bda299a8#8 ab61627f#6 4f1c2ebb#4: the resume block ends the turn after the pick, names where it runs, and a paste into a full chat is sent back', () => {
     const t = skill('task-solve');
-    assert.match(t, /the paste-ready resume block - first line `Open in: <the project root>`, then `\/clear, then paste:` and the `\/task-solve` line naming the plan file - is printed ABOVE the ask, so taking it needs no reply turn/);
+    // the user's ruling, 2026-10-15: 'paste the resume block above' was printed with no block on screen
+    assert.match(t, /HONOR the answer: when the user picks it, the turn ENDS with this block, after the answer - no new work in this chat\. The fence holds the command alone: the plan's `Resume:` line holds the step\./);
+    assert.match(t, /then paste and send: ```text \/task-solve <plan file> ``` Next: <its first move> -> <the steps left>\./);
     assert.match(t, /A resume paste that lands in a chat still holding the earlier cycle's conversation \(no `\/clear` between\) is answered with one line - `\/clear first, then paste it again`/);
 });
 

@@ -152,6 +152,35 @@ test('AGENTS.md: a template missing from the snapshot is reported, and nothing i
     assert.ok(notes.some((m) => /AGENTS\.template\.md not found/.test(m)), notes.join(' | '));
 });
 
+// --- update: a seed the stack still owns takes the release's template, under the name it was stamped with ------
+
+test('refresh: the owned seed takes the release template, keeps the H1 it was stamped with, and a second call changes nothing', () =>
+{
+    const sourceDir = dir({ 'stack/AGENTS.template.md': '# __PROJECT_NAME__\n\nNew outline for __PROJECT_NAME__.\n' });
+    // Seeded as 'alpha', now checked out under another folder name.
+    const projectRoot = dir({ '.claude/AGENTS.md': '# alpha\n\nOld outline - an older release steps.\n' });
+    const logs = [];
+    assert.strictEqual(seeds.refreshSeededAgentsMd({ projectRoot, sourceDir, log: (m) => logs.push(m) }), true);
+    const file = path.join(projectRoot, '.claude', 'AGENTS.md');
+    assert.strictEqual(fs.readFileSync(file, 'utf8'), '# alpha\n\nNew outline for alpha.\n');
+    assert.ok(logs.some((m) => /unfilled seed refreshed/.test(m)), logs.join(' | '));
+    const again = [];
+    assert.strictEqual(seeds.refreshSeededAgentsMd({ projectRoot, sourceDir, log: (m) => again.push(m) }), true);
+    assert.deepStrictEqual(again, [], 'a current seed is not rewritten');
+});
+
+test('refresh: no H1, no file or no template - nothing is written and the caller keeps the earlier seed', () =>
+{
+    const sourceDir = dir(TEMPLATE);
+    const bare = dir({ '.claude/AGENTS.md': 'no title line\n' });
+    assert.strictEqual(seeds.refreshSeededAgentsMd({ projectRoot: bare, sourceDir }), false);
+    assert.strictEqual(fs.readFileSync(path.join(bare, '.claude', 'AGENTS.md'), 'utf8'), 'no title line\n');
+    assert.strictEqual(seeds.refreshSeededAgentsMd({ projectRoot: dir(), sourceDir }), false);
+    const kept = dir({ '.claude/AGENTS.md': '# x\n\nOld.\n' });
+    assert.strictEqual(seeds.refreshSeededAgentsMd({ projectRoot: kept, sourceDir: dir() }), false);
+    assert.strictEqual(fs.readFileSync(path.join(kept, '.claude', 'AGENTS.md'), 'utf8'), '# x\n\nOld.\n');
+});
+
 // --- update: the 2.1.6 seed moves from CLAUDE.md to AGENTS.md, only while it is still the stack's ------
 
 const crypto = require('node:crypto');

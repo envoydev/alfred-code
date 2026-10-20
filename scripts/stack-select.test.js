@@ -62,10 +62,10 @@ test('a rule pulls its skills', () => {
 test('a kept rule makes its mcp required; the capabilities skill locks none', () => {
     const c = computeClosure(graph, { rules: ['alfred-navigation'] });
     assert.ok(c.mcps.includes('alfred-navigation'), 'the alfred-navigation rule genuinely depends on its server');
-    // The routing-map mentions in capture-agent-awareness are subject matter, not needs -
+    // The routing-map mentions in capture-awareness are subject matter, not needs -
     // picking it must never lock the whole MCP baseline into an install.
-    const cap = computeClosure(graph, { skills: ['capture-agent-awareness'] });
-    assert.deepStrictEqual(cap.mcps, [], 'the capabilities skill pulls no MCPs');
+    const cap = computeClosure(graph, { skills: ['capture-awareness'] });
+    assert.deepStrictEqual(cap.mcps, [], 'the awareness skill pulls no MCPs');
 });
 
 // memory is locked the SAME way serena is: alfred-memory.md names the server in backticks, the
@@ -568,12 +568,12 @@ test('a general-listed skill is never redundant even when its only owner is abse
     const installed = {
         rules: [],
         agents: [],
-        skills: ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'capture-related-projects', 'dotnet-wpf'],
+        skills: ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'capture-usage-report', 'dotnet-wpf'],
         mcps: [], plugins: [], hooks: [],
     };
     const redundant = findStackRedundant(graph, recommendations, installed, ['aspnet']);
     const names = new Set(redundant.map(r => r.name));
-    for (const s of ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'capture-related-projects'])
+    for (const s of ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'capture-usage-report'])
     {
         assert.ok(!names.has(s), `${s} is general - never redundant`);
     }
@@ -1241,4 +1241,53 @@ test('detectEnvironment: a BOM\'d account settings.json still answers for a vari
         if (saved !== undefined) process.env.CONTEXT7_API_KEY = saved;
         fs.rmSync(dir, { recursive: true, force: true });
     }
+});
+
+// The user's ruling of 2026-10-15: the MCP table showed one `browser` row, hiding which browsers exist. Each engine is
+// its own row - FRESH, what `browser` earned lands on chrome unless the selection picks engines; installed, each row
+// reads plan-out's `browser` block - and the emit says the picked engines as one `browsers:` line for `--browsers`.
+test('the MCP table lists each browser engine as its own row, and the emit names the picked ones', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const { spawnSync } = require('node:child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-engines-'));
+    const recs = path.join(__dirname, '..', 'meta', 'recommendations.json');
+    const file = (name, json) => { const p = path.join(dir, name); fs.writeFileSync(p, JSON.stringify(json)); return p; };
+    const run = (...args) => spawnSync(process.execPath, [path.join(__dirname, 'stack-select.js'), ...args, '--platform', 'darwin'], { encoding: 'utf8' });
+    const row = (out, name) => (out.split('\n').find((l) => new RegExp(`\\| ${name}\\s+\\|`).test(l)) || '').replace(/\s+/g, ' ');
+    const ENGINES = ['chrome-control', 'firefox-control', 'msedge-control', 'webkit-control'];
+    try
+    {
+        const none = file('none.json', { mcps: [] });
+        const seeded = run('--selection', none, '--table', 'mcps', '--recs', recs, '--stacks', 'web-angular').stdout;
+        assert.strictEqual(row(seeded, 'browser'), '', 'no single browser row is left');
+        for (const e of ENGINES) assert.notStrictEqual(row(seeded, e), '', `${e} has a row`);
+        assert.match(row(seeded, 'chrome-control'), /\| stack:web-angular \|/, 'a seed lands on chrome');
+        for (const e of ENGINES.slice(1)) assert.match(row(seeded, e), /\| - \|/, `${e} is not pre-selected`);
+        assert.match(row(seeded, 'webkit-control'), /downloads Playwright's WebKit build/);
+        const footer = Number((seeded.match(/^total: (\d+) mcps/m) || [])[1]);
+        assert.strictEqual(seeded.split('\n').filter((l) => /^\s*\d+ \|/.test(l)).length, footer, 'the footer counts the engine rows');
+
+        const picked = file('picked.json', { mcps: ['firefox-control', 'chrome-control'] });
+        const fresh = run('--selection', picked, '--table', 'mcps', '--recs', recs, '--stacks', 'aspnet').stdout;
+        assert.match(row(fresh, 'chrome-control'), /\| added \|/);
+        assert.match(row(fresh, 'firefox-control'), /\| added \|/);
+        assert.match(row(fresh, 'msedge-control'), /\| - \|/);
+
+        const sel = path.join(dir, 'sel.txt');
+        const emitted = run('--selection', picked, '--emit', sel);
+        assert.match(emitted.stdout, /^browsers: chrome,firefox$/m, 'the picked engines, in the installer\'s order');
+        assert.match(fs.readFileSync(sel, 'utf8'), /^mcp browser$/m, 'the selection keeps the one catalog entry');
+        assert.ok(!/control/.test(fs.readFileSync(sel, 'utf8')), 'no engine name reaches a selection line');
+        assert.doesNotMatch(run('--selection', none, '--emit', sel).stdout, /^browsers:/m, 'no browser, no line');
+
+        const inv = file('inv.json', { mcps: ['browser'], browser: { installed: ['chrome', 'webkit'], enabled: ['chrome'] } });
+        const live = run('--selection', file('raw.json', { mcps: ['browser'] }), '--table', 'mcps', '--installed', inv).stdout;
+        assert.match(row(live, 'chrome-control'), /\| yes \|/);
+        assert.match(row(live, 'webkit-control'), /\| yes \(off\) \|/, 'installed and switched off');
+        assert.match(row(live, 'firefox-control'), /\| - \|/);
+        const blind = run('--selection', file('raw2.json', {}), '--table', 'mcps', '--installed', file('inv2.json', { mcps: ['browser'] })).stdout;
+        assert.match(row(blind, 'chrome-control'), /\| \? \| the read-back names no engine/, 'no engine record is said, never guessed');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

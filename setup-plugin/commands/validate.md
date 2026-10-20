@@ -1,5 +1,5 @@
 ---
-description: "RECONCILE an existing Alfred Code install to THIS project - detect the project's real stacks by artifact (setup's step-3 scan), inventory what is installed at any scope (project, user or local), then walk the selection one layer at a time (rules -> agents -> skills -> hooks -> MCPs -> plugins) showing, per layer, what is REDUNDANT (installed but its whole owning stack is absent - remove?) and what is MISSING (the detected stacks' + baseline closure not installed here - add?), each pre-marked with its reason and taken on per-item consent. Shared items, deliberate non-stack extras, and the always-baseline already installed are never touched. Detection evidence for every absent stack is shown BEFORE the walk so a mis-detection is vetoable. After the mechanical walk, a JUDGMENT step corroborates the advisory items' non-use in the code (named greps for the skill's domain, its own do-not-load exclusions, the docs' own citations of it) reviews the remainder against the project's stated conventions incl. version pins (a latest-major guidance tool fights a project pinned older - a citable conflict), mirrors gate 1 for ADDS (an uninstalled skill whose domain the code provably touches though no manifest signal covers it - only from trails the run itself surfaced, never a speculative catalog sweep), and hunts functional OVERLAP among kept items (two items covering one capability, the project docs citing only one - proposed only with the survivor's unique gap named) - drops and adds proposed only with gate evidence, each RANKED (MATERIAL/MINOR) and readable as what-it-does / why-marginal-here / the-keep-exception / recommendation, visibly labeled as judgment, never mixed with the signal tiers; plus a plain-text DORMANT advisory naming installed occasion-bound items (their own descriptions mark them release-/upgrade-/audit-time) with each one's honest idle cost and off lever - informational, acted on only by explicit request. Accepted adds and removes apply in ONE installer run over the read-back (--add / --drop) - the path configure uses; only a plugin uninstall and a copy-route MCP removal stay explicit. This is the project-relative two-way audit that setup (fresh), update (refresh), and configure (manual add/drop) do not do."
+description: "RECONCILE an existing Alfred Code install to THIS project - detect the project's real stacks by artifact (init's install-phase step-3 scan), inventory what is installed at any scope (project, user or local), then walk the selection one layer at a time (rules -> agents -> skills -> hooks -> MCPs -> plugins) showing, per layer, what is REDUNDANT (installed but its whole owning stack is absent - remove?) and what is MISSING (the detected stacks' + baseline closure not installed here - add?), each pre-marked with its reason and taken on per-item consent. Shared items, deliberate non-stack extras, and the always-baseline already installed are never touched. Detection evidence for every absent stack is shown BEFORE the walk so a mis-detection is vetoable. After the mechanical walk, a JUDGMENT step corroborates the advisory items' non-use in the code (named greps for the skill's domain, its own do-not-load exclusions, the docs' own citations of it) reviews the remainder against the project's stated conventions incl. version pins (a latest-major guidance tool fights a project pinned older - a citable conflict), mirrors gate 1 for ADDS (an uninstalled skill whose domain the code provably touches though no manifest signal covers it - only from trails the run itself surfaced, never a speculative catalog sweep), and hunts functional OVERLAP among kept items (two items covering one capability, the project docs citing only one - proposed only with the survivor's unique gap named) - drops and adds proposed only with gate evidence, each RANKED (MATERIAL/MINOR) and readable as what-it-does / why-marginal-here / the-keep-exception / recommendation, visibly labeled as judgment, never mixed with the signal tiers; plus a plain-text DORMANT advisory naming installed occasion-bound items (their own descriptions mark them release-/upgrade-/audit-time) with each one's honest idle cost and off lever - informational, acted on only by explicit request. Accepted adds and removes apply in ONE installer run over the read-back (--add / --drop) - the path configure uses; only a plugin uninstall and a copy-route MCP removal stay explicit. This is the project-relative two-way audit that init (fresh), update (refresh), and configure (manual add/drop) do not do."
 disable-model-invocation: true
 ---
 
@@ -15,16 +15,17 @@ the deterministic work; you orchestrate.
 is actually loaded.** Measure before you ask: this session's own per-message context is `input +
 cache_read + cache_creation` off the last assistant message in the transcript. Ask ONLY when that
 figure is past the same trigger `guard-fresh-session-start.js` uses - the tier's own absolute
-trigger, `ALFRED_CODE_FRESH_SESSION_200K` (default 150,000) or `ALFRED_CODE_FRESH_SESSION_1M`
-(default 400,000), or `ALFRED_CODE_FRESH_SESSION_DEFAULT` (default 300,000) when the window is
-neither of those two sizes or cannot be read at all - which one applies comes from the session
-model's row in `.claude/hooks/model-windows.json`, else `ALFRED_CODE_DEFAULT_CONTEXT_WINDOW` - or when that hook has already
+trigger, `ALFRED_CODE_CONTEXT_WINDOW_FOR_1M` (default 400,000) on a window of 1M or more,
+`ALFRED_CODE_CONTEXT_WINDOW_FOR_300K` (default 280,000) on one of 300k up to 1M, or
+`ALFRED_CODE_CONTEXT_WINDOW_FOR_200K` (default 180,000) below that - the window comes from the session
+model's row in `.claude/hooks/model-windows.json`, else `ALFRED_CODE_CONTEXT_WINDOW_DEFAULT` (default 300,000) - or when that hook has already
 injected the ask into this turn. One more case fires it regardless of the figure: this session already ran ANOTHER guided walk (a
 `/alfred-code:` command completed earlier in this chat). That history is pure carry for a run that needs
 none of it, and an absolute trigger never catches it - measured, a validate chained behind an update
 re-sent that history on all 24 of its messages at 121.7k per message, well under every tier's number.
 Below the
-trigger and with no earlier guided run, or when the figure cannot be read at all, SKIP the ask silently and start step 1: an ask
+trigger and with no earlier guided run, or when the figure cannot be read at all, or with `ALFRED_CODE_AUTO_COMPACT=1` or the tier's trigger at `0` (no fresh-session offer
+then), SKIP the ask silently and start step 1: an ask
 with no measurement behind it is the failure this replaced (measured: it fired on the FIRST message
 of a brand-new session, twice in one run, and could quote no number when the user challenged it).
 Never author the decision in prose either way.
@@ -50,7 +51,7 @@ account-only install to refuse. Find the install with `node "$TMP/repo/scripts/i
 state .`, which reads the install records the hooks read (`alfred-code.stamp`, a copied
 `hooks/docs.js`) in this repo, its git top level or a worktree's main
 checkout - never `.claude/skills` or `.claude/agents`, which a plugin-route install may not have:
-`not-installed` -> stop and route to `/alfred-code:setup`; `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:validate from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here; `legacy-unstamped` (a legacy copy-route install that never wrote a stamp) -> stop and route to
+`not-installed` -> stop and route to `/alfred-code:init`; `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:validate from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here; `legacy-unstamped` (a legacy copy-route install that never wrote a stamp) -> stop and route to
 `/alfred-code:update`, which reads its picks off disk and writes the stamp first; `installed` / `initialised` -> go on. Every installer call below carries its scope inline, `--scope "$(node "$TMP/repo/scripts/install/stamp.js" scope .)"` -
 the same script, reading the stamp, a `global` line as `user`, anything else as `project` - passed to every
 installer call so the read-back and the apply read and write the settings file that scope uses
@@ -72,7 +73,10 @@ surface where the rule forbidding it cannot yet exist).
 
 ## The ladder - announce every step
 
-Twelve user-facing steps; the machinery between them runs silently. One banner line before each:
+Twelve user-facing steps; the machinery between them runs silently. One banner line before each - all
+twelve, every run, in order: a step with nothing to do prints its banner with ONE line saying why
+(`[step 6/12 - hooks] nothing to reconcile`), never a skipped one. The layer-table guard denies
+the next ask after a gap in the numbers (6 of 12 were missing in one run - audit 2026-10-20 C16, e43969a7):
 
 ```
 [step 3/12 - rules] reconcile the rule layer · next: agents
@@ -105,7 +109,7 @@ and a validate run four minutes apart, and both runs reported nothing to do); `p
 its catalog part. `left_out` lists what the user switched off - a denied seat, an item of a parked
 retired entry - as selection lines, which `--missing` counts as present: never proposed back. Three
 signals in `$TMP/plan.out`, never printed to the user: `error: --installed-only found nothing
-installed` means there is no install - route to `/alfred-code:setup`; `plan routes:
+installed` means there is no install - route to `/alfred-code:init`; `plan routes:
 skills=<plugin|copy> hooks=<plugin|copy> mcps=<plugin|copy>` names the routes; `plan answered:
 hooks=<yes|no> agents=<yes|no>` says which off-states the read found evidence of - `agents=no` with
 `skills=plugin` means the plugin listing could not be read or the core entry is parked: stop and
@@ -125,12 +129,14 @@ every update overwrite that copy, so the edit belongs upstream or in a skill of 
 An `invalid: N stamp name(s) ...` line is a finding too (the check exits 1 on it): the stamp names
 an item that failed the name check - a hand edit or a bad merge - and the check withholds the name
 rather than joining it into a path. Report the count and route it to `/alfred-code:update`, whose
-next stamp rewrite drops it; never go looking for the withheld name. Step 12 runs the same check
-again over the result.
+next stamp rewrite drops it; never go looking for the withheld name. An `unrecorded: skill <name>`
+line is a stack copy made before the stamp recorded skills (its heading is one the stack shipped):
+the step-11 apply takes it over, so name it with the drift rows. Step 12 runs the same check again
+over the result.
 
 ## 2. Detect the project's stacks - and show the evidence
 
-Setup's step-3 artifact scan:
+The install phase's step-3 artifact scan (`init-install.md`):
 
 - `*.csproj` / `*.sln` -> .NET, split by content, per project: `Microsoft.NET.Sdk.Web` -> `aspnet`;
   `<UseWPF>true` -> `wpf`; `<UseWindowsForms>true` -> `winforms`; a
@@ -165,7 +171,7 @@ description, not just the stack list - the answer authorizes removals, and a use
 asks about a stack that was never at risk (measured: the one Other reply in an audited run asked about a
 stack the run had DETECTED). 'Detection correct' (recommended) - every detected stack keeps its
 artifacts; only the ABSENT stacks' artifacts become removal candidates, and each is still asked about
-one at a time. 'Dispute' - name the stack via Other and it is treated as present, nothing of its is
+one at a time. 'Dispute' - the run then asks in plain text which stack, and it is treated as present, nothing of its is
 proposed. Then walk. Stack names are the catalog keys of
 `$TMP/repo/meta/recommendations.json` (`web-angular`, never `angular`) - the tool names an unknown one on
 stderr (`unknown-stack`) instead of silently flagging nothing.
@@ -205,8 +211,8 @@ candidates, the signal as the reason - already deduped against the `missing:` li
 The tool already excludes shared items, deliberate non-stack extras, already-installed baseline,
 anything the scan matched, and the curated `general` set in recommendations.json (artifacts no stack owns: cross-stack skills a
 narrow seat happens to preload - e.g. dotnet-data-access - and the project-conditional opt-ins whose
-applicability no manifest can prove, e.g. the `capture-related-projects` / `related-project-analyzer`
-pair, which apply only where the project has sibling repos) - present its output as printed above.
+applicability no manifest can prove, e.g. the `related-project-analyzer`
+seat, which applies only where the project has sibling repos) - present its output as printed above.
 
 One addition of your own, in ONE call - never by opening the catalog, which is a maintainer file
 whose comment alone is 2,000 characters:
@@ -221,7 +227,8 @@ Each fired entry prints its own indented `why:` / `then:` / `remove:` / `unwire:
 `env-rename:` / `env-remove:` lines and an entry that did not fire prints nothing. Each detected
 entry joins the matching layer's REDUNDANT rows labeled `(migration: <why>)`; removing one also
 applies its `unwire:` edit and puts its `then:` follow-up in the report. (The version and diff
-lines the same call prints are update's business, not validate's - ignore them here.) An entry acting
+lines the same call prints are update's business, not validate's - ignore them here; its `policy-rev:` row is the
+post-check's.) An entry acting
 on the settings.json `env` (`rename_settings_env`, `remove_settings_env`) belongs to the ENVIRONMENT
 layer instead: a retired key still on disk is a RETIRED row there, reported with its `why`, and
 accepting it drops the key - the installers' own env pass does the same on their next run.
@@ -468,7 +475,7 @@ session (lever: remove, or accept it); an MCP costs its server launch + tools ev
 (`claude plugin disable <name> --scope <the install's scope>` - from a narrower scope it switches a broader row off there alone). Act on a lever only on an explicit user request in this run -
 dormancy alone is never a removal argument.
 
-## 11. Apply - the same paths setup/configure use
+## 11. Apply - the same paths init's install phase and configure use
 
 Build the final selection = the installed set, PLUS every accepted add, MINUS every accepted
 remove, written to `$TMP/final.json` in the inventory's shape. Step 9's accepted environment rows
@@ -479,7 +486,7 @@ merge - write it by running `node "$TMP/repo/scripts/stamp-docs-root.js" <projec
 (it reads and writes the stamp's scope file, as the installer does), which re-probes at the write instead of trusting the
 table's preview a step stale, and report its printed line. Every other accepted row still goes
 through the generic merge. Emit + prereq-check it -
-`node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/final.json" --graph "$TMP/repo/meta/stack-graph.json" --emit "$TMP/selection.txt" --check [--browsers <csv>] [--config-dir ~/.claude-<space>]` (`--browsers` with the kept browsers whenever the browser server is kept, so a kept `msedge` warns when Edge is not installed)
+`node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/final.json" --graph "$TMP/repo/meta/stack-graph.json" --emit "$TMP/selection.txt" --check [--config-dir ~/.claude-<space>]` (an added browser's engines sit in `final.json` as `<engine>-control`; the run prints them as one `browsers: <csv>` line, and a picked `msedge` warns when Edge is not installed)
 (`--config-dir` under a `--space`
 profile), output to `$TMP/select.out` - then:
 
@@ -489,16 +496,21 @@ profile), output to `$TMP/select.out` - then:
   nothing. After it come the lines the run leaves OFF: `kept-off <line>` (a switched-off item the
   closure re-requires but no accepted add names - report it as staying off) and `keep-parked plugin
   <name>` (a parked plugin the read-back would enable - a `--drop` whenever the installer runs, no
-  reason on its own to run it). Otherwise:
-  `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope "$(node "$TMP/repo/scripts/install/stamp.js" scope .)" --installed-only [--add '<line>']... [--drop '<line>']... [--browsers <csv> --browser-enabled <csv|none>] 2>&1 | tee "$TMP/install.log"`
-  - one `--add` per `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted,
+  reason on its own to run it). Redirect the delta to `"$TMP/delta.out"` and build the flags from that file
+  in the installer's own call, opened with the protocol's marker block - never a `while read ... done < <(...)`:
+  a process substitution hides a failure from `pipefail`, and one run applied `adds=0` from a temp dir it had
+  not written to (audit 2026-10-20 C46, 4f2bfdee). Otherwise:
+  `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope "$(node "$TMP/repo/scripts/install/stamp.js" scope .)" --installed-only [--add '<line>']... [--drop '<line>']... --keep-pins [--browsers <csv>] 2>&1 | tee "$TMP/install.log"`
+  - `--keep-pins` always: a reconcile never resets a deliberate local model/effort pin, and resetting one is
+  configure's ask, not this command's (a run without it logged `keep-pins=off` and reset every pin unasked -
+  audit 2026-10-20 C16, e43969a7). One `--add` per `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted,
   applied on top of the same read-back, so nothing the reconcile did not touch moves. Never
   `--selection` on this seed: that route neither removes nor disables what the reconcile dropped,
   and it stamps every carried item as a pick. On `ALFRED_CODE_SEED=shell` the frozen twin no
   longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
-  The browser server among the ADDS: ask which browsers to install (`chrome` pre-selected, `msedge`,
-  `firefox`, `webkit`), then which of those to enable (all pre-selected; each enabled one adds its ~25
-  tools to every session) and pass both; `/plugin` toggles them later. An installed browser server passes
+  The browser server among the ADDS: ask walk.md's engine pick (`chrome-control` recommended; each one adds its ~25
+  tools to every session), put the ticked engines in `final.json` as `<engine>-control` and pass the `browsers: <csv>`
+  line as `--browsers <csv>` - no enable question, an engine installed now arrives on; `/plugin` toggles them later. An installed browser server passes
   nothing (the installer reads its browsers back from the stamp, and switches none). A server 2.0.0 cut is no reconcile row: the run uninstalls the stack's own copy and prints
   its `add it back:` line - pass it through. Presence, never the value - run this
   and paste its lines as-is: `node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" CONTEXT7_API_KEY`
@@ -518,21 +530,16 @@ profile), output to `$TMP/select.out` - then:
   beside the core any more - claude-hud is a pick like the LSP pair). The removal ask that proposed it
   NAMES that scope ('enabled at USER scope - removing it removes it for every
   project'), since account-wide and project-local are different consents.
-- **Check the generated rule's stamped policy against this release, mechanically.** The usage-policy
-  block inside `.claude/rules/alfred-agent-awareness.md` ships verbatim from the skill
+- **Check the inventory's stamped policy against this release, mechanically.** The usage-policy
+  block inside `<docs-path>/awareness/AGENTS-AWARENESS.md` ships verbatim from the skill
   and is never re-fetched, so a project can carry a two-release-old policy with nothing to notice it.
-  One comparison:
-
-  ```bash
-  grep -m1 -o 'policy-rev: [0-9a-f]*' .claude/rules/alfred-agent-awareness.md
-  grep -m1 -o 'policy-rev: [0-9a-f]*' "$TMP/repo/stack/skills/capture-agent-awareness/SKILL.md"
-  ```
-
-  Equal - say `capabilities policy: current`. Different, or the project's rule carries no rev at all
-  (written before the stamp existed) - report it as a finding with both values and name the re-run as
-  the fix. No rule on disk is not a finding here; it is the capture never having run.
-- Then name `/capture-agent-awareness` (when installed) in the post-check report as the
-  USER's next step, so the generated awareness rule reflects the reconciled inventory - the
+  The preflight's `policy-rev:` row is the one comparison (the doc against the snapshot's
+  `stack/skills/capture-awareness/references/agents.md`, an older install's awareness rule while update has
+  not moved it): `current` - say `capabilities policy: current`. `stale installed=<a> snapshot=<b>` -
+  report it as a finding with both values and name the re-run as the fix (`installed=none`: written before
+  the stamp existed). `none` is not a finding here; it is the capture never having run.
+- Then name `/capture-awareness` (when installed) in the post-check report as the
+  USER's next step, so the generated inventory reflects the reconciled install - the
   skill is manual-only (`disable-model-invocation`), a Skill call from this run is denied by `guard-fresh-session-start.js`;
   never attempt it. `alfred-code.stamp` is rewritten ONLY by an installer invocation - the apply step's
   own run writes it. A validate run that added nothing leaves the stamp exactly as it found it and never
@@ -540,11 +547,11 @@ profile), output to `$TMP/select.out` - then:
   fabricated install time that every later stamp compare then trusts (measured: one run did exactly this).
 
 **The run closes on a suggestion card, never on a question.** After the report, list the
-follow-ups that are the USER's to run - restart for an MCP change, `/capture-agent-awareness`
+follow-ups that are the USER's to run - restart for an MCP change, `/capture-awareness`
 (when installed and this run added or removed something it lists), a manual-only capture whose
 output this run made stale, the navigation-server re-index, a credential to rotate or set by
 hand - as `Suggested next steps`, the recommended one first and each with the one reason it
-matters ('`/capture-agent-awareness` - validate added 3 skills, so the generated rule's
+matters ('`/capture-awareness` - validate added 3 skills, so the generated
 inventory is short'). No AskUserQuestion over them: the walk's asks end with the installer (a
 write still gets its consent ask where it happens), and the closing ask over follow-ups was
 dropped as friction - the user's call, made knowing a prose next step was ignored 3 of 3 in one
@@ -579,7 +586,11 @@ byte-for-byte in a fenced block (`install audit: nothing to report` is the whole
 project). A `high` row gets ONE AskUserQuestion: 'Fix the stack-owned rows' (recommended - an
 update re-run pins a stack server) or 'Leave them'. A row on a server, hook or grant the user added
 by hand is reported with its line and never edited; a credential row is the rotate ask
-`alfred-security.md` owns, never a fix here.
+`alfred-security.md` owns, never a fix here - put through AskUserQuestion in the same turn as the paste, never
+closed as 'your call' in prose. A ruling recorded earlier (memory, an answer in this run) skips the ask only
+when it names THIS credential in THIS file; then the row is one report line, 'rotation: left as you ruled',
+and any other credential row is still the ask (one run skipped it on a ruling about a different file, and its
+close was blocked and re-sent - audit 2026-10-20 C16, b1c22192).
 
 Then check the LIBRARY copies - every skill (no plugin carries one since 2.1.0), a seat on its copy
 route, and every RULE (no plugin ever carries one), is a project copy, and the stamp holds the hash of
@@ -612,8 +623,9 @@ node "$TMP/repo/scripts/agents-md-check.js" --root .
 
 Paste the output byte-for-byte in the same fenced block (`agents-md-check: clean (...)` or `no
 AGENTS.md or CLAUDE.md in this project` is the whole paste). Each row is `<file>:<line> <kind>: ...` - a named path
-that is gone, a command whose program is not on PATH, a placeholder or TODO left, or a line still
-carrying the template's authoring text. Rows get ONE ask, leaving them marked and first - the check is
+that is gone, a command whose program is not on PATH, a placeholder or TODO left, a line still
+carrying the template's authoring text, or a CLAUDE.md that keeps an AGENTS.md from loading (`shadowed`, the import it
+needs named in the row). Rows get ONE ask, leaving them marked and first - the check is
 heuristic, a row can be correct text it could not resolve (a folder under a prefixed name, a program a
 script installs), and the approver takes the first option (audit 2026-10-11, session 6288ad94: 'Review'
 listed first and unmarked was taken, and the review of 4 rows that were all false positives cost ~825k):
@@ -643,8 +655,9 @@ the user sets it through `/alfred-code:configure` or by hand.
 
 ## Clean up the temp dir - ALWAYS
 
-Remove `$TMP` per `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`, on EVERY exit path of
-THIS command: after apply, after an abort, after a disputed-detection stop, and after a clean bill
+Remove `$TMP` per `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md` - by name, `rm -rf "$TMP"
+"$MARK"` after the marker block, never a glob such as `alfred-code-run.*` (zsh aborts the whole line on a glob
+that matches nothing - audit 2026-10-20 C16, 4f2bfdee) - on EVERY exit path of THIS command: after apply, after an abort, after a disputed-detection stop, and after a clean bill
 (nothing redundant or missing). Then confirm the project tree holds only installed artifacts.
 
 ## Do not

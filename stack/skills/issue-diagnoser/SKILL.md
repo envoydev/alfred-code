@@ -12,6 +12,8 @@ seats do the specialist work. It is READ-ONLY from start to finish - no step her
 so no approval stamp and no commit gate come into play. The measurements behind these rules live in
 `references/evidence.md` - an audit appendix, not a run-time load.
 
+**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
+
 ## When to use
 
 - Evidence can be a pasted error-monitor event, one log file, several log sources at once, a red CI run, a stack trace, a screenshot, or nothing but a customer saying checkout is slow.
@@ -80,8 +82,7 @@ resume on a long run - the recommendation marked per that stop's own rule, free 
 available via the built-in Other. Where the harness has no such tool, list the same options in
 plain text and END THE TURN. The selected answer is the go; silence is not, and a stop that
 only narrates is not a stop. Once the run has crossed the install's fresh-session trigger for its
-context window (150,000 tokens on a 200k window, 400,000 on a 1M one, 300,000 on any other
-window) or spans hours, the fresh-session resume IS one of the next ask's options - a CONSTRUCTION check before
+context window (180,000 tokens on a window under 300k, 400,000 on one of 1M or more, 280,000 on any other window) or spans hours, the fresh-session resume IS one of the next ask's options - a CONSTRUCTION check before
 emitting each stop, not a memory: resume needs only the findings file plus the note.
 
 **Every ask marks exactly one option `(Recommended)`, listed first** - the move this stop's rule
@@ -198,7 +199,8 @@ cycle in the same chat, even when an earlier cycle already loaded it.
 ## Do not
 
 - Never pass a stop without the user's explicit word, and never take the fork yourself - step 4
-  runs the branch the USER picked, and 'obviously they want the fix' is not an answer.
+  runs the branch the USER picked, and 'obviously they want the fix' is not an answer. Under
+  auto-mode the hook's answer to a marked ask is that word; the build stays the user's own command.
 - Never end a stop's turn without its AskUserQuestion (or the plain-text fallback's option list).
 - Never write code, edit a file under test, or run a destructive repro - one that applies a
   migration against a real database, seeds or deletes tracked files, or commits. If the only

@@ -115,7 +115,7 @@ test('I25: no shipped skill says the docs root is machine-local by default', () 
 
 test('I25: the four captures say where the docs land by the docs engine\'s own status line', () =>
 {
-    for (const rel of ['stack/skills/capture-related-projects/SKILL.md', 'stack/skills/capture-architecture/references/report-fields.md',
+    for (const rel of ['stack/skills/capture-awareness/SKILL.md', 'stack/skills/capture-architecture/references/report-fields.md',
         'stack/skills/capture-code-style/SKILL.md', 'stack/skills/capture-test-coverage/SKILL.md'])
         assert.match(flat(read(rel)), /docs\.js status/, `${rel}: names the observable`);
     const landed = read('stack/skills/capture-code-style/SKILL.md').match(/^Landed:.*$/m);

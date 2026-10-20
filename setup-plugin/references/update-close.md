@@ -1,0 +1,144 @@
+# /alfred-code:update - the close: AGENTS.md, the post-check, the clean-up
+
+Read in the same call as step 3's `--log` call (`update-walk.md`), on the fast path and the slow path alike - the
+installer has run, and this is the rest of the run.
+
+## 6. Reconcile the project's AGENTS.md
+
+Run the check first and paste its output - its rows (a named path that no longer exists, a command that does
+not resolve, the template's own text still live) are this step's facts, whatever the reading below finds:
+
+```bash
+node "$TMP/repo/scripts/agents-md-check.js" --root .
+```
+
+Then read `$TMP/repo/stack/skills/habits-adjust-agents-md/SKILL.md` - the whole body, never a heading
+diff (measured: a run that skipped it and diffed the `## ` headings left every improve-mode check unrun) - and follow it inline with
+`<stack>` = the `$TMP/repo` path, pasted as a literal, exactly as the sibling `configure` command's step 13: its improve mode adds the
+sections the template gained and OFFERS a fix for what its check reports (never in the recommended
+option - a check row is heuristic, applied only when the user picks it), this run's own part is the rules
+table for what it pruned, the project's own prose is never overwritten, and every change is shown
+before writing.
+The installer touches the old names only where the stack wrote them: an instruction file it seeded and still
+holds at its hash it rewrites from this release's template (`AGENTS.md: the unfilled seed refreshed ...`), and
+the generated rules it re-spells (one `renamed: <file> - <n> ...` line per file) - report those lines. A file that is the project's own it only NAMES, and step 3's `--log` call carries
+that as `warn: !! <file> is yours and names <n> old stack name(s) ...`. Never splice those by hand (audit
+2026-10-11, session b3f8193f: a hand `sed -i` after an ask that showed no diff, on a file git did not track).
+The re-spell is three numbered actions, in this order, never merged:
+
+1. **Print the plan:** `node "$TMP/repo/scripts/update-preflight.js" --respell --root .` - `respell: none` asks nothing
+   and ends here.
+2. **Show the diff as reply TEXT** - its `respell:` / `-` / `+` lines verbatim in a fenced block in your own message,
+   not left inside the tool result: the user sees a Bash result collapsed, and three re-spells were approved with the
+   diff only there (audit 2026-10-20 C15, e31af926 and e43969a7). The ask goes out only after this message.
+3. **Ask once:**
+
+```ask
+Re-spell the old stack names in <file>? The diff is in the message before this question, each line exactly as it will be written.
+- 'Re-spell them (Recommended)' - each line exactly as the plan shows it, and nothing else in the file
+- 'Leave them' - the file keeps the old names, which no longer resolve to a skill or seat
+```
+
+On a yes, the same call with `--apply` writes those lines alone and prints `respelled: <file> - <n> line(s)`
+- report it. Unattended, take the Recommended option and log it.
+The installer has also dealt with the seeded file's name: an unedited `.claude/CLAUDE.md` it seeded is
+moved to `.claude/AGENTS.md` (`git mv` where git tracks it), and so is the user's own on step 2's
+rename answer (`--rename-claude-md`); without that answer an edited one, or any when an AGENTS.md
+already holds the project's instructions, is left in place and named in one line - report those lines,
+and never rename a file outside that answer.
+
+**Run the compare whatever the delta says** - the template being unchanged UPSTREAM says nothing about whether THIS
+project's AGENTS.md still matches it (measured: a user asked it twice, verbatim, five and a half minutes apart, after
+the old template-unchanged skip). When it comes back clean, say so in one clause and write nothing.
+
+The step closes on ONE receipt line, which step 7 repeats verbatim: `agents-md: compare <clean|N additions> -
+check <N rows>` - the sections the compare offered (`clean` when none) and the rows the check printed (`0
+rows` when none). A close with no receipt is a step 6 that did not run (audit 2026-10-11, session 5b9ce9c5).
+
+## 7. Post-check
+
+Every line below is READ from something already in context - step 2's output, the one post-install grep, and the
+step-3 `--log` call. Nothing here is stated from memory, and nothing needs another call but the hygiene check.
+
+Report the version delta, then what THIS install refreshed: step 2's `changed-here:` line (the release's own
+`changed:` beside it when they differ - 'skills 9 here of the release's 10'), naming the paths from the compare's own
+`status<TAB>path` rows - never the installer's `installed/refreshed this run` counts, which are the SELECTION size.
+Then the `--log` call's `renamed:` and `pruned:` lines VERBATIM (never a count from memory - measured: a close said
+'Renamed: 35' against 34 in the log), each `taking over a copy the stamp did not record` line (an older stack copy
+the run refreshed), the REPAIRED line (`mcp repaired:` rows and the plugin version moves), the ENVIRONMENT line, the
+NEW-ITEMS line (what arrived, what was taken, what stays off - say where that switch lives - or was left, and any
+`unknown`), the release notes step 2 printed, step 6's `agents-md:` receipt, and the restart line.
+
+- **COMPARE** - the signal step 2 named, one line: `no-stamp` or `compare-unreachable` (refreshed without a baseline),
+  or on `TRUNCATED`: 'the compare was capped at 300 files - run /alfred-code:configure to reconcile what it may have
+  missed', with configure on the suggestion card. No signal: no line.
+- **ENVIRONMENT** - the installer prints one line per env change, named by the file the scope writes
+  (`settings.json env: <old> renamed to <new>`, `settings.local.json env: ...`, `<key> removed (retired ...)`,
+  `<key> seeded (<value>)`, `<key> <old> -> '<new>'`). Report those lines; when there are none, say 'env: nothing
+  renamed, removed or seeded this run' - a claim the silent log AND step 2's `env-keys:` before-state support. Never
+  assert it from memory. The `settings.local.json: created ...` line also arrives as a `warn:` line - report it once,
+  here.
+- **DATA ROOT** - every `docs root:` / `docs move:` / `data root:` line the grep caught, verbatim.
+- **GIT HYGIENE** - the one extra call this step makes, after the installer and before `$TMP` goes:
+  `node "$TMP/repo/scripts/git-hygiene.js" --root .`. A `git-hygiene: offer <root>/<TAB><why>` line
+  means git lists the data root as untracked while nothing under it is meant to be committed; ask ONE
+  AskUserQuestion (a write, so it is asked - not a follow-up):
+
+  ```ask
+  Ignore <root>/ in git? <why>.
+  - 'The committed .gitignore (Recommended)' - one anchored line the team shares, so no clone lists it as untracked
+  - '.git/info/exclude' - this clone only, no committed file touched
+  - 'Leave it' - nothing is written, the next update asks again
+  ```
+
+  and apply the answer with `--apply gitignore` or `--apply exclude`, reporting its `applied` /
+  `current` line. A `none (...)` line is not reported. Unattended, take the Recommended option and log
+  it.
+- **MEMORY** - the `memory:` line and the importer's own `memory import:` line, verbatim, when the grep caught them.
+  A first-time adoption switches Claude's own memory off only once the import succeeds; never assert the switch-off
+  from the flag or the adoption alone. No memory line: say nothing.
+- **RESTART / WARN** - the `--log` call's `restart: yes|no` (a report LINE, not a question) and every `warn: <line>` (a
+  fail-soft that fell back and continued - not a re-run trigger), verbatim.
+- **FOLLOW-UPS** - the `context7-local removed` and `claude-hud has no status line yet` lines, verbatim when caught,
+  once each here (both also arrive as `warn:` lines).
+- **VALIDATE** - step 2's `validate: yes` (the version delta spans more than one release) or
+  `policy-rev: stale ...` (the installed usage-policy rule's stamped revision is behind the shipped
+  skill's, or carries none) each add a `/alfred-code:validate` suggestion-card row with that reason. Both absent adds
+  nothing. Update prunes only what upstream deleted; what this project stopped needing is validate's pass.
+
+The run rewrote `alfred-code.stamp` - the next update or configure diffs from here. Name `/capture-awareness` (when
+installed) as the USER's next step when step 2's `changed-here:` line shows `skills=` or `agents=` above 0 - gated on
+THAT number alone (the installer re-copies every file every run, so any other gate is always true; the generated
+inventory stamps each skill's first sentence, which drifts with content-only updates). When the navigation server is
+installed, name the one-off re-index as a next step whenever this run re-seeded serena's `project.yml` (the grep's
+`serena project index` line): `SERENA_HOME=.alfred/serena/home uvx --python 3.13 --exclude-newer 2026-10-14T23:59:59Z
+--from serena-agent@2.0.0 serena project index` (the release pin and cut-off from `meta/mcp-pins.json`; the data
+root's own folder in place of `.alfred`, `.serena/home` while a 2.0.0 folder has not moved; Windows PowerShell:
+`$env:SERENA_HOME='.alfred\serena\home'`, and on Windows on ARM `--python cpython-3.13-windows-x86_64-none`). Never invoke it from this run - the skill is manual-only (`disable-model-invocation`), so a
+Skill call is DENIED by `guard-fresh-session-start.js`; the report line is the mechanism.
+
+**The run closes on a suggestion card, never on a question.** After the report, list the follow-ups that are the
+USER's to run - restart for an MCP change, `/capture-awareness` (when the gate above fires), a manual-only capture whose
+output is stale, the navigation-server re-index, a credential to rotate or set by hand - as `Suggested next steps`,
+the recommended one first and each with the one reason it matters. **When step 3's `--log` call printed `restart: yes`, the RESTART is row one** - with
+`claude mcp list` named beside it as the one command that confirms the servers actually connected (a registration is
+not a connection) - every other follow-up runs against the session still holding the OLD ones. A follow-up that is
+itself a deliberate run - any capture, a loop - carries a fresh-session note beside it: 'run it in a fresh session;
+started here it re-sends this walk's history on every one of its turns'. Under a restart row the note reads 'run it
+in the session the restart opens' instead - one action, not two the user can order wrongly. No AskUserQuestion over
+them - and read that narrowly: **it forbids an ask about the FOLLOW-UPS, nothing else**; the asks the steps mandate
+(new items, the prune confirm, a guard hook's adoption, git hygiene) are unaffected. Close with this line, verbatim,
+as the LAST line of the message - nothing after it:
+'Nothing is pending on this run - these are yours to run when you choose.' The stop-contract
+guard reads that sentence as a finished close; without it a 'done + next step' card is blocked as a stall.
+The line is CONDITIONAL: print it only when the card carries nothing OWED. A still-required user action - revoke the old token, fill in a credential, run a rotation - IS pending, so name it and put the close through the ask instead.
+
+## 8. Clean up the temp dir - ALWAYS
+
+Remove `$TMP` per `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`, on EVERY exit path:
+after the fast path, after refresh + prune, after refresh-only, after a blocker, and after a
+user 'no'. Then confirm the project tree holds only installed artifacts by LOOKING, never with
+`git status`: the stack's own gitignore advice ignores `.claude/` wholesale, so a porcelain status
+over it is empty whatever is sitting there. `ls -a .claude` plus a check that no archive, extracted repo,
+`raw.json`, `selection.txt` or `install.log` was left in the project - anything stray is named in
+the close-out, not silently ignored.

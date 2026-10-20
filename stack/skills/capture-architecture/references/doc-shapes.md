@@ -18,7 +18,7 @@ The durable, whole-project architecture record - the orientation a solution-desi
 4. **Patterns in play** - the recurring patterns and cross-cutting mechanisms actually in use (CQRS, repository / unit-of-work, mediator, options binding, the DI composition root, the error envelope, the auth seam), each anchored where it lives (`file:symbol`), so new work reuses the established pattern instead of inventing a rival.
 5. **Boundaries and specifications** - the module and bounded-context boundaries and the contracts that guard them: which boundary is enforced by an architecture test versus held only by convention, the schema-ownership lines, and the constraints new work must satisfy (the house conventions in force, the non-functional targets, the seams that must not be crossed).
 
-A sixth section, `## Known ceilings` (`ARCHITECTURE.md#known-ceilings`), is filed by the build flows' close through `docs.js set`, never by this capture: a refresh carries it over row for row - no rewording, no trim, no spill - because each row is a deliberate shortcut a later session must be able to find.
+A sixth section, `## Known ceilings` (`ARCHITECTURE.md#known-ceilings`), is filed by the build flows' close through `docs.js set`, never by this capture: a refresh carries it over row for row - no rewording, no trim, no spill - because each row is a deliberate shortcut a later session must be able to find. It is a row register, so the section cap below does not bind it (`docs.js lint` prints its size as a note, never a PROBLEM) and it does not count toward the ~150-line target. Before carrying it over, run `node .claude/hooks/docs.js ceilings --prune`: it moves the rows marked closed - a revisit cell opening on lifted / closed / resolved / done - to `history/known-ceilings-closed.md`, so the register keeps only live shortcuts. A row it lists as `stale` (its `where` path is gone) stays: a rename or move left the shortcut in the code, so re-anchor its `where` cell to the file that holds it now, verified by a search, and name any row you cannot place in the report.
 
 Format discipline - every seat reads this map at orientation, so its weight is paid on every dispatch: keep the core file within ~150 lines and spill the rest to `references/`. Anchors are `file:symbol` throughout (the entry points in section 3, the pattern homes in section 4, the guarded seams in section 5) - the map doubles as the navigation index, so a seat jumps to the anchor via the navigation server instead of re-deriving where things live. Tables and lists for anything enumerable; prose only for reasoning structure cannot carry (why a boundary exists, an accepted tradeoff). Never ASCII-art box diagrams - the same graph costs about double the tokens and models misread 2D text layout. A `references/` deep-dive may carry a Mermaid sequence diagram for ONE key runtime flow the static map cannot show (events, messaging) or an ER diagram for a bounded context's schema ownership - authored per the `docs-as-code` skill; the core map stays flowchart + tables only.
 
@@ -42,7 +42,7 @@ Every `##`, `###` and `####` heading in ARCHITECTURE.md and `references/*.md` ca
     <!-- covers: src/*/Program.cs, src/**/*Registrar.cs -->
 
 - `id` - lowercase slug, unique in its file, kept across heading rewordings: every pointer, override and watch entry uses it. `docs.js seed-ids` adds missing ones.
-- `covers` - the code globs the section describes, as narrow as the truth allows; a section about an area covers the area.
+- `covers` - the code globs the section describes, as narrow as the truth allows; a section about an area covers the area. A file this run wrote with no `covers` line in any section is a `docs.js lint` PROBLEM.
 - Content: decisions, rules, boundaries, contracts, exceptions, each with its reason. No inventories - counts, file lists, route lists go stale on every change and the code answers them.
 - Size: a section's own text (heading to its next heading) targets 3,000 chars and must stay under 6,000 - `docs.js lint` fails above it; split by sub-decision.
 
@@ -89,7 +89,7 @@ what is gone. Write ONLY under `<docs-path>/architecture/` - never source, never
 
 ### The budget check and the spill
 
-After the write, `wc -l` the doc against the target stated above (~150 lines). Over target, spill the overweight
+After the write, `wc -l` the doc against the target stated above (~150 lines, the Known ceilings rows left out). Over target, spill the overweight
 sections to `references/` files NOW - the spill is the sanctioned second pass on the doc (a restructure, not the
 per-claim edit stream the one-write rule forbids); this run owns the doc, and no other flow will. An overrun this
 run genuinely cannot resolve is said plainly in the REPORT step, for the next capture to pick up.

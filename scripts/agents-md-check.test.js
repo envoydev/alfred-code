@@ -143,6 +143,21 @@ test('C24: a backticked dependency name is a package, and a line marked keep rai
     assert.deepStrictEqual(kinds(run(root, 'Name a client `x.api.ts`. <!-- keep -->\nAnd `y.api.ts`.')), ['1 path x.api.ts', '2 path y.api.ts'], 'only the exact marker, only its own line');
 });
 
+// Audit 2026-10-20 C23 (e43969a7, 24841a36): a path-scoped rule attaches by its own `paths:` glob and the Rules prose
+// says so instead of listing it - 11 such files were rows on every run, asked about in update and validate.
+test('rule: a path-scoped rule the list does not name is no row; an unnamed always-on rule still is', () =>
+{
+    const scoped = '---\ndescription: d\npaths: ["**/*.md"]\n---\n\nbody\n';
+    const root = tree({ '.claude/rules/alfred-git.md': 'x', '.claude/rules/alfred-memory.md': '---\ndescription: always\n---\nbody\n',
+        '.claude/rules/markdown-docs.md': scoped, '.claude/rules/sql-conventions.md': scoped.replace(/\n/g, '\r\n') });
+    const check = (text) => kinds(checkText({ root, file: 'AGENTS.md', text, template: TEMPLATE, locate: onPath([]), isIgnored: () => true }));
+    const table = (rows) => ['# App', '', '## Rules', '', '| Rule | What |', '|---|---|', ...rows.map((r) => `| \`${r}\` | x |`)].join('\n');
+    assert.deepStrictEqual(check(table(['.claude/rules/alfred-git.md'])), ['3 rule .claude/rules/alfred-memory.md'],
+        'the path-scoped files (LF and CRLF) are skipped, the unnamed always-on rule is still a row');
+    assert.deepStrictEqual(check(table(['.claude/rules/alfred-git.md', '.claude/rules/alfred-memory.md', '.claude/rules/gone.md'])), ['9 rule gone.md'],
+        'a NAMED rule with no file is still a row');
+});
+
 // Usage audit 2026-10-10, 65abb00a (T4 cross-track): an improve pass never compared the Rules list with
 // `.claude/rules/` - it missed the unlisted skill-authoring rule and twice called the table stale, wrongly.
 test('rule: the Rules list against .claude/rules - a named rule with no file, and an enumerating list\'s unnamed file', () =>
@@ -411,8 +426,8 @@ test('cli: a hand copy of the shipped template is flagged unfilled and by its pl
 {
     const template = fs.readFileSync(path.join(__dirname, '..', 'stack', 'AGENTS.template.md'), 'utf8');
     const rules = ['alfred-interaction', 'alfred-quality-gates', 'alfred-security', 'alfred-git', 'alfred-navigation', 'alfred-docs-root', 'alfred-memory',
-        'alfred-agent-awareness', 'alfred-architecture', 'alfred-related-context', 'alfred-project-awareness', 'project-code-style'];
-    const files = { '.claude/AGENTS.md': template, '.alfred/docs/code-style/CODE-STYLE.md': '', '.alfred/docs/project-capabilities/PROJECT-CAPABILITIES.md': '' };
+        'alfred-awareness', 'alfred-architecture', 'project-code-style'];
+    const files = { '.claude/AGENTS.md': template, '.alfred/docs/code-style/CODE-STYLE.md': '', '.alfred/docs/awareness/PROJECT-AWARENESS.md': '' };
     for (const r of rules) files[`.claude/rules/${r}.md`] = '';
     const root = tree(files, { git: true });
     const r = cli(root);
@@ -535,4 +550,31 @@ test('SD04 --outline: each numbered outline section with the heading that holds 
     assert.strictEqual(rows.filter((l) => / - lacks$/.test(l)).length, 9);
     const bare = tree({ 'CLAUDE.md': '# Orders\n\n## Stack\n' }, { git: true });
     assert.match(cli(bare, ['--outline']).stdout, /^CLAUDE\.md: outline 1\. What this project is - lacks$/m, 'an H1 with no paragraph under it says nothing about the project');
+});
+
+test('shadowed: a CLAUDE.md on the seed\'s path keeps .claude/AGENTS.md from loading - unless it imports it or carries the keep marker', () =>
+{
+    const { shadowedRows } = require('./agents-md-check.js');
+    const seed = { '.claude/AGENTS.md': '# Orders\n' };
+    // Rows inside the tree only: a CLAUDE.md the machine keeps above its temp dir counts too, and is not this case's.
+    const rows = (files, targets = ['.claude/AGENTS.md']) => shadowedRows(tree({ ...seed, ...files }), targets).filter((f) => !f.file.startsWith('../')).map((f) => `${f.file}:${f.line} ${f.kind} ${f.what}`);
+    assert.deepStrictEqual(rows({}), [], 'no CLAUDE.md, nothing hides the seed');
+    assert.deepStrictEqual(rows({ 'CLAUDE.md': '# Notes\n' }), ['CLAUDE.md:1 shadowed .claude/AGENTS.md']);
+    assert.deepStrictEqual(rows({ 'CLAUDE.local.md': 'mine\n', '.claude/CLAUDE.md': 'team\n' }), ['.claude/CLAUDE.md:1 shadowed .claude/AGENTS.md', 'CLAUDE.local.md:1 shadowed .claude/AGENTS.md'], 'every one of the three counts');
+    assert.deepStrictEqual(rows({ 'CLAUDE.md': '@.claude/AGENTS.md\n' }), [], 'an import loads it');
+    assert.deepStrictEqual(rows({ 'CLAUDE.md': 'See `@.claude/AGENTS.md`.\n\n```\n@.claude/AGENTS.md\n```\n<!-- @.claude/AGENTS.md -->\n' }), ['CLAUDE.md:1 shadowed .claude/AGENTS.md'], 'a code span, a fence and a comment import nothing');
+    assert.deepStrictEqual(rows({ 'CLAUDE.md': '@AGENTS.md\n' }), ['CLAUDE.md:1 shadowed .claude/AGENTS.md'], 'importing another file is not importing this one');
+    assert.deepStrictEqual(rows({ 'CLAUDE.md': 'Ours. <!-- agents-md-check: keep -->\n' }), [], 'the keep marker is the user\'s choice');
+    assert.deepStrictEqual(rows({ 'web/AGENTS.md': '# Web\n', 'web/CLAUDE.md': 'web\n', 'CLAUDE.md': '@.claude/AGENTS.md\n' }, ['.claude/AGENTS.md', 'web/AGENTS.md']), ['web/CLAUDE.md:1 shadowed web/AGENTS.md'], "a part's file is hidden only by its own folder's");
+    const parent = tree({ 'CLAUDE.md': 'above\n', 'proj/.claude/AGENTS.md': '# Orders\n' });
+    assert.ok(shadowedRows(path.join(parent, 'proj'), ['.claude/AGENTS.md']).some((f) => f.file === '../CLAUDE.md'), 'a folder above the project counts too');
+});
+
+test('shadowed: the CLI prints the row with its fix and exits 1; a re-run says the same', () =>
+{
+    const root = tree({ '.claude/AGENTS.md': '# Orders\n', 'CLAUDE.md': '# Notes\n' }, { git: true });
+    const first = cli(root);
+    assert.strictEqual(first.status, 1, first.stdout + first.stderr);
+    assert.match(first.stdout, /^CLAUDE\.md:1 shadowed: \.claude\/AGENTS\.md - is not loaded while this file sits on its path - import it \(`@\.claude\/AGENTS\.md`\) or set Project instructions to claude-md-and-agents-md in \/config$/m);
+    assert.strictEqual(cli(root).stdout, first.stdout, 'read-only: a second run changes nothing');
 });

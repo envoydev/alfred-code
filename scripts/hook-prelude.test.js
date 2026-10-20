@@ -107,7 +107,7 @@ test('both gates FAIL OPEN - a missing, empty or malformed settings file yields 
 // CLAUDE_PLUGIN_OPTION_HOOK_PROFILE; the project's csv still wins over it.
 const PROFILE = 'CLAUDE_PLUGIN_OPTION_HOOK_PROFILE';
 const EVERY_HOOK = ['guard-catastrophic-rm', 'guard-secret-value', 'guard-protected-force-push', 'guard-desktop-exec', 'guard-read-whole-file', 'guard-ungated-commit',
-    'guard-stop-contract', 'guard-cross-project-write', 'docs-session', 'history-session', 'check-turn-build', 'monitor-session'];
+    'guard-stop-contract', 'guard-cross-project-write', 'docs-session', 'history-session', 'check-turn-build'];
 
 test('profile minimal keeps only the rm, secret, force-push and desktop exec guards; every other hook stands down', () => {
     const { PROTECTIVE } = require(PRELUDE);
@@ -157,16 +157,16 @@ test('the profile the prelude reads is the userConfig key the core entry declare
 
 test('envOf: the ALFRED_CODE_ value answers, and an empty one reads as unset', () => {
     const { envOf } = require(PRELUDE);
-    assert.strictEqual(envOf({ ALFRED_CODE_MONITOR: 'inject' }, 'MONITOR'), 'inject');
-    assert.strictEqual(envOf({ ALFRED_CODE_MONITOR: '' }, 'MONITOR'), undefined);
-    assert.strictEqual(envOf({}, 'MONITOR'), undefined);
-    assert.strictEqual(envOf({ MONITOR: 'log' }, 'MONITOR'), undefined, 'only the prefixed key answers');
+    assert.strictEqual(envOf({ ALFRED_CODE_CORRECTION_NUDGE: 'inject' }, 'CORRECTION_NUDGE'), 'inject');
+    assert.strictEqual(envOf({ ALFRED_CODE_CORRECTION_NUDGE: '' }, 'CORRECTION_NUDGE'), undefined);
+    assert.strictEqual(envOf({}, 'CORRECTION_NUDGE'), undefined);
+    assert.strictEqual(envOf({ CORRECTION_NUDGE: 'log' }, 'CORRECTION_NUDGE'), undefined, 'only the prefixed key answers');
 });
 
 test('the prelude reads process.env when no env is handed in', () => {
     const before = process.env.ALFRED_CODE_HOOKS_OFF;
-    process.env.ALFRED_CODE_HOOKS_OFF = 'guard-answer-length';
-    try { assert.strictEqual(hookDisabled('guard-answer-length'), true); }
+    process.env.ALFRED_CODE_HOOKS_OFF = 'guard-answer';
+    try { assert.strictEqual(hookDisabled('guard-answer'), true); }
     finally { if (before === undefined) delete process.env.ALFRED_CODE_HOOKS_OFF; else process.env.ALFRED_CODE_HOOKS_OFF = before; }
 });
 
@@ -459,7 +459,7 @@ test('cursorHost reads the payload only: cursor_version or a camelCase event nam
 
 test('cursorStandDown: a Cursor payload stands a non-protective hook down and never a protective one or a CLI', () => {
     const input = { cursor_version: '2.1.0', hook_event_name: 'stop' };
-    for (const hook of ['guard-stop-contract', 'guard-answer-length', 'docs-session', 'guard-fresh-session-start', 'memory-session'])
+    for (const hook of ['guard-stop-contract', 'guard-answer', 'docs-session', 'guard-fresh-session-start', 'memory-session'])
         assert.strictEqual(cursorStandDown(input, `/p/${hook}.js`), true, hook);
     for (const hook of PROTECTIVE_SET) assert.strictEqual(cursorStandDown(input, `/p/${hook}.js`), false, hook);
     assert.strictEqual(cursorStandDown(input, '/p/guard-stop-contract.js', ['node', 'x.js', '--flag']), false, 'a CLI is never gated');
@@ -485,8 +485,9 @@ test('every non-protective hook file carries the cursorStandDown call, so a new 
         for (const b of blocks) for (const h of b.hooks) for (const m of String(h.command).matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/([\w./-]+\.js)/g)) launched.add(m[1]);
     const files = [...launched];
     assert.ok(files.includes('setup-plugin/hooks/guard-layer-table.js') && files.includes('setup-plugin/hooks/library-stamp.js'), files.join(', '));
-    assert.ok(files.length >= 15, `found ${files.length} launched hooks`);
-    const dispatched = [...require(path.join(HOOKS_DIR, 'shell-guards.js')).GUARDS, ...require(path.join(HOOKS_DIR, 'file-guards.js')).NAMES].map((g) => `stack/hooks/${g}.js`);
+    assert.ok(files.length >= 14, `found ${files.length} launched hooks`);
+    const dispatched = [...require(path.join(HOOKS_DIR, 'shell-guards.js')).GUARDS, ...require(path.join(HOOKS_DIR, 'file-guards.js')).NAMES,
+        ...require(path.join(HOOKS_DIR, 'history-session.js')).RIDERS].map((g) => `stack/hooks/${g}.js`);
     for (const f of [...new Set([...files, ...dispatched])])
     {
         const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
@@ -652,7 +653,7 @@ test('a git repo at the home directory is no top for checkoutsOf (seam m3)', () 
 // The Stop chain (audit 2026-10-08 S1): a Stop blocker stands down on a continuation only when IT held this cycle, a
 // fresh Stop clears its marker, and where no marker can be written a continuation stands down - the old reading.
 test('stop chain: own continuation stands down, a sibling one is judged, a fresh Stop opens a new cycle', () => {
-    const { stopHeldThisCycle, markStopHeld, stopHeldBy, stopMarkerFile } = require(PRELUDE);
+    const { stopHeldThisCycle, markStopHeld, stopMarkerFile } = require(PRELUDE);
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'stop-chain-'));
     const env = { ALFRED_CODE_HOOK_LOG_DIR: dir };
     try {
@@ -664,8 +665,6 @@ test('stop chain: own continuation stands down, a sibling one is judged, a fresh
         assert.strictEqual(stopHeldThisCycle('guard-a', cont, env), true, 'its own continuation stands down');
         assert.strictEqual(stopHeldThisCycle('guard-b', cont, env), false, 'a marker is per hook');
         assert.strictEqual(stopHeldThisCycle('guard-a', { ...cont, session_id: 's2' }, env), false, 'and per session');
-        assert.strictEqual(stopHeldBy('guard-a', cont, Date.now() - 60000, env), true, 'a sibling reads it');
-        assert.strictEqual(stopHeldBy('guard-a', cont, Date.now() + 60000, env), false, 'a marker older than the turn is another turn');
         assert.strictEqual(stopHeldThisCycle('guard-a', first, env), false, 'a fresh Stop opens a new cycle');
         assert.ok(!fs.existsSync(stopMarkerFile('guard-a', cont, env)), '... and clears the marker');
         assert.strictEqual(stopHeldThisCycle('guard-a', cont, { ALFRED_CODE_HOOK_LOG_DIR: path.join(dir, 'missing', 'dir') }), true,

@@ -107,6 +107,53 @@ class GuardExit
     constructor(code) { this.code = code; }
 }
 
+// ---- the compile cache ---------------------------------------------------------------------------
+// About 50 of the ~120ms a Bash call waits on this dispatcher was compiling the guards, not judging (deep hooks review
+// 2026-10-16). V8's cached data for each guard body is kept in the temp dir under a key of its source and this Node, so an
+// edited guard or a new Node never reads a stale entry; a rejected or unreadable entry is a plain compile, and the entry is
+// written once, after the guard ran, so it holds the functions the run compiled. The helpers a guard `require`s take
+// Node's own compile cache (keyed on their source too). Any failure here is a plain compile: the cache only saves time.
+const crypto = require('node:crypto');
+const CACHE_PREFIX = 'alfred-v8-';
+const GUARD_PARAMS = ['exports', 'require', 'module', '__filename', '__dirname'];
+try { require('node:module').enableCompileCache?.(path.join(os.tmpdir(), `${CACHE_PREFIX}modules`)); }
+catch { /* an older Node, or a dir it cannot write */ }
+function compileGuard(file, source)
+{
+    const text = source.replace(/^#!/, '//');
+    let entry = null;
+    try { entry = path.join(os.tmpdir(), `${CACHE_PREFIX}${path.basename(file, '.js')}-${crypto.createHash('sha1').update(`${process.version}\0${text}`).digest('hex').slice(0, 16)}.bin`); }
+    catch { entry = null; }
+    let cachedData;
+    try { if (entry) cachedData = fs.readFileSync(entry); }
+    catch { cachedData = undefined; }
+    let script = null;
+    try
+    {
+        // one line of wrapper, so every line number the guard reports is its own
+        script = new vm.Script(`(function (${GUARD_PARAMS.join(', ')}) {${text}\n})`, { filename: file, cachedData });
+        const fn = script.runInThisContext();
+        const fresh = !cachedData || script.cachedDataRejected;
+        return { fn, save: () =>
+        {
+            if (!fresh || !entry) return;
+            try
+            {
+                const tmp = `${entry}.${process.pid}.tmp`;
+                fs.writeFileSync(tmp, script.createCachedData());
+                fs.renameSync(tmp, entry);
+                const prelude = require('./hook-prelude.js');
+                if (typeof prelude.sweepStale === 'function') prelude.sweepStale(os.tmpdir(), CACHE_PREFIX);
+            }
+            catch { /* a cache that cannot be written costs only the next compile */ }
+        } };
+    }
+    catch
+    {
+        return { fn: vm.compileFunction(text, GUARD_PARAMS, { filename: file }), save: () => {} };
+    }
+}
+
 function restoreEnv(snapshot)
 {
     for (const key of Object.keys(process.env)) if (!Object.hasOwn(snapshot, key)) delete process.env[key];
@@ -166,10 +213,11 @@ function runGuard(file, stdin)
     const mod = { id: file, filename: file, path: path.dirname(file), exports: {}, loaded: false, children: [], paths: [] };
     const req = Object.assign((id) => base(id), { resolve: base.resolve, cache: base.cache, extensions: base.extensions, main: mod });
     mod.require = req;
+    let compiled = null;
     try
     {
-        const body = vm.compileFunction(source.replace(/^#!/, '//'), ['exports', 'require', 'module', '__filename', '__dirname'], { filename: file });
-        body.call(mod.exports, mod.exports, req, mod, file, path.dirname(file));
+        compiled = compileGuard(file, source);
+        compiled.fn.call(mod.exports, mod.exports, req, mod, file, path.dirname(file));
         // Fell off the end: the process would exit with whatever exitCode it set.
         if (exited === null) exited = Number(process.exitCode) || 0;
         else result.swallowed = true;
@@ -199,6 +247,7 @@ function runGuard(file, stdin)
         restoreEnv(saved.env);
         delete global.BLOCK_DETAIL;
     }
+    if (compiled) compiled.save();
     result.code = exited;
     return result;
 }
@@ -290,7 +339,8 @@ function combine(results)
 //     expanded the way the shell would have, one quoted word per alternative.
 //   - a FOREGROUND `until` / `while` loop that sleeps holds the turn and every queued message until it ends (516e653d:
 //     a question waited 6m58s; 3b53e0e8: a sentinel that never matched ran the full 600s): blocked, naming
-//     run_in_background and the Monitor tool. A `while read` loop reads input and is no poll; a `timeout <= 120` bounds it.
+//     run_in_background and the Monitor tool. A `while read` loop reads input and is no poll; the command's `timeout`s
+//     summing to 120s or less bound it. A foreground `tail -f` is the same wait (deep hooks review 2026-10-16).
 //   - an unaddressed `sed -i` `s///` whose pattern matches more than one line of its file gets a note naming the lines
 //     (49cb4b82: both task cards flipped).
 //   - a recursive grep for a code identifier in the main session writes one `mode: probe` row, the rate a nudge would
@@ -301,7 +351,15 @@ const BACKGROUND_NOTE = 'Background wait (alfred-quality-gates.md): one command 
     + 'arms takes the `Monitor` tool when you start it - on the failure lines plus an alert when the output goes quiet (deferred: '
     + '`ToolSearch select:Monitor` first). Poll it through `Monitor` or its new lines, never a whole-log re-read. A \'what is '
     + 'running\' check keys on a specific PID, marker file or output sentinel, never a bare process-name grep; task lists track '
-    + 'tasks, not shells.';
+    + 'tasks, not shells. Tell the user ONE start line - what runs and when it should finish - then nothing until the result or a '
+    + 'failure: one watch whose command ends on either (an `until` on the result line or a crash signature), never a reply per '
+    + 'sample, never silence past the finish time you gave.';
+// What the first Monitor call of an actor is told (audit 2026-10-20 C32, 7c1af769 / 9a0314ed): the note above rode only a
+// background Bash call, 1.5h before the Monitor whose per-sample lines woke 12 turns (2.8M) - every printed line is a wake.
+const MONITOR_NOTE = 'Monitor watch: every line this command prints wakes a turn. Print only on a change, a threshold, the result or a '
+    + 'failure signature - never a line per sample or per loop pass (`while true; do echo ...; sleep 30; done` wakes you every 30s) - '
+    + 'and end the command on the result or a crash. Tell the user ONE start line - what runs and when it should finish - then '
+    + 'nothing until the result or a failure: never a reply per wake, never silence past the finish time you gave.';
 
 function ownChecks(stdin)
 {
@@ -338,21 +396,34 @@ function ownChecks(stdin)
     let words = [];
     try { words = sw.commandWords(command); }
     catch { words = []; }
-    const bounded = words.some((w) => w.name === 'timeout' && Number(String(w.argv.find((a) => !a.startsWith('-')) || '').replace(/s$/, '')) <= 120);
+    // timeout's DURATION: its first operand past the options (-s / -k take a value; --signal= and --kill-after= carry one),
+    // with an s / m / h / d suffix (hooks review 2026-10-16: `timeout 2m` and `timeout -s KILL 60` read as unbounded).
+    const timeoutSeconds = (argv) =>
+    {
+        let k = 0;
+        while (k < argv.length && /^-/.test(argv[k])) k += /^(?:-s|-k|--signal|--kill-after)$/.test(argv[k]) ? 2 : 1;
+        const m = /^(\d+(?:\.\d+)?)([smhd]?)$/.exec(String(argv[k] || ''));
+        return m ? Number(m[1]) * { '': 1, s: 1, m: 60, h: 3600, d: 86400 }[m[2]] : NaN;
+    };
+    // Bounded means every wait in the command together stays inside 120s: told to bound one loop, the model chained 110s
+    // loops instead, and the turn stayed held in 9 of 11 episodes (deep hooks review 2026-10-16).
+    const limits = words.filter((w) => w.name === 'timeout').map((w) => timeoutSeconds(w.argv));
+    const bounded = limits.length > 0 && limits.every(Number.isFinite) && limits.reduce((a, b) => a + b, 0) <= 120;
+    // ... or swapped the loop for `timeout 280 tail -f` - a follow is the same wait
+    const follows = words.some((w) => w.name === 'tail' && w.argv.some((a) => /^-[A-Za-z0-9]*[fF][A-Za-z0-9]*$|^--follow(?:=|$)/.test(a)));
     const chars = masked.split('');
     for (const [a, b] of spans) for (let i = a; i < b && i < chars.length; i++) if (chars[i] !== '\n') chars[i] = ' ';
     const blankQuotes = chars.join('');
     // the lazy spans are linear only while the text is: a command past 50,000 characters is not judged for a loop
     const loopIn = (t) => t.length <= 50000 && /\bsleep\b/.test(t) && /\bdone\b/.test(t) && LOOP.test(t);
     const shellScript = words.filter((w) => /^(?:ba|z|da|k)?sh$/.test(w.name)).map((w) => w.argv[w.argv.indexOf('-c') + 1] || '').filter(Boolean);
-    if (tool === 'Bash' && input.run_in_background !== true && !bounded && (loopIn(blankQuotes) || shellScript.some(loopIn)))
+    if (tool === 'Bash' && input.run_in_background !== true && !bounded && (follows || loopIn(blankQuotes) || shellScript.some(loopIn)))
     {
-        const text = 'Blocked: a FOREGROUND `until` / `while` loop that sleeps - nothing ran. It holds this turn, and every message the\n'
-            + 'user queues, until the condition is met or the tool times out (measured: a question waited 6m58s behind one; a\n'
-            + 'sentinel that never matched ran the full 600s). Wait in the background instead:\n'
+        const text = 'Blocked: a FOREGROUND wait - nothing ran. Wait in the background instead:\n'
             + '  - the same command with `run_in_background: true` - its exit re-invokes you, and you keep working meanwhile;\n'
             + '  - or the `Monitor` tool on the condition or the log line (deferred: `ToolSearch select:Monitor` first).\n'
-            + 'A short wait you must hold for can run bounded: `timeout 60 <the loop>`.';
+            + `A sleeping \`until\` / \`while\` loop, a \`tail -f\` or a chain of bounded waits holds this turn and every message the user\n`
+            + 'queues until it ends (measured: a question waited 6m58s; a sentinel that never matched ran the full 600s).';
         row({ reason: firstLine(text).slice(0, 200), detail: { branch: 'poll-loop' } });
         out.results.push({ guard: `${SELF}.js`, code: 2, stdout: '', stderr: text });
     }
@@ -361,22 +432,26 @@ function ownChecks(stdin)
     // The always-on quality-gates rule keeps 'a wait measured in minutes runs in the background'; these mechanics ride
     // the first run_in_background Bash call of each actor (the main session or one seat), once - an exclusive marker -
     // where they apply, instead of every session's context (533 chars there; a background call in 24.8% of sessions).
-    if (tool === 'Bash' && input.run_in_background === true)
+    // The first Monitor call of each actor gets its own note under its own marker (audit 2026-10-20 C32): a session whose
+    // background Bash heard the note an hour earlier still hears the per-wake rule where the watch starts.
+    const watch = tool === 'Bash' && input.run_in_background === true ? { kind: '', branch: 'bg-note', note: BACKGROUND_NOTE }
+        : tool === 'Monitor' ? { kind: 'mon-', branch: 'monitor-note', note: MONITOR_NOTE } : null;
+    if (watch)
     {
         let first = false;
         try
         {
             const dir = (prelude && typeof prelude.envOf === 'function' && prelude.envOf(process.env, 'HOOK_LOG_DIR')) || os.tmpdir();
             const part = (v) => String(v || '').replace(/[^\w.-]/g, '_').slice(-80);
-            fs.writeFileSync(path.join(dir, `alfred-bg-note-${part(payload.session_id || 'nosession')}-${part(payload.agent_id || 'main')}`), new Date().toISOString(), { flag: 'wx' });
+            fs.writeFileSync(path.join(dir, `alfred-bg-note-${watch.kind}${part(payload.session_id || 'nosession')}-${part(payload.agent_id || 'main')}`), new Date().toISOString(), { flag: 'wx' });
             first = true;
             if (prelude && typeof prelude.sweepStale === 'function') prelude.sweepStale(dir, 'alfred-bg-note-');
         }
         catch { first = false; }
         if (first)
         {
-            row({ mode: 'probe', reason: 'probe: bg-note', detail: { branch: 'bg-note' } });
-            out.results.push({ guard: `${SELF}.js`, code: 0, stderr: '', stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: BACKGROUND_NOTE } }) });
+            row({ mode: 'probe', reason: `probe: ${watch.branch}`, detail: { branch: watch.branch } });
+            out.results.push({ guard: `${SELF}.js`, code: 0, stderr: '', stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: watch.note } }) });
         }
     }
 
@@ -589,5 +664,5 @@ function main()
     if (!pending) process.exit(verdict.code);
 }
 
-module.exports = { GUARDS, SELF, MATCHER, PROTECTIVE, RUN_ORDER, SLOW_MS, BACKGROUND_NOTE, wiringRows, runGuard, combine, parseOut, ownChecks, slowProbe };
+module.exports = { GUARDS, SELF, MATCHER, PROTECTIVE, RUN_ORDER, SLOW_MS, BACKGROUND_NOTE, MONITOR_NOTE, wiringRows, runGuard, combine, parseOut, ownChecks, slowProbe };
 if (require.main === module) main();

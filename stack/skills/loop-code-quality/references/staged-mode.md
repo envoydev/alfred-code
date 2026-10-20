@@ -81,7 +81,7 @@ Final report (whole pipeline):
 - The run order, and each file's outcome.
 - The final gate: build + tests result, and the anti-gaming sweep over the cumulative diff (clean, or what was reverted and which stage gamed it).
 - Remaining findings per file, if any.
-- DECISIONS log: `<LOOP_DIR>/DECISIONS.md` - every judgment call with its precedent, appended as it lands in either mode; the report names the file and its entry count, never re-pastes it (the close is an answer like any other - the answer-length hook blocks a wall of prose).
+- DECISIONS log: `<LOOP_DIR>/DECISIONS.md` - every judgment call with its precedent, appended as it lands in either mode; the report names the file and its entry count, never re-pastes it (the close is an answer like any other - the answer budget caps prose).
 - OUT OF SCOPE / COULD-NOT-APPLY: anything deliberately left, with reasons.
 - Leftovers - what the pipeline's gate and audit runs started and still have up (containers, seeded test data, background processes), or `none`; anything listed gets tear-down-vs-keep through AskUserQuestion batched with the close, teardown recommended - never touching what the run did not start.
 - `memories purged: <names|none>` - DELEGATED runs purge the run's alfred-memory handoff notes fold-first at close (the rule and receipt shape: `references/delegated-mode.md`).

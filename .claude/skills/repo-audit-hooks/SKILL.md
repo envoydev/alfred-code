@@ -33,7 +33,7 @@ not part of the shipped catalog.
 
 - The user types `/repo-audit-hooks` to audit `stack/hooks` and the hooks the installed plugins bring.
 - Not for rule prose (`/repo-audit-rules`), and not for a whole plugin's fate - a child hook's
-  resolution belongs to `/repo-audit-plugin`.
+  resolution belongs to `/repo-audit-plugins`.
 
 ## Parameters
 
@@ -99,7 +99,7 @@ Produce a single report with:
 2. Per hook, a short block: baseline score by dimension with the top 2-3 cited deductions; what changed, as a terse list of edits; final score by dimension; any blocker.
 3. Coverage map: every must-never and must-always action with its cover (hook and routes / permission rule / declined with reason).
 4. Fit map: one row per hook and relation - `mechanizes` / `honours` / `names` / `double home` / `contradicts` / `orphan` / `shadows` - with the rule, skill step or agent line it meets and the resolution (pointer left, receipt path repaired, instruction retired, rule amended with its measurement) or why it stands.
-4b. Shared plugin hooks: one row per child hook entry with its event, matcher, timeout, job, and its relation to the root - `collides` / `duplicates` / `contradicts` / `independent` - plus the recommended home handed to `repo-audit-plugin`.
+4b. Shared plugin hooks: one row per child hook entry with its event, matcher, timeout, job, and its relation to the root - `collides` / `duplicates` / `contradicts` / `independent` - plus the recommended home handed to `repo-audit-plugins`.
 4c. Collision table: every shared event and matcher, house or child, with the jobs, the order and the combined cost.
 5. Wiring parity: the manifest, the generated core entry, the copy-route writer, the deployed files, the retired set - agreeing or not, with the line.
 6. The Phase 1b currency table with this run's verdicts.

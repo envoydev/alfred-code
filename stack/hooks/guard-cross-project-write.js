@@ -360,29 +360,18 @@ function block(what, shown, abs = shown) {
   const otherRoot = otherProjectRoot(abs);
   const docsRel = docsRoot.replace(/^\//, '');
   const receiptRel = path.join(docsRel, 'flow', 'CROSS-WRITE-ALLOW');
+  // Cut to the ask and its options (deep hooks review 2026-10-16: 1,553 chars per denial); the why is repo-hooks.md's.
   process.stderr.write(
-    `Blocked: ${what} targets '${shown}', which is outside this session's project\n` +
-    `(${ROOT}). A session belongs to ONE project - a change another repo needs is HANDED OFF,\n` +
-    `not applied here, because a change landing there skips that repo's tests, conventions,\n` +
-    `review and release, and its own project never sees it.\n\n` +
-    `Do not stop here, and do not decide for the user: end this turn with ONE AskUserQuestion\n` +
-    `carrying these options, in this order -\n` +
-    `  'Task card in this project (Recommended)' - written at\n` +
-    `  ${path.join(docsRel, 'cross-project-tasks', '<other-project>.md')}\n` +
-    `  naming the target repo and, per task: what must change and where (file + symbol, from your\n` +
-    `  investigation), why this project needs it, the contract both sides must agree on, and how\n` +
-    `  the other side can verify it; then finish YOUR side against the current behaviour of\n` +
-    `  ${other}, or say plainly what is blocked until that task lands.\n` +
-    `  'Allow writes into ${otherRoot} for this session' - on this answer write the receipt\n` +
-    `  ${receiptRel} with that root on its own line, then retry the write. This guard honours\n` +
-    `  the receipt for this session only: under 8h, and never one written before the session began.\n` +
-    `  'Drop the change'.\n\n` +
-    (receiptStale
-      ? `A receipt at ${receiptRel} exists but is stale - older than 8h, or written before this\n` +
-        `session began - so it records another run's decision; rewrite it only on a fresh 'allow'.\n`
-      : '') +
-    `Reading and investigating ${other} stays open - that is how the card gets specific.\n` +
-    `A tree this project genuinely owns belongs in ALFRED_CODE_ALLOW_WRITE_OUTSIDE instead - permanent, no ask.`,
+    `Blocked: ${what} targets '${shown}', outside this session's project (${ROOT}). A change another\n` +
+    `repo needs is handed off, not applied here. End this turn with ONE AskUserQuestion, in this order -\n` +
+    `  'Task card in this project (Recommended)' - write ${path.join(docsRel, 'cross-project-tasks', '<other-project>.md')}:\n` +
+    `  per task what changes where (file + symbol), why, the shared contract, how ${other} verifies it;\n` +
+    `  then finish your side, or say what is blocked until it lands.\n` +
+    `  'Allow writes into ${otherRoot} for this session' - write ${receiptRel} with that root on its own\n` +
+    `  line and retry (this session only, under 8h).\n` +
+    `  'Drop the change'.\n` +
+    (receiptStale ? `The receipt at ${receiptRel} is stale (older than 8h or from before this session) - rewrite it only on a fresh 'allow'.\n` : '') +
+    `Reading ${other} stays open. A tree this project owns belongs in ALFRED_CODE_ALLOW_WRITE_OUTSIDE.`,
   );
   process.exit(2);
 }
@@ -495,27 +484,4 @@ for (const u of unread) {
   process.exit(2);
 }
 
-// LOG-ONLY: an interpreter script writing a source file of THIS project - the shell route around Edit / Write, which the
-// edit hooks never see (audit 2026-10-10: 0498718d's 14 seats made 116 python heredoc writes against 5 Edit / Write calls;
-// 349e4825 12 against 2). One `mode: probe` row per command, the rate a notice would be decided on; never a verdict.
-const SOURCE_EXT = /\.(?:cs|csx|fs|vb|ts|tsx|mts|cts|js|jsx|mjs|cjs|py|rb|go|rs|java|kt|kts|swift|php|vue|svelte|html?|s?css|less|xaml|razor|cshtml|sql|sh|ps1|json|ya?ml|xml|csproj|props|targets)$/i;
-const interp = scan.targets.filter((t) => t.verb === 'interpreter');
-const own = interp.filter((t) => t.unknown || (SOURCE_EXT.test(String(t.raw)) && (() => {
-  const raw = scan.expandVars(String(t.raw));
-  if (isVar(raw)) return false;
-  const base = anchorAt(t.index);
-  const abs = resolveTarget(nativePath(expandTilde(raw)), base || ROOT);
-  return inside(abs, ROOT);
-})()));
-if (own.length) {
-  try {
-    const dir = path.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), docsRootEnv(), 'hook-blocks');
-    fs.mkdirSync(dir, { recursive: true });
-    const exts = [...new Set(own.filter((t) => !t.unknown).map((t) => (String(t.raw).match(/\.[^./]+$/) || [''])[0].toLowerCase()))];
-    fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
-      ts: new Date().toISOString(), hook: path.basename(__filename), event: payload.hook_event_name || '', tool,
-      mode: 'probe', reason: 'probe: interpreter-write', detail: { branch: 'interpreter-write', files: own.length, unknown: own.some((t) => t.unknown), exts, agent: payload.agent_id ? 'seat' : 'main' },
-    }) + '\n');
-  } catch { /* a probe never changes the verdict */ }
-}
 process.exit(0);

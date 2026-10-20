@@ -2,7 +2,7 @@
 'use strict';
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
-require('./hook-test-env').isolateHookSuite();
+require('./hook-test-env').isolateHookSuite({ ownTmp: true }); // its per-session state files left 138 per run in the machine's temp dir (2026-10-16)
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -173,6 +173,33 @@ test('subagent start gets the orientation without branch lines or promotion', ()
     assert.match(out.stdout, /"hookEventName":"SubagentStart"/);
     assert.match(ctx(out), /Orders own refunds/);
     assert.doesNotMatch(ctx(out), /You are on branch/);
+  } finally { r.rm(); }
+});
+
+test('deep review: a built-in seat that writes no project code gets no orientation and no snapshot', () => {
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS, 'ORIENTATION.md': ORIENT } });
+  try {
+    for (const seat of ['Explore', 'Plan', 'claude-code-guide', 'statusline-setup']) {
+      const s = sid();
+      const out = r.hook({ hook_event_name: 'SubagentStart', session_id: s, agent_id: `b-${seat}`, agent_type: seat });
+      assert.strictEqual(out.status, 0); assert.strictEqual(out.stdout, '', `${seat} is silent`);
+      const stop = r.hook({ hook_event_name: 'SubagentStop', session_id: s, agent_id: `b-${seat}`, agent_type: seat, last_assistant_message: 'Found it.' });
+      assert.strictEqual(stop.status, 0); assert.strictEqual(stop.stdout, '', `${seat} is never asked`);
+    }
+    for (const seat of ['general-purpose', 'dotnet-implementer']) assert.match(ctx(r.hook({ hook_event_name: 'SubagentStart', session_id: sid(), agent_type: seat })), /Orders own refunds/, `${seat} is oriented`);
+  } finally { r.rm(); }
+});
+
+test('deep review: a footer copy inside ORIENTATION.md is pushed once, with the live domain list, and lint names it', () => {
+  const stale = `${ORIENT}\nThe docs live under \`.claude/docs/\` (architecture, related-projects). Read them by section, not whole files:\n\`node docs.js where <path>\` names the sections covering a file; \`node docs.js show <file>#<id>\` prints one.\nFor a specific symbol the CODE wins; the docs give the decisions, the conventions and the reasons.\n`;
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS, 'ORIENTATION.md': stale } });
+  try {
+    const text = ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() }));
+    assert.match(text, /Orders own refunds/);
+    assert.strictEqual(text.match(/The docs live under/g).length, 1, 'one footer');
+    assert.strictEqual(text.match(/the CODE wins/g).length, 1);
+    assert.doesNotMatch(text, /related-projects/, 'the stale domain list is gone');
+    assert.match(r.cli(['lint']).stdout, /repeats 3 line\(s\) of the session hook's own footer/);
   } finally { r.rm(); }
 });
 
@@ -370,7 +397,7 @@ test('shell reads are never held; shell writes are', () => {
   } finally { r.rm(); }
 });
 
-// Both installer twins wire this hook on `Read|Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|Grep|Glob`.
+// Both installer twins wire this hook on `Read|Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|Grep` (Glob left 2026-10-16).
 // Judging only `Bash` left the gate open on every Windows session and earned a doc read no consult credit.
 test('PowerShell is the same shell route as Bash: its writes are held and its doc reads count', () => {
   const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'x\n' }, docs: { 'references/patterns.md': PATTERNS } });
@@ -411,11 +438,12 @@ test('the navigation server\'s two kept edit tools are held like an Edit, on bot
   } finally { r.rm(); }
 });
 
-test('the manifest wires docs-session and check-turn-build on the two kept navigation edit tools, both spellings', () => {
+test('the manifest wires docs-session on the two kept navigation edit tools, both spellings; check-turn-build reads git at Stop instead', () => {
   const rows = require('../meta/stack-manifest.json').hooks;
   const re = (file, event) => rows.filter((row) => row.file === file && (event ? row.matcher.startsWith(`@${event}:`) : !row.matcher.startsWith('@')))
     .map((row) => row.matcher.replace(/^@\w+:/, ''));
-  for (const [file, event] of [['docs-session.js', null], ['check-turn-build.js', 'PostToolUse']]) {
+  assert.deepStrictEqual(rows.filter((row) => row.file === 'check-turn-build.js').map((row) => row.matcher), ['@Stop'], 'no per-edit wiring left');
+  for (const [file, event] of [['docs-session.js', null]]) {
     const matchers = re(file, event);
     for (const server of ['plugin_alfred-navigation_alfred-navigation', 'alfred-navigation', 'plugin_navigation_navigation', 'navigation'])
       for (const tool of ['rename_symbol', 'safe_delete_symbol', 'replace_symbol_body']) {
@@ -499,7 +527,10 @@ test('writeTargets: the paths a shell command writes, from real runs', () => {
 });
 
 const WATCH = (extra = {}) => JSON.stringify({ watch: [{ kind: 'composition root', globs: ['src/*/Program.cs'], sections: ['patterns#orders'] }], ...extra });
-const start = (r, s) => r.hook({ hook_event_name: 'SessionStart', session_id: s });
+// A session that changed files runs a command that may write (a build, a generator): the Stop ask's unclaimed bucket counts
+// only past one (recordRun, the 2026-10-17 usage audit). The cases below model that session; a read-only one has its own.
+const ran = (r, s, env) => r.hook(pre('Bash', { command: 'npm run generate' }, s), env);
+const start = (r, s, env) => { const out = r.hook({ hook_event_name: 'SessionStart', session_id: s }, env); ran(r, s, env); return out; };
 const stopEv = (s, active) => ({ hook_event_name: 'Stop', session_id: s, stop_hook_active: Boolean(active) });
 
 test('a change to a watched file asks once, naming the section; a second stop is silent', () => {
@@ -629,6 +660,70 @@ test('one block per agent: the continuation stop and a later change are both sil
     // What the agent DID is read from the ledger, not from its prose: no `set` landed for the asked section.
     assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"ask-answer".*"outcome":"unchanged"/);
   } finally { r.rm(); }
+});
+
+// Deep hooks review 2026-10-16: a seat reports through SubagentHandback, so a SubagentStop ask came after the report had
+// left (48 of 48, 41 never acted on). The ask is a deny of the first hand-back that owes one; the retry carries the answer.
+const handBack = (s, id, message, extra = {}) => ({ hook_event_name: 'PreToolUse', session_id: s, tool_name: 'SubagentHandback', tool_input: { message }, agent_id: id, agent_type: 'dotnet-implementer', ...extra });
+const answers = (r) => r.read('.claude/docs/docs-log.jsonl').trim().split('\n').filter((l) => l.includes('"ask-answer"')).map((l) => JSON.parse(l));
+
+test('deep review: a seat is asked at its first hand-back, the retry passes with the answer, and SubagentStop stays quiet', () => {
+  const r = watched();
+  try {
+    const s = sid();
+    r.hook(subStart(s, 'agent-h1'), GIT);
+    touchBy(r, s, 'h1');
+    const first = r.hook(handBack(s, 'h1', 'status: DONE\ncontract_version: 3'), GIT);
+    assert.ok(denied(first), first.stdout);
+    const reason = JSON.parse(first.stdout).hookSpecificOutput.permissionDecisionReason;
+    assert.match(reason, /^Docs check: you changed src\/Api\/Program\.cs\n\nOne section documents this file - 'orders'/);
+    assert.match(reason, /Your report was NOT delivered\. Answer this first, then call SubagentHandback again: the docs line first\n\(docs ok, or the section you rewrote\), then your report unchanged/);
+    assert.doesNotMatch(reason, /This reply is what your caller receives/, 'the SubagentStop closing is not this route\'s');
+    assert.match(r.read(`.claude/docs/hook-blocks/${s}.jsonl`), /"event":"PreToolUse","tool":"SubagentHandback"/);
+    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"ask-update".*"via":"handback"/);
+    const retry = r.hook(handBack(s, 'h1', 'docs ok\nstatus: DONE\ncontract_version: 3'), GIT);
+    assert.strictEqual(retry.stdout, '', 'the hand-back sent after the ask is delivered');
+    const [row] = answers(r);
+    assert.deepStrictEqual([row.via, row.outcome, row.saidDocsOk], ['handback', 'unchanged', true]);
+    assert.strictEqual(r.hook(subStop(s, 'h1', { last_assistant_message: 'done' }), GIT).stdout, '', 'no second ask at SubagentStop');
+    assert.strictEqual(r.hook(handBack(s, 'h1', 'again'), GIT).stdout, '', 'nor at a later hand-back');
+    assert.strictEqual(answers(r).length, 1, 'one answer row');
+  } finally { r.rm(); }
+});
+
+test('deep review: the hand-back route asks nobody it should not, and a seat that stops instead of retrying is answered once', () => {
+  const r = watched();
+  try {
+    const s = sid();
+    r.hook(subStart(s, 'idle'), GIT);
+    assert.strictEqual(r.hook(handBack(s, 'idle', 'status: DONE'), GIT).stdout, '', 'a seat that wrote nothing hands back at once');
+    touch(r);
+    assert.strictEqual(r.hook({ ...handBack(s, 'x', 'hi'), agent_id: undefined, agent_type: undefined }, GIT).stdout, '', 'the main session has no hand-back ask');
+    r.hook(subStart(s, 'off'), GIT);
+    touchBy(r, s, 'off');
+    assert.strictEqual(r.hook(handBack(s, 'off', 'status: DONE'), { ...GIT, ALFRED_CODE_DOCS_ASK: '0' }).stdout, '', 'the ask switch covers this route');
+    const s2 = sid();
+    r.hook(subStart(s2, 'h2'), GIT);
+    wroteBy(r, s2, 'h2', 'src/Api/Program.cs', 'app.UseH2();\napp.Run();\n');
+    assert.ok(denied(r.hook(handBack(s2, 'h2', 'status: DONE'), GIT)));
+    assert.strictEqual(r.hook(subStop(s2, 'h2', { last_assistant_message: 'docs ok' }), GIT).stdout, '', 'stopping instead of retrying is not asked again');
+    const row = answers(r).pop();
+    assert.deepStrictEqual([row.via, row.saidDocsOk], ['handback', true], 'its last message is the answer');
+    // and with no hand-back at all, SubagentStop is still the ask (a harness without the tool)
+    const s3 = sid();
+    r.hook(subStart(s3, 'h3'), GIT);
+    wroteBy(r, s3, 'h3', 'src/Api/Program.cs', 'app.UseH3();\napp.Run();\n');
+    assert.match(r.hook(subStop(s3, 'h3'), GIT).stdout, /"decision":"block"/);
+  } finally { r.rm(); }
+});
+
+test('deep review: the manifest wires docs-session on SubagentHandback as its own row, outside the file dispatcher', () => {
+  const rows = require('../meta/stack-manifest.json').hooks.filter((h) => h.file === 'docs-session.js').map((h) => h.matcher);
+  assert.ok(rows.includes('SubagentHandback') && rows.includes('@SubagentStop'), rows.join(' '));
+  const entry = require('../.claude-plugin/marketplace.json').plugins.find((p) => p.name === 'alfred-code');
+  const pre = (entry.hooks.PreToolUse || []).filter((g) => g.matcher === 'SubagentHandback');
+  assert.strictEqual(pre.length, 1);
+  assert.match(pre[0].hooks[0].command, /stack\/hooks\/docs-session\.js"$/);
 });
 
 // Task 6b review, finding 7: a warning-only ask-answer row reads sections: [], outcome: 'unchanged' - the
@@ -1093,6 +1188,7 @@ test('a project with code-style/ and no architecture/ still gets a SessionStart 
     r.write('.claude/docs/code-style/STYLE.md', section('format', 'src/**/*.cs', 'Braces open on the same line.'));
     const s = sid();
     const startOut = r.hook({ hook_event_name: 'SessionStart', session_id: s });
+    ran(r, s);
     const text = ctx(startOut);
     assert.match(startOut.stdout, /"hookEventName":"SessionStart"/, 'a SessionStart block even with no architecture/ at all');
     assert.match(text, /How this project is documented/);
@@ -1594,6 +1690,7 @@ test('an unattended hold and an unattended Stop ask each write one mode: unatten
   try {
     const s = sid();
     r.hook({ hook_event_name: 'SessionStart', session_id: s }, U);
+    ran(r, s, U);
     assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s), U)), 'never held unattended');
     r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
     assert.strictEqual(r.hook(stopEv(s), U).stdout, '', 'never asked unattended');
@@ -1615,6 +1712,7 @@ test('with no watch entry Stop never diffs the tree', { skip: process.platform =
     const env = { PATH: `${bin}${path.delimiter}${process.env.PATH}` };
     const s = sid();
     r.hook({ hook_event_name: 'SessionStart', session_id: s }, env);
+    ran(r, s, env);
     r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
     fs.writeFileSync(calls, '');
     assert.strictEqual(r.hook(stopEv(s), env).stdout, '');
@@ -1643,6 +1741,40 @@ test('a write to a plan stamped Completed: is denied unless it changes only stam
     assert.ok(!denied(r.hook(pre('Bash', { command: 'grep -c Task .claude/docs/plans/csv-export.md' }, s))), 'a read');
     const rows = r.read(`.claude/docs/hook-blocks/${s}.jsonl`).trim().split('\n').map((l) => JSON.parse(l));
     assert.ok(rows.length >= 4 && rows.every((x) => /stamped Completed/.test(x.reason)), 'one block row per denial');
+  } finally { r.rm(); }
+});
+
+// The 2026-10-17 usage audit: the close that writes `Completed:` kept writing its own lines after it (the memories line, a
+// tick, the leftovers) and each was denied. The actor that added the stamp edits that plan freely until the close stop is
+// put to the user - an ask answered or a prompt typed after the stamp - then the record holds.
+test('the close that stamps Completed: finishes its own edits; after its stop is answered the record holds', () => {
+  const path = require('node:path');
+  const OPEN = '# Plan: csv export\nGated: 2026-10-09\nApproved: 2026-10-09 - build inline\n\n## Tasks\n- [x] Task 1 - export\n';
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.write('.claude/docs/plans/csv-export.md', OPEN);
+    const s = sid();
+    const tp = path.join(r.root, `${s}.jsonl`);
+    const rows = (...xs) => fs.appendFileSync(tp, xs.map((x) => JSON.stringify(x)).join('\n') + '\n');
+    rows({ type: 'user', message: { role: 'user', content: 'close it' } });
+    const file = `${r.root}/.claude/docs/plans/csv-export.md`;
+    const edit = (o, nw, session = s) => r.hook({ ...pre('Edit', { file_path: file, old_string: o, new_string: nw }, session), transcript_path: tp });
+    assert.ok(!denied(edit('Approved: 2026-10-09 - build inline\n', 'Approved: 2026-10-09 - build inline\nCompleted: 2026-10-17\n')), 'the stamp itself');
+    r.write('.claude/docs/plans/csv-export.md', OPEN.replace('build inline\n', 'build inline\nCompleted: 2026-10-17\n'));
+    rows({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'e1', name: 'Edit', input: {} }] } }, { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'e1', content: 'ok' }] } });
+    assert.ok(!denied(edit('- [x] Task 1 - export\n', '- [x] Task 1 - export\nmemories purged: none\n')), 'the close\'s own line after the stamp');
+    assert.ok(denied(edit('- [x] Task 1 - export\n', '- [x] Task 1 - export\n- [ ] Task 2\n', sid())), 'another session is still refused');
+    rows({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'a1', name: 'AskUserQuestion', input: {} }] } },
+      { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'a1', content: 'Your questions have been answered: "Close?"="Close (Recommended)"' }] } });
+    assert.ok(denied(edit('- [x] Task 1 - export\n', '- [x] Task 1 - export\n- [ ] Task 2\n')), 'the close stop answered: the record holds');
+    const s2 = sid();
+    const tp2 = path.join(r.root, `${s2}.jsonl`);
+    fs.writeFileSync(tp2, JSON.stringify({ type: 'user', message: { role: 'user', content: 'close' } }) + '\n');
+    r.write('.claude/docs/plans/csv-export.md', OPEN);
+    r.hook({ ...pre('Edit', { file_path: file, old_string: 'build inline\n', new_string: 'build inline\nCompleted: 2026-10-17\n' }, s2), transcript_path: tp2 });
+    r.write('.claude/docs/plans/csv-export.md', OPEN.replace('build inline\n', 'build inline\nCompleted: 2026-10-17\n'));
+    fs.appendFileSync(tp2, JSON.stringify({ type: 'user', message: { role: 'user', content: 'and add the pdf export' } }) + '\n');
+    assert.ok(denied(r.hook({ ...pre('Edit', { file_path: file, old_string: '- [x] Task 1 - export\n', new_string: '- [x] Task 1 - export\n- [ ] Task 2 - pdf\n' }, s2), transcript_path: tp2 })), 'a typed prompt after the stamp ends the close');
   } finally { r.rm(); }
 });
 
@@ -1827,4 +1959,291 @@ test('audit 2026-10-11 SD09: an unclaimed change made while the session sat idle
     const out = r2.hook({ ...stopEv(s), transcript_path: p.join(r2.root, 'missing.jsonl') }).stdout;
     assert.match(out ? JSON.parse(out).reason : '', /you changed src\/Api\/Program\.cs/, 'no transcript to read: the change stays the session\'s');
   } finally { r2.rm(); }
+});
+
+// The 2026-10-17 usage audit: a session that only read and edited through its tools was asked about another session's
+// uncommitted diff that no claim of that session named. The unclaimed bucket now needs this session to have run a command
+// that may write; a read-only shell step does not count, and its own tool edits are still asked about.
+test('a session that ran nothing that writes is not asked about a change no actor claimed; one that ran a build is', () => {
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n', 'src/Web/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH() } });
+  const ALLOW_GATE = { ALFRED_CODE_DOCS_GATE: '0' };
+  try {
+    const s = sid();
+    r.hook({ hook_event_name: 'SessionStart', session_id: s }, ALLOW_GATE);
+    for (const command of ['git status --short', 'grep -rn Refund src | head -5', 'git diff HEAD -- src', 'node .claude/hooks/docs.js show patterns#orders', 'ls -la src/Api'])
+      r.hook(pre('Bash', { command }, s), ALLOW_GATE);
+    r.write('src/Api/Program.cs', 'app.UseOtherSession();\napp.Run();\n');
+    assert.strictEqual(r.hook(stopEv(s), ALLOW_GATE).stdout, '', 'another writer\'s diff, read-only session: not asked');
+    const s2 = sid();
+    r.hook({ hook_event_name: 'SessionStart', session_id: s2 }, ALLOW_GATE);
+    r.hook(pre('Edit', { file_path: 'src/Api/Program.cs' }, s2), ALLOW_GATE);
+    r.write('src/Api/Program.cs', 'app.UseMine();\napp.Run();\n');
+    assert.match(JSON.parse(r.hook(stopEv(s2), ALLOW_GATE).stdout).reason, /you changed src\/Api\/Program\.cs/, 'its own tool edit is still asked about');
+    const s3 = sid();
+    r.hook({ hook_event_name: 'SessionStart', session_id: s3 }, ALLOW_GATE);
+    r.hook(pre('Bash', { command: 'dotnet ef migrations add Orders' }, s3), ALLOW_GATE);
+    r.write('src/Web/Program.cs', 'app.UseGenerated();\napp.Run();\n');
+    assert.match(JSON.parse(r.hook(stopEv(s3), ALLOW_GATE).stdout).reason, /you changed src\/Web\/Program\.cs/, 'a generator\'s output is still the session\'s');
+  } finally { r.rm(); }
+});
+
+// 2026-10-16, an aspnet project on 2.5.0: a read-only session's Stop said 'you changed' four migration files a second
+// session on the same checkout had written while it ran.
+test('2026-10-16: a change another session on this checkout recorded as its own write is not asked about', () => {
+  const os = require('node:os');
+  const p = require('node:path');
+  const r = watched();
+  const edit = (s, file) => r.hook({ hook_event_name: 'PreToolUse', session_id: s, tool_name: 'Edit', tool_input: { file_path: file } }, { ...GIT, ...ALLOW });
+  const ask = (s) => { const out = r.hook(stopEv(s), GIT).stdout; return out ? JSON.parse(out).reason : ''; };
+  const claim = (s, v) => fs.writeFileSync(p.join(os.tmpdir(), `docs-session-${s}--main.session.json`), JSON.stringify(v));
+  let body = 0;
+  const change = () => r.write('src/Api/Program.cs', `app.UseStep(${++body});\napp.Run();\n`);
+  try {
+    const mine = sid(); const theirs = sid();
+    start(r, mine); start(r, theirs);
+    edit(theirs, 'src/Api/Program.cs'); change();
+    const state = JSON.parse(fs.readFileSync(p.join(os.tmpdir(), `docs-session-${theirs}--main.session.json`), 'utf8'));
+    // Recorded as the hook keys it: forward slashes, and on Windows case-folded as the file system compares.
+    const key = p.resolve(r.root).split(p.sep).join('/');
+    assert.strictEqual(state.root, process.platform === 'win32' ? key.toLowerCase() : key, 'the writer records the checkout beside its paths');
+    assert.strictEqual(ask(mine), '', 'the measured case: the read-only session is not asked about the other session\'s write');
+    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"changed-by-other-session","files":\["src\/Api\/Program\.cs"\]/);
+    assert.match(ask(theirs), /you changed src\/Api\/Program\.cs/, 'the session that wrote it is still asked');
+    const own = sid(); start(r, own);
+    edit(own, 'src/Api/Program.cs'); change();
+    assert.match(ask(own), /you changed src\/Api\/Program\.cs/, 'a file both sessions wrote is still this session\'s own');
+    const past = new Date(Date.now() - 3600e3);
+    fs.utimesSync(p.join(os.tmpdir(), `docs-session-${theirs}--main.session.json`), past, past);
+    fs.utimesSync(p.join(os.tmpdir(), `docs-session-${own}--main.session.json`), past, past);
+    const late = sid(); start(r, late); change();
+    assert.match(ask(late), /you changed src\/Api\/Program\.cs/, 'a claim last written before this session\'s snapshot claims nothing');
+    const foreign = sid(); const other = sid(); start(r, foreign); change();
+    claim(other, { wrote: ['src/Api/Program.cs'], root: '/another/checkout' });
+    assert.match(ask(foreign), /you changed src\/Api\/Program\.cs/, 'another project\'s session claims nothing here');
+    const legacy = sid(); const old = sid(); start(r, legacy); change();
+    claim(old, { wrote: ['src/Api/Program.cs'] });
+    assert.match(ask(legacy), /you changed src\/Api\/Program\.cs/, 'a state file with no root (written before the record) claims nothing');
+    const torn = sid(); const bad = sid(); start(r, torn); change();
+    fs.writeFileSync(p.join(os.tmpdir(), `docs-session-${bad}--main.session.json`), '{"wrote": [');
+    assert.match(ask(torn), /you changed src\/Api\/Program\.cs/, 'an unreadable state file claims nothing');
+  } finally { r.rm(); }
+});
+
+// Audit 2026-10-20 C25 (6dba16e2, b5f384d2, 1b432dd2): the first source edit of every /clear resume was held, though the
+// resume read the plan whose `Oriented:` line names the sections the design read. Those sections count as read; a plan
+// naming none, a plan-shaped file outside plans/, or no plan read at all still leaves the edit held.
+test('audit 2026-10-20 C25: a resume that reads its plan\'s Oriented sections is not held; a plan naming none still is', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'x\n', 'notes/plan.md': 'Oriented: patterns#orders\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  const plan = (name, oriented) => r.write(`.claude/docs/plans/${name}.md`, `# Plan\n\nOriented: ${oriented}\nAsked: "fix refunds"\n\n## Tasks\n`);
+  const edit = (s) => r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s));
+  try {
+    plan('refunds', 'patterns#orders, CODE-STYLE.md lines 30-99 (C#); code read - src/Api/Orders/Refund.cs');
+    const s = sid();
+    r.hook(pre('Read', { file_path: `${r.root}/.claude/docs/plans/refunds.md` }, s));
+    assert.ok(!denied(edit(s)), 'the plan\'s Oriented section counts as read');
+    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"consult","refs":\["patterns#orders"\]/);
+    const sh = sid();
+    r.hook(pre('Bash', { command: 'cat .claude/docs/plans/refunds.md' }, sh));
+    assert.ok(!denied(edit(sh)), 'a shell read of the plan counts the same');
+    plan('blind', 'none - a one-line fix');
+    const none = sid();
+    r.hook(pre('Read', { file_path: `${r.root}/.claude/docs/plans/blind.md` }, none));
+    assert.ok(denied(edit(none)), 'a plan naming no section earns nothing');
+    plan('typo', 'patterns#nope, nosuch#orders');
+    const typo = sid();
+    r.hook(pre('Read', { file_path: `${r.root}/.claude/docs/plans/typo.md` }, typo));
+    assert.ok(denied(edit(typo)), 'a section the engine cannot resolve earns nothing');
+    const outside = sid();
+    r.hook(pre('Read', { file_path: `${r.root}/notes/plan.md` }, outside));
+    assert.ok(denied(edit(outside)), 'an Oriented line outside the plans folder earns nothing');
+    assert.ok(denied(edit(sid())), 'a session that read nothing is still held');
+  } finally { r.rm(); }
+});
+
+// Audit 2026-10-20 C25 (4f2bfdee): a `node -e` writing to a computed path under a temp run dir was read as a write under
+// the first source root and held twice ('Before changing src/*'). An unnamed interpreter write is a source write only
+// under a root the command names; a patch or a migration with no project still always is.
+test('audit 2026-10-20 C25: an interpreter write to a computed temp path is not held; one naming a source root is', () => {
+  const { writeTargets, unknownRoots } = require('../stack/hooks/docs-session.js');
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'x\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  const TEMP = 'TD="${TMPDIR:-/tmp}"; TMP=$(ls -dt "$TD"/run.*/ | head -1); TMP=${TMP%/}\n'
+    + 'node -e \'\nconst fs=require("fs");const [inp,out]=process.argv.slice(1);\nfs.writeFileSync(out, fs.readFileSync(inp,"utf8"));\n\' "$TMP/in.json" "$TMP/final.json"';
+  const INTO_SRC = 'node -e \'const fs=require("fs");const [o]=process.argv.slice(1);fs.writeFileSync(o,"x")\' src/Api/Orders/Gen.cs';
+  try {
+    assert.deepStrictEqual(writeTargets(TEMP), ['<unknown interpreter write>']);
+    assert.deepStrictEqual(unknownRoots(TEMP, ['src', 'tests']), []);
+    assert.deepStrictEqual(unknownRoots(INTO_SRC, ['src', 'tests']), ['src']);
+    assert.deepStrictEqual(unknownRoots('node -e "x" ./tests/a.json', ['src', 'tests']), ['tests']);
+    assert.deepStrictEqual(unknownRoots('node -e "x" mysrc/a.json resources/b', ['src', 'tests']), [], 'a root inside another word is not named');
+    assert.deepStrictEqual(unknownRoots('node -e "x"', ['.', 'src']), ['.'], 'a root that is the project is named by every command');
+    assert.ok(!denied(r.hook(pre('Bash', { command: TEMP }, sid()))), 'the audited temp write is not held');
+    assert.ok(denied(r.hook(pre('Bash', { command: INTO_SRC }, sid()))), 'an interpreter write naming src/ is held');
+    assert.ok(denied(r.hook(pre('Bash', { command: 'git apply fix.patch' }, sid()))), 'a patch is still a source write');
+  } finally { r.rm(); }
+});
+
+// Audit 2026-10-20 C25 (0685cd0b): the once-per-session Stop ask fired on a PAUSE - 'coded, but I can't build or test it
+// yet' under a background watch - and was spent there. While the harness's registry shows work still running the ask waits
+// for a later Stop, at most three times.
+test('audit 2026-10-20 C25: the Stop ask waits while background work runs, asks at a later Stop, and waits at most three times', () => {
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH() } });
+  const running = [{ id: 'b1', type: 'shell', status: 'running', command: 'until sc.exe query Svc | grep -q STOPPED; do sleep 2; done' }];
+  const stopWith = (s, tasks) => r.hook({ ...stopEv(s), ...(tasks ? { background_tasks: tasks } : {}) }).stdout;
+  try {
+    const s = sid();
+    start(r, s);
+    r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
+    assert.strictEqual(stopWith(s, running), '', 'a pause under running work is not asked');
+    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"ask-deferred","why":"background work running","deferred":1/);
+    assert.match(JSON.parse(stopWith(s, [])).reason, /^Docs check: you changed src\/Api\/Program\.cs/, 'the next Stop with nothing in flight asks');
+    const settled = sid();
+    start(r, settled);
+    r.write('src/Api/Program.cs', 'app.UseOther();\napp.Run();\n');
+    assert.match(JSON.parse(stopWith(settled, [{ id: 'b2', type: 'subagent', status: 'completed' }])).reason, /you changed/, 'finished work is no pause');
+    const capped = sid();
+    start(r, capped);
+    r.write('src/Api/Program.cs', 'app.UseThird();\napp.Run();\n');
+    for (let i = 0; i < 3; i++) assert.strictEqual(stopWith(capped, running), '', `deferral ${i + 1}`);
+    assert.match(JSON.parse(stopWith(capped, running)).reason, /you changed/, 'the fourth Stop asks, running work or not');
+  } finally { r.rm(); }
+});
+
+// Audit 2026-10-20 C25 (c5287cc1, 7c1af769): a sibling session's `git stash push` was charged to a session that never
+// touched the file, and a stash this session only applied read as its own authoring. A stash's files are recorded as
+// MOVED by the session that ran it: claimed against the others, never asked about itself; a file it then edits still is.
+test('audit 2026-10-20 C25: a file moved by git stash is not charged to the session that only moved it, nor to a sibling', () => {
+  const os = require('node:os');
+  const p = require('node:path');
+  const r = watched();
+  const ask = (s) => { const out = r.hook(stopEv(s), GIT).stdout; return out ? JSON.parse(out).reason : ''; };
+  const bash = (s, command) => r.hook(pre('Bash', { command }, s), { ...GIT, ...ALLOW });
+  try {
+    const { stashMoves } = require('../stack/hooks/docs-session.js');
+    r.write('src/Api/Program.cs', 'app.UseSibling();\napp.Run();\n');
+    assert.deepStrictEqual(stashMoves('git stash push -m wip', r.root, r.root), ['src/Api/Program.cs']);
+    assert.deepStrictEqual(stashMoves('git stash push -m wip -- src/Api/Users', r.root, r.root), [], 'a pathspec narrows it');
+    assert.deepStrictEqual(stashMoves('git stash list', r.root, r.root), [], 'a listing moves nothing');
+    // c5287cc1: this session's snapshot holds the sibling's dirty file; the sibling then stashes it away.
+    const mine = sid(); const theirs = sid();
+    start(r, mine, GIT); start(r, theirs, GIT);
+    bash(theirs, 'git stash push -m wip');
+    r.git('stash', 'push', '-m', 'wip');
+    const state = JSON.parse(fs.readFileSync(p.join(os.tmpdir(), `docs-session-${theirs}--main.session.json`), 'utf8'));
+    assert.deepStrictEqual(state.moved, ['src/Api/Program.cs'], 'the stash records its files as moved');
+    assert.strictEqual(ask(mine), '', 'the measured case: not charged with the sibling\'s stash');
+    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"changed-by-other-session","files":\["src\/Api\/Program\.cs"\]/);
+    assert.strictEqual(ask(theirs), '', 'the stashing session moved it, never authored it');
+    // 7c1af769: a session applies a stash another session authored.
+    const applier = sid();
+    start(r, applier, GIT);
+    bash(applier, 'git stash apply stash@{0}');
+    r.git('stash', 'apply', 'stash@{0}');
+    assert.strictEqual(ask(applier), '', 'an applied stash is not this session\'s authoring');
+    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"changed-by-git-stash","files":\["src\/Api\/Program\.cs"\]/);
+    const editor = sid();
+    start(r, editor, GIT);
+    bash(editor, 'git stash apply stash@{0}');
+    r.hook(pre('Edit', { file_path: 'src/Api/Program.cs' }, editor), { ...GIT, ...ALLOW });
+    r.write('src/Api/Program.cs', 'app.UseEdited();\napp.Run();\n');
+    assert.match(ask(editor), /you changed src\/Api\/Program\.cs/, 'a file it moved and then edited is its own');
+  } finally { r.rm(); }
+});
+
+// ---- audit 2026-10-20 C43: an architecture write waits for the analyzer seats this session dispatched ----
+// add5a91e: 'Verification is done', the first Edit, then a sixth architecture-analyzer dispatched and 42 more reference
+// Edits made while it ran. A write under <docs>/architecture/ is held once per dispatch while such a seat is out.
+const seatRows = (tp) => (...xs) => fs.appendFileSync(tp, xs.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join('\n') + '\n');
+const dispatchRow = (id, type, desc = 'Verify patterns') => ({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'Agent', input: { subagent_type: type, description: desc, prompt: 'verify' } }] } });
+const launchedRow = (id, agent) => ({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: [{ type: 'text', text: `Async agent launched successfully.\nagentId: ${agent} (internal ID)` }] }] } });
+const noticeText = (id, agent) => `<task-notification>\n<task-id>${agent}</task-id>\n<tool-use-id>${id}</tool-use-id>\n<status>completed</status>\n<summary>Agent finished</summary>\n</task-notification>`;
+
+test('audit 2026-10-20 C43: an architecture write is held once while an analyzer seat is out, and passes once it handed back', () => {
+  const p = require('node:path');
+  const r = repo({ docs: { 'ARCHITECTURE.md': '# Architecture\n', 'references/patterns.md': PATTERNS } });
+  try {
+    const s = sid();
+    const tp = p.join(r.root, `${s}.jsonl`);
+    const rows = seatRows(tp);
+    const doc = `${r.root}/.claude/docs/architecture/references/patterns.md`;
+    const edit = (session = s, extra = {}) => r.hook({ ...pre('Edit', { file_path: doc, old_string: 'a', new_string: 'b' }, session), transcript_path: tp, ...extra });
+    rows({ type: 'user', message: { role: 'user', content: '/capture-architecture' } });
+    assert.ok(!denied(edit()), 'no seat dispatched: the write passes');
+    rows(dispatchRow('t1', 'alfred-code:architecture-analyzer', 'Verify remaining patterns'), launchedRow('t1', 'a111'));
+    const held = edit();
+    assert.ok(denied(held), 'the audited case: a seat is out');
+    assert.match(held.stdout, /architecture-analyzer \('Verify remaining patterns'\)/);
+    assert.match(held.stdout, /Wait for the hand-back/);
+    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"seat-hold"/);
+    assert.match(fs.readdirSync(p.join(r.root, '.claude/docs/hook-blocks')).map((f) => r.read(`.claude/docs/hook-blocks/${f}`)).join(''), /Held: /);
+    assert.ok(!denied(edit()), 'once per dispatch: the second attempt passes');
+    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"seat-bypass"/);
+    // an enqueued notice is not delivered yet; a new dispatch is held again
+    rows(dispatchRow('t2', 'code-quality-analyzer'), launchedRow('t2', 'a222'));
+    rows({ type: 'queue-operation', operation: 'enqueue', content: noticeText('t2', 'a222') });
+    assert.ok(denied(edit()), 'a second seat out is held again, its queued notice not yet delivered');
+    rows({ type: 'user', message: { role: 'user', content: noticeText('t1', 'a111') } });
+    rows({ type: 'attachment', attachment: { type: 'queued_command', prompt: noticeText('t2', 'a222') } });
+    assert.ok(!denied(edit()), 'every seat handed back: nothing is held');
+    // a delivered hand-back message settles its seat too
+    rows(dispatchRow('t3', 'architecture-analyzer'), launchedRow('t3', 'a333'));
+    assert.ok(denied(edit()));
+    rows({ type: 'user', isMeta: true, message: { role: 'user', content: 'Another Claude session sent a message:\n<agent-message from="a333">\n[Subagent hand-back] The text below is the final report.' } });
+    assert.ok(!denied(edit()), 'the delivered hand-back ends the seat');
+    // a seat's own call, and the gate switch, are never held
+    rows(dispatchRow('t4', 'architecture-analyzer'), launchedRow('t4', 'a444'));
+    assert.ok(!denied(edit(s, { agent_id: 'a444', agent_type: 'alfred-code:architecture-analyzer' })), 'a seat caller passes');
+    assert.ok(!denied(r.hook({ ...pre('Edit', { file_path: doc }, s), transcript_path: tp }, { ALFRED_CODE_DOCS_GATE: '0' })), 'DOCS_GATE=0 passes');
+  } finally { r.rm(); }
+});
+
+test('audit 2026-10-20 C43: no false hold - a returned seat, another seat type, a write outside architecture/, a malformed or missing transcript', () => {
+  const p = require('node:path');
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    const s = sid();
+    const tp = p.join(r.root, `${s}.jsonl`);
+    const rows = seatRows(tp);
+    const arch = `${r.root}/.claude/docs/architecture/ARCHITECTURE.md`;
+    const write = (file, session = s, t = tp) => r.hook({ ...pre('Write', { file_path: file, content: '# x\n' }, session), transcript_path: t });
+    // a foreground seat whose report is its tool_result has handed back
+    rows(dispatchRow('f1', 'architecture-analyzer'), { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'f1', content: [{ type: 'text', text: 'status: done\nDigest...' }] }] } });
+    assert.ok(!denied(write(arch)), 'a foreground seat that returned');
+    // a launch that failed is no seat out
+    rows(dispatchRow('f2', 'architecture-analyzer'), { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'f2', is_error: true, content: 'Agent type not found' }] } });
+    assert.ok(!denied(write(arch)), 'a failed launch');
+    // an implementer or a foreign plugin's analyzer is no capture seat
+    rows(dispatchRow('f3', 'dotnet-implementer'), launchedRow('f3', 'b333'), dispatchRow('f4', 'other:architecture-analyzer'), launchedRow('f4', 'b444'));
+    assert.ok(!denied(write(arch)), 'not a capture analyzer');
+    // a TaskStop ends a seat
+    rows(dispatchRow('f5', 'architecture-analyzer'), launchedRow('f5', 'b555'), { type: 'assistant', message: { content: [{ type: 'tool_use', id: 'k1', name: 'TaskStop', input: { task_id: 'b555' } }] } });
+    assert.ok(!denied(write(arch)), 'a stopped seat');
+    // a seat out, but the write is not an architecture doc
+    rows(dispatchRow('f6', 'architecture-analyzer'), launchedRow('f6', 'b666'));
+    assert.ok(!denied(write(`${r.root}/.claude/docs/plans/x.md`)), 'a plan write is not held by the seat hold');
+    assert.ok(!denied(write(`${r.root}/.claude/docs/architecture-notes.md`)), 'a sibling folder sharing the prefix');
+    // malformed: garbage rows, a torn last row, a missing transcript, no transcript at all
+    const bad = p.join(r.root, `${s}-bad.jsonl`);
+    fs.writeFileSync(bad, 'not json\n{"type":"assistant","message":{"content":[{"type":"tool_use","id":"g1","name":"Agent","input":{"subagent_type":"architecture-analyzer"}}]}}\n\u0000\u0001{garbage\n{"type":"user","message":{"content":[{"type":"tool_re');
+    assert.ok(denied(write(arch, sid(), bad)), 'garbage rows around a real dispatch: the real row still counts');
+    assert.ok(!denied(write(arch, sid(), p.join(r.root, 'missing.jsonl'))), 'a missing transcript releases');
+    assert.ok(!denied(r.hook(pre('Write', { file_path: arch, content: '# x\n' }, sid()))), 'no transcript path releases');
+    fs.writeFileSync(bad, '\u0000garbage only\n[1,2]\nnull\n"str"\n');
+    assert.ok(!denied(write(arch, sid(), bad)), 'a transcript of garbage holds nothing');
+  } finally { r.rm(); }
+});
+
+test('audit 2026-10-20 C43: the shell route and a docs.js set of an architecture ref are held; a first capture with no domain yet is too', () => {
+  const p = require('node:path');
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' } });
+  try {
+    const s = sid();
+    const tp = p.join(r.root, `${s}.jsonl`);
+    seatRows(tp)(dispatchRow('h1', 'architecture-analyzer'), launchedRow('h1', 'c111'));
+    const bash = (command, session) => r.hook({ ...pre('Bash', { command }, session), transcript_path: tp, cwd: r.root });
+    assert.ok(!r.exists('.claude/docs/architecture'), 'a first capture: no architecture domain yet');
+    assert.ok(denied(bash('mkdir -p .claude/docs/architecture && cat > .claude/docs/architecture/ARCHITECTURE.md <<\'EOF\'\n# A\nEOF', sid())), 'a shell write under architecture/');
+    assert.ok(denied(bash('node .claude/hooks/docs.js set architecture/ARCHITECTURE#layers < /tmp/x.md', sid())), 'a docs.js set of an architecture ref');
+    assert.ok(!denied(bash('cat .claude/docs/architecture/ARCHITECTURE.md', sid())), 'a read is no write');
+    assert.ok(!denied(bash('node .claude/hooks/docs.js set code-style/CODE-STYLE#naming < /tmp/x.md', sid())), 'another domain\'s set');
+  } finally { r.rm(); }
 });

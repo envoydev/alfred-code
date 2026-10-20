@@ -9,7 +9,7 @@
 //   machine: <what> - present | missing: <command> | missing after uv: <command> | refresh: <command> | blocked: <why> | skip: <why>
 //     What the kept MCPs need before they can start, probed on this machine, in install order: uv,
 //     the pinned Python fetched through it, csharp-ls when csharp-lsp is kept, the picked playwright
-//     browsers, the serena index and the memory service's embedding model. Setup's install already downloaded a picked firefox / webkit, so
+//     browsers, the serena index and the memory service's embedding model. The install phase already downloaded a picked firefox / webkit, so
 //     one is here only when that download failed; chrome and msedge run the machine's own browser,
 //     probed like stack-select's msedge check, and one that is not there is `blocked` with its fix.
 //     Last, claude-hud's status line + compact layout (hud-statusline.js, the account dir CLAUDE_CONFIG_DIR,
@@ -20,14 +20,14 @@
 //     The command is the exact one to run; init puts every missing one through ONE ask.
 //
 //   capture: <skill> - run: read <SKILL.md> | done: <output> exists | skip: <why>
-//     The five captures in their fixed order, each only when the install lists its skill AND its seat
-//     (project-capabilities and agent-capabilities have none). init READS the SKILL.md and follows it inline: these skills are
+//     The three captures in their fixed order, each only when the install lists its skill AND its seat
+//     (capture-awareness has none). init READS the SKILL.md and follows it inline: these skills are
 //     manual-only, so a Skill call is denied. An existing output is done - re-capturing is the user's
 //     call, later. The library copy in .claude/skills wins over the plugin's.
 //
 //   unattended: <question> -> <choice>
 //     Only with ALFRED_CODE_UNATTENDED=1: the answer to each ask init itself owns, after the plan -
-//     the recommended option unless it is destructive or needs a person (init.md, 'Unattended').
+//     the recommended option unless it is destructive or needs a person (references/init-bootstrap.md, 'Unattended').
 //     `--mode` alone prints `unattended: on|off` and nothing else, for init's first call.
 //
 // Exit 0 with the plan, 2 on an unreadable --installed file.
@@ -53,13 +53,12 @@ const MACHINE_BROWSERS = {
     msedge: { need: 'Microsoft Edge', bins: ['msedge', 'microsoft-edge'] },
 };
 const CAPTURES = [
-    { skill: 'capture-related-projects', seat: 'related-project-analyzer', output: () => '.claude/rules/alfred-related-context.md' },
     { skill: 'capture-architecture', seat: 'architecture-analyzer', output: (docs) => `${docs}/architecture/ARCHITECTURE.md` },
     { skill: 'capture-code-style', seat: 'code-style-analyzer', output: (docs) => `${docs}/code-style/CODE-STYLE.md` },
-    // The run book: no seat - it reads the repo and asks for the gaps in the main session.
-    { skill: 'capture-project-awareness', seat: null, output: (docs) => `${docs}/project-capabilities/PROJECT-CAPABILITIES.md` },
-    // Its own precheck decides whether the generated rule is current - always run when installed.
-    { skill: 'capture-agent-awareness', seat: null, output: null },
+    // The inventory, the run book and the sibling repos in one run (the user's ruling of 2026-10-16), no seat of its own -
+    // its related-projects part dispatches the opt-in seat only where it is installed. LAST, so the inventory reflects
+    // every capture above; each part decides from disk whether it has work, so it always runs when installed.
+    { skill: 'capture-awareness', seat: null, output: null },
 ];
 
 // Playwright's own registry location (PLAYWRIGHT_BROWSERS_PATH, else the per-OS cache dir).
@@ -145,7 +144,7 @@ function plan({ inv, root, platform = process.platform, arch = process.arch, env
 
     // The memory service's embedding model (~166MB), fetched ahead: its first start downloads it, 33s cold
     // against Claude Code's 30s connect budget, and a server that misses it is cached as failed (live check F2).
-    // Setup's install fetches it where uvx already was; here it follows the uv this init installs.
+    // The install phase fetches it where uvx already was; here it follows the uv this bootstrap installs.
     const marker = path.join(home, '.cache', 'mcp_memory', 'onnx_models', 'all-MiniLM-L6-v2', 'onnx', 'model.onnx');
     add('memory model', (probe.file || fs.existsSync)(marker) ? 'present' : afterUv,
         `node "${path.join(REPO, 'stack', 'hooks', 'memory.js')}" warm --root "${root}" --plugin-root "${REPO}"`);
@@ -192,7 +191,7 @@ function render({ machine, captures })
 // UNATTENDED - nobody answers the asks. The switch is exactly '1', like every other stack switch.
 const isUnattended = (env = process.env) => String(env.ALFRED_CODE_UNATTENDED || '').trim() === '1';
 // A machine line whose command REPLACES something already there (claude-hud's own status line in a
-// stale shape, after a backup) is destructive; `missing` ones only add. init.md defines the word.
+// stale shape, after a backup) is destructive; `missing` ones only add. references/init-bootstrap.md defines the word.
 const DESTRUCTIVE_MACHINE = ['refresh'];
 function unattended({ machine, captures })
 {
@@ -202,9 +201,6 @@ function unattended({ machine, captures })
     for (const m of machine.filter((x) => DESTRUCTIVE_MACHINE.includes(x.state)))
         lines.push(`unattended: machine installs -> skip ${m.what} (a refresh replaces the account's existing status line - destructive)`);
     lines.push('unattended: memory level -> global (Recommended)');
-    // Its only real answer is a sibling list someone types - an unattended run would be inventing one.
-    if (captures.some((c) => c.skill === 'capture-related-projects' && c.state === 'run'))
-        lines.push('unattended: related projects -> none - skip it (naming the siblings needs a person)');
     lines.push('unattended: AGENTS.md -> fill it in (Recommended)');
     return lines;
 }

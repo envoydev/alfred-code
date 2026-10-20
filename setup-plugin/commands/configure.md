@@ -1,14 +1,14 @@
 ---
-description: "ADJUST an existing Alfred Code install - inventory what is actually installed, report what an update would bring (the stamp compare), pick WHICH areas to adjust, then walk the chosen areas with setup's own walk in DELTA mode (one shared walk text), in dependency order: each layer shows ONE numbered table of the whole catalog with what is installed and what is locked (the required-by reason shown), then one call of ADD and DROP option questions (a Pick option opens grouped multi-select choices); an environment area adjusts the stack's own env values (the environment.json catalog) on the same consent. Every scope - project, user or local - and a move between them. Drops cascade BOTH ways, always with consent: what a dropped item alone pulled in is offered for removal at its own layer, and dropping a required item offers the dependent rules/agents that hold it for removal with it - nothing is ever removed silently. Prerequisite check, the installer's update action, explicit removals, and an OFFERED (never forced) AGENTS.md reconcile close the run. NOT for a first install - that is the sibling setup command; for a plain refresh (+ prune of upstream removals) the sibling update command is the shorter path."
+description: "ADJUST an existing Alfred Code install - inventory what is actually installed, report what an update would bring (the stamp compare), pick WHICH areas to adjust, then walk the chosen areas with init's install-phase walk in DELTA mode (one shared walk text), in dependency order: each layer shows ONE numbered table of the whole catalog with what is installed and what is locked (the required-by reason shown), then one call of ADD and DROP option questions (a Pick option opens grouped multi-select choices); an environment area adjusts the stack's own env values (the environment.json catalog) on the same consent. Every scope - project, user or local - and a move between them. Drops cascade BOTH ways, always with consent: what a dropped item alone pulled in is offered for removal at its own layer, and dropping a required item offers the dependent rules/agents that hold it for removal with it - nothing is ever removed silently. Prerequisite check, the installer's update action, explicit removals, and an OFFERED (never forced) AGENTS.md reconcile close the run. NOT for a first install - that is the sibling init command; for a plain refresh (+ prune of upstream removals) the sibling update command is the shorter path."
 disable-model-invocation: true
 ---
 
 # Configure Alfred Code - adjust an existing install
 
 You are adjusting an Alfred Code install that already exists. Same discipline and the same walk as
-`setup`: drive it interactively, walk the selection one layer at a time, always show the
+`init`'s install phase: drive it interactively, walk the selection one layer at a time, always show the
 prerequisite report before running, never run past an unmet blocker. `stack-select.js` does the
-deterministic work; you orchestrate. Two differences from `setup`: the walk runs in DELTA mode -
+deterministic work; you orchestrate. Two differences from that install phase: the walk runs in DELTA mode -
 the baseline selection is what is INSTALLED, not the recommendations, so every layer is a straight
 modify with no recommended phase - and the action is `update`, not `install`. (For a no-questions refresh that also prunes what upstream removed, the
 sibling `update` command is the shorter path - this command is for CHOOSING what changes.)
@@ -17,12 +17,13 @@ sibling `update` command is the shorter path - this command is for CHOOSING what
 is actually loaded.** Measure before you ask: this session's own per-message context is `input +
 cache_read + cache_creation` off the last assistant message in the transcript. Ask ONLY when that
 figure is past the same trigger `guard-fresh-session-start.js` uses - the tier's own absolute
-trigger, `ALFRED_CODE_FRESH_SESSION_200K` (default 150,000) or `ALFRED_CODE_FRESH_SESSION_1M`
-(default 400,000), or `ALFRED_CODE_FRESH_SESSION_DEFAULT` (default 300,000) when the window is
-neither of those two sizes or cannot be read at all - which one applies comes from the session
-model's row in `.claude/hooks/model-windows.json`, else `ALFRED_CODE_DEFAULT_CONTEXT_WINDOW` - or when that hook has already
+trigger, `ALFRED_CODE_CONTEXT_WINDOW_FOR_1M` (default 400,000) on a window of 1M or more,
+`ALFRED_CODE_CONTEXT_WINDOW_FOR_300K` (default 280,000) on one of 300k up to 1M, or
+`ALFRED_CODE_CONTEXT_WINDOW_FOR_200K` (default 180,000) below that - the window comes from the session
+model's row in `.claude/hooks/model-windows.json`, else `ALFRED_CODE_CONTEXT_WINDOW_DEFAULT` (default 300,000) - or when that hook has already
 injected the ask into this turn. Below the
-trigger, or when the figure cannot be read at all, SKIP the ask silently and start step 1: an ask
+trigger, or when the figure cannot be read at all, or with `ALFRED_CODE_AUTO_COMPACT=1` or the tier's trigger at `0` (no fresh-session offer
+then), SKIP the ask silently and start step 1: an ask
 with no measurement behind it is the failure this replaced (measured: it fired on the FIRST message
 of a brand-new session, twice in one run, and could quote no number when the user challenged it).
 Never author the decision in prose either way.
@@ -82,7 +83,7 @@ comparable banner by banner; the content varies, the skeleton never does.
   from the install records the hooks read (`alfred-code.stamp`, a
   copied `hooks/docs.js`) in this repo, its git top level or a worktree's main checkout - never
   from `.claude/skills` or `.claude/agents`, which a plugin-route install may not have.
-  `not-installed` -> stop and route to the sibling `/alfred-code:setup` command; there is nothing
+  `not-installed` -> stop and route to the sibling `/alfred-code:init` command (its install phase); there is nothing
   to configure yet. `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:configure from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here. `legacy-unstamped` (a legacy copy-route install that never wrote a stamp) -> stop and route to `/alfred-code:update`,
   which reads its picks off disk and writes the stamp; configure runs after it. `installed` / `initialised` -> go on. Every scope keeps the stamp, the library copies and the
   settings in the project's `.claude/`, so there is one mode.
@@ -108,7 +109,7 @@ comparable banner by banner; the content varies, the skeleton never does.
   removal. `left_out` lists what the user switched off - a denied seat, an item of a parked retired entry -
   as selection lines; the walk leaves it off unless the user picks it. Three signals in
   `$TMP/plan.out`, none printed to the user: `error: --installed-only found nothing installed` means
-  there is nothing to configure - route to `/alfred-code:setup`; `plan routes: skills=<plugin|copy>
+  there is nothing to configure - route to `/alfred-code:init`; `plan routes: skills=<plugin|copy>
   hooks=<plugin|copy> mcps=<plugin|copy>` names the routes; `plan answered: hooks=<yes|no>
   agents=<yes|no>` says which off-states the read found evidence of. `agents=no` with
   `skills=plugin` means the plugin listing could not be read or the core entry is parked - stop and
@@ -191,7 +192,7 @@ installer run at step 12, which works from the whole selection - and gets one na
 Read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/walk.md` AT step 3, never earlier - a run that stops at step 1 or
 skips to step 11 never needs it (audit 2026-10-11, session a9e06780: read at the start, ~7.6k re-sent on 5 requests
 of a run that stopped at step 1) - and run it in **DELTA**
-mode - setup's own walk, over the installer's read-back instead of the recommendations, so the two
+mode - the install phase's own walk, over the installer's read-back instead of the recommendations, so the two
 cannot drift. The layers run in dependency order, rules -> agents -> skills -> hooks -> MCPs ->
 plugins (only the areas picked at step 2), over `raw.json` and `dropped.json` seeded from step 1's
 `$TMP/installed.json`, and every layer has the same three beats: recompute quietly (`stack-select.js
@@ -219,8 +220,8 @@ is where the same value can also be edited by hand.
 
 ## 7. MCPs
 
-walk.md's MCPs layer, the two browser asks pre-selected from step 1's plan (step 12 passes a
-changed answer).
+walk.md's MCPs layer, the browser engines picked as rows of their own, pre-selected from step 1's plan (step 12
+passes a changed pick).
 
 Whenever `alfred-memory` is PRESENT after this round - kept from before, or newly pulled in by adding
 `alfred-memory` at step 3 - ask the shared memory level. Read what is registered today first:
@@ -231,9 +232,8 @@ scope, `--scope user` on the FULL copy route (all three `ALFRED_CODE_*_VIA_PLUGI
 that route registers memory in THIS project's own `.mcp.json`, never one path baked into an
 account-wide registration, so `project` is safe there too.
 Pre-select the level just read back, and ask ONE AskUserQuestion: keep it, or change to the
-other one(s) shown. Picking or keeping `project` while this project's related-projects domain
-already names sibling repos (`<docs-path>/related-projects/RELATED-PROJECTS.md`, or the generated
-`alfred-related-context.md`) means those projects' memories are not visible from this
+other one(s) shown. Picking or keeping `project` while this project's awareness docs
+already name sibling repos (`<docs-path>/awareness/RELATED-PROJECTS-AWARENESS.md` holds an entry) means those projects' memories are not visible from this
 one - name that in the post-check, not here. Changing level never copies or deletes a database -
 it re-points the registration, and the installer prints
 `memory: level <old> -> <new>: <newPath> (old memories stay in <oldPath>)`; read that line verbatim
@@ -363,8 +363,8 @@ Environment step - every other key in `permissions` (`allow` / `deny` / `ask` /
 
 ## 11. Prerequisite check
 
-Run: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --emit "$TMP/selection.txt" --check [--hooks-answered] [--browsers <csv>] [--config-dir ~/.claude-<space>]`
-(`--hooks-answered` whenever the Hooks area was walked this run, so a walk that switched every hook off emits `hook none` rather than no hook line - which reads as 'every hook'; `--browsers` with the step-7 kept browsers whenever the browser server is kept - a kept `msedge` warns
+Run: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --emit "$TMP/selection.txt" --check [--hooks-answered] [--config-dir ~/.claude-<space>]`
+(`--hooks-answered` whenever the Hooks area was walked this run, so a walk that switched every hook off emits `hook none` rather than no hook line - which reads as 'every hook'; no `--browsers` here: the engines picked at step 7 sit in `raw.json` as `<engine>-control`, and the run prints them as one `browsers: <csv>` line - a picked `msedge` warns
 when Edge is not installed; `--config-dir` under a `--space` profile, so the env probe reads that account's
 settings.json), output redirected to `$TMP/select.out` like every recompute. **Fixed shape, three blocks:** (1) one
 verdict line - `blockers: N · warnings: N`; (2) the closed selection grouped by category - closure
@@ -406,9 +406,15 @@ installer pass whose only real effect was resetting the agent model/effort pins)
 Otherwise, run the installer **from the snapshot**, passing it back with `--source` so the run
 lands the same revision step 1 previewed. One fixed capture form, always - `2>&1 | tee
 "$TMP/install.log"` on the call itself, so the post-install read below has a file that was actually
-written (the shared contract is in `source-protocol.md`'s 'Capture the installer's own output'):
+written (the shared contract is in `source-protocol.md`'s 'Capture the installer's own output').
 
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--space <name>] [--keep-pins] [--browsers <csv>] [--browser-enabled <csv|none>] [--scope-of <item>=<global|project|local>]... [--docs-versioning git|local] [--data-path <folder> --data-move move] [--memory-level global|scoped|project] [--rename-claude-md] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. One `--scope-of` per optional item the walk's last ask moved (`references/walk.md`, 'Where each optional item installs'), plus one per newly added item made global - none for 'Keep each where it is': an update keeps every item where it lives, and this flag is the one way one moves. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
+**Before the call, the placement answer.** The installer runs only after the walk's last ask - 'Where each
+optional item installs' (`references/walk.md`) - was answered, or when the walk asked none (nothing optional
+kept, or the plugins layer not walked); the narration line before the call names which (`placement: answered` /
+`placement: not asked - <why>`). That answer is where the `--scope-of` flags come from, so an installer run
+before it owes a second run when the answer moves an item (audit 2026-10-20 C46, 878f253d).
+
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--space <name>] [--keep-pins] [--browsers <csv>] [--scope-of <item>=<global|project|local>]... [--docs-versioning git|local] [--data-path <folder> --data-move move] [--memory-level global|scoped|project] [--rename-claude-md] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. One `--scope-of` per optional item the walk's last ask moved (`references/walk.md`, 'Where each optional item installs'), plus one per newly added item made global - none for 'Keep each where it is': an update keeps every item where it lives, and this flag is the one way one moves. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
 - **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED` set to `shell`). The frozen OS twin is gone, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
 - `--docs-versioning` only when the user's own invocation names a value (`/alfred-code:configure
   --docs-versioning local`): the installer writes it over the current value and prints the old and new
@@ -470,9 +476,9 @@ route (browser = every `<engine>-control` server) - always with its scope, since
 and the removal ask that proposed it NAMES that scope ('enabled at USER scope - removing it removes
 it for every project'), since account-wide and project-local are different consents and the wrong
 `--scope` fails with `not installed in project scope`. 'removals: none' when nothing was dropped;
-(3) the follow-through line - telling the USER to re-run `/capture-agent-awareness` (when
+(3) the follow-through line - telling the USER to re-run `/capture-awareness` (when
 installed, and ONLY when this run added or removed a skill, agent, MCP server or plugin - the
-inventory that rule lists; a run that changed only env or settings names none) so the generated awareness rule reflects the new inventory (the skill is manual-only,
+inventory that rule lists; a run that changed only env or settings names none) so the generated inventory reflects the new install (the skill is manual-only,
 `disable-model-invocation` - a Skill call from this run is blocked; the line is addressed to the
 user, never acted on), and any environment writes from step 9. On a step-10 'set the default for
 this project' answer, merge `permissions.defaultMode: <value>` into the scope file step 10 named
@@ -503,12 +509,21 @@ the walk owned the selection.
 
 ## Post-check
 
-Report what changed per category (refreshed / added / dropped, orphans removed vs kept), the
-AGENTS.md decision and reconcile result, anything deferred, and remind that a restart picks up
-MCP registration changes. When step 7 touched `alfred-memory`, add one line naming the level (unchanged
-or the old -> new file) and, when `project` was chosen while sibling repos are named, that those
-projects' memories are not visible from this one. The run rewrites `alfred-code.stamp` to the
-revision it installed, so the next configure diffs from here.
+The report has ONE fixed shape - a table, then labelled lines - so the answer budget, which leaves tables and
+fixed labels alone, never squeezes it (audit 2026-10-20 C21, 878f253d: a prose report with no shape was held as a
+long answer). One row per category this run touched, names in the cells, `-` for none:
+
+```
+| category | refreshed | added | dropped | kept (orphan or required) |
+|---|---|---|---|---|
+| skills | 3 | `sql-conventions` | `devops` | - |
+```
+
+Then only the labelled lines that apply, one each: `AGENTS.md:` the decision and the reconcile result; `Memory:`
+when step 7 touched `alfred-memory` - the level (unchanged, or the old -> new file) and, when `project` was chosen
+while sibling repos are named, that those projects' memories are not visible from this one; `Deferred by you:` what
+an answer put off; `Warnings:` the installer's `!!` lines; `Restart:` when an MCP registration changed. The run
+rewrites `alfred-code.stamp` to the revision it installed, so the next configure diffs from here.
 
 **Git hygiene - before `$TMP` goes.** Run `node "$TMP/repo/scripts/git-hygiene.js" --root .`. A
 `git-hygiene: offer <root>/<TAB><why>` line means git lists the data root as untracked while nothing
@@ -525,11 +540,11 @@ and apply it with `--apply gitignore` or `--apply exclude`, reporting the `appli
 `none (...)` line is not reported.
 
 **The run closes on a suggestion card, never on a question.** After the report, list the
-follow-ups that are the USER's to run - restart for an MCP change, `/capture-agent-awareness`
+follow-ups that are the USER's to run - restart for an MCP change, `/capture-awareness`
 (when installed and this run changed the inventory it lists), a manual-only capture whose output this
 run made stale, the navigation-server re-index, a credential to rotate or set by
 hand - as `Suggested next steps`, the recommended one first and each with the one reason it
-matters ('`/capture-agent-awareness` - the selection changed, so the generated rule still
+matters ('`/capture-awareness` - the selection changed, so the generated inventory still
 names what this project dropped'). No AskUserQuestion over them: the walk's asks end with the
 installer (a write still gets its consent ask where it happens - step 13's AGENTS.md reconcile),
 and the closing ask over follow-ups was dropped as friction - the user's call, made knowing a
@@ -550,7 +565,7 @@ THIS command: after a successful update, after an abort, after a blocker, and af
 ## Do not
 
 - Do not fall back to a full re-install - this is the update path; a from-scratch install is the
-  sibling `setup` command. Never present a layer question without its
+  sibling `init` command's install phase. Never present a layer question without its
   `[step n/13 - <name>] ... · next: <name>` banner or without the full-catalog table.
 - Never drop a locked row on the user's behalf, never remove an orphan silently, and never
   re-offer an orphan the user chose to keep - the reason column is the answer, the dependent's
