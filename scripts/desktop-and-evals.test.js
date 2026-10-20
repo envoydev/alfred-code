@@ -62,7 +62,8 @@ test('I10: FileSystem is in the default gate, and the launcher comment states wh
 test('I10: the skill and windows.md say what stays on and that a house guard denies App launch_executable unless DESKTOP-EXEC-ALLOW allows it', () =>
 {
     const skill = flat(read('stack/skills/desktop-automation/SKILL.md'));
-    assert.match(skill, /PowerShell, Registry, Process and FileSystem switched off/);
+    // stack audit 2026-10-20 row 14: Windows-MCP 0.8.8 enables every tool; the stack's launcher is what excludes them
+    assert.match(skill, /the stack launches it with PowerShell, Registry, Process and FileSystem excluded/);
     assert.match(skill, /a house guard denies App's `launch_executable` mode[^.]*and every MacOS-MCP `Shell` call unless the user allowed it in `<docs-path>\/flow\/DESKTOP-EXEC-ALLOW`/);
     const win = flat(read('stack/skills/desktop-automation/references/windows.md'));
     assert.match(win, /--exclude-tools PowerShell,Registry,Process,FileSystem/);
