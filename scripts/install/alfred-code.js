@@ -152,7 +152,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     const projectRoot = rt.gitRoot(cwd, home) || cwd; // a repo at the home directory is no project's top (seam m3)
     // T16, R29: args.js already normalised 'global' to 'user', so the flag (once resolved, below) IS
     // the CLI scope - project|user|local pass straight through to every `claude plugin` / `claude
-    // mcp` call. Only the plugins (and claude-hud, pinned to user regardless) follow the scope now:
+    // mcp` call. Only the plugins follow the scope now (an optional item - claude-hud, the LSP pair, an engine - at
+    // the scope its `--scope-of` names, 2.2.0):
     // the library copies, the rules, the hook engines, settings.json and the stamp live in the
     // project's `.claude/` at EVERY scope - the bodies run `node .claude/hooks/docs.js` from the
     // project, and the docs-root rule is stamped there.
