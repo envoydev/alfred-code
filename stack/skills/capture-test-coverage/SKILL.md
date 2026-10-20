@@ -30,6 +30,14 @@ Two halves, split differently:
   - 'Report from the existing COVERAGE.md only' - nothing runs, nothing is written
   ```
 
+- **Run gate on a FIRST capture no calling flow started.** With no COVERAGE.md and the coverage loop not the caller, put this ask before MEASURE, in the SAME AskUserQuestion call as the first capture's other asks (the % bar, the analysis mode) - an instrumented suite can start containers (Docker, Testcontainers) and run for minutes, so it never starts on a description match alone. No answer, no run.
+
+  ```ask
+  No COVERAGE.md yet. Measure every surface now? <the surfaces, and the containers a suite starts>
+  - 'Measure now (Recommended)' - each surface's suite runs once, then COVERAGE.md is written
+  - 'Not now' - nothing runs, nothing is written
+  ```
+
 - **Analysis on an UPDATE is INLINE** (doc + stamp exist) - compare this run's fresh numbers against the doc's previous per-module table and deep-read only where they moved; unchanged modules keep their recorded weak points. Dispatch the agent for a surface whose picture shifted broadly - that surface is a first capture again - or whenever the USER explicitly asks for agents: their ask always wins over the inline default.
 
 ## The run
@@ -70,7 +78,7 @@ Verdicts:    <surface | line % | bar | MET, BELOW or UNMEASURED>, one per surfac
 Weak points: small <n>, substantial <n>, structural <n> - the top few gaps named first
 Unmeasured:  <surface - the failing command and what would settle it, or none>
 Leftovers:   <what the instrumented runs started and still have up, or none>
-Run gate:    <the answer verbatim | a first capture | invoked by the coverage loop>
+Run gate:    <the answer verbatim | invoked by the coverage loop>
 ```
 
 Fill a `Leftovers:` line - what the instrumented runs started and still have up (a Docker container or compose stack, a seeded test database, a background process), or `none`; anything listed gets tear-down-vs-keep through AskUserQuestion in the same close, teardown recommended - the named line is what makes the check happen, and what the run did not start is never touched. Point to the files - no re-paste of the doc body.

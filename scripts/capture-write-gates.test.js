@@ -80,6 +80,24 @@ test('audit 2026-10-08: the three model-invocable captures gate an unrequested r
     assert.ok(read('stack/skills/capture-test-coverage/SKILL.md').includes('Run gate:    <'), 'the coverage close records the gate');
 });
 
+// Stack audit 2026-10-20 row 10: a FIRST coverage capture ran the instrumented suites (Docker / Testcontainers) before
+// any ask. It now asks 'Measure now' before MEASURE, joined with the bar and mode asks in one call.
+test('stack audit 2026-10-20: a first coverage capture asks before it measures', () => {
+    const { lintAskTemplates } = require('./lint-skills.js');
+    const text = read('stack/skills/capture-test-coverage/SKILL.md');
+    const flat = squash(text);
+    const gate = flat.indexOf('Run gate on a FIRST capture no calling flow started.');
+    assert.ok(gate > -1 && gate < flat.indexOf('### 3. MEASURE'), 'the first-capture gate sits before MEASURE');
+    assert.match(flat, /in the SAME AskUserQuestion call as the first capture's other asks \(the % bar, the analysis mode\)/);
+    const asks = [...text.matchAll(/^[ \t]*```ask[ \t]*\n([\s\S]*?)^[ \t]*```/gm)].map((m) => m[1]);
+    const first = asks.find((a) => /No COVERAGE\.md yet\. Measure every surface now\?/.test(a));
+    assert.ok(first, 'the first-capture gate is a template');
+    assert.match(first, /^\s*- 'Measure now \(Recommended\)'/m);
+    assert.match(first, /- 'Not now' - nothing runs, nothing is written/);
+    assert.deepStrictEqual(lintAskTemplates([{ file: 'capture-test-coverage', text }]), []);
+    assert.ok(text.includes('Run gate:    <the answer verbatim | invoked by the coverage loop>'), 'a first capture records its answer too');
+});
+
 test('audit 2026-10-08: each capture close is a literal template with its post-write check named', () => {
     const cov = read('stack/skills/capture-test-coverage/SKILL.md');
     for (const field of ['Doc:', 'Raw:', 'Verdicts:', 'Weak points:', 'Unmeasured:', 'Leftovers:'])
