@@ -47,7 +47,8 @@ const LEGACY_GENERATED = GENERATED_RULE_NAMES.flatMap((key) => [[`alfred-project
 // is itself a current name there.
 const AWARENESS_RULE = 'alfred-awareness';
 const AWARENESS_SUCCEEDS = { 'alfred-agent-awareness': AWARENESS_RULE, 'alfred-project-awareness': AWARENESS_RULE, 'alfred-related-context': AWARENESS_RULE };
-// capture-preferences' rule @-imports the preferences docs the same way, so a docs-root move re-stamps it too.
+// capture-preferences' rule carries the preferences docs inline under headers naming each doc's path, so a docs-root
+// move re-spells it too (its hash covers the docs' names and text, never a path, so the re-spell keeps it current).
 const PREFERENCES_RULE = 'alfred-preferences';
 const GENERATED_FILES = new Set([...Object.values(GENERATED_RULES), AWARENESS_RULE, PREFERENCES_RULE, 'project-code-style', ...LEGACY_GENERATED.filter(([old]) => old.startsWith('alfred-project-')).map(([old]) => old)]);
 // The awareness docs an update re-spells beside the generated rules: the capture writes them, so they name the stack's

@@ -536,12 +536,12 @@ test('awareness: an old folder kept by a file the move does not take is named, e
     assert.deepStrictEqual(said(), want, 'and again on the next run');
 });
 
-test('preferences: a docs-root move re-stamps the generated rule\'s import lines, relative or absolute', () =>
+test('preferences: a docs-root move re-stamps the generated rule\'s doc headers, relative or absolute', () =>
 {
     const { respellDocsRoot } = require('./install/selection.js');
-    const { preferenceImport } = require('../stack/skills/capture-preferences/scripts/preferences.js');
+    const { docPath } = require('../stack/skills/capture-preferences/scripts/preferences.js');
     const root = project({});
-    const ruleOf = (docsRoot) => `# The user's preferences\n\n${['CODE-PREFERENCES.md', 'GIT-PREFERENCES.md'].map((f) => preferenceImport(docsRoot, f)).join('\n')}\n`;
+    const ruleOf = (docsRoot) => `# The user's preferences\n\n${['CODE-PREFERENCES.md', 'GIT-PREFERENCES.md'].map((f) => `## ${f} - ${docPath(docsRoot, f)}\n\n### C1 - x\n`).join('\n')}`;
     const rulePath = path.join(root, '.claude/rules/alfred-preferences.md');
     write(root, '.claude/rules/alfred-preferences.md', ruleOf('.claude/docs'));
     assert.strictEqual(respellDocsRoot({ projectRoot: root, from: '.claude/docs', to: '.alfred/docs' }), 1);

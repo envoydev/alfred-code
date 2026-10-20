@@ -9,7 +9,7 @@ disable-model-invocation: true
 You record the user's own code, architecture and git preferences and regenerate the rule that loads them, so every session and seat reads them before any code, architecture or git job and ranks them above every other source. Two artifacts come out of a run:
 
 1. `<docs-path>/preferences/CODE-PREFERENCES.md`, `ARCHITECTURE-PREFERENCES.md` and `GIT-PREFERENCES.md` - one `##` entry per preference, ids `C<n>`, `A<n>`, `G<n>`, in the shape `references/doc-shape.md` lays out.
-2. `.claude/rules/alfred-preferences.md` - generated and pathless, one `@` import per doc, written by the script from `references/rule-template.md`.
+2. `.claude/rules/alfred-preferences.md` - generated and pathless, carrying every entry inline under one header per doc that names its path, written by the script from `references/rule-template.md`. A seat loads the rule, not the docs, so an edit to a doc binds only once `<script> rule` runs; `lint` and `check` print a `stale:` line until then.
 
 ## When to use
 
@@ -60,7 +60,7 @@ Write each touched doc whole: its title, `Updated: <today>` (not a `Captured:` s
 
 ### 6. RULE
 
-`<script> rule` writes the rule and prints its `Rule:` line. Never write or edit the rule by hand: the next run replaces it whole.
+`<script> rule` writes the rule and prints its `Rule:` line. Never write or edit the rule by hand: the next run replaces it whole. A removal that empties every doc still runs it - the rule then carries none.
 
 ### 7. REPORT
 
@@ -70,4 +70,4 @@ Check: <id> <n> violations[, <id> <n> violations] | none with a Check:
 Rule: <the script's Rule: line, verbatim>
 ```
 
-Close with one line: the rule loads at session start, so a new or changed preference binds from the NEXT session.
+Close with one line: the rule loads at session start and carries the entries into every seat that session dispatches, so a new or changed preference binds from the NEXT session.

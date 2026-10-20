@@ -7701,43 +7701,43 @@
       "sites": [
         {
           "file": "stack/agents/aspnet-solution-designer.md",
-          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, imported at session start) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, which the alfred-preferences.md rule carries into every session and seat) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/browser-extension-solution-designer.md",
-          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, imported at session start) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, which the alfred-preferences.md rule carries into every session and seat) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/console-solution-designer.md",
-          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, imported at session start) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, which the alfred-preferences.md rule carries into every session and seat) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/data-solution-designer.md",
-          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, imported at session start) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, which the alfred-preferences.md rule carries into every session and seat) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/devops-solution-designer.md",
-          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, imported at session start) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, which the alfred-preferences.md rule carries into every session and seat) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/ionic-angular-solution-designer.md",
-          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, imported at session start) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, which the alfred-preferences.md rule carries into every session and seat) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/web-angular-solution-designer.md",
-          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, imported at session start) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, which the alfred-preferences.md rule carries into every session and seat) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/windows-service-solution-designer.md",
-          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, imported at session start) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, which the alfred-preferences.md rule carries into every session and seat) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/winforms-solution-designer.md",
-          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, imported at session start) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, which the alfred-preferences.md rule carries into every session and seat) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/wpf-solution-designer.md",
-          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, imported at session start) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, which the alfred-preferences.md rule carries into every session and seat) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         }
       ]
     },

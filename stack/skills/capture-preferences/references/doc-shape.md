@@ -58,4 +58,4 @@ The user's preferences > the project's decision log and AGENTS.md > the quality 
 
 ## Size
 
-The three docs together stay at or under 8,000 chars, since every session and seat reads them. `lint` and the `Rule:` line count them.
+The three docs together stay at or under 8,000 chars, since the rule carries them into every session and seat. `lint` and the `Rule:` line count them.

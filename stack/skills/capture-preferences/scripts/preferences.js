@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // preferences.js - the scripted half of /capture-preferences: measures each preference's `Check:` over the changed
 // files or the tree, holds the three docs to their shape and their size cap, and writes the generated
-// .claude/rules/alfred-preferences.md, one @ import per doc. Node built-ins only - no install, no network.
+// .claude/rules/alfred-preferences.md carrying the docs' entries inline. Node built-ins only - no install, no network.
 //
 // Usage, from the project root:
 //   node .claude/skills/capture-preferences/scripts/preferences.js check [--diff | --all] [--area code|architecture|git]
@@ -18,10 +18,11 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const crypto = require('node:crypto');
 
 const SKILL_DIR = path.resolve(__dirname, '..');
 const TEMPLATE = path.join(SKILL_DIR, 'references', 'rule-template.md');
-const IMPORTS_SLOT = '__IMPORTS__';
+const PREFERENCES_SLOT = '__PREFERENCES__';
 const RULE_FILE = path.join('.claude', 'rules', 'alfred-preferences.md');
 const PREFS_DIR = 'preferences';
 const DOCS = [
@@ -29,7 +30,7 @@ const DOCS = [
     { area: 'architecture', file: 'ARCHITECTURE-PREFERENCES.md', prefix: 'A' },
     { area: 'git', file: 'GIT-PREFERENCES.md', prefix: 'G' },
 ];
-// Every session and seat pays for the three docs (the rule imports them), so together they stay near 2K tokens.
+// Every session and seat pays for the three docs (the rule carries them), so together they stay near 2K tokens.
 const CAP = 8000;
 const LINE_CUT = 160;
 // A source file past this is generated or vendored, never a preference's subject.
@@ -266,6 +267,7 @@ function check(projectRoot, { mode, area })
             violations += hits.length;
         }
     }
+    if (staleRule(projectRoot)) console.log(STALE_LINE);
     console.log(`checked: ${checked} entries, ${violations} violations`);
     return 0;
 }
@@ -307,8 +309,9 @@ function lint(projectRoot)
         }
     }
     const chars = docs.reduce((n, d) => n + d.text.length, 0);
-    if (chars > CAP) problems.push(`${shown(projectRoot, prefsDir(projectRoot))}/: the three docs are ${chars} chars, over ${CAP} - cut before the rule imports them`);
+    if (chars > CAP) problems.push(`${shown(projectRoot, prefsDir(projectRoot))}/: the three docs are ${chars} chars, over ${CAP} - cut before the rule carries them`);
     for (const p of problems) console.log(`PROBLEM ${p}`);
+    if (staleRule(projectRoot)) console.log(STALE_LINE);
     console.log(`lint: ${problems.length} problems`);
     return problems.length ? 1 : 0;
 }
@@ -326,29 +329,54 @@ function nextId(projectRoot, area)
 
 // ---------------------------------------------------------------- rule
 
-// The import line's path. Claude Code resolves an @ import from the folder of the file holding it, so a
-// project-relative docs root is reached from .claude/rules/ through ../../; an absolute one is written as it is,
-// and a space is escaped (a bare one ends the path) - the awareness rule's shape (capabilities-inventory.js).
-function preferenceImport(docs, file)
+// The rule CARRIES the entries, never an @ import of them (D8, 2026-10-20): a seat loads the pathless rules a session
+// started with (measured), but whether an @ import inside one expands there is documented nowhere. Each doc becomes one
+// block - its path in the header, so an edit goes to the doc; its own title, date and Retired: line left in the doc;
+// each entry one level down. The docs' hash rides in an HTML comment, which the rule loader strips, so `lint` and
+// `check` can say when a hand edit left the rule behind.
+const HASH_LINE = /^<!-- preferences: ([0-9a-f]{16}) /m;
+const docsHash = (docs) => crypto.createHash('sha256').update(docs.map((d) => `${d.file}\0${d.text}`).join('\0')).digest('hex').slice(0, 16);
+// The doc's path as a reader opens it: the docs root as configured (project-relative, or absolute), forward slashes.
+const docPath = (root, file) => `${String(root || '').replace(/\\/g, '/').replace(/\/+$/, '')}/${PREFS_DIR}/${file}`;
+function block(root, d)
 {
-    const r = String(docs || '').replace(/\\/g, '/').replace(/\/+$/, '');
-    const abs = /^(?:\/|[A-Za-z]:\/|~\/)/.test(r);
-    return `@${abs ? '' : '../../'}${r}/${PREFS_DIR}/${file}`.replace(/ /g, '\\ ');
+    const body = d.text.split(/\r?\n/)
+        .filter((line) => !/^# /.test(line) && !/^Updated:\s/.test(line) && !/^Retired:\s/.test(line))
+        .map((line) => (/^## /.test(line) ? `#${line}` : line))
+        .join('\n').replace(/^\s+|\s+$/g, '');
+    return `## ${d.file} - ${docPath(root, d.file)}\n\n${body}\n`;
 }
+const ruleFile = (projectRoot) => path.join(projectRoot, RULE_FILE);
+// A rule that is not the docs as they stand: its hash line names other docs, or it has none. null when fresh, or when
+// there is no rule and no doc.
+function staleRule(projectRoot)
+{
+    const docs = presentDocs(projectRoot);
+    const text = readText(ruleFile(projectRoot));
+    if (text === null) return docs.length ? 'missing' : null;
+    const m = HASH_LINE.exec(text);
+    return m && m[1] === docsHash(docs) ? null : 'stale';
+}
+const STALE_LINE = `stale: ${RULE_FILE.split(path.sep).join('/')} does not carry the docs as they stand - run preferences.js rule; a session loads the rule, not the docs`;
 
 function rule(projectRoot)
 {
     const docs = presentDocs(projectRoot);
-    if (!docs.length) { console.log('Rule: no preferences captured'); return 0; }
+    const target = ruleFile(projectRoot);
+    const current = readText(target);
+    // No doc: nothing to write - unless the rule on disk is this script's, which would keep binding what was removed.
+    if (!docs.length && (current === null || !HASH_LINE.test(current))) { console.log('Rule: no preferences captured'); return 0; }
     const template = readText(TEMPLATE);
-    if (template === null || !template.includes(IMPORTS_SLOT)) { console.error(`preferences: ${TEMPLATE} is missing or has no ${IMPORTS_SLOT} line`); return 1; }
+    if (template === null || !template.includes(PREFERENCES_SLOT)) { console.error(`preferences: ${TEMPLATE} is missing or has no ${PREFERENCES_SLOT} line`); return 1; }
     const root = docsRoot(projectRoot);
-    const text = template.replace(IMPORTS_SLOT, docs.map((d) => preferenceImport(root, d.file)).join('\n'));
-    const target = path.join(projectRoot, RULE_FILE);
+    const blocks = docs.map((d) => block(root, d)).join('\n');
+    const head = `<!-- preferences: ${docsHash(docs)} - written by preferences.js rule from the docs below; edit the docs, never this file -->`;
+    const text = template.replace(PREFERENCES_SLOT, blocks ? `${head}\n\n${blocks}`.replace(/\n+$/, '') : head);
     fs.mkdirSync(path.dirname(target), { recursive: true });
-    if (readText(target) !== text) fs.writeFileSync(target, text);
+    if (current !== text) fs.writeFileSync(target, text);
+    if (!docs.length) { console.log('Rule: no preferences captured - the rule now carries none'); return 0; }
     const chars = docs.reduce((n, d) => n + d.text.length, 0);
-    console.log(`Rule: ${Buffer.byteLength(text)} bytes, imports ${docs.length}; preferences ${chars} chars of ${CAP}${chars > CAP ? ' - over the cap, cut before it ships' : ''}`);
+    console.log(`Rule: ${Buffer.byteLength(text)} bytes, ${docs.length} docs inline; preferences ${chars} chars of ${CAP}${chars > CAP ? ' - over the cap, cut before it ships' : ''}`);
     return 0;
 }
 
@@ -378,6 +406,6 @@ function main(argv)
     return 2;
 }
 
-module.exports = { parseDoc, runCheck, parseCheck, globRe, docsRoot, preferenceImport, CAP };
+module.exports = { parseDoc, runCheck, parseCheck, globRe, docsRoot, docPath, staleRule, CAP };
 
 if (require.main === module) process.exitCode = main(process.argv.slice(2));
