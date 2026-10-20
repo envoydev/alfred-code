@@ -123,6 +123,13 @@ and git preferences under `<docs-path>/preferences/` and generates `alfred-prefe
 into every session and every seat it dispatches, ahead of every other source. A hand-off to a sibling repo now prints
 the task card's absolute path. Say each in the close.
 
+The navigation server moves to serena-agent 2.1.0 and the memory server to mcp-memory-service 12.1.1; the memories
+need no migration, and both start on the new pin at the next session. The `typescript-lsp` plugin's language server is
+now a prerequisite `/alfred-code:init` offers - `typescript-language-server` with TypeScript 6, since TypeScript 7 ships
+no `tsserver.js` - and `csharp-lsp`'s `csharp-ls` 0.28 needs the .NET 10 SDK. An empty `settings.json` is read as no
+settings yet and written, never refused as bad JSON. Say the two plugin prerequisites in the close only where the
+project picked that plugin.
+
 ## table - every renamed command, was -> now
 
 The installer's `renamed:` lines name each rename this install carried; this table is the whole list, for a user
