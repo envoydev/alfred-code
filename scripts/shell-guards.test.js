@@ -913,4 +913,14 @@ test('A-T1: a read-only seat may not write through the shell; a writing seat, th
     ['git reset -q', 'other-plugin:aspnet-verifier']]) {
     assert.equal(fire(c, a).status, 0, `${a || 'the main session'}: ${c} must pass`);
   }
+  // a project that itself lives in a temp dir is never scratch (the gate's Linux leg: /tmp held the project, and every
+  // write in it passed as a temp-dir write)
+  const inTmp = fs.realpathSync(fs.mkdtempSync(path.join(scratch, 'proj-')));
+  const fireIn = (command) => spawnSync(process.execPath, [DISPATCH], {
+    input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, session_id: 'seat', cwd: inTmp, agent_id: 'a1', agent_type: verifier }),
+    encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: inTmp, TMPDIR: scratch, TEMP: scratch, TMP: scratch },
+  });
+  assert.equal(fireIn('echo x > notes.txt').status, 2, 'a write into a project under the temp dir is the seat\'s write');
+  const beside = fireIn(`echo x > ${path.join(scratch, 'out2.txt')}`);
+  assert.doesNotMatch(beside.stderr, /read-only seat/, `a scratch write beside that project is no seat write: ${beside.stderr.slice(0, 200)}`);
 });

@@ -378,6 +378,10 @@ function readOnlySeatWrite(payload, command, cwd, sw)
     const scratch = [os.tmpdir(), process.env.TMPDIR, process.env.TEMP, process.env.TMP, '/tmp', '/private/tmp', '/var/tmp']
         .filter(Boolean).map((d) => real(d));
     const inside = (p, d) => p === d || p.startsWith(d.endsWith(path.sep) ? d : d + path.sep);
+    // The project is never scratch, wherever it lives: a checkout under /tmp (a CI runner's, a throwaway clone) left every
+    // write in it exempt as a temp-dir write (found by the gate's Linux leg, 2026-10-20).
+    const project = real(process.env.CLAUDE_PROJECT_DIR || payload.cwd || cwd);
+    const isScratch = (p) => !inside(p, project) && scratch.some((d) => inside(p, d));
     let scan;
     try { scan = sw.scanShell(command, { cwd }); }
     catch { scan = null; }
@@ -394,7 +398,7 @@ function readOnlySeatWrite(payload, command, cwd, sw)
             let abs = path.isAbsolute(name) ? name : path.resolve(base, name);
             const dir = real(path.dirname(abs));
             abs = path.join(dir, path.basename(abs));
-            if (scratch.some((d) => inside(abs, d))) continue;
+            if (isScratch(abs)) continue;
             return { what: `writes ${raw} (${t.what || 'a write'})`, matched: raw };
         }
     }
