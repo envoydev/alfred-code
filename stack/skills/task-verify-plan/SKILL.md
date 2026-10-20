@@ -9,7 +9,7 @@ A plan built perfectly is still wrong if the plan was wrong - the design carries
 
 ## Audit mode - this chat or the verifier seat
 
-Audit inline in this chat, the five passes below. On an agents request, dispatch the plan's stack `<stack>-verifier` seat, exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it), to run the same five passes over the plan file - on its frontmatter model unless you name one - and take its punch-list. There is no dedicated plan-auditor seat; the verifier seat runs the audit. Only one seat, no fan-out; dispatch nothing you were not asked to. When the invocation names no mode and no calling flow has already recorded one, ask ONE question before auditing, via AskUserQuestion, and hold the answer:
+Audit inline in this chat, the five passes below. On an agents request, dispatch the plan's stack `<stack>-verifier` seat, exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it), to run the same five passes over the plan file - on its frontmatter model unless you name one - and take its punch-list. The seat knows neither the passes nor the Output, so the brief carries both: the five passes and the eight-field block (Output, below), which the seat returns above its `status:` line and you copy as written - `Passes:` included. There is no dedicated plan-auditor seat; the verifier seat runs the audit. Only one seat, no fan-out; dispatch nothing you were not asked to. When the invocation names no mode and no calling flow has already recorded one, ask ONE question before auditing, via AskUserQuestion, and hold the answer:
 
 ```ask
 Audit this plan in this chat or through the <stack>-verifier seat? This chat: the plan is already here, and the audit is one bounded pass.
@@ -71,7 +71,15 @@ Gated:     passed | passed - <N> fixes applied | <N> gaps listed - <date>
 finding in its own right, because the build seats read that ledger for the precedents they must
 build to (measured: 0 occurrences of the ledger in a plan that was then stamped `Gated: passed`).
 
-Then the body: a short punch-list, not a rewrite. One line per finding: `severity | the gap | the fix to the PLAN` - and a finding that is a tradeoff or preference rather than an objective defect carries the extra tag `judgment`: the applier puts each judgment item through its own AskUserQuestion instead of folding it into a blanket 'fix all' approval (measured: an unmarked transport-channel switch rode a blanket 'go ahead', landed, and was reverted on a live user interrupt - 32% of that apply phase's edits spent applying-then-reversing it). If the plan is sound, say so plainly and name what you checked. When the plan lives in a file (`<docs-path>/plans/` - `task-design` writes it there), stamp the verdict into it - the whole eight-field block above, under the header, never the `Gated:` line alone: the block is the record a calling flow copies, a compacted or fresh session resumes from and a re-audit inherits (measured: two audits left 2 of the 8 fields anywhere - exactly the two a one-line stamp held). When the findings are then applied to the plan, land them in as few Edit calls as possible - one per task section, never one per line (measured: 28 single-hunk edits to one plan file in one apply pass, each at full session context). Then it is safe to build against; if not, fix the plan first - that is the whole point of doing this before code.
+Then the body: a short punch-list, not a rewrite. One line per finding: `severity | the gap | the fix to the PLAN` - and a finding that is a tradeoff or preference rather than an objective defect carries the extra tag `judgment`: the applier puts each judgment item through its own ask, never folded into a blanket 'fix all' approval (measured: an unmarked transport-channel switch rode a blanket 'go ahead', landed, and was reverted on a live user interrupt - 32% of that apply phase's edits spent applying-then-reversing it). If the plan is sound, say so plainly and name what you checked. When the plan lives in a file (`<docs-path>/plans/` - `task-design` writes it there), stamp the verdict into it - the whole eight-field block above, under the header, never the `Gated:` line alone: the block is the record a calling flow copies, a compacted or fresh session resumes from and a re-audit inherits (measured: two audits left 2 of the 8 fields anywhere - exactly the two a one-line stamp held). When the findings are then applied to the plan, land them in as few Edit calls as possible - one per task section, never one per line (measured: 28 single-hunk edits to one plan file in one apply pass, each at full session context). Then it is safe to build against; if not, fix the plan first - that is the whole point of doing this before code.
+
+The judgment ask, one per item:
+
+```ask
+<the judgment finding, one line>: keep the plan as written or apply it?
+- 'Keep the plan as written (Recommended)' - a judgment item is a preference, not a defect, so the plan stands unless you choose it
+- 'Apply it to the plan' - the plan changes as the finding says, and the stop's `Result:` line names it
+```
 
 ## Example
 

@@ -431,7 +431,7 @@ test('AG03 / AG07: the data implementer hands app-side mapping to the app stack,
 // review a diff where a plan is optional - but the seat gated only landed trio work against the ledger, footered EVERY
 // trio-verify report, and turned 'missing task context' into CONTRACT_MISMATCH. One registered carve-out beside the
 // rubric one, and the footer names the exception.
-const DIRECT = '- When the brief carries no contract_version - a direct review (task-verify-code, the commit checkpoint) or a plan audit (task-verify-plan) - the brief is the spec: review the diff, and the plan file when the brief names one; for a plan audit run the brief\'s passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE; close with the same `status:` vocabulary and `contract_version: none`.';
+const DIRECT = '- When the brief carries no contract_version - a direct review (task-verify-code, the commit checkpoint) or a plan audit (task-verify-plan) - the brief is the spec: review the diff, and the plan file when the brief names one; for a plan audit run the brief\'s passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit\'s eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE; close with the same `status:` vocabulary and `contract_version: none`.';
 const DIRECT_FOOTER = 'and this footer MUST NOT be appended; a direct dispatch (a brief with no contract_version) is excepted too - its Conventions carve-out is authoritative, and its last line reads `contract_version: none`:';
 test('AG02: every verifier carries the direct-dispatch carve-out beside the rubric one, pinned, and its footer excepts it', () =>
 {

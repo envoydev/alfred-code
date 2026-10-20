@@ -73,6 +73,8 @@ risk: [regression, migration/data-loss, security]
 open_questions: [{ question: }]
 ```
 
+A diagnoser seat returns this block as prose items (its own Report) and closes on four literal lines - `route:` (`no_fix_needed | resolver | single_domain_implementer | cross_domain_contract_change | user_decision_needed`, the `fix_recommendation.route` above), `confidence:`, `affected_domains:`, then `status:` last. Route on those lines, never on a re-reading of the prose.
+
 **Level by rule, not by feel.** Severity is blast radius; priority is urgency. Decide each against the ladder below - do not default a wrong-but-recoverable bug to High/P1:
 
 ```text

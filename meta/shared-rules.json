@@ -2014,47 +2014,47 @@
       ]
     },
     "verifier-direct-dispatch": {
-      "_note": "The verifiers' direct-dispatch carve-out (audit 2026-10-14 AG02, the user's ruling: option a): a brief with no contract_version - a review over a diff from the single-chat review or the commit checkpoint, or a plan audit from the plan-gate flow - is its own spec: review the diff (and a named plan file), a plan audit runs no build or test, the ledger checks and the memory-handoff WRITE are skipped, and the close keeps the status vocabulary with `contract_version: none`. Before it those dispatches got a build rerun or a CONTRACT_MISMATCH for 'missing task context'. The footer clause says the direct dispatch is excepted beside the rubric audit. Identical in all 10 verifier seats for the same selective-install reason as the rubric carve-out beside it.",
+      "_note": "The verifiers' direct-dispatch carve-out (audit 2026-10-14 AG02, the user's ruling: option a): a brief with no contract_version - a review over a diff from the single-chat review or the commit checkpoint, or a plan audit from the plan-gate flow - is its own spec: review the diff (and a named plan file), a plan audit runs no build or test and returns the output fields its brief names (task-verify-plan's eight - stack audit 2026-10-20 C6), the ledger checks and the memory-handoff WRITE are skipped, and the close keeps the status vocabulary with `contract_version: none`. Before it those dispatches got a build rerun or a CONTRACT_MISMATCH for 'missing task context'. The footer clause says the direct dispatch is excepted beside the rubric audit. Identical in all 10 verifier seats for the same selective-install reason as the rubric carve-out beside it.",
       "owner": {
         "file": "stack/agents/aspnet-verifier.md",
-        "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+        "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
       },
       "sites": [
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
         }
       ]
     },
@@ -7039,6 +7039,68 @@
         {
           "file": "stack/skills/loop-test-coverage/references/anti-gaming-sweep.md",
           "marker": "1. `git diff -M --stat <BASE>` - the shape of the run. Rename detection is not optional: a structure stage makes the diff rename-heavy, and a pure rename (R100, no content change) is verified by name alone. 2. `git diff -M <BASE>` - every remaining content hunk, paged deterministically until exhausted. Never cap it (`head`, first-N lines): a gamed bar past the cap is exactly the one that survives. 3. `git ls-files --others --exclude-standard`, minus the paths in `<docs-path>/flow/untracked-at-start-<HEAD sha>` (the record the session start wrote; absent = none to subtract) - the files untracked since the run began. A plain diff is blind to brand-new files, so a gamed bar added in one would never surface. 4. Read each file left by 3 in full - it has no diff to page."
+        }
+      ]
+    },
+    "designer-card-stamps": {
+      "_note": "The designer Report names the four card stamps domain-trio-protocol step 1 re-briefs a card without, and the `user_decisions:` line that carries a behaviour change or user-level choice out of a seat with no ask - the shape agent-output-protocol.md's Designer output reads (stack audit 2026-10-20 C3, C7). Restated in every *-solution-designer.",
+      "owner": {
+        "file": "stack/agents/aspnet-solution-designer.md",
+        "marker": "Each task card carries its four stamps by name - `implementer_model`, `anchors`, acceptance, `log_points`"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/browser-extension-solution-designer.md",
+          "marker": "Each task card carries its four stamps by name - `implementer_model`, `anchors`, acceptance, `log_points`"
+        },
+        {
+          "file": "stack/agents/console-solution-designer.md",
+          "marker": "Each task card carries its four stamps by name - `implementer_model`, `anchors`, acceptance, `log_points`"
+        },
+        {
+          "file": "stack/agents/data-solution-designer.md",
+          "marker": "Each task card carries its four stamps by name - `implementer_model`, `anchors`, acceptance, `log_points`"
+        },
+        {
+          "file": "stack/agents/devops-solution-designer.md",
+          "marker": "Each task card carries its four stamps by name - `implementer_model`, `anchors`, acceptance, `log_points`"
+        },
+        {
+          "file": "stack/agents/ionic-angular-solution-designer.md",
+          "marker": "Each task card carries its four stamps by name - `implementer_model`, `anchors`, acceptance, `log_points`"
+        },
+        {
+          "file": "stack/agents/web-angular-solution-designer.md",
+          "marker": "Each task card carries its four stamps by name - `implementer_model`, `anchors`, acceptance, `log_points`"
+        },
+        {
+          "file": "stack/agents/windows-service-solution-designer.md",
+          "marker": "Each task card carries its four stamps by name - `implementer_model`, `anchors`, acceptance, `log_points`"
+        },
+        {
+          "file": "stack/agents/winforms-solution-designer.md",
+          "marker": "Each task card carries its four stamps by name - `implementer_model`, `anchors`, acceptance, `log_points`"
+        },
+        {
+          "file": "stack/agents/wpf-solution-designer.md",
+          "marker": "Each task card carries its four stamps by name - `implementer_model`, `anchors`, acceptance, `log_points`"
+        }
+      ]
+    },
+    "diagnoser-routing-keys": {
+      "_note": "The diagnosis keys task-solve-cross's issue-investigation.md routes on - `route:` (its fix_recommendation.route vocabulary, the fix ask's Recommended option), `confidence:` and `affected_domains:` - emitted as literal lines before `status:` by both diagnoser seats; before, the orchestrator re-derived the route from prose (stack audit 2026-10-20 C5).",
+      "owner": {
+        "file": "stack/agents/issue-diagnoser-runtime.md",
+        "marker": "Before the status, three literal lines the caller's fix ask routes on: `route:` - one of `no_fix_needed`, `resolver`, `single_domain_implementer`, `cross_domain_contract_change`, `user_decision_needed`"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/issue-diagnoser-ci.md",
+          "marker": "Before the status, three literal lines the caller's fix ask routes on: `route:` - one of `no_fix_needed`, `resolver`, `single_domain_implementer`, `cross_domain_contract_change`, `user_decision_needed`"
+        },
+        {
+          "file": "stack/skills/task-solve-cross/references/issue-investigation.md",
+          "marker": "`no_fix_needed | resolver | single_domain_implementer | cross_domain_contract_change | user_decision_needed`"
         }
       ]
     }

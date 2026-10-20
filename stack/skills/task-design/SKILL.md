@@ -9,7 +9,7 @@ The design carries the quality: a build handles the traps its plan named and shi
 
 ## Design mode - this chat, a read fan-out, or the designer seat
 
-In this chat, ask the mode per `references/design-mode.md` - read it before designing; a mode the invocation or a calling flow already picked is inherited, never re-asked. Inside a designer seat: no ask, no dispatch - the dispatch is the answer, run the method below.
+In this chat, ask the mode per `references/design-mode.md` - read it before designing; a mode the invocation or a calling flow already picked is inherited, never re-asked. Inside a designer seat: no ask, no dispatch - the dispatch is the answer, run the method below. A seat holds no AskUserQuestion, so each ask below is a report field there: an ambiguous brief returns NEEDS_CONTEXT (step 0), a behaviour change goes on the report's `user_decisions:` line (the Decisions ledger).
 
 ## When to use / not
 
@@ -19,7 +19,7 @@ In this chat, ask the mode per `references/design-mode.md` - read it before desi
 
 ## The method - orient, judge, decompose
 
-0. **Settle the ask first.** Before you orient or design anything, load `habits-clarify` (the Skill tool) and run it: an ambiguous, underspecified or multi-reading ask is settled with the user before the design starts, and its answers are the requirement the plan cites. A clear ask passes straight through.
+0. **Settle the ask first.** Before you orient or design anything, load `habits-clarify` (the Skill tool) and run it: an ambiguous, underspecified or multi-reading ask is settled with the user before the design starts, and its answers are the requirement the plan cites. A clear ask passes straight through. Inside a designer seat, load nothing here: an ambiguous brief returns NEEDS_CONTEXT naming the readings to settle.
 1. **Orient from the project docs, don't re-derive them.** Consult `<docs-path>/architecture/ARCHITECTURE.md` SCOPED, never whole: grep it for the modules the task touches plus a listing of `<docs-path>/architecture/references/`, then read the matching section ranges and the linked topic file for the area. A `docs.js where` call only lists sections: read the ones it names (`docs.js show`, or the range) and cite that read, never the `where`. Read `<docs-path>/code-style/CODE-STYLE.md` for the project's actual code style so the plan's code matches it. Absent those docs, take a bounded pass over the modules involved (directory listing, then `get_symbols_overview` per FILE that matters - it takes one file, never a directory - and never a whole-file read) - map the surface, don't read everything. Either way the `Oriented:` header cites the EVIDENCE - the ranges read, the symbol calls made - not a summary claim: the gate now verifies the citation against the session, and a claimed orientation with no matching reads is a MAJOR finding.
 2. **Load the house skill for the stack you're in, for its real trap list.** Your project's convention rules auto-attach it the moment you touch a matching file; load it explicitly if you're designing before touching code. Carry the stack's real traps, not a generic checklist, and follow that skill's own routing to its specialist siblings (the stack -> skill map lives in the project's convention rules and router skills, not restated here).
 3. **Judge the fit - one verdict, tied to the forcing edge.** Extend an existing seam when the work lands inside a boundary whose dependency arrow already points the right way and that already carries the concern; refactor first when landing it as-is would open a cycle, invert a layer, or overload a shared grab-bag (name the exact edge); isolate a new boundary when it is a genuinely new concern with no existing home. Verify each dependency claim against located code, never a name. The verdict is judged against the `Asked:` line (Output, below) - the user's own words for what changes and what must go away - not against what the code makes convenient: a plan that fit the code as a side-by-side prototype where the user had asked for the old path to be REPLACED was rejected after its whole build window. Before designing anything new, search for it in this order and stop at the first rung that holds: the existing code (the map's patterns in play, the navigation server), the docs of the libraries already referenced (the documentation server), the package registry for a maintained package, then the web - and the `## Decisions` line for that call names the rung that held.
@@ -66,9 +66,16 @@ new file's home is a decision too: the folder the repo's best-organized module u
 file, never a new `common` / `helpers` / `utils` dump folder. A how-to-build call is never left to the
 build or bounced to the user. One call is never the design's: a change to a behaviour the user can see
 that the `Asked:` line does not name (a value now always shown, a default flipped, an exit path
-changed) gets its own AskUserQuestion before the gate, its ledger line carrying `asked: <the
-answer>`; under AUTO the behaviour stays as it was, `not asked - kept as is (AUTO)`. An option
-description is not an ask (measured: reverted by the user after `Completed`).
+changed) gets its own ask before the gate, its ledger line carrying `asked: <the answer>`; under
+AUTO the behaviour stays as it was, `not asked - kept as is (AUTO)`; inside a designer seat it is a
+`user_decisions:` row, `asked: pending`. An option description is not an ask (measured: reverted by
+the user after `Completed`).
+
+```ask
+<the behaviour change, one line>: keep today's behaviour or change it as designed?
+- 'Keep today's behaviour (Recommended)' - the `Asked:` line does not name this change, so the plan works around it
+- 'Change it as designed' - the plan builds the change; the ledger line records this answer
+```
 
 ## Output
 

@@ -11,7 +11,6 @@ Every seat returns structured output - never free-form only - so the orchestrato
 - Integration gate output
 - Progress ledger
 - Task-card template
-- Verification-report template
 
 ## Status vocabulary
 
@@ -31,61 +30,49 @@ A BLOCKED status names WHAT is blocked, and both sides check the grain: a seat e
 
 ## Designer output
 
-```yaml
-agent: aspnet-solution-designer
-domain: backend
-contract_version: v1
+Every seat returns a dense prose report whose shape its own `## Report` section owns; this file is the orchestrator's read of it - the lines it routes on are literal, the rest is prose items. A `<stack>-solution-designer` returns, in order:
+
+```text
+Oriented: <doc ranges read, prior notes read, symbol calls made, house skills loaded | none - <reason>>
+<the architecture, under the stack's own headings>
+<the ordered task list - one card per task: id + title, the files or module it owns, the interface it exposes,
+ what it must not touch, dependencies, acceptance, anchors (file:symbol), log_points, implementer_model (haiku | sonnet)>
+<the test strategy, the integration notes (10 lines at most)>
+user_decisions: <each user-visible behaviour change or user-level choice the design forces | none>
 status: PLAN_READY | NEEDS_CONTEXT | BLOCKED_CONTRACT_CHANGE
-summary: ...
-tasks:
-  - task_id: backend-01
-    title: ...
-    scope: []
-    acceptance: []            # the observable behavior / passing test that proves the slice done
-    dependencies: []
-    allowed_files_or_areas: []
-    anchors: []               # file:symbol the designer located - the implementer jumps to these, skipping re-navigation
-    log_points: []            # the observability the designer decided for this slice - where a line goes, at what level, with which identifiers (boundary crossings, decision points, every failure exit; 'framework-emitted' where the platform already logs it)
-    forbidden_changes: []
-    implementer_model: haiku | sonnet   # designer-assigned by task difficulty; sonnet floors any risk trigger
-verification_notes: []
+contract_version: <the brief's>
 ```
+
+A card missing one of its four stamps - `implementer_model`, `anchors`, acceptance, `log_points` - is a scoped re-brief, never a fan-out. A `user_decisions:` line other than `none` goes to the user (AskUserQuestion) before the plan review, each answer carried onto the plan's `## Decisions` entry as `asked: <the answer>`: the seat holds no ask tool, so a decision it cannot make arrives here, never guessed.
 
 ## Implementer output
 
-```yaml
-agent: aspnet-implementer
-task_id: backend-02
-domain: backend
-contract_version: v2
+```text
+checked prior notes: <names | none>
+<the task built - files + symbols, one line each, file:symbol first>
+<the card's log points as placed - file:symbol + level | none on card>
+decisions: <the choice - precedent: <file:symbol | named rule> | none>
+ceilings: <where | limit | revisit when - one row per deliberate simplification | none>
+<the test results - devops: a literal `test:` line>
+<anything blocked or diverging from the contract>
 status: DONE | DONE_WITH_CONCERNS | NEEDS_CONTEXT | BLOCKED | BLOCKED_CONTRACT_CHANGE
-summary: ...
-files_changed:
-  - { path: src/..., reason: ... }
-tests_added_or_changed:
-  - { path: tests/... }
-validation_performed:
-  - dotnet test ...
-regression_proof: [none]        # a spec proven red against the pre-fix code / a captured repro - recorded so the verifier CONFIRMS the artifact, not re-derives the repro
-risks_or_concerns: [...]
-ceilings: [none]                # where | limit | revisit when - one row per deliberate simplification; the close files them
-contract_deviations: [none]
-next_recommended_action: [run aspnet-verifier]
+contract_version: <the card's - omitted entirely on a findings-plan dispatch>
 ```
+
+`decisions:` lines fold into the plan's `## Decisions` ledger and `ceilings:` rows into the close's known-ceilings write; a seat never edits the shared plan file itself.
 
 ## Verifier output
 
-```yaml
-agent: aspnet-verifier
-domain: backend
-contract_version: v2
+```text
+<the build and test result run this session - the summary line when green; per failure the diagnostic lines and the command that re-produces it>
+<the habits-done-gate evidence the seat bound>
+findings: <one per gap - severity + task_owner + problem + required_fix, keyed to file + symbol>
+left_running: <what the gate started and left up | none>      # the seats whose gates start something
 status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH
-summary: ...
-checks_performed: [build, tests, architecture boundaries, auth behavior, error handling]
-findings:
-  - { severity: high, task_owner: backend-02, problem: ..., required_fix: ... }
-signoff: false
+contract_version: <the one gated against | none on a direct dispatch>
 ```
+
+A rubric audit (`loop-code-quality`) returns the loop's keyed findings shape instead, with no footer; a plan audit (`task-verify-plan`) returns the eight fields its brief carries above the closing lines.
 
 A finding's severity is a claim: the orchestrator re-checks each one against the anchors and the skip-list below before routing it to an owner, and the integration-reviewer holds its own findings to the same three paragraphs.
 
@@ -155,17 +142,4 @@ log_points: []                 # copied from the designer's card verbatim - the 
 forbidden_changes: []          # the shared seams this task must not touch
 dependencies: []
 implementer_model: haiku | sonnet   # designer-assigned by task difficulty; sonnet floors any risk trigger
-```
-
-## Verification-report template
-
-What a verifier (or the integration gate) hands back, so the orchestrator can loop the punch-list to the right owner:
-
-```yaml
-status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH   # the integration gate adds BLOCKED_BY_SECURITY
-contract_version: v2
-commands_run: []               # build / test output, quoted, not pasted from the implementer
-findings:
-  - { severity: high | med | low, task_owner: backend-02, file_symbol: ..., problem: ..., required_fix: ... }
-signoff: true | false
 ```

@@ -68,4 +68,79 @@ test('agents #2: the WPF seats point at the net48 reference instead of contradic
     assert.match(ref, /\.NET Standard 2\.0 class library/);
 });
 
+// --- agents #3 (C3-C6): one shape per seat return, the seat's Report its home and the protocol docs its read --------------
+const report = (s) => squash(section(body(s), 'Report'));
+const lastIndex = (text, needle) => text.lastIndexOf(needle);
+test('agents #3 C3: every designer Report names the four card stamps and a user_decisions line before its closing lines', () =>
+{
+    const designers = of('-solution-designer');
+    assert.strictEqual(designers.length, 10);
+    for (const s of designers)
+    {
+        const r = report(s);
+        for (const stamp of ['`implementer_model`', '`anchors`', 'acceptance', '`log_points`']) assert.ok(r.includes(stamp), `${s}: ${stamp}`);
+        assert.ok(r.indexOf('a literal `user_decisions:` line') >= 0 && r.indexOf('a literal `user_decisions:` line') < r.indexOf('Close with a literal `status:` line'), `${s}: user_decisions before the close`);
+    }
+    assert.deepStrictEqual([...listedIn('designer-card-stamps')].sort(), designers.map((s) => `stack/agents/${s}.md`).sort());
+    const protocol = squash(readRel('stack/skills/task-solve-cross/references/agent-output-protocol.md'));
+    for (const key of ['Oriented:', 'user_decisions:', 'status: PLAN_READY | NEEDS_CONTEXT | BLOCKED_CONTRACT_CHANGE', 'contract_version:'])
+        assert.ok(protocol.includes(key), `protocol designer shape: ${key}`);
+    assert.doesNotMatch(protocol, /verification_notes:|forbidden_changes: \[\]\s+implementer_model: haiku \| sonnet\s+# designer-assigned by task difficulty; sonnet floors any risk trigger\s+verification_notes/, 'the old designer YAML');
+    const trio = squash(readRel('stack/skills/task-solve-cross/references/domain-trio-protocol.md'));
+    assert.ok(trio.includes("A `user_decisions:` line other than `none` is the user's call"), 'the trio protocol routes user_decisions to the plan-review ask');
+});
+
+test('agents #3 C4: the implementer schema is what the seats emit - no field without a producer', () =>
+{
+    const protocol = squash(readRel('stack/skills/task-solve-cross/references/agent-output-protocol.md'));
+    for (const gone of ['regression_proof', 'files_changed', 'validation_performed', 'next_recommended_action', 'checks_performed', 'signoff:'])
+        assert.ok(!protocol.includes(gone), `protocol still names ${gone}`);
+    for (const key of ['checked prior notes:', 'decisions:', 'ceilings:', 'status: DONE | DONE_WITH_CONCERNS | NEEDS_CONTEXT | BLOCKED | BLOCKED_CONTRACT_CHANGE'])
+        assert.ok(protocol.includes(key), `protocol implementer shape: ${key}`);
+    for (const s of of('-implementer'))
+    {
+        const text = squash(read(s));
+        for (const key of ['checked prior notes:', '`decisions:`', '`ceilings:`']) assert.ok(text.includes(key), `${s} emits ${key}`);
+    }
+});
+
+test('agents #3 C5: both diagnosers close on literal route / confidence / affected_domains lines before status, pinned', () =>
+{
+    const routes = ['no_fix_needed', 'resolver', 'single_domain_implementer', 'cross_domain_contract_change', 'user_decision_needed'];
+    const inv = squash(readRel('stack/skills/task-solve-cross/references/issue-investigation.md'));
+    for (const s of ['issue-diagnoser-ci', 'issue-diagnoser-runtime'])
+    {
+        const r = report(s);
+        for (const k of ['`route:`', '`confidence:`', '`affected_domains:`']) assert.ok(r.includes(k), `${s}: ${k}`);
+        for (const v of routes) assert.ok(r.includes(`\`${v}\``), `${s}: route ${v}`);
+        assert.ok(r.indexOf('`route:`') < lastIndex(r, 'Close with a literal `status:` line'), `${s}: the keys come before status`);
+        assert.ok(inv.includes(`route: ${routes[0]}`), 'the investigation YAML vocabulary');
+    }
+    assert.ok(inv.includes('closes on four literal lines - `route:`'), 'the investigation doc reads the seat shape');
+    assert.strictEqual(listedIn('diagnoser-routing-keys').size, 3);
+});
+
+test('agents #3 C6: the plan-audit brief carries the passes and the eight fields, and the verifier returns them', () =>
+{
+    const tvp = squash(readRel('stack/skills/task-verify-plan/SKILL.md'));
+    assert.ok(tvp.includes('the brief carries both: the five passes and the eight-field block'), 'task-verify-plan: the brief carries the Output');
+    for (const s of of('-verifier'))
+        assert.ok(squash(read(s)).includes("return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines"), `${s}: returns the fields`);
+});
+
+// --- agents #8 (C7): the designer seat has no ask, so task-design's two asks become report fields there -------------------
+test('agents #8 C7: task-design turns its asks into NEEDS_CONTEXT / user_decisions inside a seat, and its behaviour-change ask is a template', () =>
+{
+    const td = readRel('stack/skills/task-design/SKILL.md');
+    const flat = squash(td);
+    assert.ok(flat.includes('A seat holds no AskUserQuestion, so each ask below is a report field there'), 'the seat carve-out');
+    assert.ok(flat.includes('Inside a designer seat, load nothing here: an ambiguous brief returns NEEDS_CONTEXT'), 'step 0 in a seat');
+    assert.ok(flat.includes('inside a designer seat it is a `user_decisions:` row, `asked: pending`'), 'the behaviour change in a seat');
+    const asks = [...td.matchAll(/```ask\n([\s\S]*?)```/g)].map((m) => m[1]);
+    assert.ok(asks.some((a) => /behaviour change/.test(a) && /\(Recommended\)/.test(a)), 'the behaviour-change ask template');
+    const tvp = readRel('stack/skills/task-verify-plan/SKILL.md');
+    assert.strictEqual([...tvp.matchAll(/```ask\n/g)].length, 2, 'task-verify-plan: the mode ask and the judgment ask');
+    assert.doesNotMatch(squash(tvp), /through its own AskUserQuestion instead of folding/, 'the prose stop is a template now');
+});
+
 module.exports = { seats, read, readRel, meta, body, section, squash, rules, copiesOf, listedIn, of };
