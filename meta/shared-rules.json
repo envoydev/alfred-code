@@ -7693,7 +7693,7 @@
       ]
     },
     "preferences-designer": {
-      "_note": "The generated rule alfred-preferences.md imports the user's preferences into every session and ranks them first (capture-preferences is canonical). A designer restates it because its plan is where a preference is met or missed: each Decisions row names the id it meets, and a requirement that cannot meet one goes back to the user as NEEDS_CONTEXT, never a silent waiver.",
+      "_note": "The generated rule alfred-preferences.md carries the user's preferences inline into every session and ranks them first (capture-preferences is canonical). A designer restates it because its plan is where a preference is met or missed: each Decisions row names the id it meets, and a requirement that cannot meet one goes back to the user as NEEDS_CONTEXT, never a silent waiver.",
       "owner": {
         "file": "stack/skills/capture-preferences/SKILL.md",
         "marker": "ranks them above every other source"
@@ -7742,7 +7742,7 @@
       ]
     },
     "preferences-implementer": {
-      "_note": "The implementer builds to the preferences the rule imports; a card that cannot meet one stops as BLOCKED naming the id, so the waiver is the user's call (an Except: line), never the seat's.",
+      "_note": "The implementer builds to the preferences the rule carries; a card that cannot meet one stops as BLOCKED naming the id, so the waiver is the user's call (an Except: line), never the seat's.",
       "owner": {
         "file": "stack/skills/capture-preferences/SKILL.md",
         "marker": "ranks them above every other source"
