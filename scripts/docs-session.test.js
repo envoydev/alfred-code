@@ -2089,6 +2089,23 @@ test('audit 2026-10-20 C25: a resume that reads its plan\'s Oriented sections is
   } finally { r.rm(); }
 });
 
+// 2.8.0: plans live under the docs root's work/plans/ - a plan there is a record once stamped Completed:, and its
+// Oriented sections count as read, exactly as one under the legacy plans/ an update has not moved yet.
+test('2.8.0: a plan under work/plans/ is a plan - its Completed: stamp holds and its Oriented sections count as read', () => {
+  const PLAN = '# Plan: csv export\nGated: 2026-10-09\nOriented: patterns#orders\nCompleted: 2026-10-09\n\n## Tasks\n- [x] Task 1 - export\n';
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'x\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.write('.claude/docs/work/plans/csv-export.md', PLAN);
+    const s = sid();
+    const add = r.hook(pre('Edit', { file_path: `${r.root}/.claude/docs/work/plans/csv-export.md`, old_string: '- [x] Task 1 - export\n', new_string: '- [x] Task 1 - export\n- [ ] Task 2\n' }, s));
+    assert.ok(denied(add), 'new scope appended to a stamped plan under work/plans/');
+    assert.ok(denied(r.hook(pre('Bash', { command: 'echo "- [ ] Task 2" >> .claude/docs/work/plans/csv-export.md' }, s))), 'a shell append');
+    const read = sid();
+    r.hook(pre('Read', { file_path: `${r.root}/.claude/docs/work/plans/csv-export.md` }, read));
+    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, read))), 'its Oriented section counts as read');
+  } finally { r.rm(); }
+});
+
 // Audit 2026-10-20 C25 (4f2bfdee): a `node -e` writing to a computed path under a temp run dir was read as a write under
 // the first source root and held twice ('Before changing src/*'). An unnamed interpreter write is a source write only
 // under a root the command names; a patch or a migration with no project still always is.

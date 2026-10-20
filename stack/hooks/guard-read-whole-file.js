@@ -2730,11 +2730,11 @@ if (!GATED_EXT.test(path)) {
   // token cost'), where 60KB of text is about 15,000. Both were blocked, and the issue-diagnoser's screenshot Read with
   // them (audit 2026-10-08).
   const whole = (input.offset ?? 0) <= 1 && input.limit == null && input.pages == null && !RENDERED_IMAGE.test(path);
-  // A plan under the docs root's plans/ is a seat's MANDATED input, read whole by design: a verifier denied its 65KB
-  // plan read it back through two ranges at once, so the block bought a round trip and nothing else (audit 2026-10-10,
-  // session 05c925e9).
+  // A plan under the docs root's work/plans/ (plans/ before 2.8.0, until an update moves it) is a seat's MANDATED input,
+  // read whole by design: a verifier denied its 65KB plan read it back through two ranges at once, so the block bought a
+  // round trip and nothing else (audit 2026-10-10, session 05c925e9).
   const docsRel = docsRootEnv().replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
-  const planFile = /\.md$/i.test(path) && String(path).replace(/\\/g, '/').includes(`${docsRel}/plans/`);
+  const planFile = /\.md$/i.test(path) && [`${docsRel}/work/plans/`, `${docsRel}/plans/`].some((d) => String(path).replace(/\\/g, '/').includes(d));
   if (size > BIG_BYTES && whole && !planFile && /\.pdf$/i.test(path)) {
     // A PDF is read by PAGE: the Read tool takes one of 10 pages or fewer whole, and a longer one only through `pages`,
     // at most 20 a call - the binary remedy below ('head -c', 'file') answered nothing for one (hooks review 2026-10-16).

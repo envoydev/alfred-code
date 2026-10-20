@@ -253,6 +253,7 @@ const NAV_EDIT = /^mcp__(?:plugin_(?:alfred-)?navigation_)?(?:alfred-)?navigatio
 // One log file holds every session's rows, and two sessions interleave in it, so each row carries the id that
 // tells them apart. It lives beside hook-blocks/ and tools-usage/ in the data root's statistics/ (2.8.0, layout.js) -
 // every ledger in this stack does, never committed; before 2.8.0, under the docs root, which is still read.
+const planDirsOf = (root) => (layout ? layout.planDirs(root) : [path.resolve(root, docsRootEnv(), 'plans')]);
 const docsLogFile = (root) => (layout ? layout.statsPath(root, ['docs-log.jsonl']) : path.join(path.resolve(root, docsRootEnv()), 'docs-log.jsonl'));
 const log = (root, input, row) => {
   try {
@@ -871,7 +872,7 @@ const relative = (root, paths) => [...new Set(paths.map((p) => toPosix(path.rela
 // resolves; a file read counts only for a doc file (`.md`), by Read or Grep, or by a shell command that READS (a reading
 // verb, no write) - never a listing.
 const SHELL_READ_VERB = /(?:^|[\s;&|(])(?:cat|head|tail|sed|awk|grep|rg|less|more|bat|nl|type|get-content|gc|select-string)\b/i;
-function consultedBy(input, paths, docRoots, docs, plansRel = '') {
+function consultedBy(input, paths, docRoots, docs, plansRels = []) {
   const name = input.tool_name || '';
   const t = input.tool_input || {};
   const command = typeof t.command === 'string' ? t.command : '';
@@ -904,8 +905,8 @@ function consultedBy(input, paths, docRoots, docs, plansRel = '') {
   // A resume reads its plan, and the plan's `Oriented:` line names the sections the design read: those sections count as
   // read, so the first edit of a /clear resume is not held for docs the plan already carries (audit 2026-10-20 C25,
   // 6dba16e2 / b5f384d2 / 1b432dd2: 3 of 3 resumes of one story opened on that hold). A plan naming none earns nothing.
-  if (plansRel && reads) {
-    const plans = paths.filter((p) => /\.md$/i.test(p) && p.startsWith(`${plansRel}/`) && !p.slice(plansRel.length + 1).includes('/'));
+  if (plansRels.length && reads) {
+    const plans = paths.filter((p) => /\.md$/i.test(p) && plansRels.some((d) => p.startsWith(`${d}/`) && !p.slice(d.length + 1).includes('/')));
     return plans.flatMap((p) => orientedRefs(path.resolve(process.env.CLAUDE_PROJECT_DIR || '.', p), docs));
   }
   return [];
@@ -1053,8 +1054,9 @@ function stampedPlanWrite(input, root) {
   const name = input.tool_name || '';
   const t = input.tool_input || {};
   const real = (p) => { try { return fs.realpathSync.native(p); } catch { return p; } };
-  const plansDir = real(path.resolve(root, docsRootEnv(), 'plans'));
-  const isPlan = (abs) => /\.md$/i.test(abs) && real(path.dirname(abs)) === plansDir;
+  // work/plans/ since 2.8.0, the legacy plans/ until an update moves it (layout.js planDirs)
+  const plansDirs = planDirsOf(root).map(real);
+  const isPlan = (abs) => /\.md$/i.test(abs) && plansDirs.includes(real(path.dirname(abs)));
   const textOf = (abs) => { try { return fs.readFileSync(abs, 'utf8'); } catch { return null; } };
   const lineCounts = (str) => { const m = new Map(); for (const l of String(str || '').split(/\r?\n/)) m.set(l, (m.get(l) || 0) + 1); return m; };
   const onlyStamps = (before, after) => {
@@ -1267,7 +1269,7 @@ function preToolUse(input, root, docs, state) {
     const all = shellWrites && shellWrites.some(isUnknown) ? [...wrote, UNKNOWN_SOURCE_WRITE] : wrote;
     if (all.length) recordWrite(root, input, all);
   };
-  const consults = consultedBy(input, paths, docRoots, docs, toPosix(path.relative(root, path.resolve(root, docsRootEnv(), 'plans'))));
+  const consults = consultedBy(input, paths, docRoots, docs, planDirsOf(root).map((d) => toPosix(path.relative(root, d))));
   if (consults.length) {
     // One shell command can read a doc AND write a file - the shape the orientation block and the gate together
     // teach - so the read must not swallow the write.

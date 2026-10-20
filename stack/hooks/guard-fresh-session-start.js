@@ -487,8 +487,9 @@ function livePlan() {
   } catch { /* no transcript - fall through to the docs root */ }
   try {
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-    // plans/ since 2.2.2; superpowers/plans/ until an update moves it (docs.migratePlans).
-    for (const sub of [['plans'], ['superpowers', 'plans']]) {
+    // work/plans/ since 2.8.0; plans/ (2.2.2) and superpowers/plans/ until an update moves them (layout.js LAYOUT_MOVES,
+    // docs.migratePlans).
+    for (const sub of [['work', 'plans'], ['plans'], ['superpowers', 'plans']]) {
       const dir = nodePath.resolve(root, docsRootEnv(), ...sub);
       let names;
       try { names = fs.readdirSync(dir); } catch { continue; }

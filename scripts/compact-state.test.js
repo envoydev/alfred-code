@@ -110,6 +110,15 @@ test('compact-state: with no plan in the transcript the newest plan under the do
     former.run({ hook_event_name: 'PreCompact', trigger: 'manual', transcript_path: former.transcript([toolUse('Bash', { command: 'ls' })]) });
     assert.match(fs.readFileSync(former.state, 'utf8'), /^live plan: \.alfred\/docs\/superpowers\/plans\/c\.md \(newest under the docs root\)$/m);
 
+    // 2.8.0: plans live under work/plans/, read before the legacy plans/ an update has not moved yet.
+    const work = project();
+    for (const [sub, f] of [[['work', 'plans'], 'd.md'], [['plans'], 'e.md']]) {
+        fs.mkdirSync(path.join(work.root, '.alfred', 'docs', ...sub), { recursive: true });
+        fs.writeFileSync(path.join(work.root, '.alfred', 'docs', ...sub, f), f);
+    }
+    work.run({ hook_event_name: 'PreCompact', trigger: 'manual', transcript_path: work.transcript([toolUse('Bash', { command: 'ls' })]) });
+    assert.match(fs.readFileSync(work.state, 'utf8'), /^live plan: \.alfred\/docs\/work\/plans\/d\.md \(newest under the docs root\)$/m);
+
     const none = project();
     none.run({ hook_event_name: 'PreCompact', trigger: 'manual' });
     const text = fs.readFileSync(none.state, 'utf8');

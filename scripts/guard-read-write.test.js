@@ -595,6 +595,18 @@ test('audit 2026-10-10 C11: a plan under the docs root reads whole; a missing re
   assert.equal(shellAt(dir, 'cat -n src/PlanLimits/AdminPlanLimitsEndpoints.cs 2>/dev/null || find src -name x', sid()).status, 0, 'a wrong path has nothing to dump (f24eb967)');
 });
 
+test('2.8.0: a plan under the docs root\'s work/plans/ reads whole, as one under the legacy plans/ did', () => {
+  const dir = capDir();
+  const plans = path.join(dir, '.alfred', 'docs', 'work', 'plans'); fs.mkdirSync(plans, { recursive: true });
+  fs.writeFileSync(path.join(plans, 'plan.md'), '# plan\n' + 'x'.repeat(70 * 1024) + '\n');
+  fs.mkdirSync(path.join(dir, 'work', 'plans'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'work', 'plans', 'other.md'), '# other\n' + 'x'.repeat(70 * 1024) + '\n');
+  const envd = { ...process.env, ALFRED_CODE_DOCS_PATH: '.alfred/docs', CLAUDE_PROJECT_DIR: dir };
+  const rd = (p) => run(READ, { tool_name: 'Read', tool_input: { file_path: p }, session_id: sid() }, { cwd: dir, env: envd }).status;
+  assert.equal(rd('.alfred/docs/work/plans/plan.md'), 0, 'the plan under work/plans/');
+  assert.equal(rd('work/plans/other.md'), 2, 'a work/plans/ folder outside the docs root is no plan');
+});
+
 test('audit 2026-10-10 C11/C13: the rule notice reads no redirect inside quotes and no target outside the project', () => {
   const s = sid();
   assert.equal(announce(`perl -0pi -e 's/see > <name>.spec.ts/x/' notes.md`, s), '', 'a > inside the perl script is text (f10cb06a)');
