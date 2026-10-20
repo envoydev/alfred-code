@@ -164,7 +164,7 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
     in the body, so no graph edge pulls the opt-in server in.
   - plus `alfred-navigation` (Serena - started with `SERENA_USAGE_REPORTING=false`, the entry's `env` and the copy route's
     `-e` pair alike: serena-agent pings its maker's host with the OS, version and context at every start otherwise,
-    `serena/agent.py _send_usage_info`, still honoured in 2.0.0; audit 2026-10-14, PL1), `alfred-documentation` (Context7, the hosted remote only - its `Context7-API-Key` header, the name
+    `serena/agent.py _send_usage_info`, still honoured in 2.1.0; audit 2026-10-14, PL1), `alfred-documentation` (Context7, the hosted remote only - its `Context7-API-Key` header, the name
     Context7 documents (2.1.5 M25: a proxy may drop a header name with an underscore, and a keyed user with it), expands
     `CONTEXT7_API_KEY` from the ACCOUNT settings.json `env`, keyless = the free tier) and `alfred-memory`. 2.0.0 cut `angular-cli`,
     `chrome-devtools`, `appium-mcp`, `sentry` and `context7-local` (manifest `retired.mcps`,
@@ -231,7 +231,7 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
   environment plus the ACCOUNT settings.json `env` (an unset `${VAR}` stays literal with a
   `claude mcp list` warning). Cursor runs serena with `--context ide-assistant`. Claude runs it on the
   stack's own context, `stack/mcp/navigation-context.yml` (2.1.4, I12 - ruling 'Keep rename + safe
-  delete'): serena's `claude-code` context, byte-identical in 1.7.0 and 2.0.0 (its six exclusions, `single_project`, structured output
+  delete'): serena's `claude-code` context, byte-identical in 1.7.0, 2.0.0 and 2.1.0 (its six exclusions, `single_project`, structured output
   off) plus `replace_content`, `replace_in_files`, `replace_symbol_body`, `insert_after_symbol`,
   `insert_before_symbol` and `onboarding` off - writes no Edit/Write-matched hook sees - and, since the user's
   2026-10-13 ruling ('Serena is just for navigation'), its six memory tools off too (a seat's handoff note is an
@@ -254,7 +254,17 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
   `--agent-interface tools`, the global override (a `project.yml` value still wins - the user's own), and `mcp.js
   ADDED_ARG_WORDS` keeps an earlier release's registration without the pair the stack's. serena 1.7.0 refuses the flag
   and any `excluded_tools` name it does not know (`Invalid tool name: serena_repl`, failing closed), so neither may meet
-  a 1.7.0 start: the context file carries no 2.0.0-only name, and the flag ships only beside the 2.0.0 pin.
+  a 1.7.0 start: the context file carries no 2.x-only name, and the flag ships only beside a 2.x pin (2.1.0's template
+  still says `REPL`). serena 2.1.0 (audit 2026-10-20b) changes nothing the stack passes or names: no tool added or
+  renamed (the 53 at the pin, the nine the context serves, measured beside 2.0.0 through the launcher), and the
+  `session_id` parameter it renamed `session` belongs to `activate_project` and `serena_repl`, both off here. Its
+  trust gate does NOT reach a stack install: 2.1.0 pins tsserver to its own TypeScript and skips symlinks only in an
+  UNTRUSTED project (no `trusted_project_path_patterns` match), and the template's `[]` reaches a new home only - the
+  home's `serena_config.yml` is the stack's (`ensureSerenaConfig`, written before serena's first start), so serena
+  fills the key with its backward-compatible `['**']` and trusts every project (2.0.0 the same; measured on both: a
+  repo's own `node_modules/typescript` 5.6.3 loaded - 'Using Typescript version (workspace) 5.6.3'). An unset
+  `web_dashboard_open_on_launch` (the new template) opens the dashboard with a dialog - `--enable-web-dashboard false`
+  keeps it shut on both routes.
 - **Every project-anchored server starts at its project root, whatever the launch directory** (re-verify 3 S2, S3;
   re-verify 4 T1-T3). Claude Code starts a server in the directory the session was launched from, a subdirectory included,
   and an inherited `CLAUDE_PROJECT_DIR` names whatever folder the shell had. `stack/hooks/memory.js projectRootOf` is the
@@ -286,7 +296,7 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
 - **The navigation server's state is isolated per project** under the data root: `SERENA_HOME` is
   `<data root>/serena/home` (the launcher sets it; the copy route registers it), and serena's per-project
   folder - the index cache, `memories/`, `project.yml` - is `<data root>/serena`, named by
-  `project_serena_folder_location` in the home's own `serena_config.yml` (serena has no flag for it, 1.7.0 or 2.0.0;
+  `project_serena_folder_location` in the home's own `serena_config.yml` (serena has no flag for it, 1.7.0 to 2.1.0;
   `data-root.js ensureSerenaConfig` writes it absent-only and follows the root only over the stack's own
   value, never a user's central path). The data root's `.gitignore` keeps it out of git (LSP cache ~327MB
   for C#); a 2.0.0 `.serena/` still in use keeps its own `.gitignore` (`*`), widened from serena's
@@ -311,7 +321,7 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
   resolves `@UV_PYTHON@` into `.mcp.json`. Never hand-patch a cached entry - the next refresh
   overwrites it (`docs/uv-python-pin-evidence.md`). The serena launcher keeps `SERENA_HOME` RELATIVE
   in the platform's separator, and the copy route registers `.alfred\serena\home` on Windows
-  (`@SERENA_HOME@`) - which is why the data root may hold no space: serena (1.7.0 and 2.0.0) execs its TypeScript server through npm's `.bin` shim, so cmd.exe
+  (`@SERENA_HOME@`) - which is why the data root may hold no space: serena (1.7.0 to 2.1.0) execs its TypeScript server through npm's `.bin` shim, so cmd.exe
   gets the path UNQUOTED and cuts it at its first `/` (an absolute one at the first space). Both
   launchers pass a stop signal on to uvx (`runUvx`), or the server outlives them. The pin fixes only the top
   package, so every uvx start also takes the release's dependency CUT-OFF (2.1.5 M24): `--exclude-newer
