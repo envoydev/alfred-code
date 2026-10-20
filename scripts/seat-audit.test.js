@@ -237,4 +237,21 @@ test('agents #5: model-routing says the Agent tool takes effort and the house se
     assert.ok(mr.includes("The Agent tool does take a per-dispatch `effort` argument, but the house sets it only on the user's explicit ask"), 'the current fact and the house use');
 });
 
+// --- agents audit 2026-10-20b: the verifier done-gate field, own-domain seam lists, the small items -------------------------
+test('agents 2026-10-20b: each verifier names the done-gate evidence it returns, pinned', () =>
+{
+    assert.deepStrictEqual([...listedIn('verifier-done-gate-evidence')].sort(), of('-verifier').map((s) => `stack/agents/${s}.md`).sort());
+    for (const s of of('-verifier')) assert.doesNotMatch(squash(read(s)), /the bound `habits-done-gate` sets/, `${s}: a field that names no output`);
+});
+
+test('agents 2026-10-20b: each implementer lists its own domain\'s shared seams, the devops one builds an AppHost only where one exists', () =>
+{
+    const aspnetSeams = 'a route, DTO, error code, schema or index semantic, migration order';
+    for (const s of of('-implementer').filter((x) => x !== 'aspnet-implementer'))
+        assert.ok(!squash(read(s)).includes(aspnetSeams), `${s}: ASP.NET's seam list copied`);
+    const devops = squash(read('devops-implementer'));
+    assert.doesNotMatch(devops, /dotnet build the AppHost[,;]/, 'devops-implementer: an unconditional AppHost build');
+    assert.ok(devops.includes('dotnet build the Aspire AppHost when the project has one'), 'devops-implementer: the condition');
+});
+
 module.exports = { seats, read, readRel, meta, body, section, squash, rules, copiesOf, listedIn, of };
