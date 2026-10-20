@@ -23,6 +23,10 @@ const ENUMS = {
     // the layout as it is and no later update offers again. Not given, nothing moves. `--docs-move` is the
     // 2.0.0 spelling, read for one release.
     dataMove: { values: ['', 'move', 'keep'], text: "--data-move must be 'move' or 'keep'" },
+    // The answer to update's docs-move ask (docs.docsMovePlan `handSet`, 2.8.0): a docs root the user set by hand moves
+    // to <data root>/docs only on 'move', `--docs-root-leave` naming what stays. No keep: every docs file of the stack's
+    // belongs under the data root (the user's answer of 2026-10-20). Not given, nothing moves and the next update asks.
+    docsRootMove: { values: ['', 'move'], text: "--docs-root-move must be 'move'" },
     // Compact instead of offering a fresh session (ALFRED_CODE_AUTO_COMPACT, settings.js applyEnv): setup's screen-B
     // answer, written over the value already there. Not given, the absent-only seed (`0`) stands.
     autoCompact: { values: ['', 'on', 'off'], text: "--auto-compact must be 'on' or 'off'" },
@@ -38,7 +42,7 @@ const VALUED = new Map([
     // from before it still passes them. Never beside the new spelling of the same flag.
     ['--playwright-browsers', 'playwrightBrowsersRaw'], ['--playwright-enabled', 'playwrightEnabledRaw'],
     ['--docs-versioning', 'docsVersioning'], ['--memory-level', 'memoryLevel'],
-    ['--data-move', 'dataMove'], ['--docs-move', 'dataMove'], ['--data-path', 'dataPath'], ['--auto-compact', 'autoCompact'],
+    ['--data-move', 'dataMove'], ['--docs-move', 'dataMove'], ['--data-path', 'dataPath'], ['--docs-root-move', 'docsRootMove'], ['--docs-root-leave', 'docsRootLeaveRaw'], ['--auto-compact', 'autoCompact'],
     ['--selection', 'selection'], ['--source', 'source'], ['--plan-out', 'planOut'],
 ]);
 
@@ -66,7 +70,7 @@ const SCOPE_OF = /^([a-z0-9-]+)=(global|user|project|local)$/;
 
 const ALIASES = new Map([['--playwright-browsers', '--browsers'], ['--playwright-enabled', '--browser-enabled'], ['--docs-move', '--data-move']]);
 
-const FLAG_LIST = '--space, --scope, --memory-level, --browsers, --browser-enabled, --docs-versioning, --data-path, --data-move, --auto-compact, --github-cli, --keep-pins, --selection, --installed-only, --add, --drop, --scope-of, --print-plan, --plan-out, --skills-only, --rename-claude-md, --source';
+const FLAG_LIST = '--space, --scope, --memory-level, --browsers, --browser-enabled, --docs-versioning, --data-path, --data-move, --docs-root-move, --docs-root-leave, --auto-compact, --github-cli, --keep-pins, --selection, --installed-only, --add, --drop, --scope-of, --print-plan, --plan-out, --skills-only, --rename-claude-md, --source';
 
 // One selection line, the shape the walks write: `<category> <name>`.
 const ADD_LINE = /^(skill|agent|rule|hook|mcp|plugin) [A-Za-z0-9._-]+$/;
@@ -84,7 +88,7 @@ function parseArgs(argv)
 {
     const out = {
         action: '', space: '', scope: '',
-        playwrightBrowsersRaw: '', playwrightEnabledRaw: '', docsVersioning: '', memoryLevel: '', dataMove: '', dataPath: '', autoCompact: '',
+        playwrightBrowsersRaw: '', playwrightEnabledRaw: '', docsVersioning: '', memoryLevel: '', dataMove: '', dataPath: '', docsRootMove: '', docsRootLeaveRaw: '', autoCompact: '',
         selection: '', source: '', planOut: '',
         githubCli: false, keepPins: false, installedOnly: false, printPlan: false, skillsOnly: false,
         add: [], drop: [], scopeOf: {},
@@ -170,6 +174,7 @@ function parseArgs(argv)
     out.docsVersioning = lower(out.docsVersioning);
     out.memoryLevel = lower(out.memoryLevel);
     out.dataMove = lower(out.dataMove);
+    out.docsRootMove = lower(out.docsRootMove);
     out.autoCompact = lower(out.autoCompact);
     // The data root is a folder INSIDE the project (stack/mcp/data-root.js checkDataPath says what is refused
     // and why) - refused here, before a path that would prompt, escape the project or break a server lands.
@@ -182,6 +187,12 @@ function parseArgs(argv)
 
     for (const [key, { values, text }] of Object.entries(ENUMS))
         if (!values.includes(out[key])) fail(`${text} (got '${out[key]}')`);
+    // The entries update's docs-root ask named as the team's own (docs.docsMovePlan `leave`): top-level names, a folder's
+    // trailing slash dropped, left where they are while the rest move - so only beside a move.
+    out.docsRootLeave = out.docsRootLeaveRaw.split(',').map((s) => s.trim().replace(/[\\/]+$/, '')).filter(Boolean);
+    if (out.docsRootLeave.length && out.docsRootMove !== 'move') fail('--docs-root-leave needs --docs-root-move move - it names what stays while the rest move');
+    if (out.docsRootLeave.some((n) => /[\\/]/.test(n) || n === '.' || n === '..'))
+        fail('--docs-root-leave names top-level entries of the old docs root, comma-separated (architecture/,decisions/)');
 
     // R29 (T16) / I5 (R47) / C10: the memory db path is resolved PER PROJECT by the PLUGIN launcher (it
     // reads the CURRENT project's settings at launch, never a value baked into the registration), and

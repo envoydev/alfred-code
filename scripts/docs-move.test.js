@@ -6,6 +6,10 @@
 // entries move - a hand-set root may be a folder the project uses too - and a clash (a file at both places) moves
 // nothing and keeps the key, so the hooks keep reading where the docs are until it is cleared. With no key the root
 // to drain is the earlier data root's docs, or the old default `.claude/docs` an install from before 2.0.0 left.
+// A HAND-SET root - one the stack never seeded and no ledger row records - is asked once (the user's answers of
+// 2026-10-20): it moves only on `--docs-root-move move`, and `--docs-root-leave` names the entries that are the team's own,
+// left in place. There is no keep: every docs file of the stack's belongs under the data root. With no answer the key
+// stays until update asks.
 const test = require('node:test');
 require('./hook-test-env').isolateHookSuite();
 const assert = require('node:assert');
@@ -69,6 +73,8 @@ test('plan: a leftover root holding the project\'s own files moves only the stac
     assert.deepStrictEqual(p.tracked, ['architecture/ARCHITECTURE.md']);
     assert.deepStrictEqual(p.untracked, ['ORIENTATION.md', 'flow/COMMIT-GATE', 'mydomain/NOTES.md', 'mydomain/watch.json']);
     assert.deepStrictEqual(p.left, ['README.md', 'guides'], 'the project\'s own entries are named, never moved');
+    // The side note of 2026-10-20: the ask names WHAT moves, so a team spots its own decisions/ or architecture/.
+    assert.deepStrictEqual(p.moves, ['ORIENTATION.md', 'architecture/', 'flow/', 'mydomain/']);
 });
 
 test('plan: a clash keeps the key and names the files', () =>
@@ -118,6 +124,27 @@ test('plan: an empty key is dropped and read as no key; one that empties setting
     assert.strictEqual(plan(root, { scope: 'local', shared: { ALFRED_CODE_DOCS_PATH: '' }, stamped: false }).state, 'drop', 'an empty settings.json key blocks no local run');
     const hid = plan(root, { shared: { ALFRED_CODE_DOCS_PATH: 'notes' }, personal: { ALFRED_CODE_DOCS_PATH: '' }, stamped: false });
     assert.deepStrictEqual([hid.state, hid.from, hid.shadowed], ['drop', null, ['notes']]);
+});
+
+test('plan: a root the stack never wrote is hand-set; a seeded or ledgered one is not', () =>
+{
+    const root = repo({ ...EXT, '.claude/docs/ORIENTATION.md': '# map\n', '.data/docs/ORIENTATION.md': '# map\n' });
+    assert.strictEqual(plan(root).handSet, true, 'docs-ext, no ledger row');
+    assert.strictEqual(plan(root, { ledgered: [valueHash('docs-ext')] }).handSet, false, 'a value the ledger records is the stack\'s');
+    assert.strictEqual(plan(root, { shared: { ALFRED_CODE_DOCS_PATH: '.claude/docs' } }).handSet, false, 'the pre-2.0.0 default');
+    assert.strictEqual(plan(root, { shared: { ALFRED_CODE_DOCS_PATH: '.data/docs' }, prior: '.data' }).handSet, false, 'the earlier data root\'s docs');
+    assert.strictEqual(plan(root, { shared: {} }).handSet, false, 'no key: the drain is the stack\'s own');
+});
+
+test('plan: --docs-root-leave entries stay with the project\'s own; a name that is not the stack\'s is reported', () =>
+{
+    const root = repo(EXT);
+    const p = plan(root, { leave: ['architecture'] });
+    assert.deepStrictEqual([p.state, p.moves, p.left, p.unknown], ['move', ['ORIENTATION.md', 'flow/', 'mydomain/'], ['README.md', 'architecture', 'guides'], []]);
+    assert.ok(!p.tracked.concat(p.untracked).some((f) => f.startsWith('architecture/')), 'nothing under a left entry moves');
+    assert.deepStrictEqual(plan(root, { leave: ['architektur', 'README.md'] }).unknown, ['architektur', 'README.md']);
+    const all = plan(root, { leave: ['ORIENTATION.md', 'architecture', 'flow', 'mydomain'] });
+    assert.deepStrictEqual([all.state, all.moves, all.unknown], ['drop', [], []], 'every entry left: nothing moves, the key still goes');
 });
 
 test('plan: a settings file that does not parse moves nothing', () =>
@@ -237,8 +264,8 @@ test('installer: a clash keeps the key and names it; clearing it lets the next u
         },
     });
     assert.match(outs[1], /!! docs root: docs-ext not moved - 1 file\(s\) already at \.alfred\/docs: ORIENTATION\.md - ALFRED_CODE_DOCS_PATH stays, so the hooks keep reading docs-ext/, outs[1]);
-    // The kept key leaves the ledger - a retired key is nobody's to own, and the drain never reads the ledger.
-    assert.deepStrictEqual([steps[1].key, steps[1].rule, steps[1].ledger, steps[1].moved], ['docs-ext', 'docs-ext', false, ['ORIENTATION.md']], 'only their own file sits at the new root');
+    // The kept key carries its ledger row as recorded, so the next run still knows the stack wrote it.
+    assert.deepStrictEqual([steps[1].key, steps[1].rule, steps[1].ledger, steps[1].moved], ['docs-ext', 'docs-ext', true, ['ORIENTATION.md']], 'only their own file sits at the new root');
     assert.match(outs[2], /docs root: moved docs-ext -> \.alfred\/docs/, outs[2]);
     assert.deepStrictEqual([steps[2].key, steps[2].rule, steps[2].ledger], [undefined, '.alfred/docs', false]);
 });
@@ -255,6 +282,47 @@ test('installer: a clash over a hand-changed key says only the docs step\'s line
     assert.match(outs[1], /!! docs root: docs-ext not moved/, outs[1]);
     assert.doesNotMatch(outs[1], /ALFRED_CODE_DOCS_PATH[^\n]*(yours|is yours)/, outs[1]);
     assert.deepStrictEqual([result.key, result.rule], ['docs-ext', 'docs-ext'], 'the key stays until the clash is cleared');
+});
+
+// The side note of 2026-10-20: a root the user set by hand may be the team's own docs/ folder, and the stack picks its
+// entries by NAME - so it moves only on the answer to update's ask.
+test('installer: a hand-set root is not moved unasked - the key stays and a !! line names the ask; --docs-root-move move moves it', POSIX_ONLY, () =>
+{
+    const { outs, steps } = seedRun(['install', 'update', 'update', 'update'], SELECTION, {
+        args: [['--scope', 'project'], updateArgs(), updateArgs('--docs-root-move', 'move'), updateArgs()],
+        each: (r, i) => (i === 0 ? olderInstall(r, { ledgered: '.alfred/docs' }) : look(r)),
+    });
+    assert.match(outs[1], /!! docs root: docs-ext was set by hand - nothing moved yet; \/alfred-code:update asks which of ORIENTATION\.md, architecture\/, flow\/, mydomain\/ are the team's own - those stay, the rest move to \.alfred\/docs/, outs[1]);
+    assert.deepStrictEqual([steps[1].key, steps[1].rule, steps[1].moved], ['docs-ext', 'docs-ext', []]);
+    assert.match(outs[2], /docs root: moved docs-ext -> \.alfred\/docs/, outs[2]);
+    assert.deepStrictEqual([steps[2].key, steps[2].rule, steps[2].left], [undefined, '.alfred/docs', ['README.md', 'guides']]);
+    assert.doesNotMatch(outs[3], /docs root/, outs[3]);
+    assert.deepStrictEqual(steps[3], steps[2], 'a re-run changes nothing');
+});
+
+// No keep (the user's answer of 2026-10-20): the entries the user marks as the team's own stay, the rest move, and the
+// key goes in the same run - nothing of the stack's is left outside the data root.
+test('installer: --docs-root-leave keeps the team\'s own entries in place, moves the rest and drops the key', POSIX_ONLY, () =>
+{
+    const { outs, steps } = seedRun(['install', 'update', 'update'], SELECTION, {
+        args: [['--scope', 'project'], updateArgs('--docs-root-move', 'move', '--docs-root-leave', 'architecture/'), updateArgs()],
+        each: (r, i) => (i === 0 ? olderInstall(r, { ledgered: '.alfred/docs' }) : look(r)),
+    });
+    assert.match(outs[1], /docs root: moved docs-ext -> \.alfred\/docs/, outs[1]);
+    assert.match(outs[1], /docs root: docs-ext keeps README\.md, architecture, guides/, outs[1]);
+    assert.deepStrictEqual([steps[1].key, steps[1].rule, steps[1].moved, steps[1].left], [undefined, '.alfred/docs', ['ORIENTATION.md', 'mydomain/NOTES.md'], ['README.md', 'architecture', 'guides']]);
+    assert.doesNotMatch(outs[2], /docs root/, outs[2]);
+    assert.deepStrictEqual(steps[2], steps[1], 'a re-run changes nothing');
+});
+
+test('installer: a --docs-root-leave name that is not the stack\'s moves nothing - a typo never moves the folder it meant to keep', POSIX_ONLY, () =>
+{
+    const { outs, result } = seedRun(['install', 'update'], SELECTION, {
+        args: [['--scope', 'project'], updateArgs('--docs-root-move', 'move', '--docs-root-leave', 'architektur')], inspect: look,
+        each: (r, i) => (i === 0 ? olderInstall(r, { ledgered: '.alfred/docs' }) : null),
+    });
+    assert.match(outs[1], /!! docs root: --docs-root-leave names architektur, not one of the stack's entries at docs-ext \(ORIENTATION\.md, architecture\/, flow\/, mydomain\/\) - nothing moved; ALFRED_CODE_DOCS_PATH stays/, outs[1]);
+    assert.deepStrictEqual([result.key, result.rule, result.moved], ['docs-ext', 'docs-ext', []]);
 });
 
 test('installer: a key equal to <data root>/docs is removed with nothing moved', POSIX_ONLY, () =>
@@ -414,14 +482,20 @@ test(`installer (${scope} scope): an update moves every folder under superpowers
     assert.deepStrictEqual(steps[2], steps[1]);
 });
 
-test('preflight: the docs are no part of the data-move offer - they move unasked', POSIX_ONLY, () =>
+test('preflight: the docs are no part of the data-move offer; only a hand-set root gets a docs-move offer', POSIX_ONLY, () =>
 {
     const root = repo(EXT);
     fs.writeFileSync(path.join(root, '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs-ext' } }));
-    fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), `version: 2.7.0\nsha: 0000000\nmanaged-env: settings.json:ALFRED_CODE_DOCS_PATH=${valueHash('docs-ext')}\n`);
+    const stampWith = (value) => fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), `version: 2.7.0\nsha: 0000000\nmanaged-env: settings.json:ALFRED_CODE_DOCS_PATH=${valueHash(value)}\n`);
     const snap = path.join(__dirname, '..');
-    const res = require('node:child_process').spawnSync(process.execPath, [path.join(snap, 'scripts', 'update-preflight.js'), '--snapshot', snap, '--root', root, '--fixture', path.join(TMP, 'none.json')], { encoding: 'utf8' });
-    assert.match(res.stdout, /^data-move: none \(nothing to move\)$/m, res.stdout + res.stderr);
+    const run = () => require('node:child_process').spawnSync(process.execPath, [path.join(snap, 'scripts', 'update-preflight.js'), '--snapshot', snap, '--root', root, '--fixture', path.join(TMP, 'none.json')], { encoding: 'utf8' });
+    stampWith('docs-ext');
+    const seeded = run();
+    assert.match(seeded.stdout, /^data-move: none \(nothing to move\)$/m, seeded.stdout + seeded.stderr);
+    assert.match(seeded.stdout, /^docs-move: none \(the stack's own root - it moves unasked\)$/m, seeded.stdout);
+    stampWith('.alfred/docs');
+    const hand = run();
+    assert.match(hand.stdout, /^docs-move: offer docs-ext -> \.alfred\/docs\tmoves=ORIENTATION\.md,architecture\/,flow\/,mydomain\/\tstack=5\town=README\.md,guides$/m, hand.stdout);
 });
 
 test('preflight --log: a moved docs root asks for a restart - the loaded rule still names the old one', () =>

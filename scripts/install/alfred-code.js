@@ -1248,19 +1248,29 @@ function liveMemoryPath({ level, projectRoot, home, liveOf, owed, registered })
 // THE DOCS ROOT this run leaves in effect: <data root>/docs (2.8.0, the user's ruling of 2026-10-20 - docs.docsMovePlan).
 // A leftover ALFRED_CODE_DOCS_PATH is drained: the stack's docs move from the root it names, then the key goes from both
 // settings files (applyEnv 3b); a clash or a key a local-scope run cannot write moves nothing and keeps it, so the hooks
-// keep reading where the docs are. `ctx.docsPath` is the settings decision (remove or keep), `ctx.docsRoot` the root the
-// rules are stamped with.
+// keep reading where the docs are. A HAND-SET root (docs.docsMovePlan `handSet`) holding the stack's docs moves only on
+// `--docs-root-move move`, the answer to update's ask: it may be the team's own `docs/`, and the stack's entries are
+// picked by name, so the answer names the team's own (`--docs-root-leave`), which stay. No keep (the user's answers of
+// 2026-10-20): with no answer nothing moves yet, and the next update asks again. `ctx.docsPath` is the settings decision (remove or keep),
+// `ctx.docsRoot` the root the rules are stamped with.
 function docsRootStep(ctx)
 {
     const { args, log, note } = ctx;
     const stamped = (Boolean(ctx.stampFile) && fs.existsSync(ctx.stampFile)) || Boolean(ctx.legacyUnstamped);
     const to = `${ctx.dataInfo.root}/docs`;
-    const plan = docs.docsMovePlan({ projectRoot: ctx.projectRoot, ...docs.docsMoveViews({ claudeDir: ctx.claudeDir }), scope: args.scope, stamped, to, prior: ctx.dataInfo.prior });
+    const ledgered = Object.values((ctx.ledger && ctx.ledger.env) || {}).map((m) => m && m.ALFRED_CODE_DOCS_PATH).filter(Boolean);
+    const plan = docs.docsMovePlan({ projectRoot: ctx.projectRoot, ...docs.docsMoveViews({ claudeDir: ctx.claudeDir }), scope: args.scope, stamped, to, prior: ctx.dataInfo.prior, ledgered, leave: args.docsRootLeave || [] });
     ctx.docsPath = null;
     ctx.docsVersioningCarry = null;
     const keep = { keep: true };
     for (const root of plan.shadowed) log(`docs root: ${root} (settings.json) was hidden by settings.local.json's root - not moved; take what you need from it by hand`);
-    if (plan.state === 'drop')
+    // A leave name that is none of the stack's entries: a typo must never move the folder it meant to keep.
+    if (plan.unknown.length)
+    {
+        ctx.docsPath = plan.keys.length ? keep : null;
+        note(`docs root: --docs-root-leave names ${plan.unknown.join(', ')}, not one of the stack's entries at ${plan.from} (${plan.moves.join(', ') || 'none'}) - nothing moved; ALFRED_CODE_DOCS_PATH stays; run /alfred-code:update again`);
+    }
+    else if (plan.state === 'drop')
     {
         ctx.docsPath = { remove: true, why: `the docs root is ${to}` };
         if (plan.from && plan.from !== to) selection.respellDocsRoot({ projectRoot: ctx.projectRoot, from: plan.from, to, log, note });
@@ -1274,6 +1284,11 @@ function docsRootStep(ctx)
     {
         ctx.docsPath = keep;
         note(`docs root: ${plan.from} not moved - ${plan.conflicts.length} file(s) already at ${to}: ${plan.conflicts.slice(0, 5).join(', ')} - ALFRED_CODE_DOCS_PATH stays, so the hooks keep reading ${plan.from}; move or remove one side, then run /alfred-code:update`);
+    }
+    else if (plan.state === 'move' && plan.handSet && args.docsRootMove !== 'move')
+    {
+        ctx.docsPath = keep;
+        note(`docs root: ${plan.from} was set by hand - nothing moved yet; /alfred-code:update asks which of ${plan.moves.join(', ')} are the team's own - those stay, the rest move to ${to} (${plan.tracked.length + plan.untracked.length} file(s); ${plan.left.length ? `${plan.left.join(', ')} stay` : 'nothing else there'})`);
     }
     else if (plan.state === 'move')
     {

@@ -128,12 +128,21 @@ The memory levels and stores, where the docs root and the data root live, and th
   leftover key names (settings.local.json over settings.json, Claude Code's merge), else on a stamped install with no key
   from the earlier data root's `docs/` (a data-root change) or the pre-2.0.0 `.claude/docs` - then removes the key from
   both settings files (`settings.js applyEnv` 3b). The docs are no part of the data-move offer; the servers' data stays
-  asked. Only the stack's own top-level entries move (`STACK_DOCS`: the domains and work folders, every older home a
+  asked. A HAND-SET root (`handSet`: a value no release seeded - not `<data root>/docs`, `.alfred/docs`, `.claude/docs` or
+  the earlier data root's `docs/` - and no ledger row records) holding the stack's docs is the one exception (the user's
+  answer of 2026-10-20 to a side note: it may be the team's own `docs/`, and the entries are picked by name): the preflight
+  prints `docs-move: offer <from> -> <to> moves=<names> stack=<n> own=<names>`, update asks it naming every moving entry, and
+  it moves only on `--docs-root-move move`, `--docs-root-leave <entries>` naming the team's own, which stay (a name that is
+  none of the stack's moves nothing). No keep - every docs file of the stack's belongs under the data root, and a user
+  who wants it elsewhere changes the data root (the user's answer of 2026-10-20); unattended takes the recommended move
+  all; no answer (an installer run outside the walk) moves nothing yet, a `!!` line, and the next update asks.
+  A kept key carries its ledger row as recorded. Only the stack's own top-level entries move (`STACK_DOCS`: the domains and work folders, every older home a
   migration still moves, `ORIENTATION.md`, `.branches`, any folder holding a `watch.json`): a hand-set root may be a
   folder the project uses too (`docs/`), so its other files stay and are named. One step: `git mv` for tracked files
   (history kept, staged as renames), a rename for the rest, every file put back on any failure, the rule re-stamped -
   with every generated pointer rule (`selection.js` GENERATED_RULES, `project-code-style`) that names the old root,
-  which a capture baked in literally (`selection.respellDocsRoot`, M11) - and a restart named. A move keeps what git
+  which a capture baked in literally (`selection.respellDocsRoot`, M11) - and a restart named; the old root's own
+  `.gitignore`, when it holds a text the stack wrote, goes with it (`git rm` where tracked). A move keeps what git
   saw: an old root git ignored, with nothing tracked, becomes a `local` root. A CLASH (a file at both places) moves
   nothing and keeps the key, so the hooks keep reading where the docs are until one side is cleared; so does a
   settings.json key under a local-scope run, which does not write that file (a `!!` line each). A settings.json root

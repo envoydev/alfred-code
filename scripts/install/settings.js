@@ -588,7 +588,9 @@ function ledgerEnv({ name, env, before, prior, release, seedsOf, written, kept =
     const managed = {};
     for (const key of Object.keys(env).filter(isStackKey))
     {
-        if (kept.includes(key)) continue;   // a retired key left for a clash is nobody's to own - the docs step said why
+        // A retired key the docs step kept (a clash, a hand-set root) carries its ledger row as recorded: no claim, no
+        // ownership line - the docs step said why it stays, and the row still tells the next run whether the stack wrote it.
+        if (kept.includes(key)) { if (prior && Object.hasOwn(prior, key)) managed[key] = prior[key]; continue; }
         const v = env[key];
         const hash = valueHash(v);
         const from = renamedFrom(key, v, before, migrations);

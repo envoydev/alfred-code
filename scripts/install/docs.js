@@ -819,8 +819,12 @@ function ensureDocsIgnore({ projectRoot, docsPath, mode, covered = false, log = 
 // places) moves nothing and keeps the key, so the hooks keep reading where the docs are until one side is cleared. With
 // no key the root to drain is the earlier data root's docs (a data-root change), or on a stamped install the old default
 // LEGACY_DOCS_ROOT, which a release before 2.0.0 read with no key at all. Never a part of the data-move offer: the docs
-// move unasked, the servers' data stays asked.
+// move unasked, the servers' data stays asked - except a HAND-SET root (`handSet`: one no release seeded and no ledger
+// row records), which may be the team's own `docs/`: since the stack's entries are picked by name, it moves only on the
+// answer to update's ask (`--docs-root-move`), which names the entries that are the team's own (`leave`, kept in place).
+// There is no keep - every docs file of the stack's belongs under the data root (the user's answers of 2026-10-20).
 const LEGACY_DOCS_ROOT = '.claude/docs';
+const SEEDED_DOCS_ROOT = '.alfred/docs';
 const DOCS_KEY = 'ALFRED_CODE_DOCS_PATH';
 const normRoot = (v) => String(v || '').replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
 
@@ -883,30 +887,40 @@ function docsMoveViews({ claudeDir })
 // stay) or 'blocked' (a key sits in settings.json, which a local-scope run does not write - nothing moves). `keys`: each
 // file's value; `from`: the root in effect (settings.local.json over settings.json, Claude Code's merge); `left`: the
 // project's own top-level entries there; `shadowed`: a settings.json root settings.local.json hid, named, never moved.
-function docsMovePlan({ projectRoot, shared = {}, personal = {}, broken = null, scope = 'project', stamped = false, to, prior = null })
+function docsMovePlan({ projectRoot, shared = {}, personal = {}, broken = null, scope = 'project', stamped = false, to, prior = null, ledgered = [], leave = [] })
 {
     const target = normRoot(to);
     // An empty value is still a key to drop, but names no root: every reader takes the default for it.
     const keys = [['settings.json', shared], ['settings.local.json', personal]]
         .filter(([, env]) => env && typeof env[DOCS_KEY] === 'string')
         .map(([file, env]) => ({ file, value: normRoot(env[DOCS_KEY]) }));
-    const base = { to: target, keys, from: null, tracked: [], untracked: [], conflicts: [], left: [], shadowed: [], ignored: false };
+    const base = { to: target, keys, from: null, moves: [], tracked: [], untracked: [], conflicts: [], left: [], shadowed: [], ignored: false, handSet: false, unknown: [] };
     if (broken) return { ...base, state: 'none', why: `${broken} cannot be read` };
     const stuck = scope === 'local' ? keys.find((k) => k.file === 'settings.json' && k.value && k.value !== target) : null;
     if (stuck) return { ...base, from: stuck.value, state: 'blocked', why: `settings.json sets ${DOCS_KEY} '${stuck.value}', which a local-scope run does not write` };
     const effective = keys.length ? keys[keys.length - 1].value : '';
     const from = effective || (stamped && prior ? `${normRoot(prior)}/docs` : stamped ? LEGACY_DOCS_ROOT : null);
     const shadowed = keys.length > 1 && keys[0].value && keys[0].value !== from && keys[0].value !== target ? [keys[0].value] : [];
-    const settled = { ...base, from, shadowed, state: keys.length ? 'drop' : 'none' };
+    // `ledgered`: the hashes the stamp's ledger records for the key - a value among them is one the stack wrote.
+    const { valueHash } = require('./stamp.js');
+    const seeded = [target, SEEDED_DOCS_ROOT, LEGACY_DOCS_ROOT, prior ? `${normRoot(prior)}/docs` : null];
+    const raw = keys.length ? (keys[keys.length - 1].file === 'settings.json' ? shared : personal)[DOCS_KEY] : '';
+    const handSet = Boolean(effective) && !seeded.includes(effective) && ![effective, raw].some((v) => ledgered.includes(valueHash(v)));
+    const settled = { ...base, from, shadowed, handSet, state: keys.length ? 'drop' : 'none' };
     if (!from || from === target) return { ...settled, why: `the docs root is ${target}` };
     const abs = path.join(projectRoot, ...from.split('/'));
     let entries = [];
     try { entries = fs.readdirSync(abs, { withFileTypes: true }); } catch { entries = []; }
-    const ours = entries.filter((e) => stackEntry(abs, e));
+    // `leave`: the entries update's ask named as the team's own - they stay, with the project's. `unknown`: a name among
+    // them that is none of the stack's, which the docs step refuses rather than guess at; nothing is left out then, so
+    // `moves` names every entry it could have meant.
+    const stackOwn = entries.filter((e) => stackEntry(abs, e));
+    const unknown = leave.filter((n) => !stackOwn.some((e) => e.name === n));
+    const ours = unknown.length ? stackOwn : stackOwn.filter((e) => !leave.includes(e.name));
     const stackIgnore = (name) => name === '.gitignore' && (() => { try { const t = fs.readFileSync(path.join(abs, name), 'utf8'); return Object.values(DOCS_IGNORE).includes(t) || DOCS_IGNORE_FORMER.includes(t); } catch { return false; } })();
     const left = entries.filter((e) => !ours.includes(e) && !OS_LITTER.has(e.name) && !stackIgnore(e.name)).map((e) => e.name).sort();
     const files = ours.flatMap((e) => (e.isDirectory() ? filesUnder(path.join(abs, e.name)).map((f) => `${e.name}/${f}`) : [e.name])).sort();
-    if (!files.length) return { ...settled, left, why: `nothing of the stack's under ${from}` };
+    if (!files.length) return { ...settled, left, unknown, why: `nothing of the stack's under ${from}` };
     let tracked = [];
     try
     {
@@ -926,8 +940,12 @@ function docsMovePlan({ projectRoot, shared = {}, personal = {}, broken = null, 
         catch { ignored = false; }
     const dest = path.join(projectRoot, ...target.split('/'));
     const conflicts = files.filter((f) => fs.existsSync(path.join(dest, ...f.split('/'))));
+    // The old root's own .gitignore, when it holds a text the stack wrote, goes with the move (moveDocsRoot).
+    const ignoreFile = entries.some((e) => stackIgnore(e.name)) ? '.gitignore' : null;
+    // What moves, top level, a folder with its slash - the ask names these, so a team spots its own decisions/.
+    const moves = ours.map((e) => (e.isDirectory() ? `${e.name}/` : e.name)).sort();
     return {
-        ...settled, left, ignored, tracked, untracked: files.filter((f) => !isTracked.has(f)), conflicts,
+        ...settled, moves, left, unknown, ignored, ignoreFile, tracked, untracked: files.filter((f) => !isTracked.has(f)), conflicts,
         state: conflicts.length ? 'clash' : 'move', why: conflicts.length ? `${conflicts.length} file(s) already at ${target}` : `the stack's docs under ${from}`,
     };
 }
@@ -977,6 +995,13 @@ function moveDocsRoot({ projectRoot, plan })
             catch { /* the error below names the move; a file that cannot go back stays where it is */ }
         }
         return { ok: false, moved: 0, gitMoved: 0, error: err.message };
+    }
+    // The stack's own .gitignore at the old root is no file of the project's: staged as a deletion where git tracks it.
+    if (plan.ignoreFile)
+    {
+        const rm = rel(plan.from, plan.ignoreFile);
+        try { rt.execCommand('git', ['rm', '-q', '-f', '--', rm], { cwd: projectRoot, stdio: 'ignore' }); }
+        catch { try { fs.unlinkSync(path.join(from, plan.ignoreFile)); } catch { /* left in place */ } }
     }
     // Only folders the move emptied: a folder still holding anything is not the old root's to remove.
     const prune = (dir) =>

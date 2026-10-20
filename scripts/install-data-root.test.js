@@ -311,10 +311,10 @@ test('--data-path over existing data with no --data-move changes nothing and say
     assert.ok(r.has('.alfred/docs/x.md') && !r.has('.data'));
 });
 
-test('a docs root the user set: the stack\'s docs move to <data root>/docs, the project\'s own files there stay, and the key goes', POSIX_ONLY, () =>
+test('a docs root the user set, moved on the answer to update\'s ask: the stack\'s docs go to <data root>/docs, the project\'s own files stay, the key goes', POSIX_ONLY, () =>
 {
     const { result: r, outs } = seedRun(['install', 'update'], SELECTION, {
-        prepare: prep, env: COPY_ENV, args: [['--scope', 'project', '--browsers', 'chrome'], [...UPDATE, '--data-move', 'move']],
+        prepare: prep, env: COPY_ENV, args: [['--scope', 'project', '--browsers', 'chrome'], [...UPDATE, '--data-move', 'move', '--docs-root-move', 'move']],
         each: (repo, i) =>
         {
             if (i !== 0) return null;
@@ -676,8 +676,8 @@ test('old credentials: an update moves credentials.local.env into the store and 
 });
 
 // Found by the temp-project matrix: a docs root only settings.local.json names is the one a session (and so the capture)
-// writes the run book under, while this run's docs root was settings.json's at project scope (R98). Since 2.8.0 the docs
-// step moves the stack's docs from that leftover root to <data root>/docs first, so the run book is adopted from there.
+// writes the run book under, while this run's docs root was settings.json's at project scope (R98). Since 2.8.0 that root
+// is a hand-set one, kept until update's ask is answered, so the run book is adopted from where it is.
 test('old credentials: a run book under a docs root only settings.local.json names is moved too', POSIX_ONLY, () =>
 {
     const { steps, outs } = seedRun(['install', 'update'], SELECTION, {
@@ -693,8 +693,8 @@ test('old credentials: a run book under a docs root only settings.local.json nam
             return read(path.join(repo, '.alfred', '.sensitive-data'));
         },
     });
-    assert.match(outs[1], /docs root: moved handbook -> \.alfred\/docs/, outs[1]);
-    assert.match(outs[1], /sensitive data: \.alfred\/docs\/project-capabilities\/credentials\.local\.env -> \.alfred\/\.sensitive-data \(ADMIN_PASSWORD added\)/, outs[1]);
+    assert.match(outs[1], /!! docs root: handbook was set by hand - nothing moved/, outs[1]);
+    assert.match(outs[1], /sensitive data: handbook\/project-capabilities\/credentials\.local\.env -> \.alfred\/\.sensitive-data \(ADMIN_PASSWORD added\)/, outs[1]);
     assert.match(steps[1] || '', /^ADMIN_PASSWORD=pa55-w0rd-xyz$/m);
 });
 

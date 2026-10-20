@@ -375,6 +375,18 @@ test('args: --plan-out takes a file and belongs to --print-plan', () =>
     assert.throws(() => parseArgs(['update', '--plan-out', 'inv.json'], {}), /--plan-out needs --print-plan/);
 });
 
+// The answer to update's hand-set docs-root ask (the user's answers of 2026-10-20): a move, naming the team's own entries
+// to leave where they are - no keep, since every docs file of the stack's belongs under the data root.
+test('install-args: --docs-root-leave names top-level entries and belongs to --docs-root-move move; keep is gone', () =>
+{
+    assert.deepStrictEqual(ok(['update', '--docs-root-move', 'move', '--docs-root-leave', 'architecture/, decisions']).docsRootLeave, ['architecture', 'decisions']);
+    assert.deepStrictEqual(ok(['update']).docsRootLeave, []);
+    fails(['update', '--docs-root-move', 'keep'], /--docs-root-move must be 'move'/);
+    fails(['update', '--docs-root-leave', 'architecture'], /--docs-root-leave needs --docs-root-move move/);
+    fails(['update', '--docs-root-move', 'move', '--docs-root-leave', '../x'], /--docs-root-leave names top-level entries/);
+    fails(['update', '--docs-root-move', 'move', '--docs-root-leave', 'a/b'], /--docs-root-leave names top-level entries/);
+});
+
 // T4: configure and validate take their inventory from this dry run, so it names what the plan
 // answered and writes the walk's --installed JSON - and nothing else.
 test('install-entry: --print-plan --plan-out writes the inventory JSON and names what was answered', () =>

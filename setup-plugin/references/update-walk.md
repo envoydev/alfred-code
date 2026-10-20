@@ -69,6 +69,8 @@ It prints, in order:
   not be read).
 - `data-move: offer <root><TAB>from=<places><TAB>...` - this project's data sits outside its data root, or
   `data-move: none (<why>)`. Only `offer` is asked, below.
+- `docs-move: offer <from> -> <to><TAB>moves=<names><TAB>stack=<n><TAB>own=<names|none>` - a docs root the user set by
+  hand holds the stack's docs, or `docs-move: none (<why>)`. Only `offer` is asked, below.
 - `agents-md: offer .claude/CLAUDE.md -> .claude/AGENTS.md` - the instruction file still carries the old name and no
   AGENTS.md sits beside it or at the root, or `agents-md: none (<why>)`. Only `offer` is asked, below.
 - `env-keys: <names>` - the scope's settings `env` KEY NAMES before the run, the before-state step 7 diffs against.
@@ -124,6 +126,26 @@ bca100bd: the monitor hook re-created `<old root>/flow/` after the move). Say so
 leaves: after the restart, a file under the old root's `state/` or `statistics/` - or, from a session that started
 before 2.8.0, its `flow/` or `hook-blocks/` - is this session's record and safe to delete.
 
+**A docs root the user set by hand - ONE ask, and only on `docs-move: offer`.** Every other leftover docs root moves
+unasked; this one may be the team's own folder, and the stack picks its entries by name - so the question names every
+entry of `moves=`, never a count alone, and the user spots a `decisions/` or `architecture/` of the team's own. There is
+no keep: every docs file of the stack's belongs under the data root, and a user who wants it elsewhere changes the data
+root. In the same AskUserQuestion call as the other asks (one question each):
+
+```ask
+Move <every moves= entry> from <from> to <to>? <from> was set by hand, and the stack picks these by name. <n> files move (git renames where tracked); <own> stay where they are.
+- 'Move them all (Recommended)' - every docs file of the stack's under the data root, as every install has from 2.8.0; a link to an old path needs updating
+- 'Some are the team's own' - pick them next: they stay in <from>, the rest move, and the setting goes either way
+```
+
+'Move them all' is `--docs-root-move move` on the installer call of whichever path runs. 'Some are the team's own'
+opens ONE AskUserQuestion call of multi-select questions, each option one `moves=` entry spelled as printed (2-4 options
+a question, up to 4 questions; header `Team's own`); the picks are `--docs-root-move move --docs-root-leave
+<entry>,<entry>`, and no pick is 'Move them all'. A `!! docs root: --docs-root-leave names ...` line means a name was
+none of the stack's and nothing moved: ask again from the names it lists. Unattended, take the Recommended option,
+`--docs-root-move move`: every docs file of the stack's belongs under the data root, a move loses nothing (git renames
+where tracked), and the log's `docs root: moved` line names what moved, so the team can move one back.
+
 **The instruction file's name - ONE ask, and only on `agents-md: offer`.** Before the installer runs,
 in the same AskUserQuestion call as the other asks (one question each):
 
@@ -143,7 +165,7 @@ Run the installer; it reads the install back itself, closes new dependencies thr
 any `installed-only: required:` additions. **One fixed capture form, always** - `2>&1 | tee "$TMP/install.log"` on
 the call itself (the shared contract is in `source-protocol.md`'s 'Capture the installer's own output'):
 
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add "<category> <name>"]... [--drop "<category> <name>"]... [--space <name>] --keep-pins [--docs-versioning git|local] [--data-move move|keep] [--data-path <folder>] [--memory-level global|scoped|project] [--rename-claude-md] 2>&1 | tee "$TMP/install.log"`
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add "<category> <name>"]... [--drop "<category> <name>"]... [--space <name>] --keep-pins [--docs-versioning git|local] [--data-move move|keep] [--data-path <folder>] [--docs-root-move move [--docs-root-leave <entry>,...]] [--memory-level global|scoped|project] [--rename-claude-md] 2>&1 | tee "$TMP/install.log"`
 - **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED` set to `shell`). The frozen OS twin is gone, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
 
 `<scope>` comes from `node "$TMP/repo/scripts/install/stamp.js" scope .` (`project`, `user` or `local`) and
