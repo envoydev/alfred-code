@@ -121,7 +121,7 @@
             "--package",
             "windows-mcp==0.8.8",
             "--exclude-newer",
-            "2026-10-14T23:59:59Z",
+            "2026-10-20T23:59:59Z",
             "--",
             "serve",
             "--exclude-tools",
@@ -153,7 +153,7 @@
             "--package",
             "macos-mcp==0.4.6",
             "--exclude-newer",
-            "2026-10-14T23:59:59Z",
+            "2026-10-20T23:59:59Z",
             "--",
             "serve"
           ],
@@ -179,9 +179,9 @@
           "args": [
             "${CLAUDE_PLUGIN_ROOT}/stack/mcp/serena-launch.js",
             "--package",
-            "serena-agent@2.0.0",
+            "serena-agent@2.1.0",
             "--exclude-newer",
-            "2026-10-14T23:59:59Z",
+            "2026-10-20T23:59:59Z",
             "--",
             "start-mcp-server",
             "--context",
@@ -234,9 +234,9 @@
           "args": [
             "${CLAUDE_PLUGIN_ROOT}/stack/mcp/memory-launch.js",
             "--package",
-            "mcp-memory-service[sqlite]==12.0.0",
+            "mcp-memory-service[sqlite]==12.1.1",
             "--exclude-newer",
-            "2026-10-14T23:59:59Z"
+            "2026-10-20T23:59:59Z"
           ],
           "env": {
             "MCP_MEMORY_STORAGE_BACKEND": "sqlite_vec",
@@ -263,7 +263,7 @@
             "--package",
             "appium-mcp@1.97.1",
             "--before",
-            "2026-10-14T23:59:59Z"
+            "2026-10-20T23:59:59Z"
           ]
         }
       }
@@ -380,7 +380,7 @@
             "--package",
             "windows-mcp==0.8.8",
             "--exclude-newer",
-            "2026-10-14T23:59:59Z",
+            "2026-10-20T23:59:59Z",
             "--",
             "serve",
             "--exclude-tools",
@@ -412,7 +412,7 @@
             "--package",
             "macos-mcp==0.4.6",
             "--exclude-newer",
-            "2026-10-14T23:59:59Z",
+            "2026-10-20T23:59:59Z",
             "--",
             "serve"
           ],

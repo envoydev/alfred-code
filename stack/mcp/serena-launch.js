@@ -47,7 +47,7 @@ const dataRoot = require('./data-root.js');
 
 // serena-agent sends a usage ping (os, version, backend, context name; 2.0.0 adds the agent interface, on a background
 // thread) to its maker's host at every agent start unless SERENA_USAGE_REPORTING is 'false' (serena/agent.py
-// `_send_usage_info`, 1.7.0 and 2.0.0). The plugin entry passes this env, and
+// `_send_usage_info`, 1.7.0 to 2.1.0). The plugin entry passes this env, and
 // the copy route registers the same pair, as the desktop servers turn their telemetry off (audit 2026-10-14, PL1).
 const NAVIGATION_ENV = Object.freeze({ SERENA_USAGE_REPORTING: 'false' });
 
