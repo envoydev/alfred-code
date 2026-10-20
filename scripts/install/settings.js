@@ -137,6 +137,8 @@ function readSettings(file)
     let raw;
     try { raw = fs.readFileSync(file, 'utf8'); }
     catch (err) { const e = new Error(`${path.basename(file)} could not be read (${err.code || err.message}) - left untouched; fix it and re-run`); e.leaveAlone = true; throw e; }
+    // An empty file holds nothing to lose: no settings yet, as memory.js writeSwitchOff reads it (release matrix 2026-10-20).
+    if (!raw.trim()) return { data: {}, existed: true };
     let parsed;
     try { parsed = parseJson(raw); }
     catch (err) { const e = new Error(`${path.basename(file)} is not valid JSON (${err.message}) - left untouched; fix it and re-run`); e.leaveAlone = true; throw e; }
