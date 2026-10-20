@@ -392,9 +392,10 @@ function repointDocs({ projectRoot, docsPath, base, rules = [], instructions = [
 // .gitignore is the project's own: everywhere else the data root's one file carries these rules (data-root.js
 // dataIgnoreText, the user's ruling of 2026-10-13) and an update removes this file when it is the stack's text.
 // `local` keeps the whole root out of git - and git then answers check-ignore for the root, so the four-home rule
-// reads it back as kept out. `git` commits the docs and keeps out only the two machine-local files under them
-// (data-root.js DOCS_STATE_IGNORE): the run book's old credentials file and the awareness inventory. The hooks' state and
-// ledgers left the docs root in 2.8.0 for the data root's state/ and statistics/ (docs.migrateLayout).
+// reads it back as kept out. `git` commits the docs and keeps out what is machine-local under them (data-root.js
+// DOCS_STATE_IGNORE): the run book's old credentials file, the awareness inventory and the hooks' pre-2.8.0 state homes,
+// which a session started before the update still writes - the state itself left for the data root's state/ and
+// statistics/ in 2.8.0 (docs.migrateLayout).
 const { DOCS_STATE_IGNORE } = require('../../stack/mcp/data-root.js');
 const DOCS_IGNORE = {
     local: '# alfred-code: the docs root is machine-local (ALFRED_CODE_DOCS_VERSIONING=local)\n*\n',
@@ -403,8 +404,8 @@ const DOCS_IGNORE = {
 };
 // Texts an earlier release wrote, still the stack's own: an update replaces them instead of keeping them as
 // the project's. 2.1.3's git text had no usage-report line; up to 2.1.6 the folder was `alfred-code-usage-report/`;
-// up to 2.4.0 there was no credentials line; up to 2.5.0 no awareness line; up to 2.7.0 the six state lines and the usage
-// audit's (the first row).
+// up to 2.4.0 there was no credentials line; up to 2.5.0 no awareness line; up to 2.7.0 a header naming the hooks' state,
+// `/.branches/` and the whole `/history/` (the first row).
 const DOCS_IGNORE_FORMER = [
     '# alfred-code: the docs are committed (ALFRED_CODE_DOCS_VERSIONING=git); the hooks\' machine-local state is not\n'
         + '/flow/\n/hook-blocks/\n/history/\n/tools-usage/\n/.branches/\n/docs-log.jsonl\n'

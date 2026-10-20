@@ -118,8 +118,9 @@ The memory levels and stores, where the docs root and the data root live, and th
   project memory folder) while each holds exactly the stack's text (`docs.pruneNestedIgnores`); serena's folder file is
   serena's - it writes one whenever none is there. A docs root OUTSIDE the data root, or under a data root whose file is
   the project's own, keeps its own (`docs.ensureDocsIgnore`, never under `.claude/`). `local` keeps the whole docs root out of
-  git, `git` commits it but for the run book's old `credentials.local.env` and the awareness inventory
-  (`data-root.js DOCS_STATE_IGNORE`). The hooks' machine state and ledgers left the docs root in 2.8.0 (`stack/hooks/layout.js`):
+  git, `git` commits it but for the run book's old `credentials.local.env`, the awareness inventory and the hooks' pre-2.8.0
+  state homes, which a session started before the update still writes and an unanswered hand-set root keeps (`data-root.js
+  DOCS_STATE_IGNORE`; the temp-project matrix of 2026-10-21 found them visible to git once dropped). The hooks' machine state and ledgers left the docs root in 2.8.0 (`stack/hooks/layout.js`):
   `<data root>/state/` (approvals, session scratch, history) and `<data root>/statistics/` (block, tool-usage and docs ledgers,
   the usage audit's reports and raw transcript copies), both under the data root's `/*`, so never committed whatever the
   versioning; `docs.migrateLayout` moves an older project's folders there on update, file by file, `git mv` where tracked, a

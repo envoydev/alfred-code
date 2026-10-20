@@ -139,10 +139,14 @@ function sharedBrowserOf(cls, root = DATA_ROOT_DEFAULT)
 // read by the installer (docs.ensureDataIgnore) and by every launcher that writes under the root (ensureRootIgnore).
 // A docs root OUTSIDE this root keeps its own file (docs.ensureDocsIgnore) - no file of the stack's reaches it.
 const DATA_IGNORE_HEAD = '# alfred-code: the data root (ALFRED_CODE_DATA_PATH) is machine-local';
-// What stays machine-local under the docs root, relative to it: never committed, whatever the versioning. The six state
-// lines (flow/, hook-blocks/, history/, tools-usage/, .branches/, docs-log.jsonl) and the usage audit's went in 2.8.0 with
-// the folders they named (docs.migrateLayout); `.branches/` is never written under `git`, and `local` keeps the root out.
+// What stays machine-local under the docs root, relative to it: never committed, whatever the versioning. The hooks' state
+// left in 2.8.0 for the data root's state/ and statistics/ (docs.migrateLayout), but its old homes stay listed for the 2.x
+// line: a session started before the update writes them again, and a hand-set root keeps them until its move is answered
+// (temp-project matrix, 2026-10-21). A history record is `<session>.json`, so a team's own docs/history/ notes stay in git.
+// `.branches/` is never written under `git`, and `local` keeps the root out.
 const DOCS_STATE_IGNORE = [
+    "# the hooks' state before 2.8.0, which a session started before the update still writes",
+    '/flow/', '/hook-blocks/', '/history/*.json', '/tools-usage/', '/docs-log.jsonl', '/usage-report/**/*.jsonl',
     "# the run book's credentials file before 2026-10-13, which an older capture still writes",
     '/project-capabilities/credentials.local.env',
     "# the awareness capture's inventory names this machine's plugins",

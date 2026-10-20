@@ -79,15 +79,22 @@ test('a local root over docs git already tracks keeps them visible, the machine 
     assert.ok(logs.some((m) => /git tracks docs under \.alfred\/docs - they stay visible to git/.test(m)), logs.join(' | '));
 });
 
-test('2.8.0: the git-mode texts name none of the six state lines the hooks no longer write under the docs root', () =>
+// The pre-2.8.0 homes of the hooks' state stay out of git for the 2.x line (temp-project matrix, 2026-10-21): a session
+// started before the update runs its old hooks and writes them again, and a hand-set root keeps them until its move is
+// answered. With the lines dropped, `git add -A` under git versioning took an approval stamp and the block ledger.
+const OLD_HOMES = ['flow/APPROVAL', 'flow/turn-check-s', 'hook-blocks/s.jsonl', 'tools-usage/s.jsonl', 'docs-log.jsonl', 'history/s.json',
+    'usage-report/s1/raw.jsonl'];
+test('2.8.0: the hooks\' pre-2.8.0 homes under the docs root stay out of git; a team\'s own doc beside them does not', () =>
 {
-    const gone = /^\/(?:[^\n]*\/)?(?:flow|hook-blocks|history|tools-usage|\.branches)\/$|docs-log\.jsonl$|usage-report/m;
-    const data = dataRoot.dataIgnoreText({ root: '.alfred', docsPath: '.alfred/docs', mode: 'git' });
-    assert.doesNotMatch(data, gone, data);
-    assert.match(data, /^\/\*$/m, 'the data root keeps everything out, state/ and statistics/ included');
-    assert.match(data, /^\/docs\/awareness\/AGENTS-AWARENESS\.md$/m);
-    assert.match(data, /^\/docs\/project-capabilities\/credentials\.local\.env$/m);
-    assert.doesNotMatch(docs.DOCS_IGNORE.git, gone, docs.DOCS_IGNORE.git);
+    const inData = repo();
+    docs.ensureDataIgnore({ projectRoot: inData, root: '.alfred', docsPath: '.alfred/docs', mode: 'git' });
+    for (const rel of [...OLD_HOMES, 'history/decisions.md', 'work/plans/p.md']) put(inData, `.alfred/docs/${rel}`);
+    assert.deepStrictEqual(status(inData), ['?? .alfred/.gitignore', '?? .alfred/docs/history/decisions.md', '?? .alfred/docs/work/plans/p.md']);
+    const outside = repo();
+    docs.ensureDataIgnore({ projectRoot: outside, root: '.alfred', docsPath: 'docs', mode: 'git' });
+    docs.ensureDocsIgnore({ projectRoot: outside, docsPath: 'docs', mode: 'git' });
+    for (const rel of [...OLD_HOMES, 'history/decisions.md']) put(outside, `docs/${rel}`);
+    assert.deepStrictEqual(status(outside), ['?? .alfred/.gitignore', '?? docs/.gitignore', '?? docs/history/decisions.md']);
 });
 
 test('2.8.0: an update replaces the 2.7.0 git text in a docs root\'s own file - it is the stack\'s, not the project\'s', () =>
