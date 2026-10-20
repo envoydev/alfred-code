@@ -115,8 +115,8 @@ installed) as the USER's next step when step 2's `changed-here:` line shows `ski
 THAT number alone (the installer re-copies every file every run, so any other gate is always true; the generated
 inventory stamps each skill's first sentence, which drifts with content-only updates). When the navigation server is
 installed, name the one-off re-index as a next step whenever this run re-seeded serena's `project.yml` (the grep's
-`serena project index` line): `SERENA_HOME=.alfred/serena/home uvx --python 3.13 --exclude-newer 2026-10-14T23:59:59Z
---from serena-agent@2.0.0 serena project index` (the release pin and cut-off from `meta/mcp-pins.json`; the data
+`serena project index` line): `SERENA_HOME=.alfred/serena/home uvx --python 3.13 --exclude-newer 2026-10-20T23:59:59Z
+--from serena-agent@2.1.0 serena project index` (the release pin and cut-off from `meta/mcp-pins.json`; the data
 root's own folder in place of `.alfred`, `.serena/home` while a 2.0.0 folder has not moved; Windows PowerShell:
 `$env:SERENA_HOME='.alfred\serena\home'`, and on Windows on ARM `--python cpython-3.13-windows-x86_64-none`). Never invoke it from this run - the skill is manual-only (`disable-model-invocation`), so a
 Skill call is DENIED by `guard-fresh-session-start.js`; the report line is the mechanism.
