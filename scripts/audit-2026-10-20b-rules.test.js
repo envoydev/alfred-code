@@ -52,3 +52,22 @@ test('R3: a code, architecture or git preference is stored and routed to /captur
     const seatBranch = hook.slice(hook.indexOf("if (event === 'SubagentStart')"), hook.indexOf('const level = memory.levelOfPath'));
     assert.ok(seatBranch.includes("return emit('SubagentStart'") && !seatBranch.includes('selectForSession'), 'a seat gets the tag and tool lines, no memory block');
 });
+
+// R4: the markdown carve-out lists the generated rules by name, and 2.8.0 added alfred-preferences.md (written by the
+// capture's script) without adding it there or in the skill's restatement.
+test('R4: the markdown carve-out names every generated rule, the preferences one included', () =>
+{
+    const names = '`alfred-architecture.md`, `alfred-awareness.md`, `alfred-preferences.md` or `project-code-style.md`';
+    assert.ok(injected('markdown-docs').includes(names), 'the rule');
+    assert.ok(flat(read('stack/skills/markdown-style/SKILL.md')).includes(names), 'the skill restatement');
+    assert.ok(require('./install/selection.js').RULE_EXCLUDE.test('alfred-preferences'), 'the installer treats it as generated');
+});
+
+// R5: the docs-root rule put the sibling repos in awareness/ in one bullet and 'a doc about it' in
+// work/cross-project-tasks/ in the next; the placement registry's own note says every OTHER sibling doc goes there.
+test('R5: the sibling orientation doc stays in awareness/, any other sibling doc goes to work/cross-project-tasks/', () =>
+{
+    const rule = injected('alfred-docs-root');
+    assert.ok(rule.includes('the awareness docs (`awareness/` - the install\'s inventory, the run book, the sibling repos)'));
+    assert.ok(rule.includes('by default any other doc about it, and a change it must make (a task card), lives in `work/cross-project-tasks/`'));
+});
