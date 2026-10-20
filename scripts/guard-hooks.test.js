@@ -2019,7 +2019,8 @@ test('guard-cross-project-write: the denial names an absolute card path under wo
   const name = `${path.basename(XP_OTHER)}.md`;
   const rel = card({});
   assert.ok(path.isAbsolute(rel), rel);
-  assert.ok([XP_ROOT, fs.realpathSync(XP_ROOT)].map((r) => path.join(r, '.alfred', 'docs', 'work', 'cross-project-tasks', name)).includes(rel), rel);
+  // the hook's ROOT is the NATIVE realpath: on a Windows runner it expands an 8.3 temp segment (RUNNER~1) the JS one keeps
+  assert.ok([XP_ROOT, fs.realpathSync(XP_ROOT), fs.realpathSync.native(XP_ROOT)].map((r) => path.join(r, '.alfred', 'docs', 'work', 'cross-project-tasks', name)).includes(rel), rel);
   const absRoot = path.join(TMP, 'shared docs');
   assert.strictEqual(card({ ALFRED_CODE_DOCS_PATH: absRoot }), path.join(absRoot, 'work', 'cross-project-tasks', name), 'an absolute docs root is kept, never joined under the project');
 });
