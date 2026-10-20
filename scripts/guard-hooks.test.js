@@ -4455,6 +4455,8 @@ test('guard-desktop-exec: the DESKTOP-EXEC-ALLOW receipt opens it - this session
   fs.writeFileSync(receipt, '# the user allowed it\nbuild.exe\n');
   // audit 2026-10-20 (hooks minor list): a file-name line no longer opens that name in every directory
   assert.equal(desktopRun(root, WIN_APP[0], launch).status, 2, 'a file-name line opens no full path');
+  assert.match(desktopRun(root, WIN_APP[0], launch).stderr, /line `build\.exe` is a bare file name[\s\S]*replace that line/, 'and the denial names the line and the full path to write');
+  assert.doesNotMatch(desktopRun(root, WIN_APP[0], { ...launch, executable: 'C:\\Tools\\other.exe' }).stderr, /bare file name/, 'never for another executable');
   assert.equal(desktopRun(root, WIN_APP[0], { ...launch, executable: 'build.exe' }).status, 0, 'only the bare call it names');
   fs.writeFileSync(receipt, '# the user allowed it\nc:/tools/BUILD.exe\n');
   assert.equal(desktopRun(root, WIN_APP[0], launch).status, 0, 'the full path, in either slash and case on Windows');

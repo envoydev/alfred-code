@@ -919,7 +919,8 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     shell guard sees) are denied; `App`'s `launch` / `switch` / `resize` pass. 'Allow' is honoured through
     `<docs-path>/flow/DESKTOP-EXEC-ALLOW` (`App`, `Shell`, one executable's FULL path - either slash, and either case on
     a Windows path - or `*`; a bare file name opens only a call naming it bare, never that name in every directory - audit
-    2026-10-20, the hooks track's minor list); the denial suggests the full path, and a Shell block row keeps
+    2026-10-20, the hooks track's minor list); the denial suggests the full path - and names a live bare line that
+    missed it, with the full path to write in its place - and a Shell block row keeps
     the command's verb only, never the command (audit 2026-10-08). PROTECTIVE
     (final review IM2, the user's ruling): it holds under `minimal`, a Cursor payload and a repo never set up, where
     it writes no row - the Shell it gates is one the other protective guards never see.
