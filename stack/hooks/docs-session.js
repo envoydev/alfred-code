@@ -456,38 +456,47 @@ function sweepStrandedRoot(root) {
   return files;
 }
 
+// 2.8.0: the records and pointers are session scratch, <data root>/state/sessions/ (layout.js); one an older hook left
+// in the pre-2.8.0 <docs-path>/flow/ is still read, so a session it started keeps its record.
 function recordUntracked(input, root) {
   let file;
   let list;
   try {
     const flow = path.resolve(root, docsRootEnv(), 'flow');
+    const find = (name) => (layout ? layout.findState(root, 'sessions', name) : path.join(flow, name));
     const sid = String(input.session_id || '').replace(/[^\w.-]/g, '_');
-    const pointer = sid ? path.join(flow, `untracked-session-${sid}`) : '';
+    const pointer = sid ? `untracked-session-${sid}` : '';
     const later = input.source === 'compact' || input.source === 'resume';
     if (later && pointer) {
       try {
-        const named = path.basename(fs.readFileSync(pointer, 'utf8').trim());
-        if (named.startsWith('untracked-at-start-') && fs.existsSync(path.join(flow, named))) file = path.join(flow, named);
+        const named = path.basename(fs.readFileSync(find(pointer), 'utf8').trim());
+        if (named.startsWith('untracked-at-start-') && fs.existsSync(find(named))) file = find(named);
       } catch { /* no pointer - an older start, or none */ }
     }
     if (!file) {
       let head = '';
       try { head = require('child_process').execFileSync(...require('./hook-prelude.js').gitSafe(['rev-parse', '--verify', '-q', 'HEAD'], { cwd: root, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] })).toString().trim(); } catch { /* no commit yet, or no repo - ls-files below tells them apart */ }
-      file = path.join(flow, `untracked-at-start-${/^[0-9a-f]{7,64}$/.test(head) ? head : 'unborn'}`);
+      file = find(`untracked-at-start-${/^[0-9a-f]{7,64}$/.test(head) ? head : 'unborn'}`);
     }
     if (fs.existsSync(file)) list = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean);
     else if (later) return '';
     else {
       const out = require('child_process').execFileSync(...require('./hook-prelude.js').gitSafe(['-c', 'core.quotePath=false', 'ls-files', '--others', '--exclude-standard', '-z'],
         { cwd: root, timeout: 5000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] })).toString('utf8');
-      const docsRel = toPosix(path.relative(root, path.resolve(root, docsRootEnv())));
-      const inDocs = (f) => !docsRel.startsWith('..') && docsRel && (f === docsRel || f.startsWith(`${docsRel}/`));
+      // The stack's own files are never the change: the docs root, and the data root's state/ and statistics/.
+      const own = [docsRootEnv(), ...(layout ? ['state', 'statistics'].map((d) => path.join(layout.dataRoot(), d)) : [])]
+        .map((d) => toPosix(path.relative(root, path.resolve(root, d)))).filter((d) => d && !d.startsWith('..'));
+      const inDocs = (f) => own.some((d) => f === d || f.startsWith(`${d}/`));
       list = out.split('\0').filter((f) => f && !f.includes('\n') && !inDocs(f)).slice(0, UNTRACKED_CAP);
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, list.map((f) => `${f}\n`).join(''));
       sweepRecords(path.dirname(file));
     }
-    if (pointer && !later) fs.writeFileSync(pointer, `${path.basename(file)}\n`);
+    if (pointer && !later) {
+      const at = layout ? layout.statePath(root, 'sessions', pointer) : path.join(flow, pointer);
+      fs.mkdirSync(path.dirname(at), { recursive: true });
+      fs.writeFileSync(at, `${path.basename(file)}\n`);
+    }
   } catch { return ''; }
   if (!list.length) return '';
   const rel = toPosix(path.relative(root, file));

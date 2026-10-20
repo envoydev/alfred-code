@@ -6462,6 +6462,14 @@
         {
           "file": "stack/skills/habits-commit-checkpoint/scripts/receipt.js",
           "marker": "function envOf(env, suffix)\n{\n    const value = env[`ALFRED_CODE_${suffix}`];\n    return value === '' ? undefined : value;\n}"
+        },
+        {
+          "file": "stack/skills/task-solve/scripts/spec-check.js",
+          "marker": "function envOf(env, suffix)\n{\n    const value = env[`ALFRED_CODE_${suffix}`];\n    return value === '' ? undefined : value;\n}"
+        },
+        {
+          "file": "stack/skills/task-solve-cross/scripts/spec-check.js",
+          "marker": "function envOf(env, suffix)\n{\n    const value = env[`ALFRED_CODE_${suffix}`];\n    return value === '' ? undefined : value;\n}"
         }
       ]
     },
@@ -7709,6 +7717,14 @@
       "sites": [
         {
           "file": "stack/skills/habits-commit-checkpoint/scripts/receipt.js",
+          "marker": "const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\\\/g, '/').replace(/^\\.\\//, '').replace(/\\/+$/, '') || '.alfred';"
+        },
+        {
+          "file": "stack/skills/task-solve/scripts/spec-check.js",
+          "marker": "const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\\\/g, '/').replace(/^\\.\\//, '').replace(/\\/+$/, '') || '.alfred';"
+        },
+        {
+          "file": "stack/skills/task-solve-cross/scripts/spec-check.js",
           "marker": "const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\\\/g, '/').replace(/^\\.\\//, '').replace(/\\/+$/, '') || '.alfred';"
         }
       ]

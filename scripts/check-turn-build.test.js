@@ -46,7 +46,8 @@ function project({ git = true } = {})
         tick += 1;
         fs.utimesSync(file, tick, tick);
     };
-    const marker = path.join(root, '.alfred', 'docs', 'flow', 'turn-check-sess');
+    // 2.8.0 layout: the marker is session scratch, <data root>/state/sessions/
+    const marker = path.join(root, '.alfred', 'state', 'sessions', 'turn-check-sess');
     // A stub tsc: logs where and how it ran, prints `errors` error lines, exits 2 when there are any.
     const tsc = (dir, errors) =>
     {

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // history.js - the session history ENGINE (copied beside history-session.js, not wired - the docs.js
-// pattern). One file per session under <docs-path>/history/, upserted at every Stop from the transcript
+// pattern). One file per session under <data root>/state/history/, upserted at every Stop from the transcript
 // bytes added since the last pass plus three git facts. What was DONE and what the user RULED - docs
 // hold what is true, memory what was learned, git only what was committed. No model call, fail-open.
 const fs = require('fs');
@@ -17,7 +17,14 @@ function envOf(env, suffix)
 }
 
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
-const historyDir = (root) => path.resolve(root, docsRootEnv(), 'history');
+// 2.8.0: the records live in <data root>/state/history/ (layout.js, copied beside this engine); the pre-2.8.0
+// <docs-path>/history/ is still read for the 2.x line, and is the only home when layout.js is not there.
+let layout = null;
+try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 history/ */ }
+const legacyHistoryDir = (root) => path.resolve(root, docsRootEnv(), 'history');
+const historyDir = (root) => (layout ? path.dirname(layout.statePath(root, 'history', 'x.json')) : legacyHistoryDir(root));
+// A session's record: where it already is (a session an older hook started keeps its legacy one), else the new home.
+const recordFile = (root, session) => (layout ? layout.findState(root, 'history', `${session}.json`) : path.join(legacyHistoryDir(root), `${session}.json`));
 
 // pinned copy of guard-secret-value.js SECRET_SHAPE, no g flag (shared-rules: credential-literal-shapes)
 const SECRET_SHAPE = /\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})/;
@@ -88,12 +95,19 @@ function digest(rows, entry, root) {
   if (entry.rulings.length > 60) entry.rulings = entry.rulings.slice(-60);
 }
 
+// The open receipts: <data root>/state/approvals/, then the pre-2.8.0 <docs-path>/flow/ - a name once, its newest home first.
 function stamps(root) {
-  const dir = path.resolve(root, docsRootEnv(), 'flow');
-  try {
-    return fs.readdirSync(dir).filter((f) => /^(APPROVAL|COMMIT-GATE|PUSH-GATE|[A-Z-]+-ALLOW)$/.test(f))
-      .map((f) => ({ name: f, ageMin: Math.round((Date.now() - fs.statSync(path.join(dir, f)).mtimeMs) / 60000) }));
-  } catch { return []; }
+  const out = new Map();
+  const dirs = [layout && path.dirname(layout.statePath(root, 'approvals', 'APPROVAL')), path.resolve(root, docsRootEnv(), 'flow')].filter(Boolean);
+  for (const dir of dirs) {
+    try {
+      for (const f of fs.readdirSync(dir)) {
+        if (out.has(f) || !/^(APPROVAL|COMMIT-GATE|PUSH-GATE|[A-Z-]+-ALLOW)$/.test(f)) continue;
+        out.set(f, { name: f, ageMin: Math.round((Date.now() - fs.statSync(path.join(dir, f)).mtimeMs) / 60000) });
+      }
+    } catch { /* no such folder */ }
+  }
+  return [...out.values()];
 }
 function blocks(root, session) {
   const out = {};
@@ -113,9 +127,8 @@ function blocks(root, session) {
 function upsert(root, payload) {
   try {
     const session = String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_');
-    const dir = historyDir(root);
-    ensureDir(dir);
-    const file = path.join(dir, `${session}.json`);
+    const file = recordFile(root, session);
+    ensureDir(path.dirname(file));
     let entry = null;
     try { entry = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { entry = null; }
     if (!entry || typeof entry !== 'object') {
@@ -144,18 +157,23 @@ function upsert(root, payload) {
 // session that never reached the model held one of the three slots and pushed out one with three rulings and a plan
 // (audit 2026-10-10 C23, session 0cdb0c1d).
 const emptyEntry = (e) => e.offset === 0 && !(e.commits || []).length && !(e.rulings || []).length && !e.plan;
+// The branch's newest records from state/history/, and - while that holds none of the branch (a project the update has
+// not moved yet) - from the pre-2.8.0 <docs-path>/history/.
 function lastForBranch(root, branch, n, excludeSession) {
-  const dir = historyDir(root);
-  let files = [];
-  try { files = fs.readdirSync(dir).filter((f) => f.endsWith('.json')); } catch { return []; }
-  const out = [];
-  for (const f of files.map((f) => ({ f, m: fs.statSync(path.join(dir, f)).mtimeMs })).sort((a, b) => b.m - a.m)) {
-    let e; try { e = JSON.parse(fs.readFileSync(path.join(dir, f.f), 'utf8')); } catch { continue; }
-    if (!e || e.session === excludeSession || e.branch !== branch || emptyEntry(e)) continue;
-    out.push(e);
-    if (out.length >= n) break;
+  const dirs = [...new Set([historyDir(root), legacyHistoryDir(root)])];
+  for (const dir of dirs) {
+    let files = [];
+    try { files = fs.readdirSync(dir).filter((f) => f.endsWith('.json')); } catch { continue; }
+    const out = [];
+    for (const f of files.map((f) => ({ f, m: fs.statSync(path.join(dir, f)).mtimeMs })).sort((a, b) => b.m - a.m)) {
+      let e; try { e = JSON.parse(fs.readFileSync(path.join(dir, f.f), 'utf8')); } catch { continue; }
+      if (!e || e.session === excludeSession || e.branch !== branch || emptyEntry(e)) continue;
+      out.push(e);
+      if (out.length >= n) break;
+    }
+    if (out.length) return out;
   }
-  return out;
+  return [];
 }
 
 // A plan no longer on disk is left out: the block named a path an update had moved a minute before (audit 2026-10-10
@@ -220,7 +238,7 @@ if (require.main === module) {
   const root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
   const branchArg = args.indexOf('--branch') >= 0 ? args[args.indexOf('--branch') + 1] : git(root, ['rev-parse', '--abbrev-ref', 'HEAD']);
   if (cmd === 'last') console.log(JSON.stringify(lastForBranch(root, branchArg, Number(args[0]) || 3, ''), null, 1));
-  else if (cmd === 'show') { try { console.log(fs.readFileSync(path.join(historyDir(root), `${args[0]}.json`), 'utf8')); } catch { console.log('no such session'); } }
+  else if (cmd === 'show') { try { console.log(fs.readFileSync(recordFile(root, String(args[0] || '')), 'utf8')); } catch { console.log('no such session'); } }
   else if (cmd === 'rulings') for (const e of lastForBranch(root, branchArg, 50, '').reverse()) for (const r of e.rulings || []) console.log(`${r.ts.slice(0, 16)}  ${r.question} -> ${r.answer}`);
   else console.log('usage: history.js last [n] | show <session> | rulings [--branch <name>]');
 }

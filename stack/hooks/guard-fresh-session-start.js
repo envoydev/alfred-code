@@ -37,6 +37,11 @@
 // exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unparseable.
 const fs = require('fs');
 const nodePath = require('path');
+// 2.8.0: the hooks' state lives under <data root>/state/ (layout.js) - the auto-mode stamp in approvals/, the PreCompact
+// snapshot in sessions/; the pre-2.8.0 <docs-path>/flow/ is still read for the 2.x line, and is the only home when
+// layout.js is not beside this file.
+let layout = null;
+try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
 
 // STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in every
 // hook. Fail-open on purpose - no prelude, no project dir or a malformed settings file all leave
@@ -449,11 +454,13 @@ if (EVENT === 'UserPromptSubmit') {
   process.exit(0);
 }
 
-// PreCompact: the last moment the whole transcript is still there. Write what a resume needs to the
-// flow dir - the live plan file, the open flow stamps with their ages, the files this session wrote
+// PreCompact: the last moment the whole transcript is still there. Write what a resume needs to
+// <data root>/state/sessions/COMPACT-STATE - the live plan file, the open flow stamps with their ages, the files this session wrote
 // (from docs-session's per-actor attribution state) - with no model call; the SessionStart `compact`
 // injection below points at it. Never blocks a compaction: every failure only leaves a line out.
-const COMPACT_STATE = () => nodePath.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), docsRootEnv(), 'flow', 'COMPACT-STATE');
+const projectRoot = () => process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+const legacyFlow = () => nodePath.resolve(projectRoot(), docsRootEnv(), 'flow');
+const COMPACT_STATE = () => (layout ? layout.statePath(projectRoot(), 'sessions', 'COMPACT-STATE') : nodePath.join(legacyFlow(), 'COMPACT-STATE'));
 const FILES_SHOWN = 50;
 function livePlan() {
   // The LAST plan file a tool call touched in the transcript tail, else the newest plan under the docs root.
@@ -492,16 +499,24 @@ function livePlan() {
   } catch { /* no plans folder */ }
   return null;
 }
+// The open stamps: every receipt in <data root>/state/approvals/, then one a pre-2.8.0 hook or skill copy left in the old
+// flow/ - only a receipt's name there (layout.js flowKind), never the session scratch it shared the folder with.
 function flowStamps() {
-  try {
-    const dir = nodePath.dirname(COMPACT_STATE());
-    return fs.readdirSync(dir)
-      // the retired monitor's state (its turn log and context marker) and the turn check's marker (an edit list before
-      // 2026-10-16) are working state, not stamps
-      .filter((f) => f !== 'COMPACT-STATE' && f !== 'compact-points.json' && !/^monitor-.*\.(?:json|jsonl|context)$/.test(f) && !/^turn-(?:edits|check)-/.test(f))
-      .map((f) => ({ f, age: Math.round((Date.now() - fs.statSync(nodePath.join(dir, f)).mtimeMs) / 60000) }))
-      .sort((a, b) => a.f.localeCompare(b.f));
-  } catch { return []; }
+  const seen = new Map();
+  const list = (dir, keep) => {
+    try {
+      for (const f of fs.readdirSync(dir)) {
+        if (seen.has(f) || !keep(f)) continue;
+        seen.set(f, Math.round((Date.now() - fs.statSync(nodePath.join(dir, f)).mtimeMs) / 60000));
+      }
+    } catch { /* no such folder */ }
+  };
+  if (layout) list(nodePath.dirname(layout.statePath(projectRoot(), 'approvals', 'APPROVAL')), () => true);
+  // the retired monitor's state (its turn log and context marker) and the turn check's marker (an edit list before
+  // 2026-10-16) are working state, not stamps
+  list(legacyFlow(), layout ? (f) => layout.flowKind(f) === 'approvals'
+    : (f) => f !== 'COMPACT-STATE' && f !== 'compact-points.json' && !/^monitor-.*\.(?:json|jsonl|context)$/.test(f) && !/^turn-(?:edits|check)-/.test(f));
+  return [...seen].map(([f, age]) => ({ f, age })).sort((a, b) => a.f.localeCompare(b.f));
 }
 function sessionWrites() {
   const os = require('os');
@@ -698,7 +713,7 @@ if (EVENT === 'PreCompact') {
 // session's newest run was a SLASH flow, the line that puts its body back before the next step.
 function compactPointer() {
   try {
-    const file = COMPACT_STATE();
+    const file = layout ? layout.findState(projectRoot(), 'sessions', 'COMPACT-STATE') : COMPACT_STATE();
     if (Date.now() - fs.statSync(file).mtimeMs > 60 * 60 * 1000) return '';
     const state = fs.readFileSync(file, 'utf8').split('\n');
     if (!payload.session_id || !state.includes(`session: ${payload.session_id}`)) return '';
@@ -916,9 +931,7 @@ function autoModeStart() {
     return null;
   }
   const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-  // 2.8.0: written to <data root>/state/approvals/ (layout.js); approvalStamp reads it there, then the pre-2.8.0 flow/
-  let layout = null;
-  try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
+  // written to <data root>/state/approvals/; approvalStamp reads it there, then the pre-2.8.0 flow/
   const file = layout ? layout.statePath(root, 'approvals', 'APPROVAL') : nodePath.resolve(root, docsRootEnv(), 'flow', 'APPROVAL');
   let current = null;
   try { current = require('./hook-prelude.js').approvalStamp({ ...payload, cwd: root }); } catch { /* no prelude: written fresh */ }

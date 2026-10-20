@@ -35,12 +35,16 @@ function project()
         input: typeof payload === 'string' ? payload : JSON.stringify({ session_id: sid, cwd: root, ...payload }),
         encoding: 'utf8', env: { ...BASE_ENV, CLAUDE_PROJECT_DIR: root, TMPDIR: tmpdir, TEMP: tmpdir, TMP: tmpdir, ...env },
     });
+    // 2.8.0 layout: the snapshot and the compaction record live in <data root>/state/sessions/, the stamps in
+    // state/approvals/; `flow` is the pre-2.8.0 folder a 2.7.0 hook wrote all three to
     const flow = path.join(root, '.alfred', 'docs', 'flow');
-    const state = path.join(flow, 'COMPACT-STATE');
-    const stamp = (name, minutesOld) =>
+    const sessions = path.join(root, '.alfred', 'state', 'sessions');
+    const approvals = path.join(root, '.alfred', 'state', 'approvals');
+    const state = path.join(sessions, 'COMPACT-STATE');
+    const stamp = (name, minutesOld, dir = approvals) =>
     {
-        fs.mkdirSync(flow, { recursive: true });
-        const f = path.join(flow, name);
+        fs.mkdirSync(dir, { recursive: true });
+        const f = path.join(dir, name);
         fs.writeFileSync(f, 'x\n');
         const t = new Date(Date.now() - minutesOld * 60000);
         fs.utimesSync(f, t, t);
@@ -52,7 +56,7 @@ function project()
         fs.writeFileSync(p, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
         return p;
     };
-    return { root, sid, tmpdir, run, flow, state, stamp, wrote, transcript };
+    return { root, sid, tmpdir, run, flow, sessions, approvals, state, stamp, wrote, transcript };
 }
 const toolUse = (name, input) => ({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', name, input }] } });
 
@@ -61,11 +65,9 @@ test('compact-state: PreCompact writes the live plan, the flow stamps with ages 
     const p = project();
     p.stamp('APPROVAL', 30);
     p.stamp('COMMIT-GATE', 2);
-    p.stamp('monitor-sess.json', 1);   // the monitor's state is no stamp - its 2.1.5 turn log and context marker neither
-    p.stamp('monitor-sess.jsonl', 1);
-    p.stamp('monitor-sess.context', 1);
-    p.stamp('turn-edits-sess', 1);     // nor is the turn check's old edit list
-    p.stamp('turn-check-sess', 1);     // or its Stop marker
+    // what the pre-2.8.0 flow/ held beside the receipts: the monitor's state is no stamp - its 2.1.5 turn log and context
+    // marker neither - nor is the turn check's old edit list, or its Stop marker
+    for (const f of ['monitor-sess.json', 'monitor-sess.jsonl', 'monitor-sess.context', 'turn-edits-sess', 'turn-check-sess']) p.stamp(f, 1, p.flow);
     p.wrote('main.session', ['scripts/a.js', 'stack/hooks/b.js']);
     p.wrote('agent-x', ['stack/hooks/b.js', 'docs/c.md']);
     const tp = p.transcript([
@@ -149,7 +151,7 @@ test('compact-state: the compact injection points at the snapshot of THIS sessio
     const ctx = (r) => JSON.parse(r.stdout).hookSpecificOutput.additionalContext;
     const mine = ctx(p.run({ hook_event_name: 'SessionStart', source: 'compact' }));
     assert.match(mine, /AUTO-COMPACTED/, 'the fresh-session ask is gone');
-    assert.match(mine, /\.alfred\/docs\/flow\/COMPACT-STATE/);
+    assert.match(mine, /\.alfred\/state\/sessions\/COMPACT-STATE/);
     const other = ctx(p.run({ hook_event_name: 'SessionStart', source: 'compact', session_id: 'someone-else' }));
     assert.doesNotMatch(other, /COMPACT-STATE/, 'another session was pointed at this snapshot');
 });
@@ -221,11 +223,11 @@ test('compact-state: an automatic compaction records its context, and the trigge
     const fresh = require('../stack/hooks/fresh-session.js');
     const tp = p.transcript([usageRow('f', { cache_creation_input_tokens: 90000 }), usageRow('a', { cache_read_input_tokens: 316849 })]);
     p.run({ hook_event_name: 'PreCompact', trigger: 'manual', transcript_path: tp });
-    assert.ok(!fs.existsSync(path.join(p.flow, 'compact-points.json')), 'a /compact the user typed is no ceiling reached');
+    assert.ok(!fs.existsSync(path.join(p.sessions, 'compact-points.json')), 'a /compact the user typed is no ceiling reached');
     p.run({ hook_event_name: 'PreCompact', trigger: 'auto', transcript_path: tp });
     fs.appendFileSync(tp, JSON.stringify(boundary('auto', 317321)) + '\n');   // the harness writes the boundary after PreCompact
     p.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tp });
-    const rows = JSON.parse(fs.readFileSync(path.join(p.flow, 'compact-points.json'), 'utf8'));
+    const rows = JSON.parse(fs.readFileSync(path.join(p.sessions, 'compact-points.json'), 'utf8'));
     assert.deepStrictEqual(rows.map((r) => [r.model, r.tokens]), [['claude-opus-5-5', 316849], ['claude-opus-5-5', 317321]]);
     assert.doesNotMatch(fs.readFileSync(p.state, 'utf8'), /compact-points/, 'the record is no flow stamp');
     // the engine reads it: the 1M tier's 400k trigger is held at 90% of the lowest point, 285,164 (requires the model
@@ -240,10 +242,10 @@ test('compact-state: an automatic compaction records its context, and the trigge
         delete process.env.CLAUDE_CODE_AUTOCOMPACT_WINDOW;
         fresh.use({ transcript_path: tp, cwd: p.root });
         assert.strictEqual(fresh.ctxThreshold(), 285164);
-        fs.writeFileSync(path.join(p.flow, 'compact-points.json'), JSON.stringify([{ at: new Date().toISOString(), model: 'claude-sonnet-5', tokens: 120000 }]));
+        fs.writeFileSync(path.join(p.sessions, 'compact-points.json'), JSON.stringify([{ at: new Date().toISOString(), model: 'claude-sonnet-5', tokens: 120000 }]));
         fresh.use({ transcript_path: tp, cwd: p.root });
         assert.strictEqual(fresh.ctxThreshold(), 400000, "another model's point is not this model's");
-        fs.writeFileSync(path.join(p.flow, 'compact-points.json'), '{not json');
+        fs.writeFileSync(path.join(p.sessions, 'compact-points.json'), '{not json');
         fresh.use({ transcript_path: tp, cwd: p.root });
         assert.strictEqual(fresh.ctxThreshold(), 400000, 'a garbage record reads as none');
         // the documented auto-compact window lowers the window it is judged in, never the tier: the tier is the model's own
@@ -307,7 +309,7 @@ test('compact-state: a configured auto-compact window the compactions show was n
         const start = startText(p.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tp }, env));
         assert.match(start, /The 350k autoCompactWindow in \.claude\/settings\.local\.json was not honoured: this project compacted at ~467k/);
         assert.match(start, /`\/autocompact <value>` saves a window for this model in the user settings/);
-        const point = JSON.parse(fs.readFileSync(path.join(p.flow, 'compact-points.json'), 'utf8')).pop();
+        const point = JSON.parse(fs.readFileSync(path.join(p.sessions, 'compact-points.json'), 'utf8')).pop();
         assert.ok(Date.parse(point.started) <= Date.now() - 0.9 * 3600000, 'the point records when its session started');
         assert.strictEqual(engine(p, tp, p.sid).autoCompactWindow(), null, 'the key is no window now');
         assert.strictEqual(fresh.knownWindow(), 1000000, 'the model\'s own window stands');
@@ -613,4 +615,44 @@ test('gated stops: a gated cycle\'s gate and build skills wait for a stop after 
     const d = project();
     assert.strictEqual(d.run({ ...skillCall('task-implement'), transcript_path: d.transcript([...base, ...answered, ...gate, ...answered, ...stamp]) }).status, 0,
         'step 3\'s Approved: stamp after the approval answer moves nothing');
+});
+
+test('compact-state: compact-points.json is read from state/sessions/, else from the legacy flow/ (2.8.0)', () =>
+{
+    const p = project();
+    const fresh = require('../stack/hooks/fresh-session.js');
+    const tp = p.transcript([usageRow('f', { cache_creation_input_tokens: 90000 }), usageRow('a', { cache_read_input_tokens: 100000 })]);
+    const point = (dir, tokens) =>
+    {
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'compact-points.json'), JSON.stringify([{ at: new Date().toISOString(), model: 'claude-opus-5-5', tokens }]));
+    };
+    const saved = { ...process.env };
+    try
+    {
+        process.env.CLAUDE_PROJECT_DIR = p.root;
+        process.env.CLAUDE_CONFIG_DIR = BASE_ENV.CLAUDE_CONFIG_DIR;
+        for (const k of ['ALFRED_CODE_CONTEXT_WINDOW_FOR_1M', 'CLAUDE_CODE_AUTO_COMPACT_WINDOW', 'CLAUDE_CODE_AUTOCOMPACT_WINDOW']) delete process.env[k];
+        point(p.flow, 300000);
+        fresh.use({ transcript_path: tp, cwd: p.root });
+        assert.strictEqual(fresh.ctxThreshold(), 270000, 'only the legacy record: read, 90% of its point');
+        point(p.sessions, 200000);
+        fresh.use({ transcript_path: tp, cwd: p.root });
+        assert.strictEqual(fresh.ctxThreshold(), 180000, 'the new one wins');
+    }
+    finally { process.env = saved; }
+});
+
+test('compact-state: the snapshot lands in state/sessions/ and lists the stamps of state/approvals/ and the legacy flow/ (2.8.0)', () =>
+{
+    const p = project();
+    p.stamp('APPROVAL', 5);
+    p.stamp('COMMIT-GATE', 7, p.flow);
+    fs.writeFileSync(path.join(p.flow, 'untracked-at-start-abc1234'), 'x\n');
+    p.run({ hook_event_name: 'PreCompact', trigger: 'auto', transcript_path: p.transcript([]) });
+    const text = fs.readFileSync(p.state, 'utf8');
+    assert.match(text, /^flow stamps:\n  APPROVAL - 5 min old\n  COMMIT-GATE - 7 min old$/m, 'a receipt in either home, nothing else');
+    assert.ok(!fs.existsSync(path.join(p.flow, 'COMPACT-STATE')), 'nothing written to the legacy flow/');
+    const start = p.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: p.transcript([]) });
+    assert.match(start.stdout, /saved what this session had open at \.alfred\/state\/sessions\/COMPACT-STATE/);
 });

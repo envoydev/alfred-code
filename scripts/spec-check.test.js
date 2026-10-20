@@ -252,6 +252,10 @@ test('--touched: the size re-check counts the run\'s files against the row cap',
     git('rm', '-q', 'c.cs');
     assert.strictEqual(check('small'), 'size check: raise to standard - 4 files touched, small allows 3: a.cs, b.cs, c.cs, new.cs', 'a staged deletion counts; the docs root, .claude and the recorded file do not');
     assert.strictEqual(check('standard'), 'size check: standard has no file cap - 4 file(s) touched');
+    // 2.8.0: the record lives in <data root>/state/sessions/ and is read first; the legacy flow/ one above stays a fallback
+    fs.mkdirSync(path.join(repo, '.alfred', 'state', 'sessions'), { recursive: true });
+    fs.writeFileSync(path.join(repo, '.alfred', 'state', 'sessions', `untracked-at-start-${head}`), 'new.cs\n');
+    assert.strictEqual(check('small'), 'size check: raise to standard - 4 files touched, small allows 3: a.cs, b.cs, c.cs, old-notes.txt', 'the state/sessions/ record wins over the legacy one');
     assert.match(check('huge'), /^size check: unknown size 'huge'/);
     const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'sd-touched-none-'));
     try { assert.match(spawnSync(process.execPath, [SCRIPT, '--touched', 'small'], { cwd: outside, encoding: 'utf8' }).stdout, /not a git checkout/); }

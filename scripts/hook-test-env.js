@@ -19,8 +19,10 @@ const SESSION_KEYS = ['CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_PLUGIN_ROOT', 'CLAUDE_PL
 // The docs roots a hook falls back to under a project dir of os.tmpdir(): the default and the old one - plus the
 // RUNNER's own ledger: a hook spawned with no project dir and no cwd writes its block row under process.cwd(), the
 // checkout itself (audit 2026-10-08: layer-table-gate.test.js left 494 rows in the repo's nosession.jsonl unseen).
-// Only the ledger folder is watched there, never the whole docs root, which a person edits while a suite runs.
-const strayRoots = () => [...['.alfred', '.claude'].map((d) => path.join(os.tmpdir(), d, 'docs')), path.join(process.cwd(), '.alfred', 'docs', 'hook-blocks')];
+// Only the ledger folder is watched there, never the whole docs root, which a person edits while a suite runs. Since
+// 2.8.0 the hooks' state sits beside the docs root, in the data root's state/ (stack/hooks/layout.js).
+const strayRoots = () => [...['.alfred', '.claude'].map((d) => path.join(os.tmpdir(), d, 'docs')), path.join(os.tmpdir(), '.alfred', 'state'),
+    path.join(process.cwd(), '.alfred', 'docs', 'hook-blocks')];
 
 // Every file under the stray roots written at or after `since` (ms), as paths.
 function strayWrites(since, roots = strayRoots())

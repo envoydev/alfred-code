@@ -75,23 +75,25 @@ function locate() {
   const approvalsAbs = path.join(dataAbs, 'state', 'approvals');
   const inTop = (abs) => { const r = path.relative(top, real(abs)).split(path.sep).join('/'); return r && !r.startsWith('..') && !path.isAbsolute(r) ? `${r}/` : null; };
   const ownPrefixes = [docsAbs, path.join(dataAbs, 'state'), path.join(dataAbs, 'statistics')].map(inTop).filter(Boolean);
-  return { top, root, docsAbs, approvalsAbs, ownPrefixes, git: gitIn(top) };
+  return { top, root, docsAbs, approvalsAbs, sessionsAbs: path.join(dataAbs, 'state', 'sessions'), ownPrefixes, git: gitIn(top) };
 }
 
-// What was untracked when the session began (docs-session.js writes it per HEAD): this HEAD's record, else the newest.
+// What was untracked when the session began (docs-session.js writes it per HEAD): this HEAD's record, else the newest -
+// in <data root>/state/sessions/, then the pre-2.8.0 <docs-path>/flow/ an older hook wrote it to.
 function preExisting(ctx, head) {
-  const dir = path.join(ctx.docsAbs, 'flow');
-  let file = path.join(dir, `untracked-at-start-${head || 'unborn'}`);
-  if (!fs.existsSync(file)) {
-    file = null;
+  const dirs = [ctx.sessionsAbs, path.join(ctx.docsAbs, 'flow')];
+  let file = dirs.map((d) => path.join(d, `untracked-at-start-${head || 'unborn'}`)).find((f) => fs.existsSync(f)) || null;
+  if (!file) {
     let newest = 0;
-    try {
-      for (const f of fs.readdirSync(dir)) {
-        if (!f.startsWith('untracked-at-start-')) continue;
-        const m = fs.statSync(path.join(dir, f)).mtimeMs;
-        if (m > newest) { newest = m; file = path.join(dir, f); }
-      }
-    } catch { /* no flow folder */ }
+    for (const dir of dirs) {
+      try {
+        for (const f of fs.readdirSync(dir)) {
+          if (!f.startsWith('untracked-at-start-')) continue;
+          const m = fs.statSync(path.join(dir, f)).mtimeMs;
+          if (m > newest) { newest = m; file = path.join(dir, f); }
+        }
+      } catch { /* no such folder */ }
+    }
   }
   const rootRel = path.relative(ctx.top, ctx.root).split(path.sep).join('/');
   try { return new Set(lines(fs.readFileSync(file, 'utf8')).map((f) => (rootRel ? `${rootRel}/${f}` : f))); } catch { return new Set(); }

@@ -106,6 +106,21 @@ test('what was untracked when the session began stays out of the count', () => {
   assert.match(receiptOf(dir), /^spec: 1 file - a\.txt$/m);
 });
 
+// 2.8.0: docs-session.js writes the record to <data root>/state/sessions/ (stack/hooks/layout.js); the legacy flow/ one
+// above is still read for a session an older hook started.
+test('2.8.0: the record in state/sessions/ is read, and wins over an older legacy one', () => {
+  const { dir, git } = repo();
+  fs.writeFileSync(path.join(dir, 'old.txt'), forty());
+  fs.writeFileSync(path.join(dir, 'a.txt'), forty());
+  const head = git('rev-parse', 'HEAD').stdout.trim();
+  for (const [where, text] of [[path.join('.alfred', 'state', 'sessions'), 'old.txt\n'], [path.join('.alfred', 'docs', 'flow'), 'a.txt\n']]) {
+    fs.mkdirSync(path.join(dir, where), { recursive: true });
+    fs.writeFileSync(path.join(dir, where, `untracked-at-start-${head}`), text);
+  }
+  assert.equal(helper(dir, COMMIT).status, 0);
+  assert.match(receiptOf(dir), /^spec: 1 file - a\.txt$/m);
+});
+
 test('refusals: a missing judgment line, a security claim with no categories, nothing to commit', () => {
   const { dir } = repo();
   fs.writeFileSync(path.join(dir, 'a.txt'), forty());

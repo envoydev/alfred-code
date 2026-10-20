@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // history-session.js - SessionStart + Stop. Thin: the engine history.js sits beside it (copied, not
-// wired - the docs.js / memory.js split). Stop upserts this session's entry under <docs-path>/history/.
+// wired - the docs.js / memory.js split). Stop upserts this session's entry under <data root>/state/history/.
 // SessionStart does the same (it pins the start commit), prunes, and injects the last three entries of
 // THIS branch - what they committed, left dirty and ruled. No model call; ALFRED_CODE_HISTORY=0 is off.
 // Fail-open in every direction: no engine, garbage stdin, no git, a locked file - exit 0, print nothing.

@@ -163,3 +163,20 @@ test('the start block keeps each session\'s newest ruling before any older one, 
   assert.match(H.renderStartBlock([entry(5, [r('Order?', 'Migration first')])], 600), /- .*: 0 commit\(s\), 1 file\(s\) left uncommitted\n  ruled: Order\? -> Migration first\nMore:/);
   assert.ok(H.renderStartBlock([entry(5, [null, { question: null, answer: 7 }])], 600).length > 0);
 });
+
+test('2.8.0: historyDir is <data root>/state/history, and a session an older hook recorded keeps its legacy record', () => {
+  const { root } = project();
+  const prior = process.env.ALFRED_CODE_DATA_PATH;
+  delete process.env.ALFRED_CODE_DATA_PATH;
+  try {
+    assert.strictEqual(H.historyDir(root), path.join(root, '.alfred', 'state', 'history'));
+    const legacy = path.join(root, '.alfred', 'docs', 'history', 'old.json');
+    fs.mkdirSync(path.dirname(legacy), { recursive: true });
+    fs.writeFileSync(legacy, JSON.stringify({ session: 'old', branch: 'feature/x', startSha: 'abc1234', offset: 0, rulings: [], plan: null }));
+    H.upsert(root, { session_id: 'old', transcript_path: '' });
+    assert.strictEqual(JSON.parse(fs.readFileSync(legacy, 'utf8')).startSha, 'abc1234', 'the old session updates its own record in place');
+    assert.ok(!fs.existsSync(path.join(H.historyDir(root), 'old.json')), 'no second record');
+    H.upsert(root, { session_id: 'new', transcript_path: '' });
+    assert.ok(fs.existsSync(path.join(H.historyDir(root), 'new.json')), 'a new session writes state/history/');
+  } finally { if (prior !== undefined) process.env.ALFRED_CODE_DATA_PATH = prior; }
+});

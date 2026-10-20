@@ -25,6 +25,10 @@
 const fs = require('fs');
 // The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
+// 2.8.0 layout (layout.js, copied beside this hook): receipts in <data root>/state/approvals/, session scratch in
+// state/sessions/, the session records in state/history/; null on an older copy route, which keeps the pre-2.8.0 paths.
+let layout = null;
+try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
 const path = require('path');
 const { execSync, execFileSync, spawnSync } = require('child_process');
 // Every git this guard runs: fsmonitor off, no optional locks (hook-prelude.js gitSafe, audit 2026-10-20 H2) - the same two
@@ -293,27 +297,34 @@ const docsPrefix = () => {
 // empty set. Before either: the record this session's first start used, named in `untracked-session-<sid>` (audit
 // 2026-10-10 C09), so a HEAD the session moved never hands it another session's snapshot.
 let preExistingCache;
+// 2.8.0: state/sessions/ first, then the pre-2.8.0 <docs-path>/flow/ an older hook wrote them to.
 function preExistingRecord() {
-  const dir = path.resolve(root, docsRootEnv(), 'flow');
+  const dirs = [...new Set([layout && layout.statePath(root, 'sessions', ''), path.resolve(root, docsRootEnv(), 'flow')].filter(Boolean))];
   const sid = String((payload && payload.session_id) || '').replace(/[^\w.-]/g, '_');
   if (sid) {
-    try {
-      const named = path.basename(fs.readFileSync(path.join(dir, `untracked-session-${sid}`), 'utf8').trim());
-      if (named.startsWith('untracked-at-start-') && fs.existsSync(path.join(dir, named))) return path.join(dir, named);
-    } catch { /* no pointer - an older start */ }
+    for (const dir of dirs) {
+      try {
+        const named = path.basename(fs.readFileSync(path.join(dir, `untracked-session-${sid}`), 'utf8').trim());
+        const hit = dirs.map((d) => path.join(d, named)).find((f) => fs.existsSync(f));
+        if (named.startsWith('untracked-at-start-') && hit) return hit;
+      } catch { /* no pointer here - an older start */ }
+    }
   }
   let head = '';
   try { head = git('rev-parse --verify -q HEAD'); } catch { head = ''; }
-  const own = path.join(dir, `untracked-at-start-${/^[0-9a-f]{7,64}$/.test(head) ? head : 'unborn'}`);
-  if (fs.existsSync(own)) return own;
+  const name = `untracked-at-start-${/^[0-9a-f]{7,64}$/.test(head) ? head : 'unborn'}`;
+  const own = dirs.map((d) => path.join(d, name)).find((f) => fs.existsSync(f));
+  if (own) return own;
   let newest = null;
-  try {
-    for (const f of fs.readdirSync(dir)) {
-      if (!f.startsWith('untracked-at-start-')) continue;
-      const m = fs.statSync(path.join(dir, f)).mtimeMs;
-      if (!newest || m > newest.m) newest = { f: path.join(dir, f), m };
-    }
-  } catch { /* no flow folder - no record */ }
+  for (const dir of dirs) {
+    try {
+      for (const f of fs.readdirSync(dir)) {
+        if (!f.startsWith('untracked-at-start-')) continue;
+        const m = fs.statSync(path.join(dir, f)).mtimeMs;
+        if (!newest || m > newest.m) newest = { f: path.join(dir, f), m };
+      }
+    } catch { /* no such folder - no record */ }
+  }
   return newest ? newest.f : null;
 }
 function preExisting() {
@@ -367,8 +378,6 @@ const docsRoot = docsRootEnv();
 // 2.8.0: every receipt lives in <data root>/state/approvals/ (layout.js); the pre-2.8.0 flow/ one a 2.7.0 skill copy writes
 // is still read for the 2.x line, and is the only path when layout.js is not beside this file. A read takes the new file,
 // else the old one; a denial says to write the new one.
-let layout = null;
-try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
 const receiptRead = (name) => (layout ? layout.findState(root, 'approvals', name) : path.resolve(root, docsRoot, 'flow', name));
 const receiptWrite = (name) => (layout ? layout.statePath(root, 'approvals', name) : path.resolve(root, docsRoot, 'flow', name));
 // What an act never commits, as prefixes relative to the repo top `top` (each only when inside it): the docs root, and from
@@ -1306,7 +1315,7 @@ function commitSet() {
 // session's earlier TRIVIAL commits took in, so one small commit stays exempt and a change split into small commits
 // crosses the bar at the slice that takes the session past it - measured per commit, all six slices of a 60-line
 // feature walked under it; measured on the whole tree, a staged one-liner beside unrelated dirty work gated (T18).
-// What counts is the guard's own ledger, <docs-path>/flow/trivial-<session>: one row per commit it let through under the
+// What counts is the guard's own ledger, <data root>/state/sessions/trivial-<session>: one row per commit it let through under the
 // bar (the HEAD it was made on, its files and their churn; an amend's row sits on the amended commit's parent and names
 // the commit it replaces). A commit a receipt covered writes no row, and commits a pull, a merge or a rebase brought in
 // have none (review re-verify N1: summing every commit since the start made a typo after a reviewed feature, or a
@@ -1317,7 +1326,8 @@ function commitSet() {
 //     amend loop built a 43-line commit 14 lines at a time and a rebase dropped every row after the first);
 //   - never when made on today's HEAD, or as this same amend retried: that commit has not landed.
 // An amend adds its own lines to the rows of the commit it replaces, so each amend is one more slice of that commit.
-// The session's start is the sha history-session.js pins at its first SessionStart (<docs-path>/history/<session>.json,
+// The session's start is the sha history-session.js pins at its first SessionStart (<data root>/state/history/<session>.json,
+// else the pre-2.8.0 <docs-path>/history/ one,
 // kept across a resume or compaction of the same session); a new session has a ledger of its own, so it begins a new
 // change. A start the branch rewrote (an amend of it, a rebase) is read from where it meets HEAD (`git merge-base`).
 // With no record (the history hook off) the ledger pins its own start - HEAD at the session's first judged commit, a
@@ -1328,13 +1338,16 @@ function sessionStart() {
   const sid = String(payload.session_id || '').replace(/[^\w.-]/g, '_');
   if (!sid) return null;
   let sha = '';
-  try { sha = String(JSON.parse(fs.readFileSync(path.resolve(projectDir || root, docsRoot, 'history', `${sid}.json`), 'utf8')).startSha || ''); } catch { sha = pinnedStart(); }
+  const record = layout ? layout.findState(projectDir || root, 'history', `${sid}.json`) : path.resolve(projectDir || root, docsRoot, 'history', `${sid}.json`);
+  try { sha = String(JSON.parse(fs.readFileSync(record, 'utf8')).startSha || ''); } catch { sha = pinnedStart(); }
   if (!SHA_RE.test(sha)) return null;
   try { git(`merge-base --is-ancestor ${sha} HEAD`); return sha; } catch { /* rewritten, or elsewhere */ }
   try { const base = git(`merge-base ${sha} HEAD`); return SHA_RE.test(base) ? base : null; } catch { return null; }
 }
 const sessionId = () => String(payload.session_id || '').replace(/[^\w.-]/g, '_');
-const trivialLedger = () => path.resolve(projectDir || root, docsRoot, 'flow', `trivial-${sessionId()}`);
+// A session an older hook started keeps its pre-2.8.0 ledger; a new one starts in state/sessions/.
+const trivialLedger = () => (layout ? layout.findState(projectDir || root, 'sessions', `trivial-${sessionId()}`)
+  : path.resolve(projectDir || root, docsRoot, 'flow', `trivial-${sessionId()}`));
 // The start the ledger pinned for itself, pinned now when it has none.
 function pinnedStart() {
   let text = '';
