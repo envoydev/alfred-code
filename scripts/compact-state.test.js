@@ -665,3 +665,14 @@ test('compact-state: the snapshot lands in state/sessions/ and lists the stamps 
     const start = p.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: p.transcript([]) });
     assert.match(start.stdout, /saved what this session had open at \.alfred\/state\/sessions\/COMPACT-STATE/);
 });
+
+test('compact-state: a plan\'s stamp is listed as <plan id>/APPROVAL, an empty plan folder not at all (per-plan approvals)', () =>
+{
+    const p = project();
+    p.stamp('APPROVAL', 4, path.join(p.approvals, 'cart'));
+    fs.mkdirSync(path.join(p.approvals, 'empty'), { recursive: true });
+    p.stamp('COMMIT-GATE', 6);
+    p.run({ hook_event_name: 'PreCompact', trigger: 'auto', transcript_path: p.transcript([]) });
+    const text = fs.readFileSync(p.state, 'utf8');
+    assert.match(text, /^flow stamps:\n  cart\/APPROVAL - 4 min old\n  COMMIT-GATE - 6 min old$/m);
+});

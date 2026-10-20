@@ -768,7 +768,7 @@
       "file": "guard-unapproved-dispatch.js",
       "matcher": "Task|Agent",
       "event": "",
-      "note": "block *-implementer dispatch without the data-root state/approvals/APPROVAL gate file (APPROVED/AUTO)"
+      "note": "block *-implementer dispatch without its plan's data-root state/approvals/<plan id>/APPROVAL gate file (APPROVED/AUTO; the brief names the plan on a plan: line) or a root AUTO"
     },
     {
       "file": "guard-ungated-commit.js",

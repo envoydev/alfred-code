@@ -79,6 +79,39 @@ test('planDirs lists work/plans first, the legacy plans/ second', () =>
     assert.deepStrictEqual(layout.planDirs('/p', {}), [path.resolve('/p', '.alfred/docs', 'work', 'plans'), path.resolve('/p', '.alfred/docs', 'plans')]);
 });
 
+test('planIdOf reads the brief\'s plan: line, reduces a path to its name and refuses a bad id', () =>
+{
+    assert.strictEqual(layout.planIdOf('build task 2\nplan: cart-checkout\nfiles: a.ts'), 'cart-checkout');
+    assert.strictEqual(layout.planIdOf('plan: .alfred/docs/work/plans/cart-checkout.md'), 'cart-checkout');
+    assert.strictEqual(layout.planIdOf('plan: C:\\repo\\.alfred\\docs\\work\\plans\\cart.md'), 'cart');
+    assert.strictEqual(layout.planIdOf('plan:   v2.1_fix  '), 'v2.1_fix');
+    assert.strictEqual(layout.planIdOf('build it'), undefined, 'no plan line');
+    assert.strictEqual(layout.planIdOf('the plan: build it'), undefined, 'only a line OPENING with plan:');
+    assert.strictEqual(layout.planIdOf('plan: ../plans/cart.md'), 'cart', 'a relative path is reduced to its name too');
+    assert.strictEqual(layout.planIdOf('plan: .hidden'), null, 'a dot-led name is no id');
+    assert.strictEqual(layout.planIdOf('plan: ..'), null, 'nor is a parent reference');
+    assert.strictEqual(layout.planIdOf('plan: two words'), null, 'a space is no id');
+    assert.strictEqual(layout.planIdOf(`plan: ${'a'.repeat(129)}`), null, 'past 128 chars');
+    assert.strictEqual(layout.planIdOf('plan:'), null, 'an empty id');
+    assert.strictEqual(layout.planIdOf(undefined), undefined);
+});
+
+test('approvalPath puts a plan\'s stamp in its own folder; approvalStamps lists the root one and every plan\'s', () =>
+{
+    const root = tmp();
+    assert.strictEqual(layout.approvalPath(root, 'cart', {}), path.join(root, '.alfred', 'state', 'approvals', 'cart', 'APPROVAL'));
+    assert.strictEqual(layout.approvalPath(root, undefined, {}), path.join(root, '.alfred', 'state', 'approvals', 'APPROVAL'));
+    assert.throws(() => layout.approvalPath(root, '../x', {}), /plan id/);
+    assert.deepStrictEqual(layout.approvalStamps(root, {}), [], 'nothing stamped');
+    put(layout.approvalPath(root, undefined, {}), 'AUTO - "x"\n');
+    put(layout.approvalPath(root, 'cart', {}), 'APPROVED cart - "go"\n');
+    put(layout.approvalPath(root, 'search', {}), 'APPROVED search - "go"\n');
+    fs.mkdirSync(path.join(root, '.alfred', 'state', 'approvals', 'empty'), { recursive: true });
+    put(path.join(root, '.alfred', 'state', 'approvals', 'COMMIT-GATE'), 'x');
+    const listed = layout.approvalStamps(root, {}).map((f) => path.relative(path.join(root, '.alfred', 'state', 'approvals'), f).split(path.sep).join('/'));
+    assert.deepStrictEqual(listed, ['APPROVAL', 'cart/APPROVAL', 'search/APPROVAL']);
+});
+
 test('LAYOUT_MOVES is the spec\'s move map, frozen', () =>
 {
     const froms = layout.LAYOUT_MOVES.map((m) => m.from).sort();

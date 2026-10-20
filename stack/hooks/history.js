@@ -99,13 +99,22 @@ function digest(rows, entry, root) {
 function stamps(root) {
   const out = new Map();
   const dirs = [layout && path.dirname(layout.statePath(root, 'approvals', 'APPROVAL')), path.resolve(root, docsRootEnv(), 'flow')].filter(Boolean);
+  const age = (file) => Math.round((Date.now() - fs.statSync(file).mtimeMs) / 60000);
   for (const dir of dirs) {
     try {
       for (const f of fs.readdirSync(dir)) {
         if (out.has(f) || !/^(APPROVAL|COMMIT-GATE|PUSH-GATE|[A-Z-]+-ALLOW)$/.test(f)) continue;
-        out.set(f, { name: f, ageMin: Math.round((Date.now() - fs.statSync(path.join(dir, f)).mtimeMs) / 60000) });
+        out.set(f, { name: f, ageMin: age(path.join(dir, f)) });
       }
     } catch { /* no such folder */ }
+  }
+  // a plan's own stamp (per-plan approvals, 2026-10-20): <plan id>/APPROVAL
+  if (layout && layout.approvalStamps) {
+    for (const file of layout.approvalStamps(root)) {
+      const name = path.relative(dirs[0], file).split(path.sep).join('/');
+      if (name === 'APPROVAL' || out.has(name)) continue;
+      try { out.set(name, { name, ageMin: age(file) }); } catch { /* gone meanwhile */ }
+    }
   }
   return [...out.values()];
 }

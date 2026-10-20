@@ -1029,8 +1029,13 @@ function stampAfterTimeoutWrite(input, root) {
   const real = (p) => { try { return fs.realpathSync.native(p); } catch { return p; } };
   const stamps = [layout && layout.statePath(root, 'approvals', 'APPROVAL'), path.resolve(root, docsRootEnv(), 'flow', 'APPROVAL')]
     .filter(Boolean).map((f) => path.resolve(real(path.dirname(f)), path.basename(f)));
+  // a plan's own stamp, <data root>/state/approvals/<plan id>/APPROVAL (per-plan approvals, 2026-10-20) - its folder may
+  // not exist yet, so it is judged by its parent's real path
+  const approvalsDir = layout ? real(layout.statePath(root, 'approvals', '')) : null;
+  const planStamp = (at) => Boolean(approvalsDir) && path.basename(at) === 'APPROVAL' && Boolean(layout.PLAN_ID)
+    && layout.PLAN_ID.test(path.basename(path.dirname(at))) && real(path.dirname(path.dirname(at))) === approvalsDir;
   let stamp = stamps[0];
-  const isStamp = (abs) => { const at = path.resolve(real(path.dirname(abs)), path.basename(abs)); if (!stamps.includes(at)) return false; stamp = at; return true; };
+  const isStamp = (abs) => { const at = path.resolve(real(path.dirname(abs)), path.basename(abs)); if (!stamps.includes(at) && !planStamp(at)) return false; stamp = at; return true; };
   const STAMP_WORD = /^\s*(?:APPROVED|AUTO)\b/m;
   let hit = false;
   if (/^(?:Edit|Write|MultiEdit)$/.test(name) && typeof t.file_path === 'string' && isStamp(path.resolve(root, t.file_path))) {

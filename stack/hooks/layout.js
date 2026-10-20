@@ -55,6 +55,42 @@ const findStats = (root, parts, env = process.env) => pick(statsPath(root, parts
 // Where a plan file lives: work/plans/, and the pre-2.8.0 plans/ for the 2.x line.
 const planDirs = (root, env = process.env) => [path.resolve(root, docsRoot(env), 'work', 'plans'), path.resolve(root, docsRoot(env), 'plans')];
 
+// PER-PLAN APPROVALS (2026-10-20): an implementer brief names its plan on a `plan: <id>` line, and only that plan's
+// stamp, <data root>/state/approvals/<id>/APPROVAL, passes it - one APPROVAL for the project let a second session's plan
+// dispatch on the first one's yes. The id is the plan file's name without `.md`, or a run's own id; a path or a file
+// name on the line is reduced to it. undefined: no line (a pre-2.8.0 brief); null: a line holding no valid id.
+const PLAN_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+function planIdOf(text)
+{
+    const line = /^plan:[ \t]*(.*)$/m.exec(String(text || ''));
+    if (!line) return undefined;
+    const value = line[1].trim();
+    const name = value.split(/[\\/]/).pop().replace(/\.md$/i, '');
+    return value && !/\s/.test(value) && PLAN_ID.test(name) ? name : null;
+}
+const approvalPath = (root, planId, env = process.env) =>
+{
+    if (planId === undefined || planId === null || planId === '') return statePath(root, 'approvals', 'APPROVAL', env);
+    if (!PLAN_ID.test(String(planId))) throw new Error(`layout: '${planId}' is no plan id (${PLAN_ID.source})`);
+    return statePath(root, 'approvals', path.join(String(planId), 'APPROVAL'), env);
+};
+// The root stamp and every plan's, the ones that exist, root first then by plan id.
+function approvalStamps(root, env = process.env)
+{
+    const dir = statePath(root, 'approvals', '', env);
+    const out = [];
+    if (exists(path.join(dir, 'APPROVAL'))) out.push(path.join(dir, 'APPROVAL'));
+    let entries = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
+    catch { return out; }
+    for (const e of entries.filter((d) => d.isDirectory() && PLAN_ID.test(d.name)).map((d) => d.name).sort())
+    {
+        const file = path.join(dir, e, 'APPROVAL');
+        if (exists(file)) out.push(file);
+    }
+    return out;
+}
+
 // The move map, `from` relative to the docs root; `to` relative to `base` - the data root or the docs root.
 const LAYOUT_MOVES = Object.freeze([
     { from: 'flow', base: 'data', split: 'flow' },
@@ -75,4 +111,5 @@ const LAYOUT_MOVES = Object.freeze([
 
 module.exports = {
     dataRoot, docsRoot, flowKind, statePath, statsPath, legacyStatePath, legacyStatsPath, findState, findStats, planDirs, LAYOUT_MOVES,
+    PLAN_ID, planIdOf, approvalPath, approvalStamps,
 };

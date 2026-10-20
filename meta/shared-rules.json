@@ -1820,7 +1820,7 @@
       ]
     },
     "approval-gate-stamp": {
-      "_note": "The implementer-dispatch approval stamp (guard-unapproved-dispatch hook): path <data root>/state/approvals/APPROVAL, first line APPROVED <id> - user's words verbatim (a hand-written AUTO only under the two solve flows' typed waiver, no-stops-waiver-solve-flows; under auto-mode the hook's own AUTO stamp stands), delete on run completion. Canonical in execution-modes.md; restated at every implementer-dispatch site (the version-upgrade EXECUTE step included) so the stamp format survives when task-solve-cross is not installed.",
+      "_note": "The implementer-dispatch approval stamp (guard-unapproved-dispatch hook): path <data root>/state/approvals/<plan id>/APPROVAL (the brief carries plan: <plan id>; the root APPROVAL holds only an AUTO), first line APPROVED <id> - user's words verbatim (a hand-written AUTO only under the two solve flows' typed waiver, no-stops-waiver-solve-flows; under auto-mode the hook's own AUTO stamp stands), delete on run completion. Canonical in execution-modes.md; restated at every implementer-dispatch site (the version-upgrade EXECUTE step included) so the stamp format survives when task-solve-cross is not installed.",
       "owner": {
         "file": "stack/skills/task-solve-cross/references/execution-modes.md",
         "marker": "an earlier session's leftover stamp is not consent"
@@ -5341,39 +5341,39 @@
       ]
     },
     "approval-stamp-absolute-path": {
-      "_note": "The APPROVAL gate stamp is written with the Write tool at the ABSOLUTE ${CLAUDE_PROJECT_DIR} path (substituted in skill content, CC >= 2.1.196) (a relative path landed in the wrong cwd; the shell route is masked) - restated in every flow that writes the stamp guard-unapproved-dispatch.js reads.",
+      "_note": "The APPROVAL gate stamp is written with the Write tool at the ABSOLUTE ${CLAUDE_PROJECT_DIR} path (substituted in skill content, CC >= 2.1.196) (a relative path landed in the wrong cwd; the shell route is masked) - per plan since 2.8.0 (<data root>/state/approvals/<plan id>/APPROVAL, and every implementer brief carries `plan: <plan id>`: guard-unapproved-dispatch.js passes a brief only on its own plan's stamp, so two sessions on two plans no longer share one approval) - restated in every flow that writes an APPROVED stamp. The solve flows' typed AUTO waiver stays at the root (no-stops-waiver-solve-flows).",
       "owner": {
-        "file": "stack/skills/task-solve/SKILL.md",
-        "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/APPROVAL` with the Write tool"
+        "file": "stack/skills/task-implement/SKILL.md",
+        "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>`"
       },
       "sites": [
         {
-          "file": "stack/skills/task-implement/SKILL.md",
-          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/APPROVAL` with the Write tool"
-        },
-        {
           "file": "stack/skills/loop-architecture-quality/SKILL.md",
-          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/APPROVAL` with the Write tool"
+          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>`"
         },
         {
           "file": "stack/skills/task-build-from-scratch/SKILL.md",
-          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/APPROVAL` with the Write tool"
+          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>`"
         },
         {
           "file": "stack/skills/loop-test-coverage/SKILL.md",
-          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/APPROVAL` with the Write tool"
+          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>`"
         },
         {
           "file": "stack/skills/task-version-upgrade/SKILL.md",
-          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/APPROVAL` with the Write tool"
-        },
-        {
-          "file": "stack/skills/loop-code-quality/references/staged-mode.md",
-          "marker": "written with the Write tool at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/APPROVAL`"
+          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>`"
         },
         {
           "file": "stack/skills/loop-code-quality/SKILL.md",
-          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/APPROVAL` with the Write tool"
+          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>`"
+        },
+        {
+          "file": "stack/skills/task-solve-cross/references/execution-modes.md",
+          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>`"
+        },
+        {
+          "file": "stack/skills/loop-code-quality/references/staged-mode.md",
+          "marker": "written with the Write tool at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/<plan id>/APPROVAL`"
         }
       ]
     },

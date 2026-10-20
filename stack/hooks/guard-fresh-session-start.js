@@ -512,7 +512,16 @@ function flowStamps() {
       }
     } catch { /* no such folder */ }
   };
-  if (layout) list(nodePath.dirname(layout.statePath(projectRoot(), 'approvals', 'APPROVAL')), () => true);
+  if (layout) {
+    const approvals = nodePath.dirname(layout.statePath(projectRoot(), 'approvals', 'APPROVAL'));
+    list(approvals, (f) => { try { return fs.statSync(nodePath.join(approvals, f)).isFile(); } catch { return false; } });
+    // a plan's own stamp (per-plan approvals, 2026-10-20), named <plan id>/APPROVAL
+    for (const file of layout.approvalStamps ? layout.approvalStamps(projectRoot()) : []) {
+      const f = nodePath.relative(approvals, file).split(nodePath.sep).join('/');
+      if (f === 'APPROVAL' || seen.has(f)) continue;
+      try { seen.set(f, Math.round((Date.now() - fs.statSync(file).mtimeMs) / 60000)); } catch { /* gone meanwhile */ }
+    }
+  }
   // the retired monitor's state (its turn log and context marker) and the turn check's marker (an edit list before
   // 2026-10-16) are working state, not stamps
   list(legacyFlow(), layout ? (f) => layout.flowKind(f) === 'approvals'

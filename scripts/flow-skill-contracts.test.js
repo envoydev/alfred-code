@@ -137,7 +137,14 @@ test('I26: no stamp site names a protected-path prompt, and every site names the
 {
     const stale = skillFiles().filter((f) => /its own settings for this session|still sits under `\.claude\/`|edit files in this project's \.claude folder/.test(flat(fs.readFileSync(f, 'utf8')))).map((f) => path.relative(ROOT, f));
     assert.deepStrictEqual(stale, []);
-    for (const rel of STAMP_SITES) assert.match(flat(read(rel)), /<data root>\/state\/approvals\/APPROVAL/, `${rel}: the stamp's home`);
+    for (const rel of STAMP_SITES) assert.match(flat(read(rel)), /<data root>\/state\/approvals\/(?:<plan id>\/|loop-[a-z-]+\/)?APPROVAL/, `${rel}: the stamp's home`);
+    // per-plan approvals (2.8.0): every APPROVED site writes its plan's own stamp and names the brief's plan line - the
+    // solve flow's step mechanics write only the root AUTO waiver
+    for (const rel of STAMP_SITES.filter((r) => !/task-solve\/references/.test(r)))
+    {
+        assert.match(flat(read(rel)), /state\/approvals\/(?:<plan id>|loop-[a-z-]+)\/APPROVAL/, `${rel}: the plan's own stamp`);
+        assert.match(flat(read(rel)), /`plan: <plan id>`/, `${rel}: the brief's plan line`);
+    }
     assert.strictEqual(shared()['approval-stamp-protected-path'], undefined, 'the shared row went with the sentence');
 });
 

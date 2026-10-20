@@ -180,3 +180,19 @@ test('2.8.0: historyDir is <data root>/state/history, and a session an older hoo
     assert.ok(fs.existsSync(path.join(H.historyDir(root), 'new.json')), 'a new session writes state/history/');
   } finally { if (prior !== undefined) process.env.ALFRED_CODE_DATA_PATH = prior; }
 });
+
+// Per-plan approvals (2026-10-20): a plan's stamp lives in its own folder under state/approvals/ and is listed by its
+// place there, beside the root receipts; a folder holding no stamp is no receipt.
+test('the open receipts list a plan\'s stamp as <plan id>/APPROVAL', () => {
+  const { root } = project();
+  const approvals = path.join(root, '.alfred', 'state', 'approvals');
+  fs.mkdirSync(path.join(approvals, 'cart'), { recursive: true });
+  fs.mkdirSync(path.join(approvals, 'empty'), { recursive: true });
+  fs.writeFileSync(path.join(approvals, 'cart', 'APPROVAL'), 'APPROVED cart - "go"\n');
+  fs.writeFileSync(path.join(approvals, 'COMMIT-GATE'), 'x\n');
+  const tr = transcriptFile();
+  fs.writeFileSync(tr, '');
+  H.upsert(root, { session_id: 'sp', transcript_path: tr, cwd: root });
+  const e = JSON.parse(fs.readFileSync(path.join(H.historyDir(root), 'sp.json'), 'utf8'));
+  assert.deepStrictEqual(e.stamps.map((x) => x.name).sort(), ['COMMIT-GATE', 'cart/APPROVAL']);
+});

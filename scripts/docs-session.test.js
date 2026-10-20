@@ -2349,6 +2349,12 @@ test('S3: a stamp written while the last question timed out is denied; a delete,
     assert.ok(denied(fresh), 'the stamp under state/approvals/ is denied too');
     assert.match(JSON.parse(fresh.stdout).hookSpecificOutput.permissionDecisionReason, /^Blocked: the question timed out - re-ask\. \.alfred\/state\/approvals\/APPROVAL would record/);
     assert.ok(denied(r.hook(pre('Bash', { command: "mkdir -p .alfred/state/approvals && printf 'AUTO - go\\n' > .alfred/state/approvals/APPROVAL" }, s), env)), 'and a shell write there');
+    // per-plan approvals (2026-10-20): a plan's own stamp is the same approval
+    const plan = r.hook(pre('Write', { file_path: `${r.root}/.alfred/state/approvals/cart/APPROVAL`, content: 'APPROVED cart - "build it"\n' }, s), env);
+    assert.ok(denied(plan), "a plan's stamp under state/approvals/<plan id>/ is denied too");
+    assert.match(JSON.parse(plan.stdout).hookSpecificOutput.permissionDecisionReason, /\.alfred\/state\/approvals\/cart\/APPROVAL would record/);
+    assert.ok(denied(r.hook(pre('Bash', { command: "mkdir -p .alfred/state/approvals/cart && printf 'APPROVED cart - go\\n' > .alfred/state/approvals/cart/APPROVAL" }, s), env)), 'and a shell write there');
+    assert.ok(!denied(r.hook(pre('Write', { file_path: `${r.root}/.alfred/state/approvals/cart/NOTES`, content: 'APPROVED cart\n' }, s), env)), 'another file in the plan folder passes');
     fs.rmSync(marker, { force: true });
     assert.ok(!denied(write('APPROVED 1 - "build it"\n')), 'once the next answer clears the marker, the stamp is written');
   } finally { r.rm(); fs.rmSync(logs, { recursive: true, force: true }); }

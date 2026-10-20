@@ -1421,7 +1421,7 @@ test('guard-unapproved-dispatch: the stamp under state/approvals/, the legacy fl
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ...env } });
   const denied = disp('aspnet-implementer');
   assert.equal(denied.status, 2, 'no stamp anywhere');
-  assert.match(denied.stderr, /write \S*\.alfred[\\/]state[\\/]approvals[\\/]APPROVAL/, 'the denial names the new path to write');
+  assert.match(denied.stderr, /write \S*\.alfred[\\/]state[\\/]approvals[\\/]<plan id>[\\/]APPROVAL/, 'the denial names the new path to write, per plan');
   const fresh = stateReceipt(root, 'APPROVAL', 'APPROVED plan-1 - "go ahead"\n');
   assert.equal(disp('aspnet-implementer').status, 0, 'an implementer dispatch passes on state/approvals/APPROVAL');
   assert.equal(disp('general-purpose').status, 2, 'and a generic seat is held while it is stamped');
@@ -1434,6 +1434,48 @@ test('guard-unapproved-dispatch: the stamp under state/approvals/, the legacy fl
   stateReceipt(root, 'APPROVAL', 'approved maybe\n');
   assert.equal(disp('aspnet-implementer').status, 2, 'the new path wins when both exist');
 });
+
+// Per-plan approvals (spec Part 4, 2026-10-20): two sessions on two plans shared one APPROVAL - the later approval
+// overwrote the earlier and either session dispatched on it. A brief names its plan; only that plan's stamp passes it.
+test('guard-unapproved-dispatch: an approval belongs to the plan the brief names', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'proj-'));
+  const disp = (seat, prompt, env = {}) => runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', tool_input: { subagent_type: seat, prompt } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ...env } });
+  const brief = (id) => `Build task 2 of the plan.\nplan: ${id}\nfiles: src/cart.ts`;
+  const planStamp = (id, body) => stateReceipt(root, path.join(id, 'APPROVAL'), body);
+  const a = planStamp('plan-a', 'APPROVED plan-a - "go ahead"\n');
+  const deniedB = disp('aspnet-implementer', brief('plan-b'));
+  assert.equal(deniedB.status, 2, "a plan-b brief is denied on plan-a's stamp");
+  assert.match(deniedB.stderr, /state[\\/]approvals[\\/]plan-b[\\/]APPROVAL/, "the denial names plan-b's own stamp path");
+  assert.equal(disp('aspnet-implementer', brief('plan-a')).status, 0, 'a plan-a brief passes on its own stamp');
+  assert.equal(disp('aspnet-implementer', brief('.alfred/docs/work/plans/plan-a.md')).status, 0, 'a plan path names the same plan');
+  const b = planStamp('plan-b', 'APPROVED plan-b - "yes"\n');
+  assert.equal(disp('aspnet-implementer', brief('plan-a')).status, 0, 'two plan stamps: plan-a passes');
+  assert.equal(disp('aspnet-implementer', brief('plan-b')).status, 0, 'two plan stamps: plan-b passes');
+  fs.rmSync(a);
+  assert.equal(disp('aspnet-implementer', brief('plan-a')).status, 2, "deleting plan-a's stamp denies plan-a");
+  assert.equal(disp('aspnet-implementer', brief('plan-b')).status, 0, '... and only plan-a');
+  assert.equal(disp('general-purpose', 'x').status, 2, 'a generic seat is held while any plan stamp is live');
+  const bad = disp('aspnet-implementer', brief('.hidden'));
+  assert.equal(bad.status, 2, 'an invalid plan id is denied');
+  assert.match(bad.stderr, /plan id/i, 'naming the shape');
+  fs.rmSync(b);
+  const root1 = stateReceipt(root, 'APPROVAL', 'APPROVED legacy - "go"\n');
+  assert.equal(disp('aspnet-implementer', 'build it, no plan line').status, 0, 'a brief with no plan line passes on a root APPROVED stamp (pre-2.8.0 copies)');
+  const rootOnly = disp('aspnet-implementer', brief('plan-a'));
+  assert.equal(rootOnly.status, 2, 'a root APPROVED stamp does not pass a plan-named brief');
+  assert.match(rootOnly.stderr, /plan-a[\\/]APPROVAL/);
+  fs.writeFileSync(root1, 'AUTO - "run all recommended without asking me"\n');
+  assert.equal(disp('aspnet-implementer', brief('plan-a')).status, 0, 'a root AUTO stamp passes a plan-named brief');
+  fs.rmSync(root1);
+  const none = disp('aspnet-implementer', 'build it');
+  assert.equal(none.status, 2, 'nothing stamped');
+  assert.match(none.stderr, /plan: <plan id>/, 'the denial tells the brief to carry its plan line');
+  planStamp('plan-c', 'APPROVED plan-c - "go"\n');
+  const old = (Date.now() - 9 * 3600 * 1000) / 1000; fs.utimesSync(layoutApproval(root, 'plan-c'), old, old);
+  assert.equal(disp('aspnet-implementer', brief('plan-c')).status, 2, 'a 9h-old plan stamp is stale');
+});
+const layoutApproval = (root, id) => path.join(root, '.alfred', 'state', 'approvals', id, 'APPROVAL');
 
 // Spike S1 run 4: a plugin agent is addressable ONLY as `<plugin>:<agent>` - the bare name returns
 // 'Agent type not found'. So from the release that ships the seats as plugins, every house dispatch

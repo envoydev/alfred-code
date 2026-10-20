@@ -536,7 +536,13 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     ship apart from `stack/mcp` on the copy route; `guard-sensitive-data.test.js` holds both to one fixture), where the
     shell and a settings file's env win; no other server gets a value (audit 2026-10-14 PL2, repo-memory-data.md).
   - `guard-unapproved-dispatch.js` (PreToolUse `Task|Agent`) - blocks an `*-implementer` dispatch (bare or
-    `alfred-code:`-prefixed; a foreign plugin's is not the flow's seat) without the `<data root>/state/approvals/APPROVAL` gate file (written on explicit approval or an AUTO waiver),
+    `alfred-code:`-prefixed; a foreign plugin's is not the flow's seat) without its plan's gate file (written on explicit approval or an AUTO waiver) -
+    PER PLAN since 2.8.0 (spec Part 4, the user's ruling of 2026-10-20: two sessions on two plans shared one stamp): the brief
+    names its plan on a `plan: <plan id>` line (`layout.js planIdOf`: a path or `.md` name reduced to its basename, an
+    invalid id denied as `implementer-bad-plan-id`), and only `<data root>/state/approvals/<plan id>/APPROVAL`
+    (`approvalPath`) passes it, or a live root `AUTO` (auto-mode's, a solve flow's typed waiver); a root `APPROVED` passes
+    only a brief with no `plan:` line - a pre-2.8.0 skill copy's, for the 2.x line. The generic rule, the timeout-write
+    deny, `history.js stamps` and the compaction state read every plan stamp (`approvalStamps`), listed as `<plan id>/APPROVAL`;
     blocks a generic `general-purpose`/`claude` dispatch while that stamp is live (stamps older than 8h
     or the session are absent), and blocks an `Explore`/generic dispatch asking a SYMBOL question ('reference to' /
     'usages of' count only before a code identifier - backticked, CamelCase, `name(`, `A.B` / `A::B` - never a

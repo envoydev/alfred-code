@@ -301,7 +301,9 @@ const AUTO_STAMP_MAX_MS = 8 * 60 * 60 * 1000;
 // tell apart from it. A week is the backstop for a stamp whose run died without its close.
 const SESSION_STAMP_MAX_MS = 7 * 24 * 60 * 60 * 1000;
 // The approval stamp's state for this payload: its path, first line, named session and whether it is live. null when absent.
-function approvalStamp(input, env)
+// With `planId`, that plan's own stamp (<data root>/state/approvals/<plan id>/APPROVAL, layout.js approvalPath); without
+// it, the root one - auto-mode's, and a pre-2.8.0 skill copy's.
+function approvalStamp(input, env, planId)
 {
     try
     {
@@ -309,7 +311,9 @@ function approvalStamp(input, env)
         const payload = input && typeof input === 'object' ? input : {};
         const root = source.CLAUDE_PROJECT_DIR || (typeof payload.cwd === 'string' ? payload.cwd : '');
         if (!root) return null;
-        const file = layout ? layout.findState(root, 'approvals', 'APPROVAL', source) : path.resolve(root, envOf(source, 'DOCS_PATH') || '.alfred/docs', 'flow', 'APPROVAL');
+        if (planId && !layout) return null;
+        const file = planId ? layout.approvalPath(root, planId, source)
+            : layout ? layout.findState(root, 'approvals', 'APPROVAL', source) : path.resolve(root, envOf(source, 'DOCS_PATH') || '.alfred/docs', 'flow', 'APPROVAL');
         const stamp = fs.statSync(file);
         if (!stamp.isFile()) return null;
         const fd = fs.openSync(file, 'r');
