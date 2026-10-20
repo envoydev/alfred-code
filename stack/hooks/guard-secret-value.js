@@ -701,7 +701,7 @@ function resolveFile(token) {
 // A block or a redacted view ends in an ask, and the 'show or use it' answer has to be honourable or
 // the ask offers a route this guard then denies. A remote user cannot run the copy-ready command in
 // their own terminal - the bare denial took the decision away from them. So the answer is a receipt
-// this guard reads: <docs-path>/flow/SECRET-READ-ALLOW, one entry per line ('#' comments allowed) -
+// this guard reads: <data root>/state/approvals/SECRET-READ-ALLOW (the pre-2.8.0 <docs-path>/flow/ one still read, layout.js), one entry per line ('#' comments allowed) -
 // a file path (that file may be read or dumped), a variable NAME (that variable may be printed), or
 // `*` (everything, this session). Session-scoped the way the dispatch guard's APPROVAL stamp is:
 // older than 8h, or written before this session began (the transcript's birthtime where the
@@ -714,8 +714,11 @@ function resolveFile(token) {
 const MAX_RECEIPT_AGE_MS = 8 * 60 * 60 * 1000;
 const realOf = (p) => { try { return fs.realpathSync(p); } catch { return pathMod.resolve(p); } };
 const sessionIdOf = (v) => (typeof v === 'string' && /^[\w.-]{1,128}$/.test(v) ? v : '');
+let layout = null;
+try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
 function readReceipt(root, transcriptPath, sessionId) {
-  const r = { path: pathMod.resolve(root, docsRootEnv(), 'flow', 'SECRET-READ-ALLOW'), stale: false, all: false, files: new Set(), names: new Set(), live: false, session: sessionIdOf(sessionId) };
+  const r = { path: layout ? layout.findState(root, 'approvals', 'SECRET-READ-ALLOW') : pathMod.resolve(root, docsRootEnv(), 'flow', 'SECRET-READ-ALLOW'),
+    write: layout ? layout.statePath(root, 'approvals', 'SECRET-READ-ALLOW') : null, stale: false, all: false, files: new Set(), names: new Set(), live: false, session: sessionIdOf(sessionId) };
   try {
     const st = fs.statSync(r.path);
     let sessionStartMs = 0;
@@ -751,7 +754,7 @@ function readReceipt(root, transcriptPath, sessionId) {
 const askLine = (r) =>
   'If the user needs the VALUE itself (shown, or placed where a blind copy cannot reach), end the turn with ONE ' +
   "AskUserQuestion: 'Presence only (Recommended)', 'Show or use the value this session - it enters the transcript permanently', 'Drop it'. " +
-  `On the second answer write ${r.path}: ${r.session ? `\`session: ${r.session}\`` : '`session: <id>` (`$CLAUDE_CODE_SESSION_ID`)'}, ` +
+  `On the second answer write ${r.write || r.path}: ${r.session ? `\`session: ${r.session}\`` : '`session: <id>` (`$CLAUDE_CODE_SESSION_ID`)'}, ` +
   'then the file, the variable NAME or `*`, one per line, and retry (this session, under 8h)' +
   (r.stale ? ' - the receipt there now is stale (older than 8h, from before this session, or naming another), so rewrite it only on a fresh answer' : '') + '.';
 // A note the rewritten call prints as its first line, so the model reads what happened and the route

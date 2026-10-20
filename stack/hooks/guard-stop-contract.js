@@ -1215,7 +1215,10 @@ function secretReadAllowed() {
   try {
     const path = require('path');
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-    const receipt = path.resolve(root, docsRootEnv(), 'flow', 'SECRET-READ-ALLOW');
+    // 2.8.0: <data root>/state/approvals/ (layout.js), the pre-2.8.0 flow/ still read - the secret guard's own lookup
+    let layout = null;
+    try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
+    const receipt = layout ? layout.findState(root, 'approvals', 'SECRET-READ-ALLOW') : path.resolve(root, docsRootEnv(), 'flow', 'SECRET-READ-ALLOW');
     const st = fs.statSync(receipt);
     let sessionStartMs = 0;
     try {

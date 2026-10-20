@@ -16,8 +16,9 @@
 //   node receipt.js clear commit|push
 // The commit set: the index, plus the changes under --paths (a `git add <paths>` or `git commit <paths>` the act runs),
 // or plus every tracked change with --all (`git commit -a`); with nothing staged and no flag, the whole tree. The
-// docs root (where the receipt lives) and what was untracked when the session began are left out, as the guard
-// leaves them out. Exit 0 = written (or printed with --dry-run); 2 = refused, with the reason on stderr.
+// docs root, the data root's state/ (where the receipt lives, `<data root>/state/approvals/`) and statistics/, and what
+// was untracked when the session began are left out, as the guard leaves them out. Exit 0 = written (or printed with
+// --dry-run); 2 = refused, with the reason on stderr.
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
@@ -38,6 +39,15 @@ function parseArgs(argv) {
   return out;
 }
 
+// The stack's setting ALFRED_CODE_<suffix>, '' read as unset (env-reader in meta/shared-rules.json pins the copies).
+function envOf(env, suffix)
+{
+    const value = env[`ALFRED_CODE_${suffix}`];
+    return value === '' ? undefined : value;
+}
+// data-root-reader (meta/shared-rules.json): ALFRED_CODE_DATA_PATH, relative to the project, else .alfred.
+const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '') || '.alfred';
+
 const fail = (msg) => { process.stderr.write(`receipt: ${msg}\n`); process.exit(2); };
 const gitIn = (cwd) => (args) => execFileSync('git', ['-c', 'core.quotePath=false', ...args], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 });
 const lines = (s, sep = '\n') => s.split(sep).map((l) => l.trim()).filter(Boolean);
@@ -50,17 +60,22 @@ function locate() {
   if (!top) fail('not inside a git repository');
   const projectDir = process.env.CLAUDE_PROJECT_DIR;
   const root = projectDir && topOf(projectDir) === top ? real(projectDir) : top;
-  let docs = process.env.ALFRED_CODE_DOCS_PATH;
-  if (!docs) {
+  // the environment first, then the project's settings files, as the hooks get them
+  const setting = (suffix) => {
+    let value = envOf(process.env, suffix);
     for (const f of ['settings.local.json', 'settings.json']) {
-      try { docs = JSON.parse(fs.readFileSync(path.join(root, '.claude', f), 'utf8')).env.ALFRED_CODE_DOCS_PATH; } catch { /* absent or unreadable */ }
-      if (docs) break;
+      if (value) break;
+      try { value = envOf(JSON.parse(fs.readFileSync(path.join(root, '.claude', f), 'utf8')).env || {}, suffix); } catch { /* absent or unreadable */ }
     }
-  }
-  const docsAbs = path.resolve(root, docs || '.alfred/docs');
-  const docsRel = path.relative(top, real(docsAbs)).split(path.sep).join('/');
-  const docsPrefix = docsRel && !docsRel.startsWith('..') && !path.isAbsolute(docsRel) ? `${docsRel}/` : null;
-  return { top, root, docsAbs, docsPrefix, git: gitIn(top) };
+    return value;
+  };
+  const docsAbs = path.resolve(root, setting('DOCS_PATH') || '.alfred/docs');
+  const dataAbs = path.resolve(root, dataRoot({ ALFRED_CODE_DATA_PATH: setting('DATA_PATH') }));
+  // 2.8.0: the receipts live in <data root>/state/approvals/ (stack/hooks/layout.js), where the guard reads them first
+  const approvalsAbs = path.join(dataAbs, 'state', 'approvals');
+  const inTop = (abs) => { const r = path.relative(top, real(abs)).split(path.sep).join('/'); return r && !r.startsWith('..') && !path.isAbsolute(r) ? `${r}/` : null; };
+  const ownPrefixes = [docsAbs, path.join(dataAbs, 'state'), path.join(dataAbs, 'statistics')].map(inTop).filter(Boolean);
+  return { top, root, docsAbs, approvalsAbs, ownPrefixes, git: gitIn(top) };
 }
 
 // What was untracked when the session began (docs-session.js writes it per HEAD): this HEAD's record, else the newest.
@@ -84,7 +99,7 @@ function preExisting(ctx, head) {
 
 // The files this commit takes in, repo-relative, as the guard's measure() reads them.
 function commitFiles(ctx, args, head) {
-  const keep = (f) => f && !(ctx.docsPrefix && f.startsWith(ctx.docsPrefix));
+  const keep = (f) => f && !ctx.ownPrefixes.some((p) => f.startsWith(p));
   const before = preExisting(ctx, head);
   const set = new Set();
   const diff = (base, paths) => { for (const f of lines(ctx.git(['diff', ...base, '--name-only', '-z', ...(paths.length ? ['--', ...paths] : [])]), '\0')) if (keep(f)) set.add(f); };
@@ -182,15 +197,17 @@ function main() {
   if (verb === 'clear') {
     if (!gateOf(which)) fail('usage: receipt.js clear commit|push');
     const ctx = locate();
-    const file = path.join(ctx.docsAbs, 'flow', gateOf(which));
+    const file = path.join(ctx.approvalsAbs, gateOf(which));
     fs.rmSync(file, { force: true });
+    // and the pre-2.8.0 flow/ one, which the guard reads once the new one is gone
+    fs.rmSync(path.join(ctx.docsAbs, 'flow', gateOf(which)), { force: true });
     process.stdout.write(`cleared ${path.relative(process.cwd(), file) || file}\n`);
     return;
   }
   if (!gateOf(verb)) fail('usage: receipt.js commit|push --verified ... | --waived ... (or clear commit|push) - see the header');
   const ctx = locate();
   const { body } = build(verb, args, ctx);
-  const file = path.join(ctx.docsAbs, 'flow', gateOf(verb));
+  const file = path.join(ctx.approvalsAbs, gateOf(verb));
   if (!args['dry-run']) {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, body);

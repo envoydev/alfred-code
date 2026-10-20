@@ -235,8 +235,13 @@ if (!isImplementer && !GENERIC_SEATS.has(seat)) {
 }
 // The payload's cwd before the hook's own, as the block ledger above reads it (audit 2026-10-08 row 39).
 const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-const docsRoot = docsRootEnv();
-const gate = path.resolve(root, docsRoot, 'flow', 'APPROVAL');
+// 2.8.0: the stamp lives in <data root>/state/approvals/ (layout.js); the pre-2.8.0 flow/ one a 2.7.0 skill copy writes is
+// still read for the 2.x line, and is the only path when layout.js is not beside this file. `gate` is the stamp read,
+// `gateWrite` where a denial says to write one.
+let layout = null;
+try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
+const gate = layout ? layout.findState(root, 'approvals', 'APPROVAL') : path.resolve(root, docsRootEnv(), 'flow', 'APPROVAL');
+const gateWrite = layout ? layout.statePath(root, 'approvals', 'APPROVAL') : gate;
 const MAX_STAMP_AGE_MS = 8 * 60 * 60 * 1000; // 8h - re-stamping is one Write; staleness shipped unapproved dispatches
 let first = '';
 let stale = false;
@@ -305,7 +310,7 @@ if (isImplementer) {
       `inferred or ambiguous go-ahead. A no-stops run is the user's '--auto-mode' first after the command (the hook\n` +
       `stamps it); a hand-written AUTO waiver exists only under task-solve and task-solve-cross, in the user's typed\n` +
       `words - anywhere else the user re-runs the command with --auto-mode.\n` +
-      `If the user approved THIS conversation, write ${gate}\n` +
+      `If the user approved THIS conversation, write ${gateWrite}\n` +
       `with one first line - APPROVED <plan/contract id> - "<their words, verbatim>" (or, under those two\n` +
       `solve flows only, AUTO - "<their words, verbatim>") - then retry the dispatch.\n` +
       `Never fabricate the quote. Otherwise: present the plan and ask the user through ONE\n` +

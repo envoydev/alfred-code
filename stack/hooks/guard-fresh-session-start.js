@@ -916,7 +916,10 @@ function autoModeStart() {
     return null;
   }
   const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-  const file = nodePath.resolve(root, docsRootEnv(), 'flow', 'APPROVAL');
+  // 2.8.0: written to <data root>/state/approvals/ (layout.js); approvalStamp reads it there, then the pre-2.8.0 flow/
+  let layout = null;
+  try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
+  const file = layout ? layout.statePath(root, 'approvals', 'APPROVAL') : nodePath.resolve(root, docsRootEnv(), 'flow', 'APPROVAL');
   let current = null;
   try { current = require('./hook-prelude.js').approvalStamp({ ...payload, cwd: root }); } catch { /* no prelude: written fresh */ }
   const kept = Boolean(current && current.live && current.session === sid && /^AUTO\b/.test(current.first));
@@ -925,7 +928,7 @@ function autoModeStart() {
   // live run counts - a stamp under 8h old was refused before, which silently cost a fresh-session hand-off its
   // auto-mode. This run asks as it always has, and the banner says why and how to take over.
   if (current && current.session && current.session !== sid && otherSessionLive(current.session)) {
-    const rel = nodePath.relative(root, file).split(nodePath.sep).join('/') || file;
+    const rel = nodePath.relative(root, current.file).split(nodePath.sep).join('/') || current.file;
     autoRefused = `another session (${current.session.slice(0, 8)}) is running a stamped run in this checkout right now, and ${rel} is its approval - `
       + `finish or stop that run, or delete ${rel} to take over, then type the command again`;
     ledgerRow({ mode: 'auto', kind: 'auto-start-refused', reason: `auto-mode: ${skill} - the APPROVAL stamp belongs to a session still running, left as it is` });
@@ -939,9 +942,12 @@ function autoModeStart() {
       fs.mkdirSync(nodePath.dirname(file), { recursive: true });
       fs.writeFileSync(file, `AUTO - "${words}"\nsession: ${sid}\nskill: ${skill}\nat: ${new Date().toISOString()}\n`);
     } catch { return null; }   // no stamp, no auto-mode: the run asks as it always has
+    // the stamp this one replaces, left in the pre-2.8.0 flow/, would be read again once the run's close deletes the new one
+    if (current && current.file !== file) try { fs.rmSync(current.file, { force: true }); } catch { /* the new one wins while it stands */ }
   }
+  const at = kept ? current.file : file;
   ledgerRow({ mode: 'auto', kind: 'auto-start', reason: `auto-mode: ${kept ? 'the live stamp kept' : 'stamp written'} for ${skill}`, detail: { skill, kept } });
-  return { file: nodePath.relative(root, file).split(nodePath.sep).join('/') || file };
+  return { file: nodePath.relative(root, at).split(nodePath.sep).join('/') || at };
 }
 const auto = (IS_SKILL_CALL && (EVENT === 'PreToolUse' || !EVENT)) || EVENT === 'UserPromptExpansion' ? autoModeStart() : null;
 // --- the MODE BANNER (the user's ruling, 2026-10-15) ---

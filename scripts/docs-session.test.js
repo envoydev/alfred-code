@@ -2303,6 +2303,11 @@ test('S3: a stamp written while the last question timed out is denied; a delete,
     assert.ok(!denied(r.hook(pre('Write', { file_path: `${r.root}/.claude/docs/flow/NOTES`, content: 'APPROVED by nobody\n' }, s), env)), 'another flow file passes');
     assert.ok(!denied(write('APPROVED 1 - "x"\n', sid())), 'another session with no timeout passes');
     assert.ok(!denied(r.hook({ ...pre('Write', { file_path: stamp, content: 'APPROVED 1\n' }, s), agent_id: 'a1', agent_type: 'x' }, env)), 'a seat\'s call is not judged here');
+    // 2.8.0: the stamp's own home, <data root>/state/approvals/ - the pre-2.8.0 flow/ above stays covered for the 2.x line
+    const fresh = r.hook(pre('Write', { file_path: `${r.root}/.alfred/state/approvals/APPROVAL`, content: 'APPROVED 1 - "build it"\n' }, s), env);
+    assert.ok(denied(fresh), 'the stamp under state/approvals/ is denied too');
+    assert.match(JSON.parse(fresh.stdout).hookSpecificOutput.permissionDecisionReason, /^Blocked: the question timed out - re-ask\. \.alfred\/state\/approvals\/APPROVAL would record/);
+    assert.ok(denied(r.hook(pre('Bash', { command: "mkdir -p .alfred/state/approvals && printf 'AUTO - go\\n' > .alfred/state/approvals/APPROVAL" }, s), env)), 'and a shell write there');
     fs.rmSync(marker, { force: true });
     assert.ok(!denied(write('APPROVED 1 - "build it"\n')), 'once the next answer clears the marker, the stamp is written');
   } finally { r.rm(); fs.rmSync(logs, { recursive: true, force: true }); }

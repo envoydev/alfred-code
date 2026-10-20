@@ -56,6 +56,10 @@ const os = require('node:os');
 // os.homedir() throws on Windows when USERPROFILE is set but empty - every hook loads this file, so it never may.
 const homeDir = () => { try { return os.homedir() || process.env.HOME || ''; } catch { return process.env.HOME || ''; } };
 const path = require('node:path');
+// 2.8.0: the approval stamp lives in <data root>/state/approvals/ (layout.js, beside this file on both routes); the pre-2.8.0
+// <docs>/flow/ is still read for the 2.x line, and is the only path when layout.js is not there.
+let layout = null;
+try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
 
 // STDOUT AND STDERR BLOCK. Node writes a pipe ASYNCHRONOUSLY on macOS, and process.exit() drops whatever the
 // pipe has not taken yet: measured 2026-10-10, the secret guard's rewrite of a 100 KB command reached its reader
@@ -284,7 +288,7 @@ function transcriptEntrypoint(file)
 }
 
 // A live AUTO waiver is nobody at the terminal too (audit 2026-10-10 C08 / C09). The user's 'take every recommended
-// option' is written to <docs>/flow/APPROVAL with an `AUTO - "<their words>"` first line, and the dispatch guard reads
+// option' is written to <data root>/state/approvals/APPROVAL with an `AUTO - "<their words>"` first line, and the dispatch guard reads
 // it as consent for THIS session only: under 8h old and not written before the session's transcript was born (a
 // birthtime equal to the ctime is a filesystem's fallback, unknown - the age cap still holds). While it is live a
 // person-directed ask has nobody to answer it - measured: a fresh-session Stop block demanding an ask while three
@@ -305,7 +309,7 @@ function approvalStamp(input, env)
         const payload = input && typeof input === 'object' ? input : {};
         const root = source.CLAUDE_PROJECT_DIR || (typeof payload.cwd === 'string' ? payload.cwd : '');
         if (!root) return null;
-        const file = path.resolve(root, envOf(source, 'DOCS_PATH') || '.alfred/docs', 'flow', 'APPROVAL');
+        const file = layout ? layout.findState(root, 'approvals', 'APPROVAL', source) : path.resolve(root, envOf(source, 'DOCS_PATH') || '.alfred/docs', 'flow', 'APPROVAL');
         const stamp = fs.statSync(file);
         if (!stamp.isFile()) return null;
         const fd = fs.openSync(file, 'r');

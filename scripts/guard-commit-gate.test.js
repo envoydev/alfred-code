@@ -78,6 +78,13 @@ const writeReceipt = (dir, name, body) => {
   fs.mkdirSync(flow, { recursive: true });
   fs.writeFileSync(path.join(flow, name), body);
 };
+// 2.8.0 layout: where every hook writes a receipt now; the pre-2.8.0 flow/ above is still read for the 2.x line.
+const writeStateReceipt = (dir, name, body) => {
+  const file = path.join(dir, '.alfred', 'state', 'approvals', name);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, body);
+  return file;
+};
 
 // ---------------------------------------------------------------------------------------------
 // 1. gate-receipt-probe-scope
@@ -1334,4 +1341,44 @@ test('audit 2026-10-20 H4: a commit receipt written before this session began is
     assert.equal(old.status, 2, `${body[0]}: another session's receipt opens no commit in this one`);
     assert.match(old.stderr, /written before this session began/);
   }
+});
+
+// ---------------------------------------------------------------------------------------------
+// 2.8.0 layout: the receipts live in <data root>/state/approvals/
+// ---------------------------------------------------------------------------------------------
+test('2.8.0 layout: a COMMIT-GATE receipt under state/approvals/ opens the commit', () => {
+  const dir = scratchRepo();
+  writeStateReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED the checkpoint' }));
+  assert.equal(gateIn(dir, 'git add a.txt b.txt c.txt && git commit -m x'), 0);
+});
+
+test('2.8.0 layout: a receipt only under the legacy flow/ still opens it (the 2.x skew: a 2.7.0 skill copy wrote it)', () => {
+  const dir = scratchRepo();
+  writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED the checkpoint' }));
+  assert.equal(gateIn(dir, 'git add a.txt b.txt c.txt && git commit -m x'), 0);
+});
+
+test('2.8.0 layout: the denial names state/approvals/COMMIT-GATE', () => {
+  const dir = scratchRepo();
+  const r = gateFull(dir, 'git add a.txt b.txt c.txt && git commit -m x');
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /write \S*\.alfred[\\/]state[\\/]approvals[\\/]COMMIT-GATE/);
+  assert.doesNotMatch(r.stderr, /flow[\\/]COMMIT-GATE/);
+});
+
+test('2.8.0 layout: a shell write to .alfred/state/approvals/COMMIT-GATE is read as a receipt write', () => {
+  const dir = scratchRepo();
+  const atomic = commitReceipt(headOf(dir), { first: 'VERIFIED the checkpoint' }).trim().replace(/\n/g, '\\n');
+  assert.equal(gateIn(dir, `mkdir -p .alfred/state/approvals && printf '${atomic}\\n' > .alfred/state/approvals/COMMIT-GATE && git add a.txt b.txt c.txt && git commit -m x`), 0);
+});
+
+test('2.8.0 layout: a PUSH-GATE receipt under state/approvals/ opens the push, and the denial names it', () => {
+  const { dir, git } = pushRepo();
+  fs.writeFileSync(path.join(dir, 'b.txt'), forty());
+  git('add', '-A'); git('commit', '-qm', 'feat: b');
+  const denied = gateFull(dir, 'git push');
+  assert.equal(denied.status, 2, 'ahead of upstream with no receipt');
+  assert.match(denied.stderr, /\.alfred[\\/]state[\\/]approvals[\\/]PUSH-GATE/);
+  writeStateReceipt(dir, 'PUSH-GATE', pushReceipt(headOf(dir)));
+  assert.equal(gateIn(dir, 'git push'), 0);
 });

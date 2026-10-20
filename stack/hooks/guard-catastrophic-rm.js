@@ -75,6 +75,10 @@ const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 // it lands fails open like every gate here (the parity test's copy set), rather than judging with a second, weaker reader.
 let shellWrites;
 try { shellWrites = require('./shell-writes.js'); } catch { process.exit(0); }
+// 2.8.0: an ALLOW receipt lives in <data root>/state/approvals/ (layout.js); the pre-2.8.0 flow/ one is still read for the
+// 2.x line, and is the only path when layout.js is not beside this file.
+let layout = null;
+try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
 // Every git this guard runs: fsmonitor off, no optional locks (hook-prelude.js gitSafe, audit 2026-10-20 H2) - the same two
 // inline when the prelude is absent, since a protective read must not skip git or run a repository's own program.
 const gitSafe = (() => { try { return require('./hook-prelude.js').gitSafe; } catch { return (argv, opts = {}) => ['git', ['-c', 'core.fsmonitor=false', ...argv], { ...opts, env: { ...(opts.env || process.env), GIT_OPTIONAL_LOCKS: '0' } }]; } })();
@@ -892,7 +896,7 @@ function main()
         const allowed = (() => {
             try
             {
-                const receipt = path.resolve(root, docsRootEnv(), 'flow', 'DISCARD-ALLOW');
+                const receipt = layout ? layout.findState(root, 'approvals', 'DISCARD-ALLOW') : path.resolve(root, docsRootEnv(), 'flow', 'DISCARD-ALLOW');
                 const st = fs.statSync(receipt);
                 let sessionStartMs = 0;
                 try
@@ -911,7 +915,7 @@ function main()
 
         if (!allowed)
         {
-            const receiptRel = path.join(docsRootEnv().replace(/^\//, ''), 'flow', 'DISCARD-ALLOW');
+            const receiptRel = layout ? path.relative(root, layout.statePath(root, 'approvals', 'DISCARD-ALLOW')).split(path.sep).join('/') : path.join(docsRootEnv().replace(/^\//, ''), 'flow', 'DISCARD-ALLOW');
             const entries = (n) => `entr${n === 1 ? 'y' : 'ies'}`;
             const head = (g) => (g.kind === 'stash'
                 ? `this destroys ${g.rows.length} stash ${entries(g.rows.length)}, and a dropped stash leaves no\nreflog entry to recover it from.`

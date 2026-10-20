@@ -28,6 +28,13 @@ function transcript(name, rows) {
   fs.writeFileSync(p, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
   return p;
 }
+// 2.8.0 layout: a receipt where every hook writes one now, <data root>/state/approvals/ (the pre-2.8.0 flow/ is still read).
+function stateReceipt(root, name, body) {
+  const file = path.join(root, '.alfred', 'state', 'approvals', name);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, body);
+  return file;
+}
 // The context-window layers below read settings.json from the ACCOUNT dir and the project - and a
 // real machine's account file names a model like `opus[1m]`, which would silently move every
 // threshold assertion in this file. Pin an EMPTY account dir for the whole run; the tests that
@@ -204,6 +211,8 @@ test('guard-stop-contract: a credential shape in a tool result demands the rotat
   fs.writeFileSync(receipt, '*\n');
   const old = (Date.now() - 9 * 3600 * 1000) / 1000; fs.utimesSync(receipt, old, old);
   assert.equal(stop().status, 2, 'a stale receipt is no consent');
+  stateReceipt(root, 'SECRET-READ-ALLOW', '*\n');
+  assert.equal(stop().status, 0, '2.8.0: the receipt under state/approvals/ is read, and wins over a stale flow/ copy');
 });
 
 test('guard-stop-contract: the rotate ask is asked ONCE per exposure, and ALFRED_CODE_ROTATE_ASK=0 turns it off', () => {
@@ -968,7 +977,7 @@ test('guard-catastrophic-rm: the gate reads the PATHSPEC, and honours a discard 
 
   // every other blocking guard honours an answer; this one re-blocked a discard the user had just
   // chosen, and the chosen action was silently substituted with a `git stash push -u`
-  assert.match(rm('git restore a.txt').stderr, /DISCARD-ALLOW/, 'the denial names the receipt');
+  assert.match(rm('git restore a.txt').stderr, /\.alfred\/state\/approvals\/DISCARD-ALLOW/, 'the denial names the receipt, where 2.8.0 writes it');
   const flow = path.join(dir, '.alfred', 'docs', 'flow');
   fs.mkdirSync(flow, { recursive: true });
   fs.writeFileSync(path.join(flow, 'DISCARD-ALLOW'), '# the user answered Discard it\na.txt\n');
@@ -980,6 +989,8 @@ test('guard-catastrophic-rm: the gate reads the PATHSPEC, and honours a discard 
   assert.equal(rm('git checkout -- .').status, 0, 'the * line does');
   fs.utimesSync(path.join(flow, 'DISCARD-ALLOW'), new Date(Date.now() - 9 * 3600 * 1000), new Date(Date.now() - 9 * 3600 * 1000));
   assert.equal(rm('git checkout -- .').status, 2, 'a receipt older than 8h reads as absent');
+  stateReceipt(dir, 'DISCARD-ALLOW', '*\n');
+  assert.equal(rm('git checkout -- .').status, 0, '2.8.0: the receipt under state/approvals/ is read');
 });
 
 test('guard-catastrophic-rm: an untracked file is lost only to clean, or to a target that tracks the same path', () => {
@@ -1397,6 +1408,28 @@ test('guard-unapproved-dispatch: the stamp lifecycle', () => {
   assert.equal(disp('wpf-implementer'), 2, 'a 9h-old stamp is absent');
   fs.writeFileSync(gate, 'APPROVED plan-1 - "go"\n');
   assert.equal(disp('wpf-implementer', { ALFRED_CODE_DOCS_PATH: 'docs' }), 2, 'the stamp is looked up under ALFRED_CODE_DOCS_PATH');
+});
+
+// 2.8.0 layout: the stamp lives in <data root>/state/approvals/. The core's hooks update before /alfred-code:update moves
+// the folders, and a 2.7.0 skill copy still writes the old flow/APPROVAL, so the guard reads that too for the 2.x line.
+test('guard-unapproved-dispatch: the stamp under state/approvals/, the legacy flow/ one, and the denial naming the new path', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'proj-'));
+  const disp = (seat, env = {}) => runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', tool_input: { subagent_type: seat, prompt: 'x' } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ...env } });
+  const denied = disp('aspnet-implementer');
+  assert.equal(denied.status, 2, 'no stamp anywhere');
+  assert.match(denied.stderr, /write \S*\.alfred[\\/]state[\\/]approvals[\\/]APPROVAL/, 'the denial names the new path to write');
+  const fresh = stateReceipt(root, 'APPROVAL', 'APPROVED plan-1 - "go ahead"\n');
+  assert.equal(disp('aspnet-implementer').status, 0, 'an implementer dispatch passes on state/approvals/APPROVAL');
+  assert.equal(disp('general-purpose').status, 2, 'and a generic seat is held while it is stamped');
+  fs.rmSync(fresh);
+  const legacy = path.join(root, '.alfred', 'docs', 'flow', 'APPROVAL');
+  fs.mkdirSync(path.dirname(legacy), { recursive: true });
+  fs.writeFileSync(legacy, 'APPROVED plan-1 - "go ahead"\n');
+  assert.equal(disp('aspnet-implementer').status, 0, 'and on a legacy flow/APPROVAL a 2.7.0 skill copy wrote');
+  assert.equal(disp('aspnet-implementer', { ALFRED_CODE_DATA_PATH: 'var/alfred' }).status, 0, 'the legacy one is read under any data root');
+  stateReceipt(root, 'APPROVAL', 'approved maybe\n');
+  assert.equal(disp('aspnet-implementer').status, 2, 'the new path wins when both exist');
 });
 
 // Spike S1 run 4: a plugin agent is addressable ONLY as `<plugin>:<agent>` - the bare name returns
@@ -2432,7 +2465,7 @@ test("guard-cross-project-write: a block ends in an ask, and the user's allow is
   assert.match(denied.stderr, /Task card in this project \(Recommended\)/, 'the card is the recommended option');
   // the NATIVE realpath, as the guard resolves it: the JS one keeps a Windows 8.3 short name (windows-latest's RUNNER~1)
   assert.ok(denied.stderr.includes(`Allow writes into ${fs.realpathSync.native(other)} for this session`), 'the allow option names the other ROOT, not the file');
-  assert.match(denied.stderr, /flow[\\/]CROSS-WRITE-ALLOW/, 'the denial names the receipt (path.join spells the separator per OS - measured: windows-latest printed a backslash)');
+  assert.match(denied.stderr, /state[\\/]approvals[\\/]CROSS-WRITE-ALLOW/, 'the denial names the receipt where 2.8.0 writes it (path.join spells the separator per OS - measured: windows-latest printed a backslash)');
   assert.doesNotMatch(denied.stderr, /stale/, 'no receipt, no staleness talk');
   // the receipt: one root per line, comments allowed, this session's own
   fs.writeFileSync(tp, '{}\n'); pause(30);
@@ -2456,6 +2489,8 @@ test("guard-cross-project-write: a block ends in an ask, and the user's allow is
   const tp2 = path.join(root, 'session2.jsonl');
   fs.writeFileSync(tp2, '{}\n'); pause(20); fs.appendFileSync(tp2, '{}\n');
   assert.equal(go({ tool_name: 'Write', tool_input: { file_path: target }, transcript_path: tp2 }).status, 2, "another session's receipt is not this one's consent");
+  stateReceipt(root, 'CROSS-WRITE-ALLOW', `${other}\n`);
+  assert.equal(go({ tool_name: 'Write', tool_input: { file_path: target } }).status, 0, '2.8.0: the receipt under state/approvals/ is read');
 });
 
 test('every guard fails open on a JSON scalar or null payload', () => {
@@ -3982,6 +4017,8 @@ test('guard-config-protection: an existing check config cannot be weakened, a ne
     const old = new Date(Date.now() - 9 * 60 * 60 * 1000);
     fs.utimesSync(path.join(root, '.alfred/docs/flow/CONFIG-EDIT-ALLOW'), old, old);
     assert.strictEqual(edit(eslint, '[]', '[{ rules: {} }]'), 2, 'a receipt older than 8h is not');
+    at('.alfred/state/approvals/CONFIG-EDIT-ALLOW', 'eslint.config.js\n');
+    assert.strictEqual(edit(eslint, '[]', '[{ rules: {} }]'), 0, '2.8.0: the receipt under state/approvals/ is read');
   });
   withProject(root, { ALFRED_CODE_CONFIG_PROTECT: '0' }, () =>
     assert.strictEqual(edit(path.join(root, 'tsconfig.json'), '"strict": true', '"strict": false'), 0, 'the env switch turns it off'));
@@ -4153,7 +4190,7 @@ test('guard-config-protection: the denial routes a wanted change through ONE ask
   assert.strictEqual(r.status, 2);
   assert.match(r.stderr, /Blocked: \.editorconfig already exists/);
   assert.match(r.stderr, /ONE AskUserQuestion/);
-  assert.match(r.stderr, /\.alfred\/docs\/flow\/CONFIG-EDIT-ALLOW/);
+  assert.match(r.stderr, /\.alfred\/state\/approvals\/CONFIG-EDIT-ALLOW/);
   // the denial names the mandate it mechanizes, so the next maintainer (and the model) can read why
   assert.match(r.stderr, /habits-done-gate/);
 });
@@ -4276,6 +4313,8 @@ test('guard-ungated-commit: a STAGED-SCAN-ALLOW receipt keeps exactly the hits i
   assert.equal(gateIn(dir, 'git commit -m "x"'), 0, 'just under 8h still holds');
   hours(8.1);
   assert.equal(gateIn(dir, 'git commit -m "x"'), 2, 'past 8h the receipt is absent');
+  stateReceipt(dir, 'STAGED-SCAN-ALLOW', 'a.spec.ts:1\nb.ts\n');
+  assert.equal(gateIn(dir, 'git commit -m "x"'), 0, '2.8.0: the receipt under state/approvals/ is read');
 });
 
 // --- one home for the fresh-session arithmetic ---------------------------------------------------
@@ -4478,6 +4517,10 @@ test('guard-desktop-exec: the DESKTOP-EXEC-ALLOW receipt opens it - this session
   fs.writeFileSync(tp, '{}\n');
   const st = fs.statSync(tp);
   if (st.birthtimeMs && st.birthtimeMs !== st.ctimeMs) assert.equal(desktopRun(root, MAC_SHELL[0], { command: 'ls' }, { transcript_path: tp }).status, 2, 'written before the session');
+  fs.rmSync(receipt);
+  assert.equal(desktopRun(root, MAC_SHELL[0], { command: 'ls' }).status, 2, 'no receipt anywhere');
+  stateReceipt(root, 'DESKTOP-EXEC-ALLOW', '*\n');
+  assert.equal(desktopRun(root, MAC_SHELL[0], { command: 'ls' }).status, 0, '2.8.0: the receipt under state/approvals/ is read');
 });
 
 // Final review IM2 (the user's ruling, 2026-09-29: 'Make it protective'): the Shell it gates is a shell no shell

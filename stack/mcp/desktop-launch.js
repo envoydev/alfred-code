@@ -15,7 +15,7 @@
 //     tool NAME, never by mode, so `App` stays on whole - launch, switch and resize, and its
 //     `launch_executable` mode, which starts any program with the arguments given (windows-mcp 0.8.8
 //     tools/app.py): a house guard denies that mode unless the user allowed it in
-//     <docs-path>/flow/DESKTOP-EXEC-ALLOW. ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE replaces the list, and
+//     <data root>/state/approvals/DESKTOP-EXEC-ALLOW. ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE replaces the list, and
 //     `none` passes no flag at all (Windows-MCP's own config then decides) - read from the shell, then
 //     settings.local.json, settings.json and the account settings, since a plugin server never gets a
 //     PROJECT settings env key. MacOS-MCP 0.4.6 has no exclude flag; its own config.toml `[tools] exclude` removes

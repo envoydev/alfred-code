@@ -29,9 +29,10 @@ let n = 0;
 function project()
 {
     const root = fs.mkdtempSync(path.join(TMP, 'proj-'));
-    const flow = path.join(root, '.alfred', 'docs', 'flow');
-    fs.mkdirSync(flow, { recursive: true });
-    return { root, flow, gate: path.join(flow, 'APPROVAL'), blocks: path.join(root, '.alfred', 'docs', 'hook-blocks') };
+    // 2.8.0 layout: the stamp lives in <data root>/state/approvals/; `legacy` is the pre-2.8.0 flow/ one a 2.7.0 copy writes
+    const approvals = path.join(root, '.alfred', 'state', 'approvals');
+    fs.mkdirSync(approvals, { recursive: true });
+    return { root, gate: path.join(approvals, 'APPROVAL'), legacy: path.join(root, '.alfred', 'docs', 'flow', 'APPROVAL'), blocks: path.join(root, '.alfred', 'docs', 'hook-blocks') };
 }
 // An interactive transcript: the first message's context, then the newest one's.
 function transcript(rows = [], model = 'claude-opus-5-5', ctx = 30000)
@@ -78,6 +79,21 @@ test('auto-mode stamp: one naming its session is that session\'s for the whole r
     assert.strictEqual(approvalStamp({ session_id: 'x' }, { CLAUDE_PROJECT_DIR: fs.mkdtempSync(path.join(TMP, 'none-')) }), null, 'no stamp');
 });
 
+test('auto-mode stamp: a hand-written stamp a 2.7.0 skill copy put in the legacy flow/ is still read, the new path first (2.8.0)', () =>
+{
+    const p = project();
+    const t = transcript();
+    const env = { CLAUDE_PROJECT_DIR: p.root };
+    fs.mkdirSync(path.dirname(p.legacy), { recursive: true });
+    fs.writeFileSync(p.legacy, 'AUTO - "take every recommendation"\n');
+    const legacy = approvalStamp({ session_id: 'sess-a', transcript_path: t }, env);
+    assert.strictEqual(legacy.file, p.legacy, 'only the legacy one exists');
+    assert.strictEqual(autoStampLive({ session_id: 'sess-a', transcript_path: t }, env), true);
+    autoStamp(p, 'sess-b');
+    assert.strictEqual(approvalStamp({ session_id: 'sess-a', transcript_path: t }, env).file, p.gate, 'the new one wins when both exist');
+    assert.strictEqual(autoStampLive({ session_id: 'sess-a', transcript_path: t }, env), false, 'and it names another session');
+});
+
 // ---------------------------------------------------------------------------------------------
 // the start: guard-fresh-session-start.js
 // ---------------------------------------------------------------------------------------------
@@ -101,10 +117,11 @@ test('auto-mode start: the typed command writes the stamp before the run, and th
     assert.match(said, /^auto-mode is ON for this \/loop-code-quality run/);
     assert.doesNotMatch(said, /Do NOT start the run yet/, 'the offer is never made under auto-mode');
     for (const rule of [/\(Recommended\) option/, /Do not end a turn between steps/, /never push, merge, deploy or send anything out/, /fresh-session hand-off is never taken/,
-        /never write an APPROVED or AUTO line over it/, /an unpushed commit is a Leftovers line/, /delete \.alfred\/docs\/flow\/APPROVAL: that ends auto-mode/])
+        /never write an APPROVED or AUTO line over it/, /an unpushed commit is a Leftovers line/, /delete \.alfred\/state\/approvals\/APPROVAL: that ends auto-mode/])
         assert.match(said, rule);
     const stamp = fs.readFileSync(p.gate, 'utf8');
-    assert.match(stamp, /^AUTO - "\/loop-code-quality --auto-mode src\/"\nsession: s2\nskill: loop-code-quality\nat: \d{4}-/);
+    assert.match(stamp, /^AUTO - "\/loop-code-quality --auto-mode src\/"\nsession: s2\nskill: loop-code-quality\nat: \d{4}-/, '--auto-mode writes its stamp to state/approvals/APPROVAL');
+    assert.ok(!fs.existsSync(p.legacy), 'and nothing to the legacy flow/');
     assert.ok(rows(p, 's2').some((r) => r.mode === 'auto' && r.kind === 'auto-start'), 'one auto-start row');
     // a second flow in the same run rides the live stamp: its words and time stay
     const before = fs.readFileSync(p.gate, 'utf8');
@@ -117,7 +134,7 @@ test('auto-mode start: the typed command writes the stamp before the run, and th
     fs.writeFileSync(live, '{}\n');
     const refused = context(expand(p, 's3', '/task-solve-cross --auto-mode', big));
     assert.doesNotMatch(refused, /auto-mode is ON/);
-    assert.match(refused, /auto-mode did NOT start: another session \(s2\) is running a stamped run in this checkout right now, and \.alfred\/docs\/flow\/APPROVAL is its approval - finish or stop that run, or delete \.alfred\/docs\/flow\/APPROVAL to take over/);
+    assert.match(refused, /auto-mode did NOT start: another session \(s2\) is running a stamped run in this checkout right now, and \.alfred\/state\/approvals\/APPROVAL is its approval - finish or stop that run, or delete \.alfred\/state\/approvals\/APPROVAL to take over/);
     assert.strictEqual(fs.readFileSync(p.gate, 'utf8'), before, 'the running session\'s stamp is left as it is');
     assert.ok(rows(p, 's3').some((r) => r.kind === 'auto-start-refused'), 'one refused row');
     // the session went quiet (a finished run, or the one a fresh-session hand-off came from): the new start takes over
@@ -232,8 +249,8 @@ test('auto-mode end: a typed message is input and keeps it; only the word to sto
         const kept = submit('e1', prompt);
         assert.strictEqual(kept.status, 0, kept.stderr);
         assert.ok(fs.existsSync(p.gate), `kept: ${prompt}`);
-        assert.match(context(kept), /^auto-mode stays ON \(\.alfred\/docs\/flow\/APPROVAL\): the user typed this message while the run goes on, so it is INPUT to the run/);
-        assert.match(context(kept), /delete \.alfred\/docs\/flow\/APPROVAL - that ends auto-mode/, 'a stop in other words is the model\'s to honor');
+        assert.match(context(kept), /^auto-mode stays ON \(\.alfred\/state\/approvals\/APPROVAL\): the user typed this message while the run goes on, so it is INPUT to the run/);
+        assert.match(context(kept), /delete \.alfred\/state\/approvals\/APPROVAL - that ends auto-mode/, 'a stop in other words is the model\'s to honor');
     }
     assert.ok(rows(p, 'e1').some((r) => r.kind === 'auto-input'), 'an auto-input row');
     // a stop in another language is input, and the note hands it to the model (English only since 2026-10-16)
@@ -241,7 +258,7 @@ test('auto-mode end: a typed message is input and keeps it; only the word to sto
     {
         const kept = submit('e1', prompt);
         assert.ok(fs.existsSync(p.gate), `kept: ${prompt}`);
-        assert.match(context(kept), /delete \.alfred\/docs\/flow\/APPROVAL - that ends auto-mode/, `the model honors it: ${prompt}`);
+        assert.match(context(kept), /delete \.alfred\/state\/approvals\/APPROVAL - that ends auto-mode/, `the model honors it: ${prompt}`);
     }
     // the word to stop ends it, and so does a bare stop (audit HK13)
     for (const prompt of ['stop auto-mode', 'auto-mode off', 'turn auto-mode off, I am back', 'Please disable auto mode', 'stop, I will take it from here', 'stop', 'Stop - let me check'])

@@ -5657,7 +5657,7 @@
         },
         {
           "file": "stack/hooks/guard-ungated-commit.js",
-          "marker": "its own file (<docs-root>/flow/PUSH-GATE), and ALFRED_CODE_PUSH_GATE=0 turns"
+          "marker": "its own file (<data root>/state/approvals/PUSH-GATE), and ALFRED_CODE_PUSH_GATE=0 turns"
         }
       ]
     },
@@ -6457,6 +6457,10 @@
         },
         {
           "file": "stack/hooks/layout.js",
+          "marker": "function envOf(env, suffix)\n{\n    const value = env[`ALFRED_CODE_${suffix}`];\n    return value === '' ? undefined : value;\n}"
+        },
+        {
+          "file": "stack/skills/habits-commit-checkpoint/scripts/receipt.js",
           "marker": "function envOf(env, suffix)\n{\n    const value = env[`ALFRED_CODE_${suffix}`];\n    return value === '' ? undefined : value;\n}"
         }
       ]
@@ -7693,6 +7697,19 @@
         {
           "file": "stack/agents/evidence-gatherer.md",
           "marker": "on the area's name, right after your first locate call: a prior finding or ruling about it is evidence you cite or contradict"
+        }
+      ]
+    },
+    "data-root-reader": {
+      "_note": "The data root, ALFRED_CODE_DATA_PATH relative to the project or .alfred - one reading in the hooks' layout.js and every script that writes under it without the hooks beside it (2.8.0 layout).",
+      "owner": {
+        "file": "stack/hooks/layout.js",
+        "marker": "const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\\\/g, '/').replace(/^\\.\\//, '').replace(/\\/+$/, '') || '.alfred';"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/habits-commit-checkpoint/scripts/receipt.js",
+          "marker": "const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\\\/g, '/').replace(/^\\.\\//, '').replace(/\\/+$/, '') || '.alfred';"
         }
       ]
     }

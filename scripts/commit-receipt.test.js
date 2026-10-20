@@ -36,7 +36,8 @@ const guard = (dir, command, env = {}) => spawnSync(process.execPath, [GUARD], {
   input: JSON.stringify({ hook_event_name: 'PreToolUse', session_id: 'receipt-test', tool_name: 'Bash', tool_input: { command }, cwd: dir }),
   cwd: dir, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir, ...env },
 });
-const receiptOf = (dir, name = 'COMMIT-GATE', docs = '.alfred/docs') => fs.readFileSync(path.join(dir, docs, 'flow', name), 'utf8');
+// 2.8.0 layout: the receipt lives in <data root>/state/approvals/, whatever the docs root
+const receiptOf = (dir, name = 'COMMIT-GATE', data = '.alfred') => fs.readFileSync(path.join(dir, data, 'state', 'approvals', name), 'utf8');
 const COMMIT = ['commit', '--verified', 'the parser change', '--authorized', 'commit it', '--probe', 'npm test 12/12', '--format', 'npx prettier --check', '--findings', 'none'];
 
 test('a staged subset: spec counts the index, and the guard takes the receipt', () => {
@@ -59,7 +60,7 @@ test('nothing staged: the whole tree, untracked files included - the receipt its
   assert.match(receiptOf(dir), /^spec: 3 files - a\.txt, b\.txt, c\.txt$/m);
   assert.equal(guard(dir, 'git add -A && git commit -m x').status, 0);
   // the same tree with a hand-counted spec one short is what the guard refused 12 times
-  fs.writeFileSync(path.join(dir, '.alfred', 'docs', 'flow', 'COMMIT-GATE'), receiptOf(dir).replace('spec: 3 files', 'spec: 2 files'));
+  fs.writeFileSync(path.join(dir, '.alfred', 'state', 'approvals', 'COMMIT-GATE'), receiptOf(dir).replace('spec: 3 files', 'spec: 2 files'));
   assert.equal(guard(dir, 'git add -A && git commit -m x').status, 2, 'the guard still holds a short count');
 });
 
@@ -115,7 +116,7 @@ test('refusals: a missing judgment line, a security claim with no categories, no
   const sec = ['commit', '--verified', 'review + security review', ...COMMIT.slice(3)];
   const r = helper(dir, sec);
   assert.equal(r.status, 2); assert.match(r.stderr, /--security must name each category/);
-  assert.ok(!fs.existsSync(path.join(dir, '.alfred', 'docs', 'flow', 'COMMIT-GATE')), 'a refusal writes nothing');
+  assert.ok(!fs.existsSync(path.join(dir, '.alfred', 'state', 'approvals', 'COMMIT-GATE')), 'a refusal writes nothing');
   assert.equal(helper(dir, [...sec, '--security', 'none']).status, 2, 'an empty verdict is no category');
   assert.equal(helper(dir, [...sec, '--security', 'auth ok, secrets ok, injection ok']).status, 0);
   assert.match(receiptOf(dir), /^security: auth ok, secrets ok, injection ok - over 1 files$/m);
@@ -149,13 +150,29 @@ test('a subfolder, a moved docs root, --dry-run and clear', () => {
   const moved = { ALFRED_CODE_DOCS_PATH: 'docs/agent' };
   fs.rmSync(path.join(dir, '.alfred'), { recursive: true, force: true });
   assert.equal(helper(dir, COMMIT, { env: moved }).status, 0);
-  assert.match(receiptOf(dir, 'COMMIT-GATE', 'docs/agent'), /^spec: 1 file - src\/x\.ts$/m, 'the moved docs root is out of the count too');
+  assert.match(receiptOf(dir), /^spec: 1 file - src\/x\.ts$/m, 'the moved docs root is out of the count too');
   assert.equal(guard(dir, 'git add -A && git commit -m x', moved).status, 0);
   const dry = helper(dir, [...COMMIT, '--dry-run'], { env: moved });
   assert.match(dry.stdout, /^would write/);
   assert.equal(helper(dir, ['clear', 'commit'], { env: moved }).status, 0);
-  assert.ok(!fs.existsSync(path.join(dir, 'docs', 'agent', 'flow', 'COMMIT-GATE')));
+  assert.ok(!fs.existsSync(path.join(dir, '.alfred', 'state', 'approvals', 'COMMIT-GATE')));
   assert.equal(helper(dir, ['clear', 'commit'], { env: moved }).status, 0, 'clearing an absent receipt is fine');
+});
+
+test('2.8.0 layout: the receipt follows ALFRED_CODE_DATA_PATH, stays out of the count, and clear takes the legacy flow/ one too', () => {
+  const { dir } = repo();
+  fs.writeFileSync(path.join(dir, 'a.txt'), forty());
+  const data = { ALFRED_CODE_DATA_PATH: 'var/alfred' };
+  assert.equal(helper(dir, COMMIT, { env: data }).status, 0);
+  assert.match(receiptOf(dir, 'COMMIT-GATE', 'var/alfred'), /^spec: 1 file - a\.txt$/m, 'no .gitignore keeps state/ out - the count does');
+  assert.equal(guard(dir, 'git add -A && git commit -m x', data).status, 0, 'and the guard reads it there, its own file uncounted');
+  // a receipt a 2.7.0 skill copy left in the old flow/ would be read once the new one is gone, so clear removes both
+  const legacy = path.join(dir, '.alfred', 'docs', 'flow', 'COMMIT-GATE');
+  fs.mkdirSync(path.dirname(legacy), { recursive: true });
+  fs.writeFileSync(legacy, 'WAIVED - "skip the review"\n');
+  assert.equal(helper(dir, ['clear', 'commit'], { env: data }).status, 0);
+  assert.ok(!fs.existsSync(path.join(dir, 'var', 'alfred', 'state', 'approvals', 'COMMIT-GATE')), 'the new one is gone');
+  assert.ok(!fs.existsSync(legacy), 'and the legacy one');
 });
 
 test('push: commits and files going out, and scope required only past one project with a probe that ran', () => {

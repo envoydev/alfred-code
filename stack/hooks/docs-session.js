@@ -47,6 +47,10 @@ if (require.main === module) {
 }
 
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
+// 2.8.0: the hooks' state lives under <data root>/state/ (layout.js); the pre-2.8.0 <docs-path>/flow/ is still read for
+// the 2.x line, and is the only path when layout.js is not beside this file.
+let layout = null;
+try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
 const MAX_HOLDS = 2;
 const INLINE_CHARS = 3000;
 const ASK_SECTIONS = 3;
@@ -997,7 +1001,8 @@ function closeStillOpen(input, abs) {
 }
 // Ruling S3 (the user's, 2026-10-20): an AskUserQuestion closed by Claude Code's idle timeout is no answer. The answer
 // hook writes this session's timeout marker on such a close and removes it on the next answered ask or typed prompt;
-// while it stands, writing an APPROVED / AUTO line into `<docs-path>/flow/APPROVAL` - a file tool or a shell write that
+// while it stands, writing an APPROVED / AUTO line into the APPROVAL stamp (`<data root>/state/approvals/`, or the pre-2.8.0
+// `<docs-path>/flow/` a 2.7.0 skill copy names) - a file tool or a shell write that
 // carries the word - is denied, so no stamp records an approval nobody gave (the dispatch guard holds the gated
 // dispatch too). A seat's call, a delete of the stamp, and any other flow file pass.
 function stampAfterTimeoutWrite(input, root) {
@@ -1008,8 +1013,10 @@ function stampAfterTimeoutWrite(input, root) {
   const name = input.tool_name || '';
   const t = input.tool_input || {};
   const real = (p) => { try { return fs.realpathSync.native(p); } catch { return p; } };
-  const stamp = path.resolve(real(path.resolve(root, docsRootEnv(), 'flow')), 'APPROVAL');
-  const isStamp = (abs) => path.resolve(real(path.dirname(abs)), path.basename(abs)) === stamp;
+  const stamps = [layout && layout.statePath(root, 'approvals', 'APPROVAL'), path.resolve(root, docsRootEnv(), 'flow', 'APPROVAL')]
+    .filter(Boolean).map((f) => path.resolve(real(path.dirname(f)), path.basename(f)));
+  let stamp = stamps[0];
+  const isStamp = (abs) => { const at = path.resolve(real(path.dirname(abs)), path.basename(abs)); if (!stamps.includes(at)) return false; stamp = at; return true; };
   const STAMP_WORD = /^\s*(?:APPROVED|AUTO)\b/m;
   let hit = false;
   if (/^(?:Edit|Write|MultiEdit)$/.test(name) && typeof t.file_path === 'string' && isStamp(path.resolve(root, t.file_path))) {

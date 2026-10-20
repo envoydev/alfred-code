@@ -6,7 +6,7 @@
 // eslint / prettier / stylelint / biome config, .editorconfig, a .ruleset) and a KEYED one, ordinary
 // project config whose strictness lines alone are the check (tsconfig strict flags, the MSBuild
 // warning and nullable properties) - there a change that leaves those lines as they were passes.
-// 'Allow' is honoured through <docs-path>/flow/CONFIG-EDIT-ALLOW (one path per line as the project
+// 'Allow' is honoured through <data root>/state/approvals/CONFIG-EDIT-ALLOW (one path per line as the project
 // spells it, a bare file name, or `*`; this session's own, under 8h).
 // ALFRED_CODE_CONFIG_PROTECT=0 switches the gate off. The shell route reads the writes through shell-writes.js's
 // scanShell (wrappers, carried scripts, a cd's anchor), then its own segment parser for the PowerShell verbs.
@@ -440,7 +440,11 @@ const real = (p) => { try { return fs.realpathSync.native(p); } catch { return p
 const rel = path.relative(real(ROOT), real(hit.abs)).split(path.sep).join('/');
 if (rel.startsWith('..') || path.isAbsolute(rel)) process.exit(0); // outside the project - the cross-project guard owns it
 
-const receipt = path.resolve(ROOT, docsRootEnv(), 'flow', 'CONFIG-EDIT-ALLOW');
+// 2.8.0: an ALLOW receipt lives in <data root>/state/approvals/ (layout.js); the pre-2.8.0 flow/ one is still read for the
+// 2.x line, and is the only path when layout.js is not beside this file.
+let layout = null;
+try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
+const receipt = layout ? layout.findState(ROOT, 'approvals', 'CONFIG-EDIT-ALLOW') : path.resolve(ROOT, docsRootEnv(), 'flow', 'CONFIG-EDIT-ALLOW');
 const allowed = (() => {
   try {
     const st = fs.statSync(receipt);
@@ -457,7 +461,7 @@ const allowed = (() => {
 if (allowed) process.exit(0);
 
 global.BLOCK_DETAIL = { file: rel, why: hit.why };
-const receiptRel = path.relative(ROOT, receipt).split(path.sep).join('/');
+const receiptRel = path.relative(ROOT, layout ? layout.statePath(ROOT, 'approvals', 'CONFIG-EDIT-ALLOW') : receipt).split(path.sep).join('/');
 process.stderr.write(
   `Blocked: ${rel} already exists and ${hit.why}. Weakening a check to get a green result is not a fix -\n` +
   `go back to the code the check flagged (habits-done-gate, step 4: 'Fix the cause - never suppress\n` +

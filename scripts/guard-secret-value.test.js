@@ -178,7 +178,7 @@ test('guard-secret-value: a dump is rewritten into a redacted view - the file wi
   assert.match(view.stdout, /^# credential guard: redacted view of /, 'the header says what happened');
   assert.match(view.stdout, /ONE AskUserQuestion/, 'and how to get the value when the user needs it');
   assert.match(view.stdout, /Presence only \(Recommended\)/);
-  assert.match(view.stdout, /flow[\\/]SECRET-READ-ALLOW/);
+  assert.match(view.stdout, /state[\\/]approvals[\\/]SECRET-READ-ALLOW/);
   const env = cli('--redacted', f.dotenv).stdout;
   assert.match(env, /^DB_HOST=localhost$/m, 'dotenv: a plain line stays');
   assert.match(env, /^API_KEY=<set \(6 chars\)>$/m, 'dotenv: the credential line is masked');
@@ -205,7 +205,7 @@ test('guard-secret-value: a variable print and a whole-environment dump are rewr
   const v = rewritten('echo $SENTRY_ACCESS_TOKEN');
   assert.match(v, /\[ -n "\$SENTRY_ACCESS_TOKEN" \] && echo "SENTRY_ACCESS_TOKEN=set \(\$\{#SENTRY_ACCESS_TOKEN\} chars\)" \|\| echo "SENTRY_ACCESS_TOKEN=absent"/, 'the presence idiom for that variable');
   assert.match(v, /^echo "# credential guard: /, 'led by the note that says what happened and how to get the value');
-  assert.match(v, /flow[\\/]SECRET-READ-ALLOW/);
+  assert.match(v, /state[\\/]approvals[\\/]SECRET-READ-ALLOW/);
   assert.equal(rewritten('node -e "console.log(process.env.SENTRY_ACCESS_TOKEN)"'), v, 'a runtime print of the same variable rewrites the same');
   assert.equal(rewritten('printenv SENTRY_ACCESS_TOKEN'), v, 'printenv NAME too');
   assert.equal(rewritten('env'), `node "${HOOK}" --redacted-env`, 'a whole-environment dump becomes the masked listing');
@@ -1320,7 +1320,7 @@ test("guard-secret-value: a block ends in an ask, and the user's allow is honour
     assert.equal(denied.status, 2);
     assert.match(denied.stderr, /ONE AskUserQuestion/, 'the denial mandates the ask');
     assert.match(denied.stderr, /Presence only \(Recommended\)/, 'presence is the recommended option');
-    assert.match(denied.stderr, /flow[\\/]SECRET-READ-ALLOW/, 'the denial names the receipt');
+    assert.match(denied.stderr, /state[\\/]approvals[\\/]SECRET-READ-ALLOW/, 'the denial names the receipt where 2.8.0 writes it');
     assert.doesNotMatch(denied.stderr, /stale/, 'no receipt, no staleness talk');
     assert.match(cli('--redacted', f.secret).stdout, /ONE AskUserQuestion/, 'the redacted view carries the ask too');
     assert.match(rewritten('echo $SENTRY_ACCESS_TOKEN'), /AskUserQuestion/, 'and so does the variable rewrite');
