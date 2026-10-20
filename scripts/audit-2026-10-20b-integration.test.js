@@ -34,3 +34,13 @@ test('I2: the code-quality analyzer is handed code preferences only, in the find
     assert.ok(!body.includes("'it differs from a preference'"), 'old wording');
     assert.ok(body.includes("'breaks CODE-PREFERENCES.md#c3'"), 'the cite');
 });
+
+// I3: the README said 'about 16k tokens' while docs/install-footprint.md measured 12.6k-13.8k (system audit 2026-10-20b
+// R2) - two numbers for one fact, one of them stale. The footprint doc keeps the measurement; the README points at it.
+test('I3: the README points at the footprint doc for the always-on cost, never a figure of its own', () =>
+{
+    const faq = read('README.md').split('What does it cost per message?')[1].split('</details>')[0];
+    assert.ok(!/\d+(\.\d+)?k tokens/.test(faq), 'no second figure');
+    assert.ok(faq.includes('(docs/install-footprint.md)'), 'the footprint doc');
+    assert.ok(faq.includes('`/alfred-code:status`'), 'the install\'s own number');
+});
