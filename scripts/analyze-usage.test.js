@@ -1181,6 +1181,7 @@ test('scorecard: a green claim with no check in its turn is listed, a checked or
   assert.strictEqual(e.greenClaims, 2);
   assert.deepStrictEqual(e.unverifiedGreenClaims, [scT(1)]);
   assert.strictEqual(e.longAnswers, 1, 'the 2,099-char answer; the four 1,680-char streak answers sit under the 1,800 cap');
+  assert.strictEqual(e.overBudget, 5, 'over the rule\'s 900-char budget: the 2,099-char answer and the four 1,680-char ones');
   assert.strictEqual(e.correctionTurns, 4, 'every short turn after a merged 1,500+ char answer');
   assert.strictEqual(e.longAnswered, 4);
   assert.strictEqual(e.finalAnswers, 8);
@@ -1309,6 +1310,34 @@ test('scorecard: dispatch overhead flags a seat whose input was mostly its own f
   assert.deepStrictEqual(d.heavySeats, [{ type: 'aspnet-implementer', msgs: 2, floor: 50000, share: 98 }]);
   assert.strictEqual(d.preloadTokens, 130000);
   assert.strictEqual(d.seatInputTokens, 212000);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// Stack audit 2026-10-20 rules row 4: the answer budget is a HARD rule no hook enforces, so the scorecard counts the
+// final answers over the rule's 900 chars of prose - at the budget is in, one over is out, and code, tables and command
+// output never count - beside the old 1,800 count.
+test('scorecard: final answers over the 900-char answer budget are counted as the rule counts prose, beside the 1,800 count', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
+  const file = path.join(dir, 'session.jsonl');
+  const endTurn = (id, ts, text) => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'text', text }], { stop_reason: 'end_turn' });
+  const exempt = '\n```\n' + 'x'.repeat(3000) + '\n```\n| a | b |\n|---|---|\n| ' + 'y'.repeat(2000) + ' |\n';
+  let body = '';
+  body += scHuman(scT(0), 'one');
+  body += endTurn('b1', scT(1), 'a'.repeat(900));                 // at the budget: in
+  body += scHuman(scT(2), 'two');
+  body += endTurn('b2', scT(3), 'a'.repeat(901));                 // one over: counted
+  body += scHuman(scT(4), 'three');
+  body += endTurn('b3', scT(5), 'a'.repeat(899) + exempt);        // a code block and a table: exempt
+  body += scHuman(scT(6), 'four');
+  body += endTurn('b4', scT(7), 'a'.repeat(1801));                // over both
+  fs.writeFileSync(file, body);
+  const { main } = run([file]);
+  const e = main.efficiency;
+  assert.strictEqual(e.finalAnswers, 4);
+  assert.strictEqual(e.overBudget, 2, 'the 901- and 1,801-char answers');
+  assert.strictEqual(e.longAnswers, 1, 'the 1,801-char answer');
+  const md = execFileSync('node', [SCRIPT, file, '--report-md'], { encoding: 'utf8' });
+  assert.match(md, /\| long answers \| 2 of 4 final answer\(s\) over the 900-char answer budget, 1 over 1\.8k chars of prose \(code, tables and command output exempt\) \|/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

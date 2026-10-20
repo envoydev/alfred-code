@@ -3394,15 +3394,19 @@
       ]
     },
     "answer-budget": {
-      "_note": "The short-answer budget - ~900 characters of prose, ~3 sentences plus points, lifted only by the user's own depth ask. The hook is canonical (BUDGET drives the reminder and the 2x block cap); alfred-interaction states the same number, so a budget change re-syncs the rule.",
+      "_note": "The short-answer budget - ~900 characters of prose, ~3 sentences plus points, lifted only by the user's own depth ask. The rule is canonical (alfred-interaction states it as a HARD rule no hook enforces - the hook's Stop block was removed 2026-10-20); guard-answer's BUDGET only sizes the per-turn reminder, and analyze-usage's ANSWER_BUDGET counts the final answers over it, so a budget change starts at the rule and re-syncs both.",
       "owner": {
-        "file": "stack/hooks/guard-answer.js",
-        "marker": "const BUDGET = 900;"
+        "file": "stack/rules/alfred-interaction.md",
+        "marker": "about 900 characters of prose"
       },
       "sites": [
         {
-          "file": "stack/rules/alfred-interaction.md",
-          "marker": "about 900 characters of prose"
+          "file": "stack/hooks/guard-answer.js",
+          "marker": "const BUDGET = 900;"
+        },
+        {
+          "file": "scripts/analyze-usage.js",
+          "marker": "const ANSWER_BUDGET = 900;"
         }
       ]
     },

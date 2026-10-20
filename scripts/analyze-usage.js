@@ -176,6 +176,10 @@ function proseOf(text) {
     .replace(/\s+/g, ' ')
     .trim();
 }
+// The answer budget as alfred-interaction states it (shared-rules.json `answer-budget`): ~900 chars of prose, code,
+// tables and command output exempt - proseOf strips them, as the rule counts. No hook enforces it, so this count is
+// its one observable; the 1,800 count stays beside it for comparison with reports from before 2026-10-20.
+const ANSWER_BUDGET = 900;
 const LONG_ANSWER = 1800;   // twice the 900-char budget - the cap the answer hook's Stop half held until 2026-10-20
 const STREAK_TURNS = 3, STREAK_SHORT = 200, STREAK_LONG = 1500;   // its correction-streak detector
 // Its single-turn correction test, copied verbatim (shared-rules.json `correction-turn-test`): a
@@ -1867,7 +1871,7 @@ async function analyzeTranscript(file, window) {
       correctionsSaved: 0,       // correction turns (the hook's marker test) followed by a memory store within SAVE_WINDOW replies
       correctionsUnsaved: [],    // timestamps of the ones that were not
       longAnswered: 0,           // 1,500+ char answers a user turn followed
-      finalAnswers: 0, longAnswers: 0,
+      finalAnswers: 0, overBudget: 0, longAnswers: 0,   // final answers over ANSWER_BUDGET / over LONG_ANSWER chars of prose
       navigation: { reads: 0, located: 0, symbolLocated: 0, grepLocated: 0, symbolCalls: 0, grepCalls: 0 },
     },
   };
@@ -2708,6 +2712,7 @@ async function analyzeTranscript(file, window) {
           if (prose) {
             const e = s.efficiency;
             e.finalAnswers += 1;
+            if (prose.length > ANSWER_BUDGET) e.overBudget += 1;
             if (prose.length > LONG_ANSWER) e.longAnswers += 1;
             if (claimsGreen(prose)) { e.greenClaims += 1; if (!turnHadCheck) e.unverifiedGreenClaims.push(o.timestamp || null); }
           }
@@ -3891,7 +3896,7 @@ function efficiencyRows(main, agg, blockLedger) {
     const unsaved = (e.correctionsUnsaved || []).length;
     rows.push({ practice: 'corrections saved to memory', measured: `${e.correctionsSaved || 0} of ${total} correction(s) saved within ${SAVE_WINDOW} replies; ${unsaved} unsaved${total ? ` (${Math.round((100 * unsaved) / total)}%)` : ''}${unsaved ? ` at: ${tsList(e.correctionsUnsaved)}` : ''}`, tests: 'a correction the user had to make (a short turn carrying a correction marker, as guard-answer reads it) is a preference or a lesson; one never stored is made again next session' });
   }
-  rows.push({ practice: 'long answers', measured: `${e.longAnswers || 0} of ${e.finalAnswers || 0} final answer(s) over ${fmt(LONG_ANSWER)} chars of prose`, tests: "the answer budget - the user's own ask may have lifted it, check the prompt before scoring" });
+  rows.push({ practice: 'long answers', measured: `${e.overBudget || 0} of ${e.finalAnswers || 0} final answer(s) over the ${ANSWER_BUDGET}-char answer budget, ${e.longAnswers || 0} over ${fmt(LONG_ANSWER)} chars of prose (code, tables and command output exempt)`, tests: "the answer budget (alfred-interaction, a HARD rule no hook enforces) - the user's own ask may have lifted it, check the prompt before scoring" });
   {
     const n = agg.navigation || { reads: 0, located: 0, grepLocated: 0, symbolCalls: 0 };
     // The ledger names the guard for every denial; the transcript's bracket misses the JSON
