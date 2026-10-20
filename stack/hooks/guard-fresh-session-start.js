@@ -938,7 +938,8 @@ function acwIgnoredNote() {
     fs.writeFileSync(marker, String(ig.seen));
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
     const rel = nodePath.relative(root, ig.source);
-    const where = /^CLAUDE_CODE_/.test(ig.source) ? ig.source : rel && !rel.startsWith('..') && !nodePath.isAbsolute(rel) ? rel : ig.source;
+    // in git's spelling on every platform, so a Windows session reads the same path the docs and the user's own commands use
+    const where = /^CLAUDE_CODE_/.test(ig.source) ? ig.source : rel && !rel.startsWith('..') && !nodePath.isAbsolute(rel) ? rel.split(nodePath.sep).join('/') : ig.source;
     return `The ${tokens(ig.configured)} autoCompactWindow in ${where} was not honoured: this project compacted at ~${tokens(ig.seen)} `
       + 'after it was set, so it is not quoted as the window. `/autocompact <value>` saves a window for this model in the user settings '
       + 'and applies it to the running session (code.claude.com/docs/en/model-config) - say so to the user once, never claim the old value holds.';
