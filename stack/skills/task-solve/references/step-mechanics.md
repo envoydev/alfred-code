@@ -3,7 +3,7 @@
 Read by `task-solve` at step 3 APPROVE, before the approve ask is built; complete on its own.
 The rules here are each applied at the step named: the mode-fit rule (step 3), the APPROVAL
 stamp's write mechanics and lifetime (step 3 onward), the agents-mode dispatch rules and the build
-bar (step 4), the background-run line (any wait of minutes), the reviewer-fit rule (the step-4 stop), and the purge, the sibling hand-off and the
+bar (step 4), the background-run line (any wait of minutes), the reviewer-fit rule (the step-4 stop), the conformance run (step 5), and the purge, the sibling hand-off and the
 doc-drift surface list (step 6). The
 step-3 stop's `Result:` line carries `mechanics: read` - the line that proves this file was loaded
 this cycle, not remembered from an earlier one.
@@ -16,6 +16,7 @@ this cycle, not remembered from an earlier one.
 - The build bar - both modes
 - Background runs - the one start line
 - Reviewer fit - the step-4 stop's recommendation
+- Conformance - step 5
 - The step-6 memory purge
 - The sibling hand-off - step 6
 - Doc-drift surfaces - the step-6 close line
@@ -130,6 +131,15 @@ Three options, one recommended, reason stated:
 
 For a broad parallel sweep the user can still invoke `/code-review` themselves - it is not part of
 this flow. The user can inspect the diff themselves at this stop before answering.
+
+## Conformance - step 5
+
+The reviewer the step-4 stop chose RUNS: a Skill tool call on `task-verify-code`, or an Agent dispatch
+of the seat - reviewing from memory of an earlier load is not running it, and a COMMIT-GATE receipt may
+only name a review that ran. Point it at the plan file - its task cards and `## Decisions` ledger.
+Deviations and findings become a punch list routed back to step 4 - and the fix delta gets the SAME
+reviewer again before anything is stamped: a punch-list fix is unreviewed code. Then the body's
+`Conformance:` stamp.
 
 ## The step-6 memory purge
 

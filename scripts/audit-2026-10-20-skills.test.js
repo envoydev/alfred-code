@@ -158,3 +158,19 @@ test('the clauses stay inside the always-on budget, and task-solve inside its re
     assert.ok(s.total < 80000, `${s.total}`);
     assert.ok(body('stack/skills/task-solve/SKILL.md').length < 17700, 'task-solve stays under its re-attach cap');
 });
+
+// C07 (fabea019): a stop 22 minutes into a cycle, at 275k on a 1M window, printed a resume block, and the model's
+// answer to 'why at 280k?' claimed the cycle spanned hours. The offer is put only past one of the three conditions or
+// on the user's word, and the clock is the hook's. Room came from step 5's mechanics, moved beside the reviewer fit.
+test('C07: task-solve puts the fresh-session option and resume block only past a condition or on the user\'s ask', () =>
+{
+    const solve = flat(body('stack/skills/task-solve/SKILL.md'));
+    assert.match(solve, /Below all three \(a new cycle's first ask and the compaction stop aside\), no ask carries it and no resume block prints unless the user asks; hours and gaps are the hook's clock, never your guess/);
+    assert.match(solve, /INVOKE the reviewer chosen at the step-4 stop, and re-review each punch-list fix, by the step mechanics' conformance rules\./);
+    assert.doesNotMatch(solve, /a punch-list fix is unreviewed code/, 'the step-5 mechanics have one home');
+    const mech = flat(read('stack/skills/task-solve/references/step-mechanics.md'));
+    assert.match(mech, /## Conformance - step 5 The reviewer the step-4 stop chose RUNS: a Skill tool call on `task-verify-code`, or an Agent dispatch of the seat/);
+    assert.match(mech, /a punch-list fix is unreviewed code/);
+    assert.match(mech, /- Conformance - step 5 /, 'listed in the contents');
+    assert.ok(body('stack/skills/task-solve/SKILL.md').length < 17500, `task-solve keeps room under its cap: ${body('stack/skills/task-solve/SKILL.md').length}`);
+});

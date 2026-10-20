@@ -74,7 +74,9 @@ text and END THE TURN.
 (`/clear`): resume needs only the plan file, and restarts at 21.5-59.4% of the carried context with zero
 re-work - state those two absolute numbers to the user, never a ratio. Once the cycle has crossed the install's
 fresh-session trigger (180,000 tokens on a window under 300k, 400,000 on one of 1M or more, 280,000 on any other window), spans hours, or resumes after a 2h+ idle gap, the fresh-session resume IS one of the next ask's
-options - every ask until it is taken or the cycle closes; the stop-contract hook then injects the two measured
+options - every ask until it is taken or the cycle closes. Below all three (a new cycle's first ask and the compaction stop aside), no ask
+carries it and no resume block prints unless the user asks; hours and gaps are the hook's clock, never your guess
+(audit 2026-10-20 C07: 275k on a 1M window, 22 minutes in). The stop-contract hook then injects the two measured
 numbers (this session's carry per message, a fresh one's cold floor): quote THIS stop's, or say they are unmeasured.
 A CONSTRUCTION check, not a memory: before any stop's ask, 'has this cycle crossed the trigger?' - if yes
 and the option is missing, rebuild it. And HONOR the answer: when the user picks it, the turn ENDS with this
@@ -161,8 +163,7 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
    The mark moves to the seats option when the mode-fit rule picks it for THIS plan. Approval and mode arrive as one answer; a typed Other answer that
    omits the mode is re-asked, never defaulted (a mode the invocation named leaves only approve /
    not-yet - restate it). Stamp `Approved: <date> - mode <session|agents>` into the plan file, quoting
-   the selected answer as the approval words - nothing builds without it. Agents mode exists only
-   where subagent dispatch is available; otherwise offer session only and say so.
+   the selected answer as the approval words - nothing builds without it.
 4. **BUILD** - per the approved mode:
    - *session*: run `task-implement` - it marks, ticks and resumes each task in the plan file.
    - *agents*: fan the task cards out to the matching `<stack>-implementer` seats, each dispatched
@@ -199,12 +200,8 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
    ```
 
    The mark moves to the seat when the reviewer-fit rule picks it for the assembled diff.
-5. **CONFORMANCE** (unless skipped - a skip is stamped `Conformance: skipped by user`) - INVOKE the reviewer chosen at the step-4 stop: a Skill tool call on
-   `task-verify-code`, or an Agent dispatch of the seat - reviewing from memory of an earlier
-   load is not running it, and a COMMIT-GATE receipt may only name a review that ran. Point it at the
-   plan file - its task cards and `## Decisions` ledger.
-   Deviations and findings become a punch list routed back to step 4 - and the fix delta gets the
-   SAME reviewer again before anything is stamped: a punch-list fix is unreviewed code. Stamp
+5. **CONFORMANCE** (unless skipped - a skip is stamped `Conformance: skipped by user`) - INVOKE the reviewer chosen at the step-4 stop, and
+   re-review each punch-list fix, by the step mechanics' conformance rules. Stamp
    `Conformance: <verdict> - <reviewer>, <the pass that cleared the last fix delta>`; the stop's
    `Result:` carries the review's named fields as it emitted them. *Stop.*
 6. **CLOSE** - apply any fixes the step-5 review handed back, then the done gate
