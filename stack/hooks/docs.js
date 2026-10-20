@@ -133,8 +133,13 @@ const safe = (b) => String(b).replace(/[^\w.-]+/g, '-').replace(/^-|-$/g, '') ||
 // caller (autoPromote, refreshBaseMeta, status, lint and loadWatch each ask again). A process runs one CLI command
 // or one hook event and nothing here changes underfoot, so the first answer is cached for the rest of the process.
 let BRANCH_CACHE;
+// A repo with no commit yet has no HEAD to resolve, but HEAD still names its branch: without the symbolic-ref read a
+// first `set` there went to `.branches/null`, an overlay no reader serves (found by the C27 temp-project matrix, 2026-10-20).
 function branch() {
-  if (BRANCH_CACHE === undefined) { const b = git(['rev-parse', '--abbrev-ref', 'HEAD']); BRANCH_CACHE = !b || b === 'HEAD' ? null : b; }
+  if (BRANCH_CACHE === undefined) {
+    const b = git(['rev-parse', '--abbrev-ref', 'HEAD']) || git(['symbolic-ref', '--short', '-q', 'HEAD']);
+    BRANCH_CACHE = !b || b === 'HEAD' ? null : b;
+  }
   return BRANCH_CACHE;
 }
 
@@ -1067,6 +1072,64 @@ function allSections() {
 // and the hash a later `set --expect` refuses a stale rewrite against. Takes a ref (bare or <domain>/<file>#<id>),
 // not a bare section id directly - a section's own id never carries a domain, so a domain-qualified ref must be
 // routed through findFile like every other reader before it can be matched against one.
+// The Known ceilings register only grows: the build closes append rows and the capture carries them row for row, so the
+// section passed its size cap and stayed there (audit 2026-10-20 C27, ce3fd60a: 10,171 chars). A row is CLOSED when its
+// revisit cell opens on lifted / closed / resolved / done (the build that lifted it marks it so), or when the path its
+// where cell names (one holding a '/') is gone from the project. `ceilings` lists them; `--prune` moves them to
+// history/known-ceilings-closed.md (history, never read at orientation) and rewrites the section without them.
+const CEILINGS_REF = `architecture/ARCHITECTURE.md#${KNOWN_CEILINGS}`;
+const CEILINGS_HISTORY = 'known-ceilings-closed.md';
+const CLOSED_CELL_RE = /^\s*\**(?:lifted|closed|resolved|done)\b/i;
+const tableCells = (line) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+function ceilingRows() {
+  const file = path.join(DOCS, 'ARCHITECTURE.md');
+  const s = allSections().find((x) => x.file === file && x.id === `${key(file)}#${KNOWN_CEILINGS}`);
+  if (!s) return null;
+  const lines = norm(s.text).split('\n');
+  const rows = [];
+  let header = -1;
+  lines.forEach((line, i) => {
+    if (!/^\s*\|/.test(line)) return;
+    if (header < 0) { header = i; return; }
+    if (/^\s*\|[\s:|-]+\|?\s*$/.test(line)) return;
+    const cells = tableCells(line);
+    let why = '';
+    if (CLOSED_CELL_RE.test(cells[cells.length - 1] || '')) why = `marked ${cells[cells.length - 1].replace(/\*/g, '').split(/\s+/)[0].toLowerCase()}`;
+    else {
+      const named = ((/`([^`]+)`/.exec(cells[0] || '') || [])[1] || cells[0] || '').split(/[:#\s]/)[0];
+      if (named.includes('/') && !/[*?{[]/.test(named) && !fs.existsSync(path.join(ROOT, named))) why = `${named} is gone`;
+    }
+    rows.push({ i, line, why });
+  });
+  return { s, lines, header: header < 0 ? '' : lines[header], rows };
+}
+function ceilings(pruneRows) {
+  const r = ceilingRows();
+  if (!r) return { error: `no ${CEILINGS_REF} section - nothing to read` };
+  const closed = r.rows.filter((x) => x.why);
+  if (!pruneRows || !closed.length) return { closed, total: r.rows.length, chars: r.s.ownChars };
+  const drop = new Set(closed.map((x) => x.i));
+  const res = set(CEILINGS_REF, r.lines.filter((_, i) => !drop.has(i)).join('\n'), sectionHash(r.s.text));
+  if (res.error) return { error: res.error };
+  // The history rows go through set() as well, so on a branch of a `local` install both halves land in that branch's
+  // version and fold into mainline together; the file itself, an empty table, is made on mainline the first time.
+  const hist = path.join(DOCS, 'history', CEILINGS_HISTORY);
+  const day = new Date().toISOString().slice(0, 10);
+  const rowsOut = closed.map((x) => `${x.line.trim().replace(/\s*\|?\s*$/, '')} | pruned ${day}: ${x.why} |`);
+  if (!fs.existsSync(hist)) {
+    const cols = tableCells(r.header).length + 1;
+    fs.mkdirSync(path.dirname(hist), { recursive: true });
+    fs.writeFileSync(hist, `# Known ceilings - closed rows\n\nRows \`docs.js ceilings --prune\` moved out of ARCHITECTURE.md#${KNOWN_CEILINGS}, oldest first.\n\n## Closed rows\n<!-- id: closed-rows -->\n\n${r.header.trim().replace(/\s*\|?\s*$/, '')} | pruned |\n|${' --- |'.repeat(cols)}\n`);
+  }
+  const histRef = `architecture/history/${CEILINGS_HISTORY}#closed-rows`;
+  const cur = askRef(histRef);
+  const curText = cur && allSections().find((x) => x.file === hist && x.id === `${key(hist)}#closed-rows`);
+  if (!curText) return { error: `${shown(hist)} has no closed-rows section - the section was pruned but its rows are not filed: ${rowsOut.join(' ')}` };
+  const h = set(histRef, `${norm(curText.text)}\n${rowsOut.join('\n')}`, cur.hash);
+  if (h.error) return { error: `${h.error} - the section was pruned but its rows are not filed: ${rowsOut.join(' ')}` };
+  return { closed, total: r.rows.length, moved: closed.length, wrote: res.wrote, history: h.wrote };
+}
+
 function askRef(ref) {
   const [fileKey, sec] = String(ref).split('#');
   if (!sec) return null;
@@ -1539,7 +1602,7 @@ function lint(domain) {
         // The map's Known ceilings is a register the build closes append rows to and the capture carries row for row
         // (doc-shapes.md): no run may split it, so the cap would be a PROBLEM row nothing can close (audit 2026-10-20
         // C27, add5a91e / ce3fd60a: 7,858 then 10,171 chars, red on every capture). Its size stays visible as a note.
-        if (s.declaredId === KNOWN_CEILINGS && fileDomain(f) === 'architecture' && relKey(f) === 'ARCHITECTURE') notes.push(`${key(f)}#${KNOWN_CEILINGS} is ${s.ownChars} chars (a row register: carried row for row, exempt from the ${MAX_SECTION_CHARS} cap)`);
+        if (s.declaredId === KNOWN_CEILINGS && fileDomain(f) === 'architecture' && relKey(f) === 'ARCHITECTURE') notes.push(`${key(f)}#${KNOWN_CEILINGS} is ${s.ownChars} chars (a row register: carried row for row, exempt from the ${MAX_SECTION_CHARS} cap; 'docs.js ceilings --prune' moves its closed rows to history)`);
         else problems.push(`oversized section (${s.ownChars} chars, cap ${MAX_SECTION_CHARS}): ${key(f)}#${s.declaredId || slug(s.heading)} - split it`);
       }
     }
@@ -1991,7 +2054,7 @@ module.exports = {
   stripStamp, stampLineOf, withStamp, conflictView,
   overlayNames, mergedBranches, promote, autoPromote, deletedUnmerged, prune, status,
   lint, integrity, seedIds, loadWatch, watchHits, watchOf, unowned, notOwnedOf, snapshot, changedSince,
-  sectionHash, firstSentence, askRef, protectedRef, shownFrom, adrRecords, adrIndex, adrNew, orientationState,
+  sectionHash, firstSentence, ceilings, askRef, protectedRef, shownFrom, adrRecords, adrIndex, adrNew, orientationState,
 };
 if (require.main !== module) return;
 
@@ -2102,6 +2165,15 @@ const commands = {
     console.log(`${problems.length} problems, ${notes.length} notes`);
     process.exit(problems.length ? 1 : 0);
   },
+  ceilings: () => {
+    const r = ceilings(args.includes('--prune'));
+    if (r.error) { console.log(r.error); process.exit(1); }
+    for (const x of r.closed) console.log(`closed: ${x.why} - ${x.line.trim().slice(0, 160)}`);
+    if (r.moved) {
+      docsLog({ event: 'ceilings-prune', moved: r.moved, wrote: r.wrote });
+      console.log(`moved ${r.moved} of ${r.total} rows to ${r.history}; ${CEILINGS_REF} rewritten in ${r.wrote}`);
+    } else console.log(`${r.closed.length} of ${r.total} rows closed${r.closed.length ? " - 'docs.js ceilings --prune' moves them to history" : ''} (section ${r.chars} chars, cap ${MAX_SECTION_CHARS})`);
+  },
   // one `ids added: <file> (+n)` line per file rewritten, then the total - the line analyze-usage.js reads
   'seed-ids': () => console.log(`${seedIds((f, n) => console.log(`ids added: ${shown(f)} (+${n})`))} ids added`),
   watch: () => {
@@ -2131,6 +2203,6 @@ const commands = {
 };
 if (commands[cmd]) commands[cmd]();
 else {
-  console.log('usage: docs.js where <path...> | toc <file> | show <file>#<id>... [--conflict [branch]] | files | set <file>#<id> [textfile] [--expect <hash>] | hash <file>#<id> | status | stale | promote <branch>|--merged | prune [branch] | lint [domain] | seed-ids | watch <path...> [--dir <dir...>] | adr new \'<title>\' | adr index');
+  console.log('usage: docs.js where <path...> | toc <file> | show <file>#<id>... [--conflict [branch]] | files | set <file>#<id> [textfile] [--expect <hash>] | hash <file>#<id> | status | stale | promote <branch>|--merged | prune [branch] | lint [domain] | ceilings [--prune] | seed-ids | watch <path...> [--dir <dir...>] | adr new \'<title>\' | adr index');
   process.exit(cmd ? 1 : 0);
 }
