@@ -391,20 +391,25 @@ function repointDocs({ projectRoot, docsPath, base, rules = [], instructions = [
 // .gitignore is the project's own: everywhere else the data root's one file carries these rules (data-root.js
 // dataIgnoreText, the user's ruling of 2026-10-13) and an update removes this file when it is the stack's text.
 // `local` keeps the whole root out of git - and git then answers check-ignore for the root, so the four-home rule
-// reads it back as kept out. `git` commits the docs and keeps out only what the hooks write for this machine
-// (data-root.js DOCS_STATE_IGNORE): the flow receipts, the block and usage ledgers, the session history and the local
-// overlays - plus the raw session transcripts the usage audit copies beside its reports and the run book's old
-// credentials file.
+// reads it back as kept out. `git` commits the docs and keeps out only the two machine-local files under them
+// (data-root.js DOCS_STATE_IGNORE): the run book's old credentials file and the awareness inventory. The hooks' state and
+// ledgers left the docs root in 2.8.0 for the data root's state/ and statistics/ (docs.migrateLayout).
 const { DOCS_STATE_IGNORE } = require('../../stack/mcp/data-root.js');
 const DOCS_IGNORE = {
     local: '# alfred-code: the docs root is machine-local (ALFRED_CODE_DOCS_VERSIONING=local)\n*\n',
-    git: '# alfred-code: the docs are committed (ALFRED_CODE_DOCS_VERSIONING=git); the hooks\' machine-local state is not\n'
+    git: '# alfred-code: the docs are committed (ALFRED_CODE_DOCS_VERSIONING=git) but for the lines below\n'
         + `${DOCS_STATE_IGNORE.join('\n')}\n`,
 };
 // Texts an earlier release wrote, still the stack's own: an update replaces them instead of keeping them as
 // the project's. 2.1.3's git text had no usage-report line; up to 2.1.6 the folder was `alfred-code-usage-report/`;
-// up to 2.4.0 there was no credentials line; up to 2.5.0 no awareness line.
+// up to 2.4.0 there was no credentials line; up to 2.5.0 no awareness line; up to 2.7.0 the six state lines and the usage
+// audit's (the first row).
 const DOCS_IGNORE_FORMER = [
+    '# alfred-code: the docs are committed (ALFRED_CODE_DOCS_VERSIONING=git); the hooks\' machine-local state is not\n'
+        + '/flow/\n/hook-blocks/\n/history/\n/tools-usage/\n/.branches/\n/docs-log.jsonl\n'
+        + '# the usage audit\'s raw transcript and ledger copies stay on this machine\n/usage-report/**/*.jsonl\n'
+        + '# the run book\'s credentials file before 2026-10-13, which an older capture still writes\n/project-capabilities/credentials.local.env\n'
+        + '# the awareness capture\'s inventory names this machine\'s plugins\n/awareness/AGENTS-AWARENESS.md\n',
     '# alfred-code: the docs are committed (ALFRED_CODE_DOCS_VERSIONING=git); the hooks\' machine-local state is not\n'
         + '/flow/\n/hook-blocks/\n/history/\n/tools-usage/\n/.branches/\n/docs-log.jsonl\n'
         + '# the usage audit\'s raw transcript and ledger copies stay on this machine\n/usage-report/**/*.jsonl\n'
@@ -420,12 +425,16 @@ const DOCS_IGNORE_FORMER = [
 ];
 
 // THE USAGE AUDIT'S FOLDER took a plain name in 2.1.7 (`alfred-code-usage-report/` -> `usage-report/`, the user's
-// ruling of 2026-10-06). Run AFTER the .gitignore step (alfred-code.js ignoreStep), so the file holding the docs rules already names the new folder. An audit
-// copies whole session transcripts (code, file contents, possibly secrets) beside its reports, and the old folder's
-// ignore line does not cover the new name: a folder holding a raw `.jsonl` moves only where git keeps it out at the
-// new path (no repository, a `local` root, or the project's own line), else it stays and one `!!` line names the fix.
-// A session folder the new one already holds is never overwritten - it stays at the old name and is named.
-const USAGE_REPORT_MOVE = ['alfred-code-usage-report', 'usage-report'];
+// ruling of 2026-10-06) and left the docs root in 2.8.0 for the data root's `statistics/usage-report/` (machine-local,
+// the user's ruling of 2026-10-20) - so the 2.1.6 folder goes straight there; the 2.7.0 one is migrateLayout's. Run AFTER
+// the .gitignore step (alfred-code.js ignoreStep), so the data root's file is current. An audit copies whole session
+// transcripts (code, file contents, possibly secrets) beside its reports: a folder holding a raw `.jsonl` moves only where
+// git keeps it out at the new path (no repository, or the data root's own file), else it stays and one `!!` line names
+// the fix. A session folder the new one already holds is never overwritten - it stays at the old name and is named.
+const USAGE_REPORT_OLD = 'alfred-code-usage-report';
+const USAGE_REPORT_HOME = ['statistics', 'usage-report'];
+const rawHeld = (from, to) => `holds raw session copies and git would not ignore them at ${to}/ - left in place; keep ${to}/ out of git `
+    + `(the data root's .gitignore), then re-run /alfred-code:update`;
 
 function holdsRaw(dir)
 {
@@ -493,20 +502,19 @@ function moveDocsFolder(base, oldName, newName, label, log)
 }
 
 // 'none' | 'moved' | 'merged' | 'held' (raw copies git would not keep out at the new name).
-function migrateUsageReport({ projectRoot, docsPath, log = () => {} })
+function migrateUsageReport({ projectRoot, docsPath, dataPath = '.alfred', log = () => {} })
 {
-    const base = path.resolve(projectRoot, String(docsPath || ''));
-    const [oldName, newName] = USAGE_REPORT_MOVE;
-    const from = path.join(base, oldName);
+    const rel = (p) => path.relative(projectRoot, p).split(path.sep).join('/');
+    const from = path.resolve(projectRoot, String(docsPath || ''), USAGE_REPORT_OLD);
+    const to = path.resolve(projectRoot, String(dataPath || '.alfred'), ...USAGE_REPORT_HOME);
     try { if (!fs.statSync(from).isDirectory()) return 'none'; }
     catch { return 'none'; }
-    if (holdsRaw(from) && !rawStaysOut(base, newName))
+    if (holdsRaw(from) && !rawStaysOut(projectRoot, rel(to)))
     {
-        log(`  !! docs migration (usage report): ${oldName}/ holds raw session copies and git would not ignore them as ${newName}/ - `
-            + `left in place; add '/${newName}/**/*.jsonl' to the docs root's .gitignore, then re-run /alfred-code:update`);
+        log(`  !! docs migration (usage report): ${rel(from)}/ ${rawHeld(rel(from), rel(to))}`);
         return 'held';
     }
-    return moveDocsFolder(base, oldName, newName, 'usage report', log);
+    return moveDocsFolder(projectRoot, rel(from), rel(to), 'usage report', log);
 }
 
 // THE `superpowers/` FOLDER goes in 2.2.2: the name was the superpowers plugin's, a pick the stack dropped in 2.0.0,
@@ -593,6 +601,156 @@ function repointSuperpowers({ projectRoot, docsPath, base, rules = [], instructi
     return out;
 }
 
+// THE 2.8.0 LAYOUT (the user's rulings of 2026-10-20): the hooks' state and ledgers leave the docs root for the data
+// root's state/ and statistics/, the working papers gather under work/ and the quality loops' output under quality/ -
+// the move map is layout.js LAYOUT_MOVES, which the hooks read too. Run after migratePlans (superpowers/plans/ reaches
+// plans/ first) and after the .gitignore step (a nested history/.gitignore of the stack's is gone before history/ moves).
+// Built the moveDocsRoot way, file by file: a file git tracks through `git mv`, any other by rename; a file its new home
+// already holds stays at the old path, named, never overwritten; any failure puts back every file this call moved and
+// every folder it made, then rethrows naming the file; a folder the moves emptied is removed. `.branches/` goes only
+// while empty - a doc version is never deleted (the session-start line asks the user to re-apply and prune it). A second
+// run moves nothing and says `layout: current`. Returns { moved, kept, removed }, project-relative.
+const LAYOUT = require('../../stack/hooks/layout.js');
+function migrateLayout({ projectRoot, docsPath, dataPath, log = () => {} })
+{
+    const docsBase = path.resolve(projectRoot, String(docsPath || ''));
+    const dataBase = path.resolve(projectRoot, String(dataPath || '.alfred'));
+    const rel = (p) => path.relative(projectRoot, p).split(path.sep).join('/');
+    const out = { moved: [], kept: [], removed: [] };
+    let tracked = new Set();
+    try { tracked = new Set(String(rt.execCommand('git', ['-C', projectRoot, 'ls-files', '-z', '--', rel(docsBase) || '.'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })).split('\0').filter(Boolean)); }
+    catch { tracked = new Set(); }
+    const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
+    const filesUnder = (dir) => fs.readdirSync(dir, { withFileTypes: true })
+        .flatMap((e) => (e.isDirectory() ? filesUnder(path.join(dir, e.name)) : OS_LITTER.has(e.name) ? [] : [path.join(dir, e.name)]));
+
+    // Every move as a group (one log line): its source, its destination folder and the file pairs.
+    const groups = [];
+    const group = (from, to) => { let g = groups.find((x) => x.from === from && x.to === to); if (!g) groups.push(g = { from, to, pairs: [] }); return g; };
+    const sources = [];
+    for (const m of LAYOUT.LAYOUT_MOVES)
+    {
+        if (m.removeIfEmpty) continue;
+        const from = path.join(docsBase, ...m.from.split('/'));
+        if (m.file)
+        {
+            if (fs.existsSync(from) && !isDir(from)) group(from, path.join(dataBase, ...m.to.split('/'))).pairs.push([from, path.join(dataBase, ...m.to.split('/'))]);
+            continue;
+        }
+        if (!isDir(from)) continue;
+        sources.push(from);
+        if (m.split === 'flow')
+        {
+            for (const file of filesUnder(from))
+            {
+                const kind = LAYOUT.flowKind(path.relative(from, file).split(path.sep)[0]);
+                const to = path.join(dataBase, 'state', kind);
+                group(from, to).pairs.push([file, path.join(to, path.relative(from, file))]);
+            }
+            continue;
+        }
+        const to = path.join(m.base === 'data' ? dataBase : docsBase, ...m.to.split('/'));
+        const g = group(from, to);
+        // the usage audit's raw transcript copies move only where git keeps them out (migrateUsageReport's rule)
+        g.raw = m.from === 'usage-report';
+        for (const file of filesUnder(from)) g.pairs.push([file, path.join(to, path.relative(from, file))]);
+    }
+
+    const done = [];
+    const made = [];
+    const ensureDir = (dir) =>
+    {
+        const missing = [];
+        for (let at = dir; !fs.existsSync(at) && path.dirname(at) !== at; at = path.dirname(at)) missing.unshift(at);
+        if (missing.length) { fs.mkdirSync(dir, { recursive: true }); made.push(...missing); }
+    };
+    const gitMv = (a, b) => rt.execCommand('git', ['-C', projectRoot, 'mv', '--', rel(a), rel(b)], { stdio: 'ignore' });
+    const lines = [];
+    try
+    {
+        for (const g of groups)
+        {
+            if (g.raw && holdsRaw(g.from) && !rawStaysOut(projectRoot, rel(g.to)))
+            {
+                out.kept.push(rel(g.from));
+                lines.push(`  !! layout: ${rel(g.from)} ${rawHeld(rel(g.from), rel(g.to))}`);
+                continue;
+            }
+            let n = 0;
+            for (const [from, to] of g.pairs)
+            {
+                if (fs.existsSync(to))
+                {
+                    out.kept.push(rel(from));
+                    lines.push(`  layout: kept ${rel(from)} - ${rel(to)} already holds it`);
+                    continue;
+                }
+                try
+                {
+                    ensureDir(path.dirname(to));
+                    let how = 'fs';
+                    if (tracked.has(rel(from))) { try { gitMv(from, to); how = 'git'; } catch { /* git refused (a conflicted index): the rename below */ } }
+                    if (how === 'fs') fs.renameSync(from, to);
+                    done.push([how, from, to]);
+                    n += 1;
+                }
+                catch (err) { throw new Error(`${rel(from)}: ${err.message}`); }
+            }
+            if (n)
+            {
+                out.moved.push(`${rel(g.from)} -> ${rel(g.to)}`);
+                lines.push(`  layout: ${rel(g.from)} -> ${rel(g.to)} (${n} file${n === 1 ? '' : 's'})`);
+            }
+        }
+    }
+    catch (err)
+    {
+        for (const [how, from, to] of done.reverse())
+        {
+            try
+            {
+                fs.mkdirSync(path.dirname(from), { recursive: true });
+                if (how === 'git') gitMv(to, from);
+                else fs.renameSync(to, from);
+            }
+            catch { /* the error below names the move; a file that cannot go back stays where it is */ }
+        }
+        for (const dir of made.reverse()) { try { fs.rmdirSync(dir); } catch { /* not empty: something else is there */ } }
+        throw err;
+    }
+    // Only folders the moves emptied (OS litter aside): a folder still holding a kept file stays.
+    const prune = (dir) =>
+    {
+        let entries;
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+        for (const e of entries) if (e.isDirectory()) prune(path.join(dir, e.name));
+        try
+        {
+            const left = fs.readdirSync(dir);
+            if (left.every((name) => OS_LITTER.has(name))) { for (const name of left) fs.rmSync(path.join(dir, name), { force: true }); fs.rmdirSync(dir); }
+        }
+        catch { /* left in place */ }
+    };
+    for (const dir of sources) prune(dir);
+    const branches = path.join(docsBase, '.branches');
+    if (isDir(branches))
+    {
+        if (fs.readdirSync(branches).every((name) => OS_LITTER.has(name)))
+        {
+            prune(branches);
+            out.removed.push(rel(branches));
+            lines.push('  layout: removed empty .branches/');
+        }
+        else
+        {
+            out.kept.push(rel(branches));
+            lines.push('  layout: kept .branches/ - it holds doc versions, prune them first');
+        }
+    }
+    for (const line of lines.length ? lines : ['  layout: current']) log(line);
+    return out;
+}
+
 // 'written' | 'current' | 'replaced' | 'kept' (the project's own file) | 'outside' (the root is not in
 // the project) | 'skipped' (no versioning to state, or a root under `.claude/`) | 'tracked' (local, over a
 // root git already tracks docs in) | 'covered' (the data root's file carries the rules, no file here) | 'removed'
@@ -649,7 +807,7 @@ function ensureDocsIgnore({ projectRoot, docsPath, mode, covered = false, log = 
     }
     fs.mkdirSync(base, { recursive: true });
     fs.writeFileSync(file, want);
-    log(`  docs root: ${shown}/.gitignore ${have === null ? 'written' : 'rewritten'} - ${mode === 'local' ? 'the whole root stays out of git' : "the docs are committed, the hooks' machine-local state is not"} (versioning ${mode})`);
+    log(`  docs root: ${shown}/.gitignore ${have === null ? 'written' : 'rewritten'} - ${mode === 'local' ? 'the whole root stays out of git' : 'the docs are committed, two machine-local files under them are not'} (versioning ${mode})`);
     return have === null ? 'written' : 'replaced';
 }
 
@@ -968,6 +1126,6 @@ function dataOfferLine(offer)
 
 module.exports = {
     domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, migrateAwareness, inventoryToDoc, ensureDocsIgnore, migrateUsageReport, migratePlans, docsMovePlan, docsMoveViews, moveDocsRoot,
-    ensureDataIgnore, dataIgnoreText, pruneDataRoot, pruneNestedIgnores, dataOffer, dataOfferLine,
+    ensureDataIgnore, dataIgnoreText, pruneDataRoot, pruneNestedIgnores, dataOffer, dataOfferLine, migrateLayout,
     DOCS_IGNORE, DOCS_IGNORE_FORMER, DOCS_MIGRATIONS, DOCS_SWITCH_ON, RESERVED, LEGACY_DOCS_ROOT, DATA_IGNORE_HEAD, OS_LITTER,
 };

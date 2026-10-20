@@ -110,12 +110,12 @@ test('local versioning: the root gets a .gitignore of *, and git then ignores ev
     assert.strictEqual(docs.docsVersioningSeed({ projectRoot: root, docsPath: '.alfred/docs' }), 'local', 'the four-home rule reads the root back as kept out');
 });
 
-test('git versioning: the docs stay visible to git, the hooks\' machine state does not', () =>
+test('git versioning: the docs stay visible to git, the two machine-local files under them do not', () =>
 {
     const root = repo();
     assert.strictEqual(docs.ensureDocsIgnore({ projectRoot: root, docsPath: '.alfred/docs', mode: 'git' }), 'written');
     const base = path.join(root, '.alfred', 'docs');
-    for (const rel of ['architecture/ARCHITECTURE.md', 'flow/COMMIT-GATE', 'hook-blocks/s.jsonl', 'tools-usage/s.jsonl', 'docs-log.jsonl', '.branches/b/x.md'])
+    for (const rel of ['architecture/ARCHITECTURE.md', 'project-capabilities/credentials.local.env', 'awareness/AGENTS-AWARENESS.md'])
     {
         fs.mkdirSync(path.dirname(path.join(base, rel)), { recursive: true });
         fs.writeFileSync(path.join(base, rel), 'x\n');

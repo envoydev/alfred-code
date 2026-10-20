@@ -168,7 +168,7 @@ test('update: a pending line goes once its launcher moved the data, and a root i
     assert.ok(!r.has('.alfred'), 'the old root, emptied by the launchers, is removed');
     assert.ok(r.has('.data/chrome-control/Cookies'));
     // One .gitignore, the new root's: it carries the docs rules, and the docs root has none of its own.
-    assert.match(r.text('.data/.gitignore'), /^# alfred-code: the data root[^\n]*\n\/\*\n!\/\.gitignore\n!\/docs\/\n\/docs\/flow\/\n/);
+    assert.match(r.text('.data/.gitignore'), /^# alfred-code: the data root[^\n]*\n\/\*\n!\/\.gitignore\n!\/docs\/\n#[^\n]*\n\/docs\/project-capabilities\/credentials\.local\.env\n/);
     assert.ok(!r.has('.data/docs/.gitignore'), 'the docs root keeps no .gitignore of its own under the data root');
     assert.ok(r.has('.data/.sensitive-data'), 'the default sensitive data moved with the root');
 });
