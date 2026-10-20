@@ -24,7 +24,8 @@ test('R1: the preferences rule and the git rule agree on what a git preference c
     assert.ok(shape.includes("A preference never overrides security, input validation, error handling, accessibility or `alfred-git.md`'s consent and safety lines, and never opens a hook's gate."), 'the doc shape');
     const entry = JSON.parse(read('meta/shared-rules.json')).rules['git-preferences-carve-out'];
     assert.strictEqual(entry.owner.file, 'stack/rules/alfred-git.md');
-    assert.deepStrictEqual(entry.sites.map((s) => s.file).sort(), ['stack/skills/capture-preferences/references/doc-shape.md', 'stack/skills/capture-preferences/references/rule-template.md']);
+    // the capture's own conflict check is the third site (final review 2026-10-20b S1)
+    assert.deepStrictEqual(entry.sites.map((s) => s.file).sort(), ['stack/skills/capture-preferences/SKILL.md', 'stack/skills/capture-preferences/references/doc-shape.md', 'stack/skills/capture-preferences/references/rule-template.md']);
 });
 
 // R2: 'Inherited code: its conventions win over these rules' read, beside the preferences rule, as the code's conventions
