@@ -165,7 +165,7 @@ ask, write the `<data root>/state/approvals/STAGED-SCAN-ALLOW` receipt it names.
 A commit in a second tree the cross-project guard allows gets its own receipt in THAT tree's docs
 root, written and cleared the same way. A sibling repo is never committed, branched, pushed or PR'd
 from here, and never OFFERED as an option in an ask of the run's own making - its change is a task
-card under `<docs-path>/work/cross-project-tasks/`.
+card under `<docs-path>/work/cross-project-tasks/`, printed as the docs-root rule's hand-off block.
 
 ## Publishing - push and PR merge
 

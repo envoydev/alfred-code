@@ -140,6 +140,5 @@ one section per task:
 - **The contract** - the shape both sides must agree on (a signature, an endpoint, a payload, a version floor).
 - **How that side verifies it** - the test or check that proves it landed.
 
-The card reaches the sibling's session through the user, so the report prints it too: ONE fenced markdown block,
-ready to paste there, its first line `Open in: <the sibling's root>`, then the section just written - a path alone
-sends the user back to ask for the text.
+The card reaches the sibling's session through the user, so the report prints it too, as the docs-root rule's hand-off block:
+its absolute card path lets that session read the whole card, and its text means nobody asks for it.

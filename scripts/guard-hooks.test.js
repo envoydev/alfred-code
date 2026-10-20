@@ -1958,6 +1958,26 @@ test('guard-cross-project-write: a write into another project is blocked', () =>
   assert.equal(xp({ tool_name: 'MultiEdit', tool_input: { file_path: path.join(XP_OTHER, 'a.cs'), edits: [] } }), 2, 'and MultiEdit');
 });
 
+test('guard-cross-project-write: the denial names an absolute card path under work/cross-project-tasks/, relative or absolute docs root', () => {
+  const card = (env) => {
+    const r = spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
+      input: JSON.stringify({ tool_name: 'Write', tool_input: { file_path: path.join(XP_OTHER, 'src', 'a.ts') } }),
+      encoding: 'utf8',
+      env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ALFRED_CODE_DOCS_PATH: '', ...env },
+    });
+    assert.equal(r.status, 2, r.stderr);
+    const m = /'Task card in this project \(Recommended\)' - write (.+?):\n/.exec(r.stderr);
+    assert.ok(m, r.stderr);
+    return m[1];
+  };
+  const name = `${path.basename(XP_OTHER)}.md`;
+  const rel = card({});
+  assert.ok(path.isAbsolute(rel), rel);
+  assert.ok([XP_ROOT, fs.realpathSync(XP_ROOT)].map((r) => path.join(r, '.alfred', 'docs', 'work', 'cross-project-tasks', name)).includes(rel), rel);
+  const absRoot = path.join(TMP, 'shared docs');
+  assert.strictEqual(card({ ALFRED_CODE_DOCS_PATH: absRoot }), path.join(absRoot, 'work', 'cross-project-tasks', name), 'an absolute docs root is kept, never joined under the project');
+});
+
 test('guard-cross-project-write: the shell routes around the file tools the same way', () => {
   assert.equal(xpBash(`echo x > ${path.join(XP_OTHER, 'f.txt')}`), 2, 'redirection into the other repo');
   assert.equal(xpBash('printf y >> ../projB/f.txt'), 2, 'appending, relative');

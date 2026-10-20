@@ -150,8 +150,7 @@ A change a sibling repo must follow is written as a task card under
 `alfred-memory` note, after reading the sibling's actual source: for each client action the card tells the sibling
 to wire, its handler there, and each backend route that handler calls confirmed to exist in THIS repo (one grep
 over the endpoint files) - a route that does not exist leaves the bullet out. The close then prints it beside
-the card as ONE fenced markdown block ready to paste into the sibling's session - first line
-`Open in: <the sibling's root>`, then the card's text - so nobody has to ask for it inline (measured:
+the card as the docs-root rule's hand-off block, ready to paste into the sibling's session, so nobody has to ask for it inline (measured:
 the 12th 'write it here as markdown' ask in one project, each a full-context turn). A reply drafted for
 another session waits for the commit / publish answer, so every id it quotes is final.
 

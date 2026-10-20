@@ -3861,7 +3861,7 @@
       "_note": "A change another repo needs is handed off as a task card at <docs-path>/work/cross-project-tasks/<other-project>.md, never written into that repo (guard-cross-project-write blocks the write). The hook is canonical - it prints the path in its block text; the docs-root rule lists the home, the habits-commit-checkpoint skill binds the receipt rule to it, and the three flows that hand off write the card.",
       "owner": {
         "file": "stack/hooks/guard-cross-project-write.js",
-        "marker": "'cross-project-tasks', '<other-project>.md'"
+        "marker": "'work', 'cross-project-tasks', `${other}.md`"
       },
       "sites": [
         {
@@ -7836,6 +7836,31 @@
         {
           "file": "stack/agents/wpf-verifier.md",
           "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line; each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+        }
+      ]
+    },
+    "sibling-handoff-block": {
+      "_note": "A hand-off to another repo reaches that repo's session only through the user's paste, so its block carries the card's ABSOLUTE path (the user's ask of 2026-10-20: 'show full path to that file so when I post the task to other project agent it will know where to find it'). alfred-docs-root.md holds the block's one shape; the four sites that print a hand-off point at it instead of restating it.",
+      "owner": {
+        "file": "stack/rules/alfred-docs-root.md",
+        "marker": "A hand-off to another repo prints ONE fenced block: `Open in: <its root, absolute>`, then `Task card: <this card's absolute path> - section '<heading>'`, then the section's text."
+      },
+      "sites": [
+        {
+          "file": "stack/skills/capture-awareness/references/related-projects.md",
+          "marker": "the docs-root rule's hand-off block"
+        },
+        {
+          "file": "stack/skills/task-solve/references/step-mechanics.md",
+          "marker": "the docs-root rule's hand-off block"
+        },
+        {
+          "file": "stack/skills/issue-diagnoser/SKILL.md",
+          "marker": "the docs-root rule's hand-off block"
+        },
+        {
+          "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
+          "marker": "the docs-root rule's hand-off block"
         }
       ]
     }

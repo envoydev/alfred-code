@@ -366,13 +366,14 @@ function block(what, shown, abs = shown) {
   // other row of this guard carried none, so the ledger could not split a file-tool write from a shell one).
   global.BLOCK_DETAIL = { branch: /^(?:Write|Edit|MultiEdit|NotebookEdit) of a file$/.test(what) ? 'file-tool' : /git write/.test(what) ? 'git-write' : 'shell-write' };
   const otherRoot = otherProjectRoot(abs);
-  const docsRel = docsRoot.replace(/^\//, '');
+  // Absolute, the sibling named: the user pastes the hand-off into that repo's session, which finds the card by this path.
+  const card = path.resolve(ROOT, docsRoot, 'work', 'cross-project-tasks', `${other}.md`);
   const receiptRel = receiptRelOf();
   // Cut to the ask and its options (deep hooks review 2026-10-16: 1,553 chars per denial); the why is repo-hooks.md's.
   process.stderr.write(
     `Blocked: ${what} targets '${shown}', outside this session's project (${ROOT}). A change another\n` +
     `repo needs is handed off, not applied here. End this turn with ONE AskUserQuestion, in this order -\n` +
-    `  'Task card in this project (Recommended)' - write ${path.join(docsRel, 'cross-project-tasks', '<other-project>.md')}:\n` +
+    `  'Task card in this project (Recommended)' - write ${card}:\n` +
     `  per task what changes where (file + symbol), why, the shared contract, how ${other} verifies it;\n` +
     `  then finish your side, or say what is blocked until it lands.\n` +
     `  'Allow writes into ${otherRoot} for this session' - write ${receiptRel} with that root on its own\n` +
