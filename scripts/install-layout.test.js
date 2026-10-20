@@ -126,21 +126,17 @@ test('merges related-context/ into work/cross-project-tasks/ and removes it', ()
     assert.ok(!has(root, '.alfred/docs/related-context') && !has(root, '.alfred/docs/cross-project-tasks'));
 });
 
-test('a clash keeps the old file and names it - nothing is overwritten', () =>
+test('a doc clash keeps the old file and names it - nothing is overwritten', () =>
 {
     const root = repo();
     put(root, '.alfred/docs/plans/a.md', 'old\n');
     put(root, '.alfred/docs/plans/b.md', 'b\n');
     put(root, '.alfred/docs/work/plans/a.md', 'new\n');
-    put(root, '.alfred/docs/flow/APPROVAL', 'old stamp\n');
-    put(root, '.alfred/state/approvals/APPROVAL', 'new stamp\n');
     const r = migrate(root);
     assert.strictEqual(text(root, '.alfred/docs/work/plans/a.md'), 'new\n');
     assert.strictEqual(text(root, '.alfred/docs/plans/a.md'), 'old\n', 'the old one stays where it was');
     assert.strictEqual(text(root, '.alfred/docs/work/plans/b.md'), 'b\n', 'the rest of the folder still moves');
-    assert.strictEqual(text(root, '.alfred/state/approvals/APPROVAL'), 'new stamp\n');
-    assert.strictEqual(text(root, '.alfred/docs/flow/APPROVAL'), 'old stamp\n');
-    assert.deepStrictEqual(r.kept.sort(), ['.alfred/docs/flow/APPROVAL', '.alfred/docs/plans/a.md']);
+    assert.deepStrictEqual(r.kept, ['.alfred/docs/plans/a.md']);
     assert.ok(r.logs.some((m) => m.includes('layout: kept .alfred/docs/plans/a.md - .alfred/docs/work/plans/a.md already holds it')), r.logs.join('\n'));
 });
 
@@ -175,6 +171,48 @@ test('a second run moves nothing and logs layout: current; a file an older hook 
     assert.ok(has(root, '.alfred/state/sessions/turn-check-late') && !has(root, '.alfred/docs/flow'), late.logs.join('\n'));
     const fresh = repo();
     assert.deepStrictEqual(migrate(fresh).logs, ['  layout: current'], 'a project with no docs root at all');
+});
+
+// Final review C2: an older hook still running beside a 2.8.0 one writes the old home while the new one writes the new,
+// so both hold a ledger or a scratch file. Kept at the old path, that pair clashed on every run and the old folder never
+// left; a ledger's rows are appended to the new file, any other state file keeps the new home's copy, a doc still clashes.
+test('a ledger or scratch file at both homes merges into the new one; a second run is current', () =>
+{
+    const root = repo();
+    put(root, '.alfred/docs/docs-log.jsonl', '{"old":1}\n');
+    put(root, '.alfred/statistics/docs-log.jsonl', '{"new":1}\n');
+    put(root, '.alfred/docs/hook-blocks/s1.jsonl', '{"old":2}\n');
+    put(root, '.alfred/statistics/hook-blocks/s1.jsonl', '{"new":2}\n');
+    put(root, '.alfred/docs/flow/compact-points.json', '{"old":3}\n');
+    put(root, '.alfred/state/sessions/compact-points.json', '{"new":3}');
+    put(root, '.alfred/docs/flow/APPROVAL', 'APPROVED - newer, by an older hook\n');
+    put(root, '.alfred/state/approvals/APPROVAL', 'Completed: older\n');
+    const past = new Date(Date.now() - 60_000);
+    fs.utimesSync(path.join(root, '.alfred/state/approvals/APPROVAL'), past, past);
+    const r = migrate(root);
+    assert.strictEqual(text(root, '.alfred/statistics/docs-log.jsonl'), '{"new":1}\n{"old":1}\n', r.logs.join('\n'));
+    assert.strictEqual(text(root, '.alfred/statistics/hook-blocks/s1.jsonl'), '{"new":2}\n{"old":2}\n');
+    assert.strictEqual(text(root, '.alfred/state/sessions/compact-points.json'), '{"new":3}', 'the new home keeps its scratch file');
+    assert.strictEqual(text(root, '.alfred/state/approvals/APPROVAL'), 'Completed: older\n', 'an old approval never replaces the new one');
+    assert.ok(r.logs.includes('  layout: removed .alfred/docs/flow/APPROVAL - .alfred/state/approvals/APPROVAL is the copy the hooks read'), r.logs.join('\n'));
+    for (const old of ['docs-log.jsonl', 'hook-blocks', 'flow']) assert.ok(!has(root, `.alfred/docs/${old}`), old);
+    assert.deepStrictEqual(r.kept, [], r.logs.join('\n'));
+    assert.ok(r.logs.some((m) => m === '  layout: merged .alfred/docs/docs-log.jsonl into .alfred/statistics/docs-log.jsonl'), r.logs.join('\n'));
+    assert.deepStrictEqual(migrate(root).logs, ['  layout: current']);
+});
+
+test('a failure after a merge puts both copies of the ledger back as they were', () =>
+{
+    const root = repo();
+    put(root, '.alfred/docs/docs-log.jsonl', '{"old":1}\n');
+    put(root, '.alfred/statistics/docs-log.jsonl', '{"new":1}');
+    put(root, '.alfred/docs/plans/a.md');
+    const before = tree(root);
+    const real = fs.renameSync;
+    fs.renameSync = () => { throw new Error('EBUSY: the plan'); };
+    try { assert.throws(() => migrate(root), /EBUSY: the plan/); }
+    finally { fs.renameSync = real; }
+    assert.deepStrictEqual(tree(root), before);
 });
 
 test('a failure on the third file puts the first two back and rethrows', () =>

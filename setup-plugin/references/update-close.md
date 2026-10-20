@@ -81,7 +81,8 @@ NEW-ITEMS line (what arrived, what was taken, what stays off - say where that sw
 - **DATA ROOT** - every `docs root:` / `docs move:` / `data root:` line the grep caught, verbatim.
 - **LAYOUT** - every `layout:` line the grep caught, verbatim, or 'layout: current - nothing moved'; a `layout: kept`
   line goes on the follow-ups card with the one action its shape leaves - three shapes, three actions:
-  - `layout: kept <old> - <new> already holds it`: the new file is the live one; diff the two and delete the old.
+  - `layout: kept <old> - <new> already holds it`: a doc at both homes, the new file the live one; diff the two and delete the old
+    (a ledger or state file at both homes settles itself - a `layout: merged` or `layout: removed` line - and leaves nothing).
   - `layout: kept .branches/ - it holds doc versions, prune them first`: those are live branch versions of the docs -
     fold or drop each with `node .claude/hooks/docs.js prune <branch>` and the next update removes the folder; never
     delete it by hand.

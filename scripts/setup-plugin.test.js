@@ -897,9 +897,13 @@ test('update: the post-install grep passes every layout: line, and the close rep
         fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'source: test\nversion: 2.7.0\n');
         for (const rel of ['flow/APPROVAL', 'hook-blocks/s.jsonl', 'plans/a.md', 'plans/b.md', '.branches/feature/x.md']) put(repo, `.alfred/docs/${rel}`);
         put(repo, '.alfred/docs/work/plans/b.md');
+        for (const rel of ['state/approvals/APPROVAL', 'statistics/hook-blocks/s.jsonl']) put(repo, `.alfred/${rel}`);
     };
     const { out } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', { prepare });
-    const kinds = { move: /layout: \S+ -> \S+ \(\d+ files?\)/, clash: /layout: kept \S+ - \S+ already holds it/, branches: /layout: kept \.branches\/ - it holds doc versions/ };
+    const kinds = {
+        move: /layout: \S+ -> \S+ \(\d+ files?\)/, clash: /layout: kept \S+ - \S+ already holds it/, branches: /layout: kept \.branches\/ - it holds doc versions/,
+        merged: /layout: merged \S+ into \S+/, removed: /layout: removed \S+ - \S+ is the copy the hooks read/,
+    };
     for (const [kind, re] of Object.entries(kinds))
     {
         const lines = out.split('\n').filter((l) => re.test(l));

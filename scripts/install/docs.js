@@ -617,7 +617,7 @@ function migrateLayout({ projectRoot, docsPath, dataPath, log = () => {} })
     const docsBase = path.resolve(projectRoot, String(docsPath || ''));
     const dataBase = path.resolve(projectRoot, String(dataPath || '.alfred'));
     const rel = (p) => path.relative(projectRoot, p).split(path.sep).join('/');
-    const out = { moved: [], kept: [], removed: [] };
+    const out = { moved: [], kept: [], removed: [], merged: [] };
     let tracked = new Set();
     try { tracked = new Set(String(rt.execCommand('git', ['-C', projectRoot, 'ls-files', '-z', '--', rel(docsBase) || '.'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })).split('\0').filter(Boolean)); }
     catch { tracked = new Set(); }
@@ -635,7 +635,12 @@ function migrateLayout({ projectRoot, docsPath, dataPath, log = () => {} })
         const from = path.join(docsBase, ...m.from.split('/'));
         if (m.file)
         {
-            if (fs.existsSync(from) && !isDir(from)) group(from, path.join(dataBase, ...m.to.split('/'))).pairs.push([from, path.join(dataBase, ...m.to.split('/'))]);
+            if (fs.existsSync(from) && !isDir(from))
+            {
+                const g = group(from, path.join(dataBase, ...m.to.split('/')));
+                g.data = true;
+                g.pairs.push([from, g.to]);
+            }
             continue;
         }
         if (!isDir(from)) continue;
@@ -646,12 +651,15 @@ function migrateLayout({ projectRoot, docsPath, dataPath, log = () => {} })
             {
                 const kind = LAYOUT.flowKind(path.relative(from, file).split(path.sep)[0]);
                 const to = path.join(dataBase, 'state', kind);
-                group(from, to).pairs.push([file, path.join(to, path.relative(from, file))]);
+                const g = group(from, to);
+                g.data = true;
+                g.pairs.push([file, path.join(to, path.relative(from, file))]);
             }
             continue;
         }
         const to = path.join(m.base === 'data' ? dataBase : docsBase, ...m.to.split('/'));
         const g = group(from, to);
+        g.data = m.base === 'data';
         // the usage audit's raw transcript copies move only where git keeps them out (migrateUsageReport's rule)
         g.raw = m.from === 'usage-report';
         for (const file of filesUnder(from)) g.pairs.push([file, path.join(to, path.relative(from, file))]);
@@ -680,10 +688,27 @@ function migrateLayout({ projectRoot, docsPath, dataPath, log = () => {} })
             let n = 0;
             for (const [from, to] of g.pairs)
             {
-                if (fs.existsSync(to))
+                if (fs.existsSync(to) && !(g.data && !isDir(to)))
                 {
                     out.kept.push(rel(from));
                     lines.push(`  layout: kept ${rel(from)} - ${rel(to)} already holds it`);
+                    continue;
+                }
+                if (fs.existsSync(to))
+                {
+                    // An older hook beside a 2.8.0 one writes both homes: a ledger's rows join the new file, and any
+                    // other state file is the new home's copy, the one the hooks read (layout.js pick) - an old
+                    // approval never replaces it. Kept at the old path, the pair clashed on every later run.
+                    const pair = [fs.readFileSync(from), fs.readFileSync(to)];
+                    done.push(['restore', from, to, ...pair]);
+                    if (from.endsWith('.jsonl'))
+                    {
+                        fs.appendFileSync(to, Buffer.concat([pair[1].length && pair[1][pair[1].length - 1] !== 0x0a ? Buffer.from('\n') : Buffer.alloc(0), pair[0]]));
+                        lines.push(`  layout: merged ${rel(from)} into ${rel(to)}`);
+                    }
+                    else lines.push(`  layout: removed ${rel(from)} - ${rel(to)} is the copy the hooks read`);
+                    fs.rmSync(from);
+                    out.merged.push(rel(from));
                     continue;
                 }
                 try
@@ -706,12 +731,13 @@ function migrateLayout({ projectRoot, docsPath, dataPath, log = () => {} })
     }
     catch (err)
     {
-        for (const [how, from, to] of done.reverse())
+        for (const [how, from, to, fromBytes, toBytes] of done.reverse())
         {
             try
             {
                 fs.mkdirSync(path.dirname(from), { recursive: true });
-                if (how === 'git') gitMv(to, from);
+                if (how === 'restore') { fs.writeFileSync(from, fromBytes); fs.writeFileSync(to, toBytes); }
+                else if (how === 'git') gitMv(to, from);
                 else fs.renameSync(to, from);
             }
             catch { /* the error below names the move; a file that cannot go back stays where it is */ }
