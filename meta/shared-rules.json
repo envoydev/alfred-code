@@ -7553,6 +7553,127 @@
           "marker": "- 'Allow this edit (Recommended)' - the guard's receipt names this file and the same edit is retried\n- 'Keep the config as it is' - nothing changes in the file"
         }
       ]
+    },
+    "loop-substantial-steps": {
+      "_note": "The two quality loops' substantial-tier path - decompose, gate the plan, approve, (stamp,) build and verify - verbatim twins (stack audit 2026-10-20 SKF2-04). The stamp step between them is held by the approval-stamp-* entries.",
+      "owner": {
+        "file": "stack/skills/loop-architecture-quality/SKILL.md",
+        "marker": "**substantial** (a designer-led multi-task change) - five steps in order, none of them optional: 1. **Decompose** - dispatch the domain solution-designer to turn the remediation into a decomposition. 2. **Gate the plan** - `task-verify-plan`, an actual Skill invocation, recording its `Passes:` line. 3. **Get the user's approval on that plan before building** - never fan out against an unapproved plan."
+      },
+      "sites": [
+        {
+          "file": "stack/skills/loop-code-quality/SKILL.md",
+          "marker": "**substantial** (a designer-led multi-task change) - five steps in order, none of them optional: 1. **Decompose** - dispatch the domain solution-designer to turn the remediation into a decomposition. 2. **Gate the plan** - `task-verify-plan`, an actual Skill invocation, recording its `Passes:` line. 3. **Get the user's approval on that plan before building** - never fan out against an unapproved plan."
+        },
+        {
+          "file": "stack/skills/loop-architecture-quality/SKILL.md",
+          "marker": "**Build and verify** - fan the tasks out to the domain implementers, then gate the assembled result with the domain verifier, looping its punch-list back."
+        },
+        {
+          "file": "stack/skills/loop-code-quality/SKILL.md",
+          "marker": "**Build and verify** - fan the tasks out to the domain implementers, then gate the assembled result with the domain verifier, looping its punch-list back."
+        }
+      ]
+    },
+    "loop-round-cap": {
+      "_note": "Every improve loop stops after 3 rounds with the remainder listed (stack audit 2026-10-20 SKF2-04); each loop keeps its own reason after the cap.",
+      "owner": {
+        "file": "stack/skills/loop-architecture-quality/SKILL.md",
+        "marker": "**Hard cap: 3 improve rounds"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/loop-code-quality/SKILL.md",
+          "marker": "**Hard cap: 3 improve rounds"
+        },
+        {
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "marker": "**Hard cap: 3 improve rounds"
+        }
+      ]
+    },
+    "testing-coverage-mechanics": {
+      "_note": "The coverage mechanics line each testing hub owns beside the registered testing-coverage-bar (stack audit 2026-10-20 SKS2-03): coverage is computed after exclusions, so the number is logic, not padding; each hub's own exclusion catalogue follows.",
+      "owner": {
+        "file": "stack/skills/dotnet-testing/SKILL.md",
+        "marker": "What this skill owns is the mechanics: coverage is computed after exclusions so the number reflects real logic coverage, not padding"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/angular-testing/SKILL.md",
+          "marker": "What this skill owns is the mechanics: coverage is computed after exclusions so the number reflects real logic coverage, not padding"
+        },
+        {
+          "file": "stack/skills/ts-js-testing/SKILL.md",
+          "marker": "What this skill owns is the mechanics: coverage is computed after exclusions so the number reflects real logic coverage, not padding"
+        }
+      ]
+    },
+    "quality-capture-run-gate-and-receipt": {
+      "_note": "The two quality captures' run-gate sentence and the receipt rows they share verbatim (stack audit 2026-10-20 SKC2-06); each keeps its own Findings gate wording and extra rows.",
+      "owner": {
+        "file": "stack/skills/capture-architecture-quality/SKILL.md",
+        "marker": "So unless the quality loop invoked this run, put this ask before GATHER (joined with the mode ask below where that fires, one AskUserQuestion call). No answer, no run."
+      },
+      "sites": [
+        {
+          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "marker": "So unless the quality loop invoked this run, put this ask before GATHER (joined with the mode ask below where that fires, one AskUserQuestion call). No answer, no run."
+        },
+        {
+          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "marker": "Then the receipt lines - one per field, UNCONDITIONAL:"
+        },
+        {
+          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "marker": "Then the receipt lines - one per field, UNCONDITIONAL:"
+        },
+        {
+          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "marker": "| `References:` | which of this skill's `references/` files this run actually Read |"
+        },
+        {
+          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "marker": "| `References:` | which of this skill's `references/` files this run actually Read |"
+        },
+        {
+          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "marker": "| `Decisions:` | the decision records step 1 actually opened, or `none found at <path looked>` |"
+        },
+        {
+          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "marker": "| `Decisions:` | the decision records step 1 actually opened, or `none found at <path looked>` |"
+        },
+        {
+          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "marker": "| `Write:` | created / refreshed, and the post-write line count against the ~300 target |"
+        },
+        {
+          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "marker": "| `Write:` | created / refreshed, and the post-write line count against the ~300 target |"
+        },
+        {
+          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "marker": "| `Run gate:` | the answer verbatim, or `invoked by the quality loop` |"
+        },
+        {
+          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "marker": "| `Run gate:` | the answer verbatim, or `invoked by the quality loop` |"
+        }
+      ]
+    },
+    "size-first-trivial-row": {
+      "_note": "The size table's trivial row, verbatim in both solve flows (stack audit 2026-10-20 SKF2-05) - size-first-table pins only the floor sentence; the small rows differ by design.",
+      "owner": {
+        "file": "stack/skills/task-solve/SKILL.md",
+        "marker": "| trivial | one file, no new dependency, no behaviour a test would see (typo, comment, format, rename inside a file) | edit -> scoped check -> close. No design, no audit, no stop |"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/task-solve-cross/SKILL.md",
+          "marker": "| trivial | one file, no new dependency, no behaviour a test would see (typo, comment, format, rename inside a file) | edit -> scoped check -> close. No design, no audit, no stop |"
+        }
+      ]
     }
   }
 }

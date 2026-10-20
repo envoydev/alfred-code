@@ -169,6 +169,20 @@ test('row 8: task-verify-code no longer says /code-review always fans out', () =
     assert.match(t, /runs as its own subagent \(in the background in a terminal session\) and, with `ultra`, as a multi-agent cloud review/);
 });
 
+// Row 12: the multi-home clusters the audit named are registered, so a one-copy edit goes red at lint 24.
+test('row 12: the stamp, loop-twin, quality-capture, coverage and size-row clusters are registered and in sync', () =>
+{
+    const { lintSharedRules } = require('./lint-skills.js');
+    const rules = JSON.parse(read('meta/shared-rules.json')).rules;
+    const ids = ['approval-stamp-shape', 'approval-stamp-refused', 'approval-stamp-auto-carve-out', 'ask-idle-timeout-no-answer',
+        'no-stops-waiver-solve-flows', 'no-stops-points-to-auto-mode', 'loop-substantial-steps', 'loop-round-cap',
+        'testing-coverage-mechanics', 'quality-capture-run-gate-and-receipt', 'size-first-trivial-row', 'dotnet-floor-line',
+        'config-protection-allow-ask'];
+    const sub = {};
+    for (const id of ids) { assert.ok(rules[id], `${id} is registered`); sub[id] = rules[id]; }
+    assert.deepStrictEqual(lintSharedRules({ rules: sub }, read), []);
+});
+
 // Row 13: prose stops became ask templates, so lint 61 holds their one mark.
 test('row 13: the named prose stops are ask templates, each marking one option first', () =>
 {
