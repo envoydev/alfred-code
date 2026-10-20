@@ -436,6 +436,6 @@ test('unattended: update\'s preflight says it too, so update answers its own ask
         { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: root, CLAUDE_CONFIG_DIR: ACCT, ...extra } }).stdout;
     assert.match(run({ ALFRED_CODE_UNATTENDED: '1' }), /^unattended: on$/m);
     assert.doesNotMatch(run({}), /^unattended:/m);
-    const body = fs.readFileSync(path.join(__dirname, '..', 'setup-plugin', 'commands', 'update.md'), 'utf8');
-    assert.match(body, /`unattended: on`[^\n]*\n?[^\n]*init-bootstrap\.md/, 'update.md reads the line and points at the one rule');
+    const body = fs.readFileSync(path.join(__dirname, '..', 'setup-plugin', 'references', 'update-walk.md'), 'utf8');
+    assert.match(body, /`unattended: on`[^\n]*\n?[^\n]*init-bootstrap\.md/, 'update-walk.md (the update walk, audit 2026-10-20 C15) reads the line and points at the one rule');
 });

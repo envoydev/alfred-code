@@ -1902,7 +1902,7 @@
           "marker": "- **Any OS:** `node \"$TMP/repo/scripts/install/alfred-code.js\" install --source"
         },
         {
-          "file": "setup-plugin/commands/update.md",
+          "file": "setup-plugin/references/update-walk.md",
           "marker": "- **Any OS:** `node \"$TMP/repo/scripts/install/alfred-code.js\" update --source"
         },
         {
@@ -2078,7 +2078,7 @@
     "capabilities-refresh-user-run": {
       "_note": "The manual-only captures are the USER's to type, never invoked from a guided run: all of them except capture-architecture and capture-architecture-quality carry disable-model-invocation, and a model's own Skill call on one is DENIED by guard-fresh-session-start.js, which reads that flag from the skill's own frontmatter. The HARNESS is not the gate - measured both ways, one update run's call was refused and one slipped through (the user had typed the command with a leading space, so no command marker fired), which is why the stack stopped asserting harness behaviour and wired its own. So every command NAMES them in its report or next-steps card as the user's next step and never attempts one - except /alfred-code:init (R30), which runs the captures the install lists by READING each SKILL.md and following it inline: still never a Skill call. One statement per command because each runs standalone; the behavioural half of the rule - never attempt, never narrate the attempt - is stamped into every project by capture-awareness' usage policy.",
       "owner": {
-        "file": "setup-plugin/commands/update.md",
+        "file": "setup-plugin/references/update-close.md",
         "marker": "Never invoke it from this run - the skill is manual-only"
       },
       "sites": [
@@ -3939,7 +3939,7 @@
       },
       "sites": [
         {
-          "file": "setup-plugin/commands/update.md",
+          "file": "setup-plugin/references/update-walk.md",
           "marker": "renames, then removals, then the absent-only seeds"
         }
       ]
@@ -3981,7 +3981,7 @@
           "marker": "Nothing is pending on this run - these are yours to run when you choose."
         },
         {
-          "file": "setup-plugin/commands/update.md",
+          "file": "setup-plugin/references/update-close.md",
           "marker": "Nothing is pending on this run - these are yours to run when you choose."
         },
         {
@@ -4074,7 +4074,7 @@
       },
       "sites": [
         {
-          "file": "setup-plugin/commands/update.md",
+          "file": "setup-plugin/references/update-close.md",
           "marker": "`policy-rev: stale ...` (the installed usage-policy rule's stamped revision is behind the shipped"
         },
         {
@@ -5247,7 +5247,7 @@
           "marker": "Presence, never the value"
         },
         {
-          "file": "setup-plugin/commands/update.md",
+          "file": "setup-plugin/references/update-walk.md",
           "marker": "Presence, never the value"
         },
         {

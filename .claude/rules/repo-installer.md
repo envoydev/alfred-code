@@ -40,7 +40,10 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
     the working directory. `/alfred-code:update`
     refreshes and prunes from the stamp compare (its ONE ask offers what the release ADDED -
     `update-preflight.js`'s `new:` lines, classified by `derive-state.classifyNew`; a yes is
-    `--add '<category> <name>'` on `--installed-only`), `/alfred-code:configure` adds or drops through
+    `--add '<category> <name>'` on `--installed-only`; its body is a router - the model gate and the order of calls -
+    with steps 1-3 in `references/update-walk.md`, cat in the same call as `stamp.js state`, and steps 6-8 in
+    `references/update-close.md`, cat in the same call as the `--log` call, so a gate-refused run carries 6.8k body
+    chars instead of 35.7k and a run that goes ahead pays no extra call - audit 2026-10-20 C15), `/alfred-code:configure` adds or drops through
     the walk it shares with init's install phase (`setup-plugin/references/walk.md`), `/alfred-code:status` (read-only, no snapshot: general info, a
     health column from the CLI's own error fields plus a `not installed for this project` row per `plugins.js unreached`
     line - a plugin the settings switch on that no install record reaches, another project's record left out (usage

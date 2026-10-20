@@ -1217,7 +1217,11 @@ const SETUP_ASK_TEMPLATES = {
     // +2: step 1's closing ask, one template per case (audit 2026-10-11, session a9e06780).
     'setup-plugin/commands/configure.md': 6,
     // audit 2026-10-11: update's three asks plus step 6's re-spell of the project's own AGENTS.md (session b3f8193f).
-    'setup-plugin/commands/update.md': 4,
+    // Audit 2026-10-20 C15: update.md is a router, so a gate-refused run carries none of them - the data-root and
+    // instruction-file asks ride the walk (steps 1-3), the re-spell and git-hygiene asks the close (steps 6-8).
+    'setup-plugin/commands/update.md': 0,
+    'setup-plugin/references/update-walk.md': 2,
+    'setup-plugin/references/update-close.md': 2,
     // validate's AGENTS.md check ask, 'Leave them' recommended and first (audit 2026-10-11, session 6288ad94).
     'setup-plugin/commands/validate.md': 1,
 };

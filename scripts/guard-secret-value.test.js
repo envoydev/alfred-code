@@ -479,7 +479,7 @@ test('every page naming the presence read names its three answers (audit 2026-10
   // The guard prints KEY=empty for a key present with no value; a page listing only set / absent sent a reader to call it absent.
   const repo = path.join(__dirname, '..');
   const pages = ['configure', 'init', 'status', 'update', 'validate'].map((c) => path.join('setup-plugin', 'commands', `${c}.md`))
-    .concat(['init-install', 'init-bootstrap'].map((r) => path.join('setup-plugin', 'references', `${r}.md`)))
+    .concat(['init-install', 'init-bootstrap', 'update-walk', 'update-close'].map((r) => path.join('setup-plugin', 'references', `${r}.md`)))
     .concat([path.join('docs', 'alfred-code.html'), path.join('meta', 'shared-rules.json')]);
   for (const rel of pages) {
     const text = fs.readFileSync(path.join(repo, rel), 'utf8');

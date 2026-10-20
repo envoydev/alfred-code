@@ -58,6 +58,9 @@ const installBody = () => refBody('init-install');
 const bootstrapBody = () => refBody('init-bootstrap');
 // What an init run can read: the router plus both phase files.
 const initText = () => [cmdBody('init'), installBody(), bootstrapBody()].join('\n');
+// Audit 2026-10-20 C15: update.md is a router too - the gate and the order of calls; steps 1-3 live in update-walk.md
+// and steps 6-8 in update-close.md, each read in a call the run makes anyway. What an update run can read: all three.
+const updateText = () => [cmdBody('update'), refBody('update-walk'), refBody('update-close')].join('\n');
 const flat = (text) => text.replace(/\s+/g, ' ');
 // Task 18b: the install phase (FRESH) and configure (DELTA) run ONE walk text, so the layer rules live there.
 const walkBody = () => fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'walk.md'), 'utf8');
@@ -500,7 +503,7 @@ for (const name of ['init', 'update', 'configure', 'validate', 'status', 'uninst
 test('every command that runs the installer runs the SEED, and names the shell switch', () => {
     for (const name of ['init', 'update', 'configure', 'validate', 'uninstall'])
     {
-        const body = name === 'init' ? initText() : fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
+        const body = name === 'init' ? initText() : name === 'update' ? updateText() : fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
         assert.match(body, /node "\$TMP\/repo\/scripts\/install\/alfred-code\.js" (install|update|uninstall)/,
             `${name} does not run the Node seed`);
         assert.match(body, /ALFRED_CODE_SEED=shell/, `${name} does not name the shell switch`);
@@ -517,7 +520,7 @@ test('every command that runs the installer runs the SEED, and names the shell s
 // line the seed itself prints, and runs no twin.
 const D1 = 'the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer';
 test('D1: on seed=shell every command body prints the refusal and runs no twin', () => {
-    for (const file of ['references/init-install.md', 'references/init-bootstrap.md', 'commands/update.md', 'commands/configure.md', 'commands/validate.md', 'commands/uninstall.md', 'references/source-protocol.md'])
+    for (const file of ['references/init-install.md', 'references/init-bootstrap.md', 'references/update-walk.md', 'commands/configure.md', 'commands/validate.md', 'commands/uninstall.md', 'references/source-protocol.md'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, file), 'utf8');
         assert.ok(body.includes(D1), `${file} does not print the D1 refusal`);
@@ -571,7 +574,7 @@ test('an unstamped legacy install routes to update from every gate; init asks on
     assert.deepStrictEqual(ask.filter((l) => /^- '/.test(l)).map((l) => /^- '([^']*)'/.exec(l)[1]), ['Update this install (Recommended)', 'Fresh install anyway']);
     assert.match(init, /'Update this install' -> name `\/alfred-code:update` for the USER to type and end the turn/);
     assert.match(init, /'Fresh install anyway' -> the INSTALL phase/);
-    assert.match(flat(cmdBody('update')), /`legacy-unstamped` [^;]*-> go on: this command is its route/);
+    assert.match(flat(updateText()), /`legacy-unstamped` [^;]*-> go on: this command is its route/);
     for (const name of ['configure', 'validate', 'status', 'uninstall'])
         assert.match(flat(cmdBody(name)), /`legacy-unstamped`[^`]*`\/alfred-code:update`/, `${name} routes it to update`);
 });
@@ -587,7 +590,7 @@ test('every command gate and the router stop in a worktree of an installed check
     assert.match(router, /Worktree of an installed checkout -> no command here: 'This is a git worktree of <main>, which holds the install - run \/alfred-code:<the command the ask needs> from there'/);
     for (const name of ['init', 'update', 'configure', 'validate', 'status', 'uninstall'])
     {
-        const body = flat(cmdBody(name));
+        const body = flat(name === 'update' ? updateText() : cmdBody(name));
         assert.match(body, /node "(\$\{CLAUDE_PLUGIN_ROOT\}|\$TMP\/repo)\/scripts\/install\/stamp\.js" state \./, `${name} reads the state`);
         const line = new RegExp(`\`worktree-of-installed <main>\` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:${name} from there' and stop`);
         assert.match(body, line, `${name} stops in a worktree with its own command named`);
@@ -779,7 +782,7 @@ test('the walk and status REPORT the derivation - they never restate what the in
 // holds only the extras and would switch every carried seat off.
 test('update: new items come from the preflight\'s new: lines and a yes becomes --add', () =>
 {
-    const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'update.md'), 'utf8');
+    const body = updateText();
     assert.match(body, /`new: <category> <name><TAB><verdict>/);
     assert.match(body, /--installed-only \[--add "<category> <name>"\]\.\.\./);
     assert.ok(!/FYI `added` items/.test(body), 'the FYI-only adoption is gone');
@@ -819,7 +822,7 @@ test('configure emits hook none when its Hooks area was walked, and update has n
     const configure = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'configure.md'), 'utf8');
     assert.match(configure, /--emit "\$TMP\/selection\.txt" --check \[--hooks-answered\]/);
     // R51 / I8: the preflight reads the project's stamp only - update has no global mode.
-    const update = flat(fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'update.md'), 'utf8'));
+    const update = flat(updateText());
     assert.ok(!/Global mode:/.test(update), 'update has no global mode left');
     assert.ok(!/legacy-stamp:/.test(update), 'no account-stamp baseline line is left to read');
     assert.match(update, /`settings\.local\.json` laid over `settings\.json` at local scope/);
@@ -834,7 +837,7 @@ test('a hand-edited library copy is reported before an apply overwrites it, and 
     const validate = read('validate.md');
     const step1 = validate.slice(validate.indexOf('## 1. Find the install'), validate.indexOf('## 2. Detect'));
     assert.match(step1, /library-check\.js" --project \. --source "\$TMP\/repo"/, 'validate checks the copies at inventory time');
-    for (const [name, body] of [['update.md', read('update.md')], ['validate.md', validate], ['configure.md', read('configure.md')]])
+    for (const [name, body] of [['update.md', updateText()], ['validate.md', validate], ['configure.md', read('configure.md')]])
     {
         const filters = body.split('\n').filter((l) => /grep -a?E '[^']*' "\$TMP\/install\.log"/.test(l));
         assert.ok(filters.length > 0, `${name} has a report filter`);
@@ -849,7 +852,7 @@ test('a hand-edited library copy is reported before an apply overwrites it, and 
 test('update: the post-install grep passes every retirement line the installer writes', { skip: process.platform === 'win32' && 'the seed sandbox is POSIX only' }, () =>
 {
     const { seedRun } = require('./seed-sandbox.js');
-    const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'update.md'), 'utf8');
+    const body = updateText();
     const m = body.match(/grep -aE '([^']+)' "\$TMP\/install\.log"/);
     assert.ok(m, 'update.md carries no post-install grep');
     const pattern = new RegExp(m[1]);
@@ -900,7 +903,7 @@ function reportOf(out)
         fs.writeFileSync(log, out);
         const warn = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'update-preflight.js'), '--log', log], { encoding: 'utf8' })
             .split('\n').filter((l) => l.startsWith('warn: ')).map((l) => l.slice('warn: '.length));
-        const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'update.md'), 'utf8');
+        const body = updateText();
         const current = new RegExp(body.match(/grep -aE '([^']+)' "\$TMP\/install\.log"/)[1]);
         const lines = out.split('\n');
         return { lines, first: { grep: lines.filter((l) => GREP_1X.test(l)), warn }, current: lines.filter((l) => current.test(l)) };
@@ -1021,7 +1024,7 @@ test('N2: configure.md and the HTML catalog no longer claim --memory-level proje
 // F4 re-review N9: hudStatusLineMissing (plugins.js) fires whenever claude-hud is installed - this
 // run OR already - and the account has no statusLine, not only on a fresh install this run.
 test('N9: update.md states the claude-hud status-line line prints on every run, not only when installed this run', () => {
-    const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'update.md'), 'utf8');
+    const body = updateText();
     assert.doesNotMatch(body, /When claude-hud is installed this run and the account has no/, 'update.md must not narrow the trigger to a fresh install this run');
     assert.match(body, /claude-hud is installed - this run or already/, 'update.md must say the line fires on every run while claude-hud is installed and statusLine is missing');
 });
@@ -1119,7 +1122,7 @@ test('init\'s install phase and configure name option asks, not typed numbers, f
 
 // ------------------------------------------------------------------ audit 2026-10-11 SD06 / SD04 / SD09 (update)
 
-const updateBody = () => fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'update.md'), 'utf8');
+const updateBody = updateText;
 const stepOf = (body, from, to) => flat(body.slice(body.indexOf(from), body.indexOf(to)));
 
 // 37d7a42c: step 0 said 'continue either way' and the Never list 'never run on the expensive tier'; the run went on on
@@ -1127,14 +1130,16 @@ const stepOf = (body, from, to) => flat(body.slice(body.indexOf(from), body.inde
 test('update step 0: the tier hint is a stop the Never list agrees with, and the fresh-session ask is the hook note alone', () =>
 {
     const body = updateBody();
-    const zero = stepOf(body, '## 0. Where to run it', '## 1. Preconditions');
-    assert.doesNotMatch(zero, /continue either way/, 'the tier hint no longer lets the run go on');
+    // step 0 is the router's (audit 2026-10-20 C15): the only text a refused run reads.
+    const router = cmdBody('update');
+    const zero = stepOf(router, '## 0. Where to run it', '## The run');
+    assert.doesNotMatch(flat(body), /continue either way/, 'the tier hint no longer lets the run go on');
     assert.match(zero, /step 0 is a STOP, not an ask/);
     assert.match(zero, /the turn ends before the snapshot is resolved/);
     assert.match(zero, /A second `\/alfred-code:update` in this session goes ahead/);
     assert.match(zero, /unattended: tier -> run here/, 'an unattended launch never stops on it');
-    assert.match(flat(body.slice(body.indexOf('## Do not'))), /- Never start this walk on the expensive tier when a cheap one is available - step 0's tier stop/,
-        'the Never line says the same thing as step 0');
+    // The Never list is read only once the gate passed, so it carries no second tier rule to drift from step 0's.
+    assert.doesNotMatch(flat(body.slice(body.indexOf('## Do not'))), /expensive tier/, 'the tier rule has one home, step 0');
     assert.doesNotMatch(zero, /cache_read \+ cache_creation|Measure before you ask/, 'no model-side measurement is left');
     assert.match(zero, /the measuring is the hook's, never yours/);
     assert.match(zero, /Without it, step 0 does not exist: never measure, never mention it/);
@@ -1167,7 +1172,10 @@ test('update step 6: the own-file re-spell goes through the preflight plan and o
     assert.match(ask[0].filter((l) => /^- '/.test(l))[0], /^- 'Re-spell them \(Recommended\)'/);
     assert.match(flat(six), /`agents-md: compare <clean\|N additions> - check <N rows>`/);
     assert.match(flat(body.slice(body.indexOf('## 7. Post-check'))), /step 6's `agents-md:` receipt/);
-    assert.strictEqual(askBlocks(body).length, SETUP_ASK_TEMPLATES['setup-plugin/commands/update.md'], 'update.md\'s asks are pinned');
+    const pinned = ['commands/update.md', 'references/update-walk.md', 'references/update-close.md']
+        .reduce((n, rel) => n + SETUP_ASK_TEMPLATES[`setup-plugin/${rel}`], 0);
+    assert.strictEqual(askBlocks(body).length, pinned, 'update\'s asks are pinned across the router and its two references');
+    assert.strictEqual(askBlocks(cmdBody('update')).length, 0, 'a gate-refused run carries no ask template');
 });
 
 // ------------------------------------------------------------------ audit 2026-10-11 SD06 / SD10 (validate)
@@ -1302,10 +1310,25 @@ test('C46: the protocol holds only what every run uses; the why and the rare bra
 // Audit 2026-10-20 C15: a 72.5k-char update body loaded whole before its model gate, so a refused run carried it on
 // every later message and the re-run carried it twice (e43969a7 ~410k, 24841a36 ~237k); its respell diff was approved
 // three times unseen (e31af926); a TRUNCATED compare was never named (a72fdfbc); and '~10k' was 50-70% low (24841a36).
-const UPDATE_BODY_CAP = 40000;
-test(`C15: update opens on its model gate, stays under ${UPDATE_BODY_CAP} chars, and keeps its rare branches in references`, () => {
+// The residual: a refused run still carried the 35.7k-char body (~9k tokens); update.md is a router now (6.8k body chars
+// measured), and each step reference rides a Bash call the run already makes, so it must fit the Bash tool's output
+// cap with headroom (a 30,382-byte protocol copy spilled past it, see PROTOCOL_CAP).
+const UPDATE_ROUTER_CAP = 10000;
+const UPDATE_REF_CAP = 24000;
+test(`C15: update is a ${UPDATE_ROUTER_CAP}-char router that opens on its model gate; its steps ride calls the run makes anyway`, () => {
+    const router = cmdBody('update');
+    assert.ok(router.length <= UPDATE_ROUTER_CAP, `update.md is ${router.length} chars, over ${UPDATE_ROUTER_CAP} - a refused run carries all of it; move a step to update-walk.md or update-close.md`);
+    for (const ref of ['update-walk', 'update-close'])
+    {
+        const text = refBody(ref);
+        assert.ok(text.length <= UPDATE_REF_CAP, `${ref}.md is ${text.length} chars, over ${UPDATE_REF_CAP} - its cat would spill past the Bash output cap`);
+    }
+    const flatRouter = flat(router);
+    assert.ok(flatRouter.indexOf('## The run') > flatRouter.indexOf('**When the gate stops the run'), 'the call order comes after the gate');
+    assert.match(flatRouter, /ONE call: `node "\$TMP\/repo\/scripts\/install\/stamp\.js" state \. ; cat "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/update-walk\.md"`/, 'the walk rides step 1\'s call');
+    assert.match(flatRouter, /step 3's `--log` call with `; cat "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/update-close\.md"` appended/, 'the close rides the --log call');
+    assert.match(refBody('update-walk'), /--running "\$\{CLAUDE_PLUGIN_ROOT\}" ; cat "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/update-close\.md"/, 'the walk\'s --log call reads the close');
     const body = updateBody();
-    assert.ok(body.length <= UPDATE_BODY_CAP, `update.md is ${body.length} chars, over ${UPDATE_BODY_CAP} - move a rare branch to update-slow-path.md`);
     const afterTitle = body.slice(body.indexOf('# Update Alfred Code'));
     assert.match(afterTitle, /^# Update Alfred Code[^\n]*\n\n## 0\. Where to run it\n\n\*\*The model gate comes first - before any tool call and before reading further\.\*\*/, 'the gate is the body\'s first section');
     assert.match(flat(body), /\*\*When the gate stops the run, that line is the turn: no tool call, nothing below is read or summarised, and the turn ends on it\.\*\*/);

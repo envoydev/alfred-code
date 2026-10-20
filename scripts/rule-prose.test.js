@@ -342,7 +342,7 @@ test('C23: the docs-root rule names the ignore-honouring grep and the two search
 // `## ` heading diff, never the check. 0cdb0c1d: 'a fresh session' beside a separate restart row let /clear satisfy it.
 test('C29: update passes the running plugin root, runs the AGENTS.md check itself, and folds the capture into the restart', () =>
 {
-    const update = squash(read('setup-plugin/commands/update.md'));
+    const update = squash(['setup-plugin/commands/update.md', 'setup-plugin/references/update-walk.md', 'setup-plugin/references/update-close.md'].map(read).join('\n'));
     assert.match(update, /update-preflight\.js" --log "\$TMP\/install\.log" --hooks <step 2's changed: hooks=N> --running "\$\{CLAUDE_PLUGIN_ROOT\}"/);
     const six = update.slice(update.indexOf('## 6. Reconcile'), update.indexOf('## 7. Post-check'));
     const check = six.indexOf('agents-md-check.js" --root .');

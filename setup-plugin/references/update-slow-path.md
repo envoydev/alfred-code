@@ -1,9 +1,10 @@
 # /alfred-code:update - the slow path and the rare branches
 
-`update.md` holds the fast path every run takes; this file is read - in ONE Bash `cat` - only when one of its cases
-applies: a non-empty prune list (steps 4 and 5), a `data-move: offer` line, a `--docs-versioning` or
-`--memory-level` value in the user's own invocation, a `guard-*` hook still absent after a copy-route run, or a
-credential the user wants set. Each section says when it applies; the rest of the run stays in `update.md`.
+`update-walk.md` holds the fast path every run takes (steps 1-3) and `update-close.md` steps 6-8; this file is read -
+in ONE Bash `cat` - only when one of its cases applies: a non-empty prune list (steps 4 and 5), a `data-move: offer`
+line, a `--docs-versioning` or `--memory-level` value in the user's own invocation, a `guard-*` hook still absent
+after a copy-route run, or a credential the user wants set. Each section says when it applies; the rest of the run
+stays in those two.
 
 ## 4. Pruning path - confirm once, then refresh + prune
 
@@ -53,7 +54,7 @@ scopes it to ONE matcher when the file stays wired for its other events, and a
 `settings_hook_wired` detect matches on that wiring being present rather than on a file;
 parse-edit-rewrite,
 never regex, never touching other wiring). A migration's `then` line goes in the step-7 report
-as a next step - run nothing on the user's behalf. Then step 6 of `update.md`.
+as a next step - run nothing on the user's behalf. Then step 6 of `update-close.md`.
 
 ## The data root move - on `data-move: offer`
 
@@ -61,7 +62,7 @@ Alfred Code keeps a project's data in ONE folder, `.alfred` at the project root 
 navigation server's folder and home, the browser profiles and a project-level memory database. It sits outside
 `.claude/`, where Claude Code prompts for every write - every plan, capture and commit receipt - denies it in
 `dontAsk`, and no allow rule lifts it (code.claude.com/docs/en/permission-modes, 'Protected paths'). Nothing moves
-without the answer to `update.md`'s ask.
+without the answer to `update-walk.md`'s ask.
 
 A typed folder (Other) is a custom root: `--data-path <folder> --data-move move`; it must be relative,
 inside the project, never under `.claude/`, with no space. The recommended answer is `--data-move move`,
