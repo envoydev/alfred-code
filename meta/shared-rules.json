@@ -7915,6 +7915,51 @@
           "marker": "the docs-root rule's hand-off block"
         }
       ]
+    },
+    "verifier-done-gate-evidence": {
+      "_note": "The verifier output contract's done-gate field, named as the output it is (agents audit 2026-10-20b): per task, the acceptance criterion's evidence - the command this session ran and its quoted result, or `not run - <why>`. It read 'the bound habits-done-gate sets', which named no output, so a seat could not tell what to return; agent-output-protocol.md's verifier block reads the same field. Identical in all 10 verifiers.",
+      "owner": {
+        "file": "stack/agents/aspnet-verifier.md",
+        "marker": "per task, its acceptance criterion's evidence as `habits-done-gate` binds it - the command this session ran and its quoted result, or `not run - <why>`"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/browser-extension-verifier.md",
+          "marker": "per task, its acceptance criterion's evidence as `habits-done-gate` binds it - the command this session ran and its quoted result, or `not run - <why>`"
+        },
+        {
+          "file": "stack/agents/console-verifier.md",
+          "marker": "per task, its acceptance criterion's evidence as `habits-done-gate` binds it - the command this session ran and its quoted result, or `not run - <why>`"
+        },
+        {
+          "file": "stack/agents/data-verifier.md",
+          "marker": "per task, its acceptance criterion's evidence as `habits-done-gate` binds it - the command this session ran and its quoted result, or `not run - <why>`"
+        },
+        {
+          "file": "stack/agents/devops-verifier.md",
+          "marker": "per task, its acceptance criterion's evidence as `habits-done-gate` binds it - the command this session ran and its quoted result, or `not run - <why>`"
+        },
+        {
+          "file": "stack/agents/ionic-angular-verifier.md",
+          "marker": "per task, its acceptance criterion's evidence as `habits-done-gate` binds it - the command this session ran and its quoted result, or `not run - <why>`"
+        },
+        {
+          "file": "stack/agents/web-angular-verifier.md",
+          "marker": "per task, its acceptance criterion's evidence as `habits-done-gate` binds it - the command this session ran and its quoted result, or `not run - <why>`"
+        },
+        {
+          "file": "stack/agents/windows-service-verifier.md",
+          "marker": "per task, its acceptance criterion's evidence as `habits-done-gate` binds it - the command this session ran and its quoted result, or `not run - <why>`"
+        },
+        {
+          "file": "stack/agents/winforms-verifier.md",
+          "marker": "per task, its acceptance criterion's evidence as `habits-done-gate` binds it - the command this session ran and its quoted result, or `not run - <why>`"
+        },
+        {
+          "file": "stack/agents/wpf-verifier.md",
+          "marker": "per task, its acceptance criterion's evidence as `habits-done-gate` binds it - the command this session ran and its quoted result, or `not run - <why>`"
+        }
+      ]
     }
   }
 }
