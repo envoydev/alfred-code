@@ -107,7 +107,7 @@ Yes - that is setext-style H1, valid Markdown. But the style overlay (and Google
 <example>
 <user_query>Lint this README - the formatting is messy.</user_query>
 <response>
-Reviewing `./README.md` - the only README in the tree (several would go through one AskUserQuestion, the root one marked Recommended). Pass 1 fixes syntax bugs (fences, blank lines, ATX headings, list markers) directly. Pass 2 applies the clear style wins and flags any judgment calls (TOC, table-vs-list) as a short list.
+Reviewing `./README.md` - the only README in the tree. Pass 1 fixes syntax bugs (fences, blank lines, ATX headings, list markers) directly. Pass 2 applies the clear style wins and flags any judgment calls (TOC, table-vs-list) as a short list.
 </response>
 </example>
 

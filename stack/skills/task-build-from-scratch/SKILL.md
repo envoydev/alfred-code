@@ -91,7 +91,7 @@ The first milestone is green and the scaffold is uncommitted. Commit it on this 
 - 'Hold - review the diff first' - nothing is committed; the diff stays as it is
 ```
 
-Every count comes from the command that produced it, never a hand tally. A capture is named in `Next run:` only when its output is missing - check the four paths, never list them by default. Those named go TO THE USER as their next commands, never invoked from here - all but the architecture one are slash-only and a Skill call on them is refused, and each wants a fresh session anyway. They give the new repo its map, style doc, run book and generated awareness rules, and from there the standing flow machinery owns the project.
+Every count comes from the command that produced it, never a hand tally. A capture is named in `Next run:` only when its output is missing - check the three paths, never list them by default. Those named go TO THE USER as their next commands, never invoked from here - all but the architecture one are slash-only and a Skill call on them is refused, and each wants a fresh session anyway. They give the new repo its map, style doc, run book and generated awareness rules, and from there the standing flow machinery owns the project.
 
 ## Per-stack scaffolding
 

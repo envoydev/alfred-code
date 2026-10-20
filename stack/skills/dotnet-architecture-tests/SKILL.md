@@ -13,7 +13,7 @@ The architecture-decision skill decides *what* the structure should be (clean, v
 - .NET conventions for architecture fitness tests - encoding layer/dependency/naming/isolation rules as tests that fail the build on a violation, so the structure the architecture-decision skill prescribes cannot erode silently.
 - Do NOT load for runtime behavior tests or analyzer / formatter config - the .NET testing and code-quality skills own those.
 
-## Pick the library: NetArchTest by default
+## Pick the library: NetArchTest.eNhancedEdition by default
 
 Default to **NetArchTest.eNhancedEdition**: lightweight, fluent, fast, and zero-ceremony - assertions over namespaces, dependencies, and layering that read cleanly in a normal test. It is the maintained successor of NetArchTest.Rules (dormant since 1.3.2, 2021): same `NetArchTest.Rules` namespace and `Types.InAssembly(...)` chain, but not fully backwards compatible - `TestResult` lists `FailingTypes`, not `FailingTypeNames`, so a suite moving over recompiles and fixes its messages. A repo already on NetArchTest.Rules stays on it until that move is its own change.
 

@@ -97,8 +97,8 @@ run genuinely cannot resolve is said plainly in the REPORT step, for the next ca
 ## .claude/rules/alfred-architecture.md - the awareness rule
 
 Step 6 writes this from the fresh capture, wholesale, to the template below. The body is fixed and names no
-path: where the docs live and how to read them by section are the always-on navigation baseline's (the docs-root
-rule stamps the literal root), so restating either here would pay twice every session - this rule adds only the
+path: where the docs live and how to read them by section are the always-on docs-root baseline's (it stamps the
+literal root), so restating either here would pay twice every session - this rule adds only the
 trigger, and that the capture ran. Nothing in it goes stale between captures or moves with the docs root. Create
 `.claude/rules/` when absent. Budget: 300 bytes, checked with `wc -c` and reported on the `Rule:` line.
 

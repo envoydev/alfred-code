@@ -9,7 +9,7 @@ An AGENTS.md is read into every session and every custom subagent, so every line
 message and earns its place only when removing it would make Claude get something wrong. Three homes,
 never mixed:
 
-- **The template** (`stack/AGENTS.template.md`) owns WHAT goes in - its authoring outline (the numbered
+- **The template** (`<stack>/stack/AGENTS.template.md`, `<stack>` resolved in step 1) owns WHAT goes in - its authoring outline (the numbered
   sections, Setup and Key files among them), the keep-out test and the five shapes to keep out (its
   fill-in block), and where the file lives.
 - **This skill** owns HOW - which mode, where the facts come from, what is shown before a write.

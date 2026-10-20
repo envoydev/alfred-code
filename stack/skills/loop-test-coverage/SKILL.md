@@ -29,7 +29,7 @@ No dispatch capability, or a non-stack project, is INLINE without asking. INLINE
 ## The loop
 
 ### 1. ANALYZE
-Run the `capture-test-coverage` capture by INVOKING it - the Skill tool, never its protocol replayed from memory (where no Skill tool exists, Read its `SKILL.md` from the installed skills directory and follow it in-session). A Skill call the fresh-session guard blocks is the gate working, not a fault - on 'continue', re-issue the same Skill call: the answered offer lets it through until the context grows 1.5x past it:
+Run the `capture-test-coverage` capture by INVOKING it - the Skill tool, never its protocol replayed from memory (where no Skill tool exists, say the coverage capture cannot run here and stop - a hand-rolled measurement is not comparable across rounds). A Skill call the fresh-session guard blocks is the gate working, not a fault - on 'continue', re-issue the same Skill call: the answered offer lets it through until the context grows 1.5x past it:
 
 ```ask
 The fresh-session guard held the capture at <N>k; a fresh session restarts at <M>k.
@@ -130,7 +130,7 @@ INLINE, one round over a two-surface workspace:
   RESUME - loop-test-coverage
   Invocation: /loop-test-coverage <scope> - resumed round <N of 3> (rounds consumed: <list>)
   Sweep baseline: <sha recorded at round 1> - the final anti-gaming sweep diffs against it
-  Read first: <docs-path>/test-coverage/COVERAGE.md - its ## Resume section RANGED, never the whole file - and the requirement and exclusions it records; then the coverage capture's own protocol (the Skill tool, or its SKILL.md from the installed skills directory where no Skill tool exists) - the ANALYZE step's protocol owner, which a fresh session has never read
+  Read first: <docs-path>/test-coverage/COVERAGE.md - its ## Resume section RANGED, never the whole file - and the requirement and exclusions it records; then the coverage capture's own protocol through the Skill tool - the ANALYZE step's protocol owner, which a fresh session has never read
   Remaining weak points, tier order:
     1. <surface - symbol> - <tier> - <the action, one line>
   ```

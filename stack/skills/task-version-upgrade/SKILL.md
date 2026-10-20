@@ -100,4 +100,4 @@ Then the commit decision, ONE AskUserQuestion once the report prints (an early s
 ```
 
 ## Don't game it
-Enumerate the real breaking changes from the framework's own docs, not recall - recall catches the compile break and ships the runtime break. Keep the plan to located usage. Never wave a deprecation off as 'probably fine' - unclear impact is marked to verify. Never weaken a test, suppress a warning, or skip a stage gate to make a stage look green - that is a new break, not progress. `auto-mode` is the user's typed word only - proceeding past the gate without it is a protocol violation, not initiative.
+Enumerate the real breaking changes from the framework's own docs, not recall - recall catches the compile break and ships the runtime break. Keep the plan to located usage. Never wave a deprecation off as 'probably fine' - unclear impact is marked to verify. Never weaken a test, suppress a warning, or skip a stage gate to make a stage look green - that is a new break, not progress. `--auto-mode` is the user's typed flag only - proceeding past the gate without it is a protocol violation, not initiative.

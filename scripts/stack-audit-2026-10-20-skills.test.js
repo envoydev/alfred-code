@@ -198,6 +198,34 @@ test('row 13: the named prose stops are ask templates, each marking one option f
     assert.doesNotMatch(flat(read('stack/skills/capture-architecture-quality/SKILL.md')), /The run gate offers it as its first option/);
 });
 
+// S9: 'step by step' lifts the answer budget (the rules track adds the word); nothing in habits-explain-code says a bare
+// 'explain' lifts it, and its trigger keeps the phrase.
+test('S9: habits-explain-code agrees with the budget rule', () =>
+{
+    const t = read('stack/skills/habits-explain-code/SKILL.md');
+    assert.match(t.split('---')[1], /'step by step'/, 'the description trigger stays');
+    const b = flat(t);
+    assert.match(b, /a bare 'explain X' or 'how does this work' is capped like any other answer/);
+    assert.match(b, /Where they did not - a bare 'explain X', 'how does this work' - answer inside the budget and offer the walkthrough in one line instead/);
+    assert.match(flat(read('stack/skills/capture-usage-report/references/diagnosis-discipline.md')), /'in detail', 'walk me through', 'step by step', 'write a plan' \(in any language\) lifts the cap/);
+});
+
+// Row 15: the small items.
+test('row 15: the small wording fixes hold', () =>
+{
+    assert.match(read('stack/skills/task-build-from-scratch/SKILL.md'), /check the three paths, never list them by default/);
+    assert.match(read('stack/skills/task-version-upgrade/SKILL.md'), /`--auto-mode` is the user's typed flag only/);
+    assert.match(read('stack/skills/dotnet-architecture-tests/SKILL.md'), /^## Pick the library: NetArchTest\.eNhancedEdition by default$/m);
+    assert.match(flat(read('stack/skills/dotnet-migrate/SKILL.md')), /`dotnet package update <name>@<version>` on the \.NET 10 SDK, `dotnet add package <name> --version <version>` below it - never a hand edit of the version/);
+    assert.doesNotMatch(read('stack/skills/markdown-style/SKILL.md'), /several would go through one AskUserQuestion/);
+    assert.match(read('stack/skills/habits-adjust-agents-md/SKILL.md'), /\(`<stack>\/stack\/AGENTS\.template\.md`, `<stack>` resolved in step 1\)/);
+    assert.doesNotMatch(read('stack/skills/dev-log-convert/SKILL.md'), /APV49/);
+    const cov = flat(read('stack/skills/loop-test-coverage/SKILL.md'));
+    assert.doesNotMatch(cov, /Read its `SKILL\.md` from the installed skills directory|its SKILL\.md from the installed skills directory/);
+    assert.match(cov, /say the coverage capture cannot run here and stop - a hand-rolled measurement is not comparable across rounds/);
+    assert.doesNotMatch(flat(read('stack/skills/capture-architecture/references/doc-shapes.md')), /navigation baseline's \(the docs-root/);
+});
+
 // Row 14: version / API drift, each against its official page (cited in the commit).
 test('row 14: zoneless, capacitor, desktop gate, Azure DevOps Mermaid and Vitest coverage follow the docs', () =>
 {
