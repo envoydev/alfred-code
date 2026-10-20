@@ -12,7 +12,7 @@
 //   node spec-check.js [<request file>]      (the request text on stdin when no file is named)
 //   node spec-check.js --touched <size>      (the size re-check before a trivial or small close, run in the project)
 //
-// Built-ins only. Prints one line per item, the `size floor:` the request proves, then `spec:`, `path: merged|gated`
+// Built-ins only. Prints one line per item, `bug: yes|no`, the `size floor:` the request proves, then `spec:`, `path: merged|gated`
 // and the `stop after design:` line that path means;
 // `--touched` prints one `size check:` line.
 const fs = require('fs');
@@ -64,6 +64,27 @@ const NOT_A_FILE = /^(?:node|vue|next|nuxt|nest|express|ember|backbone|three|cha
 const CONTRACT = /\b(?:contracts?|public api|schemas?|migrations?|dtos?|vendored|shared (?:types?|models?|library)|openapi|swagger|protobuf|wire format|breaking change)\b/i;
 const INPUT_PARSING = /\b(?:pars(?:e|es|ed|ing|er)|validat\w*|sanitiz\w*|deserializ\w*|request body|query string)\b/i;
 
+// A BUG REPORT, read from the words like the rest (audit 2026-10-20 C37, 7c1af769: the user asked 'have you managed to
+// reproduce?' four times because no stop said; the stop-contract hook reads this line and owes a `Repro:` field on
+// the cycle's stops past design). Three signals, any one: the card or ticket KIND (`Type: Bug`); a TITLE - the first
+// line - opening on a fix, bug, error, exception or crash; anywhere, a failure the request REPORTS - a crash, a repro,
+// a stack trace, a quoted runtime error, a failing test. A feature that only names an error it should return ('a 400
+// error when the name is empty') is no bug: 'error' counts only in the title. A false 'yes' costs one note per stop,
+// a false 'no' the missing status, so the anywhere list is failure words only.
+const BUG_KIND = /\b(?:issue ?type|ticket ?type|work ?item ?type|type|kind)\s*[:=]\s*[*_`'"]*\s*(?:bug|defect|incident|hotfix)\b/i;
+const BUG_TITLE = /^[\s#>*_`'"-]*(?:\[[^\]\n]*\]\s*)*((?:hot)?fix(?:es|ed)?|bug(?:fix)?|errors?|exceptions?|crash(?:es|ed)?|regression|broken)\b/i;
+const BUG_WORDS = /\b(?:bugs?|bugfix|buggy|crash(?:es|ed|ing)?|repro(?:duce[ds]?|duction|ducible|ducing)?|steps to reproduce|stack ?traces?|uncaught|unhandled exception|out of memory|no longer works?|stopped working|not working|doesn'?t work|does not work|is undefined|is not a function|cannot read propert(?:y|ies)|can'?t access property|null ?reference(?:exception)?|failing tests?|tests? (?:is |are )?(?:failing|red|broken)|tests? fail(?:s|ed)?|(?:root )?cause of (?:this|the) (?:issue|problem|error|failure)|what (?:can |could |might )?causes? (?:this|the) (?:issue|problem|error|failure))\b/i;
+
+function bugSignal(body) {
+    const kind = body.match(BUG_KIND);
+    if (kind) return `the ticket kind (${quote(kind[0])})`;
+    const title = body.split('\n').find((l) => l.trim()) || '';
+    const t = title.match(BUG_TITLE);
+    if (t) return `the title (${quote(t[1])})`;
+    const w = body.match(BUG_WORDS);
+    return w ? `a reported failure (${quote(w[0])})` : '';
+}
+
 function classify(text) {
     const body = String(text || '').replace(/\r\n?/g, '\n');
     const lines = body.split('\n');
@@ -98,7 +119,8 @@ function classify(text) {
         parsing ? `input parsing (${quote(parsing[0])})` : '', paths.length > 3 ? `${paths.length} files named` : ''].filter(Boolean);
     const sizeFloor = floorWhy.length ? 'standard' : paths.length >= 2 ? 'small' : 'trivial';
     const sizeReason = floorWhy.length ? floorWhy.join(', ') : `${paths.length} file(s) named, no contract, security or parsing signal`;
-    return { surface, behaviour, verified, stacks, security, full, missing, path: problems.length ? 'gated' : 'merged', reason: problems.join('; '), paths, sizeFloor, sizeReason };
+    const bug = bugSignal(body);
+    return { surface, behaviour, verified, stacks, security, bug, full, missing, path: problems.length ? 'gated' : 'merged', reason: problems.join('; '), paths, sizeFloor, sizeReason };
 }
 
 function report(r) {
@@ -108,6 +130,7 @@ function report(r) {
         `verified: ${r.verified ? `yes - ${r.verified}` : 'no'}`,
         `stacks: ${r.stacks.length} - ${r.stacks.join(', ') || 'none named'}`,
         `security: ${r.security ? `yes - ${r.security}` : 'no'}`,
+        `bug: ${r.bug ? `yes - ${r.bug}, so every stop past design states \`Repro:\`` : 'no'}`,
         `size floor: ${r.sizeFloor} - ${r.sizeReason} (the Size line may raise it, never go below it)`,
         `spec: ${r.full ? 'full' : `not full - ${r.missing.join('; ')}`}`,
         `path: ${r.path}`,

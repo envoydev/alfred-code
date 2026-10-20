@@ -641,6 +641,93 @@ test('guard-stop-contract: a small solve-task close whose Result line has no rev
   assert.equal(askIn(transcript('small-noflow', [typed('fix it'), assistantRow('a', 'ok')]), close('fixed')).status, 0, 'no solve-task run in this session');
 });
 
+// Audit 2026-10-20 C37 (4a210c3c, 8da401b1): a small close that never stated `Size:` escaped the review check, which keyed
+// on the close's own `Size: small`. The cycle's size is read from the transcript - the size stated earlier, else the
+// `size floor:` spec-check printed - and only after a source edit, never where the standard row's steps ran.
+const specRun = (id, floor, bug) => [
+  { type: 'assistant', message: { id: `sc-${id}`, content: [{ type: 'tool_use', id: `sc${id}`, name: 'Bash', input: { command: 'node "$SPEC" <<\'REQUEST\'\nx\nREQUEST' } }] } },
+  { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: `sc${id}`,
+    content: `surface: yes - src/a.ts\nsecurity: no\nbug: ${bug || 'no'}\nsize floor: ${floor} - 2 file(s) named (the Size line may raise it, never go below it)\nspec: full\npath: merged` }] } },
+];
+const toolCall = (id, name, input) => ({ type: 'assistant', message: { id: `t-${id}`, content: [{ type: 'tool_use', id: `tu${id}`, name, input }] } });
+const sourceEdit = (id) => toolCall(id, 'Edit', { file_path: '/p/src/RetryPolicy.cs', old_string: 'a', new_string: 'b' });
+test('guard-stop-contract: a solve-task close stating no Size owes the review on the cycle\'s small or trivial size, never on a standard one (C37)', () => {
+  const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+  const marker = typed('<command-name>/task-solve</command-name>');
+  const bare = (result) => [{ question: `Result: ${result}. Progress: 5 of 5 steps. Leftovers: none. Close the run?`,
+    options: [{ label: 'Close it (Recommended)', description: 'x' }, { label: 'Keep going', description: 'y' }] }];
+  const built = assistantRow('b', 'Built and type-checked.');
+  const env = logEnv();
+  const tp = transcript('nosize-small', [marker, ...specRun(1, 'small'), sourceEdit(1), built]);
+  const r = askIn(tp, bare('restore guard added at src/RetryPolicy.cs'), env);
+  assert.equal(r.status, 2, 'the measured case: no Size line, a small floor, no review');
+  assert.match(r.stderr, /a solve-task close that states no `Size:` \(this cycle's spec-check `size floor:` is small\)/);
+  assert.match(r.stderr, /State the cycle's `Size:` on the close/);
+  assert.equal(askIn(tp, bare('restore guard added at src/RetryPolicy.cs'), env).status, 0, 're-sent unchanged, it passes - never a loop');
+  const deny = (name, rows, result) => askIn(transcript(name, rows), bare(result || 'restore guard added at src/RetryPolicy.cs')).status;
+  assert.equal(deny('nosize-review', [marker, ...specRun(2, 'small'), sourceEdit(2), built], 'guard added, review: task-verify-code - PASS'), 0, 'the receipt on the Result line');
+  assert.equal(deny('nosize-trivial', [marker, ...specRun(3, 'trivial'), sourceEdit(3), built]), 2, 'a trivial floor that reached a stop is small at least');
+  assert.equal(deny('nosize-std-floor', [marker, ...specRun(4, 'standard'), sourceEdit(4), built]), 0, 'a standard floor owes no review here');
+  assert.equal(deny('nosize-std-said', [marker, ...specRun(5, 'small'), assistantRow('s', 'Size: standard - two modules.'), typed('go on'), sourceEdit(5), built]), 0,
+    'the Size stated earlier outranks the floor');
+  const said = askIn(transcript('nosize-small-said', [marker, ...specRun(6, 'trivial'), assistantRow('s', '**Size:** small - two files.'), typed('go on'), sourceEdit(6), built]), bare('guard added'));
+  assert.equal(said.status, 2, 'a small Size stated in an earlier turn, not restated on the close');
+  assert.match(said.stderr, /this cycle's `Size:` was small/);
+  assert.equal(deny('nosize-trivial-said', [marker, ...specRun(7, 'small'), assistantRow('s', 'Size: trivial - one line.'), typed('go on'), sourceEdit(7), built]), 0,
+    'a stated trivial owes no review');
+  assert.equal(deny('nosize-design', [marker, ...specRun(8, 'small'), toolCall(8, 'Skill', { skill: 'alfred-code:task-design' }), sourceEdit(8), built]), 0,
+    'the standard row ran its design step');
+  assert.equal(deny('nosize-plan', [marker, ...specRun(9, 'small'), toolCall(9, 'Read', { file_path: '/p/.alfred/docs/plans/x.md' }), sourceEdit(9), built]), 0,
+    'a plan file read this cycle is a standard run resuming');
+  assert.equal(deny('nosize-noedit', [marker, ...specRun(10, 'small'), built]), 0, 'no source edit yet - no close');
+  assert.equal(deny('nosize-tmpedit', [marker, ...specRun(11, 'small'), toolCall(11, 'Write', { file_path: path.join(os.tmpdir(), 'scratch.js'), content: 'x' }), built]), 0,
+    'a scratch file is no build');
+  assert.equal(deny('nosize-unknown', [marker, sourceEdit(12), built]), 0, 'no floor and no stated size: nothing owed (8da401b1 ran no spec-check)');
+  const raised = { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'rz', content: 'size check: raise to standard - 4 files touched, small allows 3: a, b, c, d' }] } };
+  assert.equal(deny('nosize-raised', [marker, ...specRun(13, 'small'), sourceEdit(13), raised, built]), 0, 'the re-check raised it to standard');
+  assert.equal(deny('nosize-old-cycle', [marker, ...specRun(14, 'small'), sourceEdit(14), typed('<command-name>/task-solve</command-name>'), sourceEdit(15), built]), 0,
+    'a floor from before the newest marker is another cycle');
+  const quoted = { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'q', content: '   111\t        `size floor: small - x`,' }] } };
+  assert.equal(deny('nosize-quoted', [marker, quoted, sourceEdit(16), built]), 0, 'a read of the script is no floor');
+  assert.equal(deny('nosize-cross', [typed('<command-name>/task-solve-cross</command-name>'), ...specRun(17, 'small'), sourceEdit(17), built]), 0, 'the cross flow has no small row');
+});
+
+// Audit 2026-10-20 C37 (7c1af769): the user asked 'have you managed to reproduce?' four times - no stop of the bug run said.
+// A stop past design in a cycle spec-check called a bug, or one whose plan carries a `## Repro` section, owes `Repro:` -
+// a note beside the answer, like the other stop fields.
+test('guard-stop-contract: a bug cycle\'s stop past design owes a Repro line - a note, never a deny (C37)', () => {
+  const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+  const marker = typed('<command-name>/task-solve</command-name>');
+  const fields = 'Size: standard - one module. Result: fix designed - docs/plans/x.md. Progress: 1 of 6 steps. Leftovers: none.';
+  const design = toolCall('d', 'Skill', { skill: 'alfred-code:task-design' });
+  const note = (name, rows, q) => {
+    const r = askIn(transcript(name, rows), q || oneQ);
+    assert.equal(r.status, 0, `${name}: the Repro field is a note, never a deny`);
+    return ctxOf(r);
+  };
+  assert.match(note('repro-spec', [marker, ...specRun(1, 'standard', 'yes - the title (\'Fix\')'), design, assistantRow('a', fields)]),
+    /a stop in a bug cycle \(spec-check printed `bug: yes`\), and it went out with no `Repro:` line/);
+  assert.doesNotMatch(note('repro-said', [marker, ...specRun(2, 'standard', 'yes - x'), design, assistantRow('a', `${fields} Repro: not reproduced.`)]), /Repro/,
+    'the stop that states it');
+  assert.doesNotMatch(note('repro-nobug', [marker, ...specRun(3, 'standard', 'no'), design, assistantRow('a', fields)]), /Repro/, 'no bug, no field');
+  assert.doesNotMatch(note('repro-predesign', [marker, ...specRun(4, 'standard', 'yes - x'), assistantRow('a', fields)]), /Repro/,
+    'before design nothing was tried yet');
+  assert.match(note('repro-edit', [marker, ...specRun(5, 'small', 'yes - x'), sourceEdit(5), assistantRow('a', fields)]), /`Repro:`/, 'a small run past its build');
+  // the resumed bug cycle: no spec-check in this session, the plan read back carries the section (the 7c1af769 shape)
+  const planRead = [toolCall('pr', 'Read', { file_path: '/p/.alfred/docs/plans/2026-10-15-oom.md' }),
+    { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tupr', content: '     1\t# Firefox out of memory - plan\n   101\t## Repro - before fix\n   102\t- the report tab died at 3.5 GB' }] } }];
+  assert.match(note('repro-plan', [marker, ...planRead, assistantRow('a', fields)]), /its plan carries a `## Repro` section/);
+  const grepped = { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'g', content: '1:# plan\n101:## Repro - before fix (production build)' }] } };
+  assert.match(note('repro-grep', [marker, toolCall('g', 'Bash', { command: 'grep -n "^#" plan.md' }), grepped, toolCall('pr2', 'Read', { file_path: '/p/.alfred/docs/plans/a.md' }), assistantRow('a', fields)]), /`## Repro`/,
+    'a heading listing of the plan counts too');
+  const handOff = [{ question: 'Where?', options: [{ label: 'Resume in a fresh session (Recommended)', description: '~90k here, ~40k fresh' }, { label: 'Continue here', description: 'x' }] }];
+  assert.doesNotMatch(note('repro-handoff', [marker, ...specRun(6, 'standard', 'yes - x'), design, assistantRow('a', fields)], handOff), /Repro/, 'the opening hand-off is no stop');
+  assert.doesNotMatch(note('repro-cross', [typed('<command-name>/task-solve-cross</command-name>'), ...specRun(7, 'standard', 'yes - x'), design, assistantRow('a', fields)]), /Repro/,
+    'the cross flow carries no Repro field');
+  assert.doesNotMatch(note('repro-old', [marker, ...specRun(8, 'standard', 'yes - x'), marker, design, assistantRow('a', fields)]), /Repro/, 'a bug line from an earlier cycle');
+  assert.doesNotMatch(note('repro-noflow', [typed('fix the crash'), ...specRun(9, 'standard', 'yes - x'), design, assistantRow('a', fields)]), /Repro/, 'no solve-task run');
+});
+
 test('guard-stop-contract: a solve-task stop that owes a receipt is told which one (audit 2026-10-10, T4 cross-track)', () => {
   const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
   const marker = typed('<command-name>/task-solve</command-name>');

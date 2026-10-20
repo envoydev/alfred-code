@@ -603,13 +603,19 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     audit 2026-10-10 C08 / C09 / C26); a question shaped as an approval (approve, as shown, is ready, post / file /
     publish / send this) with no chat text since the user's last typed turn that carries its subject - 200 characters or
     more naming its noun (audit 2026-10-11, session 2ca8e8ee: a staged plan and a ticket comment approved unseen); and a
-    small solve-task close whose `Result:` line has no `review:` field (session 5984019e). The solve-task FLOW STOP FIELDS note reads the whole transcript once per session
+    small solve-task close whose `Result:` line has no `review:` field (session 5984019e) - a close stating no `Size:` is
+    judged on the cycle's size, read from the transcript: the newest one stated, raised by a `size check: raise to
+    standard`, else spec-check's `size floor:` (a trivial floor counts, since a trivial run has no stop), only after a
+    source edit this cycle and never where task-design / verify-plan / implement ran or a plan file was read or written
+    (audit 2026-10-20 C37, 4a210c3c). The solve-task FLOW STOP FIELDS note reads the whole transcript once per session
     for the flow's marker (`guard-stop-flow-*` keeps how far it read), and accepts a field opening a sentence inside a
     one-line question; the same read places the stop, so the note also names a RECEIPT the stop owes and left out - `Size:`
     at a cycle's first stop (no ask answered since its marker or its new-scope prompt, an opening fresh hand-off excepted),
     `mechanics: read` at the approval (an 'Approve' option), `memories purged:` at the close (no ask answered since the
     `Completed:` stamp, or the cross close report) and `ceilings:` in the cross close report (audit 2026-10-10, T4
-    cross-track); under a live AUTO waiver a solve-task done close without the three fields is held once at `Stop`;
+    cross-track), and `Repro:` at a bug cycle's stop past design (spec-check printed `bug: yes`, or a plan carrying a
+    `## Repro` section was read or written; past design is a standard step, a plan read or written, or a source edit - audit
+    2026-10-20 C37, 7c1af769, 11 of its stops); under a live AUTO waiver a solve-task done close without the three fields is held once at `Stop`;
     no shell-result wiring since the deep hooks review 2026-10-16 dropped its async PostToolUse / PostToolUseFailure
     root-cause probe - 27,380 runs for 250 rows nobody read) - blocks a turn ending on a decision-shaped question in prose (the quality
     loop's mode and stage-close asks worded as statements included), or a 'done, next step pending' close - unless every pending item the close states is a WAIT ('still running',

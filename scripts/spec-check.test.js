@@ -145,7 +145,8 @@ test('the CLI prints one line per item and the path last, from stdin or a file',
   const r = run(FULL_API);
   assert.strictEqual(r.status, 0, r.stderr);
   const lines = r.stdout.trim().split('\n');
-  assert.deepStrictEqual(lines.map((l) => l.split(':')[0]), ['surface', 'behaviour', 'verified', 'stacks', 'security', 'size floor', 'spec', 'path', 'stop after design']);
+  assert.deepStrictEqual(lines.map((l) => l.split(':')[0]), ['surface', 'behaviour', 'verified', 'stacks', 'security', 'bug', 'size floor', 'spec', 'path', 'stop after design']);
+  assert.match(r.stdout, /^bug: no$/m);
   assert.match(r.stdout, /^path: merged$/m);
   // Audit 2026-10-20 C37 (71d5428a): a gated path's step-1 stop is printed, so the run copies it instead of inferring it.
   assert.match(r.stdout, /^stop after design: no - design and plan audit run as one step$/m);
@@ -186,6 +187,28 @@ test('the size floor: named files, a contract, input parsing, a security path an
   assert.deepStrictEqual(classify('Upgrade Node.js and Vue.js in the docs').paths, []);
   assert.strictEqual(floor(''), 'trivial', 'no request text names nothing - the model raises it on what it reads');
   assert.match(run('Fix the typo in README.md').stdout, /^size floor: trivial - 1 file\(s\) named, no contract, security or parsing signal \(the Size line may raise it, never go below it\)$/m);
+});
+
+// Audit 2026-10-20 C37 (7c1af769): no stop of a bug run said whether the reported error was reproduced. The script
+// prints `bug: yes|no`, which the stop-contract hook reads to owe a `Repro:` line - from the ticket kind, a title that
+// opens on a fix / bug / error / crash, or a reported failure anywhere; never from an error a feature should return.
+test('bug: the ticket kind, the title or a reported failure says yes; a feature naming an error it returns says no', () => {
+  const bug = (text) => classify(text).bug;
+  assert.match(bug('Issue Type: Bug\nThe export page goes blank for large farms.'), /^the ticket kind/);
+  assert.match(bug('Fix the refund rounding in src/Orders/Refund.cs'), /^the title \('Fix'\)/);
+  assert.match(bug('[BF] Error when saving a planning entry\nSteps: open the wizard, save.'), /^the title \('Error'\)/);
+  assert.match(bug('## Crash on export\nIt happens on Firefox.'), /^the title \('Crash'\)/);
+  assert.match(bug('The report page crashes on Firefox for farm 1548.'), /^a reported failure \('crashes'\)/);
+  assert.match(bug("can't access property 'mode', this.summary is undefined"), /^a reported failure/);
+  assert.match(bug('I need to find what can cause this issue in both components.'), /^a reported failure/);
+  assert.match(bug(FULL_FILE_BUG), /^a reported failure \('failing test'\)/);
+  assert.strictEqual(bug(FULL_API), '', 'a 400 the endpoint returns is behaviour, not a failure');
+  assert.strictEqual(bug(NO_VERIFY), '');
+  assert.strictEqual(bug('Add `POST /api/items` - an empty name returns a 400 error with code name_required.'), '', "'error' past the title is behaviour");
+  assert.strictEqual(bug('Add a prefix filter to the people search, with a regression test.'), '', 'a regression TEST is no regression');
+  assert.strictEqual(bug(''), '');
+  assert.match(run('The checkout page crashes on submit.').stdout, /^bug: yes - a reported failure \('crashes'\), so every stop past design states `Repro:`$/m);
+  assert.match(run(FULL_DATA).stdout, /^bug: no$/m);
 });
 
 // The cross-task orchestrator runs the same check on its single-chat path. Every skill is a library copy in its

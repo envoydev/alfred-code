@@ -2439,7 +2439,7 @@ if (payload.tool_name === 'AskUserQuestion') {
     const blind = approvalOverNothingShown(questions);
     // 12. A SMALL CLOSE WITH NO REVIEW RECEIPT (smallCloseOwesReview, below) - denied once per ask text: the verifier runs
     // before the close is put to the user, not after the answer.
-    const noReview = (() => { try { const f = flowState(); return f.flow && smallCloseOwesReview(f, `${turnProseBeforeAsk()}\n${askText}`); } catch { return false; } })();
+    const noReview = (() => { try { const f = flowState(); return f.flow ? smallCloseOwesReview(f, `${turnProseBeforeAsk()}\n${askText}`) : null; } catch { return null; } })();
     // 13. A FRESH-SESSION OPTION WHERE THE PROJECT COMPACTS INSTEAD (fresh-session.js COMPACT_INSTEAD, the user's ruling of
     // 2026-10-14). The flows' stop asks offer the hand-off from their own text; here the session compacts and goes on, so
     // the option is dropped - mechanical, so the fix is handed back: a '(Recommended)' mark it carried moves to the first
@@ -2503,7 +2503,8 @@ if (payload.tool_name === 'AskUserQuestion') {
       } else if (first && (mechanical || typeIntoOther || unmarked || misMarked || newCycle || blind || noReview)) {
         const reasons = [...voice];
         if (compactFresh) reasons.push('a fresh-session option, while this project compacts instead (ALFRED_CODE_AUTO_COMPACT=1)');
-        if (noReview) reasons.push('a small solve-task close whose `Result:` line has no `review:` field');
+        if (noReview) reasons.push(noReview.from === 'text' ? 'a small solve-task close whose `Result:` line has no `review:` field'
+          : `a solve-task close that states no \`Size:\` (this cycle's ${noReview.from === 'floor' ? `spec-check \`size floor:\` is ${noReview.size}` : `\`Size:\` was ${noReview.size}`}) and whose \`Result:\` line has no \`review:\` field`);
         if (blind) reasons.push(`an approval of ${blind.noun ? `the ${blind.noun}` : 'something'} the chat has not shown since the user's last message`);
         if (numbers) reasons.push(`a fresh-session option with no measured number (this session carries ${k(numbers.ctx)} per message now)`);
         if (typeIntoOther) reasons.push('an option that tells the user to type into Other');
@@ -2517,7 +2518,7 @@ if (payload.tool_name === 'AskUserQuestion') {
           + (typeIntoOther ? ` A picked option returns only its LABEL - a value the user must type goes in plain prose that ends the turn, and the ask carries what they can PICK ('I have them' / 'Someone else owns them' / 'Defer').` : '')
           + (unmarked ? ` Mark the recommended option '(Recommended)' and list it first - or, for a question with no default, say why in the question ('no option is recommended: <why>').` : '')
           + (misMarked ? ` Put the mark on the option the question recommends, or reword the question so both say the same pick.` : '')
-          + (noReview ? ` The small row runs \`task-verify-code\` inline before its close (task-solve SKILL.md): run it, then put \`review: <reviewer> - <its verdict>\` on the \`Result:\` line - or, if the size grew past small, restate \`Size:\`.` : '')
+          + (noReview ? `${noReview.from === 'text' ? '' : ' State the cycle\'s `Size:` on the close - a trivial run has no stop, so a run that stops here is small at least.'} The small row runs \`task-verify-code\` inline before its close (task-solve SKILL.md): run it, then put \`review: <reviewer> - <its verdict>\` on the \`Result:\` line - or, if the size grew past small, restate \`Size:\`.` : '')
           + (blind ? ` The user approves what the chat SHOWS: put ${blind.noun ? `the ${blind.noun}` : 'what the ask approves'} in your reply text first (the stages, the draft as it will be posted, the edit made), then ask about 'the ${blind.noun || 'draft'} above' - or, if it sits in a file the user has open, re-send the ask unchanged.` : '')
           + (newCycle ? ` A new cycle after a finished one recommends the fresh-session hand-off first: add 'Resume in a fresh session (Recommended)' quoting ${newCycle.ctx ? `${k(newCycle.ctx)} per message here` : 'this session\'s carry'} and ${newCycle.floor ? `${k(newCycle.floor)} for a fresh start` : 'the fresh start\'s floor'}, and state the new cycle's \`Size:\` line in the question - or, if this ask still belongs to the finished cycle, re-send it unchanged.` : '')
           + (compactFresh ? ` Here the session compacts past its window's trigger and the work goes on, so no ask offers a new session.${tooFew ? ' A question left with one option is no question: take that option and drop the question.' : ''}` : '')
@@ -2724,6 +2725,14 @@ function flowFieldNotes(questions, askText, turnText) {
       + `and it went out without ${owed.length === 1 ? 'it' : 'them'}: ${owed.join('; ')}. State ${owed.length === 1 ? 'it' : 'them'} in your next message `
       + '- a receipt is the proof the step\'s read or purge ran, and a stop without it reads as skipped.');
   }
+  // A bug cycle's stop past design names whether the reported error was reproduced (reproOwed, above).
+  const repro = reproOwed(flow, `${turnText}\n${askText}`, questions);
+  if (repro) {
+    notes.push(`The ask just answered was a stop in a bug cycle (${repro}), and it went out with no \`Repro:\` line. State it in `
+      + 'your next message and in every later stop\'s `Result:` - `Repro: <the reported error matched | differs: <what it '
+      + 'showed> | not reproduced>` (task-solve references/full-spec.md). Without it the user has to ask whether the bug '
+      + 'was reproduced - four times in one audited run.');
+  }
   return notes;
 }
 
@@ -2765,10 +2774,23 @@ function flowReceiptsOwed(flow, text, questions) {
 // `review: <reviewer> - <its verdict>`'). Audit 2026-10-11, session 5984019e: a small run closed and handed off a product
 // change with no verifier load and no review anywhere in its text. Any `Result:` line of the stop's text that names a
 // review passes.
+// A close that states NO size is judged on the cycle's (audit 2026-10-20 C37, 4a210c3c / 8da401b1: a small close with no
+// `Size:` line escaped the check): the size stated earlier in the cycle, else spec-check's `size floor:` - where a
+// trivial or small floor stands for the run, since a trivial run has no stop at all. Only after a source edit this
+// cycle (a close follows the build) and never where the standard row's steps ran or a plan file was read or written,
+// so a standard close that forgot its line draws nothing; with no stated size and no floor nothing is owed.
+// Returns null, or { size, from: 'text' | 'stated' | 'size check' | 'floor' }.
 function smallCloseOwesReview(flow, text) {
-  if (!flow.flow || flow.cross || !/\bSize\**\s*:\s*\**\s*small\b/i.test(text)) return false;
+  if (!flow.flow || flow.cross) return null;
   const lines = [...String(text).matchAll(/(?:^|\n|[.;!?)]\s+|\s[-|]\s+)\s*(?:[-*+]\s*)?\**Result\**\s*:([^\n]*)/gi)].map((m) => m[1].split(/\**(?:Progress|Leftovers)\**\s*:/i)[0]);
-  return lines.length > 0 && !lines.some((l) => /\breview\**\s*:/i.test(l));
+  if (!lines.length || lines.some((l) => /\breview\**\s*:/i.test(l))) return null;
+  if (/\bSize\**\s*:\s*\**\s*small\b/i.test(text)) return { size: 'small', from: 'text' };
+  if (/\bSize\**\s*:\s*\**\s*(?:trivial|standard|cross)\b/i.test(text)) return null;
+  const from = cycleFrom(flow);
+  if (!(flow.editAt > from) || flow.standardAt > from || flow.planAt > from) return null;
+  const c = cycleSize(flow);
+  if (!c) return null;
+  return (c.from === 'floor' ? c.size !== 'standard' : c.size === 'small') ? c : null;
 }
 
 // Is this ask a stop inside a solve-task cycle? The transcript-local proof: the flow was invoked in this session, by
@@ -2823,6 +2845,7 @@ function flowLine(line, at, state) {
       }
     } catch { /* a cut row */ }
   }
+  cycleFacts(line, at, state, isUser, isAssistant);
   // A plan read back with its `Approved:` stamp before the first source edit: the mode was chosen when it was approved,
   // in this session or an earlier one (a resumed step-4 session, fc4fec40 / 55abbb18 - audit 2026-10-20 C08).
   if (state.approvedReadAt < 0 && isUser && line.includes('"tool_result"') && line.includes('Approved')) {
@@ -2875,20 +2898,112 @@ function flowLine(line, at, state) {
     } catch { /* a cut row */ }
   }
 }
+// The CYCLE'S SIZE AND BUG FACTS (audit 2026-10-20 C37), read from the transcript, never from the stop's own wording:
+// - the size the model stated (`Size: <x>` in its text or an ask, the newest), the `size floor:` and `bug: yes|no`
+//   lines spec-check printed into a tool result, and a `size check: raise to standard` from its re-check;
+// - where the standard row's own steps ran (a task-design / verify-plan / implement load), where a plan file was read
+//   or written, and where the newest source edit landed - a close comes after the build;
+// - where a plan carrying a `## Repro` section was read or written: a resumed bug cycle runs no spec-check (7c1af769
+//   resumed from such a plan at step 6, and no stop of its 15 said whether the reported error was matched).
+function cycleFacts(line, at, state, isUser, isAssistant) {
+  const SAID_RE = /\bSize\**\s*:\s*\**\s*(trivial|small|standard|cross)\b/gi;
+  const REPRO_HEAD_RE = /(?:^|\n)[ \t]*(?:\d+[\t→:][ \t]*)?#{2,4}[ \t]*Repro(?:duction)?\b/i;
+  const PLAN_RE = /(?:^|[\\/])plans[\\/][^\\/]+$/;
+  if (isAssistant && /Size\**\s*:\s*\**\s*(?:trivial|small|standard|cross)/i.test(line)) {
+    try {
+      const said = (JSON.parse(line).message.content || []).flatMap((b) => (!b ? []
+        : b.type === 'text' ? [String(b.text || '')]
+          : b.type === 'tool_use' && b.name === 'AskUserQuestion' ? (((b.input || {}).questions) || []).flatMap((q) => (q ? [String(q.question || ''), ...(q.options || []).map((o) => `${(o && o.label) || ''} ${(o && o.description) || ''}`)] : []))
+            : [])).join('\n');
+      const m = [...said.matchAll(SAID_RE)].pop();
+      if (m) state.sizeSaid = { size: m[1].toLowerCase(), at };
+    } catch { /* a cut row */ }
+  }
+  if (isUser && line.includes('"tool_result"') && (line.includes('size floor:') || line.includes('size check: raise') || line.includes('Repro'))) {
+    try {
+      const o = JSON.parse(line);
+      const text = (Array.isArray(o.message.content) ? o.message.content : []).filter((c) => c && c.type === 'tool_result')
+        .map((c) => (typeof c.content === 'string' ? c.content : Array.isArray(c.content) ? c.content.map((x) => (x && x.text) || '').join('\n') : '')).join('\n');
+      // spec-check's own lines open a line of their own; a read of its source or tests carries a line-number prefix
+      const floor = /(?:^|\n)size floor: (trivial|small|standard)\b/.exec(text);
+      if (floor) state.sizeFloor = { size: floor[1], at };
+      const bug = /(?:^|\n)bug: (yes|no)\b/.exec(text);
+      if (floor && bug) state.bugSaid = { yes: bug[1] === 'yes', at };
+      if (/(?:^|\n)size check: raise to standard\b/.test(text)) state.sizeRaisedAt = at;
+      if (REPRO_HEAD_RE.test(text)) state.reproPlanAt = at;
+    } catch { /* a cut row */ }
+  }
+  if (isAssistant && line.includes('"tool_use"') && /"name"\s*:\s*"(?:Write|Edit|MultiEdit|NotebookEdit|Read|Skill)"/.test(line)) {
+    try {
+      for (const b of JSON.parse(line).message.content || []) {
+        if (!b || b.type !== 'tool_use') continue;
+        const input = b.input || {};
+        if (b.name === 'Skill') {
+          if (/(?:^|:)(?:alfred-)?task-(?:design|verify-plan|implement)$/.test(String(input.skill || ''))) state.standardAt = at;
+          continue;
+        }
+        const file = String(input.file_path || input.notebook_path || '');
+        if (PLAN_RE.test(file)) {
+          state.planAt = at;
+          const body = [input.content, input.new_string, ...(Array.isArray(input.edits) ? input.edits.map((e) => e && e.new_string) : [])].join('\n');
+          if (b.name !== 'Read' && REPRO_HEAD_RE.test(body)) state.reproPlanAt = at;
+        } else if (b.name !== 'Read' && file && cycleSourceFile(file)) state.editAt = at;
+      }
+    } catch { /* a cut row */ }
+  }
+}
+// A source file for the cycle's build: no prose, no stack state, nothing under the temp tree. Judged without the project
+// root, which a replayed transcript does not share.
+function cycleSourceFile(file) {
+  const f = String(file).replace(/\\/g, '/');
+  if (PROSE_FILE_RE.test(f) || /(?:^|\/)(?:\.claude|\.alfred|docs|plans)\//.test(f)) return false;
+  const tmp = require('os').tmpdir().replace(/\\/g, '/');
+  return !(f.startsWith(`${tmp}/`) || /^(?:\/private)?\/tmp\//.test(f));
+}
+// Where this cycle began: the newest flow marker, or the typed prompt that opened new scope after a finished cycle.
+function cycleFrom(flow) {
+  return Math.max(flow.flowAt, flow.completed !== null && flow.typedAfter ? flow.typedAfterAt : -1);
+}
+// The cycle's size: the newest one the model stated, raised by a later re-check; else spec-check's floor; else unknown.
+function cycleSize(flow) {
+  const from = cycleFrom(flow);
+  const said = flow.sizeSaid && flow.sizeSaid.at > from ? flow.sizeSaid : null;
+  if (flow.sizeRaisedAt > from && (!said || flow.sizeRaisedAt > said.at)) return { size: 'standard', from: 'size check' };
+  if (said) return { size: said.size, from: 'stated' };
+  if (flow.sizeFloor && flow.sizeFloor.at > from) return { size: flow.sizeFloor.size, from: 'floor' };
+  return null;
+}
+// A BUG cycle's stop past design owes `Repro:` (task-solve references/full-spec.md: 'a bug's `Result:` adds `Repro:
+// <the reported error matched | differs: <what it showed> | not reproduced>`'). Bug: spec-check's newest `bug:` line
+// says yes, or a plan with a `## Repro` section was read or written. Past design: a standard step ran, a plan was read
+// or written, or source was edited. The opening fresh hand-off is no stop. Returns the signal's name, or null.
+function reproOwed(flow, text, questions) {
+  if (!flow.flow || flow.cross) return null;
+  const from = cycleFrom(flow);
+  const spec = !!(flow.bugSaid && flow.bugSaid.at > from && flow.bugSaid.yes);
+  const plan = flow.reproPlanAt > from;
+  if (!spec && !plan) return null;
+  if (!(flow.standardAt > from || flow.planAt > from || flow.editAt > from)) return null;
+  const handOff = (questions || []).some((q) => q && Array.isArray(q.options) && q.options[0]
+    && /\b(?:fresh session|new session|fresh chat)\b/i.test(String(q.options[0].label || '')));
+  if (handOff || /\bRepro\**\s*:/i.test(String(text))) return null;
+  return spec ? 'spec-check printed `bug: yes`' : 'its plan carries a `## Repro` section';
+}
 function flowState() {
   const none = { flow: false, completed: null, typedAfter: false, typedAfterAt: -1, flowAt: -1, cross: false, askAt: -1,
     completedPlan: null, planAfter: false, editAfterAt: -1, editAfterFile: null, postCloseLogged: null,
-    firstEditAt: -1, editFiles: [], strategyAt: -1, noStrategyLogged: false, approvedReadAt: -1, verifyPlanAt: -1 };
+    firstEditAt: -1, editFiles: [], strategyAt: -1, noStrategyLogged: false, approvedReadAt: -1, verifyPlanAt: -1,
+    sizeSaid: null, sizeFloor: null, sizeRaisedAt: -1, bugSaid: null, reproPlanAt: -1, standardAt: -1, planAt: -1, editAt: -1 };
   try {
     const p = payload.transcript_path;
     if (!p) return none;
     const size = fs.statSync(p).size;
-    let state = { v: 5, upTo: 0, ...none, editFiles: [] };
+    let state = { v: 6, upTo: 0, ...none, editFiles: [] };
     try {
       const kept = JSON.parse(fs.readFileSync(flowStateFile(), 'utf8'));
       // a shorter file is another transcript under the same name - read it whole; v4 added the no-strategy facts, v5 counts
-      // only source edits and the approved plan read (audit 2026-10-20 C08)
-      if (kept && kept.v === 5 && kept.upTo > 0 && kept.upTo <= size) state = kept;
+      // only source edits and the approved plan read (audit 2026-10-20 C08), v6 the cycle's size and bug facts (C37)
+      if (kept && kept.v === 6 && kept.upTo > 0 && kept.upTo <= size) state = kept;
     } catch { /* no state yet, or the old one-word format - read it all */ }
     const fd = fs.openSync(p, 'r');
     try {
