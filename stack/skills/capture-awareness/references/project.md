@@ -54,7 +54,8 @@ file it came from: that list becomes the sections' `covers:` lines and the `watc
    environment config (`config.*.json`, `appsettings.*.json`, `.env.*`) means a local start can reach any of those
    data stores: the Data target line names the file that picks it and a count-only host check per environment
    (`grep -c '<host>' <file>`, never the value) - what DISCOVER cannot settle joins the fourth question's 'The repo
-   shows'.
+   shows'. A tracker route the prose or the env example names (a token variable, a CLI) is the Tracker access line;
+   none named leaves it to the ask.
 4. **The prose.** `README.md`, `AGENTS.md`, `.claude/AGENTS.md`, `CLAUDE.md` and `.claude/CLAUDE.md` headings about
    setup, running, login, debugging and testing
    (`grep -niE '^#+ .*(setup|install|run|start|login|sign in|debug|test)'`), then a ranged read of each hit
@@ -90,6 +91,7 @@ lives, never by value. Before a local start, run the Data target check; before a
 - Data target: <per environment - the file or variable that picks the database a local start reaches, and the count-only check that names it, e.g. `grep -c '<host>' <file>`> (<source>)
 - Tools: <the SDK or runtime versions the manifests pin> (<source>)
 - Trips a first run: <a VPN, a busy port, a feature flag - or 'nothing known'>
+- Tracker access: <the route that reaches this project's issue tracker - a connector, a CLI or a REST call - and the env var NAMES it reads, or 'no tracker'> (<source>)
 
 ## Build
 <!-- id: build -->

@@ -20,7 +20,9 @@ else echo 'path: gated - spec-check not found'; fi
 
 A script neither home has prints `path: gated`: keep every gate. A request that is only a ticket link gives the
 check nothing to read - fetch the ticket first and put its title and type line above the link in the heredoc, or
-`bug:` reads no on a bug.
+`bug:` reads no on a bug. Fetch it by the run book's `Tracker access:` line when it names a route, before any
+connector (audit 2026-10-20 C20: three sessions retried a connector the token route had replaced); a route that worked
+where the line is absent or wrong is saved to memory and named in the close as the line to fill.
 
 Two stop rules every size carries, since this file is the one read on every size: a bug's `Result:` adds
 `Repro: <the reported error matched | differs: <what it showed> | not reproduced>`, and a question in the
