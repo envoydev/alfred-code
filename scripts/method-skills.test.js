@@ -297,25 +297,12 @@ test('audit 2026-10-08: the root-cause loop cuts to steps 1-5 for the in-chat di
     assert.ok(rc.includes('in a chat, ONE AskUserQuestion with the redesign recommended; a seat returns it in its report'), 'step 7 asks through the tool');
 });
 
-// Audit 2026-10-08 C11 (BLOCKER 6): the walkthrough defers to the answer-length gate, so every trigger
-// phrase its description advertises must be one the gate's depth patterns lift - a phrase they do not
-// lift fires a walkthrough the gate then blocks past its hard cap.
-test('audit 2026-10-08: every phrase habits-explain-code advertises lifts the answer-length gate', () => {
-    const hook = read('stack/hooks/guard-answer-length.js');
-    const re = (name) =>
-    {
-        const m = new RegExp(`^const ${name} = /(.*)/(\\w*);$`, 'm').exec(hook);
-        assert.ok(m, `guard-answer-length.js still declares ${name}`);
-        return new RegExp(m[1], m[2]);
-    };
-    const depth = [re('DEPTH_RE')]; // English only since 2026-10-16: any other language lifts the cap by script
-    const text = read('stack/skills/habits-explain-code/SKILL.md');
-    const desc = (text.match(/^description:\s*"?(.*?)"?$/m) || [])[1] || '';
-    const phrases = [...desc.matchAll(/'([^']+)'/g)].map((m) => m[1]);
-    assert.ok(phrases.length >= 3, 'the description quotes its trigger phrases');
-    for (const p of phrases)
-        assert.ok(depth.some((r) => r.test(p)), `'${p}' fires the walkthrough but does not lift the answer-length gate`);
-    assert.ok(squash(text).includes('The answer-length gate decides, not this file'), 'the body still defers to the gate');
+// Audit 2026-10-08 C11 (BLOCKER 6) pinned every trigger phrase against the answer hook's Stop depth gate; that gate is
+// gone (the user's ruling of 2026-10-20), so the walkthrough's length is lifted by the user's own words alone.
+test('habits-explain-code: the user\'s own words lift the budget, and no hook gate is named', () => {
+    const text = squash(read('stack/skills/habits-explain-code/SKILL.md'));
+    assert.ok(text.includes("The user's own words decide, not this file"), 'the body defers to the user\'s words');
+    assert.doesNotMatch(text, /answer-length gate/, 'no gate left to defer to');
 });
 
 // Audit 2026-10-08, the commit checkpoint: C10 (the security rule names this skill as the home of a
