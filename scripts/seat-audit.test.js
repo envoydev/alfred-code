@@ -254,4 +254,12 @@ test('agents 2026-10-20b: each implementer lists its own domain\'s shared seams,
     assert.ok(devops.includes('dotnet build the Aspire AppHost when the project has one'), 'devops-implementer: the condition');
 });
 
+test('agents 2026-10-20b: a designer states its statuses once, devops forks go to user_decisions, the gatherer and analyzer items', () =>
+{
+    for (const s of of('-solution-designer')) assert.strictEqual((squash(read(s)).match(/PLAN_READY/g) || []).length, 1, `${s}: PLAN_READY stated more than once`);
+    assert.ok(squash(read('devops-solution-designer')).includes('goes on the `user_decisions:` line with its trade-offs'), 'devops designer: the fork routes to user_decisions');
+    assert.doesNotMatch(squash(read('evidence-gatherer')), /No handoff notes of your own/, 'evidence-gatherer: the memory rule said twice');
+    assert.ok(read('related-project-analyzer').includes('`.alfred/docs/architecture/ARCHITECTURE.md` in a sibling the stack set up'), 'related-project-analyzer: the data-root capture path');
+});
+
 module.exports = { seats, read, readRel, meta, body, section, squash, rules, copiesOf, listedIn, of };
