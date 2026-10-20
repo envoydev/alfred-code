@@ -12,7 +12,7 @@ Two ways to put numbers on a .NET process instead of guessing: benchmark a hot p
 
 ## When to use
 
-- Captures a dump with dotnet-dump / dotnet-gcdump and does first-look SOS analysis. CoreCLR only.
+- Benchmarks a hot path with BenchmarkDotNet, or captures a dump with dotnet-dump / dotnet-gcdump and does first-look SOS analysis (CoreCLR only) - 'is this faster', 'it hangs', 'memory keeps growing'.
 - Not for CPU profiling, APM or distributed tracing.
 
 ## Measure first

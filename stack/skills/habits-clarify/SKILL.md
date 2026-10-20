@@ -31,6 +31,12 @@ The measurements behind these rules live in `references/evidence.md` - an audit 
 2. **Ask one question at a time.** Through AskUserQuestion: the question names the fork and why it
    matters, 2-3 concrete options, the recommended one marked, free text left open (plain-text
    options where the tool is absent). One question per turn - a batch of five gets one answered.
+
+   ```ask
+   <the fork, one line> - <why the two readings build different things>. Which do you mean?
+   - '<the likelier reading> (Recommended)' - <what the design then builds>
+   - '<the other reading>' - <what the design then builds>
+   ```
 3. **Until one reading is left.** Each answer can open or close other readings - re-read the ask with
    it before the next question.
 4. **Record the answers verbatim.** They are the requirement the design builds on: the plan's

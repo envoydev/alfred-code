@@ -142,12 +142,12 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
    stamps its eight-field block into the plan: `Gated: passed`; `passed - <N> fixes applied` for the
    non-judgment fixes it landed in this step, each named in the stop's `Result:` line; or the gaps,
    which route back to step 1 on the user's word. A `judgment` item is never applied in-step - each
-   gets its own ask, the audit's pick marked:
+   gets its own ask:
 
    ```ask
-   Audit judgment: <the item>. Apply it?
-   - 'Apply it (Recommended)' - <the audit's reason>
-   - 'Leave the plan as is' - <what stays open>
+   Audit judgment: <the item>. Keep or apply?
+   - 'Keep the plan as written (Recommended)' - the plan stands
+   - 'Apply it to the plan' - <the audit's reason>
    ```
 
    A declined audit is stamped `Gated: skipped by user - <their words>` - never

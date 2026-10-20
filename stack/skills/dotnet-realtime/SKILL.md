@@ -92,7 +92,7 @@ Stateful reconnect (.NET 8+, opt-in: `AllowStatefulReconnects` on the hub endpoi
 
 ## Contracts evolve additively
 
-The client interface is a published contract - clients on old versions stay connected. Evolve it the way a durable message contract is evolved: add new optional fields (prefer a single request/response object parameter so a new field is not a new method signature), never repurpose or retype an existing one, and version the hub name (a `OrdersHubV2` at a new path) for a genuinely breaking change. Stamp any server-set timestamps from an injected `TimeProvider`, never `DateTime.Now` - the clock-seam rule is the C# baseline's.
+The client interface is a published contract - clients on old versions stay connected. Evolve it the way a durable message contract is evolved: add new optional fields (prefer a single request/response object parameter so a new field is not a new method signature), never repurpose or retype an existing one, and version the hub name (a `OrdersHubV2` at a new path) for a genuinely breaking change. Stamp any server-set timestamps from an injected `TimeProvider`, never `DateTime.Now`.
 
 ## Payloads, throughput, transport
 

@@ -41,8 +41,8 @@ available; where it is not, the ask offers session only and says so.
 
 ## The APPROVAL stamp - writing it, and its lifetime
 
-The stamp's path, its `AUTO` first line and the 'an earlier session's stamp is not consent' rule
-are in `SKILL.md`; these are the mechanics around them.
+The waiver's root stamp, its `AUTO` first line and the 'an earlier session's stamp is not consent' rule
+are in `SKILL.md`, and step 4's per-plan APPROVED stamp is under 'Agents-mode dispatch' below; these are the mechanics around both.
 
 - A relative write follows whatever cwd the shell drifted to, and the dispatch then bounces
   because the guard reads the absolute path.
@@ -75,7 +75,7 @@ spells it (`alfred-code:<seat>` where the core plugin carries it) - a flat fan-o
 session the only orchestrator:
 
 - **The stamp first.** Write the approval gate file first - first line `APPROVED <contract_version> - "<the step-3 answer, verbatim>"` (under auto-mode the hook's `AUTO` stamp already stands - leave it)
-  (the dispatch hook blocks an unstamped implementer) - and DELETE it when the fan-out completes,
+  (the dispatch hook blocks an unstamped implementer). It is the plan's own - `<plan id>` is the plan file's name without `.md`. Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>` - the dispatch hook passes a brief only on its own plan's stamp. DELETE it when the fan-out completes,
   before the step-5 stop: a live stamp can authorize an unrelated dispatch for up to 8h.
 - **The contract version.** MINT it - `<the plan's Approved: date>-<plan slug>` - and put it in EVERY
   dispatch prompt verbatim, with the seat's literal note name and this project's memory tag:

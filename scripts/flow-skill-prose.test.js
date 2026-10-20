@@ -80,7 +80,7 @@ test('M82: code-quality hands the manual-only style capture to the user by its s
     const text = flat(skill('capture-code-quality'));
     assert.doesNotMatch(text, /record the code style with `capture-code-style`/);
     assert.match(text, /`\/capture-code-style`/);
-    assert.match(text, /both the user's to run/);
+    assert.match(text, /all the user's to run: `\/capture-preferences`/);
 });
 
 // ---- M83: coverlet's MSBuild form writes json unless told otherwise -------------------------------------------
@@ -188,7 +188,8 @@ test('M92: build-from-scratch Next run names the awareness capture, last', () =>
     assert.ok(at.every((i) => i > 0), `every capture named: ${line}`);
     assert.deepStrictEqual([...at].sort((a, b) => a - b), at, 'in the template\'s post-install order, the awareness capture last');
     assert.match(line, /alfred-awareness\.md/);
-    assert.match(line, /`none` when all three exist/);
+    assert.match(line, /\/capture-preferences \(no <docs-path>\/preferences\/\)/);
+    assert.match(line, /`none` when all four exist/);
 });
 
 // ---- M93: the over-build tags are this capture's own ---------------------------------------------------------

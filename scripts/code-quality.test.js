@@ -158,7 +158,10 @@ test('the capture writes only quality/CODE-ASSESSMENT.md, fresh every run, and O
     assert.match(b, /`<docs-path>\/quality\/loops\/`/, 'rule source: the numbered prompts');
     assert.match(b, /`<docs-path>\/code-style\/CODE-STYLE\.md`/, 'rule source: the recorded style');
     assert.match(b, /convention rules/, 'rule source: the stack convention rules');
-    assert.match(b, /No `loops\/` folder[^.]*: say so[^.]*convention rules and `CODE-STYLE\.md` alone/, 'the fallback is said, not silent');
+    assert.match(b, /No `loops\/` folder[^.]*: say so[^.]*judge against the other sources alone \(`CODE-PREFERENCES\.md`, `CODE-STYLE\.md`, the convention rules\)/, 'the fallback is said, not silent, and keeps the preferences');
+    // Skill audit 2026-10-20b P3: an ARCHITECTURE-PREFERENCES breach is the architecture-quality capture's - one fact, one doc.
+    assert.match(b, /check --all --area code` once/);
+    assert.match(b, /An `ARCHITECTURE-PREFERENCES\.md` entry is the architecture-quality capture's to record: one a seat meets is a `handoff:` line here/);
     assert.match(b, /Hard cap: 3 gather rounds/);
     assert.match(b, /Deliberate only, never mid-build|deliberate only, never mid-build/i);
     for (const field of ['`References:`', '`Rules:`', '`Decisions:`', '`Findings gate:`', '`Write:`', '`Model:`'])
@@ -175,7 +178,7 @@ test('the capture writes only quality/CODE-ASSESSMENT.md, fresh every run, and O
     assert.match(b, /\*\*Reads decisions, never writes them - hard rule\.\*\*/);
     // No rule source at all: stop, write nothing - a doc judged against nothing reads as clean code.
     assert.match(b, /\*\*No rule source at all - stop\.\*\*[^*]*writing nothing/);
-    assert.match(b, /No rule source at all - stop\.\*\*[^*]*`\/capture-code-style`[^*]*`\/loop-code-quality`/, 'and names the two ways to get rules, both slash-typed');
+    assert.match(b, /No rule source at all - stop\.\*\*[^*]*`\/capture-preferences`[^*]*`\/capture-code-style`[^*]*`\/loop-code-quality`/, 'and names the three ways to get rules, all slash-typed');
     // A remediation is checked against the OTHER handed rules, or the loop oscillates between them.
     const judge = squash(raw.slice(raw.indexOf('### 3. JUDGE'), raw.indexOf('### 4. RE-GATHER')));
     assert.match(judge, /Cross-check every Must-fix remediation against the other rules/);

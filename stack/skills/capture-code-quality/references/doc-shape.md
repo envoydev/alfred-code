@@ -35,10 +35,10 @@ never from recall, and never from a reference the project did not install:
 3. **The convention rules** under `.claude/rules/` - each path-scoped file attaches one file family to
    its house convention skill; the skill's rules are the rules for that family.
 
-**The user's preferences outrank all three.** The `C<n>` and `A<n>` entries of
-`<docs-path>/preferences/CODE-PREFERENCES.md` and `ARCHITECTURE-PREFERENCES.md` are rules wherever they
-exist; an entry's `Except:` line is its one waiver, and a breach's rule is `CODE-PREFERENCES.md#c<n>` (or
-`ARCHITECTURE-PREFERENCES.md#a<n>`).
+**The user's preferences outrank all three.** The `C<n>` entries of
+`<docs-path>/preferences/CODE-PREFERENCES.md` are rules wherever they exist; an entry's `Except:` line is its
+one waiver, and a breach's rule is `CODE-PREFERENCES.md#c<n>`. An `A<n>` entry of `ARCHITECTURE-PREFERENCES.md`
+is the architecture-quality capture's: its breach is a hand-off here, never a second record of one fact.
 
 **Precedence.** The user's preferences win every disagreement; then the project's own record - its
 decision log and AGENTS.md choices first, then the loops prompts, then `CODE-STYLE.md`, then a house
@@ -56,7 +56,8 @@ never tiered:
 1. **What breaks?** The concrete wrong outcome - wrong or lost data, a crash, a silent failure, a security
    hole, a change that cannot be made safely, or time repeatedly lost by the next developer. 'It differs
    from how a convention or another codebase would do it' is not an answer; a user preference's breach is -
-   'breaks C3', since the user named what breaks.
+   'breaks CODE-PREFERENCES.md#c3' (the preferences doc's id, never one of this doc's rank-label C-IDs), since
+   the user named what breaks.
 2. **Who notices, and when?** A user, an operator, or the next person to touch this code - named, with
    the trigger condition. A bug needs its constructible input, state or sequence.
 3. **Is it actually new?** Unchanged code the last run's `CODE-ASSESSMENT.md` already records is a
@@ -72,7 +73,7 @@ Both are counted as hand-offs in the report and never written here - two docs ho
 
 ## The count rule - an output, never a target, in both directions
 
-- **Never pad upward.** No preference is promoted to a finding, and no MINOR to a MAJOR, to make the doc
+- **Never pad upward.** No style opinion is promoted to a finding, and no MINOR to a MAJOR, to make the doc
   look thorough. Zero gate-passing findings is a complete result on healthy code - state it plainly.
 - **Never truncate downward.** EVERY candidate that passed the gate is recorded; dropping one because the
   list is long is silent data loss the next run cannot detect.

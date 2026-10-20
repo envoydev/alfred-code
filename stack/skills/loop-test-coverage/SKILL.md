@@ -42,24 +42,25 @@ The load is step zero of ANALYZE, not optional homework: a round that has not lo
 ### 2. TRIAGE + FIX by tier
 Confirm the green baseline (build + tests) first - round 1 also records the sweep baseline: HEAD, or on a dirty tree the sha `git stash create` prints; the final anti-gaming sweep diffs against it - then take the weak points in leverage order:
 
-- **small** (missing tests on existing seams) - a scoped brief: the module, the uncovered symbols, the behavior each test must pin. Write them INLINE, or DELEGATED dispatch the stack's implementer with the brief - the brief states `memory: none` (a scoped test brief has no memory hand-off; one that does hand a note names it literally, read side included - memory hygiene: `references/domain-trio-protocol.md`). Tests assert behavior - a test written to touch lines is gamed coverage, not progress.
+- **small** (missing tests on existing seams) - a scoped brief: the module, the uncovered symbols, the behavior each test must pin. Write them INLINE, or DELEGATED dispatch the stack's implementer with the brief - the brief states `plan: loop-test-coverage` (the small-brief stamp's own id) and `memory: none` (a scoped test brief has no memory hand-off; one that does hand a note names it literally, read side included - memory hygiene: `references/domain-trio-protocol.md`). Tests assert behavior - a test written to touch lines is gamed coverage, not progress.
 - **substantial** (a testability refactor, or 'no test infrastructure') - designer-led with approval. 'No test infrastructure' goes FIRST when it is on the list - nothing else is measurable until a harness exists: propose the runner the stack's house testing skill records as its default (absent one, the framework's own documented default, cited), and on approval wire the runner + coverage output and land the first tests. Each substantial item runs four acts in order:
   1. **Plan it** - turn the simplify-testing action into a plan; a refactor for testability is still a refactor.
-  2. **Get the user's approval before building** - present the plan, then (plain-text options where the harness lacks the tool):
+  2. **Gate the plan** - `task-verify-plan`, an actual Skill invocation, recording its `Passes:` line.
+  3. **Get the user's approval before building** - present the plan, then (plain-text options where the harness lacks the tool):
 
      ```ask
      <plan id>, <N> tasks. Build it?
      - 'Approve and build (Recommended)' - stamp, then fan out
      - 'Changes needed' - I ask what to change next, in plain text
      ```
-  3. **Record the approving answer.** DELEGATED: write `<data root>/state/approvals/<plan id>/APPROVAL` (`<plan id>` is this loop's own, `loop-test-coverage`), first line `APPROVED <plan id> - "<the user's words, verbatim>"` (under auto-mode the hook's `AUTO` stamp already stands - leave it) - the selected answer IS those words (the dispatch hook blocks an unstamped implementer; delete the file when the run completes). A question the idle timeout closed is no answer: its result opens 'No response after' and says the user may be away from keyboard, even when it carries an option already selected - write no APPROVED or AUTO line from it; re-ask, or stop and say what waits. Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>` - the dispatch hook passes a brief only on its own plan's stamp. A relative write follows whatever cwd the shell drifted to and the dispatch then bounces. The stamp belongs to the session that dispatches - written when its own decision lands, deleted at its own close; an earlier session's leftover stamp is not consent. If BOTH the Write tool and an absolute-path Bash write are refused by the harness's classifier, stop and ask rather than retrying blind or dispatching around the gate:
+  4. **Record the approving answer.** DELEGATED: write `<data root>/state/approvals/<plan id>/APPROVAL` (`<plan id>` is this loop's own, `loop-test-coverage`), first line `APPROVED <plan id> - "<the user's words, verbatim>"` (under auto-mode the hook's `AUTO` stamp already stands - leave it) - the selected answer IS those words (the dispatch hook blocks an unstamped implementer; delete the file when the run completes). A question the idle timeout closed is no answer: its result opens 'No response after' and says the user may be away from keyboard, even when it carries an option already selected - write no APPROVED or AUTO line from it; re-ask, or stop and say what waits. Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>` - the dispatch hook passes a brief only on its own plan's stamp. A relative write follows whatever cwd the shell drifted to and the dispatch then bounces. The stamp belongs to the session that dispatches - written when its own decision lands, deleted at its own close; an earlier session's leftover stamp is not consent. If BOTH the Write tool and an absolute-path Bash write are refused by the harness's classifier, stop and ask rather than retrying blind or dispatching around the gate:
 
      ```ask
      Both write routes refused the approval stamp: <the refusal>.
      - 'Retry the stamp (Recommended)' - allow the write at the prompt
      - 'Run this stage inline' - no dispatch, no stamp
      ```
-  4. **Build and gate it** - INLINE yourself, DELEGATED through the domain trio.
+  5. **Build and gate it** - INLINE yourself, DELEGATED through the domain trio.
 - **structural** - do NOT auto-apply. Present the gap, the reasoning, and the rework, then ask (plain-text options where the harness lacks the tool); declined -> flagged in the final report:
 
   ```ask

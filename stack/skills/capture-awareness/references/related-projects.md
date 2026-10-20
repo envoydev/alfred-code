@@ -30,6 +30,12 @@ seats that characterize one sibling repo each (recommend it: the seats absorb th
 pick once, hold for the run. When the siblings ask of SKILL.md step 3 is open too, both questions go in the same
 AskUserQuestion call.
 
+```ask
+Characterize <the siblings> through the related-project-analyzer seats, one per sibling, or in this session?
+- 'Through the seats (Recommended)' - the read-only seats absorb the reads; the merge and the write stay here
+- 'In this session' - one sibling at a time, no dispatch
+```
+
 - **DELEGATED** (the user chose seats) - fan out related-project-analyzer per sibling as below, exactly as the
   roster spells it (`alfred-code:<seat>` where the core plugin carries it); you merge and write.
 - **INLINE** (chosen - or forced, no question asked: no dispatch, or that seat is absent - it is an opt-in pick, so a
@@ -80,7 +86,7 @@ cross-repo findings go to the shared `alfred-memory` MCP, tagged with the siblin
 ```yaml
 location:   ../acme-billing-api
 relation:   provides-to
-first_read: [docs/architecture/ARCHITECTURE.md]
+first_read: [.alfred/docs/architecture/ARCHITECTURE.md]
 seam:       the OrderCreated contract in src/Contracts - this repo publishes, billing consumes
 read_at:    main@9f8e7d6
 captured:   develop@a1b2c3d, 2026-07-24

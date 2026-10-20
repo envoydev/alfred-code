@@ -140,7 +140,7 @@ test('row 6: the .NET floor line is registered and no .NET skill states the old 
 {
     const reg = JSON.parse(read('meta/shared-rules.json')).rules['dotnet-floor-line'];
     const files = [reg.owner.file, ...reg.sites.map((s) => s.file)];
-    for (const d of ['csharp-design-patterns', 'dotnet-data-access', 'dotnet-performance', 'dotnet-project-setup', 'dotnet-winforms'])
+    for (const d of ['csharp-design-patterns', 'dotnet-data-access', 'dotnet-migrate', 'dotnet-performance', 'dotnet-project-setup', 'dotnet-winforms'])
         assert.ok(files.includes(`stack/skills/${d}/SKILL.md`), `${d} carries the registered floor line`);
     for (const f of skillFiles().filter((x) => /\/(csharp|csharp-design-patterns|dotnet[^/]*)\//.test(x.rel)))
     {
@@ -191,7 +191,7 @@ test('row 13: the named prose stops are ask templates, each marking one option f
     assert.strictEqual(ASK_FLOW_TEMPLATES['task-solve'], 10);
     assert.strictEqual(ASK_FLOW_TEMPLATES['issue-diagnoser'], 5);
     const want = {
-        'task-solve/SKILL.md': /Audit judgment: <the item>\. Apply it\?/,
+        'task-solve/SKILL.md': /Audit judgment: <the item>\. Keep or apply\?/,
         'task-version-upgrade/SKILL.md': /Stage <N> hit a hard stop:/,
         'issue-diagnoser/SKILL.md': /<The report is written \| The log points are in> - <findings path>/,
         'capture-code-style/SKILL.md': /First style capture across <the languages>/,
@@ -227,7 +227,7 @@ test('S9: habits-explain-code agrees with the budget rule', () =>
 // Row 15: the small items.
 test('row 15: the small wording fixes hold', () =>
 {
-    assert.match(read('stack/skills/task-build-from-scratch/SKILL.md'), /check the three paths, never list them by default/);
+    assert.match(read('stack/skills/task-build-from-scratch/SKILL.md'), /check the four paths, never list them by default/);
     assert.match(read('stack/skills/task-version-upgrade/SKILL.md'), /`--auto-mode` is the user's typed flag only/);
     assert.match(read('stack/skills/dotnet-architecture-tests/SKILL.md'), /^## Pick the library: NetArchTest\.eNhancedEdition by default$/m);
     assert.match(flat(read('stack/skills/dotnet-migrate/SKILL.md')), /`dotnet package update <name>@<version>` on the \.NET 10 SDK, `dotnet add package <name> --version <version>` below it - never a hand edit of the version/);
