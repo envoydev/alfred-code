@@ -17,7 +17,7 @@ The single discipline that runs through everything below: the document is genera
 ## Pick one generator
 
 - **On the floor**, use the framework's own `Microsoft.AspNetCore.OpenApi`: `builder.Services.AddOpenApi()` and `app.MapOpenApi()`, which serves the document at `/openapi/v1.json`. It is maintained in lockstep with the framework, carries no third-party dependency, and generates at build or first request without Swashbuckle's reflection overhead. This is the choice for any new service.
-- **Below the floor (.NET 8)** there is no built-in generator: use Swashbuckle (`AddSwaggerGen()` at startup, `UseSwagger()` to expose the JSON), or NSwag when the same toolchain must also generate typed C# or TypeScript clients from the document.
+- **On .NET 8 (below the floor)** there is no built-in generator: use Swashbuckle (`AddSwaggerGen()` at startup, `UseSwagger()` to expose the JSON), or NSwag when the same toolchain must also generate typed C# or TypeScript clients from the document.
 - Do not run two generators side by side, and do not migrate an existing project's generator without a concrete reason - a project already on Swashbuckle stays on Swashbuckle until there's a payoff. Match what the repo already does.
 
 Built-in wiring, the common path end to end - a document transformer adds the bearer scheme, `MapOpenApi` serves the JSON, and Scalar renders it behind a dev gate. The model types follow the `Microsoft.OpenApi` major the framework ships (1.x on .NET 9, 2.x on .NET 10; .NET 11's major is fetched at use - its release candidate's package already references 3.x), so the snippet below is the .NET 10 shape; for any other target fetch the current transformer sample through the documentation server rather than adapting it by hand:
@@ -54,7 +54,7 @@ A document is only as good as the type information it can see, and most thin spe
 
 - Return `TypedResults` from handlers, not the untyped `Results`. `TypedResults.Ok<T>()`, `TypedResults.Created<T>()`, `TypedResults.ValidationProblem()` each carry the payload type and the status code into the document; `Results.Ok()` returns `IResult` and infers nothing. This is also the house minimal-API default, so it usually comes for free.
 - Declare every outcome an endpoint can produce with `.Produces<T>(StatusCodes.Status200OK)`, `.ProducesValidationProblem()`, `.ProducesProblem(StatusCodes.Status404NotFound)`, and so on. The error bodies are RFC 9457 `ProblemDetails`, owned by the skill covering HTTP error handling; the metadata here just advertises which statuses appear.
-- Write XML doc comments (`<summary>`, `<param>`, `<returns>`) and set `<GenerateDocumentationFile>true</GenerateDocumentationFile>`, then wire the generator to read them - the property alone only writes the XML file, it does not put anything in the document. On Swashbuckle the wiring is `o.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, $"{Assembly.GetExecutingAssembly().GetName().Name}.xml"))` inside `AddSwaggerGen`. The built-in `Microsoft.AspNetCore.OpenApi` generator reads XML comments from .NET 10; on .NET 9 the file is produced and ignored, so the summaries never reach the document. Confirm the current gate through `alfred-documentation` before relying on it. Either way the XML pipeline reads named methods, not inline lambdas - one more reason endpoints should delegate to named handler methods rather than carrying their bodies in the route registration.
+- Write XML doc comments (`<summary>`, `<param>`, `<returns>`) and set `<GenerateDocumentationFile>true</GenerateDocumentationFile>`. On the floor the built-in `Microsoft.AspNetCore.OpenApi` generator needs nothing more: its source generator reads the comments at compile time and wires them into every `AddOpenApi` call - except one whose document name is not a literal string (`AddOpenApi(documentName)` gets none). On .NET 9 the built-in generator ignores the file, so the summaries never reach the document. Swashbuckle reads the file only through `o.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, $"{Assembly.GetExecutingAssembly().GetName().Name}.xml"))` inside `AddSwaggerGen`. Either way the XML pipeline reads named methods, not inline lambdas - one more reason endpoints should delegate to named handler methods rather than carrying their bodies in the route registration.
 
 ## Shape the document with transformers
 
@@ -94,7 +94,7 @@ A generator that is wired is not a document that is right.
 2. Count its `paths` against the endpoint list you expected.
 3. Read one operation's `summary` and response schema.
 
-Report: the `paths` count against the expected one, and that operation's summary and response schema. An empty `summary` block is the XML gate above not being wired; a missing path is an endpoint the generator cannot see.
+Report: the `paths` count against the expected one, and that operation's summary and response schema. An empty `summary` block is a missing `GenerateDocumentationFile`, a non-literal `AddOpenApi` name, or - on Swashbuckle - no `IncludeXmlComments`; a missing path is an endpoint the generator cannot see.
 
 ## Consumers generate their types from the document
 

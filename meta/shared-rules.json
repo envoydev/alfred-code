@@ -7431,6 +7431,111 @@
           "marker": "the Write tool and an absolute-path Bash write are refused by the harness's classifier, stop and"
         }
       ]
+    },
+    "dotnet-floor-line": {
+      "_note": "The .NET support floor sentence (.NET 10 / C# 14; .NET 8 / 9 past support from 2026-11-10) - restated in every .NET skill whose body is version-gated, so each reads its deltas against the same floor wherever it is copied (stack audit 2026-10-20 SKD2-01 / SKD2-03: 20 unregistered copies, four version-gated skills without one). A re-dated support policy moves every copy.",
+      "owner": {
+        "file": "stack/skills/csharp/SKILL.md",
+        "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+      },
+      "sites": [
+        {
+          "file": "stack/skills/csharp-design-patterns/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-architecture-tests/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-aspire/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-authentication/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-code-quality/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-console-apps/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-cryptography/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-data-access/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-grpc/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-hosted-services/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-messaging/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-minimal-api/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-mvc-controllers/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-openapi/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-performance/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-project-setup/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-realtime/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-security/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-source-generators/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-testing/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-web-backend/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-web-error-handling/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-winforms/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-wpf/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        }
+      ]
     }
   }
 }

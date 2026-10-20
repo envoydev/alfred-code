@@ -31,7 +31,14 @@ Not for language-level TypeScript style or a framework's own conventions - those
 
   1. Install, then list the packages whose install scripts were skipped - the install names them in `npm warn install-scripts` lines, and `npm install-scripts ls` (read-only) prints every one `allowScripts` does not cover yet.
   2. Vet each one: a known publisher, and a script that only builds native code - anything that fetches or runs more stays out of the list.
-  3. Adding the baseline is its own change: when the task did not ask for it, propose it through ONE AskUserQuestion naming the vetted list - add the baseline and approve that list (Recommended; merged into an existing `.npmrc`, never an overwrite) or leave npm config as it is.
+  3. Adding the baseline is its own change: when the task did not ask for it, propose it through ONE AskUserQuestion naming the vetted list:
+
+     ```ask
+     Add the npm 12 baseline and approve the vetted install scripts: <the vetted list>?
+     - 'Add the baseline and approve the list (Recommended)' - merged into an existing `.npmrc`, never an overwrite
+     - 'Leave npm config as it is' - nothing is written
+     ```
+
   4. Write the two lines, then `npm install-scripts approve <name> ...` for the vetted list - it writes pinned `pkg@version` entries into `allowScripts`, so a new version comes back to step 2.
   5. Verify: `npm install-scripts ls` no longer names a vetted package, and `npm config get min-release-age engine-strict` shows `min-release-age=7` and `engine-strict=true` with no `npm warn Unknown project config` line above them.
   6. `npm rebuild <name>` runs the newly approved scripts the install skipped; later installs run them on their own (measured on npm 12.2.0, as is the `ignore-scripts=true` override above).
@@ -57,7 +64,14 @@ Not for language-level TypeScript style or a framework's own conventions - those
      ```
 
   2. Vet each one: a known publisher, and a script that only builds native code - anything that fetches or runs more stays out of the list.
-  3. Adding the baseline is its own change: when the task did not ask for it, propose it through ONE AskUserQuestion naming the vetted list - add the baseline (Recommended; merged into an existing `.npmrc`, never an overwrite) or leave npm config as it is.
+  3. Adding the baseline is its own change: when the task did not ask for it, propose it through ONE AskUserQuestion naming the vetted list:
+
+     ```ask
+     Add the npm 11 baseline? The vetted install scripts run by `npm rebuild`: <the vetted list>.
+     - 'Add the baseline (Recommended)' - merged into an existing `.npmrc`, never an overwrite
+     - 'Leave npm config as it is' - nothing is written
+     ```
+
   4. Write the four lines.
   5. Verify the baseline landed - `npm config get ignore-scripts min-release-age allow-git engine-strict` prints one key-prefixed line per key and must show `ignore-scripts=true`, `min-release-age=7`, `allow-git=none`, `engine-strict=true` with no `npm warn Unknown project config` line above them. That warning means npm is older than the setting and the line is being ignored, not applied - npm still echoes the raw value from `.npmrc`, so the value alone proves nothing (measured on npm 11.6.1).
   6. Run the vetted ones explicitly after every install: `npm rebuild <name> --ignore-scripts=false` (a bare `npm rebuild` under the committed `ignore-scripts=true` runs nothing and still exits 0 - measured on the same npm). Record that command as a project script - `npm run` still runs the script it names - so CI runs the same list after `npm ci`.

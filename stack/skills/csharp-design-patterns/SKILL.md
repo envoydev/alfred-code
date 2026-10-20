@@ -7,6 +7,8 @@ description: "Use when implementing, choosing or reviewing a GoF design pattern 
 
 Guidance for selecting and implementing design patterns in modern C#/.NET.
 
+Floor is .NET 10 / C# 14; .NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked.
+
 ## When to use
 
 - Apply GoF design patterns idiomatically in C#. Problem shapes that call for one: object creation sprawl, switch-on-type logic, tight coupling, undo/redo, plugins.
@@ -79,7 +81,7 @@ When recommending a pattern, structure the answer as:
 
 1. **Problem restated in one line** (the design pain, not the user's words)
 2. **Pattern + why it fits** (2-3 sentences)
-3. **Modern C# implementation** (compilable code, .NET 8+, nullable enabled)
+3. **Modern C# implementation** (compilable code on the .NET 10 / C# 14 floor, nullable enabled)
 4. **Tradeoff** (1-2 sentences)
 5. **Simpler alternative considered** (when one exists)
 

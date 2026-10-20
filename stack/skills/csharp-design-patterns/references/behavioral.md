@@ -1,6 +1,6 @@
 # Behavioral Patterns in C#
 
-Each entry: Intent, When to use, Modern C# form, .NET-native form, Pros/Cons. Code targets .NET 8+, nullable enabled.
+Each entry: Intent, When to use, Modern C# form, .NET-native form, Pros/Cons. Code targets the .NET 10 / C# 14 floor, nullable enabled.
 
 ## Contents
 Chain of Responsibility · Command · Interpreter · Iterator · Mediator · Memento · Observer · State · Strategy · Template Method · Visitor

@@ -14,6 +14,8 @@ The files that configure every project in a solution at once - the layout, `.sln
 - CI workflows, container / `dotnet pack` packaging, SourceLink -> the CI-and-deploy skill.
 - The dotnet-ef tool's migration workflow (add / apply migrations) -> `dotnet-migrate`.
 
+Floor is .NET 10 / C# 14; .NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked.
+
 ## When to use
 
 - Also fires on: Directory.Packages.props, .config/dotnet-tools.json.

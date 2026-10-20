@@ -13,9 +13,11 @@ Owns the .NET side of talking to a database, the part that is the same whichever
 
 Out of scope, by design: raw SQL / index / planner tuning -> the engine skill (Postgres or SQLite); the migration safety playbook (expand-contract, backfill, rollback, never edit an applied migration) -> `dotnet-migrate`; async / `CancellationToken` / hand-mapping -> `csharp`; real-DB integration tests -> `dotnet-testing`. Where an install lacks one of those, the access rules below still hold - do not absorb the missing area into this layer.
 
+Floor is .NET 10 / C# 14; .NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked.
+
 ## When to use
 
-- Also fires on: reviewing a query, designing a read/write store (.NET 10 floor).
+- Also fires on: reviewing a query, designing a read/write store.
 - Do NOT use for the engine side - raw SQL, indexes, the query planner (the database skills) - nor for the migration playbook, which is dotnet-migrate.
 
 ## Session lifetime and thread-safety

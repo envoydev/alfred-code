@@ -106,3 +106,46 @@ test('SKF2-09: the solve flows quote the hook\'s two numbers, never a static rec
     }
     assert.match(read('stack/skills/task-solve/references/evidence.md'), /audit 2026-10-20 C07, fabea019/);
 });
+
+// Row 4 (DRIFTED): on npm 12 `--ignore-scripts` overrides `allowScripts` and skips the approved scripts too
+// (docs.npmjs.com/cli/v12/using-npm/config; measured on npm 12.2.0 in the skill), so the CI reference gates the flag
+// on npm 11. The two baseline asks are templates.
+test('row 4: npm CI installs take --ignore-scripts on npm 11 only, and the baseline asks are templates', () =>
+{
+    const ops = read('stack/skills/npm/references/ci-and-operations.md');
+    for (const line of ops.split('\n').filter((l) => /--ignore-scripts/.test(l)))
+        assert.match(line, /on npm 11 only/, `an unconditional --ignore-scripts: ${line.slice(0, 120)}`);
+    const npm = read('stack/skills/npm/SKILL.md');
+    assert.strictEqual([...npm.matchAll(/^[ \t]*```ask[ \t]*$/gm)].length, 2);
+    assert.match(npm, /'Add the baseline and approve the list \(Recommended\)'/);
+    assert.match(npm, /'Add the baseline \(Recommended\)'/);
+});
+
+// Row 5 (DRIFTED): on the floor the built-in generator's source generator wires XML comments with no app code
+// (learn.microsoft.com aspnet/core/fundamentals/openapi/openapi-comments, aspnetcore-10.0); Swashbuckle needs
+// IncludeXmlComments.
+test('row 5: dotnet-openapi says GenerateDocumentationFile is enough on the built-in generator', () =>
+{
+    const t = flat(read('stack/skills/dotnet-openapi/SKILL.md'));
+    assert.doesNotMatch(t, /the property alone only writes the XML file/);
+    assert.match(t, /On the floor the built-in `Microsoft\.AspNetCore\.OpenApi` generator needs nothing more/);
+    assert.match(t, /`AddOpenApi\(documentName\)` gets none/);
+    assert.match(t, /Swashbuckle reads the file only through `o\.IncludeXmlComments\(/);
+    assert.match(t, /\*\*On \.NET 8 \(below the floor\)\*\* there is no built-in generator/);
+});
+
+// Row 6: the floor sentence is registered, every version-gated .NET skill carries it, and no stale '.NET 8+' target
+// or 'below the floor (.NET 8)' wording is left.
+test('row 6: the .NET floor line is registered and no .NET skill states the old target', () =>
+{
+    const reg = JSON.parse(read('meta/shared-rules.json')).rules['dotnet-floor-line'];
+    const files = [reg.owner.file, ...reg.sites.map((s) => s.file)];
+    for (const d of ['csharp-design-patterns', 'dotnet-data-access', 'dotnet-performance', 'dotnet-project-setup', 'dotnet-winforms'])
+        assert.ok(files.includes(`stack/skills/${d}/SKILL.md`), `${d} carries the registered floor line`);
+    for (const f of skillFiles().filter((x) => /\/(csharp|csharp-design-patterns|dotnet[^/]*)\//.test(x.rel)))
+    {
+        assert.doesNotMatch(f.text, /targets \.NET 8\+|\.NET 8\+, nullable/, f.rel);
+        assert.doesNotMatch(f.text, /[Bb]elow the floor \(\.NET 8\)/, f.rel);
+    }
+    assert.doesNotMatch(read('stack/skills/dotnet-data-access/SKILL.md'), /\(\.NET 10 floor\)/);
+});

@@ -11,6 +11,8 @@ Two performance-aware design calls that are cheap to get right up front and expe
 - Serialization-format choice -> `references/serialization.md`
 - .NET Framework 4.8 caveats (the 'slow span', NuGet-only fast-path packages) -> `references/net-framework-48.md`
 
+Floor is .NET 10 / C# 14; .NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked.
+
 ## When to use
 
 - Also fires on: high-throughput loop, allocations, MessagePack.
