@@ -20,7 +20,8 @@ One call, nothing changed: `node "$TMP/repo/scripts/install/alfred-code.js" upda
 `node "$TMP/repo/scripts/init-plan.js" --installed "$TMP/installed.json" --root . --plugin-root "${CLAUDE_PLUGIN_ROOT}"` (plus `--space <name>` on step 4's rule) - paste its lines byte-for-byte in ONE fenced block. It probes this machine and names, in order (unattended, followed by one `unattended:` line per ask of steps 3 to 6 - the answers, taken exactly):
 
 - `machine: <what> - present | missing: <command> | missing after uv: <command> | refresh: <command> | blocked: <why> | skip: <why>` -
-  uv, the pinned Python fetched through it, `csharp-ls` when `csharp-lsp` is kept, the picked
+  uv, the pinned Python fetched through it, `csharp-ls` when `csharp-lsp` is kept, `typescript-language-server`
+  (with the TypeScript 6 it reads) when `typescript-lsp` is kept, the picked
   browsers (a firefox / webkit setup's install failed to download; a chrome / msedge the
   machine does not have), the navigation-server index, then claude-hud's status line and compact
   layout (the account's, or this project's `settings.local.json` for a claude-hud installed for this project alone). The command is the exact one to run.

@@ -193,6 +193,26 @@ test('machine: everything present is reported present, and csharp-ls is asked on
     assert.strictEqual(lineOf(dotnetOnly, /^machine: csharp-ls /), 'machine: csharp-ls - missing: dotnet tool install --global csharp-ls');
 });
 
+// Audit 2026-10-20b (plugins): typescript-lsp is an empty package naming `typescript-language-server`, which nothing
+// installed. The line pins TypeScript 6 - 7 ships no tsserver.js, the file the server reads from the TypeScript beside it.
+test('machine: typescript-language-server is asked only when typescript-lsp is kept, with the TypeScript 6 its server reads', () =>
+{
+    const root = project();
+    const ts = INV({ plugins: [{ name: 'alfred-code', scope: 'project' }, { name: 'typescript-lsp', scope: 'project' }] });
+    const missing = render(plan({ inv: ts, root, platform: 'linux', env: E(), probe: NONE }));
+    assert.strictEqual(lineOf(missing, /^machine: typescript-language-server /),
+        'machine: typescript-language-server - missing: npm install -g typescript-language-server typescript@6');
+    assert.ok(!missing.some((l) => /csharp-ls/.test(l)), 'csharp-ls stays csharp-lsp\'s');
+    const present = render(plan({ inv: ts, root, platform: 'linux', env: E(), probe: { ...NONE, has: (b) => b === 'typescript-language-server' } }));
+    assert.ok(present.includes('machine: typescript-language-server - present'), present.join('\n'));
+    const none = render(plan({ inv: INV(), root, platform: 'linux', env: E(), probe: NONE }));
+    assert.ok(!none.some((l) => /typescript-language-server/.test(l)), 'not asked when typescript-lsp is not kept');
+    // Install order: the two language servers together, after the Python and before the browsers.
+    const both = render(plan({ inv: INV({ plugins: [...INV().plugins, { name: 'typescript-lsp', scope: 'project' }] }), root, platform: 'linux', env: E(), probe: NONE }));
+    const order = both.filter((l) => l.startsWith('machine:')).map((l) => l.split(' - ')[0]);
+    assert.deepStrictEqual(order.slice(2, 5), ['machine: csharp-ls', 'machine: typescript-language-server', 'machine: playwright chrome']);
+});
+
 test('machine: Windows spellings - the PowerShell uv installer, the pinned x64 Python on ARM, a native SERENA_HOME', () =>
 {
     const root = project();
