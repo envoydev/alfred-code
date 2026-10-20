@@ -168,3 +168,19 @@ test('row 8: task-verify-code no longer says /code-review always fans out', () =
     assert.doesNotMatch(t, /always fans out|parallel-angle/);
     assert.match(t, /runs as its own subagent \(in the background in a terminal session\) and, with `ultra`, as a multi-agent cloud review/);
 });
+
+// Row 14: version / API drift, each against its official page (cited in the commit).
+test('row 14: zoneless, capacitor, desktop gate, Azure DevOps Mermaid and Vitest coverage follow the docs', () =>
+{
+    const conv = flat(read('stack/skills/angular-conventions/SKILL.md'));
+    assert.match(conv, /on v21\+ zoneless is the default and needs no provider/);
+    assert.match(conv, /on v20 bootstrap with `provideZonelessChangeDetection\(\)`/);
+    assert.match(flat(read('stack/skills/angular-conventions/references/v21.md')), /nothing needs enabling: no `provideZonelessChangeDetection\(\)`/);
+    assert.doesNotMatch(read('stack/skills/capacitor-release/SKILL.md'), /experimental in 6/);
+    const desk = flat(read('stack/skills/desktop-automation/SKILL.md'));
+    assert.doesNotMatch(desk, /Windows-MCP starts with PowerShell/);
+    assert.match(desk, /Windows-MCP enables every tool by default; the stack launches it with PowerShell, Registry, Process and FileSystem excluded/);
+    const dac = flat(read('stack/skills/docs-as-code/SKILL.md'));
+    assert.match(dac, /the Azure DevOps wiki renders it with limited syntax \(`graph`, not `flowchart`; no HTML tags\)/);
+    assert.match(flat(read('stack/skills/capture-test-coverage/SKILL.md')), /which needs `@vitest\/coverage-v8` installed - a missing one is an unmeasured surface, never an install by this capture/);
+});

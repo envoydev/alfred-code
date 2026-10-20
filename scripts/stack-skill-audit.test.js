@@ -105,7 +105,9 @@ test('B8: Angular fake time follows the runner - fakeAsync under Karma/Jest, vi.
     assert.doesNotMatch(table, /`fakeAsync` with an honest `tick`/);
     assert.match(table, /honest fake time for the runner \(`fakeAsync` \+ `tick` under Karma\/Jest, `vi\.useFakeTimers\(\)` under Vitest\)/);
     const timing = squash(section(skill('angular-testing'), 'Timing and async'));
-    assert.match(timing, /`zone\.js\/plugins\/vitest-patch`/);
+    // stack audit 2026-10-20 row 14: angular.dev/api/core/testing/fakeAsync - 'requires Zone.js and cannot be used with the Vitest test runner'
+    assert.match(timing, /the fakeAsync family requires Zone\.js and cannot be used with the Vitest runner/);
+    assert.doesNotMatch(timing, /vitest-patch/);
     assert.match(timing, /`vi\.useFakeTimers\(\)` \+ `vi\.advanceTimersByTime\(\)`/);
 });
 
@@ -260,7 +262,9 @@ test('m webpack: modern-module is the default ESM library type, and output.modul
     const text = squash(skill('webpack'));
     assert.doesNotMatch(text, /and it is still experimental/);
     assert.match(text, /Default to `output\.library\.type: 'modern-module'`/);
-    assert.match(text, /from 5\.111 the experiment is removed and `output\.module` works alone/);
+    // stack audit 2026-10-20 row 14 (SKS2-08): the current rule first, the pre-5.111 experiment on its own 'Older webpack' line
+    assert.match(text, /From webpack 5\.111 the library type turns `output\.module` on by itself/);
+    assert.match(text, /\*\*Older webpack \(before 5\.111\):\*\* either module type also needs `output\.module: true` and `experiments\.outputModule: true`/);
     const ref = skill('webpack', 'references/library-config.md');
     assert.doesNotMatch(ref, /^\s*experiments: \{ outputModule: true \},/m);
     assert.match(ref, /library: \{ type: 'modern-module' \}/);

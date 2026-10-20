@@ -49,7 +49,7 @@ Read `<docs-path>/test-coverage/COVERAGE.md` if it exists - a claim to verify, n
 Find what the project already uses - never pick or install one:
 
 - **.NET** - coverlet via `dotnet test --collect:"XPlat Code Coverage"` (or the msbuild `/p:CollectCoverage=true /p:CoverletOutputFormat=cobertura` form the repo already wires - without the format flag it writes json) -> cobertura XML - a Microsoft.Testing.Platform project takes that platform's coverage extension and flag instead (`coverlet.MTP` and `--coverlet` at this writing; confirm via the documentation server, never from recall).
-- **Angular** - `ng test` with the coverage flag of the builder `angular.json` names (`--coverage` under `@angular/build:unit-test`, the Vitest default for new workspaces; `--code-coverage` under the older Karma builder - confirm an unfamiliar builder's flag via the documentation server, never from recall) -> the `coverage/` output (lcov + summary).
+- **Angular** - `ng test` with the coverage flag of the builder `angular.json` names (`--coverage` under `@angular/build:unit-test`, the Vitest default for new workspaces, which needs `@vitest/coverage-v8` installed - a missing one is an unmeasured surface, never an install by this capture; `--code-coverage` under the older Karma builder - confirm an unfamiliar builder's flag via the documentation server, never from recall) -> the `coverage/` output (lcov + summary).
 - **Plain JS/TS** - the ladder: a `package.json` test script -> a runner config file -> a test runner in devDependencies; use the first rung that answers, with its coverage flag.
 - **Any other stack** - the project's own test script or runner config, with the coverage flag that runner documents (confirm it via the documentation server, never from recall).
 
