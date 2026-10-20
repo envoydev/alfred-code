@@ -72,7 +72,7 @@ or you pay for the wrong tool:
 - Enforce module boundaries with tags: set `tags` on each project and turn on the
   `@nx/enforce-module-boundaries` ESLint rule so a forbidden cross-project import fails lint - the
   boundary is a build-failing rule, not a convention. Where the house config-protection guard runs, an
-  edit to an existing lint or format config (ESLint, Prettier, `.editorconfig`) is blocked until the user
+  edit to an existing lint or format config (ESLint, Prettier, `.editorconfig`) that does more than raise ESLint rule severities is blocked until the user
   allows it - ask once, never route around the block, and on Allow the receipt
   `<data root>/state/approvals/CONFIG-EDIT-ALLOW` takes the file's path.
 

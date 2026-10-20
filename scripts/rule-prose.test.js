@@ -327,7 +327,7 @@ test('C22: Angular specs route to angular-testing, EF migrations attach the SQL 
     const md = injected('markdown-docs');
     const carve = md.indexOf('The generated docs root is NOT governed here');
     assert.ok(carve >= 0 && carve < md.indexOf('the FIRST action after this rule attaches'), 'the carve-out comes before the first action');
-    assert.match(md, /A plan, flow note or capture under `<docs-path>`[^:]*a `\.md` you only READ take no load/);
+    assert.match(md, /A plan, flow note or capture anywhere under `<data root>` \(the docs root `<docs-path>` and the hooks' `state\/` and `statistics\/` beside it\)[^:]*`alfred-preferences\.md`[^:]*a `\.md` you only READ take no load/);
 });
 
 // ------------------------------------------------------------------ audit 2026-10-10 C23

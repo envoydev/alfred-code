@@ -4,7 +4,8 @@ paths: ["**/*.md"]
 ---
 
 **The generated docs root is NOT governed here, and neither are the generated rules.** A plan, flow
-note or capture under `<docs-path>`, a generated rule under `.claude/rules/` (`alfred-architecture.md`, `alfred-awareness.md` or
+note or capture anywhere under `<data root>` (the docs root `<docs-path>` and the hooks' `state/` and `statistics/` beside it),
+a generated rule under `.claude/rules/` (`alfred-architecture.md`, `alfred-awareness.md`, `alfred-preferences.md` or
 `project-code-style.md`), a skill's own files, and a `.md` you only READ take no load:
 each belongs to the skill that writes it, which fixes its shape verbatim, down to the frontmatter -
 two owners pulling one file in opposite directions is worse than either alone.
