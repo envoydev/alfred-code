@@ -121,7 +121,8 @@ Move this project's Alfred Code data into <root>? From <from places>: the docs t
 After a move, until that restart this session's hooks keep writing under the OLD root - they read it from the
 environment the session started with - and its loaded rule text still names the old one (audit 2026-10-11, session
 bca100bd: the monitor hook re-created `<old root>/flow/` after the move). Say so in the close, with the one action it
-leaves: after the restart, a `flow/` file left under the old root is this session's record and safe to delete.
+leaves: after the restart, a file under the old root's `state/` or `statistics/` - or, from a session that started
+before 2.8.0, its `flow/` or `hook-blocks/` - is this session's record and safe to delete.
 
 **The instruction file's name - ONE ask, and only on `agents-md: offer`.** Before the installer runs,
 in the same AskUserQuestion call as the other asks (one question each):
@@ -173,7 +174,7 @@ claude-hud is installed - this run or already - and no settings file this projec
 never a second grep (a tail is ~75% static boilerplate, and two greps of one log cost two full context re-sends):
 
 ```bash
-grep -aE 'installed/refreshed this run|mcp repaired:|mcp pruned:|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook|the stamp predates)|agent kept:|roster:|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|docs (migration|domain|root|move)|data root:|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy|context7-local removed|has no status line yet|plugin moved \[|taking over a copy' "$TMP/install.log"
+grep -aE 'installed/refreshed this run|mcp repaired:|mcp pruned:|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook|the stamp predates)|agent kept:|roster:|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|docs (migration|domain|root|move)|data root:|layout:|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy|context7-local removed|has no status line yet|plugin moved \[|taking over a copy' "$TMP/install.log"
 ```
 
 Add a marker to the pattern when the report needs another fact; do not add a call. The RESTART row and any

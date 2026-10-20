@@ -79,6 +79,10 @@ NEW-ITEMS line (what arrived, what was taken, what stays off - say where that sw
   assert it from memory. The `settings.local.json: created ...` line also arrives as a `warn:` line - report it once,
   here.
 - **DATA ROOT** - every `docs root:` / `docs move:` / `data root:` line the grep caught, verbatim.
+- **LAYOUT** - every `layout:` line the grep caught, verbatim, or 'layout: current - nothing moved'; a `layout: kept`
+  line goes on the follow-ups card with the one action it leaves (the newer file is the live one; diff the two and
+  delete the old). A session that started before 2.8.0 runs its old hooks until the restart and writes the old
+  folders again; the next update moves what it wrote.
 - **GIT HYGIENE** - the one extra call this step makes, after the installer and before `$TMP` goes:
   `node "$TMP/repo/scripts/git-hygiene.js" --root .`. A `git-hygiene: offer <root>/<TAB><why>` line
   means git lists the data root as untracked while nothing under it is meant to be committed; ask ONE

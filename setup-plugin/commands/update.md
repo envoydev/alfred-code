@@ -80,7 +80,8 @@ call (audit 2026-10-20 C15: a refused run carried the whole 36.5k-char walk, ~9k
    holds steps 1-3 and the Do-not list.
 3. **The delta** - the walk's step 2: ONE preflight call, then its asks (new items, the data root, the instruction
    file's name) before the installer runs. A non-empty prune list takes `update-slow-path.md`'s steps 4-5.
-4. **The refresh** - step 3's installer call (10-minute timeout, exit code read), then its ONE post-install grep.
+4. **The refresh** - step 3's installer call (10-minute timeout, exit code read), then its ONE post-install grep. The
+   installer also moves an older project's folders onto the current layout, with no ask (`layout:` lines).
 5. **The restart verdict, and the close** - ONE call: step 3's `--log` call with `; cat
    "${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/update-close.md"` appended. The close holds steps 6-8.
 6. **AGENTS.md** - step 6's check, the skill read, the re-spell plan and its one ask.
