@@ -254,9 +254,11 @@ function patternSpans(line, spans)
 const PARENT_DIR = /\bparent\s+(?:directory|folder|dir)\b|\b(?:one|a)\s+(?:level|folder|directory)\s+(?:up|above)\b/i;
 // A line naming a generated rule points at it, as the outline asks - its words are no copied authoring text (audit
 // 2026-10-11 SD04, session 6288ad94: a correct pointer reworded to silence the row). The generated rules by name
-// (scripts/install/selection.js GENERATED_RULES, renamed 2026-10-13) plus the `alfred-project-*` / `project-*` spellings
-// before them - a bare `alfred-*` stem is the shipped baseline's, never generated.
-const GENERATED_STEM = '(?:alfred-(?:architecture|related-context|agent-awareness)|(?:alfred-)?project-[a-z0-9-]+)';
+// (scripts/install/selection.js GENERATED_FILES: architecture, the one awareness rule of 2026-10-16, the 2.8.0
+// preferences rule, and the awareness names before the merge) plus the `alfred-project-*` / `project-*` spellings
+// before them - every other `alfred-*` stem is the shipped baseline's, never generated. agents-md-check.test.js holds
+// this list to the rules the capture skills write.
+const GENERATED_STEM = '(?:alfred-(?:architecture|awareness|preferences|related-context|agent-awareness)|(?:alfred-)?project-[a-z0-9-]+)';
 const GENERATED_RULE_REF = new RegExp(`(?:^|[\\s\`/])${GENERATED_STEM}\\.md\\b`);
 
 // True when the clause holding columns [from, to) of `prose` denies what it names.
@@ -763,4 +765,4 @@ if (require.main === module)
     require('../stack/hooks/hook-prelude.js').blockingStdio();
     process.exit(main(process.argv.slice(2)));
 }
-module.exports = { checkText, findFiles, main, shadowedRows, stripComments };
+module.exports = { checkText, findFiles, main, shadowedRows, stripComments, GENERATED_STEM };
