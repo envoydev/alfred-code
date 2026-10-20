@@ -897,7 +897,10 @@ function docsMoveViews({ claudeDir })
         if (!fs.existsSync(file)) return { env: {} };
         try
         {
-            const v = parseJson(fs.readFileSync(file, 'utf8'));
+            const raw = fs.readFileSync(file, 'utf8');
+            // an empty file is no settings at all, as settings.js reads and writes it
+            if (!raw.trim()) return { env: {} };
+            const v = parseJson(raw);
             if (!v || typeof v !== 'object' || Array.isArray(v)) return { broken: true };
             return { env: v.env && typeof v.env === 'object' && !Array.isArray(v.env) ? v.env : {} };
         }

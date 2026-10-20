@@ -162,6 +162,12 @@ test('views: the two settings files are read apart, and an unparseable one is na
     assert.deepStrictEqual(docs.docsMoveViews({ claudeDir: path.join(root, '.claude') }), { shared: { ALFRED_CODE_DOCS_PATH: 'a' }, personal: { ALFRED_CODE_DOCS_PATH: 'b' }, broken: null });
     fs.writeFileSync(path.join(root, '.claude', 'settings.local.json'), '{ not json');
     assert.strictEqual(docs.docsMoveViews({ claudeDir: path.join(root, '.claude') }).broken, 'settings.local.json');
+    // Final review C3: settings.js reads an empty file as {} and writes it; read as broken here, it stopped every drain.
+    for (const blank of ['', ' \n\t\r\n'])
+    {
+        fs.writeFileSync(path.join(root, '.claude', 'settings.local.json'), blank);
+        assert.deepStrictEqual(docs.docsMoveViews({ claudeDir: path.join(root, '.claude') }), { shared: { ALFRED_CODE_DOCS_PATH: 'a' }, personal: {}, broken: null }, JSON.stringify(blank));
+    }
 });
 
 test('move: tracked files go through git mv (staged as renames), the rest by rename, the project\'s own files stay', () =>
