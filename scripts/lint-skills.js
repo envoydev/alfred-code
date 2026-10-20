@@ -2564,6 +2564,8 @@ function main()
     for (const finding of lintRetiredNames(stackTextFiles())) flag(finding);
     // 57. No tracked line spells the retired 1.x name.
     for (const finding of lintLegacyNames(repoTextFiles())) flag(finding);
+    // 65. No text names a home the 2.8.0 layout moved (stack/hooks/layout.js LAYOUT_MOVES).
+    for (const finding of lintOldLocations(repoTextFiles())) flag(finding);
     for (const finding of lintMarketplaceSchema()) flag(finding);
 
     if (findings.length > 0)
@@ -2960,6 +2962,43 @@ function lintLegacyNames(files)
         });
     return out;
 }
+// 65. 2.8.0 moved the hooks' state and ledgers into the data root and the flow docs under work/ and quality/
+// (stack/hooks/layout.js LAYOUT_MOVES, which update applies); a text naming an old home sends the model to a folder the
+// update emptied. A hook's skew-window read - the fallback of a layout.js read, or a line that says legacy, pre-2.8.0
+// or before 2.8.0 - passes in code; markdown gets no such pass. The move map, the migration, the tests, the history,
+// the evidence, a dated report and the retired-text fixtures name the old homes on purpose.
+const OLD_LOCATION_EXEMPT = /^stack\/hooks\/layout\.js$|^scripts\/install\/docs\.js$|\.test\.js$|^setup-plugin\/references\/update-history\.md$|^docs\/.*-evidence\.md$|^docs\/[^/]*-\d{4}-\d{2}-\d{2}\.md$|^docs\/superpowers\/|^scripts\/fixtures\//;
+const OLD_LOCATIONS = (() =>
+{
+    const moves = require(path.join(ROOT, 'stack', 'hooks', 'layout.js')).LAYOUT_MOVES.filter((m) => !m.removeIfEmpty);
+    const home = (m) => (m.base === 'data' ? '<data root>' : '<docs-path>');
+    const to = new Map(moves.map((m) => [m.from, m.split ? `${home(m)}/state/approvals or ${home(m)}/state/sessions` : `${home(m)}/${m.to}`]));
+    const names = moves.map((m) => m.from.replace(/[.]/g, '\\.')).join('|');
+    const root = String.raw`<docs(?:-path|-root| root)?>|&lt;docs(?:-path|-root| root)?&gt;|\.alfred/docs|\$\{docs\w*\}`;
+    return {
+        to,
+        re: new RegExp(String.raw`((?:${root})/|(?:docsRootEnv\(\)|'\.alfred/docs'),\s*')(${names})(?![\w-]|\.\w)`, 'g'),
+    };
+})();
+function lintOldLocations(files)
+{
+    const out = [];
+    for (const { file, text } of files)
+    {
+        if (OLD_LOCATION_EXEMPT.test(file)) continue;
+        const code = /\.[cm]?js$/.test(file);
+        text.split('\n').forEach((line, i) =>
+        {
+            if (code && /\blayout\b|legacy|(?:pre-|before )2\.8\.0/i.test(line)) return;
+            for (const m of line.matchAll(OLD_LOCATIONS.re))
+            {
+                const where = m[1].endsWith('/') ? `${m[1]}${m[2]}` : `${m[1]}${m[2]}'`;
+                out.push(`${file}:${i + 1} names the pre-2.8.0 location ${where} - use ${OLD_LOCATIONS.to.get(m[2])} (stack/hooks/layout.js LAYOUT_MOVES)`);
+            }
+        });
+    }
+    return out;
+}
 // Every tracked text file: `git ls-files` when `root` is a repo's top level, else a walk of the
 // tree (the clean export the gate runs in has no .git), node_modules and .git skipped. A file
 // holding a NUL byte is binary and skipped.
@@ -3249,6 +3288,7 @@ module.exports = {
     lintRetiredNames,
     stackTextFiles,
     lintLegacyNames,
+    lintOldLocations,
     repoTextFiles,
     lintCoreDependencies,
     lintNoPluginBin,

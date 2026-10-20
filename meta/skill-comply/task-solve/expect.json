@@ -86,11 +86,11 @@
     {
       "id": "plan-file",
       "from": "stack/skills/task-solve/SKILL.md",
-      "quote": "The plan file** (`<docs-path>/plans/<feature>.md`) is the durable truth",
+      "quote": "The plan file** (`<docs-path>/work/plans/<feature>.md`) is the durable truth",
       "graders": [
         {
           "type": "tool_used",
-          "name": "a plan written under plans/",
+          "name": "a plan written under work/plans/ (plans/ before 2.8.0)",
           "tool": "Write",
           "field": "file_path",
           "text_match": "(^|[\\\\/])plans[\\\\/][^\\\\/]+\\.md$"

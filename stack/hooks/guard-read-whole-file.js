@@ -2734,7 +2734,7 @@ if (!GATED_EXT.test(path)) {
   // read whole by design: a verifier denied its 65KB plan read it back through two ranges at once, so the block bought a
   // round trip and nothing else (audit 2026-10-10, session 05c925e9).
   const docsRel = docsRootEnv().replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
-  const planFile = /\.md$/i.test(path) && [`${docsRel}/work/plans/`, `${docsRel}/plans/`].some((d) => String(path).replace(/\\/g, '/').includes(d));
+  const planFile = /\.md$/i.test(path) && [`${docsRel}/work/plans/`, `${docsRel}/plans/`].some((d) => String(path).replace(/\\/g, '/').includes(d)); // plans/ is pre-2.8.0
   if (size > BIG_BYTES && whole && !planFile && /\.pdf$/i.test(path)) {
     // A PDF is read by PAGE: the Read tool takes one of 10 pages or fewer whole, and a longer one only through `pages`,
     // at most 20 a call - the binary remedy below ('head -c', 'file') answered nothing for one (hooks review 2026-10-16).

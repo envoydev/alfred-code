@@ -146,16 +146,17 @@ test('I20: routingRow leaves no slot outside the first call names', () =>
     for (const row of rows) assert.doesNotMatch(row.split('first call:')[0], /<[a-z][a-z -]*>/, row);
     assert.ok(rows[0].includes('`data/x/webkit-control/output/`'), rows[0]);
     assert.ok(rows[1].includes('`data/x/msedge-control/output/`'), rows[1]);
-    assert.ok(rows[2].includes('data/x/docs/flow/DESKTOP-EXEC-ALLOW'), rows[2]);
+    assert.ok(rows[2].includes('data/x/state/approvals/DESKTOP-EXEC-ALLOW'), rows[2]);
 });
 
-test('I20: the rows\' docs root follows a local-scope install\'s settings.local.json over settings.json', () =>
+test('I20: the rows\' docs and data roots follow a local-scope install\'s settings.local.json over settings.json', () =>
 {
-    const { root, home } = project('docs-root-local', { servers: ['windows-control'], settings: { env: { ALFRED_CODE_DOCS_PATH: 'shared/docs' } }, local: { env: { ALFRED_CODE_DOCS_PATH: 'var/data/docs' } } });
+    // 2.8.0: the receipt is the data root's (state/approvals/), so the row follows ALFRED_CODE_DATA_PATH the same way.
+    const { root, home } = project('docs-root-local', { servers: ['windows-control'], settings: { env: { ALFRED_CODE_DOCS_PATH: 'shared/docs', ALFRED_CODE_DATA_PATH: 'shared' } }, local: { env: { ALFRED_CODE_DOCS_PATH: 'var/data/docs', ALFRED_CODE_DATA_PATH: 'var/data' } } });
     const { out } = run([], { cwd: root, home });
     assert.match(out, /DOCS ROOT: var\/data\/docs\s+\(from ALFRED_CODE_DOCS_PATH in \.claude\/settings\.local\.json env\)/);
     const [row] = rowsOf(out);
-    assert.ok(row.includes('`var/data/docs/flow/DESKTOP-EXEC-ALLOW`'), row);
+    assert.ok(row.includes('`var/data/state/approvals/DESKTOP-EXEC-ALLOW`'), row);
 });
 
 test('I20: --verify fails a rule still holding an unresolved slot', () =>
@@ -333,14 +334,14 @@ test('I45: the macOS row leads with the failed start, and an empty snapshot only
     assert.ok(!row.includes('an empty snapshot means the Accessibility grant is missing'), row);
     assert.ok(row.includes('fails to connect at start') && row.includes('System Settings opens'), row);
     assert.ok(row.includes('`MACOS_MCP_SKIP_PERMISSION_CHECK=1`'), row);
-    assert.ok(row.includes('`Shell`') && row.includes('`<docs-path>/flow/DESKTOP-EXEC-ALLOW`'), row);
+    assert.ok(row.includes('`Shell`') && row.includes('`<data root>/state/approvals/DESKTOP-EXEC-ALLOW`'), row);
 });
 
 test('I10: the Windows row says FileSystem is off and App launch_executable is denied without the receipt', () =>
 {
     const row = squash(routingMapText().split('\n').find((l) => l.startsWith('- `windows-control`')));
     assert.ok(row.includes('`FileSystem`'), row);
-    assert.ok(row.includes('`launch_executable`') && row.includes('`<docs-path>/flow/DESKTOP-EXEC-ALLOW`'), row);
+    assert.ok(row.includes('`launch_executable`') && row.includes('`<data root>/state/approvals/DESKTOP-EXEC-ALLOW`'), row);
 });
 
 // 2026-10-13: mobile-control (appium-mcp) - its row's output dirs are the launcher's, under the resolved data root.

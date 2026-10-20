@@ -556,7 +556,9 @@ test('the stop contract, the fresh-session offer and the read guard sweep their 
 test('guard-read-whole-file: the Read matcher gates whole-file shapes and the cumulative cap', () => {
   const read = (input, session_id) => run('guard-read-whole-file.js', { tool_name: 'Read', tool_input: input, session_id });
   assert.equal(read({ file_path: BIG }), 2, 'no offset/limit');
-  assert.equal(read({ file_path: BIG, offset: 1, limit: 2000 }), 2, 'a limit spanning the file is a whole-file Read');
+  // Past the end, not a fixed 2000: BIG outgrew 2000 lines, and a 2000-line head then passed only while it sat over the
+  // range cap - 40 lines more and it slipped under it.
+  assert.equal(read({ file_path: BIG, offset: 1, limit: BIG_LINES + 1000 }), 2, 'a limit spanning the file is a whole-file Read');
   assert.equal(read({ file_path: BIG, offset: 1, limit: BIG_LINES }), 2, 'limit = the line count');
   assert.equal(read({ file_path: BIG, offset: 50, limit: 40 }), 0, 'a ranged read');
   assert.equal(read({ file_path: SMALL }), 0, 'a small file reads whole');

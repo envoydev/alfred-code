@@ -67,7 +67,8 @@ This repo is one of several that make up a product: the siblings, and the edges 
 cross-repo findings go to the shared `alfred-memory` MCP, tagged with the sibling's own name, never here.
 
 - A task card addressed to THIS repo is written in the SIBLING's tree, under its own docs root's
-  `cross-project-tasks/<this repo>.md` - search there before calling a named card absent.
+  `work/cross-project-tasks/<this repo>.md` (a sibling not yet on 2.8.0: `cross-project-tasks/` at its root) - search
+  both before calling a named card absent.
 - The navigation server binds to THIS repo: Read/Grep a sibling directly, but symbol-navigate it only from a
   context rooted there.
 - An entry's `captured:` names the branch it was read on: on any other branch, verify its seam exists before
@@ -131,7 +132,7 @@ related service - investigate freely (read its code, run its tests read-only, fi
 IT OFF: `guard-cross-project-write.js` blocks the write, and the reason is not tidiness. A change applied from here
 skips that repo's tests, conventions, review and release, and the project that owns it never sees it happen.
 
-Write the card at `<docs-path>/cross-project-tasks/<other-project>.md`, appending to it rather than replacing it,
+Write the card at `<docs-path>/work/cross-project-tasks/<other-project>.md`, appending to it rather than replacing it,
 one section per task:
 
 - **What must change, and where** - the file and symbol you located, not 'somewhere in the auth layer'.

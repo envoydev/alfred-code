@@ -83,7 +83,7 @@ test('C20 a1fa1b2b#5 e6a68237#7 f24eb967#8: a sibling hand-off is printed as one
 });
 
 test('C20 69dbed46#4: the related-projects doc says where a card addressed to this repo sits', () => {
-    assert.match(flat(read('stack/skills/capture-awareness/references/related-projects.md')), /A task card addressed to THIS repo is written in the SIBLING's tree, under its own docs root's `cross-project-tasks\/<this repo>\.md` - search there before calling a named card absent/);
+    assert.match(flat(read('stack/skills/capture-awareness/references/related-projects.md')), /A task card addressed to THIS repo is written in the SIBLING's tree, under its own docs root's `work\/cross-project-tasks\/<this repo>\.md` \(a sibling not yet on 2\.8\.0: `cross-project-tasks\/` at its root\) - search both before calling a named card absent/);
 });
 
 test('C20 close receipts (390aebcb#8 3ce6b036#2 49cb4b82#6 a1fa1b2b#3 f24eb967#9 e499fc94#5 a6a24815#4 3b53e0e8#3): they ride the Result field', () => {
@@ -190,7 +190,7 @@ test('C18 e6a68237#1 (skill half): the format CHECK runs over every staged path 
     const block = (checkpoint().match(/```\nVERIFIED <what was reviewed, one phrase>\n([\s\S]*?)```/) || [])[1] || '';
     assert.match(block, /^format: <the format CHECK command run> - clean over <N> staged files$/m);
     assert.match(t, /`format: none configured - clean over <N> staged files, nothing to check`/);
-    assert.match(t, /The checkpoint ends by writing its receipt: `<docs-path>\/flow\/COMMIT-GATE`, five lines/, 'the skill-comply quote stays');
+    assert.match(t, /The checkpoint ends by writing its receipt: `<data root>\/state\/approvals\/COMMIT-GATE`, five lines/, 'the skill-comply quote stays');
     assert.match(flat(read('stack/skills/task-verify-code/references/commit-gate-receipt.md')), /`format: <the format CHECK command run> - clean over <N> staged files`/);
 });
 

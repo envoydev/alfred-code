@@ -464,8 +464,8 @@ function recordUntracked(input, root) {
   let file;
   let list;
   try {
-    const flow = path.resolve(root, docsRootEnv(), 'flow');
-    const find = (name) => (layout ? layout.findState(root, 'sessions', name) : path.join(flow, name));
+    const legacyFlow = path.resolve(root, docsRootEnv(), 'flow');
+    const find = (name) => (layout ? layout.findState(root, 'sessions', name) : path.join(legacyFlow, name));
     const sid = String(input.session_id || '').replace(/[^\w.-]/g, '_');
     const pointer = sid ? `untracked-session-${sid}` : '';
     const later = input.source === 'compact' || input.source === 'resume';
@@ -495,7 +495,7 @@ function recordUntracked(input, root) {
       sweepRecords(path.dirname(file));
     }
     if (pointer && !later) {
-      const at = layout ? layout.statePath(root, 'sessions', pointer) : path.join(flow, pointer);
+      const at = layout ? layout.statePath(root, 'sessions', pointer) : path.join(legacyFlow, pointer);
       fs.mkdirSync(path.dirname(at), { recursive: true });
       fs.writeFileSync(at, `${path.basename(file)}\n`);
     }
@@ -860,8 +860,8 @@ const relative = (root, paths) => [...new Set(paths.map((p) => toPosix(path.rela
 // Only reading a section's text is a consult: `where`, `toc` and listings point at sections without reading them.
 // `docRoots` is a LIST now, one entry per domain (each domain's own root, project-relative) - a project can be
 // documented in code-style/ or awareness/ alone, and a read under any one of them is a real consult, not
-// just one under architecture/. Deliberately NOT the whole docs root: DOCS_ROOT also holds hook-blocks/,
-// docs-log.jsonl, .branches/ and cross-project-tasks/, none of which is a section covering a file, and crediting
+// just one under architecture/. Deliberately NOT the whole docs root: DOCS_ROOT also holds work/, quality/
+// and .branches/ (the hooks' ledgers before 2.8.0), none of which is a section covering a file, and crediting
 // any of them would turn the gate off by accident for a session that merely happens to touch one. A branch
 // override under .branches/ is not credited either, on the same reasoning - it mixes real override text
 // (<id>.md) with pure internal state (BASE.json, .base/, .conflict markers), and the intended way to read an
@@ -967,7 +967,7 @@ function blockRow(root, input, reason) {
 
 // A plan stamped `Completed:` is a record (task-solve's CLOSE): new scope after it opens a NEW plan file, or runs under a
 // stated `ungated: <why>`. Four form fixes were written into a stamped plan and counted as that cycle's files (audit
-// 2026-10-10, session 84eedb4b). A write to `<docs-path>/plans/<name>.md` carrying a Completed stamp is denied unless
+// 2026-10-10, session 84eedb4b). A write to `<docs-path>/work/plans/<name>.md` carrying a Completed stamp is denied unless
 // every line it adds or removes is a stamp line (Gated / Approved / Conformance / Completed / Status / Deviations /
 // Result) - an Edit by its strings, a Write against the file on disk, a shell write always (its change cannot be read).
 // The close that WRITES the stamp is not yet closed (the 2026-10-17 usage audit: its own edits right after `Completed:`
@@ -1015,8 +1015,8 @@ function closeStillOpen(input, abs) {
 }
 // Ruling S3 (the user's, 2026-10-20): an AskUserQuestion closed by Claude Code's idle timeout is no answer. The answer
 // hook writes this session's timeout marker on such a close and removes it on the next answered ask or typed prompt;
-// while it stands, writing an APPROVED / AUTO line into the APPROVAL stamp (`<data root>/state/approvals/`, or the pre-2.8.0
-// `<docs-path>/flow/` a 2.7.0 skill copy names) - a file tool or a shell write that
+// while it stands, writing an APPROVED / AUTO line into the APPROVAL stamp (`<data root>/state/approvals/`, or the
+// pre-2.8.0 `<docs-path>/flow/` a 2.7.0 skill copy names) - a file tool or a shell write that
 // carries the word - is denied, so no stamp records an approval nobody gave (the dispatch guard holds the gated
 // dispatch too). A seat's call, a delete of the stamp, and any other flow file pass.
 function stampAfterTimeoutWrite(input, root) {

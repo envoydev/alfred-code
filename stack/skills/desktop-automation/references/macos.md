@@ -17,7 +17,7 @@ like. Checked against MacOS-MCP 0.4.6, the release the stack pins; macOS 12 or l
 
 MacOS-MCP has no exclude flag; its own `~/.macos-mcp/config.toml` `[tools] exclude` removes a tool, and the stack writes no such file, so `Shell` is in the list. A house guard denies every
 `Shell` call - shell commands and AppleScript alike - unless the user allowed it in
-`<docs-path>/flow/DESKTOP-EXEC-ALLOW`, and the skill's rule keeps a UI task in the UI either way. A user
+`<data root>/state/approvals/DESKTOP-EXEC-ALLOW`, and the skill's rule keeps a UI task in the UI either way. A user
 who wants it gone can list it in MacOS-MCP's own `~/.macos-mcp/config.toml`, under `[tools]`, as
 `exclude = ['Shell']`.
 

@@ -174,7 +174,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "capture-usage-report",
-      "note": "token/tool usage audit of stack skill runs: transcript hunt -> analyze-usage.js per session -> per-session report + raw data under <docs-path>/usage-report/"
+      "note": "token/tool usage audit of stack skill runs: transcript hunt -> analyze-usage.js per session -> per-session report + raw data under <data root>/statistics/usage-report/"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -763,13 +763,13 @@
       "file": "guard-unapproved-dispatch.js",
       "matcher": "Task|Agent",
       "event": "",
-      "note": "block *-implementer dispatch without the docs-root flow/APPROVAL gate file (APPROVED/AUTO)"
+      "note": "block *-implementer dispatch without the data-root state/approvals/APPROVAL gate file (APPROVED/AUTO)"
     },
     {
       "file": "guard-ungated-commit.js",
       "matcher": "Bash|PowerShell|Monitor",
       "event": "",
-      "note": "block a non-trivial git commit without the docs-root flow/COMMIT-GATE receipt (VERIFIED/WAIVED), and a git push / gh pr merge without flow/PUSH-GATE (ALFRED_CODE_PUSH_GATE=0 turns that half off)"
+      "note": "block a non-trivial git commit without the data-root state/approvals/COMMIT-GATE receipt (VERIFIED/WAIVED), and a git push / gh pr merge without state/approvals/PUSH-GATE (ALFRED_CODE_PUSH_GATE=0 turns that half off)"
     },
     {
       "file": "guard-stop-contract.js",
@@ -817,7 +817,7 @@
       "file": "guard-fresh-session-start.js",
       "matcher": "@PreCompact",
       "event": "",
-      "note": "before a compaction, write <docs-path>/flow/COMPACT-STATE - the live plan, the active flow and its body path, the open flow stamps with their ages, the files this session wrote - with no model call; the compact SessionStart points at it"
+      "note": "before a compaction, write <data root>/state/sessions/COMPACT-STATE - the live plan, the active flow and its body path, the open flow stamps with their ages, the files this session wrote - with no model call; the compact SessionStart points at it"
     },
     {
       "file": "guard-fresh-session-start.js",
@@ -961,7 +961,7 @@
       "file": "history-session.js",
       "matcher": "@Stop",
       "event": "",
-      "note": "records this session: commits, files left dirty, the user's AskUserQuestion answers - machine-local, <docs-path>/history/"
+      "note": "records this session: commits, files left dirty, the user's AskUserQuestion answers - machine-local, <data root>/state/history/"
     },
     {
       "file": "instrument-tool-usage.js",

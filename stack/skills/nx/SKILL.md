@@ -74,7 +74,7 @@ or you pay for the wrong tool:
   boundary is a build-failing rule, not a convention. Where the house config-protection guard runs, an
   edit to an existing lint or format config (ESLint, Prettier, `.editorconfig`) is blocked until the user
   allows it - ask once, never route around the block, and on Allow the receipt
-  `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path.
+  `<data root>/state/approvals/CONFIG-EDIT-ALLOW` takes the file's path.
 
 ## The CLI is the lever; the Nx MCP is optional
 - Prefer teaching the CLI (this skill) over the Nx MCP server - `nx show` / `nx affected` output is

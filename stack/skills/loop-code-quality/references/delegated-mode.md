@@ -27,16 +27,13 @@ A return with no closing status line - a seat stopped at its `maxTurns` (Claude 
 ## The approval stamp
 
 DELEGATED mode dispatches implementers, and the dispatch hook (`guard-unapproved-dispatch.js`) blocks an
-implementer dispatch without a live `<docs-path>/flow/APPROVAL` stamp. The mode-ask answer IS the standing
+implementer dispatch without a live `<data root>/state/approvals/APPROVAL` stamp. The mode-ask answer IS the standing
 consent, so the stamp is written once the answer lands and BEFORE the first FIX dispatch - and again on every
 resume that carries DELEGATED, because the stamp belongs to the session that dispatches.
 
 - **Where and how.** Write it with the Write tool at the ABSOLUTE path
-  `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL`. A relative Bash write follows whatever cwd the shell
-  drifted to and lands the stamp in a phantom nested docs tree the hook never reads. Only where the docs
-  root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt
-  for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' -
-  take that, since `permissions.allow` cannot pre-approve it.
+  `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/APPROVAL`. A relative Bash write follows whatever cwd the shell
+  drifted to and lands the stamp in a phantom nested tree the hook never reads.
 - **First line.** `APPROVED staged - "<the mode-ask answer, verbatim>"` (under auto-mode the hook's `AUTO` stamp already stands - leave it), never fabricated or paraphrased - never
   `AUTO`, which reads as nobody at the terminal. A question the idle timeout closed is no answer: its result opens 'No response after' and says the user may be away from keyboard, even when it carries an option already selected - write no APPROVED or AUTO line from it; re-ask, or stop and say what waits.
 - **Ownership.** Written when this session's own decision lands, deleted at its own close (the run's end,

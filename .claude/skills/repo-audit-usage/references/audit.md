@@ -25,8 +25,8 @@ Bundles come from several capture generations; inventory each one.
 | `analyzer.json` / `analysis.json` / `analyzer-full.txt` | `analyze-usage.js` output - the JSON carries either name depending on the capture generation | deterministic derivation |
 | `report-usage.md` | a model-written report (authored route) or an unfilled skeleton | claims - verify before reuse |
 
-Beside the session folders, each project directory also carries `tools-usage/<session-id>.jsonl`
-and `hook-blocks/<session-id>.jsonl` - the same two ledgers collected per project. Use them as the
+Beside the session folders, each project directory also carries `statistics/tools-usage/<session-id>.jsonl`
+and `statistics/hook-blocks/<session-id>.jsonl` - the same two ledgers collected per project. Use them as the
 authority whenever a bundle's own copy is missing, and check both folders for a session id with NO
 bundle: that session is measurable (what ran, what was blocked) but not readable (no transcript),
 so it belongs in the remainder, never silently in the counts. A `hook-blocks` row names the hook,

@@ -20,11 +20,11 @@
     "source_edit": { "any": [
       { "tool": "Edit" },
       { "tool": "MultiEdit" },
-      { "tool": "Write", "field": "file_path", "text_not_match": "[\\\\/]flow[\\\\/][A-Z-]+$" }
+      { "tool": "Write", "field": "file_path", "text_not_match": "[\\\\/](?:flow|approvals|sessions)[\\\\/][A-Z-]+$" }
     ] },
     "receipt": { "any": [
-      { "tool": "Write", "field": "file_path", "text_match": "[\\\\/]flow[\\\\/]COMMIT-GATE$" },
-      { "tool": "Bash", "field": "command", "text_match": "(>|\\btee\\b)[^;&|\\n]*flow/COMMIT-GATE", "text_not_match": "\\bgit commit\\b" }
+      { "tool": "Write", "field": "file_path", "text_match": "[\\\\/](?:flow|state[\\\\/]approvals)[\\\\/]COMMIT-GATE$" },
+      { "tool": "Bash", "field": "command", "text_match": "(>|\\btee\\b)[^;&|\\n]*(?:flow|state/approvals)/COMMIT-GATE", "text_not_match": "\\bgit commit\\b" }
     ] }
   },
   "steps": [
@@ -99,7 +99,7 @@
     {
       "id": "receipt-five-lines",
       "from": "stack/skills/habits-commit-checkpoint/SKILL.md",
-      "quote": "The checkpoint ends by writing its receipt: `<docs-path>/flow/COMMIT-GATE`, five lines",
+      "quote": "The checkpoint ends by writing its receipt: `<data root>/state/approvals/COMMIT-GATE`, five lines",
       "graders": [
         {
           "type": "tool_used",
@@ -188,7 +188,7 @@
         {
           "type": "x_between",
           "name": "the receipt removed after the last commit",
-          "tool": { "tool": "Bash", "field": "command", "text_match": "\\brm\\b[^;&|\\n]*flow/COMMIT-GATE" },
+          "tool": { "tool": "Bash", "field": "command", "text_match": "\\brm\\b[^;&|\\n]*(?:flow|state/approvals)/COMMIT-GATE" },
           "after": { "ref": "commit" }
         }
       ]

@@ -27,7 +27,7 @@ When frontend and backend live in different repositories, run one flow per repo 
 
 'Add CSV export to the orders page' - the ask is crisp (columns and filter named), so no clarification pass:
 
-1. Scope in-session: the related-context entries say the Angular client consumes the ASP.NET API; the export touches both -> backend produces, frontend consumes, routine seam -> **cross_domain_light**.
+1. Scope in-session: the `RELATED-PROJECTS-AWARENESS.md` entries say the Angular client consumes the ASP.NET API; the export touches both -> backend produces, frontend consumes, routine seam -> **cross_domain_light**.
 2. Dispatch the producer's solution-designer seat (here the .NET web one). Its plan's interface section - the export route, csv response shape, error envelope, existing orders auth policy - is recorded in the ledger as the seam.
 3. Run the aspnet vertical; brief the angular implementer(s) from the recorded interface and run the angular vertical (implementers -> verifier).
 4. Both domain verifiers sign off -> dispatch integration-reviewer, exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it); it probes the seam (content type, empty-result shape, auth on the new route) and signs off.

@@ -23,7 +23,7 @@ You are the judgment seat for this run: you gather the project's quality rules, 
 - Deliberate only, never mid-build; fixes nothing and never writes the decision log.
 - Not for fixing the findings (/loop-code-quality), the architecture (capture-architecture-quality), test coverage (the coverage capture), recording the code style (/capture-code-style), a security audit (the security-auditor seat; `/security-review` covers only the branch's diff against origin's default branch) or one diff (task-verify-code).
 
-**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
+**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
 
 ## Execution modes
 
@@ -51,10 +51,10 @@ Judge <the modules> through the code-quality-analyzer seats or in this session?
 ### 1. ORIENT - the rules, the modules, the prior read
 Collect the rule sources, in precedence order (`references/doc-shape.md` says why that order):
 
-1. **The numbered prompts under `<docs-path>/loops/`** - each stage prompt's 'Look for' bullets, severity scale and bar are rules. List them with the one command below, from the project root - it prints the stage prompts in numeric order and never the `0.`-numbered fix discipline (FIX guidance, not a bar) or the run's own records (`RUN-STATE.md`, `DECISIONS.md`):
+1. **The numbered prompts under `<docs-path>/quality/loops/`** - each stage prompt's 'Look for' bullets, severity scale and bar are rules. List them with the one command below, from the project root - it prints the stage prompts in numeric order and never the `0.`-numbered fix discipline (FIX guidance, not a bar) or the run's own records (`RUN-STATE.md`, `DECISIONS.md`):
 
    ```bash
-   L="<docs-path>/loops"
+   L="<docs-path>/quality/loops"
    if [ -d "$L" ]; then echo "loops: present"; ls "$L" | grep -E '^[0-9]+\..+\.md$' | grep -Ev '^0+\.' | sort -t. -k1,1n; else echo "loops: absent"; fi
    ```
 

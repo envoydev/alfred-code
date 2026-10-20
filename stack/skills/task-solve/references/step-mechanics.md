@@ -44,9 +44,6 @@ available; where it is not, the ask offers session only and says so.
 The stamp's path, its `AUTO` first line and the 'an earlier session's stamp is not consent' rule
 are in `SKILL.md`; these are the mechanics around them.
 
-- Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the
-  write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude
-  folder for this session' - take that, since `permissions.allow` cannot pre-approve it.
 - A relative write follows whatever cwd the shell drifted to, and the dispatch then bounces
   because the guard reads the absolute path.
 - If BOTH the Write tool and an absolute-path Bash write are refused by the harness's classifier,
@@ -58,7 +55,7 @@ are in `SKILL.md`; these are the mechanics around them.
   next dispatch asks. Step 4's
   delete-when-fan-out-completes applies to per-plan APPROVED stamps, and a step-5 punch-list
   re-dispatch under AUTO rides the still-live waiver.
-- **auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
+- **auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
 - **Under auto-mode an unpushed commit is a `Leftovers:` line, never an ask** - the hook leaves an ask naming a push to
   the user, and in the same AskUserQuestion call it would hold the commit question too (audit 2026-10-14 SKF-03).
 - **Under AUTO nobody is at the terminal** (audit 2026-10-10, sessions c6142301 and 9a4ef375: an overnight run
@@ -149,7 +146,7 @@ reviewer again before anything is stamped: a punch-list fix is unreviewed code. 
 ## The sibling hand-off - step 6
 
 A change a sibling repo must follow is written as a task card under
-`<docs-path>/cross-project-tasks/` (the cross-project write guard blocks the sibling's tree), or an
+`<docs-path>/work/cross-project-tasks/` (the cross-project write guard blocks the sibling's tree), or an
 `alfred-memory` note, after reading the sibling's actual source: for each client action the card tells the sibling
 to wire, its handler there, and each backend route that handler calls confirmed to exist in THIS repo (one grep
 over the endpoint files) - a route that does not exist leaves the bullet out. The close then prints it beside

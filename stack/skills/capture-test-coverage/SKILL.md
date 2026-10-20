@@ -5,7 +5,7 @@ description: "Use when asked to measure test coverage or capture a coverage base
 
 # Project Test Coverage Analyzer - Capture the Coverage (Deliberate)
 
-You are the coverage seat for this run: you measure what the tests actually cover, judge it against the project's requirement, and record it as two artifacts - `<docs-path>/test-coverage/COVERAGE.md` (the reasoned picture: per-stack and per-module numbers, the verdict, the tiered weak points) and the raw results under `<docs-path>/test-coverage/raw/` (the machine-readable files the numbers came from). Coverage lives OUTSIDE the build flows: no seat gate runs it and no dispatch brief may carry it - a seat babysitting an instrumented run pays to idle on the wait - so this capture is the one place the instrumented suite runs, on the user's cadence, exactly like the architecture capture. The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load.
+You are the coverage seat for this run: you measure what the tests actually cover, judge it against the project's requirement, and record it as two artifacts - `<docs-path>/quality/test-coverage/COVERAGE.md` (the reasoned picture: per-stack and per-module numbers, the verdict, the tiered weak points) and the raw results under `<docs-path>/quality/test-coverage/raw/` (the machine-readable files the numbers came from). Coverage lives OUTSIDE the build flows: no seat gate runs it and no dispatch brief may carry it - a seat babysitting an instrumented run pays to idle on the wait - so this capture is the one place the instrumented suite runs, on the user's cadence, exactly like the architecture capture. The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load.
 
 This is capture only: it measures, judges, and documents - it fixes nothing, writes no test, and never picks or installs a runner. Working the weak points is the coverage loop's job (`/loop-test-coverage`), not this capture's.
 
@@ -15,7 +15,7 @@ This is capture only: it measures, judges, and documents - it fixes nothing, wri
 - Deliberate only, never mid-build.
 - Not for writing the missing tests - that is the coverage loop (/loop-test-coverage).
 
-**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
+**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
 
 ## Execution modes
 Two halves, split differently:
@@ -43,7 +43,7 @@ Two halves, split differently:
 ## The run
 
 ### 1. ORIENT
-Read `<docs-path>/test-coverage/COVERAGE.md` if it exists - a claim to verify, not ground truth - and take from it the recorded requirement override and exclusion list, if any (those are the user's decisions and carry across branches). Whether the doc switches with git branches follows `node .claude/hooks/docs.js status`: under `mode: git` the doc and its `raw/` files are committed and versioned per branch (say so in the report when the raw output is bulky); under `mode: overlay` both stay out of git and do not switch. Either way its `Captured: <branch>@<short-sha>` stamp says whose numbers it holds - a stamp from another branch means every number in it is stale for HEAD, worth saying in the report; this run replaces them with fresh measurements either way. Inventory the surfaces: each stack in the workspace that owns tests (a .NET solution, an Angular app, a plain JS/TS package) is measured separately. Scope to what the user named on a large workspace; every surface otherwise.
+Read `<docs-path>/quality/test-coverage/COVERAGE.md` if it exists - a claim to verify, not ground truth - and take from it the recorded requirement override and exclusion list, if any (those are the user's decisions and carry across branches). Whether the doc switches with git branches follows `node .claude/hooks/docs.js status`: under `mode: git` the doc and its `raw/` files are committed and versioned per branch (say so in the report when the raw output is bulky); under `mode: overlay` both stay out of git and do not switch. Either way its `Captured: <branch>@<short-sha>` stamp says whose numbers it holds - a stamp from another branch means every number in it is stale for HEAD, worth saying in the report; this run replaces them with fresh measurements either way. Inventory the surfaces: each stack in the workspace that owns tests (a .NET solution, an Angular app, a plain JS/TS package) is measured separately. Scope to what the user named on a large workspace; every surface otherwise.
 
 ### 2. DETECT - the tooling per surface
 Find what the project already uses - never pick or install one:
@@ -56,7 +56,7 @@ Find what the project already uses - never pick or install one:
 A surface where every rung is empty is a **'no test infrastructure'** verdict: coverage unmeasurable, the requirement UNMET, one weak point tiered substantial whose simplify-testing action names the missing harness. Installing the runner is the loop's first fix, never this capture's.
 
 ### 3. MEASURE - once per surface, in this session
-Run the instrumented suite ONCE per surface and keep the machine-readable output - `cobertura.xml`, `lcov.info`, `coverage-summary.json`, whatever the tooling produced - under `<docs-path>/test-coverage/raw/<stack>/`, replacing that surface's previous raw files. Scope the run to the project's normal suite: long-running replay/soak/E2E categories (a replay-tagged integration suite, an hours-long market replay) stay OUT unless the user explicitly includes them - record them as excluded-by-default in the doc - an unasked replay run can fill the disk before anyone stops it. Never save an HTML report tree - it is rebuildable bulk. A suite that fails to run is recorded as unmeasured with the failing command quoted - never estimated.
+Run the instrumented suite ONCE per surface and keep the machine-readable output - `cobertura.xml`, `lcov.info`, `coverage-summary.json`, whatever the tooling produced - under `<docs-path>/quality/test-coverage/raw/<stack>/`, replacing that surface's previous raw files. Scope the run to the project's normal suite: long-running replay/soak/E2E categories (a replay-tagged integration suite, an hours-long market replay) stay OUT unless the user explicitly includes them - record them as excluded-by-default in the doc - an unasked replay run can fill the disk before anyone stops it. Never save an HTML report tree - it is rebuildable bulk. A suite that fails to run is recorded as unmeasured with the failing command quoted - never estimated.
 
 ### 4. ANALYZE - judge against the user's requirement
 Fan out test-coverage-analyzer per surface, exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it) - or do the same inline when no dispatch - then aggregate per stack and per module. The bar is the USER's: take the doc's recorded requirement; with none recorded, ask (the batched AskUserQuestion from Analysis, never a prose question) - offer **90% line coverage after exclusions** as the house default - and record the answer in the doc. Then Read `references/weak-points.md` before the first weak point is recorded - the exclusions rule, the findings gate every candidate passes, and the three buckets survivors sort into are that file. Each surviving weak point is tiered and carries a simplify-testing action (the smallest change that would make the code cheap to cover):
@@ -66,13 +66,13 @@ Fan out test-coverage-analyzer per surface, exactly as the roster spells it (`al
 - **structural** - coverage unreachable without a cross-cutting rework; a user decision, never assumed.
 
 ### 5. WRITE - reconcile both artifacts
-Write `<docs-path>/test-coverage/COVERAGE.md` and the raw files per `references/doc-shape.md` - Read it before the write: the stamp, the required tables, the reconcile rules, the `## Resume` section and the one-write rule are that file. Create the folders only when absent; write ONLY under `<docs-path>/test-coverage/` - never source, never a test, never another doc.
+Write `<docs-path>/quality/test-coverage/COVERAGE.md` and the raw files per `references/doc-shape.md` - Read it before the write: the stamp, the required tables, the reconcile rules, the `## Resume` section and the one-write rule are that file. Create the folders only when absent; write ONLY under `<docs-path>/quality/test-coverage/` - never source, never a test, never another doc.
 
 ### 6. REPORT
 `wc -l` COVERAGE.md after the write; a missing `## Resume` section is fixed before the report. Then the close, one line per field:
 
 ```
-Doc:         <created | refreshed> - <docs-path>/test-coverage/COVERAGE.md, <n> lines
+Doc:         <created | refreshed> - <docs-path>/quality/test-coverage/COVERAGE.md, <n> lines
 Raw:         <surface>: <the files under raw/<stack>/>
 Verdicts:    <surface | line % | bar | MET, BELOW or UNMEASURED>, one per surface
 Weak points: small <n>, substantial <n>, structural <n> - the top few gaps named first

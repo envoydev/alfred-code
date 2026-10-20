@@ -53,7 +53,7 @@
       "key": "ALFRED_CODE_PUSH_GATE",
       "default": "1",
       "ask": false,
-      "what": "the PUBLISH half of the commit gate: `git push` and `gh pr merge` need a `<docs-path>/flow/PUSH-GATE` receipt, the same shape the commit gate uses. Set `0` for a repo whose remote is already gated (branch protection, a required review). Measured: across four sessions every push and merge passed every guard - one published unpushed commits 18 minutes before any receipt existed, another put 40 files on a shared `develop`.",
+      "what": "the PUBLISH half of the commit gate: `git push` and `gh pr merge` need a `<data root>/state/approvals/PUSH-GATE` receipt, the same shape the commit gate uses. Set `0` for a repo whose remote is already gated (branch protection, a required review). Measured: across four sessions every push and merge passed every guard - one published unpushed commits 18 minutes before any receipt existed, another put 40 files on a shared `develop`.",
       "validate": {
         "type": "enum",
         "values": [
@@ -92,7 +92,7 @@
       "key": "ALFRED_CODE_CONFIG_PROTECT",
       "default": "1",
       "ask": false,
-      "what": "guard-config-protection.js: an EXISTING lint / format / analyzer config (eslint, prettier, stylelint, biome, .editorconfig, a .ruleset) or a strictness setting in tsconfig / MSBuild (strict flags, NoWarn, TreatWarningsAsErrors, Nullable) cannot be changed to get a check green - weakening the check is the cheapest false pass. Creating a config passes; a change the user wants goes through one ask and the `<docs-path>/flow/CONFIG-EDIT-ALLOW` receipt. `0` turns the gate off.",
+      "what": "guard-config-protection.js: an EXISTING lint / format / analyzer config (eslint, prettier, stylelint, biome, .editorconfig, a .ruleset) or a strictness setting in tsconfig / MSBuild (strict flags, NoWarn, TreatWarningsAsErrors, Nullable) cannot be changed to get a check green - weakening the check is the cheapest false pass. Creating a config passes; a change the user wants goes through one ask and the `<data root>/state/approvals/CONFIG-EDIT-ALLOW` receipt. `0` turns the gate off.",
       "validate": {
         "type": "enum",
         "values": [
@@ -133,7 +133,7 @@
       "key": "ALFRED_CODE_HISTORY",
       "default": "1",
       "ask": false,
-      "what": "history-session.js: at Stop, a machine-local record of the session under `<docs-path>/history/` (its commits, the files left dirty, the user's AskUserQuestion answers - credential shapes scrubbed); at SessionStart, the last three records of the same branch injected in at most 600 chars. `1` (the seed) is on; `0` is off.",
+      "what": "history-session.js: at Stop, a machine-local record of the session under `<data root>/state/history/` (its commits, the files left dirty, the user's AskUserQuestion answers - credential shapes scrubbed); at SessionStart, the last three records of the same branch injected in at most 600 chars. `1` (the seed) is on; `0` is off.",
       "validate": {
         "type": "enum",
         "values": [

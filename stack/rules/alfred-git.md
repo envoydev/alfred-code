@@ -30,5 +30,5 @@ PROJ-142
 
 A non-trivial commit, a `git push` or a `gh pr merge` is next - the FIRST action is the
 `habits-commit-checkpoint` Skill call, before the command runs. It writes the
-`<docs-path>/flow/COMMIT-GATE` receipt, or the same-shaped `<docs-path>/flow/PUSH-GATE` receipt for a
+`<data root>/state/approvals/COMMIT-GATE` receipt, or the same-shaped `<data root>/state/approvals/PUSH-GATE` receipt for a
 publish; `guard-ungated-commit` blocks all three without a fresh one.

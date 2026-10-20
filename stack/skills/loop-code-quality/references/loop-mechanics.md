@@ -30,7 +30,7 @@ step', no new work in this chat. The new session must be able to start from the 
 RESUME - loop-code-quality
 Invocation: /loop-code-quality <TARGET> - resumed round <N of 3> (rounds consumed: <list>)
 Mode: <DELEGATED | INLINE> - "<the mode answer, verbatim>"
-Read first: <docs-path>/loops/0.<name>.md (the fix discipline, when present) - step 1 recomputes <docs-path>/quality/CODE-ASSESSMENT.md fresh, so there is nothing to resume from in that file
+Read first: <docs-path>/quality/loops/0.<name>.md (the fix discipline, when present) - step 1 recomputes <docs-path>/quality/CODE-ASSESSMENT.md fresh, so there is nothing to resume from in that file
 Sweep baseline: <sha recorded at round 1> - the final anti-gaming sweep diffs against it
 Baseline: build <green | red: what>, tests <green | red: what>, last commit <sha | none>, pushed <yes | no>
 Remaining findings, rank order (titles, not C-numbers - a fresh capture may re-rank):

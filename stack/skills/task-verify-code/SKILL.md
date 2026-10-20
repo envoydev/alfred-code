@@ -26,7 +26,7 @@ Both are the house review protocol; this skill just keeps it in your chat. `/cod
 - Not Claude Code's bundled review - if you want its breadth or an isolated subagent, use `/code-review` or dispatch the `<stack>-verifier`. This one stays inline by design.
 - Not the done gate on your own change - `habits-done-gate` is that gate, and this review loads it before its verdict.
 
-**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
+**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
 
 ## The review - in order, all inline
 
@@ -64,7 +64,7 @@ Next run:   <what the next pass must cover, or `nothing owed`>
 ```
 
 Under auto-mode, when the stamp's `skill:` line names this skill (a direct run, not a phase of another flow), delete
-`<docs-path>/flow/APPROVAL` once the six fields print - that is the run's close.
+`<data root>/state/approvals/APPROVAL` once the six fields print - that is the run's close.
 
 `none`, `none written` and `nothing owed` are answers; an omitted line is not. `NOT RUN -
 environment: <what refused>` after the one boot attempt is an accepted verdict, beside the tests

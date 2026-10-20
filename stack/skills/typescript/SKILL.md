@@ -33,7 +33,7 @@ The single organizing idea: the compiler is the cheapest test you have. Configur
 
 Keep these in one shared base `tsconfig` and have each project `extends` it. A per-project config that redefines the flags drifts; one that inherits them cannot.
 
-Where the house config-protection guard runs, it blocks any strictness-key edit to a tsconfig that already exists - a tightening included - until the user allows it. Ask for that allowance through ONE AskUserQuestion with the error count the flag surfaces, and never route around the block; on Allow, the guard's receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path and the same edit is retried; a new tsconfig takes the full set from the start.
+Where the house config-protection guard runs, it blocks any strictness-key edit to a tsconfig that already exists - a tightening included - until the user allows it. Ask for that allowance through ONE AskUserQuestion with the error count the flag surfaces, and never route around the block; on Allow, the guard's receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW` takes the file's path and the same edit is retried; a new tsconfig takes the full set from the start.
 
 ```ask
 The config-protection guard holds this edit: <file> - <the change>, <N> new errors.

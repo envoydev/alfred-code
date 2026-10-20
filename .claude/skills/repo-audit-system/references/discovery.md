@@ -28,7 +28,7 @@ Read at Phase 0. Build every map below before scoring; edit nothing in the repo.
 5. **The corpus** (when `CORPUS` is set): `node scripts/analyze-usage.js <CORPUS>` for the rollup - per
    surface its use (skill invocations, seat dispatches, path-rule loads), the re-read counts (the same
    file read in several sessions of one project), reads before the first edit, whole-file `Read`
-   blocks. The hook-blocks ledger under the docs root (`hook-blocks/*.jsonl`) for each hook's blocks, and
+   blocks. The hook-blocks ledger under the data root (`statistics/hook-blocks/*.jsonl`; the docs root's `hook-blocks/` before 2.8.0) for each hook's blocks, and
    per block whether the next call overrode it, retried it unchanged, or changed course. Name the window
    and the denominators.
 6. **The conflict map.** Start from every flag the map raised (`shared-event`, `name-shadow`,

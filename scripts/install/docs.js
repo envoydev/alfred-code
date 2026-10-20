@@ -7,8 +7,9 @@
 //     new one, so an existing install's file is relocated ONCE, byte-identical, and NEVER over a
 //     file already at the new path. A folder becomes a domain the engine sees only when it holds a
 //     `watch.json`, so a moved document stayed invisible until its capture re-ran - two of the
-//     three get the minimal `{}` written for them. `quality/` and `related-context/` are watch-less
-//     BY DESIGN and are left alone: one is recomputed every run, the other is a drop box.
+//     three get the minimal `{}` written for them. `quality/` is watch-less BY DESIGN and is left alone: it is
+//     recomputed every run. The working papers that sat in `related-context/` move to `work/cross-project-tasks/`
+//     with the 2.8.0 layout (migrateLayout).
 //
 //   - THE VERSIONING SEED. `ALFRED_CODE_DOCS_VERSIONING` says HOW the docs follow a branch: `git`
 //     when they are committed, `local` when they are kept out of git and need per-branch overlays.
@@ -120,8 +121,8 @@ function switchOnDomain(dir, doc, { log = () => {} } = {})
     return true;
 }
 
-// The moves, and the two switch-ons. related-context/ keeps every sibling-repo working paper
-// exactly where it is - only the orientation doc that capture wrote moves out of it. The orientation
+// The moves, and the two switch-ons. Only the orientation doc that capture wrote moves out of related-context/ here;
+// the working papers left beside it go to work/cross-project-tasks/ with the 2.8.0 layout (migrateLayout). The orientation
 // doc's pre-folder home, loose at the root, moves too: its capture moves it on its next run, and a
 // capture never re-runs by itself (2026-10-10: a 0.2.x project carried it loose to .alfred/docs/
 // through the data move). The folder form is listed first, so it wins when both exist; so is the architecture

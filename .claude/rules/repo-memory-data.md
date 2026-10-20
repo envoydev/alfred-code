@@ -98,7 +98,7 @@ The memory levels and stores, where the docs root and the data root live, and th
   notes, else by `/alfred-code:init` after a one-time import of its existing notes into the `memory` MCP - it has no search and is not shared
   with Cursor, which is why the MCP replaces it rather than sitting beside it. Which repos are
   related lives in `<docs-path>/awareness/RELATED-PROJECTS-AWARENESS.md` (the `/capture-awareness` skill, imported by the
-  generated `alfred-awareness.md`), not memory. The session HISTORY (`<docs-path>/history/`,
+  generated `alfred-awareness.md`), not memory. The session HISTORY (`<data root>/state/history/`,
   `history-session.js`) is the third, machine-local and never shared: what each session did and what
   the user ruled, script-written, read back at the next start on the same branch - a record, not memory.
 - **The docs root lives outside `.claude/`** (2.0.0, the user's decision of 2026-09-26). Claude Code
@@ -113,12 +113,14 @@ The memory levels and stores, where the docs root and the data root live, and th
   project memory folder) while each holds exactly the stack's text (`docs.pruneNestedIgnores`); serena's folder file is
   serena's - it writes one whenever none is there. A docs root OUTSIDE the data root, or under a data root whose file is
   the project's own, keeps its own (`docs.ensureDocsIgnore`, never under `.claude/`). `local` keeps the whole docs root out of
-  git, `git` keeps only the hooks' machine state out (`flow/`, `hook-blocks/`, `history/`,
-  `tools-usage/`, `.branches/`, `docs-log.jsonl`, `data-root.js DOCS_STATE_IGNORE`) plus the run book's old
-  `credentials.local.env` and the usage audit's raw transcript copies
-  (`usage-report/**/*.jsonl`, which the audit's copy step checks with `git check-ignore`
-  before it copies; the folder was `alfred-code-usage-report/` until 2.1.7 - `docs.migrateUsageReport`, run after this
-  file is current, renames it, never moving raw copies to a path git would not ignore, never over a session folder the new
+  git, `git` commits it but for the run book's old `credentials.local.env` and the awareness inventory
+  (`data-root.js DOCS_STATE_IGNORE`). The hooks' machine state and ledgers left the docs root in 2.8.0 (`stack/hooks/layout.js`):
+  `<data root>/state/` (approvals, session scratch, history) and `<data root>/statistics/` (block, tool-usage and docs ledgers,
+  the usage audit's reports and raw transcript copies), both under the data root's `/*`, so never committed whatever the
+  versioning; `docs.migrateLayout` moves an older project's folders there on update, file by file, `git mv` where tracked, a
+  clash kept at the old path and named. The usage audit's copy step still checks `git check-ignore` before it copies; the
+  folder was `alfred-code-usage-report/` until 2.1.7 - `docs.migrateUsageReport`, run after this
+  file is current, moves it straight to `statistics/usage-report/`, never moving raw copies to a path git would not ignore, never over a session folder the new
   one holds). A file holding a text an earlier release wrote (`DOCS_IGNORE_FORMER`) is the stack's
   and is rewritten; any other text is the project's and kept. An install on the old default is never moved
   silently (`docs.docsMovePlan`): the stack's own seed (the ledger's hash, or with no ledger the

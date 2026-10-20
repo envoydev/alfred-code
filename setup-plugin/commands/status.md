@@ -350,8 +350,8 @@ the seat handoff notes still in the memory database (`node .claude/hooks/memory.
 | awareness/AGENTS-AWARENESS.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
 | awareness/PROJECT-AWARENESS.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
 | awareness/RELATED-PROJECTS-AWARENESS.md | no | - | - |
-| test-coverage/COVERAGE.md | yes | (bar 85%) | 2026-07-25 |
-| loops/ | yes | 3 prompt files | 2026-07-24 |
+| quality/test-coverage/COVERAGE.md | yes | (bar 85%) | 2026-07-25 |
+| quality/loops/ | yes | 3 prompt files | 2026-07-24 |
 | handoff notes (alfred-memory) | yes | 4 notes | - |
 
 `captured` is the doc's own `Captured:` stamp line read from the file (the related-projects

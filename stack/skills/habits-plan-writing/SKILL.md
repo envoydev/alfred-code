@@ -17,7 +17,7 @@ audit and the build read it.
 
 ## The file
 
-One file per scope at `<docs-path>/plans/<feature>.md`. A new scope after `Completed:` starts a new file.
+One file per scope at `<docs-path>/work/plans/<feature>.md`. A new scope after `Completed:` starts a new file.
 
 ```text
 # <Feature> - plan

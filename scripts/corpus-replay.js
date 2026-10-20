@@ -73,7 +73,7 @@ const ROUTES = [
   // The slash route (2.1.5 M14): one job per typed command the wired matcher lets through, built from the
   // harness's `<command-name>` marker, with the transcript up to that row.
   { hook: 'guard-fresh-session-start.js', event: 'UserPromptExpansion', deny: false, needsTranscript: true },
-  // Writes <docs-path>/flow/COMPACT-STATE before a compaction and returns nothing - no verdict and no
+  // Writes <data root>/state/sessions/COMPACT-STATE before a compaction and returns nothing - no verdict and no
   // injection for a replay to count, so it is declared in UNEXERCISED below.
   { hook: 'guard-fresh-session-start.js', event: 'PreCompact', deny: false },
   // Injects the budget on EVERY prompt by design - 100% is correct here, not a false-positive rate.

@@ -1,7 +1,7 @@
-# Bootstrap - seeding `<docs-path>/loops/` from the starter set
+# Bootstrap - seeding `<docs-path>/quality/loops/` from the starter set
 
 Read before the default loop's first ANALYZE, or at the staged run's DISCOVERY step 0, when LOOP_DIR
-(`<docs-path>/loops/`, or the folder the invocation named) does not exist or holds no `.md` files. A
+(`<docs-path>/quality/loops/`, or the folder the invocation named) does not exist or holds no `.md` files. A
 missing or empty folder is never a reason to pause: seed it silently as part of the run, then carry on.
 The same prompts serve both runs - the code-quality capture judges against them, and the staged run
 runs them one stage at a time.

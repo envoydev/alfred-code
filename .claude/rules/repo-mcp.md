@@ -119,7 +119,7 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
     default), and Windows-MCP's own `WINDOWS_MCP_TOOLS`, which OVERRIDES the list, never reaches it - the launcher
     drops it from the child's environment and the copy route registers it empty (2.1.5 M41). The gate is by tool NAME, so `App` stays whole, and its `launch_executable`
     mode starts any program: a house guard denies that mode and every MacOS-MCP `Shell` call unless
-    `<docs-path>/flow/DESKTOP-EXEC-ALLOW` allows it. MacOS-MCP 0.4.6 has no exclude flag; its own config.toml `[tools] exclude` removes a tool, which the stack does not write, and it runs as `macos-mcp serve` (with
+    `<data root>/state/approvals/DESKTOP-EXEC-ALLOW` allows it. MacOS-MCP 0.4.6 has no exclude flag; its own config.toml `[tools] exclude` removes a tool, which the stack does not write, and it runs as `macos-mcp serve` (with
     no subcommand it exits with usage, measured); it checks its Accessibility grant (and a System Events
     probe it calls Screen Recording) before it serves and EXITS when one is missing - the server fails to
     connect and System Settings opens - unless `MACOS_MCP_SKIP_PERMISSION_CHECK=1` starts it ungranted. On

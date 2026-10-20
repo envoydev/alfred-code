@@ -73,7 +73,7 @@ test('S2: each APPROVED-stamp instruction carries the auto-mode carve-out', () =
 // S3: Claude Code's askUserQuestionTimeout auto-continues an unanswered question; such a close is no answer.
 test('S3: every stamp site says an idle-timeout close is no answer', () =>
 {
-    const stampers = skillFiles().filter((f) => /flow\/APPROVAL/.test(f.text) && /`APPROVED (?:<[^>]+>|small-tier|staged) - "/.test(f.text));
+    const stampers = skillFiles().filter((f) => /state\/approvals\/APPROVAL/.test(f.text) && /`APPROVED (?:<[^>]+>|small-tier|staged) - "/.test(f.text));
     assert.ok(stampers.length >= 9);
     for (const f of stampers)
     {

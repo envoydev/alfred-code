@@ -81,7 +81,7 @@
     "key": "ALFRED_CODE_MONITOR"
    },
    "why": "the monitor-session hook is gone (the user's ruling of 2026-10-16): seeded `log`, its notes never reached the model, and ten days of rows (87 notes in 70 sessions - 67 of them the 80% context note fresh-session-start already covers) did not pay for the wait it added to every tool call. Nothing reads the key any more, and a dead key in the env block reads as a knob that still works",
-   "then": "nothing - its old `<docs-path>/flow/monitor-*` turn logs are inert and can be deleted by hand"
+   "then": "nothing - its old `<data root>/state/sessions/monitor-*` turn logs are inert and can be deleted by hand"
   },
   {
    "id": "fresh-session-1m-renamed",

@@ -74,7 +74,7 @@ module.exports = defineConfig(
 
 - Run `ng lint` and `prettier --check` in CI to block non-conforming PRs. A typical `.prettierrc`: `singleQuote: true`, `printWidth` to team taste.
 - eslint-config-prettier must come last so it disables ESLint formatting rules that conflict with Prettier. Prettier owns formatting; ESLint owns correctness and Angular-specific rules.
-- Where the house config-protection guard runs, an edit to an existing lint or format config (ESLint, Prettier, `.editorconfig`) is blocked until the user allows it - ask once, never route around the block, and on Allow the receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path.
+- Where the house config-protection guard runs, an edit to an existing lint or format config (ESLint, Prettier, `.editorconfig`) is blocked until the user allows it - ask once, never route around the block, and on Allow the receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW` takes the file's path.
 
 ## Modern vs legacy examples
 

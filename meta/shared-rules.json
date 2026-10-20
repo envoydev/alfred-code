@@ -1820,7 +1820,7 @@
       ]
     },
     "approval-gate-stamp": {
-      "_note": "The implementer-dispatch approval stamp (guard-unapproved-dispatch hook): path <docs-path>/flow/APPROVAL, first line APPROVED <id> - user's words verbatim (a hand-written AUTO only under the two solve flows' typed waiver, no-stops-waiver-solve-flows; under auto-mode the hook's own AUTO stamp stands), delete on run completion. Canonical in execution-modes.md; restated at every implementer-dispatch site (the version-upgrade EXECUTE step included) so the stamp format survives when task-solve-cross is not installed.",
+      "_note": "The implementer-dispatch approval stamp (guard-unapproved-dispatch hook): path <data root>/state/approvals/APPROVAL, first line APPROVED <id> - user's words verbatim (a hand-written AUTO only under the two solve flows' typed waiver, no-stops-waiver-solve-flows; under auto-mode the hook's own AUTO stamp stands), delete on run completion. Canonical in execution-modes.md; restated at every implementer-dispatch site (the version-upgrade EXECUTE step included) so the stamp format survives when task-solve-cross is not installed.",
       "owner": {
         "file": "stack/skills/task-solve-cross/references/execution-modes.md",
         "marker": "an earlier session's leftover stamp is not consent"
@@ -2236,7 +2236,7 @@
       ]
     },
     "small-tier-dispatch-consent": {
-      "_note": "In DELEGATED mode the mode ask's answer is the dispatch consent for small-tier work - the loop stamps flow/APPROVAL (APPROVED small-tier) the moment it lands, rewritten as substantial approvals arrive, because the dispatch guard is tier-blind. loop-code-quality's AUTO-stamp is the same policy in its own shape, deliberately not pinned here.",
+      "_note": "In DELEGATED mode the mode ask's answer is the dispatch consent for small-tier work - the loop stamps state/approvals/APPROVAL (APPROVED small-tier) the moment it lands, rewritten as substantial approvals arrive, because the dispatch guard is tier-blind. loop-code-quality's AUTO-stamp is the same policy in its own shape, deliberately not pinned here.",
       "owner": {
         "file": "stack/skills/loop-architecture-quality/SKILL.md",
         "marker": "APPROVED small-tier"
@@ -2253,7 +2253,7 @@
       ]
     },
     "commit-gate-receipt": {
-      "_note": "The pre-commit checkpoint receipt: <docs-path>/flow/COMMIT-GATE, first line VERIFIED <phrase> / WAIVED - \"<words>\". habits-commit-checkpoint canonical (lifecycle incl. clearing - the protocol left the always-on alfred-git rule in 0.2.71, which now only points at the skill); verify-code writes it as the checkpoint reviewer; alfred-security binds the security-review pass; the hook enforces.",
+      "_note": "The pre-commit checkpoint receipt: <data root>/state/approvals/COMMIT-GATE, first line VERIFIED <phrase> / WAIVED - \"<words>\". habits-commit-checkpoint canonical (lifecycle incl. clearing - the protocol left the always-on alfred-git rule in 0.2.71, which now only points at the skill); verify-code writes it as the checkpoint reviewer; alfred-security binds the security-review pass; the hook enforces.",
       "owner": {
         "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
         "marker": "VERIFIED <what was reviewed, one phrase>"
@@ -2363,7 +2363,7 @@
       ]
     },
     "generated-docs-root-placement": {
-      "_note": "Every assistant-created doc lands under <docs-path>; the sibling-repo orientation doc lives in the awareness/ domain, every OTHER sibling-repo doc (cross-repo plans/change requests/issue notes/run recipes) in the plain related-context/ folder, and a location outside the root only on the user's asked-first approval - never silently. Canonical in the docs-root baseline; the awareness capture's related-projects reference restates only the outside-root approval (its related-context/ copy went in the 2026-10-08 audit - the always-on baseline carries it). The capabilities rule template carried a copy until the 2026-09-29 audit (I24): both are always-on in the same session, so the copy was pure rent.",
+      "_note": "Every assistant-created doc lands under <docs-path>; the sibling-repo orientation doc lives in the awareness/ domain, every OTHER sibling-repo doc (cross-repo plans/change requests/issue notes/run recipes, task cards included) in work/cross-project-tasks/ (the related-context/ drop box until 2.8.0), and a location outside the root only on the user's asked-first approval - never silently. Canonical in the docs-root baseline; the awareness capture's related-projects reference restates only the outside-root approval (its related-context/ copy went in the 2026-10-08 audit - the always-on baseline carries it). The capabilities rule template carried a copy until the 2026-09-29 audit (I24): both are always-on in the same session, so the copy was pure rent.",
       "owner": {
         "file": "stack/rules/alfred-docs-root.md",
         "marker": "only on the user's asked-first approval"
@@ -3605,7 +3605,7 @@
       ]
     },
     "hook-block-telemetry": {
-      "_note": "One JSONL row per BLOCK, appended by every guard hook to <docs-path>/hook-blocks/<session>.jsonl. A block costs its denial text plus the retried turn, so a FALSE block is 10-100x the gate's own cost (measured 2026-09-04: a hook runs in 22-25ms, almost all node spawn) - and the transcript records only WHICH TOOL was denied, never which hook denied it. scripts/analyze-usage.js --hook-blocks reads the ledger. Each row carries `agent` (a seat's id, null for the main session) and `tool_use_id`, so HOOK BLOCKS splits main from seat and joins a row to its call. The block is identical in every guard hook that blocks and must stay that way: it wraps process.exit and stderr.write, and it is best-effort in both directions - telemetry never changes a verdict and never throws.",
+      "_note": "One JSONL row per BLOCK, appended by every guard hook to <data root>/statistics/hook-blocks/<session>.jsonl. A block costs its denial text plus the retried turn, so a FALSE block is 10-100x the gate's own cost (measured 2026-09-04: a hook runs in 22-25ms, almost all node spawn) - and the transcript records only WHICH TOOL was denied, never which hook denied it. scripts/analyze-usage.js --hook-blocks reads the ledger. Each row carries `agent` (a seat's id, null for the main session) and `tool_use_id`, so HOOK BLOCKS splits main from seat and joins a row to its call. The block is identical in every guard hook that blocks and must stay that way: it wraps process.exit and stderr.write, and it is best-effort in both directions - telemetry never changes a verdict and never throws.",
       "owner": {
         "file": "stack/hooks/guard-cross-project-write.js",
         "marker": "block telemetry (shared by every guard hook; keep the copies identical)"
@@ -3824,7 +3824,7 @@
       ]
     },
     "secret-read-allow-receipt": {
-      "_note": "The secret guard's block ends in ONE AskUserQuestion (presence only - recommended / show or use the value this session / drop), and the 'show' answer is honoured through a receipt at <docs-path>/flow/SECRET-READ-ALLOW - a file path, a variable NAME or `*`, this session's own, under 8h. The guard owns the path (it resolves and reads the file); the stop contract reads the same file so a consented exposure is not re-asked for rotation; the repo hook notes name it (the security baseline's copy went in audit 2026-10-14 RU03 - the guard's denial carries the ask and the receipt at the moment of need). A rename in one place leaves the model writing a receipt nothing reads.",
+      "_note": "The secret guard's block ends in ONE AskUserQuestion (presence only - recommended / show or use the value this session / drop), and the 'show' answer is honoured through a receipt at <data root>/state/approvals/SECRET-READ-ALLOW - a file path, a variable NAME or `*`, this session's own, under 8h. The guard owns the path (it resolves and reads the file); the stop contract reads the same file so a consented exposure is not re-asked for rotation; the repo hook notes name it (the security baseline's copy went in audit 2026-10-14 RU03 - the guard's denial carries the ask and the receipt at the moment of need). A rename in one place leaves the model writing a receipt nothing reads.",
       "owner": {
         "file": "stack/hooks/guard-secret-value.js",
         "marker": "'flow', 'SECRET-READ-ALLOW'"
@@ -3836,12 +3836,12 @@
         },
         {
           "file": ".claude/rules/repo-hooks.md",
-          "marker": "`<docs-path>/flow/SECRET-READ-ALLOW` receipt"
+          "marker": "`<data root>/state/approvals/SECRET-READ-ALLOW` receipt"
         }
       ]
     },
     "cross-write-allow-receipt": {
-      "_note": "The cross-project write guard's block ends in ONE AskUserQuestion (task card - recommended / allow that tree for this session / drop), and the 'allow' answer is honoured through a receipt at <docs-path>/flow/CROSS-WRITE-ALLOW - one root per line, this session's own, under 8h, a root containing the project dropped. The hook owns the path (it resolves and reads the file); the docs-root rule and the repo hook notes name the same path (the habits-commit-checkpoint copy went in the 2026-10-08 audit - the guard's denial carries the ask and the receipt at the moment of need). A rename in one place leaves the model writing a receipt the guard never reads.",
+      "_note": "The cross-project write guard's block ends in ONE AskUserQuestion (task card - recommended / allow that tree for this session / drop), and the 'allow' answer is honoured through a receipt at <data root>/state/approvals/CROSS-WRITE-ALLOW - one root per line, this session's own, under 8h, a root containing the project dropped. The hook owns the path (it resolves and reads the file); the docs-root rule and the repo hook notes name the same path (the habits-commit-checkpoint copy went in the 2026-10-08 audit - the guard's denial carries the ask and the receipt at the moment of need). A rename in one place leaves the model writing a receipt the guard never reads.",
       "owner": {
         "file": "stack/hooks/guard-cross-project-write.js",
         "marker": "'flow', 'CROSS-WRITE-ALLOW'"
@@ -3849,16 +3849,16 @@
       "sites": [
         {
           "file": "stack/rules/alfred-docs-root.md",
-          "marker": "`<docs-path>/flow/CROSS-WRITE-ALLOW` receipt"
+          "marker": "`<data root>/state/approvals/CROSS-WRITE-ALLOW` receipt"
         },
         {
           "file": ".claude/rules/repo-hooks.md",
-          "marker": "`<docs-path>/flow/CROSS-WRITE-ALLOW` receipt"
+          "marker": "`<data root>/state/approvals/CROSS-WRITE-ALLOW` receipt"
         }
       ]
     },
     "cross-project-task-card-home": {
-      "_note": "A change another repo needs is handed off as a task card at <docs-path>/cross-project-tasks/<other-project>.md, never written into that repo (guard-cross-project-write blocks the write). The hook is canonical - it prints the path in its block text; the docs-root rule lists the home, the habits-commit-checkpoint skill binds the receipt rule to it, and the three flows that hand off write the card.",
+      "_note": "A change another repo needs is handed off as a task card at <docs-path>/work/cross-project-tasks/<other-project>.md, never written into that repo (guard-cross-project-write blocks the write). The hook is canonical - it prints the path in its block text; the docs-root rule lists the home, the habits-commit-checkpoint skill binds the receipt rule to it, and the three flows that hand off write the card.",
       "owner": {
         "file": "stack/hooks/guard-cross-project-write.js",
         "marker": "'cross-project-tasks', '<other-project>.md'"
@@ -3866,23 +3866,23 @@
       "sites": [
         {
           "file": "stack/rules/alfred-docs-root.md",
-          "marker": "a change it must make is a task card in `cross-project-tasks/`"
+          "marker": "a change it must make (a task card), lives in `work/cross-project-tasks/`"
         },
         {
           "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
-          "marker": "its change is a task card under `<docs-path>/cross-project-tasks/`"
+          "marker": "its change is a task card under `<docs-path>/work/cross-project-tasks/`"
         },
         {
           "file": "stack/skills/issue-diagnoser/SKILL.md",
-          "marker": "a task card under `<docs-path>/cross-project-tasks/`"
+          "marker": "a task card under `<docs-path>/work/cross-project-tasks/`"
         },
         {
           "file": "stack/skills/task-solve/SKILL.md",
-          "marker": "a task card under `<docs-path>/cross-project-tasks/`"
+          "marker": "a task card under `<docs-path>/work/cross-project-tasks/`"
         },
         {
           "file": "stack/skills/capture-awareness/references/related-projects.md",
-          "marker": "Write the card at `<docs-path>/cross-project-tasks/<other-project>.md`"
+          "marker": "Write the card at `<docs-path>/work/cross-project-tasks/<other-project>.md`"
         }
       ]
     },
@@ -5344,77 +5344,36 @@
       "_note": "The APPROVAL gate stamp is written with the Write tool at the ABSOLUTE ${CLAUDE_PROJECT_DIR} path (substituted in skill content, CC >= 2.1.196) (a relative path landed in the wrong cwd; the shell route is masked) - restated in every flow that writes the stamp guard-unapproved-dispatch.js reads.",
       "owner": {
         "file": "stack/skills/task-solve/SKILL.md",
-        "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool"
+        "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/APPROVAL` with the Write tool"
       },
       "sites": [
         {
           "file": "stack/skills/task-implement/SKILL.md",
-          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool"
+          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/APPROVAL` with the Write tool"
         },
         {
           "file": "stack/skills/loop-architecture-quality/SKILL.md",
-          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool"
+          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/APPROVAL` with the Write tool"
         },
         {
           "file": "stack/skills/task-build-from-scratch/SKILL.md",
-          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool"
+          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/APPROVAL` with the Write tool"
         },
         {
           "file": "stack/skills/loop-test-coverage/SKILL.md",
-          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool"
+          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/APPROVAL` with the Write tool"
         },
         {
           "file": "stack/skills/task-version-upgrade/SKILL.md",
-          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool"
+          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/APPROVAL` with the Write tool"
         },
         {
           "file": "stack/skills/loop-code-quality/references/staged-mode.md",
-          "marker": "written with the Write tool at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL`"
+          "marker": "written with the Write tool at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/APPROVAL`"
         },
         {
           "file": "stack/skills/loop-code-quality/SKILL.md",
-          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool"
-        }
-      ]
-    },
-    "approval-stamp-protected-path": {
-      "_note": "The APPROVAL stamp's protected-path clause is CONDITIONAL: only a docs root kept under .claude/ (the old .claude/docs default) makes the stamp write a protected-path write, and the prompt's session option is quoted as code.claude.com/docs/en/permission-modes ('Protected paths') words it. The 2.1.4 audit found nine copies still saying every write prompts and quoting a label that does not exist.",
-      "owner": {
-        "file": "stack/skills/task-solve/references/step-mechanics.md",
-        "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
-      },
-      "sites": [
-        {
-          "file": "stack/skills/loop-architecture-quality/SKILL.md",
-          "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
-        },
-        {
-          "file": "stack/skills/loop-code-quality/SKILL.md",
-          "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
-        },
-        {
-          "file": "stack/skills/loop-code-quality/references/delegated-mode.md",
-          "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
-        },
-        {
-          "file": "stack/skills/loop-test-coverage/SKILL.md",
-          "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
-        },
-        {
-          "file": "stack/skills/task-build-from-scratch/SKILL.md",
-          "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
-        },
-        {
-          "file": "stack/skills/task-implement/SKILL.md",
-          "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
-        },
-        {
-          "file": "stack/skills/task-solve-cross/references/execution-modes.md",
-          "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
-        },
-        {
-          "file": "stack/skills/task-version-upgrade/SKILL.md",
-          "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
+          "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/APPROVAL` with the Write tool"
         }
       ]
     },
@@ -5645,15 +5604,15 @@
       ]
     },
     "push-gate-receipt": {
-      "_note": "The publish half of the commit ceremony: <docs-path>/flow/PUSH-GATE, the SAME five-line shape as COMMIT-GATE (VERIFIED/WAIVED, authorized:, head:, spec:, live-probe:), written as its own call before git push / gh pr merge and cleared after. alfred-git names it, habits-commit-checkpoint owns the protocol, guard-ungated-commit enforces it - a field added to one half drifts from the others without this pin (its twin commit-gate-receipt was registered, this one was not).",
+      "_note": "The publish half of the commit ceremony: <data root>/state/approvals/PUSH-GATE, the SAME five-line shape as COMMIT-GATE (VERIFIED/WAIVED, authorized:, head:, spec:, live-probe:), written as its own call before git push / gh pr merge and cleared after. alfred-git names it, habits-commit-checkpoint owns the protocol, guard-ungated-commit enforces it - a field added to one half drifts from the others without this pin (its twin commit-gate-receipt was registered, this one was not).",
       "owner": {
         "file": "stack/rules/alfred-git.md",
-        "marker": "same-shaped `<docs-path>/flow/PUSH-GATE` receipt"
+        "marker": "same-shaped `<data root>/state/approvals/PUSH-GATE` receipt"
       },
       "sites": [
         {
           "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
-          "marker": "their own receipt, `<docs-path>/flow/PUSH-GATE`, in the SAME five-line shape"
+          "marker": "their own receipt, `<data root>/state/approvals/PUSH-GATE`, in the SAME five-line shape"
         },
         {
           "file": "stack/hooks/guard-ungated-commit.js",
@@ -5758,12 +5717,12 @@
       "_note": "The DISCARD-ALLOW receipt is the escape from guard-catastrophic-rm.js's denial: the guard READS it, and its denial carries the whole route - the three-option ask, the receipt path and spelling, the retry - at the moment of need ('no prose copy to consult'). The habits-commit-checkpoint copy went in the 2026-10-08 audit: that skill never fires on a discard, so it was paid on every commit for a receipt written a few times a year. The repo hook notes name the same path, pinned here so a rename in the hook re-syncs them.",
       "owner": {
         "file": "stack/hooks/guard-catastrophic-rm.js",
-        "marker": "path.resolve(root, docsRootEnv(), 'flow', 'DISCARD-ALLOW')"
+        "marker": "layout.findState(root, 'approvals', 'DISCARD-ALLOW')"
       },
       "sites": [
         {
           "file": ".claude/rules/repo-hooks.md",
-          "marker": "`<docs-path>/flow/DISCARD-ALLOW`"
+          "marker": "`<data root>/state/approvals/DISCARD-ALLOW`"
         }
       ]
     },
@@ -6271,28 +6230,28 @@
       "_note": "A skill that prescribes an edit guard-config-protection.js blocks names the gate: a change to a strictness key in an existing tsconfig, a loosening of one in an existing MSBuild file (a pure MSBuild tightening passes - audit 2026-10-11 SD16), or any edit to an existing .editorconfig or lint / format config, needs the user's allowance - asked with the count the change surfaces, never routed around. typescript was the precedent (owner); dotnet-project-setup (Nullable) and dotnet-code-quality (the WarningsAsErrors waves) restate it with their own keys, and nx plus the TypeScript and Angular style references name the lint / format half (audit 2026-10-14 SKS15). 2.1.4 audit I44.",
       "owner": {
         "file": "stack/skills/typescript/SKILL.md",
-        "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the error count the flag surfaces, and never route around the block; on Allow, the guard's receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path"
+        "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the error count the flag surfaces, and never route around the block; on Allow, the guard's receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW` takes the file's path"
       },
       "sites": [
         {
           "file": "stack/skills/dotnet-project-setup/SKILL.md",
-          "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the flag surfaces, and never route around the block; on Allow, the guard's receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path"
+          "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the flag surfaces, and never route around the block; on Allow, the guard's receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW` takes the file's path"
         },
         {
           "file": "stack/skills/dotnet-code-quality/SKILL.md",
-          "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the wave surfaces, and never route around the block; on Allow, the guard's receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path"
+          "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the wave surfaces, and never route around the block; on Allow, the guard's receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW` takes the file's path"
         },
         {
           "file": "stack/skills/nx/SKILL.md",
-          "marker": "until the user allows it - ask once, never route around the block, and on Allow the receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path"
+          "marker": "until the user allows it - ask once, never route around the block, and on Allow the receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW` takes the file's path"
         },
         {
           "file": "stack/skills/typescript/references/typescript-style.md",
-          "marker": "until the user allows it - ask once, never route around the block, and on Allow the receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path"
+          "marker": "until the user allows it - ask once, never route around the block, and on Allow the receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW` takes the file's path"
         },
         {
           "file": "stack/skills/angular-conventions/references/angular-style.md",
-          "marker": "until the user allows it - ask once, never route around the block, and on Allow the receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path"
+          "marker": "until the user allows it - ask once, never route around the block, and on Allow the receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW` takes the file's path"
         }
       ]
     },
@@ -7003,80 +6962,80 @@
       "_note": "auto-mode's contract in every task, capture and loop skill and issue-diagnoser (the user's rulings, 2026-10-14, 2026-10-15 - the issue family joined, and the word counts only as the first one after the command - and 2026-10-17: the capture family joined, the flag is spelled `--auto-mode`, and only the close of the run the stamp's `skill:` line names deletes it, so a capture a loop runs leaves the loop's stamp): the hooks stamp the run, answer each ask that marks one Recommended option and keep the session going (guard-fresh-session-start.js injects the full contract at the run's start, guard-stop-contract.js) - each skill carries the same short paragraph, so the word reads as a mode and never a target wherever the skill is copied; the two flows whose SKILL.md sits at its size cap carry it in the reference they read before their first stop, and task-design - preloaded into every designer seat, which never runs one - not at all.",
       "owner": {
         "file": "stack/skills/loop-code-quality/SKILL.md",
-        "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+        "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
       },
       "sites": [
         {
           "file": "stack/skills/task-build-from-scratch/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
         },
         {
           "file": "stack/skills/task-version-upgrade/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
         },
         {
           "file": "stack/skills/task-implement/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
         },
         {
           "file": "stack/skills/task-verify-plan/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
         },
         {
           "file": "stack/skills/task-verify-code/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
         },
         {
           "file": "stack/skills/loop-architecture-quality/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
         },
         {
           "file": "stack/skills/loop-test-coverage/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
         },
         {
           "file": "stack/skills/task-solve/references/step-mechanics.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
         },
         {
           "file": "stack/skills/task-solve-cross/references/execution-modes.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
         },
         {
           "file": "stack/skills/issue-diagnoser/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
         },
         {
           "file": "stack/skills/capture-architecture-quality/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
         },
         {
           "file": "stack/skills/capture-architecture/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
         },
         {
           "file": "stack/skills/capture-awareness/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
         },
         {
           "file": "stack/skills/capture-code-quality/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
         },
         {
           "file": "stack/skills/capture-code-style/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
         },
         {
           "file": "stack/skills/capture-first-look/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
         },
         {
           "file": "stack/skills/capture-test-coverage/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
         },
         {
           "file": "stack/skills/capture-usage-report/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
+          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
         }
       ]
     },
@@ -7121,12 +7080,12 @@
       "_note": "The final-gate anti-gaming sweep's four commands (audit 2026-10-14 SKF-16): the code-quality loop owns them, and the coverage loop vendors the same list, since either loop may be installed alone and its never-weaken rule needs a mechanical check behind it. Each copy keeps its own intro (where the baseline is recorded) and report line; the commands are the shared rule.",
       "owner": {
         "file": "stack/skills/loop-code-quality/references/anti-gaming-sweep.md",
-        "marker": "1. `git diff -M --stat <BASE>` - the shape of the run. Rename detection is not optional: a structure stage makes the diff rename-heavy, and a pure rename (R100, no content change) is verified by name alone. 2. `git diff -M <BASE>` - every remaining content hunk, paged deterministically until exhausted. Never cap it (`head`, first-N lines): a gamed bar past the cap is exactly the one that survives. 3. `git ls-files --others --exclude-standard`, minus the paths in `<docs-path>/flow/untracked-at-start-<HEAD sha>` (the record the session start wrote; absent = none to subtract) - the files untracked since the run began. A plain diff is blind to brand-new files, so a gamed bar added in one would never surface. 4. Read each file left by 3 in full - it has no diff to page."
+        "marker": "1. `git diff -M --stat <BASE>` - the shape of the run. Rename detection is not optional: a structure stage makes the diff rename-heavy, and a pure rename (R100, no content change) is verified by name alone. 2. `git diff -M <BASE>` - every remaining content hunk, paged deterministically until exhausted. Never cap it (`head`, first-N lines): a gamed bar past the cap is exactly the one that survives. 3. `git ls-files --others --exclude-standard`, minus the paths in `<data root>/state/sessions/untracked-at-start-<HEAD sha>` (the record the session start wrote; absent = none to subtract) - the files untracked since the run began. A plain diff is blind to brand-new files, so a gamed bar added in one would never surface. 4. Read each file left by 3 in full - it has no diff to page."
       },
       "sites": [
         {
           "file": "stack/skills/loop-test-coverage/references/anti-gaming-sweep.md",
-          "marker": "1. `git diff -M --stat <BASE>` - the shape of the run. Rename detection is not optional: a structure stage makes the diff rename-heavy, and a pure rename (R100, no content change) is verified by name alone. 2. `git diff -M <BASE>` - every remaining content hunk, paged deterministically until exhausted. Never cap it (`head`, first-N lines): a gamed bar past the cap is exactly the one that survives. 3. `git ls-files --others --exclude-standard`, minus the paths in `<docs-path>/flow/untracked-at-start-<HEAD sha>` (the record the session start wrote; absent = none to subtract) - the files untracked since the run began. A plain diff is blind to brand-new files, so a gamed bar added in one would never surface. 4. Read each file left by 3 in full - it has no diff to page."
+          "marker": "1. `git diff -M --stat <BASE>` - the shape of the run. Rename detection is not optional: a structure stage makes the diff rename-heavy, and a pure rename (R100, no content change) is verified by name alone. 2. `git diff -M <BASE>` - every remaining content hunk, paged deterministically until exhausted. Never cap it (`head`, first-N lines): a gamed bar past the cap is exactly the one that survives. 3. `git ls-files --others --exclude-standard`, minus the paths in `<data root>/state/sessions/untracked-at-start-<HEAD sha>` (the record the session start wrote; absent = none to subtract) - the files untracked since the run began. A plain diff is blind to brand-new files, so a gamed bar added in one would never surface. 4. Read each file left by 3 in full - it has no diff to page."
         }
       ]
     },
@@ -7254,12 +7213,12 @@
       "_note": "The typed no-stops waiver (a hand-written AUTO stamp) lives ONLY in the two solve flows, in the same words - the user's ruling of 2026-10-20 (stack audit S1): one request had four behaviours across the flows, and a hand-written AUTO makes every person-directed hook read the session as unattended for 8h. Every other flow answers the same words with `--auto-mode` (no-stops-points-to-auto-mode). task-solve-cross carries it in references/execution-modes.md, read before its first stop, because its SKILL.md sits at its 18,000-char cap.",
       "owner": {
         "file": "stack/skills/task-solve/SKILL.md",
-        "marker": "When the user explicitly asks for a no-stops run ('run all recommended without asking me'), never self-authorize silently - write `<docs-path>/flow/APPROVAL` with first line `AUTO - \"<their words, verbatim>\"`, say in one line that stops are waived under it, and take each stop's recommended option; the pre-commit checkpoint and its receipt still apply. A session past the trigger, or one that already closed a cycle, first puts ONE ask - the fresh-session resume recommended - and AUTO starts after its answer."
+        "marker": "When the user explicitly asks for a no-stops run ('run all recommended without asking me'), never self-authorize silently - write `<data root>/state/approvals/APPROVAL` with first line `AUTO - \"<their words, verbatim>\"`, say in one line that stops are waived under it, and take each stop's recommended option; the pre-commit checkpoint and its receipt still apply. A session past the trigger, or one that already closed a cycle, first puts ONE ask - the fresh-session resume recommended - and AUTO starts after its answer."
       },
       "sites": [
         {
           "file": "stack/skills/task-solve-cross/references/execution-modes.md",
-          "marker": "When the user explicitly asks for a no-stops run ('run all recommended without asking me'), never self-authorize silently - write `<docs-path>/flow/APPROVAL` with first line `AUTO - \"<their words, verbatim>\"`, say in one line that stops are waived under it, and take each stop's recommended option; the pre-commit checkpoint and its receipt still apply. A session past the trigger, or one that already closed a cycle, first puts ONE ask - the fresh-session resume recommended - and AUTO starts after its answer."
+          "marker": "When the user explicitly asks for a no-stops run ('run all recommended without asking me'), never self-authorize silently - write `<data root>/state/approvals/APPROVAL` with first line `AUTO - \"<their words, verbatim>\"`, say in one line that stops are waived under it, and take each stop's recommended option; the pre-commit checkpoint and its receipt still apply. A session past the trigger, or one that already closed a cycle, first puts ONE ask - the fresh-session resume recommended - and AUTO starts after its answer."
         }
       ]
     },

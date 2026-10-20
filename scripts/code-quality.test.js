@@ -1,6 +1,6 @@
 'use strict';
 // Task 23: the code-quality capture and its seat mirror the architecture-quality pair, judged against
-// the rules the quality loop already carries - the numbered prompts under <docs-path>/loops/, the
+// the rules the quality loop already carries - the numbered prompts under <docs-path>/quality/loops/, the
 // convention rules and the recorded code style. The quality loop takes the architecture loop's shape
 // (analyze -> fix by tier -> loop), and an existing loops/ folder keeps working both ways: as the
 // capture's rule source, and through the numbered-prompt run kept as the STAGED mode.
@@ -43,7 +43,7 @@ const SEAT = 'stack/agents/code-quality-analyzer.md';
 function seededLoops()
 {
     const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'code-quality-loops-')));
-    const loops = path.join(dir, '.claude', 'docs', 'loops');
+    const loops = path.join(dir, '.claude', 'docs', 'quality', 'loops');
     fs.mkdirSync(loops, { recursive: true });
     for (const f of ['0.fix-discipline.md', '1.structure.md', '2.code-quality.md', '3.naming.md', '4.logging.md', '5.comments.md',
         '10.security.md', 'RUN-STATE.md', 'DECISIONS.md', 'notes.md'])
@@ -155,7 +155,7 @@ test('the capture writes only quality/CODE-ASSESSMENT.md, fresh every run, and O
     assert.match(b, /The only file you write/);
     assert.match(b, /no `watch\.json`/);
     assert.match(b, /code-quality-analyzer/, 'the seat it fans out');
-    assert.match(b, /`<docs-path>\/loops\/`/, 'rule source: the numbered prompts');
+    assert.match(b, /`<docs-path>\/quality\/loops\/`/, 'rule source: the numbered prompts');
     assert.match(b, /`<docs-path>\/code-style\/CODE-STYLE\.md`/, 'rule source: the recorded style');
     assert.match(b, /convention rules/, 'rule source: the stack convention rules');
     assert.match(b, /No `loops\/` folder[^.]*: say so[^.]*convention rules and `CODE-STYLE\.md` alone/, 'the fallback is said, not silent');
@@ -241,7 +241,7 @@ test('quality/CODE-ASSESSMENT.md is no docs domain - the engine never sections o
 
 test('an existing loops folder is the capture\'s rule source: numbered stages in numeric order, never the fix discipline or the run records', () =>
 {
-    const block = bashBlocks(read(`${CAPTURE}/SKILL.md`)).find((b) => b.includes('<docs-path>/loops'));
+    const block = bashBlocks(read(`${CAPTURE}/SKILL.md`)).find((b) => b.includes('<docs-path>/quality/loops'));
     assert.ok(block, 'the capture ships its rule-source command');
     const script = block.replace(/<docs-path>/g, '.claude/docs');
 

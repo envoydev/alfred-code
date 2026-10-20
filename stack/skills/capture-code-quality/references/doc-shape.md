@@ -26,7 +26,7 @@ other; on a local-only docs root it is local too.
 A rule is a checkable statement of what the code must or must not do, taken from one of three sources -
 never from recall, and never from a reference the project did not install:
 
-1. **The stage prompts under `<docs-path>/loops/`** - each `<n>.<name>.md` with `n` above zero. Its 'Look
+1. **The stage prompts under `<docs-path>/quality/loops/`** - each `<n>.<name>.md` with `n` above zero. Its 'Look
    for' bullets are the rules, its severity paragraph their scale, its `Bar:` line the bar, and its 'Not
    a finding' list is part of the rule too. The `0.`-numbered file is FIX discipline and never judged
    against; un-numbered files (`RUN-STATE.md`, `DECISIONS.md`, notes) are run records, never rules.

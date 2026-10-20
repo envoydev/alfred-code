@@ -137,7 +137,7 @@ process.stdin.on('end', () => {
     let out = envOf(process.env, 'INSTRUMENT_LOG');
     if (!out) {
       try { out = require('./layout.js').statsPath(dir, ['tools-usage', `${sid}.jsonl`]); }
-      catch { out = path.resolve(dir, docsRootEnv(), 'tools-usage', `${sid}.jsonl`); }
+      catch { out = path.resolve(dir, docsRootEnv(), 'tools-usage', `${sid}.jsonl`); } // pre-2.8.0, no layout.js here
     }
     fs.mkdirSync(path.dirname(out), { recursive: true });
     fs.appendFileSync(out, JSON.stringify(rec) + '\n');

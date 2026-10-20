@@ -122,10 +122,10 @@ test('I25: the four captures say where the docs land by the docs engine\'s own s
     assert.match(flat(read('stack/skills/capture-test-coverage/SKILL.md')), /`mode: git`[^.]*raw/, 'test-coverage says the raw files are committed under git mode');
 });
 
-// ---- I26: the APPROVAL stamp's protected-path sentence is conditional and pinned at all nine sites ---------------
-const PROTECTED = 'Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: '
-    + 'a prompt for it offers \'Yes, and allow Claude to edit files in this project\'s .claude folder for this session\' - '
-    + 'take that, since `permissions.allow` cannot pre-approve it.';
+// ---- I26: the APPROVAL stamp's protected-path sentence is gone ----------------------------------------------------
+// It was conditional on a docs root kept under .claude/. Since 2.8.0 the stamp lives in the data root's state/approvals/
+// (stack/hooks/layout.js), and the data root is never under .claude/ (data-root.js checkDataPath), so no stamp write is
+// a protected-path write and the clause would send the model hunting for a prompt that never comes.
 const STAMP_SITES = [
     'stack/skills/loop-architecture-quality/SKILL.md', 'stack/skills/loop-code-quality/SKILL.md',
     'stack/skills/loop-code-quality/references/delegated-mode.md', 'stack/skills/loop-test-coverage/SKILL.md',
@@ -133,14 +133,12 @@ const STAMP_SITES = [
     'stack/skills/task-solve/references/step-mechanics.md', 'stack/skills/task-solve-cross/references/execution-modes.md',
     'stack/skills/task-version-upgrade/SKILL.md',
 ];
-test('I26: the stale prompt label is gone and every stamp site carries the one conditional sentence', () =>
+test('I26: no stamp site names a protected-path prompt, and every site names the data root\'s approvals/ home', () =>
 {
-    const stale = skillFiles().filter((f) => /its own settings for this session/.test(flat(fs.readFileSync(f, 'utf8')))).map((f) => path.relative(ROOT, f));
+    const stale = skillFiles().filter((f) => /its own settings for this session|still sits under `\.claude\/`|edit files in this project's \.claude folder/.test(flat(fs.readFileSync(f, 'utf8')))).map((f) => path.relative(ROOT, f));
     assert.deepStrictEqual(stale, []);
-    for (const rel of STAMP_SITES) assert.ok(flat(read(rel)).includes(PROTECTED), `${rel}: the conditional sentence`);
-    const entry = shared()['approval-stamp-protected-path'];
-    assert.ok(entry, 'pinned in shared-rules.json');
-    assert.deepStrictEqual(copiesOf(entry).sort(), [...STAMP_SITES].sort(), 'the lint holds every copy');
+    for (const rel of STAMP_SITES) assert.match(flat(read(rel)), /<data root>\/state\/approvals\/APPROVAL/, `${rel}: the stamp's home`);
+    assert.strictEqual(shared()['approval-stamp-protected-path'], undefined, 'the shared row went with the sentence');
 });
 
 // ---- I22: the plan-file rule names the design flow's handoff ---------------------------------------------------

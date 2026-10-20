@@ -3,7 +3,7 @@
 // ALFRED_CODE_DOCS_PATH and the rest into every tool call), its CLAUDE_CODE_ENTRYPOINT and possibly its
 // project dir. A hook that reads one of them judges the RUNNER's install - 8 commit-gate cases failed on an
 // inherited docs path - and a hook that writes lands in the runner's tree, or, with CLAUDE_PROJECT_DIR pointed
-// at os.tmpdir(), in `$TMPDIR/<docs-path>/hook-blocks`: a stray folder that broke the benchmark isolation checks.
+// at os.tmpdir(), in `$TMPDIR/<data root>/statistics/hook-blocks`: a stray folder that broke the benchmark isolation checks.
 // One call at the top of each hook suite, after `require('node:test')` and before any env value is set or
 // copied: every inherited stack key, the entrypoint, the plugin root and profile and the project dir go, a
 // fresh project dir comes back for the suite's own spawns, and the suite FAILS if anything it ran wrote under

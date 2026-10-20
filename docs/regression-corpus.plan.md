@@ -56,7 +56,7 @@ fixture bugs and M10 are all 'a guard started blocking honest work'.
 rate. **A gate at 0% on 30,000 real payloads is dead** - that is B1, and it is the single check
 that would have caught the campaign's worst finding. An unexplained rate jump is a false-positive
 engine. Cross-check the corpus rate against the field rate `analyze-usage.js --hook-blocks` tallies
-from `<docs-path>/hook-blocks/`: the two should agree, and a divergence means the replay harness
+from `<data root>/statistics/hook-blocks/`: the two should agree, and a divergence means the replay harness
 has drifted from how the hooks actually run.
 
 **1c. Config matrix.** Run 1a under each config the field actually produces - relative vs absolute
@@ -146,7 +146,7 @@ Four design points worth keeping:
   project's absolute paths against this repo's root would make the cross-project guard block almost
   everything - a fabricated rate, not a measurement.
 - **Scratch isolation is mandatory, and pinned by a test.** The guards write session state and a
-  block row under `<docs-path>/hook-blocks/`. Pointed at a real project, a 120k-payload replay would
+  block row under `<data root>/statistics/hook-blocks/`. Pointed at a real project, a 120k-payload replay would
   forge a field ledger out of history. `ALFRED_CODE_DOCS_PATH` and `CLAUDE_CONFIG_DIR` both go to
   scratch; an empty config dir also stops a real account `settings.json` model id from moving a
   context threshold under the run.

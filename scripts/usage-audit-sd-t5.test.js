@@ -51,9 +51,9 @@ test('SD10 d56562c7#1: an offer to make a change goes through AskUserQuestion; a
 });
 
 // ---- SD09: the hook ledgers are evidence, never regenerable ---------------------------------------------------------
-test('SD09 d9035363#5: a docs cleanup keeps the hook ledgers and flow/ state, or its ask names the loss', () => {
+test('SD09 d9035363#5: a docs cleanup keeps the hook ledgers and state/, or its ask names the loss', () => {
     const t = flat(read('stack/rules/alfred-docs-root.md').replace(/<!--[\s\S]*?-->/g, ''));
-    assert.match(t, /The hooks' ledgers \(`tools-usage\/`, `hook-blocks\/`, `history\/`\) are the only record of what ran and what the guards denied, and `flow\/` is live per-session state: a cleanup keeps them, or its ask names that loss - never 'regenerable'\./);
+    assert.match(t, /The hooks' ledgers \(`<data root>\/statistics\/`, and the session history in `<data root>\/state\/history\/`\) are the only record of what ran and what the guards denied, and the rest of `<data root>\/state\/` is live per-session state: a cleanup keeps them, or its ask names that loss - never 'regenerable'/);
 });
 
 // ---- SD16: a run of unknown length is watched on its failure lines, not only for its exit ---------------------------

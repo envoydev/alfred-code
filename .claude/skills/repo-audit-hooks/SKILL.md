@@ -42,7 +42,7 @@ not part of the shipped catalog.
 - `DEPLOYED`: one or more installed projects' `.claude/settings.json` to compare against `WIRING` (optional). On the default plugin route a deployed settings file carries no stack hook entry, only `ALFRED_CODE_HOOKS_OFF` naming the hooks the walk did not pick.
 - `PLUGIN_HOOKS`: the `hooks/hooks.json` of every plugin the stack installs, read from the install cache (`~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/`, or the registry's `installPath`); default: every plugin in the `plugins` list of `./meta/stack-manifest.json`.
 - `ROOT_LAYERS`: the house rules, skills and agents the hooks are read against (default: `./stack/rules`, `./stack/skills`, `./stack/agents`).
-- `LEDGER`: the guard-block ledger root (default: `<docs-path>/hook-blocks/` under each audited project's generated-docs root).
+- `LEDGER`: the guard-block ledger root (default: `<data root>/statistics/hook-blocks/` under each audited project's generated-docs root).
 - `CORPUS`: a sessions collection root for the block-rate and latency measurements (optional; empty scores evidence from the ledger and the tests alone).
 - `TARGET`: minimum acceptable grade (default: `A` / `9`).
 - `MAX_ITERATIONS`: max remediation passes per hook (default: `4`).
