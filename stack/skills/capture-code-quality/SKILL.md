@@ -51,7 +51,7 @@ Judge <the modules> through the code-quality-analyzer seats or in this session?
 ### 1. ORIENT - the rules, the modules, the prior read
 Collect the rule sources, in precedence order (`references/doc-shape.md` says why that order):
 
-**The user's preferences first.** Where `<docs-path>/preferences/` holds `CODE-PREFERENCES.md` or `ARCHITECTURE-PREFERENCES.md`, their entries are the top rule source: hand them to every seat, and run `node .claude/skills/capture-preferences/scripts/preferences.js check --all` once - each `violation:` line is a located candidate whose rule is `CODE-PREFERENCES.md#c<n>` (or `#a<n>`).
+**The user's preferences first.** Where `<docs-path>/preferences/` holds `CODE-PREFERENCES.md`, its entries are the top rule source: hand them to every seat, and run `node .claude/skills/capture-preferences/scripts/preferences.js check --all --area code` once - each `violation:` line is a located candidate whose rule is `CODE-PREFERENCES.md#c<n>`. An `ARCHITECTURE-PREFERENCES.md` entry is the architecture-quality capture's to record: one a seat meets is a `handoff:` line here, so one breach lives in one doc.
 
 1. **The numbered prompts under `<docs-path>/quality/loops/`** - each stage prompt's 'Look for' bullets, severity scale and bar are rules. List them with the one command below, from the project root - it prints the stage prompts in numeric order and never the `0.`-numbered fix discipline (FIX guidance, not a bar) or the run's own records (`RUN-STATE.md`, `DECISIONS.md`):
 
@@ -60,11 +60,11 @@ Collect the rule sources, in precedence order (`references/doc-shape.md` says wh
    if [ -d "$L" ]; then echo "loops: present"; ls "$L" | grep -E '^[0-9]+\..+\.md$' | grep -Ev '^0+\.' | sort -t. -k1,1n; else echo "loops: absent"; fi
    ```
 
-   No `loops/` folder, or one with no stage prompt: say so in the report and judge against the other sources alone (the preferences docs, `CODE-STYLE.md`, the convention rules) - never seed the folder (that is the quality loop's bootstrap) and never invent a rubric in its place.
+   No `loops/` folder, or one with no stage prompt: say so in the report and judge against the other sources alone (`CODE-PREFERENCES.md`, `CODE-STYLE.md`, the convention rules) - never seed the folder (that is the quality loop's bootstrap) and never invent a rubric in its place.
 2. **`<docs-path>/code-style/CODE-STYLE.md`** - the style the project actually follows; absent, say so.
 3. **The stack's convention rules** - the path-scoped files under `.claude/rules/` whose globs attach a file family to its house convention skill. Only the families the target actually holds count.
 
-**No rule source at all - stop.** No preferences doc, no stage prompt under `loops/`, no `CODE-STYLE.md` and no convention rule attaching to a file family the target holds: say so in one line and stop before GATHER, writing nothing - a doc judged against nothing reads as clean code. Name the three ways to get rules, all the user's to run: `/capture-preferences` records their own preferences, `/capture-code-style` records the code style, and `/loop-code-quality` seeds the `loops/` starter set.
+**No rule source at all - stop.** No `CODE-PREFERENCES.md`, no stage prompt under `loops/`, no `CODE-STYLE.md` and no convention rule attaching to a file family the target holds: say so in one line and stop before GATHER, writing nothing - a doc judged against nothing reads as clean code. Name the three ways to get rules, all the user's to run: `/capture-preferences` records their own preferences, `/capture-code-style` records the code style, and `/loop-code-quality` seeds the `loops/` starter set.
 
 Then the modules, inside the target - the scope the invocation names (the quality loop hands its TARGET), else the whole project: the Project structure table of `<docs-path>/architecture/ARCHITECTURE.md` when the map exists, else the target's top-level source folders from one listing (say the map is missing - a stale or absent map is a note, never a blocker). Read `<docs-path>/quality/CODE-ASSESSMENT.md` if it exists - not ground truth, but gate question 3 folds a re-measurement into its entries - and the decision log plus the project AGENTS.md's recorded choices, which gate question 4 depends on.
 
@@ -86,7 +86,7 @@ Confirm the file written (created vs refreshed), then lean: gather rounds used a
 | Field | Content |
 |---|---|
 | `References:` | which of this skill's `references/` files this run actually Read |
-| `Rules:` | the rule sources judged - the preferences docs with the check's `checked:` line, the loops prompts by file, `CODE-STYLE.md`, the convention rules - and each absent one named (`no preferences doc`, `no loops/ folder`) |
+| `Rules:` | the rule sources judged - `CODE-PREFERENCES.md` with the check's `checked:` line, the loops prompts by file, `CODE-STYLE.md`, the convention rules - and each absent one named (`no preferences doc`, `no loops/ folder`) |
 | `Decisions:` | the decision records step 1 actually opened, or `none found at <path looked>` |
 | `Findings gate:` | candidates considered, passed, routed to Worth knowing, folded into an existing entry, handed off, and rejected (naming the question each rejected one failed) |
 | `Write:` | created / refreshed, and the post-write line count against the ~300 target |

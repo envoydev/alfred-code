@@ -62,7 +62,7 @@ Read the area's doc first; it may not exist. Write each preference as one entry 
 
 ### 3. CONFLICT CHECK
 
-Read what the preference could contradict: the house convention skills for the files in its scope, `<docs-path>/code-style/CODE-STYLE.md`, the architecture map, `alfred-git.md` and the project's AGENTS.md. A clash the language or a tool forces (C# extension methods must sit in a static class) is asked once per clash:
+Read what the preference could contradict: the house convention skills for the files in its scope, `<docs-path>/code-style/CODE-STYLE.md`, the architecture map, `alfred-git.md` and the project's AGENTS.md. A preference that would weaken security, input validation, error handling or accessibility, or open a hook's gate, never binds there - the rule says so - so tell the user in one line before writing it, and never record it as if it would. A clash the language or a tool forces (C# extension methods must sit in a static class) is asked once per clash:
 
 ```ask
 '<the preference>' clashes with <what forces it>: <the case, one line>. Record an exception?

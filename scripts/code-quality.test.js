@@ -158,7 +158,10 @@ test('the capture writes only quality/CODE-ASSESSMENT.md, fresh every run, and O
     assert.match(b, /`<docs-path>\/quality\/loops\/`/, 'rule source: the numbered prompts');
     assert.match(b, /`<docs-path>\/code-style\/CODE-STYLE\.md`/, 'rule source: the recorded style');
     assert.match(b, /convention rules/, 'rule source: the stack convention rules');
-    assert.match(b, /No `loops\/` folder[^.]*: say so[^.]*judge against the other sources alone \(the preferences docs, `CODE-STYLE\.md`, the convention rules\)/, 'the fallback is said, not silent, and keeps the preferences');
+    assert.match(b, /No `loops\/` folder[^.]*: say so[^.]*judge against the other sources alone \(`CODE-PREFERENCES\.md`, `CODE-STYLE\.md`, the convention rules\)/, 'the fallback is said, not silent, and keeps the preferences');
+    // Skill audit 2026-10-20b P3: an ARCHITECTURE-PREFERENCES breach is the architecture-quality capture's - one fact, one doc.
+    assert.match(b, /check --all --area code` once/);
+    assert.match(b, /An `ARCHITECTURE-PREFERENCES\.md` entry is the architecture-quality capture's to record: one a seat meets is a `handoff:` line here/);
     assert.match(b, /Hard cap: 3 gather rounds/);
     assert.match(b, /Deliberate only, never mid-build|deliberate only, never mid-build/i);
     for (const field of ['`References:`', '`Rules:`', '`Decisions:`', '`Findings gate:`', '`Write:`', '`Model:`'])

@@ -104,6 +104,17 @@ test('precheck: a changed rule file is a COUNT before the first three names', { 
     assert.ok(out.indexOf('markdown-docs.md') < out.indexOf('markdown-author/SKILL.md'), 'drift is sorted newest first');
 });
 
+// Skill audit 2026-10-20b (RUN.md leftover): alfred-architecture.md and alfred-preferences.md are generated rules their
+// captures rewrite on every run, like project-code-style.md - a rewrite is not a capability change.
+test('precheck: a rewritten generated architecture or preferences rule is not drift', { skip: posixOnly }, () =>
+{
+    const root = project('generated-rules');
+    write(path.join(root, '.claude', 'rules', 'alfred-architecture.md'), '# map\n', 300);
+    write(path.join(root, '.claude', 'rules', 'alfred-preferences.md'), '# prefs\n', 300);
+    const { out } = run([], { cwd: root });
+    assert.match(out, /PRECHECK:\s+empty - 0 files newer than the doc/);
+});
+
 test('precheck: no rule at all is the FIRST capture', { skip: posixOnly }, () =>
 {
     const { out } = run([], { cwd: project('first-run', { rule: false }) });

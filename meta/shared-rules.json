@@ -7538,7 +7538,7 @@
       ]
     },
     "loop-substantial-steps": {
-      "_note": "The two quality loops' substantial-tier path - decompose, gate the plan, approve, (stamp,) build and verify - verbatim twins (stack audit 2026-10-20 SKF2-04). The stamp step between them is held by the approval-stamp-* entries.",
+      "_note": "The two quality loops' substantial-tier path - decompose, gate the plan, approve, (stamp,) build and verify - verbatim twins (stack audit 2026-10-20 SKF2-04). The stamp step between them is held by the approval-stamp-* entries. The coverage loop carries the same plan-gate step in its own substantial path (skill audit 2026-10-20b FFL-16).",
       "owner": {
         "file": "stack/skills/loop-architecture-quality/SKILL.md",
         "marker": "**substantial** (a designer-led multi-task change) - five steps in order, none of them optional: 1. **Decompose** - dispatch the domain solution-designer to turn the remediation into a decomposition. 2. **Gate the plan** - `task-verify-plan`, an actual Skill invocation, recording its `Passes:` line. 3. **Get the user's approval on that plan before building** - never fan out against an unapproved plan."
@@ -7555,6 +7555,10 @@
         {
           "file": "stack/skills/loop-code-quality/SKILL.md",
           "marker": "**Build and verify** - fan the tasks out to the domain implementers, then gate the assembled result with the domain verifier, looping its punch-list back."
+        },
+        {
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "marker": "**Gate the plan** - `task-verify-plan`, an actual Skill invocation, recording its `Passes:` line."
         }
       ]
     },
@@ -7833,7 +7837,7 @@
       ]
     },
     "preferences-verifier": {
-      "_note": "The verifier measures every preference with a Check: through the skill's script and judges the rest; a breach is MAJOR, named by id, so the punch-list routes it back like any other defect.",
+      "_note": "The verifier measures every preference with a Check: through the skill's script and judges the rest; a breach is MAJOR, named by id, so the punch-list routes it back like any other defect. Running `.claude/skills/capture-preferences/scripts/preferences.js` from another skill or a seat is a sanctioned cross-folder call (skill audit 2026-10-20b FFL-17): capture-preferences is a locked always skill, so the path exists in every install, and one script keeps one home; a caller names what to do where it is absent (task-verify-code: judge each entry by hand and say so).",
       "owner": {
         "file": "stack/skills/capture-preferences/SKILL.md",
         "marker": "ranks them above every other source"

@@ -35,10 +35,10 @@ never from recall, and never from a reference the project did not install:
 3. **The convention rules** under `.claude/rules/` - each path-scoped file attaches one file family to
    its house convention skill; the skill's rules are the rules for that family.
 
-**The user's preferences outrank all three.** The `C<n>` and `A<n>` entries of
-`<docs-path>/preferences/CODE-PREFERENCES.md` and `ARCHITECTURE-PREFERENCES.md` are rules wherever they
-exist; an entry's `Except:` line is its one waiver, and a breach's rule is `CODE-PREFERENCES.md#c<n>` (or
-`ARCHITECTURE-PREFERENCES.md#a<n>`).
+**The user's preferences outrank all three.** The `C<n>` entries of
+`<docs-path>/preferences/CODE-PREFERENCES.md` are rules wherever they exist; an entry's `Except:` line is its
+one waiver, and a breach's rule is `CODE-PREFERENCES.md#c<n>`. An `A<n>` entry of `ARCHITECTURE-PREFERENCES.md`
+is the architecture-quality capture's: its breach is a hand-off here, never a second record of one fact.
 
 **Precedence.** The user's preferences win every disagreement; then the project's own record - its
 decision log and AGENTS.md choices first, then the loops prompts, then `CODE-STYLE.md`, then a house
