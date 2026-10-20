@@ -133,6 +133,8 @@ The config-protection guard holds this edit: <file> - <the change>, <N> new warn
 - 'Keep the config as it is' - nothing changes in the file
 ```
 
+In an MSBuild file the guard holds only what is not a pure tightening - most often a key moving from each csproj into the root `Directory.Build.props`, the case this ask is for. A loosening that would only turn a red build green is no case for it: fix the code.
+
 ## global.json - pin the SDK
 
 Pin the SDK so every machine and CI runner builds with the same toolchain. The SDK version and the project framework are independent - the 10.0 SDK also builds a project still below the floor (`net8.0` / `net9.0`), and any SDK from 9.0.200 reads `.slnx`.

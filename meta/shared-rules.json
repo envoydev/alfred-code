@@ -7455,6 +7455,10 @@
           "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
         },
         {
+          "file": "stack/skills/dotnet-migrate/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
           "file": "stack/skills/dotnet-messaging/SKILL.md",
           "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
         },

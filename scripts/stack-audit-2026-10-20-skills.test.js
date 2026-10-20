@@ -140,7 +140,7 @@ test('row 6: the .NET floor line is registered and no .NET skill states the old 
 {
     const reg = JSON.parse(read('meta/shared-rules.json')).rules['dotnet-floor-line'];
     const files = [reg.owner.file, ...reg.sites.map((s) => s.file)];
-    for (const d of ['csharp-design-patterns', 'dotnet-data-access', 'dotnet-performance', 'dotnet-project-setup', 'dotnet-winforms'])
+    for (const d of ['csharp-design-patterns', 'dotnet-data-access', 'dotnet-migrate', 'dotnet-performance', 'dotnet-project-setup', 'dotnet-winforms'])
         assert.ok(files.includes(`stack/skills/${d}/SKILL.md`), `${d} carries the registered floor line`);
     for (const f of skillFiles().filter((x) => /\/(csharp|csharp-design-patterns|dotnet[^/]*)\//.test(x.rel)))
     {
