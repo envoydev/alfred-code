@@ -1205,6 +1205,8 @@ const ASK_FLOW_TEMPLATES = {
     // stack audit 2026-10-20 row 13: task-solve's per-judgment ask, issue-diagnoser's 4a / 4c close, task-version-upgrade's
     // stamp-refused and hard-stop asks.
     'task-version-upgrade': 5,
+    // stack audit 2026-10-20 agents #8: task-design's behaviour-change stop, task-verify-plan's keep-or-change and judgment-item asks.
+    'task-design': 1, 'task-verify-plan': 2,
 };
 const ASK_FLOW_SKILLS = Object.keys(ASK_FLOW_TEMPLATES);
 // The init / configure walk's layer asks are templates too (2026-09-29: a walk with whole-layer verdicts only left every
