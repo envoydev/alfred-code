@@ -56,7 +56,8 @@ test('install-scope: at local scope the stack\'s own settings writes go to setti
     });
     assert.strictEqual(result.hasShared, false, 'a local-scope install must not write the shared settings.json');
     assert.strictEqual(result.hasLocal, true, 'a local-scope install must write settings.local.json');
-    assert.strictEqual(result.local.env.ALFRED_CODE_DOCS_PATH, '.alfred/docs', 'the env seed landed in the local file');
+    assert.strictEqual(result.local.env.ALFRED_CODE_DATA_PATH, '.alfred', 'the env seed landed in the local file');
+    assert.strictEqual(result.local.env.ALFRED_CODE_DOCS_PATH, undefined, 'and the retired docs key is never written');
 });
 
 // C8 (R100, R101): the one exception is this machine's memory database path - settings.local.json holds
@@ -620,8 +621,9 @@ test('install-scope: a local install moved to project scope drops its seeded key
     });
     assert.match(outs[1], /action: update \[scope=project,/, outs[1]);
     const { ALFRED_CODE_MEMORY_DB: _db, ...localEnv } = result.local.env;
+    // ALFRED_CODE_DOCS_PATH is retired (2.8.0): its root held no docs, so the key goes from the local file too.
     assert.deepStrictEqual(localEnv, {
-        MY_OWN: 'x', ALFRED_CODE_DOCS_PATH: 'docs/mine', ALFRED_CODE_PUSH_GATE: '0',
+        MY_OWN: 'x', ALFRED_CODE_PUSH_GATE: '0',
         ALFRED_CODE_HOOKS_OFF: 'guard-answer', ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '/elsewhere/other-repo',
     }, 'the user\'s values stay local, untouched, and every seeded stack key left');
     assert.ok(!JSON.stringify(result.shared).includes('/elsewhere/other-repo'), 'a personal path reached the committed settings.json');

@@ -54,8 +54,8 @@ if (require.main === module) {
   // Outside the try: the shell-guard dispatcher runs this file in-process, where that catch would swallow the exit.
   if (off) process.exit(0);
 }
-// The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
+// The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 
 // Keys whose value is a credential - the SAME string as meta/environment.json `secret_key_pattern`
 // (npm run lint fails when the two differ), matched case-insensitively so `apiKey` and `API_KEY`
@@ -92,7 +92,7 @@ const TEMPLATE_VALUE = /^(?:your[-_]|<[^>]+>$|changeme|x{3,}$|\.\.\.$|todo|repla
 // A value that IS an identifier NAME names a credential, it is not one: SCREAMING_SNAKE with at
 // least one underscore, no lower case, nothing else in it. Measured: this stack's OWN catalogs are
 // lists of variable names under a field literally called `key`, so `meta/environment.json`
-// (`env.0.key` = `ALFRED_CODE_DOCS_PATH`) and `meta/migrations.json`
+// (`env.0.key` = `ALFRED_CODE_DATA_PATH`) and `meta/migrations.json`
 // (`detect.settings_env_key` = `ALFRED_CODE_FRESH_SESSION_PCT`) were read as credential files - on the Read
 // route a block, and on the shell route something worse: every `key` in the file the guided walks
 // run on came back as `<set (N chars)>`. A SHAPE match still wins, so an all-caps credential like

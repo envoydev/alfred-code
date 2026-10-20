@@ -16,7 +16,7 @@ function envOf(env, suffix)
     return value === '' ? undefined : value;
 }
 
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 // 2.8.0: the records live in <data root>/state/history/ (layout.js, copied beside this engine); the pre-2.8.0
 // <docs-path>/history/ is still read for the 2.x line, and is the only home when layout.js is not there.
 let layout = null;

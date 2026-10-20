@@ -239,7 +239,7 @@ function compactPointsFile(write = false) {
   let layout = null;
   try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
   if (layout) return write ? layout.statePath(root, 'sessions', 'compact-points.json') : layout.findState(root, 'sessions', 'compact-points.json');
-  return path.resolve(root, envOf(process.env, 'DOCS_PATH') || '.alfred/docs', 'flow', 'compact-points.json'); // pre-2.8.0, no layout.js here
+  return path.resolve(root, envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`, 'flow', 'compact-points.json'); // pre-2.8.0, no layout.js here
 }
 function readCompactPoints() {
   try {

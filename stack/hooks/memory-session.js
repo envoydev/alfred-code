@@ -110,8 +110,8 @@ async function main() {
   }
   const level = memory.levelOfPath(dbPath, { home, projectRoot: root }) || 'unknown';
   const project = memory.projectName(root);
-  // related-projects is read through docs.js's own docs-root resolution (ALFRED_CODE_DOCS_PATH in the
-  // settings.json env, default '.alfred/docs') - never re-derived here. Its absence (an older or
+  // related-projects is read through docs.js's own docs-root resolution (<data root>/docs, a leftover
+  // ALFRED_CODE_DOCS_PATH read first) - never re-derived here. Its absence (an older or
   // missing docs.js copy) just means no related-project group this session, not a failed push.
   let related = [];
   try { related = memory.relatedProjects(checkout, require('./docs.js').DOCS_ROOT); } catch {}

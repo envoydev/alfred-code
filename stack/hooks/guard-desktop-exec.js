@@ -38,7 +38,7 @@ if (require.main === module) {
   } catch { /* an install without the prelude runs the hook unchanged */ }
   if (off) process.exit(0);
 }
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 
 // The two tools, on both routes. Built as patterns so the copy route's bare spelling is never literal text
 // (lint check 54 fails on it anywhere under stack/).

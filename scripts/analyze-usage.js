@@ -18,7 +18,7 @@
 //   node scripts/analyze-usage.js <session.jsonl> --json           # machine-readable dump
 //   node scripts/analyze-usage.js <session.jsonl> --report-md      # markdown report skeleton (machine tables + FILL IN sections)
 //   node scripts/analyze-usage.js <s.jsonl> --from <ISO> --to <ISO> # window one run inside a long session
-//   node scripts/analyze-usage.js <s.jsonl> --docs-root <path>     # extra docs prefix when ALFRED_CODE_DOCS_PATH is non-default
+//   node scripts/analyze-usage.js <s.jsonl> --docs-root <path>     # extra docs prefix when the docs sit outside <data root>/docs
 //   node scripts/analyze-usage.js <s.jsonl> --inventory <.claude>  # the installed set the INVENTORY vs USE block scores
 //   node scripts/analyze-usage.js <s.jsonl> --plugins <installed_plugins.json>  # the plugin inventory, when not this machine's
 //   node scripts/analyze-usage.js <projects-dir> --exclude-session <id>  # leave a session out (the live one is left out already)
@@ -3431,8 +3431,9 @@ function turnCheckAdvice(sessionsDir, projectRoot, exclude = new Map()) {
   // 2.8.0: the ledgers live in the data root's statistics/ (stack/hooks/layout.js); a session's file not moved there yet
   // is read from the pre-2.8.0 docs root
   const { dataRoot } = require(path.join(__dirname, '..', 'stack', 'hooks', 'layout.js'));
-  const blockDirs = [path.resolve(root, dataRoot({ ALFRED_CODE_DATA_PATH: setting('DATA_PATH') }), 'statistics', 'hook-blocks'),
-    path.resolve(root, String(setting('DOCS_PATH') || '.alfred/docs'), 'hook-blocks')];
+  const dataRel = dataRoot({ ALFRED_CODE_DATA_PATH: setting('DATA_PATH') });
+  const blockDirs = [path.resolve(root, dataRel, 'statistics', 'hook-blocks'),
+    path.resolve(root, String(setting('DOCS_PATH') || `${dataRel}/docs`), 'hook-blocks')];
   const newest = findSessionFiles(sessionsDir).filter((f) => !exclude.has(path.basename(f, '.jsonl')))
     .map((f) => ({ f, at: fs.statSync(f).mtimeMs })).sort((a, b) => b.at - a.at).slice(0, TURN_CHECK_WINDOW).map((x) => x.f);
   const doneGate = newDoneGate();

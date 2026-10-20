@@ -607,7 +607,9 @@ function pluginServers(projectRoot, pluginProbe, pluginRows, map)
 
 // ---------------------------------------------------------------- the project, and the live rule
 
-// This script has no hook-prelude.js to share, so it reads the key itself.
+// This script has no hook-prelude.js to share, so it reads the key itself. The docs root is <data root>/docs (2.8.0, the
+// user's ruling of 2026-10-20); a leftover ALFRED_CODE_DOCS_PATH, which an update moves and removes, is still read first
+// for the 2.x line.
 const DOCS_PATH_KEYS = ['ALFRED_CODE_DOCS_PATH'];
 
 function docsRoot(projectRoot)
@@ -629,7 +631,7 @@ function docsRoot(projectRoot)
         }
         catch { /* a malformed settings file is the next one's case, not a failure */ }
     }
-    return { value: '.alfred/docs', from: 'the default - no ALFRED_CODE_DOCS_PATH set' };
+    return { value: `${dataRoot(projectRoot)}/docs`, from: 'the data root\'s docs/' };
 }
 
 // This script ships inside a skill with no installer module beside it, so it names the stamp itself.

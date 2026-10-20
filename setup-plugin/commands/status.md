@@ -62,7 +62,7 @@ One table, no ask - it is six rows and every other area reads against it:
   `(default)` when absent - the one folder for this project's docs and its servers' data - plus the count
   of the stamp's `data-pending:` lines when there are any (moves a server's launcher makes at its next
   start) and `data move kept` when the stamp says `data-move: kept`.
-- `docs root`: `ALFRED_CODE_DOCS_PATH` from the scope file, `(default)` when absent.
+- `docs root`: `<data root>/docs` - `ALFRED_CODE_DATA_PATH` from the scope file, `(default)` when absent; a leftover `ALFRED_CODE_DOCS_PATH` (retired in 2.8.0) shows instead, marked `(leftover - /alfred-code:update moves the docs and removes it)`.
 - `initialised`: the stamp's `initialised:` line - a date, or `pending` (run `/alfred-code:init`).
 
 ## 3. One question - what else to show

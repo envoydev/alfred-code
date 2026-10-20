@@ -31,8 +31,8 @@
 // Blocked here regardless of any stamp; a broad multi-file sweep with no symbol question
 // in it still passes.
 const fs = require('fs');
-// The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
+// The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 const path = require('path');
 
 // STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in every

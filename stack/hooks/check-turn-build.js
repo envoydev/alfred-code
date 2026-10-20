@@ -192,7 +192,7 @@ function stopCheck(payload)
   if (cursorOff) return PASS;
   const event = payload.hook_event_name;
   const root = path.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd());
-  const docs = path.resolve(root, envOf(process.env, 'DOCS_PATH') || '.alfred/docs');
+  const docs = path.resolve(root, envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`);
   const sid = String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_');
   const name = `turn-check-${sid.replace(/[^A-Za-z0-9_-]/g, '_')}`;
   // 2.8.0: session scratch, <data root>/state/sessions/ (layout.js); the marker a pre-2.8.0 hook left in <docs>/flow/ is

@@ -22,7 +22,7 @@ function envOf(env, suffix)
 
 // data-root-reader (meta/shared-rules.json): ALFRED_CODE_DATA_PATH, relative to the project, else .alfred.
 const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '') || '.alfred';
-const docsRoot = (env = process.env) => envOf(env, 'DOCS_PATH') || '.alfred/docs';
+const docsRoot = (env = process.env) => envOf(env, 'DOCS_PATH') || `${dataRoot(env)}/docs`;
 
 // A receipt the user's yes writes (the approval, the commit and push gates, every *-ALLOW) is an approval; every
 // other file the hooks kept in the old flow/ is session scratch.

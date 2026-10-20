@@ -1245,76 +1245,61 @@ function liveMemoryPath({ level, projectRoot, home, liveOf, owed, registered })
     return sameFolder && fs.existsSync(registered) && real(registered) === real(live) ? registered : live;
 }
 
-// The docs root this run leaves in effect, and the one-time move out of the old default
-// (docs.LEGACY_DOCS_ROOT, docs.docsMovePlan). Never silent: with no --docs-move answer the old root stays in effect - written
-// back as the stack's own value when the key is absent, so the hooks keep reading where the docs are -
-// and the offer is named for /alfred-code:update to ask. `ctx.docsPath` is the settings write
-// (applyEnv 3b), `ctx.docsRoot` the root the rules are stamped with.
+// THE DOCS ROOT this run leaves in effect: <data root>/docs (2.8.0, the user's ruling of 2026-10-20 - docs.docsMovePlan).
+// A leftover ALFRED_CODE_DOCS_PATH is drained: the stack's docs move from the root it names, then the key goes from both
+// settings files (applyEnv 3b); a clash or a key a local-scope run cannot write moves nothing and keeps it, so the hooks
+// keep reading where the docs are. `ctx.docsPath` is the settings decision (remove or keep), `ctx.docsRoot` the root the
+// rules are stamped with.
 function docsRootStep(ctx)
 {
     const { args, log, note } = ctx;
-    const managed = ctx.ledger && ctx.ledger.env ? Object.assign({}, ...Object.values(ctx.ledger.env)) : null;
     const stamped = (Boolean(ctx.stampFile) && fs.existsSync(ctx.stampFile)) || Boolean(ctx.legacyUnstamped);
-    const views = docs.docsMoveViews({ claudeDir: ctx.claudeDir, scope: args.scope });
     const to = `${ctx.dataInfo.root}/docs`;
-    const plan = docs.docsMovePlan({ projectRoot: ctx.projectRoot, ...views, ledger: managed, stamped, to, kept: ctx.dataInfo.recorded.kept });
+    const plan = docs.docsMovePlan({ projectRoot: ctx.projectRoot, ...docs.docsMoveViews({ claudeDir: ctx.claudeDir }), scope: args.scope, stamped, to, prior: ctx.dataInfo.prior });
     ctx.docsPath = null;
     ctx.docsVersioningCarry = null;
-    if (plan.state !== 'offer' && args.dataMove) log(`docs move: nothing to offer (${plan.why}) - the docs stay where they are`);
-    if (plan.state === 'repoint')
+    const keep = { keep: true };
+    for (const root of plan.shadowed) log(`docs root: ${root} (settings.json) was hidden by settings.local.json's root - not moved; take what you need from it by hand`);
+    if (plan.state === 'drop')
     {
-        ctx.docsPath = { value: plan.to, own: 'stack', why: 'the old root held nothing' };
-        log(`docs root: ${plan.from} holds nothing - re-pointed to ${plan.to}`);
-        selection.respellDocsRoot({ projectRoot: ctx.projectRoot, from: plan.from, to: plan.to, log, note });
+        ctx.docsPath = { remove: true, why: `the docs root is ${to}` };
+        if (plan.from && plan.from !== to) selection.respellDocsRoot({ projectRoot: ctx.projectRoot, from: plan.from, to, log, note });
     }
-    // A first install lays the docs under the data root it was given - unless a docs root is already set.
-    else if (!stamped && plan.state === 'none' && !(views.env.ALFRED_CODE_DOCS_PATH || (views.personal && views.personal.ALFRED_CODE_DOCS_PATH)))
-        ctx.docsPath = { value: to, own: 'stack', why: 'the data root' };
-    else if (plan.state === 'offer')
+    else if (plan.state === 'blocked')
     {
-        // An old default the user kept (plan.yours) stays theirs while the offer is unanswered.
-        const held = { value: plan.from, own: plan.yours ? 'user' : 'stack', why: 'its docs are still there' };
-        const count = plan.tracked.length + plan.untracked.length;
-        if (args.dataMove === 'keep')
+        ctx.docsPath = keep;
+        note(`docs root: ${plan.why} - nothing moved; take the key out of settings.json (the docs root is ${to}), then run /alfred-code:update`);
+    }
+    else if (plan.state === 'clash')
+    {
+        ctx.docsPath = keep;
+        note(`docs root: ${plan.from} not moved - ${plan.conflicts.length} file(s) already at ${to}: ${plan.conflicts.slice(0, 5).join(', ')} - ALFRED_CODE_DOCS_PATH stays, so the hooks keep reading ${plan.from}; move or remove one side, then run /alfred-code:update`);
+    }
+    else if (plan.state === 'move')
+    {
+        const moved = docs.moveDocsRoot({ projectRoot: ctx.projectRoot, plan });
+        if (moved.ok)
         {
-            ctx.docsPath = { value: plan.from, own: plan.from === docs.LEGACY_DOCS_ROOT ? 'user' : 'stack', why: '--data-move keep' };
-            log(`docs root: kept at ${plan.from} - ALFRED_CODE_DOCS_PATH is yours from here on; no update offers the move again`);
-        }
-        else if (args.dataMove === 'move' && plan.conflicts.length)
-        {
-            ctx.docsPath = held;
-            note(`docs root: not moved - ${plan.conflicts.length} file(s) already at ${plan.to}: ${plan.conflicts.slice(0, 5).join(', ')} - move or remove them, then run /alfred-code:update again`);
-        }
-        else if (args.dataMove === 'move')
-        {
-            const moved = docs.moveDocsRoot({ projectRoot: ctx.projectRoot, plan });
-            if (moved.ok)
-            {
-                ctx.docsPath = { value: plan.to, own: 'stack', why: '--data-move move' };
-                selection.respellDocsRoot({ projectRoot: ctx.projectRoot, from: plan.from, to: plan.to, log, note });
-                // A move keeps what git saw: an old root git ignored, with nothing tracked, stays out of git
-                // as a `local` root (its own `.gitignore` of `*`) - unless this run names a versioning itself.
-                if (plan.ignored && !args.docsVersioning) ctx.docsVersioningCarry = 'local';
-                log(`docs root: moved ${plan.from} -> ${plan.to} (${moved.moved} file(s), ${moved.gitMoved} through git mv${moved.gitMoved ? ' - staged as renames, commit them' : ''})`
-                    + ' - the rule is re-stamped; a session started before this still holds the old root in its loaded rule, so restart it');
-            }
-            else
-            {
-                ctx.docsPath = held;
-                note(`docs root: not moved - ${moved.error}; every file is back under ${plan.from}`);
-            }
+            ctx.docsPath = { remove: true, why: `the docs moved to ${to}` };
+            selection.respellDocsRoot({ projectRoot: ctx.projectRoot, from: plan.from, to, log, note });
+            // A move keeps what git saw: an old root git ignored, with nothing tracked, stays out of git as a `local`
+            // root - unless this run names a versioning itself.
+            if (plan.ignored && !args.docsVersioning) ctx.docsVersioningCarry = 'local';
+            log(`docs root: moved ${plan.from} -> ${to} (${moved.moved} file(s), ${moved.gitMoved} through git mv${moved.gitMoved ? ' - staged as renames, commit them' : ''})`
+                + ' - the rule is re-stamped; a session started before this still holds the old root in its loaded rule, so restart it');
+            if (plan.left.length) log(`docs root: ${plan.from} keeps ${plan.left.join(', ')} - not the stack's, left in place`);
         }
         else
         {
-            ctx.docsPath = held;
-            log(`docs root: ${plan.from}${plan.from === docs.LEGACY_DOCS_ROOT ? ' is the old default and' : ''} holds ${count} file(s) - /alfred-code:update offers the move to ${plan.to} (--data-move move|keep); nothing moved`);
+            ctx.docsPath = plan.keys.length ? keep : null;
+            note(`docs root: not moved - ${moved.error}; every file is back under ${plan.from}`);
         }
     }
-    // A settings file that cannot be read says nothing about the root, so the rule keeps the root it was
-    // stamped with rather than falling to the default the unreadable file would read as.
+    // The root the hooks read after this run: the data root's, unless a key stays. A settings file that cannot be read
+    // says nothing about the root, so the rule keeps the root it was stamped with.
+    const kept = plan.keys.length && !(ctx.docsPath && ctx.docsPath.remove) ? plan.keys[plan.keys.length - 1].value : null;
     const unreadable = plan.state === 'none' && /cannot be read$/.test(plan.why);
-    ctx.docsRoot = ctx.docsPath ? ctx.docsPath.value
-        : (unreadable && copy.stampedDocsRoot(ctx.projectRoot)) || copy.resolveDocsRoot(ctx.projectRoot, args.scope);
+    ctx.docsRoot = unreadable ? copy.stampedDocsRoot(ctx.projectRoot) || copy.resolveDocsRoot(ctx.projectRoot, args.scope) : kept || to;
 }
 
 // A first run with no plugin cache installs the core entry FIRST, so its cache can serve the same

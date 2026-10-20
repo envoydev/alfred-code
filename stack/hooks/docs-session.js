@@ -46,7 +46,7 @@ if (require.main === module) {
   if (off) process.exit(0);
 }
 
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 // 2.8.0: the hooks' state lives under <data root>/state/ (layout.js); the pre-2.8.0 <docs-path>/flow/ is still read for
 // the 2.x line, and is the only path when layout.js is not beside this file.
 let layout = null;

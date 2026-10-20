@@ -966,9 +966,9 @@ test('seed update --installed-only over an UNSTAMPED legacy install: picks under
     assert.ok(first.skills.includes('my-own-helper'), `the project's own skill stays: ${first.skills.join(' ')}`);
     assert.strictEqual(first.mine, skill('my-own-helper'), 'and is not rewritten');
     assert.ok(![...first.pickedSkills, ...first.librarySkills].some((e) => /my-own-helper/.test(e)), 'nor recorded as a stack pick');
-    // The key held the old default, the stack's own seed, over no docs at all - so it takes the new default.
-    assert.strictEqual(first.settings.env.ALFRED_CODE_DOCS_PATH, '.alfred/docs', 'an empty old root is re-pointed');
-    assert.match(outs[0], /docs root: \.claude\/docs holds nothing - re-pointed to \.alfred\/docs/);
+    // The key held the old default over no docs at all - nothing moves, and the retired key goes (2.8.0).
+    assert.strictEqual(first.settings.env.ALFRED_CODE_DOCS_PATH, undefined, 'the retired key goes');
+    assert.match(outs[0], /env: ALFRED_CODE_DOCS_PATH '\.claude\/docs' removed \(the docs root is \.alfred\/docs\)/, outs[0]);
     assert.strictEqual(first.settings.env.MY_OWN_KEY, 'mine');
     const wired = JSON.stringify(first.settings.hooks || {});
     assert.ok(!wired.includes('.claude/hooks/guard-'), `the old copy's wiring goes with its file: ${wired}`);

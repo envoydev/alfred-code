@@ -23,8 +23,8 @@
 // MAX_RECEIPT_AGE_MS are treated as absent - the stale-stamp lesson from the approval
 // gate (a leftover stamp silently authorized later, unrelated runs).
 const fs = require('fs');
-// The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
+// The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 // 2.8.0 layout (layout.js, copied beside this hook): receipts in <data root>/state/approvals/, session scratch in
 // state/sessions/, the session records in state/history/; null on an older copy route, which keeps the pre-2.8.0 paths.
 let layout = null;

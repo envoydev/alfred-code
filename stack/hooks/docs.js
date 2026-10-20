@@ -49,7 +49,7 @@ function envOf(env, suffix)
 }
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 const DOCS_ROOT = path.resolve(ROOT, docsRootEnv());
 const DOCS = path.join(DOCS_ROOT, 'architecture');
 const BLOCK_FILE = path.join(DOCS, 'ORIENTATION.md');

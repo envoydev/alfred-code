@@ -1430,7 +1430,11 @@ test('guard-unapproved-dispatch: the stamp under state/approvals/, the legacy fl
   fs.mkdirSync(path.dirname(legacy), { recursive: true });
   fs.writeFileSync(legacy, 'APPROVED plan-1 - "go ahead"\n');
   assert.equal(disp('aspnet-implementer').status, 0, 'and on a legacy flow/APPROVAL a 2.7.0 skill copy wrote');
-  assert.equal(disp('aspnet-implementer', { ALFRED_CODE_DATA_PATH: 'var/alfred' }).status, 0, 'the legacy one is read under any data root');
+  const moved = path.join(root, 'var', 'alfred', 'docs', 'flow', 'APPROVAL');
+  fs.mkdirSync(path.dirname(moved), { recursive: true });
+  fs.renameSync(legacy, moved);
+  assert.equal(disp('aspnet-implementer', { ALFRED_CODE_DATA_PATH: 'var/alfred' }).status, 0, 'the legacy one is read under the data root\'s docs');
+  fs.renameSync(moved, legacy);
   stateReceipt(root, 'APPROVAL', 'approved maybe\n');
   assert.equal(disp('aspnet-implementer').status, 2, 'the new path wins when both exist');
 });

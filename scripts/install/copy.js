@@ -20,7 +20,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { envOf } = require('../../stack/hooks/hook-prelude.js');
 
-const DOCS_ROOT_DEFAULT = '.alfred/docs';
 const DOCS_ROOT_RULE = 'alfred-docs-root.md';
 
 function sameContent(a, b)
@@ -143,9 +142,10 @@ function respellPreloads(text, core)
     return m[0].replace(re, '$1$2$3') + String(text).slice(m[0].length);
 }
 
-// The docs root, resolved as the hooks will see it at this install's scope (R83 b / R87): at `local`
-// scope settings.local.json is laid over settings.json (the N6 merge, `readBackSettings`), so a docs
-// path set only in the personal file is the root; at project and user scope only settings.json. The
+// The docs root, resolved as the hooks will see it at this install's scope (R83 b / R87): <data root>/docs (2.8.0, the
+// user's ruling of 2026-10-20), or a leftover ALFRED_CODE_DOCS_PATH an update has not cleared yet. At `local`
+// scope settings.local.json is laid over settings.json (the N6 merge, `readBackSettings`), so a value
+// set only in the personal file is the one; at project and user scope only settings.json. The
 // scope defaults to the stamp's own `scope:` line, so a reader outside a run (library-check,
 // init-plan) resolves what the last install used. A malformed or absent file is not a failure - it means 'no value here', which is what the
 // default is for.
@@ -160,7 +160,10 @@ function resolveDocsRoot(projectRoot, scope)
     const at = scope || readStampScope(stampFile(claudeDir).read || '');
     // R98: at project and user scope the docs root is settings.json's alone - the stamped rule is shared.
     const env = readBackSettings(claudeDir, at === 'local' ? 'local' : 'project', { sharedOnly: true }).env;
-    return envOf(env && typeof env === 'object' ? env : {}, 'DOCS_PATH') || DOCS_ROOT_DEFAULT;
+    const view = env && typeof env === 'object' ? env : {};
+    const { checkDataPath, DATA_ROOT_DEFAULT } = require('../../stack/mcp/data-root.js');
+    const data = checkDataPath(envOf(view, 'DATA_PATH') || DATA_ROOT_DEFAULT);
+    return envOf(view, 'DOCS_PATH') || `${data.ok ? data.value : DATA_ROOT_DEFAULT}/docs`;
 }
 
 // The docs versioning DECLARED in the same view the docs root is read from - 'git', 'local', or null
@@ -290,4 +293,4 @@ function commonJsScope({ dir, stackFiles = [], log = () => {}, note = () => {} }
     return 'written';
 }
 
-module.exports = { installFromSource, syncTree, respellPreloads, stampDocsRoot, stampedDocsRoot, resolveDocsRoot, resolveDocsVersioning, sameContent, removeDropped, commonJsScope, COMMONJS_MARKER, DOCS_ROOT_DEFAULT };
+module.exports = { installFromSource, syncTree, respellPreloads, stampDocsRoot, stampedDocsRoot, resolveDocsRoot, resolveDocsVersioning, sameContent, removeDropped, commonJsScope, COMMONJS_MARKER };

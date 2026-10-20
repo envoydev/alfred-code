@@ -650,7 +650,7 @@
     },
     {
       "file": "alfred-docs-root.md",
-      "note": "generated-docs root resolution (ALFRED_CODE_DOCS_PATH)"
+      "note": "generated-docs root - always <data root>/docs (ALFRED_CODE_DOCS_PATH retired in 2.8.0)"
     },
     {
       "file": "alfred-memory.md",

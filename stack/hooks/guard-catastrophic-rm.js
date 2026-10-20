@@ -68,8 +68,8 @@ if (require.main === module) {
   // Outside the try: the shell-guard dispatcher runs this file in-process, where that catch would swallow the exit.
   if (off) process.exit(0);
 }
-// The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
+// The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 
 // The reader every git guard shares (heredoc bodies are data there, carried scripts are shell). A copy that runs before
 // it lands fails open like every gate here (the parity test's copy set), rather than judging with a second, weaker reader.

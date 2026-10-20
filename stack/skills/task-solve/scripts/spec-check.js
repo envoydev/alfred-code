@@ -169,7 +169,7 @@ function touchedFiles(cwd = process.cwd(), env = process.env) {
     const tracked = gitLines(['diff', 'HEAD', '--name-only', '-z'], root) || gitLines(['diff', '--cached', '--name-only', '-z'], root) || [];
     const untracked = gitLines(['ls-files', '-o', '--exclude-standard', '-z'], root) || [];
     const posix = (p) => String(p).replace(/\\/g, '/');
-    const docsRel = posix(path.relative(root, path.resolve(root, posix(env.ALFRED_CODE_DOCS_PATH || '.alfred/docs'))));
+    const docsRel = posix(path.relative(root, path.resolve(root, posix(env.ALFRED_CODE_DOCS_PATH || `${dataRoot(env)}/docs`))));
     const head = String(gitOut(['rev-parse', '--verify', '-q', 'HEAD'], root) || '').trim();
     // docs-session.js's record: <data root>/state/sessions/ (2.8.0), else the pre-2.8.0 <docs-path>/flow/ an older hook wrote
     const record = `untracked-at-start-${/^[0-9a-f]{7,64}$/.test(head) ? head : 'unborn'}`;

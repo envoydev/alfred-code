@@ -40,30 +40,25 @@ const readText = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch
 
 // ---------------------------------------------------------------- the docs root
 
-// This script ships inside a skill with no hook-prelude.js beside it, so it reads the key itself: the environment,
-// then settings.local.json over settings.json (a local-scope install writes the key there, R99), else the default.
-const DOCS_PATH_KEYS = ['ALFRED_CODE_DOCS_PATH'];
-
-function docsRoot(projectRoot)
+// This script ships inside a skill with no hook-prelude.js beside it, so it reads the settings itself: the environment,
+// then settings.local.json over settings.json (R99). The docs root is <data root>/docs (2.8.0, the user's ruling of
+// 2026-10-20); a leftover ALFRED_CODE_DOCS_PATH, which an update moves and removes, is still read first for the 2.x line.
+function setting(projectRoot, key)
 {
-    for (const key of DOCS_PATH_KEYS)
-    {
-        if (process.env[key]) return process.env[key];
-    }
+    if (process.env[key]) return process.env[key];
     for (const file of ['settings.local.json', 'settings.json'])
     {
         try
         {
             const env = (JSON.parse(readText(path.join(projectRoot, '.claude', file)) || '{}') || {}).env || {};
-            for (const key of DOCS_PATH_KEYS)
-            {
-                if (env[key]) return env[key];
-            }
+            if (env[key]) return env[key];
         }
         catch { /* a malformed settings file is the next one's case, not a failure */ }
     }
-    return '.alfred/docs';
+    return undefined;
 }
+const docsRoot = (projectRoot) => setting(projectRoot, 'ALFRED_CODE_DOCS_PATH')
+    || `${String(setting(projectRoot, 'ALFRED_CODE_DATA_PATH') || '.alfred').replace(/\\/g, '/').replace(/\/+$/, '')}/docs`;
 
 const prefsDir = (projectRoot) => path.resolve(projectRoot, docsRoot(projectRoot), PREFS_DIR);
 

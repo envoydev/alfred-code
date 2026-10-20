@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 'use strict';
-// Stamp the deployed alfred-docs-root.md rule with the CURRENT docs root: the ALFRED_CODE_DOCS_PATH
-// env value in <root>/.claude/settings.json, else the default. Handles both the fresh copy (the
+// Stamp the deployed alfred-docs-root.md rule with the CURRENT docs root: <data root>/docs (ALFRED_CODE_DATA_PATH in
+// <root>/.claude/settings.json, else `.alfred`), or a leftover ALFRED_CODE_DOCS_PATH an update has not cleared yet
+// (2.8.0 retired it). Handles both the fresh copy (the
 // __DOCS_ROOT__ placeholder) and a previously stamped value - so the guided commands can re-stamp
 // after an env change without re-running the installer (the installers stamp fresh copies with
 // their own embedded logic; this script is the between-runs re-stamp).
@@ -22,7 +23,7 @@ const path = require('node:path');
 const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 const { envOf } = require('../stack/hooks/hook-prelude.js');
 
-const DEFAULT_ROOT = '.alfred/docs';
+const DEFAULT_DATA_ROOT = '.alfred';
 const STAMP_RE = /(This install's root: `)[^`]*(`)/;
 
 function resolveDocsRoot(settingsFile)
@@ -30,11 +31,11 @@ function resolveDocsRoot(settingsFile)
     try
     {
         const env = JSON.parse(fs.readFileSync(settingsFile, 'utf8')).env || {};
-        return envOf(env, 'DOCS_PATH') || DEFAULT_ROOT;
+        return envOf(env, 'DOCS_PATH') || `${envOf(env, 'DATA_PATH') || DEFAULT_DATA_ROOT}/docs`;
     }
     catch
     {
-        return DEFAULT_ROOT;
+        return `${DEFAULT_DATA_ROOT}/docs`;
     }
 }
 

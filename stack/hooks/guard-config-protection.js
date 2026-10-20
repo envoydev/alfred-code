@@ -37,8 +37,8 @@ if (require.main === module) {
 }
 if (envOf(process.env, 'CONFIG_PROTECT') === '0') process.exit(0);
 
-// The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
+// The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 
 // Git Bash / MSYS spell a Windows path in POSIX mount form; translate before any resolution.
 // The translation is shell-writes.js's one home (2.1.5 M8); without the module a path is taken as written.

@@ -38,8 +38,8 @@ if (require.main === module) {
 // Code build propagates PreToolUse into dispatched subagents, their internal Skill / MCP
 // calls are captured too - verify coverage against a known run before trusting a tally.
 
-// The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
+// The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 
 // `1` only, as the copy route's shell gate and environment.json read it: `true` switched this hook on where the copy
 // route's gate kept it off (audit 2026-10-08 row 29).

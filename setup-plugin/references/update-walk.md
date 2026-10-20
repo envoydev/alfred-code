@@ -109,12 +109,12 @@ takes its Recommended option (adding the recommended items only adds), logged as
 <choice>` line.
 
 **The data root - ONE ask, and only on `data-move: offer`.** Read `update-slow-path.md`'s 'The data root move'
-first (the typed-folder, `ignored=`, `yours=` and `conflicts=` cases live there), then one AskUserQuestion before the
+first (the typed-folder and `conflicts=` cases live there), then one AskUserQuestion before the
 installer runs, naming the `from=` places - in the SAME call as the new-items ask when both fire, one question each:
 
 ```ask
-Move this project's Alfred Code data into <root>? From <from places>: the docs through git mv where tracked, the navigation index, browser profiles and project memory at each server's next start, after a restart. Recommended: one folder outside .claude/, its machine state kept out of git.
-- '<root> - move everything (Recommended)' - the docs move now, the servers' data at their next start once nothing holds it; nothing is overwritten
+Move this project's Alfred Code data into <root>? From <from places>: the navigation index, browser profiles and project memory at each server's next start, after a restart. Recommended: one folder outside .claude/, its machine state kept out of git.
+- '<root> - move everything (Recommended)' - the servers' data moves at their next start once nothing holds it; nothing is overwritten
 - 'Keep the current layout' - nothing moves, the servers keep reading where their data is, and no later update asks again (configure can still move it)
 ```
 

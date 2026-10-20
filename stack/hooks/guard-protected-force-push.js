@@ -24,8 +24,8 @@
 // (`bash -c "$(echo ...)"`, `source <(...)`), a push over ssh or inside `docker exec`, and text past the scan budget.
 'use strict';
 const fs = require('fs');
-// The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
+// The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 const { execFileSync } = require('child_process');
 // Every git this guard runs: fsmonitor off, no optional locks (hook-prelude.js gitSafe, audit 2026-10-20 H2) - the same two
 // inline when the prelude is absent, since a protective read must not skip git or run a repository's own program.

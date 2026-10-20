@@ -313,7 +313,7 @@ function approvalStamp(input, env, planId)
         if (!root) return null;
         if (planId && !layout) return null;
         const file = planId ? layout.approvalPath(root, planId, source)
-            : layout ? layout.findState(root, 'approvals', 'APPROVAL', source) : path.resolve(root, envOf(source, 'DOCS_PATH') || '.alfred/docs', 'flow', 'APPROVAL');
+            : layout ? layout.findState(root, 'approvals', 'APPROVAL', source) : path.resolve(root, envOf(source, 'DOCS_PATH') || `${envOf(source, 'DATA_PATH') || '.alfred'}/docs`, 'flow', 'APPROVAL');
         const stamp = fs.statSync(file);
         if (!stamp.isFile()) return null;
         const fd = fs.openSync(file, 'r');

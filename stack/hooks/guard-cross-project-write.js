@@ -30,8 +30,8 @@
 // passed (below). Out of model (audit 2026-10-20 refreshed this list): a path the shell COMPUTES (`$(...)`, a loop
 // variable), `xargs rm` fed a listing and `find ... -delete` - the rm guard judges the last two for what they destroy.
 const fs = require('fs');
-// The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
+// The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 const os = require('os');
 const path = require('path');
 

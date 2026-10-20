@@ -74,8 +74,8 @@ if (require.main === module) {
     if (prelude.standDown('guard-stop-contract')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
-// The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
+// The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 let payload;
 try {
   payload = JSON.parse(fs.readFileSync(0, 'utf8'));

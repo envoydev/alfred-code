@@ -66,7 +66,8 @@ for (const route of Object.keys(ROUTES))
         assert.match(result.stamp, /^action: install$/m, 'the stamp names the action');
         assert.match(result.stamp, /^picked-skills: markdown-style$/m, 'the stamp records the pick - a copy, no plugin home (2.1.0)');
         assert.match(result.stamp, route === 'plugin' ? /^seats-route: plugin$/m : /^seats-route: copy$/m, 'how the seats came');
-        assert.strictEqual(result.settings.env.ALFRED_CODE_DOCS_PATH, '.alfred/docs', 'the settings env is seeded');
+        assert.strictEqual(result.settings.env.ALFRED_CODE_DATA_PATH, '.alfred', 'the settings env is seeded');
+        assert.strictEqual(result.settings.env.ALFRED_CODE_DOCS_PATH, undefined, 'and the retired docs key is never written');
         if (route === 'plugin')
         {
             assert.ok(calls.includes('plugin install alfred-code@envoydev --scope project -y'), 'the core entry is installed');
@@ -122,7 +123,7 @@ for (const route of Object.keys(ROUTES))
                 key: settings.includeCoAuthoredBy,
                 env: settings.env.OWN_FLAG,
                 hook: (settings.hooks.PreToolUse || []).find((e) => JSON.stringify(e).includes('own-hook.js')),
-                stack: settings.env.ALFRED_CODE_DOCS_PATH,
+                stack: settings.env.ALFRED_CODE_DATA_PATH,
             };
         };
         const { steps } = run(['install', 'update'], route, { prepare, each: own });
@@ -133,7 +134,7 @@ for (const route of Object.keys(ROUTES))
             assert.strictEqual(s.key, false, `${act}: the project's own settings key changed or vanished`);
             assert.strictEqual(s.env, 'on', `${act}: the project's own env key changed or vanished`);
             assert.deepStrictEqual(s.hook, OWN_HOOK, `${act}: the project's own hook changed or vanished`);
-            assert.strictEqual(s.stack, '.alfred/docs', `${act}: the stack's own env was not merged in beside them`);
+            assert.strictEqual(s.stack, '.alfred', `${act}: the stack's own env was not merged in beside them`);
         }
     });
 }

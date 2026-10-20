@@ -69,8 +69,10 @@ function locate() {
     }
     return value;
   };
-  const docsAbs = path.resolve(root, setting('DOCS_PATH') || '.alfred/docs');
-  const dataAbs = path.resolve(root, dataRoot({ ALFRED_CODE_DATA_PATH: setting('DATA_PATH') }));
+  // the docs root is <data root>/docs (2.8.0); a leftover ALFRED_CODE_DOCS_PATH is still read first for the 2.x line
+  const dataRel = dataRoot({ ALFRED_CODE_DATA_PATH: setting('DATA_PATH') });
+  const docsAbs = path.resolve(root, setting('DOCS_PATH') || `${dataRel}/docs`);
+  const dataAbs = path.resolve(root, dataRel);
   // 2.8.0: the receipts live in <data root>/state/approvals/ (stack/hooks/layout.js), where the guard reads them first
   const approvalsAbs = path.join(dataAbs, 'state', 'approvals');
   const inTop = (abs) => { const r = path.relative(top, real(abs)).split(path.sep).join('/'); return r && !r.startsWith('..') && !path.isAbsolute(r) ? `${r}/` : null; };

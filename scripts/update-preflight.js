@@ -28,12 +28,12 @@
 //                                           classified by derive-state's classifyNew against THIS
 //                                           install: arrives | renamed | offer | off | unknown;
 //                                           'new: none' if none)
-//   data-move: offer <root>\tfrom=<places>\tdocs=<n> serena=yes|no browser=<engines|none> memory=yes|no[\tignored=yes][\tconflicts=<n>][\tyours=yes]
+//   data-move: offer <root>\tfrom=<places>\tserena=yes|no browser=<engines|none> memory=yes|no[\tconflicts=<n>]
 //            | none (<why>)
-//                                           (the project's data outside its data root - the 2.0.0
-//                                           layout or an earlier root: the docs, serena's folder, the
-//                                           browser profiles, a project memory database; a project
-//                                           install only)
+//                                           (the project's server data outside its data root - the 2.0.0
+//                                           layout or an earlier root: serena's folder, the browser
+//                                           profiles, a project memory database; a project install only.
+//                                           The docs move unasked since 2.8.0, so they are no part of it)
 //   agents-md: offer .claude/CLAUDE.md -> .claude/AGENTS.md | none (<why>)
 //                                           (the stack's file is AGENTS.md; a project install only)
 //   env-keys: <comma-separated key names>   (or 'env-keys: none')
@@ -439,29 +439,25 @@ function runLogMode(logFile)
     console.log(`restart: ${(changed || otherRelease || (hooks > 0 && !hooksLive) || docsMoved) ? 'yes' : 'no'}`);
 }
 
-// The data move, from the rules the installer applies (docs.dataOffer): the docs plan over the same
-// settings view the docs root is read from and the stamp's ledger for who wrote the value, plus every
-// server's data outside the root - the kept engines the stamp names, the memory folder at the project level.
-function dataMoveLine({ root, claudeDir, stampFile, stampScope })
+// The data move, from the rules the installer applies (docs.dataOffer): every server's data outside the root - the kept
+// engines the stamp names, the memory folder at the project level.
+function dataMoveLine({ root, claudeDir, stampFile })
 {
     const settingsLib = require('./install/settings.js');
     const docs = require('./install/docs.js');
     const stampLib = require('./install/stamp.js');
     const dataRoot = require('../stack/mcp/data-root.js');
-    const ledger = stampLib.readLedger(stampFile);
-    const managed = ledger && ledger.env ? Object.assign({}, ...Object.values(ledger.env)) : null;
     const projectRoot = path.resolve(root);
     let stampText = '';
     try { stampText = fs.readFileSync(stampFile, 'utf8'); } catch { stampText = ''; }
-    const scope = stampScope === 'local' ? 'local' : 'project';
     const env = settingsLib.readBackSettings(claudeDir, 'local').env || {};
     const checked = dataRoot.checkDataPath(env.ALFRED_CODE_DATA_PATH || '');
     const recorded = (/^data-root: *(\S+) *$/m.exec(stampText) || [])[1];
     const dataRootNow = checked.ok ? checked.value : recorded || dataRoot.DATA_ROOT_DEFAULT;
     const db = env.ALFRED_CODE_MEMORY_DB || '';
     return docs.dataOfferLine(docs.dataOffer({
-        projectRoot, claudeDir, scope, ledger: managed, stampText, root: dataRootNow,
-        // An unstamped legacy install (stamp.js legacy-unstamped) is update's to take, its docs root the stack's own.
+        projectRoot, stampText, root: dataRootNow,
+        // An unstamped legacy install (stamp.js legacy-unstamped) is update's to take.
         stamped: fs.existsSync(stampFile) || stampLib.legacyUnstamped(root),
         engines: stampLib.readBrowserLines(stampFile).browsers || [],
         memoryProject: dataRoot.memoryLevelOf(db, { home: require('node:os').homedir(), projectRoot }) === 'project',

@@ -105,9 +105,10 @@ The memory levels and stores, where the docs root and the data root live, and th
   protects `.claude/` (only `.claude/worktrees` is exempt): a write there is prompted in default and
   acceptEdits mode, denied in `dontAsk`, and no `permissions.allow` rule pre-approves it
   (code.claude.com/docs/en/permission-modes, 'Protected paths') - so every plan, capture and commit
-  receipt the model writes cost a prompt, and a headless run could not write them at all. The default
-  is `.alfred/docs`, stated in every code home of the fallback (`scripts/docs-root-default.test.js`
-  holds them to one value). ONE `.gitignore` (the user's ruling of 2026-10-13): the data root's carries the docs rules
+  receipt the model writes cost a prompt, and a headless run could not write them at all. Since 2.8.0 it
+  is always `<data root>/docs` (the user's ruling of 2026-10-20): `ALFRED_CODE_DOCS_PATH` is retired - no run writes it,
+  every reader still reads a leftover one first for the 2.x line, and every code home of the fallback spells
+  `<data root>/docs` (`scripts/docs-root-default.test.js` holds them to it). ONE `.gitignore` (the user's ruling of 2026-10-13): the data root's carries the docs rules
   by `ALFRED_CODE_DOCS_VERSIONING` (`data-root.js dataIgnoreText`, `alfred-code.js ignoreStep`), and an update removes the
   docs root's own file and the nested ones earlier releases wrote (`history/`, the run book's `project-capabilities/`, the
   project memory folder) while each holds exactly the stack's text (`docs.pruneNestedIgnores`); serena's folder file is
@@ -122,22 +123,22 @@ The memory levels and stores, where the docs root and the data root live, and th
   folder was `alfred-code-usage-report/` until 2.1.7 - `docs.migrateUsageReport`, run after this
   file is current, moves it straight to `statistics/usage-report/`, never moving raw copies to a path git would not ignore, never over a session folder the new
   one holds). A file holding a text an earlier release wrote (`DOCS_IGNORE_FORMER`) is the stack's
-  and is rewritten; any other text is the project's and kept. An install on the old default is never moved
-  silently (`docs.docsMovePlan`): the stack's own seed (the ledger's hash, or with no ledger the
-  catalog's `former_defaults`) over docs at `.claude/docs` is OFFERED once - since 2.1.0 as part of the data
-  move below: `update-preflight.js` names it in its `data-move: offer` line, update asks move (recommended)
-  or keep, and the answer is `--data-move move|keep`. Move: one step, `git mv` for tracked files (history kept, staged as
-  renames), a rename for the rest, every file put back on any failure, the key re-pointed and the rule
-  re-stamped - with every generated pointer rule (`selection.js` GENERATED_RULES, `project-code-style`) that names the
-  old root, which a capture baked in literally (`selection.respellDocsRoot`, M11) - a restart named. Keep: the key becomes the user's own value, out of the ledger; a 2.1 keep writes `data-move: kept` and no
-  update offers again, while a 2.0.0 keep (no such line) is offered once more, marked `yours=yes` - never answered by
-  an unattended run (2.1.7, the user's ruling of 2026-10-06: all of the stack's data belongs under the data root). No answer: nothing moves, and an absent key is written back as the old root so
-  the hooks keep reading where the docs are. A value the user set elsewhere is never offered: one the ledger does
-  not record (the old default aside, above), or any root in `settings.local.json` at project or user scope (the stamped rule is
-  settings.json's, R98). The launch environment is never read - a settings value applies over a shell
-  export and the seed writes one anyway. A move keeps what git saw: an old root git ignored, with nothing
-  tracked, becomes a `local` root (`ignored=yes` in the offer). A conflict or an unreadable settings file
-  moves nothing, and the rule keeps the root it was stamped with.
+  and is rewritten; any other text is the project's and kept. THE DRAIN (2.8.0, `docs.docsMovePlan`,
+  `alfred-code.js docsRootStep`): every run moves the stack's docs, unasked, to `<data root>/docs` - from the root a
+  leftover key names (settings.local.json over settings.json, Claude Code's merge), else on a stamped install with no key
+  from the earlier data root's `docs/` (a data-root change) or the pre-2.0.0 `.claude/docs` - then removes the key from
+  both settings files (`settings.js applyEnv` 3b). The docs are no part of the data-move offer; the servers' data stays
+  asked. Only the stack's own top-level entries move (`STACK_DOCS`: the domains and work folders, every older home a
+  migration still moves, `ORIENTATION.md`, `.branches`, any folder holding a `watch.json`): a hand-set root may be a
+  folder the project uses too (`docs/`), so its other files stay and are named. One step: `git mv` for tracked files
+  (history kept, staged as renames), a rename for the rest, every file put back on any failure, the rule re-stamped -
+  with every generated pointer rule (`selection.js` GENERATED_RULES, `project-code-style`) that names the old root,
+  which a capture baked in literally (`selection.respellDocsRoot`, M11) - and a restart named. A move keeps what git
+  saw: an old root git ignored, with nothing tracked, becomes a `local` root. A CLASH (a file at both places) moves
+  nothing and keeps the key, so the hooks keep reading where the docs are until one side is cleared; so does a
+  settings.json key under a local-scope run, which does not write that file (a `!!` line each). A settings.json root
+  that settings.local.json hid is named, never moved. An unreadable settings file moves nothing, and the rule keeps the
+  root it was stamped with. The launch environment is never read.
 - **One data root for the project's data** (2.1.0, the user's decision of 2026-09-29): `ALFRED_CODE_DATA_PATH`,
   default `.alfred` at the project root - relative, never under `.claude/`, no space, no `..` (`data-root.js
   checkDataPath`) - holds the docs (`<root>/docs`), serena's folder and home (`<root>/serena`), the browser
@@ -156,15 +157,13 @@ The memory levels and stores, where the docs root and the data root live, and th
   store inline on every route, into a root whose `.gitignore` is written first;
   `Read(.sensitive-data)` is in the shipped deny, a bare name matching at any depth per code.claude.com/docs/en/permissions).
   `stack/mcp/data-root.js` is the one home of every place, read by the three launchers, the installer, init's
-  plan and the preflight. The docs root is written as `<root>/docs` unless the user set their own (a value the
-  ledger does not record is never moved). `<root>/.gitignore` is `/*` plus `!/.gitignore` and, under `git` versioning, `!/docs/` with the docs' machine-state lines
+  plan and the preflight. The docs root is `<root>/docs`, always (2.8.0). `<root>/.gitignore` is `/*` plus `!/.gitignore` and, under `git` versioning, `!/docs/` with the docs' machine-state lines
   (`data-root.js dataIgnoreText`, header-marked, a project's own text kept): a bare `*` would make `git
   check-ignore` answer yes for the docs and the versioning seed would read every fresh project as `local`, and
   the file re-includes itself so it is committed and a teammate's clone has it. The installer keeps it current
   (`docs.ensureDataIgnore`); every launcher writes it absent-only before it hands out a path under the root
   (`ensureRootIgnore`) - a 2.0.0 project whose servers are already 2.1 has none yet. THE MOVE: the docs move
-  inline (`docs.docsMovePlan` generalised - the old default the stack wrote, which the ledger records or a stamp
-  from before the ledger implies; a 2.0.0 keep is offered as `yours=yes` - or the stack's docs under an earlier root); a server's own data is LIVE while the session running the installer holds it, so on
+  inline and unasked (the drain above); a server's own data is LIVE while the session running the installer holds it, so on
   a route where its launcher runs the installer records a stamp line `data-pending: <class> <from> -> <to>` and
   the launcher moves it at its next start, only when nothing holds it (a database with no `-wal`/`-shm`/
   `-journal`, a browser profile with no Chromium `Singleton*` or Firefox `lock`, a serena folder whose logs
@@ -175,7 +174,7 @@ The memory levels and stores, where the docs root and the data root live, and th
   still on that place (a second session's server, Cursor's) - named once as a `!!` line, then each run as a
   plain clash, and a 2.0.0 place holding data again gets its own `.gitignore` back. With no pending line a
   launcher never moves anything: the new place when it holds data, else the 2.0.0 one (`liveDir`). `update-preflight.js` prints
-  `data-move: offer <root> from=... docs=<n> serena= browser= memory=` (the stamp's kept engines, the memory
+  `data-move: offer <root> from=... serena= browser= memory=` (the stamp's kept engines, the memory
   class at the project level only); update asks ONE question (move recommended, keep, or a typed folder), the
   answer is `--data-move move|keep` (`--docs-move` read for one release) and `--data-path <folder>`; keep writes
   `data-move: kept` and no later update offers again; configure's data question passes `--data-path <new>

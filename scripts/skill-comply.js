@@ -564,10 +564,15 @@ function checkExpectation(exp)
 
 const q = (s) => (/^[A-Za-z0-9_/.,:=@%+-]+$/.test(String(s)) ? String(s) : `'${String(s).replace(/'/g, `'\\''`)}'`);
 
+// The catalog's keys, plus a retired key the hooks still read for the 2.x line - a leftover in the shell must not
+// reach a replay either (ALFRED_CODE_DOCS_PATH, retired in 2.8.0).
+const RETIRED_STILL_READ = ['ALFRED_CODE_DOCS_PATH'];
 function stackEnvKeys()
 {
-    try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'environment.json'), 'utf8')).env.map((r) => r.key); }
-    catch { return []; }
+    let keys = [];
+    try { keys = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'environment.json'), 'utf8')).env.map((r) => r.key); }
+    catch { keys = []; }
+    return [...keys, ...RETIRED_STILL_READ.filter((k) => !keys.includes(k))];
 }
 
 // What an init walk would install for the fixture: the locked always-on set, the fixture's stack

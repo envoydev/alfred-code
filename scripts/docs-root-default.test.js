@@ -32,12 +32,21 @@ function repo()
     return root;
 }
 
-test('the default is .alfred/docs in the installer, the catalog and the resolver', () =>
+test('every reader defaults to <data root>/docs - the installer, the layout module and the engines', () =>
 {
-    assert.strictEqual(copy.DOCS_ROOT_DEFAULT, '.alfred/docs');
-    const row = JSON.parse(fs.readFileSync(path.join(REPO, 'meta', 'environment.json'), 'utf8')).env.find((r) => r.key === 'ALFRED_CODE_DOCS_PATH');
-    assert.strictEqual(row.default, copy.DOCS_ROOT_DEFAULT, 'the env catalog seeds the same default the resolver falls back to');
-    assert.strictEqual(copy.resolveDocsRoot(repo()), '.alfred/docs', 'no settings file - the default');
+    const layout = require('../stack/hooks/layout.js');
+    assert.strictEqual(copy.resolveDocsRoot(repo()), '.alfred/docs', 'no settings file - the default data root');
+    const root = repo();
+    fs.writeFileSync(path.join(root, '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_DATA_PATH: '.data' } }));
+    assert.strictEqual(copy.resolveDocsRoot(root, 'project'), '.data/docs', 'the data root the settings name');
+    assert.strictEqual(layout.docsRoot({}), '.alfred/docs');
+    assert.strictEqual(layout.docsRoot({ ALFRED_CODE_DATA_PATH: '.data' }), '.data/docs');
+    assert.strictEqual(layout.docsRoot({ ALFRED_CODE_DATA_PATH: '.data', ALFRED_CODE_DOCS_PATH: 'docs-ext' }), 'docs-ext', 'a leftover key is still read first for the 2.x line');
+    const prefs = require('../stack/skills/capture-preferences/scripts/preferences.js');
+    fs.writeFileSync(path.join(root, '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_DATA_PATH: '.data' } }));
+    assert.strictEqual(prefs.docsRoot(root), '.data/docs');
+    const rows = JSON.parse(fs.readFileSync(path.join(REPO, 'meta', 'environment.json'), 'utf8')).env;
+    assert.strictEqual(rows.find((r) => r.key === 'ALFRED_CODE_DOCS_PATH'), undefined, 'the catalog retires the key');
 });
 
 // Every code home of the fallback, found by its shape - so a hook added later that spells its own
@@ -59,7 +68,7 @@ function codeFiles()
     return out;
 }
 
-test('every docs-root fallback in code spells .alfred/docs, and the old root appears only as the legacy constant', () =>
+test('every docs-root fallback in code is the data root\'s docs/, and the old root appears only as the legacy constant', () =>
 {
     const fallbacks = [];
     const stray = [];
@@ -68,12 +77,14 @@ test('every docs-root fallback in code spells .alfred/docs, and the old root app
         const rel = path.relative(REPO, file).split(path.sep).join('/');
         fs.readFileSync(file, 'utf8').split('\n').forEach((line, i) =>
         {
-            for (const m of line.matchAll(/'DOCS_PATH'\)\s*\|\|\s*'([^']*)'/g)) fallbacks.push(`${rel}:${i + 1} ${m[1]}`);
+            for (const m of line.matchAll(/(?:'DOCS_PATH'\)|\.ALFRED_CODE_DOCS_PATH)\s*\|\|\s*(.*)$/g)) fallbacks.push([`${rel}:${i + 1}`, m[1]]);
             if (/['"`]\.claude\/docs\/?['"`]/.test(line) && !/LEGACY_DOCS_ROOT/.test(line)) stray.push(`${rel}:${i + 1}`);
         });
     }
     assert.ok(fallbacks.length >= 15, `the hooks' inline fallbacks are found (${fallbacks.length})`);
-    assert.deepStrictEqual(fallbacks.filter((f) => !f.endsWith(' .alfred/docs')), [], 'a fallback that is not the default');
+    // The one spelling: the data root's docs/ - inline in a hook (it ships with no module beside it), dataRoot() in layout.js.
+    const DATA_DOCS = /^`\$\{(?:envOf\((process\.env|source|env), 'DATA_PATH'\) \|\| (?:'\.alfred'|DEFAULT_DATA_ROOT)|dataRoot\(env\)|dataRel|root|data\.ok \? data\.value : DATA_ROOT_DEFAULT)\}\/docs`/;
+    assert.deepStrictEqual(fallbacks.filter(([, rest]) => !DATA_DOCS.test(rest)).map(([at, rest]) => `${at} ${rest.trim()}`), [], 'a fallback that is not the data root\'s docs/');
     assert.deepStrictEqual(stray, [], 'the old root spelled as a value outside the LEGACY_DOCS_ROOT constant');
 });
 
