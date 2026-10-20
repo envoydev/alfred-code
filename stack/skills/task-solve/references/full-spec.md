@@ -18,7 +18,9 @@ REQUEST
 else echo 'path: gated - spec-check not found'; fi
 ```
 
-A script neither home has prints `path: gated`: keep every gate.
+A script neither home has prints `path: gated`: keep every gate. A request that is only a ticket link gives the
+check nothing to read - fetch the ticket first and put its title and type line above the link in the heredoc, or
+`bug:` reads no on a bug.
 
 Two stop rules every size carries, since this file is the one read on every size: a bug's `Result:` adds
 `Repro: <the reported error matched | differs: <what it showed> | not reproduced>`, and a question in the
