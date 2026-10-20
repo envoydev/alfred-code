@@ -256,7 +256,8 @@ test('the solve and diagnose flows load the execution strategy before they decid
     for (const route of ['**Direct**', 'gated single-chat solve flow', 'cross-domain solve flow', 'diagnose flow', 'greenfield or framework-upgrade flows'])
         assert.ok(strategy.includes(route), `the route list holds ${route}`);
     assert.match(strategy, /never a silent switch/, 'a flow route is offered, never taken silently');
-    assert.match(strategy, /the effort cannot/, 'only the model is overridable per dispatch');
+    // the Agent tool takes `effort` per invocation from Claude Code 2.1.292 (code.claude.com/docs/en/sub-agents), set only on the user's ask (stack audit 2026-10-20 row 7)
+    assert.match(strategy, /the effort too \(Claude Code 2\.1\.292\+\), but only on the user's explicit ask, never on your own judgment/, 'effort is overridable per dispatch only on the user\'s ask');
     assert.match(strategy, /never below the pin on auth, a migration/, 'a risk path keeps the seat pin');
     const always = squash(read('stack/rules/alfred-interaction.md'));
     assert.match(always, /Every task settles how it runs before its first edit - route, mode, model\. A small task settles it inline, no Skill call/, 'every task decides how it runs');

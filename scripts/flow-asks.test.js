@@ -114,10 +114,10 @@ test('A4: check 61 counts each flow skill\'s templates in SKILL.md itself, so re
 test('A4: the three flow skills each carry ask templates, and every one passes check 61', () => {
     // audit 2026-10-14 SKF-06: the three loops, task-implement and task-build-from-scratch joined - auto-mode answers only a marked ask
     assert.deepStrictEqual([...ASK_FLOW_SKILLS].sort(), ['habits-adjust-agents-md', 'issue-diagnoser', 'loop-architecture-quality', 'loop-code-quality',
-        'loop-test-coverage', 'task-build-from-scratch', 'task-implement', 'task-solve', 'task-solve-cross']);
+        'loop-test-coverage', 'task-build-from-scratch', 'task-design', 'task-implement', 'task-solve', 'task-solve-cross', 'task-verify-plan', 'task-version-upgrade']);
     for (const name of ASK_FLOW_SKILLS) {
         const found = asks(skillText(name));
-        assert.ok(found.length >= (name === 'habits-adjust-agents-md' ? 1 : 2), `${name}: ${found.length} ask template(s)`);
+        assert.ok(found.length >= (['habits-adjust-agents-md', 'task-design'].includes(name) ? 1 : 2), `${name}: ${found.length} ask template(s)`);
         for (const a of found) assert.strictEqual(a.options.filter((o) => /\(Recommended\)$/.test(o)).length, 1, `${name}: ${a.question}`);
     }
 });
@@ -179,8 +179,10 @@ test('A5: the build bar - a model change never leaves its task without its migra
 // Pilot 3: the gate changed the plan in 1 of 4 feature cells, and the steps before the build cost $0.95-1.65 a cell.
 test('full spec: the solve flow states the checklist, runs the check script and pins the merged ask', () => {
     const { ASK_FLOW_TEMPLATES } = require('./lint-skills.js');
-    assert.deepStrictEqual(ASK_FLOW_TEMPLATES, { 'task-solve': 9, 'task-solve-cross': 5, 'issue-diagnoser': 4, 'habits-adjust-agents-md': 3,
-        'loop-architecture-quality': 10, 'loop-code-quality': 10, 'loop-test-coverage': 8, 'task-implement': 10, 'task-build-from-scratch': 5 });
+    // stack audit 2026-10-20 row 13: +1 task-solve (judgment item), +1 issue-diagnoser (4a / 4c close), task-version-upgrade pinned at 5
+    assert.deepStrictEqual(ASK_FLOW_TEMPLATES, { 'task-solve': 10, 'task-solve-cross': 5, 'issue-diagnoser': 5, 'habits-adjust-agents-md': 3,
+        'loop-architecture-quality': 10, 'loop-code-quality': 10, 'loop-test-coverage': 8, 'task-implement': 10, 'task-build-from-scratch': 5,
+        'task-version-upgrade': 5, 'task-design': 1, 'task-verify-plan': 2 });
     for (const name of ['task-solve', 'task-solve-cross']) {
         const core = fs.readFileSync(path.join(SKILLS, name, 'SKILL.md'), 'utf8');
         assert.match(core, /scripts\/spec-check\.js/, `${name}: the check is a script, not a judgment`);

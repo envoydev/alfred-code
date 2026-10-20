@@ -46,6 +46,8 @@ test('UserPromptSubmit injects the answer budget as additionalContext', () => {
     assert.match(ctx, /3 sentences/, 'the budget names the sentence cap');
     assert.match(ctx, /900 characters/, 'the budget names the character cap');
     assert.match(ctx, /Code, tables and command output are exempt/, 'the exemption travels with the budget');
+    // Ruling S9 (the user's, 2026-10-20): 'step by step' lifts the budget like the other depth words.
+    assert.match(ctx, /\(in detail \/ walk me through \/ step by step \/ write a plan\)/, 'the lift list names step by step');
 });
 
 // The user's ruling 2026-10-20: the answer budget is the interaction rule's and is injected, never enforced - the
@@ -265,4 +267,32 @@ test('a task notice arriving as a prompt gets no budget and no correction row', 
     assert.strictEqual(back.stdout, '', 'nothing injected for a hand-back');
     assert.deepStrictEqual(correctionRows(sid), [], 'and no row');
     assert.match(prompted('next step please').ctx, /3 sentences/, 'a typed prompt still gets the budget');
+});
+
+// Ruling S3 (2026-10-20): Claude Code closes an idle AskUserQuestion itself - `afkTimeoutMs` on the result and 'No
+// response after <N>s - the user may be away from keyboard' in its text. That is no answer: the hook writes the session's
+// timeout marker, one `ask-timeout` row and a note; an answered ask or a typed prompt clears the marker.
+test('S3: an ask the idle timeout closed is no answer - marker, row and note; an answer or a typed prompt clears it', () => {
+    const logDir = fs.mkdtempSync(path.join(TMP, 's3-'));
+    const env = { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: logDir };
+    const sid = 's3-sess';
+    const marker = path.join(logDir, `alfred-ask-timeout-${sid}`);
+    const qs = [{ question: 'Approve the plan?', options: [{ label: 'Approve (Recommended)' }, { label: 'Change it' }] }];
+    const post = (tool_response) => spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'PostToolUse', tool_name: 'AskUserQuestion',
+        session_id: sid, tool_input: { questions: qs }, tool_response }), encoding: 'utf8', env });
+    const timedOut = post({ questions: qs, answers: {}, afkTimeoutMs: 60000 });
+    assert.strictEqual(timedOut.status, 0, 'never blocks');
+    assert.match(JSON.parse(timedOut.stdout).hookSpecificOutput.additionalContext, /timed out - nobody answered it.*no approval/);
+    assert.ok(fs.existsSync(marker), 'the session marker is written');
+    assert.deepStrictEqual(ledgerRows(sid).map((r) => [r.mode, r.kind, r.detail.afkTimeoutMs]), [['probe', 'ask-timeout', 60000]]);
+    post({ questions: qs, answers: { 'Approve the plan?': 'Approve (Recommended)' } });
+    assert.ok(!fs.existsSync(marker), 'a real answer clears it');
+    const text = post('No response after 60s — the user may be away from keyboard. Proceed using your best judgment based on the context so far.\nBefore going idle the user had selected: "Approve the plan?"="Approve (Recommended)".');
+    assert.match(JSON.parse(text.stdout).hookSpecificOutput.additionalContext, /timed out/, 'the text form, picks made before going idle included');
+    assert.ok(fs.existsSync(marker));
+    spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'UserPromptSubmit', session_id: sid, prompt: 'back - go on' }), encoding: 'utf8', env });
+    assert.ok(!fs.existsSync(marker), 'a typed prompt clears it');
+    const prelude = require('../stack/hooks/hook-prelude.js');
+    assert.strictEqual(prelude.askTimedOut({ answers: { a: 'b' } }), false, 'a human-resolved result has no afkTimeoutMs');
+    assert.strictEqual(prelude.askTimedOut('Your questions have been answered: "a"="b".'), false);
 });

@@ -43,8 +43,21 @@ Run a fresh architecture assessment and replace ARCHITECTURE-ASSESSMENT.md?
 
 DELEGATED vs INLINE keys on dispatch capability, not file presence - agent files on disk with no Agent tool to dispatch them is still INLINE. When dispatch is available, ask ONE question before GATHER, via AskUserQuestion - hunt weaknesses and strengths via architecture-analyzer seats (recommend it: the cheap seats absorb the reads), or in-session? - unless a calling flow (the quality loop) already picked the run's mode, which is inherited, never re-asked.
 
+```ask
+Hunt the weaknesses and strengths of <the modules> through the architecture-analyzer seats or in this session?
+- 'Through the seats (Recommended)' - the cheap seats absorb the reads; the judgment and the write stay here
+- 'In this session' - navigation-server-first and bounded, no dispatch
+```
+
 - **DELEGATED** - dispatch architecture-analyzer per module as below; reasoning and writing stay here.
-- **INLINE** (chosen, or no dispatch, or a scope too small to fan out): characterize the modules yourself, navigation-server-first and bounded, and continue at JUDGE identically. Its one lighter path: when the assessment's `As of:` sha is HEAD on a clean tree, VERIFY + REWRITE - re-measure every recorded entry against the code, fold in the decisions accepted since, then the same whole-file Write. The run gate offers it as its first option, 'Verify and rewrite at this HEAD (Recommended)'; a run whose HEAD moved - the loop's reconcile after shipped fixes included - runs in full.
+- **INLINE** (chosen, or no dispatch, or a scope too small to fan out): characterize the modules yourself, navigation-server-first and bounded, and continue at JUDGE identically. Its one lighter path: when the assessment's `As of:` sha is HEAD on a clean tree, VERIFY + REWRITE - re-measure every recorded entry against the code, fold in the decisions accepted since, then the same whole-file Write. The run gate then takes this form; a run whose HEAD moved - the loop's reconcile after shipped fixes included - runs in full:
+
+```ask
+ARCHITECTURE-ASSESSMENT.md is as of this HEAD on a clean tree. Verify and rewrite it, or run the assessment in full?
+- 'Verify and rewrite at this HEAD (Recommended)' - every recorded entry re-measured, the accepted decisions folded in, one whole-file Write
+- 'Run the full assessment and replace ARCHITECTURE-ASSESSMENT.md' - a fresh judgment, seats as picked in the mode ask
+- 'Answer from the existing ARCHITECTURE-ASSESSMENT.md only' - nothing dispatched, nothing written
+```
 
 ## The run
 

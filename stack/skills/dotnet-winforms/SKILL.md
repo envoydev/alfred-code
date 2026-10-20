@@ -93,8 +93,8 @@ and applies unchanged. The WinForms-specific points:
   thread's `SynchronizationContext` and raises its callback there, so a worker reports from any
   thread and the UI update lands safely. Pair it with a `CancellationToken` for cancellation.
 - **Marshal back with `Control.Invoke` / `BeginInvoke`.** On the floor prefer the async
-  `Control.InvokeAsync`, which removes a class of deadlocks (see **references/modern-net.md**); below
-  the floor (.NET 8) and on 4.8 it does not exist - there, `Invoke`/`BeginInvoke` stay the marshaling
+  `Control.InvokeAsync` (.NET 9+), which removes a class of deadlocks (see **references/modern-net.md**); on
+  .NET 8 and 4.8 it does not exist - there, `Invoke`/`BeginInvoke` stay the marshaling
   primitives.
 - **`BackgroundWorker` is legacy** - supported, but no longer the recommended model and it only
   offloads CPU work, not I/O. New code uses `await` for I/O and an awaited `Task.Run` for CPU-bound

@@ -34,8 +34,9 @@ the ADR names the why, the diagram shows the outcome, each links the other.
 
 ## Mermaid ground rules (every Mermaid diagram)
 
-- Fence with the language id exactly `mermaid` - renders natively on GitHub, GitLab, Azure
-  DevOps, and the VS Code preview, no plugins. Standalone diagrams are `.mmd` files.
+- Fence with the language id exactly `mermaid` - renders natively on GitHub, GitLab and the VS Code
+  preview, no plugins; the Azure DevOps wiki renders it with limited syntax (`graph`, not `flowchart`; no
+  HTML tags). Standalone diagrams are `.mmd` files.
 - Renderers lag the library (GitLab and wiki plugins run older majors). Before relying on newer
   syntax: (1) parse it locally with the Mermaid CLI where the project can run it
   (`npx -p @mermaid-js/mermaid-cli mmdc -i <file>.mmd -o <tmp>/out.svg` - confirm the package and

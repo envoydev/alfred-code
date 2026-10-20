@@ -131,7 +131,7 @@ function proseOf(text) {
 const BUDGET_TEXT =
         `Answer budget (alfred-interaction.md): 3 sentences plus bullets, ~${BUDGET} characters of prose, result first; fit it before sending. ` +
         `Code, tables and command output are exempt. Only THIS message's depth words lift it (in detail / walk me ` +
-        `through / write a plan). Single dashes and single quotes, an ` +
+        `through / step by step / write a plan). Single dashes and single quotes, an ` +
         `AskUserQuestion's text included.`;
 
 // --- the correction streak: N short human turns in a row, each right after a long answer -----
@@ -323,7 +323,26 @@ function typedAnswers(p) {
   }
   return out;
 }
+// An ask the idle timeout closed is no answer (ruling S3, hook-prelude.js `askTimedOut`): the session's timeout marker is
+// written, one `ask-timeout` probe row, and a note that the run may go on on its own judgment but holds no approval -
+// the dispatch guard denies the next implementer dispatch on a stamp written after it, once. An answered ask, or a
+// typed prompt, clears the marker.
+const ASK_TIMEOUT_NOTE = 'The question above timed out - nobody answered it (Claude Code closed the idle dialog). '
+  + 'It is no answer: no approval, no consent, no pick. Go on only with steps that need no decision; never write an '
+  + 'APPROVAL or AUTO stamp, commit or dispatch on it - re-ask when the user is back.';
+const timeoutMarker = () => { try { const p = require('./hook-prelude.js'); return typeof p.askTimeoutMarker === 'function' ? p.askTimeoutMarker(payload.session_id) : null; } catch { return null; } };
+const askTimedOut = (r) => { try { const p = require('./hook-prelude.js'); return typeof p.askTimedOut === 'function' && p.askTimedOut(r); } catch { return false; } };
+if (payload.hook_event_name === 'PostToolUse' && payload.tool_name === 'AskUserQuestion' && askTimedOut(payload.tool_response)) {
+  const marker = timeoutMarker();
+  try { if (marker) fs.writeFileSync(marker, new Date().toISOString()); } catch { /* a dir that takes no marker: the note still goes */ }
+  ledgerRow({ mode: 'probe', kind: 'ask-timeout', reason: 'probe: an ask closed by the idle timeout - no answer',
+    detail: { afkTimeoutMs: Number(payload.tool_response && payload.tool_response.afkTimeoutMs) || null } });
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: ASK_TIMEOUT_NOTE } }));
+  process.exit(0);
+}
+const clearTimeoutMarker = () => { const m = timeoutMarker(); try { if (m) fs.rmSync(m, { force: true }); } catch { /* fail-open */ } };
 if (payload.hook_event_name === 'PostToolUse' && payload.tool_name === 'AskUserQuestion') {
+  clearTimeoutMarker();
   const typed = (() => { try { return typedAnswers(payload); } catch { return []; } })();
   if (!typed.length) process.exit(0);
   const nudgeMode = String(envOf(process.env, 'CORRECTION_NUDGE') || 'log').trim().toLowerCase();
@@ -353,6 +372,7 @@ if (payload.hook_event_name === 'UserPromptSubmit') {
   // budget rode a background gate's completion notice, ~195 tokens carried on every later message; 2026-10-14 HK14: and
   // every seat's hand-back - 351 of 960 injections in a week).
   if (harnessPrompt(payload.prompt)) process.exit(0);
+  clearTimeoutMarker();
   const repeat =repeatsLastPrompt(payload.prompt) ? ' VERBATIM RE-ASK: this prompt is identical to ' +
     'the previous one. The last answer missed - do not re-answer it longer or from a different angle. ' +
     'Ask ONE AskUserQuestion about the goal, with the readings you are choosing between as options ' +

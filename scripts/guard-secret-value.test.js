@@ -2722,3 +2722,64 @@ test('audit 2026-10-20 C17 (5417afad): Claude Code\'s own feature-flag cache nam
   assert.equal(bash(`cat "${path.join(dir, 'flags.json')}"`), 0, 'the flag cache alone');
   assert.equal(bash(`cat "${path.join(dir, 'flags-token.json')}"`), REWRITE, 'a real key elsewhere in the file');
 });
+
+// Audit 2026-10-20 H1 (BLOCKER, replayed): the stream probe runs the model's git read BEFORE Claude Code's permission
+// check, so an option that runs a program ran it - `git grep -O'touch X' key` created X, and a `--ext-diff` after the
+// probe's own `--no-ext-diff` won. Such a stage is piped unprobed now; a plain read is still probed and runs as written.
+test('audit 2026-10-20 H1: a git read whose options run a program is never probed - nothing runs before approval', { skip: process.platform === 'win32' && 'posix git fixture' }, () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'h1-'));
+  const g = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+  g('init', '-q'); g('config', 'user.email', 't@example.com'); g('config', 'user.name', 't');
+  fs.writeFileSync(path.join(dir, 'a.js'), 'const apiKey = 1;\n');
+  g('add', '.'); g('commit', '-qm', 'init');
+  fs.writeFileSync(path.join(dir, 'a.js'), 'const apiKey = 2;\n');
+  const mark = path.join(dir, 'RAN');
+  fs.writeFileSync(path.join(dir, 'ext.sh'), `#!/bin/sh\ntouch "${mark}"\n`);
+  fs.chmodSync(path.join(dir, 'ext.sh'), 0o755);
+  g('config', 'diff.external', path.join(dir, 'ext.sh'));
+  for (const c of [`git grep -O'touch ${mark}' apiKey`, `git grep -iO'touch ${mark}' apiKey`, `git grep --open-files-in-pager='touch ${mark}' apiKey`,
+    `git grep --open='touch ${mark}' apiKey`, 'git diff --ext-diff', 'git log -p --ext-diff -1', 'git show --ext-diff HEAD', 'git diff --textconv',
+    'git log -p --show-signature -1']) {
+    try { fs.rmSync(mark); } catch { /* none yet */ }
+    const out = updatedCommand(at(dir, c));
+    assert.ok(!fs.existsSync(mark), `${c}: the probe ran a program before approval`);
+    assert.ok(out && out.includes('--redact-stdin'), `${c}: piped unprobed - the safe side: ${out}`);
+  }
+  assert.equal(verdict(at(dir, 'git grep -n no_such_word_here')), 0, 'a plain git grep is still probed and runs as written');
+  assert.equal(verdict(at(dir, 'git grep -n -eOx_no_such_word_here')), 0, 'an O inside a pattern value is no pager flag');
+  assert.equal(verdict(at(dir, 'git diff --text --stat')), 0, '--text is diff\'s own -a, never --textconv');
+  assert.ok(!fs.existsSync(mark), 'no plain probe ran the external diff either');
+});
+
+// Audit 2026-10-20 H8 (replayed): PowerShell printed a credential four ways the guard read none of - the env: drive through
+// Get-Content and its aliases, an expandable string statement around the reference, cmd's `set` (on both shells) and
+// .NET's file reads. Each is now the presence form, the masked listing or the redacted view.
+test('audit 2026-10-20 H8: PowerShell env-drive reads, string statements, cmd /c set and [IO.File] reads are judged', () => {
+  const ps = (command) => verdict(run({ tool_name: 'PowerShell', tool_input: { command }, session_id: 'suite', cwd: ROOT }));
+  for (const c of ['gc env:API_TOKEN', 'Get-Content env:API_TOKEN', 'type env:API_TOKEN', 'cat env:API_TOKEN', 'Get-Content -Path env:API_TOKEN',
+    'gc env:', '"token: $env:API_TOKEN"', '"$env:API_TOKEN"', 'cmd /c set', 'cmd /c set API', 'cmd.exe /c "set"',
+    '[IO.File]::ReadAllText(".env")', "[System.IO.File]::ReadAllText('.env')", '[IO.File]::ReadAllLines(".env")']) {
+    assert.equal(ps(c), REWRITE, c);
+  }
+  for (const c of ['if ($env:API_TOKEN) { "set" }', '$env:API_TOKEN.Length', 'gc env:PATH', 'cmd /c dir', '"plain text"',
+    '[IO.File]::ReadAllText("README.md")', "'$env:API_TOKEN'"]) {
+    assert.equal(ps(c), 0, c);
+  }
+  for (const c of ['cmd /c set', 'cmd //c set', 'cmd.exe /c set API']) assert.equal(bash(c), REWRITE, `Bash: ${c}`);
+  for (const c of ['cmd /c dir', 'cmd /c "set FOO=1 && run"']) assert.equal(bash(c), 0, `Bash: ${c}`);
+});
+
+// Audit 2026-10-20 (hooks minor list): the sanctioned presence read with the guard's path LOCATED by the shell - the
+// plugin's path is versioned - runs as written; a binding that does anything but list or pick stays an opaque script.
+test('guard-secret-value: node "$G" --presence passes when $G only locates the guard', () => {
+  const f = fixtures();
+  const env = `${f.dotenv}`;
+  assert.equal(bash(`G=$(ls -d ~/.claude/plugins/cache/*/alfred-code/*/stack/hooks/guard-secret-value.js | tail -1); node "$G" --presence ${env} API_KEY`), 0, 'ls | tail');
+  assert.equal(bash(`G="$(find ~/.claude/plugins -name guard-secret-value.js | sort | head -1)" && node "$G" --presence ${env}`), 0, 'find | sort | head, quoted');
+  assert.equal(bash(`G=$(ls -d ./tools/dump.js); node "$G" --presence ${env} API_KEY`), 2, 'another script located the same way');
+  assert.equal(bash(`G=$(echo ./x/guard-secret-value.js); node "$G" --presence ${env}`), 2, 'an echo is no lister');
+  assert.equal(bash(`node "$G" --presence ${env} API_KEY`), 2, 'a variable the command never binds');
+  // the garbled hint (audit 2026-10-20): it says where a value a .mcp.json expands belongs
+  const r = run({ tool_name: 'Read', tool_input: { file_path: f.dotenv }, session_id: 'suite' });
+  assert.match(r.stderr, /a value a \.mcp\.json\s+expands \(`\$\{NAME\}`\) belongs in the ACCOUNT settings file/);
+});

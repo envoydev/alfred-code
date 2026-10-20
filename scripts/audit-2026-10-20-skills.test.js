@@ -34,7 +34,7 @@ test('C34: a data-store start reads its resolved target first, and the run book 
 test('C33: do the step yourself, answer the typed question first, re-read state, check the recommended effect', () =>
 {
     const rule = flat(read('stack/rules/alfred-interaction.md'));
-    assert.match(rule, /A step this session's tools can do .* is done, not handed to the user - check the tools you hold before you ask/);
+    assert.match(rule, /A step this session's tools can do .* is never handed to the user as an instruction - check the tools you hold before you ask, then do it/);
     assert.match(rule, /A question typed while you work is answered in your next text, before the work goes on; one that questions what is running or what it touched first stops or holds that process\./);
     assert.match(rule, /Re-read state carried from an earlier turn or session .* before it becomes an ask, and check a Recommended option's stated effect with one read - an unchecked one is worded as unverified\./);
 });

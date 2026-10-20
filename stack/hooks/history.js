@@ -29,7 +29,7 @@ const scrub = (text) => String(text == null ? '' : text).replace(new RegExp(SECR
 // `status` from taking .git/index.lock beside a git command the session is running (audit 2026-10-08 row 44).
 const GIT_MS = 1500;
 const git = (root, args) => {
-  try { return execFileSync('git', args, { cwd: root, timeout: GIT_MS, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } }).toString().trimEnd(); } // trimEnd, never trim: the first porcelain row starts with a space that is part of its status column
+  try { return execFileSync('git', ['-c', 'core.fsmonitor=false', ...args], { cwd: root, timeout: GIT_MS, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } }).toString().trimEnd(); } // trimEnd, never trim: the first porcelain row starts with a space that is part of its status column
   catch { return ''; }
 };
 

@@ -74,7 +74,7 @@ test('auto-mode stamp: one naming its session is that session\'s for the whole r
     assert.strictEqual(autoStampLive({ session_id: 'sess-b', transcript_path: t }, env), true, 'a hand-written stamp is no one session\'s');
     fs.utimesSync(p.gate, old, old);
     assert.strictEqual(autoStampLive({ session_id: 'sess-b', transcript_path: t }, env), false, 'and lives 8h');
-    assert.deepStrictEqual(Object.keys(approvalStamp({ session_id: 'x' }, env)).sort(), ['file', 'first', 'live', 'mtimeMs', 'session']);
+    assert.deepStrictEqual(Object.keys(approvalStamp({ session_id: 'x' }, env)).sort(), ['file', 'first', 'live', 'mtimeMs', 'session', 'skill']);
     assert.strictEqual(approvalStamp({ session_id: 'x' }, { CLAUDE_PROJECT_DIR: fs.mkdtempSync(path.join(TMP, 'none-')) }), null, 'no stamp');
 });
 
@@ -110,9 +110,26 @@ test('auto-mode start: the typed command writes the stamp before the run, and th
     const before = fs.readFileSync(p.gate, 'utf8');
     assert.match(context(expand(p, 's2', '/task-solve --auto-mode fix the cache', big)), /auto-mode is ON for this \/task-solve run/);
     assert.strictEqual(fs.readFileSync(p.gate, 'utf8'), before, 'the live stamp is kept');
-    // another session's stamp is not this run's: it is replaced
-    expand(p, 's3', '/task-solve-cross --auto-mode', big);
+    // another session's stamp is never overwritten while that session is still RUNNING (its own transcript, beside this
+    // one, written in the last 10 minutes - audit 2026-10-20 hooks minor list, narrowed after a side review): this run
+    // asks as usual, the banner says why and how to take over, and a refused row is written
+    const live = path.join(path.dirname(big), 's2.jsonl');
+    fs.writeFileSync(live, '{}\n');
+    const refused = context(expand(p, 's3', '/task-solve-cross --auto-mode', big));
+    assert.doesNotMatch(refused, /auto-mode is ON/);
+    assert.match(refused, /auto-mode did NOT start: another session \(s2\) is running a stamped run in this checkout right now, and \.alfred\/docs\/flow\/APPROVAL is its approval - finish or stop that run, or delete \.alfred\/docs\/flow\/APPROVAL to take over/);
+    assert.strictEqual(fs.readFileSync(p.gate, 'utf8'), before, 'the running session\'s stamp is left as it is');
+    assert.ok(rows(p, 's3').some((r) => r.kind === 'auto-start-refused'), 'one refused row');
+    // the session went quiet (a finished run, or the one a fresh-session hand-off came from): the new start takes over
+    const quiet = new Date(Date.now() - 11 * 60 * 1000);
+    fs.utimesSync(live, quiet, quiet);
+    assert.match(context(expand(p, 's3', '/task-solve-cross --auto-mode', big)), /auto-mode is ON for this \/task-solve-cross run/);
     assert.match(fs.readFileSync(p.gate, 'utf8'), /\nsession: s3\n/);
+    // no transcript for the stamp's session at all (another machine's, or cleared): no live run, replaced
+    fs.writeFileSync(p.gate, 'AUTO - "/task-solve --auto-mode x"\nsession: gone-session\nskill: task-solve\nat: 2026-10-20T00:00:00Z\n');
+    assert.match(context(expand(p, 's4', '/task-solve --auto-mode y', big)), /auto-mode is ON/);
+    assert.match(fs.readFileSync(p.gate, 'utf8'), /\nsession: s4\n/);
+    fs.rmSync(live, { force: true });
 });
 
 test('auto-mode start: a task, capture, loop or issue, only the exact `--auto-mode` as the FIRST word, never a seat, and the model\'s Skill call only on the user\'s typed auto-mode command', () =>

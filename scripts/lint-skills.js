@@ -1200,8 +1200,13 @@ function lintReferenceContents(skillsDir, skillDirs, fsLike = fs)
 // ask only when it marks one option, and their prose stops carried no mark on four of them, so the run waited. The
 // AGENTS.md create-mode write ask (audit 2026-10-14 SKC14) and task-build-from-scratch's commit ask (SKF-11) followed.
 const ASK_FLOW_TEMPLATES = {
-    'task-solve': 9, 'task-solve-cross': 5, 'issue-diagnoser': 4, 'habits-adjust-agents-md': 3,
+    'task-solve': 10, 'task-solve-cross': 5, 'issue-diagnoser': 5, 'habits-adjust-agents-md': 3,
     'loop-architecture-quality': 10, 'loop-code-quality': 10, 'loop-test-coverage': 8, 'task-implement': 10, 'task-build-from-scratch': 5,
+    // stack audit 2026-10-20 row 13: task-solve's per-judgment ask, issue-diagnoser's 4a / 4c close, task-version-upgrade's
+    // stamp-refused and hard-stop asks.
+    'task-version-upgrade': 5,
+    // stack audit 2026-10-20 agents #8: task-design's behaviour-change stop, task-verify-plan's keep-or-change and judgment-item asks.
+    'task-design': 1, 'task-verify-plan': 2,
 };
 const ASK_FLOW_SKILLS = Object.keys(ASK_FLOW_TEMPLATES);
 // The init / configure walk's layer asks are templates too (2026-09-29: a walk with whole-layer verdicts only left every

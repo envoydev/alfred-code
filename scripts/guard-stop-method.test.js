@@ -317,7 +317,9 @@ test('done gate: git check-ignore is asked at most once, and only for a claim ov
     assert.ok(!unrun(gate(root, steps(root, [['prompt', 'b'], ['edit', 'src/money.js'], ['run', 'npm test']]), 'Fixed.', env)), 'no edit after the run');
     assert.deepStrictEqual(calls(), [], 'nothing to ask git about');
     assert.ok(unrun(gate(root, steps(root, [['prompt', 'c'], ...three]), 'Fixed.', env)));
-    assert.deepStrictEqual(calls().map((c) => c.split(' ')[0]), ['check-ignore'], 'one spawn for every candidate');
+    // every hook git runs with the repository's fsmonitor off (hook-prelude.js gitSafe, audit 2026-10-20 H2)
+    assert.deepStrictEqual(calls().map((c) => c.replace(/^-c core\.fsmonitor=false /, '').split(' ')[0]), ['check-ignore'], 'one spawn for every candidate');
+    assert.ok(calls().every((c) => c.startsWith('-c core.fsmonitor=false ')), 'the fsmonitor is off');
 });
 
 test('done gate: logged once per turn, re-armed by the next typed turn', () => {

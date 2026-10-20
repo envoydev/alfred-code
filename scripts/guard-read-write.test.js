@@ -632,3 +632,24 @@ test('deep review: the whole-file threshold is 400 lines, and the range cap bind
   const r = readAt(path.join(dir, 'f401.ts'), undefined, undefined, sid());
   assert.ok(r.stderr.length < 900, `the whole-file denial stays short: ${r.stderr.length} chars`);
 });
+
+// Audit 2026-10-20 H7: a find naming ONE file by a literal name skipped the sweep gate and then the size gate - `find src
+// -name big.ts -exec cat {} \;` and `| xargs cat` printed a 900-line file whole - while `-iname <literal> | xargs cat`, the
+// same idiom case-folded, was denied as a sweep (8 corpus rows). The named files are sized now, and -iname is the idiom.
+test('H7: a find naming one file is sized like a cat of it; -iname is the same idiom', () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'h7-'));
+  fs.mkdirSync(path.join(dir, 'src', 'deep'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'src', 'deep', 'big.ts'), 'const a = 1;\n'.repeat(900));
+  fs.writeFileSync(path.join(dir, 'src', 'small.ts'), 'export const a = 1;\n');
+  const at = (command) => run(READ, { tool_name: 'Bash', tool_input: { command }, cwd: dir }, { env: { ...process.env, CLAUDE_PROJECT_DIR: dir } });
+  for (const c of ['find src -name big.ts -exec cat {} \\;', 'find . -name big.ts | xargs cat', 'find src -iname BIG.ts | xargs cat', 'find src -name big.ts -exec cat {} +']) {
+    const r = at(c);
+    assert.equal(r.status, 2, `${c} prints a 900-line file`);
+    assert.match(r.stderr, /prints .*big\.ts whole - 900 lines/, c);
+  }
+  for (const c of ['find src -name small.ts -exec cat {} \\;', 'find src -iname small.ts | xargs cat', 'find src -iname SMALL.TS -exec cat {} \\;',
+    'find src -name big.ts -exec cat {} + | wc -l', 'find src -name none.ts -exec cat {} \\;']) {
+    assert.equal(at(c).status, 0, `${c} must pass`);
+  }
+  assert.equal(at('find src -iname "*.ts" | xargs cat').status, 2, 'a glob is still the sweep');
+});

@@ -159,7 +159,7 @@ function stashMoves(command, base, root) {
   if (!shellReader || !/\bstash\b/.test(command)) return [];
   const lines = (dir, args) => {
     try {
-      return require('child_process').execFileSync('git', ['-c', 'core.quotePath=false', ...args], { cwd: dir, timeout: 1500, stdio: ['ignore', 'pipe', 'ignore'] })
+      return require('child_process').execFileSync(...require('./hook-prelude.js').gitSafe(['-c', 'core.quotePath=false', ...args], { cwd: dir, timeout: 1500, stdio: ['ignore', 'pipe', 'ignore'] }))
         .toString('utf8').split('\n').filter(Boolean);
     } catch { return []; }
   };
@@ -332,9 +332,12 @@ function sessionStart(input, root, docs, state) {
   try { broken = typeof docs.integrity === 'function' ? docs.integrity() : docs.lint().problems.filter((p) => /^(merge conflict markers|duplicate id)/.test(p)); } catch {}
   if (broken.length) extra.push(`The docs need a repair before they are trusted: ${broken.slice(0, 3).join('; ')}${broken.length > 3 ? ` (+${broken.length - 3} more: \`${READ} lint\`)` : ''}.`);
   if (st && st.overrides.length) extra.push(`You are on branch ${st.branch}. ${st.overrides.length} doc section(s) hold this branch's own decisions and replace mainline's in every read: ${st.overrides.slice(0, 6).join(', ')}${st.overrides.length > 6 ? ` ... (\`${READ} status\`)` : ''}.`);
-  if (st && st.conflicts.length) extra.push(`Conflicts: ${st.conflicts.join(', ')} - mainline changed lines this branch also changed; \`${READ} show <id> --conflict\` shows both, \`${READ} set <id>\` saves the reconciled text.`);
-  if (st && st.mainline && st.deletedUnmerged.length) extra.push(`Doc versions of deleted branches never detected as merged: ${st.deletedUnmerged.join(', ')} - \`${READ} promote <branch>\` folds one in, \`${READ} prune <branch>\` drops it.`);
-  if (st && st.mainline && st.liveOnMainline && st.liveOnMainline.length) extra.push(`Doc versions of branches sitting on mainline with no proof they merged: ${st.liveOnMainline.join(', ')} - one that was merged fast-forward looks exactly like one that only caught up, so nothing was folded in; if it landed, \`${READ} promote <branch>\`.`);
+  // Each list is cut at six names with a count and the command that lists the rest (audit 2026-10-20, the hooks track's
+  // minor list: three lists here had no cap, so a long-lived branch could push the read lines past the start cap).
+  const six = (list) => `${list.slice(0, 6).join(', ')}${list.length > 6 ? ` (+${list.length - 6} more: \`${READ} status\`)` : ''}`;
+  if (st && st.conflicts.length) extra.push(`Conflicts: ${six(st.conflicts)} - mainline changed lines this branch also changed; \`${READ} show <id> --conflict\` shows both, \`${READ} set <id>\` saves the reconciled text.`);
+  if (st && st.mainline && st.deletedUnmerged.length) extra.push(`Doc versions of deleted branches never detected as merged: ${six(st.deletedUnmerged)} - \`${READ} promote <branch>\` folds one in, \`${READ} prune <branch>\` drops it.`);
+  if (st && st.mainline && st.liveOnMainline && st.liveOnMainline.length) extra.push(`Doc versions of branches sitting on mainline with no proof they merged: ${six(st.liveOnMainline)} - one that was merged fast-forward looks exactly like one that only caught up, so nothing was folded in; if it landed, \`${READ} promote <branch>\`.`);
   if (st && st.outgrown) extra.push(`${st.outgrown} section(s) describe code that changed since they were written - each says so when opened, and the code wins there.`);
   // With no doc file to read by section (a provisional orientation alone, or a domain whose every file is protected),
   // the gate has nothing to hand over - it stands down, so the line announcing it goes too.
@@ -360,6 +363,7 @@ function main() {
   process.env.CLAUDE_PROJECT_DIR = root;
   // before the domain gate: a plan file lives under the docs root whether or not a domain does
   if (event === 'PreToolUse' && stampedPlanWrite(input, root)) return;
+  if (event === 'PreToolUse' && stampAfterTimeoutWrite(input, root)) return;
   if (event === 'SessionStart') {
     const stranded = sweepStrandedRoot(root);
     if (stranded !== null) log(root, input, { event: 'stranded-root', from: LEGACY_DOCS_ROOT, files: stranded });
@@ -428,7 +432,7 @@ function sweepStrandedRoot(root) {
   const state = (e) => (e.isDirectory() && STATE_DIRS.has(e.name)) || (e.isFile() && (STATE_FILES.has(e.name) || OS_LITTER.has(e.name)));
   if (!entries.every(state)) return null;
   try {
-    const tracked = require('child_process').execFileSync('git', ['ls-files', '-z', '--', LEGACY_DOCS_ROOT], { cwd: root, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] });
+    const tracked = require('child_process').execFileSync(...require('./hook-prelude.js').gitSafe(['ls-files', '-z', '--', LEGACY_DOCS_ROOT], { cwd: root, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }));
     if (tracked.length) return null;
   } catch { /* no repo: nothing is tracked */ }
   let files = 0;
@@ -464,14 +468,14 @@ function recordUntracked(input, root) {
     }
     if (!file) {
       let head = '';
-      try { head = require('child_process').execFileSync('git', ['rev-parse', '--verify', '-q', 'HEAD'], { cwd: root, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { /* no commit yet, or no repo - ls-files below tells them apart */ }
+      try { head = require('child_process').execFileSync(...require('./hook-prelude.js').gitSafe(['rev-parse', '--verify', '-q', 'HEAD'], { cwd: root, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] })).toString().trim(); } catch { /* no commit yet, or no repo - ls-files below tells them apart */ }
       file = path.join(flow, `untracked-at-start-${/^[0-9a-f]{7,64}$/.test(head) ? head : 'unborn'}`);
     }
     if (fs.existsSync(file)) list = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean);
     else if (later) return '';
     else {
-      const out = require('child_process').execFileSync('git', ['-c', 'core.quotePath=false', 'ls-files', '--others', '--exclude-standard', '-z'],
-        { cwd: root, timeout: 5000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }).toString('utf8');
+      const out = require('child_process').execFileSync(...require('./hook-prelude.js').gitSafe(['-c', 'core.quotePath=false', 'ls-files', '--others', '--exclude-standard', '-z'],
+        { cwd: root, timeout: 5000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] })).toString('utf8');
       const docsRel = toPosix(path.relative(root, path.resolve(root, docsRootEnv())));
       const inDocs = (f) => !docsRel.startsWith('..') && docsRel && (f === docsRel || f.startsWith(`${docsRel}/`));
       list = out.split('\0').filter((f) => f && !f.includes('\n') && !inDocs(f)).slice(0, UNTRACKED_CAP);
@@ -915,7 +919,20 @@ function noWatch(docs) {
 
 // A skip with nobody at the terminal is one `mode: unattended` row in the hook-blocks ledger, as every other asking hook
 // writes it - it went to docs-log.jsonl alone, which the block-rate tally never reads (audit 2026-10-08).
+// One row per kind per session (audit 2026-10-20 H11: a row on every Stop and every held write - 145 rows, 61 in one
+// session - said nothing the first did not): an exclusive marker in the hook temp dir claims the kind; a marker that
+// already stands skips the row, and a dir that takes no marker writes it, the old behaviour.
 function unattendedRow(root, input, kind) {
+  try {
+    let prelude = null;
+    try { prelude = require('./hook-prelude.js'); } catch { /* no prelude */ }
+    const dir = (prelude && typeof prelude.envOf === 'function' && prelude.envOf(process.env, 'HOOK_LOG_DIR')) || os.tmpdir();
+    const part = (v) => String(v || '').replace(/[^\w.-]/g, '_').slice(-80);
+    try {
+      fs.writeFileSync(path.join(dir, `alfred-docs-unattended-${part(input.session_id || 'nosession')}-${part(kind)}`), new Date().toISOString(), { flag: 'wx' });
+      if (prelude && typeof prelude.sweepStale === 'function') prelude.sweepStale(dir, 'alfred-docs-unattended-');
+    } catch (e) { if (e && e.code === 'EEXIST') return; }
+  } catch {}
   try {
     const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
     fs.mkdirSync(dir, { recursive: true });
@@ -976,6 +993,40 @@ function closeStillOpen(input, abs) {
     if (typeof c === 'string' ? !/^\s*(?:Stop hook feedback:|<task-notification>)/.test(c) : Array.isArray(c) && c.some((b) => b && b.type === 'text' && !/^\s*(?:Stop hook feedback:|<system-reminder>)/.test(b.text || ''))) return false;
     if (Array.isArray(c) && c.some((b) => b && b.type === 'tool_result' && asks.has(b.tool_use_id))) return false;
   }
+  return true;
+}
+// Ruling S3 (the user's, 2026-10-20): an AskUserQuestion closed by Claude Code's idle timeout is no answer. The answer
+// hook writes this session's timeout marker on such a close and removes it on the next answered ask or typed prompt;
+// while it stands, writing an APPROVED / AUTO line into `<docs-path>/flow/APPROVAL` - a file tool or a shell write that
+// carries the word - is denied, so no stamp records an approval nobody gave (the dispatch guard holds the gated
+// dispatch too). A seat's call, a delete of the stamp, and any other flow file pass.
+function stampAfterTimeoutWrite(input, root) {
+  if (input.agent_id) return false;
+  let marker = '';
+  try { const pre = require('./hook-prelude.js'); if (typeof pre.askTimeoutMarker === 'function') marker = pre.askTimeoutMarker(input.session_id); } catch { return false; }
+  if (!marker || !fs.existsSync(marker)) return false;
+  const name = input.tool_name || '';
+  const t = input.tool_input || {};
+  const real = (p) => { try { return fs.realpathSync.native(p); } catch { return p; } };
+  const stamp = path.resolve(real(path.resolve(root, docsRootEnv(), 'flow')), 'APPROVAL');
+  const isStamp = (abs) => path.resolve(real(path.dirname(abs)), path.basename(abs)) === stamp;
+  const STAMP_WORD = /^\s*(?:APPROVED|AUTO)\b/m;
+  let hit = false;
+  if (/^(?:Edit|Write|MultiEdit)$/.test(name) && typeof t.file_path === 'string' && isStamp(path.resolve(root, t.file_path))) {
+    const added = name === 'Write' ? String(t.content || '') : (name === 'Edit' ? [t] : Array.isArray(t.edits) ? t.edits : []).map((e) => String((e && e.new_string) || '')).join('\n');
+    hit = STAMP_WORD.test(added);
+  } else if (isShellTool(name) && typeof t.command === 'string' && /\b(?:APPROVED|AUTO)\b/.test(t.command)) {
+    const base = typeof input.cwd === 'string' && input.cwd ? input.cwd : root;
+    hit = writeTargets(t.command).some((w) => !isUnknown(w) && isStamp(path.resolve(base, w.replace(/^['"]|['"]$/g, ''))));
+  }
+  if (!hit) return false;
+  const rel = toPosix(path.relative(root, stamp));
+  const reason = `Blocked: the question timed out - re-ask. ${rel} would record an approval, but the last AskUserQuestion\n`
+    + "was closed by Claude Code's idle timeout ('No response after ...'), so nobody answered it. Re-ask through ONE\n"
+    + 'AskUserQuestion when the user is back and write the stamp from their answer.';
+  log(root, input, { event: 'stamp-after-timeout', target: rel });
+  blockRow(root, input, reason);
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
   return true;
 }
 function stampedPlanWrite(input, root) {

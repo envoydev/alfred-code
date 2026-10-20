@@ -23,7 +23,6 @@ description: House baseline - code navigation and reading. Always-on (no paths),
 - A large symbol is fetched WITHOUT its body first (signature, children), then read by range.
 - `get_symbols_overview` takes ONE file, never a directory - list the directory first; on C# pass `depth: 2` (the default stops at the namespace, so it returns only its name; 2 reaches the type members, nested-type members need 3; a top-level-statements file returns `{}` at any depth).
 - An EMPTY reference result for a symbol that plausibly has callers is suspect (a multi-tsconfig monorepo hides cross-lib callers): cross-check with a grep before saying 'no callers'.
-- The navigation server is navigation only: its memory tools are off, and every note - a seat's handoff included - goes to the `alfred-memory` MCP (`alfred-memory.md`).
 
 ## Compact Instructions
 
@@ -31,7 +30,8 @@ description: House baseline - code navigation and reading. Always-on (no paths),
 
 ## Shell commands
 
-- The traps of this host's own shell (zsh, Git Bash on Windows) arrive in the session-start context, only where they apply.
+<!-- Kept in this file, not split into a rule of its own: these lines govern the same reads and writes as the sections above, and a separate pathless rule would add only frontmatter and a heading (HTML comments are stripped before injection, so this note costs nothing). -->
+
 - A splice (`sed -i`, an in-place python or perl replace) is for a mechanical rename across many sites, never an edit Edit / Write can make; it counts its anchor first and replaces only when the count is the one it expects.
 - Read `$?` on the very next line, with `set -o pipefail` before a pipe (bash and zsh both honour it; `${PIPESTATUS[0]}` reads empty in zsh); never `<cmd> || echo none`, which launders a failure into an empty result. A scan used as evidence of ABSENCE runs a must-match positive control in the same call, and resolves its tool absolutely or checks it with `type` first.
 - Scratch code goes outside the tracked tree (the session scratchpad or the OS temp dir), or into a gitignored dir inside the repo when an ESM script must import the project's `node_modules`. An interrupted compound write may already have run - check the target before trusting the rejection.

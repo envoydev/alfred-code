@@ -244,7 +244,10 @@ test('I15: integration-reviewer reads .claude/skills, and keeps the two essentia
 // subagents that the Agent tool runs locally other than forks'; Claude Code gives it even when `tools`
 // leaves it out. A body saying the final plain message IS the deliverable is false there.
 const HANDBACK = 'through SubagentHandback when your tools include it, else as your last message; nothing after it';
-const HANDBACK_SEATS = [...verifiers, 'code-style-analyzer', 'related-project-analyzer', 'test-coverage-analyzer'].sort();
+// The 2026-10-20 stack audit (#6) added every other seat that stores a hand-off note: the implementers, the four
+// resolvers and the integration reviewer write it at the same point, so the same report-then-note failure applied.
+const HANDBACK_SEATS = [...verifiers, 'code-style-analyzer', 'related-project-analyzer', 'test-coverage-analyzer',
+    ...seats.filter((s) => s.endsWith('-implementer') || s.endsWith('-resolver')), 'integration-reviewer'].sort();
 
 test('I16: no seat says its final plain message is the deliverable', () =>
 {

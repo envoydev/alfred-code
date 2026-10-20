@@ -99,5 +99,5 @@ running it.
 | Rule | What it governs |
 |---|---|
 | `.claude/rules/alfred-awareness.md` (GENERATED - user-run /capture-awareness after install, update, or a trim) | imports `<docs-path>/awareness/` into every session: the skill / agent usage policy (dispatch is explicit-only) and this project's real skill / seat / MCP inventory, the run book (how to build, start, log into and hand-check the app), and the sibling repos with their seams where the project has any |
-| `.claude/rules/alfred-architecture.md` (GENERATED - run /capture-architecture) | architecture capture marker - the docs exist, read them before a structural change; where they live is the navigation baseline's, the orientation itself arrives through the docs hook |
+| `.claude/rules/alfred-architecture.md` (GENERATED - run /capture-architecture) | architecture capture marker - the docs exist, read them before a structural change; where they live is the docs-root baseline's, the orientation itself arrives through the docs hook |
 | `.claude/rules/project-code-style.md` (GENERATED - user-run /capture-code-style; path-scoped, plus the full doc) | the project's actual code style - the condensed core auto-attaches on any matching file touch (main session and subagents); the full capture stays in `<docs-path>/code-style/CODE-STYLE.md` |

@@ -37,6 +37,12 @@ Judge the code against its rules and replace CODE-ASSESSMENT.md?
 
 DELEGATED vs INLINE keys on dispatch capability, not file presence. When dispatch is available, ask ONE question before GATHER, via AskUserQuestion - judge the modules via code-quality-analyzer seats (recommend it: the cheap seats absorb the reads), or in-session? - unless a calling flow (the quality loop) already picked the run's mode, which is inherited, never re-asked.
 
+```ask
+Judge <the modules> through the code-quality-analyzer seats or in this session?
+- 'Through the seats (Recommended)' - the cheap seats absorb the reads; the gate, the tiers and the write stay here
+- 'In this session' - navigation-server-first and bounded, no dispatch
+```
+
 - **DELEGATED** - dispatch code-quality-analyzer per module as below; the gate, the tiers and the writing stay here.
 - **INLINE** (chosen, or no dispatch, or a scope too small to fan out): judge the modules yourself, navigation-server-first and bounded, by the seat's own finding shape, and continue at JUDGE identically. A run handed INLINE dispatches no seat; a scope that turns out too wide for it is said in one line and the run goes on inline, never switched to seats on its own.
 

@@ -1050,6 +1050,8 @@ test('audit 2026-10-10 C01: a verify Skill call past the old 256KB tail still co
   writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir)));
   assert.equal(gateWith(dir, 'git commit -am x', { transcript_path: tp }).status, 0, 'the Skill call 1.3MB back is in this session');
   const none = writeTranscript(dir, 'no-skill', filler);
+  // the receipt is this session's own: written after its transcript began (audit 2026-10-20 H4)
+  writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir)));
   const r = gateWith(dir, 'git commit -am x', { transcript_path: none });
   assert.equal(r.status, 2, 'a session with no Skill call anywhere is still refused');
   assert.match(r.stderr, /no Skill call ran in this session/);
@@ -1063,7 +1065,10 @@ test('audit 2026-10-10 C01: a verify Skill call past the old 256KB tail still co
   // a malformed transcript and ledger fail toward the refusal, never a crash
   fs.writeFileSync(path.join(ledger, 'sess-bad.jsonl'), '{not json\n');
   const bad = writeTranscript(dir, 'garbage', ['{not json', 'also not']);
-  assert.equal(gateWith(dir, 'git commit -am x', { transcript_path: bad, session_id: 'sess-bad' }).status, 2, 'garbage reads as no Skill call');
+  writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir)));
+  const garbage = gateWith(dir, 'git commit -am x', { transcript_path: bad, session_id: 'sess-bad' });
+  assert.equal(garbage.status, 2, 'garbage reads as no Skill call');
+  assert.match(garbage.stderr, /no Skill call ran in this session/);
 });
 
 test('audit 2026-10-10 C17: the user\'s own typed words are their consent even when an option label spells them too', () => {
@@ -1300,4 +1305,33 @@ test('deep review: a non-English quote is no consent and names the answered: rou
   assert.match(nothing.stderr, /skips no review/);
   assert.equal(waive('WAIVED - "пуш без перевірки"').status, 2, 'a non-English waiver quote');
   assert.equal(waive('WAIVED - answered: Skip the review and push', { ALFRED_CODE_UNATTENDED: '1' }).status, 2, 'nobody at the terminal');
+});
+
+// Audit 2026-10-20 H4: the COMMIT-GATE receipt had no session floor while PUSH-GATE did, so a WAIVED receipt (no head:)
+// written in one session opened every session's commits for 2h. Both gates now read a receipt written before this
+// session began as absent (the transcript's birthtime, where the filesystem reports one).
+test('audit 2026-10-20 H4: a commit receipt written before this session began is absent - waived or verified', () => {
+  const dir = scratchRepo();
+  const tp = path.join(dir, '..', `h4-session-${process.pid}.jsonl`);
+  fs.writeFileSync(tp, '');
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+  fs.appendFileSync(tp, '{}\n');
+  const st = fs.statSync(tp);
+  if (!(st.birthtimeMs && st.birthtimeMs !== st.ctimeMs)) return; // no birthtime here: the floor is unknown, as before
+  const gate = path.join(dir, '.alfred', 'docs', 'flow', 'COMMIT-GATE');
+  const commit = () => runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: 'git commit -am x' }, transcript_path: tp }, { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
+  const past = (Date.now() - 10 * 60 * 1000) / 1000;
+  for (const body of [
+    ['WAIVED - "skip the review and just commit it"', 'format: WAIVED - "skip the review and just commit it"', 'findings: skipped - "skip the review and just commit it"'],
+    ['VERIFIED the checkpoint', 'authorized: "commit it"', `head: ${headOf(dir)}`, 'spec: 3 files', 'live-probe: NOT RUN - fixture', FMT],
+  ]) {
+    writeReceipt(dir, 'COMMIT-GATE', body.join('\n') + '\n');
+    fs.utimesSync(gate, Date.now() / 1000, Date.now() / 1000);
+    const fresh = commit();
+    assert.equal(fresh.status, 0, `${body[0]}: written in this session, it opens the commit - ${fresh.stderr}`);
+    fs.utimesSync(gate, past, past);
+    const old = commit();
+    assert.equal(old.status, 2, `${body[0]}: another session's receipt opens no commit in this one`);
+    assert.match(old.stderr, /written before this session began/);
+  }
 });

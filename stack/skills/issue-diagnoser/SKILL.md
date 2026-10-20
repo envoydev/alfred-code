@@ -12,7 +12,7 @@ seats do the specialist work. It is READ-ONLY from start to finish - no step her
 so no approval stamp and no commit gate come into play. The measurements behind these rules live in
 `references/evidence.md` - an audit appendix, not a run-time load.
 
-**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
+**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it. A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--auto-mode` as the first word of the command is the unattended run, and never hand-write an `AUTO` line.
 
 ## When to use
 
@@ -181,6 +181,15 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    FRESH session resumed from that path, and this stop offers it as an option in its own words
    ('resume from `<findings path>` in a fresh session'). Recommend it once the chat has run for
    hours or past that same trigger - no `Stop` gate catches a session that never closes.
+   *Stop* - after 4a or 4c, one ask; past the trigger or after hours of chat the fresh-session option takes
+   the mark and goes first:
+
+   ```ask
+   <The report is written | The log points are in> - <findings path>. Next: <read the report | re-run until the next occurrence lands>.
+   - 'Stop here (Recommended)' - the findings file holds the cause and the next step
+   - 'Resume from <findings path> in a fresh session' - the next phase starts from the file alone
+   ```
+
    *Stop* - after 4b the close names the build as the user's own command:
 
    ```ask

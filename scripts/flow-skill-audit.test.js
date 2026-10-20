@@ -249,7 +249,8 @@ test('task-verify-plan: the upgrade flow is named to the user, and the seat boun
 test('task-version-upgrade: a hard stop puts re-plan, roll back or stop through ONE marked ask', () => {
     const text = flat(skill('task-version-upgrade'));
     assert.doesNotMatch(text, /stop and re-plan, never push through/);
-    assert.match(text, /stop and put it through ONE AskUserQuestion - 'Re-plan from this stage \(Recommended\)' \/ 'Roll back to the last stage's rollback point' \/ 'Stop here' - never push through or skip a stage gate\./);
+    // stack audit 2026-10-20 row 13: the hard stop is an ask template, the re-plan option marked and first
+    assert.match(text, /stop and put it through ONE AskUserQuestion, never push through or skip a stage gate: ```ask Stage <N> hit a hard stop: [^`]*- 'Re-plan from this stage \(Recommended\)' - [^`]*- 'Roll back to the last stage's rollback point' - [^`]*- 'Stop here' - /);
 });
 
 // ---- the two solve flows and the plan-bound review -------------------------------------------------------------
@@ -503,6 +504,6 @@ test('SKF-04: the upgrade has one auto mode, and its hard stop waits for the use
     assert.match(t, /Hard stops, auto-mode included:/);
     assert.match(t, /Under auto-mode put the same three options with NO `\(Recommended\)` mark, the question opening 'no option is recommended: a hard stop waits for you under auto-mode' - the hook answers only a marked ask, so this one waits\./);
     // the attended ask keeps its mark, and the auto-mode contract paragraph is untouched
-    assert.match(t, /'Re-plan from this stage \(Recommended\)' \/ 'Roll back to the last stage's rollback point' \/ 'Stop here'/);
+    assert.match(t, /- 'Re-plan from this stage \(Recommended\)' - .* - 'Roll back to the last stage's rollback point' - .* - 'Stop here' - /);
     assert.match(t, /\*\*auto-mode\.\*\* `--auto-mode` as the first word of the arguments is a mode flag, not a target/);
 });

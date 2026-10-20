@@ -57,7 +57,7 @@ Total time: <sum across all groups>.
 ```
 
 **Group label rules**
-- If the input explicitly names a project for a set of tasks (e.g. 'Today on ProjectX:' or 'ProjectX - APV49-...'), use that name as the group label.
+- If the input explicitly names a project for a set of tasks (e.g. 'Today on ProjectX:' or 'ProjectX - PROJ-...'), use that name as the group label.
 - Otherwise, use the ticket prefix itself as the label.
 - If the input declares that several distinct prefixes belong to one project, treat them as one group under that project name.
 - `Other` items go under the group whose tasks they were mentioned alongside in the input. If `Other` items have no clear group, place them under a final `Other` group.

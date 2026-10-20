@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // installer-managed - update overwrites local edits; put project policy in a separate hook file.
-// Four wirings, one contract: the blocking-ask mandate (alfred-interaction.md) and the
+// Three wirings (Stop, SubagentStop, PreToolUse AskUserQuestion - the shell-result one went in the deep hooks
+// review 2026-10-16), one contract: the blocking-ask mandate (alfred-interaction.md) and the
 // fresh-session construction check (the flow skills' stop contracts) both failed as prose in
 // every audited strengthening - measured across 123 sessions: ~25 sessions ended turns on
 // 'say the word' / 'want me to X?' prose (stalls of 13min-37h, one plaintext-credential
@@ -27,8 +28,9 @@
 //   presence-only, never ranking an option - and land beside the user's ANSWER, so each is worded for
 //   that moment. It carries the four checks that have no other route (stale ask scope, a recommendation
 //   contradicting an un-actioned request, the fresh-session offer for a flow whose every stop is a tool
-//   call, and a live credential). The one DENY is the house voice of the ask's own text, once per ask
-//   text, carrying the corrected strings (I3, 2.1.4 audit). The fresh-session DENIAL this matcher used
+//   call, and a live credential). A mechanical slip in the ask's own text (house voice, the fresh option's numbers)
+//   is FIXED IN PLACE through updatedInput; a reason it cannot fix denies once per ask text, carrying the
+//   corrected strings (I3, 2.1.4 audit; the 2026-10-17 usage audit). The fresh-session DENIAL this matcher used
 //   to carry is gone for good: it fired mid-response and cost the user a red block every turn.
 // exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unparseable.
 const fs = require('fs');
@@ -383,6 +385,9 @@ const doneProse = (text) => text.replace(NEGATED_DONE_RE, ' ');
 // uncommitted' is a negation too (hooks review 2026-10-16) - read only right after its 'nothing', so 'Nothing is committed;
 // the diff stays uncommitted for your review' keeps its hold line.
 const NEGATED_PENDING_RE = /\b(?:nothing|none of (?:it|them|those|the \w+)|no (?:jobs?|tasks?|runs?|steps?|work|processes?|background work))\b[^.\n]{0,60}?\b(?:is|are|'s|remains?|stays?)\s+(?:still\s+|currently\s+)?(?:running|executing|pending|waiting|queued|in progress|outstanding|left|open)\b(?:\s+(?:on|from|for)\s+(?:you|your side|me|my side|my end|the user)\b)?|\bnothing(?: else)?(?: is| are|'s)? (?:left )?(?:un-?pushed|uncommitted)\b(?:\s+(?:or|nor|and)\s+(?:un-?pushed|uncommitted)\b)?|\bno longer (?:running|pending|waiting|queued|in progress)\b|\bno (?:open |further |more |other )?next steps?\b/gi;
+// Output an earlier step printed, quoted in the close (doneBase's pending half, audit 2026-10-20 H9): a single-quoted span
+// (an apostrophe inside a word opens none), and a parenthetical right after a sha or a code span.
+const QUOTED_OUTPUT_RE = /(?<![\w'])'[^'\n]{1,200}'(?![\w'])|`[^`\n]*`\s*\([^()\n]{0,80}\)|\b(?=[0-9a-f]*\d)[0-9a-f]{7,40}\b\s*\([^()\n]{0,80}\)/g;
 function closeProse(text) {
   return text
     .replace(/`[^`\n]*`/g, ' ')
@@ -1495,9 +1500,9 @@ function ignoredEdits(root, edits) {
   }
   let out = '';
   try {
-    const r = require('child_process').spawnSync('git', ['check-ignore', '-z', '--stdin'], {
+    const r = require('child_process').spawnSync(...require('./hook-prelude.js').gitSafe(['check-ignore', '-z', '--stdin'], {
       cwd: root, input: [...byQuery.keys()].join('\0') + '\0', encoding: 'utf8', timeout: 3000, windowsHide: true,
-    });
+    }));
     if (!r.error && r.status === 0) out = r.stdout || '';
   } catch { /* no git: nothing is ignored */ }
   const hit = new Set();
@@ -1779,6 +1784,7 @@ if (payload.hook_event_name === 'Stop') {
     const logDir = envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir();
     if (typeof pre.sweepStale === 'function') { pre.sweepStale(logDir, 'guard-stop-'); pre.sweepStale(logDir, 'alfred-stop-held-'); pre.capLog(require('path').join(logDir, 'guard-stop-contract.log')); }
   } catch { /* no prelude: nothing swept */ }
+  try { settleAskFixed(); } catch { /* the ask-fixed rows wait (below); never decides */ }
   // Only a continuation THIS hook caused stands down; one a sibling Stop hook caused is judged once more, and this
   // hook still blocks at most once per cycle (hook-prelude.js, the Stop chain - audit 2026-10-08 S1).
   if (stopHeld(payload)) process.exit(0);
@@ -1833,7 +1839,12 @@ if (payload.hook_event_name === 'Stop') {
   // run's own credential ask, the close listed the rotation as still owed, and the block forced a 142k restate, sessions
   // 6288ad94 and 757a4ac0). Without such an answer in the turn the line is judged like any other.
   const deferredLines = DEFERRED_BY_YOU_RE.test(tail) && deferAnsweredThisTurn();
-  const closeTail = closeProse(deferredLines ? tail.split('\n').filter((l) => !DEFERRED_BY_YOU_LINE_RE.test(l)).join('\n') : tail);
+  const closeText = deferredLines ? tail.split('\n').filter((l) => !DEFERRED_BY_YOU_LINE_RE.test(l)).join('\n') : tail;
+  const closeTail = closeProse(closeText);
+  // The pending half reads no QUOTED output (audit 2026-10-20 H9, 7ec6c7db: '15f00b6c (not pushed)' quoted git's own line
+  // and held the close): a single-quoted span, and a parenthetical right after a sha or a code span, are what an earlier
+  // step printed, never the close's own item. Only that half - a hand-back is still read in them.
+  const pendingTail = closeProse(closeText.replace(QUOTED_OUTPUT_RE, ' '));
   // The phrase list only ever covered the shapes MEASURED in the corpus, so an ordinary
   // decision question ('What's the deploy target?', 'Which one should we go with?') walked
   // straight past it (reproduced). A turn that ends on a question and hands nothing to a tool is
@@ -1843,8 +1854,13 @@ if (payload.hook_event_name === 'Stop') {
   // ...but a question ABOUT something already settled, or a rhetorical aside mid-report, is not a
   // stop: require the question to be the turn's last word, which the tests above already encode.
   const closeDone = doneProse(closeWhole);
-  const doneClose = DONE_RE.test(closeDone)
-    && (PENDING_RE.test(closeTail) || handsBackAhead(closeTail)) && !/\?/.test(tail)
+  const doneBase = DONE_RE.test(closeDone)
+    && (PENDING_RE.test(pendingTail) || handsBackAhead(closeTail)) && !/\?/.test(tail);
+  // Each exemption below is named, and the first that fires on a close the base test held writes one `mode: probe`,
+  // `kind: done-close-exempt` row naming it (audit 2026-10-20 H9: the exemptions wrote nothing, so a change to one -
+  // C03 - could not be measured). The order and the short circuit are the old chain's.
+  const handed = doneBase && handsBack(closeTail);
+  const DONE_EXEMPTIONS = [
     // A background job the user has no say over is a status line, not a pending decision -
     // blocking it forced an AskUserQuestion over 'tests are still running in CI' (reproduced).
     // ...and the harness's own idiom for a backgrounded job is part of that shape. Without these
@@ -1859,21 +1875,29 @@ if (payload.hook_event_name === 'Stop') {
     // model to reword rather than to close properly, so the verb and the waiter are SYNONYM SETS.
     // Each of the three gives way to a hand-back in the same close (re-verify 2 R2-M1: 'The build is still running;
     // awaiting your approval to push' passed in every state, on base too).
-    && (handsBack(closeTail) || !/\b(ci|pipeline|workflow|build|suite|tests?|job|deploy(ment)?)\b[^.\n]{0,40}\b((still )?(running|in progress|queued|pending)|in the background|backgrounded)\b/i.test(tail))
-    && (handsBack(closeTail) || !/\b(in the background|backgrounded|i'?ll report back|watching (it|the run|for))\b/i.test(tail))
-    && (handsBack(closeTail) || !(BACKGROUND_RE.test(tail) && WAITER_RE.test(tail)))
+    ['background-job', () => !handed && /\b(ci|pipeline|workflow|build|suite|tests?|job|deploy(ment)?)\b[^.\n]{0,40}\b((still )?(running|in progress|queued|pending)|in the background|backgrounded)\b/i.test(tail)],
+    ['background-idiom', () => !handed && /\b(in the background|backgrounded|i'?ll report back|watching (it|the run|for))\b/i.test(tail)],
+    ['background-waiter', () => !handed && BACKGROUND_RE.test(tail) && WAITER_RE.test(tail)],
     // ...and a close that says the run itself has nothing pending is finished, not stalled.
-    && !nothingPending(tail, closeTail)
+    ['nothing-pending', () => nothingPending(tail, closeTail)],
     // ...and a close over work this session launched that is still out, named as running or waited on, is a
-    // status line (2.1.6 H4) - read last, since it is the one test that opens the transcript.
-    && !ownWorkRunning(closeTail, tail)
+    // status line (2.1.6 H4) - read late, since it is the one test that opens the transcript.
+    ['own-work-running', () => ownWorkRunning(closeTail, tail)],
     // ...an answer to the user's question listing only other people's or deferred items (f450ea64), and the mandated
     // close after the user picked the fresh-session option this turn (69dbed46: 'Nothing is committed or pushed' read as
     // done + pending, and the resume block was forced out again at 132.4k) - audit 2026-10-10 C15.
-    && !answersOthersOpen(closeTail)
-    && !freshPickedThisTurn()
-    // ...and an answer to a request for information from a turn that changed nothing (audit 2026-10-11 SD10, 2ca8e8ee).
-    && !answersInfoRequest(closeTail);
+    ['answers-others-open', () => answersOthersOpen(closeTail)],
+    ['fresh-picked', () => freshPickedThisTurn()],
+    // ...and an answer to a request for information from a turn that changed nothing (audit 2026-10-11 SD10, 2ca8e8ee;
+    // the read-only survey and the typed question of audit 2026-10-20 C03 ride it).
+    ['answers-info-request', () => answersInfoRequest(closeTail)],
+  ];
+  const doneExempt = doneBase ? (DONE_EXEMPTIONS.find(([, fires]) => fires()) || [null])[0] : null;
+  const doneClose = doneBase && !doneExempt;
+  if (doneExempt) {
+    ledgerRow({ tool: '', mode: 'probe', kind: 'done-close-exempt', exempt: doneExempt,
+      reason: `probe: a done close with a pending item passed - ${doneExempt}`, detail: { exempt: doneExempt } });
+  }
   // The done-gate PROBE, log-only since 2026-09-25 (the user's ruling: rely on the skill's description
   // and the flows that load it, and count the misses). A claim over a turn with a source edit writes
   // one row per turn - `unrun` when the last edit came after the last run (or none ran), `ran` when a
@@ -2103,11 +2127,9 @@ if (payload.hook_event_name === 'Stop') {
     const floorLine = _floor ? `measured at ~${Math.round(_floor / 1000)}k per message on this session's first turn`
       : 'measured at 87-134k per message across the projects in the audit';
     process.stderr.write(
-      // The old text claimed a resume 'costs roughly a tenth'. Eleven measurements put it at
-      // 21.5-59.4% of the carried context, never under 21%, with a measured predecessor/successor
-      // pair at 38.75% - so the ratio was 2-6x optimistic and it reached users verbatim inside the
-      // option descriptions they then acted on. State the absolute number instead, and the number
-      // the model can actually read: this turn's own per-message context.
+      // The old text claimed a resume 'costs roughly a tenth' - a ratio no measurement held, which reached users verbatim
+      // inside the option descriptions they then acted on. State the absolute numbers instead, the ones the model can
+      // actually read: this turn's own per-message context and the session's cold floor.
       `The work in this turn is finished and this session now carries ~${Math.round(ctx / 1000)}k tokens per\n` +
       `message - every further turn re-sends all of it. A fresh session restarts at this\n` +
       `session's own cold floor, ${floorLine},\n` +
@@ -2339,6 +2361,50 @@ if (autoRun) {
   }
   ledgerRow({ tool: 'AskUserQuestion', mode: 'auto', kind: 'auto-ask-waits', reason: 'auto-mode: no single Recommended option, or an outward one - the ask waits for the user' });
 }
+// THE ask-fixed ROW IS SETTLED LATER (audit 2026-10-20, the hooks track's minor list): PreToolUse hooks run in parallel, so
+// a sibling gate (guard-layer-table.js) can deny the very call this hook fixed, and the row then counted a fix the user
+// never saw. The row waits in `guard-stop-askfixed-<session>.jsonl` with the call's tool_use_id, and this hook's next
+// AskUserQuestion or Stop writes it once the call's own tool_result is on disk - unless that result is a hook's denial
+// (the layer gate's marker, or Claude Code's 'hook error' / 'blocked' wording). A result not yet written waits; a pending
+// row older than a day is written as it stands.
+function askFixedFile() {
+  return require('path').join(envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir(), `guard-stop-askfixed-${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`);
+}
+function pendAskFixed(row) {
+  if (!payload.tool_use_id) { ledgerRow(row); return; }
+  try { fs.appendFileSync(askFixedFile(), `${JSON.stringify({ id: payload.tool_use_id, at: Date.now(), row })}\n`); } catch { ledgerRow(row); }
+}
+function settleAskFixed() {
+  const ASKFIXED_DENIED_RE = /alfred-code layer-table gate|PreToolUse:AskUserQuestion hook (?:error|blocking error)|hook blocked|Blocked: /;
+  const file = askFixedFile();
+  let pending;
+  try { pending = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)); } catch { return; }
+  const results = {};
+  try {
+    const p = payload.transcript_path;
+    const size = fs.statSync(p).size;
+    const from = Math.max(0, size - 4 * 1024 * 1024);
+    const fd = fs.openSync(p, 'r');
+    const buf = Buffer.alloc(size - from);
+    try { fs.readSync(fd, buf, 0, buf.length, from); } finally { fs.closeSync(fd); }
+    for (const line of buf.toString('utf8').split('\n')) {
+      if (!line.includes('tool_result')) continue;
+      let o;
+      try { o = JSON.parse(line); } catch { continue; }
+      const c = o && o.message && o.message.content;
+      if (Array.isArray(c)) for (const b of c) if (b && b.type === 'tool_result' && b.tool_use_id) results[b.tool_use_id] = resultText(b);
+    }
+  } catch { /* unreadable: every row waits, or ages out */ }
+  const keep = [];
+  for (const x of pending) {
+    if (!x || !x.row) continue;
+    if (x.id in results) { if (!ASKFIXED_DENIED_RE.test(results[x.id])) ledgerRow({ ...x.row, tool_use_id: x.id }); }
+    else if (Date.now() - Number(x.at || 0) > 24 * 3600 * 1000) ledgerRow({ ...x.row, tool_use_id: x.id, settled: 'aged' });
+    else keep.push(x);
+  }
+  try { if (keep.length) fs.writeFileSync(file, keep.map((x) => JSON.stringify(x)).join('\n') + '\n'); else fs.rmSync(file, { force: true }); } catch { /* the next run settles it */ }
+}
+if (payload.tool_name === 'AskUserQuestion') { try { settleAskFixed(); } catch { /* never decides */ } }
 if (payload.tool_name === 'AskUserQuestion') {
   const notes = [];
   let askFixed = null;
@@ -2483,28 +2549,35 @@ if (payload.tool_name === 'AskUserQuestion') {
       // Once per ask text: a marker that cannot be written where HOOK_LOG_DIR points is written under the temp dir, and
       // one that cannot be written at all denies nothing - a missing log dir denied the same ask on every re-send.
       // The new-cycle reason also holds once per Completed stamp, so a re-worded ask is not denied for it again.
+      // Spent only where this hook DENIES (audit 2026-10-20, the hooks track's minor list): an ask fixed in place denies
+      // nothing, and a sibling gate that denied the same call (guard-layer-table.js) must not cost the re-sent ask its deny.
       let first = true;
-      try { fs.writeFileSync(marker, '', { flag: 'wx' }); } catch (e) {
-        if (e && e.code === 'EEXIST') first = false;
-        else {
-          try { fs.writeFileSync(require('path').join(require('os').tmpdir(), require('path').basename(marker)), '', { flag: 'wx' }); } catch { first = false; }
+      const spend = () => {
+        try { fs.writeFileSync(marker, '', { flag: 'wx' }); } catch (e) {
+          if (e && e.code === 'EEXIST') first = false;
+          else {
+            try { fs.writeFileSync(require('path').join(require('os').tmpdir(), require('path').basename(marker)), '', { flag: 'wx' }); } catch { first = false; }
+          }
         }
-      }
+        return first;
+      };
       if (newCycle) {
         try { fs.writeFileSync(`${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-newcycle-${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}-${newCycle.at}.denied`, '', { flag: 'wx' }); }
         catch { newCycle = null; }
       }
       const mechanical = voice.length || numbers || compactFresh || pointsAbove;
+      const fixesInPlace = mechanical && !tooFew && !(typeIntoOther || unmarked || misMarked || newCycle || blind || noReview);
+      if (!fixesInPlace) spend();
       // A MECHANICAL-ONLY ask is fixed IN PLACE (the 2026-10-17 usage audit: an ask refused only for its missing
       // fresh-session numbers cost a red block and a re-sent ask, and the hook already held the corrected one). The
       // questions go out as `fixed` through `updatedInput` with no permissionDecision, so the dialog is the user's as
       // ever (the guard-unapproved-dispatch.js Explore-brief route; code.claude.com/docs/en/hooks: updatedInput 'replaces
       // the entire input object'), and one `mode: rewrite` row counts it apart from the block rate. A question the drop
       // would leave with one option, or any reason with no mechanical fix, still denies once below.
-      if (mechanical && !tooFew && !(typeIntoOther || unmarked || misMarked || newCycle || blind || noReview)) {
+      if (fixesInPlace) {
         askFixed = fixed;
         const what = [voice.length ? 'its dashes and double quotes' : '', numbers ? 'the fresh option\'s two measured numbers' : '', compactFresh ? 'the fresh-session option dropped (this project compacts instead)' : '', pointsAbove ? 'its pointer at a resume block above (none is on screen) reworded' : ''].filter(Boolean);
-        ledgerRow({ tool: 'AskUserQuestion', mode: 'rewrite', kind: 'ask-fixed', reason: `ask fixed in place: ${what.join(', ')}`, detail: { voice: voice.map((v) => v.split(' (')[0]), numbers: !!numbers, compactFresh, pointsAbove } });
+        pendAskFixed({ tool: 'AskUserQuestion', mode: 'rewrite', kind: 'ask-fixed', reason: `ask fixed in place: ${what.join(', ')}`, detail: { voice: voice.map((v) => v.split(' (')[0]), numbers: !!numbers, compactFresh, pointsAbove } });
         notes.push(`The ask just answered went out with ${what.join(' and ')} fixed in place by the hook - the user saw the fixed text. `
           + (voice.length ? 'Keep the house voice (alfred-interaction.md) in every later ask: single dashes, single quotes. ' : '')
           + (numbers ? 'Quote this session\'s carry and a fresh start\'s floor in any later fresh-session option. ' : '')

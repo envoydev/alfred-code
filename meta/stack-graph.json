@@ -166,9 +166,7 @@
       "plugins": []
     },
     "dotnet-openapi": {
-      "mcps": [
-        "alfred-documentation"
-      ],
+      "mcps": [],
       "plugins": []
     },
     "dotnet-performance": {
@@ -926,7 +924,6 @@
       "skills": [],
       "agents": [],
       "mcps": [
-        "alfred-memory",
         "alfred-navigation"
       ],
       "plugins": [],

@@ -251,8 +251,10 @@ test('I34: verify-plan\'s run-start mode ask is one template, this chat recommen
 {
     const skill = read('stack/skills/task-verify-plan/SKILL.md');
     const found = asks(skill);
-    assert.strictEqual(found.length, 1);
+    // the run-start mode ask, then the judgment-item ask the apply step puts per item (stack audit 2026-10-20 C7)
+    assert.strictEqual(found.length, 2);
     assert.deepStrictEqual(found[0].options, ['Audit this plan in this chat (Recommended)', 'Dispatch the <stack>-verifier seat']);
+    assert.deepStrictEqual(found[1].options, ['Keep the plan as written (Recommended)', 'Apply it to the plan']);
     assert.deepStrictEqual(lintAskTemplates([{ file: 'verify-plan', text: skill }]), []);
     assert.match(flat(skill), /ask ONE question before auditing/, 'the mode-ask-at-start marker stays');
 });

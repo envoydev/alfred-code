@@ -7,8 +7,8 @@ Loaded from the `npm` skill when wiring CI installs, configuring update bots, ch
 - **GitHub Actions**: `actions/setup-node` with `node-version-file: '.nvmrc'` and `cache: 'npm'` (keyed on the lockfile) - a warm `npm ci` runs in ~10s. Pin the action to a full commit SHA, never a moving major tag - the tag is mutable, and the action runs with the workflow's token.
 - **Azure DevOps**: the Cache task keyed on the lockfile. **GitLab**: `cache:key:files: [package-lock.json]`.
 - Cache keys include platform + Node version + lockfile hash. Split lint/type-check/test into parallel jobs, fail fast.
-- **Docker**: copy only `package.json` + `package-lock.json`, then `npm ci --ignore-scripts` (or `--omit=dev` for the runtime image), then copy sources - preserves the layer cache.
-- Install flags: `npm ci --no-audit --no-fund --prefer-offline --ignore-scripts`; `progress=false`/`CI=true` for quiet logs; audit runs as its own gate, never inline.
+- **Docker**: copy only `package.json` + `package-lock.json`, then `npm ci` (`--omit=dev` for the runtime image; `--ignore-scripts` on npm 11 only - on npm 12+ it overrides `allowScripts` and skips the approved scripts too), then copy sources - preserves the layer cache.
+- Install flags: `npm ci --no-audit --no-fund --prefer-offline`, plus `--ignore-scripts` on npm 11 only (on npm 12+ `allowScripts` gates dependency scripts and the flag would skip the approved ones); `progress=false`/`CI=true` for quiet logs; audit runs as its own gate, never inline.
 - Offline/air-gapped: `npm cache verify`, `--prefer-offline`, or a private proxy as the source of truth.
 
 ## Update bots without the noise

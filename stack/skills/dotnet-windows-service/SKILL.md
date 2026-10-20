@@ -33,7 +33,13 @@ A Windows Service is the same generic-host worker the house skill covering .NET 
 
 The full scripted install, upgrade flow, secrets ranking, and diagnostics are `references/operations.md`; the non-negotiables:
 
-- **Scripted `sc.exe` install** (installutil does not exist for modern .NET): quoted binpath, delayed-auto start, `depend=` on real dependencies (the database instance), a description, and `sc.exe failure` recovery actions. Idempotent, in CI, identical for both runtimes. Run it against a real machine only on the user's word - one AskUserQuestion naming the machine, since it needs admin and rewrites the SCM database.
+- **Scripted `sc.exe` install** (installutil does not exist for modern .NET): quoted binpath, delayed-auto start, `depend=` on real dependencies (the database instance), a description, and `sc.exe failure` recovery actions. Idempotent, in CI, identical for both runtimes. Run it against a real machine only on the user's word - one AskUserQuestion naming the machine, since it needs admin and rewrites the SCM database:
+
+  ```ask
+  The install script is ready. It needs admin rights and rewrites the SCM database on <machine>.
+  - 'Hand the script over (Recommended)' - the machine's admin runs it
+  - 'Run it on <machine> now' - the approval covers this machine only
+  ```
 - **Identity**: a gMSA (`DOMAIN\name$`, no password, auto-rotated) or a dedicated least-privilege account with 'Log on as a service' - never `LocalSystem` (it is admin). `LocalService` / `NetworkService` are fine for low-privilege work.
 - **Unquoted service path** is a real privilege-escalation class: a binpath with spaces and no quotes lets `C:\Program.exe` run with service privileges. Always quote; keep the install directory non-writable by non-admins; check `sc sdshow` that non-admins cannot reconfigure the service.
 - **Event-log source registered at install time** - creating one needs admin rights, so first-log-write registration fails under a least-privilege account.

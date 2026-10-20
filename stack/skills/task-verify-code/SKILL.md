@@ -5,7 +5,7 @@ description: "Use to review an assembled build against its plan in this chat - '
 
 # Verify Code - review the assembled code in one chat, no dispatch
 
-The review step, run inline. `task-design` planned it, `task-verify-plan` audited the plan, `task-implement` built it - this reviews the built code against that plan and the stack's real traps, and it does the whole review in your context: it dispatches nothing. It is the single-chat form of the `<stack>-verifier` seat and the deliberate alternative to `/code-review`, which always fans out to subagents. Same review protocol as the seat; you just keep it here.
+The review step, run inline. `task-design` planned it, `task-verify-plan` audited the plan, `task-implement` built it - this reviews the built code against that plan and the stack's real traps, and it does the whole review in your context: it dispatches nothing. It is the single-chat form of the `<stack>-verifier` seat and the deliberate alternative to `/code-review`, which runs as its own subagent (in the background in a terminal session) and, with `ultra`, as a multi-agent cloud review. Same review protocol as the seat; you just keep it here.
 
 The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load.
 
@@ -16,14 +16,14 @@ The flow's two house reviewers, pick by whether you want dispatch:
 - **This skill (inline)** - deterministic cost, zero agents, the whole review stays in one context. Best when you want a predictable spend and no fan-out. The cost: its reads and build land in THIS chat's context, so in a long session that context carries forward - the price of no dispatch.
 - **The `<stack>-verifier` seat** (dispatch it exactly as the roster spells it, `alfred-code:<seat>` where the core plugin carries it) - the same protocol in an isolated subagent, so its read volume never touches your chat, on its frontmatter model unless you name one. Best when the session is already long and you want the review's noise offloaded.
 
-Both are the house review protocol; this skill just keeps it in your chat. `/code-review` (the CLI's broad parallel-angle sweep) is no longer a flow default - it always fans out and the stack can't tune it - but it stays available if you invoke it yourself for extra breadth.
+Both are the house review protocol; this skill just keeps it in your chat. `/code-review` (Claude Code's bundled correctness review, at the effort level you type) is no longer a flow default - it runs outside the house protocol and the stack can't tune it - but it stays available if you invoke it yourself for extra breadth.
 
 ## When to use / not
 
 - Reruns build + tests, checks the code against its plan, runs the app on failing inputs, traces changed contracts, returns a ranked punch-list.
 - Not the plan audit - that is `task-verify-plan`, on the page before any code. This is after the build.
 - Not for fixing what it finds - it flags and hands back (to `task-implement` or your own edit); a verifier authors nothing.
-- Not the parallel-angle sweep - if you want breadth or an isolated subagent, use `/code-review` or dispatch the `<stack>-verifier`. This one stays inline by design.
+- Not Claude Code's bundled review - if you want its breadth or an isolated subagent, use `/code-review` or dispatch the `<stack>-verifier`. This one stays inline by design.
 - Not the done gate on your own change - `habits-done-gate` is that gate, and this review loads it before its verdict.
 
 **auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.

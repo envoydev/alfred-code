@@ -1820,7 +1820,7 @@
       ]
     },
     "approval-gate-stamp": {
-      "_note": "The implementer-dispatch approval stamp (guard-unapproved-dispatch hook): path <docs-path>/flow/APPROVAL, first line APPROVED <id> - user's words verbatim (or AUTO on a literal no-stops ask), delete on run completion. Canonical in execution-modes.md; restated at every implementer-dispatch site (the version-upgrade EXECUTE step included) so the stamp format survives when task-solve-cross is not installed.",
+      "_note": "The implementer-dispatch approval stamp (guard-unapproved-dispatch hook): path <docs-path>/flow/APPROVAL, first line APPROVED <id> - user's words verbatim (a hand-written AUTO only under the two solve flows' typed waiver, no-stops-waiver-solve-flows; under auto-mode the hook's own AUTO stamp stands), delete on run completion. Canonical in execution-modes.md; restated at every implementer-dispatch site (the version-upgrade EXECUTE step included) so the stamp format survives when task-solve-cross is not installed.",
       "owner": {
         "file": "stack/skills/task-solve-cross/references/execution-modes.md",
         "marker": "an earlier session's leftover stamp is not consent"
@@ -2014,47 +2014,47 @@
       ]
     },
     "verifier-direct-dispatch": {
-      "_note": "The verifiers' direct-dispatch carve-out (audit 2026-10-14 AG02, the user's ruling: option a): a brief with no contract_version - a review over a diff from the single-chat review or the commit checkpoint, or a plan audit from the plan-gate flow - is its own spec: review the diff (and a named plan file), a plan audit runs no build or test, the ledger checks and the memory-handoff WRITE are skipped, and the close keeps the status vocabulary with `contract_version: none`. Before it those dispatches got a build rerun or a CONTRACT_MISMATCH for 'missing task context'. The footer clause says the direct dispatch is excepted beside the rubric audit. Identical in all 10 verifier seats for the same selective-install reason as the rubric carve-out beside it.",
+      "_note": "The verifiers' direct-dispatch carve-out (audit 2026-10-14 AG02, the user's ruling: option a): a brief with no contract_version - a review over a diff from the single-chat review or the commit checkpoint, or a plan audit from the plan-gate flow - is its own spec: review the diff (and a named plan file), a plan audit runs no build or test and returns the output fields its brief names (task-verify-plan's eight - stack audit 2026-10-20 C6), the ledger checks and the memory-handoff WRITE are skipped, and the close keeps the status vocabulary with `contract_version: none`. Before it those dispatches got a build rerun or a CONTRACT_MISMATCH for 'missing task context'. The footer clause says the direct dispatch is excepted beside the rubric audit. Identical in all 10 verifier seats for the same selective-install reason as the rubric carve-out beside it.",
       "owner": {
         "file": "stack/agents/aspnet-verifier.md",
-        "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+        "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
       },
       "sites": [
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
         }
       ]
     },
@@ -2446,7 +2446,7 @@
       ]
     },
     "analyzer-first-call-navigation": {
-      "_note": "An analyzer's first tool call locates with the navigation server, never a whole-file Read the read guard blocks (measured: 10 of 13 analyzer seats spent their first Read on a blocked dump). 2026-10-08 agents audit F13.",
+      "_note": "An analyzer's first tool call locates with the navigation server, never a whole-file Read the read guard blocks (measured: 10 of 13 analyzer seats spent their first Read on a blocked dump). 2026-10-08 agents audit F13. code-style-analyzer's copy opens with its Glob and config reads first and pins only the locate clause - its first CODE read (stack audit 2026-10-20 #14: three competing 'first' steps).",
       "owner": {
         "file": "stack/agents/architecture-analyzer.md",
         "marker": "FIRST tool call of your run: locate with the navigation server, never a whole-file `Read` - the read guard blocks one and the block costs a turn"
@@ -2458,7 +2458,7 @@
         },
         {
           "file": "stack/agents/code-style-analyzer.md",
-          "marker": "FIRST tool call of your run: locate with the navigation server, never a whole-file `Read` - the read guard blocks one and the block costs a turn"
+          "marker": "locate with the navigation server, never a whole-file `Read` - the read guard blocks one and the block costs a turn"
         }
       ]
     },
@@ -3394,15 +3394,19 @@
       ]
     },
     "answer-budget": {
-      "_note": "The short-answer budget - ~900 characters of prose, ~3 sentences plus points, lifted only by the user's own depth ask. The hook is canonical (BUDGET drives the reminder and the 2x block cap); alfred-interaction states the same number, so a budget change re-syncs the rule.",
+      "_note": "The short-answer budget - ~900 characters of prose, ~3 sentences plus points, lifted only by the user's own depth ask. The rule is canonical (alfred-interaction states it as a HARD rule no hook enforces - the hook's Stop block was removed 2026-10-20); guard-answer's BUDGET only sizes the per-turn reminder, and analyze-usage's ANSWER_BUDGET counts the final answers over it, so a budget change starts at the rule and re-syncs both.",
       "owner": {
-        "file": "stack/hooks/guard-answer.js",
-        "marker": "const BUDGET = 900;"
+        "file": "stack/rules/alfred-interaction.md",
+        "marker": "about 900 characters of prose"
       },
       "sites": [
         {
-          "file": "stack/rules/alfred-interaction.md",
-          "marker": "about 900 characters of prose"
+          "file": "stack/hooks/guard-answer.js",
+          "marker": "const BUDGET = 900;"
+        },
+        {
+          "file": "scripts/analyze-usage.js",
+          "marker": "const ANSWER_BUDGET = 900;"
         }
       ]
     },
@@ -5684,15 +5688,15 @@
       ]
     },
     "resume-recovery-figures": {
-      "_note": "The measured resume-recovery range a fresh-session offer quotes: a resume restarts at 21.5-59.4% of the carried context with nothing lost, and the two ABSOLUTE numbers are stated to the user, never the ratio. Two flows quote it; a re-measurement moves both.",
+      "_note": "What a fresh-session offer quotes: the two numbers the stop-contract hook injects at each stop (this session's carry per message, a fresh one's cold floor), or 'unmeasured' - never a static range. The 21.5-59.4% recovery range both flows once quoted called two ratios absolute numbers and competed with the hook's own figures (stack audit 2026-10-20 SKF2-09); its history is in task-solve/references/evidence.md.",
       "owner": {
         "file": "stack/skills/task-solve-cross/SKILL.md",
-        "marker": "21.5-59.4% of its carried context with nothing lost (never under 21%; quote those absolute numbers to the user, never a ratio)"
+        "marker": "(this session's carry per message, a fresh one's cold floor), or say they are unmeasured"
       },
       "sites": [
         {
           "file": "stack/skills/task-solve/SKILL.md",
-          "marker": "21.5-59.4% of the carried context with zero re-work - state those two absolute numbers to the user, never a ratio"
+          "marker": "(this session's carry per message, a fresh one's cold floor): quote THIS stop's, or say they are unmeasured"
         }
       ]
     },
@@ -6010,7 +6014,7 @@
       ]
     },
     "verifier-memory-before-report": {
-      "_note": "A seat writes any memory BEFORE it composes the report, then delivers the report as its final hand-off - through SubagentHandback when its tools include it (Claude Code gives that tool to every locally run, non-fork subagent in auto mode and delivers only what goes through it - tools-reference, v2.1.271+; the 2026-09-29 agents audit counted 188 of 205 local seat runs reporting through it), else as its last message; nothing after it, because a tool call after the report turns the hand-back into a pointer (measured: a full report, then the note write, then a pointer close forced a resend). 13 copies: the ten trio verifiers and the three support seats whose structured return IS the deliverable.",
+      "_note": "A seat writes any memory BEFORE it composes the report, then delivers the report as its final hand-off - through SubagentHandback when its tools include it (Claude Code gives that tool to every locally run, non-fork subagent in auto mode and delivers only what goes through it - tools-reference, v2.1.271+; the 2026-09-29 agents audit counted 188 of 205 local seat runs reporting through it), else as its last message; nothing after it, because a tool call after the report turns the hand-back into a pointer (measured: a full report, then the note write, then a pointer close forced a resend). 28 copies: the ten trio verifiers and the three support seats whose structured return IS the deliverable, plus the ten implementers, the four resolvers and the integration reviewer, which store a hand-off note at the same point (stack audit 2026-10-20 #6).",
       "owner": {
         "file": "stack/agents/aspnet-verifier.md",
         "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
@@ -6063,11 +6067,71 @@
         {
           "file": "stack/agents/wpf-verifier.md",
           "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/aspnet-implementer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/browser-extension-implementer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/console-implementer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/data-implementer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/devops-implementer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/ionic-angular-implementer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/web-angular-implementer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/windows-service-implementer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/winforms-implementer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/wpf-implementer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/dotnet-build-error-resolver.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/dotnet-test-failure-resolver.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/ng-build-error-resolver.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/angular-test-resolver.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/integration-reviewer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
         }
       ]
     },
     "verifier-left-running-line": {
-      "_note": "A seat that starts a dev server, an emulator, a container or a desktop app must SAY so in its report, on a literal line the orchestrator can read without parsing prose - the quality-gates rule's tear-down ask can only cover what it is told is up. Carried by the seven verifiers whose gates start something, plus the integration reviewer - console- and aspnet-verifier joined in 2.1.5 (M47): their app run had no bound and no line.",
+      "_note": "A seat that starts a dev server, an emulator, a container or a desktop app must SAY so in its report, on a literal line the orchestrator can read without parsing prose - the quality-gates rule's tear-down ask can only cover what it is told is up. Carried by all ten verifiers plus the integration reviewer - console- and aspnet-verifier joined in 2.1.5 (M47): their app run had no bound and no line; data-, devops- and browser-extension-verifier in the 2026-10-20 stack audit (#14): Testcontainers, a docker run and a Playwright context start things too.",
       "owner": {
         "file": "stack/agents/web-angular-verifier.md",
         "marker": "a literal `left_running:` line"
@@ -6099,6 +6163,18 @@
         },
         {
           "file": "stack/agents/aspnet-verifier.md",
+          "marker": "a literal `left_running:` line"
+        },
+        {
+          "file": "stack/agents/data-verifier.md",
+          "marker": "a literal `left_running:` line"
+        },
+        {
+          "file": "stack/agents/devops-verifier.md",
+          "marker": "a literal `left_running:` line"
+        },
+        {
+          "file": "stack/agents/browser-extension-verifier.md",
           "marker": "a literal `left_running:` line"
         }
       ]
@@ -7035,6 +7111,584 @@
         {
           "file": "stack/skills/loop-test-coverage/references/anti-gaming-sweep.md",
           "marker": "1. `git diff -M --stat <BASE>` - the shape of the run. Rename detection is not optional: a structure stage makes the diff rename-heavy, and a pure rename (R100, no content change) is verified by name alone. 2. `git diff -M <BASE>` - every remaining content hunk, paged deterministically until exhausted. Never cap it (`head`, first-N lines): a gamed bar past the cap is exactly the one that survives. 3. `git ls-files --others --exclude-standard`, minus the paths in `<docs-path>/flow/untracked-at-start-<HEAD sha>` (the record the session start wrote; absent = none to subtract) - the files untracked since the run began. A plain diff is blind to brand-new files, so a gamed bar added in one would never surface. 4. Read each file left by 3 in full - it has no diff to page."
+        }
+      ]
+    },
+    "designer-card-stamps": {
+      "_note": "The designer Report names the four card stamps domain-trio-protocol step 1 re-briefs a card without, and the `user_decisions:` line that carries a behaviour change or user-level choice out of a seat with no ask - the shape agent-output-protocol.md's Designer output reads (stack audit 2026-10-20 C3, C7). Restated in every *-solution-designer.",
+      "owner": {
+        "file": "stack/agents/aspnet-solution-designer.md",
+        "marker": "Each task card carries its four stamps by name - `implementer_model`, `anchors`, acceptance, `log_points`"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/browser-extension-solution-designer.md",
+          "marker": "Each task card carries its four stamps by name - `implementer_model`, `anchors`, acceptance, `log_points`"
+        },
+        {
+          "file": "stack/agents/console-solution-designer.md",
+          "marker": "Each task card carries its four stamps by name - `implementer_model`, `anchors`, acceptance, `log_points`"
+        },
+        {
+          "file": "stack/agents/data-solution-designer.md",
+          "marker": "Each task card carries its four stamps by name - `implementer_model`, `anchors`, acceptance, `log_points`"
+        },
+        {
+          "file": "stack/agents/devops-solution-designer.md",
+          "marker": "Each task card carries its four stamps by name - `implementer_model`, `anchors`, acceptance, `log_points`"
+        },
+        {
+          "file": "stack/agents/ionic-angular-solution-designer.md",
+          "marker": "Each task card carries its four stamps by name - `implementer_model`, `anchors`, acceptance, `log_points`"
+        },
+        {
+          "file": "stack/agents/web-angular-solution-designer.md",
+          "marker": "Each task card carries its four stamps by name - `implementer_model`, `anchors`, acceptance, `log_points`"
+        },
+        {
+          "file": "stack/agents/windows-service-solution-designer.md",
+          "marker": "Each task card carries its four stamps by name - `implementer_model`, `anchors`, acceptance, `log_points`"
+        },
+        {
+          "file": "stack/agents/winforms-solution-designer.md",
+          "marker": "Each task card carries its four stamps by name - `implementer_model`, `anchors`, acceptance, `log_points`"
+        },
+        {
+          "file": "stack/agents/wpf-solution-designer.md",
+          "marker": "Each task card carries its four stamps by name - `implementer_model`, `anchors`, acceptance, `log_points`"
+        }
+      ]
+    },
+    "diagnoser-routing-keys": {
+      "_note": "The diagnosis keys task-solve-cross's issue-investigation.md routes on - `route:` (its fix_recommendation.route vocabulary, the fix ask's Recommended option), `confidence:` and `affected_domains:` - emitted as literal lines before `status:` by both diagnoser seats; before, the orchestrator re-derived the route from prose (stack audit 2026-10-20 C5).",
+      "owner": {
+        "file": "stack/agents/issue-diagnoser-runtime.md",
+        "marker": "Before the status, three literal lines the caller's fix ask routes on: `route:` - one of `no_fix_needed`, `resolver`, `single_domain_implementer`, `cross_domain_contract_change`, `user_decision_needed`"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/issue-diagnoser-ci.md",
+          "marker": "Before the status, three literal lines the caller's fix ask routes on: `route:` - one of `no_fix_needed`, `resolver`, `single_domain_implementer`, `cross_domain_contract_change`, `user_decision_needed`"
+        },
+        {
+          "file": "stack/skills/task-solve-cross/references/issue-investigation.md",
+          "marker": "`no_fix_needed | resolver | single_domain_implementer | cross_domain_contract_change | user_decision_needed`"
+        }
+      ]
+    },
+    "verifier-no-git-state": {
+      "_note": "The verifiers' git-state ban (stack audit 2026-10-20 A-T1): a read-only seat holds Bash for the build and tests, and a verifier once mutated the shared index (guard-ungated-commit.js records the incident). The prose half, beside the implementers' tree-wide git line; the enforcing PreToolUse guard keyed on agent_type is the hooks track's. Identical in all 10 verifiers.",
+      "owner": {
+        "file": "stack/agents/aspnet-verifier.md",
+        "marker": "- No tree-wide git state command - `git reset`, `git restore --staged`, `git checkout --`, `git stash`, `git add`, `git commit`"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/browser-extension-verifier.md",
+          "marker": "- No tree-wide git state command - `git reset`, `git restore --staged`, `git checkout --`, `git stash`, `git add`, `git commit`"
+        },
+        {
+          "file": "stack/agents/console-verifier.md",
+          "marker": "- No tree-wide git state command - `git reset`, `git restore --staged`, `git checkout --`, `git stash`, `git add`, `git commit`"
+        },
+        {
+          "file": "stack/agents/data-verifier.md",
+          "marker": "- No tree-wide git state command - `git reset`, `git restore --staged`, `git checkout --`, `git stash`, `git add`, `git commit`"
+        },
+        {
+          "file": "stack/agents/devops-verifier.md",
+          "marker": "- No tree-wide git state command - `git reset`, `git restore --staged`, `git checkout --`, `git stash`, `git add`, `git commit`"
+        },
+        {
+          "file": "stack/agents/ionic-angular-verifier.md",
+          "marker": "- No tree-wide git state command - `git reset`, `git restore --staged`, `git checkout --`, `git stash`, `git add`, `git commit`"
+        },
+        {
+          "file": "stack/agents/web-angular-verifier.md",
+          "marker": "- No tree-wide git state command - `git reset`, `git restore --staged`, `git checkout --`, `git stash`, `git add`, `git commit`"
+        },
+        {
+          "file": "stack/agents/windows-service-verifier.md",
+          "marker": "- No tree-wide git state command - `git reset`, `git restore --staged`, `git checkout --`, `git stash`, `git add`, `git commit`"
+        },
+        {
+          "file": "stack/agents/winforms-verifier.md",
+          "marker": "- No tree-wide git state command - `git reset`, `git restore --staged`, `git checkout --`, `git stash`, `git add`, `git commit`"
+        },
+        {
+          "file": "stack/agents/wpf-verifier.md",
+          "marker": "- No tree-wide git state command - `git reset`, `git restore --staged`, `git checkout --`, `git stash`, `git add`, `git commit`"
+        }
+      ]
+    },
+    "desktop-designer-companion-service": {
+      "_note": "The desktop designers' companion Windows Service paragraph - the half a WPF or WinForms solution ships as a service routes to the windows-service vertical, else is designed inline from the hosted-service and SCM skills the install has. Identical in both desktop designers but for the app's name, since either installs without the other (stack audit 2026-10-20 #13).",
+      "owner": {
+        "file": "stack/agents/wpf-solution-designer.md",
+        "marker": "that half is the windows-service vertical's - in a cross-domain run it routes to the designer seat for SCM-hosted Windows Service workers where the project installs that vertical; designing it inline, load the skills covering the Generic Host worker lifecycle and the Windows Service / SCM layer, matched by what each says it covers against what your skill list has (a UI-only install has neither - then design that half from the preloaded `csharp-design-patterns` vocabulary and flag it in the report as a surface no house skill covered), and decompose it into its own tasks, sharing only a contract (a pipe, socket, file, or database) with the UI process."
+      },
+      "sites": [
+        {
+          "file": "stack/agents/winforms-solution-designer.md",
+          "marker": "that half is the windows-service vertical's - in a cross-domain run it routes to the designer seat for SCM-hosted Windows Service workers where the project installs that vertical; designing it inline, load the skills covering the Generic Host worker lifecycle and the Windows Service / SCM layer, matched by what each says it covers against what your skill list has (a UI-only install has neither - then design that half from the preloaded `csharp-design-patterns` vocabulary and flag it in the report as a surface no house skill covered), and decompose it into its own tasks, sharing only a contract (a pipe, socket, file, or database) with the UI process."
+        }
+      ]
+    },
+    "no-stops-waiver-solve-flows": {
+      "_note": "The typed no-stops waiver (a hand-written AUTO stamp) lives ONLY in the two solve flows, in the same words - the user's ruling of 2026-10-20 (stack audit S1): one request had four behaviours across the flows, and a hand-written AUTO makes every person-directed hook read the session as unattended for 8h. Every other flow answers the same words with `--auto-mode` (no-stops-points-to-auto-mode). task-solve-cross carries it in references/execution-modes.md, read before its first stop, because its SKILL.md sits at its 18,000-char cap.",
+      "owner": {
+        "file": "stack/skills/task-solve/SKILL.md",
+        "marker": "When the user explicitly asks for a no-stops run ('run all recommended without asking me'), never self-authorize silently - write `<docs-path>/flow/APPROVAL` with first line `AUTO - \"<their words, verbatim>\"`, say in one line that stops are waived under it, and take each stop's recommended option; the pre-commit checkpoint and its receipt still apply. A session past the trigger, or one that already closed a cycle, first puts ONE ask - the fresh-session resume recommended - and AUTO starts after its answer."
+      },
+      "sites": [
+        {
+          "file": "stack/skills/task-solve-cross/references/execution-modes.md",
+          "marker": "When the user explicitly asks for a no-stops run ('run all recommended without asking me'), never self-authorize silently - write `<docs-path>/flow/APPROVAL` with first line `AUTO - \"<their words, verbatim>\"`, say in one line that stops are waived under it, and take each stop's recommended option; the pre-commit checkpoint and its receipt still apply. A session past the trigger, or one that already closed a cycle, first puts ONE ask - the fresh-session resume recommended - and AUTO starts after its answer."
+        }
+      ]
+    },
+    "no-stops-points-to-auto-mode": {
+      "_note": "Outside the two solve flows a typed 'no stops' is no waiver: the flow names `--auto-mode` and never hand-writes AUTO (the user's ruling of 2026-10-20, stack audit S1). Sits right after each flow's auto-mode paragraph.",
+      "owner": {
+        "file": "stack/skills/task-implement/SKILL.md",
+        "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--auto-mode` as the first word of the command is the unattended run, and never hand-write an `AUTO` line."
+      },
+      "sites": [
+        {
+          "file": "stack/skills/task-build-from-scratch/SKILL.md",
+          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--auto-mode` as the first word of the command is the unattended run, and never hand-write an `AUTO` line."
+        },
+        {
+          "file": "stack/skills/task-version-upgrade/SKILL.md",
+          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--auto-mode` as the first word of the command is the unattended run, and never hand-write an `AUTO` line."
+        },
+        {
+          "file": "stack/skills/loop-architecture-quality/SKILL.md",
+          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--auto-mode` as the first word of the command is the unattended run, and never hand-write an `AUTO` line."
+        },
+        {
+          "file": "stack/skills/loop-code-quality/SKILL.md",
+          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--auto-mode` as the first word of the command is the unattended run, and never hand-write an `AUTO` line."
+        },
+        {
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--auto-mode` as the first word of the command is the unattended run, and never hand-write an `AUTO` line."
+        },
+        {
+          "file": "stack/skills/issue-diagnoser/SKILL.md",
+          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--auto-mode` as the first word of the command is the unattended run, and never hand-write an `AUTO` line."
+        }
+      ]
+    },
+    "approval-stamp-auto-carve-out": {
+      "_note": "Every step that writes an APPROVED stamp leaves the hook's AUTO stamp standing under auto-mode (stack audit 2026-10-20 S2, SKF2-02): the registered auto-mode paragraph says write none over it, but the nearest instruction wrote APPROVED unconditionally, and an APPROVED overwrite stops the auto answers. scripts/stack-audit-2026-10-20-skills.test.js fails a stamp instruction without it.",
+      "owner": {
+        "file": "stack/skills/task-version-upgrade/SKILL.md",
+        "marker": "(under auto-mode the hook's `AUTO` stamp already stands - leave it)"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/task-implement/SKILL.md",
+          "marker": "(under auto-mode the hook's `AUTO` stamp already stands - leave it)"
+        },
+        {
+          "file": "stack/skills/task-build-from-scratch/SKILL.md",
+          "marker": "(under auto-mode the hook's `AUTO` stamp already stands - leave it)"
+        },
+        {
+          "file": "stack/skills/loop-architecture-quality/SKILL.md",
+          "marker": "(under auto-mode the hook's `AUTO` stamp already stands - leave it)"
+        },
+        {
+          "file": "stack/skills/loop-code-quality/SKILL.md",
+          "marker": "(under auto-mode the hook's `AUTO` stamp already stands - leave it)"
+        },
+        {
+          "file": "stack/skills/loop-code-quality/references/delegated-mode.md",
+          "marker": "(under auto-mode the hook's `AUTO` stamp already stands - leave it)"
+        },
+        {
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "marker": "(under auto-mode the hook's `AUTO` stamp already stands - leave it)"
+        },
+        {
+          "file": "stack/skills/task-solve/references/step-mechanics.md",
+          "marker": "(under auto-mode the hook's `AUTO` stamp already stands - leave it)"
+        },
+        {
+          "file": "stack/skills/task-solve-cross/references/execution-modes.md",
+          "marker": "(under auto-mode the hook's `AUTO` stamp already stands - leave it)"
+        },
+        {
+          "file": "stack/skills/loop-code-quality/references/staged-mode.md",
+          "marker": "(under auto-mode the hook's `AUTO` stamp already stands - leave it)"
+        }
+      ]
+    },
+    "ask-idle-timeout-no-answer": {
+      "_note": "Claude Code's askUserQuestionTimeout closes an unanswered question on idle, 'submits any options you'd already selected and tells Claude you may be away' (code.claude.com/docs/en/tools-reference, 'Question auto-continue timeout'); the tool result opens 'No response after <N>s' and says the user may be away from keyboard (read from the Claude Code 2.1.304 binary, the AskUserQuestion result builder; the output carries afkTimeoutMs). The user's ruling of 2026-10-20 (stack audit S3): such a close is no answer - no stamp from it. At every stamp / approval site.",
+      "owner": {
+        "file": "stack/skills/task-implement/SKILL.md",
+        "marker": "A question the idle timeout closed is no answer: its result opens 'No response after' and says the user may be away from keyboard, even when it carries an option already selected - write no APPROVED or AUTO line from it; re-ask, or stop and say what waits."
+      },
+      "sites": [
+        {
+          "file": "stack/skills/task-build-from-scratch/SKILL.md",
+          "marker": "A question the idle timeout closed is no answer: its result opens 'No response after' and says the user may be away from keyboard, even when it carries an option already selected - write no APPROVED or AUTO line from it; re-ask, or stop and say what waits."
+        },
+        {
+          "file": "stack/skills/task-version-upgrade/SKILL.md",
+          "marker": "A question the idle timeout closed is no answer: its result opens 'No response after' and says the user may be away from keyboard, even when it carries an option already selected - write no APPROVED or AUTO line from it; re-ask, or stop and say what waits."
+        },
+        {
+          "file": "stack/skills/loop-architecture-quality/SKILL.md",
+          "marker": "A question the idle timeout closed is no answer: its result opens 'No response after' and says the user may be away from keyboard, even when it carries an option already selected - write no APPROVED or AUTO line from it; re-ask, or stop and say what waits."
+        },
+        {
+          "file": "stack/skills/loop-code-quality/SKILL.md",
+          "marker": "A question the idle timeout closed is no answer: its result opens 'No response after' and says the user may be away from keyboard, even when it carries an option already selected - write no APPROVED or AUTO line from it; re-ask, or stop and say what waits."
+        },
+        {
+          "file": "stack/skills/loop-code-quality/references/delegated-mode.md",
+          "marker": "A question the idle timeout closed is no answer: its result opens 'No response after' and says the user may be away from keyboard, even when it carries an option already selected - write no APPROVED or AUTO line from it; re-ask, or stop and say what waits."
+        },
+        {
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "marker": "A question the idle timeout closed is no answer: its result opens 'No response after' and says the user may be away from keyboard, even when it carries an option already selected - write no APPROVED or AUTO line from it; re-ask, or stop and say what waits."
+        },
+        {
+          "file": "stack/skills/task-solve/references/step-mechanics.md",
+          "marker": "A question the idle timeout closed is no answer: its result opens 'No response after' and says the user may be away from keyboard, even when it carries an option already selected - write no APPROVED or AUTO line from it; re-ask, or stop and say what waits."
+        },
+        {
+          "file": "stack/skills/task-solve-cross/references/execution-modes.md",
+          "marker": "A question the idle timeout closed is no answer: its result opens 'No response after' and says the user may be away from keyboard, even when it carries an option already selected - write no APPROVED or AUTO line from it; re-ask, or stop and say what waits."
+        }
+      ]
+    },
+    "approval-stamp-shape": {
+      "_note": "The stamp's Shape - first line APPROVED <plan id> plus the user's words verbatim - at every flow that stamps one plan (stack audit 2026-10-20 SKF2-03, registered once S1/S2 settled the wording; task-solve's step-mechanics and task-solve-cross's execution-modes name a contract id instead and carry the auto-mode carve-out under approval-stamp-auto-carve-out).",
+      "owner": {
+        "file": "stack/skills/task-implement/SKILL.md",
+        "marker": "first line `APPROVED <plan id> - \"<the user's words, verbatim>\"`"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/task-build-from-scratch/SKILL.md",
+          "marker": "first line `APPROVED <plan id> - \"<the user's words, verbatim>\"`"
+        },
+        {
+          "file": "stack/skills/task-version-upgrade/SKILL.md",
+          "marker": "first line `APPROVED <plan id> - \"<the user's words, verbatim>\"`"
+        },
+        {
+          "file": "stack/skills/loop-architecture-quality/SKILL.md",
+          "marker": "first line `APPROVED <plan id> - \"<the user's words, verbatim>\"`"
+        },
+        {
+          "file": "stack/skills/loop-code-quality/SKILL.md",
+          "marker": "first line `APPROVED <plan id> - \"<the user's words, verbatim>\"`"
+        },
+        {
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "marker": "first line `APPROVED <plan id> - \"<the user's words, verbatim>\"`"
+        }
+      ]
+    },
+    "approval-stamp-refused": {
+      "_note": "The stamp-refused route: both write routes refused by the harness's classifier is a stop with a Retry-recommended ask, never a blind retry or a dispatch around the gate (five sessions in one project lost DELEGATED-mode fixes to an unwritable stamp). Stack audit 2026-10-20 SKF2-03.",
+      "owner": {
+        "file": "stack/skills/task-solve-cross/references/execution-modes.md",
+        "marker": "the Write tool and an absolute-path Bash write are refused by the harness's classifier, stop and"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/task-solve/references/step-mechanics.md",
+          "marker": "the Write tool and an absolute-path Bash write are refused by the harness's classifier, stop and"
+        },
+        {
+          "file": "stack/skills/task-implement/SKILL.md",
+          "marker": "the Write tool and an absolute-path Bash write are refused by the harness's classifier, stop and"
+        },
+        {
+          "file": "stack/skills/task-build-from-scratch/SKILL.md",
+          "marker": "the Write tool and an absolute-path Bash write are refused by the harness's classifier, stop and"
+        },
+        {
+          "file": "stack/skills/task-version-upgrade/SKILL.md",
+          "marker": "the Write tool and an absolute-path Bash write are refused by the harness's classifier, stop and"
+        },
+        {
+          "file": "stack/skills/loop-architecture-quality/SKILL.md",
+          "marker": "the Write tool and an absolute-path Bash write are refused by the harness's classifier, stop and"
+        },
+        {
+          "file": "stack/skills/loop-code-quality/SKILL.md",
+          "marker": "the Write tool and an absolute-path Bash write are refused by the harness's classifier, stop and"
+        },
+        {
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "marker": "the Write tool and an absolute-path Bash write are refused by the harness's classifier, stop and"
+        }
+      ]
+    },
+    "dotnet-floor-line": {
+      "_note": "The .NET support floor sentence (.NET 10 / C# 14; .NET 8 / 9 past support from 2026-11-10) - restated in every .NET skill whose body is version-gated, so each reads its deltas against the same floor wherever it is copied (stack audit 2026-10-20 SKD2-01 / SKD2-03: 20 unregistered copies, four version-gated skills without one). A re-dated support policy moves every copy.",
+      "owner": {
+        "file": "stack/skills/csharp/SKILL.md",
+        "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+      },
+      "sites": [
+        {
+          "file": "stack/skills/csharp-design-patterns/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-architecture-tests/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-aspire/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-authentication/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-code-quality/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-console-apps/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-cryptography/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-data-access/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-grpc/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-hosted-services/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-messaging/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-minimal-api/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-mvc-controllers/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-openapi/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-performance/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-project-setup/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-realtime/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-security/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-source-generators/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-testing/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-web-backend/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-web-error-handling/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-winforms/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        },
+        {
+          "file": "stack/skills/dotnet-wpf/SKILL.md",
+          "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
+        }
+      ]
+    },
+    "config-protection-allow-ask": {
+      "_note": "The config-protection guard's allowance ask (config-protection-gate-named says when it fires) as a template, Allow recommended and first: the edit is the task the user asked for, and the guard's receipt names one file. Stack audit 2026-10-20 row 13 - the ask was prose in all three, so lint 61 could not hold its mark.",
+      "owner": {
+        "file": "stack/skills/typescript/SKILL.md",
+        "marker": "- 'Allow this edit (Recommended)' - the guard's receipt names this file and the same edit is retried\n- 'Keep the config as it is' - nothing changes in the file"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/dotnet-code-quality/SKILL.md",
+          "marker": "- 'Allow this edit (Recommended)' - the guard's receipt names this file and the same edit is retried\n- 'Keep the config as it is' - nothing changes in the file"
+        },
+        {
+          "file": "stack/skills/dotnet-project-setup/SKILL.md",
+          "marker": "- 'Allow this edit (Recommended)' - the guard's receipt names this file and the same edit is retried\n- 'Keep the config as it is' - nothing changes in the file"
+        }
+      ]
+    },
+    "loop-substantial-steps": {
+      "_note": "The two quality loops' substantial-tier path - decompose, gate the plan, approve, (stamp,) build and verify - verbatim twins (stack audit 2026-10-20 SKF2-04). The stamp step between them is held by the approval-stamp-* entries.",
+      "owner": {
+        "file": "stack/skills/loop-architecture-quality/SKILL.md",
+        "marker": "**substantial** (a designer-led multi-task change) - five steps in order, none of them optional: 1. **Decompose** - dispatch the domain solution-designer to turn the remediation into a decomposition. 2. **Gate the plan** - `task-verify-plan`, an actual Skill invocation, recording its `Passes:` line. 3. **Get the user's approval on that plan before building** - never fan out against an unapproved plan."
+      },
+      "sites": [
+        {
+          "file": "stack/skills/loop-code-quality/SKILL.md",
+          "marker": "**substantial** (a designer-led multi-task change) - five steps in order, none of them optional: 1. **Decompose** - dispatch the domain solution-designer to turn the remediation into a decomposition. 2. **Gate the plan** - `task-verify-plan`, an actual Skill invocation, recording its `Passes:` line. 3. **Get the user's approval on that plan before building** - never fan out against an unapproved plan."
+        },
+        {
+          "file": "stack/skills/loop-architecture-quality/SKILL.md",
+          "marker": "**Build and verify** - fan the tasks out to the domain implementers, then gate the assembled result with the domain verifier, looping its punch-list back."
+        },
+        {
+          "file": "stack/skills/loop-code-quality/SKILL.md",
+          "marker": "**Build and verify** - fan the tasks out to the domain implementers, then gate the assembled result with the domain verifier, looping its punch-list back."
+        }
+      ]
+    },
+    "loop-round-cap": {
+      "_note": "Every improve loop stops after 3 rounds with the remainder listed (stack audit 2026-10-20 SKF2-04); each loop keeps its own reason after the cap.",
+      "owner": {
+        "file": "stack/skills/loop-architecture-quality/SKILL.md",
+        "marker": "**Hard cap: 3 improve rounds"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/loop-code-quality/SKILL.md",
+          "marker": "**Hard cap: 3 improve rounds"
+        },
+        {
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "marker": "**Hard cap: 3 improve rounds"
+        }
+      ]
+    },
+    "testing-coverage-mechanics": {
+      "_note": "The coverage mechanics line each testing hub owns beside the registered testing-coverage-bar (stack audit 2026-10-20 SKS2-03): coverage is computed after exclusions, so the number is logic, not padding; each hub's own exclusion catalogue follows.",
+      "owner": {
+        "file": "stack/skills/dotnet-testing/SKILL.md",
+        "marker": "What this skill owns is the mechanics: coverage is computed after exclusions so the number reflects real logic coverage, not padding"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/angular-testing/SKILL.md",
+          "marker": "What this skill owns is the mechanics: coverage is computed after exclusions so the number reflects real logic coverage, not padding"
+        },
+        {
+          "file": "stack/skills/ts-js-testing/SKILL.md",
+          "marker": "What this skill owns is the mechanics: coverage is computed after exclusions so the number reflects real logic coverage, not padding"
+        }
+      ]
+    },
+    "quality-capture-run-gate-and-receipt": {
+      "_note": "The two quality captures' run-gate sentence and the receipt rows they share verbatim (stack audit 2026-10-20 SKC2-06); each keeps its own Findings gate wording and extra rows.",
+      "owner": {
+        "file": "stack/skills/capture-architecture-quality/SKILL.md",
+        "marker": "So unless the quality loop invoked this run, put this ask before GATHER (joined with the mode ask below where that fires, one AskUserQuestion call). No answer, no run."
+      },
+      "sites": [
+        {
+          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "marker": "So unless the quality loop invoked this run, put this ask before GATHER (joined with the mode ask below where that fires, one AskUserQuestion call). No answer, no run."
+        },
+        {
+          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "marker": "Then the receipt lines - one per field, UNCONDITIONAL:"
+        },
+        {
+          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "marker": "Then the receipt lines - one per field, UNCONDITIONAL:"
+        },
+        {
+          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "marker": "| `References:` | which of this skill's `references/` files this run actually Read |"
+        },
+        {
+          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "marker": "| `References:` | which of this skill's `references/` files this run actually Read |"
+        },
+        {
+          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "marker": "| `Decisions:` | the decision records step 1 actually opened, or `none found at <path looked>` |"
+        },
+        {
+          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "marker": "| `Decisions:` | the decision records step 1 actually opened, or `none found at <path looked>` |"
+        },
+        {
+          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "marker": "| `Write:` | created / refreshed, and the post-write line count against the ~300 target |"
+        },
+        {
+          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "marker": "| `Write:` | created / refreshed, and the post-write line count against the ~300 target |"
+        },
+        {
+          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "marker": "| `Run gate:` | the answer verbatim, or `invoked by the quality loop` |"
+        },
+        {
+          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "marker": "| `Run gate:` | the answer verbatim, or `invoked by the quality loop` |"
+        }
+      ]
+    },
+    "size-first-trivial-row": {
+      "_note": "The size table's trivial row, verbatim in both solve flows (stack audit 2026-10-20 SKF2-05) - size-first-table pins only the floor sentence; the small rows differ by design.",
+      "owner": {
+        "file": "stack/skills/task-solve/SKILL.md",
+        "marker": "| trivial | one file, no new dependency, no behaviour a test would see (typo, comment, format, rename inside a file) | edit -> scoped check -> close. No design, no audit, no stop |"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/task-solve-cross/SKILL.md",
+          "marker": "| trivial | one file, no new dependency, no behaviour a test would see (typo, comment, format, rename inside a file) | edit -> scoped check -> close. No design, no audit, no stop |"
+        }
+      ]
+    },
+    "support-seat-memory-search": {
+      "_note": "Three read-only support seats hold the shared memory by spec (lint check 43: every seat searches and saves) but never used it (stack audit 2026-10-20 agents T2, the user's ruling: keep the grant, make them search). One search after the first locate call; the caller owns the notes, so they save nothing.",
+      "owner": {
+        "file": "stack/agents/architecture-analyzer.md",
+        "marker": "on the area's name, right after your first locate call: a prior finding or ruling about it is evidence you cite or contradict"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/code-quality-analyzer.md",
+          "marker": "on the area's name, right after your first locate call: a prior finding or ruling about it is evidence you cite or contradict"
+        },
+        {
+          "file": "stack/agents/evidence-gatherer.md",
+          "marker": "on the area's name, right after your first locate call: a prior finding or ruling about it is evidence you cite or contradict"
         }
       ]
     }

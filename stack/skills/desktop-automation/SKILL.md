@@ -61,8 +61,8 @@ screen shows.
 ## Stay in the UI, stay out of four dialogs
 
 - **Drive the UI the user named, nothing else.** The task 'change it in the app' is done in the app:
-  no shell, registry, process or file-system tool to get there. Windows-MCP starts with PowerShell,
-  Registry, Process and FileSystem switched off unless the user turned them on
+  no shell, registry, process or file-system tool to get there. Windows-MCP enables every tool by default; the stack
+  launches it with PowerShell, Registry, Process and FileSystem excluded unless the user turned them on
   (`references/windows.md`); its `App` tool stays on for launch, switch and resize, and MacOS-MCP's
   `Shell` stays in its list - but a house guard denies App's `launch_executable` mode (it starts any
   program) and every MacOS-MCP `Shell` call unless the user allowed it in

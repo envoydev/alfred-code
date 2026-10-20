@@ -316,11 +316,11 @@ function mainCheckoutRoot(projectRoot) {
   if (mainCheckoutSeen.has(projectRoot)) return mainCheckoutSeen.get(projectRoot);
   const answer = (() => {
     try {
-      const common = execFileSync('git', ['-C', projectRoot, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: MAIN_CHECKOUT_GIT_MS }).trim();
+      const common = execFileSync('git', ['-c', 'core.fsmonitor=false', '-C', projectRoot, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: MAIN_CHECKOUT_GIT_MS }).trim();
       if (common && path.basename(common) === '.git') return path.dirname(common);
     } catch {}
     try {
-      const top = execFileSync('git', ['-C', projectRoot, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: MAIN_CHECKOUT_GIT_MS }).trim();
+      const top = execFileSync('git', ['-c', 'core.fsmonitor=false', '-C', projectRoot, 'rev-parse', '--show-toplevel'], { env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: MAIN_CHECKOUT_GIT_MS }).trim();
       if (top) return top;
     } catch {}
     return projectRoot;

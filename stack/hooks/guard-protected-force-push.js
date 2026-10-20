@@ -27,6 +27,9 @@ const fs = require('fs');
 // The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 const { execFileSync } = require('child_process');
+// Every git this guard runs: fsmonitor off, no optional locks (hook-prelude.js gitSafe, audit 2026-10-20 H2) - the same two
+// inline when the prelude is absent, since a protective read must not skip git or run a repository's own program.
+const gitSafe = (() => { try { return require('./hook-prelude.js').gitSafe; } catch { return (argv, opts = {}) => ['git', ['-c', 'core.fsmonitor=false', ...argv], { ...opts, env: { ...(opts.env || process.env), GIT_OPTIONAL_LOCKS: '0' } }]; } })();
 
 // STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in every
 // hook. Fail-open on purpose - no prelude, no project dir or a malformed settings file all leave
@@ -106,11 +109,28 @@ function currentBranch(cwd)
     try
     {
         // git's stderr stays out of the hook's: on an unborn repo it printed `fatal: ambiguous argument 'HEAD'` (audit 2026-10-08).
-        return execFileSync('git', ['-C', cwd, 'rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+        return execFileSync(...gitSafe(['-C', cwd, 'rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] })).trim();
     }
     catch
     {
         return null; // not a repo / detached / git missing -> caller fails open
+    }
+}
+
+// The remote's DEFAULT branch is protected too (audit 2026-10-20, the hooks track's minor list: a repository whose
+// default is `trunk` or `production` had it force-pushed unguarded). Read from the remote-tracking HEAD git keeps
+// (`refs/remotes/<remote>/HEAD`, set by clone or `git remote set-head`), no network; asked only of a force or a delete.
+function remoteDefault(cwd, remote)
+{
+    try
+    {
+        const ref = execFileSync(...gitSafe(['-C', cwd, 'symbolic-ref', '--quiet', `refs/remotes/${remote || 'origin'}/HEAD`], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] })).trim();
+        const m = /^refs\/remotes\/[^/]+\/(.+)$/.exec(ref);
+        return m ? m[1] : null;
+    }
+    catch
+    {
+        return null;
     }
 }
 
@@ -149,6 +169,11 @@ function isProtectedForcePush(command, cwd)
         // the bare force spelled out, and read literally it named no protected branch and passed.
         let head;
         const branchOf = (ref) => (ref === 'HEAD' || ref === '@' ? (head === undefined ? (head = currentBranch(gitCwd)) : head) : ref);
+        // The first non-option word names the remote; the default branch is read once per call, and only when asked.
+        const remote = after.find(t => !t.startsWith('-')) || 'origin';
+        let dflt;
+        const isProtected = (name, risky) => PROTECTED.includes(name)
+            || (risky && !!name && name === (dflt === undefined ? (dflt = remoteDefault(gitCwd, unquote(remote))) : dflt));
 
         // FORCE_FLAG catches -f / --force / --force-with-lease / --force-if-includes as whole tokens;
         // also catch clustered short flags (-fu, -uf, -fv): single-dash token containing f.
@@ -177,7 +202,8 @@ function isProtectedForcePush(command, cwd)
         // Explicit refspec whose destination is a protected branch, when the op is a
         // force ('+' prefix or a force flag) or a delete (--delete/-d, or ':dst').
         // Unquote first so a quoted token - `"main"` or `"+main"` - is read correctly.
-        const targets = after.filter(t => !t.startsWith('-') && PROTECTED.includes(branchOf(normalizeBranch(refDestination(t)))));
+        const risky = (t) => unquote(t).startsWith('+') || hasForceFlag || hasDeleteFlag || refSource(t) === '';
+        const targets = after.filter(t => !t.startsWith('-') && isProtected(branchOf(normalizeBranch(refDestination(t))), t !== remote && risky(t)));
         for (const t of targets)
         {
             const u = unquote(t);
@@ -189,7 +215,7 @@ function isProtectedForcePush(command, cwd)
 
         // Bare push targets HEAD's branch - block a force or delete of a protected one. The flags are read first, so an
         // ordinary push spawns no git.
-        if ((hasForceFlag || hasDeleteFlag) && isBarePush(after) && PROTECTED.includes(branchOf('HEAD')))
+        if ((hasForceFlag || hasDeleteFlag) && isBarePush(after) && isProtected(branchOf('HEAD'), true))
         {
             return true;
         }
@@ -269,9 +295,10 @@ function main()
     }
 
     process.stderr.write(
-        'Blocked: rewriting or deleting a shared branch (main/master/develop) is forbidden - a house rule enforced here, no prose copy to consult - ' +
+        'Blocked: rewriting or deleting a shared branch (main/master/develop, or the remote\'s default branch) is forbidden - a house rule enforced here, no prose copy to consult - ' +
         'no force-push, branch deletion, or --mirror. Push to a feature branch and open a PR; ' +
-        'use --force-with-lease only on your own feature branch.\n');
+        'use --force-with-lease only on your own feature branch. If the user wants this push, it is theirs to run: ' +
+        'give them the exact command to type themselves (a `!` prefix runs it in this session), never a way around this guard.\n');
     process.exit(2);
 }
 

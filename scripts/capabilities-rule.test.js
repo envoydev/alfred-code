@@ -321,7 +321,8 @@ test('I12: the navigation rule keeps rename and safe delete, every other edit on
     assert.ok(!map.includes('symbol-level editor'), 'the row no longer sells the server as an editor');
     // The user's 2026-10-13 ruling: the navigation server is navigation only, every note goes to alfred-memory.
     assert.ok(!nav.includes('seat memory handoff') && !map.includes('seat memory handoff'), 'no seat handoff left on the navigation server');
-    assert.ok(nav.includes('its memory tools are off, and every note - a seat\'s handoff included - goes to the `alfred-memory` MCP'), 'the navigation rule routes notes to alfred-memory');
+    // Stack audit 2026-10-20 rules row 6: the memory rule is the one home of that routing; the navigation rule no longer repeats it.
+    assert.ok(squash(read('stack/rules/alfred-memory.md')).includes('never in the navigation server (its memory tools are off)'), 'the memory rule routes notes to alfred-memory');
 });
 
 // ------------------------------------------------------------------ I45 + I10 (prose half)

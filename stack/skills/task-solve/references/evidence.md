@@ -13,6 +13,7 @@ for them. Audit material: read it to learn WHY a rule is shaped the way it is, n
 - **the stop is the cheap point to run the next step in a fresh session** - in a long cycle the carried-forward context is the single biggest token cost; measured: a resume restarts at 21.5-59.4% of the carried context, never under 21%, with zero re-work - stamped steps stay done; the 'roughly a tenth' this rule used to claim was 2-6x optimistic and reached users verbatim inside the options they acted on
 - **HONOR the answer** - measured: a tool-held 'Fresh session' answer was ignored and the run continued 1h51m to 490k ctx
 - **This is a CONSTRUCTION check, not a memory** - measured across eight audited sessions: the remembered form fired in zero of 40+ qualifying stops - one session crossed the trigger at its FIRST approve gate and never offered it through 15 more - while the same sessions' other option rules held
+- **The fresh-session resume, below all three conditions no ask carries it** - measured (audit 2026-10-20 C07, fabea019): a stop 22 minutes into a cycle, at 275k on a 1M window, printed a resume block. The static 21.5-59.4% recovery range it once quoted left the body (stack audit 2026-10-20 SKF2-09): it called two ratios absolute numbers, and the stop-contract hook injects this session's own carry and cold floor at each stop.
 - **Autonomy waiver (AUTO)** - measured twice: with no waiver path, zero-ask runs improvised the override invisibly - one wrote 'take the recommended option at every stop, do not ask' into a scratch note as its only record
 
 ## The steps

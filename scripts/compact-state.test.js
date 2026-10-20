@@ -335,6 +335,19 @@ test('compact-state: a configured auto-compact window the compactions show was n
         process.env.CLAUDE_PROJECT_DIR = m.root;
         assert.doesNotMatch(m.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tm }, env).stdout, /not honoured/);
         assert.strictEqual(engine(m, tm, m.sid).autoCompactWindow(), 350000);
+        // audit 2026-10-20 (hooks minor list): a USER-scope file is named `~/`-relative with `/`, never its whole path
+        const u = project();
+        const home = fs.mkdtempSync(path.join(TMP, 'home-'));
+        const userFile = path.join(home, '.claude', 'settings.json');
+        fs.mkdirSync(path.dirname(userFile), { recursive: true });
+        fs.writeFileSync(userFile, JSON.stringify({ autoCompactWindow: 350000 }));
+        const two = new Date(Date.now() - 2 * 3600000);
+        fs.utimesSync(userFile, two, two);
+        const tu = u.transcript(rows(1, 466800));
+        const userEnv = { ...env, HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: path.join(home, '.claude'), ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'acw-u-')) };
+        const said = startText(u.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tu }, userEnv));
+        assert.match(said, /The 350k autoCompactWindow in ~\/\.claude\/settings\.json was not honoured/);
+        assert.ok(!said.includes(home), 'the home folder\'s own name is never printed');
     }
     finally { process.env = saved; }
 });

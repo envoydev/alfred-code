@@ -309,7 +309,8 @@
     "sql-conventions"
    ],
    "skills": [
-    "database-security"
+    "database-security",
+    "dotnet-migrate"
    ]
   },
   "devops": {

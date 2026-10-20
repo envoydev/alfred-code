@@ -282,7 +282,7 @@ test('SKD-01: the .NET family floors at .NET 10 / C# 14, the old floor only in b
 // `FailingTypes`, not `FailingTypeNames` (its README and sources/NetArchTest/TestResult.cs).
 test('SKD-16: architecture tests default to the maintained NetArchTest fork and assert with the runner', () =>
 {
-    const text = squash(section(read('stack/skills/dotnet-architecture-tests/SKILL.md'), 'Pick the library: NetArchTest by default'));
+    const text = squash(section(read('stack/skills/dotnet-architecture-tests/SKILL.md'), 'Pick the library: NetArchTest.eNhancedEdition by default'));
     assert.match(text, /Default to \*\*NetArchTest\.eNhancedEdition\*\*/);
     assert.doesNotMatch(text, /Default to \*\*NetArchTest\.Rules\*\*/);
     assert.match(text, /Types\.InAssembly\(typeof\(Order\)\.Assembly\)/);

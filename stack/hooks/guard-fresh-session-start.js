@@ -24,8 +24,9 @@
 // sessions, one of which NAMED the fresh-session need in its own text ('a fresh session is the
 // right home for a loop like this') and then ran the loop anyway, to 380k tokens per message.
 // Same step run fresh in the next session cost 134k. This is that rule mechanized.
-//   UserPromptSubmit        - the auto-mode end (a prompt typed in a session holding its own AUTO stamp ends
-//                             it, 2026-10-14), else the idle-gap offer (audit 2026-10-10 C09): the prompt ending a
+//   UserPromptSubmit        - the auto-mode end (only the user's word to stop it, a bare 'stop' or a new flow
+//                             command without --auto-mode; any other typed prompt is input to the run - the user's
+//                             ruling of 2026-10-15), else the idle-gap offer (audit 2026-10-10 C09): the prompt ending a
 //                             gap past the clock route's hours injects the offer once per gap. It runs beside the
 //                             two other prompt hooks, in parallel, and reads one 1MB tail; it never judges a command.
 //
@@ -569,12 +570,15 @@ function skillHeads(root, skill) {
   const out = [nodePath.join(cfg, 'skills', bare, 'SKILL.md'), nodePath.join(root, '.claude', 'skills', bare, 'SKILL.md'),
     nodePath.join(cfg, 'commands', `${bare}.md`), nodePath.join(root, '.claude', 'commands', `${bare}.md`)];
   const cache = nodePath.join(cfg, 'plugins', 'cache');
-  // <cache>/<marketplace>/<plugin>/<version>/stack/skills/<bare>/SKILL.md - the plugin is known
-  // when the call carries a scoped name, and is a short scan otherwise.
+  // <cache>/<marketplace>/<plugin>/<version>/stack/skills/<bare>/SKILL.md - the plugin is known when the call carries a
+  // scoped name, and is a short scan otherwise. A plugin's COMMANDS are read only under its namespace: a name with no
+  // colon is a personal or project command or a built-in (audit 2026-10-20 H10: the built-in `init` matched the core's
+  // `commands/init.md` and was denied as disable-model-invocation); a plugin SKILL still answers to its bare name.
   const want = skill.includes(':') ? skill.slice(0, skill.indexOf(':')) : null;
+  const heads = (base) => pluginHeads(base, bare).filter((f) => want || !/[\\/]commands[\\/][^\\/]+\.md$/.test(f));
   // The running plugin's own root is the copy that is loaded, so it is read before any cached one.
   const running = process.env.CLAUDE_PLUGIN_ROOT;
-  if (running && (!want || nodePath.basename(nodePath.dirname(running)) === want)) out.push(...pluginHeads(running, bare));
+  if (running && (!want || nodePath.basename(nodePath.dirname(running)) === want)) out.push(...heads(running));
   let markets = [];
   try { markets = fs.readdirSync(cache); } catch { return out; }
   for (const market of markets) {
@@ -585,7 +589,7 @@ function skillHeads(root, skill) {
       let versions = [];
       try { versions = fs.readdirSync(nodePath.join(cache, market, plugin)); } catch { continue; }
       for (const version of versions.sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))) {
-        out.push(...pluginHeads(nodePath.join(cache, market, plugin, version), bare));
+        out.push(...heads(nodePath.join(cache, market, plugin, version)));
       }
     }
   }
@@ -887,6 +891,20 @@ function typedAutoCommand(text) {
   const args = tagged ? ((/<command-args>([\s\S]*?)(?:<\/command-args>|$)/.exec(text) || [])[1] || '') : raw ? raw[2] || '' : '';
   return AUTO_SKILL_RE.test(name) && AUTO_FIRST_RE.test(args);
 }
+// Why this command's auto-mode did not start, for the banner: a refusal the user cannot see is a run they think is
+// unattended and is not (a side review of the hooks track, 2026-10-20).
+let autoRefused = '';
+// Another session is RUNNING when its own transcript, beside this one, was written within the last ten minutes - the
+// same idle span the docs hook reads as the user being away. A stamp left by a finished run, a run that ended without
+// deleting it, or the session a fresh-session hand-off came from is no live run, so a new start replaces it.
+const OTHER_LIVE_MS = 10 * 60 * 1000;
+function otherSessionLive(other) {
+  try {
+    if (!payload.transcript_path || !/^[\w-]+$/.test(other)) return false;
+    const t = nodePath.join(nodePath.dirname(payload.transcript_path), `${other}.jsonl`);
+    return Date.now() - fs.statSync(t).mtimeMs <= OTHER_LIVE_MS;
+  } catch { return false; }
+}
 function autoModeStart() {
   const sid = String(payload.session_id || '');
   // The typed command must open its arguments with the flag; the model's own Skill args may carry it anywhere, since
@@ -902,6 +920,17 @@ function autoModeStart() {
   let current = null;
   try { current = require('./hook-prelude.js').approvalStamp({ ...payload, cwd: root }); } catch { /* no prelude: written fresh */ }
   const kept = Boolean(current && current.live && current.session === sid && /^AUTO\b/.test(current.first));
+  // Another session's stamp is never overwritten while that session is still RUNNING (audit 2026-10-20, the hooks
+  // track's minor list: two sessions on one checkout, and the second's auto-mode start took the first's approval). Only a
+  // live run counts - a stamp under 8h old was refused before, which silently cost a fresh-session hand-off its
+  // auto-mode. This run asks as it always has, and the banner says why and how to take over.
+  if (current && current.session && current.session !== sid && otherSessionLive(current.session)) {
+    const rel = nodePath.relative(root, file).split(nodePath.sep).join('/') || file;
+    autoRefused = `another session (${current.session.slice(0, 8)}) is running a stamped run in this checkout right now, and ${rel} is its approval - `
+      + `finish or stop that run, or delete ${rel} to take over, then type the command again`;
+    ledgerRow({ mode: 'auto', kind: 'auto-start-refused', reason: `auto-mode: ${skill} - the APPROVAL stamp belongs to a session still running, left as it is` });
+    return null;
+  }
   // The user's words, verbatim but for the line breaks and double quotes the stamp's one-line quote cannot hold.
   const typed = IS_SKILL_CALL ? `/${skill} ${autoArgs()}` : String(payload.prompt || `/${skill} ${autoArgs()}`);
   const words = typed.replace(/\s+/g, ' ').trim().replace(/"/g, "'").slice(0, 400);
@@ -939,7 +968,14 @@ function acwIgnoredNote() {
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
     const rel = nodePath.relative(root, ig.source);
     // in git's spelling on every platform, so a Windows session reads the same path the docs and the user's own commands use
-    const where = /^CLAUDE_CODE_/.test(ig.source) ? ig.source : rel && !rel.startsWith('..') && !nodePath.isAbsolute(rel) ? rel.split(nodePath.sep).join('/') : ig.source;
+    // A user-scope file outside the project reads `~/`-relative, `/` on every platform too (audit 2026-10-20, the hooks
+    // track's minor list: the account settings path printed whole, with the home folder's name and Windows separators).
+    const home = require('os').homedir();
+    const fromHome = home ? nodePath.relative(home, ig.source) : '';
+    const where = /^CLAUDE_CODE_/.test(ig.source) ? ig.source
+      : rel && !rel.startsWith('..') && !nodePath.isAbsolute(rel) ? rel.split(nodePath.sep).join('/')
+        : fromHome && !fromHome.startsWith('..') && !nodePath.isAbsolute(fromHome) ? `~/${fromHome.split(nodePath.sep).join('/')}`
+          : String(ig.source).split(nodePath.sep).join('/');
     return `The ${tokens(ig.configured)} autoCompactWindow in ${where} was not honoured: this project compacted at ~${tokens(ig.seen)} `
       + 'after it was set, so it is not quoted as the window. `/autocompact <value>` saves a window for this model in the user settings '
       + 'and applies it to the running session (code.claude.com/docs/en/model-config) - say so to the user once, never claim the old value holds.';
@@ -960,7 +996,8 @@ function modeBanner(autoOn) {
     ? `**Auto-mode: ON** for ${name} - every question takes its (Recommended) option without waiting for you; one with no `
       + 'recommended option, or whose recommendation acts outward (push, merge, deploy, publish, a PR), still waits. A message you type mid-run is input to the run; type `stop auto-mode` (or just `stop`) to end it.'
     : `**Auto-mode: OFF** for ${name} - each question waits for your answer.`
-      + (AUTO_MISS_RE.test(autoArgs()) ? ' (auto-mode starts only with `--auto-mode` as the first word after the command.)' : '');
+      + (autoRefused ? ` (auto-mode did NOT start: ${autoRefused}.)`
+        : AUTO_MISS_RE.test(autoArgs()) ? ' (auto-mode starts only with `--auto-mode` as the first word after the command.)' : '');
   const at = ctxThreshold();
   const ctxLine = autoOn
     ? `**Context:** no fresh-session hand-off - the session auto-compacts ${where} and the run goes on from the summary and its state files.`

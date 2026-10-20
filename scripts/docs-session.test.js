@@ -1696,6 +1696,11 @@ test('an unattended hold and an unattended Stop ask each write one mode: unatten
     assert.strictEqual(r.hook(stopEv(s), U).stdout, '', 'never asked unattended');
     const rows = r.read(`.claude/docs/hook-blocks/${s}.jsonl`).trim().split('\n').map((l) => JSON.parse(l));
     assert.deepStrictEqual(rows.map((x) => [x.mode, x.event, x.kind]), [['unattended', 'PreToolUse', 'docs hold'], ['unattended', 'Stop', 'docs finish ask']]);
+    // Audit 2026-10-20 H11: one row per kind per session - a second held write and a second Stop add none.
+    r.write('src/Api/Orders/Refund.cs', 'y\n');
+    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s), U)), 'still never held');
+    assert.strictEqual(r.hook(stopEv(s), U).stdout, '', 'still never asked');
+    assert.strictEqual(r.read(`.claude/docs/hook-blocks/${s}.jsonl`).trim().split('\n').length, 2, 'no row repeats its kind');
   } finally { r.rm(); }
 });
 
@@ -2246,4 +2251,59 @@ test('audit 2026-10-20 C43: the shell route and a docs.js set of an architecture
     assert.ok(!denied(bash('cat .claude/docs/architecture/ARCHITECTURE.md', sid())), 'a read is no write');
     assert.ok(!denied(bash('node .claude/hooks/docs.js set code-style/CODE-STYLE#naming < /tmp/x.md', sid())), 'another domain\'s set');
   } finally { r.rm(); }
+});
+
+// Audit 2026-10-20 (hooks minor list): the conflict, deleted-branch and on-mainline lists at SessionStart had no cap; each
+// is cut at six names with a count and the status command. Run against a stub engine holding nine of each.
+test('the SessionStart lists are cut at six names with a count', () => {
+  const os = require('node:os');
+  const path = require('node:path');
+  const { spawnSync } = require('node:child_process');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-cap-'));
+  const hooks = path.join(__dirname, '..', 'stack', 'hooks');
+  for (const f of ['docs-session.js', 'hook-prelude.js']) fs.copyFileSync(path.join(hooks, f), path.join(dir, f));
+  const nine = (p) => Array.from({ length: 9 }, (_, i) => `${p}${i + 1}`);
+  fs.writeFileSync(path.join(dir, 'docs.js'), `const nine = ${nine.toString()};
+module.exports = { DOCS_ROOT: require('path').join(process.env.CLAUDE_PROJECT_DIR, '.alfred', 'docs'), BLOCK_FILE: '/nonexistent-orientation', domains: () => ['architecture'], snapshot: () => ({}), refreshBaseMeta() {}, autoPromote: () => [], docFiles: () => [],
+  status: () => ({ mainline: true, conflicts: nine('c#'), deletedUnmerged: nine('del-'), liveOnMainline: nine('live-'), overrides: [], stranded: [] }),
+  orientationState: () => null, integrity: () => [], loadWatch: () => ({ watch: [], newModule: [], sourceRoots: ['src'] }) };`);
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-cap-root-'));
+  try {
+    const r = spawnSync(process.execPath, [path.join(dir, 'docs-session.js')], { input: JSON.stringify({ hook_event_name: 'SessionStart', session_id: sid(), cwd: root }),
+      encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
+    const text = ctx(r);
+    for (const [label, p] of [['Conflicts: ', 'c#'], ['never detected as merged: ', 'del-'], ['with no proof they merged: ', 'live-']]) {
+      const line = text.split('\n').find((l) => l.includes(label)) || '';
+      assert.match(line, new RegExp(`${p}6 \\(\\+3 more: \``), `${label.trim()} is cut at six`);
+      assert.doesNotMatch(line, new RegExp(`${p}7\\b`));
+    }
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+// Ruling S3 (the user's, 2026-10-20): an ask the idle timeout closed is no answer, so while this session's timeout marker
+// stands, writing an APPROVED / AUTO line into flow/APPROVAL is denied - by a file tool or a shell write that carries it.
+test('S3: a stamp written while the last question timed out is denied; a delete, another file or an answered session passes', () => {
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  const logs = fs.mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'docs-s3-'));
+  try {
+    const s = sid();
+    const env = { ALFRED_CODE_HOOK_LOG_DIR: logs };
+    const stamp = `${r.root}/.claude/docs/flow/APPROVAL`;
+    const write = (content, session = s) => r.hook(pre('Write', { file_path: stamp, content }, session), env);
+    assert.ok(!denied(write('APPROVED 1 - "build it"\n')), 'no timeout: the stamp is written');
+    const marker = require('../stack/hooks/hook-prelude.js').askTimeoutMarker(s, env);
+    fs.writeFileSync(marker, String(Date.now()));
+    const held = write('APPROVED 1 - "build it"\n');
+    assert.ok(denied(held), 'after a timeout an APPROVED stamp is denied');
+    assert.match(JSON.parse(held.stdout).hookSpecificOutput.permissionDecisionReason, /the question timed out - re-ask/);
+    assert.ok(denied(write('AUTO - "go"\n')), 'an AUTO line too');
+    assert.ok(denied(r.hook(pre('Edit', { file_path: stamp, old_string: 'x', new_string: 'APPROVED 2 - "ok"' }, s), env)), 'an Edit that adds it');
+    assert.ok(denied(r.hook(pre('Bash', { command: "printf 'APPROVED 1 - ok\\n' > .claude/docs/flow/APPROVAL" }, s), env)), 'a shell write that carries it');
+    assert.ok(!denied(r.hook(pre('Bash', { command: 'rm -f .claude/docs/flow/APPROVAL' }, s), env)), 'deleting the stamp passes');
+    assert.ok(!denied(r.hook(pre('Write', { file_path: `${r.root}/.claude/docs/flow/NOTES`, content: 'APPROVED by nobody\n' }, s), env)), 'another flow file passes');
+    assert.ok(!denied(write('APPROVED 1 - "x"\n', sid())), 'another session with no timeout passes');
+    assert.ok(!denied(r.hook({ ...pre('Write', { file_path: stamp, content: 'APPROVED 1\n' }, s), agent_id: 'a1', agent_type: 'x' }, env)), 'a seat\'s call is not judged here');
+    fs.rmSync(marker, { force: true });
+    assert.ok(!denied(write('APPROVED 1 - "build it"\n')), 'once the next answer clears the marker, the stamp is written');
+  } finally { r.rm(); fs.rmSync(logs, { recursive: true, force: true }); }
 });
