@@ -80,7 +80,9 @@ What each meta file owns and what the repo-level scripts (lint, usage analysis, 
   a session transcript (+ `subagents/`), with an EFFICIENCY scorecard (one measured number per practice);
   it reads `PowerShell` and `Monitor` as the shell route, writes with `--out <file>` (never a `>` redirect), and
   `--check-report <file>` re-reads a finished report, printing every judgment number that cites no
-  machine row of that same report (judgment lines only, an ISO date never read as a locator - 2.1.7). A slash run of a
+  machine row of that same report (judgment lines only, an ISO date never read as a locator - 2.1.7), and every judgment
+  line saying a table printed nothing ('none printed', 'no rows', 'nothing flagged') while the key row (a count above 0)
+  or column table it names has rows (audit 2026-10-20 C40). A slash run of a
   manual-only skill counts as a skill run, its body read from the expansion's `Base directory for this skill:` row. Its rollup skips the live session (`CLAUDE_CODE_SESSION_ID`,
   `--exclude-session <id>`) and counts a plugin only where a registry record reaches or it was used.
   `scripts/agents-md-check.js` - a project's AGENTS.md (and CLAUDE.md) files against the tree they describe, read-only

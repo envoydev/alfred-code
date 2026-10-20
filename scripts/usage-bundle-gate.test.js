@@ -110,3 +110,38 @@ test('SD12 ae38c08f#6: --summary rewrites the bundle list in SUMMARY.md from the
     gate(['--done', '1', '--summary', fresh]);
     assert.match(fs.readFileSync(path.join(fresh, 'SUMMARY.md'), 'utf8'), /^\| `dddd4444` \| 2026-10-05 \|/m, 'no SUMMARY yet: the file is created with the block');
 });
+
+// Audit 2026-10-20 C40, 4d71a1b3: the gate said `next` 1,688 under the trigger after bundles that had grown the context
+// 26.7k and 15.0k, and that bundle ended 15.1k past it. The gate's own earlier readings in the transcript give the run's
+// largest growth between bundles; a margin under it closes now.
+function withReadings(name, readings, ctx)
+{
+    const file = transcript(name, ctx);
+    const rows = fs.readFileSync(file, 'utf8').trim().split('\n');
+    const last = rows.pop();
+    readings.forEach((r, i) =>
+    {
+        const line = `BUNDLE-GATE: next - context ${r.toLocaleString('en-US')} of the fresh-session trigger 400,000; ${i + 1} of 12 bundles done`;
+        // the tool result carries the line twice, as the harness writes it: the message content and the stdout copy
+        rows.push(JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: `t${i}`, content: line }] }, toolUseResult: { stdout: line } }));
+    });
+    rows.push(last);
+    fs.writeFileSync(file, rows.join('\n') + '\n');
+    return file;
+}
+
+test('C40 4d71a1b3#2: a margin under the run\'s largest growth between bundles closes the batch before the bundle that would cross', () =>
+{
+    // the audited shape: 340.0k -> 366.7k (+26.7k) -> 381.7k (+15.0k) -> 398.3k now, 1,688 under the trigger
+    const audited = gate(['--done', '3', '--transcript', withReadings('audited', [340000, 366700, 381700], 398312)]);
+    assert.match(audited.out, /^BUNDLE-GATE: CLOSE - context 398,312 plus this run's largest growth between bundles, 26,700, passes the fresh-session trigger 400,000 \(3 bundle\(s\) done\)/);
+    // seat-authored bundles grow the main session a little: room for one more such bundle runs it
+    assert.match(gate(['--done', '3', '--transcript', withReadings('seats', [380000, 383000, 386000], 389000)]).out,
+        /^BUNDLE-GATE: next - context 389,000 of the fresh-session trigger 400,000; 3 of 12 bundles done$/);
+    // the boundary: growth landing exactly on the trigger runs on (the Stop offer's `ctx > at`), one over closes
+    assert.match(gate(['--done', '2', '--transcript', withReadings('at', [390000], 395000)]).out, /^BUNDLE-GATE: next - context 395,000/);
+    assert.match(gate(['--done', '2', '--transcript', withReadings('over', [389999], 395000)]).out, /^BUNDLE-GATE: CLOSE - context 395,000 plus this run's largest growth between bundles, 5,001/);
+    // a compaction's drop is no growth, and a first bundle has no reading to project from
+    assert.match(gate(['--done', '4', '--transcript', withReadings('dropped', [395000], 120000)]).out, /^BUNDLE-GATE: next - context 120,000/);
+    assert.match(gate(['--done', '1', '--transcript', transcript('first', 398000)]).out, /^BUNDLE-GATE: next - context 398,000/);
+});

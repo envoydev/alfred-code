@@ -4624,7 +4624,60 @@ function checkReport(file) {
     const share = after != null && AVOIDABLE_SHARE_RE.test(after) && /\d(?:[\d.,]*)\s*%/.test(after);
     if (!share) verdicts.push({ line: i + 1, text: line.trim().replace(/\s+/g, ' ').slice(0, 120) });
   });
-  return { file, rows: judgment, badLocators, verdicts, transcript, transcriptLines };
+  return { file, rows: judgment, badLocators, verdicts, emptyClaims: emptyTableClaims(lines, authored), transcript, transcriptLines };
+}
+// A judgment line that says a machine table printed nothing ('none printed', 'no rows', 'nothing flagged') while this
+// report's own table of that name has rows (audit 2026-10-20 C40, fc4fec40: 'Sweep 1 - unheld-stop candidates: none
+// printed in the Environment table' over an Environment row printing 6). The name is a key row's label in a key-value
+// table (`| | |` header - the row is printed only when it has something, so an absent label is never judged), or the
+// heading of a machine section holding a column table ('Guard blocks', 'Skills').
+const EMPTY_CLAIM_RE = /\b(?:none (?:printed|listed|flagged|shown)|(?:printed|listed|flagged|shows?) (?:none|nothing)|nothing (?:printed|listed|flagged)|no rows?|zero rows|0 rows)\b/i;
+const normName = (s) => String(s).toLowerCase().replace(/[`*_]/g, '').replace(/[-\s]+/g, ' ').trim();
+function emptyTableClaims(lines, authored) {
+  const tables = [];   // { name, rows, line }
+  let section = null;
+  let judgmentSection = false;
+  let header = null;   // the current table's header cells, null outside a table
+  let kv = false;
+  lines.forEach((line, i) => {
+    const h = /^#{2,6}\s+(.*)$/.exec(line);
+    if (h) {
+      judgmentSection = JUDGMENT_HEAD_RE.test(line) && !MACHINE_TABLE_SECTION_RE.test(line);
+      // 'Tokens (deduped ...)' and 'Guard blocks - FILL IN (...)' are named by their words before the qualifier.
+      section = judgmentSection ? null : { name: h[1].split(/\s+[-(:]\s*|\s*\(/)[0].trim(), rows: 0, line: i + 1 };
+      if (section) tables.push(section);
+      header = null;
+      return;
+    }
+    const t = line.trim();
+    if (!t.startsWith('|')) { header = null; return; }
+    if (!section) return;
+    const cells = t.replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
+    if (!header) { header = cells; kv = cells.every((c) => !c); return; }
+    if (cells.every((c) => /^:?-+:?$/.test(c))) return;
+    // A key row is a subject only when its value opens on a count above 0 ('| Unheld-stop candidates | 6 (...) |'); a
+    // row that always prints ('| Hook ledger | absent ... |') states no rows to contradict.
+    if (kv) {
+      const n = /^~?(\d[\d,]*)(?![\d.,]*[kKmM%])/.exec(cells[1] || '');
+      const count = n ? Number(n[1].replace(/,/g, '')) : 0;
+      if (cells[0] && count > 0) tables.push({ name: cells[0], rows: count, line: i + 1, key: true });
+      return;
+    }
+    section.rows++;
+  });
+  // A key-value table's section counts no rows of its own (its rows are the keys), so its heading is never a subject:
+  // 'none printed in the Environment table' is judged by the key row it names, or not at all.
+  const named = tables.filter((tb) => tb.rows > 0 && normName(tb.name).length > 2);
+  const out = [];
+  for (const i of authored) {
+    const text = String(lines[i]);
+    if (!EMPTY_CLAIM_RE.test(text)) continue;
+    const said = normName(text);
+    const hit = named.find((tb) => tb.key && said.includes(normName(tb.name)))
+      || named.find((tb) => !tb.key && said.includes(normName(tb.name)));
+    if (hit) out.push({ line: i + 1, name: hit.name, rows: hit.rows, at: hit.line, text: text.trim().replace(/\s+/g, ' ').slice(0, 120) });
+  }
+  return out;
 }
 // `<N> of <M>`: two measured amounts, each a number with an optional unit (`~4.8M of 16.5M`, `672k of 40.2M tok`).
 const AVOIDABLE_SHARE_RE = /~?\$?\d[\d.,]*\s*[kKmMbB]?\s*(?:tok(?:ens)?\s*)?of\s+~?\$?\d[\d.,]*/;
@@ -4638,9 +4691,10 @@ function printCheckReport(res) {
   }
   for (const b of res.badLocators) console.log(`  locator out of range  line ${b.line}  ${b.locator} - the transcript has ${res.transcriptLines} rows: ${b.text}`);
   for (const v of res.verdicts || []) console.log(`  TOKEN VERDICT without a share  line ${v.line} - needs 'avoidable <N> of <M> tok, <P>%' from the rows above: ${v.text}`);
-  const n = res.rows.length + res.badLocators.length + (res.verdicts || []).length;
+  for (const e of res.emptyClaims || []) console.log(`  says nothing printed  line ${e.line} - this report's '${e.name}' (line ${e.at}) prints ${e.rows}; judge each one: ${e.text}`);
+  const n = res.rows.length + res.badLocators.length + (res.verdicts || []).length + (res.emptyClaims || []).length;
   if (!n) { console.log('  clean - every number in a judgment section traces to a machine row of this report or carries a resolvable L<n>, and the TOKEN VERDICT states its avoidable share'); return 0; }
-  console.log(`  ${n} finding(s) - each number must quote a machine table row of THIS report or carry an L<n> locator that resolves, and the TOKEN VERDICT must state 'avoidable <N> of <M> tok, <P>%'. The run is not done while this prints a row.`);
+  console.log(`  ${n} finding(s) - each number must quote a machine table row of THIS report or carry an L<n> locator that resolves, the TOKEN VERDICT must state 'avoidable <N> of <M> tok, <P>%', and a 'nothing printed' line must agree with the table it names. The run is not done while this prints a row.`);
   return 1;
 }
 

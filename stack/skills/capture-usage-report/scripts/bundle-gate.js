@@ -5,7 +5,8 @@
 //   node <snapshot>/stack/skills/capture-usage-report/scripts/bundle-gate.js --done <n> [--summary <usage-report dir>] [--transcript <file>]
 //
 // The batch closes at 12 bundles, the bound, OR at the first bundle boundary whose context is past this install's
-// fresh-session trigger. The trigger and the context come from the stack's own fresh-session engine
+// fresh-session trigger, or would be after one more bundle at this run's largest growth between boundaries (its own
+// earlier readings in the transcript, `largestGrowth`). The trigger and the context come from the stack's own fresh-session engine
 // (`stack/hooks/fresh-session.js` beside this snapshot), so the gate reads what the Stop offer reads: the same window
 // table, the same per-tier variables, the same `ctx > trigger`. The live transcript is `--transcript`, else the file
 // named by CLAUDE_CODE_SESSION_ID (set in every tool shell) under the account's projects folder.
@@ -69,6 +70,36 @@ function liveTranscript(named)
     return best ? best.f : null;
 }
 
+// The largest context growth between two bundle boundaries this run: this gate's own earlier `next` readings in the
+// transcript (its tool results), then the context now. Why: the gate admitted a bundle 1,688 under the trigger after
+// two bundles had grown the context 26.7k and 15.0k, and that bundle ended 15.1k past it (audit 2026-10-20 C40,
+// 4d71a1b3). Authors in seats shrank the main session's growth per bundle (a dispatch, a one-line return, this call,
+// the spot check) but not to zero, so a margin under one bundle's growth still overshoots. Only the newest 16MB is read,
+// a drop (a compaction) is no growth, and an unreadable transcript projects nothing.
+const READING_RE = /BUNDLE-GATE: next - context ([\d,]+) of the fresh-session trigger/g;
+function largestGrowth(transcript, ctx)
+{
+    let text = '';
+    try
+    {
+        const fd = fs.openSync(transcript, 'r');
+        try
+        {
+            const size = fs.fstatSync(fd).size;
+            const len = Math.min(size, 16 * 1024 * 1024);
+            const buf = Buffer.alloc(len);
+            fs.readSync(fd, buf, 0, len, size - len);
+            text = buf.toString('utf8');
+        }
+        finally { fs.closeSync(fd); }
+    }
+    catch { return 0; }
+    const readings = [...text.matchAll(READING_RE)].map((m) => Number(m[1].replace(/,/g, ''))).concat(ctx);
+    let max = 0;
+    for (let i = 1; i < readings.length; i++) max = Math.max(max, readings[i] - readings[i - 1]);
+    return max;
+}
+
 function gateLine(done, transcript)
 {
     const tail = `${done} of ${BOUND} bundles done`;
@@ -84,6 +115,8 @@ function gateLine(done, transcript)
     const ctx = engine.contextNow();
     if (!ctx) return boundOnly('context unknown (no usage row since the last compaction)');
     if (ctx > at) return `BUNDLE-GATE: CLOSE - context ${n(ctx)} is past the fresh-session trigger ${n(at)} (${done} bundle(s) done) - close the run here: name every session left and the invocation that resumes it from a fresh session`;
+    const grow = largestGrowth(transcript, ctx);
+    if (grow > 0 && ctx + grow > at) return `BUNDLE-GATE: CLOSE - context ${n(ctx)} plus this run's largest growth between bundles, ${n(grow)}, passes the fresh-session trigger ${n(at)} (${done} bundle(s) done) - the next bundle would end past it: close the run here, name every session left and the invocation that resumes it from a fresh session`;
     return `BUNDLE-GATE: next - context ${n(ctx)} of the fresh-session trigger ${n(at)}; ${tail}`;
 }
 
