@@ -48,7 +48,7 @@ The invocation names the rounds already consumed so the 3-round cap survives the
 
 ## Final report - field rules, step 3 on STOP
 
-One line per field, a table where a field lists several items - the close is an answer like any other and the answer-length hook blocks a wall of prose; tables are exempt.
+One line per field, a table where a field lists several items - the close is an answer like any other and the answer budget caps prose; tables are exempt.
 
 - **Outcome** - SATISFIED / PLATEAU / CAPPED / BLOCKED, and on which round. CAPPED means the CUMULATIVE improve-round cap was reached - rounds count across sessions via the resume invocation's round numbering. A session ending because the user chose the fresh-session option with fixable weaknesses left is a LOOP handoff, not CAPPED - this rule is the tiebreak.
 - **Resolved** - each weakness fixed, its tier, and the change that closed it.

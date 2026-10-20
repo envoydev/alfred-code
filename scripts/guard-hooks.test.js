@@ -2694,28 +2694,6 @@ test('stop contract: the fresh-session offer reads the window exactly as its twi
     assert.equal(stop(at('stopwin-310k-retired', 310000), winEnv({ ALFRED_CODE_CONTEXT_WINDOW: '1000000' })), 2, 'the retired override moves nothing here either - it resolves no window, so the default trigger applies and 310k is past it');
 });
 
-test('guard-answer-length: the cap holds, and never deletes a report field or a self-correction', () => {
-  // Measured damage: a forced re-answer went 3,184 -> 1,085 chars and took TWO of five headline
-  // findings and a self-correction disclosure with it. Both exemptions are narrow on purpose -
-  // 'Recommendation first' is the house answer shape, so a bolded lead-in must NOT lift the cap.
-  const filler = 'This is filler prose that says very little but goes on and on about the process. '.repeat(40);
-  const answer = (userText, text) => run('guard-answer-length.js', {
-    hook_event_name: 'Stop',
-    session_id: 's',
-    cwd: TMP,
-    transcript_path: transcript(`al-${Math.random().toString(36).slice(2)}`, [
-      { type: 'user', message: { content: userText } },
-      assistantRow('a1', text),
-    ]),
-  });
-  assert.equal(answer('which one?', `**Recommendation:** use option B. ${filler}`), 2, 'a bolded lead-in is not a mandated field');
-  assert.equal(answer('which one?', `Sorry about that. ${filler}`), 2, "'sorry' is not a self-correction");
-  assert.equal(answer('which one?', 'Use option B.'), 0, 'an answer at budget passes');
-  assert.equal(answer('which one?', `## Findings\n\n${filler}`), 0, "a skill's own report field is exempt");
-  assert.equal(answer('which one?', `I was wrong about the threshold earlier. ${filler}`), 0, 'a self-correction is exempt');
-  assert.equal(answer('walk me through it', filler), 0, "the user's own depth request still lifts the cap");
-});
-
 test('guard-read-whole-file: a shell touch names the convention rule the file tools would have attached', () => {
   // Measured with a control: 19 Bash calls naming .cs files -> 0 attachments, while the session's
   // single Read-tool call on a .cs file attached BOTH .cs-scoped rules 0.94 s later. Under a
@@ -4404,8 +4382,8 @@ test('every hook-blocks ledger file is named from a sanitised session id', () =>
   assert.equal(r.status, 2);
   assert.ok(!fs.existsSync(path.join(root, 'escaped.jsonl')), 'nothing lands outside hook-blocks');
   assert.deepStrictEqual(fs.readdirSync(path.join(root, '.alfred', 'docs', 'hook-blocks')), ['.._.._escaped.jsonl']);
-  // Every writer and reader spells the name the same way, or the answer-length hook reads a file the
-  // stop contract never wrote.
+  // Every writer and reader spells the name the same way, or a reader opens a file the
+  // writer never wrote.
   for (const f of fs.readdirSync(HOOKS).filter((n) => n.endsWith('.js'))) {
     const text = fs.readFileSync(path.join(HOOKS, f), 'utf8');
     assert.doesNotMatch(text, /\$\{(?:payload|input)\.session_id \|\| 'nosession'\}\.jsonl/, `${f} names a ledger file from a raw session id`);

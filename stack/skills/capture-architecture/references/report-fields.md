@@ -2,8 +2,8 @@
 
 Read at REPORT, before writing the close. Every field is UNCONDITIONAL: a named field is what makes its step
 actually run, and the record that nothing was silently trimmed. One line per field; a table where a field lists
-several items - the close is an answer like any other and the answer-length hook blocks a wall of prose (tables
-are exempt), so the receipts must survive that cap rather than be re-answered away.
+several items - the close is an answer like any other and the answer budget caps
+prose (tables are exempt), so the receipts fit inside it rather than being trimmed away.
 
 ## The confirmation block
 

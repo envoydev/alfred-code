@@ -146,38 +146,11 @@ test('unattended: a live AUTO waiver of this session is nobody at the terminal (
         'an AUTO session that never ran the flow is not asked for its fields');
 });
 
-test('guard-answer-length: the env route quiets the Stop block with no transcript at all, and cli keeps it', () =>
-{
-    const dash = 'Fixed it \u2014 the build is green.';
-    const t = transcripts(dash);
-    const stop = (tp, entrypoint) => run('guard-answer-length.js', { hook_event_name: 'Stop', transcript_path: tp, last_assistant_message: dash }, { CLAUDE_CODE_ENTRYPOINT: entrypoint }).status;
-    assert.strictEqual(stop(t.missing, 'sdk-cli'), 0, 'print mode by the env alone');
-    assert.strictEqual(stop(t.print, 'cli'), 2, 'a person at the terminal, whatever the transcript says');
-});
-
 test('unattended: a last row longer than the first read window is still read whole', () =>
 {
     const big = { type: 'user', entrypoint: 'sdk-cli', message: { role: 'user', content: [{ type: 'tool_result', content: 'x'.repeat(600 * 1024) }] } };
     assert.strictEqual(unattended({ transcript_path: file([...convo('cli'), big]) }, {}), true);
     assert.strictEqual(unattended({ transcript_path: file([...convo('sdk-cli'), { ...big, entrypoint: 'cli' }]) }, {}), false);
-});
-
-// ---------------------------------------------------------------------------------------------
-// guard-answer-length - blocks nothing at Stop in print mode, length or em-dash
-// ---------------------------------------------------------------------------------------------
-test('guard-answer-length: print mode blocks neither the em-dash nor the wall; interactive still does', () =>
-{
-    const dash = 'Fixed it — the build is green.';
-    const t = transcripts(dash);
-    const stop = (tp, text = dash) => run('guard-answer-length.js', { hook_event_name: 'Stop', transcript_path: tp, last_assistant_message: text }).status;
-    assert.strictEqual(stop(t.print), 0, 'an em-dash in print mode');
-    assert.strictEqual(stop(t.interactive), 2, 'the same answer at a terminal');
-    for (const k of UNREADABLE) assert.strictEqual(stop(t[k]), 2, `${k} transcript: the em-dash block stands`);
-    const wall = 'This sentence exists only to burn prose characters against the cap. '.repeat(40);
-    const w = transcripts(wall);
-    assert.strictEqual(stop(w.print, wall), 0, 'a wall of text in print mode');
-    assert.strictEqual(stop(w.interactive, wall), 2, 'the same wall at a terminal');
-    assert.strictEqual(run('guard-answer-length.js', { hook_event_name: 'Stop', transcript_path: t.interactive, last_assistant_message: dash }, { ALFRED_CODE_UNATTENDED: '1' }).status, 0, 'the launch switch');
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -358,21 +331,6 @@ test('guard-fresh-session-start: the user-only skill is still denied in print mo
 // Review A, M3: every quieted block or offer leaves ONE 'mode: unattended' row, as stop-contract and docs-session do,
 // so a print-mode run can still count what it skipped (pilot 2: nine em-dash blocks). Nothing skipped, no row.
 const ledger = (sid) => { try { return fs.readFileSync(path.join(process.env.CLAUDE_PROJECT_DIR, '.alfred', 'docs', 'hook-blocks', `${sid}.jsonl`), 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)); } catch { return []; } };
-test('guard-answer-length: a Stop block skipped in print mode leaves one unattended row, a clean answer none', () =>
-{
-    const dash = 'Fixed it \u2014 the build is green.';
-    const t = transcripts(dash);
-    const sid = `al-${process.pid}-${++n}`;
-    assert.strictEqual(run('guard-answer-length.js', { hook_event_name: 'Stop', session_id: sid, transcript_path: t.print, last_assistant_message: dash }).status, 0);
-    const rows = ledger(sid);
-    assert.strictEqual(rows.length, 1, JSON.stringify(rows));
-    assert.strictEqual(rows[0].mode, 'unattended');
-    assert.strictEqual(rows[0].hook, 'guard-answer-length.js');
-    assert.strictEqual(rows[0].kind, 'em-dash');
-    const clean = `al-${process.pid}-${++n}`;
-    assert.strictEqual(run('guard-answer-length.js', { hook_event_name: 'Stop', session_id: clean, transcript_path: t.print, last_assistant_message: 'Fixed - the build is green.' }).status, 0);
-    assert.deepStrictEqual(ledger(clean), [], 'nothing was skipped');
-});
 
 test('guard-fresh-session-start: an offer skipped in print mode leaves one unattended row, none under the trigger', () =>
 {

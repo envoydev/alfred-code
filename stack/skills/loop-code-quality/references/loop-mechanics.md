@@ -47,7 +47,7 @@ with a clean one.
 ## Final report - field rules, step 3 on STOP
 
 One line per field, a table where a field lists several items - the close is an answer like any other
-and the answer-length hook blocks a wall of prose; tables are exempt.
+and the answer budget caps prose; tables are exempt.
 
 - **Outcome** - SATISFIED / PLATEAU / CAPPED / BLOCKED, and on which round. CAPPED means the CUMULATIVE
   round cap was reached, counted across sessions through the resume invocation. A session ending because

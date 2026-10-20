@@ -42,7 +42,7 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
   row carrying an `entrypoint` (`sdk-cli` for `claude -p`, `cli` interactive; bookkeeping rows carry none). A
   suite that drives these hooks deletes the runner's own `CLAUDE_CODE_ENTRYPOINT` first. Then the hooks that ASK a person stay quiet: no docs hold or Stop FINISH ask, no
   stop-contract prose-question, pending-close or fresh-session block (a `mode: unattended` row
-  instead), no answer-length Stop block, no fresh-session offer, and the credential rotation ask becomes one
+  instead), no fresh-session offer, and the credential rotation ask becomes one
   `mode: unattended` row per exposure (it replaced 2 of 12 pilot-3 finals). Every protective denial is
   unchanged; a missing, empty or torn-last-row transcript reads as a person.
   **auto-mode** (the user's ruling, 2026-10-14): `--auto-mode` as the FIRST word after a `task-*`, `capture-*`, `loop-*` or
@@ -193,14 +193,14 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
   Every guard appends one row per BLOCK to `<docs-path>/hook-blocks/<session>.jsonl`
   (`analyze-usage.js --hook-blocks` tallies it, split main session / seat by the row's `agent`, joined to its call by
   `tool_use_id`) - the block RATE is what says a gate earns its keep.
-  THE STOP CHAIN (hooks audit 2026-10-08 S1): four hooks can block a `Stop` - the stop contract, answer length,
-  docs-session and the turn build check - and `stop_hook_active` is true after ANY of them blocked ('true when Claude
+  THE STOP CHAIN (hooks audit 2026-10-08 S1): three hooks can block a `Stop` - the stop contract,
+  docs-session and the turn build check (answer length did until 2026-10-20) - and `stop_hook_active` is true after ANY of them blocked ('true when Claude
   Code is already continuing as a result of a stop hook', code.claude.com/docs/en/hooks), so a hook that stood down on
   the flag alone never judged the close rewritten after a sibling's block. Each marks its own block (`hook-prelude.js`
   `markStopHeld`, a file under `ALFRED_CODE_HOOK_LOG_DIR` or the temp dir) and stands down on a continuation only when
   IT held this cycle (`stopHeldThisCycle`); a Stop with the flag false opens a new cycle and clears the marker. So
-  every blocker judges each rewritten close and blocks at most ONCE per cycle - at most four continuations, in no fixed
-  order (the four run in parallel; answer length yields its wording to the stop contract's marker or ledger row), with
+  every blocker judges each rewritten close and blocks at most ONCE per cycle - at most three continuations, in no fixed
+  order (the three run in parallel), with
   Claude Code's 8-consecutive-continuation cap the outer guard - and an unwritable marker dir stands a continuation
   down, the old reading. The stop contract's per-turn probes skip a continuation (the same turn), and its SubagentStop
   hold keeps the plain flag beside its own once-marker (`guard-hooks.test.js`: never held again, marker or not). The
@@ -589,7 +589,7 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     `mode: rewrite`, `ask-fixed` row - and denied once per ask text, carrying them, only beside a reason it cannot fix (an
     unmarked question, type-into-Other, a blind approval, a missing review, a new cycle) or a compact-instead drop that leaves
     a question one option. The mechanical reasons: its house voice (an
-    em- or en-dash or a horizontal bar - `hook-prelude.js` `HOUSE_DASH`, the answer-length block's class too - or a straight or
+    em- or en-dash or a horizontal bar - `hook-prelude.js` `HOUSE_DASH` - or a straight or
     curly double quote; audit 2026-10-08) outside a backticked span or fenced block, which it neither judges nor rewrites
     (R5: a string's delimiters in code stay double), once per ask text (a marker the log dir cannot hold goes under the temp
     dir, so a missing dir never re-denies), carrying the corrected strings (I3); a fresh-session option quoting no number
@@ -851,16 +851,13 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     `TURN_CHECK`, the Cursor and Stop chain gates), so either hook switched off leaves the other running, and both
     generators fold its Stop row into history-session's (`history-session.js wiringRows`, `RIDERS`), which takes its 60s;
     with history-session not picked its own row stays.
-  - `guard-answer-length.js` (`UserPromptSubmit` + `SessionStart:compact` + `Stop` + `PostToolUse` `AskUserQuestion`) - injects the answer budget every turn (a
+  - `guard-answer-length.js` (`UserPromptSubmit` + `SessionStart:compact` + `PostToolUse` `AskUserQuestion`; never blocks) - injects the answer budget every turn (a
     333-char delta of the rule's section, which stays its home - audit 2026-10-14 RU06; it was 751 on every prompt), and
     again after a compaction, which drops that injection - only then since the deep hooks review 2026-10-16 (startup,
-    resume and clear get it from the first prompt; 256 starts paid a second copy); the
-    Stop half blocks prose past 1800 chars when the user asked for no depth - a mandated close passes (`mandatedClose()`:
-    the flows' Result / Progress / Leftovers lines, the update's `agents-md:` receipt, a capture REPORT's receipts) and so
-    does a turn after the user named `habits-explain-code` in their own words (audit 2026-10-20 C21) - (the depth words are English; a prompt the
-    hook cannot read as English - `unreadable`, 30% or more of its letters outside ASCII - is logged as a `length-unread`
-    probe row and never held, deep hooks review 2026-10-16), and blocks an em-dash (en-dash and horizontal
-    bar too, `HOUSE_DASH`) in prose at any length. After the third consecutive short correction following a long answer it injects
+    resume and clear get it from the first prompt; 256 starts paid a second copy). Its Stop half - the 1800-char prose
+    block and the em-dash block - is gone (the user's ruling of 2026-10-20: a hard cap held mandated closes and depth
+    asks in other languages and read as a hook error mid-conversation); the budget is a HARD rule in
+    `alfred-interaction.md` that the model holds itself, and a Stop payload wired by hand exits 0 silently. After the third consecutive short correction following a long answer it injects
     the format ask (injection only). A correction turn (short, after an answer, carrying a correction marker -
     the test the analyzer shares, `correction-turn-test`; the weak 'it should' inside a wh-clause - 'what type of a
     ticket it should be' - is a request, audit 2026-10-11 SD14, session 5f9fec85; so is 'why you' after an explain / tell me

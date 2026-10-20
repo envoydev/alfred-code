@@ -881,12 +881,6 @@
     },
     {
       "file": "guard-answer-length.js",
-      "matcher": "@Stop",
-      "event": "",
-      "note": "Stop event: block a wall-of-text answer (prose past the hard cap, no depth request in the user's message) - re-answer at budget"
-    },
-    {
-      "file": "guard-answer-length.js",
       "matcher": "@PostToolUse:AskUserQuestion",
       "event": "",
       "note": "an answer TYPED into an ask (matching none of the offered labels) is the user speaking: one ask-answer-typed probe row; a short one carrying a correction marker also writes the correction row (the same test and nudge mode as a typed prompt); one naming a path gets a note to open it and restate what it changes before acting (audit 2026-10-10 C15 / C07: corrections typed into asks were never counted, and a folder named in an answer was never opened). Never blocks"

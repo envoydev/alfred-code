@@ -70,7 +70,6 @@ const ROUTES = [
   // whole file as agent_transcript_path, and agent_type from the sibling .meta.json - the payload the
   // harness sends when that agent finished.
   { hook: 'guard-stop-contract.js', event: 'SubagentStop', deny: true },
-  { hook: 'guard-answer-length.js', event: 'Stop', deny: true },
   // The slash route (2.1.5 M14): one job per typed command the wired matcher lets through, built from the
   // harness's `<command-name>` marker, with the transcript up to that row.
   { hook: 'guard-fresh-session-start.js', event: 'UserPromptExpansion', deny: false, needsTranscript: true },

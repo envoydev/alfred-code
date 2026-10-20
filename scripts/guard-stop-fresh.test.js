@@ -979,67 +979,6 @@ test('guard-answer-length: a verbatim-repeated prompt is an ambiguity signal, no
   assert.doesNotMatch(promptSubmit('continue', short), /VERBATIM RE-ASK/, "a repeated 'continue' is pacing, not ambiguity");
 });
 
-test('guard-answer-length: the em-dash fix yields to a stop-contract block on the same turn', () => {
-  // Measured: guard-answer-length's 'Re-send the SAME answer' and guard-stop-contract's 'Add
-  // nothing else to this turn' answered ONE Stop event with opposite orders; the model obeyed the
-  // second and the flagged text shipped uncorrected.
-  const root = fs.mkdtempSync(path.join(TMP, 'conflict-'));
-  const tp = transcript('conf', [
-    { type: 'user', message: { role: 'user', content: 'wrap it up' } },
-    assistantRow('c9', 'The work is finished — the suite is green.'),
-  ]);
-  const stopAnswer = () => runIn('guard-answer-length.js',
-    { hook_event_name: 'Stop', session_id: 'conf', cwd: root, transcript_path: tp },
-    { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.claude/docs' } });
-
-  const alone = stopAnswer();
-  assert.equal(alone.status, 2, 'an em-dash still blocks');
-  assert.match(alone.stderr, /Re-send the SAME answer/, 'and still asks for the same answer back');
-
-  const ledger = path.join(root, '.claude', 'docs', 'hook-blocks');
-  fs.mkdirSync(ledger, { recursive: true });
-  fs.writeFileSync(path.join(ledger, 'conf.jsonl'),
-    JSON.stringify({ ts: new Date().toISOString(), hook: 'guard-stop-contract.js', event: 'Stop', reason: 'This turn ends on a decision-shaped question in prose.' }) + '\n');
-  const together = stopAnswer();
-  assert.equal(together.status, 2, 'the dash is still worth fixing');
-  assert.match(together.stderr, /guard-stop-contract/, 'but the text names the hook that already blocked this turn');
-  assert.match(together.stderr, /fold/i, '... and folds the fix into that turn instead of ordering the same answer back');
-  assert.doesNotMatch(together.stderr, /Re-send the SAME answer/, 'the contradictory order is gone');
-
-  const stale = JSON.stringify({ ts: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(), hook: 'guard-stop-contract.js', event: 'Stop', reason: 'x' }) + '\n';
-  fs.writeFileSync(path.join(ledger, 'conf.jsonl'), stale);
-  assert.match(stopAnswer().stderr, /Re-send the SAME answer/, "an earlier turn's block is not this turn's");
-
-  // Only a BLOCK yields. The contract also logs rows that block nothing - the two method probes and
-  // the skip at a tool-ended turn - and the A/B's after arm lost its verification line when a fresh
-  // log row read as a block: the model was told to obey a block it never received. The done-gate
-  // probe is a Stop row written in this very turn, the closest shape to a real block.
-  const now = new Date().toISOString();
-  for (const row of [
-    { ts: now, hook: 'guard-stop-contract.js', event: 'PostToolUseFailure', tool: 'Bash', mode: 'probe', kind: 'root-cause', reason: 'probe: a red npm test run' },
-    { ts: now, hook: 'guard-stop-contract.js', event: 'Stop', tool: '', mode: 'probe', kind: 'done-gate', reason: 'probe: a done claim, unrun - logged, not held' },
-    { ts: now, hook: 'guard-stop-contract.js', event: 'Stop', tool: '', mode: 'skip-tool-end', kind: 'tool-ended-turn', reason: 'skip: the turn ended on a tool call' },
-  ]) {
-    fs.writeFileSync(path.join(ledger, 'conf.jsonl'), JSON.stringify(row) + '\n');
-    assert.match(stopAnswer().stderr, /Re-send the SAME answer/, `a '${row.mode}' row blocked nothing, so the dash order stands`);
-  }
-
-  // the LENGTH branch carries the same yield - 'Re-answer at budget' contradicts 'add nothing else'
-  // exactly as the dash order did.
-  const wall = transcript('conf-long', [
-    { type: 'user', message: { role: 'user', content: 'wrap it up' } },
-    assistantRow('c8', 'This is filler prose that says very little but goes on and on about the process. '.repeat(30)),
-  ]);
-  const longAnswer = () => runIn('guard-answer-length.js',
-    { hook_event_name: 'Stop', session_id: 'conf', cwd: root, transcript_path: wall },
-    { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.claude/docs' } });
-  assert.doesNotMatch(longAnswer().stderr, /blocked this same turn too/, 'a stale ledger leaves the length text alone');
-  fs.writeFileSync(path.join(ledger, 'conf.jsonl'),
-    JSON.stringify({ ts: new Date().toISOString(), hook: 'guard-stop-contract.js', event: 'Stop', reason: 'fresh-session offer' }) + '\n');
-  const both = longAnswer();
-  assert.equal(both.status, 2, 'the wall of text still blocks');
-  assert.match(both.stderr, /blocked this same turn too/, '... and the two hooks now agree on one turn');
-});
 // Deep hooks review 2026-10-16, the user's ruling 'English + script rule': the word lists read English only, so a close
 // in another language is not judged on its words - only on its neutral signals.
 test('guard-stop-contract: a close the hook cannot read as English is not judged on its words, a closing question mark still is (deep review: English only)', () => {

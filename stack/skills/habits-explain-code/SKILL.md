@@ -30,7 +30,7 @@ Compare-mode carve-out: when one approach being compared is not present in the p
 
 ## Output structure
 
-This walkthrough is a depth-lifted answer: it is written at this length because the user's own words lifted the house answer budget. Where they did not - a bare 'explain X', 'how does this work' - answer inside the budget and offer the walkthrough in one line instead. The answer-length gate decides, not this file.
+This walkthrough is a depth-lifted answer: it is written at this length because the user's own words lifted the house answer budget. Where they did not - a bare 'explain X', 'how does this work' - answer inside the budget and offer the walkthrough in one line instead. The user's own words decide, not this file.
 
 Follow this exact flow.
 

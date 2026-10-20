@@ -50,7 +50,7 @@ Regenerate on every run - the rule is derived output, cheap to rebuild, and rebu
 This generated rule is per-project output, deliberately NOT in the stack's RULES set - no installer ledger records this generated rule, so `/alfred-code:update` never touches it.
 
 ### 5. REPORT
-A literal line template, not prose to remember - the close is filled in, field by field, one line each (a table where a field lists several items, since the answer-length hook blocks a wall of prose and tables are exempt):
+A literal line template, not prose to remember - the close is filled in, field by field, one line each (a table where a field lists several items, since the answer budget caps prose and tables are exempt):
 
 ```
 Doc:         <created | refreshed> - <docs-path>/code-style/CODE-STYLE.md, sections <the ones touched>

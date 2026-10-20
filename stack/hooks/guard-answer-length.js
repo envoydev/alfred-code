@@ -15,17 +15,13 @@
 //   prose: nine corrections and nine redrafts of one report, 1.64M cache-read, no ask. And it writes
 //   the CORRECTION probe: one ledger row per correction turn (ALFRED_CODE_CORRECTION_NUDGE, seeded
 //   `log`; `inject` adds the memory-save line).
-// Stop wiring: an answer whose prose (code blocks, tables and inline spans excluded) runs past the
-//   hard cap with no depth request in the user's own message is blocked, and the model re-answers
-//   at budget. The answer measured is the payload's `last_assistant_message`; the transcript's
-//   assistant row is the fallback, and the user's own message always comes from the transcript.
-//   Deliberately a wall-of-text catch, not a byte-counter: the soft budget lives in the reminder
-//   because a Stop block cannot unsay text the user already read - it can only add more.
+// No Stop wiring since 2026-10-20 (the user's ruling): the length cap and the em-dash block at Stop are gone - the
+//   answer budget is the interaction rule's, injected here, never enforced by a block.
 // SessionStart:compact wiring: re-emits the budget as additionalContext after a compaction, which drops the
 //   UserPromptSubmit injection; startup, resume and clear get it from the first prompt (deep hooks review 2026-10-16).
 // PostToolUse AskUserQuestion wiring: an answer typed into an ask's Other field is the user speaking through a tool
 //   result - one probe row, the correction test over it, and a note to open a path it names (audit 2026-10-10 C15).
-// exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unparseable.
+// Never blocks: every route exits 0. Fail-open on anything unparseable.
 const fs = require('fs');
 
 // STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in every
@@ -33,27 +29,12 @@ const fs = require('fs');
 // this hook running - envOf falls back to the bare ALFRED_CODE_ read (pre-2.0.0 behaviour) the same
 // way.
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
-let unattended = () => false;
-// The Stop chain (hook-prelude.js stopHeldThisCycle): without the prelude, any continuation stands down - the old reading.
-let stopHeld = (input) => !!(input && input.stop_hook_active);
-let markHeld = () => {};
-let contractHeld = () => false;
-let houseDash = /[\u2014\u2013\u2015]/; // hook-prelude.js HOUSE_DASH, the one dash class
 let harnessPrompt = (prompt) => /^\s*<task-notification>/.test(String(prompt || ''));   // hook-prelude.js harnessPrompt
-let unreadable = (text) => { const l = String(text || '').match(/\p{L}/gu) || []; return l.length > 0 && l.filter((c) => c > '\u007f').length / l.length >= 0.3; }; // hook-prelude.js unreadable
 if (require.main === module) {
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
-    unattended = prelude.unattended || unattended;
-    houseDash = prelude.HOUSE_DASH || houseDash;
     harnessPrompt = prelude.harnessPrompt || harnessPrompt;
-    unreadable = prelude.unreadable || unreadable;
-    if (prelude.stopHeldThisCycle) {
-      stopHeld = (input) => prelude.stopHeldThisCycle('guard-answer-length', input);
-      markHeld = (input) => prelude.markStopHeld('guard-answer-length', input);
-      contractHeld = (input, sinceMs) => prelude.stopHeldBy('guard-stop-contract', input, sinceMs);
-    }
     if (prelude.standDown('guard-answer-length')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
@@ -116,51 +97,6 @@ if (cursorOff) process.exit(0);
 })();
 
 const BUDGET = 900; // soft: ~3 sentences plus points, the rule's own shape
-const HARD_CAP = 1800; // block: double the budget with no depth request = a wall of text
-// An explicit depth request in the user's OWN words lifts the cap for that turn. Deliberately
-// narrow: 'explain X' does NOT qualify - the rule caps explanations too ('whether it is work
-// output or an explanation'); only an ask for depth, length or a written document does.
-const DEPTH_RE = /\b(in detail|detailed|more detail|deep ?dive|in ?depth|elaborate|expand on|walk me through|step[- ]by[- ]step|full (breakdown|analysis|report|list|picture|write[- ]?up)|comprehensive|thorough(ly)?|verbose|long(er)? (answer|version|form)|everything (you|about)|write (me )?(a|the) (plan|report|doc|document|spec|summary)|don'?t (be )?(short|brief))\b/i;
-// English only (deep hooks review 2026-10-16, the user's ruling): a prompt the list cannot read - 30% or more of its letters
-// outside ASCII, hook-prelude.js unreadable - lifts the cap and writes a `length-unread` row instead (the Stop half below),
-// so a depth ask in any language keeps its long answer.
-
-// A first-person retraction of something this run already said. 'Sorry' alone is not one, and
-// neither is a correction the run is making to somebody else's work - the exemption is for the
-// disclosure the short answer would erase.
-const SELF_CORRECTION_RE = /\b(i (was|got) (wrong|mistaken|it wrong)|my (earlier|previous|last) (claim|statement|answer|read|number|assertion|verdict)|correcting (myself|my)|i need to correct|to correct (myself|what i)|retract(ing)? (that|my)|(that|this) was (wrong|incorrect) (of me|on my part)|earlier i (said|claimed|reported|told you))\b/i;
-// The report shapes this stack's own skills MANDATE. A field required by the output contract is
-// not the run's prose - cutting it makes the report non-conforming.
-// A MARKDOWN HEADING is required, not just the word: 'Recommendation first, then why' is the
-// house answer shape, so matching a bolded lead-in would have exempted almost every answer and
-// left the cap unenforced.
-const MANDATED_FIELD_RE = /^\s{0,3}#{2,6}\s+\S{0,40}?\b(verdict|findings?|protocol check|waste analysis|blockers?|material|minor|evidence|punch[- ]list|assumptions?|not[- ]stack|fill in)\b/im;
-// Three closes the stack's own contracts fix in LABELS rather than headings, each cut by the cap when it ran long and
-// each re-answer dropping a field the contract owes (audit 2026-10-20 C21: a72fdfbc, 71d5428a, 8396b5df, a8804432,
-// 29e4002f). Each is recognised by a set no ordinary answer carries, never by one bolded lead-in:
-//   - the solve flow's stop fields: `Result:`, `Progress:` AND `Leftovers:`, each opening a line (bold or plain);
-//   - the update command's step-7 report: step 6's receipt `agents-md: compare <clean|N additions> - check <N rows>`,
-//     which step 7 repeats verbatim and no other text prints;
-//   - a capture REPORT's receipt lines: `References:` and `Model:` plus one more receipt label, each opening a line
-//     (a bullet, bold or a table cell before it is fine).
-const labelLine = (label) => new RegExp(`^\\s{0,3}(?:[-*+]\\s+|\\|\\s*)?(?:\\*\\*|__|\`)?${label}(?::(?:\\*\\*|__|\`)?|(?:\\*\\*|__|\`)?\\s*:)`, 'im');
-const FLOW_FIELDS = ['Result', 'Progress', 'Leftovers'].map(labelLine);
-const UPDATE_RECEIPT_RE = /\bagents-md: compare (?:clean|\d+ additions?) - check \d+ rows?\b/;
-const CAPTURE_ANCHORS = ['References', 'Model'].map(labelLine);
-const CAPTURE_RECEIPTS = ['Findings gate', 'Write gate', 'Write passes', 'Run gate', 'Decisions', 'Vocabulary', 'Ceilings', 'Rules?', 'Write']
-  .map(labelLine);
-function mandatedClose(text) {
-  if (MANDATED_FIELD_RE.test(text)) return 'heading';
-  if (FLOW_FIELDS.every((re) => re.test(text))) return 'flow-fields';
-  if (UPDATE_RECEIPT_RE.test(text)) return 'update-report';
-  if (CAPTURE_ANCHORS.every((re) => re.test(text)) && CAPTURE_RECEIPTS.some((re) => re.test(text))) return 'capture-receipts';
-  return null;
-}
-// The depth skill named in the user's own words is a depth request (audit 2026-10-20 C21, 79e1a1a5: 'using that skill
-// habits-explain-code explain me ...' - the walkthrough was cut, then asked for again through an ask). The skill
-// defers to this gate ('the answer-length gate decides'), so only the USER naming it lifts the cap - a load the model
-// chose on a bare 'explain X' does not, as DEPTH_RE excludes that phrasing too.
-const DEPTH_SKILL_RE = /\bhabits-explain-code\b/i;
 
 // --- transcript tail (last ~512KB): the final assistant message and the user's last real turn ---
 function tailLines() {
@@ -173,44 +109,6 @@ function tailLines() {
   fs.readSync(fd, buf, 0, buf.length, start);
   fs.closeSync(fd);
   return buf.toString('utf8').split('\n');
-}
-
-function lastMessages() {
-  let assistant = null;
-  let user = null;
-  let userTs = NaN;
-  for (const line of tailLines()) {
-    if (!line.includes('"assistant"') && !line.includes('"user"')) continue;
-    let o;
-    try {
-      o = JSON.parse(line);
-    } catch {
-      continue; // partial first line of the tail window
-    }
-    if (!o || !o.message) continue;
-    // One logical assistant turn is written as SEVERAL jsonl rows sharing one message.id (a
-    // thinking row, then the text row). Keeping only the last row read the wall of text as an
-    // empty fragment and passed it silently - the same defect measured six times in the stop
-    // contract's own transcript reader, which is why both now merge by id.
-    if (o.type === 'assistant' && Array.isArray(o.message.content)) {
-      const id = o.message.id;
-      if (assistant && id && assistant.message.id === id) {
-        assistant.message.content = assistant.message.content.concat(o.message.content);
-        if (o.message.usage) assistant.message.usage = o.message.usage;
-      } else {
-        assistant = { ...o, message: { ...o.message, content: o.message.content.slice() } };
-      }
-    }
-    if (o.type === 'user') {
-      const c = o.message.content;
-      // A tool_result arrives as a user message - only a real typed turn counts.
-      const typed = typeof c === 'string'
-        ? c
-        : Array.isArray(c) ? c.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n') : '';
-      if (typed.trim()) { user = typed; userTs = Date.parse(o.timestamp); }
-    }
-  }
-  return { assistant, user, userTs };
 }
 
 // Prose only: code blocks, tables, inline spans and link targets are the parts a short answer is
@@ -231,7 +129,7 @@ function proseOf(text) {
 // needs the last-position slot (audit 2026-10-14 RU06: the full 751-char text rode every prompt and session start, saved
 // in the transcript each turn - ~22.5K chars over a 30-turn session).
 const BUDGET_TEXT =
-        `Answer budget (alfred-interaction.md): 3 sentences plus bullets, ~${BUDGET} characters of prose, result first. ` +
+        `Answer budget (alfred-interaction.md): 3 sentences plus bullets, ~${BUDGET} characters of prose, result first; fit it before sending. ` +
         `Code, tables and command output are exempt. Only THIS message's depth words lift it (in detail / walk me ` +
         `through / write a plan). Single dashes and single quotes, an ` +
         `AskUserQuestion's text included.`;
@@ -499,152 +397,5 @@ if (payload.hook_event_name === 'SessionStart') {
   process.exit(0);
 }
 
-// Did the stop contract block THIS turn? Both hooks write one row per block to the same ledger
-// (<docs-path>/hook-blocks/<session>.jsonl), so the row is the only cross-hook evidence there is -
-// the two run as separate processes in an order nothing guarantees. Read the tail of this session's
-// own file and accept a guard-stop-contract row from the last two minutes; anything older belongs
-// to an earlier turn. Only a BLOCK counts: a row carrying a `mode` (the red-run injection, the skip
-// at a tool-ended turn) blocked nothing, and yielding to it tells the model to obey a block it never
-// saw - measured in the A/B, where the rewrite dropped the verification line. A row older than
-// this turn's typed prompt is an earlier turn's, however recent: two minutes alone read the previous
-// turn's block as this one's. Best-effort in every direction: an unreadable ledger means no yield.
-// The stop contract's own Stop-chain marker is read first (hook-prelude.js stopHeldBy): on a continuation it is on
-// disk before this hook runs, where the ledger row of a parallel first Stop may not be yet.
-function stopContractBlockedThisTurn(turnStartMs) {
-  if (contractHeld(payload, turnStartMs)) return true;
-  try {
-    const path = require('path');
-    const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-    const file = path.resolve(root, docsRootEnv(), 'hook-blocks', `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`);
-    const rows = fs.readFileSync(file, 'utf8').trim().split('\n').slice(-20);
-    for (const line of rows) {
-      let o;
-      try { o = JSON.parse(line); } catch { continue; }
-      if (!o || o.hook !== 'guard-stop-contract.js' || o.mode) continue;
-      if (o.event !== 'Stop' && o.event !== 'SubagentStop') continue;
-      const at = Date.parse(o.ts);
-      if (Number.isFinite(turnStartMs) && at < turnStartMs) continue;
-      if (Date.now() - at <= 2 * 60 * 1000) return true;
-    }
-    return false;
-  } catch { return false; }
-}
-
-if (payload.hook_event_name === 'Stop') {
-  // Only a continuation THIS hook caused stands down; one a sibling Stop hook caused is judged once more, and this
-  // hook still blocks at most once per cycle (hook-prelude.js, the Stop chain - audit 2026-10-08 S1).
-  if (stopHeld(payload)) process.exit(0);
-  let last;
-  let user;
-  let userTs = NaN;
-  // An unreadable transcript leaves the LENGTH half fail-open (no user row, so depth cannot be ruled
-  // out), never the em-dash half: that reads last_assistant_message, which the payload carries anyway.
-  // No transcript path at all is the same case - tailLines() then reads nothing and throws nothing.
-  let transcriptRead = typeof payload.transcript_path === 'string' && payload.transcript_path !== '';
-  try {
-    ({ assistant: last, user, userTs } = lastMessages());
-  } catch {
-    transcriptRead = false;
-  }
-  // The harness's `last_assistant_message` is the turn's final text; the transcript is written
-  // asynchronously and can lag it (documented), so the field wins and the transcript's assistant
-  // row is the fallback. The user's message still comes from the transcript - the Stop payload
-  // carries no prompt - so an unreadable transcript stays the fail-open pass above.
-  let text = typeof payload.last_assistant_message === 'string' ? payload.last_assistant_message : '';
-  if (!text.trim()) {
-    if (!last) process.exit(0);
-    const blocks = last.message.content;
-    if (blocks.some((b) => b && b.type === 'tool_use')) process.exit(0); // ended on a tool call
-    text = blocks.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n');
-  }
-  const body = proseOf(text);
-  // The OTHER half of the same injected rule, and the half nothing checked: 'single dashes, never
-  // em-dashes'. Measured across four audited sessions - 32 em-dashes in 21,434 chars of prose in
-  // one, 4 in another, 2 each in two more - with the budget text carrying that clause loaded THREE
-  // times in the same transcript, so this is not a placement problem: the rule was injected every
-  // turn and enforced on no surface. The Stop branch already holds the turn's prose, so it is one
-  // more pass over text this hook has read anyway. Only the dashes are checked - the em-dash, its
-  // horizontal-bar twin and the en-dash, the one class the stop contract's ask deny reads too
-  // (hook-prelude.js HOUSE_DASH; the two disagreed, audit 2026-10-08) - and the same injection's
-  // 'single quotes in prose' clause is not, because a double quote legitimately names a string value
-  // and the false positives would cost a turn each.
-  const DASHES = new RegExp(houseDash.source, 'g');
-  const dashes = (body.match(DASHES) || []).length;
-  let overLength = transcriptRead && body.length > HARD_CAP;
-  if (!overLength && !dashes) process.exit(0);
-  // The three length exemptions below excuse the LENGTH only. An em-dash is a character to
-  // replace, not content to drop, so no exemption reaches it and the re-answer loses nothing.
-  if (overLength && user && (DEPTH_RE.test(user) || DEPTH_SKILL_RE.test(user))) overLength = false; // depth asked this turn
-  if (overLength && user && unreadable(user)) {
-    // the depth list cannot read this prompt: logged, never held - a forced re-answer would delete what was asked for
-    ledgerRow({ mode: 'probe', kind: 'length-unread', reason: 'probe: a long answer to a prompt the depth list cannot read - logged, not held', detail: { chars: body.length } });
-    overLength = false;
-  }
-  // Two exemptions, both bought with measured damage: one forced re-answer went 3,184 -> 1,085
-  // chars and took TWO of five headline findings and a self-correction disclosure with it. A cap
-  // that deletes content the user needed is worse than the wall of text it replaced.
-  //   - A SELF-CORRECTION cannot be re-answered shorter without being dropped: the shorter answer
-  //     is, by construction, the one that does not mention the mistake.
-  //   - A MANDATED REPORT FIELD belongs to the skill's own output contract, not to the run's
-  //     talking. Trimming it makes the report non-conforming, which is a second failure.
-  // Both are deliberately narrow, and neither is reachable by a run that simply wants to write
-  // more: a bare 'sorry' does not match, and neither does a heading the stack does not mandate.
-  if (overLength && SELF_CORRECTION_RE.test(text)) overLength = false;
-  if (overLength && mandatedClose(text)) overLength = false;
-  if (!overLength && !dashes) process.exit(0);
-  // Nobody at the terminal (hook-prelude.js unattended): a block would only re-send a finished answer. The row
-  // keeps the skipped block countable, as the stop contract's and the docs hook's do (review A, M3).
-  if (unattended(payload)) {
-    ledgerRow({ mode: 'unattended', kind: overLength && dashes ? 'length+em-dash' : overLength ? 'length' : 'em-dash',
-      reason: 'skip: nobody is at the terminal - logged, not held', detail: { chars: body.length, dashes } });
-    process.exit(0);
-  }
-
-  global.BLOCK_DETAIL = { branch: overLength && dashes ? 'length+em-dash' : overLength ? 'length' : 'em-dash',
-    matched: overLength ? `${body.length} chars of prose` : `${dashes} em-dash(es)` };
-  if (!overLength) {
-    // Two Stop hooks can answer ONE stop, and until this existed they answered it with opposite
-    // orders: this one said 'Re-send the SAME answer' while guard-stop-contract.js said 'Add
-    // nothing else to this turn'. The model obeyed the second and the flagged text shipped
-    // uncorrected. The other gate owns the turn - it is holding a decision or a fresh-session
-    // offer - so this one yields and asks for the fix INSIDE that turn.
-    process.stderr.write(
-      `This answer uses ${dashes} em-dash(es). The house voice is single dashes - the rule is in\n` +
-      `alfred-interaction.md and this hook injects it into every turn, including the one you just\n` +
-      `answered (measured: 32 em-dashes in 21,434 characters of prose in one audited session, with\n` +
-      `the rule loaded three times in the same transcript).\n` +
-      (stopContractBlockedThisTurn(userTs)
-        ? `guard-stop-contract.js has already blocked this same turn, so do what IT asks and fold the\n` +
-          `dash fix into that turn - replace every em-dash with a single dash in the text you re-send.\n` +
-          `Its instruction wins on everything else.`
-        : `Re-send the SAME answer with every\n` +
-          `em-dash replaced by a single dash - change nothing else, add no apology and no note about\n` +
-          `the edit. If another hook blocked this same turn and asks for something else, do that and\n` +
-          `fix the dashes inside the turn it asks for - never drop the fix because two hooks spoke.`),
-    );
-    markHeld(payload);
-    process.exit(2);
-  }
-
-  process.stderr.write(
-    (dashes ? `This answer also uses ${dashes} em-dash(es) - the house voice is single dashes, so\nreplace them while you are rewriting it.\n` : '') +
-    `This answer is ${body.length} characters of prose - the house budget is ~${BUDGET} (about 3\n` +
-    `sentences plus points) and the hard cap is ${HARD_CAP}. Code, tables and command output were\n` +
-    `already excluded from that count, and nothing in the user's message asked for depth, so this\n` +
-    `is the wall-of-text failure alfred-interaction.md exists to prevent (measured: repeated\n` +
-    `'you write too much text' / 'shorter and simpler' corrections with the rule loaded verbatim).\n` +
-    `Re-answer now at budget: the result first, then only what the user must act on. Cut preamble,\n` +
-    `the recap of what they asked, the options you rejected, the caveats they did not ask for, and\n` +
-    `every sentence about your own process. Do NOT apologize, do NOT explain the trim, and do NOT\n` +
-    `append the short version to the long one - write the short answer alone. If the detail is\n` +
-    `genuinely needed, say one line offering it instead of delivering it.\n` +
-    (stopContractBlockedThisTurn(userTs)
-      ? `guard-stop-contract.js blocked this same turn too: do what IT asks, and write that turn at\n` +
-        `budget. Its instruction wins on everything else.`
-      : ''),
-  );
-  markHeld(payload);
-  process.exit(2);
-}
 
 process.exit(0);

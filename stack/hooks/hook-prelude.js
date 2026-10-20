@@ -483,13 +483,13 @@ function standDown(hook, env, argv, { setUp = true } = {})
     catch { return false; }
 }
 
-// THE STOP CHAIN (hooks audit 2026-10-08, S1). Four hooks can block a Stop (the stop contract, answer length,
-// docs-session, the turn build check), and `stop_hook_active` is true whenever Claude Code continues because ANY of
+// THE STOP CHAIN (hooks audit 2026-10-08, S1). Three hooks can block a Stop (the stop contract,
+// docs-session, the turn build check; answer length did until 2026-10-20), and `stop_hook_active` is true whenever Claude Code continues because ANY of
 // them blocked ('true when Claude Code is already continuing as a result of a stop hook' - code.claude.com/docs/en/
 // hooks, Stop input). A blocker that stood down on the flag alone never judged the close rewritten after a SIBLING's
 // block ('Build fixed. Should I commit?' passed the stop contract). So each blocker marks its own block
 // (markStopHeld) and stands down on a continuation only when IT held this cycle (stopHeldThisCycle): every blocker
-// judges each rewritten close once more and blocks at most ONCE per cycle, so four blockers make at most four
+// judges each rewritten close once more and blocks at most ONCE per cycle, so three blockers make at most three
 // continuations - never a loop - with Claude Code's 8-consecutive-continuation cap the outer guard. A Stop with the
 // flag false opens a new cycle and clears the hook's marker. Where a marker could not be written (an unwritable dir)
 // a continuation stands down, the old reading - judging again there could block again.
@@ -626,18 +626,6 @@ function capLog(file, maxBytes = 1024 * 1024, keepBytes = 256 * 1024)
     catch { return false; }
 }
 
-// Did `hook` (another Stop blocker) hold this cycle, at or after `sinceMs` (this turn's typed prompt)? Read-only - the
-// answer-length hook's yield to the stop contract. The two run in parallel on a turn's first Stop, so a false there
-// only drops the yield line; on a continuation the sibling's marker is on disk.
-function stopHeldBy(hook, input, sinceMs, env)
-{
-    try
-    {
-        const st = fs.statSync(stopMarkerFile(hook, input, env));
-        return !Number.isFinite(sinceMs) || st.mtimeMs >= sinceMs;
-    }
-    catch { return false; }
-}
 
 // THE SCAN BUDGET - how much a guard reads before it stops and judges the rest UNREAD, the one home every guard reads
 // (2.1.6 re-verify 3 R3-M3, R3-m4). A shell command a guard judges can carry scripts it reads from disk, git aliases it
@@ -675,7 +663,7 @@ function scanBudget(limits = {})
 }
 
 // The dashes the house voice replaces with a single dash - the em-dash, the en-dash and the horizontal bar - ONE class for
-// the stop contract's ask deny and the answer-length Stop block, which disagreed ([\u2014\u2013] vs [\u2014\u2015], audit 2026-10-08).
+// the stop contract's ask deny (the answer-length Stop block shared it until 2026-10-20; they disagreed before audit 2026-10-08).
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
-module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, harnessPrompt, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopHeldBy, stopMarkerFile, scanBudget, SCAN_LIMITS, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS };
+module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, harnessPrompt, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS };

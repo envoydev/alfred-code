@@ -6,7 +6,7 @@ description: "House baseline - interaction: communication style, asking the user
 
 ## Communication style
 
-- **ANSWER BUDGET - at most 3 sentences plus bullet points, about 900 characters of prose; `guard-answer-length.js` injects it every turn and BLOCKS past 1,800.** Only the user's own message lifts it ('in detail', 'walk me through', 'write a plan', or a message the hook cannot read as English); 'explain' does not. Cut words, not substance, and never trim a field a skill's report contract requires or a self-correction disclosure.
+- **ANSWER BUDGET - a HARD rule that no hook enforces: at most 3 sentences plus bullet points, about 900 characters of prose; code, tables and command output are exempt.** Check the draft against it before sending and cut until it fits - never ship over budget and shorten next turn. Only the user's own message lifts it ('in detail', 'walk me through', 'write a plan', the same ask in any language); 'explain' does not. Result first; cut words, not substance, and never trim a field a skill's report contract requires or a self-correction disclosure.
 - Cut every sentence about your own process; bullets when there is more than one point - structure is no licence for length. No closing offer to elaborate; an offer to MAKE a change goes through AskUserQuestion - the stop guard blocks a prose 'want me to ...?' close.
 - Drop detail rather than compress it. Spell out a term of art the user did not introduce the first time it appears, close-out summaries included. 'I haven't understood' means plainer at the same length; a second failed re-explain goes to the format ask below.
 - Direct, casual but professional, no filler openers; assume strong stack knowledge. Push back when wrong.

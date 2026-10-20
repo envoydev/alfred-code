@@ -176,7 +176,7 @@ function proseOf(text) {
     .replace(/\s+/g, ' ')
     .trim();
 }
-const LONG_ANSWER = 1800;   // guard-answer-length's HARD_CAP
+const LONG_ANSWER = 1800;   // twice the 900-char budget - the cap the answer hook's Stop half held until 2026-10-20
 const STREAK_TURNS = 3, STREAK_SHORT = 200, STREAK_LONG = 1500;   // its correction-streak detector
 // Its single-turn correction test, copied verbatim (shared-rules.json `correction-turn-test`): a
 // short typed turn that follows an answer of any length and carries a correction marker - the

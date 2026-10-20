@@ -1810,8 +1810,8 @@ if (payload.hook_event_name === 'Stop') {
   // Fenced spans are PAYLOAD, not prose: the fresh-session contract asks the turn to end with a
   // paste-ready resume block, and judging inside that fence made this hook block its own mandated
   // deliverable (measured: DONE_RE matched `green` and PENDING_RE matched `NOT pushed`, both inside
-  // the fence; replay exit 2 at both window tiers). guard-answer-length.js's proseOf() has stripped
-  // fences for the length cap all along - this is the same rule for the contract check.
+  // the fence; replay exit 2 at both window tiers). the answer hook's proseOf() strips
+  // fences the same way - this is the same rule for the contract check.
   const prose = text.replace(/(`{3,})[\s\S]*?\1/g, ' ');
   const tail = prose.slice(-1500); // the offer lives at the end of the turn
   // The DONE half is read over the whole close, bounded at 16KB (re-verify 3 R3-m11: a done claim 1,600 characters up
@@ -2237,8 +2237,8 @@ function blockStateFile() {
 //   4. CREDENTIAL - the rotation choice belongs in the ask the turn is already making.
 //   5. HOUSE VOICE - the em-dash / single-quote rule is measured 0 for 10, and an ask's own text is
 //      a surface no Stop hook reads at all. The same check runs over the PROSE THIS TURN WROTE
-//      BEFORE the ask: guard-answer-length.js reads the turn's final text only, so a report that
-//      ends on a tool call is scanned by nobody (measured: 5 em-dashes in one such report, plus two
+//      BEFORE the ask: no Stop hook reads prose for the house voice (the answer hook's Stop half, which
+//      read the final text only, went 2026-10-20), so a report that ends on a tool call is scanned by nobody (measured: 5 em-dashes in one such report, plus two
 //      more bundles). The prose half is injection only, because a Stop block cannot unsay text already
 //      shipped; the ask's own text is denied once with the corrected strings, because it is not yet shipped.
 //   6. FLOW STOP FIELDS - a solve-task stop reports Result / Progress / Leftovers before its ask.
@@ -2357,7 +2357,7 @@ if (payload.tool_name === 'AskUserQuestion') {
     // back unchanged by the fix - rewriting it corrupted the snippet the corrected ask carried.
     const CODE_SPAN = /```[\s\S]*?```|`[^`\n]*`/g;
     const proseText = askText.replace(CODE_SPAN, (m) => ' '.repeat(m.length));
-    // One dash class with the answer-length Stop block (hook-prelude.js HOUSE_DASH), and a curly double quote is a
+    // The house dash class (hook-prelude.js HOUSE_DASH), and a curly double quote is a
     // double quote too - U+201C / U+201D passed the `"` test (audit 2026-10-08).
     const DASH = houseDash.source;
     const voice = [];
@@ -2596,9 +2596,8 @@ if (payload.tool_name === 'AskUserQuestion') {
     const turnText = turnProseBeforeAsk();
     if (/[\u2014\u2015]/.test(turnText)) {
       notes.push(`The prose this turn wrote before the ask just answered carries an em-dash. The house voice is `
-        + `single dashes (alfred-interaction.md), and the turn's final text is the only surface `
-        + `the answer-length hook reads - anything written before a tool call is checked here or `
-        + `nowhere. Use single dashes for the rest of this turn.`);
+        + `single dashes (alfred-interaction.md), and no hook checks prose once it is shipped. `
+        + `Use single dashes for the rest of this turn.`);
     }
 
     // 6. FLOW STOP FIELDS (flowFieldNotes, below).
@@ -2664,8 +2663,8 @@ function sessionClock() {
 }
 
 // The assistant prose written in THIS turn, before the ask now being made: every text block after
-// the last typed user row. That is the surface guard-answer-length.js cannot reach, because the
-// message it belongs to ends on a tool call.
+// the last typed user row - a surface no Stop hook reaches, because the message it belongs to ends on
+// a tool call.
 function turnProseBeforeAsk() {
   try {
     const p = payload.transcript_path;

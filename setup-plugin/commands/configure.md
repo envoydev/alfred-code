@@ -509,8 +509,8 @@ the walk owned the selection.
 
 ## Post-check
 
-The report has ONE fixed shape - a table, then labelled lines - so the answer-length cap, which leaves tables and
-fixed labels alone, never holds it (audit 2026-10-20 C21, 878f253d: a prose report with no shape was held as a
+The report has ONE fixed shape - a table, then labelled lines - so the answer budget, which leaves tables and
+fixed labels alone, never squeezes it (audit 2026-10-20 C21, 878f253d: a prose report with no shape was held as a
 long answer). One row per category this run touched, names in the cells, `-` for none:
 
 ```
