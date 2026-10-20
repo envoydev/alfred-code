@@ -63,6 +63,7 @@ Memory writes come BEFORE the report: run the memory_store hand-off above first,
 
 End with exactly this output contract - literal `status:` and `contract_version:` lines, the report's last two, not a heading paraphrase, and on EVERY trio-verify report this seat returns, a resumed (SendMessage) re-verify pass included - EXCEPT a rubric audit: there the Conventions carve-out is authoritative, the loop's keyed shape is the whole report, and this footer MUST NOT be appended; a direct dispatch (a brief with no contract_version) is excepted too - its Conventions carve-out is authoritative, and its last line reads `contract_version: none`:
 
+- a literal `left_running:` line - `none`, or what is still up (a browser context, a served build) - since every live run the gate starts is stopped before the report
 - the build and test result you ran - the summary line on a green run, and on a red one the diagnostic lines per failure (the failing assertion or the first error with its stack frames, never the whole log) plus the command that re-produces it
 - the bound `habits-done-gate` sets
 - `findings` each carrying `severity` + `task_owner` + `problem` + `required_fix` - each fix keyed to file + symbol so a browser-extension-implementer can fix exactly that

@@ -198,4 +198,30 @@ test('agents #13: the WPF and WinForms designers carry the companion-service par
     for (const c of copiesOf('desktop-designer-companion-service')) assert.ok(squash(readRel(c.file)).includes(squash(c.marker)), c.file);
 });
 
+// --- agents #14: the small items -------------------------------------------------------------------------------------------
+test('agents #14: AppHost only where one exists, left_running on every verifier, no Bash doc fetch, no pinned Angular versions', () =>
+{
+    const devops = squash(read('devops-verifier'));
+    assert.doesNotMatch(devops, /dotnet build the AppHost[,;]/, 'devops-verifier: an unconditional AppHost build');
+    assert.ok(devops.includes('dotnet build the Aspire AppHost when the project has one'), 'devops-verifier: the condition');
+    for (const s of of('-verifier')) assert.ok(squash(read(s)).includes('a literal `left_running:` line'), `${s}: left_running`);
+    assert.strictEqual(listedIn('verifier-left-running-line').size, 11);
+    assert.doesNotMatch(squash(read('console-solution-designer')), /fetching vendor docs to scratch/);
+    const ng = squash(read('web-angular-solution-designer'));
+    for (const pin of ['500 KB initial budget', 'stable v20.2, default v21', 'Signal Forms (form()) on v21+']) assert.ok(!ng.includes(pin), `web-angular designer pins '${pin}'`);
+});
+
+test('agents #14: the reviewer names its security categories, code-style has one first step, the auditor masks once', () =>
+{
+    const reviewer = squash(read('integration-reviewer'));
+    assert.doesNotMatch(reviewer, /apply the security checklist/);
+    assert.ok(reviewer.includes('auth, secrets, injection, data-access'), 'the categories the security row names');
+    const style = squash(read('code-style-analyzer'));
+    assert.doesNotMatch(style, /FIRST tool call of your run/, 'code-style: a second competing first');
+    assert.ok(style.includes('One order per run: the Glob of your scope'), 'code-style: one order');
+    const auditor = squash(read('security-auditor'));
+    assert.strictEqual((auditor.match(/actual secret/g) || []).length, 1, 'security-auditor: the masking rule said once');
+    assert.ok(auditor.includes("the security rule's Credentials section"), 'pointing at its home');
+});
+
 module.exports = { seats, read, readRel, meta, body, section, squash, rules, copiesOf, listedIn, of };

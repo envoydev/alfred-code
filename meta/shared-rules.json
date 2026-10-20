@@ -2446,7 +2446,7 @@
       ]
     },
     "analyzer-first-call-navigation": {
-      "_note": "An analyzer's first tool call locates with the navigation server, never a whole-file Read the read guard blocks (measured: 10 of 13 analyzer seats spent their first Read on a blocked dump). 2026-10-08 agents audit F13.",
+      "_note": "An analyzer's first tool call locates with the navigation server, never a whole-file Read the read guard blocks (measured: 10 of 13 analyzer seats spent their first Read on a blocked dump). 2026-10-08 agents audit F13. code-style-analyzer's copy opens with its Glob and config reads first and pins only the locate clause - its first CODE read (stack audit 2026-10-20 #14: three competing 'first' steps).",
       "owner": {
         "file": "stack/agents/architecture-analyzer.md",
         "marker": "FIRST tool call of your run: locate with the navigation server, never a whole-file `Read` - the read guard blocks one and the block costs a turn"
@@ -2458,7 +2458,7 @@
         },
         {
           "file": "stack/agents/code-style-analyzer.md",
-          "marker": "FIRST tool call of your run: locate with the navigation server, never a whole-file `Read` - the read guard blocks one and the block costs a turn"
+          "marker": "locate with the navigation server, never a whole-file `Read` - the read guard blocks one and the block costs a turn"
         }
       ]
     },
@@ -6131,7 +6131,7 @@
       ]
     },
     "verifier-left-running-line": {
-      "_note": "A seat that starts a dev server, an emulator, a container or a desktop app must SAY so in its report, on a literal line the orchestrator can read without parsing prose - the quality-gates rule's tear-down ask can only cover what it is told is up. Carried by the seven verifiers whose gates start something, plus the integration reviewer - console- and aspnet-verifier joined in 2.1.5 (M47): their app run had no bound and no line.",
+      "_note": "A seat that starts a dev server, an emulator, a container or a desktop app must SAY so in its report, on a literal line the orchestrator can read without parsing prose - the quality-gates rule's tear-down ask can only cover what it is told is up. Carried by all ten verifiers plus the integration reviewer - console- and aspnet-verifier joined in 2.1.5 (M47): their app run had no bound and no line; data-, devops- and browser-extension-verifier in the 2026-10-20 stack audit (#14): Testcontainers, a docker run and a Playwright context start things too.",
       "owner": {
         "file": "stack/agents/web-angular-verifier.md",
         "marker": "a literal `left_running:` line"
@@ -6163,6 +6163,18 @@
         },
         {
           "file": "stack/agents/aspnet-verifier.md",
+          "marker": "a literal `left_running:` line"
+        },
+        {
+          "file": "stack/agents/data-verifier.md",
+          "marker": "a literal `left_running:` line"
+        },
+        {
+          "file": "stack/agents/devops-verifier.md",
+          "marker": "a literal `left_running:` line"
+        },
+        {
+          "file": "stack/agents/browser-extension-verifier.md",
           "marker": "a literal `left_running:` line"
         }
       ]
