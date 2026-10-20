@@ -66,7 +66,11 @@ The memory levels and stores, where the docs root and the data root live, and th
   delta-sync tables (off unless `MCP_SYNC_EVENTLOG` is set); measured on a copy of a real database: 11.14.0 then stored,
   listed and searched over the migrated file, `memory.js export` read it, and both versions returned the same top hit.
   So installs on either pin may share one file; the readers here use columns by name (the re-embed's whole-row read only
-  carries the new one into its backup, and re-stores through the service). The INSTALL phase never
+  carries the new one into its backup, and re-stores through the service). 12.1.1 (audit 2026-10-20b) migrates nothing:
+  a 12.0.0 database it opened, stored into, updated and deleted from kept the same schema (`schema_version` 19, `.schema`
+  identical), and 12.0.0 then searched, stored and listed over it; the store / delete texts the readers match and the
+  content hash (`sha256` of the trimmed, lower-cased text) are unchanged, and its consolidation no longer supersedes on a
+  keyword-only contradiction (`MCP_CONSOLIDATION_AUTO_SUPERSEDE` now defaults to `false`). The INSTALL phase never
   imports: `/alfred-code:init`'s bootstrap phase, in the session after the install's restart (`scripts/install/memory.js
   init`), imports the project's existing `MEMORY.md` / `memory/*.md` notes into the chosen database
   once, through the service (idempotent), and only after that import succeeds switches Claude's own
