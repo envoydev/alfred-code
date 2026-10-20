@@ -364,14 +364,15 @@ function rule(projectRoot)
     const template = readText(TEMPLATE);
     if (template === null || !template.includes(PREFERENCES_SLOT)) { console.error(`preferences: ${TEMPLATE} is missing or has no ${PREFERENCES_SLOT} line`); return 1; }
     const root = docsRoot(projectRoot);
-    const blocks = docs.map((d) => block(root, d)).join('\n');
+    const carried = docs.filter((d) => parseSections(d.text).length); // a doc its removals emptied keeps only its Retired: line
+    const blocks = carried.map((d) => block(root, d)).join('\n');
     const head = `<!-- preferences: ${docsHash(docs)} - written by preferences.js rule from the docs below; edit the docs, never this file -->`;
     const text = template.replace(PREFERENCES_SLOT, blocks ? `${head}\n\n${blocks}`.replace(/\n+$/, '') : head);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     if (current !== text) fs.writeFileSync(target, text);
-    if (!docs.length) { console.log('Rule: no preferences captured - the rule now carries none'); return 0; }
+    if (!carried.length) { console.log('Rule: no preferences captured - the rule now carries none'); return 0; }
     const chars = docs.reduce((n, d) => n + d.text.length, 0);
-    console.log(`Rule: ${Buffer.byteLength(text)} bytes, ${docs.length} docs inline; preferences ${chars} chars of ${CAP}${chars > CAP ? ' - over the cap, cut before it ships' : ''}`);
+    console.log(`Rule: ${Buffer.byteLength(text)} bytes, ${carried.length} docs inline; preferences ${chars} chars of ${CAP}${chars > CAP ? ' - over the cap, cut before it ships' : ''}`);
     return 0;
 }
 

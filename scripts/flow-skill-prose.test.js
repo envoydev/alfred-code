@@ -80,7 +80,7 @@ test('M82: code-quality hands the manual-only style capture to the user by its s
     const text = flat(skill('capture-code-quality'));
     assert.doesNotMatch(text, /record the code style with `capture-code-style`/);
     assert.match(text, /`\/capture-code-style`/);
-    assert.match(text, /both the user's to run/);
+    assert.match(text, /all the user's to run: `\/capture-preferences`/);
 });
 
 // ---- M83: coverlet's MSBuild form writes json unless told otherwise -------------------------------------------

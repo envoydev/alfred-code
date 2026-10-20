@@ -7668,6 +7668,14 @@
         {
           "file": "stack/skills/capture-code-quality/SKILL.md",
           "marker": "| `Run gate:` | the answer verbatim, or `invoked by the quality loop` |"
+        },
+        {
+          "file": "stack/skills/capture-architecture-quality/SKILL.md",
+          "marker": "reads `/clear, then <command>`, in the option label when it is an ask"
+        },
+        {
+          "file": "stack/skills/capture-code-quality/SKILL.md",
+          "marker": "reads `/clear, then <command>`, in the option label when it is an ask"
         }
       ]
     },

@@ -12,8 +12,8 @@ for f in <the session files>; do
   sid=$(basename "$f" .jsonl)
   FLAGS=()                                   # optional flags go in an ARRAY, never an eval string
   for d in tools-usage hook-blocks; do       # statistics/ first, then the pre-2.8.0 docs root
-    f="<data root>/statistics/$d/$sid.jsonl"; [ -f "$f" ] || f="<docs-path>/$d/$sid.jsonl"
-    [ -f "$f" ] && { [ "$d" = tools-usage ] && FLAGS+=(--hook-log "$f") || FLAGS+=(--hook-blocks "$f"); }
+    l="<data root>/statistics/$d/$sid.jsonl"; [ -f "$l" ] || l="<docs-path>/$d/$sid.jsonl"
+    [ -f "$l" ] && { [ "$d" = tools-usage ] && FLAGS+=(--hook-log "$l") || FLAGS+=(--hook-blocks "$l"); }
   done
   node "<snapshot>/scripts/analyze-usage.js" "$f" --report-md "${FLAGS[@]}" --out "<out>/$sid/report-usage.md"
 done

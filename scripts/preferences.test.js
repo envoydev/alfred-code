@@ -381,6 +381,29 @@ test('rule with no doc writes nothing, keeps a file of the user\'s, and empties 
     finally { p.rm(); }
 });
 
+// Skill audit 2026-10-20b FCAP-2: a removal keeps the doc with its Retired: line, so the doc is still present - the rule
+// wrote an empty header for it and reported '1 docs inline' where SKILL.md promises 'carries none'.
+test('rule over a doc whose last entry was removed carries none - the doc keeps only its title, Updated: and Retired: lines', () =>
+{
+    const p = project({ prefs: { CODE: doc('Code preferences', C3) } });
+    const file = path.join(p.dir, '.claude', 'rules', 'alfred-preferences.md');
+    try
+    {
+        p.put('.alfred/docs/preferences/CODE-PREFERENCES.md', '# Code preferences\n\nUpdated: 2026-10-21\n\nRetired: C3\n');
+        const r = run(p.dir, 'rule');
+        assert.deepStrictEqual(r.lines, ['Rule: no preferences captured - the rule now carries none']);
+        assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /C3|^## /m, 'no header for a doc with no entry');
+        assert.strictEqual(run(p.dir, 'lint').lines.some((l) => l.startsWith('stale:')), false, 'the rule still hashes the present doc');
+        p.put('.alfred/docs/preferences/GIT-PREFERENCES.md', doc('Git preferences', C3.replace(/C3/g, 'G1').replace('c3', 'g1')));
+        const two = run(p.dir, 'rule');
+        assert.match(two.lines[0], /, 1 docs inline;/, 'only the doc with an entry is carried');
+        const text = fs.readFileSync(file, 'utf8');
+        assert.match(text, /^## GIT-PREFERENCES\.md - /m);
+        assert.doesNotMatch(text, /^## CODE-PREFERENCES\.md/m);
+    }
+    finally { p.rm(); }
+});
+
 test('the docs root comes from the settings env, settings.local.json over settings.json; an absolute one is named as it is', () =>
 {
     const p = project({ docsRoot: 'shared/docs', settings: { env: { ALFRED_CODE_DOCS_PATH: 'shared/docs' } }, prefs: { CODE: doc('Code preferences', C3) } });

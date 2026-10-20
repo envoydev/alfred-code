@@ -22,6 +22,7 @@ Two halves, split differently:
 
 - **Measurement is ALWAYS in this session** - every mode, every platform. The instrumented run is a slow gate; it never goes into any dispatch brief.
 - **Analysis on the FIRST capture** (no existing doc / no stamp) - when dispatch is available, ask ONE question before the fan-out, via AskUserQuestion - analyze via test-coverage-analyzer seats (recommend it: the read-only seats absorb the raw-output reads), or in-session? - unless a calling flow (the coverage loop) already picked the run's mode, which is inherited, never re-asked. When the first capture's other mandatory asks fire (the % bar; a suite that cannot run - Docker down for Testcontainers, a red baseline - may add a run-it-or-record-unmeasured decision), the mode question joins the SAME AskUserQuestion call as one batched ask - a separately-scheduled mode question is the one that gets dropped. DELEGATED: fan out the read-only test-coverage-analyzer agent, one per measured surface, each dispatch carrying that surface's raw-results path, the suite location, and the requirement; it returns a structured digest (per-module numbers, uncovered hot spots, weak-point candidates, test-quality smells) and this session reasons over the digests - the judgment and the writing NEVER leave here. INLINE (chosen - or forced, no question asked: no dispatch): the same analysis yourself, locating testability facts with the navigation server, bounded.
+
 - **Run gate on an UPDATE no calling flow started.** Where COVERAGE.md exists and the coverage loop did not invoke this run, put this ask before MEASURE - every instrumented suite runs and the doc is rewritten, so a conversational 'what is our coverage?' never starts that alone. No answer, no run.
 
   ```ask
@@ -36,6 +37,20 @@ Two halves, split differently:
   No COVERAGE.md yet. Measure every surface now? <the surfaces, and the containers a suite starts>
   - 'Measure now (Recommended)' - each surface's suite runs once, then COVERAGE.md is written
   - 'Not now' - nothing runs, nothing is written
+  ```
+
+  The mode and bar asks, in that same call when the gate fires:
+
+  ```ask
+  Analyze <the measured surfaces> through the test-coverage-analyzer seats or in this session?
+  - 'Through the seats (Recommended)' - the read-only seats absorb the raw-output reads; the judgment and the write stay here
+  - 'In this session' - navigation-server-first and bounded, no dispatch
+  ```
+
+  ```ask
+  No coverage bar is recorded yet. Which bar should COVERAGE.md judge against?
+  - '90% line coverage after exclusions (Recommended)' - the house default, recorded in the doc
+  - 'A different bar' - I ask for the number and the metric next, in plain text
   ```
 
 - **Analysis on an UPDATE is INLINE** (doc + stamp exist) - compare this run's fresh numbers against the doc's previous per-module table and deep-read only where they moved; unchanged modules keep their recorded weak points. Dispatch the agent for a surface whose picture shifted broadly - that surface is a first capture again - or whenever the USER explicitly asks for agents: their ask always wins over the inline default.

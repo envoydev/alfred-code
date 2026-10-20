@@ -23,6 +23,23 @@ You record the user's own code, architecture and git preferences and regenerate 
 
 `<script>` is `node .claude/skills/capture-preferences/scripts/preferences.js`, run from the project root.
 
+With no arguments, the three area asks go in ONE AskUserQuestion call, one question per area:
+
+```ask
+Any <area> preferences to record? Type them via Other - one per line, or split on `;`.
+- 'Skip <area> (Recommended)' - nothing is written for this area; a later run can add them
+- 'I have some' - I ask for them next, in plain text
+```
+
+`/capture-preferences <area>` walks that area's entries, up to four per AskUserQuestion call:
+
+```ask
+<id> - <title>. Rule: <its Rule: line>. Keep it?
+- 'Keep (Recommended)' - the entry stays as written
+- 'Change it' - I ask for the new wording next, in plain text
+- 'Remove it' - the entry is deleted and its id joins `Retired:`
+```
+
 ### 1. CLASSIFY
 
 Each preference goes to one area:
@@ -31,7 +48,13 @@ Each preference goes to one area:
 - **architecture** - how units relate: dependencies, boundaries, layers, packages, what may call what.
 - **git** - branches, commits, pull requests, history.
 
-One that genuinely reads as two areas is asked as one question naming both readings - never split silently.
+One that genuinely reads as two areas is asked as one question naming both readings - never split silently:
+
+```ask
+'<the preference>' reads two ways: <area> - <reading>, or <area> - <reading>. Which did you mean?
+- '<the reading its words fit best> (Recommended)' - the entry lands in that area's doc
+- '<the other reading>' - the entry lands in the other area's doc
+```
 
 ### 2. NORMALIZE
 
@@ -52,7 +75,13 @@ A clash with a convention or style the project merely follows is no ask: the pre
 
 ### 4. WRITE
 
-Write each touched doc whole: its title, `Updated: <today>` (not a `Captured:` stamp - the docs record the user's words, not the code), `Retired:` once an id has been removed, then the entries in id order. A removal deletes the entry and adds its id to `Retired:`. Write `watch.json` holding `{}` beside the docs when it is absent - the folder is a docs domain with no watched globs. Then `<script> lint`; every `PROBLEM` line is fixed before the next step. Over the 8,000-char cap, ask what to cut - naming the three longest entries - before the rule is written: every session and seat pays for the three docs.
+Write each touched doc whole: its title, `Updated: <today>` (not a `Captured:` stamp - the docs record the user's words, not the code), `Retired:` once an id has been removed, then the entries in id order. A removal deletes the entry and adds its id to `Retired:`. Write `watch.json` holding `{}` beside the docs when it is absent - the folder is a docs domain with no watched globs. Then `<script> lint`; every `PROBLEM` line is fixed before the next step. Over the 8,000-char cap, ask what to cut before the rule is written - every session and seat pays for the three docs:
+
+```ask
+The three preferences docs hold <n> chars, over the 8,000 cap. Longest: <id> (<n> chars), <id> (<n>), <id> (<n>). What gets cut?
+- 'Tighten those three (Recommended)' - I shorten their Scope:, Why: and Except: lines, keep each Rule: as written, and show the new text before the rule is written
+- 'Remove entries' - I ask which ids next, in plain text; each joins `Retired:`
+```
 
 ### 5. MEASURE
 
@@ -66,6 +95,7 @@ Write each touched doc whole: its title, `Updated: <today>` (not a `Captured:` s
 
 ```
 Docs: <doc> - <ids added | changed | removed>; overrides <what a preference beats, or none>
+Conflicts: <the sources step 3 read> - <each clash asked and its answer | none>
 Check: <id> <n> violations[, <id> <n> violations] | none with a Check:
 Rule: <the script's Rule: line, verbatim>
 ```

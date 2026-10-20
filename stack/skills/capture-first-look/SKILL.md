@@ -60,7 +60,7 @@ node "<scan>" --orientation --root . --out "<docs-path>/architecture/ORIENTATION
 
 ## 3. Check, then report
 
-Run `node .claude/hooks/docs.js lint` once. A `PROBLEM ORIENTATION.md ...` line (a path the file names
+Run `node .claude/hooks/docs.js lint architecture` once - another domain's rows are not this scan's. A `PROBLEM ORIENTATION.md ...` line (a path the file names
 that does not exist) is reported as the scan's miss - never hand-edit the file to fix it; the next scan
 or the capture rewrites it whole. Then report, one line per field:
 

@@ -26,11 +26,15 @@ The report body carries aggregates, tool names, token counts, and file PATHS onl
 
 An invocation that names the scope (session ids, 'the last 3', a since-date, 'all') IS the answer - never re-ask; the one exception is a scope that includes the CURRENT session, which always routes through the fresh-session self-check below. Otherwise resolve the candidates first (step 1's grep), then ask ONE question via AskUserQuestion, each option carrying its real count:
 
-- **Up to 12 unaudited, oldest first (recommended)** - the batch bound, and re-run for the rest.
-- **All matching** - every transcript with a stack-skill run, N unaudited, and say plainly that the run still closes at the bound and names the rest for a re-run.
-- **Today's sessions** - the matching transcripts started today, N.
-- **Current session only** - routes through the fresh-session self-check below (exclude it from this run, or hand the invocation to a fresh session - it is never audited from its own tail).
-- A custom scope arrives via the built-in Other.
+```ask
+Which sessions should the audit cover? <N> ran a stack skill, <U> unaudited.
+- 'Up to 12 unaudited, oldest first (Recommended)' - the batch bound; a re-run takes the rest
+- 'All matching (<U>)' - the run still closes at the bound and names the rest for a re-run
+- 'Today's sessions (<T>)' - the matching transcripts started today
+- 'Current session only' - the fresh-session self-check below; never audited from its own tail
+```
+
+A custom scope arrives via the built-in Other.
 
 Hold the answer for the run. **The batch is BOUNDED - at 12 bundles, or at the first bundle boundary past this install's fresh-session trigger, whichever comes first - and the marker goes on the bounded option, not the largest one.** The gate that ends step 4 decides it after each bundle; on `CLOSE`, close the run naming exactly what is left and the invocation that resumes it.
 
@@ -48,7 +52,15 @@ Two run modes, opposite expectations:
 ### 1. FIND the transcripts
 Claude Code writes one JSONL per session under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/<encoded-project-path>/` - the folder whose name is this project's absolute path with every non-alphanumeric character replaced by a dash. List `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/` and take the folder whose name matches, rather than computing it. Grep the `*.jsonl` files there for each SKILLS name (on the DETECT default: for the invocation markers of any installed stack skill) and list which session file(s) contain which skill RUN - invocation markers only, never bare mentions. A marker may carry a plugin prefix, so the pattern allows one: `grep -lE '<command-name>/?([A-Za-z0-9_-]+:)?(<names>)</command-name>|"skill":"([A-Za-z0-9_-]+:)?(<names>)"'`, with `<names>` the skill names joined by `|`; the core's `/alfred-code:*` command runs (setup, update, configure, validate, init) count as stack runs too. A `<session-id>/subagents/` folder next to a session file belongs to that session - note it (for the default trio, its existence is already a finding; see the report shape).
 
-With the matches listed, resolve SESSIONS: unless the invocation itself named the scope, this step IS an AskUserQuestion call - fire the run-start ask above with the counts this grep just produced, and only then continue. Never pick a scope yourself and never default to the current session on a bare invocation. Self-check before anything runs: when the resolved scope includes the session this audit is running in, stop, restate the fresh-session rule, and put the resolution through ONE AskUserQuestion - **Exclude current session (recommended)**: drop the current id from the scope and note it for the next fresh-session run; **Hand off to a fresh session**: end the turn with the invocation to paste there - never resolve it silently and never audit the live session's own tail. Then audit EVERY session in the chosen scope - never just the newest, never a silent subset; each audited session gets its own step-4 bundle. A previously-audited session is skipped and listed as previously-audited, re-audited only on an explicit ask - the test (the report, never the folder) is in `references/run-mechanics.md`, read at step 2.
+With the matches listed, resolve SESSIONS: unless the invocation itself named the scope, this step IS an AskUserQuestion call - fire the run-start ask above with the counts this grep just produced, and only then continue. Never pick a scope yourself and never default to the current session on a bare invocation. Self-check before anything runs: when the resolved scope includes the session this audit is running in, stop, restate the fresh-session rule, and put the resolution through ONE AskUserQuestion - never resolve it silently, never audit the live session's own tail:
+
+```ask
+The scope includes this session (<id>). How should it go?
+- 'Exclude current session (Recommended)' - drop its id; note it for the next fresh-session run
+- 'Hand off to a fresh session' - end the turn with the invocation to paste there
+```
+
+Then audit EVERY session in the chosen scope - never just the newest, never a silent subset; each audited session gets its own step-4 bundle. A previously-audited session is skipped and listed as previously-audited, re-audited only on an explicit ask - the test (the report, never the folder) is in `references/run-mechanics.md`, read at step 2.
 
 ### 2. GET the analyzer
 It ships in the stack's source repo, not in this project. LOOK BEFORE DOWNLOADING: where the stack is installed as plugins, the agent tool's own plugin cache already holds the whole repo (`stack/`, `scripts/`, `meta/` and all - it is the repo root the marketplace entries are sourced from), so the newest valid entry there is the snapshot.
