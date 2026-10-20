@@ -224,4 +224,12 @@ test('agents #14: the reviewer names its security categories, code-style has one
     assert.ok(auditor.includes("the security rule's Credentials section"), 'pointing at its home');
 });
 
+// --- agents #5: per-dispatch effort exists on the Agent tool; routing never sets it, only the user's ask does ----------------
+test('agents #5: model-routing says the Agent tool takes effort and the house sets it only on the user\'s ask', () =>
+{
+    const mr = squash(readRel('stack/skills/task-solve-cross/references/model-routing.md'));
+    assert.doesNotMatch(mr, /not re-tunable per call|the seat cannot receive/, 'the drifted claim');
+    assert.ok(mr.includes("The Agent tool does take a per-dispatch `effort` argument, but the house sets it only on the user's explicit ask"), 'the current fact and the house use');
+});
+
 module.exports = { seats, read, readRel, meta, body, section, squash, rules, copiesOf, listedIn, of };
