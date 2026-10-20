@@ -100,8 +100,9 @@ test('M68: the browser-only screenshot line leaves the always-on navigation rule
     assert.ok(row && row.includes('never the iteration loop'), 'the browser row carries the mid-loop rule');
     // The M68 ruling stands - one rule text for every teammate, never a per-OS rule COPY. Audit 2026-10-14 RU13 (the
     // user's ruling): a per-host hook line is no copy, so the Windows line rides memory-session.js on win32 only, and the
-    // rule keeps one pointer at it (the hook's own cases: memory-session.test.js, RU13).
-    assert.ok(nav.includes('- The traps of this host\'s own shell (zsh, Git Bash on Windows) arrive in the session-start context, only where they apply.'), 'the pointer');
+    // rule kept one pointer at it (the hook's own cases: memory-session.test.js, RU13) - until stack audit 2026-10-20 rules
+    // row 6 dropped the pointer as a no-op: the hook line arrives on its own, where it applies.
+    assert.ok(!nav.includes('The traps of this host\'s own shell'), 'the no-op pointer is gone');
     assert.ok(!nav.includes('cygpath'), 'the Windows line left the always-on rule');
     const { hostLines } = require('../stack/hooks/memory-session.js');
     assert.ok(hostLines('win32', 'C:\\Program Files\\Git\\usr\\bin\\bash.exe').some((l) => l.startsWith('- On Windows (Git Bash): pass a `/tmp/x` path')), 'the hook carries it on win32');
@@ -199,8 +200,10 @@ test('rules F5 + F16: the navigation rule says one thing per line, in plain word
     assert.match(nav, /- A language the navigation server's `project\.yml` \(`<data root>\/serena\/`\) does not list takes the fallback from its first call\. -/);
     assert.match(nav, /- A large JSON \/ YAML \/ lock \/ fixture file is queried/);
     assert.ok(!nav.includes('check the tool list before an edit call'), 'F16');
-    // F16's edit-tool line named the server's memory edit tools; they are off since the user's 2026-10-13 ruling.
-    assert.ok(nav.includes('- The navigation server is navigation only: its memory tools are off'), 'F16 superseded');
+    // F16's edit-tool line named the server's memory edit tools; they are off since the user's 2026-10-13 ruling, and
+    // the memory rule is the one home of that line (stack audit 2026-10-20 rules row 6).
+    assert.ok(!/memory tools are off/.test(nav), 'F16 superseded, the duplicate gone');
+    assert.ok(injected('alfred-memory').includes('never in the navigation server (its memory tools are off)'), 'the memory rule owns it');
 });
 
 test('rules F6: the compaction section carries the name the docs give it', () =>

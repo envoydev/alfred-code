@@ -926,7 +926,6 @@
       "skills": [],
       "agents": [],
       "mcps": [
-        "alfred-memory",
         "alfred-navigation"
       ],
       "plugins": [],

@@ -123,7 +123,7 @@ test('the rules: alfred-memory.md routes the handoff notes, the trio protocol ho
       assert.ok(read(`stack/agents/${f}`).includes(piece), `${f}: ${piece}`);
   const nav = read('stack/rules/alfred-navigation.md');
   assert.ok(!/write_memory|seat memory handoff/.test(nav), 'alfred-navigation.md keeps no memory on the server');
-  assert.match(nav, /The navigation server is navigation only: its memory tools are off/);
+  assert.ok(!/memory tools are off/.test(nav), 'stack audit 2026-10-20 rules row 6: alfred-memory.md is the one home of the line');
 });
 
 test('the manifest wires memory-session.js on SubagentStart beside SessionStart', () => {
