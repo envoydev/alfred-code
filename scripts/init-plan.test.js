@@ -365,6 +365,18 @@ for (const rel of ['stack/AGENTS.template.md', 'setup-plugin/references/post-ins
     });
 }
 
+// Template audit 2026-10-20: the template put /capture-preferences into 'the post-install order', which init never runs -
+// the preferences are the user's words, not a capture of the code. The order the template prints is CAPTURES' alone.
+test('capture order: the template\'s post-install order names only the captures init runs', () =>
+{
+    const { CAPTURES } = require('./init-plan.js');
+    const flat = fs.readFileSync(path.join(__dirname, '..', 'stack', 'AGENTS.template.md'), 'utf8').replace(/\s+/g, ' ');
+    const order = /in the post-install order: (.*?) LAST/.exec(flat);
+    assert.ok(order, 'the template prints the post-install order');
+    assert.deepStrictEqual([...order[1].matchAll(/\/(capture-[a-z-]+)/g)].map((m) => m[1]), CAPTURES.map((c) => c.skill));
+    assert.match(flat, /init never runs \/capture-preferences/);
+});
+
 // --- unattended (ALFRED_CODE_UNATTENDED=1) ---------------------------------------------------------
 // Nobody answers: init takes each ask's recommended option unless it is destructive or needs a person,
 // and says so in one `unattended:` line per ask. The asks init itself owns are decided HERE, so the

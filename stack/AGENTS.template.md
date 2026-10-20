@@ -14,10 +14,12 @@ ends on the deterministic check; by hand, the steps are:
    row whose capture skill this install skipped (its /command will not resolve).
 3. The rows marked GENERATED come from captures /alfred-code:init already ran for the installed ones -
    filling this file never re-runs one whose file exists. A row whose file is missing takes its capture, in the post-install
-   order: /capture-architecture, /capture-code-style, /capture-preferences, then
+   order: /capture-architecture, /capture-code-style, then
    /capture-awareness LAST, so its generated inventory reflects the final install (it writes the
-   run book and maps the sibling repos too, where the project has any). All but
-   /capture-architecture are slash-only: the user types them - a model Skill call is refused.
+   run book and maps the sibling repos too, where the project has any). The preferences row is no
+   capture of the code: init never runs /capture-preferences - the user records their own wants when
+   they have any (before /capture-awareness when both run) - so its row is dropped while its file is
+   missing. All but /capture-architecture are slash-only: the user types them - a model Skill call is refused.
 If the repo already has a root AGENTS.md (for other agent tooling), it IS the project's file: the
 installer seeds nothing beside it, and it is improved in place, never replaced by this template. Claude
 Code reads an AGENTS.md on its own only while no CLAUDE.md, .claude/CLAUDE.md or CLAUDE.local.md sits in
@@ -35,8 +37,10 @@ seats load none of it) - keep it lean (target: under 200 live lines) and route w
 observable trigger (an artifact, a command, a checkpoint). The test for every line you add: would removing it make Claude make a mistake? If not, cut it - what Claude can read from the code ('the UserService handles users'), standard language conventions, generic advice ('write clean code', 'test new features'), file-by-file tours, rules the formatter already owns (.editorconfig, ESLint, Prettier, dotnet format), a one-off fix that will not recur, and a paragraph where one line says it never earn their tokens; Bash commands it cannot guess, conventions that differ from defaults, gotchas and repository etiquette do.
 Five shapes to keep out, whatever they cost: the aspiration document (vague wishes), the wishlist
 (conventions the author wants instead of the ones the code enforces - an inherited codebase's own
-conventions win), the freeze (never touched while the repo moved on), the TODO ledger (scratch
-notes), and the single source (everything here, nothing routed to a scoped rule or a skill).
+conventions win; a code, architecture or git convention the USER wants is a preference, which
+/capture-preferences records and whose rule outranks this file, so it never lands here), the
+freeze (never touched while the repo moved on), the TODO ledger (scratch notes), and the single
+source (everything here, nothing routed to a scoped rule or a skill).
 Prune it when things go wrong, and test a change by watching whether behaviour shifts. The cross-project working conventions
 are NOT here: they load from the always-on baseline rules in .claude/rules/ (installer-managed,
 refreshed on update) - never restate them in this file. (HTML comment: stripped from injection,
@@ -77,9 +81,9 @@ map, a dependency rule's why - plus a pointer to its sections, never a second co
 9. Cross-cutting checklists - for each change that must move several files in lockstep, the full touch-point list.
 10. Secrets + config - where this project's secrets / env config live (the globs); mirror them into
    permissions.deny in .claude/settings.json - the installer seeds only the generic .env* / key /
-   cert blocks.
+   cert / .sensitive-data blocks.
 11. Code conventions - only where this project DEPARTS from the house-style skill the path-scoped
-   rules attach for that file type; a line that repeats the skill is a duplicate.
+   rules attach for that file type; a line that repeats the skill or a preference is a duplicate.
 12. Testing approach - per-layer strategy, what's excluded, the integration / regression net.
 13. Load by artifact - a table mapping this repo's concrete files / types / constructs to the skills
     that cover them but never fire on their own keywords, typically an installed plugin's skills
@@ -98,6 +102,7 @@ running it.
 
 | Rule | What it governs |
 |---|---|
-| `.claude/rules/alfred-awareness.md` (GENERATED - user-run /capture-awareness after install, update, or a trim) | imports `<docs-path>/awareness/` into every session: the skill / agent usage policy (dispatch is explicit-only) and this project's real skill / seat / MCP inventory, the run book (how to build, start, log into and hand-check the app), and the sibling repos with their seams where the project has any |
+| `.claude/rules/alfred-awareness.md` (GENERATED - user-run /capture-awareness after install, update, or a trim) | imports `<docs-path>/awareness/` into every session: the skill / agent usage policy and this project's skill / seat / MCP inventory, the app's run book, and the sibling repos where the project has any |
 | `.claude/rules/alfred-architecture.md` (GENERATED - run /capture-architecture) | architecture capture marker - the docs exist, read them before a structural change; where they live is the docs-root baseline's, the orientation itself arrives through the docs hook |
 | `.claude/rules/project-code-style.md` (GENERATED - user-run /capture-code-style; path-scoped, plus the full doc) | the project's actual code style - the condensed core auto-attaches on any matching file touch (main session and subagents); the full capture stays in `<docs-path>/code-style/CODE-STYLE.md` |
+| `.claude/rules/alfred-preferences.md` (GENERATED - user-run /capture-preferences when the user states a code, architecture or git preference) | the user's own preferences from `<docs-path>/preferences/`, carried inline into every session and seat - where one contradicts this file, the preference wins |
