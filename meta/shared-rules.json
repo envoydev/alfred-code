@@ -7863,6 +7863,23 @@
           "marker": "the docs-root rule's hand-off block"
         }
       ]
+    },
+    "git-preferences-carve-out": {
+      "_note": "The user's git preferences (GIT-PREFERENCES.md, carried by the generated alfred-preferences.md rule) outrank the git rule's branch, commit-message and PR conventions, never its consent or safety lines (the user's design of 2026-10-20, aa385a74). The git rule owns the carve-out; the preferences rule template and its doc shape restate it beside their own never-list, which named only security, validation, error handling, accessibility and hook gates - a preference such as 'force-push freely' then outranked the git rule's safety line in one rule and not the other (rules audit 2026-10-20b).",
+      "owner": {
+        "file": "stack/rules/alfred-git.md",
+        "marker": "never its consent or safety lines"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/capture-preferences/references/rule-template.md",
+          "marker": "`alfred-git.md`'s consent and safety lines"
+        },
+        {
+          "file": "stack/skills/capture-preferences/references/doc-shape.md",
+          "marker": "`alfred-git.md`'s consent and safety lines"
+        }
+      ]
     }
   }
 }
