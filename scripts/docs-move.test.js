@@ -294,6 +294,10 @@ test('installer: a hand-set root is not moved unasked - the key stays and a !! l
     });
     assert.match(outs[1], /!! docs root: docs-ext was set by hand - nothing moved yet; \/alfred-code:update asks which of ORIENTATION\.md, architecture\/, flow\/, mydomain\/ are the team's own - those stay, the rest move to \.alfred\/docs/, outs[1]);
     assert.deepStrictEqual([steps[1].key, steps[1].rule, steps[1].moved], ['docs-ext', 'docs-ext', []]);
+    // 'Nothing moved yet' means nothing: the 2.8.0 layout pass leaves an unanswered hand-set root alone too - it re-laid
+    // the team's folder out by name, flow/ into the data root's state/ (final review 2026-10-20b).
+    assert.ok(steps[1].left.includes('flow'), `the hand-set root keeps flow/ until the ask is answered: ${steps[1].left}`);
+    assert.strictEqual(steps[1].gate, false, 'no receipt left the hand-set root');
     assert.match(outs[2], /docs root: moved docs-ext -> \.alfred\/docs/, outs[2]);
     assert.deepStrictEqual([steps[2].key, steps[2].rule, steps[2].left], [undefined, '.alfred/docs', ['README.md', 'guides']]);
     assert.doesNotMatch(outs[3], /docs root/, outs[3]);
@@ -323,6 +327,7 @@ test('installer: a --docs-root-leave name that is not the stack\'s moves nothing
     });
     assert.match(outs[1], /!! docs root: --docs-root-leave names architektur, not one of the stack's entries at docs-ext \(ORIENTATION\.md, architecture\/, flow\/, mydomain\/\) - nothing moved; ALFRED_CODE_DOCS_PATH stays/, outs[1]);
     assert.deepStrictEqual([result.key, result.rule, result.moved], ['docs-ext', 'docs-ext', []]);
+    assert.ok(result.left.includes('flow') && !result.gate, `nothing re-laid out either: ${result.left}`);
 });
 
 test('installer: a key equal to <data root>/docs is removed with nothing moved', POSIX_ONLY, () =>

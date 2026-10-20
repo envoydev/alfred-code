@@ -914,16 +914,21 @@ function runLayers(ctx)
     // project database lands under a root whose .gitignore already keeps it out.
     ignoreStep(ctx, docsPath);
     importMemory(ctx);
-    docs.migrateDocsDomains({ projectRoot: ctx.projectRoot, docsPath, rules: selection.generatedRules(ctx.projectRoot), instructions: selection.instructionFiles(ctx.projectRoot), log: ctx.log });
-    // After the .gitignore names the new folder, so a raw transcript copy never lands unignored.
-    try { docs.migrateUsageReport({ projectRoot: ctx.projectRoot, docsPath, dataPath: ctx.dataInfo.root, log: ctx.log }); }
-    catch (err) { ctx.note(`the usage report folder could not be renamed under ${docsPath} (${err.message}) - it stays as alfred-code-usage-report/`); }
-    try { docs.migratePlans({ projectRoot: ctx.projectRoot, docsPath, rules: selection.generatedRules(ctx.projectRoot), instructions: selection.instructionFiles(ctx.projectRoot), log: ctx.log }); }
-    catch (err) { ctx.note(`the folders under ${docsPath}/superpowers could not be moved up (${err.message}) - move each one to ${docsPath}/ by hand`); }
-    // After migratePlans, so superpowers/plans/ reaches plans/ first; after the .gitignore step, so a nested history/
-    // .gitignore of the stack's is gone before history/ moves into the data root's state/.
-    try { docs.migrateLayout({ projectRoot: ctx.projectRoot, docsPath, dataPath: ctx.dataInfo.root, log: ctx.log }); }
-    catch (err) { ctx.note(`the 2.8.0 folder layout could not be applied under ${docsPath} (${err.message}) - every file is back where it was; re-run /alfred-code:update`); }
+    // A hand-set root still waiting on update's ask moves nothing yet - its folders are re-laid out only once it is
+    // the data root's (final review 2026-10-20b: the layout pass moved a team's flow/ and history/ by name).
+    if (!ctx.docsRootPending)
+    {
+        docs.migrateDocsDomains({ projectRoot: ctx.projectRoot, docsPath, rules: selection.generatedRules(ctx.projectRoot), instructions: selection.instructionFiles(ctx.projectRoot), log: ctx.log });
+        // After the .gitignore names the new folder, so a raw transcript copy never lands unignored.
+        try { docs.migrateUsageReport({ projectRoot: ctx.projectRoot, docsPath, dataPath: ctx.dataInfo.root, log: ctx.log }); }
+        catch (err) { ctx.note(`the usage report folder could not be renamed under ${docsPath} (${err.message}) - it stays as alfred-code-usage-report/`); }
+        try { docs.migratePlans({ projectRoot: ctx.projectRoot, docsPath, rules: selection.generatedRules(ctx.projectRoot), instructions: selection.instructionFiles(ctx.projectRoot), log: ctx.log }); }
+        catch (err) { ctx.note(`the folders under ${docsPath}/superpowers could not be moved up (${err.message}) - move each one to ${docsPath}/ by hand`); }
+        // After migratePlans, so superpowers/plans/ reaches plans/ first; after the .gitignore step, so a nested history/
+        // .gitignore of the stack's is gone before history/ moves into the data root's state/.
+        try { docs.migrateLayout({ projectRoot: ctx.projectRoot, docsPath, dataPath: ctx.dataInfo.root, log: ctx.log }); }
+        catch (err) { ctx.note(`the 2.8.0 folder layout could not be applied under ${docsPath} (${err.message}) - every file is back where it was; re-run /alfred-code:update`); }
+    }
     if (args.action === 'install') ctx.stackAgentsMd = seeds.seedAgentsMd({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, log: ctx.log, note: ctx.note });
     // An update moves the seed an earlier release wrote as .claude/CLAUDE.md - only while it is still unedited.
     else if (args.action === 'update')
@@ -1263,12 +1268,14 @@ function docsRootStep(ctx)
     const plan = docs.docsMovePlan({ projectRoot: ctx.projectRoot, ...docs.docsMoveViews({ claudeDir: ctx.claudeDir }), scope: args.scope, stamped, to, prior: ctx.dataInfo.prior, ledgered, leave: args.docsRootLeave || [] });
     ctx.docsPath = null;
     ctx.docsVersioningCarry = null;
+    ctx.docsRootPending = false;
     const keep = { keep: true };
     for (const root of plan.shadowed) log(`docs root: ${root} (settings.json) was hidden by settings.local.json's root - not moved; take what you need from it by hand`);
     // A leave name that is none of the stack's entries: a typo must never move the folder it meant to keep.
     if (plan.unknown.length)
     {
         ctx.docsPath = plan.keys.length ? keep : null;
+        ctx.docsRootPending = true;
         note(`docs root: --docs-root-leave names ${plan.unknown.join(', ')}, not one of the stack's entries at ${plan.from} (${plan.moves.join(', ') || 'none'}) - nothing moved; ALFRED_CODE_DOCS_PATH stays; run /alfred-code:update again`);
     }
     else if (plan.state === 'drop')
@@ -1289,6 +1296,7 @@ function docsRootStep(ctx)
     else if (plan.state === 'move' && plan.handSet && args.docsRootMove !== 'move')
     {
         ctx.docsPath = keep;
+        ctx.docsRootPending = true;
         note(`docs root: ${plan.from} was set by hand - nothing moved yet; /alfred-code:update asks which of ${plan.moves.join(', ')} are the team's own - those stay, the rest move to ${to} (${plan.tracked.length + plan.untracked.length} file(s); ${plan.left.length ? `${plan.left.join(', ')} stay` : 'nothing else there'})`);
     }
     else if (plan.state === 'move')
