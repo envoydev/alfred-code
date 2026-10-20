@@ -2279,3 +2279,31 @@ module.exports = { DOCS_ROOT: require('path').join(process.env.CLAUDE_PROJECT_DI
     }
   } finally { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+// Ruling S3 (the user's, 2026-10-20): an ask the idle timeout closed is no answer, so while this session's timeout marker
+// stands, writing an APPROVED / AUTO line into flow/APPROVAL is denied - by a file tool or a shell write that carries it.
+test('S3: a stamp written while the last question timed out is denied; a delete, another file or an answered session passes', () => {
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  const logs = fs.mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'docs-s3-'));
+  try {
+    const s = sid();
+    const env = { ALFRED_CODE_HOOK_LOG_DIR: logs };
+    const stamp = `${r.root}/.claude/docs/flow/APPROVAL`;
+    const write = (content, session = s) => r.hook(pre('Write', { file_path: stamp, content }, session), env);
+    assert.ok(!denied(write('APPROVED 1 - "build it"\n')), 'no timeout: the stamp is written');
+    const marker = require('../stack/hooks/hook-prelude.js').askTimeoutMarker(s, env);
+    fs.writeFileSync(marker, String(Date.now()));
+    const held = write('APPROVED 1 - "build it"\n');
+    assert.ok(denied(held), 'after a timeout an APPROVED stamp is denied');
+    assert.match(JSON.parse(held.stdout).hookSpecificOutput.permissionDecisionReason, /the question timed out - re-ask/);
+    assert.ok(denied(write('AUTO - "go"\n')), 'an AUTO line too');
+    assert.ok(denied(r.hook(pre('Edit', { file_path: stamp, old_string: 'x', new_string: 'APPROVED 2 - "ok"' }, s), env)), 'an Edit that adds it');
+    assert.ok(denied(r.hook(pre('Bash', { command: "printf 'APPROVED 1 - ok\\n' > .claude/docs/flow/APPROVAL" }, s), env)), 'a shell write that carries it');
+    assert.ok(!denied(r.hook(pre('Bash', { command: 'rm -f .claude/docs/flow/APPROVAL' }, s), env)), 'deleting the stamp passes');
+    assert.ok(!denied(r.hook(pre('Write', { file_path: `${r.root}/.claude/docs/flow/NOTES`, content: 'APPROVED by nobody\n' }, s), env)), 'another flow file passes');
+    assert.ok(!denied(write('APPROVED 1 - "x"\n', sid())), 'another session with no timeout passes');
+    assert.ok(!denied(r.hook({ ...pre('Write', { file_path: stamp, content: 'APPROVED 1\n' }, s), agent_id: 'a1', agent_type: 'x' }, env)), 'a seat\'s call is not judged here');
+    fs.rmSync(marker, { force: true });
+    assert.ok(!denied(write('APPROVED 1 - "build it"\n')), 'once the next answer clears the marker, the stamp is written');
+  } finally { r.rm(); fs.rmSync(logs, { recursive: true, force: true }); }
+});

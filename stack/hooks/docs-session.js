@@ -363,6 +363,7 @@ function main() {
   process.env.CLAUDE_PROJECT_DIR = root;
   // before the domain gate: a plan file lives under the docs root whether or not a domain does
   if (event === 'PreToolUse' && stampedPlanWrite(input, root)) return;
+  if (event === 'PreToolUse' && stampAfterTimeoutWrite(input, root)) return;
   if (event === 'SessionStart') {
     const stranded = sweepStrandedRoot(root);
     if (stranded !== null) log(root, input, { event: 'stranded-root', from: LEGACY_DOCS_ROOT, files: stranded });
@@ -992,6 +993,40 @@ function closeStillOpen(input, abs) {
     if (typeof c === 'string' ? !/^\s*(?:Stop hook feedback:|<task-notification>)/.test(c) : Array.isArray(c) && c.some((b) => b && b.type === 'text' && !/^\s*(?:Stop hook feedback:|<system-reminder>)/.test(b.text || ''))) return false;
     if (Array.isArray(c) && c.some((b) => b && b.type === 'tool_result' && asks.has(b.tool_use_id))) return false;
   }
+  return true;
+}
+// Ruling S3 (the user's, 2026-10-20): an AskUserQuestion closed by Claude Code's idle timeout is no answer. The answer
+// hook writes this session's timeout marker on such a close and removes it on the next answered ask or typed prompt;
+// while it stands, writing an APPROVED / AUTO line into `<docs-path>/flow/APPROVAL` - a file tool or a shell write that
+// carries the word - is denied, so no stamp records an approval nobody gave (the dispatch guard holds the gated
+// dispatch too). A seat's call, a delete of the stamp, and any other flow file pass.
+function stampAfterTimeoutWrite(input, root) {
+  if (input.agent_id) return false;
+  let marker = '';
+  try { const pre = require('./hook-prelude.js'); if (typeof pre.askTimeoutMarker === 'function') marker = pre.askTimeoutMarker(input.session_id); } catch { return false; }
+  if (!marker || !fs.existsSync(marker)) return false;
+  const name = input.tool_name || '';
+  const t = input.tool_input || {};
+  const real = (p) => { try { return fs.realpathSync.native(p); } catch { return p; } };
+  const stamp = path.resolve(real(path.resolve(root, docsRootEnv(), 'flow')), 'APPROVAL');
+  const isStamp = (abs) => path.resolve(real(path.dirname(abs)), path.basename(abs)) === stamp;
+  const STAMP_WORD = /^\s*(?:APPROVED|AUTO)\b/m;
+  let hit = false;
+  if (/^(?:Edit|Write|MultiEdit)$/.test(name) && typeof t.file_path === 'string' && isStamp(path.resolve(root, t.file_path))) {
+    const added = name === 'Write' ? String(t.content || '') : (name === 'Edit' ? [t] : Array.isArray(t.edits) ? t.edits : []).map((e) => String((e && e.new_string) || '')).join('\n');
+    hit = STAMP_WORD.test(added);
+  } else if (isShellTool(name) && typeof t.command === 'string' && /\b(?:APPROVED|AUTO)\b/.test(t.command)) {
+    const base = typeof input.cwd === 'string' && input.cwd ? input.cwd : root;
+    hit = writeTargets(t.command).some((w) => !isUnknown(w) && isStamp(path.resolve(base, w.replace(/^['"]|['"]$/g, ''))));
+  }
+  if (!hit) return false;
+  const rel = toPosix(path.relative(root, stamp));
+  const reason = `Blocked: the question timed out - re-ask. ${rel} would record an approval, but the last AskUserQuestion\n`
+    + "was closed by Claude Code's idle timeout ('No response after ...'), so nobody answered it. Re-ask through ONE\n"
+    + 'AskUserQuestion when the user is back and write the stamp from their answer.';
+  log(root, input, { event: 'stamp-after-timeout', target: rel });
+  blockRow(root, input, reason);
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
   return true;
 }
 function stampedPlanWrite(input, root) {
