@@ -7674,6 +7674,23 @@
           "marker": "| trivial | one file, no new dependency, no behaviour a test would see (typo, comment, format, rename inside a file) | edit -> scoped check -> close. No design, no audit, no stop |"
         }
       ]
+    },
+    "support-seat-memory-search": {
+      "_note": "Three read-only support seats hold the shared memory by spec (lint check 43: every seat searches and saves) but never used it (stack audit 2026-10-20 agents T2, the user's ruling: keep the grant, make them search). One search after the first locate call; the caller owns the notes, so they save nothing.",
+      "owner": {
+        "file": "stack/agents/architecture-analyzer.md",
+        "marker": "on the area's name, right after your first locate call: a prior finding or ruling about it is evidence you cite or contradict"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/code-quality-analyzer.md",
+          "marker": "on the area's name, right after your first locate call: a prior finding or ruling about it is evidence you cite or contradict"
+        },
+        {
+          "file": "stack/agents/evidence-gatherer.md",
+          "marker": "on the area's name, right after your first locate call: a prior finding or ruling about it is evidence you cite or contradict"
+        }
+      ]
     }
   }
 }
