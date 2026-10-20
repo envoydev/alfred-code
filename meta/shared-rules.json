@@ -7536,6 +7536,23 @@
           "marker": ".NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked."
         }
       ]
+    },
+    "config-protection-allow-ask": {
+      "_note": "The config-protection guard's allowance ask (config-protection-gate-named says when it fires) as a template, Allow recommended and first: the edit is the task the user asked for, and the guard's receipt names one file. Stack audit 2026-10-20 row 13 - the ask was prose in all three, so lint 61 could not hold its mark.",
+      "owner": {
+        "file": "stack/skills/typescript/SKILL.md",
+        "marker": "- 'Allow this edit (Recommended)' - the guard's receipt names this file and the same edit is retried\n- 'Keep the config as it is' - nothing changes in the file"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/dotnet-code-quality/SKILL.md",
+          "marker": "- 'Allow this edit (Recommended)' - the guard's receipt names this file and the same edit is retried\n- 'Keep the config as it is' - nothing changes in the file"
+        },
+        {
+          "file": "stack/skills/dotnet-project-setup/SKILL.md",
+          "marker": "- 'Allow this edit (Recommended)' - the guard's receipt names this file and the same edit is retried\n- 'Keep the config as it is' - nothing changes in the file"
+        }
+      ]
     }
   }
 }

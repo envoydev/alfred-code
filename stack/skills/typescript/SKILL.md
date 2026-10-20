@@ -35,6 +35,12 @@ Keep these in one shared base `tsconfig` and have each project `extends` it. A p
 
 Where the house config-protection guard runs, it blocks any strictness-key edit to a tsconfig that already exists - a tightening included - until the user allows it. Ask for that allowance through ONE AskUserQuestion with the error count the flag surfaces, and never route around the block; on Allow, the guard's receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path and the same edit is retried; a new tsconfig takes the full set from the start.
 
+```ask
+The config-protection guard holds this edit: <file> - <the change>, <N> new errors.
+- 'Allow this edit (Recommended)' - the guard's receipt names this file and the same edit is retried
+- 'Keep the config as it is' - nothing changes in the file
+```
+
 ## Don't lie to the compiler
 
 The whole value proposition collapses the moment you suppress a check. The rules:

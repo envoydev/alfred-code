@@ -77,6 +77,12 @@ Flipping `TreatWarningsAsErrors=true` on an existing codebase floods the build -
 
 Where the house config-protection guard runs, it blocks a change that loosens `WarningsAsErrors`, `EnforceCodeStyleInBuild` or another warning key in a Directory.Build.props or csproj that already exists (a pure tightening - a `WarningsAsErrors` entry added, `EnforceCodeStyleInBuild` or `TreatWarningsAsErrors` set to true, a `NoWarn` entry removed - passes), and any edit to an existing `.editorconfig` - a tightening included - until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the wave surfaces, and never route around the block; on Allow, the guard's receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path and the same edit is retried; a new file takes the settings from the start.
 
+```ask
+The config-protection guard holds this edit: <file> - <the change>, <N> new warnings.
+- 'Allow this edit (Recommended)' - the guard's receipt names this file and the same edit is retried
+- 'Keep the config as it is' - nothing changes in the file
+```
+
 ## The gate is `dotnet build`
 
 Analyzer enforcement is not a separate CI step - `dotnet build` runs the analyzers and, with warnings-as-errors, fails on a violation. So the same gate developers run locally is the CI gate. Add the formatter check and the build to CI; both must be reproducible from a clean checkout with no machine-global state.

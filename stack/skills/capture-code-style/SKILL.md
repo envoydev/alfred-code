@@ -24,6 +24,12 @@ The per-language configs (`.editorconfig`, eslint/prettier, `tsconfig`, the SQL 
 ## Execution modes
 DELEGATED vs INLINE keys on dispatch capability, not file presence - agent files on disk with no Agent tool to dispatch them is still INLINE. When dispatch is available, ask ONE question before a first capture's fan-out, via AskUserQuestion - characterize via code-style-analyzer seats (recommend it: the seats absorb the reads), or in-session? - unless a calling flow already picked the run's mode, which is inherited, never re-asked. Pick once, hold for the run:
 
+```ask
+First style capture across <the languages>. Characterize them through the code-style-analyzer seats or in this session?
+- 'Through the seats (Recommended)' - the seats absorb the reads; the merge and the write stay here
+- 'In this session' - one language at a time, no dispatch
+```
+
 - **FIRST capture** (no existing doc, or no `Captured:` stamp) - DELEGATED (the user chose seats): fan out code-style-analyzer per language as below, exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it); you merge and write. INLINE (chosen - or forced, no question asked: no dispatch, or a single-language repo too small to fan out): the same characterization in-session, one language at a time, honoring the agent's own rules (config first, located code second, 2 locating passes per language, divergence flagged) - then continue at MERGE identically.
 - **UPDATE** (doc + stamp exist) - INLINE in this session: `git diff --name-only <stamp-sha>..HEAD` names the changed files, and only the language families those files belong to get re-verified (config re-read, idioms spot-checked) - the other languages' sections stand. Escalate back to per-language dispatch when the drift spans most languages, the stamp's sha is unreachable or `+dirty`, or the USER explicitly asks for agents - their ask always wins.
 

@@ -169,6 +169,35 @@ test('row 8: task-verify-code no longer says /code-review always fans out', () =
     assert.match(t, /runs as its own subagent \(in the background in a terminal session\) and, with `ultra`, as a multi-agent cloud review/);
 });
 
+// Row 13: prose stops became ask templates, so lint 61 holds their one mark.
+test('row 13: the named prose stops are ask templates, each marking one option first', () =>
+{
+    const { lintAskTemplates, ASK_FLOW_TEMPLATES } = require('./lint-skills.js');
+    assert.strictEqual(ASK_FLOW_TEMPLATES['task-version-upgrade'], 5);
+    assert.strictEqual(ASK_FLOW_TEMPLATES['task-solve'], 10);
+    assert.strictEqual(ASK_FLOW_TEMPLATES['issue-diagnoser'], 5);
+    const want = {
+        'task-solve/SKILL.md': /Audit judgment: <the item>\. Apply it\?/,
+        'task-version-upgrade/SKILL.md': /Stage <N> hit a hard stop:/,
+        'issue-diagnoser/SKILL.md': /<The report is written \| The log points are in> - <findings path>/,
+        'capture-code-style/SKILL.md': /First style capture across <the languages>/,
+        'capture-architecture-quality/SKILL.md': /- 'Verify and rewrite at this HEAD \(Recommended\)'/,
+        'capture-code-quality/SKILL.md': /Judge <the modules> through the code-quality-analyzer seats or in this session\?/,
+        'dotnet-windows-service/SKILL.md': /- 'Hand the script over \(Recommended\)'/,
+        'dotnet-code-quality/SKILL.md': /- 'Allow this edit \(Recommended\)'/,
+        'dotnet-project-setup/SKILL.md': /- 'Allow this edit \(Recommended\)'/,
+        'typescript/SKILL.md': /- 'Allow this edit \(Recommended\)'/,
+    };
+    for (const [rel, re] of Object.entries(want))
+    {
+        const text = read(`stack/skills/${rel}`);
+        const blocks = [...text.matchAll(/^[ \t]*```ask[ \t]*\n([\s\S]*?)^[ \t]*```/gm)].map((m) => m[1]);
+        assert.ok(blocks.some((b) => re.test(b)), `${rel}: the stop is a template`);
+        assert.deepStrictEqual(lintAskTemplates([{ file: rel, text }]), [], rel);
+    }
+    assert.doesNotMatch(flat(read('stack/skills/capture-architecture-quality/SKILL.md')), /The run gate offers it as its first option/);
+});
+
 // Row 14: version / API drift, each against its official page (cited in the commit).
 test('row 14: zoneless, capacitor, desktop gate, Azure DevOps Mermaid and Vitest coverage follow the docs', () =>
 {

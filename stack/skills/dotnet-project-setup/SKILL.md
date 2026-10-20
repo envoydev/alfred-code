@@ -127,6 +127,12 @@ Prove it: `dotnet restore` and `dotnet build` - quote both summary lines.
 
 Where the house config-protection guard runs, it blocks a change that loosens `Nullable` or a warning key (`TreatWarningsAsErrors`, `NoWarn`, ...) in a Directory.Build.props or csproj that already exists - a pure tightening (`Nullable` toward `enable`, `TreatWarningsAsErrors` set to true, a `NoWarn` entry removed) passes - until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the flag surfaces, and never route around the block; on Allow, the guard's receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path and the same edit is retried; a new Directory.Build.props takes the baseline from the start.
 
+```ask
+The config-protection guard holds this edit: <file> - <the change>, <N> new warnings.
+- 'Allow this edit (Recommended)' - the guard's receipt names this file and the same edit is retried
+- 'Keep the config as it is' - nothing changes in the file
+```
+
 ## global.json - pin the SDK
 
 Pin the SDK so every machine and CI runner builds with the same toolchain. The SDK version and the project framework are independent - the 10.0 SDK also builds a project still below the floor (`net8.0` / `net9.0`), and any SDK from 9.0.200 reads `.slnx`.

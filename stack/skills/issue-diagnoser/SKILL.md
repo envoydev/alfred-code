@@ -181,6 +181,15 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    FRESH session resumed from that path, and this stop offers it as an option in its own words
    ('resume from `<findings path>` in a fresh session'). Recommend it once the chat has run for
    hours or past that same trigger - no `Stop` gate catches a session that never closes.
+   *Stop* - after 4a or 4c, one ask; past the trigger or after hours of chat the fresh-session option takes
+   the mark and goes first:
+
+   ```ask
+   <The report is written | The log points are in> - <findings path>. Next: <read the report | re-run until the next occurrence lands>.
+   - 'Stop here (Recommended)' - the findings file holds the cause and the next step
+   - 'Resume from <findings path> in a fresh session' - the next phase starts from the file alone
+   ```
+
    *Stop* - after 4b the close names the build as the user's own command:
 
    ```ask
