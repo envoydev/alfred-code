@@ -44,3 +44,25 @@ test('I3: the README points at the footprint doc for the always-on cost, never a
     assert.ok(faq.includes('(docs/install-footprint.md)'), 'the footprint doc');
     assert.ok(faq.includes('`/alfred-code:status`'), 'the install\'s own number');
 });
+
+// S1 (final review 2026-10-20b): the rule template and the doc shape name the git rule's consent and safety lines beside
+// the never-list, but the capture skill's own conflict check, which tells the user before a weakening entry is written,
+// did not - so 'force-push freely' was recorded with no warning while the rule it lands in says it never binds.
+test('S1: the capture\'s conflict check names the git rule\'s consent and safety lines in its never-binds list', () =>
+{
+    const body = flat(read('stack/skills/capture-preferences/SKILL.md'));
+    assert.ok(body.includes("A preference that would weaken security, input validation, error handling, accessibility or `alfred-git.md`'s consent and safety lines, or open a hook's gate, never binds there"), 'the conflict check');
+    const sites = JSON.parse(read('meta/shared-rules.json')).rules['git-preferences-carve-out'].sites.map((s) => s.file);
+    assert.ok(sites.includes('stack/skills/capture-preferences/SKILL.md'), 'pinned as a site of the carve-out');
+});
+
+// S2 (final review 2026-10-20b): the build skill derives `<plan id>` from 'the plan file's name' but never named that
+// file, so a seat brief's `plan:` line and the stamp's folder could each guess a different name and the dispatch hook
+// refused the implementer. The protocol writes `<docs-path>/work/plans/<feature>.md`; the skill names it, one per slice.
+test('S2: the build skill names the plan file its plan id comes from, one per slice', () =>
+{
+    const body = flat(read('stack/skills/task-build-from-scratch/SKILL.md'));
+    assert.ok(body.includes("(`<plan id>` is the plan file's name without `.md` - the file the protocol writes for the slice, `<docs-path>/work/plans/<feature>.md` with the slice as `<feature>`, so each slice has its own id)"), 'the plan file named');
+    const protocol = flat(read('stack/skills/task-build-from-scratch/references/domain-trio-protocol.md'));
+    assert.ok(protocol.includes('you write `<docs-path>/work/plans/<feature>.md` from it'), 'the protocol writes that path');
+});
