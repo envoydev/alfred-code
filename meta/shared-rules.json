@@ -7897,43 +7897,43 @@
       "sites": [
         {
           "file": "stack/agents/aspnet-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line; each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line (no script there: judge each entry by hand and say so); each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
         },
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line; each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line (no script there: judge each entry by hand and say so); each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line; each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line (no script there: judge each entry by hand and say so); each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line; each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line (no script there: judge each entry by hand and say so); each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line; each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line (no script there: judge each entry by hand and say so); each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line; each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line (no script there: judge each entry by hand and say so); each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line; each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line (no script there: judge each entry by hand and say so); each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line; each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line (no script there: judge each entry by hand and say so); each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line; each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line (no script there: judge each entry by hand and say so); each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line; each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line (no script there: judge each entry by hand and say so); each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
         }
       ]
     },
