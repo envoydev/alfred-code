@@ -141,10 +141,13 @@ Move <every moves= entry> from <from> to <to>? <from> was set by hand, and the s
 'Move them all' is `--docs-root-move move` on the installer call of whichever path runs. 'Some are the team's own'
 opens ONE AskUserQuestion call of multi-select questions, each option one `moves=` entry spelled as printed (2-4 options
 a question, up to 4 questions; header `Team's own`); the picks are `--docs-root-move move --docs-root-leave
-<entry>,<entry>`, and no pick is 'Move them all'. A `!! docs root: --docs-root-leave names ...` line means a name was
+<entry>,<entry>`, and no pick is 'Move them all'. With one `moves=` entry there is nothing to pick from: ask it as a
+yes / no - 'Move it (Recommended)' or 'It is the team's own' - and the second is a plain no, which moves nothing: the
+setting goes and that folder stays where it is. A `!! docs root: --docs-root-leave names ...` line means a name was
 none of the stack's and nothing moved: ask again from the names it lists. Unattended, take the Recommended option,
 `--docs-root-move move`: every docs file of the stack's belongs under the data root, a move loses nothing (git renames
-where tracked), and the log's `docs root: moved` line names what moved, so the team can move one back.
+where tracked), and the log's `docs root: moved` line names what moved, so the team can move one back with
+`git mv <to>/<entry> <from>/<entry>` - say that line in the close.
 
 **The instruction file's name - ONE ask, and only on `agents-md: offer`.** Before the installer runs,
 in the same AskUserQuestion call as the other asks (one question each):

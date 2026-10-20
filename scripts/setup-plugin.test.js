@@ -910,6 +910,19 @@ test('update: the post-install grep passes every layout: line, and the close rep
     assert.match(close, /\*\*LAYOUT\*\* - every `layout:` line the grep caught, verbatim/, 'the close names the LAYOUT line');
     assert.match(close, /'layout: current - nothing moved'/);
     assert.match(close, /a `layout: kept` line goes on the follow-ups card/);
+    // docs.js prints three held shapes; 'delete the old' is right for one only - said for `.branches/` it deleted live
+    // local-versioning overlays (final review 2026-10-20b).
+    assert.match(close, /`layout: kept <old> - <new> already holds it`[^.]*diff the two and delete the old/, 'the clash shape');
+    assert.match(close, /`layout: kept \.branches\/ - it holds doc versions, prune them first`: [^`]*`node \.claude\/hooks\/docs\.js prune <branch>`[^`]*never delete it by hand/, 'the branch-versions shape');
+    assert.match(close, /`!! layout: <folder> holds raw session copies \.\.\.`: nothing moved; keep the new folder out of git/, 'the raw-copies shape');
+    // The hand-set docs-root ask: a multi-select needs 2-4 options, so a root holding ONE stack entry has no 'Some are
+    // the team's own' question to build; and an unattended move of a team's folder names the way back (final review
+    // 2026-10-20b).
+    const walk = flat(refBody('update-walk'));
+    assert.match(walk, /With one `moves=` entry there is nothing to pick from: ask it as a yes \/ no - 'Move it \(Recommended\)' or 'It is the team's own'/, 'the one-entry ask');
+    assert.match(walk, /`git mv <to>\/<entry> <from>\/<entry>`/, 'the way back after an unattended move');
+    const history = flat(refBody('update-history'));
+    assert.doesNotMatch(history, /a `layout: kept` line means a file already sat at the new path, so the old one is the user's to diff and delete/, 'the history names each shape');
     assert.match(flat(cmdBody('update')), /moves an older project's folders onto the current layout/, 'update.md says what the run does');
 });
 

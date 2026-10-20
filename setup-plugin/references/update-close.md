@@ -80,8 +80,13 @@ NEW-ITEMS line (what arrived, what was taken, what stays off - say where that sw
   here.
 - **DATA ROOT** - every `docs root:` / `docs move:` / `data root:` line the grep caught, verbatim.
 - **LAYOUT** - every `layout:` line the grep caught, verbatim, or 'layout: current - nothing moved'; a `layout: kept`
-  line goes on the follow-ups card with the one action it leaves (the newer file is the live one; diff the two and
-  delete the old). A session that started before 2.8.0 runs its old hooks until the restart and writes the old
+  line goes on the follow-ups card with the one action its shape leaves - three shapes, three actions:
+  - `layout: kept <old> - <new> already holds it`: the new file is the live one; diff the two and delete the old.
+  - `layout: kept .branches/ - it holds doc versions, prune them first`: those are live branch versions of the docs -
+    fold or drop each with `node .claude/hooks/docs.js prune <branch>` and the next update removes the folder; never
+    delete it by hand.
+  - `!! layout: <folder> holds raw session copies ...`: nothing moved; keep the new folder out of git (the data root's
+    `.gitignore`), then re-run `/alfred-code:update`. A session that started before 2.8.0 runs its old hooks until the restart and writes the old
   folders again; the next update moves what it wrote.
 - **GIT HYGIENE** - the one extra call this step makes, after the installer and before `$TMP` goes:
   `node "$TMP/repo/scripts/git-hygiene.js" --root .`. A `git-hygiene: offer <root>/<TAB><why>` line

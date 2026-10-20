@@ -106,8 +106,9 @@ Update moves an older project's folders onto the 2.8.0 layout, with no ask: `flo
 `tools-usage/`, `usage-report/` and `docs-log.jsonl` to `<data root>/statistics/` (machine-local, kept out of git);
 `plans/`, `specs/`, `diagnoses/` and `cross-project-tasks/` - `related-context/`'s files with them - to
 `<docs-path>/work/`; `test-coverage/` and `loops/` to `<docs-path>/quality/`; an empty `.branches/` goes. A tracked
-doc moves as a git rename. Report every `layout:` line; a `layout: kept` line means a file already sat at the new path,
-so the old one is the user's to diff and delete.
+doc moves as a git rename. Report every `layout:` line; each held shape leaves its own action (the close's LAYOUT
+bullet): a file already at the new path is the live one, a kept `.branches/` holds live doc versions to prune first,
+and raw session copies wait until the new folder is out of git.
 
 The docs root is always `<data root>/docs`: `ALFRED_CODE_DOCS_PATH` is retired, and this update moves the stack's docs
 from a root the stack wrote (or from the pre-2.0.0 `.claude/docs`) with no ask, then takes the key out of the settings.
