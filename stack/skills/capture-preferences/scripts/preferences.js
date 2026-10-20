@@ -247,10 +247,20 @@ function check(projectRoot, { mode, area })
     let violations = 0;
     for (const d of presentDocs(projectRoot, area))
     {
-        for (const s of parseSections(d.text))
+        const sections = parseSections(d.text);
+        const shared = new Set();
+        for (const s of sections)
         {
             if (s.fields.Check === undefined) continue;
-            const id = s.id || s.heading;
+            // a violation cites its entry by id: with none, or one another entry holds, there is nothing to cite
+            if (!s.id) { console.log(`skipped: ${s.heading} - the heading names no entry id (\`## C1 - <title>\`, A1 or G1 by doc), so nothing is run`); continue; }
+            if (sections.filter((o) => o.id === s.id).length > 1)
+            {
+                if (!shared.has(s.id)) console.log(`skipped: ${s.id} - more than one entry holds this id, so nothing is run for any of them`);
+                shared.add(s.id);
+                continue;
+            }
+            const id = s.id;
             const parsed = parseCheck(s.fields.Check);
             if (!parsed) { console.log(`skipped: ${id} - the Check: is not regex \`<pattern>\` in \`<glob>\`, so nothing is run`); continue; }
             try { new RegExp(parsed.regex); }

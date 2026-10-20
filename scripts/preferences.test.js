@@ -167,6 +167,29 @@ test('an uncompilable regex is skipped with one skipped: line and exit 0', () =>
     finally { p.rm(); }
 });
 
+// Final review C4 (plan Review Focus 5): a violation cites its entry by id, so an entry with none, or one whose id another
+// entry also holds, has nothing a verifier could cite - skipped with one line, never run under its heading.
+test('an entry with no id, or an id two entries share, is skipped with one skipped: line and exit 0', () =>
+{
+    const bad = (heading, id) => `## ${heading}\n<!-- id: ${id} -->\n- Rule: x.\n- Check: regex \`static class\` in \`src/**/*.cs\``;
+    const p = project({
+        files: { 'src/a.cs': 'static class A {}\n' },
+        prefs: { CODE: doc('Code preferences', C3, bad('No id here', 'x'), bad('C5 - First', 'c5'), bad('C5 - Second', 'c5')) },
+    });
+    try
+    {
+        const r = run(p.dir, 'check', '--all');
+        assert.strictEqual(r.code, 0);
+        assert.deepStrictEqual(r.lines.filter((l) => l.startsWith('skipped:')), [
+            'skipped: No id here - the heading names no entry id (`## C1 - <title>`, A1 or G1 by doc), so nothing is run',
+            'skipped: C5 - more than one entry holds this id, so nothing is run for any of them',
+        ], r.out);
+        assert.match(r.out, /^violation: C3 src\/a\.cs:1 /m, 'the other entry still runs');
+        assert.match(r.out, /^checked: 1 entries, 1 violations$/m);
+    }
+    finally { p.rm(); }
+});
+
 test('check with no preferences captured says so and exits 0', () =>
 {
     const p = project();
