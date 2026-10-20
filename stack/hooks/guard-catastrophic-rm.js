@@ -154,7 +154,8 @@ function cleanTarget(tok)
 const ANCHORS = { cwd: '', dirs: [], holds: [] };
 function isAnchorPath(t)
 {
-    if (!ANCHORS.dirs.length || /[$*?[{~`]/.test(t) || !t) return false;
+    // Only a LEADING tilde expands; one inside a segment is a name (Windows CI's 8.3 temp path `RUNNER~1`).
+    if (!ANCHORS.dirs.length || /[$*?[{`]/.test(t) || t.startsWith('~') || !t) return false;
     let abs = path.resolve(ANCHORS.cwd || process.cwd(), t.replace(/\/\*$/, ''));
     try { abs = fs.realpathSync.native(abs); } catch { /* a path that does not exist yet is judged as written */ }
     const fold = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);

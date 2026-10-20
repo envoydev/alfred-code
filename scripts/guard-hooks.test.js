@@ -4587,6 +4587,14 @@ test('audit 2026-10-20 H6: the home dir, the project and the cwd are caught howe
     'rmdir /s', 'cmd /c dir', 'cmd /c rd /s /q build', `rm -rf ${path.join(home, 'no-such-h6-dir')}`]) {
     assert.equal(rm(c), 0, `must allow: ${c}`);
   }
+  // A tilde inside a segment is a name, not the home dir: Windows CI's 8.3 temp path (`RUNNER~1`) let the project through.
+  const tilde = path.join(proj, 'RUNNER~1');
+  fs.mkdirSync(tilde);
+  const rmIn = (command) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-catastrophic-rm.js')], {
+    input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, cwd: tilde }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: tilde },
+  }).status;
+  assert.equal(rmIn(`rm -rf '${tilde}'`), 2, 'a project whose path holds a mid-segment tilde');
+  assert.equal(rmIn('rm -rf ~/no-such-h6-dir'), 0, 'a leading tilde stays the symbolic rules\'');
 });
 
 // Audit 2026-10-20 H5: capture-usage-report's bundle authors are generic seats on a named model, and its own `--auto-mode`
