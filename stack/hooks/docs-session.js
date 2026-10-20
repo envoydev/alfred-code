@@ -442,19 +442,30 @@ function sweepStrandedRoot(root) {
     if (tracked.length) return null;
   } catch { /* no repo: nothing is tracked */ }
   let files = 0;
-  const fold = (src, dst) => {
+  // Where a stranded entry goes: its 2.8.0 home (layout.js) - a receipt in state/approvals/, other flow/ scratch in
+  // state/sessions/, a session record in state/history/, a ledger in statistics/ - read the way the hooks read it
+  // (findState / findStats: the live copy a pre-2.8.0 docs root still holds wins), so the fold never writes the docs root's
+  // retired flow/ or hook-blocks/. Without layout.js beside this hook, the pre-2.8.0 docs root as before.
+  const homeOf = (top, name) => {
+    if (!layout) return path.join(to, ...(top ? [top] : []), name);
+    if (top === 'flow') return layout.findState(root, layout.flowKind(name), name);
+    if (top === 'history') return layout.findState(root, 'history', name);
+    return layout.findStats(root, top ? [top, name] : [name]);
+  };
+  const fold = (src, dst, top) => {
     for (const e of fs.readdirSync(src, { withFileTypes: true })) {
       const a = path.join(src, e.name);
-      const b = path.join(dst, e.name);
-      if (e.isDirectory()) { fold(a, b); fs.rmdirSync(a); continue; }
+      // the stranded root's own entries are the state folders; one level down each entry takes its layout home
+      const b = top === undefined ? (e.isDirectory() ? null : homeOf('', e.name)) : top === null ? path.join(dst, e.name) : homeOf(top, e.name);
+      if (e.isDirectory()) { fold(a, b, top === undefined ? e.name : null); fs.rmdirSync(a); continue; }
       if (!e.isFile() || OS_LITTER.has(e.name)) { fs.rmSync(a, { force: true }); continue; }
       files++;
-      if (!fs.existsSync(b)) { fs.mkdirSync(dst, { recursive: true }); fs.renameSync(a, b); continue; }
+      if (!fs.existsSync(b)) { fs.mkdirSync(path.dirname(b), { recursive: true }); fs.renameSync(a, b); continue; }
       if (e.name.endsWith('.jsonl')) fs.appendFileSync(b, `\n${fs.readFileSync(a, 'utf8')}`);
       fs.rmSync(a, { force: true });
     }
   };
-  try { fold(from, to); fs.rmdirSync(from); } catch { return null; /* a partial fold leaves the rest for the next start */ }
+  try { fold(from, to, undefined); fs.rmdirSync(from); } catch { return null; /* a partial fold leaves the rest for the next start */ }
   return files;
 }
 

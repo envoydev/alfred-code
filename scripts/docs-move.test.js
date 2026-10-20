@@ -438,14 +438,17 @@ test('installer: hook state a stale session writes under the old default after t
             run(r, 'docs-session.js', { hook_event_name: 'SessionStart', session_id: 'fresh', cwd: r });
             run(r, 'docs-session.js', { hook_event_name: 'SessionStart', session_id: 'again', cwd: r });
             const at = (rel) => path.join(r, rel);
-            return { key: envOf(r, 'settings.json').ALFRED_CODE_DOCS_PATH, old: fs.existsSync(at('.claude/docs')), row: fs.readFileSync(at('.alfred/docs/flow/turn-check-stale'), 'utf8'),
+            // its 2.8.0 home, never the docs root's retired flow/ (audit 2026-10-20b, the hooks track)
+            return { key: envOf(r, 'settings.json').ALFRED_CODE_DOCS_PATH, old: fs.existsSync(at('.claude/docs')), row: fs.readFileSync(at('.alfred/state/sessions/turn-check-stale'), 'utf8'),
+                retired: fs.existsSync(at('.alfred/docs/flow')),
                 log: fs.readFileSync(at('.alfred/statistics/docs-log.jsonl'), 'utf8'), moved: fs.existsSync(at('.alfred/docs/architecture/ARCHITECTURE.md')) };
         },
     });
     assert.match(outs[1], /docs root: moved \.claude\/docs -> \.alfred\/docs/, outs[1]);
     assert.strictEqual(result.key, undefined);
     assert.strictEqual(result.old, false, 'the stranded root is gone after the next start');
-    assert.match(result.row, /^\d{4}-\d{2}-\d{2}T/, 'its marker now sits under the live root');
+    assert.match(result.row, /^\d{4}-\d{2}-\d{2}T/, 'its marker now sits under the data root\'s state/sessions/');
+    assert.strictEqual(result.retired, false, 'the fold writes no docs-root flow/');
     assert.strictEqual(result.moved, true, 'the moved docs are untouched');
     assert.strictEqual(result.log.match(/"event":"stranded-root"/g).length, 1, 'a second start finds nothing');
 });
