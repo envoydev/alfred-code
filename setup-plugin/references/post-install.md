@@ -30,8 +30,8 @@ claude mcp list
 ```
 
 Every row should read connected. A timeout on `alfred-navigation` (Serena) usually means its first run is still
-fetching the language server (re-run once it settles, or pre-warm with `uvx --from serena-agent
-serena --help`). A timeout on `alfred-memory` is its FIRST start downloading the embedding model (~166MB into
+fetching the language server (re-run once it settles, or pre-warm with `uvx --python 3.13 --exclude-newer
+2026-10-20T23:59:59Z --from serena-agent@2.1.0 serena --help` - the pin the server starts on). A timeout on `alfred-memory` is its FIRST start downloading the embedding model (~166MB into
 `~/.cache/mcp_memory`: measured 33s cold, 2s warm, against the 30s budget), not a missing runtime: the
 install fetches it ahead where uvx is present (`memory: the embedding model is cached now`) and init's plan
 lists it otherwise; fetch it with `node .claude/hooks/memory.js warm`. Claude Code then remembers the
@@ -180,6 +180,10 @@ missing one); do not shuffle it. A later re-run is yours to type: all but the tw
 Optional, whenever you want the coverage picture: `/capture-test-coverage` - it
 measures the suite and asks for YOUR coverage bar on first capture, recording it for every later
 run.
+
+Optional, whenever you have one to record: `/capture-preferences <your words>` - your own code,
+architecture or git preferences ('avoid static classes', 'branches are feature/<ticket>'), which every
+seat then follows. Init never runs it: the preferences are yours to state, not the codebase's to read.
 
 ## Later - after switching to a structurally different branch
 
