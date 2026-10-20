@@ -6454,6 +6454,10 @@
         {
           "file": "stack/mcp/uv-python.js",
           "marker": "function envOf(env, suffix)\n{\n    const value = env[`ALFRED_CODE_${suffix}`];\n    return value === '' ? undefined : value;\n}"
+        },
+        {
+          "file": "stack/hooks/layout.js",
+          "marker": "function envOf(env, suffix)\n{\n    const value = env[`ALFRED_CODE_${suffix}`];\n    return value === '' ? undefined : value;\n}"
         }
       ]
     },

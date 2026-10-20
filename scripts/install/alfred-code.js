@@ -102,10 +102,10 @@ const RETIRED_DENY = [
     'Read(~/.claude/settings.json)', 'Read(~/.claude/settings.local.json)',
     'Read(~/.claude-*/settings.json)', 'Read(~/.claude-*/settings.local.json)',
 ];
-// The three hook ENGINES and the window table are copied beside the hooks rather than wired: 22
+// The three hook ENGINES, the layout module they share and the window table are copied beside the hooks rather than wired: 22
 // bodies shared with cursor-stack run `node .claude/hooks/docs.js`, and the history start block
 // points at `node .claude/hooks/history.js rulings`.
-const HOOK_ENGINES = ['docs.js', 'memory.js', 'history.js', 'model-windows.json'];
+const HOOK_ENGINES = ['docs.js', 'memory.js', 'history.js', 'layout.js', 'model-windows.json'];
 // I12: the stack's serena context (stack/mcp). The plugin route's launcher hands serena the file beside
 // it; the full copy route, which runs no launcher, copies it into the project's .claude and registers it.
 const NAV_CONTEXT = 'navigation-context.yml';

@@ -1397,7 +1397,7 @@ test('seed: on the plugin route the copied engines still run, with no copy-route
         });
         return { files: fs.readdirSync(path.join(repo, '.claude', 'hooks')).sort(), runs };
     } });
-    assert.deepStrictEqual(result.files, ['docs.js', 'history.js', 'memory.js', 'model-windows.json', 'package.json'], 'only the engines, the window table and the CommonJS marker');
+    assert.deepStrictEqual(result.files, ['docs.js', 'history.js', 'layout.js', 'memory.js', 'model-windows.json', 'package.json'], 'only the engines, the window table and the CommonJS marker');
     for (const run of result.runs)
     {
         assert.strictEqual(run.status, 0, `${run.file}: ${run.stderr}`);
@@ -1786,7 +1786,7 @@ test('seed install on a listing it cannot read: an engine the settings name is u
 // the entry's own `main` (per install-args.test.js's precedent), so a genuine fault can be raised
 // mid-run and caught by main's own outer try/catch exactly as a real crash would be.
 // package.json: the CommonJS marker copy.commonJsScope writes beside every copy, engines included.
-const HOOK_ENGINES = ['docs.js', 'memory.js', 'history.js', 'model-windows.json', 'package.json'];
+const HOOK_ENGINES = ['docs.js', 'memory.js', 'history.js', 'layout.js', 'model-windows.json', 'package.json'];
 function hooksRouteSandbox(prefix, selection = 'skill markdown-style\n')
 {
     const os = require('node:os');
