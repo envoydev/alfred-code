@@ -7693,7 +7693,7 @@
       ]
     },
     "preferences-designer": {
-      "_note": "The generated rule alfred-preferences.md imports the user's preferences into every session and ranks them first (capture-preferences is canonical). A designer restates it because its plan is where a preference is met or missed: each Decisions row names the id it meets, and a requirement that cannot meet one goes back to the user as NEEDS_CONTEXT, never a silent waiver.",
+      "_note": "The generated rule alfred-preferences.md carries the user's preferences inline into every session and ranks them first (capture-preferences is canonical). A designer restates it because its plan is where a preference is met or missed: each Decisions row names the id it meets, and a requirement that cannot meet one goes back to the user as NEEDS_CONTEXT, never a silent waiver.",
       "owner": {
         "file": "stack/skills/capture-preferences/SKILL.md",
         "marker": "ranks them above every other source"
@@ -7742,7 +7742,7 @@
       ]
     },
     "preferences-implementer": {
-      "_note": "The implementer builds to the preferences the rule imports; a card that cannot meet one stops as BLOCKED naming the id, so the waiver is the user's call (an Except: line), never the seat's.",
+      "_note": "The implementer builds to the preferences the rule carries; a card that cannot meet one stops as BLOCKED naming the id, so the waiver is the user's call (an Except: line), never the seat's.",
       "owner": {
         "file": "stack/skills/capture-preferences/SKILL.md",
         "marker": "ranks them above every other source"
@@ -7861,6 +7861,23 @@
         {
           "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
           "marker": "the docs-root rule's hand-off block"
+        }
+      ]
+    },
+    "git-preferences-carve-out": {
+      "_note": "The user's git preferences (GIT-PREFERENCES.md, carried by the generated alfred-preferences.md rule) outrank the git rule's branch, commit-message and PR conventions, never its consent or safety lines (the user's design of 2026-10-20, aa385a74). The git rule owns the carve-out; the preferences rule template and its doc shape restate it beside their own never-list, which named only security, validation, error handling, accessibility and hook gates - a preference such as 'force-push freely' then outranked the git rule's safety line in one rule and not the other (rules audit 2026-10-20b).",
+      "owner": {
+        "file": "stack/rules/alfred-git.md",
+        "marker": "never its consent or safety lines"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/capture-preferences/references/rule-template.md",
+          "marker": "`alfred-git.md`'s consent and safety lines"
+        },
+        {
+          "file": "stack/skills/capture-preferences/references/doc-shape.md",
+          "marker": "`alfred-git.md`'s consent and safety lines"
         }
       ]
     }

@@ -54,7 +54,7 @@ regex `<pattern>` in `<glob>`[, `<glob>`] [excluding `<glob>`[, `<glob>`]]
 
 ## The precedence
 
-The user's preferences > the project's decision log and AGENTS.md > the quality loops' prompts > `CODE-STYLE.md` > a house convention skill or `alfred-git.md`. A waiver is the preference's own `Except:` line. A preference never overrides security, input validation, error handling or accessibility, and never opens a hook's gate.
+The user's preferences > the project's decision log and AGENTS.md > the quality loops' prompts > `CODE-STYLE.md` > a house convention skill or `alfred-git.md`. A waiver is the preference's own `Except:` line. A preference never overrides security, input validation, error handling, accessibility or `alfred-git.md`'s consent and safety lines, and never opens a hook's gate.
 
 ## Size
 
