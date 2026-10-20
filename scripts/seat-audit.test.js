@@ -172,4 +172,30 @@ test('A-T1: every verifier carries the git-state ban beside its Bash line, pinne
     assert.deepStrictEqual([...listedIn('verifier-no-git-state')].sort(), verifiers.map((s) => `stack/agents/${s}.md`).sort());
 });
 
+// --- agents #12: a colliding description names the sibling that wins, never 'another stack' ------------------------------
+test('agents #12: the colliding descriptions name the winning sibling, and ng-build-error-resolver hands off red specs and red CI', () =>
+{
+    const d = (s) => meta(s).description;
+    const names = {
+        'console-implementer': 'windows-service-implementer', 'windows-service-implementer': 'console-implementer',
+        'windows-service-solution-designer': 'console-solution-designer',
+        'ionic-angular-implementer': 'web-angular-implementer', 'ionic-angular-solution-designer': 'web-angular-solution-designer',
+        'wpf-implementer': 'windows-service-implementer', 'wpf-solution-designer': 'winforms-solution-designer',
+        'winforms-implementer': 'wpf-implementer', 'winforms-solution-designer': 'wpf-solution-designer',
+        'browser-extension-implementer': 'web-angular-implementer', 'browser-extension-verifier': 'web-angular-verifier',
+        'ng-build-error-resolver': 'angular-test-resolver',
+    };
+    for (const [s, sibling] of Object.entries(names)) assert.ok(d(s).includes(`(${sibling})`), `${s} names ${sibling}`);
+    assert.ok(d('ng-build-error-resolver').includes('red CI (issue-diagnoser-ci)'), 'red CI goes to the CI diagnoser');
+    for (const s of Object.keys(names)) assert.doesNotMatch(d(s), /another (C# |TypeScript )?stack/, `${s}: a vague not-for`);
+    for (const s of seats) assert.ok(d(s).length <= 300, `${s}: ${d(s).length}`);
+});
+
+// --- agents #13: the desktop designers' companion-service paragraph is one registered text --------------------------------
+test('agents #13: the WPF and WinForms designers carry the companion-service paragraph as a pinned pair', () =>
+{
+    assert.deepStrictEqual([...listedIn('desktop-designer-companion-service')].sort(), ['stack/agents/winforms-solution-designer.md', 'stack/agents/wpf-solution-designer.md']);
+    for (const c of copiesOf('desktop-designer-companion-service')) assert.ok(squash(readRel(c.file)).includes(squash(c.marker)), c.file);
+});
+
 module.exports = { seats, read, readRel, meta, body, section, squash, rules, copiesOf, listedIn, of };
