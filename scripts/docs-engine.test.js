@@ -1198,9 +1198,10 @@ test('lint: the map\'s Known ceilings over the cap is a note; another oversized 
 });
 
 // Audit 2026-10-20 C27 residual (the user's ruling of 2026-10-20, 'prune only'): nothing removed a closed row, so the
-// register only grew. `ceilings` names a row marked lifted / closed / resolved / done or whose where path is gone;
-// `--prune` moves them to history and rewrites the section; a bare name, a glob and an open row stay.
-test('ceilings: closed Known-ceilings rows are listed, and --prune moves them to history', () => {
+// register only grew. `ceilings` names a row marked lifted / closed / resolved / done, and `--prune` moves them to
+// history and rewrites the section. A row whose where path is gone is only named stale and kept - a rename or move in a
+// refactor leaves the shortcut in the code (review of d8cc65e0) - and a bare name, a glob and an open row stay.
+test('ceilings: marked Known-ceilings rows are listed and --prune moves them to history; a gone path is stale, never moved', () => {
   const table = [
     '| where | limit | revisit when |', '| --- | --- | --- |',
     '| `src/app/live.ts:load` | loads all rows | over 10k rows |',
@@ -1214,25 +1215,27 @@ test('ceilings: closed Known-ceilings rows are listed, and --prune moves them to
   try {
     const list = r.cli(['ceilings']);
     assert.strictEqual(list.status, 0, list.stdout);
-    assert.match(list.stdout, /closed: src\/app\/gone\.ts is gone - \| `src\/app\/gone\.ts:save`/);
+    assert.match(list.stdout, /stale: {2}src\/app\/gone\.ts is gone - kept; re-anchor the where cell, or mark the revisit cell lifted if the shortcut went with it - \| `src\/app\/gone\.ts:save`/);
+    assert.doesNotMatch(list.stdout, /closed: src\/app\/gone/);
     assert.match(list.stdout, /closed: marked lifted - /);
     assert.match(list.stdout, /closed: marked closed - /);
-    assert.match(list.stdout, /3 of 6 rows closed - 'docs\.js ceilings --prune' moves them to history/);
+    assert.match(list.stdout, /2 of 6 rows closed - 'docs\.js ceilings --prune' moves them to history/);
     const map = '.claude/docs/architecture/ARCHITECTURE.md';
-    assert.ok(r.read(map).includes('gone.ts'), 'a listing writes nothing');
+    assert.ok(r.read(map).includes('Lifted'), 'a listing writes nothing');
     const pruned = r.cli(['ceilings', '--prune']);
     assert.strictEqual(pruned.status, 0, pruned.stdout);
-    assert.match(pruned.stdout, /moved 3 of 6 rows to \.claude\/docs\/architecture\/history\/known-ceilings-closed\.md/);
+    assert.match(pruned.stdout, /moved 2 of 6 rows to \.claude\/docs\/architecture\/history\/known-ceilings-closed\.md/);
     const after = r.read(map);
-    for (const gone of ['gone.ts', 'Lifted', 'Closed by']) assert.ok(!after.includes(gone), gone);
-    for (const kept of ['live.ts:load', 'Program.cs:Main', 'src/**/*.ts', '<!-- id: known-ceilings -->', '<!-- covers: src/** -->', 'Orders rule.']) assert.ok(after.includes(kept), kept);
+    for (const gone of ['Lifted', 'Closed by']) assert.ok(!after.includes(gone), gone);
+    for (const kept of ['live.ts:load', 'gone.ts:save', 'Program.cs:Main', 'src/**/*.ts', '<!-- id: known-ceilings -->', '<!-- covers: src/** -->', 'Orders rule.']) assert.ok(after.includes(kept), kept);
     const hist = r.read('.claude/docs/architecture/history/known-ceilings-closed.md');
     assert.match(hist, /<!-- id: closed-rows -->\n(?:<!-- captured: \w+ -->\n)?\n\| where \| limit \| revisit when \| pruned \|\n\| --- \| --- \| --- \| --- \|\n/);
-    assert.match(hist, /\| `src\/app\/gone\.ts:save` \| no retry \| retries are asked \| pruned \d{4}-\d\d-\d\d: src\/app\/gone\.ts is gone \|/);
-    assert.match(r.cli(['ceilings', '--prune']).stdout, /^0 of 3 rows closed \(section \d+ chars, cap 6000\)\n$/, 'a re-run moves nothing');
+    assert.match(hist, /\| `src\/app\/live\.ts:sync` \| sync only \| \*\*Lifted\*\* in 3e881be \| pruned \d{4}-\d\d-\d\d: marked lifted \|/);
+    assert.ok(!hist.includes('gone.ts'), 'a stale row is never filed');
+    assert.match(r.cli(['ceilings', '--prune']).stdout, /^stale: .*gone\.ts.*\n0 of 4 rows closed \(section \d+ chars, cap 6000\)\n$/, 'a re-run moves nothing');
     // a later prune appends under the same table
     r.write(map, after.replace('| `Program.cs:Main` | one host | a second host |', '| `Program.cs:Main` | one host | done - a second host landed |'));
-    assert.match(r.cli(['ceilings', '--prune']).stdout, /moved 1 of 3 rows/);
+    assert.match(r.cli(['ceilings', '--prune']).stdout, /moved 1 of 4 rows/);
     const hist2 = r.read('.claude/docs/architecture/history/known-ceilings-closed.md');
     assert.strictEqual((hist2.match(/<!-- id: closed-rows -->/g) || []).length, 1, 'one table, appended');
     assert.match(hist2, /Program\.cs:Main` \| one host \| done - a second host landed \| pruned \S+: marked done \|\n$/);
@@ -1244,11 +1247,11 @@ test('ceilings: closed Known-ceilings rows are listed, and --prune moves them to
   try {
     b.git('checkout', '-q', '-b', 'feature');
     const out = b.cli(['ceilings', '--prune']);
-    assert.match(out.stdout, /moved 3 of 6 rows to \.claude\/docs\/\.branches\/feature\/.*closed-rows.*; .* rewritten in \.claude\/docs\/\.branches\/feature\//, out.stdout);
-    assert.ok(b.read('.claude/docs/architecture/ARCHITECTURE.md').includes('gone.ts'), 'mainline keeps the rows');
-    assert.ok(!b.read('.claude/docs/architecture/history/known-ceilings-closed.md').includes('gone.ts'), 'mainline history holds the empty table only');
-    assert.doesNotMatch(b.cli(['show', 'ARCHITECTURE.md#known-ceilings']).stdout, /gone\.ts/, 'the branch reads the pruned section');
-    assert.match(b.cli(['show', 'known-ceilings-closed.md#closed-rows']).stdout, /gone\.ts is gone/, 'and its filed rows');
+    assert.match(out.stdout, /moved 2 of 6 rows to \.claude\/docs\/\.branches\/feature\/.*closed-rows.*; .* rewritten in \.claude\/docs\/\.branches\/feature\//, out.stdout);
+    assert.ok(b.read('.claude/docs/architecture/ARCHITECTURE.md').includes('Lifted'), 'mainline keeps the rows');
+    assert.ok(!b.read('.claude/docs/architecture/history/known-ceilings-closed.md').includes('Lifted'), 'mainline history holds the empty table only');
+    assert.doesNotMatch(b.cli(['show', 'ARCHITECTURE.md#known-ceilings']).stdout, /Lifted/, 'the branch reads the pruned section');
+    assert.match(b.cli(['show', 'known-ceilings-closed.md#closed-rows']).stdout, /marked lifted/, 'and its filed rows');
   } finally { b.rm(); }
   const none = repo({ docs: { 'ARCHITECTURE.md': section('orders', 'src/**', 'Orders rule.') } });
   try {

@@ -1074,9 +1074,10 @@ function allSections() {
 // routed through findFile like every other reader before it can be matched against one.
 // The Known ceilings register only grows: the build closes append rows and the capture carries them row for row, so the
 // section passed its size cap and stayed there (audit 2026-10-20 C27, ce3fd60a: 10,171 chars). A row is CLOSED when its
-// revisit cell opens on lifted / closed / resolved / done (the build that lifted it marks it so), or when the path its
-// where cell names (one holding a '/') is gone from the project. `ceilings` lists them; `--prune` moves them to
-// history/known-ceilings-closed.md (history, never read at orientation) and rewrites the section without them.
+// revisit cell opens on lifted / closed / resolved / done (the build that lifted it marks it so). `ceilings` lists them;
+// `--prune` moves them to history/known-ceilings-closed.md (history, never read at orientation) and rewrites the section
+// without them. A row whose where path (one holding a '/') is gone is only named STALE, never moved: a rename or a move
+// in a refactor leaves the shortcut in the code, so the row is re-anchored or marked by whoever knows.
 const CEILINGS_REF = `architecture/ARCHITECTURE.md#${KNOWN_CEILINGS}`;
 const CEILINGS_HISTORY = 'known-ceilings-closed.md';
 const CLOSED_CELL_RE = /^\s*\**(?:lifted|closed|resolved|done)\b/i;
@@ -1094,12 +1095,13 @@ function ceilingRows() {
     if (/^\s*\|[\s:|-]+\|?\s*$/.test(line)) return;
     const cells = tableCells(line);
     let why = '';
+    let stale = '';
     if (CLOSED_CELL_RE.test(cells[cells.length - 1] || '')) why = `marked ${cells[cells.length - 1].replace(/\*/g, '').split(/\s+/)[0].toLowerCase()}`;
     else {
       const named = ((/`([^`]+)`/.exec(cells[0] || '') || [])[1] || cells[0] || '').split(/[:#\s]/)[0];
-      if (named.includes('/') && !/[*?{[]/.test(named) && !fs.existsSync(path.join(ROOT, named))) why = `${named} is gone`;
+      if (named.includes('/') && !/[*?{[]/.test(named) && !fs.existsSync(path.join(ROOT, named))) stale = `${named} is gone`;
     }
-    rows.push({ i, line, why });
+    rows.push({ i, line, why, stale });
   });
   return { s, lines, header: header < 0 ? '' : lines[header], rows };
 }
@@ -1107,7 +1109,8 @@ function ceilings(pruneRows) {
   const r = ceilingRows();
   if (!r) return { error: `no ${CEILINGS_REF} section - nothing to read` };
   const closed = r.rows.filter((x) => x.why);
-  if (!pruneRows || !closed.length) return { closed, total: r.rows.length, chars: r.s.ownChars };
+  const stale = r.rows.filter((x) => x.stale);
+  if (!pruneRows || !closed.length) return { closed, stale, total: r.rows.length, chars: r.s.ownChars };
   const drop = new Set(closed.map((x) => x.i));
   const res = set(CEILINGS_REF, r.lines.filter((_, i) => !drop.has(i)).join('\n'), sectionHash(r.s.text));
   if (res.error) return { error: res.error };
@@ -1127,7 +1130,7 @@ function ceilings(pruneRows) {
   if (!curText) return { error: `${shown(hist)} has no closed-rows section - the section was pruned but its rows are not filed: ${rowsOut.join(' ')}` };
   const h = set(histRef, `${norm(curText.text)}\n${rowsOut.join('\n')}`, cur.hash);
   if (h.error) return { error: `${h.error} - the section was pruned but its rows are not filed: ${rowsOut.join(' ')}` };
-  return { closed, total: r.rows.length, moved: closed.length, wrote: res.wrote, history: h.wrote };
+  return { closed, stale, total: r.rows.length, moved: closed.length, wrote: res.wrote, history: h.wrote };
 }
 
 function askRef(ref) {
@@ -2169,6 +2172,7 @@ const commands = {
     const r = ceilings(args.includes('--prune'));
     if (r.error) { console.log(r.error); process.exit(1); }
     for (const x of r.closed) console.log(`closed: ${x.why} - ${x.line.trim().slice(0, 160)}`);
+    for (const x of r.stale) console.log(`stale:  ${x.stale} - kept; re-anchor the where cell, or mark the revisit cell lifted if the shortcut went with it - ${x.line.trim().slice(0, 160)}`);
     if (r.moved) {
       docsLog({ event: 'ceilings-prune', moved: r.moved, wrote: r.wrote });
       console.log(`moved ${r.moved} of ${r.total} rows to ${r.history}; ${CEILINGS_REF} rewritten in ${r.wrote}`);
