@@ -6014,7 +6014,7 @@
       ]
     },
     "verifier-memory-before-report": {
-      "_note": "A seat writes any memory BEFORE it composes the report, then delivers the report as its final hand-off - through SubagentHandback when its tools include it (Claude Code gives that tool to every locally run, non-fork subagent in auto mode and delivers only what goes through it - tools-reference, v2.1.271+; the 2026-09-29 agents audit counted 188 of 205 local seat runs reporting through it), else as its last message; nothing after it, because a tool call after the report turns the hand-back into a pointer (measured: a full report, then the note write, then a pointer close forced a resend). 13 copies: the ten trio verifiers and the three support seats whose structured return IS the deliverable.",
+      "_note": "A seat writes any memory BEFORE it composes the report, then delivers the report as its final hand-off - through SubagentHandback when its tools include it (Claude Code gives that tool to every locally run, non-fork subagent in auto mode and delivers only what goes through it - tools-reference, v2.1.271+; the 2026-09-29 agents audit counted 188 of 205 local seat runs reporting through it), else as its last message; nothing after it, because a tool call after the report turns the hand-back into a pointer (measured: a full report, then the note write, then a pointer close forced a resend). 28 copies: the ten trio verifiers and the three support seats whose structured return IS the deliverable, plus the ten implementers, the four resolvers and the integration reviewer, which store a hand-off note at the same point (stack audit 2026-10-20 #6).",
       "owner": {
         "file": "stack/agents/aspnet-verifier.md",
         "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
@@ -6066,6 +6066,66 @@
         },
         {
           "file": "stack/agents/wpf-verifier.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/aspnet-implementer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/browser-extension-implementer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/console-implementer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/data-implementer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/devops-implementer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/ionic-angular-implementer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/web-angular-implementer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/windows-service-implementer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/winforms-implementer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/wpf-implementer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/dotnet-build-error-resolver.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/dotnet-test-failure-resolver.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/ng-build-error-resolver.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/angular-test-resolver.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/integration-reviewer.md",
           "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
         }
       ]
@@ -7101,6 +7161,51 @@
         {
           "file": "stack/skills/task-solve-cross/references/issue-investigation.md",
           "marker": "`no_fix_needed | resolver | single_domain_implementer | cross_domain_contract_change | user_decision_needed`"
+        }
+      ]
+    },
+    "verifier-no-git-state": {
+      "_note": "The verifiers' git-state ban (stack audit 2026-10-20 A-T1): a read-only seat holds Bash for the build and tests, and a verifier once mutated the shared index (guard-ungated-commit.js records the incident). The prose half, beside the implementers' tree-wide git line; the enforcing PreToolUse guard keyed on agent_type is the hooks track's. Identical in all 10 verifiers.",
+      "owner": {
+        "file": "stack/agents/aspnet-verifier.md",
+        "marker": "- No tree-wide git state command - `git reset`, `git restore --staged`, `git checkout --`, `git stash`, `git add`, `git commit`"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/browser-extension-verifier.md",
+          "marker": "- No tree-wide git state command - `git reset`, `git restore --staged`, `git checkout --`, `git stash`, `git add`, `git commit`"
+        },
+        {
+          "file": "stack/agents/console-verifier.md",
+          "marker": "- No tree-wide git state command - `git reset`, `git restore --staged`, `git checkout --`, `git stash`, `git add`, `git commit`"
+        },
+        {
+          "file": "stack/agents/data-verifier.md",
+          "marker": "- No tree-wide git state command - `git reset`, `git restore --staged`, `git checkout --`, `git stash`, `git add`, `git commit`"
+        },
+        {
+          "file": "stack/agents/devops-verifier.md",
+          "marker": "- No tree-wide git state command - `git reset`, `git restore --staged`, `git checkout --`, `git stash`, `git add`, `git commit`"
+        },
+        {
+          "file": "stack/agents/ionic-angular-verifier.md",
+          "marker": "- No tree-wide git state command - `git reset`, `git restore --staged`, `git checkout --`, `git stash`, `git add`, `git commit`"
+        },
+        {
+          "file": "stack/agents/web-angular-verifier.md",
+          "marker": "- No tree-wide git state command - `git reset`, `git restore --staged`, `git checkout --`, `git stash`, `git add`, `git commit`"
+        },
+        {
+          "file": "stack/agents/windows-service-verifier.md",
+          "marker": "- No tree-wide git state command - `git reset`, `git restore --staged`, `git checkout --`, `git stash`, `git add`, `git commit`"
+        },
+        {
+          "file": "stack/agents/winforms-verifier.md",
+          "marker": "- No tree-wide git state command - `git reset`, `git restore --staged`, `git checkout --`, `git stash`, `git add`, `git commit`"
+        },
+        {
+          "file": "stack/agents/wpf-verifier.md",
+          "marker": "- No tree-wide git state command - `git reset`, `git restore --staged`, `git checkout --`, `git stash`, `git add`, `git commit`"
         }
       ]
     }

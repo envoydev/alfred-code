@@ -143,4 +143,33 @@ test('agents #8 C7: task-design turns its asks into NEEDS_CONTEXT / user_decisio
     assert.doesNotMatch(squash(tvp), /through its own AskUserQuestion instead of folding/, 'the prose stop is a template now');
 });
 
+// --- agents #6: every seat that stores a hand-off note writes it BEFORE the report, pinned ---------------------------------
+test('agents #6: the implementers, resolvers and integration reviewer write memory before the report, pinned', () =>
+{
+    const writers = seats.filter((s) => /memory_store/.test(read(s)));
+    const pinned = listedIn('verifier-memory-before-report');
+    for (const s of [...of('-implementer'), ...of('-resolver'), 'integration-reviewer'])
+    {
+        assert.ok(writers.includes(s), `${s}: stores a note`);
+        assert.ok(pinned.has(`stack/agents/${s}.md`), `${s}: a copy of verifier-memory-before-report`);
+        const r = report(s);
+        assert.ok(r.includes('Memory writes come BEFORE the report'), `${s}: the ordering sits in its Report`);
+    }
+    assert.strictEqual(pinned.size, 28);
+});
+
+// --- A-T1 prose half: a verifier runs no tree-wide git state command, pinned (the hooks track enforces it) -----------------
+test('A-T1: every verifier carries the git-state ban beside its Bash line, pinned', () =>
+{
+    const verifiers = of('-verifier');
+    for (const s of verifiers)
+    {
+        const lines = section(body(s), 'Conventions').split('\n');
+        const bash = lines.findIndex((l) => l.startsWith('- Bash '));
+        assert.ok(bash >= 0, `${s}: its Bash line`);
+        assert.match(lines[bash + 1], /^- No tree-wide git state command - `git reset`, `git restore --staged`, `git checkout --`, `git stash`, `git add`, `git commit`/, `${s}: the ban follows it`);
+    }
+    assert.deepStrictEqual([...listedIn('verifier-no-git-state')].sort(), verifiers.map((s) => `stack/agents/${s}.md`).sort());
+});
+
 module.exports = { seats, read, readRel, meta, body, section, squash, rules, copiesOf, listedIn, of };
