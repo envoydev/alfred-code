@@ -100,6 +100,9 @@ const MAX_SECTION_CHARS = 6000;
 // opens with (capture-architecture references/doc-shapes.md) - both read by lint below.
 const KNOWN_CEILINGS = 'known-ceilings';
 const CAPTURE_STAMP = /^[\s>*_`]*Captured:\s*\S+@[0-9a-f]{4,}/m;
+// A domain whose sections cover no files by design: the user's preferences (/capture-preferences) do not drift with
+// the code, so no section owes a `covers` line and none is ever outgrown.
+const COVERLESS_DOMAINS = new Set(['preferences']);
 // One capture's write pass: a file written within this span of the map itself (ARCHITECTURE.md, which every capture
 // rewrites) was written by the same run.
 const WRITE_PASS_MS = 2 * 3600 * 1000;
@@ -1613,7 +1616,7 @@ function lint(domain) {
     // map) owes `covers` lines by its shape, so a rewrite that dropped them is a PROBLEM that run can fix; a file it did
     // not touch, a human-authored one or another domain's keeps the note, since the capture may not rewrite it (audit
     // 2026-10-20 C27, 29e4002f: five rewritten reference files closed on the note alone).
-    if (!hist && secs.length && !secs.some((s) => s.covers.length)) {
+    if (!hist && secs.length && !COVERLESS_DOMAINS.has(fileDomain(f)) && !secs.some((s) => s.covers.length)) {
       if (fileDomain(f) === 'architecture' && CAPTURE_STAMP.test(raw.slice(0, 600)) && sameWritePass(f)) problems.push(`no section declares covers: ${relKey(f)} - the capture's shape gives every section a <!-- covers: --> line`);
       else notes.push(`no section declares covers: ${relKey(f)}`);
     }

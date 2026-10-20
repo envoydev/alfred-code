@@ -47,7 +47,9 @@ const LEGACY_GENERATED = GENERATED_RULE_NAMES.flatMap((key) => [[`alfred-project
 // is itself a current name there.
 const AWARENESS_RULE = 'alfred-awareness';
 const AWARENESS_SUCCEEDS = { 'alfred-agent-awareness': AWARENESS_RULE, 'alfred-project-awareness': AWARENESS_RULE, 'alfred-related-context': AWARENESS_RULE };
-const GENERATED_FILES = new Set([...Object.values(GENERATED_RULES), AWARENESS_RULE, 'project-code-style', ...LEGACY_GENERATED.filter(([old]) => old.startsWith('alfred-project-')).map(([old]) => old)]);
+// capture-preferences' rule @-imports the preferences docs the same way, so a docs-root move re-stamps it too.
+const PREFERENCES_RULE = 'alfred-preferences';
+const GENERATED_FILES = new Set([...Object.values(GENERATED_RULES), AWARENESS_RULE, PREFERENCES_RULE, 'project-code-style', ...LEGACY_GENERATED.filter(([old]) => old.startsWith('alfred-project-')).map(([old]) => old)]);
 // The awareness docs an update re-spells beside the generated rules: the capture writes them, so they name the stack's
 // own skills, servers and docs root too. `agentsOnly`: the inventory alone, which names the seats and the MCP rows.
 function awarenessDocs(projectRoot, docsPath, { agentsOnly = false } = {})

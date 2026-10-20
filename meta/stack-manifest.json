@@ -78,6 +78,11 @@
     },
     {
       "repo": "envoydev/alfred-code",
+      "name": "capture-preferences",
+      "note": "deliberate preferences capture - writes the user's own code, architecture and git preferences into docs/preferences/CODE-, ARCHITECTURE- and GIT-PREFERENCES.md (ids never reused, a waiver as an Except: line, an optional regex Check: measured by the skill's script, never a command), and generates the pathless rule alfred-preferences.md whose @ imports load them ahead of every other source at every session start; manual /-only"
+    },
+    {
+      "repo": "envoydev/alfred-code",
       "name": "task-build-from-scratch",
       "note": "greenfield scaffolding + design->scaffold->slice-by-slice build orchestration over the pipeline"
     },

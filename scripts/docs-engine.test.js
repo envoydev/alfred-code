@@ -2406,3 +2406,28 @@ test('every git child process a hook or engine starts carries a timeout (2.1.5 M
   }
   assert.deepStrictEqual(open, [], 'git calls with no timeout');
 });
+
+// 2.8.0 /capture-preferences: preferences/ is a docs domain with sections and no watched globs - a preference does not
+// drift with the code, so a code change never asks whether it still holds. Its docs open with `Updated: <date>`, not a
+// `Captured:` stamp: they record the user's words, not the code.
+test('a preferences/ folder with watch.json {} is a domain; docs.js show CODE-PREFERENCES#c3 prints the section; status reports no stale stamp for it', () => {
+  const r = repo({ files: { 'src/a.cs': 'static class A {}\n' } });
+  try {
+    r.write('.claude/docs/preferences/watch.json', '{}');
+    r.write('.claude/docs/preferences/CODE-PREFERENCES.md', '# Code preferences\n\nUpdated: 2026-10-20\n\n'
+      + '## C3 - No static classes\n<!-- id: c3 -->\n- Rule: model behaviour as instances behind an interface.\n- Scope: src/**/*.cs\n\n'
+      + '## C4 - No regions\n<!-- id: c4 -->\n- Rule: no #region blocks.\n');
+    assert.ok(requireEngine(r.root).domains().includes('preferences'), 'the folder is a domain');
+    delete require.cache[ENGINE_PATH];
+    const shown = r.cli(['show', 'CODE-PREFERENCES#c3']);
+    assert.strictEqual(shown.status, 0, shown.stderr);
+    assert.match(shown.stdout, /model behaviour as instances behind an interface/);
+    assert.doesNotMatch(shown.stdout, /#region/, 'one section, not the doc');
+    r.write('src/a.cs', 'static class A { int x; }\n');
+    const st = r.cli(['status']);
+    assert.strictEqual(st.status, 0, st.stderr);
+    assert.match(st.stdout, /^outgrown sections: 0$/m, 'no section of a preference doc goes stale with the code');
+    const lint = r.cli(['lint']);
+    assert.doesNotMatch(lint.stdout + lint.stderr, /CODE-PREFERENCES/, 'the Updated: line is no missing stamp');
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});

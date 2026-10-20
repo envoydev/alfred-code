@@ -536,6 +536,20 @@ test('awareness: an old folder kept by a file the move does not take is named, e
     assert.deepStrictEqual(said(), want, 'and again on the next run');
 });
 
+test('preferences: a docs-root move re-stamps the generated rule\'s import lines, relative or absolute', () =>
+{
+    const { respellDocsRoot } = require('./install/selection.js');
+    const { preferenceImport } = require('../stack/skills/capture-preferences/scripts/preferences.js');
+    const root = project({});
+    const ruleOf = (docsRoot) => `# The user's preferences\n\n${['CODE-PREFERENCES.md', 'GIT-PREFERENCES.md'].map((f) => preferenceImport(docsRoot, f)).join('\n')}\n`;
+    const rulePath = path.join(root, '.claude/rules/alfred-preferences.md');
+    write(root, '.claude/rules/alfred-preferences.md', ruleOf('.claude/docs'));
+    assert.strictEqual(respellDocsRoot({ projectRoot: root, from: '.claude/docs', to: '.alfred/docs' }), 1);
+    assert.strictEqual(fs.readFileSync(rulePath, 'utf8'), ruleOf('.alfred/docs'), 'the bytes the engine writes for the new root');
+    assert.strictEqual(respellDocsRoot({ projectRoot: root, from: '.alfred/docs', to: '/srv/docs' }), 1);
+    assert.strictEqual(fs.readFileSync(rulePath, 'utf8'), ruleOf('/srv/docs'));
+});
+
 test('awareness: a docs-root move re-stamps the rule\'s import lines and the inventory doc, relative or absolute', () =>
 {
     const { respellDocsRoot } = require('./install/selection.js');

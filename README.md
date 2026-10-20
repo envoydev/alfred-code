@@ -142,7 +142,7 @@ More on the two task flows: [`docs/solve-skills-guide.md`](docs/solve-skills-gui
 
 | | Count | What it is |
 | --- | --- | --- |
-| **Skills** | 89 | house conventions and workflows |
+| **Skills** | 90 | house conventions and workflows |
 | **Agents** | 44 | designers, implementers, verifiers, reviewers |
 | **Rules** | 20 | always-on basics and per-file conventions |
 | **Hooks** | 17 | the guards, plus the docs, memory and history hooks |
