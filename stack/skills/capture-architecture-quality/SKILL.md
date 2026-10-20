@@ -64,6 +64,8 @@ ARCHITECTURE-ASSESSMENT.md is as of this HEAD on a clean tree. Verify and rewrit
 ### 1. ORIENT
 Read `<docs-path>/architecture/ARCHITECTURE.md` - the map `capture-architecture` writes, the structural facts every weakness and strength traces to. No map at all: say so and stop, pointing at that capture - there is nothing to judge yet. A map whose own `Captured:` stamp is far behind HEAD is still read (a stale map is a claim to verify, not a blocker) - note the gap in the report rather than blocking on it.
 
+Read `<docs-path>/preferences/ARCHITECTURE-PREFERENCES.md` when present: its `A<n>` entries are the top rule source (`references/doc-shape.md`), and `node .claude/skills/capture-preferences/scripts/preferences.js check --all --area architecture` locates the breaches of the ones with a `Check:`.
+
 Read `<docs-path>/quality/ARCHITECTURE-ASSESSMENT.md` if it already exists - not ground truth, but its entries are what gate question 3 ('is it actually new') folds a re-measurement into, so an unchanged finding keeps its existing shape rather than opening a duplicate. Read the project's decision log when present (`<docs-path>/decisions/`, or wherever the project keeps ADRs): each accepted decision is declared intent to reconcile against, and a tradeoff it records deliberately lands as a Deliberate tradeoff, not a weakness - gate question 4 depends on this read having happened.
 
 ### 2. GATHER - architecture-analyzer per module, in parallel

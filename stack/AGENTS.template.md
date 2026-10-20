@@ -14,7 +14,7 @@ ends on the deterministic check; by hand, the steps are:
    row whose capture skill this install skipped (its /command will not resolve).
 3. The rows marked GENERATED come from captures /alfred-code:init already ran for the installed ones -
    filling this file never re-runs one whose file exists. A row whose file is missing takes its capture, in the post-install
-   order: /capture-architecture, /capture-code-style, then
+   order: /capture-architecture, /capture-code-style, /capture-preferences, then
    /capture-awareness LAST, so its generated inventory reflects the final install (it writes the
    run book and maps the sibling repos too, where the project has any). All but
    /capture-architecture are slash-only: the user types them - a model Skill call is refused.

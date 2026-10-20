@@ -35,11 +35,17 @@ never from recall, and never from a reference the project did not install:
 3. **The convention rules** under `.claude/rules/` - each path-scoped file attaches one file family to
    its house convention skill; the skill's rules are the rules for that family.
 
-**Precedence.** The project's own record wins a disagreement: its decision log and AGENTS.md choices
-first, then the loops prompts, then `CODE-STYLE.md`, then a house convention skill. A lower source's rule
-that a higher one contradicts is not a finding. No `loops/` folder, or none holding a stage prompt, drops
-source 1 - the report says so, and sources 2 and 3 are judged alone. All three absent: the run stops
-before GATHER and writes nothing - a doc judged against no rule would read as clean code.
+**The user's preferences outrank all three.** The `C<n>` and `A<n>` entries of
+`<docs-path>/preferences/CODE-PREFERENCES.md` and `ARCHITECTURE-PREFERENCES.md` are rules wherever they
+exist; an entry's `Except:` line is its one waiver, and a breach's rule is `CODE-PREFERENCES.md#c<n>` (or
+`ARCHITECTURE-PREFERENCES.md#a<n>`).
+
+**Precedence.** The user's preferences win every disagreement; then the project's own record - its
+decision log and AGENTS.md choices first, then the loops prompts, then `CODE-STYLE.md`, then a house
+convention skill. A lower source's rule that a higher one contradicts is not a finding. No `loops/` folder,
+or none holding a stage prompt, drops source 1 - the report says so, and the rest are judged alone. All
+three absent and no preferences doc: the run stops before GATHER and writes nothing - a doc judged against
+no rule would read as clean code.
 
 ## The findings gate - pass all four questions or it is not a finding
 
@@ -49,14 +55,16 @@ never tiered:
 
 1. **What breaks?** The concrete wrong outcome - wrong or lost data, a crash, a silent failure, a security
    hole, a change that cannot be made safely, or time repeatedly lost by the next developer. 'It differs
-   from how a convention or another codebase would do it' is not an answer.
+   from how a convention or another codebase would do it' is not an answer; a user preference's breach is -
+   'breaks C3', since the user named what breaks.
 2. **Who notices, and when?** A user, an operator, or the next person to touch this code - named, with
    the trigger condition. A bug needs its constructible input, state or sequence.
 3. **Is it actually new?** Unchanged code the last run's `CODE-ASSESSMENT.md` already records is a
    re-measurement: fold the sharper number into the existing entry, never open a new one, and never
    re-tier or re-grade it upward merely because it now has a number.
 4. **Has the project already decided this?** Read the decision log and the project AGENTS.md's recorded
-   choices FIRST. A recorded decision is a Deliberate tradeoff, never a defect, and never re-raised.
+   choices FIRST. A recorded decision is a Deliberate tradeoff, never a defect, and never re-raised -
+   unless it breaks a user preference, which outranks it.
 
 **Architecture and coverage stay out.** A candidate whose fix is a new boundary, an inverted layer or a
 rival pattern is the architecture-quality capture's; a missing or weak test is the coverage capture's.

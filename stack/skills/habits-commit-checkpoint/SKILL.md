@@ -5,7 +5,7 @@ description: "Use before a non-trivial git commit, git push or gh pr merge - 'co
 
 # Commit checkpoint - the gate before a commit or a publish
 
-The protocol `alfred-git.md` points at: what runs before a non-trivial commit, the exemptions, the receipt the `guard-ungated-commit` hook reads, and the same ceremony for `git push` / `gh pr merge`. The commit-message shape and the branch discipline stay in the rule. Why each rule exists is `references/evidence.md` - an audit appendix, not a run-time load.
+The protocol `alfred-git.md` points at: what runs before a non-trivial commit, the exemptions, the receipt the `guard-ungated-commit` hook reads, and the same ceremony for `git push` / `gh pr merge`. The commit-message shape and the branch discipline stay in the rule - or in the user's `GIT-PREFERENCES.md`, which overrides them where present. Why each rule exists is `references/evidence.md` - an audit appendix, not a run-time load.
 
 ## When to use
 

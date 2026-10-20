@@ -7691,6 +7691,153 @@
           "marker": "const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\\\/g, '/').replace(/^\\.\\//, '').replace(/\\/+$/, '') || '.alfred';"
         }
       ]
+    },
+    "preferences-designer": {
+      "_note": "The generated rule alfred-preferences.md imports the user's preferences into every session and ranks them first (capture-preferences is canonical). A designer restates it because its plan is where a preference is met or missed: each Decisions row names the id it meets, and a requirement that cannot meet one goes back to the user as NEEDS_CONTEXT, never a silent waiver.",
+      "owner": {
+        "file": "stack/skills/capture-preferences/SKILL.md",
+        "marker": "ranks them above every other source"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/aspnet-solution-designer.md",
+          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, imported at session start) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+        },
+        {
+          "file": "stack/agents/browser-extension-solution-designer.md",
+          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, imported at session start) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+        },
+        {
+          "file": "stack/agents/console-solution-designer.md",
+          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, imported at session start) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+        },
+        {
+          "file": "stack/agents/data-solution-designer.md",
+          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, imported at session start) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+        },
+        {
+          "file": "stack/agents/devops-solution-designer.md",
+          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, imported at session start) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+        },
+        {
+          "file": "stack/agents/ionic-angular-solution-designer.md",
+          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, imported at session start) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+        },
+        {
+          "file": "stack/agents/web-angular-solution-designer.md",
+          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, imported at session start) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+        },
+        {
+          "file": "stack/agents/windows-service-solution-designer.md",
+          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, imported at session start) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+        },
+        {
+          "file": "stack/agents/winforms-solution-designer.md",
+          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, imported at session start) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+        },
+        {
+          "file": "stack/agents/wpf-solution-designer.md",
+          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, imported at session start) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+        }
+      ]
+    },
+    "preferences-implementer": {
+      "_note": "The implementer builds to the preferences the rule imports; a card that cannot meet one stops as BLOCKED naming the id, so the waiver is the user's call (an Except: line), never the seat's.",
+      "owner": {
+        "file": "stack/skills/capture-preferences/SKILL.md",
+        "marker": "ranks them above every other source"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/aspnet-implementer.md",
+          "marker": "Build to the user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md); a card that cannot meet one stops as BLOCKED naming the id."
+        },
+        {
+          "file": "stack/agents/browser-extension-implementer.md",
+          "marker": "Build to the user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md); a card that cannot meet one stops as BLOCKED naming the id."
+        },
+        {
+          "file": "stack/agents/console-implementer.md",
+          "marker": "Build to the user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md); a card that cannot meet one stops as BLOCKED naming the id."
+        },
+        {
+          "file": "stack/agents/data-implementer.md",
+          "marker": "Build to the user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md); a card that cannot meet one stops as BLOCKED naming the id."
+        },
+        {
+          "file": "stack/agents/devops-implementer.md",
+          "marker": "Build to the user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md); a card that cannot meet one stops as BLOCKED naming the id."
+        },
+        {
+          "file": "stack/agents/ionic-angular-implementer.md",
+          "marker": "Build to the user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md); a card that cannot meet one stops as BLOCKED naming the id."
+        },
+        {
+          "file": "stack/agents/web-angular-implementer.md",
+          "marker": "Build to the user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md); a card that cannot meet one stops as BLOCKED naming the id."
+        },
+        {
+          "file": "stack/agents/windows-service-implementer.md",
+          "marker": "Build to the user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md); a card that cannot meet one stops as BLOCKED naming the id."
+        },
+        {
+          "file": "stack/agents/winforms-implementer.md",
+          "marker": "Build to the user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md); a card that cannot meet one stops as BLOCKED naming the id."
+        },
+        {
+          "file": "stack/agents/wpf-implementer.md",
+          "marker": "Build to the user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md); a card that cannot meet one stops as BLOCKED naming the id."
+        }
+      ]
+    },
+    "preferences-verifier": {
+      "_note": "The verifier measures every preference with a Check: through the skill's script and judges the rest; a breach is MAJOR, named by id, so the punch-list routes it back like any other defect.",
+      "owner": {
+        "file": "stack/skills/capture-preferences/SKILL.md",
+        "marker": "ranks them above every other source"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/aspnet-verifier.md",
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line; each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+        },
+        {
+          "file": "stack/agents/browser-extension-verifier.md",
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line; each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+        },
+        {
+          "file": "stack/agents/console-verifier.md",
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line; each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+        },
+        {
+          "file": "stack/agents/data-verifier.md",
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line; each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+        },
+        {
+          "file": "stack/agents/devops-verifier.md",
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line; each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+        },
+        {
+          "file": "stack/agents/ionic-angular-verifier.md",
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line; each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+        },
+        {
+          "file": "stack/agents/web-angular-verifier.md",
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line; each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+        },
+        {
+          "file": "stack/agents/windows-service-verifier.md",
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line; each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+        },
+        {
+          "file": "stack/agents/winforms-verifier.md",
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line; each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+        },
+        {
+          "file": "stack/agents/wpf-verifier.md",
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line; each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+        }
+      ]
     }
   }
 }

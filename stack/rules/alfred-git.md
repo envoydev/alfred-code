@@ -4,6 +4,7 @@ description: House baseline - git, pull requests, and the pre-commit checkpoint.
 
 # Git and pull requests
 
+- `GIT-PREFERENCES.md` (the user's, under `<docs-path>/preferences/`), where present, overrides this file's branch, commit-message and PR conventions - never its consent or safety lines.
 - Branch `<type>/<short-description>` or `<type>/<ticket-id>`.
 - Do NOT commit or push until the user explicitly says to, however done the task looks - a picked ask option is that word. A commit ask recommends the local commit (`git reset --soft HEAD~1` undoes it) and offers the diff first; when it names anything still owed, 'Show the diff first' takes the mark, and every push or publish ask marks holding.
 - The scope at a commit ask is derived FRESH - `git diff HEAD --stat; git ls-files -o --exclude-standard`, which counts untracked files and never moves the index (a `git reset` after `git add -N` unstages work already staged) - and the ask comes after the checkpoint's review, naming anything still owed on the diff (a gate not run, a review skipped); an answer given before any review ran is voided.

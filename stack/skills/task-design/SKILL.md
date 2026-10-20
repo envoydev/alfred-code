@@ -59,9 +59,10 @@ library, a structure, a pattern, a placement, a name at a seam): `the choice - p
 or named rule>`, or `no precedent - <reason>` said explicitly and still decided; a plan with no such
 call writes `## Decisions: none - <reason>`, so an absent ledger and a considered none never look
 alike. The implementer inherits each answer and leaves its why at the line; the reviewer gates the
-built code against the ledger. A choice the project already recorded - in its instructions file, the
-architecture docs, the code-style doc - is a decision, never a defect to design around: judge the fit
-against what the project deliberately chose, not against a convention it deliberately does not use. A
+built code against the ledger. A choice the project recorded - its instructions, architecture or code-style
+docs - is a decision, never a defect to design around: judge the fit against what it
+chose, not a convention it does not use. A user preference (`alfred-preferences.md`) outranks them all:
+its row names the id, and one no design meets goes to the user (a seat: NEEDS_CONTEXT), never waived. A
 new file's home is a decision too: the folder the repo's best-organized module uses for that kind of
 file, never a new `common` / `helpers` / `utils` dump folder. A how-to-build call is never left to the
 build or bounced to the user. One call is never the design's: a change to a behaviour the user can see
