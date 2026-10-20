@@ -575,7 +575,7 @@ test('an execution-strategy trace grades the load before the first edit and no p
 
 test('check: every shipped expectation is valid and its quotes are still in the skill', () =>
 {
-    // answer-budget is no skill: the interaction rule's budget the answer-length hook injects (audit 2026-10-14 RU06).
+    // answer-budget is no skill: the interaction rule's budget the answer hook injects (audit 2026-10-14 RU06).
     assert.deepStrictEqual(sc.listSkills(), ['answer-budget', 'background-wait', 'csharp', 'habits-code-comments', 'habits-commit-checkpoint', 'habits-execution-strategy', 'habits-root-cause', 'task-solve']);
     const r = cli(['check']);
     assert.strictEqual(r.code, 0, r.out + r.err);

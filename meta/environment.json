@@ -105,7 +105,7 @@
       "key": "ALFRED_CODE_CORRECTION_NUDGE",
       "default": "log",
       "ask": false,
-      "what": "guard-answer-length.js: a correction turn (a short prompt that follows an answer and carries a correction marker - 'no, ...', 'I meant', 'why did you', 'shorter') writes one `mode: probe` / `kind: correction` row to the hook-blocks ledger. `log` writes the row and injects nothing (the count-first week); `inject` also hands back the line 'this reads as a correction - store it with memory_store (user_correction, project tag) before continuing'; `0` (or `off`, which the hook reads the same) is off.",
+      "what": "guard-answer.js: a correction turn (a short prompt that follows an answer and carries a correction marker - 'no, ...', 'I meant', 'why did you', 'shorter') writes one `mode: probe` / `kind: correction` row to the hook-blocks ledger. `log` writes the row and injects nothing (the count-first week); `inject` also hands back the line 'this reads as a correction - store it with memory_store (user_correction, project tag) before continuing'; `0` (or `off`, which the hook reads the same) is off.",
       "validate": {
         "type": "enum",
         "values": [
@@ -252,7 +252,7 @@
       "key": "ALFRED_CODE_HOOKS_OFF",
       "default": "",
       "ask": false,
-      "what": "a csv of hook names this project switches off, e.g. `guard-answer-length,instrument-tool-usage`. It is where the guided walk's hooks LAYER lands: every hook now arrives together inside the core alfred-code plugin, so there is no file to leave out of an install, and the rows an init or configure run does NOT pick are written here (that answer overwrites this value; every other run seeds it only when absent). Matching is exact on the base name, `.js` optional; a prefix never matches.",
+      "what": "a csv of hook names this project switches off, e.g. `guard-answer,instrument-tool-usage`. It is where the guided walk's hooks LAYER lands: every hook now arrives together inside the core alfred-code plugin, so there is no file to leave out of an install, and the rows an init or configure run does NOT pick are written here (that answer overwrites this value; every other run seeds it only when absent). Matching is exact on the base name, `.js` optional; a prefix never matches.",
       "validate": {
         "type": "csv"
       }

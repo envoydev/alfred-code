@@ -55,6 +55,8 @@ function loadManifest(sourceDir)
             agents: { ...((raw.renamed || {}).agents || {}) },
             rules: { ...((raw.renamed || {}).rules || {}) },
             mcps: { ...((raw.renamed || {}).mcps || {}) },
+            // A hook by its bare name (2026-10-20: guard-answer-length -> guard-answer); its old file is retired too.
+            hooks: { ...((raw.renamed || {}).hooks || {}) },
         },
         rows: raw,
     };

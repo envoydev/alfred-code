@@ -1,4 +1,4 @@
-// Behavior tests for stack/hooks/guard-answer-length.js - the answer budget it injects, the correction streak it
+// Behavior tests for stack/hooks/guard-answer.js - the answer budget it injects, the correction streak it
 // names, the typed-answer note after an ask, and the Stop silence the 2026-10-20 ruling left (it never blocks).
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
@@ -11,8 +11,8 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 for (const k of Object.keys(process.env)) if (k.startsWith('ALFRED_CODE_')) delete process.env[k]; // C19: the session's own stack env never decides a case
 
-const HOOK = path.join(__dirname, '..', 'stack', 'hooks', 'guard-answer-length.js');
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'answer-length-'));
+const HOOK = path.join(__dirname, '..', 'stack', 'hooks', 'guard-answer.js');
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'answer-hook-'));
 // The hook appends a block row to `<root>/<docs-path>/hook-blocks/`, and the root falls back to the
 // process cwd when CLAUDE_PROJECT_DIR is unset - so a suite run from this checkout wrote its
 // fixtures into the repo's own field ledger. Pin a scratch root for the whole run.
@@ -124,7 +124,7 @@ test('the correction test counts a short turn carrying a correction marker, afte
         'Okay but do not forget to verify changes', 'you said 30 minutes, but they have passed']) {
         const { rows } = prompted(prompt);
         assert.strictEqual(rows.length, 1, `a correction: ${prompt}`);
-        assert.strictEqual(rows[0].hook, 'guard-answer-length.js');
+        assert.strictEqual(rows[0].hook, 'guard-answer.js');
         assert.strictEqual(rows[0].event, 'UserPromptSubmit');
         assert.ok(rows[0].detail && rows[0].detail.marker, 'the row names the marker that matched');
         assert.ok(!JSON.stringify(rows[0]).includes(prompt.slice(12)) || prompt.length < 24, 'the row carries the marker, never the prompt');

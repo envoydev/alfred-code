@@ -1226,7 +1226,7 @@ test('seed update --installed-only: an install under another key keeps its picks
             'version: 2.0.0\nsha: 0000000\npicked-skills: markdown-style\npicked-agents: security-auditor@alfred-code\n');
         fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), JSON.stringify({
             permissions: { deny: ['Agent(alfred-code:code-style-analyzer)'] },
-            env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' },
+            env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer' },
         }, null, 2));
     };
     const { result, out } = seedRun('update', 'skill markdown-style\n', { plugins: listing, args: ['--installed-only'], prepare,
@@ -1245,7 +1245,7 @@ test('seed update --installed-only: an install under another key keeps its picks
     assert.ok(result.picks[0] && result.picks[0].split(',').includes('markdown-style'), `skills (a copy since 2.1.0, no plugin home): ${result.picks[0]}`);
     assert.ok(result.picks[1] && result.picks[1].split(',').includes('security-auditor@alfred-code'), `agents: ${result.picks[1]}`);
     assert.deepStrictEqual(result.deny, ['Agent(alfred-code:code-style-analyzer)'], 'the deny in one spelling');
-    assert.strictEqual(result.env.ALFRED_CODE_HOOKS_OFF, 'guard-answer-length', 'the hooks the user switched off stay off');
+    assert.strictEqual(result.env.ALFRED_CODE_HOOKS_OFF, 'guard-answer', 'the hooks the user switched off stay off');
 });
 
 // Review M3: a hooks-copy-route install made before the hooks rode the core never wrote
@@ -1315,15 +1315,15 @@ test('seed update --installed-only: an unwired stack hook under a stamp with no 
             fs.writeFileSync(path.join(claude, 'rules', 'alfred-interaction.md'), 'x\n');
             fs.writeFileSync(path.join(claude, 'hooks', 'guard-secret-value.js'), '// x\n');
             fs.writeFileSync(path.join(claude, 'alfred-code.stamp'), `version: 1.3.0\nsha: 0000000\nshipped-hooks: ${shipped.join(',')}\n`);
-            fs.writeFileSync(path.join(claude, 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } }, null, 2));
+            fs.writeFileSync(path.join(claude, 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer' } }, null, 2));
         },
         inspect: (repo) => ({
             onDisk: fs.readdirSync(path.join(repo, '.claude', 'hooks')).filter((f) => shipped.includes(f.replace(/\.js$/, ''))).sort(),
             off: String(JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')).env.ALFRED_CODE_HOOKS_OFF).split(',').filter(Boolean).sort(),
         }),
     });
-    assert.deepStrictEqual(result.off, ['guard-answer-length'], 'only the hook the user switched off is named off');
-    assert.deepStrictEqual(result.onDisk, shipped.filter((h) => h !== 'guard-answer-length').map((h) => `${h}.js`).sort(), 'every hook but the one named off copied and on');
+    assert.deepStrictEqual(result.off, ['guard-answer'], 'only the hook the user switched off is named off');
+    assert.deepStrictEqual(result.onDisk, shipped.filter((h) => h !== 'guard-answer').map((h) => `${h}.js`).sort(), 'every hook but the one named off copied and on');
 });
 
 // Re-review N1: the copy route's own modules (hook-prelude.js, fresh-session.js, shell-writes.js, hidden-chars.js, shell-guards.js) are no catalog hook,
@@ -1480,9 +1480,9 @@ test('seed update --installed-only: a plugin-route project with a leftover prelu
     assert.deepStrictEqual(all.onDisk, shipped.map((h) => `${h}.js`).sort(), 'every hook is copied, never a None');
     assert.deepStrictEqual(all.off, []);
     assert.strictEqual(all.route, 'copy', 'and the stamp now records the route');
-    const one = run('guard-answer-length');
-    assert.deepStrictEqual(one.onDisk, shipped.filter((h) => h !== 'guard-answer-length').map((h) => `${h}.js`).sort(), 'the stored off list is kept');
-    assert.deepStrictEqual(one.off, ['guard-answer-length']);
+    const one = run('guard-answer');
+    assert.deepStrictEqual(one.onDisk, shipped.filter((h) => h !== 'guard-answer').map((h) => `${h}.js`).sort(), 'the stored off list is kept');
+    assert.deepStrictEqual(one.off, ['guard-answer']);
 });
 
 // configure and validate SHOW the --print-plan output. A plan never runs an uninstall, so it must never
@@ -1922,7 +1922,7 @@ test('seed: a copy-route None survives a plugin-route run that dies after the ma
 // on both copy routes - the full one records its picks as the copies alone, so there the disk says it.
 test('seed: a plugin-to-copy run that dies after some hook copies never reads the partial folder as picks (m8)', POSIX_ONLY, () =>
 {
-    const OFF = ['guard-answer-length', 'instrument-tool-usage'];
+    const OFF = ['guard-answer', 'instrument-tool-usage'];
     const { loadManifest } = require('./install/manifest.js');
     const shipped = [...new Set(loadManifest(ROOT).catalogs.hooks.map((e) => e.split('::')[0].replace(/\.js$/, '')))];
     const kept = shipped.filter((h) => !OFF.includes(h));
@@ -1968,7 +1968,7 @@ test('seed: a plugin-to-copy run that dies after some hook copies never reads th
 // copy routes, dying on the memory import's line - the first step after the hooks layer.
 test('seed: a copy-route run that dies after the hooks layer keeps the user\'s hook picks, never every hook (N7)', POSIX_ONLY, () =>
 {
-    const OFF = ['guard-answer-length', 'instrument-tool-usage'];
+    const OFF = ['guard-answer', 'instrument-tool-usage'];
     const { loadManifest } = require('./install/manifest.js');
     const kept = [...new Set(loadManifest(ROOT).catalogs.hooks.map((e) => e.split('::')[0].replace(/\.js$/, '')))].filter((h) => !OFF.includes(h));
     for (const route of ['full copy', 'mixed'])
@@ -2093,7 +2093,7 @@ test('seed: on a switch to the hooks copy route the committed wiring follows set
         env: [{}, { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' }],
         each: (repo, i) =>
         {
-            if (i === 0) fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } }));
+            if (i === 0) fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer' } }));
             return null;
         },
         inspect: (repo) => ({
@@ -2103,9 +2103,9 @@ test('seed: on a switch to the hooks copy route the committed wiring follows set
         }),
     });
     assert.deepStrictEqual(result.onDisk, shipped.map((h) => `${h}.js`).sort(), `the runner's local HOOKS_OFF decided the committed copies: ${result.onDisk.length} of ${shipped.length}`);
-    assert.ok(JSON.stringify(result.shared.hooks).includes('/.claude/hooks/guard-answer-length.js'), 'the committed wiring left out the hook the runner switched off for themselves');
+    assert.ok(JSON.stringify(result.shared.hooks).includes('/.claude/hooks/guard-answer.js'), 'the committed wiring left out the hook the runner switched off for themselves');
     assert.strictEqual(result.shared.env.ALFRED_CODE_HOOKS_OFF, '', 'the complement of the committed wiring lands in settings.json');
-    assert.strictEqual(result.local.env.ALFRED_CODE_HOOKS_OFF, 'guard-answer-length', 'the runner\'s own switch-off stays theirs, and still applies to them');
+    assert.strictEqual(result.local.env.ALFRED_CODE_HOOKS_OFF, 'guard-answer', 'the runner\'s own switch-off stays theirs, and still applies to them');
 });
 
 // A-I2 (final review A): the old local mode printed `/mcp disable context7` for the hosted server. The prune of

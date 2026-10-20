@@ -1201,7 +1201,7 @@
     "hooks": [
       "check-turn-build",
       "docs-session",
-      "guard-answer-length",
+      "guard-answer",
       "guard-catastrophic-rm",
       "guard-config-protection",
       "guard-cross-project-write",

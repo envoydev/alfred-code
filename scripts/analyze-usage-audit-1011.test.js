@@ -123,7 +123,7 @@ test('2ca8e8ee#8: cancelled hook runs make a per-hook timeout row, and a timed-o
       cancel(T(72), 'q1', 'guard-layer-table.js', 11944, 'AskUserQuestion'),
       cancel(T(77), 'q1', 'guard-stop-contract.js', 17123, 'AskUserQuestion'),
       res(T(80), 'q1', 'User has answered your questions: "Go?"="Yes (Recommended)".'),
-      cancel(T(81), null, 'guard-answer-length.js', 900, null, false, 'UserPromptSubmit'),
+      cancel(T(81), null, 'guard-answer.js', 900, null, false, 'UserPromptSubmit'),
       asst('m3', T(90), [sh('b2', 'git status', { description: 'Status' })]),
       res(T(91), 'b2', 'x'),
     ];
@@ -135,7 +135,7 @@ test('2ca8e8ee#8: cancelled hook runs make a per-hook timeout row, and a timed-o
     ].map(line).join(''));
     const j = run([file, '--hook-log', ledger]);
     assert.deepStrictEqual(j.main.hookTimeouts['instrument-tool-usage.js'], { timedOut: 2, cancelled: 0, maxMs: 46143, timeoutMs: 10000, events: { 'PreToolUse Bash': 1, 'PreToolUse AskUserQuestion': 1 } });
-    assert.deepStrictEqual([j.main.hookTimeouts['guard-answer-length.js'].timedOut, j.main.hookTimeouts['guard-answer-length.js'].cancelled], [0, 1]);
+    assert.deepStrictEqual([j.main.hookTimeouts['guard-answer.js'].timedOut, j.main.hookTimeouts['guard-answer.js'].cancelled], [0, 1]);
     assert.deepStrictEqual(j.hookLog.coverage.unmatchedCalls.map((c) => [c.tool, c.cause]), [
       ['Bash', 'its instrumentation hook was cancelled at its timeout after 46.1s - no row was written'],
       ['AskUserQuestion', 'its instrumentation hook was cancelled at its timeout after 11.6s - no row was written'],
@@ -148,7 +148,7 @@ test('2ca8e8ee#8: cancelled hook runs make a per-hook timeout row, and a timed-o
     const md = text([file, '--hook-log', ledger, '--report-md']);
     assert.match(md, /### Hook timeouts/);
     assert.match(md, /\| guard-layer-table\.js \| 1 \|  \| 11\.9s of a 10s cap \| PreToolUse AskUserQuestion \|/);
-    assert.match(md, /\| guard-answer-length\.js \| 0 \| 1 \| 0\.9s \| UserPromptSubmit \|/);
+    assert.match(md, /\| guard-answer\.js \| 0 \| 1 \| 0\.9s \| UserPromptSubmit \|/);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

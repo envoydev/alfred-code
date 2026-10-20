@@ -857,7 +857,7 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     `TURN_CHECK`, the Cursor and Stop chain gates), so either hook switched off leaves the other running, and both
     generators fold its Stop row into history-session's (`history-session.js wiringRows`, `RIDERS`), which takes its 60s;
     with history-session not picked its own row stays.
-  - `guard-answer-length.js` (`UserPromptSubmit` + `SessionStart:compact` + `PostToolUse` `AskUserQuestion`; never blocks) - injects the answer budget every turn (a
+  - `guard-answer.js` (`guard-answer-length.js` before 2026-10-20 - the user's ruling; `renamed.hooks` carries it) (`UserPromptSubmit` + `SessionStart:compact` + `PostToolUse` `AskUserQuestion`; never blocks) - injects the answer budget every turn (a
     333-char delta of the rule's section, which stays its home - audit 2026-10-14 RU06; it was 751 on every prompt), and
     again after a compaction, which drops that injection - only then since the deep hooks review 2026-10-16 (startup,
     resume and clear get it from the first prompt; 256 starts paid a second copy). Its Stop half - the 1800-char prose

@@ -154,7 +154,7 @@ const maskSecrets = (s) => String(s == null ? '' : s)
 // the stack's own audits agree on, as NUMBERS with denominators - the report judges them. Every
 // classifier here is a measurement, never a gate: a hook grows a class only after these rows have
 // shown its rate for a week.
-// Prose as guard-answer-length.js defines it (fences, tables, quotes, inline code stripped), so
+// Prose as guard-answer.js defines it (fences, tables, quotes, inline code stripped), so
 // the analyzer counts what the hook would see.
 // A PLUGIN server's tools are `mcp__plugin_<plugin>_<server>__<tool>`, so the segment between the
 // double underscores is `plugin_<plugin>_<server>`. Server names carry no underscore, so dropping
@@ -2788,7 +2788,7 @@ async function analyzeTranscript(file, window) {
         if (imgs && info && s.toolCalls[info.name]) s.toolCalls[info.name].images = (s.toolCalls[info.name].images || 0) + imgs;
         if (!info) continue;
         // A correction TYPED into an ask (its Other field) waits on a save like a typed prompt (audit 2026-10-10 C15,
-        // 4f1c2ebb): guard-answer-length logs it as a `correction` row `via: ask-answer`, so the row reading the
+        // 4f1c2ebb): guard-answer logs it as a `correction` row `via: ask-answer`, so the row reading the
         // transcript reads it too - the same marker test, the same length cap, an offered label never counted.
         if (info.name === 'AskUserQuestion' && !c.is_error)
           for (const a of typedAskAnswers(info.questions, o.toolUseResult, text))
@@ -3576,7 +3576,7 @@ const rootCauseLine = (t) => `ROOT CAUSE (probe): ${t.streaks} red streak(s) - $
   + `${t.preloaded} preloaded by the seat, ${t.afterFix} loaded after the fix, ${t.missed} MISSED, ${t.noFix} with no fix after, ${t.unmatched} unmatched`
   + (t.intended ? `; ${t.intended} intended red (expected red after habits-test-first, not counted)` : '')
   + (t.testFirstRed ? `; ${t.testFirstRed} test-first red run(s) logged apart (test-first-red rows, not streaks)` : '');
-// The correction probe (guard-answer-length.js, log-only unless ALFRED_CODE_CORRECTION_NUDGE=inject):
+// The correction probe (guard-answer.js, log-only unless ALFRED_CODE_CORRECTION_NUDGE=inject):
 // one row per correction turn. Whether it was then SAVED is the scorecard's corrections-saved row,
 // read from the transcript with the same test.
 const newCorrection = () => ({ turns: 0, injected: 0 });
@@ -3885,11 +3885,11 @@ function efficiencyRows(main, agg, blockLedger) {
     rows.push({ practice: 'checked commits', measured: n ? `${k} of ${n} commit(s) had a test, build, lint or ci-status call in the ${CHECK_WINDOW} tool calls before${(e.commitsUnchecked || []).length ? ` - unchecked at: ${tsList(e.commitsUnchecked)}` : ''}` : 'no commit', tests: 'a check the session can run, before the work is called done - ran, not necessarily green; open the run' });
   }
   rows.push({ practice: 'green claims', measured: `${(e.unverifiedGreenClaims || []).length} of ${e.greenClaims || 0} claim(s) that a check passed landed in a turn that ran no check${e.greenClaimsInAsks ? ` (${e.greenClaimsInAsks} of the claims in an ask's question)` : ''}${(e.unverifiedGreenClaims || []).length ? ` - at: ${tsList(e.unverifiedGreenClaims)}` : ''}`, tests: "evidence, not assertion - open each turn: a check run in an EARLIER turn, or in a dispatched seat's own transcript, is evidence the regex cannot see" });
-  rows.push({ practice: 'correction streaks', measured: `${(e.correctionStreaks || []).length} streak(s) (${STREAK_TURNS} short user turns in a row, each after a ${fmt(STREAK_LONG)}+ char answer, as guard-answer-length counts them)${(e.correctionStreaks || []).length ? ` at: ${tsList(e.correctionStreaks)}` : ''}; ${e.correctionTurns || 0} of ${e.longAnswered || 0} answer(s) over ${fmt(STREAK_LONG)} chars drew a short (under ${STREAK_SHORT} char) user turn`, tests: 'after two corrections the context holds the failed drafts: the format ask, or /clear with a prompt that carries what was learned; the second number is what the strict walk did not chain' });
+  rows.push({ practice: 'correction streaks', measured: `${(e.correctionStreaks || []).length} streak(s) (${STREAK_TURNS} short user turns in a row, each after a ${fmt(STREAK_LONG)}+ char answer, as guard-answer counts them)${(e.correctionStreaks || []).length ? ` at: ${tsList(e.correctionStreaks)}` : ''}; ${e.correctionTurns || 0} of ${e.longAnswered || 0} answer(s) over ${fmt(STREAK_LONG)} chars drew a short (under ${STREAK_SHORT} char) user turn`, tests: 'after two corrections the context holds the failed drafts: the format ask, or /clear with a prompt that carries what was learned; the second number is what the strict walk did not chain' });
   {
     const total = (e.correctionsSaved || 0) + (e.correctionsUnsaved || []).length;
     const unsaved = (e.correctionsUnsaved || []).length;
-    rows.push({ practice: 'corrections saved to memory', measured: `${e.correctionsSaved || 0} of ${total} correction(s) saved within ${SAVE_WINDOW} replies; ${unsaved} unsaved${total ? ` (${Math.round((100 * unsaved) / total)}%)` : ''}${unsaved ? ` at: ${tsList(e.correctionsUnsaved)}` : ''}`, tests: 'a correction the user had to make (a short turn carrying a correction marker, as guard-answer-length reads it) is a preference or a lesson; one never stored is made again next session' });
+    rows.push({ practice: 'corrections saved to memory', measured: `${e.correctionsSaved || 0} of ${total} correction(s) saved within ${SAVE_WINDOW} replies; ${unsaved} unsaved${total ? ` (${Math.round((100 * unsaved) / total)}%)` : ''}${unsaved ? ` at: ${tsList(e.correctionsUnsaved)}` : ''}`, tests: 'a correction the user had to make (a short turn carrying a correction marker, as guard-answer reads it) is a preference or a lesson; one never stored is made again next session' });
   }
   rows.push({ practice: 'long answers', measured: `${e.longAnswers || 0} of ${e.finalAnswers || 0} final answer(s) over ${fmt(LONG_ANSWER)} chars of prose`, tests: "the answer budget - the user's own ask may have lifted it, check the prompt before scoring" });
   {

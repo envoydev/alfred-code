@@ -35,7 +35,7 @@ if (require.main === module) {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
     harnessPrompt = prelude.harnessPrompt || harnessPrompt;
-    if (prelude.standDown('guard-answer-length')) process.exit(0);
+    if (prelude.standDown('guard-answer')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
 // The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).

@@ -251,7 +251,7 @@
               },
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer-length.js\"",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer.js\"",
                 "timeout": 10
               }
             ]
@@ -316,7 +316,7 @@
               },
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer-length.js\"",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer.js\"",
                 "timeout": 10
               }
             ]
@@ -339,7 +339,7 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer-length.js\"",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer.js\"",
                 "timeout": 10
               }
             ]

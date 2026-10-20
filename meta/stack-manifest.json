@@ -868,19 +868,19 @@
       "note": "the desktop servers' process launchers, both routes' spellings: deny Windows-MCP App with mode launch_executable (any executable, caller-given args - the server excludes by tool name, never by mode) and every MacOS-MCP Shell call (a shell command no shell guard sees); App's launch / switch / resize pass; the DESKTOP-EXEC-ALLOW receipt (App, Shell, an executable, or *) honours a wanted launch"
     },
     {
-      "file": "guard-answer-length.js",
+      "file": "guard-answer.js",
       "matcher": "@UserPromptSubmit",
       "event": "",
       "note": "inject the answer budget (~3 sentences plus points) at the end of the turn's context - the short-answer rule mechanized; a correction turn writes one log-only probe row (ALFRED_CODE_CORRECTION_NUDGE=inject adds the memory-save line)"
     },
     {
-      "file": "guard-answer-length.js",
+      "file": "guard-answer.js",
       "matcher": "@SessionStart:compact",
       "event": "",
       "note": "re-inject the budget after a COMPACTION rebuilds the context without it (measured absent for 277 of 366 messages in one session); startup, resume and clear get it from the first prompt's UserPromptSubmit injection, so the start no longer pays for a second copy (deep hooks review 2026-10-16)"
     },
     {
-      "file": "guard-answer-length.js",
+      "file": "guard-answer.js",
       "matcher": "@PostToolUse:AskUserQuestion",
       "event": "",
       "note": "an answer TYPED into an ask (matching none of the offered labels) is the user speaking: one ask-answer-typed probe row; a short one carrying a correction marker also writes the correction row (the same test and nudge mode as a typed prompt); one naming a path gets a note to open it and restate what it changes before acting (audit 2026-10-10 C15 / C07: corrections typed into asks were never counted, and a folder named in an answer was never opened). Never blocks"
@@ -1155,7 +1155,8 @@
     "hooks": [
       "require-convention-skill.js",
       "inject-code-style.js",
-      "monitor-session.js"
+      "monitor-session.js",
+      "guard-answer-length.js"
     ],
     "mcps": [
       "angular-cli",
@@ -1275,6 +1276,9 @@
       "memory": "alfred-memory",
       "windows-desktop": "windows-control",
       "macos-desktop": "macos-control"
+    },
+    "hooks": {
+      "guard-answer-length": "guard-answer"
     }
   }
 }

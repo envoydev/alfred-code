@@ -249,7 +249,7 @@ function listingOf(state)
 
 test('readInstalled: an install read back derives the SAME off-state it was written from', () =>
 {
-    const before = narrowed({ dropAgent: 'security-auditor', dropHook: 'guard-answer-length' });
+    const before = narrowed({ dropAgent: 'security-auditor', dropHook: 'guard-answer' });
     const lines = readInstalled({
         plugins: listingOf(before), deny: before.agents.deny,
         hooksOff: before.env.ALFRED_CODE_HOOKS_OFF, routes: ALL_ROUTES, sourceDir: ROOT,
@@ -260,14 +260,14 @@ test('readInstalled: an install read back derives the SAME off-state it was writ
     assert.deepStrictEqual(after.plugins.filter((p) => p.startsWith('alfred-code')), before.plugins.filter((p) => p.startsWith('alfred-code')),
         'every stack entry the project enabled is still in the set the update refreshes');
     assert.ok(before.agents.deny.includes('Agent(alfred-code:security-auditor)'), 'the fixture really dropped a carried seat');
-    assert.ok(before.hooks.off.includes('guard-answer-length'), 'the fixture really dropped a hook');
+    assert.ok(before.hooks.off.includes('guard-answer'), 'the fixture really dropped a hook');
 });
 
 test('readInstalled: a hook HOOKS_OFF does not name is on - a new release hook is adopted', () =>
 {
-    const lines = readInstalled({ plugins: ['alfred-code'], hooksOff: 'guard-answer-length', routes: ALL_ROUTES, sourceDir: ROOT });
+    const lines = readInstalled({ plugins: ['alfred-code'], hooksOff: 'guard-answer', routes: ALL_ROUTES, sourceDir: ROOT });
     const hooks = lines.filter((l) => l.startsWith('hook ')).map((l) => l.slice(5));
-    assert.ok(!hooks.includes('guard-answer-length'));
+    assert.ok(!hooks.includes('guard-answer'));
     assert.ok(hooks.includes('docs-session') && hooks.includes('memory-session'));
     const shipped = new Set(require('../meta/stack-manifest.json').hooks.map((h) => h.file.replace(/\.js$/, '')));
     assert.strictEqual(hooks.length, shipped.size - 1, 'every shipped hook but the one HOOKS_OFF names');
@@ -311,10 +311,10 @@ test('readInstalled: a denied seat is not read back, whatever plugin carries it'
 
 test('readInstalled: HOOKS_OFF matches the way the hooks read it - `.js`, case and space ignored', () =>
 {
-    // The frozen shell twin writes `guard-answer-length.js`; the prelude honours it. A read-back
+    // The frozen shell twin writes `guard-answer.js`; the prelude honours it. A read-back
     // that missed it would switch the user's hook back on at the next node update.
-    const lines = readInstalled({ plugins: ['alfred-code'], hooksOff: ' Guard-Answer-Length.js ,guard-secret', routes: { hooks: true }, sourceDir: ROOT });
-    assert.ok(!lines.includes('hook guard-answer-length'));
+    const lines = readInstalled({ plugins: ['alfred-code'], hooksOff: ' Guard-Answer.js ,guard-secret', routes: { hooks: true }, sourceDir: ROOT });
+    assert.ok(!lines.includes('hook guard-answer'));
     assert.ok(lines.includes('hook guard-secret-value'), 'a prefix never matches, as in the prelude');
 });
 
@@ -344,8 +344,8 @@ test('writable: a surface the read-back found no evidence of writes nothing back
 test('writable: the hooks copy route with the core on still names the unpicked hooks off', () =>
 {
     const { writable } = require('./derive-state.js');
-    const state = narrowed({ dropAgent: 'security-auditor', dropHook: 'guard-answer-length' });
-    assert.ok(state.hooks.off.includes('guard-answer-length'), 'fixture: a hook left unpicked');
+    const state = narrowed({ dropAgent: 'security-auditor', dropHook: 'guard-answer' });
+    assert.ok(state.hooks.off.includes('guard-answer'), 'fixture: a hook left unpicked');
     const hooksCopied = writable(state, { routes: { hooks: false, skills: true, mcps: true }, answered: { hooks: true, agents: true } });
     assert.deepStrictEqual(hooksCopied.hooksOff, state.hooks.off, 'the core carries the unpicked hook - HOOKS_OFF is its only off-switch');
     const hooksOnlyCopy = writable(state, { routes: { hooks: false, skills: false, mcps: true }, answered: { hooks: true, agents: true } });
@@ -369,7 +369,7 @@ test('writable: on the hooks copy route with the core on, every shipped hook the
     assert.deepStrictEqual(writable(null, { routes: core, wired: shipped, shipped }).hooksOff, [], 'every hook wired: each core copy stands down for its twin');
     const full = writable(null, { routes: {}, wired: [], shipped });
     assert.deepStrictEqual([full.hooksOff, full.hooksAnswered], [[], false], 'no core on the full copy route');
-    const state = narrowed({ dropAgent: 'security-auditor', dropHook: 'guard-answer-length' });
+    const state = narrowed({ dropAgent: 'security-auditor', dropHook: 'guard-answer' });
     assert.deepStrictEqual(writable(state, { routes: ALL_ROUTES, wired: [], shipped }).hooksOff, state.hooks.off, 'the plugin route reads the selection, never the copies');
 });
 
@@ -445,18 +445,18 @@ test('derive-state: `hook none` - the walk\'s None at the hooks layer - switches
 test('derive-state CLI: `written` is what THIS route writes - the full copy route writes no off-state', () =>
 {
     const { execFileSync } = require('node:child_process');
-    const sel = selectionFile(fs.readFileSync(realSelection(), 'utf8').split('\n').filter((l) => l.trim() !== 'agent security-auditor' && l.trim() !== 'hook guard-answer-length'));
+    const sel = selectionFile(fs.readFileSync(realSelection(), 'utf8').split('\n').filter((l) => l.trim() !== 'agent security-auditor' && l.trim() !== 'hook guard-answer'));
     const run = (env) => JSON.parse(execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'derive-state.js'), '--selection', sel], { encoding: 'utf8', env: { ...process.env, ...env } }));
     const plugin = run({ ALFRED_CODE_SKILLS_VIA_PLUGIN: '', ALFRED_CODE_HOOKS_VIA_PLUGIN: '', ALFRED_CODE_MCPS_VIA_PLUGIN: '' });
     assert.deepStrictEqual(plugin.routes, { hooks: true, skills: true, mcps: true });
     assert.deepStrictEqual(plugin.written.agentDeny, plugin.agents.deny);
     assert.ok(plugin.written.agentDeny.includes('Agent(alfred-code:security-auditor)') && plugin.written.agentDeny.includes('Agent(alfred-code:web-angular-implementer)'),
         'the seat the walk dropped, and every seat it never picked');
-    assert.deepStrictEqual(plugin.written.hooksOff, ['guard-answer-length']);
+    assert.deepStrictEqual(plugin.written.hooksOff, ['guard-answer']);
     // The MCP route alone keeps the core on, and the core carries every hook (2.0.0) and every seat
     // (2.1.0): the unpicked hook is still named off, and the seats it lists beside the copies are denied.
     const copy = run({ ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' });
-    assert.deepStrictEqual([copy.written.agentDeny, copy.written.hooksOff], [plugin.agents.deny, ['guard-answer-length']]);
+    assert.deepStrictEqual([copy.written.agentDeny, copy.written.hooksOff], [plugin.agents.deny, ['guard-answer']]);
     const full = run({ ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' });
     assert.deepStrictEqual([full.written.agentDeny, full.written.hooksOff], [[], []]);
 });
@@ -567,12 +567,12 @@ test('classifyNew: an always-closure item arrives, a stack item is offered, the 
         { category: 'skill', name: 'markdown-style' }, { category: 'skill', name: 'dotnet-web-backend' },
         { category: 'agent', name: 'evidence-gatherer' }, { category: 'agent', name: 'code-style-analyzer' },
         { category: 'rule', name: 'alfred-memory' }, { category: 'rule', name: 'sql-conventions' },
-        { category: 'hook', name: 'docs-session' }, { category: 'hook', name: 'guard-answer-length' },
+        { category: 'hook', name: 'docs-session' }, { category: 'hook', name: 'guard-answer' },
         { category: 'skill', name: 'angular-material' }, { category: 'rule', name: 'markdown-docs' },
     ];
     const rows = classifyNew({
         added, plugins: ['alfred-code'], deny: ['Agent(alfred-code:code-style-analyzer)'],
-        hooksOff: 'guard-answer-length', routes: ALL_ROUTES, always: ALWAYS_BASE, sourceDir: ROOT,
+        hooksOff: 'guard-answer', routes: ALL_ROUTES, always: ALWAYS_BASE, sourceDir: ROOT,
     });
     const by = Object.fromEntries(rows.map((r) => [`${r.category} ${r.name}`, r]));
     assert.strictEqual(by['skill markdown-style'].verdict, 'arrives');
@@ -584,7 +584,7 @@ test('classifyNew: an always-closure item arrives, a stack item is offered, the 
     assert.ok(by['rule sql-conventions'].copies.length > 0, 'and it names them');
     assert.deepStrictEqual(by['rule sql-conventions'].enables, [], 'the core is enabled, so a yes switches no entry on');
     assert.deepStrictEqual([by['hook docs-session'].verdict, by['hook docs-session'].entry], ['arrives', 'alfred-code'], 'the hooks ride the core');
-    assert.strictEqual(by['hook guard-answer-length'].verdict, 'off');
+    assert.strictEqual(by['hook guard-answer'].verdict, 'off');
     assert.deepStrictEqual([by['skill angular-material'].verdict, by['skill angular-material'].entry], ['offer', null], 'a library item is copied only on a yes');
     assert.strictEqual(by['rule markdown-docs'].verdict, 'arrives', 'an always rule is adopted - and markdown-style with it, as its closure');
 });
@@ -810,7 +810,7 @@ test('classifyNew (2.1.0): an always skill or seat arrives, a stack seat is offe
 test('writable (2.1.0): the seat off-state is written whenever the core loads the seats - the skills copy route with the core on included', () =>
 {
     const { writable } = require('./derive-state.js');
-    const state = narrowed({ dropAgent: 'security-auditor', dropHook: 'guard-answer-length' });
+    const state = narrowed({ dropAgent: 'security-auditor', dropHook: 'guard-answer' });
     const both = { hooks: true, agents: true };
     assert.deepStrictEqual(writable(state, { routes: ALL_ROUTES, answered: both }).agentDeny, state.agents.deny);
     const mixed = writable(state, { routes: { skills: false, hooks: true, mcps: true }, answered: both });

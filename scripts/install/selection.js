@@ -241,10 +241,19 @@ function readBack({ claudeDir, skillsDir, foreignSkill = () => false, mcpServers
     const shipped = [...new Set(manifest.catalogs.hooks.map(nameOfFile))];
     // A copy an older release wrote under a name this one renamed is the renamed item (`renamed` below).
     const renaming = { renamed: manifest.renamed, log, said };
+    // A hook a release renamed (manifest `renamed.hooks`) reads under its new name wherever an older install names it -
+    // a copied file (deriveFromDisk below), the stamp's shipped list and an ALFRED_CODE_HOOKS_OFF value - so a hook the
+    // user switched off stays off under its new name, and one they kept is no new hook to adopt.
+    const hookRenames = (manifest.renamed && manifest.renamed.hooks) || {};
+    const hookNow = (h) => { const bare = String(h).trim().replace(/\.js$/, ''); return Object.hasOwn(hookRenames, bare) ? hookRenames[bare] : h; };
+    const offNow = (e) => (e && typeof e === 'object' && envOf(e, 'HOOKS_OFF') != null
+        ? { ...e, ALFRED_CODE_HOOKS_OFF: String(envOf(e, 'HOOKS_OFF')).split(',').map((h) => (h.trim() ? hookNow(h) : h)).join(',') } : e);
+    stampHooks = [...new Set((stampHooks || []).map(hookNow))];
+    committedEnv = offNow(committedEnv);
     // An MCP name from before the 2.0.0 rename - a listing row, a .mcp.json server - is read under its
     // new one: the same server the user picked (manifest `renamed.mcps`).
     const cur = (name) => currentMcp(name, (manifest.renamed && manifest.renamed.mcps) || {});
-    let lines = renameLines(deriveFromDisk({ claudeDir, skillsDir, mcpServers: mcpServers.map(cur), plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins, shippedHooks: shipped, known: stackNames(manifest), foreignSkill }), renaming);
+    let lines = renameLines(deriveFromDisk({ claudeDir, skillsDir, mcpServers: mcpServers.map(cur), plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins, shippedHooks: shipped.concat(Object.keys(hookRenames)), known: stackNames(manifest), foreignSkill }), renaming);
     const none = { lines, closeFrom: [], parked: [], deny: [], installed: false, answered: { hooks: false, agents: false }, engines: [] };
     const ours = (stackListing || listing).filter((r) => r.marketplace === marketplace);
     // On the plugin routes an install whose every pick an entry carries, with no rule copied, leaves
@@ -266,7 +275,7 @@ function readBack({ claudeDir, skillsDir, foreignSkill = () => false, mcpServers
         log(`installed-only: ${r.name}@${r.marketplace} is installed but not among the browsers the last install kept - left as it is, not kept; remove it: claude plugin uninstall ${r.name}@${r.marketplace} --scope ${r.scope || 'project'}, or pick it again in /alfred-code:configure`);
     const names = ours.filter((r) => rowOn(r) && !unrecorded(r)).map((r) => cur(r.name));
     const stored = renameDeny(settings && typeof settings === 'object' ? settings : {}, { ...renaming, sharedOnly: sharedOnlyDeny });
-    const env = stored.env && typeof stored.env === 'object' ? stored.env : {};
+    const env = offNow(stored.env && typeof stored.env === 'object' ? stored.env : {});
     const deny = stored.permissions && Array.isArray(stored.permissions.deny) ? stored.permissions.deny : [];
     // The browser engines the last install INSTALLED (the stamp's `control-engines:`): a
     // disabled row of one is the user's choice to leave it off (R67), still installed and kept, never
@@ -462,7 +471,7 @@ function dropFormerPicks({ lines = [], listing = [], lastVersion = '', compare, 
 // (--selection, --add, --drop); each is read under the new name here, so a pick is carried and a
 // switch-off holds, and the old copy goes with the retired list. `said` makes it one line per rename
 // per run, whichever of those places names it first.
-const RENAMED_KIND = { skill: 'skills', agent: 'agents', rule: 'rules', mcp: 'mcps' };
+const RENAMED_KIND = { skill: 'skills', agent: 'agents', rule: 'rules', mcp: 'mcps', hook: 'hooks' };
 function renamedTo({ renamed, kind, name, log = () => {}, said = new Set() })
 {
     const to = ((renamed && renamed[RENAMED_KIND[kind]]) || {})[name];
@@ -475,7 +484,7 @@ function renameLines(lines = [], opts = {})
 {
     return lines.map((l) =>
     {
-        const m = /^\s*(skill|agent|rule|mcp)\s+(\S+)\s*$/.exec(String(l));
+        const m = /^\s*(skill|agent|rule|mcp|hook)\s+(\S+)\s*$/.exec(String(l));
         return m ? `${m[1]} ${renamedTo({ ...opts, kind: m[1], name: m[2] })}` : l;
     });
 }

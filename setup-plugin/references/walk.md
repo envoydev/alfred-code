@@ -281,7 +281,7 @@ Hooks: keep all 17 on? The build check and the instrumenter stay inert until swi
 - 'None - every hook off' - writes `hook none`
 ```
 
-Step 2: multi-select questions of 4 - session (docs-session, memory-session, history-session), optional (check-turn-build, instrument-tool-usage, guard-answer-length,
+Step 2: multi-select questions of 4 - session (docs-session, memory-session, history-session), optional (check-turn-build, instrument-tool-usage, guard-answer,
 guard-fresh-session-start) and the guards in groups of 4, the last group padded from the
 neighbouring one so no question has fewer than 2 options.
 

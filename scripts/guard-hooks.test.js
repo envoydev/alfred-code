@@ -3980,7 +3980,7 @@ test('guard-config-protection: an existing check config cannot be weakened, a ne
   });
   withProject(root, { ALFRED_CODE_CONFIG_PROTECT: '0' }, () =>
     assert.strictEqual(edit(path.join(root, 'tsconfig.json'), '"strict": true', '"strict": false'), 0, 'the env switch turns it off'));
-  withProject(root, { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length,guard-config-protection' }, () =>
+  withProject(root, { ALFRED_CODE_HOOKS_OFF: 'guard-answer,guard-config-protection' }, () =>
     assert.strictEqual(edit(path.join(root, 'tsconfig.json'), '"strict": true', '"strict": false'), 0, 'the per-project hooks csv switches it off'));
 });
 

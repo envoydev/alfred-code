@@ -42,7 +42,7 @@
    "guard-cross-project-write",
    "guard-config-protection",
    "guard-desktop-exec",
-   "guard-answer-length",
+   "guard-answer",
    "instrument-tool-usage",
    "docs-session",
    "memory-session",

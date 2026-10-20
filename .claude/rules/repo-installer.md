@@ -78,6 +78,10 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
     project's, kept and named with `!!` (`retiredKeep`) - add a name there when any of the six is renamed or removed (a
     stamp compare only names what left after the stamped commit). A renamed skill or seat also gets
     a `renamed` row (old -> new; a rule too since 2.1.6): update maps picks, denies, `skillOverrides` and selections by it.
+    A hook too since 2026-10-20 (`renamed.hooks`, `guard-answer-length` -> `guard-answer`): its old FILE is also in
+    `retired.hooks` (copy and wiring go), and the read-back maps a copied file, the stamp's shipped list and a stored
+    `ALFRED_CODE_HOOKS_OFF` (`selection.js readBack`), while `settings.js applyEnv` re-spells a stored off-list the walk did
+    not answer - left as it was, the prelude stopped matching it and a switched-off hook ran again (plugin route, measured).
     A retired PLUGIN also gets a
     `meta/retired-plugins.json` row (`retiredIn`, `addBack`): update uninstalls it only as
     `name@<row's marketplace>`, else `name@<stack key>` (`retiredSpec`), keeps a row at another scope

@@ -384,6 +384,24 @@ test('settings-env: HOOKS_OFF is absent-only UNLESS a walk answered the layer th
         'answering "keep every hook" must write the empty value, not skip the key');
 });
 
+// 2026-10-20: guard-answer-length became guard-answer. Left as stored, the prelude no longer matched the old name and a
+// hook the user switched off ran again under the new one - the stored list is re-spelled, a walk's answer still wins.
+test('settings-env: a renamed hook in a stored HOOKS_OFF is re-spelled, in the overlay too, and nothing else moves', () =>
+{
+    const renamedHooks = { 'guard-answer-length': 'guard-answer' };
+    const a = envPass({ ALFRED_CODE_HOOKS_OFF: 'instrument-tool-usage, Guard-Answer-Length.js' }, { renamedHooks });
+    assert.strictEqual(a.env.ALFRED_CODE_HOOKS_OFF, 'instrument-tool-usage,guard-answer');
+    assert.ok(a.logs.some((m) => /re-spelled/.test(m)), a.logs.join(' | '));
+    const overlay = { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' };
+    envPass({}, { renamedHooks, overlay });
+    assert.strictEqual(overlay.ALFRED_CODE_HOOKS_OFF, 'guard-answer', 'the local overlay holds the user\'s off');
+    const b = envPass({ ALFRED_CODE_HOOKS_OFF: 'guard-answer-lengthy,guard-a' }, { renamedHooks });
+    assert.strictEqual(b.env.ALFRED_CODE_HOOKS_OFF, 'guard-answer-lengthy,guard-a', 'a near name is no match');
+    assert.ok(!b.logs.some((m) => /re-spelled/.test(m)), 'an unchanged list logs nothing');
+    assert.strictEqual(envPass({ ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' }, { renamedHooks, hooksAnswered: true, hooksOff: ['guard-b'] })
+        .env.ALFRED_CODE_HOOKS_OFF, 'guard-b', 'a walk that answered the layer still wins');
+});
+
 // ---- the agent off-list (Phase 8, T1) --------------------------------------------------------
 // Spike S3 measured a denied seat costing -434 tokens less per session, which makes this the
 // largest per-item trim the stack has. It writes into the SAME `permissions.deny` array as the
@@ -477,14 +495,14 @@ test('readBackSettings: local over shared for the stack keys at every scope, the
         permissions: { deny: ['Agent(alfred-code:a)'], allow: ['Bash(ls:*)'] }, hooks: sharedHooks,
     }));
     fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({
-        env: { BOTH: 'local', LOCAL_ONLY: '1', ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' },
+        env: { BOTH: 'local', LOCAL_ONLY: '1', ALFRED_CODE_HOOKS_OFF: 'guard-answer' },
         permissions: { deny: ['Agent(alfred-code:b)', 'Agent(alfred-code:a)'] }, hooks: { PreToolUse: [] },
     }));
     for (const scope of ['project', 'user'])
     {
         const r = readBackSettings(dir, scope);
         assert.deepStrictEqual(r.env, {
-            ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', ALFRED_CODE_PUSH_GATE: '1', SHARED_ONLY: '1', BOTH: 'shared',
+            ALFRED_CODE_HOOKS_OFF: 'guard-answer', ALFRED_CODE_PUSH_GATE: '1', SHARED_ONLY: '1', BOTH: 'shared',
         }, `${scope}: the stack keys the local file holds win, nothing else of it is read`);
         assert.deepStrictEqual(r.permissions.deny, ['Agent(alfred-code:a)', 'Agent(alfred-code:b)'], `${scope}: deny is the shared file's plus the stack seat denies the local file holds (Task 22 I1)`);
         assert.deepStrictEqual(r.hooks, sharedHooks, `${scope}: hooks are the shared file's`);
@@ -493,14 +511,14 @@ test('readBackSettings: local over shared for the stack keys at every scope, the
     }
     const merged = readBackSettings(dir, 'local');
     assert.deepStrictEqual(merged.env, {
-        ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', ALFRED_CODE_PUSH_GATE: '1', SHARED_ONLY: '1', BOTH: 'local', LOCAL_ONLY: '1',
+        ALFRED_CODE_HOOKS_OFF: 'guard-answer', ALFRED_CODE_PUSH_GATE: '1', SHARED_ONLY: '1', BOTH: 'local', LOCAL_ONLY: '1',
     });
     assert.deepStrictEqual(merged.permissions.deny, ['Agent(alfred-code:a)', 'Agent(alfred-code:b)']);
     assert.deepStrictEqual(merged.permissions.allow, ['Bash(ls:*)']);
     // A local key wins even when it is the empty list - Claude Code reads it the same way.
     fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_HOOKS_OFF: '' } }));
     assert.strictEqual(readBackSettings(dir, 'local').env.ALFRED_CODE_HOOKS_OFF, '');
-    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } }));
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer' } }));
     assert.strictEqual(readBackSettings(dir, 'project').env.ALFRED_CODE_HOOKS_OFF, '', 'the same at project scope');
     // Fail-soft: garbage in either file reads as empty, never a throw.
     fs.writeFileSync(path.join(dir, 'settings.json'), '{ not json');
@@ -526,19 +544,19 @@ test('settings-writer: at project scope a write to a stack key settings.local.js
     const localFile = path.join(dir, 'settings.local.json');
     fs.writeFileSync(sharedFile, JSON.stringify({ env: { TEAM: 'y' } }));
     fs.writeFileSync(localFile, JSON.stringify({
-        env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '150000', ALFRED_CODE_DOCS_VERSIONING: 'local', ALFRED_CODE_CORRECTION_NUDGE_MODE: 'inject', MY_OWN: 'x' },
+        env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer', ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '150000', ALFRED_CODE_DOCS_VERSIONING: 'local', ALFRED_CODE_CORRECTION_NUDGE_MODE: 'inject', MY_OWN: 'x' },
         permissions: { allow: ['Bash(ls)'] },
     }));
     const logs = [];
     const opts = {
         file: sharedFile, localFile, catalog: CATALOG, migrations: { ...MIGRATIONS, renames: [...MIGRATIONS.renames, ['ALFRED_CODE_CORRECTION_NUDGE_MODE', 'ALFRED_CODE_CORRECTION_NUDGE']] },
-        hooksOff: ['guard-answer-length', 'guard-secret-value'], hooksAnswered: true, docsVersioning: { value: 'git', seed: 'git' },
+        hooksOff: ['guard-answer', 'guard-secret-value'], hooksAnswered: true, docsVersioning: { value: 'git', seed: 'git' },
     };
     writeSettings({ ...opts, log: (m) => logs.push(m) });
     const shared = JSON.parse(fs.readFileSync(sharedFile, 'utf8'));
     const local = JSON.parse(fs.readFileSync(localFile, 'utf8'));
     assert.deepStrictEqual(local.env, {
-        ALFRED_CODE_HOOKS_OFF: 'guard-answer-length,guard-secret-value', ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '180000',
+        ALFRED_CODE_HOOKS_OFF: 'guard-answer,guard-secret-value', ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '180000',
         ALFRED_CODE_DOCS_VERSIONING: 'git', ALFRED_CODE_CORRECTION_NUDGE: 'inject', MY_OWN: 'x',
     }, 'the answer, the decision, the reseed and the rename land where the key applies');
     assert.deepStrictEqual(local.permissions, { allow: ['Bash(ls)'] }, 'nothing else of the local file is touched');
@@ -550,7 +568,7 @@ test('settings-writer: at project scope a write to a stack key settings.local.js
     assert.strictEqual(shared.env.ALFRED_CODE_PUSH_GATE, '1', 'a key the local file lacks is seeded in settings.json as before');
     assert.strictEqual(shared.env.TEAM, 'y');
     const text = logs.join('\n');
-    assert.match(text, /settings\.local\.json env: ALFRED_CODE_HOOKS_OFF = guard-answer-length,guard-secret-value/);
+    assert.match(text, /settings\.local\.json env: ALFRED_CODE_HOOKS_OFF = guard-answer,guard-secret-value/);
     assert.match(text, /settings\.local\.json env: ALFRED_CODE_CONTEXT_WINDOW_FOR_200K reset to 180000/);
     assert.match(text, /settings\.local\.json env: ALFRED_CODE_CORRECTION_NUDGE_MODE renamed to ALFRED_CODE_CORRECTION_NUDGE/);
     assert.match(text, /settings\.json env: ALFRED_CODE_PUSH_GATE seeded/);
@@ -566,7 +584,7 @@ test('settings-writer: at project scope a write to a stack key settings.local.js
     writeSettings({ ...opts, note: (m) => notes.push(m) });
     assert.match(notes.join('\n'), /settings\.local\.json is not valid JSON/);
     assert.strictEqual(fs.readFileSync(localFile, 'utf8'), '{ nope', 'a malformed local file is left untouched');
-    assert.strictEqual(JSON.parse(fs.readFileSync(sharedFile, 'utf8')).env.ALFRED_CODE_HOOKS_OFF, 'guard-answer-length,guard-secret-value');
+    assert.strictEqual(JSON.parse(fs.readFileSync(sharedFile, 'utf8')).env.ALFRED_CODE_HOOKS_OFF, 'guard-answer,guard-secret-value');
 });
 
 // N6 (Task 16b): at local scope settings.json still applies beneath the file this run writes, so a key
@@ -577,7 +595,7 @@ test('settings-env: an inherited key counts as present for every absent-only see
 {
     const inherited = {
         ALFRED_CODE_DOCS_PATH: 'docs/gen', ALFRED_CODE_PUSH_GATE: '0', ALFRED_CODE_HISTORY: '0', ALFRED_CODE_TURN_CHECK: '1',
-        ALFRED_CODE_DOCS_VERSIONING: 'local', ALFRED_CODE_HOOKS_OFF: 'guard-answer-length',
+        ALFRED_CODE_DOCS_VERSIONING: 'local', ALFRED_CODE_HOOKS_OFF: 'guard-answer',
     };
     const { env } = envPass({}, { inherited, docsVersioning: { seed: 'git' } });
     for (const key of Object.keys(inherited)) assert.ok(!(key in env), `N6: ${key} was seeded over the inherited '${inherited[key]}'`);
@@ -602,13 +620,13 @@ test('settings-writer: writeSettings passes inheritedEnv through - the local fil
 {
     const dir = path.join(TMP, `inherit-${seq++}`, '.claude');
     fs.mkdirSync(dir, { recursive: true });
-    const shared = { env: { ALFRED_CODE_DOCS_PATH: 'docs/gen', ALFRED_CODE_PUSH_GATE: '0', ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } };
+    const shared = { env: { ALFRED_CODE_DOCS_PATH: 'docs/gen', ALFRED_CODE_PUSH_GATE: '0', ALFRED_CODE_HOOKS_OFF: 'guard-answer' } };
     fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify(shared));
     writeSettings({ file: path.join(dir, 'settings.local.json'), catalog: CATALOG, migrations: MIGRATIONS, inheritedEnv: shared.env, docsVersioning: { seed: 'git' } });
     const env = readBackSettings(dir, 'local').env;
     assert.strictEqual(env.ALFRED_CODE_DOCS_PATH, 'docs/gen');
     assert.strictEqual(env.ALFRED_CODE_PUSH_GATE, '0');
-    assert.strictEqual(env.ALFRED_CODE_HOOKS_OFF, 'guard-answer-length');
+    assert.strictEqual(env.ALFRED_CODE_HOOKS_OFF, 'guard-answer');
     assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8')), shared, 'settings.json was written');
 });
 
@@ -654,7 +672,7 @@ test('leaveLocalScope: seed-valued stack keys leave, a value the user set stays 
     fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_PUSH_GATE: '1', ALFRED_CODE_CORRECTION_NUDGE: 'inject', TEAM: 'y' }, permissions: { deny: ['Read(secret)'] } }));
     fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({
         env: {
-            ALFRED_CODE_PUSH_GATE: '0', ALFRED_CODE_DOCS_PATH: 'docs/mine', ALFRED_CODE_HOOKS_OFF: 'guard-answer-length',
+            ALFRED_CODE_PUSH_GATE: '0', ALFRED_CODE_DOCS_PATH: 'docs/mine', ALFRED_CODE_HOOKS_OFF: 'guard-answer',
             ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '/elsewhere/other-repo', ALFRED_CODE_API_TOKEN: 'abc123',
             ALFRED_CODE_INSTRUMENT: '0', ALFRED_CODE_CORRECTION_NUDGE: 'log', ALFRED_CODE_TURN_CHECK: 0,
             ALFRED_CODE_MEMORY_DB: '/elsewhere/.memory-mcp/memory.db', MY_OWN: 'x',
@@ -674,7 +692,7 @@ test('leaveLocalScope: seed-valued stack keys leave, a value the user set stays 
     const local = JSON.parse(fs.readFileSync(path.join(dir, 'settings.local.json'), 'utf8'));
     const shared = JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8'));
     assert.deepStrictEqual(local.env, {
-        ALFRED_CODE_PUSH_GATE: '0', ALFRED_CODE_DOCS_PATH: 'docs/mine', ALFRED_CODE_HOOKS_OFF: 'guard-answer-length',
+        ALFRED_CODE_PUSH_GATE: '0', ALFRED_CODE_DOCS_PATH: 'docs/mine', ALFRED_CODE_HOOKS_OFF: 'guard-answer',
         ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '/elsewhere/other-repo', ALFRED_CODE_API_TOKEN: 'abc123', ALFRED_CODE_TURN_CHECK: 0, MY_OWN: 'x',
         ALFRED_CODE_REPO_URL: 'https://user:tok3n@host/fork', ALFRED_CODE_MEMORY_DB: '/elsewhere/.memory-mcp/memory.db',
     }, 'a value the user set stays local, untouched; a seed-valued key (an older shipped seed too) leaves; the machine\'s memory path stays (C8)');
@@ -686,13 +704,13 @@ test('leaveLocalScope: seed-valued stack keys leave, a value the user set stays 
     assert.deepStrictEqual(shared.permissions.deny, ['Read(secret)', 'Agent(alfred-code:evidence-gatherer)', 'Read(.env)']);
     const text = logs.join('\n');
     // Each kept key is logged once, by its length only - the local value applies.
-    assert.match(text, /settings\.local\.json: ALFRED_CODE_HOOKS_OFF stays here \(your value, 19 chars\) - it applies over settings\.json/);
+    assert.match(text, /settings\.local\.json: ALFRED_CODE_HOOKS_OFF stays here \(your value, 12 chars\) - it applies over settings\.json/);
     assert.match(text, /settings\.local\.json: ALFRED_CODE_PUSH_GATE stays here \(your value, 1 chars\) - it applies over settings\.json/);
     assert.match(text, /settings\.local\.json: ALFRED_CODE_ALLOW_WRITE_OUTSIDE stays here \(your value, 21 chars\)/);
     assert.match(text, /settings\.local\.json: ALFRED_CODE_API_TOKEN stays here \(your value, 6 chars\)/);
     assert.match(text, /settings\.local\.json: ALFRED_CODE_REPO_URL stays here \(your value, 28 chars\)/);
     assert.strictEqual((text.match(/ALFRED_CODE_HOOKS_OFF/g) || []).length, 1, 'logged once');
-    for (const value of ['guard-answer-length', '/elsewhere/other-repo', 'abc123', 'tok3n', 'docs/mine'])
+    for (const value of ['guard-answer', '/elsewhere/other-repo', 'abc123', 'tok3n', 'docs/mine'])
         assert.ok(!text.includes(value), `a kept value reached the log: ${value}`);
     // C18 (R98): the removed seeds are ONE line - a count and the keys - never a line per key.
     assert.match(text, /^  settings\.local\.json: 3 stack env keys removed - each held the stack's own seed, so settings\.json's value or its seed applies from here on: ALFRED_CODE_INSTRUMENT, ALFRED_CODE_CORRECTION_NUDGE, ALFRED_CODE_CONTEXT_WINDOW_FOR_200K$/m);
@@ -782,7 +800,7 @@ function pair(shared, local)
 // and is what every teammate reads; before, the committed file depended on who ran the install.
 test('settings-writer: at project scope a key settings.local.json holds is still seeded into settings.json, and the local value is untouched (C6)', () =>
 {
-    const p = pair({ env: { TEAM: 'y' } }, { env: { ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '200000', ALFRED_CODE_CORRECTION_NUDGE: 'inject', ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', ALFRED_CODE_DOCS_VERSIONING: 'local' } });
+    const p = pair({ env: { TEAM: 'y' } }, { env: { ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '200000', ALFRED_CODE_CORRECTION_NUDGE: 'inject', ALFRED_CODE_HOOKS_OFF: 'guard-answer', ALFRED_CODE_DOCS_VERSIONING: 'local' } });
     const logs = [];
     writeSettings({ file: p.sharedFile, localFile: p.localFile, catalog: CATALOG, migrations: MIGRATIONS, docsVersioning: { seed: 'git' }, log: (m) => logs.push(m) });
     const shared = p.shared().env;
@@ -790,7 +808,7 @@ test('settings-writer: at project scope a key settings.local.json holds is still
     assert.strictEqual(shared.ALFRED_CODE_CORRECTION_NUDGE, 'log');
     assert.strictEqual(shared.ALFRED_CODE_HOOKS_OFF, '', 'the unanswered HOOKS_OFF seed');
     assert.strictEqual(shared.ALFRED_CODE_DOCS_VERSIONING, 'git', 'the docs-versioning seed');
-    assert.deepStrictEqual(p.local().env, { ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '200000', ALFRED_CODE_CORRECTION_NUDGE: 'inject', ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', ALFRED_CODE_DOCS_VERSIONING: 'local' });
+    assert.deepStrictEqual(p.local().env, { ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '200000', ALFRED_CODE_CORRECTION_NUDGE: 'inject', ALFRED_CODE_HOOKS_OFF: 'guard-answer', ALFRED_CODE_DOCS_VERSIONING: 'local' });
     assert.match(logs.join('\n'), /settings\.json env: ALFRED_CODE_CORRECTION_NUDGE seeded \(log\)/);
     // Idempotent.
     const before = [fs.readFileSync(p.sharedFile, 'utf8'), fs.readFileSync(p.localFile, 'utf8')];

@@ -165,8 +165,8 @@ test('envOf: the ALFRED_CODE_ value answers, and an empty one reads as unset', (
 
 test('the prelude reads process.env when no env is handed in', () => {
     const before = process.env.ALFRED_CODE_HOOKS_OFF;
-    process.env.ALFRED_CODE_HOOKS_OFF = 'guard-answer-length';
-    try { assert.strictEqual(hookDisabled('guard-answer-length'), true); }
+    process.env.ALFRED_CODE_HOOKS_OFF = 'guard-answer';
+    try { assert.strictEqual(hookDisabled('guard-answer'), true); }
     finally { if (before === undefined) delete process.env.ALFRED_CODE_HOOKS_OFF; else process.env.ALFRED_CODE_HOOKS_OFF = before; }
 });
 
@@ -459,7 +459,7 @@ test('cursorHost reads the payload only: cursor_version or a camelCase event nam
 
 test('cursorStandDown: a Cursor payload stands a non-protective hook down and never a protective one or a CLI', () => {
     const input = { cursor_version: '2.1.0', hook_event_name: 'stop' };
-    for (const hook of ['guard-stop-contract', 'guard-answer-length', 'docs-session', 'guard-fresh-session-start', 'memory-session'])
+    for (const hook of ['guard-stop-contract', 'guard-answer', 'docs-session', 'guard-fresh-session-start', 'memory-session'])
         assert.strictEqual(cursorStandDown(input, `/p/${hook}.js`), true, hook);
     for (const hook of PROTECTIVE_SET) assert.strictEqual(cursorStandDown(input, `/p/${hook}.js`), false, hook);
     assert.strictEqual(cursorStandDown(input, '/p/guard-stop-contract.js', ['node', 'x.js', '--flag']), false, 'a CLI is never gated');
