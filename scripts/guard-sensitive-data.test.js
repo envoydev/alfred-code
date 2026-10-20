@@ -113,6 +113,9 @@ test('sensitive data: a glob, a quoted split or an archive / add / copy of the f
     fs.writeFileSync(path.join(dir, 'src', 'a.js'), '1\n');
     fs.mkdirSync(path.join(dir, '.alfred', 'docs'), { recursive: true });
     fs.writeFileSync(path.join(dir, '.alfred', 'docs', 'x.md'), '# x\n');
+    // The session's project dir keeps its own data root with no store (its statistics/ ledger, 2.8.0): an operand is judged
+    // at every anchor it names, so `.alfred` there never hides the one in the cwd that holds the store.
+    fs.mkdirSync(path.join(process.env.CLAUDE_PROJECT_DIR, '.alfred', 'statistics'), { recursive: true });
     for (const command of ['source .alfred/.sens*', 'set -a; . .alfred/.sens*; set +a; npm run migrate', 'source .alfred/.sens* && echo $DB_HOST',
         'tar cf - .alfred | tar xOf -', 'tar cf - .alfred | tar tvf -', 'docker compose --env-file .alfred/.sens* up -d', 'docker compose --env-file=.alfred/.sens* up',
         'git add -f .alfred/.sens*', 'zip -r /tmp/a.zip .alfred && unzip -p /tmp/a.zip', 'cp -r .alfred /tmp/bk', 'rsync -a .alfred/ /tmp/bk/',

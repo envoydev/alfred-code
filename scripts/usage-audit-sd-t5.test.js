@@ -51,9 +51,9 @@ test('SD10 d56562c7#1: an offer to make a change goes through AskUserQuestion; a
 });
 
 // ---- SD09: the hook ledgers are evidence, never regenerable ---------------------------------------------------------
-test('SD09 d9035363#5: a docs cleanup keeps the hook ledgers and flow/ state, or its ask names the loss', () => {
+test('SD09 d9035363#5: a docs cleanup keeps the hook ledgers and state/, or its ask names the loss', () => {
     const t = flat(read('stack/rules/alfred-docs-root.md').replace(/<!--[\s\S]*?-->/g, ''));
-    assert.match(t, /The hooks' ledgers \(`tools-usage\/`, `hook-blocks\/`, `history\/`\) are the only record of what ran and what the guards denied, and `flow\/` is live per-session state: a cleanup keeps them, or its ask names that loss - never 'regenerable'\./);
+    assert.match(t, /The hooks' ledgers \(`<data root>\/statistics\/`, and the session history in `<data root>\/state\/history\/`\) are the only record of what ran and what the guards denied, and the rest of `<data root>\/state\/` is live per-session state: a cleanup keeps them, or its ask names that loss - never 'regenerable'/);
 });
 
 // ---- SD16: a run of unknown length is watched on its failure lines, not only for its exit ---------------------------
@@ -104,7 +104,7 @@ test('SD12 ae38c08f#3 ae38c08f#6: the batch also closes past the fresh-session t
     const t = skill('capture-usage-report');
     assert.match(t, /\*\*The batch is BOUNDED - at 12 bundles, or at the first bundle boundary past this install's fresh-session trigger, whichever comes first/);
     assert.doesNotMatch(t, /the biggest scope marked Recommended is what forces compactions/, 'the compaction rationale alone does not cover a 1M window');
-    assert.match(t, /`node <snapshot>\/stack\/skills\/capture-usage-report\/scripts\/bundle-gate\.js --done <bundles closed this run> --summary <docs-path>\/usage-report`/);
+    assert.match(t, /`node <snapshot>\/stack\/skills\/capture-usage-report\/scripts\/bundle-gate\.js --done <bundles closed this run> --summary <data root>\/statistics\/usage-report`/);
     assert.ok(fs.existsSync(path.join(ROOT, 'stack/skills/capture-usage-report/scripts/bundle-gate.js')), 'the gate the body names ships in the skill folder');
     assert.match(t, /\*\*Its bundle list is rewritten after EACH bundle, by the gate call that ends step 4\*\*/);
     assert.match(t, /keep the two markers and the rows between them as the gate wrote them, never hand-write those rows/);

@@ -10,7 +10,8 @@ the step. The staged run has its own mechanics (`stage-close.md`) and never uses
 
 - **small-tier implementer brief** - ONE brief per module batching its small findings: per finding the
   file:line, the rule it breaks, the smallest correct change already decided and the check that proves
-  it; then the `0.`-numbered fix discipline's text folded in whole; then `memory: none` - a scoped fix
+  it; then the `0.`-numbered fix discipline's text folded in whole; then the line `plan: loop-code-quality` (the small-tier
+  stamp's own id - the dispatch hook passes a brief only on its own plan's stamp); then `memory: none` - a scoped fix
   has no memory hand-off. A brief that does hand a note names it literally, read side included (memory
   hygiene: `references/domain-trio-protocol.md`).
 - **substantial-tier designer brief** - the finding, its assessment entry (rule, severity, remediation)
@@ -30,7 +31,7 @@ step', no new work in this chat. The new session must be able to start from the 
 RESUME - loop-code-quality
 Invocation: /loop-code-quality <TARGET> - resumed round <N of 3> (rounds consumed: <list>)
 Mode: <DELEGATED | INLINE> - "<the mode answer, verbatim>"
-Read first: <docs-path>/loops/0.<name>.md (the fix discipline, when present) - step 1 recomputes <docs-path>/quality/CODE-ASSESSMENT.md fresh, so there is nothing to resume from in that file
+Read first: <docs-path>/quality/loops/0.<name>.md (the fix discipline, when present) - step 1 recomputes <docs-path>/quality/CODE-ASSESSMENT.md fresh, so there is nothing to resume from in that file
 Sweep baseline: <sha recorded at round 1> - the final anti-gaming sweep diffs against it
 Baseline: build <green | red: what>, tests <green | red: what>, last commit <sha | none>, pushed <yes | no>
 Remaining findings, rank order (titles, not C-numbers - a fresh capture may re-rank):

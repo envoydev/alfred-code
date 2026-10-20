@@ -16,7 +16,7 @@ const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-commit-gate-'));
 
 // Pin an empty account dir and a scratch project root for the whole run - a real machine's
-// account settings and this checkout's own `.alfred/docs/hook-blocks/` must never be touched by
+// account settings and this checkout's own `.alfred/statistics/hook-blocks/` must never be touched by
 // a test run (the same containment guard-hooks.test.js's head applies).
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
 delete process.env.ALFRED_CODE_CONTEXT_WINDOW_DEFAULT;
@@ -77,6 +77,13 @@ const writeReceipt = (dir, name, body) => {
   const flow = path.join(dir, '.alfred', 'docs', 'flow');
   fs.mkdirSync(flow, { recursive: true });
   fs.writeFileSync(path.join(flow, name), body);
+};
+// 2.8.0 layout: where every hook writes a receipt now; the pre-2.8.0 flow/ above is still read for the 2.x line.
+const writeStateReceipt = (dir, name, body) => {
+  const file = path.join(dir, '.alfred', 'state', 'approvals', name);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, body);
+  return file;
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -1056,7 +1063,7 @@ test('audit 2026-10-10 C01: a verify Skill call past the old 256KB tail still co
   assert.equal(r.status, 2, 'a session with no Skill call anywhere is still refused');
   assert.match(r.stderr, /no Skill call ran in this session/);
   // the tool-usage ledger answers first: a Skill row under this session id is the run
-  const ledger = path.join(dir, '.alfred', 'docs', 'tools-usage');
+  const ledger = path.join(dir, '.alfred', 'statistics', 'tools-usage');
   fs.mkdirSync(ledger, { recursive: true });
   fs.writeFileSync(path.join(ledger, 'sess-ledger.jsonl'), JSON.stringify({ ts: 'x', session: 'sess-ledger', tool: 'Skill', detail: 'task-verify-code', cwd: dir }) + '\n');
   assert.equal(gateWith(dir, 'git commit -am x', { transcript_path: none, session_id: 'sess-ledger' }).status, 0, 'the ledger Skill row counts');
@@ -1334,4 +1341,44 @@ test('audit 2026-10-20 H4: a commit receipt written before this session began is
     assert.equal(old.status, 2, `${body[0]}: another session's receipt opens no commit in this one`);
     assert.match(old.stderr, /written before this session began/);
   }
+});
+
+// ---------------------------------------------------------------------------------------------
+// 2.8.0 layout: the receipts live in <data root>/state/approvals/
+// ---------------------------------------------------------------------------------------------
+test('2.8.0 layout: a COMMIT-GATE receipt under state/approvals/ opens the commit', () => {
+  const dir = scratchRepo();
+  writeStateReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED the checkpoint' }));
+  assert.equal(gateIn(dir, 'git add a.txt b.txt c.txt && git commit -m x'), 0);
+});
+
+test('2.8.0 layout: a receipt only under the legacy flow/ still opens it (the 2.x skew: a 2.7.0 skill copy wrote it)', () => {
+  const dir = scratchRepo();
+  writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED the checkpoint' }));
+  assert.equal(gateIn(dir, 'git add a.txt b.txt c.txt && git commit -m x'), 0);
+});
+
+test('2.8.0 layout: the denial names state/approvals/COMMIT-GATE', () => {
+  const dir = scratchRepo();
+  const r = gateFull(dir, 'git add a.txt b.txt c.txt && git commit -m x');
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /write \S*\.alfred[\\/]state[\\/]approvals[\\/]COMMIT-GATE/);
+  assert.doesNotMatch(r.stderr, /flow[\\/]COMMIT-GATE/);
+});
+
+test('2.8.0 layout: a shell write to .alfred/state/approvals/COMMIT-GATE is read as a receipt write', () => {
+  const dir = scratchRepo();
+  const atomic = commitReceipt(headOf(dir), { first: 'VERIFIED the checkpoint' }).trim().replace(/\n/g, '\\n');
+  assert.equal(gateIn(dir, `mkdir -p .alfred/state/approvals && printf '${atomic}\\n' > .alfred/state/approvals/COMMIT-GATE && git add a.txt b.txt c.txt && git commit -m x`), 0);
+});
+
+test('2.8.0 layout: a PUSH-GATE receipt under state/approvals/ opens the push, and the denial names it', () => {
+  const { dir, git } = pushRepo();
+  fs.writeFileSync(path.join(dir, 'b.txt'), forty());
+  git('add', '-A'); git('commit', '-qm', 'feat: b');
+  const denied = gateFull(dir, 'git push');
+  assert.equal(denied.status, 2, 'ahead of upstream with no receipt');
+  assert.match(denied.stderr, /\.alfred[\\/]state[\\/]approvals[\\/]PUSH-GATE/);
+  writeStateReceipt(dir, 'PUSH-GATE', pushReceipt(headOf(dir)));
+  assert.equal(gateIn(dir, 'git push'), 0);
 });

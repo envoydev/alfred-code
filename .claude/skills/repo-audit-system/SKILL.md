@@ -35,7 +35,7 @@ It is this repo's own maintenance tool, not part of the shipped catalog.
 - `STACK_ROOT`: the stack repository (default: `.`).
 - `PROFILES`: the tech profiles to install (default: every `stacks` key of `meta/recommendations.json` plus `bare` - `node scripts/profile-fixture.js --help` lists them; a key with no markers fails its test).
 - `WORKDIR`: where the fixtures go (default: a `system-audit` folder in the session scratchpad; never inside a real project). Everything in it is test data, deleted at the run's end.
-- `RESULTS`: where the run's results stay (default: `<docs-path>/audits/<YYYY-MM-DD>/system/` - this repo's docs root, `.alfred/docs` unless `ALFRED_CODE_DOCS_PATH` names another; machine-local, never committed).
+- `RESULTS`: where the run's results stay (default: `<docs-path>/audits/<YYYY-MM-DD>/system/` - this repo's docs root, always `<data root>/docs` - `.alfred/docs` by default; machine-local, never committed).
 - `CORPUS`: a sessions collection root (optional; without it S2, S3 and S5 score their static side only and each says so).
 - `WINDOW`: the context window, in tokens, the skill listing budget is judged at (default: `200000`).
 - `OWN_PLUGIN_ROOT`: the plugin the stack ships (default: the core `alfred-code` entry - generated into `./meta/plugin-entries.json` by `scripts/build-marketplace.js` and sourced from the repo root, its components declared in the entry; `./setup-plugin` holds its commands, its router skill, its own hooks, its eval cases and the `plugin.json` whose `version` the release tags). The ten generated MCP entries (`scripts/build-marketplace.js --mcp-entries`, from `meta/mcp-pins.json`) are its packaging too; the upstream package each launches is `/repo-audit-plugins`' D3.

@@ -64,7 +64,7 @@ A message that has left the process is a published interface - other deployables
 - Define message types as immutable `record`s of primitive and simple types. Put them in a dedicated Contracts assembly that producers and consumers both reference; do not let a consumer reach into the producer's internal model.
 - Version additively. Add optional fields; never repurpose, retype, or remove an existing one - an old consumer may still be reading the old shape from a queue. When a breaking change is unavoidable, publish a new versioned message type alongside the old.
 - Carry identifiers and the minimum facts the consumer needs, not whole domain entities. A fat contract welds two services' models together and breaks the moment one evolves.
-- Timestamps come from an injected `TimeProvider`, never `DateTime.Now` - the clock-seam rule is the C# baseline's. This keeps message-stamping testable and timezone-correct.
+- Timestamps come from an injected `TimeProvider`, never `DateTime.Now` - this keeps message-stamping testable and timezone-correct.
 
 ```csharp
 public sealed record OrderPlaced(

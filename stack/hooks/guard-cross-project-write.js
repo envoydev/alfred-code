@@ -30,8 +30,8 @@
 // passed (below). Out of model (audit 2026-10-20 refreshed this list): a path the shell COMPUTES (`$(...)`, a loop
 // variable), `xargs rm` fed a listing and `find ... -delete` - the rm guard judges the last two for what they destroy.
 const fs = require('fs');
-// The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
+// The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 const os = require('os');
 const path = require('path');
 
@@ -82,7 +82,7 @@ if (cursorOff) process.exit(0);
         // resolve, NOT join: an ABSOLUTE ALFRED_CODE_DOCS_PATH makes path.join('/a/b','/x/y')
         // '/a/b/x/y', so every ledger row landed in a doubled path that nothing reads (measured
         // across all ten guards). resolve honours an absolute value and still joins a relative one.
-        const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
+        const dir = (() => { try { return require('./layout.js').statsPath(root, ['hook-blocks']); } catch { return path.resolve(root, docsRootEnv(), 'hook-blocks'); } })();
         fs.mkdirSync(dir, { recursive: true });
         fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
           ts: new Date().toISOString(),
@@ -219,12 +219,16 @@ const effectiveAllow = allowRoots.filter((d) => !inside(ROOT, d));
 // to be honourable or the ask offers a route this guard then denies - the failure alfred-git
 // records: an ask recommended a sibling-repo commit, the user took it, the guard denied it at the
 // first git verb. So the answer is recorded as a receipt this guard reads:
-// <docs-path>/flow/CROSS-WRITE-ALLOW, one root per line, '#' comments allowed. Session-scoped
+// <data root>/state/approvals/CROSS-WRITE-ALLOW (the pre-2.8.0 <docs-path>/flow/ one still read), one root per line, '#' comments allowed. Session-scoped
 // the way the dispatch guard's APPROVAL stamp is - older than 8h, or written before this session
 // began (the transcript's birthtime, where the filesystem reports a real one), reads as absent -
 // and a root that contains the project is dropped, the containment rule above.
 // ALFRED_CODE_ALLOW_WRITE_OUTSIDE stays the permanent lever for a tree the project owns.
-const RECEIPT = path.resolve(ROOT, docsRootEnv(), 'flow', 'CROSS-WRITE-ALLOW');
+let layout = null;
+try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
+const RECEIPT = layout ? layout.findState(ROOT, 'approvals', 'CROSS-WRITE-ALLOW') : path.resolve(ROOT, docsRootEnv(), 'flow', 'CROSS-WRITE-ALLOW');
+// Where a denial says to write it, relative to the project.
+const receiptRelOf = () => (layout ? path.relative(ROOT, layout.statePath(ROOT, 'approvals', 'CROSS-WRITE-ALLOW')) : path.join(docsRootEnv().replace(/^\//, ''), 'flow', 'CROSS-WRITE-ALLOW'));
 const MAX_RECEIPT_AGE_MS = 8 * 60 * 60 * 1000;
 let receiptStale = false;
 let receiptLines = [];
@@ -362,13 +366,14 @@ function block(what, shown, abs = shown) {
   // other row of this guard carried none, so the ledger could not split a file-tool write from a shell one).
   global.BLOCK_DETAIL = { branch: /^(?:Write|Edit|MultiEdit|NotebookEdit) of a file$/.test(what) ? 'file-tool' : /git write/.test(what) ? 'git-write' : 'shell-write' };
   const otherRoot = otherProjectRoot(abs);
-  const docsRel = docsRoot.replace(/^\//, '');
-  const receiptRel = path.join(docsRel, 'flow', 'CROSS-WRITE-ALLOW');
+  // Absolute, the sibling named: the user pastes the hand-off into that repo's session, which finds the card by this path.
+  const card = path.resolve(ROOT, docsRoot, 'work', 'cross-project-tasks', `${other}.md`);
+  const receiptRel = receiptRelOf();
   // Cut to the ask and its options (deep hooks review 2026-10-16: 1,553 chars per denial); the why is repo-hooks.md's.
   process.stderr.write(
     `Blocked: ${what} targets '${shown}', outside this session's project (${ROOT}). A change another\n` +
     `repo needs is handed off, not applied here. End this turn with ONE AskUserQuestion, in this order -\n` +
-    `  'Task card in this project (Recommended)' - write ${path.join(docsRel, 'cross-project-tasks', '<other-project>.md')}:\n` +
+    `  'Task card in this project (Recommended)' - write ${card}:\n` +
     `  per task what changes where (file + symbol), why, the shared contract, how ${other} verifies it;\n` +
     `  then finish your side, or say what is blocked until it lands.\n` +
     `  'Allow writes into ${otherRoot} for this session' - write ${receiptRel} with that root on its own\n` +
@@ -476,7 +481,7 @@ if (scan.aliasUnreadAt >= 0) unread.push({ at: scan.aliasUnreadAt, why: 'a git a
 for (const u of unread) {
   if (u.path ? receiptRoots.some((d) => inside(realish(u.path), d)) : receiptLines.includes('unread')) continue;
   const shown = u.path || 'this command';
-  const receiptRel = path.join(docsRoot.replace(/^\//, ''), 'flow', 'CROSS-WRITE-ALLOW');
+  const receiptRel = receiptRelOf();
   global.BLOCK_DETAIL = { branch: 'unread', why: u.why };
   process.stderr.write(
     `Blocked: this guard could not read ${shown} (${u.why}), so it cannot say where it writes -\n` +

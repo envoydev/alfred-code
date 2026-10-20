@@ -17,6 +17,9 @@ for (const k of Object.keys(process.env)) if (k.startsWith('ALFRED_CODE_')) dele
 
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const DOCS = '.alfred/docs';
+// 2.8.0 layout: the hooks' session scratch (the untracked records, the trivial ledger) lives in <data root>/state/sessions/;
+// a receipt written to the pre-2.8.0 flow/ below (p.flow) is still read
+const SESSIONS = '.alfred/state/sessions';
 const forty = Array.from({ length: 40 }, (_, i) => `line ${i}`).join('\n');
 
 function project() {
@@ -27,7 +30,7 @@ function project() {
     git('config', 'user.name', 'test');
     git('config', 'commit.gpgsign', 'false');
     const write = (rel, text) => { fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true }); fs.writeFileSync(path.join(dir, rel), text); };
-    write('.gitignore', `${DOCS}/\n`);
+    write('.gitignore', `${DOCS}/\n.alfred/state/\n`);
     write('src/a.cs', 'seed\n');
     git('add', '-A'); git('commit', '-qm', 'seed');
     const env = { ...process.env, CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_DOCS_PATH: DOCS };
@@ -35,8 +38,8 @@ function project() {
     const start = (s, source = 'startup') => run('docs-session.js', { hook_event_name: 'SessionStart', session_id: s, source, cwd: dir });
     const bash = (s, command) => run('guard-ungated-commit.js', { hook_event_name: 'PreToolUse', tool_name: 'Bash', session_id: s, cwd: dir, tool_input: { command } });
     const head = () => git('rev-parse', 'HEAD').stdout.trim();
-    const record = () => path.join(dir, DOCS, 'flow', `untracked-at-start-${head()}`);
-    const dropRecords = () => { for (const f of fs.existsSync(path.join(dir, DOCS, 'flow')) ? fs.readdirSync(path.join(dir, DOCS, 'flow')) : []) if (f.startsWith('untracked-at-start-')) fs.rmSync(path.join(dir, DOCS, 'flow', f)); };
+    const record = () => path.join(dir, SESSIONS, `untracked-at-start-${head()}`);
+    const dropRecords = () => { for (const d of [SESSIONS, path.join(DOCS, 'flow')]) for (const f of fs.existsSync(path.join(dir, d)) ? fs.readdirSync(path.join(dir, d)) : []) if (f.startsWith('untracked-at-start-')) fs.rmSync(path.join(dir, d, f)); };
     const flow = (name, body) => write(path.join(DOCS, 'flow', name), body);
     // the history hook pins the session's start sha at its first SessionStart - the cumulative trivial bar reads it
     const hist = (s, source = 'startup') => run('history-session.js', { hook_event_name: 'SessionStart', session_id: s, source, cwd: dir });
@@ -52,7 +55,7 @@ test('SessionStart records the paths untracked before the session, and names the
         assert.deepStrictEqual(fs.readFileSync(p.record(), 'utf8').split('\n').filter(Boolean).sort(), ['harness/one.txt', 'harness/two.txt', 'notes.txt']);
         const ctx = JSON.parse(out.stdout).hookSpecificOutput.additionalContext;
         assert.match(ctx, /3 paths were untracked when this change started/);
-        assert.match(ctx, new RegExp(`\\.alfred/docs/flow/untracked-at-start-${p.head()}`));
+        assert.match(ctx, new RegExp(`\\.alfred/state/sessions/untracked-at-start-${p.head()}`));
     } finally { p.rm(); }
 });
 
@@ -95,7 +98,7 @@ test('audit 2026-10-10 C09: a compact or resume start after the session moved HE
         assert.doesNotMatch(p.bash('moved', 'git add -A').stderr, /mine/, 'the session pointer wins over the HEAD record');
         assert.match(p.bash('fresh', 'git add -A').stderr, /src\/mine\.cs/, 'the new session reads its own');
         // a start with no session id, or a compact with no pointer, falls back to the HEAD record and never writes one
-        fs.rmSync(path.join(p.dir, DOCS, 'flow', 'untracked-session-moved'));
+        fs.rmSync(path.join(p.dir, SESSIONS, 'untracked-session-moved'));
         p.git('checkout', '-q', '-'); p.write('src/three.cs', 'c\n');
         p.dropRecords();
         assert.strictEqual(p.start('moved', 'compact').stdout, '', 'no pointer, no record: quiet');
@@ -109,6 +112,7 @@ test('outside a git repo SessionStart records nothing and stays quiet', () => {
         const r = spawnSync(process.execPath, [path.join(HOOKS, 'docs-session.js')], { cwd: dir, input: JSON.stringify({ hook_event_name: 'SessionStart', session_id: 's3' }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_DOCS_PATH: DOCS } });
         assert.strictEqual(r.status, 0, r.stderr);
         assert.strictEqual(r.stdout, '');
+        assert.strictEqual(fs.existsSync(path.join(dir, SESSIONS)), false);
         assert.strictEqual(fs.existsSync(path.join(dir, DOCS, 'flow')), false);
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
@@ -251,7 +255,7 @@ test('I4: a new record sweeps records past 7 days, keeps younger ones and every 
     try {
         const day = 24 * 3600;
         const now = Date.now() / 1000;
-        const aged = (name, secs) => { p.flow(name, 'x\n'); const f = path.join(p.dir, DOCS, 'flow', name); fs.utimesSync(f, now - secs, now - secs); return f; };
+        const aged = (name, secs) => { p.write(path.join(SESSIONS, name), 'x\n'); const f = path.join(p.dir, SESSIONS, name); fs.utimesSync(f, now - secs, now - secs); return f; };
         const over = aged('untracked-at-start-over', 7 * day + 60);
         const under = aged('untracked-at-start-under', 7 * day - 60);
         const other = aged('COMMIT-GATE', 30 * day);
@@ -358,7 +362,7 @@ test('N1: a trivial commit the guard let through but git never made is not count
         p.write('src/feat1.cs', ten('f1'));
         assert.strictEqual(p.bash('retry', 'git add src/feat1.cs && git commit -m one').status, 0);
         assert.strictEqual(p.bash('retry', 'git add src/feat1.cs && git commit -m one').status, 0, 'a retry of the same commit on the same HEAD');
-        assert.match(fs.readFileSync(path.join(p.dir, DOCS, 'flow', 'trivial-retry'), 'utf8'), /src\/feat1\.cs/, 'the ledger names what walked under the bar');
+        assert.match(fs.readFileSync(path.join(p.dir, SESSIONS, 'trivial-retry'), 'utf8'), /src\/feat1\.cs/, 'the ledger names what walked under the bar');
     } finally { p.rm(); }
 });
 
@@ -366,7 +370,7 @@ test('N1: a trivial commit the guard let through but git never made is not count
 test('a new trivial ledger sweeps other sessions\' ledgers past 7 days, and keeps a fresher one', () => {
     const p = project();
     try {
-        const flow = path.join(p.dir, DOCS, 'flow');
+        const flow = path.join(p.dir, SESSIONS);
         fs.mkdirSync(flow, { recursive: true });
         const plant = (name, days) => { const f = path.join(flow, name); fs.writeFileSync(f, '{}\n'); const t = new Date(Date.now() - days * 86400000); fs.utimesSync(f, t, t); return f; };
         const old = plant('trivial-gone', 8);
@@ -440,7 +444,7 @@ test('R2-M4: failed attempts are one row, and a receipt-covered commit writes no
         assert.strictEqual(q.bash('rc', 'git add src/f.cs && git commit -m f').status, 0, 'a small commit under a live receipt');
         q.git('add', 'src/f.cs'); q.git('commit', '-qm', 'f');
         fs.rmSync(path.join(q.dir, DOCS, 'flow', 'COMMIT-GATE'));
-        assert.strictEqual(fs.existsSync(path.join(q.dir, DOCS, 'flow', 'trivial-rc')), false, 'the covered commit wrote no row');
+        assert.strictEqual(fs.existsSync(path.join(q.dir, SESSIONS, 'trivial-rc')), false, 'the covered commit wrote no row');
         q.write('src/g.cs', lines(11, 'g')); q.git('add', 'src/g.cs');
         assert.strictEqual(q.bash('rc', 'git commit -m g').status, 0, 'the next 11 lines are the only ungated ones');
     } finally { q.rm(); }
@@ -542,4 +546,44 @@ test('R3-m9: with no history record the ledger pins its own start', () => {
         assert.strictEqual(p.bash('nohist', 'git add src/s2.cs && git commit -m s2').status, 2, 'L13c: the second slice crosses the bar');
         assert.strictEqual(p.bash('', 'git add src/s2.cs && git commit -m s2').status, 2, 'a payload with no session: the whole tree, as before');
     } finally { p.rm(); }
+});
+
+// 2.8.0 layout, the skew: a session the 2.7.0 hooks started left its record and pointer in the old flow/; the 2.8.0 hooks
+// read them there, and a new start writes its own under state/sessions/.
+test('2.8.0: a record and pointer an older hook left in the legacy flow/ are read; a new start writes state/sessions/', () => {
+    const p = project();
+    try {
+        p.write('harness/one.txt', 'x\n');
+        p.flow(`untracked-at-start-${p.head()}`, 'harness/one.txt\n');
+        p.flow('untracked-session-old', `untracked-at-start-${p.head()}\n`);
+        assert.match(p.bash('old', 'git add -A').stderr, /harness\/one\.txt/, 'the legacy record still keeps the pre-existing path out');
+        assert.strictEqual(p.start('old', 'resume').status, 0);
+        assert.strictEqual(fs.existsSync(p.record()), false, 'a resume reuses the legacy record, writes none');
+        p.dropRecords();
+        p.start('new');
+        assert.deepStrictEqual(fs.readFileSync(p.record(), 'utf8').split('\n').filter(Boolean), ['harness/one.txt'], 'a first start writes state/sessions/');
+        assert.ok(fs.existsSync(path.join(p.dir, SESSIONS, 'untracked-session-new')), 'and its pointer');
+    } finally { p.rm(); }
+});
+
+test('2.8.0: the commit guard reads the session start from state/history/, else the legacy <docs>/history/', () => {
+    for (const where of ['state', 'legacy']) {
+        const p = project();
+        try {
+            p.hist('h');
+            const fresh = path.join(p.dir, '.alfred', 'state', 'history', 'h.json');
+            assert.ok(fs.existsSync(fresh), 'the history hook pins the start in state/history/');
+            if (where === 'legacy') {
+                const old = path.join(p.dir, DOCS, 'history', 'h.json');
+                fs.mkdirSync(path.dirname(old), { recursive: true });
+                fs.renameSync(fresh, old);
+            }
+            p.write('src/feat1.cs', ten('f1')); p.write('src/feat2.cs', ten('f2'));
+            assert.strictEqual(p.bash('h', 'git add src/feat1.cs && git commit -m "part 1"').status, 0, `${where}: the first slice is trivial`);
+            p.git('add', 'src/feat1.cs'); p.git('commit', '-qm', 'part 1');
+            // the record was read: the ledger never pinned a start of its own (pinnedStart writes a {"start"} row)
+            assert.doesNotMatch(fs.readFileSync(path.join(p.dir, SESSIONS, 'trivial-h'), 'utf8'), /"start"/, `${where}: the history record's start is the one read`);
+            assert.strictEqual(p.bash('h', 'git add src/feat2.cs && git commit -m "part 2"').status, 2, `${where}: part 2 crosses the bar`);
+        } finally { p.rm(); }
+    }
 });

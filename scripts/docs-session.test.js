@@ -54,7 +54,7 @@ test('on mainline the start hook promotes a merged branch and says so', () => {
     // The id, not just the count: a merged decision the session is never told the name of is one it never reads.
     assert.match(text, /Branch feat\/cap was merged: 1 doc section\(s\) folded into mainline and now hold its decisions: patterns#orders\./);
     assert.match(r.read('.claude/docs/architecture/references/patterns.md'), /capped at 10/);
-    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"promote"/);
+    assert.match(r.read('.alfred/statistics/docs-log.jsonl'), /"event":"promote"/);
     assert.ok(!r.exists('.claude/docs-log.jsonl'), 'the ledger lives under the docs root, beside hook-blocks');
   } finally { r.rm(); }
 });
@@ -72,7 +72,7 @@ test('every log row carries the session it came from', () => {
     r.git('merge', '-q', '--no-ff', '-m', 'merge', 'feat/logged');
     r.hook({ hook_event_name: 'SessionStart', session_id: one });
     r.hook({ hook_event_name: 'PreToolUse', session_id: two, tool_name: 'Edit', tool_input: { file_path: 'src/Api/Orders/Refund.cs' } });
-    const all = r.read('.claude/docs/docs-log.jsonl').trim().split('\n').map((l) => JSON.parse(l));
+    const all = r.read('.alfred/statistics/docs-log.jsonl').trim().split('\n').map((l) => JSON.parse(l));
     // `doc-set` rows come from the docs.js CLI, which is a plain command and has no session to name.
     const rows = all.filter((x) => x.event !== 'doc-set');
     assert.ok(rows.length >= 2, 'both sessions logged');
@@ -271,7 +271,7 @@ test('the first source change is held and handed the covering section; a show un
     assert.ok(denied(held));
     assert.match(held.stdout, /patterns#orders covers src\/Api\/Orders\/Refund\.cs - here it is/);
     assert.match(held.stdout, /ledgered before the payment call/);
-    assert.match(r.read('.claude/docs/hook-blocks/' + s + '.jsonl'), /"hook":"docs-session\.js"/);
+    assert.match(r.read('.alfred/statistics/hook-blocks/' + s + '.jsonl'), /"hook":"docs-session\.js"/);
     assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s))), 'the handed-over section counts as read');
     const s2 = sid();
     r.hook(pre('Bash', { command: 'node .claude/hooks/docs.js show patterns#orders 2>&1' }, s2));
@@ -379,7 +379,7 @@ test('no covering section: two holds pointing at the doc list, then the change g
     assert.match(r.hook(edit).stdout, /see what is documented: node \.claude\/hooks\/docs\.js files/);
     assert.ok(denied(r.hook(edit)));
     assert.ok(!denied(r.hook(edit)));
-    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"bypass"/);
+    assert.match(r.read('.alfred/statistics/docs-log.jsonl'), /"event":"bypass"/);
   } finally { r.rm(); }
 });
 
@@ -641,8 +641,8 @@ test('a finished agent is asked about the section documenting what it changed, q
     const body = JSON.parse(r.hook(subStop(s, 'a1'), GIT).stdout);
     assert.strictEqual(body.decision, 'block');
     assert.match(body.reason, /^Docs check: you changed src\/Api\/Program\.cs\n\nOne section documents this file - 'orders', in \.claude\/docs\/architecture\/references\/patterns\.md:\n  "Refunds are ledgered before the payment call\."\n\nDoes your change still leave that true\?\n\n  Yes -> reply: docs ok\n  No  -> rewrite the section, then run\n {11}node \.claude\/hooks\/docs\.js set patterns#orders --expect [0-9a-f]{12} < <file holding its new text>\n {9}\(the section's new text as `show` prints it - from a file as above, or piped in\)\n {9}and commit the doc with your code, so it travels with this branch\.\n\nThis reply is what your caller receives: the docs line first, then your report as your brief asks for it -\nits status: and contract_version: lines, where it has them, unchanged\.$/);
-    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"ask-update"/);
-    assert.match(r.read(`.claude/docs/hook-blocks/${s}.jsonl`), /"event":"SubagentStop"/);
+    assert.match(r.read('.alfred/statistics/docs-log.jsonl'), /"event":"ask-update"/);
+    assert.match(r.read(`.alfred/statistics/hook-blocks/${s}.jsonl`), /"event":"SubagentStop"/);
   } finally { r.rm(); }
 });
 
@@ -658,14 +658,14 @@ test('one block per agent: the continuation stop and a later change are both sil
     r.write('src/Api/Program.cs', 'app.UseAuth();\napp.UseCors();\napp.Run();\n');
     assert.strictEqual(r.hook(subStop(s, 'a1'), GIT).stdout, '', 'one block per agent, whatever it answered');
     // What the agent DID is read from the ledger, not from its prose: no `set` landed for the asked section.
-    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"ask-answer".*"outcome":"unchanged"/);
+    assert.match(r.read('.alfred/statistics/docs-log.jsonl'), /"event":"ask-answer".*"outcome":"unchanged"/);
   } finally { r.rm(); }
 });
 
 // Deep hooks review 2026-10-16: a seat reports through SubagentHandback, so a SubagentStop ask came after the report had
 // left (48 of 48, 41 never acted on). The ask is a deny of the first hand-back that owes one; the retry carries the answer.
 const handBack = (s, id, message, extra = {}) => ({ hook_event_name: 'PreToolUse', session_id: s, tool_name: 'SubagentHandback', tool_input: { message }, agent_id: id, agent_type: 'dotnet-implementer', ...extra });
-const answers = (r) => r.read('.claude/docs/docs-log.jsonl').trim().split('\n').filter((l) => l.includes('"ask-answer"')).map((l) => JSON.parse(l));
+const answers = (r) => r.read('.alfred/statistics/docs-log.jsonl').trim().split('\n').filter((l) => l.includes('"ask-answer"')).map((l) => JSON.parse(l));
 
 test('deep review: a seat is asked at its first hand-back, the retry passes with the answer, and SubagentStop stays quiet', () => {
   const r = watched();
@@ -679,8 +679,8 @@ test('deep review: a seat is asked at its first hand-back, the retry passes with
     assert.match(reason, /^Docs check: you changed src\/Api\/Program\.cs\n\nOne section documents this file - 'orders'/);
     assert.match(reason, /Your report was NOT delivered\. Answer this first, then call SubagentHandback again: the docs line first\n\(docs ok, or the section you rewrote\), then your report unchanged/);
     assert.doesNotMatch(reason, /This reply is what your caller receives/, 'the SubagentStop closing is not this route\'s');
-    assert.match(r.read(`.claude/docs/hook-blocks/${s}.jsonl`), /"event":"PreToolUse","tool":"SubagentHandback"/);
-    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"ask-update".*"via":"handback"/);
+    assert.match(r.read(`.alfred/statistics/hook-blocks/${s}.jsonl`), /"event":"PreToolUse","tool":"SubagentHandback"/);
+    assert.match(r.read('.alfred/statistics/docs-log.jsonl'), /"event":"ask-update".*"via":"handback"/);
     const retry = r.hook(handBack(s, 'h1', 'docs ok\nstatus: DONE\ncontract_version: 3'), GIT);
     assert.strictEqual(retry.stdout, '', 'the hand-back sent after the ask is delivered');
     const [row] = answers(r);
@@ -744,7 +744,7 @@ test('a warning-only turn is recorded distinctly from an ordinary unchanged ask'
     const body = JSON.parse(r.hook(subStop(s, 'a1'), GIT).stdout);
     assert.strictEqual(body.decision, 'block');
     r.hook(subStop(s, 'a1', { stop_hook_active: true, last_assistant_message: 'noted' }), GIT);
-    const row = JSON.parse(r.read('.claude/docs/docs-log.jsonl').trim().split('\n').filter((l) => l.includes('"ask-answer"')).pop());
+    const row = JSON.parse(r.read('.alfred/statistics/docs-log.jsonl').trim().split('\n').filter((l) => l.includes('"ask-answer"')).pop());
     assert.strictEqual(row.outcome, 'unchanged', 'no ask was ever made, only a warning - nothing to rewrite');
     assert.deepStrictEqual(row.sections, [], 'a warning id never enters a.asked or the outcome it drives');
     assert.deepStrictEqual(row.warned, ['decisions/DECISIONS#refund-sync'], 'now on THIS row, not only findable by joining back to ask-update');
@@ -765,7 +765,7 @@ test('the ask outcome is read from what landed in the docs, not from the words t
     touchBy(r, refused, 'a1');
     assert.match(r.hook(subStop(refused, 'a1'), GIT).stdout, /"decision":"block"/);
     r.hook(subStop(refused, 'a1', { stop_hook_active: true, last_assistant_message: LIVE_REFUSAL }), GIT);
-    const one = JSON.parse(r.read('.claude/docs/docs-log.jsonl').trim().split('\n').filter((l) => l.includes('"ask-answer"')).pop());
+    const one = JSON.parse(r.read('.alfred/statistics/docs-log.jsonl').trim().split('\n').filter((l) => l.includes('"ask-answer"')).pop());
     assert.strictEqual(one.outcome, 'unchanged', 'nothing was written, whatever the prose quoted');
     assert.strictEqual(one.saidDocsOk, false, 'a sentence declining to say it is not saying it');
     assert.strictEqual(one.ok, undefined, 'no field claims to know what the agent meant');
@@ -777,10 +777,34 @@ test('the ask outcome is read from what landed in the docs, not from the words t
     const hash = /--expect ([0-9a-f]{12})/.exec(ask)[1];
     assert.strictEqual(r.cli(['set', 'patterns#orders', '--expect', hash], '## orders\n<!-- id: orders -->\n<!-- covers: src/Api/Orders/** -->\nRefunds are ledgered after the payment call.\n', GIT).status, 0);
     r.hook(subStop(fixed, 'a2', { stop_hook_active: true, last_assistant_message: LIVE_FIX }), GIT);
-    const two = JSON.parse(r.read('.claude/docs/docs-log.jsonl').trim().split('\n').filter((l) => l.includes('"ask-answer"')).pop());
+    const two = JSON.parse(r.read('.alfred/statistics/docs-log.jsonl').trim().split('\n').filter((l) => l.includes('"ask-answer"')).pop());
     assert.strictEqual(two.outcome, 'rewritten', 'the set landed, whatever words closed the turn');
     assert.deepStrictEqual(two.rewrote, ['patterns#orders']);
     assert.strictEqual(two.saidDocsOk, false, 'and it never said the phrase');
+  } finally { r.rm(); }
+});
+
+// 2.8.0: docs.js logs its sets to <data root>/statistics/docs-log.jsonl; an older engine copy (the skew before
+// /alfred-code:update moves the folders) still logs to <docs-path>/docs-log.jsonl, and that set answers the ask too.
+test('2.8.0: a set an older engine logged under the docs root still answers the ask', () => {
+  const r = watched();
+  try {
+    const s = sid();
+    r.hook(subStart(s, 'a1'), GIT);
+    wroteBy(r, s, 'a1', 'src/Api/Program.cs', 'app.UseFixed();\napp.Run();\n');
+    const ask = JSON.parse(r.hook(subStop(s, 'a1'), GIT).stdout).reason;
+    const hash = /--expect ([0-9a-f]{12})/.exec(ask)[1];
+    assert.strictEqual(r.cli(['set', 'patterns#orders', '--expect', hash], '## orders\n<!-- id: orders -->\n<!-- covers: src/Api/Orders/** -->\nRefunds are ledgered after the payment call.\n', GIT).status, 0);
+    const now = '.alfred/statistics/docs-log.jsonl';
+    const rows = r.read(now).split('\n').filter(Boolean);
+    const sets = rows.filter((l) => l.includes('"doc-set"'));
+    assert.ok(sets.length, 'the engine logged its set under statistics/');
+    r.write(now, rows.filter((l) => !l.includes('"doc-set"')).map((l) => `${l}\n`).join(''));
+    r.write('.claude/docs/docs-log.jsonl', sets.map((l) => `${l}\n`).join(''));
+    r.hook(subStop(s, 'a1', { stop_hook_active: true, last_assistant_message: 'docs ok' }), GIT);
+    const row = JSON.parse(r.read(now).trim().split('\n').filter((l) => l.includes('"ask-answer"')).pop());
+    assert.strictEqual(row.outcome, 'rewritten', 'the legacy log\'s set is read');
+    assert.deepStrictEqual(row.rewrote, ['patterns#orders']);
   } finally { r.rm(); }
 });
 
@@ -797,7 +821,7 @@ test('the reply signal is the answer itself, and a partial rewrite says so', () 
     const hash = r.cli(['hash', 'patterns#orders'], '', GIT).stdout.trim();
     assert.strictEqual(r.cli(['set', 'patterns#orders', '--expect', hash], '## orders\n<!-- id: orders -->\n<!-- covers: src/Api/Orders/** -->\nRefunds are ledgered at midnight.\n', GIT).status, 0);
     r.hook(subStop(early, 'a1', { stop_hook_active: true, last_assistant_message: 'docs ok' }), GIT);
-    const row = JSON.parse(r.read('.claude/docs/docs-log.jsonl').trim().split('\n').filter((l) => l.includes('"ask-answer"')).pop());
+    const row = JSON.parse(r.read('.alfred/statistics/docs-log.jsonl').trim().split('\n').filter((l) => l.includes('"ask-answer"')).pop());
     assert.strictEqual(row.outcome, 'partial', 'one of the two asked sections was rewritten');
     assert.deepStrictEqual(row.rewrote, ['patterns#orders'], 'and the set from before the ask is not counted');
     assert.strictEqual(row.saidDocsOk, true, 'the answer the ask asked for, given as the answer');
@@ -820,7 +844,7 @@ test('a set buried under a busy run is still found, however far back the ledger 
     // the ask, which is exactly the signal that the set may lie further back.
     const later = new Date(Date.now() + 1000).toISOString();
     const filler = `${JSON.stringify({ at: later, session: s, event: 'hold', file: 'src/Api/Orders/Refund.cs', sections: ['patterns#orders'] })}\n`;
-    const log = '.claude/docs/docs-log.jsonl';
+    const log = '.alfred/statistics/docs-log.jsonl';
     r.write(log, r.read(log) + filler.repeat(Math.ceil((384 * 1024) / filler.length)));
     r.hook(subStop(s, 'a1', { stop_hook_active: true, last_assistant_message: 'docs ok' }), GIT);
     const row = JSON.parse(r.read(log).trim().split('\n').filter((l) => l.includes('"ask-answer"')).pop());
@@ -1069,14 +1093,14 @@ test('the silence an unattributed agent falls into is logged, and the switch ski
     r.hook(subStart(s, 'ghost'), GIT);
     r.write('src/Api/Program.cs', 'app.UseGhost();\napp.Run();\n');
     assert.strictEqual(r.hook(subStop(s, 'ghost'), GIT).stdout, '');
-    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"ask-skipped".*"why":"no write attributed to this agent"/);
+    assert.match(r.read('.alfred/statistics/docs-log.jsonl'), /"event":"ask-skipped".*"why":"no write attributed to this agent"/);
     // A seat that wrote, where nothing it wrote changed: the route a separator mismatch or a crowded cap ends in.
     const t = sid();
     r.hook(subStart(t, 'stale'), GIT);
     r.hook(preBy(t, 'stale', 'src/Api/Orders/Refund.cs'), { ...GIT, ...ALLOW });
     r.write('src/Api/Program.cs', 'app.UseOther();\napp.Run();\n');
     assert.strictEqual(r.hook(subStop(t, 'stale'), GIT).stdout, '');
-    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"why":"nothing this agent wrote changed"/);
+    assert.match(r.read('.alfred/statistics/docs-log.jsonl'), /"why":"nothing this agent wrote changed"/);
     // With the ask switched off no write is recorded at all.
     const u = sid();
     r.hook(preBy(u, 'offseat', 'src/Api/Program.cs'), { ...GIT, ALFRED_CODE_DOCS_ASK: '0', ALFRED_CODE_DOCS_GATE: '0' });
@@ -1552,13 +1576,19 @@ test('CLAUDE.md says a navigation rename is credited to its declaring file alone
 });
 
 // 2.2.0 upgrade: the docs move's own PostToolUse hooks still read the old root and rebuilt .claude/docs/flow.
+// Since 2.8.0 each piece folds into its layout.js home - state/approvals/, state/sessions/, state/history/, statistics/ -
+// never back into the docs root's retired flow/ or hook-blocks/; a live copy the pre-2.8.0 docs root still holds counts as
+// the live one (findState), so a stale stranded stamp never lands in state/ to shadow it.
 test('session start folds hook state stranded under the old .claude/docs into the live root', () => {
   const r = repo({ docsPath: '.alfred/docs', docs: { 'ORIENTATION.md': ORIENT } });
   try {
     r.write('.claude/docs/flow/monitor-s1.jsonl', '\n{"id":"old"}\n');
     r.write('.claude/docs/flow/APPROVAL', 'stale\n');
+    r.write('.claude/docs/flow/COMMIT-GATE', 'VERIFIED x\n');
     r.write('.claude/docs/flow/turn-edits-s2', 'a.cs\n');
     r.write('.claude/docs/hook-blocks/s1.jsonl', '{"b":1}\n');
+    r.write('.claude/docs/history/s3.json', '{"session":"s3"}\n');
+    r.write('.claude/docs/tools-usage/s4.jsonl', '{"t":1}\n');
     r.write('.claude/docs/.DS_Store', 'x');
     r.write('.claude/settings.json', '{}\n');
     r.write('.alfred/docs/flow/monitor-s1.jsonl', '\n{"id":"new"}\n');
@@ -1567,14 +1597,21 @@ test('session start folds hook state stranded under the old .claude/docs into th
     assert.strictEqual(out.status, 0, out.stderr);
     assert.ok(!r.exists('.claude/docs'), 'the stranded root is gone');
     assert.ok(r.exists('.claude/settings.json'), '.claude/ itself is untouched');
-    assert.match(r.read('.alfred/docs/flow/monitor-s1.jsonl'), /"new"[\s\S]*"old"/, 'a .jsonl appends');
+    assert.match(r.read('.alfred/docs/flow/monitor-s1.jsonl'), /"new"[\s\S]*"old"/, 'a .jsonl appends to the live copy where it lives');
     assert.strictEqual(r.read('.alfred/docs/flow/APPROVAL'), 'live\n', 'the live root keeps its own state');
-    assert.strictEqual(r.read('.alfred/docs/flow/turn-edits-s2'), 'a.cs\n', 'a file the live root lacks moves');
-    assert.strictEqual(r.read('.alfred/docs/hook-blocks/s1.jsonl'), '{"b":1}\n');
-    assert.match(r.read('.alfred/docs/docs-log.jsonl'), /"event":"stranded-root","from":".claude\/docs","files":4/);
+    assert.ok(!r.exists('.alfred/state/approvals/APPROVAL'), 'a stale stamp never lands in state/ to shadow the live one');
+    assert.strictEqual(r.read('.alfred/state/approvals/COMMIT-GATE'), 'VERIFIED x\n', 'a receipt moves to state/approvals/');
+    assert.strictEqual(r.read('.alfred/state/sessions/turn-edits-s2'), 'a.cs\n', 'session scratch moves to state/sessions/');
+    assert.strictEqual(r.read('.alfred/state/history/s3.json'), '{"session":"s3"}\n', 'a session record moves to state/history/');
+    assert.strictEqual(r.read('.alfred/statistics/hook-blocks/s1.jsonl'), '{"b":1}\n', 'a ledger moves to statistics/');
+    assert.strictEqual(r.read('.alfred/statistics/tools-usage/s4.jsonl'), '{"t":1}\n');
+    for (const gone of ['.alfred/docs/flow/COMMIT-GATE', '.alfred/docs/flow/turn-edits-s2', '.alfred/docs/hook-blocks', '.alfred/docs/history', '.alfred/docs/tools-usage']) {
+      assert.ok(!r.exists(gone), `nothing is written to the retired ${gone}`);
+    }
+    assert.match(r.read('.alfred/statistics/docs-log.jsonl'), /"event":"stranded-root","from":".claude\/docs","files":7/);
     // A re-run finds nothing and logs nothing more.
     r.hook({ hook_event_name: 'SessionStart', session_id: sid() });
-    assert.strictEqual(r.read('.alfred/docs/docs-log.jsonl').match(/stranded-root/g).length, 1);
+    assert.strictEqual(r.read('.alfred/statistics/docs-log.jsonl').match(/stranded-root/g).length, 1);
   } finally { r.rm(); }
 });
 
@@ -1694,13 +1731,13 @@ test('an unattended hold and an unattended Stop ask each write one mode: unatten
     assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s), U)), 'never held unattended');
     r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
     assert.strictEqual(r.hook(stopEv(s), U).stdout, '', 'never asked unattended');
-    const rows = r.read(`.claude/docs/hook-blocks/${s}.jsonl`).trim().split('\n').map((l) => JSON.parse(l));
+    const rows = r.read(`.alfred/statistics/hook-blocks/${s}.jsonl`).trim().split('\n').map((l) => JSON.parse(l));
     assert.deepStrictEqual(rows.map((x) => [x.mode, x.event, x.kind]), [['unattended', 'PreToolUse', 'docs hold'], ['unattended', 'Stop', 'docs finish ask']]);
     // Audit 2026-10-20 H11: one row per kind per session - a second held write and a second Stop add none.
     r.write('src/Api/Orders/Refund.cs', 'y\n');
     assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s), U)), 'still never held');
     assert.strictEqual(r.hook(stopEv(s), U).stdout, '', 'still never asked');
-    assert.strictEqual(r.read(`.claude/docs/hook-blocks/${s}.jsonl`).trim().split('\n').length, 2, 'no row repeats its kind');
+    assert.strictEqual(r.read(`.alfred/statistics/hook-blocks/${s}.jsonl`).trim().split('\n').length, 2, 'no row repeats its kind');
   } finally { r.rm(); }
 });
 
@@ -1744,7 +1781,7 @@ test('a write to a plan stamped Completed: is denied unless it changes only stam
     assert.ok(denied(r.hook(pre('MultiEdit', { file_path: `${r.root}/.claude/docs/plans/csv-export.md`, edits: [{ old_string: 'Gated: 2026-10-09', new_string: 'Gated: 2026-10-10' }, { old_string: '## Tasks', new_string: '## Tasks\n- [ ] Task 0' }] }, s))), 'one non-stamp edit in a MultiEdit');
     assert.ok(denied(r.hook(pre('Bash', { command: 'echo "- [ ] Task 2" >> .claude/docs/plans/csv-export.md' }, s))), 'a shell append');
     assert.ok(!denied(r.hook(pre('Bash', { command: 'grep -c Task .claude/docs/plans/csv-export.md' }, s))), 'a read');
-    const rows = r.read(`.claude/docs/hook-blocks/${s}.jsonl`).trim().split('\n').map((l) => JSON.parse(l));
+    const rows = r.read(`.alfred/statistics/hook-blocks/${s}.jsonl`).trim().split('\n').map((l) => JSON.parse(l));
     assert.ok(rows.length >= 4 && rows.every((x) => /stamped Completed/.test(x.reason)), 'one block row per denial');
   } finally { r.rm(); }
 });
@@ -1796,7 +1833,7 @@ test('audit 2026-10-10 C03 C23: a word-only hit is named as a candidate, never p
     assert.doesNotMatch(held.stdout, /selection happens in the composition root/, 'the section is not pasted');
     assert.doesNotMatch(held.stdout, /convention this change follows/);
     assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Api/Seeding/StaffRoleSeed.cs' }, s))), 'the retry goes through');
-    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"hold".*"via":"words"/);
+    assert.match(r.read('.alfred/statistics/docs-log.jsonl'), /"event":"hold".*"via":"words"/);
   } finally { r.rm(); }
 });
 
@@ -2012,7 +2049,7 @@ test('2026-10-16: a change another session on this checkout recorded as its own 
     const key = p.resolve(r.root).split(p.sep).join('/');
     assert.strictEqual(state.root, process.platform === 'win32' ? key.toLowerCase() : key, 'the writer records the checkout beside its paths');
     assert.strictEqual(ask(mine), '', 'the measured case: the read-only session is not asked about the other session\'s write');
-    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"changed-by-other-session","files":\["src\/Api\/Program\.cs"\]/);
+    assert.match(r.read('.alfred/statistics/docs-log.jsonl'), /"event":"changed-by-other-session","files":\["src\/Api\/Program\.cs"\]/);
     assert.match(ask(theirs), /you changed src\/Api\/Program\.cs/, 'the session that wrote it is still asked');
     const own = sid(); start(r, own);
     edit(own, 'src/Api/Program.cs'); change();
@@ -2046,7 +2083,7 @@ test('audit 2026-10-20 C25: a resume that reads its plan\'s Oriented sections is
     const s = sid();
     r.hook(pre('Read', { file_path: `${r.root}/.claude/docs/plans/refunds.md` }, s));
     assert.ok(!denied(edit(s)), 'the plan\'s Oriented section counts as read');
-    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"consult","refs":\["patterns#orders"\]/);
+    assert.match(r.read('.alfred/statistics/docs-log.jsonl'), /"event":"consult","refs":\["patterns#orders"\]/);
     const sh = sid();
     r.hook(pre('Bash', { command: 'cat .claude/docs/plans/refunds.md' }, sh));
     assert.ok(!denied(edit(sh)), 'a shell read of the plan counts the same');
@@ -2062,6 +2099,23 @@ test('audit 2026-10-20 C25: a resume that reads its plan\'s Oriented sections is
     r.hook(pre('Read', { file_path: `${r.root}/notes/plan.md` }, outside));
     assert.ok(denied(edit(outside)), 'an Oriented line outside the plans folder earns nothing');
     assert.ok(denied(edit(sid())), 'a session that read nothing is still held');
+  } finally { r.rm(); }
+});
+
+// 2.8.0: plans live under the docs root's work/plans/ - a plan there is a record once stamped Completed:, and its
+// Oriented sections count as read, exactly as one under the legacy plans/ an update has not moved yet.
+test('2.8.0: a plan under work/plans/ is a plan - its Completed: stamp holds and its Oriented sections count as read', () => {
+  const PLAN = '# Plan: csv export\nGated: 2026-10-09\nOriented: patterns#orders\nCompleted: 2026-10-09\n\n## Tasks\n- [x] Task 1 - export\n';
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'x\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.write('.claude/docs/work/plans/csv-export.md', PLAN);
+    const s = sid();
+    const add = r.hook(pre('Edit', { file_path: `${r.root}/.claude/docs/work/plans/csv-export.md`, old_string: '- [x] Task 1 - export\n', new_string: '- [x] Task 1 - export\n- [ ] Task 2\n' }, s));
+    assert.ok(denied(add), 'new scope appended to a stamped plan under work/plans/');
+    assert.ok(denied(r.hook(pre('Bash', { command: 'echo "- [ ] Task 2" >> .claude/docs/work/plans/csv-export.md' }, s))), 'a shell append');
+    const read = sid();
+    r.hook(pre('Read', { file_path: `${r.root}/.claude/docs/work/plans/csv-export.md` }, read));
+    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, read))), 'its Oriented section counts as read');
   } finally { r.rm(); }
 });
 
@@ -2099,7 +2153,7 @@ test('audit 2026-10-20 C25: the Stop ask waits while background work runs, asks 
     start(r, s);
     r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
     assert.strictEqual(stopWith(s, running), '', 'a pause under running work is not asked');
-    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"ask-deferred","why":"background work running","deferred":1/);
+    assert.match(r.read('.alfred/statistics/docs-log.jsonl'), /"event":"ask-deferred","why":"background work running","deferred":1/);
     assert.match(JSON.parse(stopWith(s, [])).reason, /^Docs check: you changed src\/Api\/Program\.cs/, 'the next Stop with nothing in flight asks');
     const settled = sid();
     start(r, settled);
@@ -2136,7 +2190,7 @@ test('audit 2026-10-20 C25: a file moved by git stash is not charged to the sess
     const state = JSON.parse(fs.readFileSync(p.join(os.tmpdir(), `docs-session-${theirs}--main.session.json`), 'utf8'));
     assert.deepStrictEqual(state.moved, ['src/Api/Program.cs'], 'the stash records its files as moved');
     assert.strictEqual(ask(mine), '', 'the measured case: not charged with the sibling\'s stash');
-    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"changed-by-other-session","files":\["src\/Api\/Program\.cs"\]/);
+    assert.match(r.read('.alfred/statistics/docs-log.jsonl'), /"event":"changed-by-other-session","files":\["src\/Api\/Program\.cs"\]/);
     assert.strictEqual(ask(theirs), '', 'the stashing session moved it, never authored it');
     // 7c1af769: a session applies a stash another session authored.
     const applier = sid();
@@ -2144,7 +2198,7 @@ test('audit 2026-10-20 C25: a file moved by git stash is not charged to the sess
     bash(applier, 'git stash apply stash@{0}');
     r.git('stash', 'apply', 'stash@{0}');
     assert.strictEqual(ask(applier), '', 'an applied stash is not this session\'s authoring');
-    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"changed-by-git-stash","files":\["src\/Api\/Program\.cs"\]/);
+    assert.match(r.read('.alfred/statistics/docs-log.jsonl'), /"event":"changed-by-git-stash","files":\["src\/Api\/Program\.cs"\]/);
     const editor = sid();
     start(r, editor, GIT);
     bash(editor, 'git stash apply stash@{0}');
@@ -2178,10 +2232,10 @@ test('audit 2026-10-20 C43: an architecture write is held once while an analyzer
     assert.ok(denied(held), 'the audited case: a seat is out');
     assert.match(held.stdout, /architecture-analyzer \('Verify remaining patterns'\)/);
     assert.match(held.stdout, /Wait for the hand-back/);
-    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"seat-hold"/);
-    assert.match(fs.readdirSync(p.join(r.root, '.claude/docs/hook-blocks')).map((f) => r.read(`.claude/docs/hook-blocks/${f}`)).join(''), /Held: /);
+    assert.match(r.read('.alfred/statistics/docs-log.jsonl'), /"event":"seat-hold"/);
+    assert.match(fs.readdirSync(p.join(r.root, '.alfred/statistics/hook-blocks')).map((f) => r.read(`.alfred/statistics/hook-blocks/${f}`)).join(''), /Held: /);
     assert.ok(!denied(edit()), 'once per dispatch: the second attempt passes');
-    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"seat-bypass"/);
+    assert.match(r.read('.alfred/statistics/docs-log.jsonl'), /"event":"seat-bypass"/);
     // an enqueued notice is not delivered yet; a new dispatch is held again
     rows(dispatchRow('t2', 'code-quality-analyzer'), launchedRow('t2', 'a222'));
     rows({ type: 'queue-operation', operation: 'enqueue', content: noticeText('t2', 'a222') });
@@ -2303,6 +2357,17 @@ test('S3: a stamp written while the last question timed out is denied; a delete,
     assert.ok(!denied(r.hook(pre('Write', { file_path: `${r.root}/.claude/docs/flow/NOTES`, content: 'APPROVED by nobody\n' }, s), env)), 'another flow file passes');
     assert.ok(!denied(write('APPROVED 1 - "x"\n', sid())), 'another session with no timeout passes');
     assert.ok(!denied(r.hook({ ...pre('Write', { file_path: stamp, content: 'APPROVED 1\n' }, s), agent_id: 'a1', agent_type: 'x' }, env)), 'a seat\'s call is not judged here');
+    // 2.8.0: the stamp's own home, <data root>/state/approvals/ - the pre-2.8.0 flow/ above stays covered for the 2.x line
+    const fresh = r.hook(pre('Write', { file_path: `${r.root}/.alfred/state/approvals/APPROVAL`, content: 'APPROVED 1 - "build it"\n' }, s), env);
+    assert.ok(denied(fresh), 'the stamp under state/approvals/ is denied too');
+    assert.match(JSON.parse(fresh.stdout).hookSpecificOutput.permissionDecisionReason, /^Blocked: the question timed out - re-ask\. \.alfred\/state\/approvals\/APPROVAL would record/);
+    assert.ok(denied(r.hook(pre('Bash', { command: "mkdir -p .alfred/state/approvals && printf 'AUTO - go\\n' > .alfred/state/approvals/APPROVAL" }, s), env)), 'and a shell write there');
+    // per-plan approvals (2026-10-20): a plan's own stamp is the same approval
+    const plan = r.hook(pre('Write', { file_path: `${r.root}/.alfred/state/approvals/cart/APPROVAL`, content: 'APPROVED cart - "build it"\n' }, s), env);
+    assert.ok(denied(plan), "a plan's stamp under state/approvals/<plan id>/ is denied too");
+    assert.match(JSON.parse(plan.stdout).hookSpecificOutput.permissionDecisionReason, /\.alfred\/state\/approvals\/cart\/APPROVAL would record/);
+    assert.ok(denied(r.hook(pre('Bash', { command: "mkdir -p .alfred/state/approvals/cart && printf 'APPROVED cart - go\\n' > .alfred/state/approvals/cart/APPROVAL" }, s), env)), 'and a shell write there');
+    assert.ok(!denied(r.hook(pre('Write', { file_path: `${r.root}/.alfred/state/approvals/cart/NOTES`, content: 'APPROVED cart\n' }, s), env)), 'another file in the plan folder passes');
     fs.rmSync(marker, { force: true });
     assert.ok(!denied(write('APPROVED 1 - "build it"\n')), 'once the next answer clears the marker, the stamp is written');
   } finally { r.rm(); fs.rmSync(logs, { recursive: true, force: true }); }

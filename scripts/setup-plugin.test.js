@@ -882,6 +882,54 @@ test('update: the post-install grep passes every retirement line the installer w
     }
 });
 
+// 2.8.0 (the user's ruling D5, 2026-10-20): update moves an older project's folders onto the current layout and says so.
+// Every `layout:` line the installer writes - a move, a clash kept, a .branches/ kept - passes the ONE post-install grep,
+// and the close reports them under its LAYOUT line, a kept one on the follow-ups card with the one action it leaves.
+test('update: the post-install grep passes every layout: line, and the close reports them as its LAYOUT line', { skip: process.platform === 'win32' && 'the seed sandbox is POSIX only' }, () =>
+{
+    const { seedRun } = require('./seed-sandbox.js');
+    const body = updateText();
+    const pattern = new RegExp(body.match(/grep -aE '([^']+)' "\$TMP\/install\.log"/)[1]);
+    const put = (repo, rel) => { const f = path.join(repo, ...rel.split('/')); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, `${rel}\n`); };
+    const prepare = (repo) =>
+    {
+        fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+        fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'source: test\nversion: 2.7.0\n');
+        for (const rel of ['flow/APPROVAL', 'hook-blocks/s.jsonl', 'plans/a.md', 'plans/b.md', '.branches/feature/x.md']) put(repo, `.alfred/docs/${rel}`);
+        put(repo, '.alfred/docs/work/plans/b.md');
+        for (const rel of ['state/approvals/APPROVAL', 'statistics/hook-blocks/s.jsonl']) put(repo, `.alfred/${rel}`);
+    };
+    const { out } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', { prepare });
+    const kinds = {
+        move: /layout: \S+ -> \S+ \(\d+ files?\)/, clash: /layout: kept \S+ - \S+ already holds it/, branches: /layout: kept \.branches\/ - it holds doc versions/,
+        merged: /layout: merged \S+ into \S+/, removed: /layout: removed \S+ - \S+ is the copy the hooks read/,
+    };
+    for (const [kind, re] of Object.entries(kinds))
+    {
+        const lines = out.split('\n').filter((l) => re.test(l));
+        assert.ok(lines.length > 0, `the seed run wrote no ${kind} line:\n${out}`);
+        for (const line of lines) assert.match(line, pattern, `update's grep drops the ${kind} line`);
+    }
+    const close = flat(refBody('update-close'));
+    assert.match(close, /\*\*LAYOUT\*\* - every `layout:` line the grep caught, verbatim/, 'the close names the LAYOUT line');
+    assert.match(close, /'layout: current - nothing moved'/);
+    assert.match(close, /a `layout: kept` line goes on the follow-ups card/);
+    // docs.js prints three held shapes; 'delete the old' is right for one only - said for `.branches/` it deleted live
+    // local-versioning overlays (final review 2026-10-20b).
+    assert.match(close, /`layout: kept <old> - <new> already holds it`[^.]*diff the two and delete the old/, 'the clash shape');
+    assert.match(close, /`layout: kept \.branches\/ - it holds doc versions, prune them first`: [^`]*`node \.claude\/hooks\/docs\.js prune <branch>`[^`]*never delete it by hand/, 'the branch-versions shape');
+    assert.match(close, /`!! layout: <folder> holds raw session copies \.\.\.`: nothing moved; keep the new folder out of git/, 'the raw-copies shape');
+    // The hand-set docs-root ask: a multi-select needs 2-4 options, so a root holding ONE stack entry has no 'Some are
+    // the team's own' question to build; and an unattended move of a team's folder names the way back (final review
+    // 2026-10-20b).
+    const walk = flat(refBody('update-walk'));
+    assert.match(walk, /With one `moves=` entry there is nothing to pick from: ask it as a yes \/ no - 'Move it \(Recommended\)' or 'It is the team's own'/, 'the one-entry ask');
+    assert.match(walk, /`git mv <to>\/<entry> <from>\/<entry>`/, 'the way back after an unattended move');
+    const history = flat(refBody('update-history'));
+    assert.doesNotMatch(history, /a `layout: kept` line means a file already sat at the new path, so the old one is the user's to diff and delete/, 'the history names each shape');
+    assert.match(flat(cmdBody('update')), /moves an older project's folders onto the current layout/, 'update.md says what the run does');
+});
+
 // A 1.x install's FIRST 2.0.0 run is driven by the 1.x update command's own body (v1.3.0), which no
 // release can edit. It reports from ONE grep of the installer log - the pattern below, frozen as it
 // shipped - and pastes verbatim every `warn:` line `update-preflight.js --log` prints: one per `!!` line
@@ -1155,7 +1203,8 @@ test('update: the docs move says the hooks keep the old root until the restart',
     const body = flat(updateBody());
     assert.doesNotMatch(body, /this session writes the docs under the NEW root/);
     assert.match(body, /until that restart this session's hooks keep writing under the OLD root/);
-    assert.match(body, /a `flow\/` file left under the old root is this session's record and safe to delete/);
+    // 2.8.0: the hooks write state/ and statistics/; a session started on an older release still writes flow/.
+    assert.match(body, /a file under the old root's `state\/` or `statistics\/` - or, from a session that started before 2\.8\.0, its `flow\/` or `hook-blocks\/` - is this session's record and safe to delete/);
 });
 
 // b3f8193f: the project's own AGENTS.md was spliced by hand after an ask with no diff. 5b9ce9c5: the compare never ran

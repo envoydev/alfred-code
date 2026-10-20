@@ -100,6 +100,8 @@ Before ANY candidate is recorded as a weakness, answer all four explicitly; an u
 
 **The external-preference rule.** A convention skill, reference doc, or industry pattern preferring a different approach is not evidence of a weakness. Where this project has a mechanism that works, it wins unless you can show it FAILING - a real miss, a real regression it let through. A candidate whose only support is 'a reference prefers X' lands under Worth knowing at most, never tiered.
 
+**The user's preferences are not external.** Each `A<n>` entry of `<docs-path>/preferences/ARCHITECTURE-PREFERENCES.md` outranks the decision log, AGENTS.md and the map's conventions - the precedence the code-quality capture uses. A breach is a weakness whose rule is `ARCHITECTURE-PREFERENCES.md#a<n>`, and 'breaks A2' answers gate question 1; the entry's `Except:` line is its one waiver.
+
 ## The count rule - an output, never a target, in both directions
 
 - **Never pad upward.** No observation is promoted to a weakness, and no minor to a major, to make the doc look thorough. Zero gate-passing weaknesses is a valid, complete result on a healthy codebase - state it plainly.

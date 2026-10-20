@@ -29,7 +29,7 @@ The measurements behind these rules live in `references/evidence.md` - an audit 
   (capture-code-quality), code style, or test coverage - the assessment keeps only structural testability
   blockers, never coverage gaps.
 
-**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
+**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
 
 ## Execution modes
 
@@ -64,6 +64,8 @@ ARCHITECTURE-ASSESSMENT.md is as of this HEAD on a clean tree. Verify and rewrit
 ### 1. ORIENT
 Read `<docs-path>/architecture/ARCHITECTURE.md` - the map `capture-architecture` writes, the structural facts every weakness and strength traces to. No map at all: say so and stop, pointing at that capture - there is nothing to judge yet. A map whose own `Captured:` stamp is far behind HEAD is still read (a stale map is a claim to verify, not a blocker) - note the gap in the report rather than blocking on it.
 
+Read `<docs-path>/preferences/ARCHITECTURE-PREFERENCES.md` when present: its `A<n>` entries are the top rule source (`references/doc-shape.md`), and `node .claude/skills/capture-preferences/scripts/preferences.js check --all --area architecture` locates the breaches of the ones with a `Check:`.
+
 Read `<docs-path>/quality/ARCHITECTURE-ASSESSMENT.md` if it already exists - not ground truth, but its entries are what gate question 3 ('is it actually new') folds a re-measurement into, so an unchanged finding keeps its existing shape rather than opening a duplicate. Read the project's decision log when present (`<docs-path>/decisions/`, or wherever the project keeps ADRs): each accepted decision is declared intent to reconcile against, and a tradeoff it records deliberately lands as a Deliberate tradeoff, not a weakness - gate question 4 depends on this read having happened.
 
 ### 2. GATHER - architecture-analyzer per module, in parallel
@@ -91,6 +93,7 @@ Confirm the file written (created vs refreshed), then lean: gather rounds used a
 |---|---|
 | `References:` | which of this skill's `references/` files this run actually Read |
 | `Decisions:` | the decision records step 1 actually opened, or `none found at <path looked>` |
+| `Preferences:` | the `A<n>` entries judged and the preferences check's `checked:` line, or `none - no ARCHITECTURE-PREFERENCES.md` |
 | `Findings gate:` | candidates considered, passed, routed to Worth knowing, folded into an existing entry, and rejected (naming the question each rejected one failed) |
 | `Write:` | created / refreshed, and the post-write line count against the ~300 target |
 | `Run gate:` | the answer verbatim, or `invoked by the quality loop` |

@@ -13,8 +13,8 @@
 //     write) never see. MacOS-MCP 0.4.6 has no exclude flag, so the tool itself is the gate's unit.
 // Both are denied; App's `launch`, `switch` and `resize` pass. Both spellings: the plugin route's
 // `mcp__plugin_<n>_<n>__<tool>` and the MCP copy route's bare server spelling, one pattern each below.
-// 'Allow' is honoured through <docs-path>/flow/DESKTOP-EXEC-ALLOW (this session's own, under 8h): a line
-// `App` opens every launch_executable, `Shell` every macOS shell call, an executable's FULL path that one executable
+// 'Allow' is honoured through <data root>/state/approvals/DESKTOP-EXEC-ALLOW, the pre-2.8.0 <docs-path>/flow/ one still
+// read (this session's own, under 8h): a line `App` opens every launch_executable, `Shell` every macOS shell call, an executable's FULL path that one executable
 // (a bare name only a call naming it bare - audit 2026-10-20, the hooks track's minor list: a file-name line opened that
 // name in every directory), `*` both.
 'use strict';
@@ -38,7 +38,7 @@ if (require.main === module) {
   } catch { /* an install without the prelude runs the hook unchanged */ }
   if (off) process.exit(0);
 }
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 
 // The two tools, on both routes. Built as patterns so the copy route's bare spelling is never literal text
 // (lint check 54 fails on it anywhere under stack/).
@@ -72,7 +72,7 @@ if (!payload || typeof payload !== 'object') process.exit(0);
                     // resolve, NOT join: an ABSOLUTE ALFRED_CODE_DOCS_PATH makes path.join('/a/b','/x/y')
         // '/a/b/x/y', so every ledger row landed in a doubled path that nothing reads (measured
         // across all ten guards). resolve honours an absolute value and still joins a relative one.
-        const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
+        const dir = (() => { try { return require('./layout.js').statsPath(root, ['hook-blocks']); } catch { return path.resolve(root, docsRootEnv(), 'hook-blocks'); } })();
                     fs.mkdirSync(dir, { recursive: true });
                     fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
                         ts: new Date().toISOString(),
@@ -104,7 +104,9 @@ const isShell = MAC_SHELL.test(tool);
 if (!isShell && !(isApp && String(input.mode || '').trim().toLowerCase() === 'launch_executable')) process.exit(0);
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-const receipt = path.resolve(ROOT, docsRootEnv(), 'flow', 'DESKTOP-EXEC-ALLOW');
+let layout = null;
+try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
+const receipt = layout ? layout.findState(ROOT, 'approvals', 'DESKTOP-EXEC-ALLOW') : path.resolve(ROOT, docsRootEnv(), 'flow', 'DESKTOP-EXEC-ALLOW');
 const executable = String(input.executable || input.path || input.name || '').trim();
 // The same path in either slash and, on a Windows path, either case - never a match on the file name alone.
 const winPath = (p) => /^(?:[A-Za-z]:[\\/]|\\\\)/.test(p);
@@ -135,7 +137,7 @@ const allowed = (() => {
 })();
 if (allowed) process.exit(0);
 
-const receiptRel = path.relative(ROOT, receipt).split(path.sep).join('/');
+const receiptRel = path.relative(ROOT, layout ? layout.statePath(ROOT, 'approvals', 'DESKTOP-EXEC-ALLOW') : receipt).split(path.sep).join('/');
 if (isShell) {
   // The ledger keeps the command's VERB, as every other guard keeps a branch or a token: 120 characters of the command
   // carried whatever credential it held (audit 2026-10-08 row 40). A leading `NAME=value` is skipped, never recorded.

@@ -175,7 +175,9 @@ Hold every line to the template's keep-out test and its five shapes. On top of t
 this file is never the home of:
 
 - **A session's learnings, a correction or a personal preference** - the shared memory server keeps
-  them (`alfred-memory.md`), searchable and shared across accounts; an AGENTS.md line is neither.
+  them (`alfred-memory.md`), searchable and shared across accounts; an AGENTS.md line is neither. A
+  code, architecture or git preference is the user's to record with `/capture-preferences` instead -
+  the template's wishlist shape.
 - **A `CLAUDE.local.md` of personal notes** - the same server, for the same reason; it also makes Claude Code stop reading AGENTS.md, unless the user sets Project instructions to 'claude-md-and-agents-md' in `/config`.
 - **A score or a grade** of the file - a judgment no check can hold it to; the check's rows are the
   verdict.

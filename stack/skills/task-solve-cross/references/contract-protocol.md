@@ -4,7 +4,7 @@ The recorded interface is the source of truth every affected stack builds agains
 
 ## Record before consumer work
 
-For any cross-domain mode: dispatch the producer designer first (the upstream side per the dependency direction from the related-context entries or the architecture map). Copy its plan's interface section into the ledger as `v1`. In full_cross_domain, the consumer designer validates v1 against its side's needs before anything is built - a misfit loops back to the producer designer at design cost, not rework cost. Every task card and agent result carries the `contract_version` it was built against; verification runs against the current version only.
+For any cross-domain mode: dispatch the producer designer first (the upstream side per the dependency direction from the `RELATED-PROJECTS-AWARENESS.md` entries or the architecture map). Copy its plan's interface section into the ledger as `v1`. In full_cross_domain, the consumer designer validates v1 against its side's needs before anything is built - a misfit loops back to the producer designer at design cost, not rework cost. Every task card and agent result carries the `contract_version` it was built against; verification runs against the current version only.
 
 ## What counts as a seam change
 

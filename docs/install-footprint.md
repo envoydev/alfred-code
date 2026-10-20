@@ -21,16 +21,17 @@ Written later, or only on one route:
 
 - **`/alfred-code:init`** imports Claude's old memory notes once. Only after that import succeeds does it write `autoMemoryEnabled: false` into the same project file - never the account file.
 - **`<repo>/.mcp.json`** is written only on the `ALFRED_CODE_MCPS_VIA_PLUGIN=false` route. The default run instead PRUNES every stack server from it.
+- **`.claude/settings.local.json`** gets claude-hud's `statusLine` from `/alfred-code:init` when claude-hud is installed for this project alone - the command names this machine's `node`, so it stays out of the shared file - after a `settings.local.json.bak.<time>` copy of the file, when it already exists.
 
 ## In your account
 
-- **`~/.claude/settings.json`** - `env` keys only: `CONTEXT7_API_KEY`, when you give one. A secret is logged by length, never by value, and never asked for through the chat. `autoMemoryEnabled` never lands here, whatever the install scope.
+- **`~/.claude/settings.json`** - `env` keys only: `CONTEXT7_API_KEY`, when you give one. A secret is logged by length, never by value, and never asked for through the chat. `autoMemoryEnabled` never lands here, whatever the install scope. The CLI's own `claude plugin marketplace add` also records each marketplace the run registers under `extraKnownMarketplaces` there (code.claude.com/docs/en/plugins/loading).
 - **The plugin cache** - `claude plugin install`, at EVERY scope, writes `~/.claude/plugins/cache/...` and `installed_plugins.json`.
-- **claude-hud** - its marketplace add and its user-scope install.
+- **claude-hud**, when you keep it - its marketplace, registered for the whole account; its install is a user-scope one only when you choose global for it (this project by default).
 - **User-scope installs** - every stack plugin row, at `--scope user`.
 - **`~/.claude.json`** - only on the MCP copy route (`ALFRED_CODE_MCPS_VIA_PLUGIN=false`) at user or local scope, for its server registrations.
 - **`/alfred-code:init`** additionally writes:
-  - the account `statusLine`;
+  - claude-hud's `statusLine`, for a claude-hud installed globally (one installed for this project alone gets it in the project, above);
   - claude-hud's own `plugins/claude-hud/config.json` (add-only keys);
   - a `settings.json.bak.<time>` backup, taken before that run's first account write.
 - **`~/.alfred-memory/`** - at the `global` or `scoped` memory level, `memory.db` (or `memory_<space>.db` under a `--space` profile). A 2.0.0 `~/.memory-mcp` is moved there by the memory server's launcher once idle, with a link left behind. The `project` level stays inside the project.
@@ -41,7 +42,7 @@ Nothing is written outside the project and the account-dir writes named above, a
 
 At install:
 
-- One `claude plugin install` call per plugin: the optional third-party picks the project kept, `claude-hud` (installed beside the core on every run), the core `alfred-code`, and one plugin per MCP server the project keeps.
+- One `claude plugin install` call per plugin: the optional third-party picks the project kept - `claude-hud` among them, marked recommended in every walk - the core `alfred-code`, and one plugin per MCP server the project keeps.
 - No `claude mcp add` registration at all - the servers ride their own plugins. The opt-out route still makes up to eight.
 
 At every session start:
@@ -58,7 +59,7 @@ Nothing else executes from the package itself. The package itself is six command
 
 ## What you install by hand
 
-- `csharp-ls` and `typescript-language-server`, for the two LSP plugins.
+- `csharp-ls` and `typescript-language-server`, for the two LSP plugins - each plugin names its server and ships none. `/alfred-code:init` offers both, through its one machine-install ask: `dotnet tool install --global csharp-ls` (the .NET 10 SDK first) and `npm install -g typescript-language-server typescript@6` - TypeScript 6, since TypeScript 7 ships no `tsserver.js`, the file the server reads; it needs Node 22.22.2 or later.
 
 ## Cost per message
 

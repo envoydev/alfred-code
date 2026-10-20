@@ -18,6 +18,15 @@
 const fs = require('fs');
 const path = require('path');
 
+// The stack's setting ALFRED_CODE_<suffix>, '' read as unset (env-reader in meta/shared-rules.json pins the copies).
+function envOf(env, suffix)
+{
+    const value = env[`ALFRED_CODE_${suffix}`];
+    return value === '' ? undefined : value;
+}
+// data-root-reader (meta/shared-rules.json): ALFRED_CODE_DATA_PATH, relative to the project, else .alfred.
+const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '') || '.alfred';
+
 const SURFACE_NOUN = 'endpoint|component|table|column|index|page|screen|form|service|class|method|function|migration|command|route|view|model|entity|dto|query|controller|repository|job|worker';
 const SURFACE = [
     /\b(?:GET|POST|PUT|PATCH|DELETE)\s+\/[^\s`'")]*/,
@@ -160,11 +169,15 @@ function touchedFiles(cwd = process.cwd(), env = process.env) {
     const tracked = gitLines(['diff', 'HEAD', '--name-only', '-z'], root) || gitLines(['diff', '--cached', '--name-only', '-z'], root) || [];
     const untracked = gitLines(['ls-files', '-o', '--exclude-standard', '-z'], root) || [];
     const posix = (p) => String(p).replace(/\\/g, '/');
-    const docsRel = posix(path.relative(root, path.resolve(root, posix(env.ALFRED_CODE_DOCS_PATH || '.alfred/docs'))));
+    const docsRel = posix(path.relative(root, path.resolve(root, posix(env.ALFRED_CODE_DOCS_PATH || `${dataRoot(env)}/docs`))));
     const head = String(gitOut(['rev-parse', '--verify', '-q', 'HEAD'], root) || '').trim();
+    // docs-session.js's record: <data root>/state/sessions/ (2.8.0), else the pre-2.8.0 <docs-path>/flow/ an older hook wrote
+    const record = `untracked-at-start-${/^[0-9a-f]{7,64}$/.test(head) ? head : 'unborn'}`;
     let before = [];
-    try { before = fs.readFileSync(path.join(root, docsRel, 'flow', `untracked-at-start-${/^[0-9a-f]{7,64}$/.test(head) ? head : 'unborn'}`), 'utf8').split(/\r?\n/).filter(Boolean).map(posix); }
-    catch { /* no record - nothing to subtract */ }
+    for (const dir of [path.resolve(root, dataRoot(env), 'state', 'sessions'), path.join(root, docsRel, 'flow')]) {
+        try { before = fs.readFileSync(path.join(dir, record), 'utf8').split(/\r?\n/).filter(Boolean).map(posix); break; }
+        catch { /* no record here - nothing to subtract */ }
+    }
     // The docs root sits in the stack's data root (`<data root>/docs`), whose other files are the stack's too.
     const dataRel = path.posix.basename(docsRel) === 'docs' && !['.', ''].includes(path.posix.dirname(docsRel)) ? path.posix.dirname(docsRel) : docsRel;
     const outside = (f) => f === '.claude' || f.startsWith('.claude/') || (dataRel && !dataRel.startsWith('..') && (f === dataRel || f.startsWith(`${dataRel}/`)));

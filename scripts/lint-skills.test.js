@@ -1359,3 +1359,49 @@ test('check 12a: the README MCP row describes every opt-in MCP server, and a new
     assert.match(lintReadmeOptInMcps(row.replace(/mobile/gi, 'phone'), ['mobile-control'])[0], /does not describe the opt-in mobile-control/);
     assert.match(lintReadmeOptInMcps(row, ['tv-control'])[0], /has no README word - add it to OPT_IN_README_WORDS/);
 });
+
+// 2.8.0 moved the hooks' state and ledgers into the data root and the flow docs under work/ and quality/
+// (stack/hooks/layout.js LAYOUT_MOVES). A text naming an old home sends the model to a folder the update emptied.
+test('check 65 flags <docs-path>/flow/APPROVAL in a skill and passes state/approvals/APPROVAL', () => {
+    const { lintOldLocations } = require('./lint-skills.js');
+    const of = (file, text) => lintOldLocations([{ file, text }]);
+    const hit = of('stack/skills/x/SKILL.md', 'intro\nwrite `<docs-path>/flow/APPROVAL` first\n');
+    assert.strictEqual(hit.length, 1, 'one line, one finding');
+    assert.match(hit[0], /^stack\/skills\/x\/SKILL\.md:2 names the pre-2\.8\.0 location <docs-path>\/flow - use <data root>\/state\/approvals or <data root>\/state\/sessions \(stack\/hooks\/layout\.js LAYOUT_MOVES\)$/);
+    assert.deepStrictEqual(of('stack/skills/x/SKILL.md', 'write `<data root>/state/approvals/APPROVAL` first\n'), [], 'the new home passes');
+    assert.match(of('stack/rules/r.md', 'the plan at `<docs-path>/plans/x.md`\n')[0], /<docs-path>\/plans - use <docs-path>\/work\/plans /);
+    assert.match(of('setup-plugin/references/r.md', 'see .alfred/docs/hook-blocks/s.jsonl\n')[0], /\.alfred\/docs\/hook-blocks - use <data root>\/statistics\/hook-blocks /);
+    assert.match(of('stack/agents/a.md', 'append to <docs-path>/docs-log.jsonl\n')[0], /use <data root>\/statistics\/docs-log\.jsonl /);
+    assert.match(of('stack/skills/x/SKILL.md', 'the <docs>/related-context/ drop-box\n')[0], /use <docs-path>\/work\/cross-project-tasks /);
+    assert.strictEqual(of('docs/alfred-code.html', 'writes the &lt;docs-path&gt;/flow/SECRET-READ-ALLOW receipt\n').length, 1, 'the page spells the placeholder as entities');
+    assert.strictEqual(of('stack/hooks/h.js', "const d = path.resolve(root, docsRootEnv(), 'hook-blocks');\n").length, 1, 'a hook writing the old home is a finding');
+    assert.strictEqual(of('stack/hooks/h.js', "const d = path.resolve(R, '.alfred/docs', 'flow', 'APPROVAL');\n").length, 1, 'the default root spelled out too');
+    assert.deepStrictEqual(of('stack/skills/x/SKILL.md', 'the <docs-path>/work/plans/ folder and <docs-path>/quality/loops/\n'), [], 'a new home that ends in an old name passes');
+    assert.deepStrictEqual(of('stack/skills/x/SKILL.md', 'a <docs-path>/plansmith/ folder\n'), [], 'a longer name is not the old folder');
+});
+
+test('check 65 passes layout.js, the migration code, the tests, the history and a hook\'s skew-window read', () => {
+    const { lintOldLocations } = require('./lint-skills.js');
+    const of = (file, text) => lintOldLocations([{ file, text }]);
+    const old = "path.resolve(root, docsRootEnv(), 'flow', 'APPROVAL') and <docs-path>/plans/\n";
+    for (const file of ['stack/hooks/layout.js', 'scripts/install/docs.js', 'scripts/x.test.js', 'setup-plugin/references/update-history.md', 'docs/plugin-migration-evidence.md', 'docs/superpowers/plans/p.md', 'docs/ecc-comparison-2026-09-20.md', 'scripts/fixtures/retired-rules.js'])
+        assert.deepStrictEqual(of(file, old), [], `${file} is exempt`);
+    assert.deepStrictEqual(of('stack/hooks/h.js', "const f = layout ? layout.findState(root, 'approvals', 'APPROVAL') : path.resolve(root, docsRootEnv(), 'flow', 'APPROVAL');\n"), [], 'the fallback of a layout.js read is the skew window');
+    assert.deepStrictEqual(of('stack/hooks/h.js', "const legacyDir = (root) => path.resolve(root, docsRootEnv(), 'history');\n"), [], 'a legacy-named read is the skew window');
+    assert.deepStrictEqual(of('stack/hooks/h.js', "const dirs = [`${docsRel}/work/plans/`, `${docsRel}/plans/`]; // the pre-2.8.0 plans/ is still read\n"), [], 'a line that says pre-2.8.0 is the skew window');
+    assert.deepStrictEqual(of('scripts/h.js', '// the rows (`<docs-path>/hook-blocks/` before 2.8.0)\n'), [], 'a line that says before 2.8.0 is history');
+    assert.strictEqual(of('docs/guide.md', 'writes .alfred/docs/plans/x.md\n').length, 1, 'an undated doc is checked');
+    assert.strictEqual(of('stack/skills/x/SKILL.md', 'the legacy <docs-path>/flow/APPROVAL\n').length, 1, 'markdown gets no skew-window pass');
+});
+
+test('check 65: the live tree is clean', () => {
+    const { lintOldLocations, repoTextFiles } = require('./lint-skills.js');
+    assert.deepStrictEqual(lintOldLocations(repoTextFiles()), []);
+});
+
+test('check 65: a sentence may end on an old home; an extension is another name', () => {
+    const { lintOldLocations } = require('./lint-skills.js');
+    const of = (text) => lintOldLocations([{ file: 'stack/rules/r.md', text }]);
+    assert.strictEqual(of('the receipts live in <docs-path>/flow.\n').length, 1, 'a full stop is punctuation');
+    assert.deepStrictEqual(of('a <docs-path>/plans.md file\n'), [], 'plans.md is not the plans/ folder');
+});

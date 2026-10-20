@@ -36,4 +36,4 @@ Inside a single process (in-memory only), format is irrelevant - do not serializ
 
 ## Prove it
 
-A performance change is done only when its measurement is: quote the before and after numbers from the same benchmark or profile, run the same way (BenchmarkDotNet's Mean and Allocated columns (with `[MemoryDiagnoser]`) for a hot path, the profiler's figure for a live regression), plus the green test run. A change with no before number is a guess, and the close says so.
+A performance change is done only when its measurement is: quote the before and after numbers from the same benchmark or profile, run the same way - BenchmarkDotNet's Mean and Allocated columns (with `[MemoryDiagnoser]`) for a hot path, the profiler's figure for a live regression - plus the green test run. A change with no before number is a guess, and the close says so.

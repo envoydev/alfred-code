@@ -36,6 +36,24 @@ test('denies the layer ask when the table ran but was never pasted', () => {
   assert.match(r.stderr, /agents table ran/);
 });
 
+// 2.8.0: the block row goes to the data root's statistics/ (stack/hooks/layout.js's home, read here by its pinned
+// data-root reader - setup-plugin/hooks/ ships apart from the stack's copy), ALFRED_CODE_DATA_PATH honoured.
+test('2.8.0: the block row lands in <data root>/statistics/hook-blocks/', () => {
+  for (const [data, env] of [['.alfred', {}], ['.data', { ALFRED_CODE_DATA_PATH: '.data' }]]) {
+    const proj = fs.mkdtempSync(path.join(TMP, 'rows-'));
+    fs.mkdirSync(path.join(proj, '.claude'));
+    fs.writeFileSync(path.join(proj, '.claude', 'alfred-code.stamp'), 'version: 2.8.0\n');
+    const p = path.join(TMP, `${Math.random().toString(36).slice(2)}.jsonl`);
+    fs.writeFileSync(p, [typed('/alfred-code:init'), say('[step 5/12 - agents]'), table('agents'), result('t1', ' 1  x\ntotal: 43 agents - if fewer')].map((r) => JSON.stringify(r)).join('\n') + '\n');
+    const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: 'lt', tool_name: 'AskUserQuestion', tool_input: ask, transcript_path: p }),
+      encoding: 'utf8', cwd: proj, env: { ...process.env, CLAUDE_PROJECT_DIR: proj, ...env } });
+    assert.strictEqual(r.status, 2, r.stderr);
+    const rows = fs.readFileSync(path.join(proj, data, 'statistics', 'hook-blocks', 'lt.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.deepStrictEqual(rows.map((x) => x.hook), ['guard-layer-table.js'], `${data}: one row`);
+    assert.ok(!fs.existsSync(path.join(proj, '.alfred', 'docs', 'hook-blocks')), `${data}: none under the docs root`);
+  }
+});
+
 test('allows the ask once the footer line is in the assistant text', () => {
   const r = run([typed('/alfred-code:init'), table('agents'), result('t1', 'total: 43 agents'), say('```\n 1  x\ntotal: 43 agents - if fewer rows are visible above\n```')]);
   assert.strictEqual(r.status, 0);

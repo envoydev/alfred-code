@@ -125,13 +125,15 @@ A nested `Directory.Build.props` in a subfolder overrides the root one and must 
 
 Prove it: `dotnet restore` and `dotnet build` - quote both summary lines.
 
-Where the house config-protection guard runs, it blocks a change that loosens `Nullable` or a warning key (`TreatWarningsAsErrors`, `NoWarn`, ...) in a Directory.Build.props or csproj that already exists - a pure tightening (`Nullable` toward `enable`, `TreatWarningsAsErrors` set to true, a `NoWarn` entry removed) passes - until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the flag surfaces, and never route around the block; on Allow, the guard's receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path and the same edit is retried; a new Directory.Build.props takes the baseline from the start.
+Where the house config-protection guard runs, it blocks a change that loosens `Nullable` or a warning key (`TreatWarningsAsErrors`, `NoWarn`, ...) in a Directory.Build.props or csproj that already exists - a pure tightening (`Nullable` toward `enable`, `TreatWarningsAsErrors` set to true, a `NoWarn` entry removed) passes - until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the flag surfaces, and never route around the block; on Allow, the guard's receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW` takes the file's path and the same edit is retried; a new Directory.Build.props takes the baseline from the start.
 
 ```ask
 The config-protection guard holds this edit: <file> - <the change>, <N> new warnings.
 - 'Allow this edit (Recommended)' - the guard's receipt names this file and the same edit is retried
 - 'Keep the config as it is' - nothing changes in the file
 ```
+
+In an MSBuild file the guard holds only what is not a pure tightening - most often a key moving from each csproj into the root `Directory.Build.props`, the case this ask is for. A loosening that would only turn a red build green is no case for it: fix the code.
 
 ## global.json - pin the SDK
 

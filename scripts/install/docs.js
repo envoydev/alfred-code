@@ -7,8 +7,9 @@
 //     new one, so an existing install's file is relocated ONCE, byte-identical, and NEVER over a
 //     file already at the new path. A folder becomes a domain the engine sees only when it holds a
 //     `watch.json`, so a moved document stayed invisible until its capture re-ran - two of the
-//     three get the minimal `{}` written for them. `quality/` and `related-context/` are watch-less
-//     BY DESIGN and are left alone: one is recomputed every run, the other is a drop box.
+//     three get the minimal `{}` written for them. `quality/` is watch-less BY DESIGN and is left alone: it is
+//     recomputed every run. The working papers that sat in `related-context/` move to `work/cross-project-tasks/`
+//     with the 2.8.0 layout (migrateLayout).
 //
 //   - THE VERSIONING SEED. `ALFRED_CODE_DOCS_VERSIONING` says HOW the docs follow a branch: `git`
 //     when they are committed, `local` when they are kept out of git and need per-branch overlays.
@@ -120,8 +121,8 @@ function switchOnDomain(dir, doc, { log = () => {} } = {})
     return true;
 }
 
-// The moves, and the two switch-ons. related-context/ keeps every sibling-repo working paper
-// exactly where it is - only the orientation doc that capture wrote moves out of it. The orientation
+// The moves, and the two switch-ons. Only the orientation doc that capture wrote moves out of related-context/ here;
+// the working papers left beside it go to work/cross-project-tasks/ with the 2.8.0 layout (migrateLayout). The orientation
 // doc's pre-folder home, loose at the root, moves too: its capture moves it on its next run, and a
 // capture never re-runs by itself (2026-10-10: a 0.2.x project carried it loose to .alfred/docs/
 // through the data move). The folder form is listed first, so it wins when both exist; so is the architecture
@@ -391,20 +392,26 @@ function repointDocs({ projectRoot, docsPath, base, rules = [], instructions = [
 // .gitignore is the project's own: everywhere else the data root's one file carries these rules (data-root.js
 // dataIgnoreText, the user's ruling of 2026-10-13) and an update removes this file when it is the stack's text.
 // `local` keeps the whole root out of git - and git then answers check-ignore for the root, so the four-home rule
-// reads it back as kept out. `git` commits the docs and keeps out only what the hooks write for this machine
-// (data-root.js DOCS_STATE_IGNORE): the flow receipts, the block and usage ledgers, the session history and the local
-// overlays - plus the raw session transcripts the usage audit copies beside its reports and the run book's old
-// credentials file.
+// reads it back as kept out. `git` commits the docs and keeps out what is machine-local under them (data-root.js
+// DOCS_STATE_IGNORE): the run book's old credentials file, the awareness inventory and the hooks' pre-2.8.0 state homes,
+// which a session started before the update still writes - the state itself left for the data root's state/ and
+// statistics/ in 2.8.0 (docs.migrateLayout).
 const { DOCS_STATE_IGNORE } = require('../../stack/mcp/data-root.js');
 const DOCS_IGNORE = {
     local: '# alfred-code: the docs root is machine-local (ALFRED_CODE_DOCS_VERSIONING=local)\n*\n',
-    git: '# alfred-code: the docs are committed (ALFRED_CODE_DOCS_VERSIONING=git); the hooks\' machine-local state is not\n'
+    git: '# alfred-code: the docs are committed (ALFRED_CODE_DOCS_VERSIONING=git) but for the lines below\n'
         + `${DOCS_STATE_IGNORE.join('\n')}\n`,
 };
 // Texts an earlier release wrote, still the stack's own: an update replaces them instead of keeping them as
 // the project's. 2.1.3's git text had no usage-report line; up to 2.1.6 the folder was `alfred-code-usage-report/`;
-// up to 2.4.0 there was no credentials line; up to 2.5.0 no awareness line.
+// up to 2.4.0 there was no credentials line; up to 2.5.0 no awareness line; up to 2.7.0 a header naming the hooks' state,
+// `/.branches/` and the whole `/history/` (the first row).
 const DOCS_IGNORE_FORMER = [
+    '# alfred-code: the docs are committed (ALFRED_CODE_DOCS_VERSIONING=git); the hooks\' machine-local state is not\n'
+        + '/flow/\n/hook-blocks/\n/history/\n/tools-usage/\n/.branches/\n/docs-log.jsonl\n'
+        + '# the usage audit\'s raw transcript and ledger copies stay on this machine\n/usage-report/**/*.jsonl\n'
+        + '# the run book\'s credentials file before 2026-10-13, which an older capture still writes\n/project-capabilities/credentials.local.env\n'
+        + '# the awareness capture\'s inventory names this machine\'s plugins\n/awareness/AGENTS-AWARENESS.md\n',
     '# alfred-code: the docs are committed (ALFRED_CODE_DOCS_VERSIONING=git); the hooks\' machine-local state is not\n'
         + '/flow/\n/hook-blocks/\n/history/\n/tools-usage/\n/.branches/\n/docs-log.jsonl\n'
         + '# the usage audit\'s raw transcript and ledger copies stay on this machine\n/usage-report/**/*.jsonl\n'
@@ -420,12 +427,16 @@ const DOCS_IGNORE_FORMER = [
 ];
 
 // THE USAGE AUDIT'S FOLDER took a plain name in 2.1.7 (`alfred-code-usage-report/` -> `usage-report/`, the user's
-// ruling of 2026-10-06). Run AFTER the .gitignore step (alfred-code.js ignoreStep), so the file holding the docs rules already names the new folder. An audit
-// copies whole session transcripts (code, file contents, possibly secrets) beside its reports, and the old folder's
-// ignore line does not cover the new name: a folder holding a raw `.jsonl` moves only where git keeps it out at the
-// new path (no repository, a `local` root, or the project's own line), else it stays and one `!!` line names the fix.
-// A session folder the new one already holds is never overwritten - it stays at the old name and is named.
-const USAGE_REPORT_MOVE = ['alfred-code-usage-report', 'usage-report'];
+// ruling of 2026-10-06) and left the docs root in 2.8.0 for the data root's `statistics/usage-report/` (machine-local,
+// the user's ruling of 2026-10-20) - so the 2.1.6 folder goes straight there; the 2.7.0 one is migrateLayout's. Run AFTER
+// the .gitignore step (alfred-code.js ignoreStep), so the data root's file is current. An audit copies whole session
+// transcripts (code, file contents, possibly secrets) beside its reports: a folder holding a raw `.jsonl` moves only where
+// git keeps it out at the new path (no repository, or the data root's own file), else it stays and one `!!` line names
+// the fix. A session folder the new one already holds is never overwritten - it stays at the old name and is named.
+const USAGE_REPORT_OLD = 'alfred-code-usage-report';
+const USAGE_REPORT_HOME = ['statistics', 'usage-report'];
+const rawHeld = (from, to) => `holds raw session copies and git would not ignore them at ${to}/ - left in place; keep ${to}/ out of git `
+    + `(the data root's .gitignore), then re-run /alfred-code:update`;
 
 function holdsRaw(dir)
 {
@@ -493,20 +504,19 @@ function moveDocsFolder(base, oldName, newName, label, log)
 }
 
 // 'none' | 'moved' | 'merged' | 'held' (raw copies git would not keep out at the new name).
-function migrateUsageReport({ projectRoot, docsPath, log = () => {} })
+function migrateUsageReport({ projectRoot, docsPath, dataPath = '.alfred', log = () => {} })
 {
-    const base = path.resolve(projectRoot, String(docsPath || ''));
-    const [oldName, newName] = USAGE_REPORT_MOVE;
-    const from = path.join(base, oldName);
+    const rel = (p) => path.relative(projectRoot, p).split(path.sep).join('/');
+    const from = path.resolve(projectRoot, String(docsPath || ''), USAGE_REPORT_OLD);
+    const to = path.resolve(projectRoot, String(dataPath || '.alfred'), ...USAGE_REPORT_HOME);
     try { if (!fs.statSync(from).isDirectory()) return 'none'; }
     catch { return 'none'; }
-    if (holdsRaw(from) && !rawStaysOut(base, newName))
+    if (holdsRaw(from) && !rawStaysOut(projectRoot, rel(to)))
     {
-        log(`  !! docs migration (usage report): ${oldName}/ holds raw session copies and git would not ignore them as ${newName}/ - `
-            + `left in place; add '/${newName}/**/*.jsonl' to the docs root's .gitignore, then re-run /alfred-code:update`);
+        log(`  !! docs migration (usage report): ${rel(from)}/ ${rawHeld(rel(from), rel(to))}`);
         return 'held';
     }
-    return moveDocsFolder(base, oldName, newName, 'usage report', log);
+    return moveDocsFolder(projectRoot, rel(from), rel(to), 'usage report', log);
 }
 
 // THE `superpowers/` FOLDER goes in 2.2.2: the name was the superpowers plugin's, a pick the stack dropped in 2.0.0,
@@ -593,6 +603,182 @@ function repointSuperpowers({ projectRoot, docsPath, base, rules = [], instructi
     return out;
 }
 
+// THE 2.8.0 LAYOUT (the user's rulings of 2026-10-20): the hooks' state and ledgers leave the docs root for the data
+// root's state/ and statistics/, the working papers gather under work/ and the quality loops' output under quality/ -
+// the move map is layout.js LAYOUT_MOVES, which the hooks read too. Run after migratePlans (superpowers/plans/ reaches
+// plans/ first) and after the .gitignore step (a nested history/.gitignore of the stack's is gone before history/ moves).
+// Built the moveDocsRoot way, file by file: a file git tracks through `git mv`, any other by rename; a file its new home
+// already holds stays at the old path, named, never overwritten; any failure puts back every file this call moved and
+// every folder it made, then rethrows naming the file; a folder the moves emptied is removed. `.branches/` goes only
+// while empty - a doc version is never deleted (the session-start line asks the user to re-apply and prune it). A second
+// run moves nothing and says `layout: current`. Returns { moved, kept, removed }, project-relative.
+const LAYOUT = require('../../stack/hooks/layout.js');
+function migrateLayout({ projectRoot, docsPath, dataPath, log = () => {} })
+{
+    const docsBase = path.resolve(projectRoot, String(docsPath || ''));
+    const dataBase = path.resolve(projectRoot, String(dataPath || '.alfred'));
+    const rel = (p) => path.relative(projectRoot, p).split(path.sep).join('/');
+    const out = { moved: [], kept: [], removed: [], merged: [] };
+    let tracked = new Set();
+    try { tracked = new Set(String(rt.execCommand('git', ['-C', projectRoot, 'ls-files', '-z', '--', rel(docsBase) || '.'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })).split('\0').filter(Boolean)); }
+    catch { tracked = new Set(); }
+    const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
+    const filesUnder = (dir) => fs.readdirSync(dir, { withFileTypes: true })
+        .flatMap((e) => (e.isDirectory() ? filesUnder(path.join(dir, e.name)) : OS_LITTER.has(e.name) ? [] : [path.join(dir, e.name)]));
+
+    // Every move as a group (one log line): its source, its destination folder and the file pairs.
+    const groups = [];
+    const group = (from, to) => { let g = groups.find((x) => x.from === from && x.to === to); if (!g) groups.push(g = { from, to, pairs: [] }); return g; };
+    const sources = [];
+    for (const m of LAYOUT.LAYOUT_MOVES)
+    {
+        if (m.removeIfEmpty) continue;
+        const from = path.join(docsBase, ...m.from.split('/'));
+        if (m.file)
+        {
+            if (fs.existsSync(from) && !isDir(from))
+            {
+                const g = group(from, path.join(dataBase, ...m.to.split('/')));
+                g.data = true;
+                g.pairs.push([from, g.to]);
+            }
+            continue;
+        }
+        if (!isDir(from)) continue;
+        sources.push(from);
+        if (m.split === 'flow')
+        {
+            for (const file of filesUnder(from))
+            {
+                const kind = LAYOUT.flowKind(path.relative(from, file).split(path.sep)[0]);
+                const to = path.join(dataBase, 'state', kind);
+                const g = group(from, to);
+                g.data = true;
+                g.pairs.push([file, path.join(to, path.relative(from, file))]);
+            }
+            continue;
+        }
+        const to = path.join(m.base === 'data' ? dataBase : docsBase, ...m.to.split('/'));
+        const g = group(from, to);
+        g.data = m.base === 'data';
+        // the usage audit's raw transcript copies move only where git keeps them out (migrateUsageReport's rule)
+        g.raw = m.from === 'usage-report';
+        for (const file of filesUnder(from)) g.pairs.push([file, path.join(to, path.relative(from, file))]);
+    }
+
+    const done = [];
+    const made = [];
+    const ensureDir = (dir) =>
+    {
+        const missing = [];
+        for (let at = dir; !fs.existsSync(at) && path.dirname(at) !== at; at = path.dirname(at)) missing.unshift(at);
+        if (missing.length) { fs.mkdirSync(dir, { recursive: true }); made.push(...missing); }
+    };
+    const gitMv = (a, b) => rt.execCommand('git', ['-C', projectRoot, 'mv', '--', rel(a), rel(b)], { stdio: 'ignore' });
+    const lines = [];
+    try
+    {
+        for (const g of groups)
+        {
+            if (g.raw && holdsRaw(g.from) && !rawStaysOut(projectRoot, rel(g.to)))
+            {
+                out.kept.push(rel(g.from));
+                lines.push(`  !! layout: ${rel(g.from)} ${rawHeld(rel(g.from), rel(g.to))}`);
+                continue;
+            }
+            let n = 0;
+            for (const [from, to] of g.pairs)
+            {
+                if (fs.existsSync(to) && !(g.data && !isDir(to)))
+                {
+                    out.kept.push(rel(from));
+                    lines.push(`  layout: kept ${rel(from)} - ${rel(to)} already holds it`);
+                    continue;
+                }
+                if (fs.existsSync(to))
+                {
+                    // An older hook beside a 2.8.0 one writes both homes: a ledger's rows join the new file, and any
+                    // other state file is the new home's copy, the one the hooks read (layout.js pick) - an old
+                    // approval never replaces it. Kept at the old path, the pair clashed on every later run.
+                    const pair = [fs.readFileSync(from), fs.readFileSync(to)];
+                    done.push(['restore', from, to, ...pair]);
+                    if (from.endsWith('.jsonl'))
+                    {
+                        fs.appendFileSync(to, Buffer.concat([pair[1].length && pair[1][pair[1].length - 1] !== 0x0a ? Buffer.from('\n') : Buffer.alloc(0), pair[0]]));
+                        lines.push(`  layout: merged ${rel(from)} into ${rel(to)}`);
+                    }
+                    else lines.push(`  layout: removed ${rel(from)} - ${rel(to)} is the copy the hooks read`);
+                    fs.rmSync(from);
+                    out.merged.push(rel(from));
+                    continue;
+                }
+                try
+                {
+                    ensureDir(path.dirname(to));
+                    let how = 'fs';
+                    if (tracked.has(rel(from))) { try { gitMv(from, to); how = 'git'; } catch { /* git refused (a conflicted index): the rename below */ } }
+                    if (how === 'fs') fs.renameSync(from, to);
+                    done.push([how, from, to]);
+                    n += 1;
+                }
+                catch (err) { throw new Error(`${rel(from)}: ${err.message}`); }
+            }
+            if (n)
+            {
+                out.moved.push(`${rel(g.from)} -> ${rel(g.to)}`);
+                lines.push(`  layout: ${rel(g.from)} -> ${rel(g.to)} (${n} file${n === 1 ? '' : 's'})`);
+            }
+        }
+    }
+    catch (err)
+    {
+        for (const [how, from, to, fromBytes, toBytes] of done.reverse())
+        {
+            try
+            {
+                fs.mkdirSync(path.dirname(from), { recursive: true });
+                if (how === 'restore') { fs.writeFileSync(from, fromBytes); fs.writeFileSync(to, toBytes); }
+                else if (how === 'git') gitMv(to, from);
+                else fs.renameSync(to, from);
+            }
+            catch { /* the error below names the move; a file that cannot go back stays where it is */ }
+        }
+        for (const dir of made.reverse()) { try { fs.rmdirSync(dir); } catch { /* not empty: something else is there */ } }
+        throw err;
+    }
+    // Only folders the moves emptied (OS litter aside): a folder still holding a kept file stays.
+    const prune = (dir) =>
+    {
+        let entries;
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+        for (const e of entries) if (e.isDirectory()) prune(path.join(dir, e.name));
+        try
+        {
+            const left = fs.readdirSync(dir);
+            if (left.every((name) => OS_LITTER.has(name))) { for (const name of left) fs.rmSync(path.join(dir, name), { force: true }); fs.rmdirSync(dir); }
+        }
+        catch { /* left in place */ }
+    };
+    for (const dir of sources) prune(dir);
+    const branches = path.join(docsBase, '.branches');
+    if (isDir(branches))
+    {
+        if (fs.readdirSync(branches).every((name) => OS_LITTER.has(name)))
+        {
+            prune(branches);
+            out.removed.push(rel(branches));
+            lines.push('  layout: removed empty .branches/');
+        }
+        else
+        {
+            out.kept.push(rel(branches));
+            lines.push('  layout: kept .branches/ - it holds doc versions, prune them first');
+        }
+    }
+    for (const line of lines.length ? lines : ['  layout: current']) log(line);
+    return out;
+}
+
 // 'written' | 'current' | 'replaced' | 'kept' (the project's own file) | 'outside' (the root is not in
 // the project) | 'skipped' (no versioning to state, or a root under `.claude/`) | 'tracked' (local, over a
 // root git already tracks docs in) | 'covered' (the data root's file carries the rules, no file here) | 'removed'
@@ -649,22 +835,25 @@ function ensureDocsIgnore({ projectRoot, docsPath, mode, covered = false, log = 
     }
     fs.mkdirSync(base, { recursive: true });
     fs.writeFileSync(file, want);
-    log(`  docs root: ${shown}/.gitignore ${have === null ? 'written' : 'rewritten'} - ${mode === 'local' ? 'the whole root stays out of git' : "the docs are committed, the hooks' machine-local state is not"} (versioning ${mode})`);
+    log(`  docs root: ${shown}/.gitignore ${have === null ? 'written' : 'rewritten'} - ${mode === 'local' ? 'the whole root stays out of git' : 'the docs are committed, two machine-local files under them are not'} (versioning ${mode})`);
     return have === null ? 'written' : 'replaced';
 }
 
-// THE DOCS PART OF A DATA MOVE. The docs root is <data root>/docs (ALFRED_CODE_DATA_PATH, stack/mcp/data-root.js)
-// whenever the stack owns ALFRED_CODE_DOCS_PATH. Until 2.0.0 the stack seeded it with LEGACY_DOCS_ROOT
-// (meta/environment.json `former_defaults`), under a folder Claude Code protects: every plan, capture and
-// receipt the model wrote there cost a prompt, and a headless run could not write it at all. Docs are never
-// moved silently. The plan says whether there is anything to OFFER - the old default (whoever set it: 2.0.0's
-// `keep` answer is asked once more, by the data question, unless that question was answered `keep` too) or the
-// stack's own root under an earlier data root; update and configure ask; `--data-move move` moves the tree,
-// `--data-move keep` makes an old-default root the user's.
+// ONE DOCS ROOT - <data root>/docs (2.8.0, the user's ruling of 2026-10-20, D7). ALFRED_CODE_DOCS_PATH is retired: no run
+// writes it, and a run that finds it moves the stack's own docs from the root it names to <data root>/docs and then takes
+// it out of the settings (alfred-code.js docsRootStep, settings.js applyEnv 3b). Only the stack's entries move - a hand-set
+// root may be a folder the project uses too (`docs/`), so its own files stay and are named. A clash (a file at both
+// places) moves nothing and keeps the key, so the hooks keep reading where the docs are until one side is cleared. With
+// no key the root to drain is the earlier data root's docs (a data-root change), or on a stamped install the old default
+// LEGACY_DOCS_ROOT, which a release before 2.0.0 read with no key at all. Never a part of the data-move offer: the docs
+// move unasked, the servers' data stays asked - except a HAND-SET root (`handSet`: one no release seeded and no ledger
+// row records), which may be the team's own `docs/`: since the stack's entries are picked by name, it moves only on the
+// answer to update's ask (`--docs-root-move`), which names the entries that are the team's own (`leave`, kept in place).
+// There is no keep - every docs file of the stack's belongs under the data root (the user's answers of 2026-10-20).
 const LEGACY_DOCS_ROOT = '.claude/docs';
-const DOCS_PATH_KEYS = ['ALFRED_CODE_DOCS_PATH'];
+const SEEDED_DOCS_ROOT = '.alfred/docs';
+const DOCS_KEY = 'ALFRED_CODE_DOCS_PATH';
 const normRoot = (v) => String(v || '').replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
-const heldIn = (env) => DOCS_PATH_KEYS.find((k) => env && typeof env[k] === 'string' && env[k] !== '') || null;
 
 // Every file under `dir`, relative, forward slashes - dot folders (`.branches/`) and ignored files included.
 function filesUnder(dir)
@@ -685,96 +874,110 @@ function filesUnder(dir)
     return out.sort();
 }
 
-// 'none' (nothing to offer - `why` says which rule), 'repoint' (the stack's own seed names the old root
-// but nothing lives there, so the new default is simply taken) or 'offer', with what a move would carry.
-// `env` is the settings file this install scope writes; `personal` the settings.local.json env Claude Code
-// lays over it at project and user scope (null at local scope, where it IS `env`); `ledger` the last run's
-// managed env keys (null: a stamp from before the ledger, so the old seed value itself is the evidence).
-// The launch environment is never read: a settings value applies over a shell export
-// (code.claude.com/docs/en/llm-gateway-connect), and the absent-only seed writes one on every run anyway.
-// `to` is the docs root the data root names; `kept` the stamp's `data-move: kept` - an old default the user
-// kept on the data question is never offered again.
-function docsMovePlan({ projectRoot, env = {}, personal = null, ledger = null, stamped = false, to = require('./copy.js').DOCS_ROOT_DEFAULT, kept = false })
+// The top-level names a docs root holds that are the stack's: today's domains and work folders, every older home a
+// migration below still moves on (DOCS_MIGRATIONS, the usage report, layout.js LAYOUT_MOVES), the first-look map, and
+// any folder holding a watch.json (a domain by definition). Everything else under the root is the project's.
+const STACK_DOCS = new Set([
+    'architecture', 'code-style', 'preferences', 'decisions', 'awareness', 'work', 'quality', 'ORIENTATION.md', '.branches',
+    ...DOCS_MIGRATIONS.map(([from]) => from.split('/')[0]), USAGE_REPORT_OLD, ...LAYOUT.LAYOUT_MOVES.map((m) => m.from),
+]);
+function stackEntry(base, e)
 {
-    const base = { from: LEGACY_DOCS_ROOT, to: normRoot(to), tracked: [], untracked: [], conflicts: [], ignored: false };
-    const none = (why) => ({ ...base, state: 'none', why });
-    if (!stamped) return none('no install record - a fresh install takes the new default');
-    // A settings file that does not parse reads as empty - an absent key, which would look like the old
-    // default applying. Whose root it names cannot be told, and the settings write would be refused anyway.
-    const broken = ['settings.json', 'settings.local.json'].find((name) =>
+    if (STACK_DOCS.has(e.name)) return true;
+    return e.isDirectory() && fs.existsSync(path.join(base, e.name, 'watch.json'));
+}
+
+// The settings each docs-root reader sees, read apart: settings.json (`shared`) and settings.local.json (`personal`),
+// and the name of the one that does not parse (`broken`) - whose root it names cannot be told, and the settings write
+// refuses it anyway.
+function docsMoveViews({ claudeDir })
+{
+    const read = (name) =>
     {
-        const file = path.join(projectRoot, '.claude', name);
-        if (!fs.existsSync(file)) return false;
-        try { const v = parseJson(fs.readFileSync(file, 'utf8')); return !v || typeof v !== 'object' || Array.isArray(v); }
-        catch { return true; }
-    });
-    if (broken) return none(`${broken} cannot be read`);
-    // A root in the personal file is this machine's own choice, and the stamped rule is settings.json's
-    // (R98) - a move written there alone would leave the rule and the team on the old root.
-    if (heldIn(personal)) return none('settings.local.json holds your own docs root');
-    const key = heldIn(env);
-    let root = LEGACY_DOCS_ROOT;
-    if (key)
-    {
-        root = normRoot(env[key]);
-        if (root === base.to) return none(`the docs root is already ${root}`);
-        // A root moves only when it is the stack's own: the ledger recorded it, or with no ledger (a stamp from
-        // before it) it is a default the stack seeded - the old one, or the catalog's. A root set by hand
-        // anywhere else is the user's and never offered.
-        const hash = require('./stamp.js').valueHash(env[key]);
-        const legacy = root === LEGACY_DOCS_ROOT;
-        const stacks = ledger ? ledger[key] === hash || ledger.ALFRED_CODE_DOCS_PATH === hash : legacy || root === require('./copy.js').DOCS_ROOT_DEFAULT;
-        // The OLD DEFAULT the ledger does not record is a 2.0.0 keep (its answer took the key out of the ledger)
-        // or one set by hand at the old default. Since 2.1.7 it is offered once more, as part of the data move (the
-        // user's ruling of 2026-10-06: 'all alfred data must be inside .alfred by default; configure and update
-        // must suggest the migration' - a 2.0.0 keep left a usage audit under the old root). It is marked
-        // `yours`: an unattended run never answers it (M1 - the recommended move would move a root the user
-        // kept), and a 2.1 keep answer (`data-move: kept`) ends the offer for good.
-        if (!stacks && !legacy) return none(`the docs root is ${root}, set by hand`);
-        if (!stacks) base.yours = true;
-    }
-    if (root === LEGACY_DOCS_ROOT && kept) return none('kept at the old default - the data move was answered keep');
-    const plan = { ...base, from: root };
-    const from = path.join(projectRoot, ...root.split('/'));
-    const files = filesUnder(from);
-    if (!files.length) return { ...plan, state: 'repoint', why: 'nothing is under the old root' };
+        const file = path.join(claudeDir, name);
+        if (!fs.existsSync(file)) return { env: {} };
+        try
+        {
+            const raw = fs.readFileSync(file, 'utf8');
+            // an empty file is no settings at all, as settings.js reads and writes it
+            if (!raw.trim()) return { env: {} };
+            const v = parseJson(raw);
+            if (!v || typeof v !== 'object' || Array.isArray(v)) return { broken: true };
+            return { env: v.env && typeof v.env === 'object' && !Array.isArray(v.env) ? v.env : {} };
+        }
+        catch { return { broken: true }; }
+    };
+    const shared = read('settings.json');
+    const personal = read('settings.local.json');
+    return { shared: shared.env || {}, personal: personal.env || {}, broken: shared.broken ? 'settings.json' : personal.broken ? 'settings.local.json' : null };
+}
+
+// What this run does with the docs root. `state`: 'none' (no key, nothing to drain), 'drop' (keys go, nothing to move),
+// 'move' (the stack's files move from `from`, then the keys go), 'clash' (a file at both places - nothing moves, the keys
+// stay) or 'blocked' (a key sits in settings.json, which a local-scope run does not write - nothing moves). `keys`: each
+// file's value; `from`: the root in effect (settings.local.json over settings.json, Claude Code's merge); `left`: the
+// project's own top-level entries there; `shadowed`: a settings.json root settings.local.json hid, named, never moved.
+function docsMovePlan({ projectRoot, shared = {}, personal = {}, broken = null, scope = 'project', stamped = false, to, prior = null, ledgered = [], leave = [] })
+{
+    const target = normRoot(to);
+    // An empty value is still a key to drop, but names no root: every reader takes the default for it.
+    const keys = [['settings.json', shared], ['settings.local.json', personal]]
+        .filter(([, env]) => env && typeof env[DOCS_KEY] === 'string')
+        .map(([file, env]) => ({ file, value: normRoot(env[DOCS_KEY]) }));
+    const base = { to: target, keys, from: null, moves: [], tracked: [], untracked: [], conflicts: [], left: [], shadowed: [], ignored: false, handSet: false, unknown: [] };
+    if (broken) return { ...base, state: 'none', why: `${broken} cannot be read` };
+    const stuck = scope === 'local' ? keys.find((k) => k.file === 'settings.json' && k.value && k.value !== target) : null;
+    if (stuck) return { ...base, from: stuck.value, state: 'blocked', why: `settings.json sets ${DOCS_KEY} '${stuck.value}', which a local-scope run does not write` };
+    const effective = keys.length ? keys[keys.length - 1].value : '';
+    const from = effective || (stamped && prior ? `${normRoot(prior)}/docs` : stamped ? LEGACY_DOCS_ROOT : null);
+    const shadowed = keys.length > 1 && keys[0].value && keys[0].value !== from && keys[0].value !== target ? [keys[0].value] : [];
+    // `ledgered`: the hashes the stamp's ledger records for the key - a value among them is one the stack wrote.
+    const { valueHash } = require('./stamp.js');
+    const seeded = [target, SEEDED_DOCS_ROOT, LEGACY_DOCS_ROOT, prior ? `${normRoot(prior)}/docs` : null];
+    const raw = keys.length ? (keys[keys.length - 1].file === 'settings.json' ? shared : personal)[DOCS_KEY] : '';
+    const handSet = Boolean(effective) && !seeded.includes(effective) && ![effective, raw].some((v) => ledgered.includes(valueHash(v)));
+    const settled = { ...base, from, shadowed, handSet, state: keys.length ? 'drop' : 'none' };
+    if (!from || from === target) return { ...settled, why: `the docs root is ${target}` };
+    const abs = path.join(projectRoot, ...from.split('/'));
+    let entries = [];
+    try { entries = fs.readdirSync(abs, { withFileTypes: true }); } catch { entries = []; }
+    // `leave`: the entries update's ask named as the team's own - they stay, with the project's. `unknown`: a name among
+    // them that is none of the stack's, which the docs step refuses rather than guess at; nothing is left out then, so
+    // `moves` names every entry it could have meant.
+    const stackOwn = entries.filter((e) => stackEntry(abs, e));
+    const unknown = leave.filter((n) => !stackOwn.some((e) => e.name === n));
+    const ours = unknown.length ? stackOwn : stackOwn.filter((e) => !leave.includes(e.name));
+    const stackIgnore = (name) => name === '.gitignore' && (() => { try { const t = fs.readFileSync(path.join(abs, name), 'utf8'); return Object.values(DOCS_IGNORE).includes(t) || DOCS_IGNORE_FORMER.includes(t); } catch { return false; } })();
+    const left = entries.filter((e) => !ours.includes(e) && !OS_LITTER.has(e.name) && !stackIgnore(e.name)).map((e) => e.name).sort();
+    const files = ours.flatMap((e) => (e.isDirectory() ? filesUnder(path.join(abs, e.name)).map((f) => `${e.name}/${f}`) : [e.name])).sort();
+    if (!files.length) return { ...settled, left, unknown, why: `nothing of the stack's under ${from}` };
     let tracked = [];
     try
     {
-        const listed = rt.execCommand('git', ['ls-files', '-z', '--', root], { cwd: projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-        const prefix = `${root}/`;
+        const listed = rt.execCommand('git', ['ls-files', '-z', '--', from], { cwd: projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+        const prefix = `${from}/`;
         tracked = String(listed).split('\0').filter((f) => f.startsWith(prefix)).map((f) => f.slice(prefix.length));
     }
     catch { tracked = []; }   // no repository: every file is a plain move
     const onDisk = new Set(files);
     tracked = tracked.filter((f) => onDisk.has(f)).sort();
     const isTracked = new Set(tracked);
-    const dest = path.join(projectRoot, ...normRoot(to).split('/'));
-    // What git saw of the old root: nothing, when it ignored the root and tracks none of it - which a move
-    // must keep, or every plan and task card there shows up untracked under the new root.
+    // What git saw of the old root: nothing, when it ignored the root and tracks none of it - which a move must keep,
+    // or every plan and task card there shows up untracked under the new root.
     let ignored = false;
     if (!tracked.length)
-        try { rt.execCommand('git', ['check-ignore', '-q', '--', `${root}/`], { cwd: projectRoot, stdio: 'ignore' }); ignored = true; }
+        try { rt.execCommand('git', ['check-ignore', '-q', '--', `${from}/`], { cwd: projectRoot, stdio: 'ignore' }); ignored = true; }
         catch { ignored = false; }
+    const dest = path.join(projectRoot, ...target.split('/'));
+    const conflicts = files.filter((f) => fs.existsSync(path.join(dest, ...f.split('/'))));
+    // The old root's own .gitignore, when it holds a text the stack wrote, goes with the move (moveDocsRoot).
+    const ignoreFile = entries.some((e) => stackIgnore(e.name)) ? '.gitignore' : null;
+    // What moves, top level, a folder with its slash - the ask names these, so a team spots its own decisions/.
+    const moves = ours.map((e) => (e.isDirectory() ? `${e.name}/` : e.name)).sort();
     return {
-        ...plan, state: 'offer', why: root === LEGACY_DOCS_ROOT ? 'docs at the old default' : 'the stack\'s own docs under an earlier data root', ignored,
-        tracked, untracked: files.filter((f) => !isTracked.has(f)),
-        conflicts: files.filter((f) => fs.existsSync(path.join(dest, ...f.split('/')))),
+        ...settled, moves, left, unknown, ignored, ignoreFile, tracked, untracked: files.filter((f) => !isTracked.has(f)), conflicts,
+        state: conflicts.length ? 'clash' : 'move', why: conflicts.length ? `${conflicts.length} file(s) already at ${target}` : `the stack's docs under ${from}`,
     };
-}
-
-// The settings views a plan reads, one home for the installer and the preflight: at local scope the file
-// the scope writes is settings.local.json laid over settings.json (the N6 merge) and there is no personal
-// file beside it; at project and user scope settings.json alone, with settings.local.json as `personal`.
-function docsMoveViews({ claudeDir, scope })
-{
-    const { readBackSettings } = require('./settings.js');
-    const envOf = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
-    if (scope === 'local') return { env: envOf(readBackSettings(claudeDir, 'local').env), personal: null };
-    let personal = {};
-    try { personal = envOf((parseJson(fs.readFileSync(path.join(claudeDir, 'settings.local.json'), 'utf8')) || {}).env); }
-    catch { personal = {}; }
-    return { env: envOf(readBackSettings(claudeDir, 'project', { sharedOnly: true }).env), personal };
 }
 
 // One step: tracked files through `git mv` (the index records a rename, so history follows), every other
@@ -822,6 +1025,13 @@ function moveDocsRoot({ projectRoot, plan })
             catch { /* the error below names the move; a file that cannot go back stays where it is */ }
         }
         return { ok: false, moved: 0, gitMoved: 0, error: err.message };
+    }
+    // The stack's own .gitignore at the old root is no file of the project's: staged as a deletion where git tracks it.
+    if (plan.ignoreFile)
+    {
+        const rm = rel(plan.from, plan.ignoreFile);
+        try { rt.execCommand('git', ['rm', '-q', '-f', '--', rm], { cwd: projectRoot, stdio: 'ignore' }); }
+        catch { try { fs.unlinkSync(path.join(from, plan.ignoreFile)); } catch { /* left in place */ } }
     }
     // Only folders the move emptied: a folder still holding anything is not the old root's to remove.
     const prune = (dir) =>
@@ -930,44 +1140,39 @@ function pruneNestedIgnores({ projectRoot, root, docsPath, docsCovered = false, 
     return out;
 }
 
-// THE WHOLE DATA MOVE AN UPDATE OFFERS - the docs plan and every server class whose data sits somewhere
-// other than its place under the root (the 2.0.0 place, or an earlier root the stamp names), minus the moves
-// already recorded as pending. { state: 'offer' | 'none', why, docs, rows, root }.
-function dataOffer({ projectRoot, claudeDir, scope, ledger, stamped, stampText = '', root, engines = [], memoryProject = false })
+// THE WHOLE DATA MOVE AN UPDATE OFFERS - every server class whose data sits somewhere other than its place under the root
+// (the 2.0.0 place, or an earlier root the stamp names), minus the moves already recorded as pending. The docs are no part
+// of it since 2.8.0: they move unasked (docsMovePlan). { state: 'offer' | 'none', why, rows, root }.
+function dataOffer({ projectRoot, stamped, stampText = '', root, engines = [], memoryProject = false })
 {
     const dr = require('../../stack/mcp/data-root.js');
-    const kept = /^data-move: *kept *$/m.test(stampText);
-    const none = (why) => ({ state: 'none', why, docs: null, rows: [], root });
+    const none = (why) => ({ state: 'none', why, rows: [], root });
     if (!stamped) return none('no install record - a fresh install lays the data under the root');
-    if (kept) return none('the data move was answered keep');
-    const docsPlan = docsMovePlan({ projectRoot, ...docsMoveViews({ claudeDir, scope }), ledger, stamped, to: `${root}/docs`, kept });
+    if (/^data-move: *kept *$/m.test(stampText)) return none('the data move was answered keep');
     const priorLine = (/^data-root: *(\S+) *$/m.exec(stampText) || [])[1];
     const prior = priorLine && dr.checkDataPath(priorLine).ok && priorLine !== root ? priorLine : null;
     const pending = dr.readPending(stampText);
     // An engine's profile leaving the root's own shared folder is no offer: the installer moves it unasked (isRelayout).
     const rows = dr.dataMovePlan({ projectRoot, root, prior, engines, memory: memoryProject })
         .filter((r) => !dr.isRelayout(r, root) && !pending.some((p) => p.cls === r.cls && p.from === r.from && p.to === r.to));
-    if (docsPlan.state !== 'offer' && !rows.length) return { ...none(docsPlan.state === 'repoint' ? 'nothing to move - the docs root is re-pointed' : 'nothing to move'), docs: docsPlan };
-    return { state: 'offer', why: 'data outside the root', docs: docsPlan, rows, root };
+    if (!rows.length) return none('nothing to move');
+    return { state: 'offer', why: 'data outside the root', rows, root };
 }
 
-// The preflight's line: `data-move: offer <root>\tfrom=<places>\tdocs=<n> serena=yes|no browser=<engines|none>
-// memory=yes|no[\tignored=yes][\tconflicts=<n>][\tyours=yes]`, or `data-move: none (<why>)`. `yours=yes`: the docs
-// sit at the old default a 2.0.0 keep made the user's - asked, never answered unattended.
+// The preflight's line: `data-move: offer <root>\tfrom=<places>\tserena=yes|no browser=<engines|none> memory=yes|no
+// [\tconflicts=<n>]`, or `data-move: none (<why>)`.
 function dataOfferLine(offer)
 {
     if (offer.state !== 'offer') return `data-move: none (${offer.why})`;
-    const docs = offer.docs && offer.docs.state === 'offer' ? offer.docs : null;
-    const from = [...(docs ? [docs.from] : []), ...offer.rows.map((r) => r.from)];
     const has = (cls) => (offer.rows.some((r) => r.cls === cls) ? 'yes' : 'no');
     const engines = offer.rows.map((r) => engineOfServer(r.cls)).filter(Boolean);
-    const conflicts = (docs ? docs.conflicts.length : 0) + offer.rows.filter((r) => r.conflict).length;
-    return `data-move: offer ${offer.root}\tfrom=${from.join(',')}\tdocs=${docs ? docs.tracked.length + docs.untracked.length : 0} serena=${has('serena')} browser=${engines.join(',') || 'none'} memory=${has('memory')}`
-        + (docs && docs.ignored ? '\tignored=yes' : '') + (conflicts ? `\tconflicts=${conflicts}` : '') + (docs && docs.yours ? '\tyours=yes' : '');
+    const conflicts = offer.rows.filter((r) => r.conflict).length;
+    return `data-move: offer ${offer.root}\tfrom=${offer.rows.map((r) => r.from).join(',')}\tserena=${has('serena')} browser=${engines.join(',') || 'none'} memory=${has('memory')}`
+        + (conflicts ? `\tconflicts=${conflicts}` : '');
 }
 
 module.exports = {
     domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, migrateAwareness, inventoryToDoc, ensureDocsIgnore, migrateUsageReport, migratePlans, docsMovePlan, docsMoveViews, moveDocsRoot,
-    ensureDataIgnore, dataIgnoreText, pruneDataRoot, pruneNestedIgnores, dataOffer, dataOfferLine,
+    ensureDataIgnore, dataIgnoreText, pruneDataRoot, pruneNestedIgnores, dataOffer, dataOfferLine, migrateLayout,
     DOCS_IGNORE, DOCS_IGNORE_FORMER, DOCS_MIGRATIONS, DOCS_SWITCH_ON, RESERVED, LEGACY_DOCS_ROOT, DATA_IGNORE_HEAD, OS_LITTER,
 };

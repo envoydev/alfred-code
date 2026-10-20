@@ -23,7 +23,7 @@ You are the judgment seat for this run: you gather the project's quality rules, 
 - Deliberate only, never mid-build; fixes nothing and never writes the decision log.
 - Not for fixing the findings (/loop-code-quality), the architecture (capture-architecture-quality), test coverage (the coverage capture), recording the code style (/capture-code-style), a security audit (the security-auditor seat; `/security-review` covers only the branch's diff against origin's default branch) or one diff (task-verify-code).
 
-**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
+**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
 
 ## Execution modes
 
@@ -51,18 +51,20 @@ Judge <the modules> through the code-quality-analyzer seats or in this session?
 ### 1. ORIENT - the rules, the modules, the prior read
 Collect the rule sources, in precedence order (`references/doc-shape.md` says why that order):
 
-1. **The numbered prompts under `<docs-path>/loops/`** - each stage prompt's 'Look for' bullets, severity scale and bar are rules. List them with the one command below, from the project root - it prints the stage prompts in numeric order and never the `0.`-numbered fix discipline (FIX guidance, not a bar) or the run's own records (`RUN-STATE.md`, `DECISIONS.md`):
+**The user's preferences first.** Where `<docs-path>/preferences/` holds `CODE-PREFERENCES.md`, its entries are the top rule source: hand them to every seat, and run `node .claude/skills/capture-preferences/scripts/preferences.js check --all --area code` once - each `violation:` line is a located candidate whose rule is `CODE-PREFERENCES.md#c<n>`. An `ARCHITECTURE-PREFERENCES.md` entry is the architecture-quality capture's to record: one a seat meets is a `handoff:` line here, so one breach lives in one doc.
+
+1. **The numbered prompts under `<docs-path>/quality/loops/`** - each stage prompt's 'Look for' bullets, severity scale and bar are rules. List them with the one command below, from the project root - it prints the stage prompts in numeric order and never the `0.`-numbered fix discipline (FIX guidance, not a bar) or the run's own records (`RUN-STATE.md`, `DECISIONS.md`):
 
    ```bash
-   L="<docs-path>/loops"
+   L="<docs-path>/quality/loops"
    if [ -d "$L" ]; then echo "loops: present"; ls "$L" | grep -E '^[0-9]+\..+\.md$' | grep -Ev '^0+\.' | sort -t. -k1,1n; else echo "loops: absent"; fi
    ```
 
-   No `loops/` folder, or one with no stage prompt: say so in the report and judge against the convention rules and `CODE-STYLE.md` alone - never seed the folder (that is the quality loop's bootstrap) and never invent a rubric in its place.
+   No `loops/` folder, or one with no stage prompt: say so in the report and judge against the other sources alone (`CODE-PREFERENCES.md`, `CODE-STYLE.md`, the convention rules) - never seed the folder (that is the quality loop's bootstrap) and never invent a rubric in its place.
 2. **`<docs-path>/code-style/CODE-STYLE.md`** - the style the project actually follows; absent, say so.
 3. **The stack's convention rules** - the path-scoped files under `.claude/rules/` whose globs attach a file family to its house convention skill. Only the families the target actually holds count.
 
-**No rule source at all - stop.** No stage prompt under `loops/`, no `CODE-STYLE.md` and no convention rule attaching to a file family the target holds: say so in one line and stop before GATHER, writing nothing - a doc judged against nothing reads as clean code. Name the two ways to get rules, both the user's to run: `/capture-code-style` records the code style, and `/loop-code-quality` seeds the `loops/` starter set.
+**No rule source at all - stop.** No `CODE-PREFERENCES.md`, no stage prompt under `loops/`, no `CODE-STYLE.md` and no convention rule attaching to a file family the target holds: say so in one line and stop before GATHER, writing nothing - a doc judged against nothing reads as clean code. Name the three ways to get rules, all the user's to run: `/capture-preferences` records their own preferences, `/capture-code-style` records the code style, and `/loop-code-quality` seeds the `loops/` starter set.
 
 Then the modules, inside the target - the scope the invocation names (the quality loop hands its TARGET), else the whole project: the Project structure table of `<docs-path>/architecture/ARCHITECTURE.md` when the map exists, else the target's top-level source folders from one listing (say the map is missing - a stale or absent map is a note, never a blocker). Read `<docs-path>/quality/CODE-ASSESSMENT.md` if it exists - not ground truth, but gate question 3 folds a re-measurement into its entries - and the decision log plus the project AGENTS.md's recorded choices, which gate question 4 depends on.
 
@@ -84,14 +86,14 @@ Confirm the file written (created vs refreshed), then lean: gather rounds used a
 | Field | Content |
 |---|---|
 | `References:` | which of this skill's `references/` files this run actually Read |
-| `Rules:` | the rule sources judged - the loops prompts by file, `CODE-STYLE.md`, the convention rules - or `no loops/ folder - convention rules and CODE-STYLE.md alone` |
+| `Rules:` | the rule sources judged - `CODE-PREFERENCES.md` with the check's `checked:` line, the loops prompts by file, `CODE-STYLE.md`, the convention rules - and each absent one named (`no preferences doc`, `no loops/ folder`) |
 | `Decisions:` | the decision records step 1 actually opened, or `none found at <path looked>` |
 | `Findings gate:` | candidates considered, passed, routed to Worth knowing, folded into an existing entry, handed off, and rejected (naming the question each rejected one failed) |
 | `Write:` | created / refreshed, and the post-write line count against the ~300 target |
 | `Run gate:` | the answer verbatim, or `invoked by the quality loop` |
 | `Model:` | the model the judgment ran on, and the exact `/model` command for the USER to paste when the run raised it - `<model> - the judgment above ran on it`, or `raised for this run - run /model <prior model> to drop back` (only when a message in this session shows the user switched for this run) |
 
-No re-paste of the doc body - point to the file. A next command named for the user (the quality loop, a re-run) reads `/clear, then <command>`: this run's reads leave the chat far past a fresh session's floor.
+No re-paste of the doc body - point to the file. A next command named for the user (the quality loop, a re-run) reads `/clear, then <command>`, in the option label when it is an ask: this run's reads leave the chat far past a fresh session's floor.
 
 ## Don't game it
-An honest finding beats a flattering omission, and a rule the project chose not to follow is a Deliberate tradeoff, not a defect. The finding count is an output, never a target, in either direction: inflating a preference into a finding to look thorough, and dropping a real one to keep the list tidy, are the same dishonesty - zero gate-passing findings is a complete result said plainly, and forty real ones are all recorded.
+An honest finding beats a flattering omission, and a rule the project chose not to follow is a Deliberate tradeoff, not a defect. The finding count is an output, never a target, in either direction: inflating a style opinion into a finding to look thorough, and dropping a real one to keep the list tidy, are the same dishonesty - zero gate-passing findings is a complete result said plainly, and forty real ones are all recorded.

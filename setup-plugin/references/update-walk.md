@@ -69,6 +69,8 @@ It prints, in order:
   not be read).
 - `data-move: offer <root><TAB>from=<places><TAB>...` - this project's data sits outside its data root, or
   `data-move: none (<why>)`. Only `offer` is asked, below.
+- `docs-move: offer <from> -> <to><TAB>moves=<names><TAB>stack=<n><TAB>own=<names|none>` - a docs root the user set by
+  hand holds the stack's docs, or `docs-move: none (<why>)`. Only `offer` is asked, below.
 - `agents-md: offer .claude/CLAUDE.md -> .claude/AGENTS.md` - the instruction file still carries the old name and no
   AGENTS.md sits beside it or at the root, or `agents-md: none (<why>)`. Only `offer` is asked, below.
 - `env-keys: <names>` - the scope's settings `env` KEY NAMES before the run, the before-state step 7 diffs against.
@@ -109,19 +111,43 @@ takes its Recommended option (adding the recommended items only adds), logged as
 <choice>` line.
 
 **The data root - ONE ask, and only on `data-move: offer`.** Read `update-slow-path.md`'s 'The data root move'
-first (the typed-folder, `ignored=`, `yours=` and `conflicts=` cases live there), then one AskUserQuestion before the
+first (the typed-folder and `conflicts=` cases live there), then one AskUserQuestion before the
 installer runs, naming the `from=` places - in the SAME call as the new-items ask when both fire, one question each:
 
 ```ask
-Move this project's Alfred Code data into <root>? From <from places>: the docs through git mv where tracked, the navigation index, browser profiles and project memory at each server's next start, after a restart. Recommended: one folder outside .claude/, its machine state kept out of git.
-- '<root> - move everything (Recommended)' - the docs move now, the servers' data at their next start once nothing holds it; nothing is overwritten
+Move this project's Alfred Code data into <root>? From <from places>: the navigation index, browser profiles and project memory at each server's next start, after a restart. Recommended: one folder outside .claude/, its machine state kept out of git.
+- '<root> - move everything (Recommended)' - the servers' data moves at their next start once nothing holds it; nothing is overwritten
 - 'Keep the current layout' - nothing moves, the servers keep reading where their data is, and no later update asks again (configure can still move it)
 ```
 
 After a move, until that restart this session's hooks keep writing under the OLD root - they read it from the
 environment the session started with - and its loaded rule text still names the old one (audit 2026-10-11, session
 bca100bd: the monitor hook re-created `<old root>/flow/` after the move). Say so in the close, with the one action it
-leaves: after the restart, a `flow/` file left under the old root is this session's record and safe to delete.
+leaves: after the restart, a file under the old root's `state/` or `statistics/` - or, from a session that started
+before 2.8.0, its `flow/` or `hook-blocks/` - is this session's record and safe to delete.
+
+**A docs root the user set by hand - ONE ask, and only on `docs-move: offer`.** Every other leftover docs root moves
+unasked; this one may be the team's own folder, and the stack picks its entries by name - so the question names every
+entry of `moves=`, never a count alone, and the user spots a `decisions/` or `architecture/` of the team's own. There is
+no keep: every docs file of the stack's belongs under the data root, and a user who wants it elsewhere changes the data
+root. In the same AskUserQuestion call as the other asks (one question each):
+
+```ask
+Move <every moves= entry> from <from> to <to>? <from> was set by hand, and the stack picks these by name. <n> files move (git renames where tracked); <own> stay where they are.
+- 'Move them all (Recommended)' - every docs file of the stack's under the data root, as every install has from 2.8.0; a link to an old path needs updating
+- 'Some are the team's own' - pick them next: they stay in <from>, the rest move, and the setting goes either way
+```
+
+'Move them all' is `--docs-root-move move` on the installer call of whichever path runs. 'Some are the team's own'
+opens ONE AskUserQuestion call of multi-select questions, each option one `moves=` entry spelled as printed (2-4 options
+a question, up to 4 questions; header `Team's own`); the picks are `--docs-root-move move --docs-root-leave
+<entry>,<entry>`, and no pick is 'Move them all'. With one `moves=` entry there is nothing to pick from: ask it as a
+yes / no - 'Move it (Recommended)' or 'It is the team's own' - and the second is a plain no, which moves nothing: the
+setting goes and that folder stays where it is. A `!! docs root: --docs-root-leave names ...` line means a name was
+none of the stack's and nothing moved: ask again from the names it lists. Unattended, take the Recommended option,
+`--docs-root-move move`: every docs file of the stack's belongs under the data root, a move loses nothing (git renames
+where tracked), and the log's `docs root: moved` line names what moved, so the team can move one back with
+`git mv <to>/<entry> <from>/<entry>` - say that line in the close.
 
 **The instruction file's name - ONE ask, and only on `agents-md: offer`.** Before the installer runs,
 in the same AskUserQuestion call as the other asks (one question each):
@@ -142,7 +168,7 @@ Run the installer; it reads the install back itself, closes new dependencies thr
 any `installed-only: required:` additions. **One fixed capture form, always** - `2>&1 | tee "$TMP/install.log"` on
 the call itself (the shared contract is in `source-protocol.md`'s 'Capture the installer's own output'):
 
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add "<category> <name>"]... [--drop "<category> <name>"]... [--space <name>] --keep-pins [--docs-versioning git|local] [--data-move move|keep] [--data-path <folder>] [--memory-level global|scoped|project] [--rename-claude-md] 2>&1 | tee "$TMP/install.log"`
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add "<category> <name>"]... [--drop "<category> <name>"]... [--space <name>] --keep-pins [--docs-versioning git|local] [--data-move move|keep] [--data-path <folder>] [--docs-root-move move [--docs-root-leave <entry>,...]] [--memory-level global|scoped|project] [--rename-claude-md] 2>&1 | tee "$TMP/install.log"`
 - **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED` set to `shell`). The frozen OS twin is gone, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
 
 `<scope>` comes from `node "$TMP/repo/scripts/install/stamp.js" scope .` (`project`, `user` or `local`) and
@@ -173,7 +199,7 @@ claude-hud is installed - this run or already - and no settings file this projec
 never a second grep (a tail is ~75% static boilerplate, and two greps of one log cost two full context re-sends):
 
 ```bash
-grep -aE 'installed/refreshed this run|mcp repaired:|mcp pruned:|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook|the stamp predates)|agent kept:|roster:|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|docs (migration|domain|root|move)|data root:|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy|context7-local removed|has no status line yet|plugin moved \[|taking over a copy' "$TMP/install.log"
+grep -aE 'installed/refreshed this run|mcp repaired:|mcp pruned:|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook|the stamp predates)|agent kept:|roster:|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|docs (migration|domain|root|move)|data root:|layout:|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy|context7-local removed|has no status line yet|plugin moved \[|taking over a copy' "$TMP/install.log"
 ```
 
 Add a marker to the pattern when the report needs another fact; do not add a call. The RESTART row and any

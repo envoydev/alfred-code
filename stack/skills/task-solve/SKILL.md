@@ -19,7 +19,7 @@ run-time load.
 
 ## State - the plan file is truth and cursor
 
-- **The plan file** (`<docs-path>/plans/<feature>.md`) is the durable truth: the tasks, every stamp this cycle adds (`Gated` block, `Approved` +
+- **The plan file** (`<docs-path>/work/plans/<feature>.md`) is the durable truth: the tasks, every stamp this cycle adds (`Gated` block, `Approved` +
   build mode, `Conformance` verdict or `skipped`, `Completed`), per-task status + evidence - and its
   `Resume:` line is the one cursor (current step, chosen modes, next task), rewritten at EVERY stop and
   task tick. On any conflict with memory or the chat, the file wins.
@@ -34,7 +34,7 @@ A NEW cycle starting after a finished one in this same session recommends the fr
 in its first ask. A cycle mid-build looks like:
 
 ```
-plan <docs-path>/plans/csv-export.md:
+plan <docs-path>/work/plans/csv.md:
   Gated: passed | Approved: 2026-07-16 - mode session
   Resume: step 4 BUILD - mode session - next task 2
   task 1 DONE (dotnet test green - 4 passed) | task 2 IN_PROGRESS
@@ -90,9 +90,9 @@ Next: <its first move> -> <the steps left>.
 ````
 
 **Autonomy waiver (AUTO).** When the user explicitly asks for a no-stops run ('run all
-recommended without asking me'), never self-authorize silently - write `<docs-path>/flow/APPROVAL`
+recommended without asking me'), never self-authorize silently - write `<data root>/state/approvals/APPROVAL`
 with first line `AUTO - "<their words, verbatim>"`, say in one line that stops are waived under it, and take each stop's recommended option; the
-pre-commit checkpoint and its receipt still apply. A session past the trigger, or one that already closed a cycle, first puts ONE ask - the fresh-session resume recommended - and AUTO starts after its answer. Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool. The stamp belongs to the session that dispatches - written when its own decision lands, deleted at its own close; an earlier session's leftover stamp is not consent. `references/step-mechanics.md` holds the rest.
+pre-commit checkpoint and its receipt still apply. A session past the trigger, or one that already closed a cycle, first puts ONE ask - the fresh-session resume recommended - and AUTO starts after its answer. Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/APPROVAL` with the Write tool. The stamp belongs to the session that dispatches - written when its own decision lands, deleted at its own close; an earlier session's leftover stamp is not consent. `references/step-mechanics.md` holds the rest.
 
 ## Size first
 
@@ -142,12 +142,12 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
    stamps its eight-field block into the plan: `Gated: passed`; `passed - <N> fixes applied` for the
    non-judgment fixes it landed in this step, each named in the stop's `Result:` line; or the gaps,
    which route back to step 1 on the user's word. A `judgment` item is never applied in-step - each
-   gets its own ask, the audit's pick marked:
+   gets its own ask:
 
    ```ask
-   Audit judgment: <the item>. Apply it?
-   - 'Apply it (Recommended)' - <the audit's reason>
-   - 'Leave the plan as is' - <what stays open>
+   Audit judgment: <the item>. Keep or apply?
+   - 'Keep the plan as written (Recommended)' - the plan stands
+   - 'Apply it to the plan' - <the audit's reason>
    ```
 
    A declined audit is stamped `Gated: skipped by user - <their words>` - never
@@ -250,7 +250,7 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
    New scope arriving in-chat after `Completed:` is a NEW cycle in a NEW plan file (a stamped file
    is a record, never appended to) - re-enter step 1, or state in one `ungated: <why>` line that the
    work runs outside the cycle; never build it on a casual 'yes, add it'. A change a sibling repo must
-   follow is handed off as a FILE in THIS repo - a task card under `<docs-path>/cross-project-tasks/`
+   follow is handed off as a FILE in THIS repo - a task card under `<docs-path>/work/cross-project-tasks/`
    - and printed as a paste-ready block, by the step mechanics' hand-off rules.
    **Doc-drift awareness** - one line at most in the close report, never auto-run, by the surface
    list in `references/step-mechanics.md`.

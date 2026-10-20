@@ -142,7 +142,7 @@ More on the two task flows: [`docs/solve-skills-guide.md`](docs/solve-skills-gui
 
 | | Count | What it is |
 | --- | --- | --- |
-| **Skills** | 89 | house conventions and workflows |
+| **Skills** | 90 | house conventions and workflows |
 | **Agents** | 44 | designers, implementers, verifiers, reviewers |
 | **Rules** | 20 | always-on basics and per-file conventions |
 | **Hooks** | 17 | the guards, plus the docs, memory and history hooks |
@@ -200,7 +200,7 @@ by default. `/alfred-code:configure` moves one.
 <details>
 <summary><strong>What does it cost per message?</strong></summary>
 
-The stack's own always-on text is about 16k tokens. `/alfred-code:status` shows your install's number.
+The stack's own always-on text, and the whole per-message floor around it, is measured in [the install footprint](docs/install-footprint.md). `/alfred-code:status` shows your install's number.
 
 </details>
 

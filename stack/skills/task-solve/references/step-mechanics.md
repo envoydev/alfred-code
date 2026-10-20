@@ -41,12 +41,9 @@ available; where it is not, the ask offers session only and says so.
 
 ## The APPROVAL stamp - writing it, and its lifetime
 
-The stamp's path, its `AUTO` first line and the 'an earlier session's stamp is not consent' rule
-are in `SKILL.md`; these are the mechanics around them.
+The waiver's root stamp, its `AUTO` first line and the 'an earlier session's stamp is not consent' rule
+are in `SKILL.md`, and step 4's per-plan APPROVED stamp is under 'Agents-mode dispatch' below; these are the mechanics around both.
 
-- Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the
-  write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude
-  folder for this session' - take that, since `permissions.allow` cannot pre-approve it.
 - A relative write follows whatever cwd the shell drifted to, and the dispatch then bounces
   because the guard reads the absolute path.
 - If BOTH the Write tool and an absolute-path Bash write are refused by the harness's classifier,
@@ -58,7 +55,7 @@ are in `SKILL.md`; these are the mechanics around them.
   next dispatch asks. Step 4's
   delete-when-fan-out-completes applies to per-plan APPROVED stamps, and a step-5 punch-list
   re-dispatch under AUTO rides the still-live waiver.
-- **auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
+- **auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
 - **Under auto-mode an unpushed commit is a `Leftovers:` line, never an ask** - the hook leaves an ask naming a push to
   the user, and in the same AskUserQuestion call it would hold the commit question too (audit 2026-10-14 SKF-03).
 - **Under AUTO nobody is at the terminal** (audit 2026-10-10, sessions c6142301 and 9a4ef375: an overnight run
@@ -78,7 +75,7 @@ spells it (`alfred-code:<seat>` where the core plugin carries it) - a flat fan-o
 session the only orchestrator:
 
 - **The stamp first.** Write the approval gate file first - first line `APPROVED <contract_version> - "<the step-3 answer, verbatim>"` (under auto-mode the hook's `AUTO` stamp already stands - leave it)
-  (the dispatch hook blocks an unstamped implementer) - and DELETE it when the fan-out completes,
+  (the dispatch hook blocks an unstamped implementer). It is the plan's own - `<plan id>` is the plan file's name without `.md`. Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>` - the dispatch hook passes a brief only on its own plan's stamp. DELETE it when the fan-out completes,
   before the step-5 stop: a live stamp can authorize an unrelated dispatch for up to 8h.
 - **The contract version.** MINT it - `<the plan's Approved: date>-<plan slug>` - and put it in EVERY
   dispatch prompt verbatim, with the seat's literal note name and this project's memory tag:
@@ -149,12 +146,11 @@ reviewer again before anything is stamped: a punch-list fix is unreviewed code. 
 ## The sibling hand-off - step 6
 
 A change a sibling repo must follow is written as a task card under
-`<docs-path>/cross-project-tasks/` (the cross-project write guard blocks the sibling's tree), or an
+`<docs-path>/work/cross-project-tasks/` (the cross-project write guard blocks the sibling's tree), or an
 `alfred-memory` note, after reading the sibling's actual source: for each client action the card tells the sibling
 to wire, its handler there, and each backend route that handler calls confirmed to exist in THIS repo (one grep
 over the endpoint files) - a route that does not exist leaves the bullet out. The close then prints it beside
-the card as ONE fenced markdown block ready to paste into the sibling's session - first line
-`Open in: <the sibling's root>`, then the card's text - so nobody has to ask for it inline (measured:
+the card as the docs-root rule's hand-off block, ready to paste into the sibling's session, so nobody has to ask for it inline (measured:
 the 12th 'write it here as markdown' ask in one project, each a full-context turn). A reply drafted for
 another session waits for the commit / publish answer, so every id it quotes is final.
 

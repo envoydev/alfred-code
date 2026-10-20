@@ -12,7 +12,7 @@ seats do the specialist work. It is READ-ONLY from start to finish - no step her
 so no approval stamp and no commit gate come into play. The measurements behind these rules live in
 `references/evidence.md` - an audit appendix, not a run-time load.
 
-**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it. A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--auto-mode` as the first word of the command is the unattended run, and never hand-write an `AUTO` line.
+**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it. A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--auto-mode` as the first word of the command is the unattended run, and never hand-write an `AUTO` line.
 
 ## When to use
 
@@ -36,7 +36,7 @@ Read it at step 1, before the tier is named.
 
 ## State - two layers, split by durability
 
-- **The findings file** (`<docs-path>/diagnoses/<slug>.md`) is the durable truth: the failure as
+- **The findings file** (`<docs-path>/work/diagnoses/<slug>.md`) is the durable truth: the failure as
   an observable, the evidence tier, every digest's key lines, the hypotheses with their verdicts,
   the proven cause, and the stamps this run adds (`Tier`, `Gathered`, `Cause`, `Outcome`). On any
   conflict with memory or the chat, the file wins.
@@ -50,7 +50,7 @@ mid-flight resumes at its cursor - never re-run a step already stamped. A run be
 and 3 looks like:
 
 ```
-findings <docs-path>/diagnoses/orders-sync-disposed.md:
+findings <docs-path>/work/diagnoses/orders-sync-disposed.md:
   Observable: nightly order sync stops after the first batch; expected all batches
   Tier: 1 (ObjectDisposedException, frame OrderSyncJob.ExecuteAsync) | Gathered: 2 sources agree
   Cause: <pending>
@@ -200,8 +200,8 @@ cycle in the same chat, even when an earlier cycle already loaded it.
 
    This close-out stop carries anything
    pending: an unwritten task card, a source the user still has to paste, a sibling repo that
-   needs the same fix (that handoff is a FILE - a task card under `<docs-path>/cross-project-tasks/`
-   - never chat-only prose). Delete this run's cursor rows (`memory_delete`, tags `note:<slug>/diagnosis`
+   needs the same fix (that handoff is a FILE - a task card under `<docs-path>/work/cross-project-tasks/`,
+   printed as the docs-root rule's hand-off block - never chat-only prose). Delete this run's cursor rows (`memory_delete`, tags `note:<slug>/diagnosis`
    and the project tag, `tag_match: 'all'`); when the cause was proven, first store the signature and its
    fix as ONE alfred-memory row without the `handoff` / `note:` tags - the reusable half.
 

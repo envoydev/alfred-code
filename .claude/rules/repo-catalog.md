@@ -116,9 +116,9 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   hard-disable).
 - `stack/rules/` - twenty single-job rules, each a library copy in `.claude/rules/`. Seven always-on `alfred-*.md`
   (no `paths:`): interaction, quality-gates, security, git (the commit checkpoint itself is the
-  `habits-commit-checkpoint` skill), navigation, docs-root (`ALFRED_CODE_DOCS_PATH` is the ONLY lever the
-  hooks read, default `.alfred/docs`, written by the installer as `<data root>/docs`; it stamps its value over
-  `__DOCS_ROOT__` on every run),
+  `habits-commit-checkpoint` skill), navigation, docs-root (always `<data root>/docs` since 2.8.0 - `ALFRED_CODE_DOCS_PATH` is retired, a leftover
+  read first for the 2.x line and moved and removed by update; the installer stamps the root over `__DOCS_ROOT__` on
+  every run),
   memory (what belongs in the shared `memory` MCP, when to save it, and to search before asking or
   reading - locks the server in the way `alfred-navigation` locks the navigation server).
   Skill/agent usage policy + MCP routing live in the GENERATED

@@ -74,8 +74,8 @@ if (require.main === module) {
     if (prelude.standDown('guard-stop-contract')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
-// The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
+// The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 let payload;
 try {
   payload = JSON.parse(fs.readFileSync(0, 'utf8'));
@@ -111,7 +111,7 @@ if (cursorOff) process.exit(0);
         // resolve, NOT join: an ABSOLUTE ALFRED_CODE_DOCS_PATH makes path.join('/a/b','/x/y')
         // '/a/b/x/y', so every ledger row landed in a doubled path that nothing reads (measured
         // across all ten guards). resolve honours an absolute value and still joins a relative one.
-        const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
+        const dir = (() => { try { return require('./layout.js').statsPath(root, ['hook-blocks']); } catch { return path.resolve(root, docsRootEnv(), 'hook-blocks'); } })();
         fs.mkdirSync(dir, { recursive: true });
         fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
           ts: new Date().toISOString(),
@@ -177,7 +177,7 @@ function ledgerRow(row) {
   try {
     const path = require('path');
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-    const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
+    const dir = (() => { try { return require('./layout.js').statsPath(root, ['hook-blocks']); } catch { return path.resolve(root, docsRootEnv(), 'hook-blocks'); } })();
     fs.mkdirSync(dir, { recursive: true });
     fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
       ts: new Date().toISOString(), hook: path.basename(__filename), event: payload.hook_event_name || '', tool: payload.tool_name || '', ...row,
@@ -1215,7 +1215,10 @@ function secretReadAllowed() {
   try {
     const path = require('path');
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-    const receipt = path.resolve(root, docsRootEnv(), 'flow', 'SECRET-READ-ALLOW');
+    // 2.8.0: <data root>/state/approvals/ (layout.js), the pre-2.8.0 flow/ still read - the secret guard's own lookup
+    let layout = null;
+    try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
+    const receipt = layout ? layout.findState(root, 'approvals', 'SECRET-READ-ALLOW') : path.resolve(root, docsRootEnv(), 'flow', 'SECRET-READ-ALLOW');
     const st = fs.statSync(receipt);
     let sessionStartMs = 0;
     try {

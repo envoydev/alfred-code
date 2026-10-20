@@ -46,7 +46,11 @@ if (require.main === module) {
   if (off) process.exit(0);
 }
 
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
+// 2.8.0: the hooks' state lives under <data root>/state/ (layout.js); the pre-2.8.0 <docs-path>/flow/ is still read for
+// the 2.x line, and is the only path when layout.js is not beside this file.
+let layout = null;
+try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
 const MAX_HOLDS = 2;
 const INLINE_CHARS = 3000;
 const ASK_SECTIONS = 3;
@@ -247,13 +251,15 @@ try { shellReader = require(path.join(__dirname, 'shell-writes.js')); ({ isShell
 // bare one, written as a pattern.
 const NAV_EDIT = /^mcp__(?:plugin_(?:alfred-)?navigation_)?(?:alfred-)?navigation__(?:rename_symbol|safe_delete_symbol)$/;
 // One log file holds every session's rows, and two sessions interleave in it, so each row carries the id that
-// tells them apart. It lives under the docs root beside hook-blocks/ and tools-usage/ - every other ledger in
-// this stack does, and under .claude/ a project that commits that folder accumulated this one in git.
+// tells them apart. It lives beside hook-blocks/ and tools-usage/ in the data root's statistics/ (2.8.0, layout.js) -
+// every ledger in this stack does, never committed; before 2.8.0, under the docs root, which is still read.
+const planDirsOf = (root) => (layout ? layout.planDirs(root) : [path.resolve(root, docsRootEnv(), 'plans')]);
+const docsLogFile = (root) => (layout ? layout.statsPath(root, ['docs-log.jsonl']) : path.join(path.resolve(root, docsRootEnv()), 'docs-log.jsonl'));
 const log = (root, input, row) => {
   try {
-    const dir = path.resolve(root, docsRootEnv());
-    fs.mkdirSync(dir, { recursive: true });
-    fs.appendFileSync(path.join(dir, 'docs-log.jsonl'), `${JSON.stringify({ at: new Date().toISOString(), session: input.session_id || '', ...row })}\n`);
+    const file = docsLogFile(root);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.appendFileSync(file, `${JSON.stringify({ at: new Date().toISOString(), session: input.session_id || '', ...row })}\n`);
   } catch {}
 };
 
@@ -436,54 +442,74 @@ function sweepStrandedRoot(root) {
     if (tracked.length) return null;
   } catch { /* no repo: nothing is tracked */ }
   let files = 0;
-  const fold = (src, dst) => {
+  // Where a stranded entry goes: its 2.8.0 home (layout.js) - a receipt in state/approvals/, other flow/ scratch in
+  // state/sessions/, a session record in state/history/, a ledger in statistics/ - read the way the hooks read it
+  // (findState / findStats: the live copy a pre-2.8.0 docs root still holds wins), so the fold never writes the docs root's
+  // retired flow/ or hook-blocks/. Without layout.js beside this hook, the pre-2.8.0 docs root as before.
+  const homeOf = (top, name) => {
+    if (!layout) return path.join(to, ...(top ? [top] : []), name);
+    if (top === 'flow') return layout.findState(root, layout.flowKind(name), name);
+    if (top === 'history') return layout.findState(root, 'history', name);
+    return layout.findStats(root, top ? [top, name] : [name]);
+  };
+  const fold = (src, dst, top) => {
     for (const e of fs.readdirSync(src, { withFileTypes: true })) {
       const a = path.join(src, e.name);
-      const b = path.join(dst, e.name);
-      if (e.isDirectory()) { fold(a, b); fs.rmdirSync(a); continue; }
+      // the stranded root's own entries are the state folders; one level down each entry takes its layout home
+      const b = top === undefined ? (e.isDirectory() ? null : homeOf('', e.name)) : top === null ? path.join(dst, e.name) : homeOf(top, e.name);
+      if (e.isDirectory()) { fold(a, b, top === undefined ? e.name : null); fs.rmdirSync(a); continue; }
       if (!e.isFile() || OS_LITTER.has(e.name)) { fs.rmSync(a, { force: true }); continue; }
       files++;
-      if (!fs.existsSync(b)) { fs.mkdirSync(dst, { recursive: true }); fs.renameSync(a, b); continue; }
+      if (!fs.existsSync(b)) { fs.mkdirSync(path.dirname(b), { recursive: true }); fs.renameSync(a, b); continue; }
       if (e.name.endsWith('.jsonl')) fs.appendFileSync(b, `\n${fs.readFileSync(a, 'utf8')}`);
       fs.rmSync(a, { force: true });
     }
   };
-  try { fold(from, to); fs.rmdirSync(from); } catch { return null; /* a partial fold leaves the rest for the next start */ }
+  try { fold(from, to, undefined); fs.rmdirSync(from); } catch { return null; /* a partial fold leaves the rest for the next start */ }
   return files;
 }
 
+// 2.8.0: the records and pointers are session scratch, <data root>/state/sessions/ (layout.js); one an older hook left
+// in the pre-2.8.0 <docs-path>/flow/ is still read, so a session it started keeps its record.
 function recordUntracked(input, root) {
   let file;
   let list;
   try {
-    const flow = path.resolve(root, docsRootEnv(), 'flow');
+    const legacyFlow = path.resolve(root, docsRootEnv(), 'flow');
+    const find = (name) => (layout ? layout.findState(root, 'sessions', name) : path.join(legacyFlow, name));
     const sid = String(input.session_id || '').replace(/[^\w.-]/g, '_');
-    const pointer = sid ? path.join(flow, `untracked-session-${sid}`) : '';
+    const pointer = sid ? `untracked-session-${sid}` : '';
     const later = input.source === 'compact' || input.source === 'resume';
     if (later && pointer) {
       try {
-        const named = path.basename(fs.readFileSync(pointer, 'utf8').trim());
-        if (named.startsWith('untracked-at-start-') && fs.existsSync(path.join(flow, named))) file = path.join(flow, named);
+        const named = path.basename(fs.readFileSync(find(pointer), 'utf8').trim());
+        if (named.startsWith('untracked-at-start-') && fs.existsSync(find(named))) file = find(named);
       } catch { /* no pointer - an older start, or none */ }
     }
     if (!file) {
       let head = '';
       try { head = require('child_process').execFileSync(...require('./hook-prelude.js').gitSafe(['rev-parse', '--verify', '-q', 'HEAD'], { cwd: root, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] })).toString().trim(); } catch { /* no commit yet, or no repo - ls-files below tells them apart */ }
-      file = path.join(flow, `untracked-at-start-${/^[0-9a-f]{7,64}$/.test(head) ? head : 'unborn'}`);
+      file = find(`untracked-at-start-${/^[0-9a-f]{7,64}$/.test(head) ? head : 'unborn'}`);
     }
     if (fs.existsSync(file)) list = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean);
     else if (later) return '';
     else {
       const out = require('child_process').execFileSync(...require('./hook-prelude.js').gitSafe(['-c', 'core.quotePath=false', 'ls-files', '--others', '--exclude-standard', '-z'],
         { cwd: root, timeout: 5000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] })).toString('utf8');
-      const docsRel = toPosix(path.relative(root, path.resolve(root, docsRootEnv())));
-      const inDocs = (f) => !docsRel.startsWith('..') && docsRel && (f === docsRel || f.startsWith(`${docsRel}/`));
+      // The stack's own files are never the change: the docs root, and the data root's state/ and statistics/.
+      const own = [docsRootEnv(), ...(layout ? ['state', 'statistics'].map((d) => path.join(layout.dataRoot(), d)) : [])]
+        .map((d) => toPosix(path.relative(root, path.resolve(root, d)))).filter((d) => d && !d.startsWith('..'));
+      const inDocs = (f) => own.some((d) => f === d || f.startsWith(`${d}/`));
       list = out.split('\0').filter((f) => f && !f.includes('\n') && !inDocs(f)).slice(0, UNTRACKED_CAP);
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, list.map((f) => `${f}\n`).join(''));
       sweepRecords(path.dirname(file));
     }
-    if (pointer && !later) fs.writeFileSync(pointer, `${path.basename(file)}\n`);
+    if (pointer && !later) {
+      const at = layout ? layout.statePath(root, 'sessions', pointer) : path.join(legacyFlow, pointer);
+      fs.mkdirSync(path.dirname(at), { recursive: true });
+      fs.writeFileSync(at, `${path.basename(file)}\n`);
+    }
   } catch { return ''; }
   if (!list.length) return '';
   const rel = toPosix(path.relative(root, file));
@@ -550,15 +576,18 @@ function setsSince(root, since, ids) {
   const want = new Set(ids.map(normRef));
   if (!want.size || !since) return [];
   const done = new Set();
-  try {
-    const file = path.join(path.resolve(root, docsRootEnv()), 'docs-log.jsonl');
-    const size = fs.statSync(file).size;
-    const len = Math.min(size, LEDGER_TAIL);
-    // The tail is read first, and widened to the whole file only when every row in it was NEWER than the ask - the
-    // one case where the set can still lie further back, and the one case where a window would otherwise report a
-    // rewrite that happened as a section nobody touched.
-    if (!scanLedger(file, size, len, since, want, done) && len < size) scanLedger(file, size, size, since, want, done);
-  } catch {}
+  // statistics/ first, then the pre-2.8.0 log under the docs root, which an older docs.js copy still writes until the
+  // update moves the folders - a set logged in either answers the ask
+  for (const file of new Set([docsLogFile(root), path.join(path.resolve(root, docsRootEnv()), 'docs-log.jsonl')])) {
+    try {
+      const size = fs.statSync(file).size;
+      const len = Math.min(size, LEDGER_TAIL);
+      // The tail is read first, and widened to the whole file only when every row in it was NEWER than the ask - the
+      // one case where the set can still lie further back, and the one case where a window would otherwise report a
+      // rewrite that happened as a section nobody touched.
+      if (!scanLedger(file, size, len, since, want, done) && len < size) scanLedger(file, size, size, since, want, done);
+    } catch {}
+  }
   return ids.filter((id) => done.has(normRef(id)));
 }
 // A SEPARATE signal, never the outcome: whether the agent gave the ask's own words as its answer. The phrase has to
@@ -842,8 +871,8 @@ const relative = (root, paths) => [...new Set(paths.map((p) => toPosix(path.rela
 // Only reading a section's text is a consult: `where`, `toc` and listings point at sections without reading them.
 // `docRoots` is a LIST now, one entry per domain (each domain's own root, project-relative) - a project can be
 // documented in code-style/ or awareness/ alone, and a read under any one of them is a real consult, not
-// just one under architecture/. Deliberately NOT the whole docs root: DOCS_ROOT also holds hook-blocks/,
-// docs-log.jsonl, .branches/ and cross-project-tasks/, none of which is a section covering a file, and crediting
+// just one under architecture/. Deliberately NOT the whole docs root: DOCS_ROOT also holds work/, quality/
+// and .branches/ (the hooks' ledgers before 2.8.0), none of which is a section covering a file, and crediting
 // any of them would turn the gate off by accident for a session that merely happens to touch one. A branch
 // override under .branches/ is not credited either, on the same reasoning - it mixes real override text
 // (<id>.md) with pure internal state (BASE.json, .base/, .conflict markers), and the intended way to read an
@@ -854,7 +883,7 @@ const relative = (root, paths) => [...new Set(paths.map((p) => toPosix(path.rela
 // resolves; a file read counts only for a doc file (`.md`), by Read or Grep, or by a shell command that READS (a reading
 // verb, no write) - never a listing.
 const SHELL_READ_VERB = /(?:^|[\s;&|(])(?:cat|head|tail|sed|awk|grep|rg|less|more|bat|nl|type|get-content|gc|select-string)\b/i;
-function consultedBy(input, paths, docRoots, docs, plansRel = '') {
+function consultedBy(input, paths, docRoots, docs, plansRels = []) {
   const name = input.tool_name || '';
   const t = input.tool_input || {};
   const command = typeof t.command === 'string' ? t.command : '';
@@ -887,8 +916,8 @@ function consultedBy(input, paths, docRoots, docs, plansRel = '') {
   // A resume reads its plan, and the plan's `Oriented:` line names the sections the design read: those sections count as
   // read, so the first edit of a /clear resume is not held for docs the plan already carries (audit 2026-10-20 C25,
   // 6dba16e2 / b5f384d2 / 1b432dd2: 3 of 3 resumes of one story opened on that hold). A plan naming none earns nothing.
-  if (plansRel && reads) {
-    const plans = paths.filter((p) => /\.md$/i.test(p) && p.startsWith(`${plansRel}/`) && !p.slice(plansRel.length + 1).includes('/'));
+  if (plansRels.length && reads) {
+    const plans = paths.filter((p) => /\.md$/i.test(p) && plansRels.some((d) => p.startsWith(`${d}/`) && !p.slice(d.length + 1).includes('/')));
     return plans.flatMap((p) => orientedRefs(path.resolve(process.env.CLAUDE_PROJECT_DIR || '.', p), docs));
   }
   return [];
@@ -934,14 +963,14 @@ function unattendedRow(root, input, kind) {
     } catch (e) { if (e && e.code === 'EEXIST') return; }
   } catch {}
   try {
-    const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
+    const dir = layout ? layout.statsPath(root, ['hook-blocks']) : path.resolve(root, docsRootEnv(), 'hook-blocks');
     fs.mkdirSync(dir, { recursive: true });
     fs.appendFileSync(path.join(dir, `${String(input.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), `${JSON.stringify({ ts: new Date().toISOString(), hook: 'docs-session.js', event: input.hook_event_name || '', tool: input.tool_name || '', mode: 'unattended', kind, reason: `${kind} skipped - nobody at the terminal` })}\n`);
   } catch {}
 }
 function blockRow(root, input, reason) {
   try {
-    const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
+    const dir = layout ? layout.statsPath(root, ['hook-blocks']) : path.resolve(root, docsRootEnv(), 'hook-blocks');
     fs.mkdirSync(dir, { recursive: true });
     fs.appendFileSync(path.join(dir, `${String(input.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), `${JSON.stringify({ ts: new Date().toISOString(), hook: 'docs-session.js', event: input.hook_event_name || '', tool: input.tool_name || '', reason: String(reason).split('\n')[0].slice(0, 200) })}\n`);
   } catch {}
@@ -949,7 +978,7 @@ function blockRow(root, input, reason) {
 
 // A plan stamped `Completed:` is a record (task-solve's CLOSE): new scope after it opens a NEW plan file, or runs under a
 // stated `ungated: <why>`. Four form fixes were written into a stamped plan and counted as that cycle's files (audit
-// 2026-10-10, session 84eedb4b). A write to `<docs-path>/plans/<name>.md` carrying a Completed stamp is denied unless
+// 2026-10-10, session 84eedb4b). A write to `<docs-path>/work/plans/<name>.md` carrying a Completed stamp is denied unless
 // every line it adds or removes is a stamp line (Gated / Approved / Conformance / Completed / Status / Deviations /
 // Result) - an Edit by its strings, a Write against the file on disk, a shell write always (its change cannot be read).
 // The close that WRITES the stamp is not yet closed (the 2026-10-17 usage audit: its own edits right after `Completed:`
@@ -997,7 +1026,8 @@ function closeStillOpen(input, abs) {
 }
 // Ruling S3 (the user's, 2026-10-20): an AskUserQuestion closed by Claude Code's idle timeout is no answer. The answer
 // hook writes this session's timeout marker on such a close and removes it on the next answered ask or typed prompt;
-// while it stands, writing an APPROVED / AUTO line into `<docs-path>/flow/APPROVAL` - a file tool or a shell write that
+// while it stands, writing an APPROVED / AUTO line into the APPROVAL stamp (`<data root>/state/approvals/`, or the
+// pre-2.8.0 `<docs-path>/flow/` a 2.7.0 skill copy names) - a file tool or a shell write that
 // carries the word - is denied, so no stamp records an approval nobody gave (the dispatch guard holds the gated
 // dispatch too). A seat's call, a delete of the stamp, and any other flow file pass.
 function stampAfterTimeoutWrite(input, root) {
@@ -1008,8 +1038,15 @@ function stampAfterTimeoutWrite(input, root) {
   const name = input.tool_name || '';
   const t = input.tool_input || {};
   const real = (p) => { try { return fs.realpathSync.native(p); } catch { return p; } };
-  const stamp = path.resolve(real(path.resolve(root, docsRootEnv(), 'flow')), 'APPROVAL');
-  const isStamp = (abs) => path.resolve(real(path.dirname(abs)), path.basename(abs)) === stamp;
+  const stamps = [layout && layout.statePath(root, 'approvals', 'APPROVAL'), path.resolve(root, docsRootEnv(), 'flow', 'APPROVAL')]
+    .filter(Boolean).map((f) => path.resolve(real(path.dirname(f)), path.basename(f)));
+  // a plan's own stamp, <data root>/state/approvals/<plan id>/APPROVAL (per-plan approvals, 2026-10-20) - its folder may
+  // not exist yet, so it is judged by its parent's real path
+  const approvalsDir = layout ? real(layout.statePath(root, 'approvals', '')) : null;
+  const planStamp = (at) => Boolean(approvalsDir) && path.basename(at) === 'APPROVAL' && Boolean(layout.PLAN_ID)
+    && layout.PLAN_ID.test(path.basename(path.dirname(at))) && real(path.dirname(path.dirname(at))) === approvalsDir;
+  let stamp = stamps[0];
+  const isStamp = (abs) => { const at = path.resolve(real(path.dirname(abs)), path.basename(abs)); if (!stamps.includes(at) && !planStamp(at)) return false; stamp = at; return true; };
   const STAMP_WORD = /^\s*(?:APPROVED|AUTO)\b/m;
   let hit = false;
   if (/^(?:Edit|Write|MultiEdit)$/.test(name) && typeof t.file_path === 'string' && isStamp(path.resolve(root, t.file_path))) {
@@ -1033,8 +1070,9 @@ function stampedPlanWrite(input, root) {
   const name = input.tool_name || '';
   const t = input.tool_input || {};
   const real = (p) => { try { return fs.realpathSync.native(p); } catch { return p; } };
-  const plansDir = real(path.resolve(root, docsRootEnv(), 'plans'));
-  const isPlan = (abs) => /\.md$/i.test(abs) && real(path.dirname(abs)) === plansDir;
+  // work/plans/ since 2.8.0, the legacy plans/ until an update moves it (layout.js planDirs)
+  const plansDirs = planDirsOf(root).map(real);
+  const isPlan = (abs) => /\.md$/i.test(abs) && plansDirs.includes(real(path.dirname(abs)));
   const textOf = (abs) => { try { return fs.readFileSync(abs, 'utf8'); } catch { return null; } };
   const lineCounts = (str) => { const m = new Map(); for (const l of String(str || '').split(/\r?\n/)) m.set(l, (m.get(l) || 0) + 1); return m; };
   const onlyStamps = (before, after) => {
@@ -1247,7 +1285,7 @@ function preToolUse(input, root, docs, state) {
     const all = shellWrites && shellWrites.some(isUnknown) ? [...wrote, UNKNOWN_SOURCE_WRITE] : wrote;
     if (all.length) recordWrite(root, input, all);
   };
-  const consults = consultedBy(input, paths, docRoots, docs, toPosix(path.relative(root, path.resolve(root, docsRootEnv(), 'plans'))));
+  const consults = consultedBy(input, paths, docRoots, docs, planDirsOf(root).map((d) => toPosix(path.relative(root, d))));
   if (consults.length) {
     // One shell command can read a doc AND write a file - the shape the orientation block and the gate together
     // teach - so the read must not swallow the write.

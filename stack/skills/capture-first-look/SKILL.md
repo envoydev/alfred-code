@@ -21,7 +21,7 @@ capture overwrites it.
 - Never over an existing capture, and not the architecture capture itself, which replaces this file.
 - Needs the stack's plugin cache, where the scan script ships: a copy-only install has no scan to run, so the run says so and stops.
 
-**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
+**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
 
 ## 1. Resolve the scan
 
@@ -60,7 +60,7 @@ node "<scan>" --orientation --root . --out "<docs-path>/architecture/ORIENTATION
 
 ## 3. Check, then report
 
-Run `node .claude/hooks/docs.js lint` once. A `PROBLEM ORIENTATION.md ...` line (a path the file names
+Run `node .claude/hooks/docs.js lint architecture` once - another domain's rows are not this scan's. A `PROBLEM ORIENTATION.md ...` line (a path the file names
 that does not exist) is reported as the scan's miss - never hand-edit the file to fix it; the next scan
 or the capture rewrites it whole. Then report, one line per field:
 

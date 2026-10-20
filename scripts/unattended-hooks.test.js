@@ -135,7 +135,7 @@ test('unattended: a live AUTO waiver of this session is nobody at the terminal (
     assert.strictEqual(stop().status, 2, 'a person at the terminal is asked');
     fs.writeFileSync(path.join(flow, 'APPROVAL'), 'AUTO - "take every recommendation"\n');
     assert.strictEqual(stop().status, 0, 'under a live AUTO waiver the close stands');
-    const rows = fs.readFileSync(path.join(root, '.alfred', 'docs', 'hook-blocks', 'auto-s.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    const rows = fs.readFileSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', 'auto-s.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
     assert.ok(rows.some((r) => r.mode === 'unattended' && r.kind === 'done-close'), 'and one unattended row records it');
     // c6142301: under AUTO a solve-task run asks nothing, so its close is where the three fields are held
     const closeOn = (text, extra = {}) => run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: `auto-f${++n}`, cwd: root, transcript_path: cycle, last_assistant_message: text, ...extra }, { CLAUDE_PROJECT_DIR: root }).status;
@@ -206,7 +206,7 @@ const credentialStop = (rows, env, session = `s${++n}`, close = CLOSE) =>
     const tp = file(rows);
     const r = run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: session, cwd: root, transcript_path: tp, last_assistant_message: close },
         { CLAUDE_PROJECT_DIR: root, ...(env || {}) });
-    const ledger = path.join(root, '.alfred', 'docs', 'hook-blocks', `${session}.jsonl`);
+    const ledger = path.join(root, '.alfred', 'statistics', 'hook-blocks', `${session}.jsonl`);
     const rows_ = fs.existsSync(ledger) ? fs.readFileSync(ledger, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
     return { ...r, rows: rows_, root, tp, session };
 };
@@ -274,7 +274,7 @@ test('guard-stop-contract: print mode logs a real exposure once and leaves the f
     const second = run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: session, cwd: first.root, transcript_path: first.tp, last_assistant_message: CLOSE },
         { CLAUDE_PROJECT_DIR: first.root, ALFRED_CODE_HOOK_LOG_DIR: logDir });
     assert.strictEqual(second.status, 0);
-    const all = fs.readFileSync(path.join(first.root, '.alfred', 'docs', 'hook-blocks', `${session}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    const all = fs.readFileSync(path.join(first.root, '.alfred', 'statistics', 'hook-blocks', `${session}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
     assert.strictEqual(all.filter((row) => row.kind === 'rotate-ask').length, 1, 'one row per exposure, not per Stop');
     // The launch switch and the env are print mode too; a close that names rotation is logged, not held.
     assert.strictEqual(credentialStop(exposed('cli', CLOSE), { ALFRED_CODE_UNATTENDED: '1' }).status, 0, 'the launch switch');
@@ -330,7 +330,7 @@ test('guard-fresh-session-start: the user-only skill is still denied in print mo
 
 // Review A, M3: every quieted block or offer leaves ONE 'mode: unattended' row, as stop-contract and docs-session do,
 // so a print-mode run can still count what it skipped (pilot 2: nine em-dash blocks). Nothing skipped, no row.
-const ledger = (sid) => { try { return fs.readFileSync(path.join(process.env.CLAUDE_PROJECT_DIR, '.alfred', 'docs', 'hook-blocks', `${sid}.jsonl`), 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)); } catch { return []; } };
+const ledger = (sid) => { try { return fs.readFileSync(path.join(process.env.CLAUDE_PROJECT_DIR, '.alfred', 'statistics', 'hook-blocks', `${sid}.jsonl`), 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)); } catch { return []; } };
 
 test('guard-fresh-session-start: an offer skipped in print mode leaves one unattended row, none under the trigger', () =>
 {

@@ -5,7 +5,7 @@ description: "Use before a non-trivial git commit, git push or gh pr merge - 'co
 
 # Commit checkpoint - the gate before a commit or a publish
 
-The protocol `alfred-git.md` points at: what runs before a non-trivial commit, the exemptions, the receipt the `guard-ungated-commit` hook reads, and the same ceremony for `git push` / `gh pr merge`. The commit-message shape and the branch discipline stay in the rule. Why each rule exists is `references/evidence.md` - an audit appendix, not a run-time load.
+The protocol `alfred-git.md` points at: what runs before a non-trivial commit, the exemptions, the receipt the `guard-ungated-commit` hook reads, and the same ceremony for `git push` / `gh pr merge`. The commit-message shape and the branch discipline stay in the rule - or in the user's `GIT-PREFERENCES.md`, which overrides them where present. Why each rule exists is `references/evidence.md` - an audit appendix, not a run-time load.
 
 ## When to use
 
@@ -50,11 +50,11 @@ On any non-trivial diff, before committing or presenting, in order:
    into the close, then clear it.
 
 **Scope - the session's own change.** What was untracked before this change began is not part of
-it: the docs hook lists it at session start, once per HEAD (`<docs-path>/flow/untracked-at-start-<HEAD
+it: the docs hook lists it at session start, once per HEAD (`<data root>/state/sessions/untracked-at-start-<HEAD
 sha>`, named in the start block). Stage the session's own paths by name, review and count only those in
 `spec:`, and name the pre-existing ones in one line as outside the change. One goes in only when the
 user names it - the commit guard blocks a `git add` that would sweep it in (`-A`, `.`, a directory)
-until `<docs-path>/flow/UNTRACKED-ALLOW` lists it.
+until `<data root>/state/approvals/UNTRACKED-ALLOW` lists it.
 
 **Exemptions.** Skip the checkpoint for typos / one-line / formatting-only diffs - and for a diff an
 equivalent-or-stronger check just cleared: the active quality-loop's own dispatched re-verify plus
@@ -99,7 +99,7 @@ in the diff is a test file: verify that from the diff's file list and name it in
 
 ## The receipt
 
-The checkpoint ends by writing its receipt: `<docs-path>/flow/COMMIT-GATE`, five lines, then the `format:` and `findings:` lines -
+The checkpoint ends by writing its receipt: `<data root>/state/approvals/COMMIT-GATE`, five lines, then the `format:` and `findings:` lines -
 
 ```
 VERIFIED <what was reviewed, one phrase>
@@ -160,17 +160,17 @@ it while its `head:` is an ancestor of HEAD and every commit since touches only 
 covered; clear it after the LAST commit of the batch. The hook's staged-diff scan (a conflict marker, a
 debugger, a focused test, a credential-shaped literal, a hidden character) is a fact check this receipt
 never opens: remove the hit and stage again, or, on the user's 'Commit it as is' in the denial's own
-ask, write the `<docs-path>/flow/STAGED-SCAN-ALLOW` receipt it names.
+ask, write the `<data root>/state/approvals/STAGED-SCAN-ALLOW` receipt it names.
 
-A commit in a second tree the cross-project guard allows gets its own receipt in THAT tree's docs
-root, written and cleared the same way. A sibling repo is never committed, branched, pushed or PR'd
+A commit in a second tree the cross-project guard allows gets its own receipt in THAT tree's
+`<data root>/state/approvals/`, written by `receipt.js` run from that tree and cleared the same way. A sibling repo is never committed, branched, pushed or PR'd
 from here, and never OFFERED as an option in an ask of the run's own making - its change is a task
-card under `<docs-path>/cross-project-tasks/`.
+card under `<docs-path>/work/cross-project-tasks/`, printed as the docs-root rule's hand-off block.
 
 ## Publishing - push and PR merge
 
 The same ceremony: `git push` and `gh pr merge` leave this machine, so they carry their own
-receipt, `<docs-path>/flow/PUSH-GATE`, in the SAME five-line shape - `VERIFIED <what is being
+receipt, `<data root>/state/approvals/PUSH-GATE`, in the SAME five-line shape - `VERIFIED <what is being
 published, one phrase>`, `authorized: "<the user's words asking for THIS publish, verbatim>"`,
 `head:`, `spec: <the commit set going out>` and `live-probe:` - or `WAIVED - "<their words>"`; no
 `format:` or `findings:` line, since each commit going out carried its own. Its `spec:` names what

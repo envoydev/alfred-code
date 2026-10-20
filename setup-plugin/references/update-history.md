@@ -99,6 +99,38 @@ auto-mode starts with the flag `--auto-mode` as the first word after the command
 (`/task-solve --auto-mode <the request>`); the bare `auto-mode` of 2.4.0-2.5.0 starts nothing now, and the run's
 banner says so. `/capture-*` commands run in auto-mode too. Say both in the close - nothing on disk changes.
 
+## in 2.8.0 - the folders move to state/, statistics/, work/ and quality/; /capture-preferences
+
+Update moves an older project's folders onto the 2.8.0 layout, with no ask: `flow/` splits into
+`<data root>/state/approvals/` and `state/sessions/`, `history/` goes to `state/history/`; `hook-blocks/`,
+`tools-usage/`, `usage-report/` and `docs-log.jsonl` to `<data root>/statistics/` (machine-local, kept out of git);
+`plans/`, `specs/`, `diagnoses/` and `cross-project-tasks/` - `related-context/`'s files with them - to
+`<docs-path>/work/`; `test-coverage/` and `loops/` to `<docs-path>/quality/`; an empty `.branches/` goes. A tracked
+doc moves as a git rename. Report every `layout:` line; each held shape leaves its own action (the close's LAYOUT
+bullet): a file already at the new path is the live one, a kept `.branches/` holds live doc versions to prune first,
+and raw session copies wait until the new folder is out of git.
+
+The docs root is always `<data root>/docs`: `ALFRED_CODE_DOCS_PATH` is retired, and this update moves the stack's docs
+from a root the stack wrote (or from the pre-2.0.0 `.claude/docs`) with no ask, then takes the key out of the settings.
+A root the user set by hand is asked once, naming every folder that would move: they all move (recommended), or the
+user marks the team's own, which stay. There is no keep - to put the docs elsewhere, change the data root. The project's own files there stay - report the `docs root: ... keeps` line; a `!!` docs-root line means nothing moved and names what
+the user decides or clears first. The docs are no longer part of the data-move ask.
+
+An approval belongs to its plan: the stamp is `<data root>/state/approvals/<plan id>/APPROVAL`, and a brief names its
+plan on a `plan:` line, so two sessions on two plans no longer share one approval.
+
+`/capture-preferences` is new and always shipped, so this update adopts it: it records the user's code, architecture
+and git preferences under `<docs-path>/preferences/` and generates `alfred-preferences.md`, which carries them inline
+into every session and every seat it dispatches, ahead of every other source. A hand-off to a sibling repo now prints
+the task card's absolute path. Say each in the close.
+
+The navigation server moves to serena-agent 2.1.0 and the memory server to mcp-memory-service 12.1.1; the memories
+need no migration, and both start on the new pin at the next session. The `typescript-lsp` plugin's language server is
+now a prerequisite `/alfred-code:init` offers - `typescript-language-server` with TypeScript 6, since TypeScript 7 ships
+no `tsserver.js` - and `csharp-lsp`'s `csharp-ls` 0.28 needs the .NET 10 SDK. An empty `settings.json` is read as no
+settings yet and written, never refused as bad JSON. Say the two plugin prerequisites in the close only where the
+project picked that plugin.
+
 ## table - every renamed command, was -> now
 
 The installer's `renamed:` lines name each rename this install carried; this table is the whole list, for a user

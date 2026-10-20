@@ -108,6 +108,19 @@ test('settings-writer: a file that cannot be read is LEFT UNTOUCHED and named by
     assert.doesNotMatch(notes[0], /not valid JSON/);
 });
 
+// The release matrix of 2026-10-20: an EMPTY file was refused here as bad JSON ('fix it and re-run') while the memory
+// step of the same run wrote into it - it holds nothing to lose, so both read it as no settings yet.
+test('settings-writer: an empty or whitespace-only file is no settings yet - written, never refused', () =>
+{
+    for (const body of ['', '  \n'])
+    {
+        const { result, notes, data } = write(settingsFile(body), { hookSpecs: [HOOK('guard-a.js', 'Bash')] });
+        assert.notStrictEqual(result.refused, true, JSON.stringify(body));
+        assert.deepStrictEqual(notes.filter((n) => /not valid JSON|left untouched/.test(n)), [], JSON.stringify(body));
+        assert.ok(JSON.stringify(data.hooks || {}).includes('guard-a.js'), JSON.stringify(body));
+    }
+});
+
 test('settings-writer: a top level that is not an object is refused the same way', () =>
 {
     const file = settingsFile('[1, 2]');

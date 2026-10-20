@@ -15,16 +15,20 @@
 // it, and NOTHING gated them - replayed across four bundles, every push and merge passed every
 // guard. In one session the FIRST state-changing act of the run published unpushed commits 18
 // minutes before any receipt existed, and 40 files reached a shared `develop` ungated. Same
-// receipt shape, its own file (<docs-root>/flow/PUSH-GATE), and ALFRED_CODE_PUSH_GATE=0 turns
+// receipt shape, its own file (<data root>/state/approvals/PUSH-GATE), and ALFRED_CODE_PUSH_GATE=0 turns
 // it off for a repo whose remote is already gated by branch protection or a required review.
-// Receipt lifecycle: the gate step writes <docs-root>/flow/COMMIT-GATE when its checks
+// Receipt lifecycle: the gate step writes <data root>/state/approvals/COMMIT-GATE when its checks
 // pass (VERIFIED <scope>) or the user explicitly waives (WAIVED - "<their words>");
 // the commit turn clears it after the commit lands. Receipts older than
 // MAX_RECEIPT_AGE_MS are treated as absent - the stale-stamp lesson from the approval
 // gate (a leftover stamp silently authorized later, unrelated runs).
 const fs = require('fs');
-// The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
+// The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
+// 2.8.0 layout (layout.js, copied beside this hook): receipts in <data root>/state/approvals/, session scratch in
+// state/sessions/, the session records in state/history/; null on an older copy route, which keeps the pre-2.8.0 paths.
+let layout = null;
+try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
 const path = require('path');
 const { execSync, execFileSync, spawnSync } = require('child_process');
 // Every git this guard runs: fsmonitor off, no optional locks (hook-prelude.js gitSafe, audit 2026-10-20 H2) - the same two
@@ -78,7 +82,7 @@ if (cursorOff) process.exit(0);
         // resolve, NOT join: an ABSOLUTE ALFRED_CODE_DOCS_PATH makes path.join('/a/b','/x/y')
         // '/a/b/x/y', so every ledger row landed in a doubled path that nothing reads (measured
         // across all ten guards). resolve honours an absolute value and still joins a relative one.
-        const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
+        const dir = (() => { try { return require('./layout.js').statsPath(root, ['hook-blocks']); } catch { return path.resolve(root, docsRootEnv(), 'hook-blocks'); } })();
         fs.mkdirSync(dir, { recursive: true });
         fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
           ts: new Date().toISOString(),
@@ -293,27 +297,34 @@ const docsPrefix = () => {
 // empty set. Before either: the record this session's first start used, named in `untracked-session-<sid>` (audit
 // 2026-10-10 C09), so a HEAD the session moved never hands it another session's snapshot.
 let preExistingCache;
+// 2.8.0: state/sessions/ first, then the pre-2.8.0 <docs-path>/flow/ an older hook wrote them to.
 function preExistingRecord() {
-  const dir = path.resolve(root, docsRootEnv(), 'flow');
+  const dirs = [...new Set([layout && layout.statePath(root, 'sessions', ''), path.resolve(root, docsRootEnv(), 'flow')].filter(Boolean))];
   const sid = String((payload && payload.session_id) || '').replace(/[^\w.-]/g, '_');
   if (sid) {
-    try {
-      const named = path.basename(fs.readFileSync(path.join(dir, `untracked-session-${sid}`), 'utf8').trim());
-      if (named.startsWith('untracked-at-start-') && fs.existsSync(path.join(dir, named))) return path.join(dir, named);
-    } catch { /* no pointer - an older start */ }
+    for (const dir of dirs) {
+      try {
+        const named = path.basename(fs.readFileSync(path.join(dir, `untracked-session-${sid}`), 'utf8').trim());
+        const hit = dirs.map((d) => path.join(d, named)).find((f) => fs.existsSync(f));
+        if (named.startsWith('untracked-at-start-') && hit) return hit;
+      } catch { /* no pointer here - an older start */ }
+    }
   }
   let head = '';
   try { head = git('rev-parse --verify -q HEAD'); } catch { head = ''; }
-  const own = path.join(dir, `untracked-at-start-${/^[0-9a-f]{7,64}$/.test(head) ? head : 'unborn'}`);
-  if (fs.existsSync(own)) return own;
+  const name = `untracked-at-start-${/^[0-9a-f]{7,64}$/.test(head) ? head : 'unborn'}`;
+  const own = dirs.map((d) => path.join(d, name)).find((f) => fs.existsSync(f));
+  if (own) return own;
   let newest = null;
-  try {
-    for (const f of fs.readdirSync(dir)) {
-      if (!f.startsWith('untracked-at-start-')) continue;
-      const m = fs.statSync(path.join(dir, f)).mtimeMs;
-      if (!newest || m > newest.m) newest = { f: path.join(dir, f), m };
-    }
-  } catch { /* no flow folder - no record */ }
+  for (const dir of dirs) {
+    try {
+      for (const f of fs.readdirSync(dir)) {
+        if (!f.startsWith('untracked-at-start-')) continue;
+        const m = fs.statSync(path.join(dir, f)).mtimeMs;
+        if (!newest || m > newest.m) newest = { f: path.join(dir, f), m };
+      }
+    } catch { /* no such folder - no record */ }
+  }
   return newest ? newest.f : null;
 }
 function preExisting() {
@@ -364,6 +375,23 @@ function pushTouchedProjects() {
 }
 
 const docsRoot = docsRootEnv();
+// 2.8.0: every receipt lives in <data root>/state/approvals/ (layout.js); the pre-2.8.0 flow/ one a 2.7.0 skill copy writes
+// is still read for the 2.x line, and is the only path when layout.js is not beside this file. A read takes the new file,
+// else the old one; a denial says to write the new one.
+const receiptRead = (name) => (layout ? layout.findState(root, 'approvals', name) : path.resolve(root, docsRoot, 'flow', name));
+const receiptWrite = (name) => (layout ? layout.statePath(root, 'approvals', name) : path.resolve(root, docsRoot, 'flow', name));
+// What an act never commits, as prefixes relative to the repo top `top` (each only when inside it): the docs root, and from
+// 2.8.0 the data root's state/ and statistics/ - the receipt is written into state/approvals/ moments before the act, and
+// counting it would inflate the trivial bar and the spec: check (git ignores both through the data root's .gitignore, which
+// a repo set up by hand may lack).
+function ownPrefixes(top) {
+  const real = (p) => { try { return fs.realpathSync.native(p); } catch { return p; } };
+  const base = real(root);
+  const dirs = [path.resolve(base, docsRootEnv())];
+  if (layout) dirs.push(path.resolve(base, layout.dataRoot(), 'state'), path.resolve(base, layout.dataRoot(), 'statistics'));
+  return dirs.map((d) => path.relative(top, real(d)).split(path.sep).join('/'))
+    .filter((r) => r && r !== '..' && !r.startsWith('../') && !path.isAbsolute(r)).map((r) => `${r}/`);
+}
 const MAX_RECEIPT_AGE_MS = 2 * 60 * 60 * 1000; // 2h - the gate runs right before the act; re-stamping is one Write
 // The RECEIPT CONTRACT. Every clause here was bought with a receipt that passed the gate and
 // recorded nothing: `authorized: "what time is it?"` exit 0, `authorized: ""` exit 0 - the only
@@ -640,7 +668,11 @@ function ledgerSkillRan() {
   const logs = new Set();
   const own = envOf(process.env, 'INSTRUMENT_LOG');
   if (own) logs.add(path.resolve(own));
-  for (const base of [projectDir, payload.cwd, root].filter(Boolean)) logs.add(path.resolve(base, docsRoot, 'tools-usage', `${sid}.jsonl`));
+  // the data root's statistics/ (2.8.0), then the pre-2.8.0 docs root an older instrumentation copy still writes
+  for (const base of [projectDir, payload.cwd, root].filter(Boolean)) {
+    if (layout) logs.add(layout.statsPath(base, ['tools-usage', `${sid}.jsonl`]));
+    logs.add(path.resolve(base, docsRoot, 'tools-usage', `${sid}.jsonl`));
+  }
   for (const f of logs) {
     let text = '';
     try { text = fs.readFileSync(f, 'utf8'); } catch { continue; }
@@ -683,9 +715,8 @@ function batchProblem(h, spec, opts) {
   if (opts && opts.countAgainstTree) {
     try { const s = commitSet(); for (const f of s.tracked.keys()) files.add(f); for (const f of s.untracked) files.add(f); } catch { /* unborn or unreadable: the commits alone */ }
   }
-  const real = (p) => { try { return fs.realpathSync.native(p); } catch { return p; } };
-  const docsRel = path.relative(top, real(path.resolve(real(root), docsRootEnv()))).split(path.sep).join('/');
-  if (docsRel && !docsRel.startsWith('..') && !path.isAbsolute(docsRel)) for (const f of [...files]) if (f.startsWith(`${docsRel}/`)) files.delete(f);
+  const own = ownPrefixes(top);
+  for (const f of [...files]) if (own.some((p) => f.startsWith(p))) files.delete(f);
   const listed = specPaths(spec);
   const count = /(\d+)\s*files?\b/i.exec(String(spec || ''));
   if (listed.length && (!count || listed.length >= Number(count[1]))) {
@@ -934,7 +965,8 @@ const receiptOpts = (name, receiptMtimeMs = 0) => ({
   receiptMtimeMs,
 });
 function readReceipt(name, notBeforeMs = 0) {
-  const gate = path.resolve(root, docsRoot, 'flow', name);
+  const gate = receiptRead(name);
+  const write = receiptWrite(name);
   let stale = false;
   let body = '';
   let mtimeMs = 0;
@@ -946,8 +978,8 @@ function readReceipt(name, notBeforeMs = 0) {
   } catch {
     // absent or unreadable - no gate receipt
   }
-  if (stale) return { gate, stale, waived: false, verified: false, problem: null };
-  return { gate, stale, ...judgeReceipt(body, receiptOpts(name, mtimeMs)) };
+  if (stale) return { gate, write, stale, waived: false, verified: false, problem: null };
+  return { gate, write, stale, ...judgeReceipt(body, receiptOpts(name, mtimeMs)) };
 }
 // An atomic write-receipt-then-act command carries its own receipt: the gate file is
 // written (with a VERIFIED/WAIVED line in the same command text) before git runs. Blocking
@@ -957,11 +989,12 @@ function readReceipt(name, notBeforeMs = 0) {
 // COMMIT-GATE VERIFIED is not a receipt), and the receipt must be WRITTEN, not merely
 // mentioned: requiring the words anywhere in that text let a single
 // `echo "... VERIFIED ... authorized: ..." > notes.txt` satisfy the gate on a real dirty tree
-// (reproduced). The redirect/tee/printf/cat has to target a path ending in flow/<NAME>.
+// (reproduced). The redirect/tee/printf/cat has to target a path ending in state/approvals/<NAME>, or the pre-2.8.0
+// flow/<NAME> a 2.7.0 skill copy names.
 function carriesOwnReceipt(name, upto) {
   const pre = command.slice(0, upto);
   if (!pre.includes(name)) return false;
-  const writes = new RegExp(`(?:>>?|\\btee\\s+(?:-a\\s+)?|\\bprintf\\b[^>]*>>?|\\bcat\\s*>>?)\\s*["']?(\\S*flow\\/${name})\\b`);
+  const writes = new RegExp(`(?:>>?|\\btee\\s+(?:-a\\s+)?|\\bprintf\\b[^>]*>>?|\\bcat\\s*>>?)\\s*["']?(\\S*(?:state\\/approvals|flow)\\/${name})\\b`);
   if (!writes.test(pre)) return false;
   // ...and it answers to the SAME contract as the file. Judging the atomic shape more leniently
   // made it the cheapest way to skip every clause below: one printf and the gate was satisfied.
@@ -1036,7 +1069,7 @@ if (publishMatch) {
             ? `Blocked: ${act} - the publish receipt at ${r.gate} does not hold: ${r.problem}.\n`
             : `Blocked: ${act} without the publish gate receipt.\n`) +
           `A publish leaves this machine for good. Run habits-commit-checkpoint's publish half (load it): say what goes to\n` +
-          `which branch, get the user's answer, then write ${r.gate} with the skill's scripts/receipt.js (\`push\`) - it\n` +
+          `which branch, get the user's answer, then write ${r.write} with the skill's scripts/receipt.js (\`push\`) - it\n` +
           `fills head: and spec: from git:\n` +
           `  VERIFIED <what is being published>\n` +
           `  authorized: "<the user's words asking for THIS publish, verbatim>"  (in English, or answered: <the label they picked>)\n` +
@@ -1085,9 +1118,11 @@ function lineFinding(file, text, lineNo) {
   if (TEST_FILE.test(file) && /(?:^|[;{])\s*(?:(?:fdescribe|fit)\s*\(|(?:test\.)?(?:describe|it|test)\.only\s*\()/.test(text)) return 'a focused test';
   return '';
 }
-// A `<docs-path>/flow/<name>` ALLOW receipt's lines - the USER's answer to a block, this session's own, under 8h.
+// A `<data root>/state/approvals/<name>` ALLOW receipt's lines (the pre-2.8.0 flow/ still read) - the USER's answer to a
+// block, this session's own, under 8h. `write` is where a denial says to put one.
 function allowLines(name) {
-  const file = path.resolve(root, docsRootEnv(), 'flow', name);
+  const file = receiptRead(name);
+  const write = receiptWrite(name);
   try {
     const st = fs.statSync(file);
     let sessionStartMs = 0;
@@ -1096,10 +1131,10 @@ function allowLines(name) {
       sessionStartMs = tr.birthtimeMs && tr.birthtimeMs !== tr.ctimeMs ? tr.birthtimeMs : 0;
     } catch { sessionStartMs = 0; }
     if (Date.now() - st.mtimeMs <= 8 * 60 * 60 * 1000 && !(sessionStartMs && st.mtimeMs < sessionStartMs)) {
-      return { file, lines: fs.readFileSync(file, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')) };
+      return { file, write, lines: fs.readFileSync(file, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')) };
     }
   } catch { /* absent or unreadable - nothing allowed */ }
-  return { file, lines: [] };
+  return { file, write, lines: [] };
 }
 
 // --- a git add that sweeps in what the session did not make --------------------------------------
@@ -1143,7 +1178,7 @@ if (addCalls.length) {
   const swept = sweptPaths();
   if (swept.length) {
     global.BLOCK_DETAIL = { branch: 'untracked-sweep', count: swept.length };
-    const rel = (name) => path.relative(root, path.resolve(root, docsRootEnv(), 'flow', name)).split(path.sep).join('/');
+    const rel = (name) => path.relative(root, receiptWrite(name)).split(path.sep).join('/');
     const record = preExistingRecord();
     process.stderr.write(
       `Blocked: this git add stages ${swept.length} path(s) that were untracked before this change started -\n` +
@@ -1214,7 +1249,8 @@ function commitScope() {
 }
 // The files a set of pathspecs covers, each with its churn against HEAD, named from the repo top: with no scope the
 // whole tree, else the index plus what `-a`, a chained `git add` or the named paths (`--only` / `--include`) take in.
-// Left out: the docs root (the receipt lives there) and what was untracked when the change began.
+// Left out: the docs root, the data root's state/ (the receipt lives there) and statistics/, and what was untracked when
+// the change began.
 function measure(scope) {
   const top = gitTop || root;
   const real = (p) => { try { return fs.realpathSync.native(p); } catch { return p; } };
@@ -1222,9 +1258,8 @@ function measure(scope) {
   const inTop = (r) => r && r !== '..' && !r.startsWith('../') && !path.isAbsolute(r);
   const rootRel = path.relative(top, realRoot).split(path.sep).join('/');
   const before = new Set([...preExisting()].map((f) => (inTop(rootRel) ? `${rootRel}/${f}` : f)));
-  const docsRel = path.relative(top, real(path.resolve(realRoot, docsRootEnv()))).split(path.sep).join('/');
-  const pre = inTop(docsRel) ? `${docsRel}/` : null;
-  const keep = (f) => f && !(pre && f.startsWith(pre));
+  const own = ownPrefixes(top);
+  const keep = (f) => f && !own.some((p) => f.startsWith(p));
   const run = (args) => execFileSync(...gitSafe(['-c', 'core.quotePath=false', ...args], { cwd: top, timeout: 5000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] })).toString('utf8');
   const tracked = new Map();
   const numstat = (base, paths) => {
@@ -1284,7 +1319,7 @@ function commitSet() {
 // session's earlier TRIVIAL commits took in, so one small commit stays exempt and a change split into small commits
 // crosses the bar at the slice that takes the session past it - measured per commit, all six slices of a 60-line
 // feature walked under it; measured on the whole tree, a staged one-liner beside unrelated dirty work gated (T18).
-// What counts is the guard's own ledger, <docs-path>/flow/trivial-<session>: one row per commit it let through under the
+// What counts is the guard's own ledger, <data root>/state/sessions/trivial-<session>: one row per commit it let through under the
 // bar (the HEAD it was made on, its files and their churn; an amend's row sits on the amended commit's parent and names
 // the commit it replaces). A commit a receipt covered writes no row, and commits a pull, a merge or a rebase brought in
 // have none (review re-verify N1: summing every commit since the start made a typo after a reviewed feature, or a
@@ -1295,7 +1330,8 @@ function commitSet() {
 //     amend loop built a 43-line commit 14 lines at a time and a rebase dropped every row after the first);
 //   - never when made on today's HEAD, or as this same amend retried: that commit has not landed.
 // An amend adds its own lines to the rows of the commit it replaces, so each amend is one more slice of that commit.
-// The session's start is the sha history-session.js pins at its first SessionStart (<docs-path>/history/<session>.json,
+// The session's start is the sha history-session.js pins at its first SessionStart (<data root>/state/history/<session>.json,
+// else the pre-2.8.0 <docs-path>/history/ one,
 // kept across a resume or compaction of the same session); a new session has a ledger of its own, so it begins a new
 // change. A start the branch rewrote (an amend of it, a rebase) is read from where it meets HEAD (`git merge-base`).
 // With no record (the history hook off) the ledger pins its own start - HEAD at the session's first judged commit, a
@@ -1306,13 +1342,16 @@ function sessionStart() {
   const sid = String(payload.session_id || '').replace(/[^\w.-]/g, '_');
   if (!sid) return null;
   let sha = '';
-  try { sha = String(JSON.parse(fs.readFileSync(path.resolve(projectDir || root, docsRoot, 'history', `${sid}.json`), 'utf8')).startSha || ''); } catch { sha = pinnedStart(); }
+  const record = layout ? layout.findState(projectDir || root, 'history', `${sid}.json`) : path.resolve(projectDir || root, docsRoot, 'history', `${sid}.json`);
+  try { sha = String(JSON.parse(fs.readFileSync(record, 'utf8')).startSha || ''); } catch { sha = pinnedStart(); }
   if (!SHA_RE.test(sha)) return null;
   try { git(`merge-base --is-ancestor ${sha} HEAD`); return sha; } catch { /* rewritten, or elsewhere */ }
   try { const base = git(`merge-base ${sha} HEAD`); return SHA_RE.test(base) ? base : null; } catch { return null; }
 }
 const sessionId = () => String(payload.session_id || '').replace(/[^\w.-]/g, '_');
-const trivialLedger = () => path.resolve(projectDir || root, docsRoot, 'flow', `trivial-${sessionId()}`);
+// A session an older hook started keeps its pre-2.8.0 ledger; a new one starts in state/sessions/.
+const trivialLedger = () => (layout ? layout.findState(projectDir || root, 'sessions', `trivial-${sessionId()}`)
+  : path.resolve(projectDir || root, docsRoot, 'flow', `trivial-${sessionId()}`));
 // The start the ledger pinned for itself, pinned now when it has none.
 function pinnedStart() {
   let text = '';
@@ -1543,7 +1582,7 @@ function stagedFindings() {
   const found = stagedFindings();
   // 'Commit it as is' is the USER's answer, honoured through its own receipt: one `file`, `file:line`
   // or `*` per line; this session's own, under 8h.
-  const { file: allowFile, lines: allow } = allowLines('STAGED-SCAN-ALLOW');
+  const { write: allowFile, lines: allow } = allowLines('STAGED-SCAN-ALLOW');
   const open = found.filter((f) => !(allow.includes('*') || allow.includes(f.file) || allow.includes(`${f.file}:${f.line}`)));
   if (open.length) {
     global.BLOCK_DETAIL = { branch: 'staged-scan', count: open.length };
@@ -1610,7 +1649,7 @@ process.stderr.write(
       ? `Blocked: git commit - the gate receipt at ${c.gate} does not hold: ${c.problem}.\n`
       : `Blocked: git commit on a non-trivial diff without the pre-commit gate receipt.\n`) +
     `Run the checkpoint first (load habits-commit-checkpoint): the formatter, then task-verify-code, plus /security-review\n` +
-    `on auth, crypto, secrets, payment or data-access paths. Then write ${c.gate} with the skill's scripts/receipt.js\n` +
+    `on auth, crypto, secrets, payment or data-access paths. Then write ${c.write} with the skill's scripts/receipt.js\n` +
     `(\`commit\`) - it fills head:, spec: and the counts from git:\n` +
     `  VERIFIED <what was reviewed, one phrase>\n` +
     `  authorized: "<the user's words asking for THIS commit, verbatim>"  (in English, or answered: <the label they picked>)\n` +

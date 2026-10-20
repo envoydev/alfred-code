@@ -11,8 +11,8 @@
 // the remainder goes through the navigation server. A cat whose output is redirected into a file is a copy,
 // not a dump, and passes. exit 2 = block (stderr fed back); exit 0 = allow.
 const fs = require('fs');
-// The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
+// The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 const os = require('os');
 const pathMod = require('path');
 // The judging budget (review M3 of 2.1.6), its thresholds in this one place. It counts WORK, never time, so a
@@ -74,7 +74,7 @@ if (cursorOff) process.exit(0);
         // resolve, NOT join: an ABSOLUTE ALFRED_CODE_DOCS_PATH makes path.join('/a/b','/x/y')
         // '/a/b/x/y', so every ledger row landed in a doubled path that nothing reads (measured
         // across all ten guards). resolve honours an absolute value and still joins a relative one.
-        const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
+        const dir = (() => { try { return require('./layout.js').statsPath(root, ['hook-blocks']); } catch { return path.resolve(root, docsRootEnv(), 'hook-blocks'); } })();
         fs.mkdirSync(dir, { recursive: true });
         fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
           ts: new Date().toISOString(),
@@ -1921,9 +1921,9 @@ const ruleInstalled = (rule) => {
 // whose pattern its NAME happens to carry (`next.js-upgrade.md`, `Dockerfile.md`): that would spend the
 // rule's once-per-session announcement on a docs note. The one exception is skill-authoring.md -
 // `.claude/skills/` is where a project keeps its own skills, and a skill file is governed wherever it lives.
-// The docs root is RESOLVED, not assumed: hard-coding `.claude/` meant that with
-// ALFRED_CODE_DOCS_PATH=docs - the committed-root case the docs-root rule itself describes - a write
-// to `docs/architecture/ARCHITECTURE.md` still drew the announcement the rule says does not apply.
+// The docs root is RESOLVED, not assumed: hard-coding `.claude/` meant that with a docs root of
+// `docs` (a pre-2.8.0 ALFRED_CODE_DOCS_PATH an update has not drained yet) a write to
+// `docs/architecture/ARCHITECTURE.md` still drew the announcement the rule says does not apply.
 const escapeRe = (v) => String(v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const UNGOVERNED_MD = new RegExp(
   `(?:^|[\\s"'=])(?:\\./)?(?:\\.claude|${escapeRe(docsRootEnv().replace(/^\.\//, '').replace(/\/+$/, ''))})/`);
@@ -2730,11 +2730,11 @@ if (!GATED_EXT.test(path)) {
   // token cost'), where 60KB of text is about 15,000. Both were blocked, and the issue-diagnoser's screenshot Read with
   // them (audit 2026-10-08).
   const whole = (input.offset ?? 0) <= 1 && input.limit == null && input.pages == null && !RENDERED_IMAGE.test(path);
-  // A plan under the docs root's plans/ is a seat's MANDATED input, read whole by design: a verifier denied its 65KB
-  // plan read it back through two ranges at once, so the block bought a round trip and nothing else (audit 2026-10-10,
-  // session 05c925e9).
+  // A plan under the docs root's work/plans/ (plans/ before 2.8.0, until an update moves it) is a seat's MANDATED input,
+  // read whole by design: a verifier denied its 65KB plan read it back through two ranges at once, so the block bought a
+  // round trip and nothing else (audit 2026-10-10, session 05c925e9).
   const docsRel = docsRootEnv().replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
-  const planFile = /\.md$/i.test(path) && String(path).replace(/\\/g, '/').includes(`${docsRel}/plans/`);
+  const planFile = /\.md$/i.test(path) && [`${docsRel}/work/plans/`, `${docsRel}/plans/`].some((d) => String(path).replace(/\\/g, '/').includes(d)); // plans/ is pre-2.8.0
   if (size > BIG_BYTES && whole && !planFile && /\.pdf$/i.test(path)) {
     // A PDF is read by PAGE: the Read tool takes one of 10 pages or fewer whole, and a longer one only through `pages`,
     // at most 20 a call - the binary remedy below ('head -c', 'file') answered nothing for one (hooks review 2026-10-16).

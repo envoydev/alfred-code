@@ -28,7 +28,7 @@ registry, process control and file writes, moves and deletes are not there unles
 on. What stays on: the observe, input and wait tools, `ControlStatus`, `App`, `Clipboard`, `Scrape` and `Notification`.
 Windows-MCP gates by tool name, never by mode, so `App` stays whole - and its `launch_executable` mode
 starts any program (`powershell.exe -Command ...` included): a house guard denies that mode unless the
-user allowed it in `<docs-path>/flow/DESKTOP-EXEC-ALLOW`, while `launch`, `switch` and `resize` pass.
+user allowed it in `<data root>/state/approvals/DESKTOP-EXEC-ALLOW`, while `launch`, `switch` and `resize` pass.
 `ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE` replaces the list - `none` lifts it, a list of its own
 (`PowerShell` alone, or one that adds `App` on a non-English machine) takes its place. It is read from the shell that starts Claude Code, then the
 project's `settings.local.json`, its `settings.json` and the account settings `env`; the server reads

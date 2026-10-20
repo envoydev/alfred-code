@@ -9,7 +9,8 @@
 // BEFORE approval exists) and verifiers pass (read-only audits; verify-plan dispatches
 // one pre-approval). exit 2 = block (stderr fed back to the model); exit 0 = allow.
 // Stamp lifecycle: each flow/loop writes its OWN stamp when its consent lands and
-// clears it at run end. A stamp is the writing session's own: one written before this
+// clears it at run end - per plan since 2.8.0 (<data root>/state/approvals/<plan id>/APPROVAL, the brief's
+// `plan: <plan id>` line naming which; below). A stamp is the writing session's own: one written before this
 // session began is absent (a resumed flow re-stamps), unless it names its session on a
 // `session:` line (an auto-mode stamp, that session's for up to a week - hook-prelude.js
 // approvalStamp). Stamps older than MAX_STAMP_AGE_MS are treated as absent - measured: a
@@ -30,8 +31,8 @@
 // Blocked here regardless of any stamp; a broad multi-file sweep with no symbol question
 // in it still passes.
 const fs = require('fs');
-// The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
+// The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 const path = require('path');
 
 // STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in every
@@ -88,7 +89,7 @@ if (cursorOff) process.exit(0);
         // resolve, NOT join: an ABSOLUTE ALFRED_CODE_DOCS_PATH makes path.join('/a/b','/x/y')
         // '/a/b/x/y', so every ledger row landed in a doubled path that nothing reads (measured
         // across all ten guards). resolve honours an absolute value and still joins a relative one.
-        const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
+        const dir = (() => { try { return require('./layout.js').statsPath(root, ['hook-blocks']); } catch { return path.resolve(root, docsRootEnv(), 'hook-blocks'); } })();
         fs.mkdirSync(dir, { recursive: true });
         fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
           ts: new Date().toISOString(),
@@ -235,79 +236,106 @@ if (!isImplementer && !GENERIC_SEATS.has(seat)) {
 }
 // The payload's cwd before the hook's own, as the block ledger above reads it (audit 2026-10-08 row 39).
 const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-const docsRoot = docsRootEnv();
-const gate = path.resolve(root, docsRoot, 'flow', 'APPROVAL');
+// 2.8.0: the stamp lives in <data root>/state/approvals/ (layout.js); the pre-2.8.0 flow/ one a 2.7.0 skill copy writes is
+// still read for the 2.x line, and is the only path when layout.js is not beside this file. `gate` is the stamp read,
+// `gateWrite` where a denial says to write one.
+let layout = null;
+try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
+const gate = layout ? layout.findState(root, 'approvals', 'APPROVAL') : path.resolve(root, docsRootEnv(), 'flow', 'APPROVAL');
+const gateWrite = layout ? layout.statePath(root, 'approvals', 'APPROVAL') : gate;
 const MAX_STAMP_AGE_MS = 8 * 60 * 60 * 1000; // 8h - re-stamping is one Write; staleness shipped unapproved dispatches
-let first = '';
-let stale = false;
-// An auto-mode stamp names its session and is that session's for the whole run (hook-prelude.js approvalStamp); the
-// prelude reads every stamp, so the age and birth rules below are its stand-in for an install without it.
-const stampState = approvalStamp ? approvalStamp({ ...payload, cwd: root }) : undefined;
-if (stampState !== undefined) {
-  if (stampState && stampState.live) first = stampState.first;
-  else stale = Boolean(stampState);
-} else try {
-  const stampMs = fs.statSync(gate).mtimeMs;
-  const age = Date.now() - stampMs;
-  // A stamp written BEFORE this session started belongs to another session's decision, and the
-  // age cap alone let one through: five implementer dispatches ran on a stamp a different,
-  // already-closed session wrote 2h52m earlier - inside 8h, so the gate saw consent that this
-  // run never gave (measured). The stamp is the dispatching session's own or it is not consent.
-  // birthtime is real only where the filesystem reports it - Node documents that elsewhere the
-  // field falls back to the ctime (or the epoch). A transcript's ctime is its LAST write, which
-  // would date every stamp before the session and block every dispatch with a false 'stale';
-  // a birthtime equal to the ctime is that fallback and counts as unknown (the age cap still holds).
-  let sessionStartMs = 0;
+// One stamp's reading: its file, its first line while it is live, and whether it is stale. `planId` names a plan's own
+// stamp (<data root>/state/approvals/<plan id>/APPROVAL, layout.js approvalPath); none, the root one.
+function readStamp(file, planId) {
+  // An auto-mode stamp names its session and is that session's for the whole run (hook-prelude.js approvalStamp); the
+  // prelude reads every stamp, so the age and birth rules below are its stand-in for an install without it.
+  const state = approvalStamp ? approvalStamp({ ...payload, cwd: root }, undefined, planId) : undefined;
+  if (state !== undefined) return { file: state ? state.file : file, first: state && state.live ? state.first : '', stale: Boolean(state) && !state.live, state };
   try {
-    const st = fs.statSync(String(payload.transcript_path || ''));
-    sessionStartMs = st.birthtimeMs && st.birthtimeMs !== st.ctimeMs ? st.birthtimeMs : 0;
-  } catch { sessionStartMs = 0; }
-  if (age > MAX_STAMP_AGE_MS || (sessionStartMs && stampMs < sessionStartMs)) {
-    stale = true;
-  } else {
-    first = fs.readFileSync(gate, 'utf8').split('\n')[0].trim();
+    const stampMs = fs.statSync(file).mtimeMs;
+    const age = Date.now() - stampMs;
+    // A stamp written BEFORE this session started belongs to another session's decision, and the
+    // age cap alone let one through: five implementer dispatches ran on a stamp a different,
+    // already-closed session wrote 2h52m earlier - inside 8h, so the gate saw consent that this
+    // run never gave (measured). The stamp is the dispatching session's own or it is not consent.
+    // birthtime is real only where the filesystem reports it - Node documents that elsewhere the
+    // field falls back to the ctime (or the epoch). A transcript's ctime is its LAST write, which
+    // would date every stamp before the session and block every dispatch with a false 'stale';
+    // a birthtime equal to the ctime is that fallback and counts as unknown (the age cap still holds).
+    let sessionStartMs = 0;
+    try {
+      const st = fs.statSync(String(payload.transcript_path || ''));
+      sessionStartMs = st.birthtimeMs && st.birthtimeMs !== st.ctimeMs ? st.birthtimeMs : 0;
+    } catch { sessionStartMs = 0; }
+    if (age > MAX_STAMP_AGE_MS || (sessionStartMs && stampMs < sessionStartMs)) return { file, first: '', stale: true, state: undefined };
+    return { file, first: fs.readFileSync(file, 'utf8').split('\n')[0].trim(), stale: false, state: undefined };
+  } catch {
+    return { file, first: '', stale: false, state: undefined }; // absent or unreadable - no approval recorded
   }
-} catch {
-  // absent or unreadable - no approval recorded
 }
-const approved = /^(APPROVED|AUTO)\b/.test(first);
+const CONSENT = /^(APPROVED|AUTO)\b/;
+const rootStamp = readStamp(gate);
+const stampState = rootStamp.state;
+// PER-PLAN APPROVALS (2026-10-20, spec Part 4): two sessions on two plans shared one APPROVAL - the later approval
+// overwrote the earlier and either session dispatched on it. A brief names its plan on a `plan: <id>` line, and only that
+// plan's stamp passes it, or a live root AUTO (auto-mode, a solve flow's typed waiver - session-wide by design). A brief
+// with no line is a pre-2.8.0 skill copy's: the root stamp passes it, APPROVED or AUTO, for the 2.x line.
+const planId = layout && layout.planIdOf ? layout.planIdOf(input.prompt) : undefined; // an older layout.js beside it: no plan lines
+const approvalsDir = layout ? layout.statePath(root, 'approvals', '') : path.dirname(gateWrite);
+const planWrite = layout ? path.join(approvalsDir, planId || '<plan id>', 'APPROVAL') : gateWrite;
 // Ruling S3 (2026-10-20): a stamp written AFTER an ask the idle timeout closed records no one's approval - nobody
 // answered (hook-prelude.js `askTimedOut`; the answer hook writes the session's marker and clears it on the next
 // answer or typed prompt). Denied once, the marker spent, so a re-asked and answered approval is never held twice.
-function stampAfterTimeout() {
+function stampAfterTimeout(file) {
   try {
     const pre = require('./hook-prelude.js');
     if (typeof pre.askTimeoutMarker !== 'function') return false;
     const marker = pre.askTimeoutMarker(payload.session_id);
     const at = fs.statSync(marker).mtimeMs;
-    if (fs.statSync(gate).mtimeMs + 1000 < at) return false;
+    if (fs.statSync(file).mtimeMs + 1000 < at) return false;
     fs.rmSync(marker, { force: true });
     return true;
   } catch { return false; }
 }
 if (isImplementer) {
-  if (approved && stampAfterTimeout()) {
+  if (planId === null) {
+    global.BLOCK_DETAIL = { branch: 'implementer-bad-plan-id' };
+    process.stderr.write(
+      `Blocked: dispatch of ${seat} - the brief's plan: line names no plan id. A plan id is the plan file's name without\n` +
+      `.md, or the run's own id: letters, digits, '.', '_' and '-', opening with a letter or digit, at most 128 characters.\n` +
+      `Fix the line (plan: <plan id>) to name the plan whose stamp, ${path.join(approvalsDir, '<plan id>', 'APPROVAL')}, records the\n` +
+      `user's approval, then retry the dispatch.`);
+    process.exit(2);
+  }
+  const planStamp = planId ? readStamp(layout.approvalPath(root, planId), planId) : null;
+  const approving = planStamp && CONSENT.test(planStamp.first) ? planStamp
+    : /^AUTO\b/.test(rootStamp.first) || (!planId && CONSENT.test(rootStamp.first)) ? rootStamp : null;
+  if (approving && stampAfterTimeout(approving.file)) {
     global.BLOCK_DETAIL = { branch: 'implementer-ask-timed-out' };
     process.stderr.write(
-      `Blocked: dispatch of ${seat} - the question timed out - re-ask. The approval stamp at ${gate} was written after\n` +
+      `Blocked: dispatch of ${seat} - the question timed out - re-ask. The approval stamp at ${approving.file} was written after\n` +
       `an AskUserQuestion that Claude Code closed on its idle timeout ('No response after ...'), so nobody approved\n` +
       `anything. Re-ask through ONE AskUserQuestion when the user is back and write the stamp from their answer.\n` +
       `Never delete or edit the stamp to get past this.`);
     process.exit(2);
   }
-  if (approved) process.exit(0);
-  global.BLOCK_DETAIL = { branch: stale ? 'implementer-stale-stamp' : 'implementer-unapproved' };
+  if (approving) process.exit(0);
+  const needed = planStamp || rootStamp;
+  global.BLOCK_DETAIL = { branch: needed.stale ? 'implementer-stale-stamp' : 'implementer-unapproved' };
   process.stderr.write(
-    (stale
-      ? `Blocked: dispatch of ${seat} - the approval stamp at ${gate} is stale: older than 8h, or written before this session began, so it records another run's decision rather than this one's (measured: a 2h52m-old stamp from a closed session authorized five implementer dispatches).\n`
-      : `Blocked: dispatch of ${seat} without an approval gate.\n`) +
+    (needed.stale
+      ? `Blocked: dispatch of ${seat} - the approval stamp at ${needed.file} is stale: older than 8h, or written before this session began, so it records another run's decision rather than this one's (measured: a 2h52m-old stamp from a closed session authorized five implementer dispatches).\n`
+      : planId && CONSENT.test(rootStamp.first)
+        ? `Blocked: dispatch of ${seat} - its brief names plan ${planId}, and no stamp records the user's approval of THAT plan (${rootStamp.file} is another run's, or a pre-2.8.0 one).\n`
+        : `Blocked: dispatch of ${seat} without an approval gate.\n`) +
       `Implementer fan-out runs only on the user's explicit approval, or a no-stops run - never on an\n` +
       `inferred or ambiguous go-ahead. A no-stops run is the user's '--auto-mode' first after the command (the hook\n` +
       `stamps it); a hand-written AUTO waiver exists only under task-solve and task-solve-cross, in the user's typed\n` +
       `words - anywhere else the user re-runs the command with --auto-mode.\n` +
-      `If the user approved THIS conversation, write ${gate}\n` +
-      `with one first line - APPROVED <plan/contract id> - "<their words, verbatim>" (or, under those two\n` +
-      `solve flows only, AUTO - "<their words, verbatim>") - then retry the dispatch.\n` +
+      `If the user approved THIS plan in THIS conversation, write ${planWrite}\n` +
+      `with one first line - APPROVED ${planId || '<plan id>'} - "<their words, verbatim>" - and give every implementer brief the line\n` +
+      `plan: ${planId || '<plan id>'} (the plan file's name without .md), then retry the dispatch. Under those two solve flows only,\n` +
+      `the no-stops waiver is AUTO - "<their words, verbatim>" in ${gateWrite}.\n` +
       `Never fabricate the quote. Otherwise: present the plan and ask the user through ONE\n` +
       `AskUserQuestion - that stop IS the recovery path. Do NOT route around this gate by doing the seat's\n` +
       `build work inline instead: a blocked dispatch means the flow is missing its\n` +
@@ -318,8 +346,17 @@ if (isImplementer) {
   );
   process.exit(2);
 }
-// Generic seat: blocked only while a flow is actively stamped.
-if (!approved) {
+// Generic seat: blocked only while a flow is actively stamped - the root stamp or any plan's.
+let liveStamp = CONSENT.test(rootStamp.first) ? rootStamp : null;
+if (!liveStamp && layout && layout.approvalStamps) {
+  const rootFile = layout.approvalPath(root);
+  for (const file of layout.approvalStamps(root)) {
+    if (file === rootFile) continue;
+    const stamp = readStamp(file, path.basename(path.dirname(file)));
+    if (CONSENT.test(stamp.first)) { liveStamp = stamp; break; }
+  }
+}
+if (!liveStamp) {
   process.exit(0);
 }
 // ... unless the run the stamp belongs to dispatches generic seats by design: an auto-mode stamp names its session and
@@ -331,7 +368,7 @@ if (stampState && stampState.live && stampState.session && GENERIC_DISPATCH_SKIL
 }
 global.BLOCK_DETAIL = { branch: 'generic-while-stamped' };
 process.stderr.write(
-  `Blocked: dispatch of ${seat} while a flow is active (${gate} is stamped).\n` +
+  `Blocked: dispatch of ${seat} while a flow is active (${liveStamp.file} is stamped).\n` +
     `A stamped run dispatches its NAMED domain seats - a generic seat carries none of the\n` +
     `seat's pins, preloads, or trap-lists, and silently bypasses the implementer gate.\n` +
     `Use the matching named seat (or a read-only seat like Explore for pure research).\n` +

@@ -36,16 +36,20 @@ function ignores(root)
     walk(root);
     return out.sort();
 }
-const MACHINE = ['flow/COMMIT-GATE', 'hook-blocks/s.jsonl', 'history/s.json', 'tools-usage/s.jsonl', 'docs-log.jsonl', '.branches/b/x.md',
-    'usage-report/s1/raw.jsonl', 'project-capabilities/credentials.local.env'];
+// Since 2.8.0 the hooks' state and ledgers sit beside the docs, in the data root's state/ and statistics/ (stack/hooks/layout.js);
+// under the docs root only the run book's old credentials file and the awareness inventory stay machine-local.
+const MACHINE = ['state/approvals/COMMIT-GATE', 'state/sessions/turn-check-s', 'state/history/s.json', 'statistics/hook-blocks/s.jsonl',
+    'statistics/tools-usage/s.jsonl', 'statistics/docs-log.jsonl', 'statistics/usage-report/s1/raw.jsonl', 'statistics/usage-report/s1/REPORT.md',
+    'docs/project-capabilities/credentials.local.env', 'docs/awareness/AGENTS-AWARENESS.md'];
 
 test('git versioning: the data root file alone keeps the machine state out and the docs in', () =>
 {
     const root = repo();
     assert.strictEqual(docs.ensureDataIgnore({ projectRoot: root, root: '.alfred', docsPath: '.alfred/docs', mode: 'git' }), 'written');
-    for (const rel of [...MACHINE, 'architecture/ARCHITECTURE.md', 'usage-report/s1/REPORT.md']) put(root, `.alfred/docs/${rel}`);
+    for (const rel of [...MACHINE, 'docs/architecture/ARCHITECTURE.md', 'docs/work/plans/p.md', 'docs/quality/CODE-ASSESSMENT.md']) put(root, `.alfred/${rel}`);
     for (const rel of ['serena/cache/x', '.alfred-memory/memory.db', 'chrome-control/Cookies', '.sensitive-data']) put(root, `.alfred/${rel}`);
-    assert.deepStrictEqual(status(root), ['?? .alfred/.gitignore', '?? .alfred/docs/architecture/ARCHITECTURE.md', '?? .alfred/docs/usage-report/s1/REPORT.md']);
+    assert.deepStrictEqual(status(root), ['?? .alfred/.gitignore', '?? .alfred/docs/architecture/ARCHITECTURE.md', '?? .alfred/docs/quality/CODE-ASSESSMENT.md',
+        '?? .alfred/docs/work/plans/p.md']);
     assert.deepStrictEqual(ignores(root), ['.alfred/.gitignore'], 'one .gitignore in the whole tree');
     execFileSync('git', ['add', '.alfred/docs/architecture/ARCHITECTURE.md'], { cwd: root });
     assert.strictEqual(docs.docsVersioningSeed({ projectRoot: root, docsPath: '.alfred/docs' }), 'git', 'the seed still reads a committed root');
@@ -69,10 +73,43 @@ test('a local root over docs git already tracks keeps them visible, the machine 
     const logs = [];
     docs.ensureDataIgnore({ projectRoot: root, root: '.alfred', docsPath: '.alfred/docs', mode: 'local', log: (m) => logs.push(m) });
     put(root, '.alfred/docs/architecture/NEW.md');
-    put(root, '.alfred/docs/flow/APPROVAL');
+    put(root, '.alfred/state/approvals/APPROVAL');
     assert.ok(status(root).includes('?? .alfred/docs/architecture/NEW.md'), 'a new doc is not hidden');
-    assert.ok(!status(root).some((l) => l.includes('flow/')));
+    assert.ok(!status(root).some((l) => l.includes('state/')));
     assert.ok(logs.some((m) => /git tracks docs under \.alfred\/docs - they stay visible to git/.test(m)), logs.join(' | '));
+});
+
+// The pre-2.8.0 homes of the hooks' state stay out of git for the 2.x line (temp-project matrix, 2026-10-21): a session
+// started before the update runs its old hooks and writes them again, and a hand-set root keeps them until its move is
+// answered. With the lines dropped, `git add -A` under git versioning took an approval stamp and the block ledger.
+const OLD_HOMES = ['flow/APPROVAL', 'flow/turn-check-s', 'hook-blocks/s.jsonl', 'tools-usage/s.jsonl', 'docs-log.jsonl', 'history/s.json',
+    'usage-report/s1/raw.jsonl'];
+test('2.8.0: the hooks\' pre-2.8.0 homes under the docs root stay out of git; a team\'s own doc beside them does not', () =>
+{
+    const inData = repo();
+    docs.ensureDataIgnore({ projectRoot: inData, root: '.alfred', docsPath: '.alfred/docs', mode: 'git' });
+    for (const rel of [...OLD_HOMES, 'history/decisions.md', 'work/plans/p.md']) put(inData, `.alfred/docs/${rel}`);
+    assert.deepStrictEqual(status(inData), ['?? .alfred/.gitignore', '?? .alfred/docs/history/decisions.md', '?? .alfred/docs/work/plans/p.md']);
+    const outside = repo();
+    docs.ensureDataIgnore({ projectRoot: outside, root: '.alfred', docsPath: 'docs', mode: 'git' });
+    docs.ensureDocsIgnore({ projectRoot: outside, docsPath: 'docs', mode: 'git' });
+    for (const rel of [...OLD_HOMES, 'history/decisions.md']) put(outside, `docs/${rel}`);
+    assert.deepStrictEqual(status(outside), ['?? .alfred/.gitignore', '?? docs/.gitignore', '?? docs/history/decisions.md']);
+});
+
+test('2.8.0: an update replaces the 2.7.0 git text in a docs root\'s own file - it is the stack\'s, not the project\'s', () =>
+{
+    const root = repo();
+    const OLD = '# alfred-code: the docs are committed (ALFRED_CODE_DOCS_VERSIONING=git); the hooks\' machine-local state is not\n'
+        + '/flow/\n/hook-blocks/\n/history/\n/tools-usage/\n/.branches/\n/docs-log.jsonl\n'
+        + '# the usage audit\'s raw transcript and ledger copies stay on this machine\n/usage-report/**/*.jsonl\n'
+        + '# the run book\'s credentials file before 2026-10-13, which an older capture still writes\n/project-capabilities/credentials.local.env\n'
+        + '# the awareness capture\'s inventory names this machine\'s plugins\n/awareness/AGENTS-AWARENESS.md\n';
+    assert.ok(docs.DOCS_IGNORE_FORMER.includes(OLD), 'the 2.7.0 text is a former text');
+    put(root, 'docs/.gitignore', OLD);
+    assert.strictEqual(docs.ensureDocsIgnore({ projectRoot: root, docsPath: 'docs', mode: 'git' }), 'replaced');
+    assert.strictEqual(fs.readFileSync(path.join(root, 'docs', '.gitignore'), 'utf8'), docs.DOCS_IGNORE.git);
+    assert.strictEqual(docs.ensureDocsIgnore({ projectRoot: root, docsPath: 'docs', mode: 'git' }), 'current');
 });
 
 test('the launcher half writes the shape the settings name, absent-only', () =>
@@ -106,6 +143,8 @@ test('an update over a 2.4.0 layout removes every nested stack .gitignore once t
             const data = docs.ensureDataIgnore({ projectRoot: root, root: '.alfred', docsPath: '.alfred/docs', mode, log: (m) => logs.push(m) });
             const own = docs.ensureDocsIgnore({ projectRoot: root, docsPath: '.alfred/docs', mode, covered: true, log: (m) => logs.push(m) });
             const gone = docs.pruneNestedIgnores({ projectRoot: root, root: '.alfred', docsPath: '.alfred/docs', docsCovered: true, dataCovered: true, log: (m) => logs.push(m) });
+            // then the 2.8.0 layout move, as the update runs it: history/ joins the data root's state/
+            docs.migrateLayout({ projectRoot: root, docsPath: '.alfred/docs', dataPath: '.alfred', log: (m) => logs.push(m) });
             return { data, own, gone };
         };
         const first = run();
@@ -140,7 +179,8 @@ test('a docs root outside the data root keeps its own file, which covers the his
     assert.strictEqual(docs.ensureDocsIgnore({ projectRoot: root, docsPath: 'docs/alfred', mode: 'git', covered: false }), 'written');
     put(root, 'docs/alfred/history/.gitignore', '*\n');
     assert.deepStrictEqual(docs.pruneNestedIgnores({ projectRoot: root, root: '.alfred', docsPath: 'docs/alfred', docsCovered: true, dataCovered: true }), ['docs/alfred/history/.gitignore']);
-    for (const rel of MACHINE) put(root, `docs/alfred/${rel}`);
+    // the state follows the data root wherever the docs root sits
+    for (const rel of MACHINE) put(root, rel.startsWith('docs/') ? `docs/alfred/${rel.slice('docs/'.length)}` : `.alfred/${rel}`);
     put(root, 'docs/alfred/architecture/ARCHITECTURE.md');
     assert.deepStrictEqual(status(root), ['?? .alfred/.gitignore', '?? docs/alfred/.gitignore', '?? docs/alfred/architecture/ARCHITECTURE.md']);
 });

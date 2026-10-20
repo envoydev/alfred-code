@@ -49,7 +49,7 @@ function envOf(env, suffix)
 }
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 const DOCS_ROOT = path.resolve(ROOT, docsRootEnv());
 const DOCS = path.join(DOCS_ROOT, 'architecture');
 const BLOCK_FILE = path.join(DOCS, 'ORIENTATION.md');
@@ -100,6 +100,9 @@ const MAX_SECTION_CHARS = 6000;
 // opens with (capture-architecture references/doc-shapes.md) - both read by lint below.
 const KNOWN_CEILINGS = 'known-ceilings';
 const CAPTURE_STAMP = /^[\s>*_`]*Captured:\s*\S+@[0-9a-f]{4,}/m;
+// A domain whose sections cover no files by design: the user's preferences (/capture-preferences) do not drift with
+// the code, so no section owes a `covers` line and none is ever outgrown.
+const COVERLESS_DOMAINS = new Set(['preferences']);
 // One capture's write pass: a file written within this span of the map itself (ARCHITECTURE.md, which every capture
 // rewrites) was written by the same run.
 const WRITE_PASS_MS = 2 * 3600 * 1000;
@@ -1613,7 +1616,7 @@ function lint(domain) {
     // map) owes `covers` lines by its shape, so a rewrite that dropped them is a PROBLEM that run can fix; a file it did
     // not touch, a human-authored one or another domain's keeps the note, since the capture may not rewrite it (audit
     // 2026-10-20 C27, 29e4002f: five rewritten reference files closed on the note alone).
-    if (!hist && secs.length && !secs.some((s) => s.covers.length)) {
+    if (!hist && secs.length && !COVERLESS_DOMAINS.has(fileDomain(f)) && !secs.some((s) => s.covers.length)) {
       if (fileDomain(f) === 'architecture' && CAPTURE_STAMP.test(raw.slice(0, 600)) && sameWritePass(f)) problems.push(`no section declares covers: ${relKey(f)} - the capture's shape gives every section a <!-- covers: --> line`);
       else notes.push(`no section declares covers: ${relKey(f)}`);
     }
@@ -2075,9 +2078,16 @@ blockingStdio();
 
 const cmd = process.argv[2];
 const args = process.argv.slice(3);
-// Under the docs root, beside hook-blocks/ and tools-usage/: every other ledger in this stack lives there, and
-// under .claude/ a project that commits that folder accumulated this one in git.
-const docsLog = (row) => { try { fs.mkdirSync(DOCS_ROOT, { recursive: true }); fs.appendFileSync(path.join(DOCS_ROOT, 'docs-log.jsonl'), `${JSON.stringify({ at: new Date().toISOString(), ...row })}\n`); } catch {} };
+// Beside hook-blocks/ and tools-usage/ in the data root's statistics/ (2.8.0, layout.js copied beside this engine) - every
+// ledger in this stack lives there, never committed; an older copy route without layout.js keeps the docs root.
+const docsLog = (row) => {
+  try {
+    let file = path.join(DOCS_ROOT, 'docs-log.jsonl');
+    try { file = require('./layout.js').statsPath(ROOT, ['docs-log.jsonl']); } catch { /* an older copy route */ }
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.appendFileSync(file, `${JSON.stringify({ at: new Date().toISOString(), ...row })}\n`);
+  } catch {}
+};
 const commands = {
   toc: () => console.log(toc(args[0])),
   show: () => {

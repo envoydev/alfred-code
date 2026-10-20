@@ -186,6 +186,27 @@ test('M38 every shipped serena index command names the release pin and the cut-o
     for (const [rel, line] of sites) assert.ok(line.endsWith(want), `${rel}: ${line}`);
 });
 
+// The same drift outside the index line: post-install's pre-warm ran `uvx --from serena-agent serena --help`, which
+// cached the newest serena-agent while the server started on the pin (MCP track 2026-10-20b). Every shipped
+// `--from serena-agent` names the release pin and its cut-off.
+test('every shipped serena-agent launch names the release pin and the cut-off', () =>
+{
+    const file = JSON.parse(read('meta/mcp-pins.json'));
+    const want = `--exclude-newer ${file.refreshed}T23:59:59Z --from serena-agent@${file.pins["alfred-navigation"].version}`;
+    const bad = [];
+    const walk = (dir) =>
+    {
+        for (const d of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true }))
+        {
+            const rel = path.join(dir, d.name);
+            if (d.isDirectory()) walk(rel);
+            else if (/\.md$/.test(d.name)) for (const m of read(rel).matchAll(/(?:--exclude-newer\s+\S+\s+)?--from\s+serena-agent\S*/g)) if (m[0].replace(/\s+/g, ' ') !== want) bad.push(`${rel}: ${m[0]}`);
+        }
+    };
+    for (const dir of ['setup-plugin', 'stack']) walk(dir);
+    assert.deepEqual(bad, []);
+});
+
 // R7: the stack's serena context copies serena-agent's own claude-code.yml at the pin, and a later serena could add
 // an editing tool that context would then serve unwatched. The shipped YAML records the upstream file's sha256; the
 // refresh keeps the navigation pin where it is until the new release's claude-code.yml hashes the same - i.e. until

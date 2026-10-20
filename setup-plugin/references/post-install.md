@@ -30,8 +30,8 @@ claude mcp list
 ```
 
 Every row should read connected. A timeout on `alfred-navigation` (Serena) usually means its first run is still
-fetching the language server (re-run once it settles, or pre-warm with `uvx --from serena-agent
-serena --help`). A timeout on `alfred-memory` is its FIRST start downloading the embedding model (~166MB into
+fetching the language server (re-run once it settles, or pre-warm with `uvx --python 3.13 --exclude-newer
+2026-10-20T23:59:59Z --from serena-agent@2.1.0 serena --help` - the pin the server starts on). A timeout on `alfred-memory` is its FIRST start downloading the embedding model (~166MB into
 `~/.cache/mcp_memory`: measured 33s cold, 2s warm, against the 30s budget), not a missing runtime: the
 install fetches it ahead where uvx is present (`memory: the embedding model is cached now`) and init's plan
 lists it otherwise; fetch it with `node .claude/hooks/memory.js warm`. Claude Code then remembers the
@@ -126,7 +126,7 @@ Init builds it once; by hand, run it from the project root (the first run also d
 C# Roslyn, which needs .NET 10+; the navigation server installs the runtime itself if it is missing):
 
 ```bash
-SERENA_HOME=.alfred/serena/home uvx --python 3.13 --exclude-newer 2026-10-14T23:59:59Z --from serena-agent@2.0.0 serena project index
+SERENA_HOME=.alfred/serena/home uvx --python 3.13 --exclude-newer 2026-10-20T23:59:59Z --from serena-agent@2.1.0 serena project index
 ```
 
 (Your data root in place of `.alfred` when you chose another; `.serena/home` while a 2.0.0 `.serena`
@@ -140,7 +140,7 @@ serena that serves it. (Windows PowerShell: `$env:SERENA_HOME='.alfred\serena\ho
 Or paste this prompt and let the session do it:
 
 ```text
-Index this project for the navigation server (SERENA_HOME=.alfred/serena/home, `uvx --python 3.13 --exclude-newer 2026-10-14T23:59:59Z --from serena-agent@2.0.0 serena project index` - on Windows the spelling above), then verify with
+Index this project for the navigation server (SERENA_HOME=.alfred/serena/home, `uvx --python 3.13 --exclude-newer 2026-10-20T23:59:59Z --from serena-agent@2.1.0 serena project index` - on Windows the spelling above), then verify with
 find_symbol and find_referencing_symbols on a symbol you pick from the code. If the run reports
 failed files, look at .alfred/serena/project.yml - its language_servers and ignored_paths - and tell me
 what you changed.
@@ -181,6 +181,10 @@ Optional, whenever you want the coverage picture: `/capture-test-coverage` - it
 measures the suite and asks for YOUR coverage bar on first capture, recording it for every later
 run.
 
+Optional, whenever you have one to record: `/capture-preferences <your words>` - your own code,
+architecture or git preferences ('avoid static classes', 'branches are feature/<ticket>'), which every
+seat then follows. Init never runs it: the preferences are yours to state, not the codebase's to read.
+
 ## Later - after switching to a structurally different branch
 
 A branch switch that meaningfully changes the structure (new modules, moved projects, different
@@ -188,7 +192,7 @@ dependencies) leaves session-side state describing the OLD tree. Worth pasting t
 
 ```text
 I switched branches and the structure changed. Re-run dependency install if needed, restart the
-language server, re-index for the navigation server (SERENA_HOME=.alfred/serena/home, `uvx --python 3.13 --exclude-newer 2026-10-14T23:59:59Z --from serena-agent@2.0.0 serena project index` - on Windows the spelling above), and purge
+language server, re-index for the navigation server (SERENA_HOME=.alfred/serena/home, `uvx --python 3.13 --exclude-newer 2026-10-20T23:59:59Z --from serena-agent@2.1.0 serena project index` - on Windows the spelling above), and purge
 any handoff note a run left behind (`node .claude/hooks/memory.js handoff` lists them).
 ```
 

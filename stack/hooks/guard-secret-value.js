@@ -54,8 +54,8 @@ if (require.main === module) {
   // Outside the try: the shell-guard dispatcher runs this file in-process, where that catch would swallow the exit.
   if (off) process.exit(0);
 }
-// The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
+// The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 
 // Keys whose value is a credential - the SAME string as meta/environment.json `secret_key_pattern`
 // (npm run lint fails when the two differ), matched case-insensitively so `apiKey` and `API_KEY`
@@ -92,7 +92,7 @@ const TEMPLATE_VALUE = /^(?:your[-_]|<[^>]+>$|changeme|x{3,}$|\.\.\.$|todo|repla
 // A value that IS an identifier NAME names a credential, it is not one: SCREAMING_SNAKE with at
 // least one underscore, no lower case, nothing else in it. Measured: this stack's OWN catalogs are
 // lists of variable names under a field literally called `key`, so `meta/environment.json`
-// (`env.0.key` = `ALFRED_CODE_DOCS_PATH`) and `meta/migrations.json`
+// (`env.0.key` = `ALFRED_CODE_DATA_PATH`) and `meta/migrations.json`
 // (`detect.settings_env_key` = `ALFRED_CODE_FRESH_SESSION_PCT`) were read as credential files - on the Read
 // route a block, and on the shell route something worse: every `key` in the file the guided walks
 // run on came back as `<set (N chars)>`. A SHAPE match still wins, so an all-caps credential like
@@ -701,7 +701,7 @@ function resolveFile(token) {
 // A block or a redacted view ends in an ask, and the 'show or use it' answer has to be honourable or
 // the ask offers a route this guard then denies. A remote user cannot run the copy-ready command in
 // their own terminal - the bare denial took the decision away from them. So the answer is a receipt
-// this guard reads: <docs-path>/flow/SECRET-READ-ALLOW, one entry per line ('#' comments allowed) -
+// this guard reads: <data root>/state/approvals/SECRET-READ-ALLOW (the pre-2.8.0 <docs-path>/flow/ one still read, layout.js), one entry per line ('#' comments allowed) -
 // a file path (that file may be read or dumped), a variable NAME (that variable may be printed), or
 // `*` (everything, this session). Session-scoped the way the dispatch guard's APPROVAL stamp is:
 // older than 8h, or written before this session began (the transcript's birthtime where the
@@ -714,8 +714,11 @@ function resolveFile(token) {
 const MAX_RECEIPT_AGE_MS = 8 * 60 * 60 * 1000;
 const realOf = (p) => { try { return fs.realpathSync(p); } catch { return pathMod.resolve(p); } };
 const sessionIdOf = (v) => (typeof v === 'string' && /^[\w.-]{1,128}$/.test(v) ? v : '');
+let layout = null;
+try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
 function readReceipt(root, transcriptPath, sessionId) {
-  const r = { path: pathMod.resolve(root, docsRootEnv(), 'flow', 'SECRET-READ-ALLOW'), stale: false, all: false, files: new Set(), names: new Set(), live: false, session: sessionIdOf(sessionId) };
+  const r = { path: layout ? layout.findState(root, 'approvals', 'SECRET-READ-ALLOW') : pathMod.resolve(root, docsRootEnv(), 'flow', 'SECRET-READ-ALLOW'),
+    write: layout ? layout.statePath(root, 'approvals', 'SECRET-READ-ALLOW') : null, stale: false, all: false, files: new Set(), names: new Set(), live: false, session: sessionIdOf(sessionId) };
   try {
     const st = fs.statSync(r.path);
     let sessionStartMs = 0;
@@ -751,7 +754,7 @@ function readReceipt(root, transcriptPath, sessionId) {
 const askLine = (r) =>
   'If the user needs the VALUE itself (shown, or placed where a blind copy cannot reach), end the turn with ONE ' +
   "AskUserQuestion: 'Presence only (Recommended)', 'Show or use the value this session - it enters the transcript permanently', 'Drop it'. " +
-  `On the second answer write ${r.path}: ${r.session ? `\`session: ${r.session}\`` : '`session: <id>` (`$CLAUDE_CODE_SESSION_ID`)'}, ` +
+  `On the second answer write ${r.write || r.path}: ${r.session ? `\`session: ${r.session}\`` : '`session: <id>` (`$CLAUDE_CODE_SESSION_ID`)'}, ` +
   'then the file, the variable NAME or `*`, one per line, and retry (this session, under 8h)' +
   (r.stale ? ' - the receipt there now is stale (older than 8h, from before this session, or naming another), so rewrite it only on a fresh answer' : '') + '.';
 // A note the rewritten call prints as its first line, so the model reads what happened and the route
@@ -1375,7 +1378,7 @@ if (payload.cwd != null && (typeof payload.cwd !== 'string' || !payload.cwd)) de
         // resolve, NOT join: an ABSOLUTE ALFRED_CODE_DOCS_PATH makes path.join('/a/b','/x/y')
         // '/a/b/x/y', so every ledger row landed in a doubled path that nothing reads (measured
         // across all ten guards). resolve honours an absolute value and still joins a relative one.
-        const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
+        const dir = (() => { try { return require('./layout.js').statsPath(root, ['hook-blocks']); } catch { return path.resolve(root, docsRootEnv(), 'hook-blocks'); } })();
         fs.mkdirSync(dir, { recursive: true });
         fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
           ts: new Date().toISOString(),
@@ -1409,7 +1412,7 @@ function rewriteRow(detail) {
   if (unsetRepo) return;
   if (typeof payload.permission_mode === 'string' && payload.permission_mode) detail = { ...detail, permissionMode: payload.permission_mode };
   try {
-    const dir = pathMod.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), docsRootEnv(), 'hook-blocks');
+    const dir = (() => { try { return require('./layout.js').statsPath(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), ['hook-blocks']); } catch { return pathMod.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), docsRootEnv(), 'hook-blocks'); } })();
     fs.mkdirSync(dir, { recursive: true });
     fs.appendFileSync(pathMod.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
       ts: new Date().toISOString(), hook: pathMod.basename(__filename), event: payload.hook_event_name || payload.tool_name || '',
@@ -2973,7 +2976,7 @@ function shortLivedFetch(raw) {
 function shortLivedRow(links) {
   if (unsetRepo) return;
   try {
-    const dir = pathMod.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), docsRootEnv(), 'hook-blocks');
+    const dir = (() => { try { return require('./layout.js').statsPath(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), ['hook-blocks']); } catch { return pathMod.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), docsRootEnv(), 'hook-blocks'); } })();
     fs.mkdirSync(dir, { recursive: true });
     fs.appendFileSync(pathMod.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
       ts: new Date().toISOString(), hook: pathMod.basename(__filename), event: payload.hook_event_name || payload.tool_name || '',
@@ -3101,11 +3104,14 @@ function refuseSensitiveMention(text, steps = text) {
   // the spelled name: each operand resolved the way the dump half resolves it
   let budget = 64;
   const isStore = (p) => baseOf(p) === SENSITIVE_FILE || baseOf(realOf(p)) === SENSITIVE_FILE;
-  const statAny = (p) => {
+  // Every anchor the operand exists at, never the first alone: the project dir's own data root (no store) listed before the
+  // cwd's hid the cwd's store from a tree-taking verb.
+  const statAll = (p) => {
+    const out = [];
     for (const c of pathMod.isAbsolute(p) ? [p] : anchorDirs().map((d) => pathMod.join(d, p))) {
-      try { const st = fs.statSync(c); return { at: c, dir: st.isDirectory() }; } catch { /* next anchor */ }
+      try { const st = fs.statSync(c); out.push({ at: c, dir: st.isDirectory() }); } catch { /* next anchor */ }
     }
-    return null;
+    return out;
   };
   const judgeStage = (stage, depth, pipedOn) => {
     // an assignment-only step binds its name for the steps after it, in order (assignedValue)
@@ -3177,9 +3183,7 @@ function refuseSensitiveMention(text, steps = text) {
       const value = /^-[^=]*=/.test(word) ? word.slice(word.indexOf('=') + 1) : word;
       if (!value || value.startsWith('-') || value.length > 512) continue;
       budget--;
-      for (const p of candidatePaths(value)) {
-        const hit = statAny(p);
-        if (!hit) continue;
+      for (const p of candidatePaths(value)) for (const hit of statAll(p)) {
         if (!hit.dir && isStore(hit.at)) refuse(verb);
         if (hit.dir && bundles && !excludes([SENSITIVE_FILE])) { try { if (fs.statSync(pathMod.join(hit.at, SENSITIVE_FILE)).isFile()) refuse(verb); } catch { /* not here */ } }
         if (hit.dir && storeAt && raw !== destination) {

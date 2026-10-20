@@ -37,6 +37,11 @@
 // exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unparseable.
 const fs = require('fs');
 const nodePath = require('path');
+// 2.8.0: the hooks' state lives under <data root>/state/ (layout.js) - the auto-mode stamp in approvals/, the PreCompact
+// snapshot in sessions/; the pre-2.8.0 <docs-path>/flow/ is still read for the 2.x line, and is the only home when
+// layout.js is not beside this file.
+let layout = null;
+try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
 
 // STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in every
 // hook. Fail-open on purpose - no prelude, no project dir or a malformed settings file all leave
@@ -54,8 +59,8 @@ if (require.main === module) {
     if (prelude.standDown('guard-fresh-session-start')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
-// The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
+// The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 let payload;
 try {
   payload = JSON.parse(fs.readFileSync(0, 'utf8'));
@@ -89,7 +94,7 @@ if (cursorOff) process.exit(0);
         // resolve, NOT join: an ABSOLUTE ALFRED_CODE_DOCS_PATH makes path.join('/a/b','/x/y')
         // '/a/b/x/y', so every ledger row landed in a doubled path that nothing reads (measured
         // across all ten guards). resolve honours an absolute value and still joins a relative one.
-        const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
+        const dir = (() => { try { return require('./layout.js').statsPath(root, ['hook-blocks']); } catch { return path.resolve(root, docsRootEnv(), 'hook-blocks'); } })();
         fs.mkdirSync(dir, { recursive: true });
         fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
           ts: new Date().toISOString(),
@@ -115,7 +120,7 @@ if (cursorOff) process.exit(0);
 // block. Best-effort - a lost row is a lost measurement, never a changed turn.
 function ledgerRow(row) {
   try {
-    const dir = nodePath.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), docsRootEnv(), 'hook-blocks');
+    const dir = (() => { try { return require('./layout.js').statsPath(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), ['hook-blocks']); } catch { return nodePath.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), docsRootEnv(), 'hook-blocks'); } })();
     fs.mkdirSync(dir, { recursive: true });
     fs.appendFileSync(nodePath.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
       ts: new Date().toISOString(), hook: nodePath.basename(__filename), event: payload.hook_event_name || '', tool: payload.tool_name || '', ...row,
@@ -449,11 +454,13 @@ if (EVENT === 'UserPromptSubmit') {
   process.exit(0);
 }
 
-// PreCompact: the last moment the whole transcript is still there. Write what a resume needs to the
-// flow dir - the live plan file, the open flow stamps with their ages, the files this session wrote
+// PreCompact: the last moment the whole transcript is still there. Write what a resume needs to
+// <data root>/state/sessions/COMPACT-STATE - the live plan file, the open flow stamps with their ages, the files this session wrote
 // (from docs-session's per-actor attribution state) - with no model call; the SessionStart `compact`
 // injection below points at it. Never blocks a compaction: every failure only leaves a line out.
-const COMPACT_STATE = () => nodePath.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), docsRootEnv(), 'flow', 'COMPACT-STATE');
+const projectRoot = () => process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+const legacyFlow = () => nodePath.resolve(projectRoot(), docsRootEnv(), 'flow');
+const COMPACT_STATE = () => (layout ? layout.statePath(projectRoot(), 'sessions', 'COMPACT-STATE') : nodePath.join(legacyFlow(), 'COMPACT-STATE'));
 const FILES_SHOWN = 50;
 function livePlan() {
   // The LAST plan file a tool call touched in the transcript tail, else the newest plan under the docs root.
@@ -480,8 +487,9 @@ function livePlan() {
   } catch { /* no transcript - fall through to the docs root */ }
   try {
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-    // plans/ since 2.2.2; superpowers/plans/ until an update moves it (docs.migratePlans).
-    for (const sub of [['plans'], ['superpowers', 'plans']]) {
+    // work/plans/ since 2.8.0; plans/ (2.2.2) and superpowers/plans/ until an update moves them (layout.js LAYOUT_MOVES,
+    // docs.migratePlans).
+    for (const sub of [['work', 'plans'], ['plans'], ['superpowers', 'plans']]) {
       const dir = nodePath.resolve(root, docsRootEnv(), ...sub);
       let names;
       try { names = fs.readdirSync(dir); } catch { continue; }
@@ -492,16 +500,33 @@ function livePlan() {
   } catch { /* no plans folder */ }
   return null;
 }
+// The open stamps: every receipt in <data root>/state/approvals/, then one a pre-2.8.0 hook or skill copy left in the old
+// flow/ - only a receipt's name there (layout.js flowKind), never the session scratch it shared the folder with.
 function flowStamps() {
-  try {
-    const dir = nodePath.dirname(COMPACT_STATE());
-    return fs.readdirSync(dir)
-      // the retired monitor's state (its turn log and context marker) and the turn check's marker (an edit list before
-      // 2026-10-16) are working state, not stamps
-      .filter((f) => f !== 'COMPACT-STATE' && f !== 'compact-points.json' && !/^monitor-.*\.(?:json|jsonl|context)$/.test(f) && !/^turn-(?:edits|check)-/.test(f))
-      .map((f) => ({ f, age: Math.round((Date.now() - fs.statSync(nodePath.join(dir, f)).mtimeMs) / 60000) }))
-      .sort((a, b) => a.f.localeCompare(b.f));
-  } catch { return []; }
+  const seen = new Map();
+  const list = (dir, keep) => {
+    try {
+      for (const f of fs.readdirSync(dir)) {
+        if (seen.has(f) || !keep(f)) continue;
+        seen.set(f, Math.round((Date.now() - fs.statSync(nodePath.join(dir, f)).mtimeMs) / 60000));
+      }
+    } catch { /* no such folder */ }
+  };
+  if (layout) {
+    const approvals = nodePath.dirname(layout.statePath(projectRoot(), 'approvals', 'APPROVAL'));
+    list(approvals, (f) => { try { return fs.statSync(nodePath.join(approvals, f)).isFile(); } catch { return false; } });
+    // a plan's own stamp (per-plan approvals, 2026-10-20), named <plan id>/APPROVAL
+    for (const file of layout.approvalStamps ? layout.approvalStamps(projectRoot()) : []) {
+      const f = nodePath.relative(approvals, file).split(nodePath.sep).join('/');
+      if (f === 'APPROVAL' || seen.has(f)) continue;
+      try { seen.set(f, Math.round((Date.now() - fs.statSync(file).mtimeMs) / 60000)); } catch { /* gone meanwhile */ }
+    }
+  }
+  // the retired monitor's state (its turn log and context marker) and the turn check's marker (an edit list before
+  // 2026-10-16) are working state, not stamps
+  list(legacyFlow(), layout ? (f) => layout.flowKind(f) === 'approvals'
+    : (f) => f !== 'COMPACT-STATE' && f !== 'compact-points.json' && !/^monitor-.*\.(?:json|jsonl|context)$/.test(f) && !/^turn-(?:edits|check)-/.test(f));
+  return [...seen].map(([f, age]) => ({ f, age })).sort((a, b) => a.f.localeCompare(b.f));
 }
 function sessionWrites() {
   const os = require('os');
@@ -524,7 +549,7 @@ function sessionWrites() {
 // after that spend. `capture-awareness` is here because the stack's own next-steps card
 // tells the user to run it after every update (its 2026-10-16 parts keep their old names here for an old copy). The guided plugin commands are here because
 // they are multi-phase walks too, and the slash route is what finally reaches them.
-const ORCHESTRATION = /^((alfred-)?(loop-(quality|code-quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|awareness|code-quality|code-style|test-coverage|usage-report|related-projects|agent-awareness|project-awareness|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|alfred-code:(init|update|configure|validate))$/;
+const ORCHESTRATION = /^((alfred-)?(loop-(quality|code-quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|awareness|code-quality|code-style|preferences|test-coverage|usage-report|related-projects|agent-awareness|project-awareness|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|alfred-code:(init|update|configure|validate))$/;
 // a plugin-namespaced Skill call arrives as `<plugin>:<skill>`; the guided commands are
 // matched on their FULL name, so a bare `/setup` from some other plugin is not read as one of them - and only this
 // stack's own namespace is stripped, so another plugin's `other:task-solve` is not this stack's run (audit 2026-10-08)
@@ -698,7 +723,7 @@ if (EVENT === 'PreCompact') {
 // session's newest run was a SLASH flow, the line that puts its body back before the next step.
 function compactPointer() {
   try {
-    const file = COMPACT_STATE();
+    const file = layout ? layout.findState(projectRoot(), 'sessions', 'COMPACT-STATE') : COMPACT_STATE();
     if (Date.now() - fs.statSync(file).mtimeMs > 60 * 60 * 1000) return '';
     const state = fs.readFileSync(file, 'utf8').split('\n');
     if (!payload.session_id || !state.includes(`session: ${payload.session_id}`)) return '';
@@ -916,7 +941,8 @@ function autoModeStart() {
     return null;
   }
   const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-  const file = nodePath.resolve(root, docsRootEnv(), 'flow', 'APPROVAL');
+  // written to <data root>/state/approvals/; approvalStamp reads it there, then the pre-2.8.0 flow/
+  const file = layout ? layout.statePath(root, 'approvals', 'APPROVAL') : nodePath.resolve(root, docsRootEnv(), 'flow', 'APPROVAL');
   let current = null;
   try { current = require('./hook-prelude.js').approvalStamp({ ...payload, cwd: root }); } catch { /* no prelude: written fresh */ }
   const kept = Boolean(current && current.live && current.session === sid && /^AUTO\b/.test(current.first));
@@ -925,7 +951,7 @@ function autoModeStart() {
   // live run counts - a stamp under 8h old was refused before, which silently cost a fresh-session hand-off its
   // auto-mode. This run asks as it always has, and the banner says why and how to take over.
   if (current && current.session && current.session !== sid && otherSessionLive(current.session)) {
-    const rel = nodePath.relative(root, file).split(nodePath.sep).join('/') || file;
+    const rel = nodePath.relative(root, current.file).split(nodePath.sep).join('/') || current.file;
     autoRefused = `another session (${current.session.slice(0, 8)}) is running a stamped run in this checkout right now, and ${rel} is its approval - `
       + `finish or stop that run, or delete ${rel} to take over, then type the command again`;
     ledgerRow({ mode: 'auto', kind: 'auto-start-refused', reason: `auto-mode: ${skill} - the APPROVAL stamp belongs to a session still running, left as it is` });
@@ -939,9 +965,12 @@ function autoModeStart() {
       fs.mkdirSync(nodePath.dirname(file), { recursive: true });
       fs.writeFileSync(file, `AUTO - "${words}"\nsession: ${sid}\nskill: ${skill}\nat: ${new Date().toISOString()}\n`);
     } catch { return null; }   // no stamp, no auto-mode: the run asks as it always has
+    // the stamp this one replaces, left in the pre-2.8.0 flow/, would be read again once the run's close deletes the new one
+    if (current && current.file !== file) try { fs.rmSync(current.file, { force: true }); } catch { /* the new one wins while it stands */ }
   }
+  const at = kept ? current.file : file;
   ledgerRow({ mode: 'auto', kind: 'auto-start', reason: `auto-mode: ${kept ? 'the live stamp kept' : 'stamp written'} for ${skill}`, detail: { skill, kept } });
-  return { file: nodePath.relative(root, file).split(nodePath.sep).join('/') || file };
+  return { file: nodePath.relative(root, at).split(nodePath.sep).join('/') || at };
 }
 const auto = (IS_SKILL_CALL && (EVENT === 'PreToolUse' || !EVENT)) || EVENT === 'UserPromptExpansion' ? autoModeStart() : null;
 // --- the MODE BANNER (the user's ruling, 2026-10-15) ---

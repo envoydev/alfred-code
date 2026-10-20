@@ -22,7 +22,7 @@ surface) aggregates the digests, judges against the user's requirement, and writ
 return raw structured data, not prose for a human.
 
 ## Dispatch inputs
-- Your dispatch prompt names the surface, its raw-results path (`<docs-path>/test-coverage/raw/<stack>/`),
+- Your dispatch prompt names the surface, its raw-results path (`<docs-path>/quality/test-coverage/raw/<stack>/`),
   the suite location, and the recorded requirement + exclusion list. Work ONLY that surface.
 - Parse the machine-readable output the tooling produced (cobertura XML, lcov.info,
   coverage-summary.json) - numbers come from THIS run's files, never estimated.

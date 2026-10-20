@@ -48,7 +48,7 @@ The single source-of-truth index mapping a concrete .NET work area - a construct
 | build any ASP.NET Core / Web API / microservice (cross-cutting baseline: HttpClient, resilience, versioning, observability, caching) | `dotnet-web-backend` (web hub - load first) |
 | write minimal-API endpoint mechanics - `MapGroup`, `TypedResults`/`Results<>`, `IEndpointFilter`, parameter binding, file uploads | `dotnet-minimal-api` |
 | write controller-based Web API mechanics - `[ApiController]`, attribute routing, `ActionResult<T>`, the automatic-400 filter, action filters, binding sources | `dotnet-mvc-controllers` |
-| generate the OpenAPI document (Swashbuckle vs .NET 9 built-in, transformers, security schemes) or serve Scalar/Swagger UI | `dotnet-openapi` |
+| generate the OpenAPI document (the built-in generator vs Swashbuckle, transformers, security schemes) or serve Scalar/Swagger UI | `dotnet-openapi` |
 | map Result-to-HTTP, return RFC 9457 `ProblemDetails`, add a global `IExceptionHandler`, or validate via a FluentValidation endpoint filter | `dotnet-web-error-handling` |
 | add authentication / authorization - JWT bearer, cookies, OIDC, ASP.NET Identity, policy-based authz, API keys | `dotnet-authentication` |
 | build a gRPC service or client - `.proto` codegen, streaming modes, interceptors, status mapping, gRPC-Web | `dotnet-grpc` |
@@ -113,7 +113,7 @@ The single source-of-truth index mapping a concrete .NET work area - a construct
 | You are about to... | Load |
 |---|---|
 | build a WPF desktop UI - strict MVVM, bindings, dependency/attached properties, async commands, `INotifyDataErrorInfo`, threading | `dotnet-wpf` |
-| build or maintain a WinForms desktop UI - logic out of code-behind (MVP / the .NET 8 binding engine), control/component/GDI disposal, high-DPI, 4.8-vs-modern deltas | `dotnet-winforms` |
+| build or maintain a WinForms desktop UI - logic out of code-behind (MVP / the modern-.NET binding engine), control/component/GDI disposal, high-DPI, 4.8-vs-modern deltas | `dotnet-winforms` |
 
 ## Legacy: .NET Framework 4.8 (net48)
 

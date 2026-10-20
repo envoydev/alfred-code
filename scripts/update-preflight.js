@@ -28,12 +28,16 @@
 //                                           classified by derive-state's classifyNew against THIS
 //                                           install: arrives | renamed | offer | off | unknown;
 //                                           'new: none' if none)
-//   data-move: offer <root>\tfrom=<places>\tdocs=<n> serena=yes|no browser=<engines|none> memory=yes|no[\tignored=yes][\tconflicts=<n>][\tyours=yes]
+//   data-move: offer <root>\tfrom=<places>\tserena=yes|no browser=<engines|none> memory=yes|no[\tconflicts=<n>]
 //            | none (<why>)
-//                                           (the project's data outside its data root - the 2.0.0
-//                                           layout or an earlier root: the docs, serena's folder, the
-//                                           browser profiles, a project memory database; a project
-//                                           install only)
+//                                           (the project's server data outside its data root - the 2.0.0
+//                                           layout or an earlier root: serena's folder, the browser
+//                                           profiles, a project memory database; a project install only.
+//                                           The docs move unasked since 2.8.0, so they are no part of it)
+//   docs-move: offer <from> -> <to>\tmoves=<names>\tstack=<n>\town=<names|none> | none (<why>)
+//                                           (a leftover ALFRED_CODE_DOCS_PATH the user set by hand - no release seeded
+//                                           it and the ledger does not record it - holding the stack's docs: it moves
+//                                           only on update's ask, `--docs-root-move move|keep`; a project install only)
 //   agents-md: offer .claude/CLAUDE.md -> .claude/AGENTS.md | none (<why>)
 //                                           (the stack's file is AGENTS.md; a project install only)
 //   env-keys: <comma-separated key names>   (or 'env-keys: none')
@@ -439,33 +443,56 @@ function runLogMode(logFile)
     console.log(`restart: ${(changed || otherRelease || (hooks > 0 && !hooksLive) || docsMoved) ? 'yes' : 'no'}`);
 }
 
-// The data move, from the rules the installer applies (docs.dataOffer): the docs plan over the same
-// settings view the docs root is read from and the stamp's ledger for who wrote the value, plus every
-// server's data outside the root - the kept engines the stamp names, the memory folder at the project level.
-function dataMoveLine({ root, claudeDir, stampFile, stampScope })
+// The data move, from the rules the installer applies (docs.dataOffer): every server's data outside the root - the kept
+// engines the stamp names, the memory folder at the project level.
+function dataMoveLine({ root, claudeDir, stampFile })
 {
     const settingsLib = require('./install/settings.js');
     const docs = require('./install/docs.js');
     const stampLib = require('./install/stamp.js');
     const dataRoot = require('../stack/mcp/data-root.js');
-    const ledger = stampLib.readLedger(stampFile);
-    const managed = ledger && ledger.env ? Object.assign({}, ...Object.values(ledger.env)) : null;
     const projectRoot = path.resolve(root);
     let stampText = '';
     try { stampText = fs.readFileSync(stampFile, 'utf8'); } catch { stampText = ''; }
-    const scope = stampScope === 'local' ? 'local' : 'project';
     const env = settingsLib.readBackSettings(claudeDir, 'local').env || {};
     const checked = dataRoot.checkDataPath(env.ALFRED_CODE_DATA_PATH || '');
     const recorded = (/^data-root: *(\S+) *$/m.exec(stampText) || [])[1];
     const dataRootNow = checked.ok ? checked.value : recorded || dataRoot.DATA_ROOT_DEFAULT;
     const db = env.ALFRED_CODE_MEMORY_DB || '';
     return docs.dataOfferLine(docs.dataOffer({
-        projectRoot, claudeDir, scope, ledger: managed, stampText, root: dataRootNow,
-        // An unstamped legacy install (stamp.js legacy-unstamped) is update's to take, its docs root the stack's own.
+        projectRoot, stampText, root: dataRootNow,
+        // An unstamped legacy install (stamp.js legacy-unstamped) is update's to take.
         stamped: fs.existsSync(stampFile) || stampLib.legacyUnstamped(root),
         engines: stampLib.readBrowserLines(stampFile).browsers || [],
         memoryProject: dataRoot.memoryLevelOf(db, { home: require('node:os').homedir(), projectRoot }) === 'project',
     }));
+}
+
+// The docs-move ask (docs.docsMovePlan `handSet`, the user's answer of 2026-10-20): only a hand-set root holding the
+// stack's docs is offered - every other leftover root moves unasked, and a clash is the installer's to name.
+function docsMoveLine({ root, claudeDir, stampFile })
+{
+    const docs = require('./install/docs.js');
+    const stampLib = require('./install/stamp.js');
+    const dataRoot = require('../stack/mcp/data-root.js');
+    let stampText = '';
+    try { stampText = fs.readFileSync(stampFile, 'utf8'); } catch { stampText = ''; }
+    const views = docs.docsMoveViews({ claudeDir });
+    const checked = dataRoot.checkDataPath({ ...views.shared, ...views.personal }.ALFRED_CODE_DATA_PATH || '');
+    const recorded = (/^data-root: *(\S+) *$/m.exec(stampText) || [])[1];
+    const now = checked.ok ? checked.value : recorded || dataRoot.DATA_ROOT_DEFAULT;
+    const ledger = stampLib.readLedger(stampFile);
+    const ledgered = Object.values((ledger && ledger.env) || {}).map((m) => m && m.ALFRED_CODE_DOCS_PATH).filter(Boolean);
+    const p = docs.docsMovePlan({
+        projectRoot: path.resolve(root), ...views, scope: stampLib.readStampScope(stampFile) === 'local' ? 'local' : 'project',
+        stamped: fs.existsSync(stampFile) || stampLib.legacyUnstamped(root), to: `${now}/docs`,
+        prior: recorded && recorded !== now ? recorded : null, ledgered,
+    });
+    if (p.state === 'move' && p.handSet)
+        return `docs-move: offer ${p.from} -> ${p.to}\tmoves=${p.moves.join(',')}\tstack=${p.tracked.length + p.untracked.length}\town=${p.left.length ? p.left.join(',') : 'none'}`;
+    if (p.state === 'move') return 'docs-move: none (the stack\'s own root - it moves unasked)';
+    if (p.state === 'clash') return `docs-move: none (${p.why} - the update names the clash)`;
+    return `docs-move: none (${p.state === 'none' && !p.keys.length ? 'no leftover ALFRED_CODE_DOCS_PATH' : p.why})`;
 }
 
 function runRespellMode()
@@ -590,6 +617,7 @@ function main()
     if (!accountDir)
     {
         console.log(dataMoveLine({ root, claudeDir, stampFile, stampScope }));
+        console.log(docsMoveLine({ root, claudeDir, stampFile }));
         console.log(require('./install/seeds.js').claudeMdOffer(path.resolve(root)));
     }
 

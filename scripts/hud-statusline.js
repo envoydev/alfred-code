@@ -30,7 +30,9 @@
 // (0.11.2's scripts/setup.mjs `buildCommand`) writes a launcher line instead - the runtime and a copy of its
 // statusline.mjs at <account>/plugins/claude-hud/ (POSIX), a statusline.cmd shim there (Git Bash), or the same cmd.exe
 // line as 0.8.0 (PowerShell) - and those read as current too, so /alfred-code:init never rewrites a line claude-hud's
-// own setup just wrote (audit 2026-10-14, PL7: two writers of one key, each undoing the other).
+// own setup just wrote (audit 2026-10-14, PL7: two writers of one key, each undoing the other). Re-read on 0.12.0 (audit
+// 2026-10-20b): scripts/setup.mjs and scripts/statusline.mjs are unchanged since 0.11.2, and dist/index.js still exports
+// the `main` the launcher below calls.
 const fs = require('node:fs');
 const path = require('node:path');
 

@@ -102,10 +102,10 @@ const RETIRED_DENY = [
     'Read(~/.claude/settings.json)', 'Read(~/.claude/settings.local.json)',
     'Read(~/.claude-*/settings.json)', 'Read(~/.claude-*/settings.local.json)',
 ];
-// The three hook ENGINES and the window table are copied beside the hooks rather than wired: 22
+// The three hook ENGINES, the layout module they share and the window table are copied beside the hooks rather than wired: 22
 // bodies shared with cursor-stack run `node .claude/hooks/docs.js`, and the history start block
 // points at `node .claude/hooks/history.js rulings`.
-const HOOK_ENGINES = ['docs.js', 'memory.js', 'history.js', 'model-windows.json'];
+const HOOK_ENGINES = ['docs.js', 'memory.js', 'history.js', 'layout.js', 'model-windows.json'];
 // I12: the stack's serena context (stack/mcp). The plugin route's launcher hands serena the file beside
 // it; the full copy route, which runs no launcher, copies it into the project's .claude and registers it.
 const NAV_CONTEXT = 'navigation-context.yml';
@@ -152,7 +152,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     const projectRoot = rt.gitRoot(cwd, home) || cwd; // a repo at the home directory is no project's top (seam m3)
     // T16, R29: args.js already normalised 'global' to 'user', so the flag (once resolved, below) IS
     // the CLI scope - project|user|local pass straight through to every `claude plugin` / `claude
-    // mcp` call. Only the plugins (and claude-hud, pinned to user regardless) follow the scope now:
+    // mcp` call. Only the plugins follow the scope now (an optional item - claude-hud, the LSP pair, an engine - at
+    // the scope its `--scope-of` names, 2.2.0):
     // the library copies, the rules, the hook engines, settings.json and the stamp live in the
     // project's `.claude/` at EVERY scope - the bodies run `node .claude/hooks/docs.js` from the
     // project, and the docs-root rule is stamped there.
@@ -913,12 +914,21 @@ function runLayers(ctx)
     // project database lands under a root whose .gitignore already keeps it out.
     ignoreStep(ctx, docsPath);
     importMemory(ctx);
-    docs.migrateDocsDomains({ projectRoot: ctx.projectRoot, docsPath, rules: selection.generatedRules(ctx.projectRoot), instructions: selection.instructionFiles(ctx.projectRoot), log: ctx.log });
-    // After the .gitignore names the new folder, so a raw transcript copy never lands unignored.
-    try { docs.migrateUsageReport({ projectRoot: ctx.projectRoot, docsPath, log: ctx.log }); }
-    catch (err) { ctx.note(`the usage report folder could not be renamed under ${docsPath} (${err.message}) - it stays as alfred-code-usage-report/`); }
-    try { docs.migratePlans({ projectRoot: ctx.projectRoot, docsPath, rules: selection.generatedRules(ctx.projectRoot), instructions: selection.instructionFiles(ctx.projectRoot), log: ctx.log }); }
-    catch (err) { ctx.note(`the folders under ${docsPath}/superpowers could not be moved up (${err.message}) - move each one to ${docsPath}/ by hand`); }
+    // A hand-set root still waiting on update's ask moves nothing yet - its folders are re-laid out only once it is
+    // the data root's (final review 2026-10-20b: the layout pass moved a team's flow/ and history/ by name).
+    if (!ctx.docsRootPending)
+    {
+        docs.migrateDocsDomains({ projectRoot: ctx.projectRoot, docsPath, rules: selection.generatedRules(ctx.projectRoot), instructions: selection.instructionFiles(ctx.projectRoot), log: ctx.log });
+        // After the .gitignore names the new folder, so a raw transcript copy never lands unignored.
+        try { docs.migrateUsageReport({ projectRoot: ctx.projectRoot, docsPath, dataPath: ctx.dataInfo.root, log: ctx.log }); }
+        catch (err) { ctx.note(`the usage report folder could not be renamed under ${docsPath} (${err.message}) - it stays as alfred-code-usage-report/`); }
+        try { docs.migratePlans({ projectRoot: ctx.projectRoot, docsPath, rules: selection.generatedRules(ctx.projectRoot), instructions: selection.instructionFiles(ctx.projectRoot), log: ctx.log }); }
+        catch (err) { ctx.note(`the folders under ${docsPath}/superpowers could not be moved up (${err.message}) - move each one to ${docsPath}/ by hand`); }
+        // After migratePlans, so superpowers/plans/ reaches plans/ first; after the .gitignore step, so a nested history/
+        // .gitignore of the stack's is gone before history/ moves into the data root's state/.
+        try { docs.migrateLayout({ projectRoot: ctx.projectRoot, docsPath, dataPath: ctx.dataInfo.root, log: ctx.log }); }
+        catch (err) { ctx.note(`the 2.8.0 folder layout could not be applied under ${docsPath} (${err.message}) - every file is back where it was; re-run /alfred-code:update`); }
+    }
     if (args.action === 'install') ctx.stackAgentsMd = seeds.seedAgentsMd({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, log: ctx.log, note: ctx.note });
     // An update moves the seed an earlier release wrote as .claude/CLAUDE.md - only while it is still unedited.
     else if (args.action === 'update')
@@ -1241,76 +1251,79 @@ function liveMemoryPath({ level, projectRoot, home, liveOf, owed, registered })
     return sameFolder && fs.existsSync(registered) && real(registered) === real(live) ? registered : live;
 }
 
-// The docs root this run leaves in effect, and the one-time move out of the old default
-// (docs.LEGACY_DOCS_ROOT, docs.docsMovePlan). Never silent: with no --docs-move answer the old root stays in effect - written
-// back as the stack's own value when the key is absent, so the hooks keep reading where the docs are -
-// and the offer is named for /alfred-code:update to ask. `ctx.docsPath` is the settings write
-// (applyEnv 3b), `ctx.docsRoot` the root the rules are stamped with.
+// THE DOCS ROOT this run leaves in effect: <data root>/docs (2.8.0, the user's ruling of 2026-10-20 - docs.docsMovePlan).
+// A leftover ALFRED_CODE_DOCS_PATH is drained: the stack's docs move from the root it names, then the key goes from both
+// settings files (applyEnv 3b); a clash or a key a local-scope run cannot write moves nothing and keeps it, so the hooks
+// keep reading where the docs are. A HAND-SET root (docs.docsMovePlan `handSet`) holding the stack's docs moves only on
+// `--docs-root-move move`, the answer to update's ask: it may be the team's own `docs/`, and the stack's entries are
+// picked by name, so the answer names the team's own (`--docs-root-leave`), which stay. No keep (the user's answers of
+// 2026-10-20): with no answer nothing moves yet, and the next update asks again. `ctx.docsPath` is the settings decision (remove or keep),
+// `ctx.docsRoot` the root the rules are stamped with.
 function docsRootStep(ctx)
 {
     const { args, log, note } = ctx;
-    const managed = ctx.ledger && ctx.ledger.env ? Object.assign({}, ...Object.values(ctx.ledger.env)) : null;
     const stamped = (Boolean(ctx.stampFile) && fs.existsSync(ctx.stampFile)) || Boolean(ctx.legacyUnstamped);
-    const views = docs.docsMoveViews({ claudeDir: ctx.claudeDir, scope: args.scope });
     const to = `${ctx.dataInfo.root}/docs`;
-    const plan = docs.docsMovePlan({ projectRoot: ctx.projectRoot, ...views, ledger: managed, stamped, to, kept: ctx.dataInfo.recorded.kept });
+    const ledgered = Object.values((ctx.ledger && ctx.ledger.env) || {}).map((m) => m && m.ALFRED_CODE_DOCS_PATH).filter(Boolean);
+    const plan = docs.docsMovePlan({ projectRoot: ctx.projectRoot, ...docs.docsMoveViews({ claudeDir: ctx.claudeDir }), scope: args.scope, stamped, to, prior: ctx.dataInfo.prior, ledgered, leave: args.docsRootLeave || [] });
     ctx.docsPath = null;
     ctx.docsVersioningCarry = null;
-    if (plan.state !== 'offer' && args.dataMove) log(`docs move: nothing to offer (${plan.why}) - the docs stay where they are`);
-    if (plan.state === 'repoint')
+    ctx.docsRootPending = false;
+    const keep = { keep: true };
+    for (const root of plan.shadowed) log(`docs root: ${root} (settings.json) was hidden by settings.local.json's root - not moved; take what you need from it by hand`);
+    // A leave name that is none of the stack's entries: a typo must never move the folder it meant to keep.
+    if (plan.unknown.length)
     {
-        ctx.docsPath = { value: plan.to, own: 'stack', why: 'the old root held nothing' };
-        log(`docs root: ${plan.from} holds nothing - re-pointed to ${plan.to}`);
-        selection.respellDocsRoot({ projectRoot: ctx.projectRoot, from: plan.from, to: plan.to, log, note });
+        ctx.docsPath = plan.keys.length ? keep : null;
+        ctx.docsRootPending = true;
+        note(`docs root: --docs-root-leave names ${plan.unknown.join(', ')}, not one of the stack's entries at ${plan.from} (${plan.moves.join(', ') || 'none'}) - nothing moved; ALFRED_CODE_DOCS_PATH stays; run /alfred-code:update again`);
     }
-    // A first install lays the docs under the data root it was given - unless a docs root is already set.
-    else if (!stamped && plan.state === 'none' && !(views.env.ALFRED_CODE_DOCS_PATH || (views.personal && views.personal.ALFRED_CODE_DOCS_PATH)))
-        ctx.docsPath = { value: to, own: 'stack', why: 'the data root' };
-    else if (plan.state === 'offer')
+    else if (plan.state === 'drop')
     {
-        // An old default the user kept (plan.yours) stays theirs while the offer is unanswered.
-        const held = { value: plan.from, own: plan.yours ? 'user' : 'stack', why: 'its docs are still there' };
-        const count = plan.tracked.length + plan.untracked.length;
-        if (args.dataMove === 'keep')
+        ctx.docsPath = { remove: true, why: `the docs root is ${to}` };
+        if (plan.from && plan.from !== to) selection.respellDocsRoot({ projectRoot: ctx.projectRoot, from: plan.from, to, log, note });
+    }
+    else if (plan.state === 'blocked')
+    {
+        ctx.docsPath = keep;
+        note(`docs root: ${plan.why} - nothing moved; take the key out of settings.json (the docs root is ${to}), then run /alfred-code:update`);
+    }
+    else if (plan.state === 'clash')
+    {
+        ctx.docsPath = keep;
+        note(`docs root: ${plan.from} not moved - ${plan.conflicts.length} file(s) already at ${to}: ${plan.conflicts.slice(0, 5).join(', ')} - ALFRED_CODE_DOCS_PATH stays, so the hooks keep reading ${plan.from}; move or remove one side, then run /alfred-code:update`);
+    }
+    else if (plan.state === 'move' && plan.handSet && args.docsRootMove !== 'move')
+    {
+        ctx.docsPath = keep;
+        ctx.docsRootPending = true;
+        note(`docs root: ${plan.from} was set by hand - nothing moved yet; /alfred-code:update asks which of ${plan.moves.join(', ')} are the team's own - those stay, the rest move to ${to} (${plan.tracked.length + plan.untracked.length} file(s); ${plan.left.length ? `${plan.left.join(', ')} stay` : 'nothing else there'})`);
+    }
+    else if (plan.state === 'move')
+    {
+        const moved = docs.moveDocsRoot({ projectRoot: ctx.projectRoot, plan });
+        if (moved.ok)
         {
-            ctx.docsPath = { value: plan.from, own: plan.from === docs.LEGACY_DOCS_ROOT ? 'user' : 'stack', why: '--data-move keep' };
-            log(`docs root: kept at ${plan.from} - ALFRED_CODE_DOCS_PATH is yours from here on; no update offers the move again`);
-        }
-        else if (args.dataMove === 'move' && plan.conflicts.length)
-        {
-            ctx.docsPath = held;
-            note(`docs root: not moved - ${plan.conflicts.length} file(s) already at ${plan.to}: ${plan.conflicts.slice(0, 5).join(', ')} - move or remove them, then run /alfred-code:update again`);
-        }
-        else if (args.dataMove === 'move')
-        {
-            const moved = docs.moveDocsRoot({ projectRoot: ctx.projectRoot, plan });
-            if (moved.ok)
-            {
-                ctx.docsPath = { value: plan.to, own: 'stack', why: '--data-move move' };
-                selection.respellDocsRoot({ projectRoot: ctx.projectRoot, from: plan.from, to: plan.to, log, note });
-                // A move keeps what git saw: an old root git ignored, with nothing tracked, stays out of git
-                // as a `local` root (its own `.gitignore` of `*`) - unless this run names a versioning itself.
-                if (plan.ignored && !args.docsVersioning) ctx.docsVersioningCarry = 'local';
-                log(`docs root: moved ${plan.from} -> ${plan.to} (${moved.moved} file(s), ${moved.gitMoved} through git mv${moved.gitMoved ? ' - staged as renames, commit them' : ''})`
-                    + ' - the rule is re-stamped; a session started before this still holds the old root in its loaded rule, so restart it');
-            }
-            else
-            {
-                ctx.docsPath = held;
-                note(`docs root: not moved - ${moved.error}; every file is back under ${plan.from}`);
-            }
+            ctx.docsPath = { remove: true, why: `the docs moved to ${to}` };
+            selection.respellDocsRoot({ projectRoot: ctx.projectRoot, from: plan.from, to, log, note });
+            // A move keeps what git saw: an old root git ignored, with nothing tracked, stays out of git as a `local`
+            // root - unless this run names a versioning itself.
+            if (plan.ignored && !args.docsVersioning) ctx.docsVersioningCarry = 'local';
+            log(`docs root: moved ${plan.from} -> ${to} (${moved.moved} file(s), ${moved.gitMoved} through git mv${moved.gitMoved ? ' - staged as renames, commit them' : ''})`
+                + ' - the rule is re-stamped; a session started before this still holds the old root in its loaded rule, so restart it');
+            if (plan.left.length) log(`docs root: ${plan.from} keeps ${plan.left.join(', ')} - not the stack's, left in place`);
         }
         else
         {
-            ctx.docsPath = held;
-            log(`docs root: ${plan.from}${plan.from === docs.LEGACY_DOCS_ROOT ? ' is the old default and' : ''} holds ${count} file(s) - /alfred-code:update offers the move to ${plan.to} (--data-move move|keep); nothing moved`);
+            ctx.docsPath = plan.keys.length ? keep : null;
+            note(`docs root: not moved - ${moved.error}; every file is back under ${plan.from}`);
         }
     }
-    // A settings file that cannot be read says nothing about the root, so the rule keeps the root it was
-    // stamped with rather than falling to the default the unreadable file would read as.
+    // The root the hooks read after this run: the data root's, unless a key stays. A settings file that cannot be read
+    // says nothing about the root, so the rule keeps the root it was stamped with.
+    const kept = plan.keys.length && !(ctx.docsPath && ctx.docsPath.remove) ? plan.keys[plan.keys.length - 1].value : null;
     const unreadable = plan.state === 'none' && /cannot be read$/.test(plan.why);
-    ctx.docsRoot = ctx.docsPath ? ctx.docsPath.value
-        : (unreadable && copy.stampedDocsRoot(ctx.projectRoot)) || copy.resolveDocsRoot(ctx.projectRoot, args.scope);
+    ctx.docsRoot = unreadable ? copy.stampedDocsRoot(ctx.projectRoot) || copy.resolveDocsRoot(ctx.projectRoot, args.scope) : kept || to;
 }
 
 // A first run with no plugin cache installs the core entry FIRST, so its cache can serve the same

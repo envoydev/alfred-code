@@ -278,13 +278,13 @@ it MOVES that data, and it goes through the installer, never the merge below. It
 plugin data storage as a whole, the current value shown with what it holds. Step 1's `data-move:` line
 says whether any of it still sits outside the root (the same line update reads). On `data-move: offer <root> ...` the
 MOVE is the recommendation, whatever the current value: every Alfred Code file belongs under the data
-root, and the data at `from=` (docs at `.claude/docs`, a 2.0.0 `.serena` / `.playwright` / `.memory-mcp`)
-is outside it - an earlier 'keep' (`yours=yes`) included. It is asked even when step 2 left the
+root, and the data at `from=` (a 2.0.0 `.serena` / `.playwright` / `.memory-mcp`, or an earlier root's) is
+outside it. The docs are no part of it: they always sit at `<data root>/docs`, and every run moves them unasked. It is asked even when step 2 left the
 Environment area out (the data question alone, no other row). Ask this form then, and pass
 `--data-move move` on step 12's installer call (a yes is a change on its own, so the installer runs):
 
 ```ask
-Move this project's Alfred Code data into <root>? From <from places>: the docs through git mv where tracked, the navigation index, browser profiles and project memory at each server's next start, after a restart.
+Move this project's Alfred Code data into <root>? From <from places>: the navigation index, browser profiles and project memory at each server's next start, after a restart.
 - '<root> - move everything (Recommended)' - one folder outside .claude/, nothing overwritten
 - 'Keep the current layout' - nothing moves; the servers keep reading where their data is
 ```
@@ -295,7 +295,7 @@ A `conflicts=<n>` field means data already sits at the new place: name it and do
 ```ask
 Where should Alfred Code keep this project's data - its docs, the navigation index and handoff notes, browser profiles and a project memory database? Recommended: keep <current> - the folder it uses now, so nothing moves; its own .gitignore keeps everything but the docs out of git.
 - 'Keep <current> (Recommended)' - nothing moves; data still at a 2.0.0 place keeps serving from there
-- 'Move everything into .alfred' - one folder at the project root, outside .claude/; when <current> is already .alfred it moves only the data still at a 2.0.0 place (.serena, .playwright, .memory-mcp, docs at .claude/docs) - leave this option out when there is none
+- 'Move everything into .alfred' - one folder at the project root, outside .claude/; when <current> is already .alfred it moves only the data still at a 2.0.0 place (.serena, .playwright, .memory-mcp) - leave this option out when there is none
 ```
 
 A typed folder (Other) is a custom root - relative, inside the project, never under `.claude/`, no space.
@@ -305,9 +305,8 @@ layout, or to another folder - runs `node $TMP/repo/scripts/install/alfred-code.
 $TMP/repo --scope <scope> --installed-only --data-path <folder> --data-move move 2>&1 | tee
 "$TMP/install.log"` (step 12's installer call carries both flags when it runs anyway); report its
 `docs root:` and `data root:` lines verbatim - the docs move at once, each server's data at that
-server's next start once nothing holds it - and name the restart. A docs-root change (the docs value
-set by hand, for docs somewhere of the user's own) re-stamps the deployed rule (below) and moves no
-existing docs; a docs value the user set is never moved by a data-root change either. Claude Code's own
+server's next start once nothing holds it - and name the restart. The docs root is always `<data root>/docs`, so a
+data-root change carries the docs with it and re-stamps the rule. Claude Code's own
 `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` is NOT one of these rows - the stack does not own that key and
 this step neither offers nor touches it.
 
@@ -323,15 +322,10 @@ sitting at that value is reported as off, with turning it back on as the change.
 carries `ALFRED_CODE_AUTO_COMPACT`, so its question gains one answer: switch between offering a fresh session at
 the triggers (`0`) and compacting there instead (`1`) - the value on disk is the kept one. A change is an env change,
 so step 12's installer runs and sets or removes each model's compaction window from the value just written; it
-applies from the next session. On a
-docs-root change, say plainly: existing generated docs do NOT move - they stay under the old root until
-moved by hand or re-captured. Then re-stamp the deployed rule - run
-`node $TMP/repo/scripts/stamp-docs-root.js <project root>`: it rewrites the 'This install's root:'
-line in `.claude/rules/alfred-docs-root.md` from the value just written - read at the stamp's
-scope, `settings.local.json` over `settings.json` at local scope, as the installer reads it - so the
-always-on awareness matches the env (every install/update run re-stamps it too). Add
-`--reprobe-versioning <value>` to that same command when this run's own install SEEDED the docs-versioning key,
-passing the value its seed line named (`git` or `local`) - the seed was probed at the old docs path. The script
+applies from the next session. Run
+`node $TMP/repo/scripts/stamp-docs-root.js <project root> --reprobe-versioning <value>` when this run's own install
+SEEDED the docs-versioning key, passing the value its seed line named (`git` or `local`) - the seed was probed before
+the settings merge. The script
 REFUSES when the file no longer holds that value, so a key an earlier install wrote, or one the user just
 changed, is never re-probed: pass the seeded value and let the check answer. Nothing else
 needs editing. Apply on consent with a

@@ -335,10 +335,9 @@ table of the actionable rows only - an install whose env already matches gets th
   (with the key absent its `mode:` line falls back to the same rule) - its bare `git (docs are not
   kept out of git - ...)` or `overlay (docs are kept out of git - ...)` names the probed value (`git`/`local`) and
   the reason in one line; show THAT value in the table, never the catalog's `git`. Reason column: `not set -
-  probed '<value>': <the mode line's own parenthetical>`. `ALFRED_CODE_DOCS_PATH` MISSING while
-  `.claude/docs` holds files (`find .claude/docs -type f | head -1` prints a path) is never offered
-  either: those docs sit under the pre-2.0.0 default, so the catalog's `.alfred/docs` would point every
-  hook away from them - name `/alfred-code:update`, which offers the one-time move, in its reason column.
+  probed '<value>': <the mode line's own parenthetical>`. A leftover `ALFRED_CODE_DOCS_PATH` (retired in 2.8.0 - the
+  docs root is always `<data root>/docs`) is never written or removed from here: name `/alfred-code:update`, which moves
+  the stack's docs from the root it names and then removes it, in its reason column.
   `ALFRED_CODE_DATA_PATH` is never offered from here, MISSING or changed: the data root carries the docs
   and every server's data, so a new value without the move would strand them - name
   `/alfred-code:configure` (its data question moves them) in its reason column; a missing key is written
@@ -413,9 +412,9 @@ turn polling for it. Five inputs, five gates:
    across 17 sessions, or a headless .NET backend carrying `browser` (24 tool schemas) and
    `sentry` (8). A registered server is not free: its schemas are injected into every session and
    every subagent. So judge each one the project did not prove:
-   - **Measured first, where a measurement exists.** `ls "<docs-path>/tools-usage"/*.jsonl` - the
-     instrumentation ledgers. When any exist, count per server:
-     `grep -h '"tool":"mcp__' <docs-path>/tools-usage/*.jsonl | grep -o '"detail":"[^"]*"' | sort | uniq -c`
+   - **Measured first, where a measurement exists.** `ls "<data root>/statistics/tools-usage"/*.jsonl` - the
+     instrumentation ledgers (`<data root>` is `.alfred` unless `ALFRED_CODE_DATA_PATH` names another folder). When any exist, count per server:
+     `grep -h '"tool":"mcp__' <data root>/statistics/tools-usage/*.jsonl | grep -o '"detail":"[^"]*"' | sort | uniq -c`
      (`detail` names the server). A server
      with rows is KEPT, no judgment needed; a server with zero rows across several sessions is a
      drop candidate with the count as its citation. State the number of sessions the ledgers cover.

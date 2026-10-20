@@ -32,7 +32,7 @@ mechanics -> `dotnet-testing`; the upgrade safety playbook (baseline, staged, ro
 ## When to use
 
 - WinForms conventions for maintenance and modernization.
-- Covers logic out of code-behind (MVP passive view for legacy, the .NET 8 MVVM binding engine for new), DI-resolvable forms, async/await with no UI-thread blocking, BindingSource + INotifyPropertyChanged binding, control/component/GDI disposal, PerMonitorV2 high-DPI, virtual-mode grids, presenter unit tests.
+- Covers logic out of code-behind (MVP passive view for legacy, the modern-.NET MVVM binding engine for new), DI-resolvable forms, async/await with no UI-thread blocking, BindingSource + INotifyPropertyChanged binding, control/component/GDI disposal, PerMonitorV2 high-DPI, virtual-mode grids, presenter unit tests.
 - Floors new work at .NET 10 / C# 14 and covers 4.8 as the supported-but-frozen maintenance surface.
 - Do NOT load for WPF - that is the WPF conventions skill - nor for WinUI 3, MAUI, Avalonia, or Uno.
 
@@ -158,7 +158,13 @@ Before any done word on a UI change:
 1. `dotnet build` - quote the summary line.
 2. Open and close the affected form twenty times and quote the GDI and USER object counts at the start and the end -
    drive it through the MCP that controls a native desktop app where the install has one; with no desktop session, put
-   the twenty-cycle check to the user through AskUserQuestion and mark it UNVERIFIED until answered.
+   the twenty-cycle check to the user through AskUserQuestion and mark it UNVERIFIED until answered:
+
+   ```ask
+   No desktop session here. Open and close <form> twenty times and read its GDI and USER object counts at the start and the end.
+   - 'Run it and paste both counts (Recommended)' - the check closes on the two numbers
+   - 'Skip the check' - the close reports the handle-leak check UNVERIFIED
+   ```
 
 A count that keeps climbing is the leak, whatever the code review said.
 

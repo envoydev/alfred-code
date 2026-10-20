@@ -73,7 +73,7 @@ const ROUTES = [
   // The slash route (2.1.5 M14): one job per typed command the wired matcher lets through, built from the
   // harness's `<command-name>` marker, with the transcript up to that row.
   { hook: 'guard-fresh-session-start.js', event: 'UserPromptExpansion', deny: false, needsTranscript: true },
-  // Writes <docs-path>/flow/COMPACT-STATE before a compaction and returns nothing - no verdict and no
+  // Writes <data root>/state/sessions/COMPACT-STATE before a compaction and returns nothing - no verdict and no
   // injection for a replay to count, so it is declared in UNEXERCISED below.
   { hook: 'guard-fresh-session-start.js', event: 'PreCompact', deny: false },
   // Injects the budget on EVERY prompt by design - 100% is correct here, not a false-positive rate.
@@ -309,6 +309,8 @@ function makeEnv(scratch, cwd) {
     ...process.env,
     CLAUDE_PROJECT_DIR: cwd || scratch,
     ALFRED_CODE_DOCS_PATH: path.join(scratch, 'docs'),
+    // 2.8.0: the hooks' state and ledgers sit in the data root (stack/hooks/layout.js) - kept in scratch too
+    ALFRED_CODE_DATA_PATH: scratch,
     CLAUDE_CONFIG_DIR: path.join(scratch, 'config'),
     ALFRED_CODE_INSTRUMENT: '0',
     // Once-markers and latches (the SubagentStop hold, the fresh-session latch) land in scratch: in the
@@ -346,7 +348,7 @@ function runOne(job, scratch) {
       // silent exit 0 is the hook deciding there was nothing to say.
       const probed = () => {
         try {
-          return fs.readFileSync(path.join(scratch, 'docs', 'hook-blocks', `${payload.session_id}.jsonl`), 'utf8').split('\n')
+          return fs.readFileSync(path.join(scratch, 'statistics', 'hook-blocks', `${payload.session_id}.jsonl`), 'utf8').split('\n')
             .some((l) => { try { const o = JSON.parse(l); return o.mode === 'probe' && o.kind === job.probe; } catch { return false; } });
         } catch { return false; }
       };
@@ -371,7 +373,7 @@ async function pool(jobs, n, scratch, onTick) {
   return results;
 }
 
-// The rows `<docs-path>/hook-blocks/<session>.jsonl` accumulated in the field, collected with the
+// The rows `<data root>/statistics/hook-blocks/<session>.jsonl` (`<docs-path>/hook-blocks/` before 2.8.0) accumulated in the field, collected with the
 // bundles. Small - the ledger shipped recently, so most bundles predate it - but it is ground truth.
 function fieldBlocks(corpus) {
   const out = {};

@@ -44,7 +44,9 @@ function run(root, payload, extra, hook = HOOK) {
   const input = typeof payload === 'string' ? payload : JSON.stringify(payload);
   return spawnSync(process.execPath, [hook], { input, encoding: 'utf8', env: env(root, extra), cwd: root });
 }
-const entryFile = (root, session) => path.join(root, '.alfred', 'docs', 'history', `${session}.json`);
+// 2.8.0 layout: one record per session in <data root>/state/history/; the pre-2.8.0 <docs-path>/history/ is still read
+const entryFile = (root, session) => path.join(root, '.alfred', 'state', 'history', `${session}.json`);
+const legacyEntryFile = (root, session) => path.join(root, '.alfred', 'docs', 'history', `${session}.json`);
 
 test('Stop writes the session entry and prints nothing', () => {
   const root = project();
@@ -75,6 +77,25 @@ test('SessionStart after two sessions on the branch injects one framed block wit
   } finally { rmDir(root); }
 });
 
+test('2.8.0: the start injection reads a legacy <docs>/history/ record while state/history/ has none for the branch', () => {
+  const root = project();
+  try {
+    run(root, { hook_event_name: 'Stop', session_id: 'old', transcript_path: transcript(root, 'old', [['Ship it?', 'Yes, ship']]) });
+    // the record a 2.7.0 hook wrote, before the update moved it
+    fs.mkdirSync(path.dirname(legacyEntryFile(root, 'old')), { recursive: true });
+    fs.renameSync(entryFile(root, 'old'), legacyEntryFile(root, 'old'));
+    const r = run(root, { hook_event_name: 'SessionStart', session_id: 'new', source: 'startup', transcript_path: path.join(root, 'absent.jsonl') });
+    assert.match(JSON.parse(r.stdout).hookSpecificOutput.additionalContext, /Ship it\? -> Yes, ship/, 'the legacy record is injected');
+    assert.ok(fs.existsSync(entryFile(root, 'new')), 'the new session pins its entry in state/history/');
+    assert.ok(!fs.existsSync(legacyEntryFile(root, 'new')), 'and nothing in the legacy folder');
+    // once state/history/ holds a record of the branch, the legacy folder is no longer read
+    run(root, { hook_event_name: 'Stop', session_id: 'mid', transcript_path: transcript(root, 'mid', [['Push now?', 'No, hold']]) });
+    const later = JSON.parse(run(root, { hook_event_name: 'SessionStart', session_id: 'last', source: 'startup', transcript_path: path.join(root, 'absent.jsonl') }).stdout).hookSpecificOutput.additionalContext;
+    assert.match(later, /Push now\? -> No, hold/);
+    assert.doesNotMatch(later, /Ship it/);
+  } finally { rmDir(root); }
+});
+
 test('SessionStart with no earlier entry on the branch prints nothing', () => {
   const root = project();
   try {
@@ -90,6 +111,7 @@ test('ALFRED_CODE_HISTORY=0 writes nothing and prints nothing', () => {
     const r = run(root, { hook_event_name: 'Stop', session_id: 's1', transcript_path: transcript(root, 's1', [['Q', 'A']]) }, { ALFRED_CODE_HISTORY: '0' });
     assert.strictEqual(r.status, 0);
     assert.strictEqual(r.stdout, '');
+    assert.ok(!fs.existsSync(path.join(root, '.alfred', 'state', 'history')));
     assert.ok(!fs.existsSync(path.join(root, '.alfred', 'docs', 'history')));
   } finally { rmDir(root); }
 });

@@ -172,7 +172,7 @@ test("C15: the done-close row names the hand-back, never 'undefined'", () => {
   const sid = 'ledger-c15';
   spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: sid, hook_event_name: 'Stop',
     last_assistant_message: 'The catch-up is committed on develop. Still uncommitted: the 10-file push-routing diff, held for your review.' }), encoding: 'utf8', env: logEnv() });
-  const rows = fs.readFileSync(path.join(root, '.alfred', 'docs', 'hook-blocks', `${sid}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  const rows = fs.readFileSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', `${sid}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   const row = rows.find((r) => /done-close/.test(JSON.stringify(r)));
   assert.ok(row, 'a done-close row');
   assert.doesNotMatch(JSON.stringify(row), /undefined/, '0824440b: committed + undefined');
@@ -468,7 +468,7 @@ test('H9: quoted output is no pending item, a real one still holds, and an exemp
   const sid = `h9-${process.pid}`;
   const r = run({ hook_event_name: 'Stop', session_id: sid, last_assistant_message: 'Pushed the fix. Nothing is pending on this run - these are yours to run when you choose.' });
   assert.strictEqual(r.status, 0, 'the pinned nothing-pending close passes');
-  const ledger = path.join(process.env.CLAUDE_PROJECT_DIR, '.alfred', 'docs', 'hook-blocks', `${sid}.jsonl`);
+  const ledger = path.join(process.env.CLAUDE_PROJECT_DIR, '.alfred', 'statistics', 'hook-blocks', `${sid}.jsonl`);
   const rows = fs.readFileSync(ledger, 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((x) => x.kind === 'done-close-exempt');
   assert.deepStrictEqual(rows.map((x) => [x.mode, x.exempt]), [['probe', 'nothing-pending']]);
 });

@@ -18,7 +18,7 @@ const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const READ = path.join(HOOKS, 'guard-read-whole-file.js');
 const XWRITE = path.join(HOOKS, 'guard-cross-project-write.js');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-rw-'));
-// Every guard appends a block row to `<root>/<docs-path>/hook-blocks/`, where the root falls back to
+// Every guard appends a block row to `<root>/<data root>/statistics/hook-blocks/`, where the root falls back to
 // the process cwd - so a suite run from this checkout would forge field ledger into the repo's own
 // docs root (measured once at 12,480 rows). Pin a scratch root and an absolute ledger for the whole
 // run; the cases that need a different root pass one of their own.
@@ -593,6 +593,18 @@ test('audit 2026-10-10 C11: a plan under the docs root reads whole; a missing re
   assert.equal(rd('.alfred/docs/plans/plan.md'), 0, 'the plan, 70KB, is the seat\'s mandated input');
   assert.equal(rd('notes.md'), 2, 'any other 70KB file still blocks');
   assert.equal(shellAt(dir, 'cat -n src/PlanLimits/AdminPlanLimitsEndpoints.cs 2>/dev/null || find src -name x', sid()).status, 0, 'a wrong path has nothing to dump (f24eb967)');
+});
+
+test('2.8.0: a plan under the docs root\'s work/plans/ reads whole, as one under the legacy plans/ did', () => {
+  const dir = capDir();
+  const plans = path.join(dir, '.alfred', 'docs', 'work', 'plans'); fs.mkdirSync(plans, { recursive: true });
+  fs.writeFileSync(path.join(plans, 'plan.md'), '# plan\n' + 'x'.repeat(70 * 1024) + '\n');
+  fs.mkdirSync(path.join(dir, 'work', 'plans'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'work', 'plans', 'other.md'), '# other\n' + 'x'.repeat(70 * 1024) + '\n');
+  const envd = { ...process.env, ALFRED_CODE_DOCS_PATH: '.alfred/docs', CLAUDE_PROJECT_DIR: dir };
+  const rd = (p) => run(READ, { tool_name: 'Read', tool_input: { file_path: p }, session_id: sid() }, { cwd: dir, env: envd }).status;
+  assert.equal(rd('.alfred/docs/work/plans/plan.md'), 0, 'the plan under work/plans/');
+  assert.equal(rd('work/plans/other.md'), 2, 'a work/plans/ folder outside the docs root is no plan');
 });
 
 test('audit 2026-10-10 C11/C13: the rule notice reads no redirect inside quotes and no target outside the project', () => {

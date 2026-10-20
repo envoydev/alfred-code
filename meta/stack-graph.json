@@ -55,6 +55,10 @@
       "mcps": [],
       "plugins": []
     },
+    "capture-preferences": {
+      "mcps": [],
+      "plugins": []
+    },
     "capture-test-coverage": {
       "mcps": [],
       "plugins": []

@@ -29,7 +29,7 @@ Backend and frontend implementation may run in parallel only after the contract 
 Store the contract where both repos and agents can read it:
 
 ```text
-docs/contracts/<feature>.contract.md
+<docs-path>/work/cross-project-tasks/<feature>.contract.md (a committed docs/ path only on the user's asked-first approval)
 openapi.yaml or openapi.json
 ticket acceptance criteria
 shared-api-schema.yaml
@@ -46,6 +46,6 @@ If the backend finds the contract impossible, it must not silently change anythi
 ```text
 Contract v1 -> Contract Change Request -> Contract v2
 Backend repo updates to v2
-Frontend repo receives v2 and updates
+Frontend repo receives v2 through the docs-root rule's hand-off block, and updates
 integration-reviewer verifies both PRs against v2
 ```

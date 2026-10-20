@@ -144,18 +144,23 @@ test('agents #8 C7: task-design turns its asks into NEEDS_CONTEXT / user_decisio
 });
 
 // --- agents #6: every seat that stores a hand-off note writes it BEFORE the report, pinned ---------------------------------
-test('agents #6: the implementers, resolvers and integration reviewer write memory before the report, pinned', () =>
+// The 2026-10-20b agents audit added the ten designers, the two diagnosers and the security auditor: each stores a
+// HAND-OFF note too, so the set is every seat whose body stores one - read off the body, never a hand list.
+test('agents #6: every seat that stores a hand-off note writes it before the report, pinned', () =>
 {
-    const writers = seats.filter((s) => /memory_store/.test(read(s)));
+    const writers = seats.filter((s) => /At HAND-OFF, `mcp__plugin_alfred-memory_alfred-memory__memory_store`/.test(body(s)));
     const pinned = listedIn('verifier-memory-before-report');
-    for (const s of [...of('-implementer'), ...of('-resolver'), 'integration-reviewer'])
+    for (const s of [...of('-implementer'), ...of('-resolver'), ...of('-solution-designer'), 'integration-reviewer',
+        'issue-diagnoser-ci', 'issue-diagnoser-runtime', 'security-auditor'])
+        assert.ok(writers.includes(s), `${s}: stores a hand-off note`);
+    for (const s of writers)
     {
-        assert.ok(writers.includes(s), `${s}: stores a note`);
         assert.ok(pinned.has(`stack/agents/${s}.md`), `${s}: a copy of verifier-memory-before-report`);
         const r = report(s);
         assert.ok(r.includes('Memory writes come BEFORE the report'), `${s}: the ordering sits in its Report`);
     }
-    assert.strictEqual(pinned.size, 28);
+    assert.strictEqual(writers.length, 38, 'the hand-off writers');
+    assert.strictEqual(pinned.size, 41, 'the writers plus the three support seats whose report is the deliverable');
 });
 
 // --- A-T1 prose half: a verifier runs no tree-wide git state command, pinned (the hooks track enforces it) -----------------
@@ -230,6 +235,31 @@ test('agents #5: model-routing says the Agent tool takes effort and the house se
     const mr = squash(readRel('stack/skills/task-solve-cross/references/model-routing.md'));
     assert.doesNotMatch(mr, /not re-tunable per call|the seat cannot receive/, 'the drifted claim');
     assert.ok(mr.includes("The Agent tool does take a per-dispatch `effort` argument, but the house sets it only on the user's explicit ask"), 'the current fact and the house use');
+});
+
+// --- agents audit 2026-10-20b: the verifier done-gate field, own-domain seam lists, the small items -------------------------
+test('agents 2026-10-20b: each verifier names the done-gate evidence it returns, pinned', () =>
+{
+    assert.deepStrictEqual([...listedIn('verifier-done-gate-evidence')].sort(), of('-verifier').map((s) => `stack/agents/${s}.md`).sort());
+    for (const s of of('-verifier')) assert.doesNotMatch(squash(read(s)), /the bound `habits-done-gate` sets/, `${s}: a field that names no output`);
+});
+
+test('agents 2026-10-20b: each implementer lists its own domain\'s shared seams, the devops one builds an AppHost only where one exists', () =>
+{
+    const aspnetSeams = 'a route, DTO, error code, schema or index semantic, migration order';
+    for (const s of of('-implementer').filter((x) => x !== 'aspnet-implementer'))
+        assert.ok(!squash(read(s)).includes(aspnetSeams), `${s}: ASP.NET's seam list copied`);
+    const devops = squash(read('devops-implementer'));
+    assert.doesNotMatch(devops, /dotnet build the AppHost[,;]/, 'devops-implementer: an unconditional AppHost build');
+    assert.ok(devops.includes('dotnet build the Aspire AppHost when the project has one'), 'devops-implementer: the condition');
+});
+
+test('agents 2026-10-20b: a designer states its statuses once, devops forks go to user_decisions, the gatherer and analyzer items', () =>
+{
+    for (const s of of('-solution-designer')) assert.strictEqual((squash(read(s)).match(/PLAN_READY/g) || []).length, 1, `${s}: PLAN_READY stated more than once`);
+    assert.ok(squash(read('devops-solution-designer')).includes('goes on the `user_decisions:` line with its trade-offs'), 'devops designer: the fork routes to user_decisions');
+    assert.doesNotMatch(squash(read('evidence-gatherer')), /No handoff notes of your own/, 'evidence-gatherer: the memory rule said twice');
+    assert.ok(read('related-project-analyzer').includes('`.alfred/docs/architecture/ARCHITECTURE.md` in a sibling the stack set up'), 'related-project-analyzer: the data-root capture path');
 });
 
 module.exports = { seats, read, readRel, meta, body, section, squash, rules, copiesOf, listedIn, of };

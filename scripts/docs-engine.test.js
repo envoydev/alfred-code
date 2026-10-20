@@ -2170,14 +2170,15 @@ test('status reports overlays stranded by committing a previously ignored docs r
   } finally { r.rm(); }
 });
 
-// The only ledger in this stack that was not under <docs-path>: hook-blocks and tools-usage are both there,
-// and a project that commits .claude/ accumulated this one in git.
-test('the engine log lands under the docs root, beside hook-blocks', () => {
+// The engine's log is a ledger like hook-blocks and tools-usage: since 2.8.0 all three live in the data root's
+// statistics/ (stack/hooks/layout.js), never committed - a project that commits .claude/ accumulated it in git once.
+test('the engine log lands under the data root\'s statistics/, beside hook-blocks', () => {
   const r = repo({ docsPath: 'docs', files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
   try {
     assert.strictEqual(r.cli(['set', 'patterns#orders'], ORDERS('Refunds are capped at 10.')).status, 0);
-    assert.ok(r.exists('docs/docs-log.jsonl'), 'the log is written under the docs root');
-    assert.match(r.read('docs/docs-log.jsonl'), /"event":"doc-set"/);
+    assert.ok(r.exists('.alfred/statistics/docs-log.jsonl'), 'the log is written under the data root\'s statistics/');
+    assert.match(r.read('.alfred/statistics/docs-log.jsonl'), /"event":"doc-set"/);
+    assert.ok(!r.exists('docs/docs-log.jsonl'), 'and never under the docs root any more');
     assert.ok(!r.exists('.claude/docs-log.jsonl'), 'and never under .claude/ any more');
   } finally { r.rm(); }
 });
@@ -2404,4 +2405,29 @@ test('every git child process a hook or engine starts carries a timeout (2.1.5 M
     }
   }
   assert.deepStrictEqual(open, [], 'git calls with no timeout');
+});
+
+// 2.8.0 /capture-preferences: preferences/ is a docs domain with sections and no watched globs - a preference does not
+// drift with the code, so a code change never asks whether it still holds. Its docs open with `Updated: <date>`, not a
+// `Captured:` stamp: they record the user's words, not the code.
+test('a preferences/ folder with watch.json {} is a domain; docs.js show CODE-PREFERENCES#c3 prints the section; status reports no stale stamp for it', () => {
+  const r = repo({ files: { 'src/a.cs': 'static class A {}\n' } });
+  try {
+    r.write('.claude/docs/preferences/watch.json', '{}');
+    r.write('.claude/docs/preferences/CODE-PREFERENCES.md', '# Code preferences\n\nUpdated: 2026-10-20\n\n'
+      + '## C3 - No static classes\n<!-- id: c3 -->\n- Rule: model behaviour as instances behind an interface.\n- Scope: src/**/*.cs\n\n'
+      + '## C4 - No regions\n<!-- id: c4 -->\n- Rule: no #region blocks.\n');
+    assert.ok(requireEngine(r.root).domains().includes('preferences'), 'the folder is a domain');
+    delete require.cache[ENGINE_PATH];
+    const shown = r.cli(['show', 'CODE-PREFERENCES#c3']);
+    assert.strictEqual(shown.status, 0, shown.stderr);
+    assert.match(shown.stdout, /model behaviour as instances behind an interface/);
+    assert.doesNotMatch(shown.stdout, /#region/, 'one section, not the doc');
+    r.write('src/a.cs', 'static class A { int x; }\n');
+    const st = r.cli(['status']);
+    assert.strictEqual(st.status, 0, st.stderr);
+    assert.match(st.stdout, /^outgrown sections: 0$/m, 'no section of a preference doc goes stale with the code');
+    const lint = r.cli(['lint']);
+    assert.doesNotMatch(lint.stdout + lint.stderr, /CODE-PREFERENCES/, 'the Updated: line is no missing stamp');
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
 });

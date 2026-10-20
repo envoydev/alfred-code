@@ -330,7 +330,7 @@ test('audit 2026-10-08: the checkpoint carries the test-only carve-out, a templa
     assert.ok(cp.includes('read `git log -1 --stat` back into the close'), 'the commit is read back');
     assert.doesNotMatch(raw, /## Discarding uncommitted work/, 'the discard section is gone');
     assert.match(read('stack/hooks/guard-catastrophic-rm.js'), /On 'Discard it', write the receipt \$\{receiptRel\}/, 'the denial carries the receipt route');
-    assert.ok(cp.includes('`<docs-path>/flow/STAGED-SCAN-ALLOW`'), 'the staged-scan receipt has a writer');
+    assert.ok(cp.includes('`<data root>/state/approvals/STAGED-SCAN-ALLOW`'), 'the staged-scan receipt has a writer');
     const discard = JSON.parse(read('meta/shared-rules.json')).rules['discard-allow-receipt'];
     assert.ok(!discard.sites.some((s) => s.file.includes('habits-commit-checkpoint')), 'the registry no longer pins a checkpoint copy');
 });

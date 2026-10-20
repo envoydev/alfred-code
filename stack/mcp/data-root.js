@@ -131,18 +131,22 @@ function sharedBrowserOf(cls, root = DATA_ROOT_DEFAULT)
 // the root is this machine's - the navigation index and its ~327MB of language servers, browser profiles holding
 // session cookies, a project memory database, the sensitive data - EXCEPT the docs, which follow
 // ALFRED_CODE_DOCS_VERSIONING. `local` keeps them out too; `git` (and a mode nobody has set yet) re-includes the docs
-// folder and keeps out only the hooks' machine state under it. A bare `*` would hide the docs from git under `git`,
+// folder and keeps out only the two machine-local files under it - the hooks' state and ledgers sit beside the docs
+// since 2.8.0 (`state/`, `statistics/`, stack/hooks/layout.js), which `/*` keeps out. A bare `*` would hide the docs from git under `git`,
 // `git check-ignore` would then answer yes for them, and the versioning seed would read every fresh project as
 // `local`. The file re-includes ITSELF, so it is committed and a teammate's clone has it before any server writes
 // there. The header line marks it as the stack's: any other text is the project's own and is left alone. One home,
 // read by the installer (docs.ensureDataIgnore) and by every launcher that writes under the root (ensureRootIgnore).
 // A docs root OUTSIDE this root keeps its own file (docs.ensureDocsIgnore) - no file of the stack's reaches it.
 const DATA_IGNORE_HEAD = '# alfred-code: the data root (ALFRED_CODE_DATA_PATH) is machine-local';
-// The hooks' machine state under the docs root, relative to it: never committed, whatever the versioning.
+// What stays machine-local under the docs root, relative to it: never committed, whatever the versioning. The hooks' state
+// left in 2.8.0 for the data root's state/ and statistics/ (docs.migrateLayout), but its old homes stay listed for the 2.x
+// line: a session started before the update writes them again, and a hand-set root keeps them until its move is answered
+// (temp-project matrix, 2026-10-21). A history record is `<session>.json`, so a team's own docs/history/ notes stay in git.
+// `.branches/` is never written under `git`, and `local` keeps the root out.
 const DOCS_STATE_IGNORE = [
-    '/flow/', '/hook-blocks/', '/history/', '/tools-usage/', '/.branches/', '/docs-log.jsonl',
-    "# the usage audit's raw transcript and ledger copies stay on this machine",
-    '/usage-report/**/*.jsonl',
+    "# the hooks' state before 2.8.0, which a session started before the update still writes",
+    '/flow/', '/hook-blocks/', '/history/*.json', '/tools-usage/', '/docs-log.jsonl', '/usage-report/**/*.jsonl',
     "# the run book's credentials file before 2026-10-13, which an older capture still writes",
     '/project-capabilities/credentials.local.env',
     "# the awareness capture's inventory names this machine's plugins",
@@ -160,7 +164,7 @@ function dataIgnoreText({ root, docsPath, mode })
     if (!rel) return `${DATA_IGNORE_HEAD}\n*\n!/.gitignore\n`;
     if (mode === 'local') return `${DATA_IGNORE_HEAD}; the docs under it are too (ALFRED_CODE_DOCS_VERSIONING=local)\n/*\n!/.gitignore\n`;
     const state = DOCS_STATE_IGNORE.map((l) => (l.startsWith('#') ? l : `/${rel}${l}`));
-    return `${DATA_IGNORE_HEAD}; the docs under it are committed (ALFRED_CODE_DOCS_VERSIONING=git), the hooks' state there is not\n`
+    return `${DATA_IGNORE_HEAD}; the docs under it are committed (ALFRED_CODE_DOCS_VERSIONING=git) but for the lines below\n`
         + `/*\n!/.gitignore\n!/${rel.split('/')[0]}/\n${state.join('\n')}\n`;
 }
 

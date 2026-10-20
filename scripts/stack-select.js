@@ -127,6 +127,10 @@ const HARD_PREREQS = [
 // severity: 'blocker' (a kept item will not work) or 'warning' (soft/optional).
 const SCOPED_PREREQS = [
     { when: { plugin: 'csharp-lsp' }, bin: 'csharp-ls', severity: 'blocker', need: 'csharp-ls tool', how: 'dotnet tool install -g csharp-ls', init: true },
+    // The plugin is an empty package naming `typescript-language-server --stdio`; the server finds tsserver.js in the
+    // workspace's TypeScript, else in one installed beside it. TypeScript 7 ships no tsserver.js, so the install pins
+    // TypeScript 6, as typescript-language-server 6.0.2's own README does (the docs' bare `typescript` now resolves 7).
+    { when: { plugin: 'typescript-lsp' }, bin: 'typescript-language-server', severity: 'blocker', need: 'typescript-language-server', how: 'npm install -g typescript-language-server typescript@6', init: true },
     { when: { skillPrefix: 'dotnet' }, bin: 'dotnet', severity: 'blocker', need: '.NET SDK', how: 'install the .NET SDK (https://dotnet.microsoft.com)' },
     { when: { skillPrefix: 'csharp' }, bin: 'dotnet', severity: 'blocker', need: '.NET SDK', how: 'install the .NET SDK (https://dotnet.microsoft.com)' },
     // The one kept browser engine that needs a browser the machine must already carry and no platform
@@ -262,7 +266,7 @@ const browsersOption = (get) => String(get('--browsers') || get('--playwright-br
 function detectEnvironment(opts)
 {
     opts = opts || {};
-    const BINS = ['node', 'npx', 'git', 'claude', 'uvx', 'dotnet', 'csharp-ls', 'brew'];
+    const BINS = ['node', 'npx', 'git', 'claude', 'uvx', 'dotnet', 'csharp-ls', 'typescript-language-server', 'brew'];
     const ENVS = ['CONTEXT7_API_KEY'];
     const bins = {};
     for (const b of BINS) bins[b] = onPath(b);

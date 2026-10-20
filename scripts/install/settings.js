@@ -137,6 +137,8 @@ function readSettings(file)
     let raw;
     try { raw = fs.readFileSync(file, 'utf8'); }
     catch (err) { const e = new Error(`${path.basename(file)} could not be read (${err.code || err.message}) - left untouched; fix it and re-run`); e.leaveAlone = true; throw e; }
+    // An empty file holds nothing to lose: no settings yet, as memory.js writeSwitchOff reads it (release matrix 2026-10-20).
+    if (!raw.trim()) return { data: {}, existed: true };
     let parsed;
     try { parsed = parseJson(raw); }
     catch (err) { const e = new Error(`${path.basename(file)} is not valid JSON (${err.message}) - left untouched; fix it and re-run`); e.leaveAlone = true; throw e; }
@@ -371,19 +373,17 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
 
     if (retireAndReseed(env, migrations, log, label, undefined, stackWrote)) changed = true;
 
-    // 3b. THE DOCS ROOT DECISION (docs.docsMovePlan) - before the seeds, so the absent-only default never
-    // lands first: a moved or re-pointed root, a kept old one, or the old root held while its move is offered.
-    if (docsPath && docsPath.value)
-    {
-        const { into, lab, mine } = at('ALFRED_CODE_DOCS_PATH');
-        const old = into.ALFRED_CODE_DOCS_PATH;
-        if (old !== docsPath.value)
+    // 3b. THE DOCS ROOT (alfred-code.js docsRootStep): ALFRED_CODE_DOCS_PATH is retired in 2.8.0 - the docs root is
+    // <data root>/docs. A key the docs step cleared (the docs moved, or nothing was left to move) goes from this file and
+    // the overlay; a clash keeps it (`keep`, which the ledger pass honours too).
+    if (docsPath && docsPath.remove)
+        for (const [into, lab, mine] of [[env, label, true], ...(held ? [[held, overlayLabel, false]] : [])])
         {
-            into.ALFRED_CODE_DOCS_PATH = docsPath.value;
+            if (!Object.hasOwn(into, 'ALFRED_CODE_DOCS_PATH')) continue;
+            log(`  ${lab} env: ALFRED_CODE_DOCS_PATH '${into.ALFRED_CODE_DOCS_PATH}' removed (${docsPath.why})`);
+            delete into.ALFRED_CODE_DOCS_PATH;
             if (mine) changed = true;
-            log(`  ${lab} env: ALFRED_CODE_DOCS_PATH ${old === undefined ? 'absent' : `'${old}'`} -> '${docsPath.value}' (${docsPath.why})`);
         }
-    }
 
     // 3c. THE DATA ROOT DECISION (alfred-code.js dataRootStep) - a root this run moved the data to, or a
     // fresh install's chosen one; the absent-only seed below writes the default otherwise.
@@ -575,13 +575,14 @@ function renamedFrom(key, value, before, migrations)
 // The env half, for one file: the drop, then the managed map. `release` is every key the catalog ships;
 // `seedsOf(key)` what the stack ever seeded it with (the fallback's evidence); `written` the keys this
 // run overwrites by contract, with the value it wrote.
-function ledgerEnv({ name, env, before, prior, release, seedsOf, written, userOwned = [], migrations, log })
+function ledgerEnv({ name, env, before, prior, release, seedsOf, written, kept = [], migrations, log })
 {
     let changed = false;
     if (prior)
         for (const [key, hash] of Object.entries(prior))
         {
-            if (!isStackKey(key) || !Object.hasOwn(env, key) || release.has(key)) continue;   // a stack key only: the stamp is project text
+            // a stack key only: the stamp is project text; `kept` - a retired key this run decided to leave (a docs clash)
+            if (!isStackKey(key) || !Object.hasOwn(env, key) || release.has(key) || kept.includes(key)) continue;
             if (valueHash(env[key]) === hash)
             { delete env[key]; changed = true; log(`  ${name} env: ${key} removed - the stack wrote it and this release no longer does`); }
             else log(`  ${name} env: ${key} kept - changed since the stack wrote it, so it is yours (${String(env[key]).length} chars)`);
@@ -589,7 +590,9 @@ function ledgerEnv({ name, env, before, prior, release, seedsOf, written, userOw
     const managed = {};
     for (const key of Object.keys(env).filter(isStackKey))
     {
-        if (userOwned.includes(key)) continue;   // an answer this run made the value the user's
+        // A retired key the docs step kept (a clash, a hand-set root) carries its ledger row as recorded: no claim, no
+        // ownership line - the docs step said why it stays, and the row still tells the next run whether the stack wrote it.
+        if (kept.includes(key)) { if (prior && Object.hasOwn(prior, key)) managed[key] = prior[key]; continue; }
         const v = env[key];
         const hash = valueHash(v);
         const from = renamedFrom(key, v, before, migrations);
@@ -877,13 +880,13 @@ function writeSettings(opts)
     const writtenNow = memoryDb ? { ALFRED_CODE_MEMORY_DB: memoryDb } : {};
     const priorEnv = (name) => (prior && prior.env ? prior.env[name] || {} : null);
     const managedEnv = {};
-    const userOwned = docsPath && docsPath.own === 'user' ? ['ALFRED_CODE_DOCS_PATH'] : [];
-    const envShared = ledgerEnv({ name: label, env: data.env, before: envBefore, prior: priorEnv(label), release: releaseEnv, seedsOf, written: writtenNow, userOwned, migrations, log });
+    const kept = docsPath && docsPath.keep ? ['ALFRED_CODE_DOCS_PATH'] : [];
+    const envShared = ledgerEnv({ name: label, env: data.env, before: envBefore, prior: priorEnv(label), release: releaseEnv, seedsOf, written: writtenNow, kept, migrations, log });
     if (envShared.changed) changed = true;
     managedEnv[label] = envShared.managed;
     if (overlay)
     {
-        const envLocal = ledgerEnv({ name: localName, env: overlay, before: localEnvBefore, prior: priorEnv(localName), release: releaseEnv, seedsOf, written: writtenNow, userOwned, migrations, log });
+        const envLocal = ledgerEnv({ name: localName, env: overlay, before: localEnvBefore, prior: priorEnv(localName), release: releaseEnv, seedsOf, written: writtenNow, kept, migrations, log });
         managedEnv[localName] = envLocal.managed;
     }
     const priorDeny = prior && prior.deny ? prior.deny : null;

@@ -8,7 +8,8 @@
 //
 //   machine: <what> - present | missing: <command> | missing after uv: <command> | refresh: <command> | blocked: <why> | skip: <why>
 //     What the kept MCPs need before they can start, probed on this machine, in install order: uv,
-//     the pinned Python fetched through it, csharp-ls when csharp-lsp is kept, the picked playwright
+//     the pinned Python fetched through it, csharp-ls when csharp-lsp is kept, typescript-language-server (with
+//     the TypeScript 6 it needs beside it) when typescript-lsp is kept, the picked playwright
 //     browsers, the serena index and the memory service's embedding model. The install phase already downloaded a picked firefox / webkit, so
 //     one is here only when that download failed; chrome and msedge run the machine's own browser,
 //     probed like stack-select's msedge check, and one that is not there is `blocked` with its fix.
@@ -117,6 +118,12 @@ function plan({ inv, root, platform = process.platform, arch = process.arch, env
         else if (probe.has('dotnet', env)) add('csharp-ls', 'missing', 'dotnet tool install --global csharp-ls');
         else add('csharp-ls', 'blocked', 'needs the .NET 10 SDK (dotnet) first - https://dot.net, then dotnet tool install --global csharp-ls');
     }
+
+    // typescript-lsp's server, which the plugin names but never installs. npm comes with the node the stack already
+    // needs, so it is never blocked. `typescript@6`: TypeScript 7 ships no tsserver.js, and typescript-language-server
+    // reads one from the workspace or from the TypeScript installed beside it (stack-select.js SCOPED_PREREQS).
+    if ((inv.plugins || []).some((p) => (p && p.name) === 'typescript-lsp'))
+        add('typescript-language-server', probe.has('typescript-language-server', env) ? 'present' : 'missing', 'npm install -g typescript-language-server typescript@6');
 
     const pwDir = browsersDir(platform, env);
     for (const engine of (inv.browser && inv.browser.installed) || [])

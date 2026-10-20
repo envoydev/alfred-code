@@ -426,8 +426,9 @@ test('cli: a hand copy of the shipped template is flagged unfilled and by its pl
 {
     const template = fs.readFileSync(path.join(__dirname, '..', 'stack', 'AGENTS.template.md'), 'utf8');
     const rules = ['alfred-interaction', 'alfred-quality-gates', 'alfred-security', 'alfred-git', 'alfred-navigation', 'alfred-docs-root', 'alfred-memory',
-        'alfred-awareness', 'alfred-architecture', 'project-code-style'];
-    const files = { '.claude/AGENTS.md': template, '.alfred/docs/code-style/CODE-STYLE.md': '', '.alfred/docs/awareness/PROJECT-AWARENESS.md': '' };
+        'alfred-awareness', 'alfred-architecture', 'project-code-style', 'alfred-preferences'];
+    const files = { '.claude/AGENTS.md': template, '.alfred/docs/code-style/CODE-STYLE.md': '', '.alfred/docs/awareness/PROJECT-AWARENESS.md': '',
+        '.alfred/docs/preferences/CODE-PREFERENCES.md': '' };
     for (const r of rules) files[`.claude/rules/${r}.md`] = '';
     const root = tree(files, { git: true });
     const r = cli(root);
@@ -531,6 +532,40 @@ test('SD04: a line pointing at a generated rule is that pointer, not the outline
     assert.deepStrictEqual(kinds(run(root, text, { file: '.claude/AGENTS.md', template: SHIPPED_TEMPLATE })), []);
     const copied = ['# Orders', '', '## Setup', '', '- what a machine needs before build and test work: the SDK / runtime versions, nothing more.'].join('\n');
     assert.deepStrictEqual(run(root, copied, { file: '.claude/AGENTS.md', template: SHIPPED_TEMPLATE }).map((f) => `${f.line} ${f.kind}`), ['5 template']);
+});
+
+// Template audit 2026-10-20: the generated names stopped at the 2026-10-13 spellings, so the 2026-10-16 awareness rule and
+// the 2.8.0 preferences rule read as baseline rules - the pointer the outline asks for was template text, naming either
+// rule made the list 'enumerate' (seven baseline rows), and an uncaptured one was a missing rule. 9 rows, 1 true.
+test('generated rules: every rule a capture skill writes is a generated name, and no shipped rule is', () =>
+{
+    const { GENERATED_STEM } = require('./agents-md-check.js');
+    const generated = (stem) => new RegExp(`^${GENERATED_STEM}$`).test(stem);
+    const repo = path.join(__dirname, '..');
+    const shipped = fs.readdirSync(path.join(repo, 'stack', 'rules')).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3));
+    const written = new Set();
+    for (const d of fs.readdirSync(path.join(repo, 'stack', 'skills')).filter((n) => n.startsWith('capture-')))
+    {
+        let text = '';
+        try { text = fs.readFileSync(path.join(repo, 'stack', 'skills', d, 'SKILL.md'), 'utf8'); } catch { continue; }
+        for (const m of text.matchAll(/\.claude\/rules\/([a-z0-9-]+)\.md/g)) if (!shipped.includes(m[1])) written.add(m[1]);
+    }
+    assert.deepStrictEqual([...written].sort(), ['alfred-architecture', 'alfred-awareness', 'alfred-preferences', 'project-code-style']);
+    for (const stem of written) assert.ok(generated(stem), `${stem} is written by a capture`);
+    for (const stem of shipped) assert.ok(!generated(stem), `${stem} ships with the stack`);
+});
+
+test('generated rules: the awareness and preferences rules - a pointer is no template text, naming them lists nothing, an uncaptured one is a path', () =>
+{
+    const files = { '.claude/rules/alfred-awareness.md': '' };
+    for (const r of ['interaction', 'quality-gates', 'security', 'git', 'navigation', 'docs-root', 'memory']) files[`.claude/rules/alfred-${r}.md`] = '';
+    const root = tree(files);
+    const pointer = '- MCP routing is NOT hand-filled here - it lives in the generated <docs-path>/awareness/AGENTS-AWARENESS.md, which .claude/rules/alfred-awareness.md imports.';
+    const text = ['# Orders', '', '## Stack', '', pointer, '- .NET 10.', '', '## Rules', '', '| Rule | What |', '|---|---|',
+        '| `.claude/rules/alfred-awareness.md` (GENERATED) | the inventory |', '| `.claude/rules/alfred-preferences.md` (GENERATED) | the preferences |'].join('\n');
+    assert.deepStrictEqual(kinds(run(root, text, { file: '.claude/AGENTS.md', template: SHIPPED_TEMPLATE })), ['13 path .claude/rules/alfred-preferences.md']);
+    fs.writeFileSync(path.join(root, '.claude/rules/alfred-preferences.md'), '');
+    assert.deepStrictEqual(kinds(run(root, text, { file: '.claude/AGENTS.md', template: SHIPPED_TEMPLATE })), []);
 });
 
 test('SD04 --outline: each numbered outline section with the heading that holds it, or lacks - informational, exit 0', () =>

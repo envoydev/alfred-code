@@ -64,14 +64,14 @@ test('I10: the skill and windows.md say what stays on and that a house guard den
     const skill = flat(read('stack/skills/desktop-automation/SKILL.md'));
     // stack audit 2026-10-20 row 14: Windows-MCP 0.8.8 enables every tool; the stack's launcher is what excludes them
     assert.match(skill, /the stack launches it with PowerShell, Registry, Process and FileSystem excluded/);
-    assert.match(skill, /a house guard denies App's `launch_executable` mode[^.]*and every MacOS-MCP `Shell` call unless the user allowed it in `<docs-path>\/flow\/DESKTOP-EXEC-ALLOW`/);
+    assert.match(skill, /a house guard denies App's `launch_executable` mode[^.]*and every MacOS-MCP `Shell` call unless the user allowed it in `<data root>\/state\/approvals\/DESKTOP-EXEC-ALLOW`/);
     const win = flat(read('stack/skills/desktop-automation/references/windows.md'));
     assert.match(win, /--exclude-tools PowerShell,Registry,Process,FileSystem/);
     assert.match(win, /What stays on:/);
-    assert.match(win, /a house guard denies that mode unless the user allowed it in `<docs-path>\/flow\/DESKTOP-EXEC-ALLOW`/);
+    assert.match(win, /a house guard denies that mode unless the user allowed it in `<data root>\/state\/approvals\/DESKTOP-EXEC-ALLOW`/);
     assert.doesNotMatch(win, /`Notification`, `FileSystem`, and - switched off/, 'FileSystem is no longer among the tools left on');
     const mac = flat(read('stack/skills/desktop-automation/references/macos.md'));
-    assert.match(mac, /A house guard denies every `Shell` call[^.]*unless the user allowed it in `<docs-path>\/flow\/DESKTOP-EXEC-ALLOW`/);
+    assert.match(mac, /A house guard denies every `Shell` call[^.]*unless the user allowed it in `<data root>\/state\/approvals\/DESKTOP-EXEC-ALLOW`/);
 });
 
 // ---------------------------------------------------------------- I9 - the plugin's own evals

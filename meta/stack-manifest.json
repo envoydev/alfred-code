@@ -34,7 +34,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "capture-architecture",
-      "note": "deliberate architecture capture - dispatches architecture-analyzer per module, reasons in the main session, writes docs/architecture/ARCHITECTURE.md + the generated awareness rule alfred-architecture.md; manual /-only"
+      "note": "deliberate architecture capture - dispatches architecture-analyzer per module, reasons in the main session, writes docs/architecture/ARCHITECTURE.md + the generated awareness rule alfred-architecture.md; model-invocable, and the architecture-quality loop invokes it"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -49,7 +49,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "capture-architecture-quality",
-      "note": "deliberate pros/cons capture over the architecture map - dispatches architecture-analyzer per module, reasons a gated, tiered strengths/weaknesses assessment in the main session, writes docs/quality/ARCHITECTURE-ASSESSMENT.md fresh every run (never versioned - quality/ carries no watch.json, so the docs engine never treats it as a domain); reads the decision log, never writes it; manual /-only"
+      "note": "deliberate pros/cons capture over the architecture map - dispatches architecture-analyzer per module, reasons a gated, tiered strengths/weaknesses assessment in the main session, writes docs/quality/ARCHITECTURE-ASSESSMENT.md fresh every run (never versioned - quality/ carries no watch.json, so the docs engine never treats it as a domain); reads the decision log, never writes it; model-invocable behind a run gate, and the quality loop invokes it"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -59,7 +59,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "capture-test-coverage",
-      "note": "deliberate coverage capture - detect tooling per surface, instrumented run ONCE per surface in the main session, writes docs/test-coverage/COVERAGE.md (90% line after exclusions default, tiered weak points) + raw/ machine-readable results; manual /-only (the loop Read-loads it)"
+      "note": "deliberate coverage capture - detect tooling per surface, instrumented run ONCE per surface in the main session, writes docs/quality/test-coverage/COVERAGE.md (90% line after exclusions default, tiered weak points) + raw/ machine-readable results; model-invocable behind a run gate, and the coverage loop invokes it"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -75,6 +75,11 @@
       "repo": "envoydev/alfred-code",
       "name": "capture-awareness",
       "note": "deliberate awareness capture (the user's ruling of 2026-10-16: three captures in one) - inventories installed skills/agents/MCPs/plugins into docs/awareness/AGENTS-AWARENESS.md (script-written, out of git), writes the run book docs/awareness/PROJECT-AWARENESS.md from the repo plus the asked gaps (credentials by location, never by value), maps the sibling repos the user names into docs/awareness/RELATED-PROJECTS-AWARENESS.md (fanning out related-project-analyzer where it is picked), and generates the one rule alfred-awareness.md whose @ imports load all three at every session start; manual /-only"
+    },
+    {
+      "repo": "envoydev/alfred-code",
+      "name": "capture-preferences",
+      "note": "deliberate preferences capture - writes the user's own code, architecture and git preferences into docs/preferences/CODE-, ARCHITECTURE- and GIT-PREFERENCES.md (ids never reused, a waiver as an Except: line, an optional regex Check: measured by the skill's script, never a command), and generates the pathless rule alfred-preferences.md that carries every entry inline, ahead of every other source at every session start; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -174,7 +179,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "capture-usage-report",
-      "note": "token/tool usage audit of stack skill runs: transcript hunt -> analyze-usage.js per session -> per-session report + raw data under <docs-path>/usage-report/"
+      "note": "token/tool usage audit of stack skill runs: transcript hunt -> analyze-usage.js per session -> per-session report + raw data under <data root>/statistics/usage-report/"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -645,7 +650,7 @@
     },
     {
       "file": "alfred-docs-root.md",
-      "note": "generated-docs root resolution (ALFRED_CODE_DOCS_PATH)"
+      "note": "generated-docs root - always <data root>/docs (ALFRED_CODE_DOCS_PATH retired in 2.8.0)"
     },
     {
       "file": "alfred-memory.md",
@@ -763,13 +768,13 @@
       "file": "guard-unapproved-dispatch.js",
       "matcher": "Task|Agent",
       "event": "",
-      "note": "block *-implementer dispatch without the docs-root flow/APPROVAL gate file (APPROVED/AUTO)"
+      "note": "block *-implementer dispatch without its plan's data-root state/approvals/<plan id>/APPROVAL gate file (APPROVED/AUTO; the brief names the plan on a plan: line) or a root AUTO"
     },
     {
       "file": "guard-ungated-commit.js",
       "matcher": "Bash|PowerShell|Monitor",
       "event": "",
-      "note": "block a non-trivial git commit without the docs-root flow/COMMIT-GATE receipt (VERIFIED/WAIVED), and a git push / gh pr merge without flow/PUSH-GATE (ALFRED_CODE_PUSH_GATE=0 turns that half off)"
+      "note": "block a non-trivial git commit without the data-root state/approvals/COMMIT-GATE receipt (VERIFIED/WAIVED), and a git push / gh pr merge without state/approvals/PUSH-GATE (ALFRED_CODE_PUSH_GATE=0 turns that half off)"
     },
     {
       "file": "guard-stop-contract.js",
@@ -817,7 +822,7 @@
       "file": "guard-fresh-session-start.js",
       "matcher": "@PreCompact",
       "event": "",
-      "note": "before a compaction, write <docs-path>/flow/COMPACT-STATE - the live plan, the active flow and its body path, the open flow stamps with their ages, the files this session wrote - with no model call; the compact SessionStart points at it"
+      "note": "before a compaction, write <data root>/state/sessions/COMPACT-STATE - the live plan, the active flow and its body path, the open flow stamps with their ages, the files this session wrote - with no model call; the compact SessionStart points at it"
     },
     {
       "file": "guard-fresh-session-start.js",
@@ -961,7 +966,7 @@
       "file": "history-session.js",
       "matcher": "@Stop",
       "event": "",
-      "note": "records this session: commits, files left dirty, the user's AskUserQuestion answers - machine-local, <docs-path>/history/"
+      "note": "records this session: commits, files left dirty, the user's AskUserQuestion answers - machine-local, <data root>/state/history/"
     },
     {
       "file": "instrument-tool-usage.js",
@@ -973,11 +978,11 @@
   "plugins": [
     {
       "id": "csharp-lsp@claude-plugins-official",
-      "note": "inline Roslyn diagnostics on edit (complements the navigation server nav); needs csharp-ls (dotnet tool install -g csharp-ls); pin: the official marketplace entry's version - the package itself is empty, and the server is whatever csharp-ls is on PATH, unpinned"
+      "note": "inline Roslyn diagnostics on edit (complements the navigation server nav); needs csharp-ls (dotnet tool install -g csharp-ls, on the .NET 10 SDK since csharp-ls 0.28.0 - /alfred-code:init installs it); pin: the official marketplace entry's version - the package itself is empty, and the server is whatever csharp-ls is on PATH, unpinned"
     },
     {
       "id": "typescript-lsp@claude-plugins-official",
-      "note": "same for Angular/TS work; pin: the official marketplace entry's version - the server is whatever typescript-language-server is on PATH, unpinned"
+      "note": "same for Angular/TS work; needs typescript-language-server with a TypeScript 6 beside it (npm install -g typescript-language-server typescript@6 - TypeScript 7 ships no tsserver.js, and typescript-language-server 6 needs Node 22.22.2 or later; /alfred-code:init installs it); pin: the official marketplace entry's version - the server is whatever typescript-language-server is on PATH, unpinned"
     },
     {
       "id": "claude-hud@claude-hud",

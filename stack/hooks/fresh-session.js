@@ -227,15 +227,19 @@ function sessionStartedAt() {
   return _started;
 }
 // The compaction points this PROJECT has measured: each automatic compaction leaves its context in
-// `<docs>/flow/compact-points.json` (guard-fresh-session-start.js writes it at PreCompact and at the compact start), and
+// `<data root>/state/sessions/compact-points.json` (guard-fresh-session-start.js writes it at PreCompact and at the compact
+// start; the pre-2.8.0 `<docs>/flow/` one is read until the first write moves its rows), and
 // the lowest one for this session's model in the last 30 days is a fact about where the harness compacts here - which
 // the model's row cannot know (audit 2026-10-10 C08: 29 compactions of one project at 300-400k against a 400k trigger,
 // so the Stop offer could not fire before the harness compacted).
 const COMPACT_POINTS_DAYS = 30;
-function compactPointsFile() {
+function compactPointsFile(write = false) {
   const path = require('path');
   const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-  return path.resolve(root, envOf(process.env, 'DOCS_PATH') || '.alfred/docs', 'flow', 'compact-points.json');
+  let layout = null;
+  try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
+  if (layout) return write ? layout.statePath(root, 'sessions', 'compact-points.json') : layout.findState(root, 'sessions', 'compact-points.json');
+  return path.resolve(root, envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`, 'flow', 'compact-points.json'); // pre-2.8.0, no layout.js here
 }
 function readCompactPoints() {
   try {
@@ -252,7 +256,7 @@ function recordCompactPoint(tokens, model) {
     const started = sessionStartedAt();
     rows.push({ at: new Date().toISOString(), session: String(payload.session_id || ''), model: String(model).toLowerCase(), tokens: n,
       ...(started ? { started: new Date(started).toISOString() } : {}) });
-    const file = compactPointsFile();
+    const file = compactPointsFile(true);
     fs.mkdirSync(require('path').dirname(file), { recursive: true });
     const tmp = `${file}.${process.pid}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify(rows.slice(-40), null, 1) + '\n');

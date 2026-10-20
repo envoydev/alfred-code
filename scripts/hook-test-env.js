@@ -3,7 +3,7 @@
 // ALFRED_CODE_DOCS_PATH and the rest into every tool call), its CLAUDE_CODE_ENTRYPOINT and possibly its
 // project dir. A hook that reads one of them judges the RUNNER's install - 8 commit-gate cases failed on an
 // inherited docs path - and a hook that writes lands in the runner's tree, or, with CLAUDE_PROJECT_DIR pointed
-// at os.tmpdir(), in `$TMPDIR/<docs-path>/hook-blocks`: a stray folder that broke the benchmark isolation checks.
+// at os.tmpdir(), in `$TMPDIR/<data root>/statistics/hook-blocks`: a stray folder that broke the benchmark isolation checks.
 // One call at the top of each hook suite, after `require('node:test')` and before any env value is set or
 // copied: every inherited stack key, the entrypoint, the plugin root and profile and the project dir go, a
 // fresh project dir comes back for the suite's own spawns, and the suite FAILS if anything it ran wrote under
@@ -19,8 +19,12 @@ const SESSION_KEYS = ['CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_PLUGIN_ROOT', 'CLAUDE_PL
 // The docs roots a hook falls back to under a project dir of os.tmpdir(): the default and the old one - plus the
 // RUNNER's own ledger: a hook spawned with no project dir and no cwd writes its block row under process.cwd(), the
 // checkout itself (audit 2026-10-08: layer-table-gate.test.js left 494 rows in the repo's nosession.jsonl unseen).
-// Only the ledger folder is watched there, never the whole docs root, which a person edits while a suite runs.
-const strayRoots = () => [...['.alfred', '.claude'].map((d) => path.join(os.tmpdir(), d, 'docs')), path.join(process.cwd(), '.alfred', 'docs', 'hook-blocks')];
+// Only the ledger folder is watched there, never the whole docs root, which a person edits while a suite runs. Since
+// 2.8.0 the hooks' state and ledgers sit beside the docs root, in the data root's state/ and statistics/
+// (stack/hooks/layout.js) - the checkout's own ledger with them.
+const strayRoots = () => [...['.alfred', '.claude'].map((d) => path.join(os.tmpdir(), d, 'docs')),
+    ...['state', 'statistics'].map((d) => path.join(os.tmpdir(), '.alfred', d)),
+    path.join(process.cwd(), '.alfred', 'docs', 'hook-blocks'), path.join(process.cwd(), '.alfred', 'statistics', 'hook-blocks')];
 
 // Every file under the stray roots written at or after `since` (ms), as paths.
 function strayWrites(since, roots = strayRoots())

@@ -46,7 +46,8 @@ function project({ git = true } = {})
         tick += 1;
         fs.utimesSync(file, tick, tick);
     };
-    const marker = path.join(root, '.alfred', 'docs', 'flow', 'turn-check-sess');
+    // 2.8.0 layout: the marker is session scratch, <data root>/state/sessions/
+    const marker = path.join(root, '.alfred', 'state', 'sessions', 'turn-check-sess');
     // A stub tsc: logs where and how it ran, prints `errors` error lines, exits 2 when there are any.
     const tsc = (dir, errors) =>
     {
@@ -161,7 +162,7 @@ test('turn-build: a TypeScript error blocks the Stop with the first 20 error lin
     assert.strictEqual(p.run({ hook_event_name: 'Stop', session_id: 'sess2' }).status, 2, 'another session, no marker yet: measured from its start');
     fs.utimesSync(path.join(p.root, 'src', 'a.ts'), new Date(Date.now() - 30000), new Date(Date.now() - 30000));
     assert.strictEqual(p.run({ hook_event_name: 'Stop' }).status, 0, 'a file last changed before the marker is no edit of this turn');
-    const row = fs.readFileSync(path.join(p.root, '.alfred', 'docs', 'hook-blocks', 'sess.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).pop();
+    const row = fs.readFileSync(path.join(p.root, '.alfred', 'statistics', 'hook-blocks', 'sess.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).pop();
     assert.strictEqual(row.hook, 'check-turn-build.js');
     assert.strictEqual(row.event, 'Stop');
     // A row carrying a `mode` is a PROBE to analyze-usage.js (every guard's block row has none), so a
@@ -293,7 +294,7 @@ test('turn-build: a C# project never restored is a pass with a probe row, and a 
     p.write('src/Api/Controllers/A.cs');
     const r = p.run({ hook_event_name: 'Stop' }, env);
     assert.strictEqual(r.status, 0, r.stderr);
-    const rows = fs.readFileSync(path.join(p.root, '.alfred', 'docs', 'hook-blocks', 'sess.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    const rows = fs.readFileSync(path.join(p.root, '.alfred', 'statistics', 'hook-blocks', 'sess.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
     assert.deepStrictEqual(rows.map((x) => [x.mode, x.kind, x.detail.roots]), [['probe', 'not-restored', ['src/Api/Api.csproj']]]);
     stub(`echo '/r/src/Api/A.cs(3,5): error CS0103: The name x does not exist [/r/src/Api/Api.csproj]'`);
     p.write('src/Api/Controllers/A.cs');

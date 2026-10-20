@@ -61,25 +61,22 @@ as a next step - run nothing on the user's behalf. Then step 6 of `update-close.
 Alfred Code keeps a project's data in ONE folder, `.alfred` at the project root by default: the docs, the
 navigation server's folder and home, the browser profiles and a project-level memory database. It sits outside
 `.claude/`, where Claude Code prompts for every write - every plan, capture and commit receipt - denies it in
-`dontAsk`, and no allow rule lifts it (code.claude.com/docs/en/permission-modes, 'Protected paths'). Nothing moves
-without the answer to `update-walk.md`'s ask.
+`dontAsk`, and no allow rule lifts it (code.claude.com/docs/en/permission-modes, 'Protected paths'). The servers' data moves
+only on the answer to `update-walk.md`'s ask; the docs move unasked (below).
 
 A typed folder (Other) is a custom root: `--data-path <folder> --data-move move`; it must be relative,
 inside the project, never under `.claude/`, with no space. The recommended answer is `--data-move move`,
 the keep answer `--data-move keep` - on the installer call of whichever path runs (the 2.0.0 spelling
-`--docs-move` is read for one release). `ignored=yes` means git never saw the old docs root: the move
-keeps it that way (the data root's `.gitignore` keeps the docs out, `ALFRED_CODE_DOCS_VERSIONING` becomes `local`) - say
-so in the move option. `yours=yes` means the docs root `.claude/docs` is out of the ledger - an earlier
-release's 'keep' made it the user's value - yet every Alfred Code file belongs under the data root, so
-the move is still offered and still Recommended: say the root was kept by an earlier answer, and that
-the move re-points the key. A `conflicts=<n>` field means data already sits at the new place: do not ask - name the
+`--docs-move` is read for one release). The docs are no part of the offer: they always sit at `<data root>/docs`, and
+every run moves them unasked from a leftover `ALFRED_CODE_DOCS_PATH` (retired in 2.8.0) the stack wrote or an earlier
+root - the log's `docs root:` lines say what moved, and a `!! docs root:` line names a clash that kept the key. A root
+the user set by hand is the one exception: its own ask, on `docs-move: offer` (update-walk.md). A `conflicts=<n>` field means data already sits at the new place: do not ask - name the
 count, run without the flag (the old places stay in effect, except one a server already moved - there the
 new place serves, and the log's `still holds data` line names the leftover to remove or merge), and the
 next update offers again once they are cleared. After a move the log carries `docs root: moved ...` and `data root: ...`
 lines (what moved now, what waits for a server's next start), and the `--log` call prints `restart: yes`.
 Unattended, the ask takes its Recommended option - the move overwrites nothing (a conflict already stops it) -
-logged as one `unattended: <question> -> <choice>` line; a `yours=yes` offer is the exception, a value the user once
-kept: pass no `--data-move`, log `unattended: <question> -> not answered (yours)`, and the next attended update asks.
+logged as one `unattended: <question> -> <choice>` line.
 
 ## Flags the user's own invocation names - `--docs-versioning`, `--memory-level`
 

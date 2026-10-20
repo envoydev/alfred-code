@@ -66,7 +66,7 @@ screen shows.
   (`references/windows.md`); its `App` tool stays on for launch, switch and resize, and MacOS-MCP's
   `Shell` stays in its list - but a house guard denies App's `launch_executable` mode (it starts any
   program) and every MacOS-MCP `Shell` call unless the user allowed it in
-  `<docs-path>/flow/DESKTOP-EXEC-ALLOW`. Neither is a way around the app. Reading or editing a file
+  `<data root>/state/approvals/DESKTOP-EXEC-ALLOW`. Neither is a way around the app. Reading or editing a file
   directly is the harness's own file tools' job, and only when the user asked for the file rather than
   the app.
 - **Stop at elevation, credentials, payment and destructive confirmations.** A UAC or admin prompt, a
@@ -81,6 +81,9 @@ screen shows.
   - 'I have dealt with it - continue (Recommended)' - the agent resumes from a fresh snapshot
   - 'Stop the task' - the agent stops and reports where it halted
   ```
+
+  Under auto-mode (a live `AUTO` stamp) nobody is at the terminal to deal with such a prompt, so this ask
+  and the macOS grant ask below are never put: stop, quote the prompt and report where the task halted.
 
 ## Quality by app type
 

@@ -30,6 +30,12 @@ seats that characterize one sibling repo each (recommend it: the seats absorb th
 pick once, hold for the run. When the siblings ask of SKILL.md step 3 is open too, both questions go in the same
 AskUserQuestion call.
 
+```ask
+Characterize <the siblings> through the related-project-analyzer seats, one per sibling, or in this session?
+- 'Through the seats (Recommended)' - the read-only seats absorb the reads; the merge and the write stay here
+- 'In this session' - one sibling at a time, no dispatch
+```
+
 - **DELEGATED** (the user chose seats) - fan out related-project-analyzer per sibling as below, exactly as the
   roster spells it (`alfred-code:<seat>` where the core plugin carries it); you merge and write.
 - **INLINE** (chosen - or forced, no question asked: no dispatch, or that seat is absent - it is an opt-in pick, so a
@@ -67,7 +73,8 @@ This repo is one of several that make up a product: the siblings, and the edges 
 cross-repo findings go to the shared `alfred-memory` MCP, tagged with the sibling's own name, never here.
 
 - A task card addressed to THIS repo is written in the SIBLING's tree, under its own docs root's
-  `cross-project-tasks/<this repo>.md` - search there before calling a named card absent.
+  `work/cross-project-tasks/<this repo>.md` (a sibling not yet on 2.8.0: `cross-project-tasks/` at its root) - search
+  both before calling a named card absent.
 - The navigation server binds to THIS repo: Read/Grep a sibling directly, but symbol-navigate it only from a
   context rooted there.
 - An entry's `captured:` names the branch it was read on: on any other branch, verify its seam exists before
@@ -79,7 +86,7 @@ cross-repo findings go to the shared `alfred-memory` MCP, tagged with the siblin
 ```yaml
 location:   ../acme-billing-api
 relation:   provides-to
-first_read: [docs/architecture/ARCHITECTURE.md]
+first_read: [.alfred/docs/architecture/ARCHITECTURE.md]
 seam:       the OrderCreated contract in src/Contracts - this repo publishes, billing consumes
 read_at:    main@9f8e7d6
 captured:   develop@a1b2c3d, 2026-07-24
@@ -131,7 +138,7 @@ related service - investigate freely (read its code, run its tests read-only, fi
 IT OFF: `guard-cross-project-write.js` blocks the write, and the reason is not tidiness. A change applied from here
 skips that repo's tests, conventions, review and release, and the project that owns it never sees it happen.
 
-Write the card at `<docs-path>/cross-project-tasks/<other-project>.md`, appending to it rather than replacing it,
+Write the card at `<docs-path>/work/cross-project-tasks/<other-project>.md`, appending to it rather than replacing it,
 one section per task:
 
 - **What must change, and where** - the file and symbol you located, not 'somewhere in the auth layer'.
@@ -139,6 +146,5 @@ one section per task:
 - **The contract** - the shape both sides must agree on (a signature, an endpoint, a payload, a version floor).
 - **How that side verifies it** - the test or check that proves it landed.
 
-The card reaches the sibling's session through the user, so the report prints it too: ONE fenced markdown block,
-ready to paste there, its first line `Open in: <the sibling's root>`, then the section just written - a path alone
-sends the user back to ask for the text.
+The card reaches the sibling's session through the user, so the report prints it too, as the docs-root rule's hand-off block:
+its absolute card path lets that session read the whole card, and its text means nobody asks for it.

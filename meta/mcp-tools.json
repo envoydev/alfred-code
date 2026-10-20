@@ -10,7 +10,7 @@
       ]
     },
     "alfred-memory": {
-      "version": "12.0.0",
+      "version": "12.1.1",
       "tools": [
         "commit_session_legacy",
         "get_bootstrap_profile",
@@ -43,7 +43,7 @@
       ]
     },
     "alfred-navigation": {
-      "version": "2.0.0",
+      "version": "2.1.0",
       "tools": [
         "activate_project",
         "create_text_file",

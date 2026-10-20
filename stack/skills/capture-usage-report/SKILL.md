@@ -15,7 +15,7 @@ Run the audit from a FRESH session that names the target session id(s) - never f
 - The token and tool usage audit of alfred-code skill runs in THIS project; also for 'whether the stack is efficient here'.
 - Not for live session cost (claude-hud shows that), fixing the findings (route them to the owning skill), or benchmarking model choices.
 
-**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
+**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it.
 
 ## Privacy rule
 The report body carries aggregates, tool names, token counts, and file PATHS only - never code or file contents. The raw-data copies exist for re-analysis and follow the `git check-ignore` consent test in step 4.
@@ -26,11 +26,15 @@ The report body carries aggregates, tool names, token counts, and file PATHS onl
 
 An invocation that names the scope (session ids, 'the last 3', a since-date, 'all') IS the answer - never re-ask; the one exception is a scope that includes the CURRENT session, which always routes through the fresh-session self-check below. Otherwise resolve the candidates first (step 1's grep), then ask ONE question via AskUserQuestion, each option carrying its real count:
 
-- **Up to 12 unaudited, oldest first (recommended)** - the batch bound, and re-run for the rest.
-- **All matching** - every transcript with a stack-skill run, N unaudited, and say plainly that the run still closes at the bound and names the rest for a re-run.
-- **Today's sessions** - the matching transcripts started today, N.
-- **Current session only** - routes through the fresh-session self-check below (exclude it from this run, or hand the invocation to a fresh session - it is never audited from its own tail).
-- A custom scope arrives via the built-in Other.
+```ask
+Which sessions should the audit cover? <N> ran a stack skill, <U> unaudited.
+- 'Up to 12 unaudited, oldest first (Recommended)' - the batch bound; a re-run takes the rest
+- 'All matching (<U>)' - the run still closes at the bound and names the rest for a re-run
+- 'Today's sessions (<T>)' - the matching transcripts started today
+- 'Current session only' - the fresh-session self-check below; never audited from its own tail
+```
+
+A custom scope arrives via the built-in Other.
 
 Hold the answer for the run. **The batch is BOUNDED - at 12 bundles, or at the first bundle boundary past this install's fresh-session trigger, whichever comes first - and the marker goes on the bounded option, not the largest one.** The gate that ends step 4 decides it after each bundle; on `CLOSE`, close the run naming exactly what is left and the invocation that resumes it.
 
@@ -48,7 +52,15 @@ Two run modes, opposite expectations:
 ### 1. FIND the transcripts
 Claude Code writes one JSONL per session under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/<encoded-project-path>/` - the folder whose name is this project's absolute path with every non-alphanumeric character replaced by a dash. List `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/` and take the folder whose name matches, rather than computing it. Grep the `*.jsonl` files there for each SKILLS name (on the DETECT default: for the invocation markers of any installed stack skill) and list which session file(s) contain which skill RUN - invocation markers only, never bare mentions. A marker may carry a plugin prefix, so the pattern allows one: `grep -lE '<command-name>/?([A-Za-z0-9_-]+:)?(<names>)</command-name>|"skill":"([A-Za-z0-9_-]+:)?(<names>)"'`, with `<names>` the skill names joined by `|`; the core's `/alfred-code:*` command runs (setup, update, configure, validate, init) count as stack runs too. A `<session-id>/subagents/` folder next to a session file belongs to that session - note it (for the default trio, its existence is already a finding; see the report shape).
 
-With the matches listed, resolve SESSIONS: unless the invocation itself named the scope, this step IS an AskUserQuestion call - fire the run-start ask above with the counts this grep just produced, and only then continue. Never pick a scope yourself and never default to the current session on a bare invocation. Self-check before anything runs: when the resolved scope includes the session this audit is running in, stop, restate the fresh-session rule, and put the resolution through ONE AskUserQuestion - **Exclude current session (recommended)**: drop the current id from the scope and note it for the next fresh-session run; **Hand off to a fresh session**: end the turn with the invocation to paste there - never resolve it silently and never audit the live session's own tail. Then audit EVERY session in the chosen scope - never just the newest, never a silent subset; each audited session gets its own step-4 bundle. A previously-audited session is skipped and listed as previously-audited, re-audited only on an explicit ask - the test (the report, never the folder) is in `references/run-mechanics.md`, read at step 2.
+With the matches listed, resolve SESSIONS: unless the invocation itself named the scope, this step IS an AskUserQuestion call - fire the run-start ask above with the counts this grep just produced, and only then continue. Never pick a scope yourself and never default to the current session on a bare invocation. Self-check before anything runs: when the resolved scope includes the session this audit is running in, stop, restate the fresh-session rule, and put the resolution through ONE AskUserQuestion - never resolve it silently, never audit the live session's own tail:
+
+```ask
+The scope includes this session (<id>). How should it go?
+- 'Exclude current session (Recommended)' - drop its id; note it for the next fresh-session run
+- 'Hand off to a fresh session' - end the turn with the invocation to paste there
+```
+
+Then audit EVERY session in the chosen scope - never just the newest, never a silent subset; each audited session gets its own step-4 bundle. A previously-audited session is skipped and listed as previously-audited, re-audited only on an explicit ask - the test (the report, never the folder) is in `references/run-mechanics.md`, read at step 2.
 
 ### 2. GET the analyzer
 It ships in the stack's source repo, not in this project. LOOK BEFORE DOWNLOADING: where the stack is installed as plugins, the agent tool's own plugin cache already holds the whole repo (`stack/`, `scripts/`, `meta/` and all - it is the repo root the marketplace entries are sourced from), so the newest valid entry there is the snapshot.
@@ -76,7 +88,7 @@ git clone --depth 1 -b main https://github.com/envoydev/alfred-code "<tmp>/repo"
 Run these as SEPARATE simple commands, not a piped one-liner - the harness's auto-mode classifier blocks the compound verbatim. Then Read `references/run-mechanics.md` now - the batch shape (a loop in a file, never a pipe on the command line), every analyzer flag, and the ledger test live there, and the report's Environment rows carry the receipt `Mechanics: read`. The tool is `scripts/analyze-usage.js` inside the extracted snapshot. Both fetches fail: say so and stop - never rebuild the tool from memory. Record the snapshot revision (the archive's `RELEASE-SOURCE` file, or the clone's HEAD) for the report's Environment section. Remove `<tmp>` on every exit path - success, failure or abort.
 
 ### 3. RUN it
-The directory rollup once, to confirm which sessions matter; then per audited session the full report, the `--json` dump and the `--report-md` skeleton (machine-written tables plus the FILL IN judgment sections), with `--docs-root <root>` on every per-session call when `ALFRED_CODE_DOCS_PATH` names a non-default root - the exact calls are in the mechanics reference.
+The directory rollup once, to confirm which sessions matter; then per audited session the full report, the `--json` dump and the `--report-md` skeleton (machine-written tables plus the FILL IN judgment sections), with `--docs-root <root>` on every per-session call when a leftover `ALFRED_CODE_DOCS_PATH` names the root - the exact calls are in the mechanics reference.
 
 **Test for the ledgers, never assert their absence.** The test is the reference's one command per session, and its OUTPUT is what the report quotes: `absent` in the report means that command printed `absent`. On a hit, the per-session calls gain `--hook-log <ledger>` (the instrumentation ledger - who fired what) and `--hook-blocks <file>` (the session's OWN guard-block ledger - WHICH guard denied a call). No ledger: skip the flag and say so in the report.
 
@@ -87,18 +99,18 @@ Read `references/diagnosis-discipline.md` now, before the first authored row of 
 
 **Gather with the reader, never a helper script.** Each bundle starts with `node <snapshot>/stack/skills/capture-usage-report/scripts/transcript-view.js pack <transcript> <usage json> --out <tmp>/<sid>-evidence.md`: the typed prompts, every ask with its answer, the skill, command and dispatch runs, the errored tool results (the seats' too), and each moment the analyzer flagged with the rows before it - every line an `L<n>` locator. It quotes the transcript, so it stays in `<tmp>`, out of the bundle. A row it does not hold comes from the same script - `timeline`, `show <L>`, `grep <regex>` - never one written for the occasion.
 
-Everything for a session lands in `<docs-path>/usage-report/<session-id>/`:
+Everything for a session lands in `<data root>/statistics/usage-report/<session-id>/` (`<data root>`: `.alfred`, or `ALFRED_CODE_DATA_PATH`):
 
 - `report-usage.md` - the filled `--report-md` skeleton: the analyzer's tables stay UNTOUCHED (a number a tool prints cannot be misquoted), and you author only the FILL IN sections, shaped per the section spec below.
 - The `--json` dump(s).
 - A copy of the session `.jsonl` and its `subagents/` folder when present - the complete raw data, co-located so another agent can analyze it without hunting - only on the consent test below.
-- The session's guard-block ledger, COPIED from `<docs-path>/hook-blocks/<sid>.jsonl` and renamed `hook-blocks-<sid>.jsonl` when it exists - one row per BLOCK, naming the hook that fired. Copied, never moved: the project keeps its own record. Absent means no block fired this session - say that rather than leaving the reader to guess.
-- The session's instrumentation ledgers, MOVED (not copied) from `<docs-path>/tools-usage/` and renamed `tool-usage-<sid>.jsonl` - the session's own and its dispatched agents'. A session not audited this run keeps its ledger in place.
+- The session's guard-block ledger, COPIED from `<data root>/statistics/hook-blocks/<sid>.jsonl` and renamed `hook-blocks-<sid>.jsonl` when it exists - one row per BLOCK, naming the hook that fired. Copied, never moved: the project keeps its own record. Absent means no block fired this session - say that rather than leaving the reader to guess.
+- The session's instrumentation ledgers, MOVED (not copied) from `<data root>/statistics/tools-usage/` and renamed `tool-usage-<sid>.jsonl` - the session's own and its dispatched agents'. A session not audited this run keeps its ledger in place.
 
-Raw transcripts carry full conversation content - code, file contents, possibly secrets - so the copy is keyed on what git will do with it, never on which docs root is the default. Before the first copy run `git check-ignore -q "<docs-path>/usage-report/<session-id>/x.jsonl"`. Exit 0: git keeps the copies out (the stack's docs `.gitignore` does in both versioning modes) - copy. Any other exit (1 is a folder git can commit, 128 no repo at all): ONE ask before any copy, the answer held for the run:
+Raw transcripts carry full conversation content - code, file contents, possibly secrets - so the copy is keyed on what git will do with it. Before the first copy run `git check-ignore -q "<data root>/statistics/usage-report/<session-id>/x.jsonl"`. Exit 0: git keeps the copies out - copy. Any other exit (1 is a folder git can commit, 128 no repo at all): ONE ask before any copy, the answer held for the run:
 
 ```ask
-Raw transcripts would land in <docs-path>/usage-report/, a folder git can commit. Keep them out of the bundle.
+Raw transcripts would land in <data root>/statistics/usage-report/, a folder git can commit. Keep them out of the bundle.
 - 'Report and --json dumps only (Recommended)' - the report and the dumps carry counts, tool names and paths, never code
 - 'Copy the raw transcripts too' - the whole conversation, code and file contents included, lands where git can commit it
 ```
@@ -111,11 +123,11 @@ Then append the full-report analyzer outputs verbatim at the end of the doc (the
 
 **CHECK the filled report before the bundle is done.** `node <snapshot>/scripts/analyze-usage.js --check-report <bundle>/report-usage.md` prints one row per number in a judgment section that appears in no machine table of that same report and carries no `L<n>` locator that resolves against the transcript beside it. **The bundle is NOT done while it prints a row**: fix each - quote the machine row the number comes from, add the locator, or drop the claim - and re-run until it prints `clean`.
 
-**Then gate the batch - the bundle's last command, from the project root:** `node <snapshot>/stack/skills/capture-usage-report/scripts/bundle-gate.js --done <bundles closed this run> --summary <docs-path>/usage-report` - run here as each bundle closes, an author's too. It reads this session's context the way the fresh-session Stop offer does and rewrites SUMMARY.md's bundle list (step 5). `BUNDLE-GATE: next` runs the next bundle; `BUNDLE-GATE: CLOSE` ends the batch here - at 12 bundles, or past this install's fresh-session trigger - and the close names every session left and the invocation that resumes it from a fresh session. A line that says only the bound applies (no transcript found, context unknown after a compaction) still holds you to 12.
+**Then gate the batch - the bundle's last command, from the project root:** `node <snapshot>/stack/skills/capture-usage-report/scripts/bundle-gate.js --done <bundles closed this run> --summary <data root>/statistics/usage-report` - run here as each bundle closes, an author's too. It reads this session's context the way the fresh-session Stop offer does and rewrites SUMMARY.md's bundle list (step 5). `BUNDLE-GATE: next` runs the next bundle; `BUNDLE-GATE: CLOSE` ends the batch here - at 12 bundles, or past this install's fresh-session trigger - and the close names every session left and the invocation that resumes it from a fresh session. A line that says only the bound applies (no transcript found, context unknown after a compaction) still holds you to 12.
 
 ### 5. SUMMARIZE - the project-wide picture
 
-When this run audited more than one session, or bundles from prior runs already sit in `<docs-path>/usage-report/`, write `<docs-path>/usage-report/SUMMARY.md` - rewritten whole, never an append log.
+When this run audited more than one session, or bundles from prior runs already sit in `<data root>/statistics/usage-report/`, write `SUMMARY.md` there - rewritten whole, never an append log.
 
 **Its bundle list is rewritten after EACH bundle, by the gate call that ends step 4** (`--summary`): one row per bundle folder - id, start date, headline verdict, bundle path, an unfinished one marked in progress - between the gate's two marker comments. The sections below are written at the end of the run AROUND that block: keep the two markers and the rows between them as the gate wrote them, never hand-write those rows.
 

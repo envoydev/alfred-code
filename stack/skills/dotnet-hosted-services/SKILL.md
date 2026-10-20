@@ -125,7 +125,7 @@ protected override async Task ExecuteAsync(CancellationToken stoppingToken)
 }
 ```
 
-`WaitForNextTickAsync` returns `false` only when the timer is *disposed*; when the stopping token cancels it throws `OperationCanceledException` (the returned task enters the canceled state). That is the expected shutdown path - the host recognizes a stopping-token cancellation and treats it as a clean stop, not a fault, so the loop ends on shutdown with no extra handling. Be aware it does not overlap ticks: if a cycle runs longer than the interval, the next tick fires immediately after, never concurrently. Get the interval from configuration via the options pattern, not a literal. Derive any timestamps from an injected `TimeProvider`, never `DateTime.Now` - see `csharp`.
+`WaitForNextTickAsync` returns `false` only when the timer is *disposed*; when the stopping token cancels it throws `OperationCanceledException` (the returned task enters the canceled state). That is the expected shutdown path - the host recognizes a stopping-token cancellation and treats it as a clean stop, not a fault, so the loop ends on shutdown with no extra handling. Be aware it does not overlap ticks: if a cycle runs longer than the interval, the next tick fires immediately after, never concurrently. Get the interval from configuration via the options pattern, not a literal. Derive any timestamps from an injected `TimeProvider`, never `DateTime.Now`.
 
 ## Graceful shutdown
 
@@ -161,7 +161,7 @@ protected override async Task ExecuteAsync(CancellationToken stoppingToken)
 }
 ```
 
-Prefer a **bounded** channel so a runaway producer applies backpressure instead of growing the queue until the process runs out of memory. `ReadAllAsync` with the stopping token drains until shutdown. The channel mechanics - readers, writers, completion, backpressure modes - are the `csharp` language baseline's; this skill only fixes that an in-process producer/consumer split belongs on a channel drained by a hosted service. The hard boundary: this is for work that stays inside one process. The moment the work must survive a restart, cross a process boundary, or be delivered at-least-once, it is not a channel - it is a broker, and that is the broker-messaging skill's, where installed. Do not build a durability story on top of an in-memory channel.
+Prefer a **bounded** channel so a runaway producer applies backpressure instead of growing the queue until the process runs out of memory. `ReadAllAsync` with the stopping token drains until shutdown. This skill only fixes that an in-process producer/consumer split belongs on a channel drained by a hosted service. The hard boundary: this is for work that stays inside one process. The moment the work must survive a restart, cross a process boundary, or be delivered at-least-once, it is not a channel - it is a broker, and that is the broker-messaging skill's, where installed. Do not build a durability story on top of an in-memory channel.
 
 ## Running it 24/7 - the references
 

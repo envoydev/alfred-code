@@ -32,14 +32,14 @@ if (require.main === module) {
 // back to "0" after. The env check below is what actually gates every call.
 //
 // Output: one JSONL row per matched call at
-//   $ALFRED_CODE_INSTRUMENT_LOG  (default: <docs-path>/tools-usage/<session-or-agent-id>.jsonl,
-//   the docs root resolved from ALFRED_CODE_DOCS_PATH like every generated artifact)
+//   $ALFRED_CODE_INSTRUMENT_LOG  (default: <data root>/statistics/tools-usage/<session-or-agent-id>.jsonl,
+//   the data root resolved from ALFRED_CODE_DATA_PATH - stack/hooks/layout.js)
 // Coverage note: PreToolUse fires for the session's tool calls; where the running Claude
 // Code build propagates PreToolUse into dispatched subagents, their internal Skill / MCP
 // calls are captured too - verify coverage against a known run before trusting a tally.
 
-// The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
+// The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 
 // `1` only, as the copy route's shell gate and environment.json read it: `true` switched this hook on where the copy
 // route's gate kept it off (audit 2026-10-08 row 29).
@@ -133,10 +133,12 @@ process.stdin.on('end', () => {
     const dir = process.env.CLAUDE_PROJECT_DIR || ev.cwd || '.';
     // one ledger per session/agent id - the filename matches the transcript's id for the --hook-log join
     const sid = String(ev.session_id || 'session').replace(/[^A-Za-z0-9._-]/g, '');
-    const docsRoot = docsRootEnv();
-    const out =
-      envOf(process.env, 'INSTRUMENT_LOG') ||
-      path.resolve(dir, docsRoot, 'tools-usage', `${sid}.jsonl`);
+    // 2.8.0: the data root's statistics/ (layout.js beside this hook); the pre-2.8.0 docs root on an older copy route
+    let out = envOf(process.env, 'INSTRUMENT_LOG');
+    if (!out) {
+      try { out = require('./layout.js').statsPath(dir, ['tools-usage', `${sid}.jsonl`]); }
+      catch { out = path.resolve(dir, docsRootEnv(), 'tools-usage', `${sid}.jsonl`); } // pre-2.8.0, no layout.js here
+    }
     fs.mkdirSync(path.dirname(out), { recursive: true });
     fs.appendFileSync(out, JSON.stringify(rec) + '\n');
   } catch {

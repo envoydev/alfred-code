@@ -3,7 +3,7 @@
 // seeded OFF: nothing runs unless ALFRED_CODE_TURN_CHECK=1, and it turns on per project only after a
 // measured week shows 'green' claims with no check behind them.
 //   Stop  reads the turn's changed files from git - every path `git status` lists whose mtime is past the
-//         previous Stop's marker (<docs-path>/flow/turn-check-<session>), or past the session's start on its
+//         previous Stop's marker (<data root>/state/sessions/turn-check-<session>), or past the session's start on its
 //         first Stop - and when they hold source files, runs ONE check per nearest root - `tsc --noEmit -p
 //         <tsconfig>` (the project's own node_modules/.bin/tsc) for TypeScript, `dotnet build --no-restore
 //         -v q <csproj>` for C# - and hands the first 20 error lines back as a Stop block. Once per turn: the
@@ -192,9 +192,16 @@ function stopCheck(payload)
   if (cursorOff) return PASS;
   const event = payload.hook_event_name;
   const root = path.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd());
-  const docs = path.resolve(root, envOf(process.env, 'DOCS_PATH') || '.alfred/docs');
+  const docs = path.resolve(root, envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`);
   const sid = String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_');
-  const marker = path.join(docs, 'flow', `turn-check-${sid.replace(/[^A-Za-z0-9_-]/g, '_')}`);
+  const name = `turn-check-${sid.replace(/[^A-Za-z0-9_-]/g, '_')}`;
+  // 2.8.0: session scratch, <data root>/state/sessions/ (layout.js); the marker a pre-2.8.0 hook left in <docs>/flow/ is
+  // still read once, and without layout.js beside this file flow/ stays the only home
+  let layout = null;
+  try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
+  const legacy = path.join(docs, 'flow', name);
+  const marker = layout ? layout.statePath(root, 'sessions', name) : legacy;
+  const lastMarker = layout ? layout.findState(root, 'sessions', name) : legacy;
 
   if (event !== 'Stop') return PASS;
   // The continuation after OUR block passes and leaves the marker where the blocked Stop set it, so the fix-up edits
@@ -205,7 +212,7 @@ function stopCheck(payload)
   // This turn began at the previous Stop's marker, or - the session's first Stop - when the session began. The marker
   // moves to now before the check, so an edit made after this Stop is the next turn's.
   let since = 0;
-  try { since = fs.statSync(marker).mtimeMs; } catch { since = sessionStartMs(String(payload.transcript_path || '')); }
+  try { since = fs.statSync(lastMarker).mtimeMs; } catch { since = sessionStartMs(String(payload.transcript_path || '')); }
   try
   {
     fs.mkdirSync(path.dirname(marker), { recursive: true });
@@ -224,7 +231,7 @@ function stopCheck(payload)
   {
     try
     {
-      const dir = path.join(docs, 'hook-blocks');
+      const dir = layout ? layout.statsPath(root, ['hook-blocks']) : path.join(docs, 'hook-blocks');
       fs.mkdirSync(dir, { recursive: true });
       fs.appendFileSync(path.join(dir, `${sid}.jsonl`), `${JSON.stringify({
         ts: new Date().toISOString(), hook: path.basename(__filename), event: 'Stop', tool: '', mode: 'probe', kind: 'not-restored',
@@ -242,7 +249,7 @@ function stopCheck(payload)
     : `dotnet build --no-restore -v q ${path.relative(root, r.config)}`));
   try
   {
-    const dir = path.join(docs, 'hook-blocks');
+    const dir = layout ? layout.statsPath(root, ['hook-blocks']) : path.join(docs, 'hook-blocks');
     fs.mkdirSync(dir, { recursive: true });
     fs.appendFileSync(path.join(dir, `${sid}.jsonl`), `${JSON.stringify({
       ts: new Date().toISOString(), hook: path.basename(__filename), event: 'Stop', tool: '',

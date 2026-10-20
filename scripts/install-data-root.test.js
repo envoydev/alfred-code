@@ -5,7 +5,8 @@
 // .playwright/<engine>, .memory-mcp) moves it on the answer `--data-move move` - the docs inline, a
 // server's own data by its launcher at the next start (the plugin route) or inline (the copy route, where
 // no launcher runs); `--data-move keep` keeps the old layout and no later update offers again; a custom
-// root moves everything there. A docs root the user set is never moved.
+// root moves everything there. The docs root is always <data root>/docs (2.8.0): a leftover ALFRED_CODE_DOCS_PATH is
+// drained unasked - the stack's docs move from the root it names, the project's own files there stay, the key goes.
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -92,7 +93,7 @@ test('fresh install: every kind of data lands under .alfred, and git keeps the m
 {
     const { result: r, out } = seedRun('install', SELECTION, { prepare: prep, args: ['--scope', 'project', '--memory-level', 'project', '--browsers', 'chrome'], inspect: look });
     assert.strictEqual(r.env.ALFRED_CODE_DATA_PATH, '.alfred', out);
-    assert.strictEqual(r.env.ALFRED_CODE_DOCS_PATH, '.alfred/docs');
+    assert.strictEqual(r.env.ALFRED_CODE_DOCS_PATH, undefined, 'no run writes the retired key');
     assert.strictEqual(r.rule, '.alfred/docs');
     // Re-verify 3 S1: settings.local.json is machine-local (C8), so its key stays ABSOLUTE - a relative one bought nothing there
     // and an older release read it as no level, re-pointing the project to the global database.
@@ -106,15 +107,18 @@ test('fresh install: every kind of data lands under .alfred, and git keeps the m
     for (const old of ['.serena', '.playwright', '.memory-mcp', '.claude/docs']) assert.ok(!r.has(old), `${old} was created`);
 });
 
-test('update over a 2.0.0 layout, no answer: nothing moves, the old places keep serving, and the offer is named', POSIX_ONLY, () =>
+test('update over a 2.0.0 layout, no answer: the docs move unasked, the servers\' data keeps serving where it is, and its offer is named', POSIX_ONLY, () =>
 {
     const { result: r, outs } = seedRun(['install', 'update'], SELECTION, {
         prepare: prep, args: [['--scope', 'project', '--memory-level', 'project', '--browsers', 'chrome'], UPDATE],
         each: (repo, i) => (i === 0 ? twoZeroLayout(repo) : null), inspect: look,
     });
     assert.match(outs[1], /data root: .*\/alfred-code:update offers the move to \.alfred/, outs[1]);
-    assert.strictEqual(r.env.ALFRED_CODE_DOCS_PATH, '.claude/docs', 'the hooks keep reading where the docs are');
-    assert.ok(r.has('.claude/docs/architecture/ARCHITECTURE.md') && r.has('.serena/project.yml') && r.has('.playwright/chrome/Default/Cookies'));
+    assert.match(outs[1], /docs root: moved \.claude\/docs -> \.alfred\/docs/, outs[1]);
+    assert.strictEqual(r.env.ALFRED_CODE_DOCS_PATH, undefined, 'the retired key goes once the docs moved');
+    assert.strictEqual(r.rule, '.alfred/docs');
+    assert.ok(r.has('.alfred/docs/architecture/ARCHITECTURE.md') && !r.has('.claude/docs'));
+    assert.ok(r.has('.serena/project.yml') && r.has('.playwright/chrome/Default/Cookies'));
     assert.deepStrictEqual(pendingOf(r.stamp), []);
     assert.strictEqual(r.local.ALFRED_CODE_MEMORY_DB, path.join(r.repo, '.memory-mcp', 'memory.db'), 'an unmoved project database is still the one named');
 });
@@ -128,7 +132,7 @@ test('update over a 2.0.0 layout, --data-move move, plugin route: the docs move 
     });
     assert.match(outs[1], /docs root: moved \.claude\/docs -> \.alfred\/docs/, outs[1]);
     assert.ok(r.has('.alfred/docs/architecture/ARCHITECTURE.md') && !r.has('.claude/docs'));
-    assert.strictEqual(r.env.ALFRED_CODE_DOCS_PATH, '.alfred/docs');
+    assert.strictEqual(r.env.ALFRED_CODE_DOCS_PATH, undefined);
     assert.strictEqual(r.env.ALFRED_CODE_DATA_PATH, '.alfred');
     assert.strictEqual(r.rule, '.alfred/docs');
     assert.deepStrictEqual(pendingOf(r.stamp), [
@@ -168,7 +172,7 @@ test('update: a pending line goes once its launcher moved the data, and a root i
     assert.ok(!r.has('.alfred'), 'the old root, emptied by the launchers, is removed');
     assert.ok(r.has('.data/chrome-control/Cookies'));
     // One .gitignore, the new root's: it carries the docs rules, and the docs root has none of its own.
-    assert.match(r.text('.data/.gitignore'), /^# alfred-code: the data root[^\n]*\n\/\*\n!\/\.gitignore\n!\/docs\/\n\/docs\/flow\/\n/);
+    assert.match(r.text('.data/.gitignore'), /^# alfred-code: the data root[^\n]*\n\/\*\n!\/\.gitignore\n!\/docs\/\n(?:[^\n]*\n)*\/docs\/flow\/\n(?:[^\n]*\n)*\/docs\/project-capabilities\/credentials\.local\.env\n/);
     assert.ok(!r.has('.data/docs/.gitignore'), 'the docs root keeps no .gitignore of its own under the data root');
     assert.ok(r.has('.data/.sensitive-data'), 'the default sensitive data moved with the root');
 });
@@ -213,15 +217,15 @@ test('update over a 2.0.0 layout, --data-move move, full copy route: everything 
     assert.match(r.text('.alfred/serena/home/serena_config.yml'), /project_serena_folder_location: "\$projectDir\/\.alfred\/serena"/);
 });
 
-test('update --data-move keep: the old layout stays, the docs root becomes the user\'s, and no later update offers again', POSIX_ONLY, () =>
+test('update --data-move keep: the servers\' data stays, the docs still move to the data root, and no later update offers again', POSIX_ONLY, () =>
 {
     const { result: r, outs } = seedRun(['install', 'update', 'update'], SELECTION, {
         prepare: prep, args: [['--scope', 'project', '--browsers', 'chrome'], [...UPDATE, '--data-move', 'keep'], UPDATE],
         each: (repo, i) => (i === 0 ? twoZeroLayout(repo, { memoryDb: false }) : null), inspect: look,
     });
     assert.match(r.stamp, /^data-move: kept$/m);
-    assert.strictEqual(r.env.ALFRED_CODE_DOCS_PATH, '.claude/docs');
-    assert.ok(r.has('.serena/project.yml') && r.has('.claude/docs/architecture/ARCHITECTURE.md'));
+    assert.strictEqual(r.env.ALFRED_CODE_DOCS_PATH, undefined);
+    assert.ok(r.has('.serena/project.yml') && r.has('.alfred/docs/architecture/ARCHITECTURE.md') && !r.has('.claude/docs'));
     assert.doesNotMatch(outs[2], /offers the move/, outs[2]);
 });
 
@@ -287,7 +291,7 @@ test('a custom root: --data-path moves everything from .alfred, re-points the do
         inspect: look,
     });
     assert.strictEqual(r.env.ALFRED_CODE_DATA_PATH, '.data', outs[1]);
-    assert.strictEqual(r.env.ALFRED_CODE_DOCS_PATH, '.data/docs');
+    assert.strictEqual(r.env.ALFRED_CODE_DOCS_PATH, undefined);
     assert.strictEqual(r.rule, '.data/docs');
     assert.ok(r.has('.data/docs/architecture/ARCHITECTURE.md') && r.has('.data/serena/project.yml') && r.has('.data/chrome-control/Cookies') && r.has('.data/.alfred-memory/memory.db'));
     assert.ok(!r.has('.alfred'), 'the emptied old root is gone');
@@ -307,10 +311,10 @@ test('--data-path over existing data with no --data-move changes nothing and say
     assert.ok(r.has('.alfred/docs/x.md') && !r.has('.data'));
 });
 
-test('a docs root the user set is never moved - the rest of the data still is', POSIX_ONLY, () =>
+test('a docs root the user set, moved on the answer to update\'s ask: the stack\'s docs go to <data root>/docs, the project\'s own files stay, the key goes', POSIX_ONLY, () =>
 {
-    const { result: r } = seedRun(['install', 'update'], SELECTION, {
-        prepare: prep, env: COPY_ENV, args: [['--scope', 'project', '--browsers', 'chrome'], [...UPDATE, '--data-move', 'move']],
+    const { result: r, outs } = seedRun(['install', 'update'], SELECTION, {
+        prepare: prep, env: COPY_ENV, args: [['--scope', 'project', '--browsers', 'chrome'], [...UPDATE, '--data-move', 'move', '--docs-root-move', 'move']],
         each: (repo, i) =>
         {
             if (i !== 0) return null;
@@ -320,15 +324,19 @@ test('a docs root the user set is never moved - the rest of the data still is', 
             s.env.ALFRED_CODE_DOCS_PATH = 'docs';
             fs.writeFileSync(file, JSON.stringify(s, null, 2));
             put(path.join(repo, 'docs', 'architecture', 'ARCHITECTURE.md'), '# mine\n');
+            put(path.join(repo, 'docs', 'README.md'), '# the project\'s own\n');
             return null;
         },
         inspect: look,
     });
-    assert.strictEqual(r.env.ALFRED_CODE_DOCS_PATH, 'docs');
-    assert.strictEqual(r.rule, 'docs');
-    assert.ok(r.has('docs/architecture/ARCHITECTURE.md') && !r.has('.alfred/docs/architecture'));
+    assert.match(outs[1], /docs root: moved docs -> \.alfred\/docs/, outs[1]);
+    assert.match(outs[1], /docs root: docs keeps README\.md - not the stack's, left in place/, outs[1]);
+    assert.strictEqual(r.env.ALFRED_CODE_DOCS_PATH, undefined);
+    assert.strictEqual(r.rule, '.alfred/docs');
+    assert.strictEqual(r.text('.alfred/docs/architecture/ARCHITECTURE.md'), '# mine\n');
+    assert.ok(r.has('docs/README.md') && !r.has('docs/architecture'), 'the project\'s own file stays, the stack\'s left');
     assert.ok(r.has('.alfred/serena/project.yml'), 'the servers\' data moved all the same');
-    assert.doesNotMatch(r.ignore, /!\/docs\//, 'no docs live under the root, so all of it stays out of git');
+    assert.match(r.ignore, /^!\/docs\/$/m, 'the docs live under the root now');
 });
 
 // M2: on the full copy route no launcher runs, so the installer moves serena's folder inline - while the session
@@ -668,19 +676,24 @@ test('old credentials: an update moves credentials.local.env into the store and 
 });
 
 // Found by the temp-project matrix: a docs root only settings.local.json names is the one a session (and so the capture)
-// writes the run book under, while this run's docs root is settings.json's at project scope (R98) - the file there moved
-// nowhere. Both roots are looked in.
+// writes the run book under, while this run's docs root was settings.json's at project scope (R98). Since 2.8.0 that root
+// is a hand-set one, kept until update's ask is answered, so the run book is adopted from where it is.
 test('old credentials: a run book under a docs root only settings.local.json names is moved too', POSIX_ONLY, () =>
 {
     const { steps, outs } = seedRun(['install', 'update'], SELECTION, {
-        prepare: (repo) => { prep(repo); put(path.join(repo, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'handbook' } })); },
+        prepare: prep,
         env: COPY_ENV, args: [['--scope', 'project'], UPDATE],
         each: (repo, i) =>
         {
-            if (i === 0) put(path.join(repo, 'handbook', 'project-capabilities', 'credentials.local.env'), 'ADMIN_PASSWORD=pa55-w0rd-xyz\n');
+            if (i === 0)
+            {
+                put(path.join(repo, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'handbook' } }));
+                put(path.join(repo, 'handbook', 'project-capabilities', 'credentials.local.env'), 'ADMIN_PASSWORD=pa55-w0rd-xyz\n');
+            }
             return read(path.join(repo, '.alfred', '.sensitive-data'));
         },
     });
+    assert.match(outs[1], /!! docs root: handbook was set by hand - nothing moved/, outs[1]);
     assert.match(outs[1], /sensitive data: handbook\/project-capabilities\/credentials\.local\.env -> \.alfred\/\.sensitive-data \(ADMIN_PASSWORD added\)/, outs[1]);
     assert.match(steps[1] || '', /^ADMIN_PASSWORD=pa55-w0rd-xyz$/m);
 });

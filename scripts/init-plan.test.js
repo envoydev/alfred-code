@@ -193,6 +193,26 @@ test('machine: everything present is reported present, and csharp-ls is asked on
     assert.strictEqual(lineOf(dotnetOnly, /^machine: csharp-ls /), 'machine: csharp-ls - missing: dotnet tool install --global csharp-ls');
 });
 
+// Audit 2026-10-20b (plugins): typescript-lsp is an empty package naming `typescript-language-server`, which nothing
+// installed. The line pins TypeScript 6 - 7 ships no tsserver.js, the file the server reads from the TypeScript beside it.
+test('machine: typescript-language-server is asked only when typescript-lsp is kept, with the TypeScript 6 its server reads', () =>
+{
+    const root = project();
+    const ts = INV({ plugins: [{ name: 'alfred-code', scope: 'project' }, { name: 'typescript-lsp', scope: 'project' }] });
+    const missing = render(plan({ inv: ts, root, platform: 'linux', env: E(), probe: NONE }));
+    assert.strictEqual(lineOf(missing, /^machine: typescript-language-server /),
+        'machine: typescript-language-server - missing: npm install -g typescript-language-server typescript@6');
+    assert.ok(!missing.some((l) => /csharp-ls/.test(l)), 'csharp-ls stays csharp-lsp\'s');
+    const present = render(plan({ inv: ts, root, platform: 'linux', env: E(), probe: { ...NONE, has: (b) => b === 'typescript-language-server' } }));
+    assert.ok(present.includes('machine: typescript-language-server - present'), present.join('\n'));
+    const none = render(plan({ inv: INV(), root, platform: 'linux', env: E(), probe: NONE }));
+    assert.ok(!none.some((l) => /typescript-language-server/.test(l)), 'not asked when typescript-lsp is not kept');
+    // Install order: the two language servers together, after the Python and before the browsers.
+    const both = render(plan({ inv: INV({ plugins: [...INV().plugins, { name: 'typescript-lsp', scope: 'project' }] }), root, platform: 'linux', env: E(), probe: NONE }));
+    const order = both.filter((l) => l.startsWith('machine:')).map((l) => l.split(' - ')[0]);
+    assert.deepStrictEqual(order.slice(2, 5), ['machine: csharp-ls', 'machine: typescript-language-server', 'machine: playwright chrome']);
+});
+
 test('machine: Windows spellings - the PowerShell uv installer, the pinned x64 Python on ARM, a native SERENA_HOME', () =>
 {
     const root = project();
@@ -364,6 +384,18 @@ for (const rel of ['stack/AGENTS.template.md', 'setup-plugin/references/post-ins
         assert.deepStrictEqual(firstSeen, names);
     });
 }
+
+// Template audit 2026-10-20: the template put /capture-preferences into 'the post-install order', which init never runs -
+// the preferences are the user's words, not a capture of the code. The order the template prints is CAPTURES' alone.
+test('capture order: the template\'s post-install order names only the captures init runs', () =>
+{
+    const { CAPTURES } = require('./init-plan.js');
+    const flat = fs.readFileSync(path.join(__dirname, '..', 'stack', 'AGENTS.template.md'), 'utf8').replace(/\s+/g, ' ');
+    const order = /in the post-install order: (.*?) LAST/.exec(flat);
+    assert.ok(order, 'the template prints the post-install order');
+    assert.deepStrictEqual([...order[1].matchAll(/\/(capture-[a-z-]+)/g)].map((m) => m[1]), CAPTURES.map((c) => c.skill));
+    assert.match(flat, /init never runs \/capture-preferences/);
+});
 
 // --- unattended (ALFRED_CODE_UNATTENDED=1) ---------------------------------------------------------
 // Nobody answers: init takes each ask's recommended option unless it is destructive or needs a person,

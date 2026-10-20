@@ -27,8 +27,9 @@ function repo({ tracked = false, files = {}, docs = {}, docsPath = '.claude/docs
   git('config', 'user.name', 'test');
   git('config', 'commit.gpgsign', 'false');
   // The engine's own ledger is machine-local in BOTH modes: committed, it would be modified in every session and
-  // `git switch` would refuse to leave the branch.
-  write('.gitignore', `${docsPath}/docs-log.jsonl\n${tracked ? '' : `${docsPath}/\n`}`);
+  // `git switch` would refuse to leave the branch. Since 2.8.0 it sits in the data root's statistics/ (the hooks'
+  // state beside it, in state/); the docs-root spelling stays for an older engine copy.
+  write('.gitignore', `${docsPath}/docs-log.jsonl\n.alfred/statistics/\n.alfred/state/\n${tracked ? '' : `${docsPath}/\n`}`); // the pre-2.8.0 ledger first
   for (const [rel, text] of Object.entries(files)) write(rel, text);
   for (const [rel, text] of Object.entries(docs)) write(path.join(docsPath, 'architecture', rel), text);
   git('add', '-A');
