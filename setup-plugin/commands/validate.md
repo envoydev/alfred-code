@@ -151,7 +151,7 @@ The install phase's step-3 artifact scan (`init-install.md`):
   An Ionic app matches `angular.json` too - when `ionic-angular` detects, do NOT also report
   `web-angular` for the same app; both only when a second, distinct non-Ionic Angular app exists.
 - a `manifest.json` carrying `"manifest_version"` (or a wxt/crxjs config) -> `browser-extension`.
-- `Dockerfile` / `.github/workflows/` -> `devops`; `*.sql` / a migrations folder -> `data`.
+- `Dockerfile` / `.github/workflows/` -> `devops`; a `.csproj` referencing `Microsoft.EntityFrameworkCore.*`, or a `Migrations/` folder holding a `*ModelSnapshot.cs` beside a `.csproj` -> `data` (the data trio is .NET / EF Core only - `*.sql` files or a migrations folder alone are not `data`).
 - `tsconfig.json` / `jsconfig.json` -> `typescript` (language-level - keeps the TS rule/skill/LSP
   plugin owned in a plain TS/Node repo with no framework marker). A TS framework stack claims its own
   surface: when `web-angular` / `ionic-angular` / `browser-extension` detects, do NOT also report

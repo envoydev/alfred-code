@@ -46,7 +46,7 @@ const MARKERS = {
     'windows-service': { 'src/Svc/Svc.csproj': csproj('Microsoft.NET.Sdk.Worker', '<OutputType>Exe</OutputType>', '<PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="9.0.0" />'), 'src/Svc/Program.cs': PROGRAM },
     wpf: { 'src/Desk/Desk.csproj': csproj('Microsoft.NET.Sdk', '<OutputType>WinExe</OutputType><UseWPF>true</UseWPF>'), 'src/Desk/App.xaml': '<Application x:Class="Desk.App" />\n' },
     winforms: { 'src/Forms/Forms.csproj': csproj('Microsoft.NET.Sdk', '<OutputType>WinExe</OutputType><UseWindowsForms>true</UseWindowsForms>'), 'src/Forms/Program.cs': PROGRAM },
-    data: { 'db/schema.sql': 'CREATE TABLE item (id INTEGER PRIMARY KEY, name TEXT NOT NULL);\n', 'db/migrations/001_init.sql': 'CREATE TABLE item (id INTEGER PRIMARY KEY);\n' },
+    data: { 'src/Data/Data.csproj': '<Project Sdk="Microsoft.NET.Sdk">\n  <ItemGroup>\n    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.0" />\n  </ItemGroup>\n</Project>\n', 'src/Data/Migrations/AppDbContextModelSnapshot.cs': '// EF Core model snapshot\n', 'db/schema.sql': 'CREATE TABLE item (id INTEGER PRIMARY KEY, name TEXT NOT NULL);\n' },
     devops: { Dockerfile: 'FROM node:22-alpine\n', '.github/workflows/ci.yml': 'name: ci\non: push\njobs: {}\n' },
 };
 
