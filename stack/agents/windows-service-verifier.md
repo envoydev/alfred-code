@@ -66,7 +66,7 @@ End with exactly this output contract - literal `status:` and `contract_version:
 
 - a literal `left_running:` line - `none`, or what is still up (a dev server, an app run, a device or container session) - since every live run is bounded by a wall-clock timeout and stopped before the report
 - the build and test result you ran - the summary line on a green run, and on a red one the diagnostic lines per failure (the failing assertion or the first error with its stack frames, never the whole log) plus the command that re-produces it
-- the bound `habits-done-gate` sets
+- per task, its acceptance criterion's evidence as `habits-done-gate` binds it - the command this session ran and its quoted result, or `not run - <why>`
 - `findings` each carrying `severity` + `task_owner` + `problem` + `required_fix` - each fix keyed to file + symbol so a windows-service-implementer can fix exactly that
 - `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`
 - the contract_version gated against

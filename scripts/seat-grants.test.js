@@ -245,9 +245,11 @@ test('I15: integration-reviewer reads .claude/skills, and keeps the two essentia
 // leaves it out. A body saying the final plain message IS the deliverable is false there.
 const HANDBACK = 'through SubagentHandback when your tools include it, else as your last message; nothing after it';
 // The 2026-10-20 stack audit (#6) added every other seat that stores a hand-off note: the implementers, the four
-// resolvers and the integration reviewer write it at the same point, so the same report-then-note failure applied.
+// resolvers and the integration reviewer write it at the same point, so the same report-then-note failure applied;
+// the 2026-10-20b agents audit added the designers, the two diagnosers and the security auditor for the same reason.
 const HANDBACK_SEATS = [...verifiers, 'code-style-analyzer', 'related-project-analyzer', 'test-coverage-analyzer',
-    ...seats.filter((s) => s.endsWith('-implementer') || s.endsWith('-resolver')), 'integration-reviewer'].sort();
+    ...seats.filter((s) => s.endsWith('-implementer') || s.endsWith('-resolver') || s.endsWith('-solution-designer')),
+    'integration-reviewer', 'issue-diagnoser-ci', 'issue-diagnoser-runtime', 'security-auditor'].sort();
 
 test('I16: no seat says its final plain message is the deliverable', () =>
 {
@@ -255,7 +257,7 @@ test('I16: no seat says its final plain message is the deliverable', () =>
     assert.deepStrictEqual(hits, []);
 });
 
-test('I16: the ten verifiers and the three structured-return seats carry the handback clause, pinned', () =>
+test('I16: every note-writing seat and the three structured-return seats carry the handback clause, pinned', () =>
 {
     for (const seat of HANDBACK_SEATS) assert.ok(squash(read(seat)).includes(HANDBACK), `${seat}: the handback clause`);
     const copies = copiesOf('verifier-memory-before-report');

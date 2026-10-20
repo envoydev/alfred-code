@@ -5973,7 +5973,7 @@
       ]
     },
     "verifier-memory-before-report": {
-      "_note": "A seat writes any memory BEFORE it composes the report, then delivers the report as its final hand-off - through SubagentHandback when its tools include it (Claude Code gives that tool to every locally run, non-fork subagent in auto mode and delivers only what goes through it - tools-reference, v2.1.271+; the 2026-09-29 agents audit counted 188 of 205 local seat runs reporting through it), else as its last message; nothing after it, because a tool call after the report turns the hand-back into a pointer (measured: a full report, then the note write, then a pointer close forced a resend). 28 copies: the ten trio verifiers and the three support seats whose structured return IS the deliverable, plus the ten implementers, the four resolvers and the integration reviewer, which store a hand-off note at the same point (stack audit 2026-10-20 #6).",
+      "_note": "A seat writes any memory BEFORE it composes the report, then delivers the report as its final hand-off - through SubagentHandback when its tools include it (Claude Code gives that tool to every locally run, non-fork subagent in auto mode and delivers only what goes through it - tools-reference, v2.1.271+; the 2026-09-29 agents audit counted 188 of 205 local seat runs reporting through it), else as its last message; nothing after it, because a tool call after the report turns the hand-back into a pointer (measured: a full report, then the note write, then a pointer close forced a resend). 41 copies: the ten trio verifiers and the three support seats whose structured return IS the deliverable, plus every other seat that stores a hand-off note at the same point - the ten implementers, the four resolvers and the integration reviewer (stack audit 2026-10-20 #6), the ten designers, the two diagnosers and the security auditor (agents audit 2026-10-20b).",
       "owner": {
         "file": "stack/agents/aspnet-verifier.md",
         "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
@@ -6085,6 +6085,58 @@
         },
         {
           "file": "stack/agents/integration-reviewer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/aspnet-solution-designer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/browser-extension-solution-designer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/console-solution-designer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/data-solution-designer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/devops-solution-designer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/ionic-angular-solution-designer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/web-angular-solution-designer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/windows-service-solution-designer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/winforms-solution-designer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/wpf-solution-designer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/issue-diagnoser-ci.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/issue-diagnoser-runtime.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/security-auditor.md",
           "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
         }
       ]
@@ -7878,6 +7930,51 @@
         {
           "file": "stack/skills/capture-preferences/references/doc-shape.md",
           "marker": "`alfred-git.md`'s consent and safety lines"
+        }
+      ]
+    },
+    "verifier-done-gate-evidence": {
+      "_note": "The verifier output contract's done-gate field, named as the output it is (agents audit 2026-10-20b): per task, the acceptance criterion's evidence - the command this session ran and its quoted result, or `not run - <why>`. It read 'the bound habits-done-gate sets', which named no output, so a seat could not tell what to return; agent-output-protocol.md's verifier block reads the same field. Identical in all 10 verifiers.",
+      "owner": {
+        "file": "stack/agents/aspnet-verifier.md",
+        "marker": "per task, its acceptance criterion's evidence as `habits-done-gate` binds it - the command this session ran and its quoted result, or `not run - <why>`"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/browser-extension-verifier.md",
+          "marker": "per task, its acceptance criterion's evidence as `habits-done-gate` binds it - the command this session ran and its quoted result, or `not run - <why>`"
+        },
+        {
+          "file": "stack/agents/console-verifier.md",
+          "marker": "per task, its acceptance criterion's evidence as `habits-done-gate` binds it - the command this session ran and its quoted result, or `not run - <why>`"
+        },
+        {
+          "file": "stack/agents/data-verifier.md",
+          "marker": "per task, its acceptance criterion's evidence as `habits-done-gate` binds it - the command this session ran and its quoted result, or `not run - <why>`"
+        },
+        {
+          "file": "stack/agents/devops-verifier.md",
+          "marker": "per task, its acceptance criterion's evidence as `habits-done-gate` binds it - the command this session ran and its quoted result, or `not run - <why>`"
+        },
+        {
+          "file": "stack/agents/ionic-angular-verifier.md",
+          "marker": "per task, its acceptance criterion's evidence as `habits-done-gate` binds it - the command this session ran and its quoted result, or `not run - <why>`"
+        },
+        {
+          "file": "stack/agents/web-angular-verifier.md",
+          "marker": "per task, its acceptance criterion's evidence as `habits-done-gate` binds it - the command this session ran and its quoted result, or `not run - <why>`"
+        },
+        {
+          "file": "stack/agents/windows-service-verifier.md",
+          "marker": "per task, its acceptance criterion's evidence as `habits-done-gate` binds it - the command this session ran and its quoted result, or `not run - <why>`"
+        },
+        {
+          "file": "stack/agents/winforms-verifier.md",
+          "marker": "per task, its acceptance criterion's evidence as `habits-done-gate` binds it - the command this session ran and its quoted result, or `not run - <why>`"
+        },
+        {
+          "file": "stack/agents/wpf-verifier.md",
+          "marker": "per task, its acceptance criterion's evidence as `habits-done-gate` binds it - the command this session ran and its quoted result, or `not run - <why>`"
         }
       ]
     }
