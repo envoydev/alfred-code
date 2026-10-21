@@ -36,7 +36,7 @@ fetching the language server (re-run once it settles, or pre-warm with `uvx --py
 install fetches it ahead where uvx is present (`memory: the embedding model is cached now`) and init's plan
 lists it otherwise; fetch it with `node .claude/hooks/memory.js warm`. Claude Code then remembers the
 failed server in `<config dir>/mcp-needs-auth-cache.json` and the next session does not even start it -
-remove its `plugin:memory:memory` entry from that file, then restart (measured: it connected in 1.8s). A timeout on any
+remove its `plugin:alfred-memory:alfred-memory` entry from that file, then restart (measured: it connected in 1.8s). A timeout on any
 other stdio server means its runtime is not installed on this machine - fix it, or drop that server via
 `/alfred-code:configure` rather than carrying a dead registration whose tool schemas are injected into
 every session.
@@ -75,7 +75,8 @@ touches no committed file). The lines, minus anything the project already covers
 
 - `.claude/` - the install and the stamp are machine-local, while `.claude/AGENTS.md` is the team's
   seeded, init-filled instruction file and stays committed, so the pair above is what ignores the rest:
-  `.claude/*` + `!.claude/AGENTS.md` - a bare directory ignore blocks the re-include.
+  `.claude/*` + `!.claude/AGENTS.md` - a bare directory ignore blocks the re-include. With the instruction file at the
+  root (init's or configure's place answer), the re-include keeps nothing and `.claude/*` stands alone.
 - `.alfred/` - the data root (`ALFRED_CODE_DATA_PATH`), outside `.claude/` because Claude Code prompts
   for every write there: the docs (`.alfred/docs/`), the navigation server's index, handoff notes and
   language servers (`.alfred/serena/`), the browser profiles holding session cookies
@@ -166,8 +167,8 @@ missing one); do not shuffle it. A later re-run is yours to type: all but the tw
 
 1. `/capture-architecture` - writes the durable architecture docs every seat reads to
    orient. Runs after the navigation-server index above, because the capture navigates by symbol.
-2. `/capture-code-style` - captures how the codebase really writes each language and
-   generates the path-scoped project-code-style rule.
+2. `/capture-project-code-style` - captures how the codebase really writes each language into
+   `preferences/PROJECT-CODE-PREFERENCES.md`, read before every code change.
 3. `/capture-awareness` - LAST, so its generated inventory reflects the final install, including
    anything the captures above added. One run writes the three awareness docs and the rule that loads
    them into every session: what this install carries and how to use it; the run book - how to build,

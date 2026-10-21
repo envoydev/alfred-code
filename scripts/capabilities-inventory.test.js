@@ -104,15 +104,25 @@ test('precheck: a changed rule file is a COUNT before the first three names', { 
     assert.ok(out.indexOf('markdown-docs.md') < out.indexOf('markdown-author/SKILL.md'), 'drift is sorted newest first');
 });
 
-// Skill audit 2026-10-20b (RUN.md leftover): alfred-architecture.md and alfred-preferences.md are generated rules their
-// captures rewrite on every run, like project-code-style.md - a rewrite is not a capability change.
-test('precheck: a rewritten generated architecture or preferences rule is not drift', { skip: posixOnly }, () =>
+// Skill audit 2026-10-20b (RUN.md leftover): alfred-architecture.md is a generated rule its capture rewrites on every run,
+// like project-code-style.md - a rewrite is not a capability change.
+test('precheck: a rewritten generated architecture rule is not drift', { skip: posixOnly }, () =>
 {
     const root = project('generated-rules');
     write(path.join(root, '.claude', 'rules', 'alfred-architecture.md'), '# map\n', 300);
-    write(path.join(root, '.claude', 'rules', 'alfred-preferences.md'), '# prefs\n', 300);
     const { out } = run([], { cwd: root });
     assert.match(out, /PRECHECK:\s+empty - 0 files newer than the doc/);
+});
+
+// Audit 2026-10-21 skills S-26: alfred-preferences.md is SHIPPED since the 2026-10-21 preferences layout (no capture
+// writes a rule), so a newer copy is an update's change and counts as drift.
+test('precheck: a newer shipped alfred-preferences.md is drift', { skip: posixOnly }, () =>
+{
+    const root = project('shipped-preferences');
+    write(path.join(root, '.claude', 'rules', 'alfred-preferences.md'), '# preferences\n', 300);
+    const { out } = run([], { cwd: root });
+    assert.match(out, /PRECHECK:\s+drift - 1 file\(s\) newer than the doc/);
+    assert.match(out, /\.claude\/rules\/alfred-preferences\.md/);
 });
 
 test('precheck: no rule at all is the FIRST capture', { skip: posixOnly }, () =>

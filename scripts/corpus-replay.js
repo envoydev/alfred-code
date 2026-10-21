@@ -59,12 +59,12 @@ const ROUTES = [
   // matches: both desktop servers' launchers on both routes. The copy route's bare server spelling is built here,
   // never written - lint check 54 fails on it as literal text.
   { hook: 'guard-desktop-exec.js', event: 'PreToolUse', deny: true,
-    pattern: '^mcp__(plugin_windows-control_)?windows-control__App$|^mcp__(plugin_macos-control_)?macos-control__Shell$',
-    tools: ['mcp__plugin_windows-control_windows-control__App', `mcp__${'windows-control'}__App`, 'mcp__plugin_macos-control_macos-control__Shell', `mcp__${'macos-control'}__Shell`] },
+    pattern: '^mcp__(plugin_windows-(control|desktop)_)?windows-(control|desktop)__App$|^mcp__(plugin_macos-(control|desktop)_)?macos-(control|desktop)__Shell$',
+    tools: ['control', 'desktop'].flatMap((k) => [`mcp__plugin_windows-${k}_windows-${k}__App`, `mcp__windows-${k}__App`, `mcp__plugin_macos-${k}_macos-${k}__Shell`, `mcp__macos-${k}__Shell`]) },
   // The browser's file upload, the secret guard's fourth read route (audit 2026-10-14 PL3): every engine, both routes.
   { hook: 'guard-secret-value.js', event: 'PreToolUse', deny: true,
-    pattern: '^mcp__(plugin_(chrome|msedge|firefox|webkit)-control_)?(chrome|msedge|firefox|webkit)-control__browser_file_upload$',
-    tools: ['chrome', 'msedge', 'firefox', 'webkit'].flatMap((e) => [`mcp__plugin_${e}-control_${e}-control__browser_file_upload`, `mcp__${e}-control__browser_file_upload`]) },
+    pattern: '^mcp__(plugin_((chrome|msedge|firefox|webkit)-control|browser-(chrome|msedge|firefox|webkit))_)?((chrome|msedge|firefox|webkit)-control|browser-(chrome|msedge|firefox|webkit))__browser_file_upload$',
+    tools: ['chrome', 'msedge', 'firefox', 'webkit'].flatMap((e) => [`${e}-control`, `browser-${e}`]).flatMap((s) => [`mcp__plugin_${s}_${s}__browser_file_upload`, `mcp__${s}__browser_file_upload`]) },
   { hook: 'guard-stop-contract.js', event: 'Stop', deny: true },
   // One stop per recorded SUBAGENT transcript (<session>/subagents/agent-*.jsonl): its final text, the
   // whole file as agent_transcript_path, and agent_type from the sibling .meta.json - the payload the
@@ -76,6 +76,8 @@ const ROUTES = [
   // Writes <data root>/state/sessions/COMPACT-STATE before a compaction and returns nothing - no verdict and no
   // injection for a replay to count, so it is declared in UNEXERCISED below.
   { hook: 'guard-fresh-session-start.js', event: 'PreCompact', deny: false },
+  // Saves the session's new model id (the user's ruling of 2026-10-21) and prints nothing - declared in UNEXERCISED below.
+  { hook: 'guard-fresh-session-start.js', event: 'PostModelSwitch', deny: false },
   // Injects the budget on EVERY prompt by design - 100% is correct here, not a false-positive rate.
   { hook: 'guard-answer.js', event: 'UserPromptSubmit', deny: false, always: true },
   // Audit 2026-10-10 C09 / C15: the post-compaction hold, the idle-gap offer and the typed-answer probe (declared below).
@@ -126,6 +128,10 @@ const UNEXERCISED = {
   // replay has no verdict and no injection to count; what it writes is pinned in compact-state.test.js.
   'guard-fresh-session-start.js::PreCompact':
     'writes COMPACT-STATE and prints nothing - no verdict to replay; the snapshot is pinned in compact-state.test.js',
+  // Wired 2026-10-21. A /model switch saves `to_model` for the window the next offer reads; transcripts hold no such
+  // event, and the hook prints nothing - the record is pinned in context-window.test.js.
+  'guard-fresh-session-start.js::PostModelSwitch':
+    'saves the switched model id and prints nothing - no verdict to replay; the record is pinned in context-window.test.js',
   // Wired 2026-10-10 (audit C09). The idle-gap offer reads the clock against the transcript's last reply, so a replay on
   // a later day would read every prompt as idle; it is pinned in compact-state.test.js.
   'guard-fresh-session-start.js::UserPromptSubmit':

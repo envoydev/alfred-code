@@ -109,6 +109,21 @@ test('settings_env_value fires only on the exact seeded value; an unknown detect
     assert.ok(!out.includes('from-the-future'), 'a detect kind this release does not know never claims a detection');
 });
 
+test('settings_env_all fires only when every key holds the value, and names the off edit', () => {
+    const migrations = [{ id: 'default-off-with-the-tiers',
+        detect: { settings_env_all: { keys: ['ALFRED_CODE_A', 'ALFRED_CODE_B'], equals: '0' } },
+        off_settings_env: { key: 'ALFRED_CODE_C', with: ['ALFRED_CODE_A', 'ALFRED_CODE_B'], when_value: ['300000', '180000'], to: '0' } }];
+    for (const env of [{ ALFRED_CODE_A: '0', ALFRED_CODE_B: '5' }, { ALFRED_CODE_A: '0' }, {}])
+    {
+        const s = scaffold({ migrations, settings: { env } });
+        assert.match(run(['--snapshot', s.snap, '--root', s.install, '--fixture', s.fixtureFile]).out, /^migrations: none detected$/m, JSON.stringify(env));
+    }
+    const all = scaffold({ migrations, settings: { env: { ALFRED_CODE_A: '0', ALFRED_CODE_B: '0' } } });
+    const out = run(['--snapshot', all.snap, '--root', all.install, '--fixture', all.fixtureFile]).out;
+    assert.match(out, /^migration: default-off-with-the-tiers\tsettings_env_all$/m, out);
+    assert.match(out, /^ {2}env-off: ALFRED_CODE_C: 300000 \| 180000 \| absent -> 0 \(with ALFRED_CODE_A, ALFRED_CODE_B at 0\)$/m, out);
+});
+
 test('a BOM-prefixed settings.json is read like any other (audit F5)', () => {
     const migrations = [{ id: 'fresh-session-pct-retired', detect: { settings_env_key: 'ALFRED_CODE_FRESH_SESSION_PCT' } }];
     const bom = scaffold({ migrations });
@@ -143,7 +158,7 @@ test('the compare exit codes pass through unchanged, and the preflight still rep
 
 test('the shipped catalog parses under the shipped detect vocabulary - every entry has a known kind', () => {
     const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'migrations.json'), 'utf8'));
-    const known = new Set(['file_exists', 'settings_env_key', 'settings_env_value', 'settings_hook_wired']);
+    const known = new Set(['file_exists', 'settings_env_key', 'settings_env_value', 'settings_env_all', 'settings_hook_wired']);
     for (const e of catalog.migrations)
     {
         const kinds = Object.keys(e.detect || {});
@@ -302,7 +317,7 @@ test('a FIRED migration carries everything the caller acts on, so the catalog is
               remove: ['.claude/hooks/inject-code-style.js'],
               unwire_settings_hook: 'inject-code-style.js::PostToolUse',
               why: 'style delivery moved to a generated rule',
-              then: 're-run /capture-code-style' },
+              then: 're-run /capture-project-code-style' },
             { id: 'env-one',
               detect: { settings_env_key: 'ALFRED_CODE_OLD_KEY' },
               rename_settings_env: { from: 'ALFRED_CODE_OLD_KEY', to: 'ALFRED_CODE_NEW_KEY' },
@@ -311,12 +326,16 @@ test('a FIRED migration carries everything the caller acts on, so the catalog is
               detect: { settings_env_value: { key: 'ALFRED_CODE_EXAMPLE', equals: 'old' } },
               clear_settings_env: { key: 'ALFRED_CODE_EXAMPLE', when_value: 'old', to: 'new' },
               why: 'a seeded default that turned out wrong is reset only where it still holds the seed' },
+            { id: 'fold-one',
+              detect: { settings_env_key: 'ALFRED_CODE_FOLDED' },
+              fold_settings_env: { key: 'ALFRED_CODE_FOLDED', when_value: '0', into: 'ALFRED_CODE_HOOKS_OFF', entry: 'some-hook:part' },
+              why: 'an on/off key folded into the hooks csv' },
             { id: 'quiet-one',
               detect: { file_exists: '.claude/hooks/never-here.js' },
               why: 'this entry did not fire and must print nothing',
               then: 'nothing' },
         ],
-        settings: { env: { ALFRED_CODE_OLD_KEY: '1', ALFRED_CODE_EXAMPLE: 'old' } },
+        settings: { env: { ALFRED_CODE_OLD_KEY: '1', ALFRED_CODE_EXAMPLE: 'old', ALFRED_CODE_FOLDED: '0' } },
     });
     fs.mkdirSync(path.join(install, '.claude', 'hooks'), { recursive: true });
     fs.writeFileSync(path.join(install, '.claude', 'hooks', 'inject-code-style.js'), '// legacy');
@@ -324,11 +343,12 @@ test('a FIRED migration carries everything the caller acts on, so the catalog is
     const { out } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]);
     assert.match(out, /^migration: fired-one\tfile_exists$/m, 'the id line is unchanged - existing branches still read');
     assert.match(out, /^ {2}why: style delivery moved to a generated rule$/m, 'the reason the report labels it with');
-    assert.match(out, /^ {2}then: re-run \/capture-code-style$/m, 'the follow-up the report prints');
+    assert.match(out, /^ {2}then: re-run \/capture-project-code-style$/m, 'the follow-up the report prints');
     assert.match(out, /^ {2}remove: \.claude\/hooks\/inject-code-style\.js$/m, 'what the prune list takes');
     assert.match(out, /^ {2}unwire: inject-code-style\.js::PostToolUse$/m, 'the exact settings.json entry to drop');
     assert.match(out, /^ {2}env-rename: ALFRED_CODE_OLD_KEY -> ALFRED_CODE_NEW_KEY$/m, 'the env edit, on the entry that carries one');
     assert.match(out, /^ {2}env-reset: ALFRED_CODE_EXAMPLE: old -> new$/m, 'a seeded default the installers reset, on the entry that carries one');
+    assert.match(out, /^ {2}env-fold: ALFRED_CODE_FOLDED: 0 -> ALFRED_CODE_HOOKS_OFF \+= some-hook:part \(any other value goes\)$/m, 'a key folded into a csv');
     assert.doesNotMatch(out, /quiet-one|did not fire/, 'an entry that did not fire costs nothing at all');
     assert.doesNotMatch(out, /xxxx/, 'and the maintainer comment never reaches the caller');
 });
@@ -818,4 +838,19 @@ test('--inventory: the six rows in order with counts, plugins with their scope, 
         assert.match(bad.out, /^inventory: .* could not be read - re-run the step-1 read-back$/m);
         assert.strictEqual(run(['--inventory', path.join(dir, 'missing.json')]).code, 1, 'a missing file is no empty inventory');
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('--offers: the instructions line says where the instruction files are, for the place question - an account install has none', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'preflight-place-'));
+    try
+    {
+        fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
+        const offers = () => run(['--offers', '--root', root]).out.split('\n').filter((l) => /^instructions: /.test(l));
+        assert.deepStrictEqual(offers(), ['instructions: none']);
+        fs.writeFileSync(path.join(root, '.claude', 'AGENTS.md'), '# x\n');
+        assert.deepStrictEqual(offers(), ['instructions: claude .claude/AGENTS.md']);
+        fs.writeFileSync(path.join(root, 'CLAUDE.md'), '# y\n');
+        assert.deepStrictEqual(offers(), ['instructions: split CLAUDE.md .claude/AGENTS.md']);
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

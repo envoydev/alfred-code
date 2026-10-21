@@ -23,7 +23,7 @@ test('the wirings come from the installer table, not a second list', () => {
         : w.file === `${fileDispatcher.SELF}.js` ? fileDispatcher.NAMES.map(g => `${g}.js`)
         // The turn build check rides history-session's Stop process (2026-10-16): a hook, though it starts no process of its own.
         : w.file === 'history-session.js' && w.event === 'Stop' ? [w.file, ...historySession.RIDERS.map(g => `${g}.js`)] : [w.file])));
-    assert.strictEqual(files.size, 17, 'seventeen hooks, however many wirings they take');
+    assert.strictEqual(files.size, 18, 'eighteen hooks, however many wirings they take');
     for (const w of wirings) assert.ok(/^[a-z-]+\.js$/.test(w.file), `odd file name: ${w.file}`);
 });
 
@@ -37,9 +37,14 @@ test('a bare matcher is a PreToolUse wiring; an @ prefix names its own event', (
     assert.ok(stop, 'the Stop wiring must survive');
     assert.strictEqual(stop.matcher, undefined, 'Stop takes no matcher');
 
-    const compact = wirings.find(w => w.file === 'guard-fresh-session-start.js' && w.event === 'SessionStart');
+    const compact = wirings.find(w => w.file === 'guard-answer.js' && w.event === 'SessionStart');
     assert.ok(compact, 'the SessionStart wiring must survive');
     assert.strictEqual(compact.matcher, 'compact', 'an @Event:matcher form keeps its matcher');
+    // the fresh-session hook saves every start's model id (the user's ruling of 2026-10-21), so it takes the bare @Event form
+    const start = wirings.find(w => w.file === 'guard-fresh-session-start.js' && w.event === 'SessionStart');
+    assert.ok(start, 'its SessionStart wiring survives');
+    assert.strictEqual(start.matcher, undefined, 'a bare @Event form carries no matcher');
+    assert.ok(wirings.some(w => w.file === 'guard-fresh-session-start.js' && w.event === 'PostModelSwitch'), '... beside its @PostModelSwitch row');
 });
 
 // Shell form, launched through `node`, the path QUOTED - the spelling the docs give for a plugin

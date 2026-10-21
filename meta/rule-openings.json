@@ -4,9 +4,6 @@
     "alfred-docs-root": [
       "c38429649163c09e"
     ],
-    "alfred-git": [
-      "8ea3a30ff6ef2c5f"
-    ],
     "alfred-interaction": [
       "221bee61f89882e7"
     ],
@@ -15,6 +12,9 @@
     ],
     "alfred-navigation": [
       "36cbd9f85db739f3"
+    ],
+    "alfred-preferences": [
+      "14c17366d5c91752"
     ],
     "alfred-quality-gates": [
       "bb3ae35f6ccd207d"

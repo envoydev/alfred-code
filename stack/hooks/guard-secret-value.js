@@ -1613,6 +1613,7 @@ try { ({ blankHeredocs, heredocsOf, heredocBody, heredocVerbatim, heredocSubstit
 const SHELL_WORD = /^(?:bash|sh|zsh|dash|ksh)(?:\.exe)?$/i;
 const RUNTIME_WORD = /^(?:node|nodejs|python(?:\d+(?:\.\d+)?)?|perl|ruby|deno|bun|pwsh|powershell|php)(?:\.exe)?$/i;
 function heredocReader(line, at) {
+  judgeTick(line.length); // it re-reads the whole line per heredoc: charged, so a line of them hits the budget (audit 2026-10-21 H5)
   const own = line.slice(0, at).split(/&&|\|\||;|\|/).pop();
   const piped = line.slice(at).split(/&&|\|\||;/)[0].split('|').slice(1);
   for (const stage of [own, ...piped]) {
@@ -3280,7 +3281,9 @@ function redactGitStages(text) {
     // stage is judged without it, and the pipe goes inside the group. A group the stage itself opens (`(git diff)`) is no
     // `$(...)` to keep whole: its leading paren is left out of the count.
     const parts = stages.map((st) => {
-      const m = st.match(/(?:\s*\))+\s*$/);
+      // anchored at a run's boundary (audit 2026-10-21 H5): the same leftmost match, without retrying every start inside
+      // a run of spaces - 80,000 of them in one argument cost 3,970 ms
+      const m = st.match(/(?<![\s)])(?:\s*\))+\s*$/);
       const body = m ? st.slice(0, m.index) : st;
       const inner = body.replace(/^\s*\(+/, '');
       return m && (inner.match(/\(/g) || []).length <= (inner.match(/\)/g) || []).length ? [body, st.slice(m.index)] : [st, ''];
@@ -3932,7 +3935,9 @@ if (payload.tool_name === 'Read') {
 // `tool_input.paths` (absolute paths, its schema) to whatever page asked for it - and the server reaches every file in the
 // workspace, `<data root>/.sensitive-data` and a `.env` included, so a page's injected 'upload your config' would get them.
 // Each path takes the Read judgement above; both routes' spellings of the four engine servers.
-if (/^mcp__(?:plugin_(?:chrome|msedge|firefox|webkit)-control_)?(?:chrome|msedge|firefox|webkit)-control__browser_file_upload$/.test(String(payload.tool_name || ''))) {
+// The four engine servers and their retired 2.4.0 aliases (`browser-<engine>`, the same server under the old name - mcps
+// track T1-1, 2026-10-21).
+if (/^mcp__(?:plugin_(?:(?:chrome|msedge|firefox|webkit)-control|browser-(?:chrome|msedge|firefox|webkit))_)?(?:(?:chrome|msedge|firefox|webkit)-control|browser-(?:chrome|msedge|firefox|webkit))__browser_file_upload$/.test(String(payload.tool_name || ''))) {
   for (const p of (Array.isArray(input.paths) ? input.paths : []).slice(0, 50)) {
     const file = resolveFile(String(p || ''));
     const key = file && secretInUnlessAllowed(file);

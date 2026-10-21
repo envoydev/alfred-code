@@ -12,6 +12,7 @@ Decide the shape, then load the one style you chose. **Per-style depth lives in 
 - Rich domain (aggregates, invariants) -> `references/ddd.md` (additive - layers onto clean or vsa, does not replace it)
 - Distinct bounded contexts in one deployable -> `references/modular-monolith.md`
 - Independently deployed/scaled boundaries -> `references/microservices.md`
+- What each layer owns, mediator / mapper licences on client work, desktop (WPF) and shared-core layering, tests per layer, a structure per project type -> `references/layered-architecture.md` (beside whichever style you picked)
 
 ## When to use
 

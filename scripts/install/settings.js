@@ -78,7 +78,7 @@ const SEEDED_SETTINGS = [...ATTRIBUTION_OFF.map(([k, v]) => [`attribution.${k}`,
 // THE AUTO-COMPACT WINDOW PER MODEL (the user's rulings, 2026-10-14): where the project compacts instead of offering a
 // fresh session (ALFRED_CODE_AUTO_COMPACT=1), each model `hooks/model-windows.json` lists compacts where the fresh-session
 // gate would have offered a resume - its window tier's ALFRED_CODE_CONTEXT_WINDOW_FOR_* value (fresh-session.js tierKeyOf:
-// 1M and up -> _1M, 300K and up -> _300K, else _200K), read from the env this file applies - instead of at the window Claude Code tunes for the model
+// 1M and up -> _1M, 300K and up -> _300K, 200K and up -> _200K, under 200K none), read from the env this file applies - instead of at the window Claude Code tunes for the model
 // (settings reference: unset by default; measured near 390k on a 1M window, fresh-session.js). A tier switched off (`0`) seeds nothing;
 // a trigger at or past its window is held at 90% of it (fresh-session.js ctxThreshold's clamp), and the value stays inside
 // the 100,000-1,000,000 Claude Code accepts (settings-reference `modelSettings`). Returns { <model id>: <tokens> }.
@@ -100,7 +100,11 @@ function compactWindowSeeds(models, env = {}, catalog = [])
         const window = Number(n);
         // only an id the stamp's ledger reads back (stamp.js SETTINGS_PATH), or its window could never be taken back
         if (!(window >= 100000) || !/^[a-z0-9][a-z0-9-]{0,99}$/.test(id)) continue;
-        let at = tier(tierKeyOf(window));
+        // the model's own capacity picks its tier; one under 200K has none and keeps Claude Code's own window - the
+        // fresh-session fallback ALFRED_CODE_CONTEXT_WINDOW_DEFAULT is never an auto-compact window (the user's ruling, 2026-10-21)
+        const key = tierKeyOf(window);
+        if (!key) continue;
+        let at = tier(key);
         if (!(at > 0)) continue;
         if (at >= window) at = Math.floor(window * 0.9);
         out[id] = Math.max(100000, Math.min(1000000, at));
@@ -337,7 +341,62 @@ function retireAndReseed(env, migrations, log, label, only = () => true, stackWr
     // typed is theirs even when it equals an old seed (2026-10-16 matrix: a hand-set ALFRED_CODE_CONTEXT_WINDOW_FOR_200K of
     // 150000 was reset to 180000 on every update).
     for (const [key, badSeed, to] of migrations.reseed || [])
-        if (only(key) && env[key] === badSeed && (!stackWrote || stackWrote(label, key, badSeed))) { env[key] = to; changed = true; log(`  ${label} env: ${key} reset to ${to} (auto-detect)`); }
+        if (only(key) && env[key] === badSeed && (!stackWrote || stackWrote(label, key, badSeed))) { env[key] = to; changed = true; log(`  ${label} env: ${key} reset to ${to} (the old stack seed ${badSeed})`); }
+    return changed;
+}
+
+// Step 2b, before the reseed sees an old seed: a key that follows others to off (`off_settings_env` - the DEFAULT, once the
+// three window tiers are all `0`, item 12 of 2026-10-21) takes their off value while it is a stack seed the stack wrote, or
+// absent where `absentOk` says nothing else holds it. A value the user typed stays.
+function offWithTiers(env, migrations, log, label, { only = () => true, stackWrote = null, absentOk = () => false } = {})
+{
+    let changed = false;
+    for (const [key, withKeys, seeds, to] of migrations.offWith || [])
+    {
+        if (!only(key) || !withKeys.every((k) => env[k] === to) || env[key] === to) continue;
+        const was = env[key];
+        if (was === undefined ? !absentOk(key) : !(seeds.includes(was) && (!stackWrote || stackWrote(label, key, was)))) continue;
+        env[key] = to;
+        changed = true;
+        log(`  ${label} env: ${key} set to ${to} (${was === undefined ? 'absent' : `the stack seed ${was}`}; the three tiers are ${to}, so the offers stay off)`);
+    }
+    return changed;
+}
+
+// Step 1b, after the renames: a retired on/off key folds into a csv (`fold_settings_env` - the env audit of 2026-10-21 moved
+// seven switches into ALFRED_CODE_HOOKS_OFF as `<hook>:<part>` or a hook name). At its off value it becomes the entry, at
+// any other it was the seed's 'on' and just goes. The csv is made where it is missing, from `baseCsv` (the value beneath an
+// overlay) when given; `alsoInto` is an overlay csv that shadows this file's, which must carry the entry too.
+const csvEntryKey = (entry) => { const at = entry.indexOf(':'); const hook = (at > 0 ? entry.slice(0, at) : entry).trim().toLowerCase().replace(/\.js$/, ''); return at > 0 ? `${hook}:${entry.slice(at + 1).trim().toLowerCase()}` : hook; };
+function addCsvEntry(csv, entry)
+{
+    const items = String(csv || '').split(',').map((x) => x.trim()).filter(Boolean);
+    if (items.some((x) => csvEntryKey(x) === csvEntryKey(entry))) return csv;
+    return [...items, entry].join(',');
+}
+function foldEnv(env, migrations, log, label, { baseCsv = null, alsoInto = null, alsoLabel = '' } = {})
+{
+    let changed = false;
+    for (const [key, into, entry, offValue] of migrations.folds || [])
+    {
+        if (!Object.hasOwn(env, key)) continue;
+        const was = String(env[key]).trim();
+        delete env[key];
+        changed = true;
+        if (was !== offValue)
+        {
+            log(`  ${label} env: ${key} removed (on - ${entry.includes(':') ? 'the part' : 'the hook'} runs unless ${into} names ${entry})`);
+            continue;
+        }
+        const now = addCsvEntry(Object.hasOwn(env, into) ? env[into] : (baseCsv || ''), entry);
+        if (now !== env[into]) env[into] = now;
+        log(`  ${label} env: ${key} folded into ${into} as ${entry}`);
+        if (alsoInto && Object.hasOwn(alsoInto, into))
+        {
+            const there = addCsvEntry(alsoInto[into], entry);
+            if (there !== alsoInto[into]) { alsoInto[into] = there; log(`  ${alsoLabel} env: ${into} carries ${entry} too (it shadows ${label}'s)`); }
+        }
+    }
     return changed;
 }
 
@@ -364,6 +423,8 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
     if (held)
     {
         renameEnv(held, migrations, log, overlayLabel);
+        foldEnv(held, migrations, log, overlayLabel, { baseCsv: env.ALFRED_CODE_HOOKS_OFF ?? beneath.ALFRED_CODE_HOOKS_OFF ?? '' });
+        offWithTiers(held, migrations, log, overlayLabel, { only: isStackKey, stackWrote });
         retireAndReseed(held, migrations, log, overlayLabel, isStackKey, stackWrote);
     }
     const heldHere = (key) => Boolean(held) && isStackKey(key) && key in held && !sharedKeys.includes(key);
@@ -371,6 +432,8 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
     // Where a decision about `key` lands: the overlay when it holds the key, else this file.
     const at = (key) => (heldHere(key) ? { into: held, lab: overlayLabel, mine: false } : { into: env, lab: label, mine: true });
 
+    if (foldEnv(env, migrations, log, label, { alsoInto: held, alsoLabel: overlayLabel })) changed = true;
+    if (offWithTiers(env, migrations, log, label, { stackWrote, absentOk: (key) => !present(key) && !(held && key in held) })) changed = true;
     if (retireAndReseed(env, migrations, log, label, undefined, stackWrote)) changed = true;
 
     // 3b. THE DOCS ROOT (alfred-code.js docsRootStep): ALFRED_CODE_DOCS_PATH is retired in 2.8.0 - the docs root is
@@ -459,11 +522,13 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
     }
 
     // ALFRED_CODE_HOOKS_OFF: a walk that answered the hooks layer THIS run wins over the stored
-    // value - the one exception to absent-only, because the user is looking at the question.
-    const off = (hooksOff || []).join(',');
+    // value - the one exception to absent-only, because the user is looking at the question. The walk answers HOOKS, so a
+    // stored `<hook>:<part>` entry (a part switched off, hook-prelude.js partOff) is no part of its answer and is kept.
     if (hooksAnswered)
     {
         const { into, lab, mine } = at('ALFRED_CODE_HOOKS_OFF');
+        const parts = String(into.ALFRED_CODE_HOOKS_OFF || '').split(',').map((x) => x.trim()).filter((x) => x.indexOf(':') > 0);
+        const off = parts.reduce(addCsvEntry, (hooksOff || []).join(','));
         if (into.ALFRED_CODE_HOOKS_OFF !== off)
         { into.ALFRED_CODE_HOOKS_OFF = off; if (mine) changed = true; log(`  ${lab} env: ALFRED_CODE_HOOKS_OFF = ${off || '(empty - every hook runs)'}`); }
     }
@@ -664,7 +729,19 @@ function writeSettings(opts)
         if (recorded && !heldTools.has(toolKey(rule))) { declinedDeny.push(rule); continue; }
         deny.push(rule); changed = true; addedTools.push(rule);
     }
-    if (addedTools.length) log(`  ${label}: denied ${addedTools.length} memory server tool(s) the stack never calls (${addedTools.map((r) => r.replace(/^.*__/, '')).join(', ')}) - out of every session's context; take one out of permissions.deny to use it, and it stays out`);
+    // A browser engine's row (`<engine>-control` or its `browser-<engine>` alias) is named per tool and engine; the rest
+    // are the memory server's.
+    const engineRow = (rule) => /^mcp__(?:([a-z]+)-control|browser-([a-z]+))__(browser_\w+)$/.exec(toolKey(rule));
+    const memoryAdded = addedTools.filter((r) => !engineRow(r));
+    if (memoryAdded.length) log(`  ${label}: denied ${memoryAdded.length} memory server tool(s) the stack never calls (${memoryAdded.map((r) => r.replace(/^.*__/, '')).join(', ')}) - out of every session's context; take one out of permissions.deny to use it, and it stays out`);
+    const browserAdded = new Map();
+    for (const m of addedTools.map(engineRow).filter(Boolean))
+    {
+        const engines = browserAdded.get(m[3]) || new Set();
+        browserAdded.set(m[3], engines.add(m[1] || m[2]));
+    }
+    for (const [tool, engines] of browserAdded)
+        log(`  ${label}: denied ${tool} on ${[...engines].join(', ')} - it runs any code in the browser process; take it out of permissions.deny to use it, and it stays out`);
     // I1 (fix round 1): the pass below also runs over settings.local.json's deny list - a seat the
     // user switched off for themselves is re-spelled THERE, never moved into the shared file.
     const respellSeats = (list, lab) =>
@@ -767,7 +844,7 @@ function writeSettings(opts)
         }
     }
 
-    // alfred-git forbids AI attribution; the `attribution` setting enforces it. Key by key and add-only:
+    // The git preferences forbid AI attribution; the `attribution` setting enforces it. Key by key and add-only:
     // a value the project set stays, and at local scope a settings.json value is never hidden by a seed.
     const attrBefore = plain(data.attribution) ? Object.keys(data.attribution) : [];
     if (attribution && (data.attribution === undefined || (data.attribution && typeof data.attribution === 'object' && !Array.isArray(data.attribution))))

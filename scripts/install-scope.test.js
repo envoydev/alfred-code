@@ -597,7 +597,7 @@ test('install-scope: a local install moved to project scope drops its seeded key
         prepare: (repo) =>
         {
             fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
-            fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_PUSH_GATE: '1' } }));
+            fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_TURN_CHECK: '0' } }));
             fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), JSON.stringify({ env: { MY_OWN: 'x' }, permissions: { allow: ['Bash(ls)'] } }));
         },
         each: (repo, i) =>
@@ -608,7 +608,7 @@ test('install-scope: a local install moved to project scope drops its seeded key
             const file = path.join(repo, '.claude', 'settings.local.json');
             const local = JSON.parse(fs.readFileSync(file, 'utf8'));
             Object.assign(local.env, {
-                ALFRED_CODE_DOCS_PATH: 'docs/mine', ALFRED_CODE_PUSH_GATE: '0',
+                ALFRED_CODE_DOCS_PATH: 'docs/mine', ALFRED_CODE_TURN_CHECK: '1',
                 ALFRED_CODE_HOOKS_OFF: 'guard-answer', ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '/elsewhere/other-repo',
             });
             fs.writeFileSync(file, JSON.stringify(local));
@@ -623,12 +623,12 @@ test('install-scope: a local install moved to project scope drops its seeded key
     const { ALFRED_CODE_MEMORY_DB: _db, ...localEnv } = result.local.env;
     // ALFRED_CODE_DOCS_PATH is retired (2.8.0): its root held no docs, so the key goes from the local file too.
     assert.deepStrictEqual(localEnv, {
-        MY_OWN: 'x', ALFRED_CODE_PUSH_GATE: '0',
+        MY_OWN: 'x', ALFRED_CODE_TURN_CHECK: '1',
         ALFRED_CODE_HOOKS_OFF: 'guard-answer', ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '/elsewhere/other-repo',
     }, 'the user\'s values stay local, untouched, and every seeded stack key left');
     assert.ok(!JSON.stringify(result.shared).includes('/elsewhere/other-repo'), 'a personal path reached the committed settings.json');
     assert.ok(!JSON.stringify(result.shared).includes('docs/mine'), 'a local value moved into settings.json');
-    assert.strictEqual(result.shared.env.ALFRED_CODE_PUSH_GATE, '1', 'settings.json keeps its own value');
+    assert.strictEqual(result.shared.env.ALFRED_CODE_TURN_CHECK, '0', 'settings.json keeps its own value');
     // What Claude Code resolves: the local file over the shared one.
     const effective = { ...result.shared.env, ...result.local.env };
     assert.strictEqual(effective.ALFRED_CODE_HOOKS_OFF, 'guard-answer', 'the hook the user switched off came back on');

@@ -303,6 +303,111 @@ test('offer: the agents-md line offers only a clean rename', () =>
     assert.match(seeds.claudeMdOffer(dir({ '.claude/CLAUDE.md': 'x', 'CLAUDE.local.md': 'y' })), /CLAUDE\.local\.md would keep/);
 });
 
+// --- where the instruction file lives (--instructions-at) ------------------
+
+test('place: --instructions-at root seeds AGENTS.md at the root, and no .claude/ re-include is asked for', () =>
+{
+    const projectRoot = dir();
+    const logs = [];
+    assert.strictEqual(seeds.seedAgentsMd({ projectRoot, sourceDir: dir(TEMPLATE), at: 'root', log: (m) => logs.push(m) }), true);
+    assert.strictEqual(fs.readFileSync(path.join(projectRoot, 'AGENTS.md'), 'utf8'), `# ${path.basename(projectRoot)}\n\nOutline.\n`);
+    assert.ok(!fs.existsSync(path.join(projectRoot, '.claude', 'AGENTS.md')), 'no second copy under .claude/');
+    assert.ok(logs.some((m) => /seeded to AGENTS\.md at the project root/.test(m)), logs.join(' | '));
+    assert.ok(!logs.some((m) => /!\.claude\/AGENTS\.md/.test(m)), `a root file needs no re-include: ${logs.join(' | ')}`);
+    assert.strictEqual(seeds.seedAgentsMd({ projectRoot, sourceDir: dir(TEMPLATE), at: 'root' }), false, 'a re-run seeds nothing');
+});
+
+test('place: the seed path is .claude/AGENTS.md when it is there, else a root AGENTS.md, else .claude/AGENTS.md', () =>
+{
+    const at = (files) => { const r = dir(files); return path.relative(r, seeds.seededAgentsMdPath(r)).split(path.sep).join('/'); };
+    assert.strictEqual(at({}), '.claude/AGENTS.md');
+    assert.strictEqual(at({ 'AGENTS.md': 'x' }), 'AGENTS.md');
+    assert.strictEqual(at({ '.claude/AGENTS.md': 'x' }), '.claude/AGENTS.md');
+    assert.strictEqual(at({ 'AGENTS.md': 'x', '.claude/AGENTS.md': 'y' }), '.claude/AGENTS.md');
+});
+
+test('place: the refresh follows a root seed', () =>
+{
+    const projectRoot = dir({ 'AGENTS.md': '# kept-name\n\nOld outline.\n' });
+    assert.strictEqual(seeds.refreshSeededAgentsMd({ projectRoot, sourceDir: dir(TEMPLATE) }), true);
+    assert.strictEqual(fs.readFileSync(path.join(projectRoot, 'AGENTS.md'), 'utf8'), '# kept-name\n\nOutline.\n');
+    assert.ok(!fs.existsSync(path.join(projectRoot, '.claude')), 'nothing written under .claude/');
+});
+
+const place = (projectRoot, at, { tracked = () => false, ignored = () => false } = {}) =>
+{
+    const logs = [];
+    const gitMvs = [];
+    const moved = seeds.placeInstructionFiles({
+        projectRoot, at, tracked, ignored,
+        gitMv: (from, to) => { gitMvs.push([from, to]); fs.renameSync(from, to); },
+        log: (m) => logs.push(m), note: (m) => logs.push(`NOTE ${m}`),
+    });
+    return { moved, logs, gitMvs };
+};
+const body = (root, rel) => (fs.existsSync(path.join(root, rel)) ? fs.readFileSync(path.join(root, rel), 'utf8') : null);
+
+test('place: root moves .claude/AGENTS.md and .claude/CLAUDE.md up, content kept, and a re-run moves nothing', () =>
+{
+    const projectRoot = dir({ '.claude/AGENTS.md': '# a\n', '.claude/CLAUDE.md': '# c\n', '.claude/settings.json': '{}' });
+    const first = place(projectRoot, 'root');
+    assert.deepStrictEqual(first.moved, ['.claude/AGENTS.md -> AGENTS.md', '.claude/CLAUDE.md -> CLAUDE.md']);
+    assert.deepStrictEqual([body(projectRoot, 'AGENTS.md'), body(projectRoot, 'CLAUDE.md')], ['# a\n', '# c\n']);
+    assert.deepStrictEqual([body(projectRoot, '.claude/AGENTS.md'), body(projectRoot, '.claude/CLAUDE.md')], [null, null]);
+    assert.strictEqual(body(projectRoot, '.claude/settings.json'), '{}', 'nothing else under .claude/ moves');
+    assert.deepStrictEqual(first.gitMvs, [], 'untracked: a plain rename');
+    assert.ok(first.logs.some((m) => /\.claude\/AGENTS\.md -> AGENTS\.md: moved on your answer/.test(m)), first.logs.join(' | '));
+    const again = place(projectRoot, 'root');
+    assert.deepStrictEqual([again.moved, again.logs], [[], []], 'idempotent and quiet');
+});
+
+test('place: claude moves the root files into .claude/, git mv where tracked, and names the re-include an ignored one needs', () =>
+{
+    const projectRoot = dir({ 'AGENTS.md': '# a\n', 'CLAUDE.md': '# c\n', 'CLAUDE.local.md': '# mine\n' });
+    const r = place(projectRoot, 'claude', { tracked: (at) => /AGENTS\.md$/.test(at), ignored: (at) => /CLAUDE\.md$/.test(at) });
+    assert.deepStrictEqual(r.moved, ['AGENTS.md -> .claude/AGENTS.md', 'CLAUDE.md -> .claude/CLAUDE.md']);
+    assert.strictEqual(r.gitMvs.length, 1, 'only the tracked one through git mv');
+    assert.match(r.gitMvs[0][1], /\.claude[\\/]AGENTS\.md$/);
+    assert.ok(r.logs.some((m) => /AGENTS\.md -> \.claude\/AGENTS\.md: moved on your answer \(git mv, staged as a rename\)/.test(m)), r.logs.join(' | '));
+    assert.ok(r.logs.some((m) => /!! \.claude\/CLAUDE\.md is git-ignored here - add '!\.claude\/CLAUDE\.md' after the '\.claude\/\*' line/.test(m)), r.logs.join(' | '));
+    assert.ok(!r.logs.some((m) => /'!\.claude\/AGENTS\.md'/.test(m)), 'a file git still tracks needs no re-include line');
+    assert.strictEqual(body(projectRoot, 'CLAUDE.local.md'), '# mine\n', 'CLAUDE.local.md stays at the root - it is personal and only read there');
+});
+
+test('place: a destination that already holds the file is never overwritten - both are named and left', () =>
+{
+    const projectRoot = dir({ 'AGENTS.md': '# root\n', '.claude/AGENTS.md': '# claude\n' });
+    for (const at of ['root', 'claude'])
+    {
+        const r = place(projectRoot, at);
+        assert.deepStrictEqual(r.moved, []);
+        assert.deepStrictEqual([body(projectRoot, 'AGENTS.md'), body(projectRoot, '.claude/AGENTS.md')], ['# root\n', '# claude\n']);
+        assert.ok(r.logs.some((m) => /both exist - merge them by hand and delete one/.test(m)), r.logs.join(' | '));
+    }
+});
+
+test('place: nothing given or nothing to move is a no-op, and a failed move is a note with the command', () =>
+{
+    const empty = dir();
+    assert.deepStrictEqual(place(empty, 'root'), { moved: [], logs: [], gitMvs: [] });
+    const projectRoot = dir({ '.claude/AGENTS.md': '# a\n' });
+    assert.deepStrictEqual(place(projectRoot, '').moved, [], "'' means not given: nothing moves");
+    assert.strictEqual(body(projectRoot, '.claude/AGENTS.md'), '# a\n');
+    const logs = [];
+    const moved = seeds.placeInstructionFiles({ projectRoot, at: 'root', tracked: () => true, gitMv: () => { throw new Error('index.lock exists'); }, log: (m) => logs.push(m), note: (m) => logs.push(`NOTE ${m}`) });
+    assert.deepStrictEqual(moved, []);
+    assert.strictEqual(body(projectRoot, '.claude/AGENTS.md'), '# a\n', 'the file stays where it was');
+    assert.ok(logs.some((m) => /^NOTE \.claude\/AGENTS\.md could not be moved to AGENTS\.md \(index\.lock exists\) - to do it by hand: git mv \.claude\/AGENTS\.md AGENTS\.md$/.test(m)), logs.join(' | '));
+});
+
+test('place: the instructions line says where the files are - none, claude, root or split', () =>
+{
+    assert.strictEqual(seeds.instructionsLine(dir()), 'instructions: none');
+    assert.strictEqual(seeds.instructionsLine(dir({ '.claude/AGENTS.md': 'x' })), 'instructions: claude .claude/AGENTS.md');
+    assert.strictEqual(seeds.instructionsLine(dir({ 'AGENTS.md': 'x', 'CLAUDE.md': 'y' })), 'instructions: root AGENTS.md CLAUDE.md');
+    assert.strictEqual(seeds.instructionsLine(dir({ 'AGENTS.md': 'x', '.claude/CLAUDE.md': 'y' })), 'instructions: split AGENTS.md .claude/CLAUDE.md');
+});
+
 // --- the playwright downloads --------------------------------------------
 
 test('playwright: only firefox and webkit are downloaded, and a failure is a HINT not a stop', () =>

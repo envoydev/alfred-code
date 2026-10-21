@@ -15,8 +15,8 @@
 // Everything after `--` goes to serena unchanged, but for one swap below. stdout is the MCP stream:
 // nothing is written to it here, diagnostics go to stderr, which Claude Code shows in the server's log.
 //
-// THE DATA (data-root.js): serena's per-project folder - the index cache, the handoff memories, the
-// project.yml - lives at <data root>/serena, and its home (SERENA_HOME: the config, the logs, ~327MB of
+// THE DATA (data-root.js): serena's per-project folder - the index cache and the project.yml (its memory
+// tools are off: notes go to alfred-memory) - lives at <data root>/serena, and its home (SERENA_HOME: the config, the logs, ~327MB of
 // language servers) at <data root>/serena/home. serena has no flag for the folder, so the home's own
 // serena_config.yml carries `project_serena_folder_location`. A move the installer recorded runs here,
 // at start, before this serena holds anything - and only while no other serena does (a second session's, whose
@@ -27,8 +27,8 @@
 // directory, never the `${CLAUDE_PROJECT_DIR}` expansion that failed in a registration.
 //
 // THE CONTEXT (I12): the entry names serena's upstream `--context claude-code`, and this launcher hands
-// serena the stack's own `navigation-context.yml` beside it instead - the upstream context minus the five
-// editing tools no house hook sees and onboarding (the file says why). The swap lives HERE, not in the
+// serena the stack's own `navigation-context.yml` beside it instead - the upstream context minus the house's
+// twelve - the five editing tools no house hook sees, onboarding and every memory tool (the file says why). The swap lives HERE, not in the
 // entry's argv: Claude Code launches the entry from the refreshed marketplace clone against the INSTALLED
 // version's cache, so an entry naming the new file would stop a project whose plugin is not updated yet
 // (serena refuses a context path that does not exist), while an older launcher simply keeps claude-code.

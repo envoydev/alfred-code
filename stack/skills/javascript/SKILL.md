@@ -8,7 +8,7 @@ user-invocable: false
 
 For any runtime or package API surface not pinned down here, reach for the `alfred-documentation` MCP rather than memory - never by grepping `node_modules` bundles.
 
-These are the language rules for every piece of JS-family code, independent of where it runs. The TypeScript type-layer skill stacks on top of this baseline and owns everything type-system: strict flags, type modeling, and checked-JS-via-JSDoc. A framework adds its own layer above that. **A project's own config and its `<docs-path>/code-style/CODE-STYLE.md` are higher priority - follow the project where it diverges.**
+These are the language rules for every piece of JS-family code, independent of where it runs. The TypeScript type-layer skill stacks on top of this baseline and owns everything type-system: strict flags, type modeling, and checked-JS-via-JSDoc. A framework adds its own layer above that. **A project's own config and its `<docs-path>/preferences/PROJECT-CODE-PREFERENCES.md` are higher priority - follow the project where it diverges. The user's own preferences docs there rank higher still: where an entry and this skill disagree, ask the user which wins, the entry's side marked (Recommended).**
 
 ## When to use
 

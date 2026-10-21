@@ -656,7 +656,7 @@ function precheck(projectRoot, rulePath)
 {
     const ruleStat = statOf(rulePath);
     if (!ruleStat) return { first: true, hits: [] };
-    const skipName = (n) => /^(alfred|baseline)-project-/.test(n) || ['project-code-style.md', 'alfred-awareness.md', 'alfred-agent-awareness.md', 'alfred-related-context.md', 'alfred-architecture.md', 'alfred-preferences.md'].includes(n);
+    const skipName = (n) => /^(alfred|baseline)-project-/.test(n) || ['project-code-style.md', 'alfred-awareness.md', 'alfred-agent-awareness.md', 'alfred-related-context.md', 'alfred-architecture.md'].includes(n);
     const hits = [];
     const visit = (p, depth) =>
     {

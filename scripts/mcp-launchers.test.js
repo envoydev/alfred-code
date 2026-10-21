@@ -1140,6 +1140,11 @@ test('mobile-launch: the prerequisites say Node, the SDK paths found or missing,
     assert.doesNotMatch(set, /!! mobile: set ANDROID_HOME/);
     assert.match(set, /iOS needs macOS with Xcode; on this machine it drives Android only/);
     assert.match(notes({ node: '20.11.1' }), /!! mobile: mobile-control needs Node 22 or newer .* this machine runs 20\.11\.1/);
+    // mcps T1-3 (ruling M-A2): the count the pin refresh recorded is named; none recorded, or a clean tree, says nothing
+    const adv = notes({ pin: { version: '1.97.1', advisories: { checked: '2026-10-21', critical: 20, high: 21, total: 44 } } });
+    assert.match(adv, /!! mobile: appium-mcp 1\.97\.1 resolves 20 critical and 21 high npm advisories its upstream has not fixed \(npm audit, 2026-10-21\) - drive local apps on a trusted machine only/);
+    assert.doesNotMatch(bare, /npm advisories/);
+    assert.doesNotMatch(notes({ pin: { version: '1.0.0', advisories: { checked: '2026-10-21', critical: 0, high: 0, total: 3 } } }), /npm advisories/);
 });
 
 // ------------------------------------------------------------------ the project's sensitive data (2026-10-13)

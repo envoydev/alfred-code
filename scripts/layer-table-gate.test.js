@@ -347,3 +347,234 @@ test('banners: the ask\'s own message is waited for, so a gap it opens is seen a
   assert.strictEqual(gap.status, 2);
   assert.match(gap.stderr, /step 3, 4, 5 of 13 printed none/);
 });
+
+// ------------------------------------------------------------------ 2026-10-21: a skipped layer question
+// A real init run printed the hooks table, narrated 'all 17 hooks are currently set to recommended. Next I'll decide
+// which to keep' and moved on; the plugins layer rendered its own table through `node -e` and went straight to the
+// prerequisite check. No ask followed either table, so the ask-time gate above never fired. The same hook now also
+// judges the walk's next Bash step: inside a typed init / configure walk, the latest layer table needs an answered ask
+// before the walk moves on, and init (which walks all six layers) needs every earlier layer's table to have run.
+function runBash(rows, command, id = 'own') {
+  const p = path.join(TMP, `${Math.random().toString(36).slice(2)}.jsonl`);
+  fs.writeFileSync(p, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+  const t0 = Date.now();
+  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, transcript_path: p, tool_use_id: id }), encoding: 'utf8', ...inProject() });
+  return { status: r.status, stderr: r.stderr, ms: Date.now() - t0 };
+}
+const tbl = (layer, id = `t-${layer}`) => call(id, 'Bash', { command: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table ${layer} --recs r.json` });
+const paste = (layer, n = 9) => say('```\n 1 | x\ntotal: ' + n + ' ' + layer + '\n```');
+const answered = (layer, q) => [call(`q-${layer}`, 'AskUserQuestion', layerAsk(q || `${layer[0].toUpperCase()}${layer.slice(1)}: keep the marked rows?`)), result(`q-${layer}`, 'User has answered your questions: "x"="Keep the marked rows (Recommended)"')];
+const walked = (layer) => [tbl(layer), result(`t-${layer}`, `total: 9 ${layer}`), paste(layer), ...answered(layer)];
+const NEXT_RECOMPUTE = 'node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" > "$TMP/select.out"';
+const EMIT = 'node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --emit "$TMP/selection.txt" --hooks-answered --check --defer-init > "$TMP/select.out"';
+const INSTALL = 'node "$TMP/repo/scripts/install/alfred-code.js" install --source "$TMP/repo" --scope project --selection "$TMP/selection.txt"';
+const FIRST4 = ['rules', 'agents', 'skills'].flatMap(walked);
+
+test('skipped ask: the next walk call after an unasked layer table is denied, naming the layer and the ask', () => {
+  const rows = [typed('/alfred-code:init'), ...FIRST4, tbl('hooks'), result('t-hooks', 'total: 18 hooks'), say('All 18 hooks are set to recommended. Next I\'ll decide which to keep.')];
+  for (const cmd of [NEXT_RECOMPUTE, `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table mcps --recs r.json`, EMIT, INSTALL]) {
+    const r = runBash(rows, cmd);
+    assert.strictEqual(r.status, 2, cmd);
+    assert.match(r.stderr, /the hooks ask never happened/);
+    assert.match(r.stderr, /fenced code block/);
+  }
+});
+
+test('skipped ask: an answered ask after the table lets the walk move on; a denied one does not count', () => {
+  const ok = [typed('/alfred-code:init'), ...FIRST4, ...walked('hooks')];
+  assert.strictEqual(runBash(ok, NEXT_RECOMPUTE).status, 0);
+  const deniedAsk = [typed('/alfred-code:init'), ...FIRST4, tbl('hooks'), result('t-hooks', 'total: 18 hooks'),
+    call('d1', 'AskUserQuestion', layerAsk('Hooks: keep all 18 on?')), result('d1', 'alfred-code layer-table gate: the hooks table ran but its output is not in your message', true)];
+  assert.strictEqual(runBash(deniedAsk, NEXT_RECOMPUTE).status, 2);
+});
+
+test('skipped ask: re-running the same layer table, or a command outside the walk, is not judged', () => {
+  const rows = [typed('/alfred-code:init'), ...FIRST4, tbl('hooks'), result('t-hooks', 'total: 18 hooks')];
+  assert.strictEqual(runBash(rows, `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table hooks --recs r.json`).status, 0);
+  for (const cmd of ['git status', 'cat "$TMP/select.out"', 'node -e "console.log(1)"']) assert.strictEqual(runBash(rows, cmd).status, 0, cmd);
+});
+
+test('skipped ask: outside a typed init / configure run, or after a typed prompt mid-walk, nothing is judged', () => {
+  const tail = [tbl('hooks'), result('t-hooks', 'total: 18 hooks')];
+  assert.strictEqual(runBash([typed('/alfred-code:validate'), ...tail], NEXT_RECOMPUTE).status, 0);
+  assert.strictEqual(runBash([typed('run the selector'), ...tail], NEXT_RECOMPUTE).status, 0);
+  assert.strictEqual(runBash([typed('/alfred-code:init'), ...tail, typed('keep going')], NEXT_RECOMPUTE).status, 0);
+});
+
+test('skipped ask: configure is judged the same way', () => {
+  const rows = [typed('/alfred-code:configure'), tbl('skills'), result('t-skills', 'total: 80 skills'), paste('skills', 80)];
+  const r = runBash(rows, NEXT_RECOMPUTE);
+  assert.strictEqual(r.status, 2);
+  assert.match(r.stderr, /the skills ask never happened/);
+  assert.strictEqual(runBash([...rows, ...answered('skills', 'Add to the installed skills? 40 rows are not installed.')], NEXT_RECOMPUTE).status, 0);
+});
+
+test('skipped ask: the pending-ask denial has its own valve of three', () => {
+  const pd = (n) => [call(`p${n}`, 'Bash', { command: NEXT_RECOMPUTE }), result(`p${n}`, 'alfred-code layer-table gate: the hooks ask never happened - x', true)];
+  const rows = [typed('/alfred-code:init'), ...FIRST4, tbl('hooks'), result('t-hooks', 'total: 18 hooks'), ...pd(1), ...pd(2)];
+  assert.strictEqual(runBash(rows, NEXT_RECOMPUTE).status, 2);
+  assert.strictEqual(runBash([...rows, ...pd(3)], NEXT_RECOMPUTE).status, 0);
+});
+
+test('skipped layer: init denies the prerequisite check and the installer while a layer table never ran', () => {
+  // The plugins layer was rendered by a hand-written `node -e` script, never `--table plugins`.
+  const rows = [typed('/alfred-code:init'), ...FIRST4, ...walked('hooks'), ...walked('mcps'),
+    call('h1', 'Bash', { command: 'node -e \'const fs=require("fs");console.log(" # | plugin")\'' }), result('h1', ' # | plugin\n 1 | claude-hud')];
+  for (const cmd of [EMIT, INSTALL]) {
+    const r = runBash(rows, cmd);
+    assert.strictEqual(r.status, 2, cmd);
+    assert.match(r.stderr, /never walked/);
+    assert.match(r.stderr, /plugins/);
+    assert.match(r.stderr, /--table plugins/);
+  }
+  assert.strictEqual(runBash([...rows, ...walked('plugins')], EMIT).status, 0);
+});
+
+test('skipped layer: init denies a later layer table while an earlier layer never ran; configure skips areas freely', () => {
+  const r = runBash([typed('/alfred-code:init'), ...FIRST4, ...walked('hooks')], `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table plugins --recs r.json`);
+  assert.strictEqual(r.status, 2);
+  assert.match(r.stderr, /mcps/);
+  assert.strictEqual(runBash([typed('/alfred-code:configure'), ...walked('hooks')], EMIT).status, 0, 'configure walks only the picked areas');
+});
+
+test('skipped layer: the never-walked denial has its own valve of three', () => {
+  const nw = (n) => [call(`w${n}`, 'Bash', { command: EMIT }), result(`w${n}`, 'alfred-code layer-table gate: layers never walked - plugins', true)];
+  const rows = [typed('/alfred-code:init'), ...FIRST4, ...walked('hooks'), ...walked('mcps'), ...nw(1), ...nw(2)];
+  assert.strictEqual(runBash(rows, EMIT).status, 2);
+  assert.strictEqual(runBash([...rows, ...nw(3)], EMIT).status, 0);
+});
+
+test('skipped ask: the hook own Bash row on disk is not taken for the latest table call', () => {
+  const rows = [typed('/alfred-code:init'), ...FIRST4, ...walked('hooks'), call('own', 'Bash', { command: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table mcps --recs r.json` })];
+  assert.strictEqual(runBash(rows, `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table mcps --recs r.json`, 'own').status, 0);
+});
+
+test('skipped ask: a non-walk Bash call exits before reading the transcript - fail-open on garbage too', () => {
+  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'ls' }, transcript_path: path.join(TMP, 'nope.jsonl') }), encoding: 'utf8', ...inProject() });
+  assert.strictEqual(r.status, 0);
+  const r2 = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: EMIT }, transcript_path: path.join(TMP, 'nope.jsonl') }), encoding: 'utf8', ...inProject() });
+  assert.strictEqual(r2.status, 0);
+});
+
+// ------------------------------------------------------------------ 2026-10-21, step 6.5: the walk outlives a typed reply
+// The Bash gate found the walk only when the LAST typed prompt was the init / configure command, so one typed reply
+// mid-walk ('sounds good, go on') switched it off for every later layer - the skipped question came back. The span now
+// runs back to the newest typed init / configure command: a typed reply counts as the user's answer where it stands, a
+// harness prompt (a task notice, a seat's hand-back, a command's output) is neither, another typed slash command ends the
+// walk, an ask the idle timeout closed is no answer, and the Bash path reads a 2MB tail.
+const TYPED_INIT = typed('<command-message>alfred-code:init</command-message>\n<command-name>/alfred-code:init</command-name>\n<command-args></command-args>');
+const UNASKED_HOOKS = [tbl('hooks'), result('t-hooks', 'total: 18 hooks'), paste('hooks', 18)];
+
+test('6.5: a typed reply mid-walk keeps the walk judged - a later unasked table still holds the next step', () => {
+  for (const start of [typed('/alfred-code:init'), TYPED_INIT]) {
+    const r = runBash([start, ...FIRST4, typed('sounds good, go on'), ...UNASKED_HOOKS], NEXT_RECOMPUTE);
+    assert.strictEqual(r.status, 2, r.stderr);
+    assert.match(r.stderr, /the hooks ask never happened/);
+  }
+});
+
+test('6.5: a typed reply after the table is the user\'s answer there', () => {
+  assert.strictEqual(runBash([TYPED_INIT, ...FIRST4, ...UNASKED_HOOKS, typed('keep all of them')], NEXT_RECOMPUTE).status, 0);
+});
+
+test('6.5: init\'s never-walked check reaches past a typed reply', () => {
+  const rows = [TYPED_INIT, ...FIRST4, typed('ok'), ...walked('hooks'), ...walked('mcps')];
+  const r = runBash(rows, EMIT);
+  assert.strictEqual(r.status, 2, r.stderr);
+  assert.match(r.stderr, /never walked/);
+  assert.match(r.stderr, /plugins/);
+  assert.strictEqual(runBash([...rows, ...walked('plugins')], EMIT).status, 0);
+});
+
+test('6.5: a harness prompt is neither an answer nor the end of the walk', () => {
+  for (const notice of ['<task-notification>\n<task-id>a1</task-id>\n<status>completed</status>\n</task-notification>',
+    'Another Claude session sent a message:\n<agent-message from="a1">report</agent-message>',
+    '<local-command-stdout>ok</local-command-stdout>', '<bash-input>ls</bash-input>']) {
+    const r = runBash([TYPED_INIT, ...FIRST4, ...UNASKED_HOOKS, typed(notice)], NEXT_RECOMPUTE);
+    assert.strictEqual(r.status, 2, notice);
+    assert.match(r.stderr, /the hooks ask never happened/);
+  }
+});
+
+test('6.5: another typed slash command ends the walk', () => {
+  const other = typed('<command-message>alfred-code:status</command-message>\n<command-name>/alfred-code:status</command-name>');
+  assert.strictEqual(runBash([TYPED_INIT, ...FIRST4, ...UNASKED_HOOKS, other], NEXT_RECOMPUTE).status, 0);
+  assert.strictEqual(runBash([TYPED_INIT, ...FIRST4, ...UNASKED_HOOKS, typed('/model')], NEXT_RECOMPUTE).status, 0);
+});
+
+test('6.5: an ask the idle timeout closed is no answer', () => {
+  const idle = [call('q-hooks', 'AskUserQuestion', layerAsk('Hooks: keep all 18 on?')),
+    result('q-hooks', 'No response after 60s - the user may be away from keyboard. Continue with your best judgment.')];
+  const r = runBash([TYPED_INIT, ...FIRST4, ...UNASKED_HOOKS, ...idle], NEXT_RECOMPUTE);
+  assert.strictEqual(r.status, 2, r.stderr);
+  assert.match(r.stderr, /the hooks ask never happened/);
+});
+
+test('6.5: the Bash path finds the walk command 1.5MB back, and fails open past its 2MB tail', () => {
+  const filler = (kb) => [call('f1', 'Bash', { command: 'cat big.log' }), result('f1', 'x'.repeat(kb * 1024))];
+  const at = (kb) => runBash([TYPED_INIT, ...filler(kb), ...FIRST4, ...UNASKED_HOOKS], NEXT_RECOMPUTE);
+  const near = at(1536);
+  assert.strictEqual(near.status, 2, near.stderr);
+  assert.match(near.stderr, /the hooks ask never happened/);
+  assert.strictEqual(at(2560).status, 0, 'the command outside the tail: no walk seen, nothing judged');
+});
+
+// commands track T2-03: validate's per-layer consent ask ('Agents: accept all 1 rows?') was denied for a `--table` call
+// validate never makes - the layer-ask check judged any span holding a stack-select call, not only a walk.
+test('T2-03: validate\'s consent ask worded <Layer>: is no walk ask', () => {
+  const rows = [typed('/alfred-code:validate'), audit('redundant'), result('t1', ''), say('```\n 1 | x | REDUNDANT | owned by wpf\n```')];
+  assert.strictEqual(run(rows, layerAsk('Agents: accept all 1 rows?')).status, 0);
+});
+
+test('6.5: a layer ask after a typed reply mid-walk still needs its table', () => {
+  const r = run([typed('/alfred-code:configure'), recompute, result('r1', ''), typed('let us do the agents')], layerAsk('Agents: install the marked rows?'));
+  assert.strictEqual(r.status, 2, r.stderr);
+  assert.match(r.stderr, /agents table never ran/);
+});
+
+// commands track T2-15: 'Add to the installed MCP servers?' named no layer the check knew, so it passed with no table.
+test('T2-15: the MCP layer ask is read whether it says MCPs or MCP servers', () => {
+  for (const q of ['Add to the installed MCP servers?', 'MCP servers: keep the marked rows?', 'Drop from the installed MCP server list?']) {
+    const r = run([typed('/alfred-code:configure'), recompute, result('r1', '')], layerAsk(q));
+    assert.strictEqual(r.status, 2, q);
+    assert.match(r.stderr, /mcps table never ran/);
+  }
+});
+
+// commands track T2-01: every artifact is "$TMP/<file>" (source-protocol.md) - a bare raw.json resolves against whatever
+// cwd the shell drifted to, and the never-ran denial handed the bare form over.
+test('T2-01: the never-ran denial names the selection file under $TMP', () => {
+  const r = run([typed('/alfred-code:configure'), recompute, result('r1', '')], layerAsk('Agents: install the marked rows?'));
+  assert.match(r.stderr, /--selection "\$TMP\/raw\.json" --table agents/);
+});
+
+test('6.5: a compaction summary restarts the walk only when it names it', () => {
+  const summary = (text) => ({ type: 'user', isCompactSummary: true, message: { role: 'user', content: text } });
+  const named = summary('This session is being continued from a previous conversation. The user ran /alfred-code:init; rules to skills are walked.');
+  const r = runBash([TYPED_INIT, ...FIRST4, named, ...UNASKED_HOOKS], NEXT_RECOMPUTE);
+  assert.strictEqual(r.status, 2, r.stderr);
+  assert.match(r.stderr, /the hooks ask never happened/);
+  assert.strictEqual(runBash([TYPED_INIT, ...FIRST4, summary('This session is being continued. The user asked about tests.'), ...UNASKED_HOOKS], NEXT_RECOMPUTE).status, 0);
+  // hooks track H1: past a summary init's order check stands down - the layers walked before it are never asked again,
+  // and a configure summary that names init first is no init walk; the pending-ask check still judges the tables after it.
+  assert.strictEqual(runBash([TYPED_INIT, ...FIRST4, named, ...walked('hooks')], `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table mcps --recs r.json`).status, 0);
+  const configureNamingInit = summary('Continued. Earlier /alfred-code:init installed the stack; the user then ran /alfred-code:configure.');
+  assert.strictEqual(runBash([typed('/alfred-code:configure'), configureNamingInit, ...walked('skills')], EMIT).status, 0);
+});
+
+// hooks track H2: an ask result with is_error - another hook's denial, a validation error, the user's rejection - is no
+// answer; every real answer arrives with is_error false.
+test('H2: an errored ask result is no answer', () => {
+  for (const text of ['PreToolUse:AskUserQuestion hook error: [node guard-stop-contract.js]: denied',
+    '<tool_use_error>InputValidationError: questions too long</tool_use_error>',
+    "The user doesn't want to proceed with this tool use. The tool use was rejected."]) {
+    const errored = [call('q-hooks', 'AskUserQuestion', layerAsk('Hooks: keep all 18 on?')), result('q-hooks', text, true)];
+    const r = runBash([TYPED_INIT, ...FIRST4, ...UNASKED_HOOKS, ...errored], NEXT_RECOMPUTE);
+    assert.strictEqual(r.status, 2, text);
+    assert.match(r.stderr, /the hooks ask never happened/);
+  }
+  const deniedLayerAsk = [call('n1', 'AskUserQuestion', layerAsk('Agents: install?')), result('n1', 'PreToolUse:AskUserQuestion hook error: denied', true)];
+  const nr = (n) => [call(`n${n + 1}`, 'AskUserQuestion', layerAsk('Agents: install?')), result(`n${n + 1}`, 'alfred-code layer-table gate: the agents table never ran - x', true)];
+  // the never-ran valve is not reset by an errored ask between its denials
+  assert.strictEqual(run([typed('/alfred-code:configure'), recompute, result('r1', ''), ...nr(1), ...deniedLayerAsk, ...nr(2), ...nr(3)], layerAsk('Agents: install?')).status, 0);
+});

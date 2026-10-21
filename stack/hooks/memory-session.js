@@ -8,7 +8,8 @@
 // own selectForSession degrades to an empty selection there), selects nothing, and the push is then the
 // tag and search lines alone. Fully silent only with no registration, garbage stdin, or any other error -
 // exit 0 throughout, since a session start that cannot be enriched must never be a session start that fails.
-// SubagentStart gets the tag line and the tool line: SessionStart context never reaches a dispatched seat, and a seat's
+// SubagentStart gets the tag line and the tool line: SessionStart context never reaches a seat at dispatch (its own
+// compaction runs SessionStart inside it, with its agent_id), and a seat's
 // handoff note is stored and read under that tag (alfred-memory.md) - the hook states it, the seat never guesses it. The
 // tool line carries the seat carve-out: a stack seat holds no ToolSearch, its tools grant the server, so it calls the
 // tools directly (the rule-side line moves here, audit 2026-10-14 RU10).

@@ -30,6 +30,10 @@ const ENUMS = {
     // Compact instead of offering a fresh session (ALFRED_CODE_AUTO_COMPACT, settings.js applyEnv): setup's screen-B
     // answer, written over the value already there. Not given, the absent-only seed (`0`) stands.
     autoCompact: { values: ['', 'on', 'off'], text: "--auto-compact must be 'on' or 'off'" },
+    // Where the project's instruction files (AGENTS.md, CLAUDE.md) live - init's and configure's answer: a seed is written
+    // there and a file at the other place moves (seeds.placeInstructionFiles). Not given, nothing moves and a seed goes to
+    // .claude/.
+    instructionsAt: { values: ['', 'root', 'claude'], text: "--instructions-at must be 'root' or 'claude'" },
 };
 
 // ONE canonical order, so a server list never depends on how the flag was typed.
@@ -43,6 +47,7 @@ const VALUED = new Map([
     ['--playwright-browsers', 'playwrightBrowsersRaw'], ['--playwright-enabled', 'playwrightEnabledRaw'],
     ['--docs-versioning', 'docsVersioning'], ['--memory-level', 'memoryLevel'],
     ['--data-move', 'dataMove'], ['--docs-move', 'dataMove'], ['--data-path', 'dataPath'], ['--docs-root-move', 'docsRootMove'], ['--docs-root-leave', 'docsRootLeaveRaw'], ['--auto-compact', 'autoCompact'],
+    ['--instructions-at', 'instructionsAt'],
     ['--selection', 'selection'], ['--source', 'source'], ['--plan-out', 'planOut'],
 ]);
 
@@ -70,7 +75,7 @@ const SCOPE_OF = /^([a-z0-9-]+)=(global|user|project|local)$/;
 
 const ALIASES = new Map([['--playwright-browsers', '--browsers'], ['--playwright-enabled', '--browser-enabled'], ['--docs-move', '--data-move']]);
 
-const FLAG_LIST = '--space, --scope, --memory-level, --browsers, --browser-enabled, --docs-versioning, --data-path, --data-move, --docs-root-move, --docs-root-leave, --auto-compact, --github-cli, --keep-pins, --selection, --installed-only, --add, --drop, --scope-of, --print-plan, --plan-out, --skills-only, --rename-claude-md, --source';
+const FLAG_LIST = '--space, --scope, --memory-level, --browsers, --browser-enabled, --docs-versioning, --data-path, --data-move, --docs-root-move, --docs-root-leave, --auto-compact, --instructions-at, --github-cli, --keep-pins, --selection, --installed-only, --add, --drop, --scope-of, --print-plan, --plan-out, --skills-only, --rename-claude-md, --source';
 
 // One selection line, the shape the walks write: `<category> <name>`.
 const ADD_LINE = /^(skill|agent|rule|hook|mcp|plugin) [A-Za-z0-9._-]+$/;
@@ -88,7 +93,7 @@ function parseArgs(argv)
 {
     const out = {
         action: '', space: '', scope: '',
-        playwrightBrowsersRaw: '', playwrightEnabledRaw: '', docsVersioning: '', memoryLevel: '', dataMove: '', dataPath: '', docsRootMove: '', docsRootLeaveRaw: '', autoCompact: '',
+        playwrightBrowsersRaw: '', playwrightEnabledRaw: '', docsVersioning: '', memoryLevel: '', dataMove: '', dataPath: '', docsRootMove: '', docsRootLeaveRaw: '', autoCompact: '', instructionsAt: '',
         selection: '', source: '', planOut: '',
         githubCli: false, keepPins: false, installedOnly: false, printPlan: false, skillsOnly: false,
         add: [], drop: [], scopeOf: {},
@@ -176,6 +181,7 @@ function parseArgs(argv)
     out.dataMove = lower(out.dataMove);
     out.docsRootMove = lower(out.docsRootMove);
     out.autoCompact = lower(out.autoCompact);
+    out.instructionsAt = lower(out.instructionsAt);
     // The data root is a folder INSIDE the project (stack/mcp/data-root.js checkDataPath says what is refused
     // and why) - refused here, before a path that would prompt, escape the project or break a server lands.
     if (out.dataPath)

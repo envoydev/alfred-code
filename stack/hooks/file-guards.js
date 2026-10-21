@@ -3,7 +3,8 @@
 //
 // THE FILE-GUARD DISPATCHER (2.1.5 M3). The shell route runs as one process since R11 (shell-guards.js); the file
 // tools still spawned one node process per guard - a Read paid the read guard, the secret guard and docs-session,
-// an Edit or a Write the config guard, the cross-project guard and docs-session - each through a shell, and a bare
+// an Edit or a Write the config guard, the cross-project guard and docs-session (preferences-session too, since
+// 2026-10-21) - each through a shell, and a bare
 // node start alone costs ~30ms on macOS and ~90-130ms on a Windows guest (measured, R11 and the 2026-09-29 hooks
 // audit). This hook is the ONE process for all of them, on shell-guards.js's in-process runtime: each guard runs
 // as its own main module with its own gates, its own ledger row and its own fail-open, and the verdicts merge the
@@ -31,6 +32,7 @@ const GUARDS = [
     // no Glob: a Glob is no read of a section and no write, so docs-session did nothing on it but cost a process per call
     // (deep hooks review 2026-10-16)
     ['docs-session', ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Grep']],
+    ['preferences-session', ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit']],
 ];
 const NAMES = GUARDS.map(([g]) => g);
 const TOOLS = new Map(GUARDS);

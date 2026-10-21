@@ -15,6 +15,8 @@ const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const squash = (text) => text.replace(/\s+/g, ' ');
 const rule = (name) => read(`stack/rules/${name}.md`);
 const injected = (name) => squash(injectedRuleText(rule(name)));
+// The git lines alfred-git.md carried until 2026-10-21, now the seeded GIT-PREFERENCES.md's.
+const GIT_SEED = 'stack/skills/capture-preferences/references/git-seed.md';
 const registry = () => JSON.parse(read('meta/shared-rules.json')).rules;
 const homes = (entry) => [entry.owner, ...(entry.sites || [])];
 const pathsOf = (name) => JSON.parse(/^paths:\s*(\[.*\])\s*$/m.exec(frontmatterOf(rule(name)))[1]);
@@ -172,10 +174,14 @@ test('rules F3: the AGENTS template restates none of the seven always-on rules -
 {
     const text = read('stack/AGENTS.template.md');
     const rulesSection = text.slice(text.indexOf('\n## Rules'));
-    for (const name of ['interaction', 'quality-gates', 'security', 'git', 'navigation', 'docs-root', 'memory'])
+    for (const name of ['interaction', 'quality-gates', 'security', 'navigation', 'docs-root', 'memory'])
         assert.ok(!rulesSection.includes(`| \`.claude/rules/alfred-${name}.md\` |`), `alfred-${name}.md has a template row`);
-    for (const generated of ['alfred-awareness', 'alfred-architecture', 'project-code-style', 'alfred-preferences'])
+    for (const generated of ['alfred-awareness', 'alfred-architecture'])
         assert.ok(rulesSection.includes(`| \`.claude/rules/${generated}.md\` (GENERATED`), `${generated}.md keeps its GENERATED row`);
+    // 2026-10-21: the preferences rule ships, and its row names the captures that write the docs it points at;
+    // the code-style capture writes no rule any more.
+    assert.ok(rulesSection.includes('| `.claude/rules/alfred-preferences.md` (installer-managed;'), 'the preferences row');
+    assert.ok(!text.includes('project-code-style.md'), 'no row or note for the retired generated rule');
 });
 
 test('hooks #14: an ask with no options to name still goes through the tool - the stop contract blocks a prose question', () =>
@@ -262,9 +268,10 @@ test('rules F11: the docs root exempts instruction files and drops capture-inter
 
 test('rules F12 + F13: the commit header and the memory verify clause are each stated once', () =>
 {
-    const vcs = injected('alfred-git');
+    // 2026-10-21: the git lines live in the seeded GIT-PREFERENCES.md.
+    const vcs = squash(read(GIT_SEED));
     assert.strictEqual((vcs.match(/Conventional[- ]Commits/g) || []).length, 1, vcs);
-    assert.match(vcs, /\*\*Header\*\* - one line, one of two shapes: the ticket id \(`PROJ-142`\) or a Conventional-Commits subject/);
+    assert.match(vcs, /Rule: the header is one line - the ticket id \(`PROJ-142`\) or a Conventional-Commits subject/);
     const memory = injected('alfred-memory');
     assert.strictEqual((memory.match(/verified before use/g) || []).length, 1, memory);
 });
@@ -327,7 +334,7 @@ test('C22: Angular specs route to angular-testing, EF migrations attach the SQL 
     const md = injected('markdown-docs');
     const carve = md.indexOf('The generated docs root is NOT governed here');
     assert.ok(carve >= 0 && carve < md.indexOf('the FIRST action after this rule attaches'), 'the carve-out comes before the first action');
-    assert.match(md, /A plan, flow note or capture anywhere under `<data root>` \(the docs root `<docs-path>` and the hooks' `state\/` and `statistics\/` beside it\)[^:]*`alfred-preferences\.md`[^:]*a `\.md` you only READ take no load/);
+    assert.match(md, /A plan, flow note or capture anywhere under `<data root>` \(the docs root `<docs-path>` and the hooks' `state\/` and `statistics\/` beside it\)[^:]*`alfred-architecture\.md` or `alfred-awareness\.md`[^:]*a `\.md` you only READ take no load/);
 });
 
 // ------------------------------------------------------------------ audit 2026-10-10 C23
@@ -389,7 +396,7 @@ test('C17: the commit-ask scope survey lists untracked files and leaves the inde
 {
     const { execFileSync } = require('node:child_process');
     const os = require('node:os');
-    const survey = (/derived FRESH - `([^`]+)`/.exec(injected('alfred-git')) || [])[1];
+    const survey = (/derived FRESH - `([^`]+)`/.exec(squash(read(GIT_SEED))) || [])[1];
     assert.ok(survey, 'the rule names its survey command');
     const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'c17-survey-'));
     try
@@ -476,14 +483,14 @@ test('RU09: the navigation rule leaves the docs route to the session-start block
 // the git rule had marked Hold, and the stop-contract hook asks for one mark in every home.
 test('SKC02: the git rule and the checkpoint mark the same option on an owed commit ask, pinned in the registry', () =>
 {
-    const git = injected('alfred-git');
+    const git = squash(read(GIT_SEED));
     assert.ok(git.includes("when it names anything still owed, 'Show the diff first' takes the mark, and every push or publish ask marks holding."), git);
     assert.ok(!git.includes('holding takes the mark'), 'the old owed-case mark');
     const cp = squash(read('stack/skills/habits-commit-checkpoint/SKILL.md'));
     assert.ok(cp.includes("when the question names anything still owed, 'Show the diff first' takes the mark instead"), 'the checkpoint home');
     const entry = registry()['commit-ask-owed-mark'];
     assert.ok(entry, 'a commit-ask-owed-mark pin');
-    assert.deepStrictEqual(homes(entry).map((h) => h.file).sort(), ['stack/rules/alfred-git.md', 'stack/skills/habits-commit-checkpoint/SKILL.md']);
+    assert.deepStrictEqual(homes(entry).map((h) => h.file).sort(), [GIT_SEED, 'stack/skills/habits-commit-checkpoint/SKILL.md']);
 });
 
 // ------------------------------------------------------------------ audit 2026-10-14 RU03
@@ -504,6 +511,6 @@ test('RU03: the credentials section keeps its constraints and leaves the ask, th
     const guard = read('stack/hooks/guard-secret-value.js');
     assert.ok(guard.includes("'Presence only (Recommended)'") && guard.includes("'flow', 'SECRET-READ-ALLOW'"), 'the value ask and its receipt ride every denial');
     const stop = read('stack/hooks/guard-stop-contract.js');
-    assert.ok(stop.includes('This ask comes once') && stop.includes('ALFRED_CODE_ROTATE_ASK=0 in the settings.json env turns it off'), 'the rotate ask names its switch');
+    assert.ok(stop.includes('This ask comes once') && stop.includes('guard-stop-contract:rotate in ALFRED_CODE_HOOKS_OFF turns it off'), 'the rotate ask names its switch');
     assert.ok(!homes(registry()['secret-read-allow-receipt']).some((h) => h.file === 'stack/rules/alfred-security.md'), 'the registry drops the rule site');
 });

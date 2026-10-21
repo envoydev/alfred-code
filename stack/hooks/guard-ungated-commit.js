@@ -6,7 +6,7 @@
 // `git commit` runs only after the house review gate (task-verify-code, plus
 // /security-review on auth/crypto/data-access paths) or the user's explicit waiver -
 // recorded as a receipt file the gate step writes. Prose measured unreliable: 8 ungated
-// commit events across 6 audited sessions, including one where alfred-git.md was
+// commit events across 6 audited sessions, including one where the git rule was
 // provably read into context the same session and skipped anyway, and one commit with
 // no user authorization at all. Trivial diffs pass untouched (the rule's own
 // typo/one-line exemption, judged from the working-tree diff). exit 2 = block
@@ -15,7 +15,7 @@
 // it, and NOTHING gated them - replayed across four bundles, every push and merge passed every
 // guard. In one session the FIRST state-changing act of the run published unpushed commits 18
 // minutes before any receipt existed, and 40 files reached a shared `develop` ungated. Same
-// receipt shape, its own file (<data root>/state/approvals/PUSH-GATE), and ALFRED_CODE_PUSH_GATE=0 turns
+// receipt shape, its own file (<data root>/state/approvals/PUSH-GATE), and `guard-ungated-commit:push` in ALFRED_CODE_HOOKS_OFF turns
 // it off for a repo whose remote is already gated by branch protection or a required review.
 // Receipt lifecycle: the gate step writes <data root>/state/approvals/COMMIT-GATE when its checks
 // pass (VERIFIED <scope>) or the user explicitly waives (WAIVED - "<their words>");
@@ -172,8 +172,9 @@ const commitMatch = commitCall ? { index: commitCall.at, call: commitCall, opaqu
   : opaqueCall ? { index: opaqueCall.at, call: opaqueCall, opaque: true }
     : gitRead.unreadAt >= 0 ? { index: gitRead.unreadAt, call: null, opaque: true } : null;
 // The publish half is on by default and switched off per install for a repo whose remote already
-// gates the branch (protection rules, a required review). Any value but "0" leaves it on.
-const PUSH_GATE_ON = envOf(process.env, 'PUSH_GATE') !== '0';
+// gates the branch (protection rules, a required review): `guard-ungated-commit:push` in ALFRED_CODE_HOOKS_OFF, or the old
+// ALFRED_CODE_PUSH_GATE=0 for the 2.x line (hook-prelude.js partOff).
+const PUSH_GATE_ON = !(() => { try { return require('./hook-prelude.js').partOff('guard-ungated-commit', 'push'); } catch { return envOf(process.env, 'PUSH_GATE') === '0'; } })();
 // The PUBLISH verbs, found as command words the way the commit verb is, so a `git push` inside a report's prose or a
 // commit message is text, not an act - the false-positive pair this gate MUST not reproduce cost 430,740 tokens when a
 // report write was denied for quoting a merge command. `--dry-run` / `-n` publishes nothing, and neither does a push
@@ -191,7 +192,7 @@ if (PUSH_GATE_ON) {
 }
 
 // --- add -N without a chained reset -------------------------------------------------------
-// alfred-git.md:9 derives the scope with a survey that never moves the index (`git diff HEAD --stat; git ls-files -o
+// GIT-PREFERENCES.md's locked scope entry derives the scope with a survey that never moves the index (`git diff HEAD --stat; git ls-files -o
 // --exclude-standard`): the older `git add -N . && ...; git reset -q` unstaged a session's own `git rm` deletions (audit
 // 2026-10-10, session f24eb967). A bare `git add -N .` left its
 // intent-to-add entries open across 6 more Bash calls in one measured session, ending in an
@@ -210,7 +211,7 @@ if (addN && !calls.some((c) => c.sub === 'reset')) {
     `file to fully staged). Survey the scope without touching the index - the tracked diff, then the\n` +
     `untracked files:\n` +
     `  ${INDEX_FREE_SURVEY}\n` +
-    `(alfred-git.md's survey - a reset after -N would unstage work already staged).`,
+    `(GIT-PREFERENCES.md's survey - a reset after -N would unstage work already staged).`,
   );
   process.exit(2);
 }
@@ -1076,7 +1077,7 @@ if (publishMatch) {
           `  live-probe: <what you ran, or NOT RUN - <reason>>   scope: <workspace, or the projects - when it spans several>\n` +
           `The quote carries a publish verb and is never an option label this run wrote. A waiver is WAIVED - "<their\n` +
           `words>" or WAIVED - answered: <the label they picked>. Never fabricate either; retry, and clear the file once it\n` +
-          `lands. A remote already gated (branch protection) can turn this half off: ALFRED_CODE_PUSH_GATE=0.`,
+          `lands. A remote already gated (branch protection) can turn this half off: guard-ungated-commit:push in ALFRED_CODE_HOOKS_OFF.`,
       );
       process.exit(2);
     }

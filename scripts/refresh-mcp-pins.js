@@ -73,6 +73,27 @@ function npmLatest(pkg)
     catch { return null; }
 }
 
+// Audit 2026-10-21 mcps T1-3 (ruling M-A2): an npm row's whole tree, audited at its pin and the cut-off it launches
+// with - report only, never a refusal (appium-mcp 1.97.1 resolves 20 critical advisories its upstream pins, and no newer
+// release exists to move to). --write records the count on the row as `advisories`, which mobile-launch.js prereqNotes
+// names. Null when npm cannot resolve or audit the tree.
+function npmAudit(pkg, version, before)
+{
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pin-audit-'));
+    try
+    {
+        fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'pin-audit', private: true, dependencies: { [pkg]: version } }));
+        const opts = { cwd: dir, encoding: 'utf8', timeout: 180000, env: { ...process.env, npm_config_fetch_timeout: '15000' } };
+        const lock = rt.spawnCommand('npm', ['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--no-fund', `--before=${before}`], opts);
+        if (lock.status !== 0) return null;
+        // `npm audit` exits non-zero whenever it finds one, so the JSON is read whatever the status
+        const v = JSON.parse(rt.spawnCommand('npm', ['audit', '--json'], opts).stdout || '{}').metadata.vulnerabilities;
+        return { critical: v.critical || 0, high: v.high || 0, total: v.total || 0 };
+    }
+    catch { return null; }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+}
+
 // Does a `requires_python` specifier admit this Python? `x.y` against the clauses PyPI carries (>=, >,
 // <, <=, ==, !=, ~=, a trailing .* on == / !=). A clause it cannot read admits - the launch says so.
 const vparts = (v) => String(v).split('.').map((n) => Number.parseInt(n, 10) || 0);
@@ -302,7 +323,7 @@ const TOOL_SERVERS = [...Object.keys(PACKAGES), 'alfred-documentation'];
 async function main(argv, deps = {})
 {
     const d = {
-        npmLatest, pypiLatest, upstreamContext, listTools, log: (l) => console.log(l),
+        npmLatest, pypiLatest, upstreamContext, listTools, npmAudit, log: (l) => console.log(l),
         pinsFile: PINS, toolsFile: TOOLS, contextFile: CONTEXT, today: () => new Date().toISOString().slice(0, 10), ...deps,
     };
     const write = argv.includes('--write');
@@ -326,7 +347,8 @@ async function main(argv, deps = {})
         if (only && !only.includes(name))
         {
             const kept = (current.pins && current.pins[name]) || null;
-            pins[name] = { package: spec.package, registry: spec.registry, spelling: spec.spelling, version: kept ? kept.version : null, ...ownDay(spec, kept) };
+            pins[name] = { package: spec.package, registry: spec.registry, spelling: spec.spelling, version: kept ? kept.version : null, ...ownDay(spec, kept),
+                ...(kept && kept.advisories ? { advisories: kept.advisories } : {}) };
             continue;
         }
         const was = (current.pins && current.pins[name] && current.pins[name].version) || null;
@@ -344,6 +366,20 @@ async function main(argv, deps = {})
         else report.push(`  ${name}: ${was || 'unpinned'} -> ${now}`);
         const had = (current.pins && current.pins[name]) || null;
         pins[name] = { package: spec.package, registry: spec.registry, spelling: spec.spelling, version, ...ownDay(spec, now ? { refreshed: d.today() } : had) };
+        if (spec.registry === 'npm' && version)
+        {
+            const audit = d.npmAudit(spec.package, version, `${pins[name].refreshed || current.refreshed || d.today()}T23:59:59Z`);
+            if (audit)
+            {
+                report.push(`  ${name}: npm audit ${spec.package}@${version}: ${audit.critical} critical, ${audit.high} high of ${audit.total} (report only)`);
+                pins[name].advisories = { checked: d.today(), ...audit };
+            }
+            else
+            {
+                report.push(`  ${name}: npm audit NOT CHECKED`);
+                if (had && had.version === version && had.advisories) pins[name].advisories = had.advisories;
+            }
+        }
     }
     d.log(report.join('\n'));
     if (!write) { d.log('\nnothing written - re-run with --write to commit these pins'); return refused ? 1 : 0; }
@@ -392,4 +428,4 @@ if (require.main === module)
     require('../stack/hooks/hook-prelude.js').blockingStdio();
     main(process.argv.slice(2)).then((rc) => process.exit(rc), (err) => { console.error(err); process.exit(1); });
 }
-module.exports = { PACKAGES, readPins, main, newestFor, admits, serenaGate, zipEntries, listTools, UPSTREAM_LINE, TOOL_SERVERS };
+module.exports = { npmAudit, PACKAGES, readPins, main, newestFor, admits, serenaGate, zipEntries, listTools, UPSTREAM_LINE, TOOL_SERVERS };

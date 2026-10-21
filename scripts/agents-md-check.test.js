@@ -425,20 +425,18 @@ test('cli: --file checks one file; an unreadable template skips only the templat
 test('cli: a hand copy of the shipped template is flagged unfilled and by its placeholder alone - and a skipped capture\'s row by its files', () =>
 {
     const template = fs.readFileSync(path.join(__dirname, '..', 'stack', 'AGENTS.template.md'), 'utf8');
-    const rules = ['alfred-interaction', 'alfred-quality-gates', 'alfred-security', 'alfred-git', 'alfred-navigation', 'alfred-docs-root', 'alfred-memory',
-        'alfred-awareness', 'alfred-architecture', 'project-code-style', 'alfred-preferences'];
-    const files = { '.claude/AGENTS.md': template, '.alfred/docs/code-style/CODE-STYLE.md': '', '.alfred/docs/awareness/PROJECT-AWARENESS.md': '',
-        '.alfred/docs/preferences/CODE-PREFERENCES.md': '' };
+    const rules = ['alfred-interaction', 'alfred-quality-gates', 'alfred-security', 'alfred-preferences', 'alfred-navigation', 'alfred-docs-root', 'alfred-memory',
+        'alfred-awareness', 'alfred-architecture'];
+    const files = { '.claude/AGENTS.md': template, '.alfred/docs/preferences/PROJECT-CODE-PREFERENCES.md': '', '.alfred/docs/awareness/PROJECT-AWARENESS.md': '',
+        '.alfred/docs/preferences/PERSONAL-CODE-PREFERENCES.md': '' };
     for (const r of rules) files[`.claude/rules/${r}.md`] = '';
     const root = tree(files, { git: true });
     const r = cli(root);
     assert.strictEqual(r.status, 1, r.stdout + r.stderr);
     assert.deepStrictEqual(r.stdout.trim().split('\n').map((l) => l.replace(/ - .*/, '')), ['.claude/AGENTS.md:1 template: the template', '.claude/AGENTS.md:1 placeholder: __PROJECT_NAME__', 'agents-md-check: 2 finding(s) in 1 file(s)']);
-    fs.rmSync(path.join(root, '.claude/rules/project-code-style.md'));
-    fs.rmSync(path.join(root, '.alfred/docs/code-style'), { recursive: true });
+    fs.rmSync(path.join(root, '.claude/rules/alfred-architecture.md'));
     const skipped = cli(root).stdout.trim().split('\n').map((l) => l.replace(/:\d+ /, ' ').replace(/ - .*/, ''));
-    assert.deepStrictEqual(skipped.slice(2, -1), ['.claude/AGENTS.md path: project-code-style.md', '.claude/AGENTS.md path: .claude/rules/project-code-style.md',
-        '.claude/AGENTS.md path: .alfred/docs/code-style/CODE-STYLE.md'], 'the intro line and the row both name the capture that never ran');
+    assert.deepStrictEqual(skipped.slice(2, -1), ['.claude/AGENTS.md path: .claude/rules/alfred-architecture.md'], 'the row names the capture that never ran');
 });
 
 // The skill's first read: which CLAUDE.md files exist and whether one is still the untouched seed - the
@@ -550,21 +548,21 @@ test('generated rules: every rule a capture skill writes is a generated name, an
         try { text = fs.readFileSync(path.join(repo, 'stack', 'skills', d, 'SKILL.md'), 'utf8'); } catch { continue; }
         for (const m of text.matchAll(/\.claude\/rules\/([a-z0-9-]+)\.md/g)) if (!shipped.includes(m[1])) written.add(m[1]);
     }
-    assert.deepStrictEqual([...written].sort(), ['alfred-architecture', 'alfred-awareness', 'alfred-preferences', 'project-code-style']);
+    assert.deepStrictEqual([...written].sort(), ['alfred-architecture', 'alfred-awareness']);
     for (const stem of written) assert.ok(generated(stem), `${stem} is written by a capture`);
     for (const stem of shipped) assert.ok(!generated(stem), `${stem} ships with the stack`);
 });
 
-test('generated rules: the awareness and preferences rules - a pointer is no template text, naming them lists nothing, an uncaptured one is a path', () =>
+test('generated rules: the awareness and architecture rules - a pointer is no template text, naming them lists nothing, an uncaptured one is a path', () =>
 {
     const files = { '.claude/rules/alfred-awareness.md': '' };
-    for (const r of ['interaction', 'quality-gates', 'security', 'git', 'navigation', 'docs-root', 'memory']) files[`.claude/rules/alfred-${r}.md`] = '';
+    for (const r of ['interaction', 'quality-gates', 'security', 'preferences', 'navigation', 'docs-root', 'memory']) files[`.claude/rules/alfred-${r}.md`] = '';
     const root = tree(files);
     const pointer = '- MCP routing is NOT hand-filled here - it lives in the generated <docs-path>/awareness/AGENTS-AWARENESS.md, which .claude/rules/alfred-awareness.md imports.';
     const text = ['# Orders', '', '## Stack', '', pointer, '- .NET 10.', '', '## Rules', '', '| Rule | What |', '|---|---|',
-        '| `.claude/rules/alfred-awareness.md` (GENERATED) | the inventory |', '| `.claude/rules/alfred-preferences.md` (GENERATED) | the preferences |'].join('\n');
-    assert.deepStrictEqual(kinds(run(root, text, { file: '.claude/AGENTS.md', template: SHIPPED_TEMPLATE })), ['13 path .claude/rules/alfred-preferences.md']);
-    fs.writeFileSync(path.join(root, '.claude/rules/alfred-preferences.md'), '');
+        '| `.claude/rules/alfred-awareness.md` (GENERATED) | the inventory |', '| `.claude/rules/alfred-architecture.md` (GENERATED) | the architecture marker |'].join('\n');
+    assert.deepStrictEqual(kinds(run(root, text, { file: '.claude/AGENTS.md', template: SHIPPED_TEMPLATE })), ['13 path .claude/rules/alfred-architecture.md']);
+    fs.writeFileSync(path.join(root, '.claude/rules/alfred-architecture.md'), '');
     assert.deepStrictEqual(kinds(run(root, text, { file: '.claude/AGENTS.md', template: SHIPPED_TEMPLATE })), []);
 });
 

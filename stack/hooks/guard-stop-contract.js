@@ -20,7 +20,7 @@
 //   It also carries the DONE-GATE PROBE, log-only: a close claiming the change done / fixed / passing /
 //   works / ready over a turn with a source edit (a file tool's, or a shell write read through
 //   shell-writes.js) writes one row per turn - `unrun` when the edit landed after the turn's last run
-//   (ALFRED_CODE_DONE_GATE=0 off). And the RATIONALIZATION PROBE, log-only: a close dismissing a
+//   (`guard-stop-contract:done` in ALFRED_CODE_HOOKS_OFF off). And the RATIONALIZATION PROBE, log-only: a close dismissing a
 //   failure in a turn with a red run, a skipped test or an added skip marker writes one row per turn.
 // SubagentStop wiring: a subagent that closes on a wait nobody will end, with no background work of
 //   its own, is held once and told to do its directive (see the branch below for the field report).
@@ -208,7 +208,7 @@ let fresh;
 try { fresh = require(require('path').join(__dirname, 'fresh-session.js')); } catch {
   fresh = {
     use() {}, freshAt: (k, d) => d, FRESH_AT_200K: 0, FRESH_AT_300K: 0, FRESH_AT_1M: 0, FRESH_OFF: true, COMPACT_INSTEAD: false,
-    sessionModelId: () => null, tableWindow: () => null, envWindow: () => null, knownWindow: () => null,
+    sessionModelId: () => null, tableWindow: () => null, recordSessionModel: () => false, knownWindow: () => null,
     ctxThreshold: () => null, MIN_RECOVERABLE_SHARE: 0.4, coldFloor: () => null, worthResuming: () => false,
   };
 }
@@ -1242,9 +1242,13 @@ function secretReadAllowed() {
 // naming rotation, or the defer option) covers every credential shape that entered the session
 // BEFORE it - tool results and the user's own pastes alike; only a shape that arrives after it asks
 // again. Judged over the same window secretExposure reads, and fail-open like it.
-// ALFRED_CODE_ROTATE_ASK=0 in the settings.json env turns the branch off for a user who accepts
-// the exposure - the value is in the transcript either way, so that is theirs to decide.
-const ROTATE_ASK_ON = envOf(process.env, 'ROTATE_ASK') !== '0';
+// `guard-stop-contract:rotate` in ALFRED_CODE_HOOKS_OFF turns the branch off for a user who accepts the exposure - the value
+// is in the transcript either way, so that is theirs to decide. Parts (hook-prelude.js partOff) also honour the old
+// ALFRED_CODE_ROTATE_ASK / _DONE_GATE at 0 for the 2.x line; with no prelude, those keys alone.
+const LEGACY_PART = { rotate: 'ROTATE_ASK', done: 'DONE_GATE' };
+let partOff = (hook, part) => envOf(process.env, LEGACY_PART[part]) === '0';
+try { partOff = require('./hook-prelude.js').partOff || partOff; } catch { /* an install without the prelude reads the old keys */ }
+const ROTATE_ASK_ON = !partOff('guard-stop-contract', 'rotate');
 const ROTATE_ANSWER_RE = /(?:Your questions have been answered|The user answered):[^\n]*?(rotat|revok|acknowledge and defer)/i;
 // ANY answered or declined ask after this hook's own rotate-ask block is the answer to it (review of pilot 4, M3): a
 // free-text 'Other' ('leave it, test token') or a question worded without 'rotate' matched nothing above, so the ask
@@ -1908,7 +1912,7 @@ if (payload.hook_event_name === 'Stop') {
   // close's continuation arrives with stop_hook_active, so a probe placed after one never ran.
   // Everything it reads sits inside one try, so nothing it does can skip the branches below.
   try {
-    const claim = !continuation && envOf(process.env, 'DONE_GATE') !== '0' ? doneClaim(prose) : null;
+    const claim = !continuation && !partOff('guard-stop-contract', 'done') ? doneClaim(prose) : null;
     const work = claim ? turnWork() : null;
     const outcome = !work ? null : work.lastEdit ? 'unrun' : work.lastKept && work.lastRun ? 'ran' : null;
     const safe = (s) => String(s).replace(/[^a-zA-Z0-9-]/g, '_').slice(-80);
@@ -2010,7 +2014,7 @@ if (payload.hook_event_name === 'Stop') {
       "'Rotate it now (Recommended)' and 'Acknowledge and defer'. Name the credential by its KEY\n" +
       'and its shape only - never repeat the value, and never pass it to a tool.\n' +
       'This ask comes once: answered, it covers every credential already in this session, and only\n' +
-      'a new exposure asks again. ALFRED_CODE_ROTATE_ASK=0 in the settings.json env turns it off.',
+      'a new exposure asks again. guard-stop-contract:rotate in ALFRED_CODE_HOOKS_OFF turns it off.',
     );
     process.exit(2);
   }
@@ -2166,7 +2170,7 @@ if (payload.hook_event_name === 'Stop') {
       'finished?" from the user 2-22 minutes later. Per alfred-interaction.md, put the pending decision (continue or stop,\n' +
       'which deliverable next) through ONE AskUserQuestion call with the options you already\n' +
       'have in mind, recommended one marked. An uncommitted diff is held for the user\'s review:\n' +
-      'a commit waits for their own word (alfred-git.md), and a commit or publish choice is\n' +
+      'a commit waits for their own word (GIT-PREFERENCES.md), and a commit or publish choice is\n' +
       'habits-commit-checkpoint\'s own ask, marked as its template marks it - one mark in every\n' +
       'home (audit 2026-10-10 C18, 0824440b: three homes marked three options, the user\n' +
       'overrode the mark 3 of 3 times). A deferred item either side still owes - a check the user runs, an id\n' +
@@ -2262,7 +2266,7 @@ function blockStateFile() {
 // four of them have no other route:
 //   1. STALE SCOPE - an ask built on a fifty-minute-old `git status`; the sibling was committed and
 //      pushed by another agent while the ask was on screen, and the user's answer was discarded
-//      whole (third measured instance; alfred-git.md has mandated the fresh read twice, as prose).
+//      whole (third measured instance; the git rule had mandated the fresh read twice, as prose).
 //   2. CONTRADICTED REQUEST - two prompts arrived in one turn, the run answered the second and put
 //      an ask whose Recommended option asserted the opposite of the first; the user took the
 //      recommendation, then re-typed their first prompt verbatim 2m54s later.
@@ -2690,7 +2694,7 @@ if (payload.tool_name === 'AskUserQuestion') {
     notes.push(...flowFieldNotes(questions, askText, turnText));
 
     // 4. CREDENTIAL.
-    // The Stop branch's own conditions: once per exposure, off under ROTATE_ASK=0, and not while the
+    // The Stop branch's own conditions: once per exposure, off under its rotate part, and not while the
     // user's SECRET-READ-ALLOW consent stands.
     if (ROTATE_ASK_ON && secretInSession() && !rotateAskAnswered() && !secretReadAllowed()) {
       notes.push('A credential-shaped value has already entered this session\'s tool results. It ' +

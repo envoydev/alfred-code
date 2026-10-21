@@ -5,7 +5,7 @@
 // used to compute by hand, in the model, in three more round trips:
 //
 //   - the migrations catalog's `detect` rules, EVALUATED here. They are purely declarative
-//     (file_exists / settings_env_key / settings_env_value / settings_hook_wired) and there was no runner, so the command read all of
+//     (file_exists / settings_env_key / settings_env_value / settings_env_all / settings_hook_wired) and there was no runner, so the command read all of
 //     meta/migrations.json into context - the maintainer `_comment` included - and hand-wrote
 //     probes for each entry. Measured: four API round trips and a catalog dump for what is a
 //     3-line existence check.
@@ -46,7 +46,9 @@
 // Exit codes are stamp-compare's, passed through so the caller's branching is unchanged:
 // 0 = compare done, 2 = no stamp, 3 = compare unreachable. A usage error is 1.
 //
-// `--offers` prints the `data-move:` and `agents-md:` lines alone (no --snapshot, no compare): configure's asks.
+// `--offers` prints the `data-move:` and `agents-md:` lines alone (no --snapshot, no compare): configure's asks. With
+// them, the place question's fact line (init's and configure's `--instructions-at` ask, a project install only):
+//   instructions: none | <claude|root|split> <file> ...   (the AGENTS.md / CLAUDE.md files at the root and in .claude/)
 //
 // `--log <installer-log>` is a SEPARATE post-install mode (no --snapshot needed): it reads the
 // installer's own log - the command already captures it via the fixed `tee "$TMP/install.log"`
@@ -110,6 +112,8 @@ function detects(entry, root, settings)
     if (d.file_exists) return fs.existsSync(path.resolve(root, d.file_exists));
     if (d.settings_env_key) return !!(settings && settings.env && Object.prototype.hasOwnProperty.call(settings.env, d.settings_env_key));
     if (d.settings_env_value) return !!(settings && settings.env && String(settings.env[d.settings_env_value.key]) === String(d.settings_env_value.equals));
+    if (d.settings_env_all) return !!(settings && settings.env && (d.settings_env_all.keys || []).length
+        && d.settings_env_all.keys.every((k) => Object.prototype.hasOwnProperty.call(settings.env, k) && String(settings.env[k]) === String(d.settings_env_all.equals)));
     if (d.settings_hook_wired)
     {
         const [file, matcher] = String(d.settings_hook_wired).split('::');
@@ -143,6 +147,8 @@ function migrationFields(e)
     if (e.rename_settings_env) out.push(['env-rename', `${e.rename_settings_env.from} -> ${e.rename_settings_env.to}`]);
     if (e.remove_settings_env) out.push(['env-remove', e.remove_settings_env.key]);
     if (e.clear_settings_env) out.push(['env-reset', `${e.clear_settings_env.key}: ${e.clear_settings_env.when_value} -> ${e.clear_settings_env.to}`]);
+    if (e.fold_settings_env) out.push(['env-fold', `${e.fold_settings_env.key}: ${e.fold_settings_env.when_value} -> ${e.fold_settings_env.into} += ${e.fold_settings_env.entry} (any other value goes)`]);
+    if (e.off_settings_env) out.push(['env-off', `${e.off_settings_env.key}: ${[...(e.off_settings_env.when_value || []), 'absent'].join(' | ')} -> ${e.off_settings_env.to} (with ${(e.off_settings_env.with || []).join(', ')} at ${e.off_settings_env.to})`]);
     return out;
 }
 
@@ -566,7 +572,11 @@ function main()
     if (offerOnly)
     {
         console.log(accountDir ? 'data-move: none (an account install)' : dataMoveLine({ root, claudeDir, stampFile, stampScope }));
-        if (!accountDir) console.log(require('./install/seeds.js').claudeMdOffer(path.resolve(root)));
+        if (!accountDir)
+        {
+            console.log(require('./install/seeds.js').claudeMdOffer(path.resolve(root)));
+            console.log(require('./install/seeds.js').instructionsLine(path.resolve(root)));
+        }
         return;
     }
 

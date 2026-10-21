@@ -88,15 +88,16 @@
       "e61b0aaa81effc31",
       "e699336f3c7949a6"
     ],
-    "capture-code-style": [
-      "7a95bef6784d4772"
-    ],
     "capture-first-look": [
       "5aa554d8235c9b6f",
       "ad339279f5b1d78e"
     ],
     "capture-preferences": [
-      "7dfb81e0ad2f3481"
+      "7dfb81e0ad2f3481",
+      "9975e5d09845df4b"
+    ],
+    "capture-project-code-style": [
+      "20263fd5d208939d"
     ],
     "capture-test-coverage": [
       "923967524cb028d8"

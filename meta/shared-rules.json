@@ -225,7 +225,7 @@
       ]
     },
     "seat-start-docs-anchors": {
-      "_note": "A seat's START orientation reads the docs sections its brief names as the card's anchors (task-solve's brief carries each card's `docs.js where` ids), and the whole ARCHITECTURE.md / CODE-STYLE.md only without them - measured (usage audit 2026-10-10, e499fc94): 0 docs reads in 18 of 18 seat transcripts under the unconditional clause. Byte-identical across the 24 seats that carry it.",
+      "_note": "A seat's START orientation reads the docs sections its brief names as the card's anchors (task-solve's brief carries each card's `docs.js where` ids), and the whole ARCHITECTURE.md / PROJECT-CODE-PREFERENCES.md (CODE-STYLE.md before 2026-10-21) only without them - measured (usage audit 2026-10-10, e499fc94): 0 docs reads in 18 of 18 seat transcripts under the unconditional clause. Byte-identical across the 24 seats that carry it.",
       "owner": {
         "file": "stack/agents/aspnet-implementer.md",
         "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
@@ -1264,7 +1264,7 @@
           "marker": "Captured: <branch>@<short-sha>, <date>"
         },
         {
-          "file": "stack/skills/capture-code-style/SKILL.md",
+          "file": "stack/skills/capture-project-code-style/SKILL.md",
           "marker": "Captured: <branch>@<short-sha>, <date>"
         },
         {
@@ -1711,10 +1711,6 @@
       },
       "sites": [
         {
-          "file": "stack/skills/capture-code-style/SKILL.md",
-          "marker": "deliberately NOT in the stack's RULES set"
-        },
-        {
           "file": "stack/skills/capture-awareness/SKILL.md",
           "marker": "stays out of the installer's catalog"
         }
@@ -1764,7 +1760,7 @@
           "marker": "ask ONE question before gathering"
         },
         {
-          "file": "stack/skills/capture-code-style/SKILL.md",
+          "file": "stack/skills/capture-project-code-style/SKILL.md",
           "marker": "ask ONE question before a first capture's fan-out"
         },
         {
@@ -2159,14 +2155,14 @@
       ]
     },
     "commit-ask-owed-mark": {
-      "_note": "The commit ask that names anything still owed (a gate not run, a review skipped) marks 'Show the diff first', never Hold - the user's ruling 2026-10-13 (76d40e53). The always-on git rule restated it with Hold marked while the checkpoint template marked the diff, and the stop-contract hook asks for one mark in every home (audit 2026-10-14 SKC02).",
+      "_note": "The commit ask that names anything still owed (a gate not run, a review skipped) marks 'Show the diff first', never Hold - the user's ruling 2026-10-13 (76d40e53). The always-on git rule restated it with Hold marked while the checkpoint template marked the diff, and the stop-contract hook asks for one mark in every home (audit 2026-10-14 SKC02). The git rule's copy moved to the git preferences seed with the 2026-10-21 preferences layout (its locked consent entry).",
       "owner": {
         "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
         "marker": "when the question names anything still owed, 'Show the diff first' takes the mark instead"
       },
       "sites": [
         {
-          "file": "stack/rules/alfred-git.md",
+          "file": "stack/skills/capture-preferences/references/git-seed.md",
           "marker": "when it names anything still owed, 'Show the diff first' takes the mark, and every push or publish ask marks holding"
         }
       ]
@@ -2226,7 +2222,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/capture-code-style/references/doc-shape.md",
+          "file": "stack/skills/capture-project-code-style/references/doc-shape.md",
           "marker": "and into this branch's overlay otherwise - the capture never decides which"
         },
         {
@@ -2253,7 +2249,7 @@
       ]
     },
     "commit-gate-receipt": {
-      "_note": "The pre-commit checkpoint receipt: <data root>/state/approvals/COMMIT-GATE, first line VERIFIED <phrase> / WAIVED - \"<words>\". habits-commit-checkpoint canonical (lifecycle incl. clearing - the protocol left the always-on alfred-git rule in 0.2.71, which now only points at the skill); verify-code writes it as the checkpoint reviewer; alfred-security binds the security-review pass; the hook enforces.",
+      "_note": "The pre-commit checkpoint receipt: <data root>/state/approvals/COMMIT-GATE, first line VERIFIED <phrase> / WAIVED - \"<words>\". habits-commit-checkpoint canonical (lifecycle incl. clearing - the protocol left the always-on alfred-git rule in 0.2.71; the git rules now live in GIT-PREFERENCES.md's locked entries, which preferences-session.js hands over at the first git write); verify-code writes it as the checkpoint reviewer; alfred-security binds the security-review pass; the hook enforces.",
       "owner": {
         "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
         "marker": "VERIFIED <what was reviewed, one phrase>"
@@ -2608,47 +2604,47 @@
       ]
     },
     "implementer-edit-route": {
-      "_note": "Implementer seats edit source through Edit / Write, the tools the edit hooks watch - measured (audit 2026-10-10): one run's seats made 155 shell writes against 28 Edit calls (85% unseen by check-turn-build, matched only on Write|Edit|MultiEdit), another 132 against 5. A shell splice stays for a mechanical rename across many sites. Byte-identical across all 10 implementers.",
+      "_note": "Implementer seats edit source through Edit / Write, the tools the edit hooks watch - measured (audit 2026-10-10): one run's seats made 155 shell writes against 28 Edit calls (85% unseen by check-turn-build, matched only on Write|Edit|MultiEdit), another 132 against 5. A shell splice stays for a mechanical rename across many sites. check-turn-build has since folded into the Stop check that reads git status, so the copies name only config protection and the docs gate (audit 2026-10-21 agents T2-15). Byte-identical across all 10 implementers.",
       "owner": {
         "file": "stack/agents/aspnet-implementer.md",
-        "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+        "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
       },
       "sites": [
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
         },
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
         }
       ]
     },
@@ -3410,19 +3406,6 @@
         }
       ]
     },
-    "guided-stack-detection": {
-      "_note": "The artifact-scan stack-detection list init's install phase and validate must share (javascript, the framework-suppresses-typescript rule included) - the copies drifted twice before this pin.",
-      "owner": {
-        "file": "setup-plugin/references/init-install.md",
-        "marker": "`tsconfig.json` / `jsconfig.json` -> `typescript`"
-      },
-      "sites": [
-        {
-          "file": "setup-plugin/commands/validate.md",
-          "marker": "`tsconfig.json` / `jsconfig.json` -> `typescript`"
-        }
-      ]
-    },
     "on-demand-skill-availability": {
       "_note": "Selection by DESCRIPTION, not by name. A skill is installed per project, so a brief that names one breaks wherever it was trimmed - the measured shapes are a skill no stack seeds (evidence-gated / opt-in) and one belonging to a different stack than the citing artifact, e.g. a cross-cutting agent naming `angular-security` in a .NET-only install. The fix is not a guard next to the name: the text describes what the skill covers, the model matches that against the installed inventory, and a project without it still reads what to do. Naming stays correct only for a skill guaranteed alongside its citer (a frontmatter preload, an own-stack skill). Lint checks 25 and 26 block a named cite that can be absent; a router hub opts out with an '**Availability**' callout. The same rule covers an MCP server the baseline does not lock: describe what it does, report what it could not run as UNVERIFIED.",
       "owner": {
@@ -3779,47 +3762,47 @@
       ]
     },
     "designer-oriented-report-line": {
-      "_note": "The `Oriented:` header the plan gate requires, carried as the first line of the read-only designer report because the seat has no Write tool and the orchestrator writes the plan file from the report.",
+      "_note": "The `Oriented:` header the plan gate requires, carried as the first line of the read-only designer report because the seat has no Write tool and the orchestrator writes the plan file from the report. The preferences docs read (or `none present`) ride it as the forcing shape for the START read, since the hook hands them over only at a first edit or git write and a designer seat makes neither (agents audit 2026-10-21 T2-5).",
       "owner": {
         "file": "stack/agents/aspnet-solution-designer.md",
-        "marker": "Open with the `Oriented:` line"
+        "marker": "the house skills loaded, the preferences docs read (or `none present`)"
       },
       "sites": [
         {
           "file": "stack/agents/browser-extension-solution-designer.md",
-          "marker": "Open with the `Oriented:` line"
+          "marker": "the house skills loaded, the preferences docs read (or `none present`)"
         },
         {
           "file": "stack/agents/console-solution-designer.md",
-          "marker": "Open with the `Oriented:` line"
+          "marker": "the house skills loaded, the preferences docs read (or `none present`)"
         },
         {
           "file": "stack/agents/data-solution-designer.md",
-          "marker": "Open with the `Oriented:` line"
+          "marker": "the house skills loaded, the preferences docs read (or `none present`)"
         },
         {
           "file": "stack/agents/devops-solution-designer.md",
-          "marker": "Open with the `Oriented:` line"
+          "marker": "the house skills loaded, the preferences docs read (or `none present`)"
         },
         {
           "file": "stack/agents/ionic-angular-solution-designer.md",
-          "marker": "Open with the `Oriented:` line"
+          "marker": "the house skills loaded, the preferences docs read (or `none present`)"
         },
         {
           "file": "stack/agents/web-angular-solution-designer.md",
-          "marker": "Open with the `Oriented:` line"
+          "marker": "the house skills loaded, the preferences docs read (or `none present`)"
         },
         {
           "file": "stack/agents/windows-service-solution-designer.md",
-          "marker": "Open with the `Oriented:` line"
+          "marker": "the house skills loaded, the preferences docs read (or `none present`)"
         },
         {
           "file": "stack/agents/winforms-solution-designer.md",
-          "marker": "Open with the `Oriented:` line"
+          "marker": "the house skills loaded, the preferences docs read (or `none present`)"
         },
         {
           "file": "stack/agents/wpf-solution-designer.md",
-          "marker": "Open with the `Oriented:` line"
+          "marker": "the house skills loaded, the preferences docs read (or `none present`)"
         }
       ]
     },
@@ -3949,7 +3932,7 @@
       ]
     },
     "where-to-run-ask-threshold": {
-      "_note": "The guided commands' step-0 'where to run it' ask is THRESHOLDED, not unconditional: it fires only past the same trigger guard-fresh-session-start.js uses (the resolved window's own tier trigger - ALFRED_CODE_CONTEXT_WINDOW_FOR_1M, default 400000, _FOR_300K, default 280000, or _FOR_200K, default 180000; a window takes the largest tier it reaches, and a model the shipped table does not list runs in ALFRED_CODE_CONTEXT_WINDOW_DEFAULT, default 300000), or when that hook has already injected it. Below the trigger, or with no readable context figure at all, the run starts silently - measured: the unconditional prose form fired on the FIRST message of a brand-new session, twice in one run, with no number behind it. The hook owns the trigger; each command body restates it so the walk and the gate can never sit on different numbers. update.md carries no copy: its step 0 acts on the hook note alone and never measures (audit 2026-10-11, session bca100bd: a prose-measured step 0 narrated its own skip), and setup-plugin.test.js holds the note text it quotes to the hook.",
+      "_note": "The guided commands' step-0 'where to run it' ask is THRESHOLDED, not unconditional: it fires only past the same trigger guard-fresh-session-start.js uses (the resolved window's own tier trigger - ALFRED_CODE_CONTEXT_WINDOW_FOR_1M, default 400000, _FOR_300K, default 280000, or _FOR_200K, default 180000; the window is the model's own capacity and takes the largest tier it reaches, and a session with no tier - an unlisted model, a window under 200k, a tier left unset - takes ALFRED_CODE_CONTEXT_WINDOW_DEFAULT, default 180000, as the trigger itself), or when that hook has already injected it. Below the trigger, or with no readable context figure at all, the run starts silently - measured: the unconditional prose form fired on the FIRST message of a brand-new session, twice in one run, with no number behind it. The hook owns the trigger; each command body restates it so the walk and the gate can never sit on different numbers. update.md carries no copy: its step 0 acts on the hook note alone and never measures (audit 2026-10-11, session bca100bd: a prose-measured step 0 narrated its own skip), and setup-plugin.test.js holds the note text it quotes to the hook.",
       "owner": {
         "file": "stack/hooks/fresh-session.js",
         "marker": "The trigger is an ABSOLUTE token count per WINDOW TIER"
@@ -3999,27 +3982,27 @@
       ]
     },
     "fresh-session-trigger-tiers": {
-      "_note": "The three fresh-session trigger figures, wherever an artifact states them in prose. The engine comment block (stack/hooks/fresh-session.js, shared by both fresh-session hooks) is canonical (the code enforces the numbers); the skills that quote them to the model are pinned copies, because a copy naming only two tiers ships a stale rule into every project that reads it - measured: two of them said '150,000 on a 200k window, 400,000 above it' and omitted the DEFAULT tier entirely, which is the one that covers a window the gate cannot read (since 2026-10-16 the 300K tier, through ALFRED_CODE_CONTEXT_WINDOW_DEFAULT). A number change re-syncs every copy. The capabilities usage policy states no number since the 2026-09-29 audit (I24): it is stamped into a generated rule only a re-run refreshes, and an ALFRED_CODE_CONTEXT_WINDOW_FOR_* override made its figures wrong, so it names 'the window trigger' instead.",
+      "_note": "The three fresh-session trigger figures, wherever an artifact states them in prose. The engine comment block (stack/hooks/fresh-session.js, shared by both fresh-session hooks) is canonical (the code enforces the numbers); the skills that quote them to the model are pinned copies, because a copy naming only two tiers ships a stale rule into every project that reads it - measured: two of them said '150,000 on a 200k window, 400,000 above it' and omitted the DEFAULT tier entirely, which is the one that covers a window the gate cannot read (since 2026-10-21 ALFRED_CODE_CONTEXT_WINDOW_DEFAULT itself, a trigger, seeded 180000 - the user's ruling; the 300K tier through a 300k default window before). A number change re-syncs every copy. The capabilities usage policy states no number since the 2026-09-29 audit (I24): it is stamped into a generated rule only a re-run refreshes, and an ALFRED_CODE_CONTEXT_WINDOW_FOR_* override made its figures wrong, so it names 'the window trigger' instead.",
       "owner": {
         "file": "stack/hooks/fresh-session.js",
-        "marker": "the trigger on a 300K window (default 280,000)"
+        "marker": "the trigger on a 300K window, 300,000 up to 1M (seeded 280,000)"
       },
       "sites": [
         {
           "file": "stack/skills/loop-architecture-quality/SKILL.md",
-          "marker": "180,000 tokens on a window under 300k, 400,000 on one of 1M or more, 280,000 on any other window"
+          "marker": "400,000 tokens on a window of 1M or more, 280,000 on one of 300k up to 1M, 180,000 on any other"
         },
         {
           "file": "stack/skills/issue-diagnoser/SKILL.md",
-          "marker": "180,000 tokens on a window under 300k, 400,000 on one of 1M or more, 280,000 on any other window"
+          "marker": "400,000 tokens on a window of 1M or more, 280,000 on one of 300k up to 1M, 180,000 on any other"
         },
         {
           "file": "stack/skills/task-solve/SKILL.md",
-          "marker": "180,000 tokens on a window under 300k, 400,000 on one of 1M or more, 280,000 on any other window"
+          "marker": "400,000 tokens on a window of 1M or more, 280,000 on one of 300k up to 1M, 180,000 on any other"
         },
         {
           "file": "stack/skills/task-solve-cross/SKILL.md",
-          "marker": "180,000 tokens on a window under 300k, 400,000 on one of 1M or more, 280,000 on any other window"
+          "marker": "400,000 tokens on a window of 1M or more, 280,000 on one of 300k up to 1M, 180,000 on any other"
         }
       ]
     },
@@ -4206,7 +4189,7 @@
           "marker": "the FIRST action is the `habits-clarify` Skill call, before the design or the first edit"
         },
         {
-          "file": "stack/rules/alfred-git.md",
+          "file": "stack/skills/capture-preferences/references/git-seed.md",
           "marker": "the FIRST action is the `habits-commit-checkpoint` Skill call, before the command runs"
         },
         {
@@ -5591,7 +5574,7 @@
       ]
     },
     "generated-rule-write-protocol": {
-      "_note": "Regenerating a generated .claude/rules/*.md is a REPLACE, never a delete: READ the existing rule first (that read is what makes the Write legal), then Write the fresh one over it. An `rm` first is denied by the auto-mode classifier and costs the blocked round trip the delete was meant to save. Nothing in the old copy is preserved. Resolved contradiction C1 of the 2026-09-12 skill audit (slice 3): capture-code-style previously mandated delete-first.",
+      "_note": "Regenerating a generated .claude/rules/*.md is a REPLACE, never a delete: READ the existing rule first (that read is what makes the Write legal), then Write the fresh one over it. An `rm` first is denied by the auto-mode classifier and costs the blocked round trip the delete was meant to save. Nothing in the old copy is preserved. Resolved contradiction C1 of the 2026-09-12 skill audit (slice 3): the code-style capture previously mandated delete-first.",
       "owner": {
         "file": "stack/skills/capture-architecture/SKILL.md",
         "marker": "READ the existing rule first so the Write is legal"
@@ -5600,17 +5583,13 @@
         {
           "file": "stack/skills/capture-awareness/references/agents.md",
           "marker": "Do NOT `rm` it first"
-        },
-        {
-          "file": "stack/skills/capture-code-style/SKILL.md",
-          "marker": "READ the existing rule first (it is short), then Write the fresh one over it"
         }
       ]
     },
     "push-gate-receipt": {
-      "_note": "The publish half of the commit ceremony: <data root>/state/approvals/PUSH-GATE, the SAME five-line shape as COMMIT-GATE (VERIFIED/WAIVED, authorized:, head:, spec:, live-probe:), written as its own call before git push / gh pr merge and cleared after. alfred-git names it, habits-commit-checkpoint owns the protocol, guard-ungated-commit enforces it - a field added to one half drifts from the others without this pin (its twin commit-gate-receipt was registered, this one was not).",
+      "_note": "The publish half of the commit ceremony: <data root>/state/approvals/PUSH-GATE, the SAME five-line shape as COMMIT-GATE (VERIFIED/WAIVED, authorized:, head:, spec:, live-probe:), written as its own call before git push / gh pr merge and cleared after. the git preferences seed names it (its locked checkpoint entry; alfred-git.md before 2026-10-21), habits-commit-checkpoint owns the protocol, guard-ungated-commit enforces it - a field added to one half drifts from the others without this pin (its twin commit-gate-receipt was registered, this one was not).",
       "owner": {
-        "file": "stack/rules/alfred-git.md",
+        "file": "stack/skills/capture-preferences/references/git-seed.md",
         "marker": "same-shaped `<data root>/state/approvals/PUSH-GATE` receipt"
       },
       "sites": [
@@ -5620,7 +5599,7 @@
         },
         {
           "file": "stack/hooks/guard-ungated-commit.js",
-          "marker": "its own file (<data root>/state/approvals/PUSH-GATE), and ALFRED_CODE_PUSH_GATE=0 turns"
+          "marker": "its own file (<data root>/state/approvals/PUSH-GATE), and `guard-ungated-commit:push` in ALFRED_CODE_HOOKS_OFF turns"
         }
       ]
     },
@@ -5679,7 +5658,7 @@
           "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
         },
         {
-          "file": "stack/skills/capture-code-style/SKILL.md",
+          "file": "stack/skills/capture-project-code-style/SKILL.md",
           "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
         },
         {
@@ -6146,12 +6125,20 @@
       ]
     },
     "verifier-left-running-line": {
-      "_note": "A seat that starts a dev server, an emulator, a container or a desktop app must SAY so in its report, on a literal line the orchestrator can read without parsing prose - the quality-gates rule's tear-down ask can only cover what it is told is up. Carried by all ten verifiers plus the integration reviewer - console- and aspnet-verifier joined in 2.1.5 (M47): their app run had no bound and no line; data-, devops- and browser-extension-verifier in the 2026-10-20 stack audit (#14): Testcontainers, a docker run and a Playwright context start things too.",
+      "_note": "A seat that starts a dev server, an emulator, a container or a desktop app must SAY so in its report, on a literal line the orchestrator can read without parsing prose - the quality-gates rule's tear-down ask can only cover what it is told is up. Carried by all ten verifiers plus the integration reviewer - console- and aspnet-verifier joined in 2.1.5 (M47): their app run had no bound and no line; data-, devops- and browser-extension-verifier in the 2026-10-20 stack audit (#14): Testcontainers, a docker run and a Playwright context start things too; devops-implementer (its compose run) and evidence-gatherer (a repro that starts the app) in the 2026-10-21 audit (agents T2-10 / T2-13).",
       "owner": {
         "file": "stack/agents/web-angular-verifier.md",
         "marker": "a literal `left_running:` line"
       },
       "sites": [
+        {
+          "file": "stack/agents/devops-implementer.md",
+          "marker": "a literal `left_running:` line"
+        },
+        {
+          "file": "stack/agents/evidence-gatherer.md",
+          "marker": "a literal `left_running:` line"
+        },
         {
           "file": "stack/agents/integration-reviewer.md",
           "marker": "a literal `left_running:` line"
@@ -6246,39 +6233,39 @@
       ]
     },
     "project-config-outranks-conventions": {
-      "_note": "A house convention skill is the default, never the authority: the project's own config and its captured `<docs-path>/code-style/CODE-STYLE.md` win where they diverge, and the skill says so in its own opening so a seat that loaded only that skill still knows. The language and desktop skills carry the clause; the surrounding sentence names each stack's own config files, which is why only the priority clause is pinned. Eight copies: the Angular and SQL copies said the same thing in their own words and were normalized onto this clause so the lint can see them, and the WinForms and WPF copies were normalized the same way in 2.1.5.",
+      "_note": "A house convention skill is the default, never the authority: the project's own config and its captured `<docs-path>/preferences/PROJECT-CODE-PREFERENCES.md` win where they diverge, and the skill says so in its own opening so a seat that loaded only that skill still knows. The language and desktop skills carry the clause; the surrounding sentence names each stack's own config files, which is why only the priority clause is pinned. Eight copies: the Angular and SQL copies said the same thing in their own words and were normalized onto this clause so the lint can see them, and the WinForms and WPF copies were normalized the same way in 2.1.5.",
       "owner": {
         "file": "stack/skills/csharp/SKILL.md",
-        "marker": "CODE-STYLE.md` are higher priority"
+        "marker": "PROJECT-CODE-PREFERENCES.md` are higher priority"
       },
       "sites": [
         {
           "file": "stack/skills/angular-conventions/SKILL.md",
-          "marker": "CODE-STYLE.md` are higher priority"
+          "marker": "PROJECT-CODE-PREFERENCES.md` are higher priority"
         },
         {
           "file": "stack/skills/angular-styling/SKILL.md",
-          "marker": "CODE-STYLE.md` are higher priority"
+          "marker": "PROJECT-CODE-PREFERENCES.md` are higher priority"
         },
         {
           "file": "stack/skills/database-conventions/SKILL.md",
-          "marker": "CODE-STYLE.md` are higher priority"
+          "marker": "PROJECT-CODE-PREFERENCES.md` are higher priority"
         },
         {
           "file": "stack/skills/javascript/SKILL.md",
-          "marker": "CODE-STYLE.md` are higher priority"
+          "marker": "PROJECT-CODE-PREFERENCES.md` are higher priority"
         },
         {
           "file": "stack/skills/typescript/SKILL.md",
-          "marker": "CODE-STYLE.md` are higher priority"
+          "marker": "PROJECT-CODE-PREFERENCES.md` are higher priority"
         },
         {
           "file": "stack/skills/dotnet-winforms/SKILL.md",
-          "marker": "CODE-STYLE.md` are higher priority"
+          "marker": "PROJECT-CODE-PREFERENCES.md` are higher priority"
         },
         {
           "file": "stack/skills/dotnet-wpf/SKILL.md",
-          "marker": "CODE-STYLE.md` are higher priority"
+          "marker": "PROJECT-CODE-PREFERENCES.md` are higher priority"
         }
       ]
     },
@@ -6876,7 +6863,7 @@
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/capture-code-style/SKILL.md",
+          "file": "stack/skills/capture-project-code-style/SKILL.md",
           "marker": "exactly as the roster spells it"
         },
         {
@@ -7078,7 +7065,7 @@
           "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
         },
         {
-          "file": "stack/skills/capture-code-style/SKILL.md",
+          "file": "stack/skills/capture-project-code-style/SKILL.md",
           "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
         },
         {
@@ -7615,15 +7602,15 @@
       ]
     },
     "loop-preference-breach": {
-      "_note": "A recorded user preference's breach is a quality-loop finding like any other, and one whose fix sweeps many modules is structural, one module per round (2.8.0). Verbatim in the two quality loops (skill audit 2026-10-20b FFL-12).",
+      "_note": "A recorded user preference's breach is a quality-loop finding like any other, and one whose fix sweeps many modules is structural, one module per round (2.8.0). Each loop names its own domain's doc (the code loop PERSONAL-CODE-, the architecture loop ARCHITECTURE-PREFERENCES.md - skills audit 2026-10-21 S-16), so the marker is the shared tail. Verbatim in the two quality loops (skill audit 2026-10-20b FFL-12).",
       "owner": {
         "file": "stack/skills/loop-architecture-quality/SKILL.md",
-        "marker": "A user preference's breach (its rule `CODE-` or `ARCHITECTURE-PREFERENCES.md#<id>`) is fixed like any other; one whose fix sweeps many modules - wrap every external package - is structural, taken one module per round."
+        "marker": "is fixed like any other; one whose fix sweeps many modules - wrap every external package - is structural, taken one module per round."
       },
       "sites": [
         {
           "file": "stack/skills/loop-code-quality/SKILL.md",
-          "marker": "A user preference's breach (its rule `CODE-` or `ARCHITECTURE-PREFERENCES.md#<id>`) is fixed like any other; one whose fix sweeps many modules - wrap every external package - is structural, taken one module per round."
+          "marker": "is fixed like any other; one whose fix sweeps many modules - wrap every external package - is structural, taken one module per round."
         }
       ]
     },
@@ -7791,7 +7778,7 @@
       ]
     },
     "preferences-designer": {
-      "_note": "The generated rule alfred-preferences.md carries the user's preferences inline into every session and ranks them first (capture-preferences is canonical). A designer restates it because its plan is where a preference is met or missed: each Decisions row names the id it meets, and a requirement that cannot meet one goes back to the user as NEEDS_CONTEXT, never a silent waiver.",
+      "_note": "The shipped alfred-preferences.md rule names the user's preferences docs, says to read them before a design, and ranks them first (capture-preferences is canonical). A designer restates it because its plan is where a preference is met or missed: each Decisions row names the id it meets, an entry a preloaded skill or another instruction contradicts goes on `user_decisions:` with the entry's side marked (Recommended) - ruling P of the 2026-10-21 audit, since a seat holds no ask - and a requirement no design can meet returns NEEDS_CONTEXT. The git doc is read only where a git write is planned (the devops designer's workflow clause; agents T2-2), so the marker is the clause after the doc list.",
       "owner": {
         "file": "stack/skills/capture-preferences/SKILL.md",
         "marker": "ranks them above every other source"
@@ -7799,48 +7786,48 @@
       "sites": [
         {
           "file": "stack/agents/aspnet-solution-designer.md",
-          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, which the alfred-preferences.md rule carries into every session and seat) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/browser-extension-solution-designer.md",
-          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, which the alfred-preferences.md rule carries into every session and seat) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/console-solution-designer.md",
-          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, which the alfred-preferences.md rule carries into every session and seat) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/data-solution-designer.md",
-          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, which the alfred-preferences.md rule carries into every session and seat) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/devops-solution-designer.md",
-          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, which the alfred-preferences.md rule carries into every session and seat) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/ionic-angular-solution-designer.md",
-          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, which the alfred-preferences.md rule carries into every session and seat) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/web-angular-solution-designer.md",
-          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, which the alfred-preferences.md rule carries into every session and seat) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/windows-service-solution-designer.md",
-          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, which the alfred-preferences.md rule carries into every session and seat) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/winforms-solution-designer.md",
-          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, which the alfred-preferences.md rule carries into every session and seat) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         },
         {
           "file": "stack/agents/wpf-solution-designer.md",
-          "marker": "The user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md, which the alfred-preferences.md rule carries into every session and seat) outrank every other convention source: each `## Decisions` row names the preference id it meets, and a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
+          "marker": "outrank every other convention source: each `## Decisions` row names the preference id it meets; an entry that contradicts a preloaded skill or another instruction goes on the `user_decisions:` line naming both, the entry's side marked (Recommended), and the plan follows the entry meanwhile; a requirement no design can meet returns NEEDS_CONTEXT naming the id - never a silent waiver."
         }
       ]
     },
     "preferences-implementer": {
-      "_note": "The implementer builds to the preferences the rule carries; a card that cannot meet one stops as BLOCKED naming the id, so the waiver is the user's call (an Except: line), never the seat's.",
+      "_note": "The implementer builds to the preferences docs, read before its first edit (the preferences hook hands them over at that edit where it runs) - the personal code and architecture docs and the project doc's sections covering its files (agents T2-3: the anchors-first orient line stays the rule for the rest). A skill that disagrees with an entry loses: the seat builds the entry's side and names the clash on `decisions:`, marked (Recommended) (ruling P); a card that cannot meet one returns NEEDS_CONTEXT naming the id - BLOCKED is a dependency in the protocol (agents T2-1) - so the waiver is the user's call (an Except: line), never the seat's.",
       "owner": {
         "file": "stack/skills/capture-preferences/SKILL.md",
         "marker": "ranks them above every other source"
@@ -7848,48 +7835,48 @@
       "sites": [
         {
           "file": "stack/agents/aspnet-implementer.md",
-          "marker": "Build to the user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md); a card that cannot meet one stops as BLOCKED naming the id."
+          "marker": "Build to the user's preferences (PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md, and PROJECT-CODE-PREFERENCES.md's sections covering your files, under `<docs-path>/preferences/`, read before the first edit): where a preloaded skill disagrees with an entry, build the entry's side and name the clash on a `decisions:` line, the entry's side marked (Recommended); a card that cannot meet one returns NEEDS_CONTEXT naming the id, after building what the entry does not touch - the waiver is the user's `Except:` line."
         },
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "Build to the user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md); a card that cannot meet one stops as BLOCKED naming the id."
+          "marker": "Build to the user's preferences (PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md, and PROJECT-CODE-PREFERENCES.md's sections covering your files, under `<docs-path>/preferences/`, read before the first edit): where a preloaded skill disagrees with an entry, build the entry's side and name the clash on a `decisions:` line, the entry's side marked (Recommended); a card that cannot meet one returns NEEDS_CONTEXT naming the id, after building what the entry does not touch - the waiver is the user's `Except:` line."
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "Build to the user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md); a card that cannot meet one stops as BLOCKED naming the id."
+          "marker": "Build to the user's preferences (PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md, and PROJECT-CODE-PREFERENCES.md's sections covering your files, under `<docs-path>/preferences/`, read before the first edit): where a preloaded skill disagrees with an entry, build the entry's side and name the clash on a `decisions:` line, the entry's side marked (Recommended); a card that cannot meet one returns NEEDS_CONTEXT naming the id, after building what the entry does not touch - the waiver is the user's `Except:` line."
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "Build to the user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md); a card that cannot meet one stops as BLOCKED naming the id."
+          "marker": "Build to the user's preferences (PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md, and PROJECT-CODE-PREFERENCES.md's sections covering your files, under `<docs-path>/preferences/`, read before the first edit): where a preloaded skill disagrees with an entry, build the entry's side and name the clash on a `decisions:` line, the entry's side marked (Recommended); a card that cannot meet one returns NEEDS_CONTEXT naming the id, after building what the entry does not touch - the waiver is the user's `Except:` line."
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "Build to the user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md); a card that cannot meet one stops as BLOCKED naming the id."
+          "marker": "Build to the user's preferences (PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md, and PROJECT-CODE-PREFERENCES.md's sections covering your files, under `<docs-path>/preferences/`, read before the first edit): where a preloaded skill disagrees with an entry, build the entry's side and name the clash on a `decisions:` line, the entry's side marked (Recommended); a card that cannot meet one returns NEEDS_CONTEXT naming the id, after building what the entry does not touch - the waiver is the user's `Except:` line."
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "Build to the user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md); a card that cannot meet one stops as BLOCKED naming the id."
+          "marker": "Build to the user's preferences (PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md, and PROJECT-CODE-PREFERENCES.md's sections covering your files, under `<docs-path>/preferences/`, read before the first edit): where a preloaded skill disagrees with an entry, build the entry's side and name the clash on a `decisions:` line, the entry's side marked (Recommended); a card that cannot meet one returns NEEDS_CONTEXT naming the id, after building what the entry does not touch - the waiver is the user's `Except:` line."
         },
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "Build to the user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md); a card that cannot meet one stops as BLOCKED naming the id."
+          "marker": "Build to the user's preferences (PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md, and PROJECT-CODE-PREFERENCES.md's sections covering your files, under `<docs-path>/preferences/`, read before the first edit): where a preloaded skill disagrees with an entry, build the entry's side and name the clash on a `decisions:` line, the entry's side marked (Recommended); a card that cannot meet one returns NEEDS_CONTEXT naming the id, after building what the entry does not touch - the waiver is the user's `Except:` line."
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "Build to the user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md); a card that cannot meet one stops as BLOCKED naming the id."
+          "marker": "Build to the user's preferences (PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md, and PROJECT-CODE-PREFERENCES.md's sections covering your files, under `<docs-path>/preferences/`, read before the first edit): where a preloaded skill disagrees with an entry, build the entry's side and name the clash on a `decisions:` line, the entry's side marked (Recommended); a card that cannot meet one returns NEEDS_CONTEXT naming the id, after building what the entry does not touch - the waiver is the user's `Except:` line."
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "Build to the user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md); a card that cannot meet one stops as BLOCKED naming the id."
+          "marker": "Build to the user's preferences (PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md, and PROJECT-CODE-PREFERENCES.md's sections covering your files, under `<docs-path>/preferences/`, read before the first edit): where a preloaded skill disagrees with an entry, build the entry's side and name the clash on a `decisions:` line, the entry's side marked (Recommended); a card that cannot meet one returns NEEDS_CONTEXT naming the id, after building what the entry does not touch - the waiver is the user's `Except:` line."
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "Build to the user's preferences (CODE-, ARCHITECTURE-, GIT-PREFERENCES.md); a card that cannot meet one stops as BLOCKED naming the id."
+          "marker": "Build to the user's preferences (PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md, and PROJECT-CODE-PREFERENCES.md's sections covering your files, under `<docs-path>/preferences/`, read before the first edit): where a preloaded skill disagrees with an entry, build the entry's side and name the clash on a `decisions:` line, the entry's side marked (Recommended); a card that cannot meet one returns NEEDS_CONTEXT naming the id, after building what the entry does not touch - the waiver is the user's `Except:` line."
         }
       ]
     },
     "preferences-verifier": {
-      "_note": "The verifier measures every preference with a Check: through the skill's script and judges the rest; a breach is MAJOR, named by id, so the punch-list routes it back like any other defect. Running `.claude/skills/capture-preferences/scripts/preferences.js` from another skill or a seat is a sanctioned cross-folder call (skill audit 2026-10-20b FFL-17): capture-preferences is a locked always skill, so the path exists in every install, and one script keeps one home; a caller names what to do where it is absent (task-verify-code: judge each entry by hand and say so).",
+      "_note": "The verifier measures every code and architecture preference with a Check: through the skill's script, area by area (a git entry's Check: never runs over source files), quotes each `checked:` line and the script's `note:` line (an empty --diff says why), judges the rest by hand, and never skips silently; a breach is `med` on the verifier scale (`high` on a data, security or auth path), named by id, so the punch-list routes it back like any other defect (agents T2-6). Running `.claude/skills/capture-preferences/scripts/preferences.js` from another skill or a seat is a sanctioned cross-skill read.",
       "owner": {
         "file": "stack/skills/capture-preferences/SKILL.md",
         "marker": "ranks them above every other source"
@@ -7897,43 +7884,43 @@
       "sites": [
         {
           "file": "stack/agents/aspnet-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line (no script there: judge each entry by hand and say so); each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `note:` line; judge every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md by hand; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         },
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line (no script there: judge each entry by hand and say so); each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `note:` line; judge every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md by hand; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line (no script there: judge each entry by hand and say so); each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `note:` line; judge every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md by hand; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line (no script there: judge each entry by hand and say so); each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `note:` line; judge every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md by hand; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line (no script there: judge each entry by hand and say so); each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `note:` line; judge every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md by hand; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line (no script there: judge each entry by hand and say so); each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `note:` line; judge every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md by hand; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line (no script there: judge each entry by hand and say so); each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `note:` line; judge every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md by hand; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line (no script there: judge each entry by hand and say so); each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `note:` line; judge every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md by hand; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line (no script there: judge each entry by hand and say so); each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `note:` line; judge every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md by hand; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff` when `<docs-path>/preferences/` exists and quote its `checked:` line (no script there: judge each entry by hand and say so); each violation, and each judged breach of an entry with no `Check:`, is a MAJOR finding naming the id."
+          "marker": "Run `node .claude/skills/capture-preferences/scripts/preferences.js check --diff --area code` and `--area architecture` and quote both `checked:` lines, with any `note:` line; judge every entry with no `Check:` in PERSONAL-CODE- and ARCHITECTURE-PREFERENCES.md by hand; no script or no docs from this cwd: `preferences: not checked - <why>`, never silent. A breach is a `med` finding naming the id (`high` on a data, security or auth path); code that follows an entry against a house convention is no finding."
         }
       ]
     },
@@ -7963,23 +7950,19 @@
       ]
     },
     "git-preferences-carve-out": {
-      "_note": "The user's git preferences (GIT-PREFERENCES.md, carried by the generated alfred-preferences.md rule) outrank the git rule's branch, commit-message and PR conventions, never its consent or safety lines (the user's design of 2026-10-20, aa385a74). The git rule owns the carve-out; the preferences rule template, its doc shape and the capture's conflict check restate it beside their own never-list, which named only security, validation, error handling, accessibility and hook gates - a preference such as 'force-push freely' then outranked the git rule's safety line in one rule and not the other (rules audit 2026-10-20b).",
+      "_note": "No git preference weakens a locked one: GIT-PREFERENCES.md is seeded from the git preferences seed, whose consent, commit scope, checkpoint and safety entries carry `<!-- locked: <key> -->`, and the capture never drops or edits them (the user's ruling of 2026-10-21, 'Seeded, safety locked'). The shipped alfred-preferences.md rule owns the clause; the capture and its doc shape restate it beside their own never-list. Before 2026-10-21 alfred-git.md owned it as 'never its consent or safety lines' (rules audit 2026-10-20b: a preference such as 'force-push freely' outranked the git rule's safety line in one rule and not the other).",
       "owner": {
-        "file": "stack/rules/alfred-git.md",
-        "marker": "never its consent or safety lines"
+        "file": "stack/rules/alfred-preferences.md",
+        "marker": "no entry weakens a `locked` one"
       },
       "sites": [
         {
-          "file": "stack/skills/capture-preferences/references/rule-template.md",
-          "marker": "`alfred-git.md`'s consent and safety lines"
-        },
-        {
           "file": "stack/skills/capture-preferences/references/doc-shape.md",
-          "marker": "`alfred-git.md`'s consent and safety lines"
+          "marker": "no entry weakens a `locked` one"
         },
         {
           "file": "stack/skills/capture-preferences/SKILL.md",
-          "marker": "`alfred-git.md`'s consent and safety lines"
+          "marker": "no entry weakens a `locked` one"
         }
       ]
     },
@@ -8025,6 +8008,172 @@
         {
           "file": "stack/agents/wpf-verifier.md",
           "marker": "per task, its acceptance criterion's evidence as `habits-done-gate` binds it - the command this session ran and its quoted result, or `not run - <why>`"
+        }
+      ]
+    },
+    "commit-scope-fresh": {
+      "_note": "The commit ask's scope is derived fresh, untracked files counted and the index never moved (locked G2 of the git preferences seed). The checkpoint's ask step inlines the command because the hook hands the git doc over only at the first git WRITE, after that ask (skills audit 2026-10-21 S-13).",
+      "owner": {
+        "file": "stack/skills/capture-preferences/references/git-seed.md",
+        "marker": "`git diff HEAD --stat; git ls-files -o --exclude-standard`"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
+          "marker": "`git diff HEAD --stat; git ls-files -o --exclude-standard`"
+        }
+      ]
+    },
+    "preferences-precedence-ask": {
+      "_note": "Ruling P (the user's, 2026-10-21, preferences audit): where a preferences entry and a skill, a house convention or another instruction disagree, the user is asked which wins, the entry's side marked (Recommended); a seat cannot ask, so it names the clash (designers on `user_decisions:`, implementers on `decisions:`) and carries on with the entry's side. Every home of the precedence states the same mark.",
+      "owner": {
+        "file": "stack/rules/alfred-preferences.md",
+        "marker": "the entry's side marked (Recommended)"
+      },
+      "sites": [
+        {
+          "file": "stack/AGENTS.template.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/agents/aspnet-implementer.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/agents/aspnet-solution-designer.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/agents/browser-extension-implementer.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/agents/browser-extension-solution-designer.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/agents/code-quality-analyzer.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/agents/console-implementer.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/agents/console-solution-designer.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/agents/data-implementer.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/agents/data-solution-designer.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/agents/devops-implementer.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/agents/devops-solution-designer.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/agents/ionic-angular-implementer.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/agents/ionic-angular-solution-designer.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/agents/web-angular-implementer.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/agents/web-angular-solution-designer.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/agents/windows-service-implementer.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/agents/windows-service-solution-designer.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/agents/winforms-implementer.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/agents/winforms-solution-designer.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/agents/wpf-implementer.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/agents/wpf-solution-designer.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/skills/angular-conventions/SKILL.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/skills/angular-styling/SKILL.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/skills/capture-preferences/references/doc-shape.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/skills/capture-project-code-style/references/doc-shape.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/skills/csharp/SKILL.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/skills/database-conventions/SKILL.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/skills/dotnet-winforms/SKILL.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/skills/dotnet-wpf/SKILL.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/skills/javascript/SKILL.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/skills/loop-code-quality/references/rules.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/skills/task-design/SKILL.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/skills/task-implement/SKILL.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/skills/typescript/SKILL.md",
+          "marker": "the entry's side marked (Recommended)"
+        },
+        {
+          "file": "stack/hooks/preferences-session.js",
+          "marker": "ask the user which wins, the entry\\'s side marked (Recommended)"
         }
       ]
     }

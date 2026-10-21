@@ -38,7 +38,8 @@ const { respellToolNames, bareServersIn } = require('./install/mcp.js');
 // path into, then hashes) - so a raw source-vs-stamp hash compare would read it as permanently
 // 'behind'. Restore the placeholder's CURRENT resolved value into the source content before
 // hashing, so the normalised comparison matches what an up-to-date copy actually holds.
-const DOCS_ROOT_RULE = 'alfred-docs-root';
+// alfred-preferences.md names its docs by the same substituted root (2026-10-21).
+const ROOTED_RULES = new Set(['alfred-docs-root', 'alfred-preferences']);
 
 const readJson = (file) => { try { return parseJson(fs.readFileSync(file, 'utf8')) || {}; } catch { return {}; } };
 const newer = (a, b) =>
@@ -74,7 +75,7 @@ function check({ project, source, configDir })
         let body;
         let copy;
         try { body = fs.readFileSync(srcFile, 'utf8'); copy = fs.readFileSync(path.join(dirs[kind], `${name}.md`), 'utf8'); } catch { return hashItem(srcFile); }
-        if (kind === 'rules' && name === DOCS_ROOT_RULE) body = body.split('__DOCS_ROOT__').join(docsRoot);
+        if (kind === 'rules' && ROOTED_RULES.has(name)) body = body.split('__DOCS_ROOT__').join(docsRoot);
         return hashBuffer(`${name}.md`, Buffer.from(respellToolNames(body, bareServersIn(copy))));
     };
     // A stamp is a project file a clone can fill with any text: a name is validated BEFORE it is joined,

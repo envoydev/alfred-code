@@ -251,4 +251,16 @@ if (require.main === module) {
   else if (cmd === 'rulings') for (const e of lastForBranch(root, branchArg, 50, '').reverse()) for (const r of e.rulings || []) console.log(`${r.ts.slice(0, 16)}  ${r.question} -> ${r.answer}`);
   else console.log('usage: history.js last [n] | show <session> | rulings [--branch <name>]');
 }
-module.exports = { historyDir, upsert, lastForBranch, renderStartBlock, prune, scrub };
+// ALFRED_CODE_HISTORY is the count of earlier sessions the start block shows (item 10 of 2026-10-21): seeded 3, `0` off,
+// 1 to 10, above 10 read as 10, anything that is no whole number read as the seed. The block's cap is a 150-char frame
+// plus 150 per session shown: the seed keeps its 600, and one session still fits beside the ~160-char header and footer.
+const HISTORY_SEED = 3;
+const HISTORY_MAX = 10;
+const historyCap = (count) => 150 + 150 * count;
+function historyCount(value) {
+  const v = String(value == null ? '' : value).trim();
+  if (!/^\d+$/.test(v)) return HISTORY_SEED;
+  return Math.min(Number(v), HISTORY_MAX);
+}
+
+module.exports = { historyDir, upsert, lastForBranch, renderStartBlock, prune, scrub, historyCount, historyCap };

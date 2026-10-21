@@ -28,8 +28,8 @@
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "capture-code-style",
-      "note": "deliberate code-style capture - fans out code-style-analyzer per language, merges docs/code-style/CODE-STYLE.md (its own docs domain), generates the path-scoped project-code-style rule; manual /-only"
+      "name": "capture-project-code-style",
+      "note": "deliberate code-style capture - fans out code-style-analyzer per language, merges docs/preferences/PROJECT-CODE-PREFERENCES.md and its preferences/watch.json entries; no generated rule, alfred-preferences.md says when the doc is read; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -54,7 +54,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "capture-code-quality",
-      "note": "deliberate code-quality capture - dispatches code-quality-analyzer per module against the loops/ numbered prompts, the convention rules and CODE-STYLE.md (no loops/ -> says so, judges the other two), gates and tiers the findings in the main session, writes docs/quality/CODE-ASSESSMENT.md fresh every run (never versioned - quality/ carries no watch.json), every finding tied to file:line and its rule; reads the decision log, never writes it"
+      "note": "deliberate code-quality capture - dispatches code-quality-analyzer per module against the loops/ numbered prompts, the convention rules and PROJECT-CODE-PREFERENCES.md (no loops/ -> says so, judges the other two), gates and tiers the findings in the main session, writes docs/quality/CODE-ASSESSMENT.md fresh every run (never versioned - quality/ carries no watch.json), every finding tied to file:line and its rule; reads the decision log, never writes it"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -79,7 +79,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "capture-preferences",
-      "note": "deliberate preferences capture - writes the user's own code, architecture and git preferences into docs/preferences/CODE-, ARCHITECTURE- and GIT-PREFERENCES.md (ids never reused, a waiver as an Except: line, an optional regex Check: measured by the skill's script, never a command), and generates the pathless rule alfred-preferences.md that carries every entry inline, ahead of every other source at every session start; manual /-only"
+      "note": "deliberate preferences capture - writes the user's own wants into <docs-path>/preferences/: PERSONAL-PREFERENCES.md (how the assistant works with them - pushed at every session start and after each compaction), PERSONAL-CODE-, ARCHITECTURE- and GIT-PREFERENCES.md (the git doc seeded with the locked house lines); ids never reused, a waiver as an Except: line, an optional regex Check: measured by the skill's script, never a command; no rule is written - the shipped alfred-preferences.md names the docs and the preferences-session hook pushes or hands them over; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -483,7 +483,7 @@
     },
     {
       "file": "code-style-analyzer.md",
-      "note": "analysis phase (sonnet/medium): read-only per-language style characterizer - the capture-code-style skill fans it out per language and merges docs/code-style/CODE-STYLE.md + the generated project-code-style rule from its structured reports"
+      "note": "analysis phase (sonnet/medium): read-only per-language style characterizer - the capture-project-code-style skill fans it out per language and merges docs/preferences/PROJECT-CODE-PREFERENCES.md from its structured reports"
     },
     {
       "file": "related-project-analyzer.md",
@@ -643,7 +643,8 @@
       "file": "alfred-security.md"
     },
     {
-      "file": "alfred-git.md"
+      "file": "alfred-preferences.md",
+      "note": "the user's preferences docs (project code, personal code, architecture, git) - when each is read, what they outrank; replaced alfred-git.md, whose lines are GIT-PREFERENCES.md's seed (2026-10-21)"
     },
     {
       "file": "alfred-navigation.md"
@@ -754,7 +755,7 @@
     },
     {
       "file": "guard-secret-value.js",
-      "matcher": "^mcp__(plugin_(chrome|msedge|firefox|webkit)-control_)?(chrome|msedge|firefox|webkit)-control__browser_file_upload$",
+      "matcher": "^mcp__(plugin_((chrome|msedge|firefox|webkit)-control|browser-(chrome|msedge|firefox|webkit))_)?((chrome|msedge|firefox|webkit)-control|browser-(chrome|msedge|firefox|webkit))__browser_file_upload$",
       "event": "",
       "note": "the fourth read route: Playwright MCP's browser_file_upload hands a workspace file to whatever page asks - the Read judgement over tool_input.paths, both routes' spellings of the four engine servers (audit 2026-10-14 PL3)"
     },
@@ -774,13 +775,13 @@
       "file": "guard-ungated-commit.js",
       "matcher": "Bash|PowerShell|Monitor",
       "event": "",
-      "note": "block a non-trivial git commit without the data-root state/approvals/COMMIT-GATE receipt (VERIFIED/WAIVED), and a git push / gh pr merge without state/approvals/PUSH-GATE (ALFRED_CODE_PUSH_GATE=0 turns that half off)"
+      "note": "block a non-trivial git commit without the data-root state/approvals/COMMIT-GATE receipt (VERIFIED/WAIVED), and a git push / gh pr merge without state/approvals/PUSH-GATE (guard-ungated-commit:push in ALFRED_CODE_HOOKS_OFF turns that half off)"
     },
     {
       "file": "guard-stop-contract.js",
       "matcher": "@Stop",
       "event": "",
-      "note": "Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, past the window's absolute trigger, re-armed at 1.5x growth, and holds once a close after a fresh-session pick that carries no fenced paste text; and two log-only probes the analyzer counts - a done claim over a source edit (a file tool's or a shell write), unrun when nothing ran after it (ALFRED_CODE_DONE_GATE=0 off), and a close dismissing a failure ('pre-existing', 'unrelated to my change', 'flaky') in a turn with a red run or a skipped test (the red-run streak probe went with the shell-result wiring, deep hooks review 2026-10-16). Under an auto-mode run's stamp (a `session:` line naming this session) a Stop is sent back to the run until its close deletes the stamp - held again only after a tool call (the Stop chain's workSince), and at most 49 times per stamp: the 50th Stop passes with one auto-continue-cap row (audit 2026-10-14 HK05). Where the project compacts instead (ALFRED_CODE_AUTO_COMPACT=1) every fresh-session offer and note stands down, and an ask still carrying a fresh-session option is denied once, handed back with it dropped."
+      "note": "Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, past the window's absolute trigger, re-armed at 1.5x growth, and holds once a close after a fresh-session pick that carries no fenced paste text; and two log-only probes the analyzer counts - a done claim over a source edit (a file tool's or a shell write), unrun when nothing ran after it (guard-stop-contract:done in ALFRED_CODE_HOOKS_OFF off), and a close dismissing a failure ('pre-existing', 'unrelated to my change', 'flaky') in a turn with a red run or a skipped test (the red-run streak probe went with the shell-result wiring, deep hooks review 2026-10-16). Under an auto-mode run's stamp (a `session:` line naming this session) a Stop is sent back to the run until its close deletes the stamp - held again only after a tool call (the Stop chain's workSince), and at most 49 times per stamp: the 50th Stop passes with one auto-continue-cap row (audit 2026-10-14 HK05). Where the project compacts instead (ALFRED_CODE_AUTO_COMPACT=1) every fresh-session offer and note stands down, and an ask still carrying a fresh-session option is denied once, handed back with it dropped."
     },
     {
       "file": "guard-stop-contract.js",
@@ -808,9 +809,15 @@
     },
     {
       "file": "guard-fresh-session-start.js",
-      "matcher": "@SessionStart:compact",
+      "matcher": "@SessionStart",
       "event": "",
-      "note": "the harness just auto-compacted, which proves the session hit its compaction point at a moment a Stop may never come - leave a one-shot hold (a compact note where the project compacts instead)"
+      "note": "every session start saves the `model` it carries under the session in <data root>/state/sessions/models.json, so the window is the model's own capacity from the first prompt on (the user's ruling of 2026-10-21: a settings alias like `sonnet` names none); on the `compact` source the harness just auto-compacted, which proves the session hit its compaction point at a moment a Stop may never come - leave a one-shot hold (a compact note where the project compacts instead)"
+    },
+    {
+      "file": "guard-fresh-session-start.js",
+      "matcher": "@PostModelSwitch",
+      "event": "",
+      "note": "a /model switch saves the `to_model` under the session, so the window follows the model the session now runs on before its next reply names it"
     },
     {
       "file": "guard-fresh-session-start.js",
@@ -822,7 +829,7 @@
       "file": "guard-fresh-session-start.js",
       "matcher": "@PreCompact",
       "event": "",
-      "note": "before a compaction, write <data root>/state/sessions/COMPACT-STATE - the live plan, the active flow and its body path, the open flow stamps with their ages, the files this session wrote - with no model call; the compact SessionStart points at it"
+      "note": "before a compaction, write <data root>/state/sessions/COMPACT-STATE-<session> (one per session) - the live plan, the active flow and its body path, the open flow stamps with their ages, the files this session wrote - with no model call; the compact SessionStart points at it"
     },
     {
       "file": "guard-fresh-session-start.js",
@@ -846,7 +853,7 @@
       "file": "guard-config-protection.js",
       "matcher": "Write|Edit|MultiEdit|NotebookEdit",
       "event": "",
-      "note": "an EXISTING lint / format / analyzer config, or a strictness setting in tsconfig / MSBuild, cannot be changed to get a check green - creating one passes; the CONFIG-EDIT-ALLOW receipt honours a wanted change, ALFRED_CODE_CONFIG_PROTECT=0 turns it off"
+      "note": "an EXISTING lint / format / analyzer config, or a strictness setting in tsconfig / MSBuild, cannot be changed to get a check green - creating one passes; the CONFIG-EDIT-ALLOW receipt honours a wanted change, guard-config-protection in ALFRED_CODE_HOOKS_OFF turns it off"
     },
     {
       "file": "guard-config-protection.js",
@@ -868,7 +875,7 @@
     },
     {
       "file": "guard-desktop-exec.js",
-      "matcher": "^mcp__(plugin_windows-control_)?windows-control__App$|^mcp__(plugin_macos-control_)?macos-control__Shell$",
+      "matcher": "^mcp__(plugin_windows-(control|desktop)_)?windows-(control|desktop)__App$|^mcp__(plugin_macos-(control|desktop)_)?macos-(control|desktop)__Shell$",
       "event": "",
       "note": "the desktop servers' process launchers, both routes' spellings: deny Windows-MCP App with mode launch_executable (any executable, caller-given args - the server excludes by tool name, never by mode) and every MacOS-MCP Shell call (a shell command no shell guard sees); App's launch / switch / resize pass; the DESKTOP-EXEC-ALLOW receipt (App, Shell, an executable, or *) honours a wanted launch"
     },
@@ -900,7 +907,7 @@
       "file": "docs-session.js",
       "matcher": "@SubagentStart",
       "event": "",
-      "note": "the same orientation for a dispatched subagent - SessionStart context never reaches one, plus the snapshot the finish ask compares against"
+      "note": "the same orientation for a dispatched subagent - SessionStart context never reaches one at dispatch (a seat's own compaction runs SessionStart inside it), plus the snapshot the finish ask compares against"
     },
     {
       "file": "docs-session.js",
@@ -939,6 +946,36 @@
       "note": "once per session: a change that hit watch.json asks for the owning sections to be rewritten or confirmed"
     },
     {
+      "file": "preferences-session.js",
+      "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit",
+      "event": "",
+      "note": "the user's preferences docs: the FIRST edit of each actor (the main session, each seat) held until the code docs that exist were read, PERSONAL-CODE and ARCHITECTURE handed over whole and PROJECT-CODE's sections covering the target inline (a later edit a not-yet-handed section covers waits again); only a whole Read of a doc marks it read; a doc that is a link is never read; a seat's .claude/worktrees/<n>/ target is judged as the project path it mirrors - run inside file-guards.js"
+    },
+    {
+      "file": "preferences-session.js",
+      "matcher": "^mcp__(plugin_(alfred-)?navigation_)?(alfred-)?navigation__(rename_symbol|safe_delete_symbol)$",
+      "event": "",
+      "note": "the same first-edit hold on the navigation server's two edit tools the stack keeps on - the file is tool_input.relative_path; both routes' spellings"
+    },
+    {
+      "file": "preferences-session.js",
+      "matcher": "Bash|PowerShell|Monitor",
+      "event": "",
+      "note": "the FIRST git write of each actor (index, tree, ref, stash, a branch, tag or worktree branch made, gh pr merge / create, gh release create / edit / delete) held until GIT-PREFERENCES.md was read, handed over live with its locked entries first as the seed states them; one command that edits and commits shares one room, git first; a shell source write is an edit, a whole-file reader naming a doc (no head, grep or pipe into one) marks it read - run inside shell-guards.js"
+    },
+    {
+      "file": "preferences-session.js",
+      "matcher": "@SessionStart",
+      "event": "",
+      "note": "PERSONAL-PREFERENCES.md pushed at every MAIN session start - startup, resume, clear, compact and fork, so it is back after each compaction; a compaction or a clear also deletes that actor's read record, so the held docs are handed over again; a seat's own compaction (the payload carries its agent_id) deletes only its record and pushes nothing"
+    },
+    {
+      "file": "preferences-session.js",
+      "matcher": "@SubagentStart",
+      "event": "",
+      "note": "a solution designer (agent_type ending solution-designer) has no edit tool, so no hold reaches it: the code docs are handed over at its start, every project-doc section as far as the one room fits; any other seat gets nothing here"
+    },
+    {
       "file": "memory-session.js",
       "matcher": "@SessionStart",
       "event": "",
@@ -948,7 +985,7 @@
       "file": "memory-session.js",
       "matcher": "@SubagentStart",
       "event": "",
-      "note": "the project's memory tag line for a dispatched subagent - SessionStart context never reaches one, and a seat stores and reads its handoff note under that tag - and the memory tools line, which a seat whose tools grant the server skips: it calls them directly; then this host's shell traps (win32: the Git Bash line; a zsh $SHELL: the two zsh lines)"
+      "note": "the project's memory tag line for a dispatched subagent - SessionStart context never reaches one at dispatch (a seat's own compaction runs SessionStart inside it), and a seat stores and reads its handoff note under that tag - and the memory tools line, which a seat whose tools grant the server skips: it calls them directly; then this host's shell traps (win32: the Git Bash line; a zsh $SHELL: the two zsh lines)"
     },
     {
       "file": "check-turn-build.js",
@@ -960,7 +997,7 @@
       "file": "history-session.js",
       "matcher": "@SessionStart",
       "event": "",
-      "note": "what the last sessions on this branch did and ruled, injected at start (600 chars) - engine history.js copied beside it; ALFRED_CODE_HISTORY=0 off"
+      "note": "what the last sessions on this branch did and ruled, injected at start (ALFRED_CODE_HISTORY sessions, seeded 3, at most 10; 150 chars plus 150 each) - engine history.js copied beside it; ALFRED_CODE_HISTORY=0 off"
     },
     {
       "file": "history-session.js",
@@ -1083,6 +1120,7 @@
       "alfred-capture-architecture-quality",
       "alfred-capture-code-quality",
       "alfred-capture-code-style",
+      "capture-code-style",
       "alfred-capture-first-look",
       "alfred-capture-project-capabilities",
       "capture-project-capabilities",
@@ -1155,7 +1193,8 @@
       "baseline-memory.md",
       "baseline-navigation.md",
       "baseline-quality-gates.md",
-      "baseline-security.md"
+      "baseline-security.md",
+      "alfred-git.md"
     ],
     "hooks": [
       "require-convention-skill.js",
@@ -1191,7 +1230,7 @@
       "project-runtime-failure-signatures": "issue-signatures-runtime",
       "project-architecture-analyzer": "capture-architecture",
       "project-architecture-quality-analyzer": "capture-architecture-quality",
-      "project-code-style-analyzer": "capture-code-style",
+      "project-code-style-analyzer": "capture-project-code-style",
       "project-test-coverage-analyzer": "capture-test-coverage",
       "project-related-context": "capture-awareness",
       "project-agent-capabilities": "capture-awareness",
@@ -1211,7 +1250,8 @@
       "alfred-capture-architecture": "capture-architecture",
       "alfred-capture-architecture-quality": "capture-architecture-quality",
       "alfred-capture-code-quality": "capture-code-quality",
-      "alfred-capture-code-style": "capture-code-style",
+      "alfred-capture-code-style": "capture-project-code-style",
+      "capture-code-style": "capture-project-code-style",
       "alfred-capture-first-look": "capture-first-look",
       "alfred-capture-project-capabilities": "capture-awareness",
       "capture-project-capabilities": "capture-awareness",
@@ -1257,7 +1297,8 @@
     },
     "rules": {
       "baseline-docs-root": "alfred-docs-root",
-      "baseline-git": "alfred-git",
+      "baseline-git": "alfred-preferences",
+      "alfred-git": "alfred-preferences",
       "baseline-interaction": "alfred-interaction",
       "baseline-memory": "alfred-memory",
       "baseline-navigation": "alfred-navigation",

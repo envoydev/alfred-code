@@ -182,7 +182,7 @@ function copyRouteEnv({ env = process.env, projectDir, root, before = '', log = 
 }
 
 // What the server needs before its first start, said on the run that brings it in.
-function prereqNotes({ env = process.env, projectDir, platform = process.platform, home = os.homedir(), node = process.versions.node, isDir = exists, tool = javaHomeTool, route = 'plugin' } = {})
+function prereqNotes({ env = process.env, projectDir, platform = process.platform, home = os.homedir(), node = process.versions.node, isDir = exists, tool = javaHomeTool, route = 'plugin', pin = null } = {})
 {
     const major = Number.parseInt(String(node).split('.')[0], 10) || 0;
     const sdk = androidHome({ env, projectDir, platform, home, isDir });
@@ -195,6 +195,9 @@ function prereqNotes({ env = process.env, projectDir, platform = process.platfor
         ? '  mobile: mobile-control - iOS needs Xcode and its command line tools (xcode-select --install) and a booted simulator, or a real device in Developer Mode'
         : '  mobile: mobile-control - iOS needs macOS with Xcode; on this machine it drives Android only');
     lines.push('  mobile: mobile-control installs apps from a local path only and talks to a local Appium server only (ALLOW_REMOTE_APP_URLS, REMOTE_SERVER_URL_ALLOW_REGEX - set either where Claude Code starts to lift it); its first start downloads appium-mcp and its drivers, and a timeout then clears with a reconnect from /mcp');
+    // the open npm advisories the pin refresh recorded on the row (scripts/refresh-mcp-pins.js; audit 2026-10-21 mcps T1-3)
+    const adv = pin && pin.advisories;
+    if (adv && (adv.critical || adv.high)) lines.push(`  !! mobile: appium-mcp ${pin.version} resolves ${adv.critical} critical and ${adv.high} high npm advisories its upstream has not fixed (npm audit, ${adv.checked}) - drive local apps on a trusted machine only`);
     if (!sdk.value || !jdk.value) lines.push('  !! mobile: set ANDROID_HOME and JAVA_HOME in the shell that starts Claude Code, or in .claude/settings.local.json `env` (machine-local) - a committed settings file would hand your paths to every teammate');
     return lines;
 }

@@ -924,3 +924,49 @@ test('A-T1: a read-only seat may not write through the shell; a writing seat, th
   const beside = fireIn(`echo x > ${path.join(scratch, 'out2.txt')}`);
   assert.doesNotMatch(beside.stderr, /read-only seat/, `a scratch write beside that project is no seat write: ${beside.stderr.slice(0, 200)}`);
 });
+
+// Audit 2026-10-21 agents T1-2 / A-Q2: `git bisect` moves HEAD and the tree, so a read-only seat's bisect in the shared
+// checkout is a write; its log / visualize / terms read. A git call whose directory is a clone of its own under the OS
+// temp dir (a `.git` directory there, never a `.git` file that may point back at the project's repository) is scratch,
+// so the seat can bisect or reproduce there.
+test('agents T1-2: a read-only seat may not bisect the project; a bisect read and a scratch clone may', () => {
+  const dir = project('seat-bisect-');
+  const scratch = fs.realpathSync(fs.mkdtempSync(path.join(TMP, 'seat-bisect-tmp-')));
+  const seat = 'alfred-code:issue-diagnoser-runtime';
+  const fire = (command, cwd = dir) => spawnSync(process.execPath, [DISPATCH], {
+    input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, session_id: 'seat', cwd, agent_id: 'a1', agent_type: seat }),
+    encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir, TMPDIR: scratch, TEMP: scratch, TMP: scratch },
+  });
+  for (const c of ['git bisect start', 'git bisect good HEAD~1', 'git bisect bad', 'git bisect reset', 'git bisect run npm test',
+    'git bisect skip', 'git bisect replay log.txt']) {
+    assert.equal(fire(c).status, 2, `${c} in the project must block`);
+  }
+  for (const c of ['git bisect log', 'git bisect visualize', 'git bisect view', 'git bisect terms']) {
+    assert.equal(fire(c).status, 0, `${c} reads`);
+  }
+  const clone = path.join(scratch, 'clone');
+  git(scratch, 'clone', '-q', dir, clone);
+  for (const c of [`git -C ${clone} bisect start`, `cd ${clone} && git bisect run npm test`, `git -C ${clone} checkout -q HEAD~0`]) {
+    assert.equal(fire(c).status, 0, `${c} works in a scratch clone`);
+  }
+  assert.equal(fire('git bisect start', clone).status, 0, 'a seat whose cwd is the scratch clone');
+  // a worktree of the project under the temp dir shares its refs: a `.git` file is never scratch
+  const wt = path.join(scratch, 'wt');
+  git(dir, 'worktree', 'add', '-q', '--detach', wt);
+  assert.equal(fire(`git -C ${wt} bisect start`).status, 2, 'a worktree of the project is the project');
+  assert.equal(fire(`git -C ${wt} commit -m x`).status, 2, 'a commit in a worktree of the project');
+  assert.equal(fire(`git -C ${path.join(dir, '.claude')} bisect start`).status, 2, 'a subdirectory of the project');
+});
+
+// audit 2026-10-21 H5: the `[[ ]]` / `(( ))` scan ran a lazy match from every opener to the end of the text when no
+// closer followed - 64 / 105 / 260 ms at 10K / 20K / 40K openers, past the 100 s dispatcher budget near 400K (and
+// `onFailure: block` then blocks the call). With no closer in the text there is no test to find.
+test('audit 2026-10-21 H5: the zsh test scan stays linear when the openers have no closer', () => {
+  const dir = project('h5-');
+  const t = process.hrtime.bigint();
+  const r = own(dir, `echo "a${'('.repeat(320000)}b"`, ZSH);
+  const ms = Number(process.hrtime.bigint() - t) / 1e6;
+  assert.ok(ms < 3000, `320,000 openers judged in ${Math.round(ms)}ms`);
+  assert.notEqual(r.status, null, 'the dispatcher finished');
+  assert.equal(own(dir, '(( 1 == 1 )) && [[ $a == b ]] && echo y', ZSH).command, null, 'a closed test is still left as written');
+});

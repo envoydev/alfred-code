@@ -28,7 +28,7 @@ to the skill that writes it).
 - The deliberate awareness capture: after an install, an update, a configure run or a trim (the inventory moved), when the run book is missing or stale, or to add or refresh a sibling repo.
 - Arguments: sibling locations - local paths that exist or git URLs, each with an optional relation hint (`../backend`, `git@github.com:org/contracts.git provides-to`) - add or refresh those related projects; `refresh` re-asks the run book and rewrites the inventory even when nothing on disk moved. Any other text is a NOTE - a fact the user typed for the run book (step 2).
 - A re-run is cheap: the inventory is one script call, the run book is asked again only when it is missing, stale or `refresh` was passed, and the related projects only when siblings are passed or none were ever recorded.
-- Not for the architecture map (capture-architecture), the code style (capture-code-style), or dynamic cross-repo findings - those go to the shared `alfred-memory` MCP, tagged with the sibling's name.
+- Not for the architecture map (capture-architecture), the code style (capture-project-code-style), or dynamic cross-repo findings - those go to the shared `alfred-memory` MCP, tagged with the sibling's name.
 
 The four files are generated: a re-run refreshes them in place, and nobody edits them by hand. The rule stays out
 of the installer's catalog and no installer ledger records any of them, so `/alfred-code:update` never overwrites
@@ -71,7 +71,7 @@ Read `references/project.md`: the credentials rule, DISCOVER, the doc's shape. T
 - **FIRST** - no `<docs-path>/awareness/PROJECT-AWARENESS.md`: DISCOVER, the ask below, WRITE.
 - **NOTE** - the doc exists and the arguments carry a typed fact (no doc yet: FIRST, the fact answering its
   question). The user's words are the answer, so no gate and no DISCOVER: append it to the section it belongs to
-  through `docs.js set`, ending `(the team's answer, <date>)`; what it leaves open stays `unknown`. Then the value
+  through `docs.js set` (a fact that fits no section lands in Team notes), ending `(the team's answer, <date>)`; what it leaves open stays `unknown`. Then the value
   check and the lint; the report reads `Project: appended - <section>`, and step 3 asks nothing on this run.
 - **CURRENT** - the doc exists, `node .claude/hooks/docs.js stale` names no `PROJECT-AWARENESS` section, the doc
   holds no `unknown - re-run` line, and the arguments carry no `refresh`: one report line, no ask, on to step 3.
@@ -114,6 +114,16 @@ Which flows prove a change works, and which edge cases break? The repo shows: <e
 What must be up or known before a run, and where does debugging start? The repo shows: <services, env var names, seed commands, launch configs - or nothing>. Type anything a first run trips on via Other (a VPN, a busy port, a feature flag, where the logs go).
 - 'As the repo shows (Recommended)' - both sections are written from <files>, each cited
 - 'Unknown for now' - the missing parts say unknown; the next capture asks again
+```
+
+Past the preset tabs, one more question lets the user hand the run book anything else it needs. It is asked on a
+first capture and on 'Refresh', even when DISCOVER settled every gap; it rides the gap call while it holds three
+questions or fewer, else it is the next call:
+
+```ask
+Anything else the run book should hold that the questions above did not cover? A team habit, a known trap, a contact, a manual step - type it via Other, or pick below.
+- 'Nothing to add (Recommended)' - Team notes keep what they hold; a later note in the arguments adds one
+- 'Add my own notes' - I ask for them next, in plain text; each lands in Team notes, dated
 ```
 
 Then WRITE and the three checks, per the reference.

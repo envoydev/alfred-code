@@ -2,7 +2,8 @@
 // installer-managed - update overwrites local edits; put project policy in a separate hook file.
 //
 // THE SHELL-GUARD DISPATCHER (R11). A Bash or PowerShell call used to spawn one node process per
-// shell guard - eight guards plus instrumentation, nine processes (R11; nine guards since the post-compaction hold) - and on a Windows guest a bare
+// shell guard - eight guards plus instrumentation, nine processes (R11; nine guards since the post-compaction hold, ten since
+// preferences-session, 2026-10-21) - and on a Windows guest a bare
 // node start alone costs ~90-130ms, so one call paid 350-410ms in parallel (measured, R11). This
 // hook is the ONE process for all of them: it runs each guard IN-PROCESS and answers the way
 // Claude Code merges the same guards wired as separate hooks.
@@ -43,8 +44,8 @@ const vm = require('node:vm');
 const { createRequire } = require('node:module');
 
 // The guards a shell call runs, in the manifest's order. A guard joins when its verdict is a
-// function of the payload and the files it reads - true of all nine, docs-session's state files
-// and the post-compaction hold's marker included. instrument-tool-usage is not here: it is wired on every tool (`.*`), so it would fire
+// function of the payload and the files it reads - true of all ten, docs-session's and
+// preferences-session's state files and the post-compaction hold's marker included. instrument-tool-usage is not here: it is wired on every tool (`.*`), so it would fire
 // for Bash as well.
 const GUARDS = [
     'guard-protected-force-push',
@@ -56,6 +57,7 @@ const GUARDS = [
     'guard-config-protection',
     'guard-cross-project-write',
     'docs-session',
+    'preferences-session',
 ];
 const SELF = 'shell-guards';
 const MATCHER = 'Bash|PowerShell|Monitor';
@@ -402,6 +404,20 @@ function readOnlySeatWrite(payload, command, cwd, sw)
             return { what: `writes ${raw} (${t.what || 'a write'})`, matched: raw };
         }
     }
+    // A git call in a repository of its own under the OS temp dir (a scratch clone, a temp export) is scratch: the
+    // nearest `.git` is a directory there. A `.git` file - a worktree, a submodule - may share the project's refs, so it
+    // is never scratch.
+    const ownScratchRepo = (d) =>
+    {
+        if (!d || !isScratch(d)) return false;
+        for (let at = d; ; at = path.dirname(at))
+        {
+            let st = null;
+            try { st = fs.statSync(path.join(at, '.git')); } catch { /* keep climbing */ }
+            if (st) return st.isDirectory() && isScratch(at);
+            if (path.dirname(at) === at) return true;
+        }
+    };
     let read;
     try { read = sw.gitText(command, cwd); }
     catch { read = null; }
@@ -414,6 +430,9 @@ function readOnlySeatWrite(payload, command, cwd, sw)
         if (sub === 'clean' && argv.some((a) => a === '--dry-run' || /^-[A-Za-z]*n[A-Za-z]*$/.test(a))) writes = false;
         if (sub === 'apply' && argv.some((a) => /^--(?:check|stat|numstat|summary)$/.test(a)) && !argv.some((a) => /^--(?:apply|index|cached)$/.test(a))) writes = false;
         if (sub === 'worktree' && /^(?:list)$/.test(argv[0] || '')) writes = false;
+        // bisect moves HEAD and the tree; its log, visualize / view and terms only read (audit 2026-10-21 agents T1-2)
+        if (sub === 'bisect') writes = !/^(?:log|visualize|view|terms|help)$/.test(argv[0] || '');
+        if (writes && ownScratchRepo(read.callDir ? read.callDir(call) : cwd)) writes = false;
         if (writes) return { what: `runs \`git ${[sub, ...argv].join(' ').slice(0, 80)}\`, which changes the repository`, matched: `git ${sub}` };
     }
     return null;
@@ -536,7 +555,18 @@ function ownChecks(stdin)
     {
         const tests = [];
         // `[[ ... ]]` and `(( ... ))` read their own operators: `==` there is no command lookup, and quoting it breaks them
-        for (const m of masked.matchAll(/\[\[[\s\S]*?\]\]|\(\([\s\S]*?\)\)/g)) if (!quoted(m.index)) tests.push([m.index, m.index + m[0].length]);
+        // each opener to the first closer after it - an opener with no closer left in the text is skipped at once, where a
+        // lazy match from every opener to the end was quadratic (audit 2026-10-21 H5: 12.8 s at 320,000 openers)
+        const CLOSER = { '[[': ']]', '((': '))' };
+        const lastClose = { ']]': masked.lastIndexOf(']]'), '))': masked.lastIndexOf('))') };
+        for (let i = 0; i < masked.length - 1; i++)
+        {
+            const close = CLOSER[masked.slice(i, i + 2)];
+            if (!close || lastClose[close] < i + 2) continue;
+            const end = masked.indexOf(close, i + 2) + 2;
+            if (!quoted(i)) tests.push([i, end]);
+            i = end - 1;
+        }
         const inTest = (i) => tests.some(([a, b]) => i >= a && i < b);
         const END = '(?=$|[\\s;|&()<>])';
         const BARE = "[^\\s;|&()<>'\"`\\\\$]*";

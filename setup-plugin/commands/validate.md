@@ -17,8 +17,9 @@ cache_read + cache_creation` off the last assistant message in the transcript. A
 figure is past the same trigger `guard-fresh-session-start.js` uses - the tier's own absolute
 trigger, `ALFRED_CODE_CONTEXT_WINDOW_FOR_1M` (default 400,000) on a window of 1M or more,
 `ALFRED_CODE_CONTEXT_WINDOW_FOR_300K` (default 280,000) on one of 300k up to 1M, or
-`ALFRED_CODE_CONTEXT_WINDOW_FOR_200K` (default 180,000) below that - the window comes from the session
-model's row in `.claude/hooks/model-windows.json`, else `ALFRED_CODE_CONTEXT_WINDOW_DEFAULT` (default 300,000) - or when that hook has already
+`ALFRED_CODE_CONTEXT_WINDOW_FOR_200K` (default 180,000) on one of 200k up to 300k - the window is the session
+model's own capacity, its row in `.claude/hooks/model-windows.json`; with no row, a window under 200k or a tier left
+unset, the trigger is `ALFRED_CODE_CONTEXT_WINDOW_DEFAULT` (default 180,000) itself - or when that hook has already
 injected the ask into this turn. One more case fires it regardless of the figure: this session already ran ANOTHER guided walk (a
 `/alfred-code:` command completed earlier in this chat). That history is pure carry for a run that needs
 none of it, and an absolute trigger never catches it - measured, a validate chained behind an update
@@ -43,7 +44,7 @@ in ONE Bash `cat` before step 1 and hold the whole run to it: resolve the snapsh
 `stack-select.js` / the graph / `recommendations.json` / the installer from that snapshot, hand
 the installer `--source "$TMP/repo"` in step 11, and remove `$TMP` per the 'Clean up' section on
 EVERY exit path. Its 'Narrate, don't trace' section governs every tool call: one quiet call per
-recompute, no pasted tool output, one narration line between steps.
+recompute, no pasted tool output except the step-12 reports pasted verbatim, one narration line between steps.
 
 **Every scope.** A project, user or local install keeps its stamp, its library copies and its
 settings in the project's `.claude/`, so validate reconciles all three the same way - there is no
@@ -136,32 +137,7 @@ over the result.
 
 ## 2. Detect the project's stacks - and show the evidence
 
-The install phase's step-3 artifact scan (`init-install.md`):
-
-- `*.csproj` / `*.sln` -> .NET, split by content, per project: `Microsoft.NET.Sdk.Web` -> `aspnet`;
-  `<UseWPF>true` -> `wpf`; `<UseWindowsForms>true` -> `winforms`; a
-  `Microsoft.Extensions.Hosting.WindowsServices` reference (or a `ServiceBase` inheritor) ->
-  `windows-service`; an EXECUTABLE carrying none of those markers (`<OutputType>Exe</OutputType>`, or
-  `Microsoft.NET.Sdk.Worker`) -> `console`. A class LIBRARY is never its own stack: `Microsoft.NET.Sdk`
-  with no `OutputType` (library is the default) - and a test project - is a surface of the app that
-  references it, so a WPF solution's own libraries stay `wpf` and add NO `console` (measured
-  mis-detection). With every .NET project a library, ask which surface they serve; never default to
-  `console`.
-- `angular.json` -> `web-angular`; `ionic.config.json` / `capacitor.config.*` -> `ionic-angular`.
-  An Ionic app matches `angular.json` too - when `ionic-angular` detects, do NOT also report
-  `web-angular` for the same app; both only when a second, distinct non-Ionic Angular app exists.
-- a `manifest.json` carrying `"manifest_version"` (or a wxt/crxjs config) -> `browser-extension`.
-- `Dockerfile` / `.github/workflows/` -> `devops`; a `.csproj` referencing `Microsoft.EntityFrameworkCore.*`, or a `Migrations/` folder holding a `*ModelSnapshot.cs` beside a `.csproj` -> `data` (the data trio is .NET / EF Core only - `*.sql` files or a migrations folder alone are not `data`).
-- `tsconfig.json` / `jsconfig.json` -> `typescript` (language-level - keeps the TS rule/skill/LSP
-  plugin owned in a plain TS/Node repo with no framework marker). A TS framework stack claims its own
-  surface: when `web-angular` / `ionic-angular` / `browser-extension` detects, do NOT also report
-  `typescript` for the same app - the framework seeds carry the rules + LSP, and reporting both flags
-  `ts-js-testing` MISSING on every Angular app where testing is `angular-testing`'s (measured); both only
-  when the repo holds a genuine non-framework TS surface too (Node tooling, a published library).
-- `package.json` with `.js` sources and NO `tsconfig.json`/`jsconfig.json` -> `javascript` (the plain-JS
-  seed). One-way suppression: `typescript` and the framework stacks cover JS - never report `javascript`
-  beside them. Without this bullet a plain-JS install reads as REDUNDANT wholesale (measured: `javascript`,
-  `ts-js-testing`, `javascript-conventions` and `typescript-lsp` all flagged for removal).
+The install phase's step-3 artifact scan: read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/stack-detection.md` (the one marker list, init's too) in one Bash `cat` and apply every bullet, its suppressions included.
 
 Report the detected set AND, for every stack you will treat as ABSENT, the exact signal you looked
 for and did not find (`wpf -> *.csproj <UseWPF>: none`). **This is the veto point** - a
@@ -169,10 +145,23 @@ mis-detection (a WPF app on a non-standard SDK, SQL in an odd path) is corrected
 walk removes anything on it. Detecting nothing is valid; confirm through AskUserQuestion, and put the CONSEQUENCE in each option's
 description, not just the stack list - the answer authorizes removals, and a user who cannot see that
 asks about a stack that was never at risk (measured: the one Other reply in an audited run asked about a
-stack the run had DETECTED). 'Detection correct' (recommended) - every detected stack keeps its
-artifacts; only the ABSENT stacks' artifacts become removal candidates, and each is still asked about
-one at a time. 'Dispute' - the run then asks in plain text which stack, and it is treated as present, nothing of its is
-proposed. Then walk. Stack names are the catalog keys of
+stack the run had DETECTED):
+
+```ask
+Detected stacks: <the detected set, or none>. Treat every other stack as absent? Its installed artifacts become removal candidates, each still asked about one at a time.
+- 'Detection correct (Recommended)' - every detected stack keeps its artifacts; only the absent stacks' artifacts are offered for removal
+- 'Dispute' - the next ask names the stack the scan missed; it is treated as present and nothing of it is proposed
+```
+
+A 'Dispute' asks which stack, never in plain text:
+
+```ask
+Which stack did the scan miss? Each one picked is treated as present, and nothing of it is proposed for removal.
+- '<the first absent stack with installed artifacts> (Recommended)' - its artifacts are the ones the walk would offer to remove
+- '<each other absent stack>' - one option per catalog key the scan left absent
+```
+
+Then walk. Stack names are the catalog keys of
 `$TMP/repo/meta/recommendations.json` (`web-angular`, never `angular`) - the tool names an unknown one on
 stderr (`unknown-stack`) instead of silently flagging nothing.
 
@@ -257,9 +246,17 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
  3 | issue-diagnoser-ci   | MISSING   | needed by baseline
 ```
 
-2. **One consent round through AskUserQuestion** - four options (the tool's cap), typed numbers via
-   Other: **Accept all** (add every MISSING, remove every REDUNDANT in this layer), **Add only**,
-   **Remove only**, **Skip** (touch nothing), or typed numbers (`add 2 3`, `remove 1`). Never bulk-act without an explicit choice; a REDUNDANT removal the user
+2. **One consent round through AskUserQuestion** - four options (the tool's cap); a typed answer (`add 2 3`,
+   `remove 1`) picks rows by number:
+
+   ```ask
+   <Layer>: <n> MISSING, <m> REDUNDANT - apply the reconcile?
+   - 'Accept all (Recommended)' - add every MISSING row and remove every REDUNDANT one in this layer
+   - 'Add only' - add the MISSING rows; every REDUNDANT one is kept
+   - 'Remove only' - remove the REDUNDANT rows; nothing is added
+   - 'Skip' - this layer stays as it is
+   ```
+ Never bulk-act without an explicit choice; a REDUNDANT removal the user
    declines is simply kept. Restate the outcome in one line and carry this layer's accepted adds +
    removes forward.
 
@@ -347,16 +344,25 @@ table of the actionable rows only - an install whose env already matches gets th
   new key and drops the old one; nothing is deleted and no default is written over it. The
   installers apply the same rename on their next run, so an unaccepted row is not lost, only later.
 - **RETIRED** - a key in the file that the catalog no longer lists and `migrations.json` names in a
-  `remove_settings_env` entry. Nothing reads it; accepting drops it, and the entry's `why` is the
-  reason column. A key the catalog does not list and no migration names is someone else's - leave it.
+  `remove_settings_env` or `fold_settings_env` entry. Accepting drops it - a folded key at its `when_value` first adds the
+  entry's `entry` to its `into` csv (`ALFRED_CODE_PUSH_GATE=0` becomes `guard-ungated-commit:push` in
+  `ALFRED_CODE_HOOKS_OFF`), so the switch it held stays off - and the entry's `why` is the reason column. A key the catalog does not list and no migration names is someone else's - leave it.
 - **INVALID** - a key whose value fails the row's `validate` shape (a percent or token count outside `min`..`max`
-  and not its `off` value, a window under `min`, an instrumentation switch that is neither `0` nor
-  `1`). Show the value and the expected shape; the fix is the catalog default unless the user types
+  and not its `off` value, a window under `min`, an hour count that is no non-negative number, an instrumentation switch
+  that is neither `0` nor `1`). Show the value and the expected shape; the fix is the catalog default unless the user types
   another. The shape is the ONLY test - a value that differs from the default is a deliberate pin,
   never a finding.
 
-Consent exactly like the artifact layers: one AskUserQuestion round - **Accept all**, **Add
-missing only**, **Skip**, or typed numbers - then restate the outcome in one line. Accepted rows
+Consent exactly like the artifact layers - one AskUserQuestion round, a typed answer picking rows by number - then
+restate the outcome in one line:
+
+```ask
+Environment: <n> rows to write - apply them?
+- 'Accept all (Recommended)' - every listed row is written in step 11, only those keys touched
+- 'Add missing only' - only the absent keys are written; a key already set is kept
+- 'Skip' - the env block stays as it is
+```
+ Accepted rows
 are written in step 11 as a merge touching ONLY those keys, everything else in the file preserved.
 
 ## 10. Judgment review - corroborated non-use, convention conflicts, corroborated need
@@ -387,7 +393,7 @@ turn polling for it. Five inputs, five gates:
    matching exclusion.
 2. **The rest vs the project's stated conventions - version pins included.** Review the remaining
    scope against the project's OWN docs - the project's AGENTS.md or CLAUDE.md, `<docs-path>/architecture/ARCHITECTURE.md` /
-   `quality/ARCHITECTURE-ASSESSMENT.md`, `code-style/CODE-STYLE.md`, where they exist - and propose a drop on a cited
+   `quality/ARCHITECTURE-ASSESSMENT.md`, `preferences/PROJECT-CODE-PREFERENCES.md`, where they exist - and propose a drop on a cited
    conflict: quote the conflicting rule verbatim and name its source. Version pins count as
    conventions, and the scan PRECOMPUTES the known cases: the `judgment.versionConflicts` rows in
    found.json arrive with the package, the found version, the threshold, the conflict text, and
@@ -582,8 +588,14 @@ It reads this project's own agent config - an unpinned package launch in `.mcp.j
 unrestricted shell grant, a hook with no timeout or one splicing tool input into a shell string, a
 credential-shaped literal in `AGENTS.md`, `CLAUDE.md` or a settings file - and fixes nothing. Paste its output
 byte-for-byte in a fenced block (`install audit: nothing to report` is the whole paste on a clean
-project). A `high` row gets ONE AskUserQuestion: 'Fix the stack-owned rows' (recommended - an
-update re-run pins a stack server) or 'Leave them'. A row on a server, hook or grant the user added
+project). A `high` row gets ONE AskUserQuestion:
+
+```ask
+The install audit found <n> high rows: <each in a few words>. Fix the stack-owned ones?
+- 'Fix the stack-owned rows (Recommended)' - an update re-run pins a stack server; a row the user added is never edited
+- 'Leave them' - nothing changes; the rows stay in the report
+```
+ A row on a server, hook or grant the user added
 by hand is reported with its line and never edited; a credential row is the rotate ask
 `alfred-security.md` owns, never a fix here - put through AskUserQuestion in the same turn as the paste, never
 closed as 'your call' in prose. A ruling recorded earlier (memory, an answer in this run) skips the ask only
@@ -678,4 +690,4 @@ that matches nothing - audit 2026-10-20 C16, 4f2bfdee) - on EVERY exit path of T
   sweep - and an overlap drop additionally needs the survivor's gap named: a 'redundant' claim
   that cannot say what the drop candidate uniquely does has not finished the analysis.
 - Do not skip the prerequisite gate before an install, and never remove what a kept item still
-  needs. Do not paste tool output or leave `$TMP` behind on any exit path. Do not commit anything.
+  needs. Do not paste tool output (except the step-12 reports, verbatim) or leave `$TMP` behind on any exit path. Do not commit anything.

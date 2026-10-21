@@ -2310,11 +2310,11 @@ test('a plugin-scoped session: its alfred-code scoped names join the bare invent
 // spelling. Both count as a rule attach; the old spelling comes from the manifest's `renamed` map.
 test('style rule attaches: a rule generated under the capture\'s old name still counts', () => {
   const renamed = require('../meta/stack-manifest.json').renamed.skills;
-  const old = Object.keys(renamed).find((k) => renamed[k] === 'capture-code-style');
+  const old = Object.keys(renamed).find((k) => renamed[k] === 'capture-project-code-style');
   assert.ok(old, 'the map names the capture\'s old spelling');
   const dir = tmp();
   const said = (ts, name) => ({ type: 'user', timestamp: ts, message: { content: `# Project code style (generated - the ${name} skill owns this rule)` } });
-  const file = fixture(dir, [said('2026-07-15T07:00:00.000Z', old), said('2026-07-15T07:00:01.000Z', 'capture-code-style'),
+  const file = fixture(dir, [said('2026-07-15T07:00:00.000Z', old), said('2026-07-15T07:00:01.000Z', 'capture-project-code-style'),
     { type: 'assistant', timestamp: '2026-07-15T07:00:02.000Z', message: { id: 'm1', model: 'claude-sonnet-5', usage: usage(1, 0, 1, 1), content: [{ type: 'text', text: 'ok' }] } }]);
   try { assert.strictEqual(run([file]).main.styleRuleAttaches, 2); }
   finally { fs.rmSync(dir, { recursive: true, force: true }); }

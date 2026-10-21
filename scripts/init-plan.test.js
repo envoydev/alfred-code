@@ -25,7 +25,7 @@ function project({ settings } = {})
     return root;
 }
 const INV = (over = {}) => ({
-    skills: ['capture-architecture', 'capture-code-style', 'capture-awareness'],
+    skills: ['capture-architecture', 'capture-project-code-style', 'capture-awareness'],
     agents: ['related-project-analyzer', 'architecture-analyzer', 'code-style-analyzer'],
     mcps: ['alfred-navigation', 'alfred-documentation', 'alfred-memory', 'playwright'],
     plugins: [{ name: 'alfred-code', scope: 'project' }, { name: 'csharp-lsp', scope: 'project' }],
@@ -277,9 +277,9 @@ test('captures: the fixed order; run, done and skip each say why; the library co
     const captures = () => render(plan({ inv, root, platform: 'linux', env: E(), probe: NONE, pluginRoot: path.join(__dirname, '..') }))
         .filter((l) => l.startsWith('capture:'));
     const lines = captures();
-    assert.deepStrictEqual(lines.map((l) => l.split(' - ')[0]), ['capture: capture-architecture', 'capture: capture-code-style', 'capture: capture-awareness']);
+    assert.deepStrictEqual(lines.map((l) => l.split(' - ')[0]), ['capture: capture-architecture', 'capture: capture-project-code-style', 'capture: capture-awareness']);
     assert.strictEqual(lines[0], 'capture: capture-architecture - done: notes/ai/architecture/ARCHITECTURE.md exists');
-    assert.strictEqual(lines[1], 'capture: capture-code-style - skip: its seat code-style-analyzer is switched off');
+    assert.strictEqual(lines[1], 'capture: capture-project-code-style - skip: its seat code-style-analyzer is switched off');
     // A path outside the project is printed with forward slashes on every OS: init reads it through Bash, where a
     // backslash is an escape (windows-2025 CI printed `D:/a/...` against a native-separator expectation).
     const libPath = (skill) => path.join(__dirname, '..', 'stack', 'skills', skill, 'SKILL.md').split(path.sep).join('/');
@@ -295,11 +295,11 @@ test('captures: the fixed order; run, done and skip each say why; the library co
     const bare = render(plan({ inv: INV({ skills: ['capture-awareness'], agents: [] }), root, platform: 'linux', env: E(), probe: NONE }))
         .filter((l) => l.startsWith('capture:'));
     assert.strictEqual(bare[0], 'capture: capture-architecture - skip: the skill is not installed');
-    assert.strictEqual(bare[1], 'capture: capture-code-style - skip: the skill is not installed');
+    assert.strictEqual(bare[1], 'capture: capture-project-code-style - skip: the skill is not installed');
     assert.strictEqual(bare[2], 'capture: capture-awareness - run: read .claude/skills/capture-awareness/SKILL.md', 'no seat to need');
     const noSeat = render(plan({ inv: INV({ agents: [] }), root: project(), platform: 'linux', env: E(), probe: NONE }))
         .filter((l) => l.startsWith('capture:'));
-    assert.strictEqual(noSeat[1], 'capture: capture-code-style - skip: its seat code-style-analyzer is not installed');
+    assert.strictEqual(noSeat[1], 'capture: capture-project-code-style - skip: its seat code-style-analyzer is not installed');
 });
 
 // End to end through the CLI, on a stubbed PATH: the real probes, the real pins file.

@@ -26,24 +26,24 @@ other; on a local-only docs root it is local too.
 A rule is a checkable statement of what the code must or must not do, taken from one of three sources -
 never from recall, and never from a reference the project did not install:
 
-1. **The stage prompts under `<docs-path>/quality/loops/`** - each `<n>.<name>.md` with `n` above zero. Its 'Look
+1. **`<docs-path>/preferences/PROJECT-CODE-PREFERENCES.md`** - the idioms the project actually follows; a divergence
+   the code-style capture recorded as the project's own choice is the rule here.
+2. **The stage prompts under `<docs-path>/quality/loops/`** - each `<n>.<name>.md` with `n` above zero. Its 'Look
    for' bullets are the rules, its severity paragraph their scale, its `Bar:` line the bar, and its 'Not
    a finding' list is part of the rule too. The `0.`-numbered file is FIX discipline and never judged
    against; un-numbered files (`RUN-STATE.md`, `DECISIONS.md`, notes) are run records, never rules.
-2. **`<docs-path>/code-style/CODE-STYLE.md`** - the idioms the project actually follows; a divergence
-   the code-style capture recorded as the project's own choice is the rule here.
 3. **The convention rules** under `.claude/rules/` - each path-scoped file attaches one file family to
    its house convention skill; the skill's rules are the rules for that family.
 
 **The user's preferences outrank all three.** The `C<n>` entries of
-`<docs-path>/preferences/CODE-PREFERENCES.md` are rules wherever they exist; an entry's `Except:` line is its
-one waiver, and a breach's rule is `CODE-PREFERENCES.md#c<n>`. An `A<n>` entry of `ARCHITECTURE-PREFERENCES.md`
+`<docs-path>/preferences/PERSONAL-CODE-PREFERENCES.md` are rules wherever they exist; an entry's `Except:` line is its
+one waiver, and a breach's rule is `PERSONAL-CODE-PREFERENCES.md#c<n>`. An `A<n>` entry of `ARCHITECTURE-PREFERENCES.md`
 is the architecture-quality capture's: its breach is a hand-off here, never a second record of one fact.
 
-**Precedence.** The user's preferences win every disagreement; then the project's own record - its
-decision log and AGENTS.md choices first, then the loops prompts, then `CODE-STYLE.md`, then a house
+**Precedence.** The user's preferences win every disagreement; then the project's own record -
+`PROJECT-CODE-PREFERENCES.md` first, then its decision log and AGENTS.md choices, then the loops prompts - then a house
 convention skill. A lower source's rule that a higher one contradicts is not a finding. No `loops/` folder,
-or none holding a stage prompt, drops source 1 - the report says so, and the rest are judged alone. All
+or none holding a stage prompt, drops source 2 - the report says so, and the rest are judged alone. All
 three absent and no preferences doc: the run stops before GATHER and writes nothing - a doc judged against
 no rule would read as clean code.
 
@@ -56,7 +56,7 @@ never tiered:
 1. **What breaks?** The concrete wrong outcome - wrong or lost data, a crash, a silent failure, a security
    hole, a change that cannot be made safely, or time repeatedly lost by the next developer. 'It differs
    from how a convention or another codebase would do it' is not an answer; a user preference's breach is -
-   'breaks CODE-PREFERENCES.md#c3' (the preferences doc's id, never one of this doc's rank-label C-IDs), since
+   'breaks PERSONAL-CODE-PREFERENCES.md#c3' (the preferences doc's id, never one of this doc's rank-label C-IDs), since
    the user named what breaks.
 2. **Who notices, and when?** A user, an operator, or the next person to touch this code - named, with
    the trigger condition. A bug needs its constructible input, state or sequence.
@@ -65,7 +65,8 @@ never tiered:
    re-tier or re-grade it upward merely because it now has a number.
 4. **Has the project already decided this?** Read the decision log and the project AGENTS.md's recorded
    choices FIRST. A recorded decision is a Deliberate tradeoff, never a defect, and never re-raised -
-   unless it breaks a user preference, which outranks it.
+   unless it breaks a user preference: that clash is a Proposed decision naming the entry and the decision,
+   for the user to settle - never a Must-fix (the decision may be the user's own).
 
 **Architecture and coverage stay out.** A candidate whose fix is a new boundary, an inverted layer or a
 rival pattern is the architecture-quality capture's; a missing or weak test is the coverage capture's.
@@ -94,7 +95,7 @@ longer occur. An entry whose promotion condition you cannot state is dropped, no
 
 ## The shape
 
-- **Rule sources** - one line per source judged (`loops/2.code-quality.md`, `CODE-STYLE.md`, each
+- **Rule sources** - one line per source judged (`loops/2.code-quality.md`, `PROJECT-CODE-PREFERENCES.md`, each
   convention rule by file), or the line saying a source was absent. The reader learns what the code was
   held to before reading what it broke.
 - **Must fix** - every finding that passed the gate, ranked by severity, then blast radius. C-IDs are
@@ -118,8 +119,8 @@ longer occur. An entry whose promotion condition you cannot state is dropped, no
 - **Worth knowing** - one line per entry plus its promotion condition.
 - **Deliberate tradeoffs** - the rule not followed, the reason, and where the project recorded it. Sourced
   from the decision log or AGENTS.md (gate question 4) - never written from this skill's own judgment.
-- **Proposed decisions** - a repeatedly-declined Must-fix entry, or a rule the code breaks everywhere on
-  purpose, shaped ready to accept: the claim, the reason, what it costs. A person accepts one by writing
+- **Proposed decisions** - a repeatedly-declined Must-fix entry, a rule the code breaks everywhere on
+  purpose, or a recorded decision a user preference breaks (both named), shaped ready to accept: the claim, the reason, what it costs. A person accepts one by writing
   it into the decision log; the next run's gate question 4 then moves the entry out of Must fix.
 - **Summary** - the per-bucket counts, the Must-fix severity and tier tallies, the finding count per rule
   source (a source with zero is listed as checked clean), and the top few highest-leverage fixes.

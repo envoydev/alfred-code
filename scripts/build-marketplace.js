@@ -37,7 +37,7 @@ const fileGuards = require('../stack/hooks/file-guards.js');
 const historySession = require('../stack/hooks/history-session.js');
 const { DEFAULT_EXCLUDE, DESKTOP_ENV } = require('../stack/mcp/desktop-launch.js');
 const { NAVIGATION_ENV } = require('../stack/mcp/serena-launch.js');
-const { excludeNewerOf } = require('../stack/mcp/uv-python.js');
+const { excludeNewerOf, pythonFor } = require('../stack/mcp/uv-python.js');
 
 const REPO = path.resolve(__dirname, '..');
 const ENTRIES_FILE = path.join(REPO, 'meta/plugin-entries.json');
@@ -111,11 +111,18 @@ function coreEntry(options = {})
             PreToolUse: [{
                 matcher: 'AskUserQuestion',
                 hooks: [{ type: 'command', command: launch('setup-plugin/hooks/guard-layer-table.js'), timeout: 10 }],
+            }, {
+                // 2026-10-21: the walk's next step is judged too (a layer table with no answered ask after it). Every
+                // walk step is a `node` call, so `if` keeps the spawn off every other shell command (code.claude.com/
+                // docs/en/hooks, 'if': each subcommand is checked); the hook leaves at once on a non-walk node call.
+                matcher: 'Bash',
+                hooks: [{ type: 'command', if: 'Bash(node *)', command: launch('setup-plugin/hooks/guard-layer-table.js'), timeout: 10 }],
             }],
             // Library copies move only on /alfred-code:update, so a session on a newer stack says
-            // so once - at startup, never on a resume or a compaction.
+            // so at each fresh context - a startup, a /clear and a resume (loading audit 2026-10-21 G12: a cleared
+            // or resumed session never carried it) - and not at a compaction, which would show the user the line again.
             SessionStart: [{
-                matcher: 'startup',
+                matcher: 'startup|clear|resume',
                 hooks: [{ type: 'command', command: launch('setup-plugin/hooks/library-stamp.js'), timeout: 10 }],
             }],
         }, hooksBlock(options.wirings || parseHookWirings(options.sourceDir))),
@@ -329,7 +336,7 @@ function mcpServerShapes(options = {})
         // --- the three locked servers -----------------------------------------------------------
         'alfred-navigation': {
             locked: true,
-            description: 'The navigation server (Serena), as a plugin: LSP symbol navigation for the house stack. Its per-project folder and home (<data root>/serena, .alfred by default) keep its registry, memories, logs and LSP cache out of every other project; --project-from-cwd self-activates the repo, which works because a plugin server\'s cwd IS the project dir (measured). Dashboard off, pinned PyPI package rather than a git ref, started through a launcher that places the data and pins the Python its compiled dependencies have wheels for (3.13; the x64 build on Windows on ARM).',
+            description: `The navigation server (Serena), as a plugin: LSP symbol navigation for the house stack. Its per-project folder and home (<data root>/serena, .alfred by default) keep its registry, logs and LSP cache out of every other project; --project-from-cwd self-activates the repo, which works because a plugin server\'s cwd IS the project dir (measured). Dashboard off, pinned PyPI package rather than a git ref, started through a launcher that places the data and pins the Python its compiled dependencies have wheels for (${pythonFor('alfred-navigation')}; the x64 build on Windows on ARM).`,
             servers: {
                 'alfred-navigation': {
                     // The launcher, not uvx directly: it hands uvx the Python this MACHINE needs
@@ -390,7 +397,7 @@ function mcpServerShapes(options = {})
         // The launcher pins the Python, refuses on the other OS and applies the tool-gate override
         // (stack/mcp/desktop-launch.js); the installer offers each only on its own OS.
         'windows-control': {
-            description: `The Windows desktop server (Windows-MCP), as a plugin: drives native Windows apps - WPF, WinForms, Win32, UWP, Office, Explorer - through UI Automation (snapshot, click, type, shortcut). Windows only. Started through a launcher that pins the Python (3.13) and refuses on another OS; ${DEFAULT_EXCLUDE.split(',').join(', ')} stay off unless ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE names another list (none = every tool).`,
+            description: `The Windows desktop server (Windows-MCP), as a plugin: drives native Windows apps - WPF, WinForms, Win32, UWP, Office, Explorer - through UI Automation (snapshot, click, type, shortcut). Windows only. Started through a launcher that pins the Python (${pythonFor('windows-control')}; the x64 build on Windows on ARM) and refuses on another OS; ${DEFAULT_EXCLUDE.split(',').join(', ')} stay off unless ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE names another list (none = every tool).`,
             servers: {
                 'windows-control': {
                     command: 'node',
@@ -401,7 +408,7 @@ function mcpServerShapes(options = {})
             },
         },
         'macos-control': {
-            description: 'The macOS desktop server (MacOS-MCP), as a plugin: drives native macOS apps through the Accessibility API (snapshot, click, type, shortcut). macOS only; it needs Accessibility and Screen Recording granted to the terminal or IDE running Claude Code and to the uv-managed Python it runs on. Started through a launcher that pins the Python (3.13) and refuses on another OS.',
+            description: `The macOS desktop server (MacOS-MCP), as a plugin: drives native macOS apps through the Accessibility API (snapshot, click, type, shortcut). macOS only; it needs Accessibility and Screen Recording granted to the terminal or IDE running Claude Code and to the uv-managed Python it runs on. Started through a launcher that pins the Python (${pythonFor('macos-control')}) and refuses on another OS.`,
             servers: {
                 'macos-control': {
                     command: 'node',

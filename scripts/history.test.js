@@ -196,3 +196,12 @@ test('the open receipts list a plan\'s stamp as <plan id>/APPROVAL', () => {
   const e = JSON.parse(fs.readFileSync(path.join(H.historyDir(root), 'sp.json'), 'utf8'));
   assert.deepStrictEqual(e.stamps.map((x) => x.name).sort(), ['COMMIT-GATE', 'cart/APPROVAL']);
 });
+
+// Item 10 of 2026-10-21: ALFRED_CODE_HISTORY is the count of earlier sessions the start block shows - seeded 3, `0` off,
+// 1 to 10, anything above 10 read as 10, anything that is no whole number read as the seed. The cap is a 150-char frame
+// plus 150 per session: the seed 3 keeps the 600 it had, and one session still fits beside the ~160-char frame.
+test('historyCount reads the session count: 0 off, 1-10, above 10 is 10, garbage is the seed 3', () => {
+  for (const [value, want] of [[undefined, 3], ['', 3], ['abc', 3], ['-2', 3], ['2.5', 3], ['0', 0], ['1', 1], [' 4 ', 4], ['3', 3], ['10', 10], ['11', 10], ['999', 10]])
+    assert.strictEqual(H.historyCount(value), want, `ALFRED_CODE_HISTORY=${JSON.stringify(value)}`);
+  assert.deepStrictEqual([1, 3, 10].map(H.historyCap), [300, 600, 1650]);
+});

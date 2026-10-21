@@ -25,6 +25,7 @@ const path = require('node:path');
 const { hashItem } = require('./library.js');
 const { commonJsScope } = require('./copy.js');
 const { entryHash } = require('./stamp.js');
+const { seededAgentsMdPath } = require('./seeds.js');
 
 const isMarker = (file) => { try { const j = JSON.parse(fs.readFileSync(file, 'utf8')); return Object.keys(j).length === 1 && j.type === 'commonjs'; } catch { return false; } };
 
@@ -38,13 +39,17 @@ function removeManagedFiles({ claudeDir, skillsDir, library = {}, files = {}, lo
         ...Object.entries(files).map(([rel, h]) =>
         {
             const [kind, name] = rel.includes('/') ? rel.split('/') : ['file', rel];
-            return [kind.replace(/s$/, ''), name, kind === 'skills' ? path.join(skillsDir, name) : path.join(claudeDir, ...rel.split('/')), h];
+            // The seed's row is read where it sits: .claude/, or the root on --instructions-at root.
+            const at = rel === 'AGENTS.md' ? seededAgentsMdPath(path.dirname(claudeDir)) : kind === 'skills' ? path.join(skillsDir, name) : path.join(claudeDir, ...rel.split('/'));
+            return [kind.replace(/s$/, ''), name, at, h];
         }),
     ];
     // Review finding 4: whatever the stamp named, nothing outside its own .claude folder is ever removed -
-    // the item must sit directly inside the folder of its kind (a skill directory, a seat or rule file).
+    // the item must sit directly inside the folder of its kind (a skill directory, a seat or rule file). The one exception
+    // is the seed at the project root - that exact file, at the hash the stack wrote.
     const home = { skill: skillsDir, agent: path.join(claudeDir, 'agents'), rule: path.join(claudeDir, 'rules'), hook: path.join(claudeDir, 'hooks'), file: claudeDir };
-    const inside = (label, at) => Boolean(home[label]) && path.dirname(path.resolve(at)) === path.resolve(home[label]);
+    const rootSeed = path.resolve(path.dirname(claudeDir), 'AGENTS.md');
+    const inside = (label, at) => (Boolean(home[label]) && path.dirname(path.resolve(at)) === path.resolve(home[label])) || (label === 'file' && path.resolve(at) === rootSeed);
     for (const [label, name, at, hash] of items)
     {
         if (!inside(label, at)) { log(`  ${label} name skipped (${String(name).length} chars) - not an item inside its .claude folder`); continue; }

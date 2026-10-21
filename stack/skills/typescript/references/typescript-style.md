@@ -1,6 +1,6 @@
 # TypeScript code style and conventions
 
-The authoritative TypeScript/JavaScript *tooling and style* reference: the concrete tsconfig, ESLint, Prettier, and .editorconfig setup plus the rule-by-rule conventions they enforce. `SKILL.md` owns the conceptual model (why the compiler is a test, discriminated unions, branding, the two failure channels); this document owns the concrete tool config and the enforcement rules - where they overlap, this reference wins. Above both, a project's own config (its `.editorconfig`, `eslint.config.mjs`, `.prettierrc`, `tsconfig.json`) and its `<docs-path>/code-style/CODE-STYLE.md` are HIGHER priority: where a project diverges from these general conventions, follow the project.
+The authoritative TypeScript/JavaScript *tooling and style* reference: the concrete tsconfig, ESLint, Prettier, and .editorconfig setup plus the rule-by-rule conventions they enforce. `SKILL.md` owns the conceptual model (why the compiler is a test, discriminated unions, branding, the two failure channels); this document owns the concrete tool config and the enforcement rules - where they overlap, this reference wins. Above both, a project's own config (its `.editorconfig`, `eslint.config.mjs`, `.prettierrc`, `tsconfig.json`) and its `<docs-path>/preferences/PROJECT-CODE-PREFERENCES.md` are HIGHER priority: where a project diverges from these general conventions, follow the project.
 
 ## Contents
 

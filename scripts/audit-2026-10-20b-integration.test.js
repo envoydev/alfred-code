@@ -19,7 +19,7 @@ test('I1: every verifier seat names its fallback when the preferences script is 
     for (const f of seats)
     {
         const body = flat(read(`stack/agents/${f}`));
-        assert.ok(body.includes("quote its `checked:` line (no script there: judge each entry by hand and say so);"), f);
+        assert.ok(body.includes('no script or no docs from this cwd: `preferences: not checked - <why>`, never silent'), f);
     }
 });
 
@@ -30,9 +30,9 @@ test('I2: the code-quality analyzer is handed code preferences only, in the find
 {
     const body = flat(read('stack/agents/code-quality-analyzer.md'));
     assert.ok(!body.includes('ARCHITECTURE-PREFERENCES.md'), 'no architecture entries');
-    assert.ok(body.includes("the user's preference entries from `CODE-PREFERENCES.md`;"), 'code entries');
+    assert.ok(body.includes("the user's preference entries from `PERSONAL-CODE-PREFERENCES.md`;"), 'code entries');
     assert.ok(!body.includes("'it differs from a preference'"), 'old wording');
-    assert.ok(body.includes("'breaks CODE-PREFERENCES.md#c3'"), 'the cite');
+    assert.ok(body.includes("'breaks PERSONAL-CODE-PREFERENCES.md#c3'"), 'the cite');
 });
 
 // I3: the README said 'about 16k tokens' while docs/install-footprint.md measured 12.6k-13.8k (system audit 2026-10-20b
@@ -48,10 +48,10 @@ test('I3: the README points at the footprint doc for the always-on cost, never a
 // S1 (final review 2026-10-20b): the rule template and the doc shape name the git rule's consent and safety lines beside
 // the never-list, but the capture skill's own conflict check, which tells the user before a weakening entry is written,
 // did not - so 'force-push freely' was recorded with no warning while the rule it lands in says it never binds.
-test('S1: the capture\'s conflict check names the git rule\'s consent and safety lines in its never-binds list', () =>
+test('S1: the capture\'s conflict check names the locked git entries in its never-binds list', () =>
 {
     const body = flat(read('stack/skills/capture-preferences/SKILL.md'));
-    assert.ok(body.includes("A preference that would weaken security, input validation, error handling, accessibility or `alfred-git.md`'s consent and safety lines, or open a hook's gate, never binds there"), 'the conflict check');
+    assert.ok(body.includes("the git doc's locked entries") && body.includes("never binds there, and no entry weakens a `locked` one"), 'the conflict check');
     const sites = JSON.parse(read('meta/shared-rules.json')).rules['git-preferences-carve-out'].sites.map((s) => s.file);
     assert.ok(sites.includes('stack/skills/capture-preferences/SKILL.md'), 'pinned as a site of the carve-out');
 });

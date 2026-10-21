@@ -157,7 +157,11 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
     no SDK path. Its plugin row goes the engine way on the copy route and takes its own scope (`soloKept`); its
     prerequisites are said once, on the run that brings it in. Tools: the pinned server's own `tools/list`
     (`refresh-mcp-pins.js --only mobile-control`, which moves no other pin and keeps the uvx cut-off day); `appium_ai`
-    registers only with `AI_VISION_ENABLED=true` and a vision key, so it is not listed. `ionic-angular-verifier` and
+    registers only with `AI_VISION_ENABLED=true` and a vision key, so it is not listed. Advisories (audit 2026-10-21
+    mcps T1-3, ruling M-A2): appium-mcp 1.97.1 resolves 20 critical npm advisories its upstream pins (`@appium/support`
+    holds `shell-quote` at 1.10.0) and no newer release exists, so it stays offered and the risk is named - the refresh
+    audits each npm row's tree at its pin and cut-off (`npmAudit`, report only), `--write` records the count on the row
+    (`advisories`), and `prereqNotes` says it on the run that brings the server in. `ionic-angular-verifier` and
     `evidence-gatherer` hold only its read-only observe subset (`appium_screenshot`, `appium_get_page_source`,
     `appium_find_element`, `appium_find_elements`, `appium_get_text`, `appium_get_element_attribute` - no session tool,
     so they read a session already open; audit 2026-10-14 AG08), named in their `meta/seat-tools.json` rows and described
@@ -211,7 +215,8 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
     dir takes `<data root>/<engine>-control/output/`, the dir a fresh capture names (2026-10-10: a pre-2.1.0 rule
     kept a project writing screenshots to the repo root's `.playwright/output/`). The old flags
     (`--playwright-browsers`, `--playwright-enabled`) and stamp lines (`playwright-browsers:`,
-    `playwright-enabled:`) are read for one release.
+    `playwright-enabled:`) are still read (`args.js` ALIASES, `stack-select.js`, `stamp.js`), kept since 2.0.0 for a
+    stamp or a typed line an older release wrote.
 
 - **The navigation server (Serena) self-activates via `--project-from-cwd`** (finds `.serena/project.yml` or `.git` walking
   up from its cwd); a project with no `.git` of its own whose folder has moved under the data root gets
@@ -274,8 +279,8 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
   `install-records`), else that top level; with no git it is the launch directory alone. Nothing above the top level is
   read - a record or engine planted in a shared ancestor redirected the database, serena and the memory tag, and ran
   (T1). A linked worktree's `project` is the main checkout whenever that one holds a record, whatever the worktree
-  carries, so both routes open main's project database (T2). The four plugin launchers read it (browser, navigation and
-  desktop at the `checkout`, memory at the `project`), as do `memory-session.js` and the engine's CLI verbs (`level`,
+  carries, so both routes open main's project database (T2). The five plugin launchers read it (browser, navigation,
+  desktop and mobile at the `checkout`, memory at the `project`), as do `memory-session.js` and the engine's CLI verbs (`level`,
   `export` and the rest - T3); no launcher reads `CLAUDE_PROJECT_DIR`. The copy route's navigation, browser and memory
   rows start as `node -e <ROOT_BOOT> -- <checkout|project> <command> ...`: a constant that reads the launch directory the
   same bounded way. A `checkout` row starts the command itself (through `cmd /d /s /c` on Windows) at the folder holding

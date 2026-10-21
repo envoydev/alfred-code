@@ -40,7 +40,8 @@ const of = (suffix) => seats.filter((s) => s.endsWith(suffix));
 // stack instead of arriving only through the designer's and verifier's preloads.
 test('A7: data is detected from EF Core alone, the trio says .NET / EF Core, dotnet-migrate is seeded', () =>
 {
-    const init = squash(readRel('setup-plugin/references/init-install.md'));
+    // the marker list moved to its one home (audit 2026-10-21 commands T2-13)
+    const init = squash(readRel('setup-plugin/references/stack-detection.md'));
     assert.doesNotMatch(init, /`\*\.sql` \/ a migrations folder -> `data`/, 'init: *.sql alone no longer detects data');
     assert.ok(init.includes('a `.csproj` referencing `Microsoft.EntityFrameworkCore.*`, or a `Migrations/` folder holding a `*ModelSnapshot.cs` beside a `.csproj` -> `data`'), 'init: the EF Core signal');
     assert.match(init, /`\*\.sql` files or a migrations folder alone \(Flyway, Liquibase, Prisma, a Node or Python ORM\) are NOT `data`/, 'init: the pure-SQL case is named');
@@ -210,7 +211,7 @@ test('agents #14: AppHost only where one exists, left_running on every verifier,
     assert.doesNotMatch(devops, /dotnet build the AppHost[,;]/, 'devops-verifier: an unconditional AppHost build');
     assert.ok(devops.includes('dotnet build the Aspire AppHost when the project has one'), 'devops-verifier: the condition');
     for (const s of of('-verifier')) assert.ok(squash(read(s)).includes('a literal `left_running:` line'), `${s}: left_running`);
-    assert.strictEqual(listedIn('verifier-left-running-line').size, 11);
+    assert.strictEqual(listedIn('verifier-left-running-line').size, 13, 'ten verifiers, the reviewer, devops-implementer and the gatherer (audit 2026-10-21 agents T2-10 / T2-13)');
     assert.doesNotMatch(squash(read('console-solution-designer')), /fetching vendor docs to scratch/);
     const ng = squash(read('web-angular-solution-designer'));
     for (const pin of ['500 KB initial budget', 'stable v20.2, default v21', 'Signal Forms (form()) on v21+']) assert.ok(!ng.includes(pin), `web-angular designer pins '${pin}'`);

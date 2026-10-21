@@ -39,7 +39,13 @@
       "registry": "npm",
       "spelling": "@<v>",
       "version": "1.97.1",
-      "refreshed": "2026-10-20"
+      "refreshed": "2026-10-21",
+      "advisories": {
+        "checked": "2026-10-21",
+        "critical": 20,
+        "high": 21,
+        "total": 44
+      }
     }
   }
 }

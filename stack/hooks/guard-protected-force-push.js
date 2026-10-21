@@ -2,7 +2,7 @@
 // installer-managed - update overwrites local edits; put project policy in a separate hook file.
 // PreToolUse gate: block a force-push or deletion of a protected branch (main / master /
 // develop). It is a deterministic, catastrophic, irreversible event - so it is enforced by a
-// hook with no prose copy to consult (alfred-git.md only prefers --force-with-lease), never left to
+// hook with no prose copy to consult (the git preferences doc only prefers --force-with-lease), never left to
 // prose the model can skip. Reads the tool-call JSON on stdin; exit 2 blocks
 // (stderr fed back to the model), exit 0 allows.
 //

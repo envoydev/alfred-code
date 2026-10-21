@@ -22,7 +22,8 @@ test('row 1: a step the tools can do is never handed over as an instruction - do
     assert.ok(!rule.includes('is done, not handed to the user'), 'the unconditional form is gone');
     assert.match(rule, /is never handed to the user as an instruction - check the tools you hold before you ask, then do it, or offer it where a rule gates it \(a commit, a teardown, a production target\)/);
     // the gates it defers to still say what it defers to
-    assert.match(injected('alfred-git'), /Do NOT commit or push until the user explicitly says to/);
+    // the git rule's lines are the seeded GIT-PREFERENCES.md's locked consent entry since 2026-10-21
+    assert.match(flat(read('stack/skills/capture-preferences/references/git-seed.md')), /Do NOT commit or push until the user explicitly says to/);
     assert.match(injected('alfred-quality-gates'), /Tear down only AFTER the answer/);
     assert.match(injected('alfred-quality-gates'), /a production match waits for the user's ask/);
 });
@@ -33,7 +34,7 @@ test('row 2 + S9: the budget spares a baseline close line, and step by step lift
 {
     const rule = injected('alfred-interaction');
     assert.match(rule, /never trim a field a skill's report contract or a baseline rule's close line requires, or a self-correction disclosure\./);
-    assert.match(rule, /Only the user's own message lifts it \('in detail', 'walk me through', 'step by step', 'write a plan', the same ask in any language\); 'explain' does not\./);
+    assert.match(rule, /Only the user's own message lifts it \('in detail', 'walk me through', 'step by step', 'write a plan', the same ask in any language\), and an entry of their personal preferences doc sets it; 'explain' does not\./);
 });
 
 // Row 3: three pros and three cons per candidate in prose blew the budget; a table is exempt.

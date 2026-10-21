@@ -72,7 +72,7 @@ text and END THE TURN.
 
 **The fresh-session resume.** A stop is the cheap point to run the next step in a fresh session
 (`/clear`): resume needs only the plan file, with zero re-work. Once the cycle has crossed the install's
-fresh-session trigger (180,000 tokens on a window under 300k, 400,000 on one of 1M or more, 280,000 on any other window), spans hours, or resumes after a 2h+ idle gap, the fresh-session resume IS one of the next ask's
+fresh-session trigger (400,000 tokens on a window of 1M or more, 280,000 on one of 300k up to 1M, 180,000 on any other), spans hours, or resumes after a 2h+ idle gap, the fresh-session resume IS one of the next ask's
 options - every ask until it is taken or the cycle closes. Below all three (a new cycle's first ask and the compaction stop aside), no ask
 carries it and no resume block prints unless the user asks; hours and gaps are the hook's clock, never your guess.
 The stop-contract hook injects the two measured numbers (this session's carry per message, a fresh one's cold floor): quote THIS stop's, or say they are unmeasured.
@@ -220,7 +220,7 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
    under AUTO the user's first sight of them.
    *Stop* - this stop is where the close-out decisions live: anything PENDING (an uncommitted diff, an
    unpushed commit, a deferred item, a cross-repo follow-up) goes into the ask; only a cycle with nothing
-   pending ends on the report alone. An uncommitted diff waits for the user's pick (`alfred-git.md`):
+   pending ends on the report alone. An uncommitted diff waits for the user's pick (`GIT-PREFERENCES.md`):
 
    ```ask
    The feature is done and verified; the diff is uncommitted. Commit it on this machine?

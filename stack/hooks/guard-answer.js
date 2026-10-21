@@ -131,7 +131,7 @@ function proseOf(text) {
 const BUDGET_TEXT =
         `Answer budget (alfred-interaction.md): 3 sentences plus bullets, ~${BUDGET} characters of prose, result first; fit it before sending. ` +
         `Code, tables and command output are exempt. Only THIS message's depth words lift it (in detail / walk me ` +
-        `through / step by step / write a plan). Single dashes and single quotes, an ` +
+        `through / step by step / write a plan), and an entry of the user's personal preferences doc sets it. Single dashes and single quotes, an ` +
         `AskUserQuestion's text included.`;
 
 // --- the correction streak: N short human turns in a row, each right after a long answer -----
@@ -410,7 +410,9 @@ if (payload.hook_event_name === 'UserPromptSubmit') {
 // all four compactMetadata.preservedMessages records carry preserved:false for the budget's uuid.
 // A co-installed plugin's banner WAS re-injected at every compaction, so this route is proven.
 // Any hook whose whole value is an INJECTION needs this wiring; a hook that only BLOCKS does not.
-if (payload.hook_event_name === 'SessionStart') {
+// A seat's own compaction runs this inside the seat (its agent_id on the payload, loading audit 2026-10-21 G3): a
+// seat's report has its own shape, so no budget goes there.
+if (payload.hook_event_name === 'SessionStart' && !payload.agent_id) {
   process.stdout.write(JSON.stringify({
     hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: BUDGET_TEXT },
   }));

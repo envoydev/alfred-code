@@ -192,7 +192,7 @@ function askGapArm() {
 const ASK_GAP = IS_HOLD_CALL && !IS_SKILL_CALL ? askGapArm() : null;
 // The common case - no hold pending - leaves before anything else is read.
 if (IS_HOLD_CALL && !IS_SKILL_CALL && !ASK_GAP && !fs.existsSync(compactHoldFile())) process.exit(0);
-if (!IS_SKILL_CALL && !IS_HOLD_CALL && !['UserPromptExpansion', 'UserPromptSubmit', 'SessionStart', 'PreCompact'].includes(EVENT)) process.exit(0);
+if (!IS_SKILL_CALL && !IS_HOLD_CALL && !['UserPromptExpansion', 'UserPromptSubmit', 'SessionStart', 'PreCompact', 'PostModelSwitch'].includes(EVENT)) process.exit(0);
 
 // The fresh-session arithmetic lives in fresh-session.js beside this hook, shared with
 // guard-stop-contract.js. An update from an older install can run this hook before that file
@@ -201,12 +201,23 @@ let fresh;
 try { fresh = require(require('path').join(__dirname, 'fresh-session.js')); } catch {
   fresh = {
     use() {}, freshAt: (k, d) => d, FRESH_AT_200K: 0, FRESH_AT_300K: 0, FRESH_AT_1M: 0, FRESH_OFF: true, COMPACT_INSTEAD: false,
-    sessionModelId: () => null, tableWindow: () => null, envWindow: () => null, knownWindow: () => null,
+    sessionModelId: () => null, tableWindow: () => null, recordSessionModel: () => false, knownWindow: () => null,
     ctxThreshold: () => null, MIN_RECOVERABLE_SHARE: 0.4, coldFloor: () => null, worthResuming: () => false,
     transcriptSize: () => 0, freshAskAnsweredThisTurn: () => false, askAnsweredSince: () => true,
   };
 }
 fresh.use(payload);
+// THE SESSION'S MODEL (the user's ruling, 2026-10-21): every SessionStart saves the `model` it carries and a /model switch
+// the `to_model`, so the window is the model's own capacity from the first prompt on (fresh-session.js readModelId). Only
+// the compaction start goes on from here.
+// A seat's own compaction runs the SessionStart hooks inside the seat, its agent_id on the payload (loading audit
+// 2026-10-21 G3, 77 of 77 compacted seats in transcripts): the model, the snapshot pointer, the hold and the offer are
+// the main session's, so none of them is written or said there.
+if (EVENT === 'SessionStart' && payload.agent_id) process.exit(0);
+if (EVENT === 'SessionStart' || EVENT === 'PostModelSwitch') {
+  fresh.recordSessionModel(EVENT === 'PostModelSwitch' ? payload.to_model : payload.model);
+  if (EVENT === 'PostModelSwitch' || String(payload.source || '') !== 'compact') process.exit(0);
+}
 const { FRESH_OFF, COMPACT_INSTEAD, ctxThreshold, worthResuming } = fresh;
 // COMPACT INSTEAD's one line, said at the compaction start and at the first orchestration run of a session.
 const COMPACT_NOTE = 'This project compacts instead of offering a fresh session (ALFRED_CODE_AUTO_COMPACT=1): past its '
@@ -455,12 +466,14 @@ if (EVENT === 'UserPromptSubmit') {
 }
 
 // PreCompact: the last moment the whole transcript is still there. Write what a resume needs to
-// <data root>/state/sessions/COMPACT-STATE - the live plan file, the open flow stamps with their ages, the files this session wrote
+// <data root>/state/sessions/COMPACT-STATE-<session> - one per session, so a parallel session's PreCompact never
+// overwrites it (loading audit 2026-10-21 G10) - the live plan file, the open flows, the open flow stamps with their ages, the files this session wrote
 // (from docs-session's per-actor attribution state) - with no model call; the SessionStart `compact`
 // injection below points at it. Never blocks a compaction: every failure only leaves a line out.
 const projectRoot = () => process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
 const legacyFlow = () => nodePath.resolve(projectRoot(), docsRootEnv(), 'flow');
-const COMPACT_STATE = () => (layout ? layout.statePath(projectRoot(), 'sessions', 'COMPACT-STATE') : nodePath.join(legacyFlow(), 'COMPACT-STATE'));
+const COMPACT_NAME = () => `COMPACT-STATE-${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_').slice(-80)}`;
+const COMPACT_STATE = () => (layout ? layout.statePath(projectRoot(), 'sessions', COMPACT_NAME()) : nodePath.join(legacyFlow(), COMPACT_NAME()));
 const FILES_SHOWN = 50;
 function livePlan() {
   // The LAST plan file a tool call touched in the transcript tail, else the newest plan under the docs root.
@@ -525,7 +538,7 @@ function flowStamps() {
   // the retired monitor's state (its turn log and context marker) and the turn check's marker (an edit list before
   // 2026-10-16) are working state, not stamps
   list(legacyFlow(), layout ? (f) => layout.flowKind(f) === 'approvals'
-    : (f) => f !== 'COMPACT-STATE' && f !== 'compact-points.json' && !/^monitor-.*\.(?:json|jsonl|context)$/.test(f) && !/^turn-(?:edits|check)-/.test(f));
+    : (f) => !/^COMPACT-STATE/.test(f) && f !== 'compact-points.json' && !/^monitor-.*\.(?:json|jsonl|context)$/.test(f) && !/^turn-(?:edits|check)-/.test(f));
   return [...seen].map(([f, age]) => ({ f, age })).sort((a, b) => a.f.localeCompare(b.f));
 }
 function sessionWrites() {
@@ -549,7 +562,7 @@ function sessionWrites() {
 // after that spend. `capture-awareness` is here because the stack's own next-steps card
 // tells the user to run it after every update (its 2026-10-16 parts keep their old names here for an old copy). The guided plugin commands are here because
 // they are multi-phase walks too, and the slash route is what finally reaches them.
-const ORCHESTRATION = /^((alfred-)?(loop-(quality|code-quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|awareness|code-quality|code-style|preferences|test-coverage|usage-report|related-projects|agent-awareness|project-awareness|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|alfred-code:(init|update|configure|validate))$/;
+const ORCHESTRATION = /^((alfred-)?(loop-(quality|code-quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|awareness|code-quality|code-style|project-code-style|preferences|test-coverage|usage-report|related-projects|agent-awareness|project-awareness|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|alfred-code:(init|update|configure|validate))$/;
 // a plugin-namespaced Skill call arrives as `<plugin>:<skill>`; the guided commands are
 // matched on their FULL name, so a bare `/setup` from some other plugin is not read as one of them - and only this
 // stack's own namespace is stripped, so another plugin's `other:task-solve` is not this stack's run (audit 2026-10-08)
@@ -626,12 +639,20 @@ function skillHeads(root, skill) {
 // so a slash flow resumed from the summary alone - audit 2026-10-10 C09, 6ed392a5: the close ask dropped the
 // template's 'Commit now' option and both verbatim close lines, then a clarify, a re-ask and a typed redo. The whole
 // transcript is read in chunks (PreCompact is rare and the run's marker sits at its head).
+// The flows open at the compaction: the newest typed slash flow and every orchestration run the Skill tool started after
+// it (a slash /task-solve building through Skill(task-implement) - loading audit 2026-10-21 G2), the newest last, at most
+// FLOW_CHAIN. Each Skill-route run carries how many Skill calls came after it: the harness re-attaches the newest skills'
+// first 5,000 tokens each within 25,000 in all (code.claude.com/docs/en/skills, verified 2026-10-21), so an older run
+// can come back cut or not at all.
+const FLOW_CHAIN = 3;
 function activeFlow() {
   try {
     const p = payload.transcript_path;
     const size = fs.statSync(p).size;
     const fd = fs.openSync(p, 'r');
     let found = null;
+    let chain = [];
+    let skillCalls = 0;
     try {
       const CHUNK = 4 * 1024 * 1024;
       let carry = '';
@@ -645,12 +666,16 @@ function activeFlow() {
             const c = (JSON.parse(line).message || {}).content;
             const text = typeof c === 'string' ? c : Array.isArray(c) ? c.map((x) => (x && x.type === 'text' && x.text) || '').join('\n') : '';
             const m = /<command-name>\s*\/?([A-Za-z0-9:_-]+)\s*<\/command-name>/.exec(text);
-            if (m && isOrchestration(m[1])) found = { name: m[1], route: 'slash' };
+            if (m && isOrchestration(m[1])) { found = { name: m[1], route: 'slash' }; chain = [found]; }
           } else if (line.includes('"Skill"') && line.includes('"tool_use"') && line.includes('"type":"assistant"')) {
             try {
               for (const b of JSON.parse(line).message.content || []) {
                 const n = b && b.type === 'tool_use' && b.name === 'Skill' ? String((b.input || {}).skill || (b.input || {}).name || '') : '';
-                if (n && isOrchestration(n)) found = { name: n, route: 'skill' };
+                if (!n) continue;
+                skillCalls += 1;
+                if (!isOrchestration(n)) continue;
+                found = { name: n, route: 'skill', at: skillCalls };
+                chain = [...chain.filter((r) => r.name !== n), found].slice(-FLOW_CHAIN);
               }
             } catch { /* a cut row */ }
           }
@@ -659,10 +684,20 @@ function activeFlow() {
     } finally { fs.closeSync(fd); }
     if (!found) return null;
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-    found.body = skillHeads(root, found.name).find((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } }) || null;
+    for (const run of chain) {
+      run.body = skillHeads(root, run.name).find((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } }) || null;
+      run.after = run.route === 'skill' ? skillCalls - run.at : 0;
+      try { run.chars = run.body ? fs.statSync(run.body).size : 0; } catch { run.chars = 0; }
+      // re-read: a slash body is never re-attached; a Skill body past ~5,000 tokens comes back cut, and one with five
+      // or more Skill calls after it can fall out of the 25,000-token budget
+      run.reread = run.route === 'slash' || run.chars > REATTACH_CHARS || run.after >= REATTACH_LATER;
+    }
+    found.chain = chain;
     return found;
   } catch { return null; }
 }
+const REATTACH_CHARS = 18000;
+const REATTACH_LATER = 5;
 // The context this compaction happened at, kept per project for the fresh-session trigger (fresh-session.js
 // observedCompaction - audit 2026-10-10 C08). PreCompact carries no token count (code.claude.com/docs/en/hooks), so it
 // records the last real model call's context; the compact start below adds the boundary row's own `preTokens`.
@@ -706,8 +741,10 @@ if (EVENT === 'PreCompact') {
       `written: ${new Date().toISOString()}`,
       `trigger: ${payload.trigger || ''}`,
       `live plan: ${plan || 'none found'}`,
-      flow ? `active flow: /${flow.name} (${flow.route === 'slash' ? 'slash command - its body is not re-attached after a compaction' : 'Skill call - the harness re-attaches its body'})` : 'active flow: none found',
+      flow ? `active flow: /${flow.name} (${flow.route === 'slash' ? 'slash command - its body is not re-attached after a compaction' : 'Skill call - the harness re-attaches its body up to 5,000 tokens'})` : 'active flow: none found',
       ...(flow && flow.body ? [`flow body: ${flow.body.split(nodePath.sep).join('/')}`] : []),
+      ...(flow && flow.chain && flow.chain.length ? ['open flows:', ...flow.chain.map((r) => `  /${r.name} - ${r.route === 'slash' ? 'slash command' : 'Skill call'}`
+        + `${r.body ? ` - body ${r.body.split(nodePath.sep).join('/')}` : ''}${r.route === 'skill' ? ` (${r.chars} chars, ${r.after} Skill calls after it)` : ''}${r.reread ? ' - re-read' : ''}`)] : []),
       stamps.length ? 'flow stamps:' : 'flow stamps: none',
       ...stamps.map((s) => `  ${s.f} - ${s.age} min old`),
       `files written this session (${wrote.length})${wrote.length ? ':' : ''}`,
@@ -716,6 +753,7 @@ if (EVENT === 'PreCompact') {
     ];
     fs.mkdirSync(nodePath.dirname(COMPACT_STATE()), { recursive: true });
     fs.writeFileSync(COMPACT_STATE(), lines.join('\n') + '\n');
+    try { require('./hook-prelude.js').sweepStale(nodePath.dirname(COMPACT_STATE()), 'COMPACT-STATE-'); } catch { /* no prelude: no sweep */ }
   } catch { /* a snapshot that cannot be written never stands in the compaction's way */ }
   process.exit(0);
 }
@@ -723,17 +761,28 @@ if (EVENT === 'PreCompact') {
 // session's newest run was a SLASH flow, the line that puts its body back before the next step.
 function compactPointer() {
   try {
-    const file = layout ? layout.findState(projectRoot(), 'sessions', 'COMPACT-STATE') : COMPACT_STATE();
+    const candidates = layout ? [layout.findState(projectRoot(), 'sessions', COMPACT_NAME()), layout.findState(projectRoot(), 'sessions', 'COMPACT-STATE')] : [COMPACT_STATE()];
+    const file = candidates.find((f) => fs.existsSync(f)) || candidates[0];
     if (Date.now() - fs.statSync(file).mtimeMs > 60 * 60 * 1000) return '';
     const state = fs.readFileSync(file, 'utf8').split('\n');
     if (!payload.session_id || !state.includes(`session: ${payload.session_id}`)) return '';
     const rel = nodePath.relative(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), file).split(nodePath.sep).join('/');
-    const flow = (state.find((l) => /^active flow: \/\S+ \(slash command/.test(l)) || '').match(/^active flow: (\/\S+)/);
-    const body = (state.find((l) => l.startsWith('flow body: ')) || '').slice('flow body: '.length).trim();
-    const flowLine = flow
-      ? ` This session's run is ${flow[1]}, typed as a slash command, so its body was NOT carried through the compaction - `
-        + (body ? `Read ${body} again before its next step` : `re-read its SKILL.md before its next step`)
-        + ' (its stop asks and close lines are templates the summary does not keep).'
+    // Every open flow the snapshot marks `re-read` (G2, G9); a snapshot without the block (an older hook) names the
+    // newest run alone, re-read only when it was typed as a slash command.
+    const open = state.slice(state.indexOf('open flows:') + 1).filter((l, i, a) => state.includes('open flows:') && /^ {2}\//.test(l) && a.slice(0, i).every((x) => /^ {2}\//.test(x)));
+    const rows = open.length ? open.filter((l) => / - re-read$/.test(l)).map((l) => {
+      const m = /^ {2}(\/\S+) - (slash command|Skill call)(?: - body (.+?))?(?: \((\d+) chars, (\d+) Skill calls after it\))? - re-read$/.exec(l) || [];
+      return { name: m[1], slash: m[2] === 'slash command', body: m[3], chars: Number(m[4]) || 0, after: Number(m[5]) || 0 };
+    }).filter((r) => r.name) : (() => {
+      const flow = (state.find((l) => /^active flow: \/\S+ \(slash command/.test(l)) || '').match(/^active flow: (\/\S+)/);
+      return flow ? [{ name: flow[1], slash: true, body: (state.find((l) => l.startsWith('flow body: ')) || '').slice('flow body: '.length).trim() }] : [];
+    })();
+    const read = (r) => (r.body ? `Read ${r.body} again before its next step` : 're-read its SKILL.md before its next step');
+    const why = (r) => (r.slash ? `${r.name}, typed as a slash command, so its body was NOT carried through the compaction`
+      : `${r.name}, a Skill call whose body the harness re-attaches only within 5,000 tokens each and 25,000 in all (${r.chars > REATTACH_CHARS ? `${r.chars} chars here` : `${r.after} Skill calls came after it`})`);
+    const flowLine = rows.length
+      ? ` This session's open ${rows.length > 1 ? 'flows are' : 'run is'} ${rows.map((r) => `${why(r)} - ${read(r)}`).join('; ')}`
+        + ` (${rows.length > 1 ? 'their' : 'its'} stop asks and close lines are templates the summary does not keep).`
       : '';
     return `The PreCompact hook saved what this session had open at ${rel} - the live plan, the active flow, the flow stamps with their ages, the files it wrote. Read it before anything else.${flowLine}`;
   } catch { return ''; }
@@ -1012,14 +1061,19 @@ function acwIgnoredNote() {
 }
 function modeBanner(autoOn) {
   const model = fresh.sessionModelId();
-  const listed = fresh.tableWindow();
-  // an unlisted model runs in ALFRED_CODE_CONTEXT_WINDOW_DEFAULT - said as the default, never as the model's own size
-  const window = listed || fresh.envWindow();
-  const room = `its ${window ? `${tokens(window)} ${listed ? '' : 'default '}` : ''}context window${model ? ` (${model})` : ''}`;
+  // the model's own capacity, never a declared default: with none known, no window is quoted and the trigger is said
+  // as ALFRED_CODE_CONTEXT_WINDOW_DEFAULT's
+  const window = fresh.tableWindow();
+  const room = `its ${window ? `${tokens(window)} ` : ''}context window${model ? ` (${model})` : ''}`;
   const acw = fresh.autoCompactWindow();
-  const where = acw
-    ? `as it nears its ${tokens(acw)} auto-compact window (${window ? `of ${tokens(window)}` : 'context'}${model ? `, ${model}` : ''})`
-    : `at Claude Code's own point in ${room}`;
+  // Claude Code caps an auto-compact window at the model's context window (code.claude.com/docs/en/model-config, 'Set
+  // the auto-compact window', verified 2026-10-21), so one past the capacity - a /model switch to a smaller model - is
+  // quoted as the capacity it compacts at
+  const where = acw && window && acw > window
+    ? `as it nears its ${tokens(window)} context window (its ${tokens(acw)} auto-compact window is capped there${model ? `, ${model}` : ''})`
+    : acw
+      ? `as it nears its ${tokens(acw)} auto-compact window (${window ? `of ${tokens(window)}` : 'context'}${model ? `, ${model}` : ''})`
+      : `at Claude Code's own point in ${room}`;
   const name = `/${skill.replace(/^alfred-code:/, '')}`;
   const mode = autoOn
     ? `**Auto-mode: ON** for ${name} - every question takes its (Recommended) option without waiting for you; one with no `
@@ -1034,7 +1088,7 @@ function modeBanner(autoOn) {
       ? `**Context:** auto-compact is on (ALFRED_CODE_AUTO_COMPACT=1) - the session compacts ${where} instead of offering a fresh session.`
       : FRESH_OFF || at === null
         ? `**Context:** the fresh-session offers are off - the session compacts ${where}.`
-        : `**Context:** session refresh - past ~${tokens(at)} tokens of ${room}, the run offers to resume in a fresh session from its state file instead of compacting.`;
+        : `**Context:** session refresh - past ~${tokens(at)} tokens ${window ? `of ${room}` : `(ALFRED_CODE_CONTEXT_WINDOW_DEFAULT - the size of ${room} is not known)`}, the run offers to resume in a fresh session from its state file instead of compacting.`;
   const acwNote = acwIgnoredNote();
   return `${acwNote ? `${acwNote}\n\n` : ''}${BANNER_HEAD}\n${mode}\n${ctxLine}`;
 }
@@ -1089,7 +1143,7 @@ if (EVENT === 'SessionStart') {
   if (quiet) ledgerRow({ mode: 'unattended', kind: 'compact-offer', reason: UNATTENDED_SKIP });
   const manual = !!boundary && boundary.trigger === 'manual';
   const after = 'Two more things for the moment after a compaction. The summary above is the harness' + String.fromCharCode(39) + 's own ' +
-    'and it is in English: keep answering in the language of the user' + String.fromCharCode(39) + 's own prompts, unless a loaded skill sets the answer language (measured: ' +
+    'and it is in English: keep answering in the language of the user' + String.fromCharCode(39) + 's own prompts, unless a loaded skill or the personal preferences doc (PERSONAL-PREFERENCES.md) sets the answer language (measured: ' +
     'two sessions switched to English right after compacting). And when a plan or state file is ' +
     'live, re-read its HEADER first - it holds the anchors and the next step - before re-orienting ' +
     'from the code (measured: a resume grepped the tree and read a 10k-char source range before ' +

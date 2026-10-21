@@ -216,8 +216,8 @@ function inside(target, dir) {
 // worked on from a temp dir is exactly that case (it is how this hook's own tests run).
 const effectiveAllow = allowRoots.filter((d) => !inside(ROOT, d));
 // The user's own allowance for THIS session. A block ends in an ask, and the 'allow' answer has
-// to be honourable or the ask offers a route this guard then denies - the failure alfred-git
-// records: an ask recommended a sibling-repo commit, the user took it, the guard denied it at the
+// to be honourable or the ask offers a route this guard then denies - the failure the git rule
+// recorded: an ask recommended a sibling-repo commit, the user took it, the guard denied it at the
 // first git verb. So the answer is recorded as a receipt this guard reads:
 // <data root>/state/approvals/CROSS-WRITE-ALLOW (the pre-2.8.0 <docs-path>/flow/ one still read), one root per line, '#' comments allowed. Session-scoped
 // the way the dispatch guard's APPROVAL stamp is - older than 8h, or written before this session

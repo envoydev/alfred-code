@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // history-session.js - SessionStart + Stop. Thin: the engine history.js sits beside it (copied, not
 // wired - the docs.js / memory.js split). Stop upserts this session's entry under <data root>/state/history/.
-// SessionStart does the same (it pins the start commit), prunes, and injects the last three entries of
-// THIS branch - what they committed, left dirty and ruled. No model call; ALFRED_CODE_HISTORY=0 is off.
+// SessionStart does the same (it pins the start commit), prunes, and injects the last entries of
+// THIS branch - what they committed, left dirty and ruled. No model call; ALFRED_CODE_HISTORY is how many earlier sessions the start block
+// shows (seeded 3, at most 10; the block's cap is 150 chars plus 150 per session), and `0` is off.
 // Fail-open in every direction: no engine, garbage stdin, no git, a locked file - exit 0, print nothing.
 // History never blocks a turn. Its Stop process also runs check-turn-build.js's step (the user's ruling of 2026-10-16:
 // that hook started a node process every turn to read a switch that is off in every project) - with the check's own
@@ -40,7 +41,6 @@ function wiringRows(rows) {
 }
 
 const STDIN_TIMEOUT_MS = 2000;
-const BLOCK_CAP = 600;
 
 // Bounded like memory-session.js: a stdin that never closes must not hold the hook past its budget.
 function readStdinBounded(timeoutMs) {
@@ -67,9 +67,11 @@ function readStdinBounded(timeoutMs) {
 
 // The history half: fail-open and silent, whatever happens here the turn check still runs.
 function history(payload) {
-  if (historyOff || envOf(process.env, 'HISTORY') === '0') return;
+  if (historyOff) return;
   let H;
   try { H = require(path.join(__dirname, 'history.js')); } catch { return; }
+  const count = H.historyCount(envOf(process.env, 'HISTORY'));
+  if (!count) return;
   // GATE 6 (hook-prelude.js): a Cursor payload runs only the protective guards - outside the try, a caller's exit must not be swallowed.
   let cursorOff = false;
   try { cursorOff = require('./hook-prelude.js').cursorStandDown(payload, __filename); } catch { /* no prelude: run */ }
@@ -79,10 +81,12 @@ function history(payload) {
   try {
     if (event === 'Stop') {
       H.upsert(root, payload);
-    } else if (event === 'SessionStart') {
+    } else if (event === 'SessionStart' && !payload.agent_id) {
+      // A seat's own compaction runs SessionStart inside the seat with the MAIN session's id (loading audit 2026-10-21
+      // G3): it would rewrite the main session's entry and inject the branch history into a seat - neither happens.
       const entry = H.upsert(root, payload);
       H.prune(H.historyDir(root), 200, 180);
-      const block = entry ? H.renderStartBlock(H.lastForBranch(root, entry.branch, 3, entry.session), BLOCK_CAP, root) : '';
+      const block = entry ? H.renderStartBlock(H.lastForBranch(root, entry.branch, count, entry.session), H.historyCap(count), root) : '';
       if (block) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: block } }));
     }
   } catch { /* history never costs the turn check */ }

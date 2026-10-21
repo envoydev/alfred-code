@@ -16,7 +16,7 @@ Load with it:
 
 The measurements behind these rules are `references/evidence.md` - an audit appendix, not a run-time load.
 
-**The enforceable config lives in `references/angular-style.md`** - the angular-eslint + Prettier flat config, the naming table, modern-vs-legacy examples. A project's own config (`eslint.config.js`, `angular.json`, `.prettierrc`, `.editorconfig`) and its `<docs-path>/code-style/CODE-STYLE.md` are higher priority - follow the project where it diverges.
+**The enforceable config lives in `references/angular-style.md`** - the angular-eslint + Prettier flat config, the naming table, modern-vs-legacy examples. A project's own config (`eslint.config.js`, `angular.json`, `.prettierrc`, `.editorconfig`) and its `<docs-path>/preferences/PROJECT-CODE-PREFERENCES.md` are higher priority - follow the project where it diverges. The user's own preferences docs there rank higher still: where an entry and this skill disagree, ask the user which wins, the entry's side marked (Recommended).
 
 ## When to use
 

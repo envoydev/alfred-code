@@ -211,7 +211,7 @@ test('every shipped serena-agent launch names the release pin and the cut-off', 
 // an editing tool that context would then serve unwatched. The shipped YAML records the upstream file's sha256; the
 // refresh keeps the navigation pin where it is until the new release's claude-code.yml hashes the same - i.e. until
 // someone re-diffs the stack's file against it and records the new hash.
-async function refreshRun({ navigation = '9.9.9', context = 'same', recorded = true, lists = {}, pinsRaw = null, committed = {}, argv = ['--write'], npm = {} } = {})
+async function refreshRun({ navigation = '9.9.9', context = 'same', recorded = true, lists = {}, pinsRaw = null, committed = {}, argv = ['--write'], npm = {}, audit = () => null } = {})
 {
     const os = require('node:os');
     const { main } = require('./refresh-mcp-pins.js');
@@ -234,6 +234,7 @@ async function refreshRun({ navigation = '9.9.9', context = 'same', recorded = t
         pypiLatest: (pkg, python) => { asked.push([pkg, python]); return pkg === 'serena-agent' ? navigation : Object.values(current).find((r) => r.package === pkg).version; },
         upstreamContext: () => (context === 'same' ? upstream : context),
         listTools: (name) => { listed.push(name); return Object.hasOwn(lists, name) ? lists[name] : null; },
+        npmAudit: audit,
     });
     const result = { rc, listed, asked, text: out.join('\n'), pins: JSON.parse(fs.readFileSync(pinsFile, 'utf8')), tools: JSON.parse(fs.readFileSync(toolsFile, 'utf8')) };
     fs.rmSync(dir, { recursive: true, force: true });
@@ -329,4 +330,30 @@ test('M31 meta/mcp-tools.json lists every pinned server at its pin, and the desk
     assert.ok(tools["alfred-documentation"] && tools["alfred-documentation"].tools.includes('query-docs'), 'the hosted documentation server is listed');
     const { WINDOWS_TOOLS } = require('../stack/mcp/desktop-launch.js');
     assert.deepStrictEqual([...WINDOWS_TOOLS].sort(), [...tools['windows-control'].tools].sort());
+});
+
+// Audit 2026-10-21 mcps T1-3 (ruling M-A2): appium-mcp 1.97.1 resolves 20 critical npm advisories its upstream pins, and
+// no newer release exists. The refresh audits each npm row's tree at its pin and cut-off - report only, never a refusal -
+// and --write records the count on the row, where the mobile launcher's prerequisite note reads it.
+test('mcps T1-3 refresh-mcp-pins: each npm row is audited at its pin and cut-off, reported, and recorded on --write', async () =>
+{
+    const asked = [];
+    const audit = (pkg, version, before) => { asked.push([pkg, version, before]); return pkg === 'appium-mcp' ? { critical: 20, high: 21, total: 44 } : null; };
+    const dry = await refreshRun({ argv: [], audit });
+    assert.strictEqual(dry.rc, 0, 'an advisory never fails the refresh');
+    assert.match(dry.text, /mobile-control: npm audit appium-mcp@\S+: 20 critical, 21 high of 44 \(report only\)/);
+    assert.match(dry.text, /browser: npm audit NOT CHECKED/);
+    assert.deepStrictEqual(asked.map(([p]) => p).sort(), ['@playwright/mcp', 'appium-mcp'], 'npm rows only');
+    assert.ok(asked.every(([, , before]) => before === '2026-10-01T23:59:59Z'), 'audited at the cut-off the row launches with');
+    const wrote = await refreshRun({ audit });
+    assert.deepStrictEqual(wrote.pins.pins['mobile-control'].advisories, { checked: '2026-10-01', critical: 20, high: 21, total: 44 });
+    assert.ok(!('advisories' in wrote.pins.pins.browser), 'an unchecked row records none');
+    // --only another row keeps the recorded count; a row whose audit could not run keeps it while the version holds
+    const pinsRaw = JSON.stringify(wrote.pins);
+    const other = await refreshRun({ argv: ['--write', '--only', 'browser'], pinsRaw });
+    assert.deepStrictEqual(other.pins.pins['mobile-control'].advisories, wrote.pins.pins['mobile-control'].advisories, '--only browser drops mobile\'s count');
+    const blind = await refreshRun({ argv: ['--write', '--only', 'mobile-control'], pinsRaw });
+    assert.deepStrictEqual(blind.pins.pins['mobile-control'].advisories, wrote.pins.pins['mobile-control'].advisories, 'an unreachable audit keeps the count at the same pin');
+    const bumped = await refreshRun({ argv: ['--write', '--only', 'mobile-control'], pinsRaw, npm: { 'appium-mcp': '9.0.0' } });
+    assert.ok(!('advisories' in bumped.pins.pins['mobile-control']), 'a new pin with no audit carries no old count');
 });

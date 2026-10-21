@@ -11,7 +11,8 @@ const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 const { hashItem } = require('./install/library.js');
 const seeds = require('./install/seeds.js');
 
-const SHIPPED = ['docs-root', 'git', 'interaction', 'memory', 'navigation', 'quality-gates', 'security'];
+// alfred-git retired on 2026-10-21 (its lines are the seeded GIT-PREFERENCES.md); baseline-git's successor is the preferences rule.
+const SHIPPED = ['docs-root', 'interaction', 'memory', 'navigation', 'preferences', 'quality-gates', 'security'];
 const SEL = `skill markdown-style\nrule markdown-docs\n${SHIPPED.map((n) => `rule alfred-${n}`).join('\n')}\n`;
 // The install is the walk's; the update is what /alfred-code:update runs - the read-back of what is on disk.
 const UPDATE = (scope = 'project') => ['--scope', scope, '--installed-only'];
@@ -44,12 +45,16 @@ function makeOld(repo, { edit = [] } = {})
     const rows = Object.entries(stampRules(repo));
     const moved = rows.map(([name, hash]) =>
     {
-        const m = /^alfred-(docs-root|git|interaction|memory|navigation|quality-gates|security)$/.exec(name);
+        const m = /^alfred-(docs-root|interaction|memory|navigation|quality-gates|security)$/.exec(name);
         if (!m) return [name, hash];
         const old = `baseline-${m[1]}`;
         fs.renameSync(path.join(dir, `${name}.md`), path.join(dir, `${old}.md`));
         return [old, hashItem(path.join(dir, `${old}.md`))];
-    });
+    }).filter(([name]) => name !== 'alfred-preferences');
+    // 2.1.5 had no preferences rule and shipped the git rule as baseline-git: its real text, recorded.
+    fs.rmSync(path.join(dir, 'alfred-preferences.md'));
+    fs.writeFileSync(path.join(dir, 'baseline-git.md'), SHIPPED_OLD['baseline-git']);
+    moved.push(['baseline-git', hashItem(path.join(dir, 'baseline-git.md'))]);
     fs.writeFileSync(stampOf(repo), text.replace(/^library-rules: .*$/m, `library-rules: ${moved.map(([n, h]) => `${n}=${h}`).join(',')}`));
     for (const g of GENERATED) fs.writeFileSync(path.join(dir, `baseline-project-${g}.md`), body(g));
     fs.writeFileSync(path.join(dir, 'project-code-style.md'), body('code-style'));
@@ -110,7 +115,7 @@ test('a hand-edited old copy is kept and named, never pruned with its edits (aud
     });
     assert.ok('baseline-git.md' in r.files, 'the edited copy was deleted');
     assert.match(r.files['baseline-git.md'], /a hand edit/, 'its edit is intact');
-    assert.ok('alfred-git.md' in r.files, 'the shipped rule is written beside it');
+    assert.ok('alfred-preferences.md' in r.files, 'the successor is written beside it');
     assert.match(outs[1], /!! rule kept: baseline-git\.md.*edited/, `no kept line: ${outs[1]}`);
     assert.ok(!('baseline-interaction.md' in r.files), 'an unedited old copy is still pruned');
     assert.ok(/baseline-git\.md/.test(out), 'and a re-run keeps naming it');
@@ -225,6 +230,32 @@ test('a 2.2.0-shaped stamp: an edited old copy stays and is named, a CRLF one go
     assert.ok(!('baseline-quality-gates.md' in r.files), 'an unedited copy survived');
     assert.deepStrictEqual(steps[2], steps[1], 'the re-run changed the rules folder');
     assert.ok(!/rule pruned/.test(outs[2]), `the re-run pruned again: ${outs[2]}`);
+});
+
+// 2026-10-21: alfred-git retired and baseline-git's successor became alfred-preferences. A 2.8.0 stamp records alfred-git,
+// not the new successor, so the leftover claim follows the rename chain: the recorded git copy and a shipped baseline-git
+// left beside it both go, and the read-back maps the git copy to the preferences rule.
+test('a 2.8.0-shaped stamp records alfred-git: the git copy and a leftover shipped baseline-git both go', POSIX_ONLY, () =>
+{
+    const { result: r, outs } = seedRun(['install', 'update'], SEL, {
+        args: [[], UPDATE()], inspect: snap,
+        each: (repo, i) =>
+        {
+            if (i !== 0) return;
+            const dir = rulesOf(repo);
+            fs.renameSync(path.join(dir, 'alfred-preferences.md'), path.join(dir, 'alfred-git.md'));
+            fs.writeFileSync(path.join(dir, 'baseline-git.md'), SHIPPED_OLD['baseline-git']);
+            const rows = Object.entries(stampRules(repo)).filter(([name]) => name !== 'alfred-preferences');
+            rows.push(['alfred-git', hashItem(path.join(dir, 'alfred-git.md'))]);
+            const text = fs.readFileSync(stampOf(repo), 'utf8');
+            fs.writeFileSync(stampOf(repo), text.replace(/^library-rules: .*$/m, `library-rules: ${rows.map(([n, h]) => `${n}=${h}`).join(',')}`));
+        },
+    });
+    assert.ok(!('alfred-git.md' in r.files), `the recorded git copy survived: ${outs[1]}`);
+    assert.ok(!('baseline-git.md' in r.files), `the shipped baseline-git survived: ${outs[1]}`);
+    assert.ok('alfred-preferences.md' in r.files && 'alfred-preferences' in r.stamp && !('alfred-git' in r.stamp), 'the successor is written and recorded');
+    assert.match(outs[1], /rule pruned \(retired upstream\): alfred-git\.md/);
+    assert.match(outs[1], /rule pruned \(retired upstream\): baseline-git\.md/);
 });
 
 test('a stamp that records rules but not the old copy\'s successor: the copy stays, named', POSIX_ONLY, () =>

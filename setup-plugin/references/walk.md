@@ -44,9 +44,9 @@ grep at 258k context to confirm this shape):
 1. **Recompute quietly** - one call, output redirected to `$TMP/select.out` and parsed from there,
    never pasted.
    - FRESH: fold the previous layer's picks into `raw.json`, run `node "$TMP/repo/scripts/stack-select.js" --selection
-     raw.json`, and read the category-tagged `required: <category> <name> - <why>` lines. The
+     "$TMP/raw.json"`, and read the category-tagged `required: <category> <name> - <why>` lines. The
      current layer's lines are its **locked** set.
-   - DELTA: `node "$TMP/repo/scripts/stack-select.js" --selection raw.json --dropped dropped.json`. Two line kinds drive
+   - DELTA: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --dropped "$TMP/dropped.json"`. Two line kinds drive
      the step. A `required: <category> <name> - <why>` naming a DROPPED item blocks the drop -
      something kept still depends on it: show the reason; the user keeps it, or also drops the
      dependents the reason names (their layer is reopened if already walked, and its own cascade
@@ -57,8 +57,8 @@ grep at 258k context to confirm this shape):
 2. **Show ONE numbered table of the layer's ENTIRE catalog** - every item the release ships,
    installed or not, so nothing is ever offered later or out-of-band. The TOOL renders it, never
    you, and it is **never redirected to a file** - the table comes back IN the tool result:
-   - FRESH: `node "$TMP/repo/scripts/stack-select.js" --selection raw.json --table <layer> --recs <recommendations.json> --stacks <confirmed,csv> --found "$TMP/found.json"`
-   - DELTA: `node "$TMP/repo/scripts/stack-select.js" --selection raw.json --table <layer> --installed "$TMP/installed.json" --dropped dropped.json --found "$TMP/found.json"`
+   - FRESH: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table <layer> --recs <recommendations.json> --stacks <confirmed,csv> --found "$TMP/found.json"`
+   - DELTA: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table <layer> --installed "$TMP/installed.json" --dropped "$TMP/dropped.json" --found "$TMP/found.json"`
      (omit `--found` when no evidence scan ran). A not-installed row whose reason column carries a
      matched signal is the project telling you it uses what the install lacks - an informed add
      candidate, never an auto-add.
@@ -74,7 +74,16 @@ grep at 258k context to confirm this shape):
    times per table, counted back to the last answered ask) when no `total: N
    <layer>` footer follows the table call in your text. Self-check before you send the question:
    your own message must carry the `total: N <layer>` footer line - it is not there unless you
-   pasted the table. A prose grouping that feels equivalent (`Locked (5): ...` / `Installed (12):
+   pasted the table. **The table is the tool's `--table <layer>` output and nothing else** - never a
+   table of your own (a `node -e` script reading a meta file, a hand-written list): the gate reads the
+   `--table` call, and a home-made table hides rows the tool would show. **And the layer ends on its
+   ask, answered** - narrating 'all 18 are recommended, next I'll decide' and moving on is the measured
+   failure (a real init run skipped the hooks and plugins asks that way, the tables folded out of
+   sight). The same hook denies the walk's next call - the next `stack-select.js` call, the
+   `plugin-settings.js` report or the installer - while the latest layer table has no answered ask after
+   it, and in init, a later table, the prerequisite check or the installer while an earlier layer's table
+   never ran. Claude Code's auto permission mode waives none of it: the selection is the user's. A prose
+   grouping that feels equivalent (`Locked (5): ...` / `Installed (12):
    ...` lines) is the exact failure this shape exists to prevent, and the run's narrate-don't-trace
    rule does not reach this paste - it is the rule's one sanctioned exception. The paste is
    pre-padded by the tool, so it stays aligned at any length; a hand-written markdown table shears
@@ -131,7 +140,7 @@ grep at 258k context to confirm this shape):
      'Pick' on either opens the same grouped multi-select call for that side. When the recompute
      printed `orphan:` lines the drop question leads with **Drop the k orphaned rows** (Recommended,
      each orphan's cascade origin in the description) instead of 'Drop nothing'. A drop naming a
-     LOCKED row is not refused: run `node "$TMP/repo/scripts/stack-select.js" --selection raw.json --dependents
+     LOCKED row is not refused: run `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --dependents
      <category>:<name>` (output to `$TMP/select.out`) and present what holds it - 'csharp is
      required by rule csharp-conventions, rule dotnet-repair-agents + 4 agents; drop them ALL
      together, or keep it?' On consent, the item AND its dependents fold into `dropped.json` -
@@ -252,8 +261,9 @@ windows-service sets; ionic-angular, data, browser-extension, js), plus one ques
 ## Hooks
 
 Leaf picks - nothing requires a hook and a hook requires nothing, so every row is free and the
-cascade never reaches here. Recommended (FRESH) = all seventeen: the twelve always-on guards, the
-three session engines (`docs-session` - the docs start block and finish ask - `memory-session` - the
+cascade never reaches here. Recommended (FRESH) = all eighteen: the twelve always-on guards, the
+four session engines (`docs-session` - the docs start block and finish ask - `preferences-session` - the
+preferences docs handed over before the first edit and the first git write - `memory-session` - the
 shared-memory slice at session start - and `history-session` - what the last sessions on this branch
 did and ruled), the turn-end build check (`check-turn-build` - run inside history-session's Stop, inert until
 `ALFRED_CODE_TURN_CHECK` flips to `1`, seeded `0`), plus the env-gated `instrument-tool-usage` (wired
@@ -263,7 +273,7 @@ idle, and dropping it leaves the install unable to record a measured run without
 The whole set ships together inside the core `alfred-code` plugin, so nothing is copied and nothing
 is wired per project: the answer is written as `ALFRED_CODE_HOOKS_OFF` in the scope's settings file
 env - the rows dropped are the ones named there, re-adding a row removes its name, and **None** names
-all seventeen (the emitted selection carries `hook none` for it; `--hooks-answered` at the
+all eighteen (the emitted selection carries `hook none` for it; `--hooks-answered` at the
 prerequisite check is what writes it). It can be changed later by editing that value, no reinstall.
 An install on the hooks copy route (`ALFRED_CODE_HOOKS_VIA_PLUGIN=false`) keeps the old behaviour -
 dropping a hook removes its file and its wiring - and, while the core is on for the skills or the
@@ -274,14 +284,14 @@ not hold.
 FRESH ask:
 
 ```ask
-Hooks: keep all 17 on? The build check and the instrumenter stay inert until switched on.
-- 'Keep all 17 on (Recommended)' - the guards, three session engines, the build check, the instrumenter
+Hooks: keep all 18 on? The build check and the instrumenter stay inert until switched on.
+- 'Keep all 18 on (Recommended)' - the guards, four session engines, the build check, the instrumenter
 - 'Pick hooks to switch off' - next call lists them in groups of 4
 - 'Guards only' - switch off the session engines, the build check and the instrumenter
 - 'None - every hook off' - writes `hook none`
 ```
 
-Step 2: multi-select questions of 4 - session (docs-session, memory-session, history-session), optional (check-turn-build, instrument-tool-usage, guard-answer,
+Step 2: multi-select questions of 4 - session (docs-session, preferences-session, memory-session, history-session), optional (check-turn-build, instrument-tool-usage, guard-answer,
 guard-fresh-session-start) and the guards in groups of 4, the last group padded from the
 neighbouring one so no question has fewer than 2 options.
 
@@ -321,8 +331,9 @@ MCPs: alfred-navigation, alfred-documentation and alfred-memory always install. 
 - 'Pick browsers' - opens the engine pick: chrome-control, firefox-control, msedge-control, webkit-control
 ```
 
-The engine pick is ONE multi-select question. FRESH pre-selects `chrome-control` when it was earned, DELTA every
-engine the table reads `yes` or `yes (off)`; say that pre-selection in the question. Ticking none drops the browser:
+The engine pick is ONE multi-select question. AskUserQuestion has no pre-selection (audit 2026-10-21 C-T4-01), so the
+question names the default - FRESH `chrome-control` when it was earned, DELTA every engine the table reads `yes` or
+`yes (off)` - and the mark sits on it (the first of them in DELTA). Ticking none drops the browser:
 
 ```ask
 Which browser servers? Each one is its own plugin and adds about 25 tools to every session.
@@ -360,7 +371,7 @@ turns on one left off; at local and user scope the registration IS the enable.
 
 ## Plugins
 
-Three OPTIONAL rows, none locked. `claude-hud` (the status line) reads `recommended`: every install marks
+Three OPTIONAL rows, none locked, shown by `--table plugins` like every layer (never a table of your own). `claude-hud` (the status line) reads `recommended`: every install marks
 it, the user can drop it (2.2.0 - it was a required `dependency` before; a `claude-hud` the user disabled
 stays off: updated, never switched back on). `csharp-lsp` and `typescript-lsp` are pre-selected only as
 `evidence` (the scan matched a `*.csproj` / `*.sln`, a `tsconfig.json` or `typescript` dependency - the
@@ -424,7 +435,15 @@ kept - its config file is ACCOUNT-level whichever scope it is installed at), rep
 here - the answer is applied after the installer runs, exactly like the environment choices:
 
 1. `node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir> --installed <kept plugins csv>` - paste its output verbatim in a fenced block. Each line reads `missing` (would be added), `differs` (the user already chose something else) or `match`; `--config-dir` is `~/.claude`, or `~/.claude-<space>` under a profile.
-2. ONE AskUserQuestion carrying those counts: **Apply recommended** (Recommended - adds only the missing keys, every value already chosen is kept), **Apply and replace differing** (overwrite those too), **Skip** (change nothing).
+2. ONE AskUserQuestion carrying those counts:
+
+```ask
+Apply the recommended plugin settings? <n> missing, <m> differing, <k> matching.
+- 'Apply recommended (Recommended)' - adds only the missing keys; every value already chosen is kept
+- 'Apply and replace differing' - adds the missing keys and overwrites the differing ones
+- 'Skip' - nothing changes
+```
+
 
 No kept plugin with a row: skip this silently, ask nothing. A target that needs a block the
 plugin's own setup owns (claude-hud's `statusLine`, which carries the refresh interval) reports

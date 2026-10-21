@@ -40,10 +40,11 @@ if (require.main === module) {
 }
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 
-// The two tools, on both routes. Built as patterns so the copy route's bare spelling is never literal text
-// (lint check 54 fails on it anywhere under stack/).
-const WIN_APP = /^mcp__(?:plugin_windows-control_)?windows-control__App$/;
-const MAC_SHELL = /^mcp__(?:plugin_macos-control_)?macos-control__Shell$/;
+// The two tools, on both routes, under the server's name and its retired 2.4.0 alias's (`windows-desktop`, `macos-desktop`
+// - build-marketplace.js LISTED_ALIASES runs the same server under the old name; mcps track T1-1, 2026-10-21). Built as
+// patterns so the copy route's bare spelling is never literal text (lint check 54 fails on it anywhere under stack/).
+const WIN_APP = /^mcp__(?:plugin_windows-(?:control|desktop)_)?windows-(?:control|desktop)__App$/;
+const MAC_SHELL = /^mcp__(?:plugin_macos-(?:control|desktop)_)?macos-(?:control|desktop)__Shell$/;
 
 let payload;
 try { payload = JSON.parse(fs.readFileSync(0, 'utf8')); } catch { process.exit(0); }

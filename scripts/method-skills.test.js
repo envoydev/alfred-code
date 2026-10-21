@@ -323,7 +323,7 @@ test('audit 2026-10-08: the checkpoint carries the test-only carve-out, a templa
     const commitAsk = raw.match(/^[ \t]*```ask[ \t]*\n[ \t]*Commit <[\s\S]*?^[ \t]*```/m);
     assert.ok(commitAsk, 'the commit consent is an ask template');
     // the git baseline: no commit until the user says so (a pick is that word); the local commit recommended, the diff offered
-    assert.match(squash(read('stack/rules/alfred-git.md')), /a picked ask option is that word\. A commit ask recommends the local commit/);
+    assert.match(squash(read('stack/skills/capture-preferences/references/git-seed.md')), /a picked ask option is that word\. A commit ask recommends the local commit/);
     assert.match(commitAsk[0], /- 'Commit now \(Recommended\)'[^\n]*\n\s*- 'Show the diff first'/, 'the local commit is recommended, the diff offered next');
     assert.match(cp, /when the question names anything still owed, 'Show the diff first' takes the mark instead/, 'an owed gate keeps the commit unrecommended');
     assert.ok(cp.includes('a picked option is the receipt\'s `answered:` line'), 'a pick is the answered: line');

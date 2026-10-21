@@ -44,6 +44,30 @@ test('removeManagedFiles: a copy whose hash still matches goes, an edited one an
     assert.match(logs.join('\n'), /rule edited: kept - changed since the stack wrote it, so it is yours/);
 });
 
+// --instructions-at root: the seed sits at the project root, and an unedited one goes like the .claude/ one; an edited
+// one, a root AGENTS.md beside a .claude/ seed, and any other root file stay.
+test('removeManagedFiles: an unedited root seed goes, an edited one stays, and the .claude/ seed is the row while it is there', () =>
+{
+    const project = path.join(TMP, `f-${seq++}`);
+    const claudeDir = path.join(project, '.claude');
+    put(path.join(project, 'AGENTS.md'), '# seed\n');
+    put(path.join(project, 'README.md'), '# seed\n');
+    const files = { 'AGENTS.md': hashItem(path.join(project, 'AGENTS.md')), 'README.md': hashItem(path.join(project, 'README.md')) };
+    const logs = [];
+    uninstall.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), files, log: (m) => logs.push(m) });
+    assert.ok(!fs.existsSync(path.join(project, 'AGENTS.md')), `the unedited root seed goes: ${logs.join(' | ')}`);
+    assert.ok(fs.existsSync(path.join(project, 'README.md')), 'no other root file is ever removed');
+
+    put(path.join(project, 'AGENTS.md'), '# seed, filled in\n');
+    uninstall.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), files: { 'AGENTS.md': files['AGENTS.md'] }, log: () => {} });
+    assert.strictEqual(fs.readFileSync(path.join(project, 'AGENTS.md'), 'utf8'), '# seed, filled in\n', 'an edited root seed is the project\'s');
+
+    put(path.join(project, 'AGENTS.md'), '# seed\n');
+    put(path.join(claudeDir, 'AGENTS.md'), '# the .claude seed, edited\n');
+    uninstall.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), files: { 'AGENTS.md': files['AGENTS.md'] }, log: () => {} });
+    assert.ok(fs.existsSync(path.join(project, 'AGENTS.md')) && fs.existsSync(path.join(claudeDir, 'AGENTS.md')), 'with a .claude/AGENTS.md there, the root one is not the row');
+});
+
 // Review finding 14: the CommonJS marker scopes every .js in .claude/hooks - the user's own CommonJS hooks
 // too - so it stays while the folder holds anything the uninstall did not remove.
 test('removeManagedFiles: the hooks CommonJS marker stays while a hook of the user\'s is left beside it', () =>
@@ -364,6 +388,46 @@ const engineState = (repo) => ({
     stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
 });
 const stampLine = (stamp, key) => (stamp.split('\n').find((l) => l.startsWith(`${key}:`)) || '').slice(key.length + 1).trim();
+// Audit 2026-10-21 mcps T1-2 (ruling M-A1): Playwright MCP's `browser_run_code_unsafe` runs any code in the browser
+// process and is on by default. Each kept engine's is denied by bare name in the route's spelling - its retired
+// `browser-<engine>` alias too - add-only like the memory tools: a dropped engine's goes, a user's removal holds, and
+// uninstall takes back the rest.
+test('mcps T1-2 seed: browser_run_code_unsafe is denied per kept engine, alias spelling too; a drop, a removal and uninstall', POSIX_ONLY, () =>
+{
+    const { browserToolDeny } = require('./install/alfred-code.js');
+    const T = 'browser_run_code_unsafe';
+    for (const [route, env, bare] of [['plugin', {}, false], ['copy', PROJECT_COPY, true]])
+    {
+        const spell = (server) => (bare ? `mcp__${server}__${T}` : `mcp__plugin_${server}_${server}__${T}`);
+        const of = (e) => [spell(`${e}-control`), spell(`browser-${e}`)];
+        assert.deepStrictEqual(browserToolDeny(path.join(__dirname, '..'), ['chrome', 'firefox'], { bare: () => bare }), [...of('chrome'), ...of('firefox')], route);
+        const settings = (repo) => { try { return JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')); } catch { return null; } };
+        const { steps, outs } = seedRun(['install', 'update', 'update', 'uninstall'], 'rule markdown-docs\nmcp browser\n', {
+            env, args: [['--browsers', 'chrome,firefox'], ['--browsers', 'chrome'], ['--browsers', 'chrome'], []],
+            prepare: (repo) => put(path.join(repo, '.claude', 'settings.json'), JSON.stringify({ permissions: { deny: ['Bash(rm -rf:*)'] } })),
+            each: (repo, i) =>
+            {
+                const s = settings(repo);
+                const deny = s && s.permissions && Array.isArray(s.permissions.deny) ? [...s.permissions.deny] : [];
+                if (i === 1 && s)
+                {
+                    s.permissions.deny = s.permissions.deny.filter((e) => e !== of('chrome')[1]);
+                    fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), JSON.stringify(s, null, 2));
+                }
+                return { deny };
+            },
+        });
+        const unsafe = (d) => d.filter((e) => e.endsWith(`__${T}`));
+        assert.deepStrictEqual(unsafe(steps[0].deny), [...of('chrome'), ...of('firefox')], `${route}: the install denies both engines' tool:\n${outs[0]}`);
+        assert.match(outs[0], new RegExp(`denied ${T} on chrome, firefox`), route);
+        assert.deepStrictEqual(unsafe(steps[1].deny), of('chrome'), `${route}: a dropped engine's deny goes:\n${outs[1]}`);
+        assert.deepStrictEqual(unsafe(steps[2].deny), [of('chrome')[0]], `${route}: the user's removal holds`);
+        assert.doesNotMatch(outs[2], new RegExp(`denied ${T}`), `${route}: nothing written, nothing said`);
+        assert.deepStrictEqual(unsafe(steps[3].deny), [], `${route}: uninstall leaves one:\n${outs[3]}`);
+        assert.ok(steps[3].deny.includes('Bash(rm -rf:*)'), `${route}: the user's own entry stays`);
+    }
+});
+
 test('X1 seed update --installed-only (full copy route): the user\'s own <engine>-control in .mcp.json is never taken as a kept engine - project and user scope', POSIX_ONLY, () =>
 {
     const own = { command: 'node', args: ['my-ff.js'] };

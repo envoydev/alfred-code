@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 // preferences.js - the scripted half of /capture-preferences: measures each preference's `Check:` over the changed
-// files or the tree, holds the three docs to their shape and their size cap, and writes the generated
-// .claude/rules/alfred-preferences.md carrying the docs' entries inline. Node built-ins only - no install, no network.
+// files or the tree, holds the four entry docs to their shape and their size caps and the git doc to its locked
+// entries. No rule is written: the shipped alfred-preferences.md names the docs and says when each is read (the user's
+// ruling of 2026-10-21). Node built-ins only - no install, no network.
 //
 // Usage, from the project root:
-//   node .claude/skills/capture-preferences/scripts/preferences.js check [--diff | --all] [--area code|architecture|git]
-//   node .../preferences.js lint      the docs' shape and the 8,000-char cap; exits 1 on a problem
-//   node .../preferences.js next --area code|architecture|git   the id a new entry takes
-//   node .../preferences.js rule      the generated rule, after the docs are written
+//   node .claude/skills/capture-preferences/scripts/preferences.js check [--diff [<base>] | --all] [--area code|architecture|git]
+//                     --diff alone reads the files changed since HEAD plus the untracked ones; after a commit, name the base
+//   node .../preferences.js lint      the docs' shape, the locked git entries and the three caps; exits 1 on a problem
+//   node .../preferences.js next --area personal|code|architecture|git   the id a new entry takes
 //   --project <dir>   the project root (default: the current directory)
 //
 // A `Check:` is DATA, never a command: regex `<pattern>` in `<glob>`[, `<glob>`] [excluding `<glob>`[, `<glob>`]].
@@ -18,20 +19,32 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const crypto = require('node:crypto');
 
 const SKILL_DIR = path.resolve(__dirname, '..');
-const TEMPLATE = path.join(SKILL_DIR, 'references', 'rule-template.md');
-const PREFERENCES_SLOT = '__PREFERENCES__';
-const RULE_FILE = path.join('.claude', 'rules', 'alfred-preferences.md');
+// The house git lines the installer seeds GIT-PREFERENCES.md with; its locked entries are what lint holds the doc to.
+const GIT_SEED = path.join(SKILL_DIR, 'references', 'git-seed.md');
 const PREFS_DIR = 'preferences';
+// The four docs of the user's own words. PROJECT-CODE-PREFERENCES.md beside them is the code-style capture's doc of
+// language sections: read on the code trigger, never entry-linted here. The personal doc (how the user wants the
+// assistant to work, 2026-10-21) is PUSHED at every session start, so it has no `Check:` and a cap of its own.
 const DOCS = [
-    { area: 'code', file: 'CODE-PREFERENCES.md', prefix: 'C' },
+    { area: 'code', file: 'PERSONAL-CODE-PREFERENCES.md', prefix: 'C' },
     { area: 'architecture', file: 'ARCHITECTURE-PREFERENCES.md', prefix: 'A' },
     { area: 'git', file: 'GIT-PREFERENCES.md', prefix: 'G' },
+    { area: 'personal', file: 'PERSONAL-PREFERENCES.md', prefix: 'P', pushed: true },
 ];
-// Every session and seat pays for the three docs (the rule carries them), so together they stay near 2K tokens.
-const CAP = 8000;
+const AREAS = DOCS.map((d) => d.area);
+// The name the personal code doc had until 2026-10-21; an update renames it (install/docs.js).
+const OLD_CODE_DOC = 'CODE-PREFERENCES.md';
+// One cap per hold (the user's ruling S-Q3 of 2026-10-21): the first edit's hold hands the personal code and architecture
+// docs over together, the first git write's the git doc alone, each inside the hook's 7,000-char room with the frame and
+// the project doc's sections beside it. The personal doc rides every session start and every compaction, so it stays
+// under 1K tokens.
+const CAP = 5000;
+const GIT_CAP = 5000;
+const PERSONAL_CAP = 3000;
+// The house keys a git entry may be locked by - the seed's, read when it is beside this script.
+const HOUSE_KEYS = ['consent', 'scope', 'checkpoint', 'safety'];
 const LINE_CUT = 160;
 // A source file past this is generated or vendored, never a preference's subject.
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
@@ -57,16 +70,47 @@ function setting(projectRoot, key)
     }
     return undefined;
 }
+// The data root read as the hooks' layout.js reads it (`./` and an empty value are `.alfred`), so both find one folder.
 const docsRoot = (projectRoot) => setting(projectRoot, 'ALFRED_CODE_DOCS_PATH')
-    || `${String(setting(projectRoot, 'ALFRED_CODE_DATA_PATH') || '.alfred').replace(/\\/g, '/').replace(/\/+$/, '')}/docs`;
+    || `${String(setting(projectRoot, 'ALFRED_CODE_DATA_PATH') || '.alfred').replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '') || '.alfred'}/docs`;
 
 const prefsDir = (projectRoot) => path.resolve(projectRoot, docsRoot(projectRoot), PREFS_DIR);
 
-// The docs that exist and hold text, in code, architecture, git order.
+// A doc that is a link is never read - the hooks paste what they read, and a cloned repo could point one at a credential
+// store (audit 2026-10-21 PF-1); lint names it.
+const isLink = (file) => { try { return fs.lstatSync(file).isSymbolicLink(); } catch { return false; } };
+
+// The main checkout of a linked worktree, read from git's own files as the hooks read it (hook-prelude.js checkoutsOf),
+// or null: the `.git` file's `gitdir:`, then that dir's `commondir`.
+function mainCheckout(projectRoot)
+{
+    const text = readText(path.join(projectRoot, '.git'));
+    const line = text && /^gitdir:\s*(.+?)\s*$/m.exec(text);
+    if (!line) return null;
+    const gitdir = path.resolve(projectRoot, line[1]);
+    const commondir = readText(path.join(gitdir, 'commondir'));
+    const common = commondir ? path.resolve(gitdir, commondir.trim())
+        : path.basename(path.dirname(gitdir)) === 'worktrees' ? path.dirname(path.dirname(gitdir)) : null;
+    return common && path.basename(common) === '.git' ? path.dirname(common) : null;
+}
+
+// Where each doc is looked for, in order: this checkout, then a linked worktree's main checkout - the personal docs are
+// git-ignored (audit 2026-10-21 Q-1), so a seat's worktree has none of its own.
+const prefsDirs = (projectRoot) =>
+{
+    const main = mainCheckout(projectRoot);
+    return [...new Set([prefsDir(projectRoot), ...(main ? [path.resolve(main, docsRoot(projectRoot), PREFS_DIR)] : [])])];
+};
+
+// The entry docs that exist and hold text, in code, architecture, git, personal order. Each is read where it first sits;
+// a link there is left out, never passed over for another copy.
 function presentDocs(projectRoot, area = null)
 {
-    const dir = prefsDir(projectRoot);
-    return DOCS.filter((d) => !area || d.area === area).map((d) => ({ ...d, abs: path.join(dir, d.file), text: readText(path.join(dir, d.file)) }))
+    const dirs = prefsDirs(projectRoot);
+    const exists = (file) => { try { fs.lstatSync(file); return true; } catch { return false; } };
+    return DOCS.filter((d) => !area || d.area === area)
+        .map((d) => ({ ...d, abs: dirs.map((dir) => path.join(dir, d.file)).find(exists) || path.join(dirs[0], d.file) }))
+        .filter((d) => !isLink(d.abs)).map((d) => ({ ...d, text: readText(d.abs) }))
         .filter((d) => d.text !== null && d.text.trim() !== '');
 }
 
@@ -83,6 +127,7 @@ const HEADING = /^## (.+?)\s*$/;
 const ENTRY_ID = /^([A-Z])(\d+)\b/;
 const ID_LINE = /^<!--\s*id:\s*([^\s]+)\s*-->\s*$/;
 const FIELD = /^- (Rule|Scope|Why|Except|Check):\s*(.*?)\s*$/;
+const LOCKED_LINE = /^<!--\s*locked:\s*([a-z][a-z-]*)\s*-->\s*$/;
 // The ids removed from a doc, so the next entry skips them - an id is never reused.
 const RETIRED = /^Retired:\s*(.*?)\s*$/m;
 const GLOBS = String.raw`\x60[^\x60]+\x60(?:\s*,\s*\x60[^\x60]+\x60)*`;
@@ -99,31 +144,54 @@ function parseCheck(value)
     return m ? { regex: m[1], include: globsOf(m[2]), exclude: globsOf(m[3]) } : null;
 }
 
-// Every `##` section with what lint needs beside the fields: the heading, its id line, the raw Check: text.
+// Every `##` section with what lint needs beside the fields: the heading, its id line, the raw Check: text. A fenced
+// block is the entry's text: a `## ` line or a field inside one is an example, never read (audit 2026-10-21 PF-19).
+const FENCE = /^\s*(`{3,}|~{3,})/;
 function parseSections(text)
 {
     const out = [];
     let cur = null;
+    let fence = null;
     for (const line of String(text || '').split(/\r?\n/))
     {
+        const fm = FENCE.exec(line);
+        if (fence) { if (fm && fm[1][0] === fence) fence = null; continue; }
+        if (fm) { fence = fm[1][0]; continue; }
         const h = HEADING.exec(line);
         if (h)
         {
             const id = ENTRY_ID.exec(h[1]);
-            cur = { heading: h[1], id: id ? `${id[1]}${id[2]}` : null, title: h[1].replace(/^[A-Z]\d+\s*-\s*/, ''), idLine: null, fields: {} };
+            cur = { heading: h[1], id: id ? `${id[1]}${id[2]}` : null, title: h[1].replace(/^[A-Z]\d+\s*-\s*/, ''), idLine: null, locked: null, fields: {} };
             out.push(cur);
             continue;
         }
         if (!cur) continue;
         const idLine = ID_LINE.exec(line.trim());
         if (idLine && cur.idLine === null) { cur.idLine = idLine[1]; continue; }
+        const locked = LOCKED_LINE.exec(line.trim());
+        if (locked && cur.locked === null) { cur.locked = locked[1]; continue; }
         const f = FIELD.exec(line);
         if (f && !(f[1] in cur.fields)) cur.fields[f[1]] = f[2];
     }
     return out;
 }
 
-const retiredIds = (text) => listOf((RETIRED.exec(String(text || '')) || [])[1], /,/);
+// The doc's own Retired: line sits above its first entry; one inside an entry's body is that entry's text.
+function headOf(text)
+{
+    const out = [];
+    let fence = null;
+    for (const line of String(text || '').split(/\r?\n/))
+    {
+        const f = FENCE.exec(line);
+        if (fence) { if (f && f[1][0] === fence) fence = null; continue; }
+        if (f) { fence = f[1][0]; continue; }
+        if (HEADING.test(line)) break;
+        out.push(line);
+    }
+    return out.join('\n');
+}
+const retiredIds = (text) => listOf((RETIRED.exec(headOf(text)) || [])[1], /,/);
 
 function parseDoc(text)
 {
@@ -194,18 +262,21 @@ function allFiles(projectRoot)
     return out;
 }
 
-// The changed files: the diff against HEAD plus the untracked ones; an unborn branch has everything new.
-function changedFiles(projectRoot)
+// The changed files: the diff against `base` (HEAD when none is named) plus the untracked ones; an unborn branch has
+// everything new; null outside git.
+function changedFiles(projectRoot, base = null)
 {
-    const diff = gitList(projectRoot, ['diff', '--name-only', '--relative', 'HEAD']);
-    const untracked = gitList(projectRoot, ['ls-files', '-o', '--exclude-standard']) || [];
+    const untracked = gitList(projectRoot, ['ls-files', '-o', '--exclude-standard']);
+    if (untracked === null) return null;
+    const diff = gitList(projectRoot, ['diff', '--name-only', '--relative', base || 'HEAD']);
     if (diff) return [...diff, ...untracked];
-    return gitList(projectRoot, ['ls-files', '-c', '-o', '--exclude-standard']) || [];
+    return base ? untracked : gitList(projectRoot, ['ls-files', '-c', '-o', '--exclude-standard']) || [];
 }
 
-function fileList(projectRoot, mode)
+function fileList(projectRoot, mode, base = null)
 {
-    const rels = [...new Set(mode === 'all' ? allFiles(projectRoot) : changedFiles(projectRoot))].sort();
+    const changed = mode === 'all' ? null : changedFiles(projectRoot, base);
+    const rels = [...new Set(mode === 'all' ? allFiles(projectRoot) : changed || [])].sort();
     return rels.map((rel) => ({ rel: rel.split(path.sep).join('/'), abs: path.join(projectRoot, rel) }))
         .filter((f) => { try { return fs.statSync(f.abs).isFile(); } catch { return false; } });
 }
@@ -240,12 +311,16 @@ function runCheck(entries, files)
     return out;
 }
 
-function check(projectRoot, { mode, area })
+function check(projectRoot, { mode, area, base = null })
 {
     let files = null;
+    // A --diff that reads no file an entry covers says why, so a clean run is never read as a pass (audit 2026-10-21
+    // PF-18): after a commit the diff against HEAD is empty, and outside git there is none.
+    const noGit = mode !== 'all' && changedFiles(projectRoot, base) === null;
+    const scoped = new Set();
     let checked = 0;
     let violations = 0;
-    for (const d of presentDocs(projectRoot, area))
+    for (const d of presentDocs(projectRoot, area).filter((x) => !x.pushed))
     {
         const sections = parseSections(d.text);
         const shared = new Set();
@@ -265,29 +340,64 @@ function check(projectRoot, { mode, area })
             if (!parsed) { console.log(`skipped: ${id} - the Check: is not regex \`<pattern>\` in \`<glob>\`, so nothing is run`); continue; }
             try { new RegExp(parsed.regex); }
             catch (err) { console.log(`skipped: ${id} - the Check: regex does not compile (${err.message})`); continue; }
-            files = files || fileList(projectRoot, mode);
+            files = files || fileList(projectRoot, mode, base);
+            const include = parsed.include.map(globRe);
+            const exclude = parsed.exclude.map(globRe);
+            for (const f of files) if (include.some((g) => g.test(f.rel)) && !exclude.some((g) => g.test(f.rel))) scoped.add(f.rel);
             const hits = runCheck([{ id, check: parsed }], files);
             for (const h of hits) console.log(`violation: ${h.id} ${h.file}:${h.line} ${h.text}`);
             checked++;
             violations += hits.length;
         }
     }
-    if (staleRule(projectRoot)) console.log(STALE_LINE);
     console.log(`checked: ${checked} entries, ${violations} violations`);
+    if (noGit) console.log('note: not a git repo - use --all');
+    else if (mode !== 'all' && checked && !scoped.size)
+        console.log(`note: no file changed since ${base || 'HEAD'} is in an entry's scope - after a commit, pass --diff <base> or --all`);
     return 0;
 }
 
 // ---------------------------------------------------------------- lint
 
+// The seed's locked entries, key -> { title, fields }, whitespace-folded; empty when the seed is not beside this script.
+function seedLocked()
+{
+    const text = readText(GIT_SEED);
+    return new Map(parseSections(text || '').filter((s) => s.locked)
+        .map((s) => [s.locked, { title: fold(s.title).toLowerCase(), fields: Object.fromEntries(Object.entries(s.fields).map(([k, v]) => [k, fold(v)])) }]));
+}
+const fold = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+const FIELDS = ['Rule', 'Scope', 'Why', 'Except', 'Check'];
+
 function lint(projectRoot)
 {
     const problems = [];
     const docs = presentDocs(projectRoot);
+    const dir = prefsDir(projectRoot);
+    for (const file of [...DOCS.map((d) => d.file), 'PROJECT-CODE-PREFERENCES.md', OLD_CODE_DOC])
+        if (isLink(path.join(dir, file))) problems.push(`${shown(projectRoot, path.join(dir, file))} is a link - the hooks never read a linked doc; put the file itself there`);
+    const old = path.join(dir, OLD_CODE_DOC);
+    const oldText = isLink(old) ? null : readText(old);
+    const newText = isLink(path.join(dir, DOCS[0].file)) ? null : readText(path.join(dir, DOCS[0].file));
+    // Both names (audit 2026-10-21 PF-21): an exact copy goes at the update; two texts are the user's to merge.
+    if (oldText !== null && newText !== null && newText.trim())
+    {
+        problems.push(oldText.replace(/\r\n/g, '\n').trim() === newText.replace(/\r\n/g, '\n').trim()
+            ? `${shown(projectRoot, old)} is an exact copy of ${DOCS[0].file} - /alfred-code:update deletes it`
+            : `${OLD_CODE_DOC} and ${DOCS[0].file} both hold entries - merge the old one into the new by hand, then delete it; the update never overwrites either`);
+    }
+    else if (oldText !== null) problems.push(`${shown(projectRoot, old)} is the old name of ${DOCS[0].file} - /alfred-code:update renames it`);
     const seen = new Map();
+    const locked = seedLocked();
     for (const d of docs)
     {
         const file = shown(projectRoot, d.abs);
         if (!/^Updated: \d{4}-\d{2}-\d{2}\b/m.test(d.text)) problems.push(`${file}: no \`Updated: <date>\` line`);
+        if (d.area === 'git')
+        {
+            const have = new Set(parseSections(d.text).map((s) => s.locked).filter(Boolean));
+            for (const key of locked.keys()) if (!have.has(key)) problems.push(`${file}: the locked entry '${key}' is missing - /alfred-code:update puts it back`);
+        }
         const retired = retiredIds(d.text);
         for (const id of retired) if (!new RegExp(`^${d.prefix}\\d+$`).test(id)) problems.push(`${file}: Retired: ${id} is not a ${d.prefix}<n> id`);
         for (const s of parseSections(d.text))
@@ -300,7 +410,23 @@ function lint(projectRoot)
             if (s.idLine === null) problems.push(`${file}: ${s.id} has no <!-- id: --> line - docs.js show cannot read it alone`);
             else if (s.idLine.toLowerCase() !== s.id.toLowerCase()) problems.push(`${file}: ${s.id}'s id line says ${s.idLine}`);
             if (!s.fields.Rule) problems.push(`${file}: ${s.id} has no Rule: line`);
+            // A locked entry is the seed's word for word, field by field (audit 2026-10-21 PF-4); a key the seed does not
+            // lock is no house line, and a copy of a locked entry's title without the lock is a weakening of it.
+            if (d.area === 'git' && s.locked && locked.size && !locked.has(s.locked))
+                problems.push(`${file}: ${s.id} carries locked: ${s.locked} - only the house keys (${[...locked.keys()].join(', ')}) are locked; drop the line`);
+            if (d.area === 'git' && s.locked && locked.has(s.locked))
+            {
+                const want = locked.get(s.locked).fields;
+                for (const f of FIELDS.filter((k) => fold(s.fields[k]) !== (want[k] || '')))
+                    problems.push(`${file}: ${s.id} is the locked '${s.locked}' entry and its ${f}: was changed - a locked entry is never edited; restore it from the seed`);
+            }
+            if (d.area === 'git' && !s.locked)
+            {
+                const twin = [...locked].find(([, v]) => v.title === fold(s.title).toLowerCase());
+                if (twin) problems.push(`${file}: ${s.id} repeats the locked '${twin[0]}' entry's title without its lock - a locked entry is never edited; remove ${s.id}`);
+            }
             if (s.fields.Check === undefined) continue;
+            if (d.pushed) { problems.push(`${file}: ${s.id} carries a Check: - a personal entry has no code to grep; drop the line`); continue; }
             const parsed = parseCheck(s.fields.Check);
             if (!parsed)
             {
@@ -313,10 +439,13 @@ function lint(projectRoot)
             catch (err) { problems.push(`${file}: ${s.id} Check: regex does not compile (${err.message})`); }
         }
     }
-    const chars = docs.reduce((n, d) => n + d.text.length, 0);
-    if (chars > CAP) problems.push(`${shown(projectRoot, prefsDir(projectRoot))}/: the three docs are ${chars} chars, over ${CAP} - cut before the rule carries them`);
+    const chars = docs.filter((d) => d.area === 'code' || d.area === 'architecture').reduce((n, d) => n + d.text.length, 0);
+    if (chars > CAP) problems.push(`${shown(projectRoot, prefsDir(projectRoot))}/: the personal code and architecture docs are ${chars} chars, over ${CAP} - the first edit's hold hands both over; cut them`);
+    for (const d of docs.filter((x) => x.area === 'git' && x.text.length > GIT_CAP))
+        problems.push(`${shown(projectRoot, d.abs)} is ${d.text.length} chars, over ${GIT_CAP} - the first git write's hold hands it over; cut an entry that is not locked`);
+    for (const d of docs.filter((x) => x.pushed && x.text.length > PERSONAL_CAP))
+        problems.push(`${shown(projectRoot, d.abs)} is ${d.text.length} chars, over ${PERSONAL_CAP} - a hook pushes it at every session start; cut it`);
     for (const p of problems) console.log(`PROBLEM ${p}`);
-    if (staleRule(projectRoot)) console.log(STALE_LINE);
     console.log(`lint: ${problems.length} problems`);
     return problems.length ? 1 : 0;
 }
@@ -332,60 +461,6 @@ function nextId(projectRoot, area)
     return 0;
 }
 
-// ---------------------------------------------------------------- rule
-
-// The rule CARRIES the entries, never an @ import of them (D8, 2026-10-20): a seat loads the pathless rules a session
-// started with (measured), but whether an @ import inside one expands there is documented nowhere. Each doc becomes one
-// block - its path in the header, so an edit goes to the doc; its own title, date and Retired: line left in the doc;
-// each entry one level down. The docs' hash rides in an HTML comment, which the rule loader strips, so `lint` and
-// `check` can say when a hand edit left the rule behind.
-const HASH_LINE = /^<!-- preferences: ([0-9a-f]{16}) /m;
-const docsHash = (docs) => crypto.createHash('sha256').update(docs.map((d) => `${d.file}\0${d.text}`).join('\0')).digest('hex').slice(0, 16);
-// The doc's path as a reader opens it: the docs root as configured (project-relative, or absolute), forward slashes.
-const docPath = (root, file) => `${String(root || '').replace(/\\/g, '/').replace(/\/+$/, '')}/${PREFS_DIR}/${file}`;
-function block(root, d)
-{
-    const body = d.text.split(/\r?\n/)
-        .filter((line) => !/^# /.test(line) && !/^Updated:\s/.test(line) && !/^Retired:\s/.test(line))
-        .map((line) => (/^## /.test(line) ? `#${line}` : line))
-        .join('\n').replace(/^\s+|\s+$/g, '');
-    return `## ${d.file} - ${docPath(root, d.file)}\n\n${body}\n`;
-}
-const ruleFile = (projectRoot) => path.join(projectRoot, RULE_FILE);
-// A rule that is not the docs as they stand: its hash line names other docs, or it has none. null when fresh, or when
-// there is no rule and no doc.
-function staleRule(projectRoot)
-{
-    const docs = presentDocs(projectRoot);
-    const text = readText(ruleFile(projectRoot));
-    if (text === null) return docs.length ? 'missing' : null;
-    const m = HASH_LINE.exec(text);
-    return m && m[1] === docsHash(docs) ? null : 'stale';
-}
-const STALE_LINE = `stale: ${RULE_FILE.split(path.sep).join('/')} does not carry the docs as they stand - run preferences.js rule; a session loads the rule, not the docs`;
-
-function rule(projectRoot)
-{
-    const docs = presentDocs(projectRoot);
-    const target = ruleFile(projectRoot);
-    const current = readText(target);
-    // No doc: nothing to write - unless the rule on disk is this script's, which would keep binding what was removed.
-    if (!docs.length && (current === null || !HASH_LINE.test(current))) { console.log('Rule: no preferences captured'); return 0; }
-    const template = readText(TEMPLATE);
-    if (template === null || !template.includes(PREFERENCES_SLOT)) { console.error(`preferences: ${TEMPLATE} is missing or has no ${PREFERENCES_SLOT} line`); return 1; }
-    const root = docsRoot(projectRoot);
-    const carried = docs.filter((d) => parseSections(d.text).length); // a doc its removals emptied keeps only its Retired: line
-    const blocks = carried.map((d) => block(root, d)).join('\n');
-    const head = `<!-- preferences: ${docsHash(docs)} - written by preferences.js rule from the docs below; edit the docs, never this file -->`;
-    const text = template.replace(PREFERENCES_SLOT, blocks ? `${head}\n\n${blocks}`.replace(/\n+$/, '') : head);
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    if (current !== text) fs.writeFileSync(target, text);
-    if (!carried.length) { console.log('Rule: no preferences captured - the rule now carries none'); return 0; }
-    const chars = docs.reduce((n, d) => n + d.text.length, 0);
-    console.log(`Rule: ${Buffer.byteLength(text)} bytes, ${carried.length} docs inline; preferences ${chars} chars of ${CAP}${chars > CAP ? ' - over the cap, cut before it ships' : ''}`);
-    return 0;
-}
-
 // ---------------------------------------------------------------- the command line
 
 function main(argv)
@@ -397,21 +472,21 @@ function main(argv)
     if (cmd === 'check')
     {
         const area = value('--area');
-        if (area && !DOCS.some((d) => d.area === area)) { console.error(`preferences: --area is code, architecture or git, not '${area}'`); return 2; }
-        return check(projectRoot, { mode: flag('--all') ? 'all' : 'diff', area: area || null });
+        if (area && !DOCS.some((d) => d.area === area)) { console.error(`preferences: --area is ${AREAS.join(', ')}, not '${area}'`); return 2; }
+        const base = value('--diff');
+        return check(projectRoot, { mode: flag('--all') ? 'all' : 'diff', area: area || null, base: base && !base.startsWith('--') ? base : null });
     }
     if (cmd === 'lint') return lint(projectRoot);
     if (cmd === 'next')
     {
         const area = value('--area');
-        if (!DOCS.some((d) => d.area === area)) { console.error('preferences: next needs --area code|architecture|git'); return 2; }
+        if (!DOCS.some((d) => d.area === area)) { console.error('preferences: next needs --area personal|code|architecture|git'); return 2; }
         return nextId(projectRoot, area);
     }
-    if (cmd === 'rule') return rule(projectRoot);
-    console.error('usage: preferences.js check [--diff | --all] [--area code|architecture|git] | lint | next --area <area> | rule  [--project <dir>]');
+    console.error('usage: preferences.js check [--diff [<base>] | --all] [--area code|architecture|git] | lint | next --area personal|code|architecture|git  [--project <dir>]');
     return 2;
 }
 
-module.exports = { parseDoc, runCheck, parseCheck, globRe, docsRoot, docPath, staleRule, CAP };
+module.exports = { parseDoc, parseSections, runCheck, parseCheck, globRe, docsRoot, CAP, GIT_CAP, PERSONAL_CAP, HOUSE_KEYS };
 
 if (require.main === module) process.exitCode = main(process.argv.slice(2));

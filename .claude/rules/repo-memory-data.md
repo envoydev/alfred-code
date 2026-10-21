@@ -146,7 +146,7 @@ The memory levels and stores, where the docs root and the data root live, and th
   migration still moves, `ORIENTATION.md`, `.branches`, any folder holding a `watch.json`): a hand-set root may be a
   folder the project uses too (`docs/`), so its other files stay and are named. One step: `git mv` for tracked files
   (history kept, staged as renames), a rename for the rest, every file put back on any failure, the rule re-stamped -
-  with every generated pointer rule (`selection.js` GENERATED_RULES, `project-code-style`) that names the old root,
+  with every generated pointer rule (`selection.js` GENERATED_RULES, and an older install's `project-code-style`) that names the old root,
   which a capture baked in literally (`selection.respellDocsRoot`, M11) - and a restart named; the old root's own
   `.gitignore`, when it holds a text the stack wrote, goes with it (`git rm` where tracked). A move keeps what git
   saw: an old root git ignored, with nothing tracked, becomes a `local` root. A CLASH (a file at both places) moves
@@ -167,14 +167,18 @@ The memory levels and stores, where the docs root and the data root live, and th
   2026-10-14) - its README calls that 'a convenience and not a security feature', so the guard stays the gate. No value
   enters the browser's environment, which `browser_run_code_unsafe` can reach. Playwright parses the file as UTF-8 with
   dotenv (an unquoted `#` starts a comment there, so a value holding one is quoted); a UTF-16 store is not passed and the
-  launcher says so. mobile-control takes only the keys appium-mcp documents (`mobile-launch.js DOCUMENTED`, from its
+  launcher says so. The full copy route passes none (audit 2026-10-21 mcps T2-2, ruling): it runs no launcher, and a static
+  `--secrets` in `.mcp.json` would stop the server from starting once the store is gone - Playwright `readFileSync`s the
+  path at start (`dotenvFileLoader`, 0.0.83) - so the login text reads the `<secret>` marker, and its absence means sign
+  in by hand. mobile-control takes only the keys appium-mcp documents (`mobile-launch.js DOCUMENTED`, from its
   README; `withSensitive` `only`), and serena, the memory service and the desktop servers none. A root change moves the
   store inline on every route, into a root whose `.gitignore` is written first;
   `Read(.sensitive-data)` is in the shipped deny, a bare name matching at any depth per code.claude.com/docs/en/permissions).
   `stack/mcp/data-root.js` is the one home of every place, read by the three launchers, the installer, init's
   plan and the preflight. The docs root is `<root>/docs`, always (2.8.0). `<root>/.gitignore` is `/*` plus `!/.gitignore` and, under `git` versioning, `!/docs/` with the docs' machine-state lines
   (`data-root.js dataIgnoreText`, header-marked, a project's own text kept): a bare `*` would make `git
-  check-ignore` answer yes for the docs and the versioning seed would read every fresh project as `local`, and
+  check-ignore` answer yes for the docs and the versioning seed would read every fresh project as `local` (a
+  `preferences/` domain holding only the git doc the install seeds casts no vote either - `docs.docsVersioningSeed`), and
   the file re-includes itself so it is committed and a teammate's clone has it. The installer keeps it current
   (`docs.ensureDataIgnore`); every launcher writes it absent-only before it hands out a path under the root
   (`ensureRootIgnore`) - a 2.0.0 project whose servers are already 2.1 has none yet. THE MOVE: the docs move
@@ -200,9 +204,19 @@ The memory levels and stores, where the docs root and the data root live, and th
 - **Two stores, split by durability** (hard rule). The committed architecture docs
   (`<docs-path>/architecture/ARCHITECTURE.md` + `references/`, owned by
   `capture-architecture`) are the DURABLE truth every seat reads to orient, refreshed
-  deliberately (that skill or `loop-architecture-quality`), never after each change. The code
-  style lives in `<docs-path>/code-style/CODE-STYLE.md` + the path-scoped `project-code-style.md` rule
-  (owned by `capture-code-style`). The run book lives in
+  deliberately (that skill or `loop-architecture-quality`), never after each change. The
+  preferences live in `<docs-path>/preferences/`: the code style in `PROJECT-CODE-PREFERENCES.md` (owned by
+  `capture-project-code-style`), the user's own `PERSONAL-`, `PERSONAL-CODE-`, `ARCHITECTURE-` and `GIT-PREFERENCES.md`
+  (owned by `capture-preferences`; the install seeds the git doc from `git-seed.md`, its consent, scope, checkpoint and
+  safety entries `locked`, and an update restores an edited locked entry from the seed; nothing seeds the personal doc). The
+  two personal docs (`PERSONAL-` and `PERSONAL-CODE-PREFERENCES.md`) are the user's own, never the team's: under git
+  versioning the data root's ignore lines keep them out of git (`DOCS_STATE_IGNORE`, audit 2026-10-21 Q-1), so a linked
+  worktree reads them from the main checkout (the hook and `preferences.js` alike). No rule carries their text: the shipped
+  `alfred-preferences.md` names them and when each is read, and `preferences-session.js` pushes the personal doc (how the
+  user wants the assistant to work) at every SessionStart, compaction included, and hands the others over at an actor's
+  first edit and first git write (the user's rulings of
+  2026-10-21; `code-style/CODE-STYLE.md`, `CODE-PREFERENCES.md`, the generated `project-code-style.md` and the retired
+  `alfred-git.md` are moved, seeded or removed by `docs.migratePreferences` on update). The run book lives in
   `<docs-path>/awareness/PROJECT-AWARENESS.md` (owned by `capture-awareness`, repo facts first, the user's answers for
   the gaps; `project-capabilities/PROJECT-CAPABILITIES.md` through 2.5.0, moved by `docs.migrateDocsDomains` with its
   `watch.json`, then `docs.migrateAwareness` re-spells its section ids and moves its branch versions; the generated

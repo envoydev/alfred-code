@@ -114,7 +114,7 @@ already has one is skipped on re-invocation.
 - **Generated docs - useful, and actually used?** For every task that needed orientation
   (a fix, an investigation, a design), check whether the session READ what the stack generates for
   exactly that - `<docs-path>/architecture/ARCHITECTURE.md` and its `references/`,
-  `quality/ARCHITECTURE-ASSESSMENT.md`, `code-style/CODE-STYLE.md`, the test-coverage capture - or re-derived
+  `quality/ARCHITECTURE-ASSESSMENT.md`, `preferences/PROJECT-CODE-PREFERENCES.md`, the test-coverage capture - or re-derived
   the same knowledge by grepping the tree. Both directions are findings with different homes: never
   read while present is a delivery defect (the rule, skill or agent brief that should have routed
   the seat to it); read and not sufficient is a content defect against the skill that generates it;
