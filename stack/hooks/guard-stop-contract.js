@@ -208,7 +208,7 @@ let fresh;
 try { fresh = require(require('path').join(__dirname, 'fresh-session.js')); } catch {
   fresh = {
     use() {}, freshAt: (k, d) => d, FRESH_AT_200K: 0, FRESH_AT_300K: 0, FRESH_AT_1M: 0, FRESH_OFF: true, COMPACT_INSTEAD: false,
-    sessionModelId: () => null, tableWindow: () => null, envWindow: () => null, knownWindow: () => null,
+    sessionModelId: () => null, tableWindow: () => null, recordSessionModel: () => false, knownWindow: () => null,
     ctxThreshold: () => null, MIN_RECOVERABLE_SHARE: 0.4, coldFloor: () => null, worthResuming: () => false,
   };
 }

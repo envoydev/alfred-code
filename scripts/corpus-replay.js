@@ -76,6 +76,8 @@ const ROUTES = [
   // Writes <data root>/state/sessions/COMPACT-STATE before a compaction and returns nothing - no verdict and no
   // injection for a replay to count, so it is declared in UNEXERCISED below.
   { hook: 'guard-fresh-session-start.js', event: 'PreCompact', deny: false },
+  // Saves the session's new model id (the user's ruling of 2026-10-21) and prints nothing - declared in UNEXERCISED below.
+  { hook: 'guard-fresh-session-start.js', event: 'PostModelSwitch', deny: false },
   // Injects the budget on EVERY prompt by design - 100% is correct here, not a false-positive rate.
   { hook: 'guard-answer.js', event: 'UserPromptSubmit', deny: false, always: true },
   // Audit 2026-10-10 C09 / C15: the post-compaction hold, the idle-gap offer and the typed-answer probe (declared below).
@@ -126,6 +128,10 @@ const UNEXERCISED = {
   // replay has no verdict and no injection to count; what it writes is pinned in compact-state.test.js.
   'guard-fresh-session-start.js::PreCompact':
     'writes COMPACT-STATE and prints nothing - no verdict to replay; the snapshot is pinned in compact-state.test.js',
+  // Wired 2026-10-21. A /model switch saves `to_model` for the window the next offer reads; transcripts hold no such
+  // event, and the hook prints nothing - the record is pinned in context-window.test.js.
+  'guard-fresh-session-start.js::PostModelSwitch':
+    'saves the switched model id and prints nothing - no verdict to replay; the record is pinned in context-window.test.js',
   // Wired 2026-10-10 (audit C09). The idle-gap offer reads the clock against the transcript's last reply, so a replay on
   // a later day would read every prompt as idle; it is pinned in compact-state.test.js.
   'guard-fresh-session-start.js::UserPromptSubmit':

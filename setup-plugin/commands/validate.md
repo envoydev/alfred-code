@@ -17,8 +17,9 @@ cache_read + cache_creation` off the last assistant message in the transcript. A
 figure is past the same trigger `guard-fresh-session-start.js` uses - the tier's own absolute
 trigger, `ALFRED_CODE_CONTEXT_WINDOW_FOR_1M` (default 400,000) on a window of 1M or more,
 `ALFRED_CODE_CONTEXT_WINDOW_FOR_300K` (default 280,000) on one of 300k up to 1M, or
-`ALFRED_CODE_CONTEXT_WINDOW_FOR_200K` (default 180,000) below that - the window comes from the session
-model's row in `.claude/hooks/model-windows.json`, else `ALFRED_CODE_CONTEXT_WINDOW_DEFAULT` (default 300,000) - or when that hook has already
+`ALFRED_CODE_CONTEXT_WINDOW_FOR_200K` (default 180,000) on one of 200k up to 300k - the window is the session
+model's own capacity, its row in `.claude/hooks/model-windows.json`; with no row, a window under 200k or a tier left
+unset, the trigger is `ALFRED_CODE_CONTEXT_WINDOW_DEFAULT` (default 180,000) itself - or when that hook has already
 injected the ask into this turn. One more case fires it regardless of the figure: this session already ran ANOTHER guided walk (a
 `/alfred-code:` command completed earlier in this chat). That history is pure carry for a run that needs
 none of it, and an absolute trigger never catches it - measured, a validate chained behind an update

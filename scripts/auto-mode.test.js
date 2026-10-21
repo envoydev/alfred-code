@@ -47,8 +47,11 @@ function transcript(rows = [], model = 'claude-opus-5-5', ctx = 30000)
     fs.writeFileSync(p, [...base, ...rows].map((r) => JSON.stringify(r)).join('\n') + '\n');
     return p;
 }
+// The window keys an install seeds (absent-only, meta/environment.json): an unset tier reads as the default's trigger.
+const WINDOW_SEEDS = { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '400000', ALFRED_CODE_CONTEXT_WINDOW_FOR_300K: '280000',
+    ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '180000', ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '180000' };
 const run = (hook, payload, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, hook)],
-    { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: env.ALFRED_CODE_HOOK_LOG_DIR || fs.mkdtempSync(path.join(TMP, 'log-')), ...env } });
+    { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, ...WINDOW_SEEDS, ALFRED_CODE_HOOK_LOG_DIR: env.ALFRED_CODE_HOOK_LOG_DIR || fs.mkdtempSync(path.join(TMP, 'log-')), ...env } });
 const rows = (p, sid) => { try { return fs.readFileSync(path.join(p.blocks, `${sid}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { return []; } };
 const autoStamp = (p, sid, extra = '') => fs.writeFileSync(p.gate, `AUTO - "/loop-code-quality --auto-mode"\nsession: ${sid}\nskill: loop-code-quality\n${extra}`);
 
@@ -357,14 +360,48 @@ test('mode banner: auto-mode OFF says each ask waits, then the fresh-session ref
     assert.match(bannerOf(typedRun(project(), 'c12', '/capture-code-style --auto-mode', t))[0], /^\*\*Auto-mode: ON\*\* for \/capture-code-style - /);
     assert.strictEqual(bannerOf(typedRun(p, 'c9', '/issue-diagnoser the login 500', t))[0], '**Auto-mode: OFF** for /issue-diagnoser - each question waits for your answer.');
     assert.match(bannerOf(typedRun(project(), 'c10', '/issue-diagnoser --auto-mode the login 500', t))[0], /^\*\*Auto-mode: ON\*\* for \/issue-diagnoser - /);
-    // an unknown model and no window: no number is invented for the window
+    // an unknown model and no window: no number is invented for the window, and the default is said as the trigger it is
     const bare = project();
-    assert.match(bannerOf(typedRun(bare, 'c6', '/task-design', path.join(TMP, 'no-such.jsonl')))[1], /past ~280k tokens of its 300k default context window, the run offers/);
+    assert.strictEqual(bannerOf(typedRun(bare, 'c6', '/task-design', path.join(TMP, 'no-such.jsonl')))[1],
+        '**Context:** session refresh - past ~180k tokens (ALFRED_CODE_CONTEXT_WINDOW_DEFAULT - the size of its context window is not known), the run offers to resume in a fresh session from its state file instead of compacting.');
     // the fresh-session offer keeps its text and its place; the banner follows it
     const big = transcript([], 'claude-opus-5-5', 450000);
     const offered = context(typedRun(p, 'c7', '/loop-code-quality src/', big));
     assert.match(offered, /^\/loop-code-quality is a deliberate orchestration run .* Do NOT start the run yet/);
     assert.ok(offered.indexOf(BANNER_HEAD) > offered.indexOf('Do NOT start the run yet'), 'after the offer');
+});
+
+// The user's report of 2026-10-21: settings `"model": "sonnet"` and FOR_1M=400000, yet the first command of a fresh
+// session said '~280k tokens of its 300k default context window (sonnet)' - the alias read as a model id, matched no row.
+test('mode banner: the model SessionStart recorded gives the window before any reply; a settings alias names none', () =>
+{
+    const p = project();
+    fs.mkdirSync(path.join(p.root, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(p.root, '.claude', 'settings.json'), JSON.stringify({ model: 'sonnet' }));
+    const none = path.join(TMP, 'no-such.jsonl');
+    const start = (sid, model) => run('guard-fresh-session-start.js', { hook_event_name: 'SessionStart', source: 'startup', session_id: sid, cwd: p.root, model }, { CLAUDE_PROJECT_DIR: p.root });
+
+    assert.strictEqual(bannerOf(typedRun(p, 'r0', '/capture-awareness', none))[1],
+        '**Context:** session refresh - past ~180k tokens (ALFRED_CODE_CONTEXT_WINDOW_DEFAULT - the size of its context window is not known), the run offers to resume in a fresh session from its state file instead of compacting.',
+        'no record: the alias is not read, so the window is unknown');
+    assert.strictEqual(start('r1', 'claude-sonnet-5-5').status, 0);
+    assert.strictEqual(bannerOf(typedRun(p, 'r1', '/capture-awareness', none))[1],
+        '**Context:** session refresh - past ~400k tokens of its 1M context window (claude-sonnet-5-5), the run offers to resume in a fresh session from its state file instead of compacting.');
+    assert.strictEqual(run('guard-fresh-session-start.js', { hook_event_name: 'PostModelSwitch', session_id: 'r1', cwd: p.root, from_model: 'claude-sonnet-5-5', to_model: 'claude-haiku-4-5' }, { CLAUDE_PROJECT_DIR: p.root }).status, 0);
+    assert.match(bannerOf(typedRun(p, 'r1', '/capture-awareness', none))[1], /past ~180k tokens of its 200k context window \(claude-haiku-4-5\)/, 'a /model switch moves it');
+    // the auto-compact window is quoted against the model's own capacity, never against the default
+    fs.writeFileSync(path.join(p.root, '.claude', 'settings.json'), JSON.stringify({ model: 'sonnet', autoCompactWindow: 350000 }));
+    start('r2', 'claude-sonnet-5-5');
+    assert.strictEqual(bannerOf(typedRun(p, 'r2', '/capture-awareness --auto-mode', none))[1],
+        '**Context:** no fresh-session hand-off - the session auto-compacts as it nears its 350k auto-compact window (of 1M, claude-sonnet-5-5) and the run goes on from the summary and its state files.');
+    // Claude Code caps an auto-compact window at the model's context window (code.claude.com/docs/en/model-config, 'Set
+    // the auto-compact window', verified 2026-10-21), so after a /model switch to a smaller model the banner never quotes
+    // a compaction point past that model's capacity
+    start('r4', 'claude-sonnet-5-5');
+    run('guard-fresh-session-start.js', { hook_event_name: 'PostModelSwitch', session_id: 'r4', cwd: p.root, from_model: 'claude-sonnet-5-5', to_model: 'claude-haiku-4-5' }, { CLAUDE_PROJECT_DIR: p.root });
+    assert.strictEqual(bannerOf(typedRun(p, 'r4', '/capture-awareness --auto-mode', none))[1],
+        '**Context:** no fresh-session hand-off - the session auto-compacts as it nears its 200k context window (its 350k auto-compact window is capped there, claude-haiku-4-5) and the run goes on from the summary and its state files.');
+    assert.strictEqual(bannerOf(typedRun(project(), 'r3', '/capture-awareness --auto-mode', none))[1].includes('of 300k'), false, 'no default window is quoted');
 });
 
 test('mode banner: never for another command, a seat, a print-mode run or the model\'s Skill call', () =>
@@ -671,6 +708,8 @@ test('auto-mode window: each model compacts at its window tier\'s fresh-session 
     assert.deepStrictEqual(settings.compactWindowSeeds({ a: 200000, b: 1000000 }, { ...ON, ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '250000', ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '50000' }, CATALOG),
         { a: 180000, b: 100000 }, 'a trigger past its window is held at 90% of it, and the value never under Claude Code\'s 100,000');
     assert.deepStrictEqual(settings.compactWindowSeeds({ tiny: 50000, junk: 'x' }, ON, CATALOG), {}, 'a row under 100k or not a number seeds nothing');
+    assert.deepStrictEqual(settings.compactWindowSeeds({ small: 150000, edge: 199999, at: 200000 }, { ...ON, ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '120000' }, CATALOG),
+        { at: 180000 }, 'a window under 200K is no tier, and auto-compact never takes ALFRED_CODE_CONTEXT_WINDOW_DEFAULT (the user\'s ruling, 2026-10-21)');
     assert.deepStrictEqual(settings.compactWindowSeeds({ 'us.anthropic.claude-x': 200000, 'Claude-X': 200000 }, ON, CATALOG), {}, 'nor an id the stamp could not read back');
 });
 

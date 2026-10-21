@@ -21,6 +21,13 @@ const BASE_ENV = { ...process.env, CLAUDE_CONFIG_DIR: fs.mkdtempSync(path.join(T
 for (const k of ['ALFRED_CODE_DOCS_PATH', 'ALFRED_CODE_HOOKS_OFF', 'ALFRED_CODE_CONTEXT_WINDOW_DEFAULT', 'ALFRED_CODE_DOCS_ASK',
     'ALFRED_CODE_CONTEXT_WINDOW_FOR_200K', 'ALFRED_CODE_CONTEXT_WINDOW_FOR_1M', 'ALFRED_CODE_CONTEXT_WINDOW_FOR_300K', 'ALFRED_CODE_AUTO_COMPACT'])
     delete BASE_ENV[k];
+// The seeds an install writes (meta/environment.json): a tier left unset reads as ALFRED_CODE_CONTEXT_WINDOW_DEFAULT (the
+// user's ruling of 2026-10-21). The engine the C08 cases require in-process reads them at load, so process.env carries them too.
+const WINDOW_SEEDS = { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '400000', ALFRED_CODE_CONTEXT_WINDOW_FOR_300K: '280000',
+    ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '180000', ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '180000' };
+Object.assign(BASE_ENV, WINDOW_SEEDS);
+Object.assign(process.env, WINDOW_SEEDS);
+delete process.env.ALFRED_CODE_AUTO_COMPACT;
 
 let seq = 0;
 function project()
@@ -168,7 +175,7 @@ test('compact-state: the compact injection points at the snapshot of THIS sessio
 test('compact-state: with every fresh-session offer off, the compact start still points at the snapshot - and says nothing else', () =>
 {
     const p = project();
-    const off = { ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '0', ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '0', ALFRED_CODE_CONTEXT_WINDOW_FOR_300K: '0' };
+    const off = { ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '0', ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '0', ALFRED_CODE_CONTEXT_WINDOW_FOR_300K: '0', ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '0' };
     p.run({ hook_event_name: 'PreCompact', trigger: 'auto' }, off);
     const r = p.run({ hook_event_name: 'SessionStart', source: 'compact' }, off);
     const text = JSON.parse(r.stdout).hookSpecificOutput.additionalContext;

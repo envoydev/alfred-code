@@ -57,7 +57,7 @@ It prints, in order:
   names THIS as the refresh, and it gates the `/capture-awareness` suggestion.
 - `migration: <id><TAB><detect kind>` per DETECTED entry, or `migrations: none detected`, each
   followed by its own indented `why:` / `then:` / `remove:` / `unwire:` / `env-rename:` /
-  `env-rename-prefix:` / `env-remove:` / `env-reset:` lines - everything you act on. A detected entry joins the prune
+  `env-rename-prefix:` / `env-remove:` / `env-reset:` / `env-off:` lines - everything you act on. A detected entry joins the prune
   list labeled `(migration: <why>)`.
 - `new: <category> <name><TAB><verdict><TAB><entry|->` per item the release ADDED or RENAMED, or
   `new: none` - classified against THIS install by the derivation, never by you, with optional

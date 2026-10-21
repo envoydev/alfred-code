@@ -817,7 +817,7 @@ test('settings-writer: at project scope a key settings.local.json holds is still
     const logs = [];
     writeSettings({ file: p.sharedFile, localFile: p.localFile, catalog: CATALOG, migrations: MIGRATIONS, docsVersioning: { seed: 'git' }, log: (m) => logs.push(m) });
     const shared = p.shared().env;
-    assert.strictEqual(shared.ALFRED_CODE_CONTEXT_WINDOW_DEFAULT, '300000', 'the committed file lacks the seed because the runner holds a personal value');
+    assert.strictEqual(shared.ALFRED_CODE_CONTEXT_WINDOW_DEFAULT, '180000', 'the committed file lacks the seed because the runner holds a personal value');
     assert.strictEqual(shared.ALFRED_CODE_CORRECTION_NUDGE, 'log');
     assert.strictEqual(shared.ALFRED_CODE_HOOKS_OFF, '', 'the unanswered HOOKS_OFF seed');
     assert.strictEqual(shared.ALFRED_CODE_DOCS_VERSIONING, 'git', 'the docs-versioning seed');

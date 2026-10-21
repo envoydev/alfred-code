@@ -646,6 +646,11 @@
               },
               {
                 "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
                 "timeout": 10
               },
@@ -664,11 +669,6 @@
           {
             "matcher": "compact",
             "hooks": [
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
-                "timeout": 10
-              },
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer.js\"",
@@ -717,6 +717,17 @@
         "UserPromptExpansion": [
           {
             "matcher": "(^|[^A-Za-z0-9_-])((alfred-)?(loop-[a-z][a-z0-9-]*|capture-[a-z][a-z0-9-]*|task-[a-z][a-z0-9-]*|issue-[a-z][a-z0-9-]*)|security-review|init|update|configure|validate)$",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
+                "timeout": 10
+              }
+            ]
+          }
+        ],
+        "PostModelSwitch": [
+          {
             "hooks": [
               {
                 "type": "command",

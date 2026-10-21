@@ -22,9 +22,12 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-stop-fresh-'));
 // here. Pin an EMPTY account dir for the whole run; the cases that exercise a tier point at a
 // fixture of their own.
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
-// ... and a Claude Code session's own settings env reaches this process: the seeded
-// ALFRED_CODE_CONTEXT_WINDOW_DEFAULT=1000000 would resolve every unproven window below as 1M.
-delete process.env.ALFRED_CODE_CONTEXT_WINDOW_DEFAULT;
+// ... and a Claude Code session's own settings env reaches this process, so every window key is set to the seed an
+// install writes (meta/environment.json): a tier left unset reads as ALFRED_CODE_CONTEXT_WINDOW_DEFAULT (the user's ruling
+// of 2026-10-21), and a hand-set value would move every threshold assertion here.
+Object.assign(process.env, { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '400000', ALFRED_CODE_CONTEXT_WINDOW_FOR_300K: '280000',
+  ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '180000', ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '180000' });
+delete process.env.ALFRED_CODE_AUTO_COMPACT;
 // Every guard appends a block row under CLAUDE_PROJECT_DIR, falling back to the process cwd - so an
 // unpinned run forges field ledger rows into this repo's own docs root. Pin a scratch root.
 process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
@@ -50,11 +53,6 @@ const ctxRows = (name, ctx, text) => [
   assistantRow(name, text || 'ok', { cache_read_input_tokens: ctx }),
 ];
 const logEnv = (extra) => ({ ...process.env, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'log-')), ...(extra || {}) });
-function accountDir(name, model) {
-  const d = fs.mkdtempSync(path.join(TMP, `${name}-`));
-  fs.writeFileSync(path.join(d, 'settings.json'), JSON.stringify(model === null ? {} : { model }));
-  return d;
-}
 
 // A close is judged from the harness's own `last_assistant_message` field, which is what the live
 // hook reads first - no transcript needed for the phrase cases.
@@ -797,9 +795,10 @@ test('guard-stop-contract: a new cycle after a finished one is sent back once wi
 // 4. stop-denial-stale-150k - the denial printed a number that was not this session's trigger
 // ---------------------------------------------------------------------------------------------
 test('guard-stop-contract: the prose-ask denial quotes the session\'s own carry and trigger', () => {
-  const tp = transcript('denial-num', ctxRows('denial-num', 266711, 'Patch is ready. Say the word and I will push it.'));
-  const r = runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp },
-    { env: logEnv({ CLAUDE_CONFIG_DIR: accountDir('denial-1m', 'claude-opus-5') }) });
+  // the session's model is the transcript's own row (a settings alias is never read)
+  const tp = transcript('denial-num', ctxRows('denial-num', 266711, 'Patch is ready. Say the word and I will push it.')
+    .map((r) => ({ ...r, message: { ...r.message, model: 'claude-opus-5' } })));
+  const r = runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp }, { env: logEnv() });
   assert.equal(r.status, 2);
   assert.doesNotMatch(r.stderr, /~150k/, 'the hardcoded 150k told a 1M-window session the opposite of its real trigger');
   assert.match(r.stderr, /267k/, "the session's own measured carry");
@@ -820,9 +819,9 @@ const ts = (h) => new Date(Date.UTC(2026, 8, 20, h, 0, 0)).toISOString();
 test('guard-stop-contract: the fresh-session note carries the two absolute numbers, not a ratio', () => {
   const tp = transcript('ask-nums', [
     assistantRow('nf', 'the first turn', { cache_creation_input_tokens: 90000 }),
-    assistantRow('nc', 'ok', { cache_read_input_tokens: 500000 }),
+    { type: 'assistant', message: { id: 'nc', model: 'claude-opus-5', content: [{ type: 'text', text: 'ok' }], usage: { cache_read_input_tokens: 500000 } } },
   ]);
-  const note = ctxOf(askIn(tp, oneQ, logEnv({ CLAUDE_CONFIG_DIR: accountDir('ask-1m', 'claude-opus-5') })));
+  const note = ctxOf(askIn(tp, oneQ, logEnv()));
   assert.match(note, /500k/, 'the carry this session pays per message');
   assert.match(note, /90k/, "this session's own cold floor - the number a resume restarts at");
   assert.match(note, /400k/, 'and the trigger it crossed');

@@ -192,7 +192,7 @@ function askGapArm() {
 const ASK_GAP = IS_HOLD_CALL && !IS_SKILL_CALL ? askGapArm() : null;
 // The common case - no hold pending - leaves before anything else is read.
 if (IS_HOLD_CALL && !IS_SKILL_CALL && !ASK_GAP && !fs.existsSync(compactHoldFile())) process.exit(0);
-if (!IS_SKILL_CALL && !IS_HOLD_CALL && !['UserPromptExpansion', 'UserPromptSubmit', 'SessionStart', 'PreCompact'].includes(EVENT)) process.exit(0);
+if (!IS_SKILL_CALL && !IS_HOLD_CALL && !['UserPromptExpansion', 'UserPromptSubmit', 'SessionStart', 'PreCompact', 'PostModelSwitch'].includes(EVENT)) process.exit(0);
 
 // The fresh-session arithmetic lives in fresh-session.js beside this hook, shared with
 // guard-stop-contract.js. An update from an older install can run this hook before that file
@@ -201,12 +201,19 @@ let fresh;
 try { fresh = require(require('path').join(__dirname, 'fresh-session.js')); } catch {
   fresh = {
     use() {}, freshAt: (k, d) => d, FRESH_AT_200K: 0, FRESH_AT_300K: 0, FRESH_AT_1M: 0, FRESH_OFF: true, COMPACT_INSTEAD: false,
-    sessionModelId: () => null, tableWindow: () => null, envWindow: () => null, knownWindow: () => null,
+    sessionModelId: () => null, tableWindow: () => null, recordSessionModel: () => false, knownWindow: () => null,
     ctxThreshold: () => null, MIN_RECOVERABLE_SHARE: 0.4, coldFloor: () => null, worthResuming: () => false,
     transcriptSize: () => 0, freshAskAnsweredThisTurn: () => false, askAnsweredSince: () => true,
   };
 }
 fresh.use(payload);
+// THE SESSION'S MODEL (the user's ruling, 2026-10-21): every SessionStart saves the `model` it carries and a /model switch
+// the `to_model`, so the window is the model's own capacity from the first prompt on (fresh-session.js readModelId). Only
+// the compaction start goes on from here.
+if (EVENT === 'SessionStart' || EVENT === 'PostModelSwitch') {
+  fresh.recordSessionModel(EVENT === 'PostModelSwitch' ? payload.to_model : payload.model);
+  if (EVENT === 'PostModelSwitch' || String(payload.source || '') !== 'compact') process.exit(0);
+}
 const { FRESH_OFF, COMPACT_INSTEAD, ctxThreshold, worthResuming } = fresh;
 // COMPACT INSTEAD's one line, said at the compaction start and at the first orchestration run of a session.
 const COMPACT_NOTE = 'This project compacts instead of offering a fresh session (ALFRED_CODE_AUTO_COMPACT=1): past its '
@@ -1012,14 +1019,19 @@ function acwIgnoredNote() {
 }
 function modeBanner(autoOn) {
   const model = fresh.sessionModelId();
-  const listed = fresh.tableWindow();
-  // an unlisted model runs in ALFRED_CODE_CONTEXT_WINDOW_DEFAULT - said as the default, never as the model's own size
-  const window = listed || fresh.envWindow();
-  const room = `its ${window ? `${tokens(window)} ${listed ? '' : 'default '}` : ''}context window${model ? ` (${model})` : ''}`;
+  // the model's own capacity, never a declared default: with none known, no window is quoted and the trigger is said
+  // as ALFRED_CODE_CONTEXT_WINDOW_DEFAULT's
+  const window = fresh.tableWindow();
+  const room = `its ${window ? `${tokens(window)} ` : ''}context window${model ? ` (${model})` : ''}`;
   const acw = fresh.autoCompactWindow();
-  const where = acw
-    ? `as it nears its ${tokens(acw)} auto-compact window (${window ? `of ${tokens(window)}` : 'context'}${model ? `, ${model}` : ''})`
-    : `at Claude Code's own point in ${room}`;
+  // Claude Code caps an auto-compact window at the model's context window (code.claude.com/docs/en/model-config, 'Set
+  // the auto-compact window', verified 2026-10-21), so one past the capacity - a /model switch to a smaller model - is
+  // quoted as the capacity it compacts at
+  const where = acw && window && acw > window
+    ? `as it nears its ${tokens(window)} context window (its ${tokens(acw)} auto-compact window is capped there${model ? `, ${model}` : ''})`
+    : acw
+      ? `as it nears its ${tokens(acw)} auto-compact window (${window ? `of ${tokens(window)}` : 'context'}${model ? `, ${model}` : ''})`
+      : `at Claude Code's own point in ${room}`;
   const name = `/${skill.replace(/^alfred-code:/, '')}`;
   const mode = autoOn
     ? `**Auto-mode: ON** for ${name} - every question takes its (Recommended) option without waiting for you; one with no `
@@ -1034,7 +1046,7 @@ function modeBanner(autoOn) {
       ? `**Context:** auto-compact is on (ALFRED_CODE_AUTO_COMPACT=1) - the session compacts ${where} instead of offering a fresh session.`
       : FRESH_OFF || at === null
         ? `**Context:** the fresh-session offers are off - the session compacts ${where}.`
-        : `**Context:** session refresh - past ~${tokens(at)} tokens of ${room}, the run offers to resume in a fresh session from its state file instead of compacting.`;
+        : `**Context:** session refresh - past ~${tokens(at)} tokens ${window ? `of ${room}` : `(ALFRED_CODE_CONTEXT_WINDOW_DEFAULT - the size of ${room} is not known)`}, the run offers to resume in a fresh session from its state file instead of compacting.`;
   const acwNote = acwIgnoredNote();
   return `${acwNote ? `${acwNote}\n\n` : ''}${BANNER_HEAD}\n${mode}\n${ctxLine}`;
 }

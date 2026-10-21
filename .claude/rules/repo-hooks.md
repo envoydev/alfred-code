@@ -112,7 +112,9 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
   past the first argument, or the bare pre-2026-10-17 word first, is said to start a run only as `--auto-mode` first), then `**Context:**` - auto-mode or
   `COMPACT_INSTEAD` compacts (at the seeded `autoCompactWindow` when one is set, else Claude Code's own point), offers off
   compact too, and otherwise the fresh-session refresh past `ctxThreshold()` - with the window and model the engine read,
-  no number invented for an unknown window. It rides AFTER the contract, the compact note or the offer
+  no number invented for an unknown window, and an auto-compact window past the model's capacity (a `/model` switch to a
+  smaller model) quoted as the capacity it is capped at (code.claude.com/docs/en/model-config, 'Set the auto-compact
+  window': 'Claude Code caps it at the model's context window', verified 2026-10-21). It rides AFTER the contract, the compact note or the offer
   (`expansionOut`), so each of those keeps its shape; a seat, the Skill route and nobody at the terminal get none - judged
   without the session's own AUTO stamp, which is the auto-mode the banner reports (`auto-mode.test.js`, 'mode banner').
   The fresh-session arithmetic (trigger per window tier, window lookup, cold floor) lives in one
@@ -794,18 +796,26 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     would / will you' request): the own-move, hand-back and pending-step vetoes still hold it.
     Fresh-session offer on a clean close past the window's ABSOLUTE trigger:
     `ALFRED_CODE_CONTEXT_WINDOW_FOR_1M` (default 400000, a window of 1M or more), `_FOR_300K` (280000, 300k up to
-    1M), `_FOR_200K` (180000, below 300k); `0` switches that tier off; seeded absent-only (2026-10-16, the user's ruling:
+    1M), `_FOR_200K` (180000, 200k up to 300k); `0` switches that tier off; seeded absent-only (2026-10-16, the user's ruling:
     renamed from `ALFRED_CODE_FRESH_SESSION_1M` / `_200K`, the 150000 seed moved to 180000, `_DEFAULT` retired - every
     window lands in one of three tiers - and `ALFRED_CODE_DEFAULT_CONTEXT_WINDOW` renamed `ALFRED_CODE_CONTEXT_WINDOW_DEFAULT`;
-    `meta/migrations.json` carries each). The window comes from ONE table (the session
-    model's row in the shipped `model-windows.json`, else `ALFRED_CODE_CONTEXT_WINDOW_DEFAULT`, seeded 300000 - the 300K
-    tier; no id suffix or carry is read), never declared - only LOWERED by two measured facts (audit 2026-10-10 C08): the install's
+    `meta/migrations.json` carries each). The window is the session model's own capacity from ONE table (its FULL id's row in
+    the shipped `model-windows.json`; no id suffix, carry or settings alias is read - the settings `model` key holds `sonnet`,
+    which named no row, the user's report of 2026-10-21), never declared. A session with no tier - an unlisted or not yet known
+    model, a window under 200k, a tier variable unset or garbage - takes `ALFRED_CODE_CONTEXT_WINDOW_DEFAULT` as the TRIGGER
+    itself (seeded 180000; the user's ruling of 2026-10-21 - it was a WINDOW, seeded 300000, before, and `migrations.json`
+    moves that seed); it is never a window and never an auto-compact window (`settings.js compactWindowSeeds` seeds a
+    model under 200k nothing). So the whole off switch (`FRESH_OFF`) is all four keys at `0` - the walk's fresh-session
+    question carries the DEFAULT as a rider of the 1M row, and an update carries a stack-seeded or absent DEFAULT to `0` where
+    the three tiers already are (`off_settings_env`, `settings.js offWithTiers` - a typed value stays) - or
+    `ALFRED_CODE_AUTO_COMPACT=1`. The id is the newer of two: the `model` SessionStart and `to_model` PostModelSwitch hand
+    `guard-fresh-session-start.js` (saved per session in `<data root>/state/sessions/models.json`, the newest 40; the
+    only id before the first reply) and the transcript's last model row. A known window is only LOWERED by two measured facts (audit 2026-10-10 C08): the install's
     documented auto-compact window (`CLAUDE_CODE_AUTO_COMPACT_WINDOW`, else the highest settings file naming one - its
     `modelSettings` entry for the model first, then its top-level `autoCompactWindow` - the USER file's included, 'Scope:
     Any file' with no model limit in the settings reference; the Opus 5 / Fable 5.1 limit is `effortLevel`'s, audit HK03)
     and 90% of the lowest automatic compaction this project recorded for the model
-    (`<data root>/state/sessions/compact-points.json`, 30 days). The TIER is the model's own window (its table row, else the declared
-    default): a lowered window only clamps the trigger inside it, so a 1M model under the 400k window the installer seeds
+    (`<data root>/state/sessions/compact-points.json`, 30 days). The TIER is the model's own window (its table row; no row is no tier): a lowered window only clamps the trigger inside it, so a 1M model under the 400k window the installer seeds
     keeps its 1M trigger, held at 360k - tiering by the lowered window had dropped it to the 300k DEFAULT trigger of that time (2026-10-14). A context read stops at a `compact_boundary` row (unknown until
     the next model call), and the model id read widens to 8MB and takes the harness's `model` attachment row. A key matches its id, a dated snapshot, a Bedrock version, the `[1m]` suffix and a provider prefix, never a point release: `claude-opus-5-5` took `claude-opus-5`'s row until every model got its own (2.1.5 M6, which added Opus 4.5 and Sonnet 4.5 at 200K). A trigger at or above its window is clamped
     inside it (90% of it). The offer fires only
@@ -838,7 +848,8 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     typed command and names it in `command_name`, the typed prompt settling a plugin command's namespace; its matcher, a
     regex with no colon, lists the orchestration commands, so no ordinary prompt spawns it; never blocks - a blocked
     expansion shows its reason to the user only; the chained offer is spent only once an ask is answered after it, so a
-    double-submitted command re-injects on the live branch); `SessionStart` matcher `compact` - an AUTOMATIC compaction
+    double-submitted command re-injects on the live branch); `SessionStart` (every source saves the session's `model`, and
+    `PostModelSwitch` its `to_model`, then leaves - the 2026-10-21 ruling above) with the source `compact` - an AUTOMATIC compaction
     only, a typed `/compact` gets just the two lines below - names the summary's 'continue without asking' line as
     superseded and leaves a one-shot HOLD (`guard-fresh-compact-*`): the first changing call after it that this hook is
     wired on (`Write` / `Edit` / `MultiEdit` / `NotebookEdit` and the shell route - both rows fold into their

@@ -109,6 +109,21 @@ test('settings_env_value fires only on the exact seeded value; an unknown detect
     assert.ok(!out.includes('from-the-future'), 'a detect kind this release does not know never claims a detection');
 });
 
+test('settings_env_all fires only when every key holds the value, and names the off edit', () => {
+    const migrations = [{ id: 'default-off-with-the-tiers',
+        detect: { settings_env_all: { keys: ['ALFRED_CODE_A', 'ALFRED_CODE_B'], equals: '0' } },
+        off_settings_env: { key: 'ALFRED_CODE_C', with: ['ALFRED_CODE_A', 'ALFRED_CODE_B'], when_value: ['300000', '180000'], to: '0' } }];
+    for (const env of [{ ALFRED_CODE_A: '0', ALFRED_CODE_B: '5' }, { ALFRED_CODE_A: '0' }, {}])
+    {
+        const s = scaffold({ migrations, settings: { env } });
+        assert.match(run(['--snapshot', s.snap, '--root', s.install, '--fixture', s.fixtureFile]).out, /^migrations: none detected$/m, JSON.stringify(env));
+    }
+    const all = scaffold({ migrations, settings: { env: { ALFRED_CODE_A: '0', ALFRED_CODE_B: '0' } } });
+    const out = run(['--snapshot', all.snap, '--root', all.install, '--fixture', all.fixtureFile]).out;
+    assert.match(out, /^migration: default-off-with-the-tiers\tsettings_env_all$/m, out);
+    assert.match(out, /^ {2}env-off: ALFRED_CODE_C: 300000 \| 180000 \| absent -> 0 \(with ALFRED_CODE_A, ALFRED_CODE_B at 0\)$/m, out);
+});
+
 test('a BOM-prefixed settings.json is read like any other (audit F5)', () => {
     const migrations = [{ id: 'fresh-session-pct-retired', detect: { settings_env_key: 'ALFRED_CODE_FRESH_SESSION_PCT' } }];
     const bom = scaffold({ migrations });
@@ -143,7 +158,7 @@ test('the compare exit codes pass through unchanged, and the preflight still rep
 
 test('the shipped catalog parses under the shipped detect vocabulary - every entry has a known kind', () => {
     const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'migrations.json'), 'utf8'));
-    const known = new Set(['file_exists', 'settings_env_key', 'settings_env_value', 'settings_hook_wired']);
+    const known = new Set(['file_exists', 'settings_env_key', 'settings_env_value', 'settings_env_all', 'settings_hook_wired']);
     for (const e of catalog.migrations)
     {
         const kinds = Object.keys(e.detect || {});

@@ -279,9 +279,9 @@ engine whose only record was another project's, and the session searched for its
 | ALFRED_CODE_ROTATE_ASK | 1 (default - on) - the stop contract's once-per-exposure rotate ask |
 | ALFRED_CODE_CONTEXT_WINDOW_FOR_1M | 400000 (default) - the fresh-session gate's trigger on a window of 1M or more; 0 = off for that tier |
 | ALFRED_CODE_CONTEXT_WINDOW_FOR_300K | 280000 (default) - the same trigger on a window of 300k up to 1M; 0 = off for that tier |
-| ALFRED_CODE_CONTEXT_WINDOW_FOR_200K | 180000 (default) - the same trigger on a window below 300k; 0 = off for that tier. The window comes from the session model's row in `.claude/hooks/model-windows.json` |
+| ALFRED_CODE_CONTEXT_WINDOW_FOR_200K | 180000 (default) - the same trigger on a window of 200k up to 300k; 0 = off for that tier. The window is the session model's own capacity, its row in `.claude/hooks/model-windows.json` |
 | ALFRED_CODE_AUTO_COMPACT | 0 (default) - offer a fresh session at the trigger; 1 = compact there instead (each model's `autoCompactWindow` set, no fresh-session ask) |
-| ALFRED_CODE_CONTEXT_WINDOW_DEFAULT | 300000 (default) - the window for a model `.claude/hooks/model-windows.json` does not list, or one the gate cannot read |
+| ALFRED_CODE_CONTEXT_WINDOW_DEFAULT | 180000 (default) - the trigger itself for a session with no tier: a model `.claude/hooks/model-windows.json` does not list, a window under 200k, a model not known yet, or a tier left unset or garbage; 0 = off for such a session |
 | CONTEXT7_API_KEY (account env) | set (N chars) / absent - absent = the keyless free tier |
 
 Mark `(default)` when the key is absent and a house default applies. `autoMemoryEnabled` is a

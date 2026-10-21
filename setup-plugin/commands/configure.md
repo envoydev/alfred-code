@@ -19,8 +19,9 @@ cache_read + cache_creation` off the last assistant message in the transcript. A
 figure is past the same trigger `guard-fresh-session-start.js` uses - the tier's own absolute
 trigger, `ALFRED_CODE_CONTEXT_WINDOW_FOR_1M` (default 400,000) on a window of 1M or more,
 `ALFRED_CODE_CONTEXT_WINDOW_FOR_300K` (default 280,000) on one of 300k up to 1M, or
-`ALFRED_CODE_CONTEXT_WINDOW_FOR_200K` (default 180,000) below that - the window comes from the session
-model's row in `.claude/hooks/model-windows.json`, else `ALFRED_CODE_CONTEXT_WINDOW_DEFAULT` (default 300,000) - or when that hook has already
+`ALFRED_CODE_CONTEXT_WINDOW_FOR_200K` (default 180,000) on one of 200k up to 300k - the window is the session
+model's own capacity, its row in `.claude/hooks/model-windows.json`; with no row, a window under 200k or a tier left
+unset, the trigger is `ALFRED_CODE_CONTEXT_WINDOW_DEFAULT` (default 180,000) itself - or when that hook has already
 injected the ask into this turn. Below the
 trigger, or when the figure cannot be read at all, or with `ALFRED_CODE_AUTO_COMPACT=1` or the tier's trigger at `0` (no fresh-session offer
 then), SKIP the ask silently and start step 1: an ask

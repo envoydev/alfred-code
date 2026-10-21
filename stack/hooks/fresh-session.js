@@ -27,59 +27,73 @@ function use(p) {
 // The trigger is an ABSOLUTE token count per WINDOW TIER, one environment variable each (the user's ruling of 2026-10-16;
 // the percentage knob before them was inert at its default on both real tiers, so the clamps decided and the setting lied
 // about what it controlled). Say when you want to be asked:
-//   ALFRED_CODE_CONTEXT_WINDOW_FOR_1M   - the trigger on a 1M window (default 400,000)
-//   ALFRED_CODE_CONTEXT_WINDOW_FOR_300K - the trigger on a 300K window (default 280,000)
-//   ALFRED_CODE_CONTEXT_WINDOW_FOR_200K - the trigger on a 200K window (default 180,000)
-//   ALFRED_CODE_CONTEXT_WINDOW_DEFAULT  - the WINDOW a model model-windows.json does not list runs in (default 300,000)
-// A window takes the largest tier it reaches (tierKeyOf: 1M and up, 300K and up, else 200K), so every window has a
-// trigger and one below its own tier's number is clamped inside it (ctxThreshold). `0` on a tier turns that tier's offer
-// off. NOTE the 1M default sits ABOVE the harness's own auto-compaction (measured preTokens 387,619 / 391,290 / 393,516 /
+//   ALFRED_CODE_CONTEXT_WINDOW_FOR_1M   - the trigger on a 1M window, 1,000,000 and up (seeded 400,000)
+//   ALFRED_CODE_CONTEXT_WINDOW_FOR_300K - the trigger on a 300K window, 300,000 up to 1M (seeded 280,000)
+//   ALFRED_CODE_CONTEXT_WINDOW_FOR_200K - the trigger on a 200K window, 200,000 up to 300K (seeded 180,000)
+//   ALFRED_CODE_CONTEXT_WINDOW_DEFAULT  - the trigger when the window is unknown or under 200K, or its tier's own value
+//                                         is unset or garbage (seeded 180,000; unset or garbage reads as 180,000)
+// The WINDOW is the session model's own capacity and nothing else (the user's ruling of 2026-10-21): a window takes the
+// largest tier it reaches (tierKeyOf), and a trigger below its own tier's number is clamped inside it (ctxThreshold).
+// The default is a TRIGGER, never a window: until 2026-10-21 it was the window an unlisted model was assumed to run in, so a
+// session the hook could not place sat on the 300K tier's 280,000 whatever its real size. `0` on a tier turns that tier's
+// offer off, `0` on the default the offer of a session with no tier. NOTE the 1M seed sits ABOVE the harness's own auto-compaction (measured preTokens 387,619 / 391,290 / 393,516 /
 // 393,969 / 395,112 / 396,651 / 396,954 / 397,171 across three projects), so on that tier the Stop offer is usually
 // unreachable by design and the SessionStart `compact` route is what reaches the user - lower the variable to be asked
 // before the harness decides. Read through envOf - the key is passed with the ALFRED_CODE_ prefix, read by its suffix.
 function freshAt(key, dflt) {
   const n = parseInt(envOf(process.env, String(key).replace(/^ALFRED_CODE_/, '')), 10);
-  return Number.isNaN(n) || n < 0 ? dflt : n;   // garbage takes the default; 0 is a real answer (off)
+  return Number.isNaN(n) || n < 0 ? dflt : n;   // unset or garbage takes the fallback; 0 is a real answer (off)
 }
-const TIER_DEFAULTS = { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: 400000, ALFRED_CODE_CONTEXT_WINDOW_FOR_300K: 280000, ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: 180000 };
-const WINDOW_DEFAULT = 300000;
+// The default's seed, and what it reads as when unset or garbage: it fires before compaction in every window of 200K or
+// more, so a session the hook cannot place is never judged against a number past where the harness compacts.
+const DEFAULT_SEED = 180000;
+const DEFAULT_AT = freshAt('ALFRED_CODE_CONTEXT_WINDOW_DEFAULT', DEFAULT_SEED);
 // The tier a window belongs to - the one rule the hooks and the installer's auto-compact seeding (settings.js
-// compactWindowSeeds) both read.
+// compactWindowSeeds) both read: 1M and up, 300K and up, 200K and up; under 200K, or unknown, no tier (null).
 function tierKeyOf(window) {
   const w = Number(window) || 0;
-  return w >= 1000000 ? 'ALFRED_CODE_CONTEXT_WINDOW_FOR_1M' : w >= 300000 ? 'ALFRED_CODE_CONTEXT_WINDOW_FOR_300K' : 'ALFRED_CODE_CONTEXT_WINDOW_FOR_200K';
+  return w >= 1000000 ? 'ALFRED_CODE_CONTEXT_WINDOW_FOR_1M' : w >= 300000 ? 'ALFRED_CODE_CONTEXT_WINDOW_FOR_300K'
+    : w >= 200000 ? 'ALFRED_CODE_CONTEXT_WINDOW_FOR_200K' : null;
 }
-const FRESH_AT_1M = freshAt('ALFRED_CODE_CONTEXT_WINDOW_FOR_1M', TIER_DEFAULTS.ALFRED_CODE_CONTEXT_WINDOW_FOR_1M);
-const FRESH_AT_300K = freshAt('ALFRED_CODE_CONTEXT_WINDOW_FOR_300K', TIER_DEFAULTS.ALFRED_CODE_CONTEXT_WINDOW_FOR_300K);
-const FRESH_AT_200K = freshAt('ALFRED_CODE_CONTEXT_WINDOW_FOR_200K', TIER_DEFAULTS.ALFRED_CODE_CONTEXT_WINDOW_FOR_200K);
+const FRESH_AT_1M = freshAt('ALFRED_CODE_CONTEXT_WINDOW_FOR_1M', DEFAULT_AT);
+const FRESH_AT_300K = freshAt('ALFRED_CODE_CONTEXT_WINDOW_FOR_300K', DEFAULT_AT);
+const FRESH_AT_200K = freshAt('ALFRED_CODE_CONTEXT_WINDOW_FOR_200K', DEFAULT_AT);
 const FRESH_AT = { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: FRESH_AT_1M, ALFRED_CODE_CONTEXT_WINDOW_FOR_300K: FRESH_AT_300K, ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: FRESH_AT_200K };
 // COMPACT INSTEAD (the user's rulings, 2026-10-14 and 2026-10-16): ALFRED_CODE_AUTO_COMPACT=1 makes the project compact where
 // it would have been offered a fresh session - the installer seeds each model's autoCompactWindow at its tier's trigger
 // above (settings.js compactWindowSeeds), and every offer, ask, note and hold reads the gate as OFF: the switch, never a
 // tier set to 0, is what turns the fresh-session hook off. `0` (the seed) keeps the offers; anything but `1` reads as `0`.
 const COMPACT_INSTEAD = String(envOf(process.env, 'AUTO_COMPACT') || '').trim() === '1';
-// `0` on ALL THREE tiers is the other whole off switch. The retired ALFRED_CODE_FRESH_SESSION_PCT / _DEFAULT are not read.
-const FRESH_OFF = (FRESH_AT_1M === 0 && FRESH_AT_300K === 0 && FRESH_AT_200K === 0) || COMPACT_INSTEAD;
+// `0` on all three tiers AND the DEFAULT (the trigger of a session with no tier) is the other whole off switch. The
+// retired ALFRED_CODE_FRESH_SESSION_PCT / _DEFAULT are not read.
+const FRESH_OFF = (FRESH_AT_1M === 0 && FRESH_AT_300K === 0 && FRESH_AT_200K === 0 && DEFAULT_AT === 0) || COMPACT_INSTEAD;
 
 // --- which context WINDOW is this session running in? -------------------------------------
-// ONE rule: the session's model id is looked up in `model-windows.json`, shipped beside this hook
-// and replaced on every update, so a new model arrives with the release that lists it. A model the
-// table does not list takes ALFRED_CODE_CONTEXT_WINDOW_DEFAULT (seeded 300000; unset or garbage reads as 300000), so a
-// window is always known. Two MEASURED facts can only lower it (audit
-// 2026-10-10 C08): the install's own auto-compact window when a setting names it, and the lowest compaction point
-// this project recorded for the model (autoCompactWindow / observedCompaction below). Nothing else decides - not a
-// `[1m]`/`[200k]` id suffix, not the carry. Those inferences each fixed one case
+// ONE rule: the session model's FULL id is looked up in `model-windows.json`, shipped beside this hook
+// and replaced on every update, so a new model arrives with the release that lists it. That row is the model's
+// capacity; a model the table does not list has NO known window (the user's ruling of 2026-10-21) and takes
+// ALFRED_CODE_CONTEXT_WINDOW_DEFAULT as its trigger - no window is assumed for it. Two MEASURED facts can only lower a
+// known window (audit 2026-10-10 C08): the install's own auto-compact window when a setting names it, and the lowest
+// compaction point this project recorded for the model (autoCompactWindow / observedCompaction below). Nothing else
+// decides - not a `[1m]`/`[200k]` id suffix, not the carry. Those inferences each fixed one case
 // and broke another (Sonnet 5 runs 1M on a bare id, so the suffix read offered a resume at ~252k),
 // and a window that moves with the session's own history cannot be predicted by the person who set
 // it. The table holds the API maximum from the Claude models docs; a session that runs smaller than
 // its row is the table's error, corrected in the table.
-// The id is the main transcript's last `message.model` - subagents write their own files, so a
-// Haiku helper cannot answer for the session - else the settings `model` when it is a full id.
+// The id comes from two places, and the NEWER one wins:
+// - the model SessionStart and PostModelSwitch hand guard-fresh-session-start.js, saved per session in
+//   `<data root>/state/sessions/models.json` (recordSessionModel). Verified in the hooks reference
+//   (code.claude.com/docs/en/hooks, read 2026-10-21): SessionStart is the only event whose input carries `model` - it
+//   may be left out, after /clear for one - and PostModelSwitch carries `to_model`; no event carries a window size.
+//   It is the only id there is before the session's first reply.
+// - the main transcript's last `message.model` - subagents write their own files, so a Haiku helper cannot answer for
+//   the session - or the harness's `model` attachment row (`identity.modelId`, re-written after every compaction).
+//   Right after a compaction the harness re-attaches 0.4-0.6MB (invoked skill bodies, the instructions, the agent
+//   listing) before the next assistant row, so a 512KB tail held no model and the window fell to the DEFAULT tier
+//   (audit 2026-10-10 C08: 180,000 for a 1M session in 6 ledgers). The read widens once to 8MB.
+// The settings `model` key is never read: it holds what was typed, an alias like `sonnet` that names no capacity - the
+// user's report of 2026-10-21, where `sonnet` matched no row and a 1M session was judged on a 300k default window.
 // Measured: the PreToolUse payload carries no model and no window, and no env var names either.
-// Right after a compaction the harness re-attaches 0.4-0.6MB (invoked skill bodies, the instructions, the agent
-// listing) before the next assistant row, so a 512KB tail held no model and the window fell to the DEFAULT tier
-// (audit 2026-10-10 C08: 180,000 for a 1M session in 6 ledgers). The read widens once to 8MB, and the harness's
-// own `model` attachment row (`identity.modelId`, re-written after every compaction) answers as well.
 // Memoized per payload (audit 2026-10-20, the hooks track's minor list: a UserPromptExpansion read up to 8MB five or six
 // times for one answer); `use()` clears it.
 let _modelId;
@@ -88,42 +102,75 @@ function sessionModelId() {
   return _modelId;
 }
 function readModelId() {
+  const saved = savedModel();
+  const seen = transcriptModel();
+  if (saved && seen && seen.at > saved.at) return seen.model;   // a reply after the record names the model it ran on
+  return saved ? saved.model : seen ? seen.model : null;
+}
+// The transcript's last model row: { model, at } - `at` is the row's timestamp, NaN when it has none.
+function transcriptModel() {
   try {
     const p = payload.transcript_path;
-    if (p) {
-      const size = fs.statSync(p).size;
-      for (const span of [512 * 1024, 8 * 1024 * 1024]) {
-        const start = Math.max(0, size - span);
-        const fd = fs.openSync(p, 'r');
-        const buf = Buffer.alloc(size - start);
-        try { fs.readSync(fd, buf, 0, buf.length, start); } finally { fs.closeSync(fd); }
-        const lines = buf.toString('utf8').split('\n');
-        for (let i = lines.length - 1; i >= 0; i--) {
-          if (!lines[i].includes('"model"') && !lines[i].includes('"modelId"')) continue;
-          try {
-            const o = JSON.parse(lines[i]);
-            const m = o.type === 'assistant' ? o.message && o.message.model
-              : o.type === 'attachment' && o.attachment && o.attachment.type === 'model' ? o.attachment.identity && o.attachment.identity.modelId : null;
-            if (m && m !== '<synthetic>') return String(m);
-          } catch { /* partial first line of the tail - skip */ }
-        }
-        if (start === 0) break;
+    if (!p) return null;
+    const size = fs.statSync(p).size;
+    for (const span of [512 * 1024, 8 * 1024 * 1024]) {
+      const start = Math.max(0, size - span);
+      const fd = fs.openSync(p, 'r');
+      const buf = Buffer.alloc(size - start);
+      try { fs.readSync(fd, buf, 0, buf.length, start); } finally { fs.closeSync(fd); }
+      const lines = buf.toString('utf8').split('\n');
+      for (let i = lines.length - 1; i >= 0; i--) {
+        if (!lines[i].includes('"model"') && !lines[i].includes('"modelId"')) continue;
+        try {
+          const o = JSON.parse(lines[i]);
+          const m = o.type === 'assistant' ? o.message && o.message.model
+            : o.type === 'attachment' && o.attachment && o.attachment.type === 'model' ? o.attachment.identity && o.attachment.identity.modelId : null;
+          if (m && m !== '<synthetic>') return { model: String(m), at: Date.parse(o.timestamp || '') };
+        } catch { /* partial first line of the tail - skip */ }
       }
+      if (start === 0) break;
     }
-  } catch { /* unreadable transcript - try settings */ }
-  try {
-    const path = require('path');
-    const os = require('os');
-    const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-    const account = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir() || '', '.claude');
-    for (const f of [path.join(root, '.claude', 'settings.local.json'), path.join(root, '.claude', 'settings.json'), path.join(account, 'settings.json')]) {
-      try {
-        const m = JSON.parse(fs.readFileSync(f, 'utf8')).model;
-        if (m) return String(m);
-      } catch { /* absent or not JSON - next file */ }
-    }
-  } catch { /* no home and no cwd */ }
+  } catch { /* unreadable transcript */ }
   return null;
+}
+// The model this session's SessionStart / PostModelSwitch saved: { model, at } (at in ms), or null.
+const SAVED_MODELS = 40;
+function savedModelsFile() {
+  const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+  return require('./layout.js').statePath(root, 'sessions', 'models.json');
+}
+function readSavedModels() {
+  try {
+    const rows = JSON.parse(fs.readFileSync(savedModelsFile(), 'utf8'));
+    return rows && typeof rows === 'object' && !Array.isArray(rows) ? rows : {};
+  } catch { return {}; }
+}
+function savedModel() {
+  const sid = String(payload.session_id || '');
+  const row = sid ? readSavedModels()[sid] : null;
+  const at = row && Date.parse(row.at || '');
+  return row && typeof row.model === 'string' && row.model && Number.isFinite(at) ? { model: row.model, at } : null;
+}
+// Saves the model a SessionStart (`model`) or PostModelSwitch (`to_model`) names for this session, keeping the newest
+// SAVED_MODELS sessions. No session id or no model saves nothing - the transcript answers then.
+function recordSessionModel(model) {
+  try {
+    const sid = String(payload.session_id || '');
+    const id = String(model || '').trim();
+    if (!sid || !id) return false;
+    const rows = readSavedModels();
+    rows[sid] = { model: id, at: new Date().toISOString() };
+    const kept = Object.entries(rows).filter(([, r]) => r && Number.isFinite(Date.parse(r.at || '')))
+      .sort(([, a], [, b]) => Date.parse(a.at) - Date.parse(b.at)).slice(-SAVED_MODELS);
+    const file = savedModelsFile();
+    fs.mkdirSync(require('path').dirname(file), { recursive: true });
+    const tmp = `${file}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(Object.fromEntries(kept), null, 1) + '\n');
+    fs.renameSync(tmp, file);
+    _modelId = undefined;
+    _knownWindow = undefined;
+    return true;
+  } catch { return false; }
 }
 // A key matches the id itself, a dated snapshot (`claude-haiku-4-5-20251001`, Vertex's `@20251101`), a
 // Bedrock version (`-v1:0`), Claude Code's `[1m]` suffix and a provider-prefixed id
@@ -141,10 +188,6 @@ function tableWindow() {
     if (!best || key.length > best.key.length) best = { key, n: Number(n) };
   }
   return best ? best.n : null;
-}
-function envWindow() {
-  const n = parseInt(envOf(process.env, 'CONTEXT_WINDOW_DEFAULT'), 10);
-  return n >= 100000 ? n : WINDOW_DEFAULT;
 }
 // The install's own AUTO-COMPACT window, when it is set (code.claude.com/docs/en/model-config, 'Set the auto-compact
 // window': 'how full the context window can get before Claude Code compacts'; settings-reference `autoCompactWindow` /
@@ -276,20 +319,21 @@ function observedCompaction() {
 let _knownWindow;
 function knownWindow() {
   if (_knownWindow === undefined) {
-    const table = tableWindow() || envWindow();
+    const table = tableWindow();
     const acw = autoCompactWindow();
     _knownWindow = acw && (!table || acw < table) ? acw : table;
   }
   return _knownWindow;
 }
-// The trigger this session is judged against: the tier of the model's own window (tierKeyOf), so the offer always has a
-// number behind it - a model the table does not list runs in ALFRED_CODE_CONTEXT_WINDOW_DEFAULT.
+// The trigger this session is judged against: the tier of the model's own capacity (tierKeyOf), else - no known
+// capacity, one under 200K - ALFRED_CODE_CONTEXT_WINDOW_DEFAULT itself, so the offer always has a number behind it.
 function ctxThreshold() {
   const window = knownWindow();
-  // The TIER is the model's own window - the table row, else the declared default - and an auto-compact window only
-  // lowers the room the trigger must fit in (the clamp below). Tiering by the lowered window put a 1M model under a 400k
-  // compaction window on another tier's trigger (2026-10-14).
-  let at = FRESH_AT[tierKeyOf(tableWindow() || envWindow())];
+  // The TIER is the model's own capacity, its table row - an auto-compact window only lowers the room the trigger must
+  // fit in (the clamp below). Tiering by the lowered window put a 1M model under a 400k compaction window on another
+  // tier's trigger (2026-10-14).
+  const tier = tierKeyOf(tableWindow());
+  let at = tier ? FRESH_AT[tier] : DEFAULT_AT;
   // A trigger at or above the window it applies to can never be reached, and a gate that cannot
   // fire is the gate not existing. Honour the number that was set up to the point it goes
   // unreachable, then clamp it back inside the window.
@@ -487,8 +531,8 @@ function askAnsweredSince(from) {
 }
 
 module.exports = {
-  use, freshAt, FRESH_AT_200K, FRESH_AT_300K, FRESH_AT_1M, TIER_DEFAULTS, WINDOW_DEFAULT, tierKeyOf, FRESH_OFF, COMPACT_INSTEAD, sessionModelId, tableWindow,
-  envWindow, knownWindow, ctxThreshold, MIN_RECOVERABLE_SHARE, coldFloor, worthResuming, contextNow,
+  use, freshAt, FRESH_AT_200K, FRESH_AT_300K, FRESH_AT_1M, DEFAULT_AT, DEFAULT_SEED, tierKeyOf, FRESH_OFF, COMPACT_INSTEAD, sessionModelId,
+  tableWindow, recordSessionModel, knownWindow, ctxThreshold, MIN_RECOVERABLE_SHARE, coldFloor, worthResuming, contextNow,
   autoCompactWindow, configuredCompactWindow, compactWindowIgnored, sessionStartedAt, recordCompactPoint, observedCompaction, compactPointsFile,
   transcriptSize, isTypedTurn, freshAskAnsweredThisTurn, freshAskAnsweredCtx, askAnsweredSince,
 };

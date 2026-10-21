@@ -30,10 +30,14 @@ function transcript(name, ctx, { model = 'claude-sonnet-5-5', crlf = false } = {
 }
 // A project root with no settings, so no auto-compact window or compaction record lowers the trigger.
 const project = () => fs.mkdtempSync(path.join(TMP, 'proj-'));
+// The seeds an install writes (meta/environment.json): a tier left unset reads as ALFRED_CODE_CONTEXT_WINDOW_DEFAULT
+// (the user's ruling of 2026-10-21), so an installed project's run carries them.
+const WINDOW_SEEDS = { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '400000', ALFRED_CODE_CONTEXT_WINDOW_FOR_300K: '280000',
+    ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '180000', ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '180000' };
 function gate(args, { cwd = project(), env = {} } = {})
 {
     const clean = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('ALFRED_CODE_') && !/^CLAUDE_(CODE_SESSION_ID|PROJECT_DIR|CONFIG_DIR|CODE_AUTO)/.test(k)));
-    const r = spawnSync(process.execPath, [GATE, ...args], { cwd, encoding: 'utf8', env: { ...clean, HOME: TMP, CLAUDE_CONFIG_DIR: path.join(TMP, 'acct'), ...env } });
+    const r = spawnSync(process.execPath, [GATE, ...args], { cwd, encoding: 'utf8', env: { ...clean, ...WINDOW_SEEDS, HOME: TMP, CLAUDE_CONFIG_DIR: path.join(TMP, 'acct'), ...env } });
     return { code: r.status, out: r.stdout.trim(), err: r.stderr.trim() };
 }
 

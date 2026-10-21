@@ -808,9 +808,15 @@
     },
     {
       "file": "guard-fresh-session-start.js",
-      "matcher": "@SessionStart:compact",
+      "matcher": "@SessionStart",
       "event": "",
-      "note": "the harness just auto-compacted, which proves the session hit its compaction point at a moment a Stop may never come - leave a one-shot hold (a compact note where the project compacts instead)"
+      "note": "every session start saves the `model` it carries under the session in <data root>/state/sessions/models.json, so the window is the model's own capacity from the first prompt on (the user's ruling of 2026-10-21: a settings alias like `sonnet` names none); on the `compact` source the harness just auto-compacted, which proves the session hit its compaction point at a moment a Stop may never come - leave a one-shot hold (a compact note where the project compacts instead)"
+    },
+    {
+      "file": "guard-fresh-session-start.js",
+      "matcher": "@PostModelSwitch",
+      "event": "",
+      "note": "a /model switch saves the `to_model` under the session, so the window follows the model the session now runs on before its next reply names it"
     },
     {
       "file": "guard-fresh-session-start.js",

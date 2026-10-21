@@ -136,7 +136,7 @@
       "renamed_from": "ALFRED_CODE_FRESH_SESSION_1M",
       "ask": true,
       "group_off": "0",
-      "what": "the per-message context, in TOKENS, at which a session on a 1M window is offered a fresh session instead of carrying on (an orchestration run is gated, a finished turn is offered). This row OWNS the whole gate: the rows riding with it are the 300K and 200K windows, and `group_off` means the question also offers turning the feature off, which writes `0` to all three. A window takes the largest tier it reaches (1M and up, 300K and up, else 200K). The 400,000 default sits ABOVE the harness's own auto-compaction (measured preTokens 387,619-397,171), so on this window the turn-end offer is usually unreachable and the SessionStart compact route is what reaches you - lower it (250000, 350000) to be asked before the harness decides. To stop every fresh-session offer, set ALFRED_CODE_AUTO_COMPACT=1 rather than a tier to 0.",
+      "what": "the per-message context, in TOKENS, at which a session on a 1M window is offered a fresh session instead of carrying on (an orchestration run is gated, a finished turn is offered). This row OWNS the whole gate: the rows riding with it are the 300K and 200K windows and the DEFAULT, and `group_off` means the question also offers turning the feature off, which writes `0` to all four. The window is the session model's own capacity (its row in the shipped `model-windows.json`) and takes the largest tier it reaches (1M and up, 300K and up, 200K and up); a window under 200K or unknown, or a tier left unset or garbage, takes ALFRED_CODE_CONTEXT_WINDOW_DEFAULT instead. The 400,000 default sits ABOVE the harness's own auto-compaction (measured preTokens 387,619-397,171), so on this window the turn-end offer is usually unreachable and the SessionStart compact route is what reaches you - lower it (250000, 350000) to be asked before the harness decides. To stop every fresh-session offer, set ALFRED_CODE_AUTO_COMPACT=1 rather than a tier to 0.",
       "validate": {
         "type": "tokens",
         "min": 0,
@@ -148,7 +148,7 @@
       "default": "280000",
       "ask": true,
       "asked_with": "ALFRED_CODE_CONTEXT_WINDOW_FOR_1M",
-      "what": "the same trigger in TOKENS for a window of 300K up to 1M - the tier a model the shipped `model-windows.json` does not list lands on, since it runs in ALFRED_CODE_CONTEXT_WINDOW_DEFAULT (300,000). `0` turns that tier off.",
+      "what": "the same trigger in TOKENS for a window of 300K up to 1M. A model the shipped `model-windows.json` does not list has no known window, so it takes ALFRED_CODE_CONTEXT_WINDOW_DEFAULT, never this tier. `0` turns that tier off.",
       "validate": {
         "type": "tokens",
         "min": 0,
@@ -164,7 +164,7 @@
       ],
       "ask": true,
       "asked_with": "ALFRED_CODE_CONTEXT_WINDOW_FOR_1M",
-      "what": "the same trigger in TOKENS for a window under 300K (a 200K model). A window below the trigger holds it at 90% of the window. `0` turns that tier off. Each window size reads only its own variable.",
+      "what": "the same trigger in TOKENS for a window of 200K up to 300K (a 200K model). A window below the trigger holds it at 90% of the window. `0` turns that tier off. Each window size reads only its own variable.",
       "validate": {
         "type": "tokens",
         "min": 0,
@@ -173,13 +173,18 @@
     },
     {
       "key": "ALFRED_CODE_CONTEXT_WINDOW_DEFAULT",
-      "default": "300000",
+      "default": "180000",
       "renamed_from": "ALFRED_CODE_DEFAULT_CONTEXT_WINDOW",
-      "ask": false,
-      "what": "the context WINDOW, in tokens, the fresh-session gate uses for a model the `model-windows.json` shipped beside the hooks (the plugin's own on the plugin route) does not list - it then takes that window's tier trigger (300,000 -> ALFRED_CODE_CONTEXT_WINDOW_FOR_300K). That table (replaced on every update from the Claude models docs) is the ONLY other source - no id suffix, carry or compaction is read. Unset or garbage reads as 300,000.",
+      "former_defaults": [
+        "300000"
+      ],
+      "ask": true,
+      "asked_with": "ALFRED_CODE_CONTEXT_WINDOW_FOR_1M",
+      "what": "the fresh-session TRIGGER, in tokens, for a session whose window has no tier: a model the `model-windows.json` shipped beside the hooks (the plugin's own on the plugin route) does not list, one whose window is under 200K, a session whose model is not known yet, or a tier variable left unset or garbage. The window is the model's own capacity from that table and nothing else - no id suffix, carry or settings alias is read - and this value is never a window and never an auto-compact window. The 180,000 seed fires before compaction in every window of 200K or more; until 2026-10-21 this key was the WINDOW an unlisted model was assumed to run in (seed 300,000), and an update moves that old seed to 180,000. Unset or garbage reads as 180,000; `0` turns the offer off for such a session.",
       "validate": {
-        "type": "window",
-        "min": 100000
+        "type": "tokens",
+        "min": 0,
+        "off": "0"
       }
     },
     {

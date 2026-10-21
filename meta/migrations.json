@@ -142,6 +142,54 @@
    },
    "why": "every window now takes the largest named tier it reaches (1M, 300K, else 200K) and an unlisted model runs in ALFRED_CODE_CONTEXT_WINDOW_DEFAULT, so no case is left for a catch-all trigger (the user's ruling of 2026-10-16). Nothing reads the key, and a dead key in the env block reads as a knob that still works",
    "then": "nothing - set ALFRED_CODE_CONTEXT_WINDOW_FOR_300K for the tier an unlisted model lands on"
+  },
+  {
+   "id": "context-window-default-off-with-the-tiers",
+   "since": "2.8.1",
+   "detect": {
+    "settings_env_all": {
+     "keys": [
+      "ALFRED_CODE_CONTEXT_WINDOW_FOR_1M",
+      "ALFRED_CODE_CONTEXT_WINDOW_FOR_300K",
+      "ALFRED_CODE_CONTEXT_WINDOW_FOR_200K"
+     ],
+     "equals": "0"
+    }
+   },
+   "remove": [],
+   "off_settings_env": {
+    "key": "ALFRED_CODE_CONTEXT_WINDOW_DEFAULT",
+    "with": [
+     "ALFRED_CODE_CONTEXT_WINDOW_FOR_1M",
+     "ALFRED_CODE_CONTEXT_WINDOW_FOR_300K",
+     "ALFRED_CODE_CONTEXT_WINDOW_FOR_200K"
+    ],
+    "when_value": [
+     "300000",
+     "180000"
+    ],
+    "to": "0"
+   },
+   "why": "three tiers at 0 turned the fresh-session offers off while ALFRED_CODE_CONTEXT_WINDOW_DEFAULT was a window. Now it is the trigger of a session with no tier, so the whole off switch is all four keys at 0 (2026-10-21), and an earlier 'offers off' choice would come back on an unlisted model. The DEFAULT goes to 0 while it is absent or a seed the stack wrote; a value the user typed stays",
+   "then": "nothing - set ALFRED_CODE_CONTEXT_WINDOW_DEFAULT above 0 to have a session with no tier offered a fresh session"
+  },
+  {
+   "id": "context-window-default-is-a-trigger",
+   "since": "2.8.1",
+   "detect": {
+    "settings_env_value": {
+     "key": "ALFRED_CODE_CONTEXT_WINDOW_DEFAULT",
+     "equals": "300000"
+    }
+   },
+   "remove": [],
+   "clear_settings_env": {
+    "key": "ALFRED_CODE_CONTEXT_WINDOW_DEFAULT",
+    "when_value": "300000",
+    "to": "180000"
+   },
+   "why": "ALFRED_CODE_CONTEXT_WINDOW_DEFAULT is the fresh-session TRIGGER for a session whose window has no tier (the user's ruling of 2026-10-21) - an unlisted or unknown model, one under 200K, a tier variable unset or garbage - where it was the WINDOW an unlisted model was assumed to run in. The old window seed 300000 read as a trigger would sit past where a 200K or 300K model compacts, so the stack's own seed moves to 180000; a value set by hand is the user's and stays",
+   "then": "nothing - the window is the model's own capacity from hooks/model-windows.json, and ALFRED_CODE_CONTEXT_WINDOW_DEFAULT is the trigger when there is none"
   }
  ]
 }

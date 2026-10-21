@@ -78,7 +78,7 @@ const SEEDED_SETTINGS = [...ATTRIBUTION_OFF.map(([k, v]) => [`attribution.${k}`,
 // THE AUTO-COMPACT WINDOW PER MODEL (the user's rulings, 2026-10-14): where the project compacts instead of offering a
 // fresh session (ALFRED_CODE_AUTO_COMPACT=1), each model `hooks/model-windows.json` lists compacts where the fresh-session
 // gate would have offered a resume - its window tier's ALFRED_CODE_CONTEXT_WINDOW_FOR_* value (fresh-session.js tierKeyOf:
-// 1M and up -> _1M, 300K and up -> _300K, else _200K), read from the env this file applies - instead of at the window Claude Code tunes for the model
+// 1M and up -> _1M, 300K and up -> _300K, 200K and up -> _200K, under 200K none), read from the env this file applies - instead of at the window Claude Code tunes for the model
 // (settings reference: unset by default; measured near 390k on a 1M window, fresh-session.js). A tier switched off (`0`) seeds nothing;
 // a trigger at or past its window is held at 90% of it (fresh-session.js ctxThreshold's clamp), and the value stays inside
 // the 100,000-1,000,000 Claude Code accepts (settings-reference `modelSettings`). Returns { <model id>: <tokens> }.
@@ -100,7 +100,11 @@ function compactWindowSeeds(models, env = {}, catalog = [])
         const window = Number(n);
         // only an id the stamp's ledger reads back (stamp.js SETTINGS_PATH), or its window could never be taken back
         if (!(window >= 100000) || !/^[a-z0-9][a-z0-9-]{0,99}$/.test(id)) continue;
-        let at = tier(tierKeyOf(window));
+        // the model's own capacity picks its tier; one under 200K has none and keeps Claude Code's own window - the
+        // fresh-session fallback ALFRED_CODE_CONTEXT_WINDOW_DEFAULT is never an auto-compact window (the user's ruling, 2026-10-21)
+        const key = tierKeyOf(window);
+        if (!key) continue;
+        let at = tier(key);
         if (!(at > 0)) continue;
         if (at >= window) at = Math.floor(window * 0.9);
         out[id] = Math.max(100000, Math.min(1000000, at));
@@ -337,7 +341,25 @@ function retireAndReseed(env, migrations, log, label, only = () => true, stackWr
     // typed is theirs even when it equals an old seed (2026-10-16 matrix: a hand-set ALFRED_CODE_CONTEXT_WINDOW_FOR_200K of
     // 150000 was reset to 180000 on every update).
     for (const [key, badSeed, to] of migrations.reseed || [])
-        if (only(key) && env[key] === badSeed && (!stackWrote || stackWrote(label, key, badSeed))) { env[key] = to; changed = true; log(`  ${label} env: ${key} reset to ${to} (auto-detect)`); }
+        if (only(key) && env[key] === badSeed && (!stackWrote || stackWrote(label, key, badSeed))) { env[key] = to; changed = true; log(`  ${label} env: ${key} reset to ${to} (the old stack seed ${badSeed})`); }
+    return changed;
+}
+
+// Step 2b, before the reseed sees an old seed: a key that follows others to off (`off_settings_env` - the DEFAULT, once the
+// three window tiers are all `0`, item 12 of 2026-10-21) takes their off value while it is a stack seed the stack wrote, or
+// absent where `absentOk` says nothing else holds it. A value the user typed stays.
+function offWithTiers(env, migrations, log, label, { only = () => true, stackWrote = null, absentOk = () => false } = {})
+{
+    let changed = false;
+    for (const [key, withKeys, seeds, to] of migrations.offWith || [])
+    {
+        if (!only(key) || !withKeys.every((k) => env[k] === to) || env[key] === to) continue;
+        const was = env[key];
+        if (was === undefined ? !absentOk(key) : !(seeds.includes(was) && (!stackWrote || stackWrote(label, key, was)))) continue;
+        env[key] = to;
+        changed = true;
+        log(`  ${label} env: ${key} set to ${to} (${was === undefined ? 'absent' : `the stack seed ${was}`}; the three tiers are ${to}, so the offers stay off)`);
+    }
     return changed;
 }
 
@@ -364,6 +386,7 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
     if (held)
     {
         renameEnv(held, migrations, log, overlayLabel);
+        offWithTiers(held, migrations, log, overlayLabel, { only: isStackKey, stackWrote });
         retireAndReseed(held, migrations, log, overlayLabel, isStackKey, stackWrote);
     }
     const heldHere = (key) => Boolean(held) && isStackKey(key) && key in held && !sharedKeys.includes(key);
@@ -371,6 +394,7 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
     // Where a decision about `key` lands: the overlay when it holds the key, else this file.
     const at = (key) => (heldHere(key) ? { into: held, lab: overlayLabel, mine: false } : { into: env, lab: label, mine: true });
 
+    if (offWithTiers(env, migrations, log, label, { stackWrote, absentOk: (key) => !present(key) && !(held && key in held) })) changed = true;
     if (retireAndReseed(env, migrations, log, label, undefined, stackWrote)) changed = true;
 
     // 3b. THE DOCS ROOT (alfred-code.js docsRootStep): ALFRED_CODE_DOCS_PATH is retired in 2.8.0 - the docs root is
