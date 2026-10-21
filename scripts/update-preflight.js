@@ -46,7 +46,9 @@
 // Exit codes are stamp-compare's, passed through so the caller's branching is unchanged:
 // 0 = compare done, 2 = no stamp, 3 = compare unreachable. A usage error is 1.
 //
-// `--offers` prints the `data-move:` and `agents-md:` lines alone (no --snapshot, no compare): configure's asks.
+// `--offers` prints the `data-move:` and `agents-md:` lines alone (no --snapshot, no compare): configure's asks. With
+// them, the place question's fact line (init's and configure's `--instructions-at` ask, a project install only):
+//   instructions: none | <claude|root|split> <file> ...   (the AGENTS.md / CLAUDE.md files at the root and in .claude/)
 //
 // `--log <installer-log>` is a SEPARATE post-install mode (no --snapshot needed): it reads the
 // installer's own log - the command already captures it via the fixed `tee "$TMP/install.log"`
@@ -145,6 +147,7 @@ function migrationFields(e)
     if (e.rename_settings_env) out.push(['env-rename', `${e.rename_settings_env.from} -> ${e.rename_settings_env.to}`]);
     if (e.remove_settings_env) out.push(['env-remove', e.remove_settings_env.key]);
     if (e.clear_settings_env) out.push(['env-reset', `${e.clear_settings_env.key}: ${e.clear_settings_env.when_value} -> ${e.clear_settings_env.to}`]);
+    if (e.fold_settings_env) out.push(['env-fold', `${e.fold_settings_env.key}: ${e.fold_settings_env.when_value} -> ${e.fold_settings_env.into} += ${e.fold_settings_env.entry} (any other value goes)`]);
     if (e.off_settings_env) out.push(['env-off', `${e.off_settings_env.key}: ${[...(e.off_settings_env.when_value || []), 'absent'].join(' | ')} -> ${e.off_settings_env.to} (with ${(e.off_settings_env.with || []).join(', ')} at ${e.off_settings_env.to})`]);
     return out;
 }
@@ -569,7 +572,11 @@ function main()
     if (offerOnly)
     {
         console.log(accountDir ? 'data-move: none (an account install)' : dataMoveLine({ root, claudeDir, stampFile, stampScope }));
-        if (!accountDir) console.log(require('./install/seeds.js').claudeMdOffer(path.resolve(root)));
+        if (!accountDir)
+        {
+            console.log(require('./install/seeds.js').claudeMdOffer(path.resolve(root)));
+            console.log(require('./install/seeds.js').instructionsLine(path.resolve(root)));
+        }
         return;
     }
 

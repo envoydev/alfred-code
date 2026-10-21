@@ -1624,6 +1624,7 @@ const POSIX_SHELL = /^(?:bash|sh|zsh|dash|ksh)$/i;
 const SHELL_RUNNER = /^(?:bash|sh|zsh|dash|ksh|pwsh|powershell)$/i; // a body they read is commands
 const RUNTIME_RUNNER = /^(?:node|nodejs|python(?:\d+(?:\.\d+)?)?|ruby|perl|php|deno|bun)$/i; // a body they read is a script
 function heredocRunner(line, at) {
+  judgeTick(line.length); // it re-reads the whole line per heredoc: charged, so a line of them hits the budget (audit 2026-10-21 H5)
   const own = line.slice(0, at).split(/&&|\|\||;|\|/).pop();
   const piped = line.slice(at).split(/&&|\|\||;/)[0].split('|').slice(1);
   for (const stage of [own, ...piped]) {

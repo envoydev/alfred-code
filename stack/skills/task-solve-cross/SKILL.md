@@ -108,7 +108,7 @@ Each dispatch brief stays lean and capability-wired: the seat's terseness discip
 
 At close-out (any mode), add **doc-drift awareness** - one line at most in the user-facing close, the user decides, never auto-run. The close also names what this run started to build, test, or verify and still has up - a Docker container or compose stack, seeded integration-test data, a dev server, a background watcher - and puts tear-down-vs-keep through AskUserQuestion in the same close (teardown recommended for the disposable; `none` said plainly; what the run did not start is never touched).
 
-An uncommitted diff waits for the user's pick (`alfred-git.md`), and a picked commit runs `habits-commit-checkpoint` whole, after the integration gate signed off. The close's two questions, in one AskUserQuestion call:
+An uncommitted diff waits for the user's pick (`GIT-PREFERENCES.md`), and a picked commit runs `habits-commit-checkpoint` whole, after the integration gate signed off. The close's two questions, in one AskUserQuestion call:
 
 ```ask
 The lanes landed and the final gate signed off; the diff is uncommitted. Commit it on this machine?
@@ -138,5 +138,5 @@ Keep a durable ledger - a short file, not just in-context notes - so a mid-run c
 
 - Each reference named at its step is that policy's shared home - route seats to it, never restate it in a brief; `references/model-routing.md`'s per-task stamps are read again at fan-out.
 - The main session is the only orchestrator. Domain seats carry no Agent tool, so the fan-out stays flat.
-- Durable orientation is the docs under the project's docs root: `alfred-navigation.md` owns which architecture doc to open and when, and the code-style doc is `<docs-path>/code-style/CODE-STYLE.md`. Every seat orients from them instead of re-deriving the project; the `alfred-memory` handoff note is the transient inter-agent comms bus, never the durable store. The docs refresh deliberately, never inside this flow - reconciling them after a structural change is a purposeful capture run (`capture-architecture`, or the user's `/loop-architecture-quality`).
+- Durable orientation is the docs under the project's docs root: `alfred-navigation.md` owns which architecture doc to open and when, `alfred-preferences.md` which preferences doc to read. Every seat orients from them instead of re-deriving the project; the `alfred-memory` handoff note is the transient inter-agent comms bus, never the durable store. The docs refresh deliberately, never inside this flow - reconciling them after a structural change is a purposeful capture run (`capture-architecture`, or the user's `/loop-architecture-quality`).
 - A causal claim about a dispatched seat's actions - to the user, or in a re-brief - is checked against the seat's `tools:` grant and its transcript first: a seat without a write tool did not mutate the tree, whatever the timeline suggests; when the real actor is unknown, say unresolved rather than assign it.

@@ -438,3 +438,12 @@ test('install-args: --scope-of gives an optional item its own scope; the require
     fails(['install', '--scope-of'], /--scope-of takes/);
     assert.ok(require('./install/args.js').FLAG_LIST.includes('--scope-of'));
 });
+
+test('install-args: --instructions-at places the instruction file - root or claude, lower-cased, anything else refused', () =>
+{
+    assert.strictEqual(ok(['install']).instructionsAt, '', 'not given: nothing moves and a seed goes to .claude/');
+    assert.strictEqual(ok(['install', '--instructions-at', 'root']).instructionsAt, 'root');
+    assert.strictEqual(ok(['update', '--instructions-at=Claude']).instructionsAt, 'claude');
+    fails(['install', '--instructions-at', 'docs'], /--instructions-at must be 'root' or 'claude'/);
+    fails(['install', '--instructions-at'], /--instructions-at.*needs a value/);
+});

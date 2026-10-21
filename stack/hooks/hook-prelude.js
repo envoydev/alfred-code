@@ -139,6 +139,27 @@ function hookDisabled(hook, env)
     return off.split(',').map(baseName).filter(Boolean).map((n) => HOOK_RENAMED[n] || n).includes(wanted);
 }
 
+// A hook's PART is switched off as `<hook>:<part>` in the same csv (the env audit of 2026-10-21 folded six per-part keys
+// into it). The old key at `0` still turns the part off for the 2.x line: an update folds it into the csv, and a plugin
+// update can land before that update runs. Matching is exact like hookDisabled's; a part entry never stands the whole
+// hook down. Part -> its old key suffix; meta/migrations.json's fold entries carry the same pairs.
+const PART_SWITCHES = Object.freeze({
+    'docs-session:block': 'DOCS_BLOCK', 'docs-session:gate': 'DOCS_GATE', 'docs-session:ask': 'DOCS_ASK',
+    'guard-ungated-commit:push': 'PUSH_GATE', 'guard-stop-contract:rotate': 'ROTATE_ASK', 'guard-stop-contract:done': 'DONE_GATE',
+});
+function partOff(hook, part, env)
+{
+    const source = env || process.env;
+    const wanted = `${baseName(hook)}:${String(part || '').trim().toLowerCase()}`;
+    const legacy = PART_SWITCHES[wanted];
+    if (legacy && String(envOf(source, legacy) || '').trim() === '0') return true;
+    const off = String(envOf(source, 'HOOKS_OFF') || '');
+    return off.split(',').some((entry) => {
+        const at = entry.indexOf(':');
+        return at > 0 && `${baseName(entry.slice(0, at))}:${entry.slice(at + 1).trim().toLowerCase()}` === wanted;
+    });
+}
+
 // Every command string in the settings file, whatever the event and matcher nesting.
 function wiredCommands(settingsFile)
 {
@@ -712,4 +733,4 @@ function askTimeoutMarker(sessionId, env = process.env)
 // the stop contract's ask deny (the answer hook's Stop block shared it until 2026-10-20; they disagreed before audit 2026-10-08).
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
-module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, harnessPrompt, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS };
+module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, harnessPrompt, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS };

@@ -95,9 +95,25 @@ const memorySpelling = (bare) => (bare ? `mcp__${MEMORY_SERVER}__` : `mcp__plugi
 const memoryToolDeny = (dir, { bare = false } = {}) => memoryToolsAtPin(dir).filter((t) => !MEMORY_TOOLS_USED.includes(t)).map((t) => `${memorySpelling(bare)}${t}`);
 // Both spellings of every memory tool at the pin: a route switch drops the other spelling, and uninstall removes either.
 const memoryDenyShipped = (dir) => memoryToolsAtPin(dir).flatMap((t) => [`${memorySpelling(false)}${t}`, `${memorySpelling(true)}${t}`]);
+// Audit 2026-10-21 mcps T1-2 (ruling M-A1): Playwright MCP's `browser_run_code_unsafe` runs any code the model writes
+// inside the browser process, and it is on by default. It is denied the memory tools' way - bare name, add-only,
+// ledgered - once per kept engine in the spelling of the route that serves it, and once in that engine's retired
+// `browser-<engine>` alias spelling, which a hand-installed alias plugin still serves.
+const BROWSER_TOOLS_OFF = ['browser_run_code_unsafe'];
+function browserToolsAtPin(dir)
+{
+    const row = ((readJson(path.join(dir, 'meta', 'mcp-tools.json')) || {}).servers || {}).browser;
+    return row && Array.isArray(row.tools) ? BROWSER_TOOLS_OFF.filter((t) => row.tools.includes(t)) : [];
+}
+const toolSpelling = (server, bare) => (bare ? `mcp__${server}__` : `mcp__plugin_${server}_${server}__`);
+const engineSpellings = (e) => [dataRoot.engineServer(e), `browser-${e}`];
+const browserToolDeny = (dir, engines, { bare = () => false } = {}) => engines.flatMap((e) =>
+    engineSpellings(e).flatMap((server) => browserToolsAtPin(dir).map((t) => `${toolSpelling(server, bare(dataRoot.engineServer(e)))}${t}`)));
+const browserDenyShipped = (dir) => dataRoot.ENGINES.flatMap(engineSpellings)
+    .flatMap((server) => browserToolsAtPin(dir).flatMap((t) => [`${toolSpelling(server, false)}${t}`, `${toolSpelling(server, true)}${t}`]));
 // R10: every deny entry a release has written into a project's settings besides the seat denies - the
 // ledger removes no other, since a stamp is project text. A release that stops writing one keeps it here.
-const SHIPPED_DENY = [...SECRET_DENY, ...memoryDenyShipped(path.join(__dirname, '..', '..'))];
+const SHIPPED_DENY = [...SECRET_DENY, ...memoryDenyShipped(path.join(__dirname, '..', '..')), ...browserDenyShipped(path.join(__dirname, '..', '..'))];
 const RETIRED_DENY = [
     'Read(~/.claude/settings.json)', 'Read(~/.claude/settings.local.json)',
     'Read(~/.claude-*/settings.json)', 'Read(~/.claude-*/settings.local.json)',
@@ -116,6 +132,9 @@ const HOOK_MODULES = ['hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 
 // The one rule copy.stampDocsRoot rewrites in place, after copyLibrary already hashed it - its
 // bare name, matching a copyLibrary/stamp key (no .md).
 const DOCS_ROOT_RULE = 'alfred-docs-root';
+// The shipped rules that name the docs root by its literal path (a rule cannot resolve a setting at load), written with
+// `__DOCS_ROOT__` substituted: the docs-root rule and the preferences pointer (2026-10-21).
+const ROOTED_RULES = [DOCS_ROOT_RULE, 'alfred-preferences'];
 
 function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s), err: (s) => process.stderr.write(s) })
 {
@@ -929,9 +948,8 @@ function runLayers(ctx)
         try { docs.migrateLayout({ projectRoot: ctx.projectRoot, docsPath, dataPath: ctx.dataInfo.root, log: ctx.log }); }
         catch (err) { ctx.note(`the 2.8.0 folder layout could not be applied under ${docsPath} (${err.message}) - every file is back where it was; re-run /alfred-code:update`); }
     }
-    if (args.action === 'install') ctx.stackAgentsMd = seeds.seedAgentsMd({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, log: ctx.log, note: ctx.note });
     // An update moves the seed an earlier release wrote as .claude/CLAUDE.md - only while it is still unedited.
-    else if (args.action === 'update')
+    if (args.action === 'update')
         ctx.stackAgentsMd = seeds.moveSeededClaudeMd({
             projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, ledgerHash: (ctx.ledger && ctx.ledger.files && ctx.ledger.files['CLAUDE.md']) || '',
             hash: library.hashItem, tracked: (at) => gitTracks(ctx, at),
@@ -939,6 +957,16 @@ function runLayers(ctx)
             force: Boolean(args.renameClaudeMd), ignoreFiles: args.renameClaudeMd ? excludeFileOf(ctx) : [],
             log: ctx.log, note: ctx.note,
         }) === 'moved';
+    // The place question's answer (init's and configure's --instructions-at): each instruction file at the other place
+    // moves - after the rename above, so a renamed seed travels too, and before a seed is laid down there.
+    if (args.instructionsAt)
+        seeds.placeInstructionFiles({
+            projectRoot: ctx.projectRoot, at: args.instructionsAt,
+            tracked: (at) => gitTracks(ctx, at), ignored: (at) => gitIgnores(ctx, at),
+            gitMv: (from, to) => ctx.rt.execCommand('git', ['mv', '--', from, to], { cwd: path.dirname(from), stdio: 'ignore' }),
+            log: ctx.log, note: ctx.note,
+        });
+    if (args.action === 'install') ctx.stackAgentsMd = seeds.seedAgentsMd({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, at: args.instructionsAt, log: ctx.log, note: ctx.note });
     // An update brings a seed the stack still owns - just moved, or held by the ledger at its hash - onto this release's
     // template, so a template change reaches it; an edited one is the project's and only re-spelled below.
     if (args.action === 'update')
@@ -949,8 +977,13 @@ function runLayers(ctx)
         if (ctx.stackAgentsMd || unedited)
             ctx.stackAgentsMd = seeds.refreshSeededAgentsMd({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, log: ctx.log, note: ctx.note }) || ctx.stackAgentsMd;
     }
-    // Only a seed the ledger still holds at its hash is the stack's to re-spell; a re-spelled one keeps its ledger row.
-    const seedRow = (rel) => (rel === '.claude/AGENTS.md' ? 'AGENTS.md' : rel === '.claude/CLAUDE.md' ? 'CLAUDE.md' : '');
+    // Only a seed the ledger still holds at its hash is the stack's to re-spell; a re-spelled one keeps its ledger row. The
+    // AGENTS.md row is the file at the seed's place (the root on --instructions-at root), never another one of that name.
+    const seedRow = (rel) =>
+    {
+        const row = rel === '.claude/AGENTS.md' || rel === 'AGENTS.md' ? 'AGENTS.md' : rel === '.claude/CLAUDE.md' ? 'CLAUDE.md' : '';
+        return row && path.join(ctx.projectRoot, ...rel.split('/')) === ledgerPath(ctx, row) ? row : '';
+    };
     ctx.respelledSeeds = new Set();
     selection.respellRenamed({
         projectRoot: ctx.projectRoot, renamed: ctx.manifest.renamed, engines: pwEngines(ctx), docsPath,
@@ -1360,6 +1393,14 @@ function gitTracks(ctx, target)
     return r.status === 0 && String(r.stdout || '').length > 0;
 }
 
+// An untracked path a .gitignore line keeps out of git - `git check-ignore` reads a tracked file as not ignored. Outside a
+// repository it is no ignore at all.
+function gitIgnores(ctx, target)
+{
+    const r = ctx.rt.spawnCommand('git', ['check-ignore', '-q', '--', target], { cwd: path.dirname(target), stdio: 'ignore' });
+    return r.status === 0;
+}
+
 function pruneCopies(ctx, dir, names, label, why, { keepTracked = false, keep = null } = {})
 {
     for (const name of names)
@@ -1454,18 +1495,23 @@ const ruleClaim = (ctx) => (name) =>
         readText(path.join(ctx.source.dir, 'stack', 'rules', `${name}.md`)), past);
 };
 // A RENAMED rule's old copy the stamp holds no hash for. Under a stamp that records no rule (a 0.2.x or 1.x stamp predates
-// library-rules, or a garbled line) it is the stack's when it opens with its successor's first line: the baseline-* copies
-// each open with their alfred-* heading. Under one that records rules it is the stack's only when the stamp records its
+// library-rules, or a garbled line) it is the stack's when it is byte for byte a text the stack shipped under the old name, or opens with its successor's
+// first line: the baseline-* copies each open with their alfred-* heading. Under one that records rules it is the stack's only when the stamp records its
 // SUCCESSOR and the copy is, byte for byte, a text the stack shipped under the old name (retired-rules.js): a 2.2.0 or
 // 2.2.1 run kept all seven unjudged and recorded the alfred-* names (audit 2026-10-10 C10, 34,059 chars on every
 // message), while a copy an earlier run kept as edited differs from every shipped text and stays. A retired name with no
 // successor stays the user's - nothing shipped is left to compare it with.
 function renamedRuleClaim(ctx, dir, name, recorded)
 {
-    const next = ((ctx.manifest.renamed || {}).rules || {})[name];
+    const renamed = (ctx.manifest.renamed || {}).rules || {};
+    const next = renamed[name];
     if (!next) return false;
     const file = path.join(dir, `${name}.md`);
-    if (Object.keys(recorded).length) return Object.hasOwn(recorded, next) && shippedText(name, readText(file));
+    // A successor renamed since is still this copy's: `baseline-git` maps to `alfred-preferences` now, and a stamp from
+    // before 2026-10-21 records `alfred-git`, whose own copy opens with the git heading the preferences rule lacks.
+    const heirs = [next, ...Object.keys(renamed).filter((old) => renamed[old] === next && old !== name)];
+    if (Object.keys(recorded).length) return heirs.some((heir) => Object.hasOwn(recorded, heir)) && shippedText(name, readText(file));
+    if (shippedText(name, readText(file))) return true;
     const ours = ruleOpening(path.join(ctx.source.dir, 'stack', 'rules', `${next}.md`));
     return Boolean(ours) && ruleOpening(file) === ours;
 }
@@ -1741,7 +1787,8 @@ function desktopNotes(ctx)
         const name = String(entry).split('|')[0];
         if (!NOTED(name) || ctx.desktopHeld.has(name)) continue;
         const lines = name === 'mobile-control'
-            ? mobileNotes({ env: ctx.env, projectDir: ctx.projectRoot, route: ctx.routes.mcps ? 'plugin' : 'copy' })
+            ? mobileNotes({ env: ctx.env, projectDir: ctx.projectRoot, route: ctx.routes.mcps ? 'plugin' : 'copy',
+                pin: ((readJson(path.join(ctx.source.dir, 'meta', 'mcp-pins.json')) || {}).pins || {})['mobile-control'] })
             : prereqNotes(name, { uvx, exclude: ctx.tokens.WINDOWS_CONTROL_EXCLUDE });
         for (const line of lines) ctx.log(line);
     }
@@ -2280,8 +2327,8 @@ function installHooksAndRules(ctx)
     const bare = ctx.routes.skills ? [] : bareNames(ctx);
     const respell = (text) => mcp.respellToolNames(text, bare);
     const ruleNames = ctx.lists.rules.map((f) => f.replace(/\.md$/, ''));
-    const render = { [`rules/${DOCS_ROOT_RULE}`]: (text) => respell(text.split('__DOCS_ROOT__').join(docsRoot)) };
-    if (bare.length) for (const name of ruleNames) if (name !== DOCS_ROOT_RULE) render[`rules/${name}`] = respell;
+    const render = Object.fromEntries(ROOTED_RULES.map((name) => [`rules/${name}`, (text) => respell(text.split('__DOCS_ROOT__').join(docsRoot))]));
+    if (bare.length) for (const name of ruleNames) if (!ROOTED_RULES.includes(name)) render[`rules/${name}`] = respell;
     const rulesLibrary = library.copyLibrary({
         sourceDir: ctx.source.dir, rulesDir: path.join(ctx.claudeDir, 'rules'),
         rules: ruleNames,
@@ -2326,13 +2373,14 @@ function installHooksAndRules(ctx)
     const written = settings.writeSettings({
         // R10: the last run's ledger, and the wirings the RELEASE writes (none on the plugin route) - a
         // hook this run did not select keeps its wiring, one the release dropped loses it.
-        ledger: { prior: ctx.ledger, releaseHooks: ctx.routes.hooks ? [] : ctx.manifest.catalogs.hooks, shippedDeny: [...new Set([...SHIPPED_DENY, ...memoryDenyShipped(ctx.source.dir)])] },
+        ledger: { prior: ctx.ledger, releaseHooks: ctx.routes.hooks ? [] : ctx.manifest.catalogs.hooks, shippedDeny: [...new Set([...SHIPPED_DENY, ...memoryDenyShipped(ctx.source.dir), ...browserDenyShipped(ctx.source.dir)])] },
         file: settings.settingsTarget(ctx.claudeDir, ctx.args.scope),
         // A local-scope run leaves the stack's stale wiring and 1.x keys in settings.json - it removes them there.
         sharedFile: ctx.args.scope === 'local' ? path.join(ctx.claudeDir, 'settings.json') : null,
         catalog, migrations, hookSpecs: wired,
         denySpecs: SECRET_DENY, retiredDeny: RETIRED_DENY, agentDeny, agentAllow,
-        toolDeny: memoryToolDeny(ctx.source.dir, { bare: bareNames(ctx).includes(MEMORY_SERVER) }),
+        toolDeny: [...memoryToolDeny(ctx.source.dir, { bare: bareNames(ctx).includes(MEMORY_SERVER) }),
+            ...browserToolDeny(ctx.source.dir, pwEngines(ctx), { bare: (server) => bareNames(ctx).includes(server) })],
         // On the copy route a --drop'd hook is unwired like a retired one - the writer keeps a merely
         // unselected hook's entries on purpose, so the drop has to name it.
         retiredHooks: ctx.manifest.retired.hooks.concat(ctx.routes.hooks
@@ -2374,7 +2422,7 @@ function installHooksAndRules(ctx)
         sharedKeys: !ctx.routes.hooks && ctx.args.scope !== 'local' ? ['ALFRED_CODE_HOOKS_OFF'] : [],
         // C3: at local scope an old skillOverrides key in settings.json is set under its new name here.
         inheritedOverrides: ctx.args.scope === 'local' ? settings.readBackSettings(ctx.claudeDir, 'project', { sharedOnly: true }).skillOverrides : null,
-        // alfred-git's no-attribution rule, enforced by the setting; at local scope settings.json's own value stays.
+        // the git preferences' no-attribution entry, enforced by the setting; at local scope settings.json's own value stays.
         attribution: { inherited: ctx.args.scope === 'local' ? settings.readBackSettings(ctx.claudeDir, 'project', { sharedOnly: true }).attribution : null },
         // R6: isolated seats branch from this HEAD; at local scope settings.json's own value stays.
         worktreeBase: { inherited: ctx.args.scope === 'local' ? settings.readBackSettings(ctx.claudeDir, 'project', { sharedOnly: true }).worktree : null },
@@ -2589,7 +2637,7 @@ function managedFiles(ctx)
     // I12: the serena context the full copy route's navigation registration names.
     if (ctx.navContextCopied) put(NAV_CONTEXT, path.join(ctx.claudeDir, NAV_CONTEXT));
     // An AGENTS.md this run seeded (or moved from its 2.1.6 CLAUDE.md name) is the template's until init fills it in - from then on it is the project's.
-    if (ctx.stackAgentsMd) put('AGENTS.md', path.join(ctx.claudeDir, 'AGENTS.md'));
+    if (ctx.stackAgentsMd) put('AGENTS.md', ledgerPath(ctx, 'AGENTS.md'));
     // No ledger to read (an older stamp): an AGENTS.md still byte for byte the seed is the stack's.
     const agentsMd = path.join(ctx.claudeDir, 'AGENTS.md');
     if (!(ctx.ledger && ctx.ledger.files) && !out['AGENTS.md'] && fs.existsSync(agentsMd)
@@ -2612,7 +2660,9 @@ function readOrNull(file)
     catch { return null; }
 }
 
-const ledgerPath = (ctx, rel) => (rel.startsWith('skills/') ? path.join(ctx.skillsDir, rel.slice(7)) : path.join(ctx.claudeDir, ...rel.split('/')));
+// The AGENTS.md row is read where the seed sits - .claude/, or the root on --instructions-at root (seeds.seededAgentsMdPath).
+const ledgerPath = (ctx, rel) => (rel === 'AGENTS.md' ? seeds.seededAgentsMdPath(ctx.projectRoot)
+    : rel.startsWith('skills/') ? path.join(ctx.skillsDir, rel.slice(7)) : path.join(ctx.claudeDir, ...rel.split('/')));
 
 // R10: a copy the last run recorded that this RELEASE no longer ships at all goes - when it still holds
 // what the stack wrote; an edited one is the user's and stays, said. The `retired` lists prune under the
@@ -2886,4 +2936,4 @@ if (require.main === module)
     });
 }
 
-module.exports = { main, USAGE, CORE_DEP_PLUGINS, HOOK_ENGINES, SECRET_DENY, RETIRED_DENY, SHIPPED_DENY, MEMORY_TOOLS_USED, memoryToolDeny };
+module.exports = { main, USAGE, CORE_DEP_PLUGINS, HOOK_ENGINES, SECRET_DENY, RETIRED_DENY, SHIPPED_DENY, MEMORY_TOOLS_USED, memoryToolDeny, browserToolDeny };

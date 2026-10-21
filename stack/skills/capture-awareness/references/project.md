@@ -10,7 +10,7 @@ guessing. The repo answers first; the user fills only what the repo cannot show.
 
 - **Credentials - the hard rule** - by where they live, never by value
 - **DISCOVER** - the repo answers first, every fact keeps its file
-- **The skeleton** - the seven sections in reading order
+- **The skeleton** - the eight sections in reading order
 - **covers and watch.json** - derived from the files DISCOVER read
 - **The keys in the sensitive data** - empty keys the user fills
 - **WRITE and the three checks** - first capture whole, a refresh by section
@@ -111,7 +111,7 @@ lives, never by value. Before a local start, run the Data target check; before a
 - Reach: <the URL and port, the window, or the CLI entry>
 - Log in: <numbered steps - the screen, the fields, the role to pick - or 'no login, the app is open'>
 - Accounts: <one line per role - its purpose and the user name's home>
-- Credentials live in: <env var `<NAME>` | `<data root>/.sensitive-data`, key `<NAME>` | vault item `<name>`> - checked for presence, never printed; a browser login types the KEY name (`<NAME>`) in `browser_type` / `browser_fill_form`, which the browser server fills from the sensitive data and shows as `<secret>NAME</secret>` - read that marker in the first fill's result before concluding; a key added after the browser server started needs a reconnect (`/mcp`) first; any other typed value goes through the secret guard's ask
+- Credentials live in: <env var `<NAME>` | `<data root>/.sensitive-data`, key `<NAME>` | vault item `<name>`> - checked for presence, never printed; a browser login types the KEY name (`<NAME>`) in `browser_type` / `browser_fill_form`, which the browser server fills from the sensitive data and shows as `<secret>NAME</secret>` - read that marker in the first fill's result before concluding - no marker means the server holds no store (the full copy route passes none), so ask the user to sign in, never retype the key; a key added after the browser server started needs a reconnect (`/mcp`) first; any other typed value goes through the secret guard's ask
 
 ## Flows to verify
 <!-- id: flows-to-verify -->
@@ -127,9 +127,16 @@ lives, never by value. Before a local start, run the Data target check; before a
 - Entry points: <launch profile, attach target, or inspect flag> (<source>)
 - Logs: <where they go, and how to raise the level>
 - Health: <the endpoint, dashboard or command that shows the app's state>
+
+## Team notes
+<!-- id: team-notes -->
+- <a fact the user added that no section above holds - a team habit, a known trap, a contact, a manual step> (the team's answer, <date>)
 ```
 
-Before you run leads because a seat reads it before anything else; the rest follow the order a run takes.
+Before you run leads because a seat reads it before anything else; the rest follow the order a run takes. Team notes
+closes the doc: what the user added past the preset questions, each the user's own words ending `(the team's answer,
+<date>)`, or `- none` when nothing was added. It carries no covers line - nothing in the repo backs it - so a refresh
+keeps every Team notes line, and only the user's own word changes or drops one.
 
 ## covers and watch.json
 

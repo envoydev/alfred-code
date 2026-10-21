@@ -143,7 +143,9 @@ const DATA_IGNORE_HEAD = '# alfred-code: the data root (ALFRED_CODE_DATA_PATH) i
 // left in 2.8.0 for the data root's state/ and statistics/ (docs.migrateLayout), but its old homes stay listed for the 2.x
 // line: a session started before the update writes them again, and a hand-set root keeps them until its move is answered
 // (temp-project matrix, 2026-10-21). A history record is `<session>.json`, so a team's own docs/history/ notes stay in git.
-// `.branches/` is never written under `git`, and `local` keeps the root out.
+// The two personal preferences docs are one user's answer style and code taste, never the team's (audit 2026-10-21 Q-1, the
+// user's standing ruling to take the Recommended option); the preferences hook reads a linked worktree's from the main
+// checkout. `.branches/` is never written under `git`, and `local` keeps the root out.
 const DOCS_STATE_IGNORE = [
     "# the hooks' state before 2.8.0, which a session started before the update still writes",
     '/flow/', '/hook-blocks/', '/history/*.json', '/tools-usage/', '/docs-log.jsonl', '/usage-report/**/*.jsonl',
@@ -151,6 +153,8 @@ const DOCS_STATE_IGNORE = [
     '/project-capabilities/credentials.local.env',
     "# the awareness capture's inventory names this machine's plugins",
     '/awareness/AGENTS-AWARENESS.md',
+    "# the user's own preferences - how they want the assistant to work, and their code taste",
+    '/preferences/PERSONAL-PREFERENCES.md', '/preferences/PERSONAL-CODE-PREFERENCES.md',
 ];
 const relOf = (v) => String(v || '').replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
 function docsInsideRoot({ root, docsPath })

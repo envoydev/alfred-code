@@ -578,13 +578,13 @@ test('settings-writer: at project scope a write to a stack key settings.local.js
     // C6 (R101 N7): a SEED is absent-only against settings.json itself - what every teammate reads.
     assert.strictEqual(shared.env.ALFRED_CODE_CONTEXT_WINDOW_FOR_200K, '180000');
     assert.strictEqual(shared.env.ALFRED_CODE_CORRECTION_NUDGE, 'log');
-    assert.strictEqual(shared.env.ALFRED_CODE_PUSH_GATE, '1', 'a key the local file lacks is seeded in settings.json as before');
+    assert.strictEqual(shared.env.ALFRED_CODE_HISTORY, '3', 'a key the local file lacks is seeded in settings.json as before');
     assert.strictEqual(shared.env.TEAM, 'y');
     const text = logs.join('\n');
     assert.match(text, /settings\.local\.json env: ALFRED_CODE_HOOKS_OFF = guard-answer,guard-secret-value/);
     assert.match(text, /settings\.local\.json env: ALFRED_CODE_CONTEXT_WINDOW_FOR_200K reset to 180000/);
     assert.match(text, /settings\.local\.json env: ALFRED_CODE_CORRECTION_NUDGE_MODE renamed to ALFRED_CODE_CORRECTION_NUDGE/);
-    assert.match(text, /settings\.json env: ALFRED_CODE_PUSH_GATE seeded/);
+    assert.match(text, /settings\.json env: ALFRED_CODE_HISTORY seeded/);
 
     // Idempotent: a second run writes neither file.
     const before = [fs.readFileSync(sharedFile, 'utf8'), fs.readFileSync(localFile, 'utf8')];
@@ -626,7 +626,7 @@ test('settings-env: an inherited key counts as present for every absent-only see
 
     // A malformed inherited view (not an object) is no view: every seed lands, as before.
     for (const bad of [null, 'x', ['a']])
-        assert.strictEqual(envPass({}, { inherited: bad }).env.ALFRED_CODE_PUSH_GATE, '1');
+        assert.strictEqual(envPass({}, { inherited: bad }).env.ALFRED_CODE_HISTORY, '3');
 });
 
 test('settings-writer: writeSettings passes inheritedEnv through - the local file never shadows the shared value (N6)', () =>
@@ -994,7 +994,7 @@ test('settings-ledger: the user\'s own key, deny entry and hook are never manage
     const env = result.managed.env['settings.json'];
     assert.ok(!('ALFRED_CODE_INSTRUMENT' in env), 'it was there before the stack wrote anything, at the same value');
     assert.ok(!('MY_KEY' in env));
-    assert.strictEqual(env.ALFRED_CODE_PUSH_GATE, valueHash('1'), 'a key seeded this run is the stack\'s');
+    assert.strictEqual(env.ALFRED_CODE_HISTORY, valueHash('3'), 'a key seeded this run is the stack\'s');
     assert.deepStrictEqual(result.managed.deny, [], 'an entry already there is the project\'s');
     assert.deepStrictEqual(result.managed.hooks, []);
     assert.deepStrictEqual(data.hooks.Stop, [{ hooks: [{ type: 'command', command: 'node mine.js' }] }]);

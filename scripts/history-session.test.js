@@ -77,6 +77,35 @@ test('SessionStart after two sessions on the branch injects one framed block wit
   } finally { rmDir(root); }
 });
 
+// Item 10 of 2026-10-21: the count of earlier sessions comes from ALFRED_CODE_HISTORY (seed 3, max 10), and the block's
+// cap is a 150-char frame plus 150 per session shown (600 at the seed, as before).
+function sessions(root, n) {
+  for (let i = 1; i <= n; i++) {
+    run(root, { hook_event_name: 'Stop', session_id: `s${i}`, transcript_path: transcript(root, `s${i}`, [[`Step ${i}?`, `Answer${i}`]]) });
+    const t = new Date(Date.now() - (n - i + 1) * 60000);
+    fs.utimesSync(entryFile(root, `s${i}`), t, t);
+  }
+}
+const startBlock = (root, extra) => {
+  const r = run(root, { hook_event_name: 'SessionStart', session_id: 'now', source: 'startup', transcript_path: path.join(root, 'absent.jsonl') }, extra);
+  assert.strictEqual(r.status, 0);
+  return r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext : '';
+};
+const shown = (block) => [...block.matchAll(/Answer(\d+)/g)].map((m) => Number(m[1])).sort((a, b) => a - b);
+
+test('ALFRED_CODE_HISTORY sets how many earlier sessions the start block shows, the cap growing with it', () => {
+  const root = project();
+  try {
+    sessions(root, 12);
+    for (const [value, want] of [[undefined, [10, 11, 12]], ['1', [12]], ['5', [8, 9, 10, 11, 12]], ['10', [3, 4, 5, 6, 7, 8, 9, 10, 11, 12]], ['11', [3, 4, 5, 6, 7, 8, 9, 10, 11, 12]], ['garbage', [10, 11, 12]]]) {
+      const block = startBlock(root, value === undefined ? {} : { ALFRED_CODE_HISTORY: value });
+      assert.deepStrictEqual(shown(block), want, `ALFRED_CODE_HISTORY=${value}: ${block}`);
+      assert.ok(block.length <= 150 + 150 * want.length, `ALFRED_CODE_HISTORY=${value}: ${block.length} chars over ${150 + 150 * want.length}`);
+    }
+    assert.strictEqual(startBlock(root, { ALFRED_CODE_HISTORY: '0' }), '', '0 is off');
+  } finally { rmDir(root); }
+});
+
 test('2.8.0: the start injection reads a legacy <docs>/history/ record while state/history/ has none for the branch', () => {
   const root = project();
   try {
@@ -180,5 +209,18 @@ test('a never-set-up project under a plugin-launched hook: nothing written, noth
     const r = run(root, { hook_event_name: 'Stop', session_id: 'u2', transcript_path: transcript(root, 'u2', [['Ship it?', 'Yes']]) }, pluginEnv);
     assert.strictEqual(r.status, 0);
     assert.ok(fs.existsSync(entryFile(root, 'u2')), 'the set-up project gets its history entry');
+  } finally { rmDir(root); }
+});
+
+// Loading audit 2026-10-21 G3: a seat's own compaction runs SessionStart inside the seat, the MAIN session's id on the
+// payload - it records nothing and injects nothing, so the main session's entry is never rewritten by a seat.
+test('a seat\'s own compaction start writes no entry and injects nothing', () => {
+  const root = project();
+  try {
+    run(root, { hook_event_name: 'Stop', session_id: 's1', transcript_path: transcript(root, 's1', [['Ship it?', 'Yes']]) });
+    const r = run(root, { hook_event_name: 'SessionStart', session_id: 's2', source: 'compact', agent_id: 'agent-1', transcript_path: path.join(root, 'absent.jsonl') });
+    assert.strictEqual(r.status, 0);
+    assert.strictEqual(r.stdout, '');
+    assert.ok(!fs.existsSync(entryFile(root, 's2')), 'no entry under the main session\'s id');
   } finally { rmDir(root); }
 });

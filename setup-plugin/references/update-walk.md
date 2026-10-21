@@ -57,7 +57,7 @@ It prints, in order:
   names THIS as the refresh, and it gates the `/capture-awareness` suggestion.
 - `migration: <id><TAB><detect kind>` per DETECTED entry, or `migrations: none detected`, each
   followed by its own indented `why:` / `then:` / `remove:` / `unwire:` / `env-rename:` /
-  `env-rename-prefix:` / `env-remove:` / `env-reset:` / `env-off:` lines - everything you act on. A detected entry joins the prune
+  `env-rename-prefix:` / `env-remove:` / `env-reset:` / `env-off:` / `env-fold:` lines - everything you act on. A detected entry joins the prune
   list labeled `(migration: <why>)`.
 - `new: <category> <name><TAB><verdict><TAB><entry|->` per item the release ADDED or RENAMED, or
   `new: none` - classified against THIS install by the derivation, never by you, with optional
@@ -100,10 +100,24 @@ Then route, as numbered actions:
 
 **New items - ONE ask, and only when a `new:` line says `offer`.** Put every offer through one
 AskUserQuestion before the installer runs, each named with its entry or 'copied', the entries its
-`enables=` field names, and the reason in a few words: **Take the recommended** (the offers marked
-`take`), **Take all**, **Take none** (configure adds any later). Mark **Take the recommended** Recommended
-when at least one offer says `take`, otherwise **Take none**; a free-text answer names the ones to
-take. Each taken offer becomes one `--add "<category> <name>"` on the installer call of whichever
+`enables=` field names, and the reason in a few words - this template when at least one offer says `take`:
+
+```ask
+Add what this release brings? <each offer: its name, its entry or 'copied', the entries it enables, the reason in a few words>.
+- 'Take the recommended (Recommended)' - the offers marked take, each one --add on the installer call
+- 'Take all' - every offer, each one --add
+- 'Take none' - nothing is added; /alfred-code:configure adds any later
+```
+
+and this one when none does:
+
+```ask
+Add what this release brings? <each offer, as above> - none is marked take.
+- 'Take none (Recommended)' - nothing is added; /alfred-code:configure adds any later
+- 'Take all' - every offer, each one --add on the installer call
+```
+
+A free-text answer names the ones to take. Each taken offer becomes one `--add "<category> <name>"` on the installer call of whichever
 path runs, and so does every `renamed` row, unasked; every `was-off` row becomes one
 `--drop "<category> <name>"`, so the user's switch-off carries onto the new name. `arrives`, `off` and `unknown` are never
 asked - they go in the step-7 report. No offer, no ask: this is still the no-questions refresh. Unattended, the ask
@@ -232,8 +246,8 @@ Then:
 ## Do not
 
 - Never delete anything the upstream diff or the migrations catalog did not name - user-authored
-  skills/agents/rules/hooks and the generated rules (`alfred-architecture.md`, `alfred-awareness.md`, the awareness docs,
-  `project-code-style.md`) appear in neither; if a candidate is in neither list, it stays.
+  skills/agents/rules/hooks and the generated rules (`alfred-architecture.md`, `alfred-awareness.md`, the awareness docs)
+  appear in neither; if a candidate is in neither list, it stays.
 - Never install an addition the step-2 ask did not take, and never remove an MCP or plugin the
   diff did not retire - dropping by choice, and adopting anything the release did not add, is
   the sibling `configure` command.

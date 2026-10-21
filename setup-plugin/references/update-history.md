@@ -151,7 +151,7 @@ who asks about a name the log did not print.
 | `/project-runtime-failure-signatures` | `/issue-signatures-runtime` |
 | `/project-architecture-analyzer` | `/capture-architecture` |
 | `/project-architecture-quality-analyzer` | `/capture-architecture-quality` |
-| `/project-code-style-analyzer` | `/capture-code-style` |
+| `/project-code-style-analyzer` | `/capture-project-code-style` |
 | `/project-test-coverage-analyzer` | `/capture-test-coverage` |
 | `/project-related-context` | `/capture-awareness` |
 | `/project-agent-capabilities` | `/capture-awareness` |
@@ -174,7 +174,8 @@ who asks about a name the log did not print.
 | `/alfred-capture-architecture` | `/capture-architecture` |
 | `/alfred-capture-architecture-quality` | `/capture-architecture-quality` |
 | `/alfred-capture-code-quality` | `/capture-code-quality` |
-| `/alfred-capture-code-style` | `/capture-code-style` |
+| `/alfred-capture-code-style` | `/capture-project-code-style` |
+| `/capture-code-style` | `/capture-project-code-style` |
 | `/alfred-capture-first-look` | `/capture-first-look` |
 | `/alfred-capture-project-capabilities` | `/capture-awareness` |
 | `/alfred-capture-related-projects` | `/capture-awareness` |

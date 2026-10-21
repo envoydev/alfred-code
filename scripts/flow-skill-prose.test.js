@@ -40,13 +40,18 @@ test('M77: signatures-ci names four dispatch triggers, the count its fan-out ref
 
 // ---- M78 + M79: the code-style capture's seat mention and the generated rules' survival -------------------------
 test('M78: code-style names its plugin seat the way a typed mention resolves it', () => {
-    const text = skill('capture-code-style');
+    const text = skill('capture-project-code-style');
     assert.doesNotMatch(text, /@agent-code-style-analyzer/, 'a bare @-mention of a plugin seat resolves nothing');
     assert.match(flat(text), /the code-style-analyzer seat alone, picked from the @ typeahead/);
 });
 
 test('M79: a generated rule survives update because no ledger records it, not because nothing prunes rules', () => {
-    for (const name of ['capture-code-style', 'capture-awareness']) {
+    // 2026-10-21: the code-style capture writes no rule any more - only its doc, which update moves.
+    const style = flat(skill('capture-project-code-style'));
+    assert.doesNotMatch(style, /stack update/, 'the 1.x command name is gone');
+    assert.match(style, /No rule is written\./);
+    assert.match(style, /`\/alfred-code:update` moves an older `code-style\/CODE-STYLE\.md` and removes its generated `project-code-style\.md` rule/);
+    for (const name of ['capture-awareness']) {
         const text = flat(skill(name));
         assert.doesNotMatch(text, /stack update/, `${name}: the 1.x command name is gone`);
         assert.doesNotMatch(text, /never prunes `\.claude\/rules\/`|nothing prunes the rules directory/, `${name}: library rules ARE pruned`);
@@ -78,8 +83,8 @@ test('M81: the awareness capture names the 1.x rule it supersedes, and the curre
 // ---- M82: a manual-only capture is the user's to type ---------------------------------------------------------
 test('M82: code-quality hands the manual-only style capture to the user by its slash', () => {
     const text = flat(skill('capture-code-quality'));
-    assert.doesNotMatch(text, /record the code style with `capture-code-style`/);
-    assert.match(text, /`\/capture-code-style`/);
+    assert.doesNotMatch(text, /record the code style with `capture-project-code-style`/);
+    assert.match(text, /`\/capture-project-code-style`/);
     assert.match(text, /all the user's to run: `\/capture-preferences`/);
 });
 
@@ -183,12 +188,12 @@ test('M91: adjust-agents-md is titled as the habit it is, and explain-code opens
 // ---- M92: the greenfield close names every missing capture in the template's order -------------------------------
 test('M92: build-from-scratch Next run names the awareness capture, last', () => {
     const line = (skill('task-build-from-scratch').match(/^Next run: .*$/m) || [''])[0];
-    const order = ['/capture-architecture', '/capture-code-style', '/capture-awareness LAST'];
+    const order = ['/capture-architecture', '/capture-project-code-style', '/capture-awareness LAST'];
     const at = order.map((c) => line.indexOf(c));
     assert.ok(at.every((i) => i > 0), `every capture named: ${line}`);
     assert.deepStrictEqual([...at].sort((a, b) => a - b), at, 'in the template\'s post-install order, the awareness capture last');
     assert.match(line, /alfred-awareness\.md/);
-    assert.match(line, /\/capture-preferences \(no <docs-path>\/preferences\/\)/);
+    assert.match(line, /\/capture-preferences \(no PERSONAL-CODE- or ARCHITECTURE-PREFERENCES\.md in <docs-path>\/preferences\/\)/);
     assert.match(line, /`none` when all four exist/);
 });
 

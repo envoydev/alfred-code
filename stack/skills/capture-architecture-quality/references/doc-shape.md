@@ -100,7 +100,7 @@ Before ANY candidate is recorded as a weakness, answer all four explicitly; an u
 
 **The external-preference rule.** A convention skill, reference doc, or industry pattern preferring a different approach is not evidence of a weakness. Where this project has a mechanism that works, it wins unless you can show it FAILING - a real miss, a real regression it let through. A candidate whose only support is 'a reference prefers X' lands under Worth knowing at most, never tiered.
 
-**The user's preferences are not external.** Each `A<n>` entry of `<docs-path>/preferences/ARCHITECTURE-PREFERENCES.md` outranks the decision log, AGENTS.md and the map's conventions - the precedence the code-quality capture uses. A breach is a weakness whose rule is `ARCHITECTURE-PREFERENCES.md#a<n>`, and 'breaks A2' answers gate question 1; the entry's `Except:` line is its one waiver.
+**The user's preferences are not external.** Each `A<n>` entry of `<docs-path>/preferences/ARCHITECTURE-PREFERENCES.md` outranks AGENTS.md and the map's conventions - the precedence the code-quality capture uses; where it breaks a recorded decision, the clash is a Proposed decision naming both, for the user to settle - never a Must-fix. A breach is a weakness whose rule is `ARCHITECTURE-PREFERENCES.md#a<n>`, and 'breaks A2' answers gate question 1; the entry's `Except:` line is its one waiver.
 
 ## The count rule - an output, never a target, in both directions
 
@@ -133,7 +133,7 @@ No bucket has a size limit. **Worth knowing retirement rule** - what stops the l
   > **Tier** - substantial.
 - **Worth knowing** - one line per entry plus its promotion condition; detail spills to a `references/` topic file when it needs more. A long list stays cheap to read - that is what the lighter shape is for.
 - **Deliberate tradeoffs** - the decision and the reason it was made, so no later run re-litigates it. Sourced from the decision log (gate question 4) - never written here from this skill's own judgment.
-- **Proposed decisions** - a repeatedly-declined Must-fix entry, or a tradeoff this run judged worth recording, shaped ready to accept: the claim, the reason, what it costs. This skill NEVER writes to the decision log; a person accepts a proposal by writing it themselves, at which point the next run's gate question 4 picks it up and the entry moves out of Must fix.
+- **Proposed decisions** - a repeatedly-declined Must-fix entry, a tradeoff this run judged worth recording, or a recorded decision a user preference breaks (both named), shaped ready to accept: the claim, the reason, what it costs. This skill NEVER writes to the decision log; a person accepts a proposal by writing it themselves, at which point the next run's gate question 4 picks it up and the entry moves out of Must fix.
 - **Summary** - the per-bucket and Must-fix tier tally, the top few highest-leverage fixes, and the over-build line: the over-build entries by title and tag, biggest cut first, closing `net: -N lines, -M dependencies possible` (`net: none` when the lens found nothing that passed the gate).
 
 ## Format discipline - the budget

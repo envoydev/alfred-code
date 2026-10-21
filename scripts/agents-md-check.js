@@ -258,7 +258,8 @@ const PARENT_DIR = /\bparent\s+(?:directory|folder|dir)\b|\b(?:one|a)\s+(?:level
 // preferences rule, and the awareness names before the merge) plus the `alfred-project-*` / `project-*` spellings
 // before them - every other `alfred-*` stem is the shipped baseline's, never generated. agents-md-check.test.js holds
 // this list to the rules the capture skills write.
-const GENERATED_STEM = '(?:alfred-(?:architecture|awareness|preferences|related-context|agent-awareness)|(?:alfred-)?project-[a-z0-9-]+)';
+// alfred-preferences.md ships since 2026-10-21 (it was the preferences capture's), and project-code-style.md is an older install's.
+const GENERATED_STEM = '(?:alfred-(?:architecture|awareness|related-context|agent-awareness)|(?:alfred-)?project-[a-z0-9-]+)';
 const GENERATED_RULE_REF = new RegExp(`(?:^|[\\s\`/])${GENERATED_STEM}\\.md\\b`);
 
 // True when the clause holding columns [from, to) of `prose` denies what it names.

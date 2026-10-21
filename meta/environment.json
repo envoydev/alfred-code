@@ -38,58 +38,6 @@
       }
     },
     {
-      "key": "ALFRED_CODE_PUSH_GATE",
-      "default": "1",
-      "ask": false,
-      "what": "the PUBLISH half of the commit gate: `git push` and `gh pr merge` need a `<data root>/state/approvals/PUSH-GATE` receipt, the same shape the commit gate uses. Set `0` for a repo whose remote is already gated (branch protection, a required review). Measured: across four sessions every push and merge passed every guard - one published unpushed commits 18 minutes before any receipt existed, another put 40 files on a shared `develop`.",
-      "validate": {
-        "type": "enum",
-        "values": [
-          "0",
-          "1"
-        ]
-      }
-    },
-    {
-      "key": "ALFRED_CODE_ROTATE_ASK",
-      "default": "1",
-      "ask": false,
-      "what": "the stop contract's rotate ask once a credential shape has entered the session (a tool result, a paste). It asks ONCE per exposure: an answer covers every credential already in the transcript, and only a new one asks again. `0` turns it off for a user who accepts the exposure - the value is in the transcript either way.",
-      "validate": {
-        "type": "enum",
-        "values": [
-          "0",
-          "1"
-        ]
-      }
-    },
-    {
-      "key": "ALFRED_CODE_DONE_GATE",
-      "default": "1",
-      "ask": false,
-      "what": "the stop contract's done-gate probe, log-only: a close claiming the change done, fixed, passing, works or ready over a turn with a source edit writes one row per turn to the hook-blocks ledger - unrun when the edit landed after the turn's last build or test run (or none ran) - which analyze-usage.js --hook-blocks counts. It never holds the close. `0` turns it off.",
-      "validate": {
-        "type": "enum",
-        "values": [
-          "0",
-          "1"
-        ]
-      }
-    },
-    {
-      "key": "ALFRED_CODE_CONFIG_PROTECT",
-      "default": "1",
-      "ask": false,
-      "what": "guard-config-protection.js: an EXISTING lint / format / analyzer config (eslint, prettier, stylelint, biome, .editorconfig, a .ruleset) or a strictness setting in tsconfig / MSBuild (strict flags, NoWarn, TreatWarningsAsErrors, Nullable) cannot be changed to get a check green - weakening the check is the cheapest false pass. Creating a config passes; a change the user wants goes through one ask and the `<data root>/state/approvals/CONFIG-EDIT-ALLOW` receipt. `0` turns the gate off.",
-      "validate": {
-        "type": "enum",
-        "values": [
-          "0",
-          "1"
-        ]
-      }
-    },
-    {
       "key": "ALFRED_CODE_CORRECTION_NUDGE",
       "default": "log",
       "ask": false,
@@ -119,14 +67,26 @@
     },
     {
       "key": "ALFRED_CODE_HISTORY",
-      "default": "1",
+      "default": "3",
+      "former_defaults": [
+        "1"
+      ],
       "ask": false,
-      "what": "history-session.js: at Stop, a machine-local record of the session under `<data root>/state/history/` (its commits, the files left dirty, the user's AskUserQuestion answers - credential shapes scrubbed); at SessionStart, the last three records of the same branch injected in at most 600 chars. `1` (the seed) is on; `0` is off.",
+      "what": "history-session.js: at Stop, a machine-local record of the session under `<data root>/state/history/` (its commits, the files left dirty, the user's AskUserQuestion answers - credential shapes scrubbed); at SessionStart, the last records of the same branch injected - this value is HOW MANY: `3` (the seed) up to `10`, a larger number read as 10, the block capped at 150 chars plus 150 per session. `0` is off (nothing recorded, nothing injected).",
       "validate": {
         "type": "enum",
         "values": [
           "0",
-          "1"
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9",
+          "10"
         ]
       }
     },
@@ -203,49 +163,20 @@
       }
     },
     {
-      "key": "ALFRED_CODE_DOCS_BLOCK",
-      "default": "1",
+      "key": "ALFRED_CODE_FRESH_SESSION_AFTER_HOURS",
+      "default": "2",
       "ask": false,
-      "what": "the architecture docs hook's session-start block: ORIENTATION.md, this branch's doc overrides and conflicts, and how to read by section (also sent to dispatched subagents). `0` stops the push; promotion of merged branches still runs.",
+      "what": "guard-fresh-session-start.js: the idle-gap offer. The prompt that ends a gap of this many HOURS since the last reply (or since an answered AskUserQuestion that waited that long) is offered a fresh session once per gap, with the carry and cold floor, when a resume recovers enough - a next-day resume ran 14 messages at 289.9k tokens unoffered before it (audit 2026-10-10 C09). Decimals work (`0.5`); `0` turns the idle offer off. Catalogued by the env audit of 2026-10-21: the hook read it before, but nothing listed it.",
       "validate": {
-        "type": "enum",
-        "values": [
-          "0",
-          "1"
-        ]
-      }
-    },
-    {
-      "key": "ALFRED_CODE_DOCS_GATE",
-      "default": "1",
-      "ask": false,
-      "what": "the first change under a source root waits until a covering doc section was read, and the hold hands that section over inline (at most two holds a session). `0` turns the hold off.",
-      "validate": {
-        "type": "enum",
-        "values": [
-          "0",
-          "1"
-        ]
-      }
-    },
-    {
-      "key": "ALFRED_CODE_DOCS_ASK",
-      "default": "1",
-      "ask": false,
-      "what": "at session end, a change that hit the capture's watch.json asks once for the owning sections to be rewritten when a rule moved, or confirmed. `0` turns the ask off.",
-      "validate": {
-        "type": "enum",
-        "values": [
-          "0",
-          "1"
-        ]
+        "type": "hours",
+        "off": "0"
       }
     },
     {
       "key": "ALFRED_CODE_HOOKS_OFF",
       "default": "",
       "ask": false,
-      "what": "a csv of hook names this project switches off, e.g. `guard-answer,instrument-tool-usage`. It is where the guided walk's hooks LAYER lands: every hook now arrives together inside the core alfred-code plugin, so there is no file to leave out of an install, and the rows an init or configure run does NOT pick are written here (that answer overwrites this value; every other run seeds it only when absent). Matching is exact on the base name, `.js` optional; a prefix never matches.",
+      "what": "a csv of hook names this project switches off, e.g. `guard-answer,instrument-tool-usage`. It is where the guided walk's hooks LAYER lands: every hook now arrives together inside the core alfred-code plugin, so there is no file to leave out of an install, and the rows an init or configure run does NOT pick are written here (that answer overwrites this value; every other run seeds it only when absent). Matching is exact on the base name, `.js` optional; a prefix never matches. A hook's PART is switched off the same way, as `<hook>:<part>`: `docs-session:block` (the session-start orientation), `docs-session:gate` (the first-change hold), `docs-session:ask` (the end-of-session doc ask), `guard-ungated-commit:push` (the publish half of the commit gate), `guard-stop-contract:rotate` (the credential rotate ask) and `guard-stop-contract:done` (the done-gate probe) - each was its own `=0` key before the env audit of 2026-10-21, and an update folds a stored `0` in here.",
       "validate": {
         "type": "csv"
       }

@@ -245,10 +245,14 @@ test('agents F01: integration-reviewer runs migrations only on a disposable data
         ['stack/agents/data-verifier.md', 'stack/agents/evidence-gatherer.md', 'stack/agents/integration-reviewer.md']);
 });
 
-test('agents F02: issue-diagnoser-ci hands the tree back on the ref it found', () =>
+// Audit 2026-10-21 agents T1-1 / ruling A-Q2 replaced F02's hand-back: the seat repros on a clone of its own under the OS
+// temp dir, so the project's tree is never switched and has nothing to hand back.
+test('agents F02 / T1-1: issue-diagnoser-ci repros on a temp clone and never touches the project tree', () =>
 {
     const text = squash(body('issue-diagnoser-ci'));
-    assert.ok(text.includes('before the report check it back out (or remove the worktree you added) so the tree is handed back where you found it; name both refs in the report'));
+    assert.ok(text.includes('Repro on a clone of your own under the OS temp dir, never in the shared checkout'));
+    assert.ok(text.includes("Name the clone's path and ref in the report; the project's tree is never touched."));
+    assert.ok(!/Add an isolated `git worktree`|only when the tree is yours alone/.test(text), 'the old checkout route the gate refuses');
 });
 
 test('agents F04: every designer closes on literal status and contract_version lines, the verdict no longer mid-report', () =>

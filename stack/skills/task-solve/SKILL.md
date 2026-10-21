@@ -220,7 +220,7 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
    under AUTO the user's first sight of them.
    *Stop* - this stop is where the close-out decisions live: anything PENDING (an uncommitted diff, an
    unpushed commit, a deferred item, a cross-repo follow-up) goes into the ask; only a cycle with nothing
-   pending ends on the report alone. An uncommitted diff waits for the user's pick (`alfred-git.md`):
+   pending ends on the report alone. An uncommitted diff waits for the user's pick (`GIT-PREFERENCES.md`):
 
    ```ask
    The feature is done and verified; the diff is uncommitted. Commit it on this machine?

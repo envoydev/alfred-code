@@ -61,14 +61,21 @@ const realGit = (projectRoot) => ({
 
 // `local` ONLY when the docs are demonstrably kept out of git: no domain is tracked, AND either a
 // domain exists (so there is something to have committed) or git ignores the docs root outright.
-// Everything else, a fresh project included, is `git`.
+// Everything else, a fresh project included, is `git`. The git doc every install seeds (2026-10-21) is the stack's
+// text, so a preferences domain holding nothing else casts no vote.
 function docsVersioningSeed({ projectRoot, docsPath, git })
 {
     const g = git || realGit(projectRoot);
     const root = String(projectRoot).replace(/\\/g, '/').replace(/\/+$/, '');
     const parts = String(docsPath || '').replace(/\\/g, '/').split('/').filter(Boolean);
     const base = [root, ...parts].join('/');
-    const names = domains(base);
+    const seedOnly = (name) =>
+    {
+        if (name !== PREFERENCES) return false;
+        try { return fs.readdirSync(`${base}/${name}`).every((f) => f === 'watch.json' || f === GIT_DOC); }
+        catch { return false; }
+    };
+    const names = domains(base).filter((name) => !seedOnly(name));
     const committed = names.some((name) => g.tracked(`${base}/${name}`));
     const keptOut = !committed && (names.length > 0 || g.ignored(parts.join('/')));
     return keptOut ? 'local' : 'git';
@@ -81,6 +88,14 @@ function migrateDocsFile(oldPath, newPath, label, { log = () => {} } = {})
     if (!fs.existsSync(oldPath) || !fs.statSync(oldPath).isFile()) return false;
     if (fs.existsSync(newPath))
     {
+        // An old copy holding exactly the new file's text is a leftover, never the user's second version (audit
+        // 2026-10-21 PF-21: CODE-PREFERENCES.md beside its PERSONAL-CODE- successor kept lint failing every run).
+        const same = (() => { try { return fs.statSync(newPath).isFile() && norm(fs.readFileSync(oldPath, 'utf8')) === norm(fs.readFileSync(newPath, 'utf8')); } catch { return false; } })();
+        if (same)
+        {
+            try { fs.rmSync(oldPath); log(`  docs migration (${label}): ${path.basename(oldPath)} removed - an exact copy of ${newPath}`); return false; }
+            catch { /* named below, like any other pair */ }
+        }
         log(`  docs migration (${label}): ${newPath} already exists - ${oldPath} left in place, nothing overwritten`);
         return false;
     }
@@ -92,9 +107,11 @@ function migrateDocsFile(oldPath, newPath, label, { log = () => {} } = {})
 
 // Keyed on the DOC at its new path, so an install an earlier run migrated is switched on too. Never
 // overwrites a watch.json - any content, any validity, a dangling symlink included: it is theirs.
-function switchOnDomain(dir, doc, { log = () => {} } = {})
+function switchOnDomain(dir, docs, { log = () => {} } = {})
 {
-    if (!fs.existsSync(path.join(dir, doc))) return false;
+    const isFile = (f) => { try { return fs.statSync(f).isFile(); } catch { return false; } };
+    const doc = [].concat(docs).find((d) => isFile(path.join(dir, d)));
+    if (!doc) return false;
     const watch = path.join(dir, 'watch.json');
     try { fs.lstatSync(watch); return false; }                 // lstat: a dangling link still counts
     catch { /* absent - ours to write */ }
@@ -102,14 +119,12 @@ function switchOnDomain(dir, doc, { log = () => {} } = {})
     // A doc an older capture wrote carries no section ids; once the folder is a domain, `docs.js
     // lint` flags each section. SAID here rather than fixed - seeding ids would rewrite the
     // project's docs across every domain.
-    let note = '';
-    try
+    const bare = [].concat(docs).filter((d) =>
     {
-        const body = fs.readFileSync(path.join(dir, doc), 'utf8');
-        if (/^#{2,4}\s/m.test(body) && !/<!--\s*id:/i.test(body))
-            note = " - its sections predate section ids, so 'docs.js lint' flags them until 'node .claude/hooks/docs.js seed-ids' or the capture's next run";
-    }
-    catch { /* unreadable is not a reason to skip the switch-on */ }
+        try { const body = fs.readFileSync(path.join(dir, d), 'utf8'); return /^#{2,4}\s/m.test(body) && !/<!--\s*id:/i.test(body); }
+        catch { return false; }                                // absent or unreadable is not a reason to skip the switch-on
+    });
+    const note = bare.length ? ` - ${bare.join(', ')} predate${bare.length === 1 ? 's' : ''} section ids, so 'docs.js lint' flags their sections until 'node .claude/hooks/docs.js seed-ids' or the capture's next run` : '';
 
     try { fs.writeFileSync(watch, '{}\n'); }
     catch
@@ -129,6 +144,10 @@ function switchOnDomain(dir, doc, { log = () => {} } = {})
 // assessment's newer home, quality/ASSESSMENT.md (2.0.0 to 2.4.0), over the older architecture/ one.
 const DOCS_MIGRATIONS = [
     ['PROJECT-CODE-STYLE.md', 'code-style/CODE-STYLE.md', 'code style'],
+    // The preferences layout (the user's ruling of 2026-10-21): the project's code style is one of the preferences docs
+    // every session follows, and the user's own code preferences say whose they are.
+    ['code-style/CODE-STYLE.md', 'preferences/PROJECT-CODE-PREFERENCES.md', 'preferences'],
+    ['preferences/CODE-PREFERENCES.md', 'preferences/PERSONAL-CODE-PREFERENCES.md', 'preferences'],
     ['quality/ASSESSMENT.md', 'quality/ARCHITECTURE-ASSESSMENT.md', 'architecture quality'],
     ['architecture/ASSESSMENT.md', 'quality/ARCHITECTURE-ASSESSMENT.md', 'architecture quality'],
     ['related-context/PROJECT-RELATED-CONTEXT.md', 'related-projects/RELATED-PROJECTS.md', 'related projects'],
@@ -143,7 +162,7 @@ const DOCS_MIGRATIONS = [
     ['project-awareness/watch.json', 'awareness/watch.json', 'awareness'],
     ['related-projects/RELATED-PROJECTS.md', 'awareness/RELATED-PROJECTS-AWARENESS.md', 'awareness'],
 ];
-const DOCS_SWITCH_ON = [['code-style', 'CODE-STYLE.md']];
+const DOCS_SWITCH_ON = [['preferences', ['GIT-PREFERENCES.md', 'PROJECT-CODE-PREFERENCES.md', 'PERSONAL-CODE-PREFERENCES.md', 'ARCHITECTURE-PREFERENCES.md']]];
 // A doc can move twice in one run (loose, then related-projects/, then awareness/): its last home, by the rows above.
 function lastHome(to)
 {
@@ -175,12 +194,265 @@ function migrateDocsDomains({ projectRoot, docsPath, rules = [], instructions = 
         }
         if (migrateDocsFile(path.join(base, from), path.join(base, to), label, { log })) moved.push(to);
     }
+    // Before the switch-on: the git doc it seeds, and code-style/watch.json it carries over, decide what is switched on.
+    const preferences = migratePreferences({ projectRoot, base, log });
     const switched = [];
     for (const [dir, doc] of DOCS_SWITCH_ON)
         if (switchOnDomain(path.join(base, dir), doc, { log })) switched.push(dir);
     const repointed = repointDocs({ projectRoot, docsPath, base, rules, instructions, log });
     const awareness = migrateAwareness({ projectRoot, base, docsPath, rules, log });
-    return { moved, switched, repointed, awareness };
+    return { moved, switched, repointed, awareness, preferences };
+}
+
+// A section ref is spelled `KEY#id`, `KEY.md#id` or with its folder in front; a key inside a longer one is no ref
+// (`PROJECT-CODE-PREFERENCES` holds `CODE-PREFERENCES`). `keys` are `[new key, [[old folder, old key], ...]]`.
+const escapeRe = (o) => o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function respellKeys(text, keys, domain)
+{
+    return keys.reduce((acc, [key, homes]) => homes.reduce((s, [folder, old]) => s
+        .replace(new RegExp(`(?<![\\w-])${escapeRe(folder)}/${escapeRe(old)}\\b(?!-)`, 'g'), `${domain}/${key}`)
+        .replace(new RegExp(`(?<![\\w-])${escapeRe(old)}(?=(?:\\.md)?#)`, 'g'), key), acc), text);
+}
+
+// Only a doc at its new home, with no copy left at an old one, takes the new key: the move is then complete.
+const completedKeys = (base, domain, homes) => Object.entries(homes).filter(([key, olds]) => fs.existsSync(path.join(base, domain, `${key}.md`))
+    && olds.every(([folder, old]) => !fs.existsSync(path.join(base, folder, `${old}.md`))));
+
+// Each file the ids live in, re-spelled in place; the files rewritten, project-relative.
+function respellFiles(files, keys, domain, { projectRoot, label, fix, log })
+{
+    const out = [];
+    const rel = (file) => path.relative(projectRoot, file).split(path.sep).join('/');
+    for (const file of files)
+    {
+        let text;
+        try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+        const next = respellKeys(text, keys, domain);
+        if (next === text) continue;
+        try { fs.writeFileSync(file, next); out.push(rel(file)); log(`  docs migration (${label}): ${rel(file)} - section ids re-spelled to the ${domain}/ file keys`); }
+        catch (err) { log(`  !! docs migration (${label}): ${rel(file)} still names the old section ids (${err.code || err.message}) - ${fix}`); }
+    }
+    return out;
+}
+
+// THE PREFERENCES LAYOUT (the user's ruling of 2026-10-21): every doc under `preferences/` binds, and the shipped
+// alfred-preferences.md rule says when each is read - before code changes, a design plan or a code discussion. The moves
+// are DOCS_MIGRATIONS'; what a move leaves broken is here, migrateAwareness' way: the section ids the moved docs and
+// watch.json name take the new file keys (`CODE-STYLE#naming` -> `PROJECT-CODE-PREFERENCES#naming`), code-style/watch.json
+// joins preferences/watch.json, the branch versions under `.branches/` move to the folder the engine now composes, the old
+// folder goes once it holds nothing else, and the generated project-code-style.md goes with it. Then the git doc: the house
+// git lines the retired alfred-git.md carried are seeded as GIT-PREFERENCES.md, and an existing one gets each locked entry
+// it lacks - so the consent, scope, checkpoint and safety lines exist in every project.
+const PREFERENCES = 'preferences';
+const PREFERENCES_HOMES = {
+    'PROJECT-CODE-PREFERENCES': [['code-style', 'CODE-STYLE']],
+    'PERSONAL-CODE-PREFERENCES': [[PREFERENCES, 'CODE-PREFERENCES']],
+};
+const GIT_SEED = path.join(__dirname, '..', '..', 'stack', 'skills', 'capture-preferences', 'references', 'git-seed.md');
+const GIT_DOC = 'GIT-PREFERENCES.md';
+const STYLE_RULE = 'project-code-style.md';
+// Every capture of the code style opened its rule so, under each name the skill carried.
+const STYLE_RULE_HEAD = /^# Project code style \(generated\b/m;
+const LOCKED = /<!--\s*locked:\s*([a-z][a-z-]*)\s*-->/g;
+
+function migratePreferences({ projectRoot, base, log = () => {} })
+{
+    const out = { respelled: [], overlays: [], watch: 'none', git: 'none', rule: 'none' };
+    if (!fs.existsSync(projectRoot)) return out;
+    const dir = path.join(base, PREFERENCES);
+    const keys = completedKeys(base, PREFERENCES, PREFERENCES_HOMES);
+    const fix = 're-run /capture-preferences or /capture-project-code-style';
+    out.respelled = respellFiles(['watch.json', ...keys.map(([key]) => `${key}.md`)].map((n) => path.join(dir, n)), keys, PREFERENCES, { projectRoot, label: 'preferences', fix, log });
+    out.overlays = moveOverlays(base, keys, PREFERENCES, 'preferences', log);
+    const style = keys.find(([key]) => key === 'PROJECT-CODE-PREFERENCES');
+    if (style)
+    {
+        out.watch = carryStyleWatch(base, style, log);
+        moveStyleReferences(base, log);
+        removeOldDomain(path.join(base, 'code-style'), log, { label: 'preferences', docs: new Set(['CODE-STYLE.md']) });
+        out.rule = dropStyleRule(projectRoot, log);
+    }
+    out.git = seedGitPreferences(projectRoot, path.join(dir, GIT_DOC), log);
+    return out;
+}
+
+// code-style/watch.json asks whether a language's section still holds when its files change - the code style is kept
+// current from there. 'moved' (into an absent or `{}` preferences/watch.json), 'merged' (beside the entries that file
+// holds), 'kept' (one of the two is not valid JSON - named) or 'none'. The stack's own `{}` switch-on carries nothing.
+function carryStyleWatch(base, style, log)
+{
+    const from = path.join(base, 'code-style', 'watch.json');
+    const to = path.join(base, PREFERENCES, 'watch.json');
+    let text;
+    try { text = fs.readFileSync(from, 'utf8'); } catch { return 'none'; }
+    if (/^\s*\{\s*\}\s*$/.test(text)) return 'none';
+    const kept = (why) => { log(`  !! docs migration (preferences): code-style/watch.json is left in place - ${why}; merge it by hand into preferences/watch.json`); return 'kept'; };
+    const object = (t) => { const v = JSON.parse(t); if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('not an object'); return v; };
+    const respelled = respellKeys(text, [style], PREFERENCES);
+    let theirs;
+    try { theirs = object(respelled); } catch { return kept('it is not valid JSON'); }
+    let current = null;
+    try { current = fs.readFileSync(to, 'utf8'); } catch { /* absent - the style's entries become the file */ }
+    let ours = null;
+    if (current !== null && !/^\s*\{\s*\}\s*$/.test(current))
+    {
+        try { ours = object(current); } catch { return kept('preferences/watch.json is not valid JSON'); }
+    }
+    let next = respelled;
+    if (ours)
+    {
+        const union = (a, b) => [...new Set([...(a || []), ...(b || [])])];
+        const merged = { ...theirs, ...ours };
+        if (ours.sourceRoots || theirs.sourceRoots) merged.sourceRoots = union(ours.sourceRoots, theirs.sourceRoots);
+        if (ours.watch || theirs.watch) merged.watch = [...(ours.watch || []), ...(theirs.watch || [])];
+        if (ours.notOwned || theirs.notOwned) merged.notOwned = union(ours.notOwned, theirs.notOwned);
+        next = `${JSON.stringify(merged, null, 2)}\n`;
+    }
+    try { fs.mkdirSync(path.dirname(to), { recursive: true }); fs.writeFileSync(to, next); fs.rmSync(from); }
+    catch (err) { return kept(`it could not be carried over (${err.code || err.message})`); }
+    log(`  docs migration (preferences): code-style/watch.json ${ours ? 'merged into' : '->'} preferences/watch.json - its section ids re-spelled`);
+    return ours ? 'merged' : 'moved';
+}
+
+// The style doc's overflow, absent-only: a file already in preferences/references/ keeps the old one where it is.
+function moveStyleReferences(base, log)
+{
+    const from = path.join(base, 'code-style', 'references');
+    let names;
+    try { names = fs.readdirSync(from).filter((n) => !OS_LITTER.has(n)); } catch { return; }
+    for (const name of names)
+        migrateDocsFile(path.join(from, name), path.join(base, PREFERENCES, 'references', name), 'preferences', { log });
+}
+
+// The generated rule was the style doc's condensed copy, loaded wherever a matching file was touched; the doc is read on
+// trigger now (alfred-preferences.md), so the copy goes - only the capture's own text, and only once the doc moved.
+function dropStyleRule(projectRoot, log)
+{
+    const file = path.join(projectRoot, '.claude', 'rules', STYLE_RULE);
+    let text;
+    try { text = fs.readFileSync(file, 'utf8'); } catch { return 'none'; }
+    if (!STYLE_RULE_HEAD.test(text))
+    {
+        log(`  !! .claude/rules/${STYLE_RULE} is not the capture's text, so it was kept - the code style is read from preferences/PROJECT-CODE-PREFERENCES.md now; remove the rule by hand`);
+        return 'kept';
+    }
+    try { fs.rmSync(file); }
+    catch (err) { log(`  !! .claude/rules/${STYLE_RULE} could not be removed (${err.code || err.message}) - remove it by hand`); return 'failed'; }
+    log(`  docs migration (preferences): .claude/rules/${STYLE_RULE} removed - the code style is preferences/PROJECT-CODE-PREFERENCES.md, read before any code change`);
+    return 'removed';
+}
+
+const norm = (t) => String(t).replace(/\r\n/g, '\n').trim();
+
+// The seed's entries, each with its locked key: the text from its `##` heading up to the next one.
+function seedEntries(seed)
+{
+    return seed.split(/\n(?=## )/).filter((part) => part.startsWith('## ')).map((part) => {
+        const m = /<!--\s*locked:\s*([a-z][a-z-]*)\s*-->/.exec(part);
+        return { text: part.replace(/\s+$/, ''), locked: m ? m[1] : null };
+    });
+}
+
+// The capture's own parser, so the update and `preferences.js lint` judge a locked entry one way; null when the skill is
+// not in the snapshot (the restore and the copy check then wait for a snapshot that has it).
+const CAPTURE = path.join(__dirname, '..', '..', 'stack', 'skills', 'capture-preferences', 'scripts', 'preferences.js');
+const LOCKED_FIELDS = ['Rule', 'Scope', 'Why', 'Except', 'Check'];
+const foldText = (t) => String(t || '').replace(/\s+/g, ' ').trim();
+function captureParser()
+{
+    try { return require(CAPTURE).parseSections; } catch { return null; }
+}
+// The doc's entries as line spans, a `##` heading to the next one; a fenced block is the entry's text.
+function entrySpans(lines)
+{
+    const out = [];
+    let fence = null;
+    lines.forEach((line, i) =>
+    {
+        const fm = /^\s*(`{3,}|~{3,})/.exec(line);
+        if (fence) { if (fm && fm[1][0] === fence) fence = null; return; }
+        if (fm) { fence = fm[1][0]; return; }
+        if (!/^## /.test(line)) return;
+        if (out.length) out[out.length - 1].end = i;
+        out.push({ start: i, end: lines.length });
+    });
+    return out;
+}
+
+// A locked entry is the seed's word for word (audit 2026-10-21 Q-4, ruling 'Restore it on update'): one whose fields moved
+// gets the seed's lines back under its own heading and id, and the text it held is named. An unlocked entry under a locked
+// one's title (the lock dropped, edge 110) is named, never removed - the user's text. Returns the restored keys.
+function restoreLocked(text, seed, rel, log)
+{
+    const parse = captureParser();
+    if (!parse) return { text, restored: [] };
+    const seedByKey = new Map(parse(seed).filter((sec) => sec.locked).map((sec) => [sec.locked, sec]));
+    const seedText = new Map(seedEntries(seed).filter((e) => e.locked).map((e) => [e.locked, e.text]));
+    const lines = text.replace(/\r\n/g, '\n').split('\n');
+    const restored = [];
+    for (const span of entrySpans(lines).reverse())
+    {
+        const block = lines.slice(span.start, span.end);
+        const [sec] = parse(block.join('\n'));
+        if (!sec) continue;
+        if (!sec.locked)
+        {
+            const twin = [...seedByKey].find(([, v]) => foldText(v.title).toLowerCase() === foldText(sec.title).toLowerCase());
+            if (twin) log(`  !! preferences: ${rel} ${sec.id || sec.heading} repeats the locked '${twin[0]}' entry's title without its lock - remove it; a locked entry is never edited (preferences.js lint names it)`);
+            continue;
+        }
+        const want = seedByKey.get(sec.locked);
+        if (!want) continue;
+        const moved = LOCKED_FIELDS.filter((f) => foldText(sec.fields[f]) !== foldText(want.fields[f]));
+        if (!moved.length) continue;
+        let last = block.length;
+        while (last > 1 && !block[last - 1].trim()) last--;
+        const idLine = block.find((l) => /^\s*<!--\s*id:/.test(l)) || `<!-- id: ${String(sec.id || '').toLowerCase()} -->`;
+        const body = seedText.get(sec.locked).split('\n').slice(1).filter((l) => !/^\s*<!--\s*id:/.test(l));
+        lines.splice(span.start, last, block[0], idLine, ...body);
+        const was = moved.map((f) => `${f}: ${sec.fields[f] === undefined ? '(none)' : sec.fields[f]}`).join('; ');
+        log(`  preferences: ${rel} - restored the locked '${sec.locked}' entry (${sec.id || sec.heading}) from the seed; it read: ${was.length > 300 ? `${was.slice(0, 299)}...` : was}`);
+        restored.unshift(sec.locked);
+    }
+    return { text: lines.join('\n'), restored };
+}
+
+// 'seeded', 'present', 'restored <keys>', 'merged <keys>' (both, `; `-joined) or 'failed'. An id is never reused: a merged
+// entry takes the number past every id the doc has used, its Retired: line included.
+function seedGitPreferences(projectRoot, file, log)
+{
+    const rel = path.relative(projectRoot, file).split(path.sep).join('/');
+    let text = null;
+    try { text = fs.readFileSync(file, 'utf8'); }
+    catch (err)
+    {
+        if (err.code !== 'ENOENT') { log(`  !! preferences: ${rel} could not be read (${err.code || err.message}) - its locked git entries are not checked; fix it, then re-run /alfred-code:update`); return 'failed'; }
+    }
+    let seed;
+    try { seed = fs.readFileSync(GIT_SEED, 'utf8').replace(/__TODAY__/g, new Date().toISOString().slice(0, 10)); }
+    catch (err) { log(`  !! preferences: the git seed could not be read (${err.code || err.message}) - ${rel} is not ${text === null ? 'seeded' : 'checked'}; re-run /alfred-code:update`); return 'failed'; }
+    // A blank doc is no doc: appending to it would leave the entries with no title and no Updated: (audit PF-20).
+    if (text === null || !text.trim())
+    {
+        try { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, seed); }
+        catch (err) { log(`  !! preferences: ${rel} could not be written (${err.code || err.message}) - the house git lines are in no doc; re-run /alfred-code:update`); return 'failed'; }
+        log(`  preferences: ${rel} seeded with the house git lines - its consent, scope, checkpoint and safety entries are locked`);
+        return 'seeded';
+    }
+    const fixed = restoreLocked(text, seed, rel, log);
+    const have = new Set([...text.matchAll(LOCKED)].map((m) => m[1]));
+    const missing = seedEntries(seed).filter((e) => e.locked && !have.has(e.locked));
+    if (!missing.length && !fixed.restored.length) return 'present';
+    const used = [...text.matchAll(/^## G(\d+)\b/gm), ...(((/^Retired:\s*(.*)$/m.exec(text) || [])[1] || '').matchAll(/\bG(\d+)\b/g))].map((m) => Number(m[1]));
+    let n = used.length ? Math.max(...used) : 0;
+    const added = missing.map((e) => { n += 1; return e.text.replace(/^## G\d+ /, `## G${n} `).replace(/<!--\s*id:\s*g\d+\s*-->/, `<!-- id: g${n} -->`); });
+    const next = added.length ? `${fixed.text.replace(/\s+$/, '')}\n\n${added.join('\n\n')}\n` : fixed.text;
+    const keys = (list) => list.join(', ');
+    try { fs.writeFileSync(file, next); }
+    catch (err) { log(`  !! preferences: ${rel} lacks the locked entries ${keys([...fixed.restored, ...missing.map((e) => e.locked)])} as the seed has them and could not be written (${err.code || err.message}) - re-run /alfred-code:update`); return 'failed'; }
+    const names = keys(missing.map((e) => e.locked));
+    if (added.length) log(`  preferences: ${rel} - added the locked entries it lacked: ${names}`);
+    return [fixed.restored.length ? `restored ${keys(fixed.restored)}` : '', added.length ? `merged ${names}` : ''].filter(Boolean).join('; ');
 }
 
 // THE AWARENESS LAYOUT (the user's ruling of 2026-10-16): the inventory, the run book and the sibling doc live in ONE
@@ -205,28 +477,12 @@ const INVENTORY_RULE = 'alfred-agent-awareness.md';
 function migrateAwareness({ projectRoot, base, docsPath, rules = [], log = () => {} })
 {
     const out = { respelled: [], overlays: [], agents: 'none', rule: 'none' };
-    const rel = (file) => path.relative(projectRoot, file).split(path.sep).join('/');
     const dir = path.join(base, AWARENESS);
-    // Only a doc at its new home, with no copy left at an old one, takes the new key: the move is then complete.
-    const keys = Object.entries(AWARENESS_HOMES).filter(([key, homes]) => fs.existsSync(path.join(dir, `${key}.md`))
-        && homes.every(([folder, old]) => !fs.existsSync(path.join(base, folder, `${old}.md`))));
-    const escape = (o) => o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    // A section ref is spelled `KEY#id`, `KEY.md#id` or with its folder in front.
-    const respell = (text) => keys.reduce((acc, [key, homes]) => homes.reduce((s, [folder, old]) => s
-        .replace(new RegExp(`\\b${escape(folder)}/${escape(old)}\\b(?!-)`, 'g'), `${AWARENESS}/${key}`)
-        .replace(new RegExp(`\\b${escape(old)}(?=(?:\\.md)?#)`, 'g'), key), acc), text);
-    for (const name of ['watch.json', ...keys.map(([key]) => `${key}.md`)])
-    {
-        const file = path.join(dir, name);
-        let text;
-        try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
-        const next = respell(text);
-        if (next === text) continue;
-        try { fs.writeFileSync(file, next); out.respelled.push(rel(file)); log(`  docs migration (awareness): ${rel(file)} - section ids re-spelled to the awareness/ file keys`); }
-        catch (err) { log(`  !! docs migration (awareness): ${rel(file)} still names the old section ids (${err.code || err.message}) - re-run /capture-awareness`); }
-    }
-    out.overlays = moveAwarenessOverlays(base, keys, log);
-    for (const folder of ['project-capabilities', 'project-awareness', 'related-projects']) removeOldDomain(path.join(base, folder), log);
+    const keys = completedKeys(base, AWARENESS, AWARENESS_HOMES);
+    out.respelled = respellFiles(['watch.json', ...keys.map(([key]) => `${key}.md`)].map((n) => path.join(dir, n)), keys, AWARENESS, { projectRoot, label: 'awareness', fix: 're-run /capture-awareness', log });
+    out.overlays = moveOverlays(base, keys, AWARENESS, 'awareness', log);
+    for (const folder of ['project-capabilities', 'project-awareness', 'related-projects'])
+        removeOldDomain(path.join(base, folder), log, { label: 'awareness', docs: OLD_DOMAIN_DOCS, others: OLD_DOMAIN_OTHERS });
     out.agents = inventoryToDoc({ projectRoot, dir, rules, log });
     out.rule = awarenessRule({ projectRoot, docsPath, log });
     return out;
@@ -235,7 +491,7 @@ function migrateAwareness({ projectRoot, base, docsPath, rules = [], log = () =>
 // A branch's versions of a section sit at `.branches/<branch>/<domain>/<file key>/<id>.md`, with its base and conflict
 // marker under `.base/` and `.conflict/` the same way (docs.js overlayParts): the folder pair moves whole, never over
 // one already there.
-function moveAwarenessOverlays(base, keys, log)
+function moveOverlays(base, keys, domain, label, log)
 {
     const moved = [];
     const branches = path.join(base, '.branches');
@@ -248,20 +504,20 @@ function moveAwarenessOverlays(base, keys, log)
                 for (const [folder, old] of homes)
                 {
                     const from = path.join(branches, name, lane, folder, old);
-                    const to = path.join(branches, name, lane, AWARENESS, key);
+                    const to = path.join(branches, name, lane, domain, key);
                     try { if (!fs.statSync(from).isDirectory()) continue; }
                     catch { continue; }
                     const shown = ['.branches', name, lane].filter(Boolean).join('/');
                     if (fs.existsSync(to))
                     {
-                        log(`  !! docs migration (awareness): ${shown}/${AWARENESS}/${key}/ already exists - ${shown}/${folder}/${old}/ is left in place; compare and remove it by hand`);
+                        log(`  !! docs migration (${label}): ${shown}/${domain}/${key}/ already exists - ${shown}/${folder}/${old}/ is left in place; compare and remove it by hand`);
                         continue;
                     }
                     fs.mkdirSync(path.dirname(to), { recursive: true });
                     fs.renameSync(from, to);
                     removeIfEmpty(path.dirname(from), () => {}, '');
-                    moved.push(`${shown}/${AWARENESS}/${key}`);
-                    log(`  docs migration (awareness): ${shown}/${folder}/${old}/ -> ${shown}/${AWARENESS}/${key}/`);
+                    moved.push(`${shown}/${domain}/${key}`);
+                    log(`  docs migration (${label}): ${shown}/${folder}/${old}/ -> ${shown}/${domain}/${key}/`);
                 }
     return moved;
 }
@@ -286,22 +542,22 @@ function removeIfEmpty(dir, log, label)
 // An old domain folder goes once its doc moved: a `{}` watch.json is the stack's own switch-on (no capture writes an
 // entry into the sibling domain), and an empty `references/` folder holds nothing. Anything else keeps it, and is named
 // - a folder left silently looked like a live domain (the 2026-10-16 matrix: a 0-byte watch.json). Not named: a doc
-// still there (its move row said why), and the run book's credentials file and nested .gitignore, which
-// adoptCredentials and pruneNestedIgnores take later in the run.
+// still there (`docs` - its move row said why), and `others` - the run book's credentials file and nested .gitignore,
+// which adoptCredentials and pruneNestedIgnores take later in the run.
 const OLD_DOMAIN_OTHERS = new Set(['credentials.local.env', '.gitignore']);
 const OLD_DOMAIN_DOCS = new Set(['PROJECT-CAPABILITIES.md', 'PROJECT-AWARENESS.md', 'RELATED-PROJECTS.md']);
-function removeOldDomain(folder, log)
+function removeOldDomain(folder, log, { label, docs = new Set(), others = new Set() })
 {
     const watch = path.join(folder, 'watch.json');
     try { if (/^\s*\{\s*\}\s*$/.test(fs.readFileSync(watch, 'utf8'))) fs.rmSync(watch); } catch { /* none, or not the stack's */ }
     try { fs.rmdirSync(path.join(folder, 'references')); } catch { /* none, or not empty */ }
-    if (removeIfEmpty(folder, log, 'awareness')) return;
+    if (removeIfEmpty(folder, log, label)) return;
     let left;
     try { left = fs.readdirSync(folder).filter((n) => !OS_LITTER.has(n)).sort(); }
     catch { return; }
-    if (left.some((n) => OLD_DOMAIN_DOCS.has(n))) return;
-    const theirs = left.filter((n) => !OLD_DOMAIN_OTHERS.has(n));
-    if (theirs.length) log(`  !! docs migration (awareness): ${path.basename(folder)}/ kept - it still holds ${theirs.join(', ')}, which the move does not take; compare with awareness/ and remove it by hand`);
+    if (left.some((n) => docs.has(n))) return;
+    const theirs = left.filter((n) => !others.has(n));
+    if (theirs.length) log(`  !! docs migration (${label}): ${path.basename(folder)}/ kept - it still holds ${theirs.join(', ')}, which the move does not take; compare with ${label}/ and remove it by hand`);
 }
 
 // 'none' (no inventory rule), 'present' (the doc is there already), 'moved', 'yours' (named), 'failed'. The body moves
@@ -405,8 +661,13 @@ const DOCS_IGNORE = {
 // Texts an earlier release wrote, still the stack's own: an update replaces them instead of keeping them as
 // the project's. 2.1.3's git text had no usage-report line; up to 2.1.6 the folder was `alfred-code-usage-report/`;
 // up to 2.4.0 there was no credentials line; up to 2.5.0 no awareness line; up to 2.7.0 a header naming the hooks' state,
-// `/.branches/` and the whole `/history/` (the first row).
+// `/.branches/` and the whole `/history/` (the second row); up to 2.8.0 no personal preferences lines (the first).
 const DOCS_IGNORE_FORMER = [
+    '# alfred-code: the docs are committed (ALFRED_CODE_DOCS_VERSIONING=git) but for the lines below\n'
+        + '# the hooks\' state before 2.8.0, which a session started before the update still writes\n'
+        + '/flow/\n/hook-blocks/\n/history/*.json\n/tools-usage/\n/docs-log.jsonl\n/usage-report/**/*.jsonl\n'
+        + '# the run book\'s credentials file before 2026-10-13, which an older capture still writes\n/project-capabilities/credentials.local.env\n'
+        + '# the awareness capture\'s inventory names this machine\'s plugins\n/awareness/AGENTS-AWARENESS.md\n',
     '# alfred-code: the docs are committed (ALFRED_CODE_DOCS_VERSIONING=git); the hooks\' machine-local state is not\n'
         + '/flow/\n/hook-blocks/\n/history/\n/tools-usage/\n/.branches/\n/docs-log.jsonl\n'
         + '# the usage audit\'s raw transcript and ledger copies stay on this machine\n/usage-report/**/*.jsonl\n'

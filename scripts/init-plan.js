@@ -55,7 +55,7 @@ const MACHINE_BROWSERS = {
 };
 const CAPTURES = [
     { skill: 'capture-architecture', seat: 'architecture-analyzer', output: (docs) => `${docs}/architecture/ARCHITECTURE.md` },
-    { skill: 'capture-code-style', seat: 'code-style-analyzer', output: (docs) => `${docs}/code-style/CODE-STYLE.md` },
+    { skill: 'capture-project-code-style', seat: 'code-style-analyzer', output: (docs) => `${docs}/preferences/PROJECT-CODE-PREFERENCES.md` },
     // The inventory, the run book and the sibling repos in one run (the user's ruling of 2026-10-16), no seat of its own -
     // its related-projects part dispatches the opt-in seat only where it is installed. LAST, so the inventory reflects
     // every capture above; each part decides from disk whether it has work, so it always runs when installed.

@@ -20,7 +20,7 @@ const DIR = path.join(ROOT, 'stack', 'skills', SKILL);
 const read = (rel) => fs.readFileSync(path.join(DIR, rel), 'utf8');
 const squash = (s) => s.replace(/\s+/g, ' ');
 const body = () => read('SKILL.md');
-const SECTIONS = ['Before you run', 'Build', 'Start', 'Reach and log in', 'Flows to verify', 'Edge cases', 'Debugging'];
+const SECTIONS = ['Before you run', 'Build', 'Start', 'Reach and log in', 'Flows to verify', 'Edge cases', 'Debugging', 'Team notes'];
 // The run book's skeleton is the first fenced markdown block in the project reference that opens with the stamp.
 const skeleton = () =>
 {
@@ -64,7 +64,7 @@ test('the run: inventory, run book, siblings, then the rule - and every doc unde
     assert.match(squash(text), /`caps: absent` means neither home has it: say so and stop - never hand-tally the inventory or hand-write the rule/);
 });
 
-test('the run book: the seven sections in reading order, each addressable by a stable id', () =>
+test('the run book: the eight sections in reading order, each addressable by a stable id', () =>
 {
     const doc = skeleton();
     const heads = [...doc.matchAll(/^## (.+)$/gm)].map((m) => m[1]);
@@ -149,11 +149,11 @@ test('the asks: every template marks one recommended option first; each run-book
     const text = body();
     assert.deepStrictEqual(lintAskTemplates([{ file: 'SKILL.md', text }]), []);
     const asks = [...text.matchAll(/^[ \t]*```ask[ \t]*\n([\s\S]*?)^[ \t]*```/gm)].map((m) => m[1]);
-    assert.strictEqual(asks.length, 6, 'the refresh gate, the four gap asks and the siblings ask');
+    assert.strictEqual(asks.length, 7, 'the refresh gate, the four gap asks, the team-notes ask and the siblings ask');
     assert.match(asks[0], /^\s*The run book exists/);
     for (const ask of asks.slice(1, 5)) assert.match(ask, /- 'Unknown for now' - /, 'a gap ask lets the answer be unknown - the unattended rule lands there');
-    assert.match(asks[5], /^\s*Does this project depend on sibling repos the capture should map\? Type local paths or git URLs via Other/);
-    assert.match(asks[5], /- 'None - a standalone repo \(Recommended\)' - the doc records the answer with no entry/, 'an unattended run records a standalone repo, never invents siblings');
+    assert.match(asks[6], /^\s*Does this project depend on sibling repos the capture should map\? Type local paths or git URLs via Other/);
+    assert.match(asks[6], /- 'None - a standalone repo \(Recommended\)' - the doc records the answer with no entry/, 'an unattended run records a standalone repo, never invents siblings');
     assert.match(squash(text), /never options scraped from a filesystem scan/);
 });
 
@@ -246,4 +246,24 @@ test('the docs engine: one awareness domain - the run book sectioned and watched
         assert.match(hit.stdout, /PROJECT-AWARENESS#build/, hit.stdout);
     }
     finally { r.rm(); }
+});
+
+// 2026-10-21, the user's ask: past the four preset question tabs, the user can hand the run book anything else it
+// needs. One more question (in the gap call while it has room, else right after it) offers it; the answer lands in its
+// own section, dated, kept across a refresh - and a NOTE argument that fits no section lands there too.
+test('team notes: one ask beyond the preset tabs, its own dated section, kept by a refresh', () =>
+{
+    const text = body();
+    const asks = [...text.matchAll(/^[ \t]*```ask[ \t]*\n([\s\S]*?)^[ \t]*```/gm)].map((m) => m[1]);
+    assert.match(asks[5], /^\s*Anything else the run book should hold that the questions above did not cover\?/);
+    assert.match(asks[5], /- 'Nothing to add \(Recommended\)' - /, 'an unattended run adds nothing');
+    assert.match(asks[5], /- 'Add my own notes' - I ask for them next, in plain text/, 'the typed route is a plain-text follow-up, never type-into-Other');
+    const flat = squash(text);
+    assert.match(flat, /rides the gap call while it holds three questions or fewer, else it is the next call/, 'four gaps fill the call; the tool caps it at four');
+    assert.match(flat, /a fact that fits no section lands in Team notes/, 'a NOTE argument with no section has a home');
+    const ref = squash(read('references/project.md'));
+    assert.match(ref, /each the user's own words ending `\(the team's answer, <date>\)`/);
+    assert.match(ref, /a refresh keeps every Team notes line/);
+    const doc = skeleton();
+    assert.match(doc.slice(doc.indexOf('## Team notes')), /^## Team notes\n<!-- id: team-notes -->\n- <a fact the user added/m);
 });

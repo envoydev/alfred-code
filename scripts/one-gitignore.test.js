@@ -112,6 +112,38 @@ test('2.8.0: an update replaces the 2.7.0 git text in a docs root\'s own file - 
     assert.strictEqual(docs.ensureDocsIgnore({ projectRoot: root, docsPath: 'docs', mode: 'git' }), 'current');
 });
 
+// Audit 2026-10-21 Q-1 (ruling: keep the two personal docs out of git): one user's answer style and code taste are not
+// the team's, so under git versioning both stay machine-local; the team's preferences docs beside them are committed.
+const PERSONAL_DOCS = ['preferences/PERSONAL-PREFERENCES.md', 'preferences/PERSONAL-CODE-PREFERENCES.md'];
+const TEAM_DOCS = ['preferences/GIT-PREFERENCES.md', 'preferences/ARCHITECTURE-PREFERENCES.md', 'preferences/PROJECT-CODE-PREFERENCES.md'];
+test('Q-1: under git versioning the two personal preferences docs stay out of git; the other preferences docs do not', () =>
+{
+    const inData = repo();
+    docs.ensureDataIgnore({ projectRoot: inData, root: '.alfred', docsPath: '.alfred/docs', mode: 'git' });
+    for (const rel of [...PERSONAL_DOCS, ...TEAM_DOCS]) put(inData, `.alfred/docs/${rel}`);
+    assert.deepStrictEqual(status(inData), ['?? .alfred/.gitignore', ...TEAM_DOCS.map((r) => `?? .alfred/docs/${r}`)].sort());
+    const outside = repo();
+    docs.ensureDocsIgnore({ projectRoot: outside, docsPath: 'docs', mode: 'git' });
+    for (const rel of [...PERSONAL_DOCS, ...TEAM_DOCS]) put(outside, `docs/${rel}`);
+    assert.deepStrictEqual(status(outside), ['?? docs/.gitignore', ...TEAM_DOCS.map((r) => `?? docs/${r}`)].sort());
+});
+
+test('Q-1: an update replaces the 2.8.0 git text in a docs root\'s own file, and the data root\'s file is rewritten', () =>
+{
+    const root = repo();
+    const SHIPPED = '# alfred-code: the docs are committed (ALFRED_CODE_DOCS_VERSIONING=git) but for the lines below\n'
+        + '# the hooks\' state before 2.8.0, which a session started before the update still writes\n'
+        + '/flow/\n/hook-blocks/\n/history/*.json\n/tools-usage/\n/docs-log.jsonl\n/usage-report/**/*.jsonl\n'
+        + '# the run book\'s credentials file before 2026-10-13, which an older capture still writes\n/project-capabilities/credentials.local.env\n'
+        + '# the awareness capture\'s inventory names this machine\'s plugins\n/awareness/AGENTS-AWARENESS.md\n';
+    assert.ok(docs.DOCS_IGNORE_FORMER.includes(SHIPPED), 'the 2.8.0 text is a former text');
+    put(root, 'docs/.gitignore', SHIPPED);
+    assert.strictEqual(docs.ensureDocsIgnore({ projectRoot: root, docsPath: 'docs', mode: 'git' }), 'replaced');
+    assert.strictEqual(fs.readFileSync(path.join(root, 'docs', '.gitignore'), 'utf8'), docs.DOCS_IGNORE.git);
+    put(root, '.alfred/.gitignore', dataRoot.dataIgnoreText({ root: '.alfred', docsPath: '.alfred/docs', mode: 'git' }).replace(/^.*PERSONAL.*\n/gm, ''));
+    assert.strictEqual(docs.ensureDataIgnore({ projectRoot: root, root: '.alfred', docsPath: '.alfred/docs', mode: 'git' }), 'replaced');
+});
+
 test('the launcher half writes the shape the settings name, absent-only', () =>
 {
     const root = repo();

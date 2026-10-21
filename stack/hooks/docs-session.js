@@ -3,8 +3,9 @@
 // and keeps them honest at its end.
 //   SessionStart  -> folds merged branches' doc versions into mainline, then pushes ORIENTATION.md, this branch's
 //                    overrides and conflicts, and how to read by section; snapshots the tree for the end check
-//   SubagentStart -> the same orientation for a dispatched subagent (SessionStart context never reaches one), and
-//                    the snapshot the finish ask below compares against
+//   SubagentStart -> the same orientation for a dispatched subagent (SessionStart context never reaches one at
+//                    dispatch; a seat's own compaction runs SessionStart inside it, with its agent_id), and the
+//                    snapshot the finish ask below compares against
 //   PreToolUse SubagentHandback -> what THAT agent WROTE, once, before its report leaves: a file it wrote that also
 //                    changed and hits watch.json denies the hand-back with the owning sections quoted, so whoever made
 //                    the change says whether the docs still hold, and the retried hand-back carries the answer
@@ -14,7 +15,8 @@
 //                    what a merge just folded into mainline comes first
 //   Stop          -> once per session, the same ask for what the SESSION wrote itself (a skill's work is main-session
 //                    work) plus every change no actor claimed - a script's output, a tool this hook is not wired on
-// ALFRED_CODE_DOCS_BLOCK=0 / ALFRED_CODE_DOCS_GATE=0 / ALFRED_CODE_DOCS_ASK=0 turn the three parts off.
+// `docs-session:<part>` in ALFRED_CODE_HOOKS_OFF turns a part off - block, gate or ask (the env audit of 2026-10-21;
+// the old ALFRED_CODE_DOCS_BLOCK / _GATE / _ASK at 0 still do for the 2.x line - hook-prelude.js partOff).
 'use strict';
 const fs = require('fs');
 const os = require('os');
@@ -45,6 +47,12 @@ if (require.main === module) {
   // Outside the try: the shell-guard dispatcher runs this file in-process, where that catch would swallow the exit.
   if (off) process.exit(0);
 }
+
+// A part's off switch (hook-prelude.js partOff); with no prelude, the old per-part keys alone.
+const LEGACY_PART = { block: 'DOCS_BLOCK', gate: 'DOCS_GATE', ask: 'DOCS_ASK' };
+let partOff = (hook, part) => envOf(process.env, LEGACY_PART[part]) === '0';
+try { partOff = require('./hook-prelude.js').partOff || partOff; } catch { /* an install without the prelude reads the old keys */ }
+const docsOff = (part) => partOff('docs-session', part);
 
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 // 2.8.0: the hooks' state lives under <data root>/state/ (layout.js); the pre-2.8.0 <docs-path>/flow/ is still read for
@@ -116,6 +124,21 @@ const agentKey = (input) => String(input.agent_id || input.agent_type || 'agent'
 // key and no seat can land in the main session's file. Structural, not a convention to remember.
 const MAIN_ACTOR = 'main.session';
 const actorKey = (input) => (input.agent_id || input.agent_type ? agentKey(input) : MAIN_ACTOR);
+// The first-change gate's record, per actor (loading audit 2026-10-21 G4): a section a seat was handed never reached the
+// main context, and the main session's read never reached a seat. A pre-2.8.x session file's top-level fields are the
+// main session's.
+function gateOf(state, input) {
+  const key = actorKey(input);
+  if (!state.gate || typeof state.gate !== 'object' || Array.isArray(state.gate)) state.gate = {};
+  if (!state.gate[key]) {
+    state.gate[key] = key === MAIN_ACTOR
+      ? { consults: Array.isArray(state.consults) ? state.consults : [], holds: Number(state.holds) || 0, candidates: !!state.candidates }
+      : { consults: [], holds: 0, candidates: false };
+  }
+  return state.gate[key];
+}
+// A worktree a seat was given under `.claude/worktrees/<n>/` mirrors the project: its paths are judged as the project's.
+const unWorktree = (p) => { const m = /^\.claude\/worktrees\/[^/]+\/(.+)$/.exec(p); return m ? m[1] : p; };
 // The checkout an actor's writes belong to, recorded beside them so another session on the same project can tell its
 // own paths from one of another project's (both are project-relative). On win32 the case is folded, as the file system does.
 const rootKey = (root) => { const k = toPosix(path.resolve(String(root || '.'))); return process.platform === 'win32' ? k.toLowerCase() : k; };
@@ -125,7 +148,7 @@ const tmpEntries = () => { try { return fs.readdirSync(os.tmpdir()); } catch { r
 // a write this hook denies never lands, and crediting it would let a neighbour's change read as this seat's work.
 const WROTE_CAP = 500;
 function recordWrite(root, input, wrote) {
-  if (envOf(process.env, 'DOCS_ASK') === '0') return; // the switch turns the part off, record included
+  if (docsOff('ask')) return; // the switch turns the part off, record included
   const key = actorKey(input);
   const a = loadAgent(input.session_id, key);
   const had = (a.wrote || []).length;
@@ -144,7 +167,7 @@ function recordWrite(root, input, wrote) {
 // diff, which no claim of that session named). A read is every step one of READ_STEP.
 const READ_STEP = /^(?:git\s+(?:-C\s+\S+\s+)?(?:status|diff|log|show|branch|rev-parse|ls-files|ls-tree|grep|blame|remote|fetch|describe|tag\s+(?:-l|--list|--contains|--points-at)|config\s+--get|check-ignore|merge-base|rev-list|shortlog|cat-file|for-each-ref|stash\s+list|worktree\s+list)\b|(?:ls|cat|head|tail|grep|egrep|fgrep|rg|wc|echo|printf|pwd|which|type|test|\[|\[\[|stat|file|sort|uniq|cut|tr|date|jq|diff|cmp|du|df|tree|true|false|sleep|cd|pushd|popd|basename|dirname|realpath|readlink|whoami|uname|env|printenv|gh)\b|sed\s+-n\b|awk\b(?![^|;&]*>)|find\b(?![^|;&]*(?:-delete|-exec|-ok))|node\s+\S*docs\.js\s+(?:show|status|stale|lint|find)\b)/;
 function recordRun(input, command) {
-  if (envOf(process.env, 'DOCS_ASK') === '0' || !command) return;
+  if (docsOff('ask') || !command) return;
   const steps = String(command).split(/\|\||&&|[;|\n]/).map((x) => x.trim().replace(/^(?:[A-Za-z_]\w*=\S*\s+)+/, '')).filter(Boolean);
   if (steps.every((x) => READ_STEP.test(x) && !/(?:^|\s)\d?>>?\s*(?!\/dev\/null|&)/.test(x))) return;
   const key = actorKey(input);
@@ -192,7 +215,7 @@ function stashMoves(command, base, root) {
   return [...out].filter((p) => p && !p.startsWith('..'));
 }
 function recordMoved(root, input, moved) {
-  if (envOf(process.env, 'DOCS_ASK') === '0' || !moved.length) return;
+  if (docsOff('ask') || !moved.length) return;
   const key = actorKey(input);
   const a = loadAgent(input.session_id, key);
   a.root = rootKey(root);
@@ -276,7 +299,7 @@ function orientation(root, docs) {
   if (block.length > BLOCK_CAP) block = `${block.slice(0, BLOCK_CAP)}\n... (ORIENTATION.md continues past its 4KB cap - \`${READ} lint\` names the overrun; read the rest by section)`;
   // ORIENTATION.md stays architecture's own file, read exactly as before - a domain gets no per-domain twin.
   // The one line below is the part that used to name architecture/ as if it were the only docs folder; a
-  // project whose docs are code-style/ and awareness/ (no architecture/ at all) is named correctly here.
+  // project whose docs are preferences/ and awareness/ (no architecture/ at all) is named correctly here.
   let doms = [];
   try { doms = docs.domains(); } catch {}
   const rootRel = path.relative(root, docs.DOCS_ROOT).split(path.sep).join('/');
@@ -297,6 +320,12 @@ function orientation(root, docs) {
 
 function sessionStart(input, root, docs, state) {
   if (!state.snapshot) { try { state.snapshot = docs.snapshot(); } catch {} saveState(input.session_id, state); }
+  // A compaction or a /clear dropped the sections this actor read: its gate holds again (a seat's own compaction runs
+  // this hook inside the seat, with its agent_id - only that seat's gate re-arms).
+  if (input.source === 'compact' || input.source === 'clear') {
+    Object.assign(gateOf(state, input), { consults: [], holds: 0, candidates: false });
+    saveState(input.session_id, state);
+  }
   // Repair the branch snapshots BEFORE looking for merged branches, so a snapshot repaired here is promotable in
   // this session and not only the next one.
   try { docs.refreshBaseMeta(); } catch {}
@@ -306,7 +335,7 @@ function sessionStart(input, root, docs, state) {
   // re-announced at every session start.
   const landed = promoted.filter((p) => p.changed);
   for (const p of landed) log(root, input, { event: 'promote', branch: p.branch, how: p.how, results: p.results });
-  if (envOf(process.env, 'DOCS_BLOCK') === '0') return;
+  if (docsOff('block')) return;
   let st = null;
   try { st = docs.status(); } catch {}
   const lines = orientation(root, docs);
@@ -331,12 +360,8 @@ function sessionStart(input, root, docs, state) {
   // would make it a nag. The field is guarded like its neighbours: an older engine beside this hook returns a
   // status without it, and an unguarded read would throw away the whole block.
   if (st && st.stranded && st.stranded.length) extra.push(`Doc versions stranded by this install's git versioning: ${st.stranded.slice(0, 6).join(', ')}${st.stranded.length > 6 ? ` (+${st.stranded.length - 6} more)` : ''} - nothing reads or promotes .branches/ any more, and this line returns every session until they are gone: re-apply what is still wanted with \`${READ} set <file>#<id>\`, then end it with \`${READ} prune ${st.stranded[0]}\`${st.stranded.length > 1 ? ' (one prune per name)' : ''}.`);
-  // After a git merge of committed docs, or a hand edit: the two breakages that make a doc untrustworthy to read.
-  // Read by the engine's own integrity pass - the two checks alone, one parse per file: the whole lint re-parsed every
-  // doc per watch id (492ms at 40 docs, 2,301ms at 100, audit 2026-10-08). An older engine beside this hook has none.
-  let broken = [];
-  try { broken = typeof docs.integrity === 'function' ? docs.integrity() : docs.lint().problems.filter((p) => /^(merge conflict markers|duplicate id)/.test(p)); } catch {}
-  if (broken.length) extra.push(`The docs need a repair before they are trusted: ${broken.slice(0, 3).join('; ')}${broken.length > 3 ? ` (+${broken.length - 3} more: \`${READ} lint\`)` : ''}.`);
+  const repair = integrityLine(docs);
+  if (repair) extra.push(repair);
   if (st && st.overrides.length) extra.push(`You are on branch ${st.branch}. ${st.overrides.length} doc section(s) hold this branch's own decisions and replace mainline's in every read: ${st.overrides.slice(0, 6).join(', ')}${st.overrides.length > 6 ? ` ... (\`${READ} status\`)` : ''}.`);
   // Each list is cut at six names with a count and the command that lists the rest (audit 2026-10-20, the hooks track's
   // minor list: three lists here had no cap, so a long-lived branch could push the read lines past the start cap).
@@ -349,7 +374,7 @@ function sessionStart(input, root, docs, state) {
   // the gate has nothing to hand over - it stands down, so the line announcing it goes too.
   let readable = true;
   try { readable = docs.docFiles().length > 0; } catch {}
-  if (envOf(process.env, 'DOCS_GATE') !== '0' && readable) {
+  if (!docsOff('gate') && readable) {
     let roots = ['src', 'tests'];
     try { roots = docs.loadWatch().sourceRoots; } catch {}
     extra.push(`Before your first change under ${roots.map((x) => `${x}/`).join(' or ')}, read the section covering the file.`);
@@ -388,7 +413,7 @@ function main() {
   // before the domain gate: a first capture writes architecture/ before any domain exists
   if (event === 'PreToolUse' && seatHold(input, root, docs)) return;
   // A domain is any top-level folder under the docs root holding a watch.json (architecture counts even
-  // without one - see docs.js's own domains()). A project whose docs are code-style/ and awareness/,
+  // without one - see docs.js's own domains()). A project whose docs are preferences/ and awareness/,
   // with no architecture/ at all, must still get the SessionStart block, the gate and the finish ask - so the
   // whole-hook gate reads every domain, not one hardcoded folder. An empty list is still the right reason to
   // return: nothing under the docs root declares itself a domain.
@@ -529,18 +554,28 @@ function sweepRecords(dir, now = Date.now()) {
 // feeds an ask they never earn (deep hooks review 2026-10-16). A stack seat or general-purpose still gets both.
 const NO_DOCS_SEATS = new Set(['Explore', 'Plan', 'claude-code-guide', 'statusline-setup']);
 
+// After a git merge of committed docs, or a hand edit: the two breakages that make a doc untrustworthy to read.
+// Read by the engine's own integrity pass - the two checks alone, one parse per file: the whole lint re-parsed every
+// doc per watch id (492ms at 40 docs, 2,301ms at 100, audit 2026-10-08). An older engine beside this hook has none.
+function integrityLine(docs) {
+  let broken = [];
+  try { broken = typeof docs.integrity === 'function' ? docs.integrity() : docs.lint().problems.filter((p) => /^(merge conflict markers|duplicate id)/.test(p)); } catch {}
+  return broken.length ? `The docs need a repair before they are trusted: ${broken.slice(0, 3).join('; ')}${broken.length > 3 ? ` (+${broken.length - 3} more: \`${READ} lint\`)` : ''}.` : '';
+}
+
 function subagentStart(input, root, docs) {
   if (NO_DOCS_SEATS.has(input.agent_type)) return;
   // The snapshot is what makes the finish ask possible, and it is NOT the orientation block: the block's switch
   // must not blind the ask, and the ask's switch must not cost a snapshot nobody will read.
-  if (envOf(process.env, 'DOCS_ASK') !== '0') {
+  if (!docsOff('ask')) {
     const key = agentKey(input);
     const a = loadAgent(input.session_id, key);
     // Only the first start writes it: where two seats fold onto one key, the earlier snapshot keeps both their
     // changes in view instead of hiding the first agent's work behind the second's start.
     if (!a.snapshot) { try { a.snapshot = docs.snapshot(); } catch {} saveState(input.session_id, a, key); }
   }
-  if (envOf(process.env, 'DOCS_BLOCK') !== '0') emit('SubagentStart', orientation(root, docs).join('\n'));
+  // A seat reads the same docs, so it is told the same repair line the session start carries (loading audit G8).
+  if (!docsOff('block')) emit('SubagentStart', [...orientation(root, docs), integrityLine(docs)].filter(Boolean).join('\n'));
 }
 
 // A section ref is spelled three ways on the CLI ('patterns#orders', 'references/patterns#orders',
@@ -716,7 +751,7 @@ function answerRow(root, input, a, key, reply) {
 }
 
 function handback(input, root, docs) {
-  if (envOf(process.env, 'DOCS_ASK') === '0' || !input.agent_id) return;
+  if (docsOff('ask') || !input.agent_id) return;
   const key = agentKey(input);
   const a = loadAgent(input.session_id, key);
   const report = (input.tool_input || {}).message;
@@ -728,7 +763,7 @@ function handback(input, root, docs) {
 }
 
 function subagentStop(input, root, docs) {
-  if (envOf(process.env, 'DOCS_ASK') === '0') return;
+  if (docsOff('ask')) return;
   const key = agentKey(input);
   const a = loadAgent(input.session_id, key);
   // The stop our own block caused, or a seat asked at its hand-back that stopped without sending it again.
@@ -870,7 +905,7 @@ const relative = (root, paths) => [...new Set(paths.map((p) => toPosix(path.rela
 
 // Only reading a section's text is a consult: `where`, `toc` and listings point at sections without reading them.
 // `docRoots` is a LIST now, one entry per domain (each domain's own root, project-relative) - a project can be
-// documented in code-style/ or awareness/ alone, and a read under any one of them is a real consult, not
+// documented in preferences/ or awareness/ alone, and a read under any one of them is a real consult, not
 // just one under architecture/. Deliberately NOT the whole docs root: DOCS_ROOT also holds work/, quality/
 // and .branches/ (the hooks' ledgers before 2.8.0), none of which is a section covering a file, and crediting
 // any of them would turn the gate off by accident for a session that merely happens to touch one. A branch
@@ -923,7 +958,7 @@ function consultedBy(input, paths, docRoots, docs, plansRels = []) {
   return [];
 }
 // The section refs a plan's `Oriented:` lines name that the engine resolves - `project-structure#inventory, PROJECT-CAPABILITIES#build,
-// CODE-STYLE.md lines 30-99` gives the first two. The first 64KB of the plan is read, where its header sits.
+// PROJECT-CODE-PREFERENCES.md lines 30-99` gives the first two. The first 64KB of the plan is read, where its header sits.
 const ORIENTED_LINE = /^[\s>*_-]*Oriented\**\s*:(.*)$/gim;
 function orientedRefs(abs, docs) {
   if (!docs || typeof docs.askRef !== 'function') return [];
@@ -1121,7 +1156,7 @@ function stampedPlanWrite(input, root) {
 // under `<docs-path>/architecture/` by the main session - a file tool, a shell write, a `docs.js set` of an architecture
 // ref - is denied while a capture analyzer seat this session dispatched has not handed back. Once per dispatch: the same
 // write sent again while that seat is still out passes as a logged `seat-bypass`. A seat's own call, an unreadable
-// transcript and ALFRED_CODE_DOCS_GATE=0 release it. Placed before the domain gate, since a first capture writes
+// transcript and the gate part's off switch (`docs-session:gate`) release it. Placed before the domain gate, since a first capture writes
 // architecture/ before any domain exists.
 const ANALYZER_SEAT = /^(?:alfred-code:)?(?:architecture|code-quality|code-style|related-project|test-coverage)-analyzer$/;
 const SEAT_WINDOW = 8 * 1024 * 1024;
@@ -1223,7 +1258,7 @@ function seatsOut(transcriptPath, scan) {
   return { at: from + end + 1, out };
 }
 function seatHold(input, root, docs) {
-  if (input.agent_id || envOf(process.env, 'DOCS_GATE') === '0') return false;
+  if (input.agent_id || docsOff('gate')) return false;
   const writes = architectureWrites(input, root, docs);
   if (!writes.length || typeof input.transcript_path !== 'string' || !input.transcript_path) return false;
   const state = loadState(input.session_id);
@@ -1255,7 +1290,7 @@ function seatHold(input, root, docs) {
 
 function preToolUse(input, root, docs, state) {
   const paths = toolPaths(input, root);
-  // One root per domain, not one hardcoded architecture/ - a project documented only in code-style/ must still
+  // One root per domain, not one hardcoded architecture/ - a project documented only in preferences/ must still
   // get credit for reading it. domains() is already required to succeed for this hook to have run at all (see
   // main()'s own gate above), so no extra guard is needed here.
   const docRoots = docs.domains().map((d) => toPosix(path.relative(root, docs.domainDir(d))));
@@ -1285,19 +1320,30 @@ function preToolUse(input, root, docs, state) {
     const all = shellWrites && shellWrites.some(isUnknown) ? [...wrote, UNKNOWN_SOURCE_WRITE] : wrote;
     if (all.length) recordWrite(root, input, all);
   };
-  const consults = consultedBy(input, paths, docRoots, docs, planDirsOf(root).map((d) => toPosix(path.relative(root, d))));
+  // The preferences docs earn no credit here (audit 2026-10-21 PF-8): they carry no covers, and reading the personal doc
+  // said nothing about the section that governs the target - preferences-session.js hands them over itself.
+  let prefsDir = null;
+  try { prefsDir = docs.domainDir('preferences'); } catch {}
+  const notPrefs = (f) => !prefsDir || !f || path.relative(prefsDir, f).startsWith('..');
+  const prefsRef = (c) => {
+    if (!prefsDir) return false;
+    if (!String(c).includes('#') && /\.md$/i.test(String(c))) return !notPrefs(path.resolve(root, String(c)));
+    try { const f = docs.findFile(String(c).split('#')[0]); return !!f && !notPrefs(f); } catch { return false; }
+  };
+  const gate = gateOf(state, input);
+  const consults = consultedBy(input, paths, docRoots, docs, planDirsOf(root).map((d) => toPosix(path.relative(root, d)))).filter((c) => !prefsRef(c));
   if (consults.length) {
     // One shell command can read a doc AND write a file - the shape the orientation block and the gate together
     // teach - so the read must not swallow the write.
     attribute();
-    state.consults.push(...consults);
+    gate.consults.push(...consults);
     saveState(input.session_id, state);
     log(root, input, { event: 'consult', refs: consults.slice(0, 5), tool: input.tool_name });
     return;
   }
   if (!isWrite) return;
   const inRoots = (p) => roots.some((x) => p === x || p.startsWith(`${x}/`));
-  let targets = wrote.filter(inRoots);
+  let targets = wrote.map(unWorktree).filter(inRoots);
   // A run artifact is no source change (audit 2026-10-11 SD09, session 5f9fec85: `rm -f` of a git-ignored `.trx` under
   // a test project's TestResults/ was held and a 3,606-char section pasted beside it). A path git ignores, or one under a
   // TestResults/ folder, leaves the hold's targets; a tracked file is never ignored, so its edit is still held.
@@ -1310,35 +1356,35 @@ function preToolUse(input, root, docs, state) {
     attribute();
     state.edits++;
     saveState(input.session_id, state);
-    if (state.edits === 1) log(root, input, { event: 'first-edit', target: targets[0], consulted: state.consults.length > 0 });
+    if (state.edits === 1) log(root, input, { event: 'first-edit', target: targets[0], consulted: gate.consults.length > 0 });
   };
-  if (envOf(process.env, 'DOCS_GATE') === '0' || state.consults.length || state.candidates) { allow(); return; }
+  if (docsOff('gate') || gate.consults.length || gate.candidates) { allow(); return; }
+  // The preferences docs are preferences-session.js's to hand over (the user's ruling of 2026-10-21): both holds land in
+  // ONE combined denial through file-guards.js, so a section pasted here too would show twice. Their domain is left out
+  // of this hold - what it can read, and what it pastes or names.
   // Nothing under the docs root can be read by section, so a hold would only point at an empty list.
   let readable = true;
-  try { readable = docs.docFiles().length > 0; } catch {}
+  try { readable = docs.docFiles().filter(notPrefs).length > 0; } catch {}
   if (!readable) { allow(); return; }
-  if (state.holds >= MAX_HOLDS) { log(root, input, { event: 'bypass', target: targets[0], holds: state.holds }); allow(); return; }
+  if (gate.holds >= MAX_HOLDS) { log(root, input, { event: 'bypass', target: targets[0], holds: gate.holds }); allow(); return; }
   // Nobody at the terminal (hook-prelude.js unattended): the hold is still logged as a bypass, never made.
   if (unattended(input)) { log(root, input, { event: 'bypass', target: targets[0], why: 'unattended' }); unattendedRow(root, input, 'docs hold'); allow(); return; }
-  state.holds++;
+  gate.holds++;
   saveState(input.session_id, state);
   let hits = [];
-  try { hits = docs.where(targets, 3); } catch {}
-  // Only a section that DECLARES a cover of the target is pasted, and only a code-style one is called the convention
-  // (audit 2026-10-10 C03 / C23: a word match on a cover-less section was pasted as 'the convention this change
-  // follows' for a test helper - ab61627f, f24eb967 - and a module-size inventory for a one-line fix - 8f44a003). A
-  // covering code-style section is preferred; word-only hits are named as candidates, and the hold does not repeat.
+  try { hits = docs.where(targets, 3).filter((h) => notPrefs(h.file)); } catch {}
+  // Only a section that DECLARES a cover of the target is pasted (audit 2026-10-10 C03 / C23: a word match on a
+  // cover-less section was pasted as 'the convention this change follows' for a test helper - ab61627f, f24eb967 - and
+  // a module-size inventory for a one-line fix - 8f44a003); word-only hits are named as candidates, and the hold does
+  // not repeat. The code style is a preferences doc since 2026-10-21, handed over by preferences-session.js.
   const covering = hits.filter((h) => { try { return h.covers && h.covers.length > 0 && docs.matches(h.covers, targets[0]); } catch { return false; } });
-  let styleDir = null;
-  try { styleDir = docs.domainDir('code-style'); } catch {}
-  const isStyle = (h) => Boolean(styleDir && h.file && !path.relative(styleDir, h.file).startsWith('..'));
-  const first = covering.find(isStyle) || covering[0];
+  const first = covering[0];
   const shown = (h) => `${h.id} (${h.chars} chars, \`${READ} show ${h.id}\`)`;
   let reason;
   if (!hits.length) {
     reason = `Docs not read yet in this session. Before changing ${targets[0]}, see what is documented: ${READ} files`;
   } else if (!first) {
-    state.candidates = true;
+    gate.candidates = true;
     saveState(input.session_id, state);
     reason = [
       `Docs not read yet in this session. No section declares ${targets[0]}; these name its words:`,
@@ -1350,7 +1396,7 @@ function preToolUse(input, root, docs, state) {
     const alsoCovering = covering.filter((h) => h !== first);
     const words = hits.filter((h) => !covering.includes(h));
     const body = first.text.length > INLINE_CHARS ? `${first.text.slice(0, INLINE_CHARS)}\n... (${first.text.length - INLINE_CHARS} more chars: \`${READ} show ${first.id}\`)` : first.text;
-    state.consults.push(first.id);
+    gate.consults.push(first.id);
     saveState(input.session_id, state);
     log(root, input, { event: 'consult', refs: [first.id], tool: 'gate-inline' });
     reason = [
@@ -1358,7 +1404,7 @@ function preToolUse(input, root, docs, state) {
       '', body, '',
       ...(alsoCovering.length ? [`Also covering it: ${alsoCovering.map(shown).join(', ')}`, ''] : []),
       ...(words.length ? [`Naming its words: ${words.map(shown).join(', ')}`, ''] : []),
-      isStyle(first) ? 'That is the convention this change follows. Now make the change.' : 'That is the documented context for this path. Now make the change.',
+      'That is the documented context for this path. Now make the change.',
     ].join('\n');
   }
   log(root, input, { event: 'hold', target: targets[0], offered: hits.map((h) => h.id), via: first ? 'cover' : hits.length ? 'words' : 'none' });
@@ -1506,7 +1552,7 @@ const liveBackgroundWork = (input) => input.hook_event_name === 'Stop' && Array.
 function stop(input, root, docs, state) {
   // Once per session (state.asked); a continuation a SIBLING Stop hook caused is judged, since what it rewrote is this
   // session's change too (hook-prelude.js, the Stop chain - audit 2026-10-08 S1).
-  if (envOf(process.env, 'DOCS_ASK') === '0' || stopHeld(input) || state.asked || !state.snapshot) return;
+  if (docsOff('ask') || stopHeld(input) || state.asked || !state.snapshot) return;
   if (typeof docs.askRef !== 'function') return;
   // Nothing watched, nothing to ask: the tree diff it would pay for (47-261ms, every turn) can only end in no hit
   // (audit 2026-10-08).
@@ -1520,7 +1566,7 @@ function stop(input, root, docs, state) {
     // carry no agent id - plus every change no actor claimed at all, which is how a script's output and a write
     // through a tool this hook is not wired on still get asked about. What a SEAT wrote is that seat's to answer
     // for and it was already asked there; repeating it here is the same block twice in a row, which is how a gate
-    // earns itself a ALFRED_CODE_DOCS_ASK=0. Attribution, not a subtraction: the session is asked about its own
+    // earns itself a `docs-session:ask` off switch. Attribution, not a subtraction: the session is asked about its own
     // later change to a section a seat answered for earlier.
     const main = loadAgent(input.session_id, MAIN_ACTOR);
     const mine = new Set(main.wrote || []);

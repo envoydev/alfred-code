@@ -194,7 +194,7 @@ test('row 13: the named prose stops are ask templates, each marking one option f
         'task-solve/SKILL.md': /Audit judgment: <the item>\. Keep or apply\?/,
         'task-version-upgrade/SKILL.md': /Stage <N> hit a hard stop:/,
         'issue-diagnoser/SKILL.md': /<The report is written \| The log points are in> - <findings path>/,
-        'capture-code-style/SKILL.md': /First style capture across <the languages>/,
+        'capture-project-code-style/SKILL.md': /First style capture across <the languages>/,
         'capture-architecture-quality/SKILL.md': /- 'Verify and rewrite at this HEAD \(Recommended\)'/,
         'capture-code-quality/SKILL.md': /Judge <the modules> through the code-quality-analyzer seats or in this session\?/,
         'dotnet-windows-service/SKILL.md': /- 'Hand the script over \(Recommended\)'/,

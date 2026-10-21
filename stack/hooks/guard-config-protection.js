@@ -8,7 +8,7 @@
 // warning and nullable properties) - there a change that leaves those lines as they were passes.
 // 'Allow' is honoured through <data root>/state/approvals/CONFIG-EDIT-ALLOW (one path per line as the project
 // spells it, a bare file name, or `*`; this session's own, under 8h).
-// ALFRED_CODE_CONFIG_PROTECT=0 switches the gate off. The shell route reads the writes through shell-writes.js's
+// The hooks off-list switches the gate off (the old ALFRED_CODE_CONFIG_PROTECT=0, read for the 2.x line, folds into it). The shell route reads the writes through shell-writes.js's
 // scanShell (wrappers, carried scripts, a cd's anchor), then its own segment parser for the PowerShell verbs.
 // Declined (2.1.5 M13), on the record so the gap is a choice: a lockfile (package-lock.json, yarn.lock,
 // packages.lock.json), a migration, the central package file (Directory.Packages.props) and a solution file

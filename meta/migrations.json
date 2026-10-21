@@ -12,7 +12,7 @@
    ],
    "unwire_settings_hook": "inject-code-style.js",
    "why": "style delivery moved to the generated path-scoped project-code-style rule - the hook's injected context never reached subagent tool calls",
-   "then": "re-run /capture-code-style so the replacement rule gets generated"
+   "then": "re-run /capture-project-code-style so the style doc it reads from now is captured"
   },
   {
    "id": "fresh-session-pct-retired",
@@ -190,6 +190,136 @@
    },
    "why": "ALFRED_CODE_CONTEXT_WINDOW_DEFAULT is the fresh-session TRIGGER for a session whose window has no tier (the user's ruling of 2026-10-21) - an unlisted or unknown model, one under 200K, a tier variable unset or garbage - where it was the WINDOW an unlisted model was assumed to run in. The old window seed 300000 read as a trigger would sit past where a 200K or 300K model compacts, so the stack's own seed moves to 180000; a value set by hand is the user's and stays",
    "then": "nothing - the window is the model's own capacity from hooks/model-windows.json, and ALFRED_CODE_CONTEXT_WINDOW_DEFAULT is the trigger when there is none"
+  },
+  {
+   "id": "history-switch-is-a-count",
+   "since": "2.8.1",
+   "detect": {
+    "settings_env_value": {
+     "key": "ALFRED_CODE_HISTORY",
+     "equals": "1"
+    }
+   },
+   "remove": [],
+   "clear_settings_env": {
+    "key": "ALFRED_CODE_HISTORY",
+    "when_value": "1",
+    "to": "3"
+   },
+   "why": "ALFRED_CODE_HISTORY is how many earlier sessions on the branch the start block shows (item 10 of 2026-10-21): seeded 3, up to 10, 0 off. The old on seed 1 would now show one session, so the stack's own seed moves to 3; a 1 the user typed stays",
+   "then": "nothing - set ALFRED_CODE_HISTORY between 1 and 10 for more or fewer sessions, 0 for none"
+  },
+  {
+   "id": "docs-block-switch-folded",
+   "since": "2.8.1",
+   "detect": {
+    "settings_env_key": "ALFRED_CODE_DOCS_BLOCK"
+   },
+   "remove": [],
+   "fold_settings_env": {
+    "key": "ALFRED_CODE_DOCS_BLOCK",
+    "when_value": "0",
+    "into": "ALFRED_CODE_HOOKS_OFF",
+    "entry": "docs-session:block"
+   },
+   "why": "the env audit of 2026-10-21 folded the on/off keys into ALFRED_CODE_HOOKS_OFF, the one csv that already switches hooks off: the docs hook's session-start orientation block is `docs-session:block` there. A stored 0 becomes that entry; any other value was the seed's 'on' and goes. The hooks still read the old key at 0 for the 2.x line",
+   "then": "nothing - add `docs-session:block` to ALFRED_CODE_HOOKS_OFF to switch it off, take it out to switch it back on"
+  },
+  {
+   "id": "docs-gate-switch-folded",
+   "since": "2.8.1",
+   "detect": {
+    "settings_env_key": "ALFRED_CODE_DOCS_GATE"
+   },
+   "remove": [],
+   "fold_settings_env": {
+    "key": "ALFRED_CODE_DOCS_GATE",
+    "when_value": "0",
+    "into": "ALFRED_CODE_HOOKS_OFF",
+    "entry": "docs-session:gate"
+   },
+   "why": "the env audit of 2026-10-21 folded the on/off keys into ALFRED_CODE_HOOKS_OFF, the one csv that already switches hooks off: the docs hook's first-change hold is `docs-session:gate` there. A stored 0 becomes that entry; any other value was the seed's 'on' and goes. The hooks still read the old key at 0 for the 2.x line",
+   "then": "nothing - add `docs-session:gate` to ALFRED_CODE_HOOKS_OFF to switch it off, take it out to switch it back on"
+  },
+  {
+   "id": "docs-ask-switch-folded",
+   "since": "2.8.1",
+   "detect": {
+    "settings_env_key": "ALFRED_CODE_DOCS_ASK"
+   },
+   "remove": [],
+   "fold_settings_env": {
+    "key": "ALFRED_CODE_DOCS_ASK",
+    "when_value": "0",
+    "into": "ALFRED_CODE_HOOKS_OFF",
+    "entry": "docs-session:ask"
+   },
+   "why": "the env audit of 2026-10-21 folded the on/off keys into ALFRED_CODE_HOOKS_OFF, the one csv that already switches hooks off: the docs hook's end-of-session doc ask is `docs-session:ask` there. A stored 0 becomes that entry; any other value was the seed's 'on' and goes. The hooks still read the old key at 0 for the 2.x line",
+   "then": "nothing - add `docs-session:ask` to ALFRED_CODE_HOOKS_OFF to switch it off, take it out to switch it back on"
+  },
+  {
+   "id": "push-gate-switch-folded",
+   "since": "2.8.1",
+   "detect": {
+    "settings_env_key": "ALFRED_CODE_PUSH_GATE"
+   },
+   "remove": [],
+   "fold_settings_env": {
+    "key": "ALFRED_CODE_PUSH_GATE",
+    "when_value": "0",
+    "into": "ALFRED_CODE_HOOKS_OFF",
+    "entry": "guard-ungated-commit:push"
+   },
+   "why": "the env audit of 2026-10-21 folded the on/off keys into ALFRED_CODE_HOOKS_OFF, the one csv that already switches hooks off: the commit gate's publish half is `guard-ungated-commit:push` there. A stored 0 becomes that entry; any other value was the seed's 'on' and goes. The hooks still read the old key at 0 for the 2.x line",
+   "then": "nothing - add `guard-ungated-commit:push` to ALFRED_CODE_HOOKS_OFF to switch it off, take it out to switch it back on"
+  },
+  {
+   "id": "rotate-ask-switch-folded",
+   "since": "2.8.1",
+   "detect": {
+    "settings_env_key": "ALFRED_CODE_ROTATE_ASK"
+   },
+   "remove": [],
+   "fold_settings_env": {
+    "key": "ALFRED_CODE_ROTATE_ASK",
+    "when_value": "0",
+    "into": "ALFRED_CODE_HOOKS_OFF",
+    "entry": "guard-stop-contract:rotate"
+   },
+   "why": "the env audit of 2026-10-21 folded the on/off keys into ALFRED_CODE_HOOKS_OFF, the one csv that already switches hooks off: the stop contract's credential rotate ask is `guard-stop-contract:rotate` there. A stored 0 becomes that entry; any other value was the seed's 'on' and goes. The hooks still read the old key at 0 for the 2.x line",
+   "then": "nothing - add `guard-stop-contract:rotate` to ALFRED_CODE_HOOKS_OFF to switch it off, take it out to switch it back on"
+  },
+  {
+   "id": "done-gate-switch-folded",
+   "since": "2.8.1",
+   "detect": {
+    "settings_env_key": "ALFRED_CODE_DONE_GATE"
+   },
+   "remove": [],
+   "fold_settings_env": {
+    "key": "ALFRED_CODE_DONE_GATE",
+    "when_value": "0",
+    "into": "ALFRED_CODE_HOOKS_OFF",
+    "entry": "guard-stop-contract:done"
+   },
+   "why": "the env audit of 2026-10-21 folded the on/off keys into ALFRED_CODE_HOOKS_OFF, the one csv that already switches hooks off: the stop contract's done-gate probe is `guard-stop-contract:done` there. A stored 0 becomes that entry; any other value was the seed's 'on' and goes. The hooks still read the old key at 0 for the 2.x line",
+   "then": "nothing - add `guard-stop-contract:done` to ALFRED_CODE_HOOKS_OFF to switch it off, take it out to switch it back on"
+  },
+  {
+   "id": "config-protect-switch-folded",
+   "since": "2.8.1",
+   "detect": {
+    "settings_env_key": "ALFRED_CODE_CONFIG_PROTECT"
+   },
+   "remove": [],
+   "fold_settings_env": {
+    "key": "ALFRED_CODE_CONFIG_PROTECT",
+    "when_value": "0",
+    "into": "ALFRED_CODE_HOOKS_OFF",
+    "entry": "guard-config-protection"
+   },
+   "why": "the env audit of 2026-10-21 folded the on/off keys into ALFRED_CODE_HOOKS_OFF, the one csv that already switches hooks off: the lint and format config guard is `guard-config-protection` there. A stored 0 becomes that entry; any other value was the seed's 'on' and goes. The hooks still read the old key at 0 for the 2.x line",
+   "then": "nothing - add `guard-config-protection` to ALFRED_CODE_HOOKS_OFF to switch it off, take it out to switch it back on"
   }
  ]
 }

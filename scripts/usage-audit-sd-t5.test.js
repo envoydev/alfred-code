@@ -114,7 +114,7 @@ test('SD12 ae38c08f#3 ae38c08f#6: the batch also closes past the fresh-session t
 test('SD12 ae38c08f#4 (skill half): the scope grep allows a plugin prefix and counts the core commands', () => {
     const t = skill('capture-usage-report');
     assert.match(t, /grep -lE '<command-name>\/\?\(\[A-Za-z0-9_-\]\+:\)\?\(<names>\)<\/command-name>\|"skill":"\(\[A-Za-z0-9_-\]\+:\)\?\(<names>\)"'/);
-    assert.match(t, /the core's `\/alfred-code:\*` command runs \(setup, update, configure, validate, init\) count as stack runs too/);
+    assert.match(t, /the core's `\/alfred-code:\*` command runs \(init, update, configure, validate, status, uninstall; `setup` before 2026-10-17\) count as stack runs too/);
     // The pattern the body prints finds both spellings of a JSONL marker.
     const re = /<command-name>\/?([A-Za-z0-9_-]+:)?(configure|task-solve)<\/command-name>|"skill":"([A-Za-z0-9_-]+:)?(configure|task-solve)"/;
     for (const line of ['"content":"<command-name>/alfred-code:configure</command-name>"', '"content":"<command-name>/task-solve</command-name>"', '"input":{"skill":"alfred-code:configure"}', '"input":{"skill":"task-solve"}'])

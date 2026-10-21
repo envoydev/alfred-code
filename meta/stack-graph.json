@@ -47,15 +47,15 @@
       "mcps": [],
       "plugins": []
     },
-    "capture-code-style": {
-      "mcps": [],
-      "plugins": []
-    },
     "capture-first-look": {
       "mcps": [],
       "plugins": []
     },
     "capture-preferences": {
+      "mcps": [],
+      "plugins": []
+    },
+    "capture-project-code-style": {
       "mcps": [],
       "plugins": []
     },
@@ -893,15 +893,6 @@
       "plugins": [],
       "paths": []
     },
-    "alfred-git": {
-      "skills": [
-        "habits-commit-checkpoint"
-      ],
-      "agents": [],
-      "mcps": [],
-      "plugins": [],
-      "paths": []
-    },
     "alfred-interaction": {
       "skills": [
         "habits-clarify",
@@ -930,6 +921,13 @@
       "mcps": [
         "alfred-navigation"
       ],
+      "plugins": [],
+      "paths": []
+    },
+    "alfred-preferences": {
+      "skills": [],
+      "agents": [],
+      "mcps": [],
       "plugins": [],
       "paths": []
     },
@@ -1216,7 +1214,8 @@
       "guard-ungated-commit",
       "history-session",
       "instrument-tool-usage",
-      "memory-session"
+      "memory-session",
+      "preferences-session"
     ]
   },
   "mcps": {

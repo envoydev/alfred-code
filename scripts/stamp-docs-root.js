@@ -122,7 +122,7 @@ function stamp(root)
 // a fresh project whose docs root is not ignored included. A tracked domain wins over an ignored root. `docs` is the
 // docs path relative to `root`, forward slashes; the ignore probe asks `<docs>/` so a directory-only pattern matches a
 // root that does not exist yet. Every DOMAIN is probed, never architecture/ alone: a watch.json is what makes a folder
-// a domain (architecture/ is grandfathered in without one), so a project documented only in code-style/, decisions/ or
+// a domain (architecture/ is grandfathered in without one), so a project documented only in preferences/, decisions/ or
 // awareness/ is an ordinary shape. Same rule as docs.js domains(), reserved names and all; a watch-less folder
 // like quality/ is no domain and no vote.
 function probeVersioning(root, docs)

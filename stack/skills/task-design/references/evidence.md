@@ -11,6 +11,8 @@ while designing.
 - **The verdict is judged against `Asked:` (method step 3).** A plan that fit the code as a
   side-by-side prototype, where the user had asked for the old path to be REPLACED, was rejected
   after its whole build window - 23.9M cache-read.
+- **An option description is not an ask (design rules, the behaviour-change ask).** A behaviour change named only in
+  an option's description was reverted by the user after `Completed`.
 - **The execution mode stays out of the plan (Plan format).** Measured in five bundles: a format
   skill's banner landed in durable plan files recommending a dispatch method the run's own approved mode
   excluded, and a plan file outlives the session that made it, so the wrong

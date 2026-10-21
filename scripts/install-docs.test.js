@@ -49,6 +49,8 @@ function project({ domains = {}, files = {}, ignore, commit = [] } = {})
 const seed = (root) => docs.docsVersioningSeed({ projectRoot: root, docsPath: '.claude/docs' });
 // No awareness doc under the docs root: the awareness step moves nothing and writes no rule.
 const NO_AWARENESS = { respelled: [], overlays: [], agents: 'none', rule: 'not written - no awareness doc yet' };
+// Every project's first run seeds the git doc (the preferences layout, 2026-10-21); a later run finds it there.
+const PREFS_RESULT = (git) => ({ respelled: [], overlays: [], watch: 'none', git, rule: 'none' });
 
 // --- the versioning seed, the four-home rule ------------------------------
 
@@ -73,6 +75,17 @@ test('versioning: domains that exist and are tracked by NOTHING seed local', () 
 {
     const root = project({ domains: { 'code-style': '{}' }, files: { '.claude/docs/code-style/CODE-STYLE.md': '# s\n' } });
     assert.strictEqual(seed(root), 'local');
+});
+
+// 2026-10-21: every install seeds preferences/GIT-PREFERENCES.md, so the next run found an untracked domain on a fresh
+// project and read its docs as kept out of git - a local install moved to project scope then kept its 'git' seed as
+// the user's value. The stack's own seed is no evidence; a preferences doc the project wrote beside it is.
+test('versioning: a preferences domain holding only the seeded git doc casts no vote', () =>
+{
+    const root = project({ domains: { preferences: '{}' }, files: { '.claude/docs/preferences/GIT-PREFERENCES.md': '# g\n' } });
+    assert.strictEqual(seed(root), 'git');
+    fs.writeFileSync(path.join(root, '.claude', 'docs', 'preferences', 'PERSONAL-CODE-PREFERENCES.md'), '# c\n');
+    assert.strictEqual(seed(root), 'local', 'a doc the project wrote, tracked by nothing');
 });
 
 test('versioning: no domain at all, but git IGNORES the docs root - local', () =>
@@ -126,36 +139,37 @@ test('migration: a document at the old path MOVES, byte-identical, and its domai
     const root = project({ files: { '.claude/docs/PROJECT-CODE-STYLE.md': '# style\n\n## naming\n' } });
     const logs = [];
     const out = docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs', log: (m) => logs.push(m) });
-    assert.deepStrictEqual(out.moved, ['code-style/CODE-STYLE.md']);
-    assert.deepStrictEqual(out.switched, ['code-style']);
-    assert.strictEqual(fs.readFileSync(path.join(root, '.claude/docs/code-style/CODE-STYLE.md'), 'utf8'), '# style\n\n## naming\n');
+    assert.deepStrictEqual(out.moved, ['code-style/CODE-STYLE.md', 'preferences/PROJECT-CODE-PREFERENCES.md'], 'two hops in one run');
+    assert.deepStrictEqual(out.switched, ['preferences']);
+    assert.strictEqual(fs.readFileSync(path.join(root, '.claude/docs/preferences/PROJECT-CODE-PREFERENCES.md'), 'utf8'), '# style\n\n## naming\n');
     assert.ok(!fs.existsSync(path.join(root, '.claude/docs/PROJECT-CODE-STYLE.md')));
-    assert.strictEqual(fs.readFileSync(path.join(root, '.claude/docs/code-style/watch.json'), 'utf8'), '{}\n');
-    assert.ok(logs.some((m) => /sections predate section ids/.test(m)), 'a doc with headings and no ids was not flagged');
+    assert.ok(!fs.existsSync(path.join(root, '.claude/docs/code-style')), 'the passing folder is gone');
+    assert.strictEqual(fs.readFileSync(path.join(root, '.claude/docs/preferences/watch.json'), 'utf8'), '{}\n');
+    assert.ok(logs.some((m) => /PROJECT-CODE-PREFERENCES\.md predates section ids/.test(m)), `a doc with headings and no ids was not flagged: ${logs.join(' | ')}`);
 });
 
 test('migration: a file ALREADY at the new path is never overwritten, and the old one stays put', () =>
 {
     const root = project({ files: {
         '.claude/docs/PROJECT-CODE-STYLE.md': '# old\n',
-        '.claude/docs/code-style/CODE-STYLE.md': '# new\n',
+        '.claude/docs/preferences/PROJECT-CODE-PREFERENCES.md': '# new\n',
     } });
     const logs = [];
     docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs', log: (m) => logs.push(m) });
-    assert.strictEqual(fs.readFileSync(path.join(root, '.claude/docs/code-style/CODE-STYLE.md'), 'utf8'), '# new\n');
+    assert.strictEqual(fs.readFileSync(path.join(root, '.claude/docs/preferences/PROJECT-CODE-PREFERENCES.md'), 'utf8'), '# new\n');
     assert.strictEqual(fs.readFileSync(path.join(root, '.claude/docs/PROJECT-CODE-STYLE.md'), 'utf8'), '# old\n');
     assert.ok(logs.some((m) => /already exists .* nothing overwritten/.test(m)), logs.join(' | '));
 });
 
 test('migration: an EXISTING watch.json is never overwritten, a dangling link included', () =>
 {
-    const root = project({ files: { '.claude/docs/code-style/CODE-STYLE.md': '# s\n' } });
-    fs.writeFileSync(path.join(root, '.claude/docs/code-style/watch.json'), '{"src":["app"]}');
+    const root = project({ files: { '.claude/docs/preferences/PROJECT-CODE-PREFERENCES.md': '# s\n' } });
+    fs.writeFileSync(path.join(root, '.claude/docs/preferences/watch.json'), '{"src":["app"]}');
     docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs' });
-    assert.strictEqual(fs.readFileSync(path.join(root, '.claude/docs/code-style/watch.json'), 'utf8'), '{"src":["app"]}');
+    assert.strictEqual(fs.readFileSync(path.join(root, '.claude/docs/preferences/watch.json'), 'utf8'), '{"src":["app"]}');
 
-    const root2 = project({ files: { '.claude/docs/code-style/CODE-STYLE.md': '# r\n' } });
-    fs.symlinkSync(path.join(root2, 'nowhere.json'), path.join(root2, '.claude/docs/code-style/watch.json'));
+    const root2 = project({ files: { '.claude/docs/preferences/PROJECT-CODE-PREFERENCES.md': '# r\n' } });
+    fs.symlinkSync(path.join(root2, 'nowhere.json'), path.join(root2, '.claude/docs/preferences/watch.json'));
     const out = docs.migrateDocsDomains({ projectRoot: root2, docsPath: '.claude/docs' });
     assert.deepStrictEqual(out.switched, [], 'a dangling watch.json symlink was replaced - it is still theirs');
 });
@@ -171,7 +185,7 @@ test('migration: quality/ and related-context/ are watch-less BY DESIGN and stay
     assert.ok(!fs.existsSync(path.join(root, '.claude/docs/quality/watch.json')), 'quality/ became a domain');
     assert.ok(!fs.existsSync(path.join(root, '.claude/docs/related-context/watch.json')), 'the drop box became a domain');
     // The orientation doc moves on to awareness/, a docs domain from there; the drop box keeps every other paper it holds.
-    assert.deepStrictEqual(out.switched, []);
+    assert.deepStrictEqual(out.switched, ['preferences'], 'only the seeded git doc\'s domain');
     assert.deepStrictEqual(out.moved, ['quality/ARCHITECTURE-ASSESSMENT.md', 'related-projects/RELATED-PROJECTS.md', 'awareness/RELATED-PROJECTS-AWARENESS.md']);
     assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(root, '.claude/docs/awareness/watch.json'), 'utf8')), { notOwned: ['AGENTS-AWARENESS.md'] }, 'the doc sits in a domain the engine sections');
     assert.ok(!fs.existsSync(path.join(root, '.claude/docs/related-projects')), 'the passing folder is gone');
@@ -208,22 +222,23 @@ test('migration: a second run moves nothing and switches nothing on', () =>
     const root = project({ files: { '.claude/docs/PROJECT-CODE-STYLE.md': '# s\n' } });
     docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs' });
     const again = docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs' });
-    assert.deepStrictEqual(again, { moved: [], switched: [], repointed: [], awareness: NO_AWARENESS });
+    assert.deepStrictEqual(again, { moved: [], switched: [], repointed: [], awareness: NO_AWARENESS, preferences: PREFS_RESULT('present') });
 });
 
 test('migration: a doc that already carries section ids is switched on WITHOUT the lint note', () =>
 {
-    const root = project({ files: { '.claude/docs/code-style/CODE-STYLE.md': '## naming <!-- id: s1 -->\n' } });
+    const root = project({ files: { '.claude/docs/preferences/PROJECT-CODE-PREFERENCES.md': '## naming <!-- id: s1 -->\n' } });
+    fs.mkdirSync(path.join(root, '.claude/docs/preferences/GIT-PREFERENCES.md'));
     const logs = [];
     docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs', log: (m) => logs.push(m) });
-    assert.ok(logs.some((m) => /code-style\/ switched on/.test(m)), logs.join(' | '));
+    assert.ok(logs.some((m) => /preferences\/ switched on/.test(m)), logs.join(' | '));
     assert.ok(!logs.some((m) => /predate section ids/.test(m)), logs.join(' | '));
 });
 
 test('migration: an absent docs root is nothing to do, never a crash', () =>
 {
     assert.deepStrictEqual(docs.migrateDocsDomains({ projectRoot: path.join(TMP, 'nope'), docsPath: '.claude/docs' }),
-        { moved: [], switched: [], repointed: [], awareness: NO_AWARENESS });
+        { moved: [], switched: [], repointed: [], awareness: NO_AWARENESS, preferences: PREFS_RESULT('none') });
 });
 
 // 2026-10-10: a 0.2.x project kept the orientation doc loose at the docs root - its pre-folder home - and the data
@@ -247,8 +262,9 @@ test('migration: the orientation doc loose at the docs root moves on to awarenes
     const out = run();
     const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
     assert.deepStrictEqual({ ...out, awareness: { ...out.awareness, rule: out.awareness.rule.replace(/\d+ bytes/, 'N bytes') } }, {
-        moved: ['related-projects/RELATED-PROJECTS.md', 'awareness/RELATED-PROJECTS-AWARENESS.md'], switched: [], repointed: ['.claude/rules/alfred-related-context.md'],
+        moved: ['related-projects/RELATED-PROJECTS.md', 'awareness/RELATED-PROJECTS-AWARENESS.md'], switched: ['preferences'], repointed: ['.claude/rules/alfred-related-context.md'],
         awareness: { respelled: [], overlays: [], agents: 'none', rule: 'created - .claude/rules/alfred-awareness.md, N bytes, imports 1' },
+        preferences: PREFS_RESULT('seeded'),
     }, 'two hops in one run, and the one rule imports the doc');
     assert.strictEqual(read('.alfred/docs/awareness/RELATED-PROJECTS-AWARENESS.md'), '# Related projects\n\n## sample-app\n');
     assert.ok(!fs.existsSync(path.join(root, '.alfred/docs/PROJECT-RELATED-CONTEXT.md')));
@@ -287,17 +303,17 @@ test('migration: both homes present - the folder form wins, the loose one stays 
     assert.ok(!fs.existsSync(path.join(root, '.alfred/docs/related-projects')));
 });
 
-test('migration: a move an earlier run made without re-pointing heals - the code-style rule follows; a path inside a longer one is no hit', () =>
+test('migration: a move an earlier run made without re-pointing heals - a generated rule follows to the last home; a path inside a longer one is no hit', () =>
 {
-    const style = (p) => `---\npaths:\n  - "**/*.ts"\n---\n# Project code style (generated)\n\nFull capture: \`${p}\`.\n`;
+    const map = (p) => `---\ndescription: generated\n---\n\nThe code style: \`${p}\`.\n`;
     const root = project({ files: {
         '.claude/docs/code-style/CODE-STYLE.md': '## naming <!-- id: s1 -->\n',
-        '.claude/rules/project-code-style.md': style('.claude/docs/PROJECT-CODE-STYLE.md') + 'Old copy: `.claude/docs/PROJECT-CODE-STYLE.md.bak`, `x/.claude/docs/PROJECT-CODE-STYLE.md`.\n',
+        '.claude/rules/alfred-architecture.md': map('.claude/docs/PROJECT-CODE-STYLE.md') + 'Old copy: `.claude/docs/PROJECT-CODE-STYLE.md.bak`, `x/.claude/docs/PROJECT-CODE-STYLE.md`.\n',
     } });
     const out = docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs/', rules: rulesOf(root) });
-    assert.deepStrictEqual(out.repointed, ['.claude/rules/project-code-style.md']);
-    assert.strictEqual(fs.readFileSync(path.join(root, '.claude/rules/project-code-style.md'), 'utf8'),
-        style('.claude/docs/code-style/CODE-STYLE.md') + 'Old copy: `.claude/docs/PROJECT-CODE-STYLE.md.bak`, `x/.claude/docs/PROJECT-CODE-STYLE.md`.\n');
+    assert.deepStrictEqual(out.repointed, ['.claude/rules/alfred-architecture.md']);
+    assert.strictEqual(fs.readFileSync(path.join(root, '.claude/rules/alfred-architecture.md'), 'utf8'),
+        map('.claude/docs/preferences/PROJECT-CODE-PREFERENCES.md') + 'Old copy: `.claude/docs/PROJECT-CODE-STYLE.md.bak`, `x/.claude/docs/PROJECT-CODE-STYLE.md`.\n');
 });
 
 // audit 2026-10-10 C23: the 2.2.2 superpowers/ move re-pointed no instruction file - a project's AGENTS.md still named
@@ -414,7 +430,7 @@ test('awareness: an update over the 2.5.0 layout - the three docs land in awaren
     logs.length = 0;
     const again = run();
     assert.deepStrictEqual({ ...again, awareness: { ...again.awareness, rule: N(again.awareness.rule) } },
-        { moved: [], switched: [], repointed: [], awareness: { respelled: [], overlays: [], agents: 'none', rule: 'unchanged, not rewritten - .claude/rules/alfred-awareness.md, N bytes' } });
+        { moved: [], switched: [], repointed: [], awareness: { respelled: [], overlays: [], agents: 'none', rule: 'unchanged, not rewritten - .claude/rules/alfred-awareness.md, N bytes' }, preferences: PREFS_RESULT('present') });
     assert.strictEqual(awarenessRuleOf(root), rule, 'idempotent');
     assert.ok(logs.every((m) => m.startsWith('  !! .claude/AGENTS.md')), `a re-run said more than the AGENTS.md reminder: ${logs.join(' | ')}`);
 });
@@ -536,18 +552,18 @@ test('awareness: an old folder kept by a file the move does not take is named, e
     assert.deepStrictEqual(said(), want, 'and again on the next run');
 });
 
-test('preferences: a docs-root move re-stamps the generated rule\'s doc headers, relative or absolute', () =>
+// 2026-10-21: the preferences rule ships fixed - the copy step renders `__DOCS_ROOT__` into it (ROOTED_RULES) on every
+// run, a docs-root move included, so the generated-rule re-stamp never touches it.
+test('preferences: the shipped rule is the copy step\'s to render, so a docs-root move leaves it alone', () =>
 {
     const { respellDocsRoot } = require('./install/selection.js');
-    const { docPath } = require('../stack/skills/capture-preferences/scripts/preferences.js');
     const root = project({});
-    const ruleOf = (docsRoot) => `# The user's preferences\n\n${['CODE-PREFERENCES.md', 'GIT-PREFERENCES.md'].map((f) => `## ${f} - ${docPath(docsRoot, f)}\n\n### C1 - x\n`).join('\n')}`;
     const rulePath = path.join(root, '.claude/rules/alfred-preferences.md');
-    write(root, '.claude/rules/alfred-preferences.md', ruleOf('.claude/docs'));
-    assert.strictEqual(respellDocsRoot({ projectRoot: root, from: '.claude/docs', to: '.alfred/docs' }), 1);
-    assert.strictEqual(fs.readFileSync(rulePath, 'utf8'), ruleOf('.alfred/docs'), 'the bytes the engine writes for the new root');
-    assert.strictEqual(respellDocsRoot({ projectRoot: root, from: '.alfred/docs', to: '/srv/docs' }), 1);
-    assert.strictEqual(fs.readFileSync(rulePath, 'utf8'), ruleOf('/srv/docs'));
+    write(root, '.claude/rules/alfred-preferences.md', 'The docs in `.claude/docs/preferences/` bind every session.\n');
+    assert.strictEqual(respellDocsRoot({ projectRoot: root, from: '.claude/docs', to: '.alfred/docs' }), 0);
+    assert.strictEqual(fs.readFileSync(rulePath, 'utf8'), 'The docs in `.claude/docs/preferences/` bind every session.\n');
+    assert.ok(fs.readFileSync(path.join(__dirname, '..', 'stack/rules/alfred-preferences.md'), 'utf8').includes('`__DOCS_ROOT__/preferences/`'), 'the source carries the placeholder');
+    assert.match(fs.readFileSync(path.join(__dirname, 'install/alfred-code.js'), 'utf8'), /const ROOTED_RULES = \[DOCS_ROOT_RULE, 'alfred-preferences'\];/, 'the copy step renders it');
 });
 
 test('awareness: a docs-root move re-stamps the rule\'s import lines and the inventory doc, relative or absolute', () =>
@@ -569,4 +585,235 @@ test('awareness: a docs-root move re-stamps the rule\'s import lines and the inv
     const text = awarenessRuleOf(root);
     assert.deepStrictEqual(importsOf(text), ['/srv/docs/awareness/AGENTS-AWARENESS.md', '/srv/docs/awareness/PROJECT-AWARENESS.md']);
     assert.match(text, /from `\/srv\/docs\/awareness\/`/);
+});
+
+// --- the preferences layout (the user's ruling of 2026-10-21) ----------------------------------------------------
+// Every doc under preferences/ binds: the project's code style joins them as PROJECT-CODE-PREFERENCES.md, the user's
+// code preferences become PERSONAL-CODE-PREFERENCES.md, and GIT-PREFERENCES.md is seeded with the house git lines -
+// the consent, scope, checkpoint and safety entries locked - so the git safety lines exist in every project.
+
+const PREFS = '.alfred/docs/preferences';
+const TODAY = () => new Date().toISOString().slice(0, 10);
+const lockedKeys = (text) => [...String(text).matchAll(/<!--\s*locked:\s*([a-z-]+)\s*-->/g)].map((m) => m[1]);
+const prefsRun = (root, log = () => {}) => docs.migrateDocsDomains({ projectRoot: root, docsPath: '.alfred/docs', rules: rulesOf(root), instructions: instructionsOf(root), log });
+
+test('preferences: a fresh project gets GIT-PREFERENCES.md from the seed, dated today, its locked entries marked, and the domain switched on', () =>
+{
+    const root = project();
+    const out = prefsRun(root);
+    const git = fs.readFileSync(path.join(root, PREFS, 'GIT-PREFERENCES.md'), 'utf8');
+    assert.match(git, new RegExp(`^Updated: ${TODAY()}$`, 'm'));
+    assert.doesNotMatch(git, /__TODAY__/);
+    assert.deepStrictEqual(lockedKeys(git), ['consent', 'scope', 'checkpoint', 'safety']);
+    assert.match(git, /'Show the diff first' takes the mark/, 'the consent line is carried word for word');
+    assert.strictEqual(out.preferences.git, 'seeded');
+    assert.deepStrictEqual(out.switched, ['preferences']);
+    assert.strictEqual(fs.readFileSync(path.join(root, PREFS, 'watch.json'), 'utf8'), '{}\n');
+    const again = prefsRun(root);
+    assert.strictEqual(again.preferences.git, 'present');
+    assert.deepStrictEqual(again.switched, []);
+    assert.strictEqual(fs.readFileSync(path.join(root, PREFS, 'GIT-PREFERENCES.md'), 'utf8'), git, 'a re-run leaves the doc byte for byte');
+});
+
+test('preferences: an existing GIT-PREFERENCES.md keeps its entries and gains each locked one it lacks, numbered past every id it used', () =>
+{
+    // Its locked checkpoint entry carries the seed's fields under its own id and title (an edited one is restored - Q-4).
+    const checkpoint = /<!-- locked: checkpoint -->\n((?:- [^\n]*\n)+)/.exec(fs.readFileSync(path.join(__dirname, '..', 'stack', 'skills', 'capture-preferences', 'references', 'git-seed.md'), 'utf8'))[1].trimEnd();
+    const own = [
+        '# Git preferences', '', 'Updated: 2026-10-20', 'Retired: G2', '',
+        '## G1 - Branches are feature/<ticket>', '<!-- id: g1 -->', '- Rule: name a branch `feature/<ticket>`.', '',
+        '## G3 - Keep the checkpoint', '<!-- id: g3 -->', '<!-- locked: checkpoint -->', checkpoint, '',
+    ].join('\n');
+    const root = project({ files: { [`${PREFS}/GIT-PREFERENCES.md`]: own, [`${PREFS}/watch.json`]: '{}\n' } });
+    const logs = [];
+    const out = prefsRun(root, (m) => logs.push(m));
+    const git = fs.readFileSync(path.join(root, PREFS, 'GIT-PREFERENCES.md'), 'utf8');
+    assert.ok(git.startsWith(own), 'the user\'s own entries stay first, unchanged');
+    assert.deepStrictEqual(lockedKeys(git), ['checkpoint', 'consent', 'scope', 'safety'], 'the checkpoint it held is not added twice');
+    assert.deepStrictEqual([...git.matchAll(/^## (G\d+) - /gm)].map((m) => m[1]), ['G1', 'G3', 'G4', 'G5', 'G6'], 'new ids skip the retired G2 and every used one');
+    assert.deepStrictEqual([...git.matchAll(/<!-- id: (g\d+) -->/g)].map((m) => m[1]), ['g1', 'g3', 'g4', 'g5', 'g6']);
+    assert.strictEqual(out.preferences.git, 'merged consent, scope, safety');
+    assert.ok(logs.some((m) => /GIT-PREFERENCES\.md - added the locked entries it lacked: consent, scope, safety/.test(m)), logs.join(' | '));
+    assert.strictEqual(prefsRun(root).preferences.git, 'present', 'a re-run adds nothing');
+});
+
+test('preferences: a GIT-PREFERENCES.md that cannot be read is named, never replaced', () =>
+{
+    const root = project();
+    fs.mkdirSync(path.join(root, PREFS, 'GIT-PREFERENCES.md'), { recursive: true });
+    const logs = [];
+    const out = prefsRun(root, (m) => logs.push(m));
+    assert.strictEqual(out.preferences.git, 'failed');
+    assert.ok(fs.statSync(path.join(root, PREFS, 'GIT-PREFERENCES.md')).isDirectory());
+    assert.ok(logs.some((m) => /!! .*GIT-PREFERENCES\.md could not be read/.test(m)), logs.join(' | '));
+});
+
+// Audit 2026-10-21 (preferences.md PF-20, PF-21, Q-4, edge 110).
+const SEED_TEXT = () => fs.readFileSync(path.join(__dirname, '..', 'stack', 'skills', 'capture-preferences', 'references', 'git-seed.md'), 'utf8').replace(/__TODAY__/g, TODAY());
+const lintOf = (root) => require('node:child_process').spawnSync(process.execPath, [path.join(__dirname, '..', 'stack', 'skills', 'capture-preferences', 'scripts', 'preferences.js'), 'lint'], { cwd: root, encoding: 'utf8' });
+
+test('PF-20: an empty or blank GIT-PREFERENCES.md is seeded whole - title, date and the four locked entries - and lint passes', () =>
+{
+    for (const blank of ['', '  \n\n'])
+    {
+        const root = project({ files: { [`${PREFS}/GIT-PREFERENCES.md`]: blank } });
+        assert.strictEqual(prefsRun(root).preferences.git, 'seeded');
+        assert.strictEqual(fs.readFileSync(path.join(root, PREFS, 'GIT-PREFERENCES.md'), 'utf8'), SEED_TEXT());
+        assert.strictEqual(lintOf(root).stdout.trim(), 'lint: 0 problems');
+    }
+});
+
+test('Q-4: an edited locked entry is restored from the seed on update, its id and title kept and the replaced text named', () =>
+{
+    const seed = SEED_TEXT();
+    const edited = seed.replace(/^(## G\d+) - [^\n]*\n(<!-- id: g\d+ -->\n<!-- locked: consent -->\n)- Rule: [^\n]*/m, '$1 - Ask me first\n$2- Rule: commit whenever the tests pass.\n- Except: release branches');
+    assert.notStrictEqual(edited, seed, 'the fixture edits the consent entry');
+    const root = project({ files: { [`${PREFS}/GIT-PREFERENCES.md`]: edited } });
+    const logs = [];
+    const out = prefsRun(root, (m) => logs.push(m));
+    const git = fs.readFileSync(path.join(root, PREFS, 'GIT-PREFERENCES.md'), 'utf8');
+    assert.strictEqual(out.preferences.git, 'restored consent');
+    assert.match(git, /^## G\d+ - Ask me first$/m, 'its title is the user\'s to keep');
+    assert.doesNotMatch(git, /commit whenever the tests pass|release branches/);
+    assert.strictEqual(git.replace(/^(## G\d+) - Ask me first$/m, (m, h) => seed.match(new RegExp(`^${h} - [^\\n]*$`, 'm'))[0]), seed, 'every other line is the seed\'s');
+    assert.ok(logs.some((m) => /GIT-PREFERENCES\.md - restored the locked 'consent' entry \(G\d+\) from the seed; it read: .*commit whenever the tests pass/.test(m)), logs.join(' | '));
+    assert.strictEqual(lintOf(root).stdout.trim(), 'lint: 0 problems');
+    assert.strictEqual(prefsRun(root).preferences.git, 'present', 'a re-run changes nothing');
+});
+
+test('edge 110: an entry that dropped its lock and weakened the rule gets the house entry back beside it, and is named', () =>
+{
+    const seed = SEED_TEXT();
+    const weakened = seed.replace(/<!-- locked: consent -->\n- Rule: [^\n]*/, '- Rule: commit when you are done.');
+    assert.match(weakened, /^## G1 - Ask before any commit or push\n<!-- id: g1 -->\n- Rule: commit when you are done\./m, 'the fixture drops the lock and weakens the rule');
+    const root = project({ files: { [`${PREFS}/GIT-PREFERENCES.md`]: weakened } });
+    const logs = [];
+    assert.strictEqual(prefsRun(root, (m) => logs.push(m)).preferences.git, 'merged consent');
+    assert.ok(logs.some((m) => new RegExp(`!! preferences: .*GIT-PREFERENCES\\.md G\\d+ repeats the locked 'consent' entry's title without its lock - remove it`).test(m)), logs.join(' | '));
+    assert.match(lintOf(root).stdout, /G1 repeats the locked 'consent' entry's title without its lock/);
+});
+
+test('PF-21: an old CODE-PREFERENCES.md equal to PERSONAL-CODE-PREFERENCES.md is removed; a different one stays for a hand merge', () =>
+{
+    const text = '# Code preferences\n\nUpdated: 2026-10-20\n\n## C1 - No statics\n<!-- id: c1 -->\n- Rule: no static classes.\n';
+    const same = project({ files: { [`${PREFS}/CODE-PREFERENCES.md`]: text.replace(/\n/g, '\r\n'), [`${PREFS}/PERSONAL-CODE-PREFERENCES.md`]: text } });
+    const logs = [];
+    prefsRun(same, (m) => logs.push(m));
+    assert.ok(!fs.existsSync(path.join(same, PREFS, 'CODE-PREFERENCES.md')), 'the exact copy goes');
+    assert.strictEqual(fs.readFileSync(path.join(same, PREFS, 'PERSONAL-CODE-PREFERENCES.md'), 'utf8'), text);
+    assert.ok(logs.some((m) => /CODE-PREFERENCES\.md removed - an exact copy of .*PERSONAL-CODE-PREFERENCES\.md/.test(m)), logs.join(' | '));
+    const differ = project({ files: { [`${PREFS}/CODE-PREFERENCES.md`]: text.replace('no static', 'no singleton'), [`${PREFS}/PERSONAL-CODE-PREFERENCES.md`]: text } });
+    prefsRun(differ);
+    assert.ok(fs.existsSync(path.join(differ, PREFS, 'CODE-PREFERENCES.md')), 'two texts are the user\'s to merge');
+    assert.match(lintOf(differ).stdout, /both hold entries - merge the old one into the new by hand/);
+});
+
+test('preferences: CODE-STYLE.md moves to preferences/PROJECT-CODE-PREFERENCES.md - its ids, watch entries and branch versions re-keyed, code-style/ removed', () =>
+{
+    const watch = { sourceRoots: ['src'], watch: [{ kind: 'c#', globs: ['src/**.cs'], sections: ['CODE-STYLE#c-sharp', 'code-style/CODE-STYLE#cross'] }] };
+    const style = '# Code style\n\nCaptured: main@abc1234, 2026-10-01\n\n## C#\n<!-- id: c-sharp -->\n<!-- covers: src/**.cs -->\nSee CODE-STYLE.md#cross.\n';
+    const root = project({ files: {
+        '.alfred/docs/code-style/CODE-STYLE.md': style,
+        '.alfred/docs/code-style/watch.json': JSON.stringify(watch),
+        '.alfred/docs/.branches/feat/code-style/CODE-STYLE/c-sharp.md': 'branch\n',
+        '.alfred/docs/.branches/feat/.base/code-style/CODE-STYLE/c-sharp.md': 'base\n',
+        '.claude/rules/project-code-style.md': '---\npaths:\n  - "**/*.cs"\n---\n# Project code style (generated - the code-style capture owns this rule)\n\nUse tabs.\n',
+    } });
+    const logs = [];
+    const out = prefsRun(root, (m) => logs.push(m));
+    const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
+    assert.ok(out.moved.includes('preferences/PROJECT-CODE-PREFERENCES.md'), JSON.stringify(out.moved));
+    assert.match(read(`${PREFS}/PROJECT-CODE-PREFERENCES.md`), /See PROJECT-CODE-PREFERENCES\.md#cross\./);
+    assert.deepStrictEqual(JSON.parse(read(`${PREFS}/watch.json`)),
+        { sourceRoots: ['src'], watch: [{ kind: 'c#', globs: ['src/**.cs'], sections: ['PROJECT-CODE-PREFERENCES#c-sharp', 'preferences/PROJECT-CODE-PREFERENCES#cross'] }] });
+    assert.strictEqual(read('.alfred/docs/.branches/feat/preferences/PROJECT-CODE-PREFERENCES/c-sharp.md'), 'branch\n');
+    assert.strictEqual(read('.alfred/docs/.branches/feat/.base/preferences/PROJECT-CODE-PREFERENCES/c-sharp.md'), 'base\n');
+    assert.ok(!fs.existsSync(path.join(root, '.alfred/docs/code-style')), 'the old domain is gone');
+    assert.ok(!fs.existsSync(path.join(root, '.alfred/docs/.branches/feat/code-style')), 'the old overlay folder is gone');
+    assert.ok(!fs.existsSync(path.join(root, '.claude/rules/project-code-style.md')), 'the generated rule goes - the doc is read on trigger now');
+    assert.strictEqual(out.preferences.rule, 'removed');
+    assert.strictEqual(out.preferences.watch, 'moved');
+    const again = prefsRun(root);
+    assert.deepStrictEqual(again.moved, []);
+    assert.deepStrictEqual(again.preferences, { respelled: [], overlays: [], watch: 'none', git: 'present', rule: 'none' }, 'a re-run is quiet');
+});
+
+test('preferences: the loose PROJECT-CODE-STYLE.md of 0.2.x chains straight to preferences/', () =>
+{
+    const root = project({ files: { '.alfred/docs/PROJECT-CODE-STYLE.md': '# style\n' } });
+    const out = prefsRun(root);
+    assert.strictEqual(fs.readFileSync(path.join(root, PREFS, 'PROJECT-CODE-PREFERENCES.md'), 'utf8'), '# style\n');
+    assert.ok(out.moved.includes('preferences/PROJECT-CODE-PREFERENCES.md'), JSON.stringify(out.moved));
+    assert.ok(!fs.existsSync(path.join(root, '.alfred/docs/code-style')));
+});
+
+test('preferences: CODE-PREFERENCES.md becomes PERSONAL-CODE-PREFERENCES.md, its refs follow and a PROJECT-CODE-PREFERENCES ref is untouched', () =>
+{
+    const root = project({ files: {
+        [`${PREFS}/CODE-PREFERENCES.md`]: '# Code preferences\n\nUpdated: 2026-10-20\n\n## C1 - No statics\n<!-- id: c1 -->\n- Rule: see CODE-PREFERENCES#c1 and PROJECT-CODE-PREFERENCES#naming.\n',
+        [`${PREFS}/watch.json`]: '{"notOwned":["preferences/CODE-PREFERENCES.md"]}',
+    } });
+    const out = prefsRun(root);
+    const doc = fs.readFileSync(path.join(root, PREFS, 'PERSONAL-CODE-PREFERENCES.md'), 'utf8');
+    assert.match(doc, /see PERSONAL-CODE-PREFERENCES#c1 and PROJECT-CODE-PREFERENCES#naming\./);
+    assert.ok(!fs.existsSync(path.join(root, PREFS, 'CODE-PREFERENCES.md')));
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(root, PREFS, 'watch.json'), 'utf8')), { notOwned: ['preferences/PERSONAL-CODE-PREFERENCES.md'] });
+    assert.ok(out.moved.includes('preferences/PERSONAL-CODE-PREFERENCES.md'));
+});
+
+test('preferences: a preferences/watch.json of its own is merged, never overwritten; an invalid one keeps code-style/watch.json, named', () =>
+{
+    const root = project({ files: {
+        '.alfred/docs/code-style/CODE-STYLE.md': '# s\n',
+        '.alfred/docs/code-style/watch.json': '{"sourceRoots":["src","app"],"watch":[{"globs":["app/**.ts"],"sections":["CODE-STYLE#ts"]}]}',
+        [`${PREFS}/watch.json`]: '{"sourceRoots":["src"],"watch":[{"globs":["x/**"],"sections":["GIT-PREFERENCES#g1"]}]}',
+    } });
+    const out = prefsRun(root);
+    assert.strictEqual(out.preferences.watch, 'merged');
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(root, PREFS, 'watch.json'), 'utf8')), {
+        sourceRoots: ['src', 'app'],
+        watch: [{ globs: ['x/**'], sections: ['GIT-PREFERENCES#g1'] }, { globs: ['app/**.ts'], sections: ['PROJECT-CODE-PREFERENCES#ts'] }],
+    });
+
+    const bad = project({ files: {
+        '.alfred/docs/code-style/CODE-STYLE.md': '# s\n',
+        '.alfred/docs/code-style/watch.json': '{"sourceRoots":["src"]}',
+        [`${PREFS}/watch.json`]: '{ not json',
+    } });
+    const logs = [];
+    assert.strictEqual(prefsRun(bad, (m) => logs.push(m)).preferences.watch, 'kept');
+    assert.strictEqual(fs.readFileSync(path.join(bad, '.alfred/docs/code-style/watch.json'), 'utf8'), '{"sourceRoots":["src"]}');
+    assert.strictEqual(fs.readFileSync(path.join(bad, PREFS, 'watch.json'), 'utf8'), '{ not json');
+    assert.ok(logs.some((m) => /!! .*code-style\/watch\.json .*merge it by hand/.test(m)), logs.join(' | '));
+});
+
+test('preferences: a PROJECT-CODE-PREFERENCES.md already there wins - CODE-STYLE.md, its watch.json and the rule stay, named', () =>
+{
+    const root = project({ files: {
+        '.alfred/docs/code-style/CODE-STYLE.md': '# old\n',
+        '.alfred/docs/code-style/watch.json': '{"sourceRoots":["src"]}',
+        [`${PREFS}/PROJECT-CODE-PREFERENCES.md`]: '# new\n',
+        '.claude/rules/project-code-style.md': '# Project code style (generated - the code-style capture owns this rule)\n',
+    } });
+    const logs = [];
+    const out = prefsRun(root, (m) => logs.push(m));
+    assert.strictEqual(fs.readFileSync(path.join(root, '.alfred/docs/code-style/CODE-STYLE.md'), 'utf8'), '# old\n');
+    assert.strictEqual(fs.readFileSync(path.join(root, PREFS, 'PROJECT-CODE-PREFERENCES.md'), 'utf8'), '# new\n');
+    assert.ok(fs.existsSync(path.join(root, '.alfred/docs/code-style/watch.json')), 'an unfinished move takes nothing from the old domain');
+    assert.strictEqual(out.preferences.watch, 'none');
+    assert.ok(fs.existsSync(path.join(root, '.claude/rules/project-code-style.md')), 'the rule stays while the old doc does');
+    assert.ok(logs.some((m) => /already exists .* left in place, nothing overwritten/.test(m)), logs.join(' | '));
+});
+
+test('preferences: a project-code-style.md the capture did not write is kept and named', () =>
+{
+    const root = project({ files: {
+        [`${PREFS}/PROJECT-CODE-PREFERENCES.md`]: '# s\n',
+        '.claude/rules/project-code-style.md': '# Our own style rule\n',
+    } });
+    const logs = [];
+    const out = prefsRun(root, (m) => logs.push(m));
+    assert.strictEqual(out.preferences.rule, 'kept');
+    assert.strictEqual(fs.readFileSync(path.join(root, '.claude/rules/project-code-style.md'), 'utf8'), '# Our own style rule\n');
+    assert.ok(logs.some((m) => /!! \.claude\/rules\/project-code-style\.md .*not the capture's text/.test(m)), logs.join(' | '));
 });

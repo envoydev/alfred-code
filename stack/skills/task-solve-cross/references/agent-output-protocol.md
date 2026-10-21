@@ -64,6 +64,7 @@ contract_version: <the card's - omitted entirely on a findings-plan dispatch>
 ## Verifier output
 
 ```text
+checked prior notes: <names | none>
 <the build and test result run this session - the summary line when green; per failure the diagnostic lines and the command that re-produces it>
 <the habits-done-gate evidence the seat bound>
 findings: <one per gap - severity + task_owner + problem + required_fix, keyed to file + symbol>
@@ -95,6 +96,19 @@ commit_allowed: true | false
 ```
 
 Commit is allowed only on SIGNED_OFF.
+
+## Security audit output
+
+The security-auditor closes a security review:
+
+```text
+checked prior notes: <names | none>
+<Critical -> High -> Medium -> Low findings - Location, Severity, What, Impact, Remediation, Reference (OWASP / CWE)>
+<Recommendations, then each uncovered area with what would settle it>
+status: CLEAN | FINDINGS | BLOCKED_BY_ACCESS
+```
+
+`FINDINGS` routes each remediation as a contracted task to the domain implementer and its verifier; `BLOCKED_BY_ACCESS` names the surface the brief listed that stayed unreachable, which goes to the user before the gate is called.
 
 ## Progress ledger
 

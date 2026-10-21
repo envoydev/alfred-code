@@ -33,10 +33,17 @@ Nothing is inferred beyond those lines: a machine item the plan does not name is
 
 ## 3. Machine installs - ONE ask
 
-No `missing` or `refresh` line: one narration line, next step. Otherwise ONE AskUserQuestion,
-multi-select, one option per `missing` / `missing after uv` / `refresh` line - the label names the
-item, the description carries its exact command - every one pre-selected, 'install the selected'
-recommended (the servers that need them cannot start without them). A `blocked` line is not an
+No `missing` or `refresh` line: one narration line, next step. Otherwise ONE AskUserQuestion - the servers that
+need these cannot start without them; AskUserQuestion has no pre-selection, so a pick goes through a second call
+(audit 2026-10-21 C-T4-01):
+
+```ask
+Install the <n> machine items the plan names? <each item's label>.
+- 'Install all of them (Recommended)' - each line's exact command runs, in plan order
+- 'Pick which' - the next call is a multi-select, one option per `missing` / `missing after uv` / `refresh` line, the label the item and the description its exact command
+- 'Skip' - nothing is installed; a server that needs one stays down until it is
+```
+ A `blocked` line is not an
 option: name its fix once (the .NET SDK for csharp-ls, the browser for a picked chrome or msedge) -
 the user installs it; never attempt one. `claude-hud status line + compact layout` is one of those
 lines: its command (`hud-statusline.js`) writes the `statusLine` claude-hud's own setup would - into the
@@ -159,7 +166,7 @@ is answered by the run itself, never AskUserQuestion, by one rule:
   name), or it ends the run on something a person must do (paste a fresh-session one-liner, restart).
 - Then, and on an ask with no option marked Recommended, take the option that changes nothing (skip,
   none, stop here, run here); an ask with no such option is skipped with its step, and the close names
-  it. A multi-select ask takes every pre-selected option that is not destructive.
+  it. A multi-select ask takes the options its question names as the default, a destructive one left out.
 - Log each answer as one line, `unattended: <question> -> <choice>`, with `(<why>)` when the choice is
   not the Recommended option. Step 2's plan already carries the lines for init's own asks (machine
   installs, memory level, AGENTS.md) - apply exactly those, never re-judge them.

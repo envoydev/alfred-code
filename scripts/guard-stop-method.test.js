@@ -348,9 +348,10 @@ test('done gate: a close the credential branch holds is still logged', () => {
     assert.ok(unrun(g), 'and the done-gate row was written first');
 });
 
-test('done gate: ALFRED_CODE_DONE_GATE=0 switches the probe off', () => {
+test('done gate: guard-stop-contract:done in ALFRED_CODE_HOOKS_OFF switches the probe off', () => {
     const root = project();
     const rows = steps(root, [['prompt', 'fix it'], ['edit', 'src/money.js']]);
+    assert.strictEqual(gate(root, rows, 'Fixed.', { ALFRED_CODE_HOOKS_OFF: 'guard-stop-contract:done' }).row, null);
     assert.strictEqual(gate(root, rows, 'Fixed.', { ALFRED_CODE_DONE_GATE: '0' }).row, null);
     assert.ok(unrun(gate(root, rows, 'Fixed.', { ALFRED_CODE_DONE_GATE: '1' })));
 });

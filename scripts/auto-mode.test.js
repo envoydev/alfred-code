@@ -237,7 +237,7 @@ test('auto-mode end: a typed message is input and keeps it; only the word to sto
     autoStamp(p, 'e1');
     for (const [sid, prompt, why] of [['e2', 'take over here', "another session's prompt"], ['e1', '<task-notification>\n<task-id>x</task-id>', 'a task notice'],
         ['e1', '/loop-code-quality --auto-mode src/', 'the next auto-mode run'], ['e1', '/issue-diagnoser --auto-mode the 500', 'the next auto-mode run, an issue command'],
-        ['e1', '/capture-code-style --auto-mode', 'the next auto-mode run, a capture command'],
+        ['e1', '/capture-project-code-style --auto-mode', 'the next auto-mode run, a capture command'],
         ['e1', '/compact', 'a slash command that is no flow command'],
         ['e1', 'Another Claude session sent a message:\n<agent-message from="a1b2">\n[Subagent hand-back] done\n</agent-message>', 'a seat\'s hand-back (audit HK14)']])
     {
@@ -350,14 +350,14 @@ test('mode banner: auto-mode OFF says each ask waits, then the fresh-session ref
         "**Context:** the fresh-session offers are off - the session compacts at Claude Code's own point in its 1M context window (claude-sonnet-5-5).");
     // the bare word of 2.4.0-2.5.0 is said, never silently dropped: the flag is `--auto-mode` (the user's ruling, 2026-10-17)
     const HINT = ' (auto-mode starts only with `--auto-mode` as the first word after the command.)';
-    assert.strictEqual(bannerOf(typedRun(p, 'c5', '/capture-code-style auto-mode', t))[0],
-        `**Auto-mode: OFF** for /capture-code-style - each question waits for your answer.${HINT}`);
+    assert.strictEqual(bannerOf(typedRun(p, 'c5', '/capture-project-code-style auto-mode', t))[0],
+        `**Auto-mode: OFF** for /capture-project-code-style - each question waits for your answer.${HINT}`);
     // and the flag past the command's first argument is said too: it starts nothing there (the user's ruling, 2026-10-15)
     assert.strictEqual(bannerOf(typedRun(p, 'c8', '/task-solve fix the cache --auto-mode', t))[0],
         `**Auto-mode: OFF** for /task-solve - each question waits for your answer.${HINT}`);
     // the bare word inside the task text is the task's own, and says nothing
     assert.strictEqual(bannerOf(typedRun(p, 'c11', '/task-solve fix the auto-mode banner', t))[0], '**Auto-mode: OFF** for /task-solve - each question waits for your answer.');
-    assert.match(bannerOf(typedRun(project(), 'c12', '/capture-code-style --auto-mode', t))[0], /^\*\*Auto-mode: ON\*\* for \/capture-code-style - /);
+    assert.match(bannerOf(typedRun(project(), 'c12', '/capture-project-code-style --auto-mode', t))[0], /^\*\*Auto-mode: ON\*\* for \/capture-project-code-style - /);
     assert.strictEqual(bannerOf(typedRun(p, 'c9', '/issue-diagnoser the login 500', t))[0], '**Auto-mode: OFF** for /issue-diagnoser - each question waits for your answer.');
     assert.match(bannerOf(typedRun(project(), 'c10', '/issue-diagnoser --auto-mode the login 500', t))[0], /^\*\*Auto-mode: ON\*\* for \/issue-diagnoser - /);
     // an unknown model and no window: no number is invented for the window, and the default is said as the trigger it is

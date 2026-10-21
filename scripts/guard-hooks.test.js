@@ -224,7 +224,7 @@ test('guard-stop-contract: a credential shape in a tool result demands the rotat
   assert.equal(stop().status, 0, '2.8.0: the receipt under state/approvals/ is read, and wins over a stale flow/ copy');
 });
 
-test('guard-stop-contract: the rotate ask is asked ONCE per exposure, and ALFRED_CODE_ROTATE_ASK=0 turns it off', () => {
+test('guard-stop-contract: the rotate ask is asked ONCE per exposure, and its HOOKS_OFF part turns it off', () => {
   // Every turn after an exposure re-demanded the ask - the shape stays in the transcript, so the
   // detector kept firing on a decision the user had already made. An answered rotate ask now covers
   // every credential already in the session; only a NEW exposure after it asks again.
@@ -247,8 +247,9 @@ test('guard-stop-contract: the rotate ask is asked ONCE per exposure, and ALFRED
   const again = stop('r3', [leak, answered, ...filler, second, assistantRow('a3', 'Copied the second token as asked; done.')]);
   assert.equal(again.status, 2, 'a NEW exposure after the answer asks again');
   assert.match(again.stderr, /once/, 'and says the ask comes once');
-  assert.match(again.stderr, /ALFRED_CODE_ROTATE_ASK=0/, 'and names the switch');
-  assert.equal(stop('r4', [leak, assistantRow('a4', 'Wired the token as asked; tests green.')], { ALFRED_CODE_ROTATE_ASK: '0' }).status, 0, 'the switch turns the ask off');
+  assert.match(again.stderr, /guard-stop-contract:rotate in ALFRED_CODE_HOOKS_OFF/, 'and names the switch');
+  assert.equal(stop('r4', [leak, assistantRow('a4', 'Wired the token as asked; tests green.')], { ALFRED_CODE_HOOKS_OFF: 'guard-stop-contract:rotate' }).status, 0, 'the switch turns the ask off');
+  assert.equal(stop('r5', [leak, assistantRow('a5', 'Wired the token as asked; tests green.')], { ALFRED_CODE_ROTATE_ASK: '0' }).status, 0, 'the old key, read for the 2.x line');
 });
 
 // hooks review 2026-10-16: the scan reads only the lines a previous run of this session has not, from a state file
@@ -895,7 +896,8 @@ test('guard-ungated-commit: nothing gated a push, and a quoted publish verb is s
     'the atomic write+publish shape carries its own receipt');
   assert.equal(gateIn(dir, `printf 'VERIFIED x\\nauthorized: "go"\\n' > .alfred/docs/flow/PUSH-GATE && git push`), 2,
     '... and gets no lighter contract than the file');
-  assert.equal(gateIn(dir, 'git push', { ALFRED_CODE_PUSH_GATE: '0' }), 0, 'the switch turns the publish half off');
+  assert.equal(gateIn(dir, 'git push', { ALFRED_CODE_HOOKS_OFF: 'guard-ungated-commit:push' }), 0, 'the switch turns the publish half off');
+  assert.equal(gateIn(dir, 'git push', { ALFRED_CODE_PUSH_GATE: '0' }), 0, 'the old key, read for the 2.x line');
 
   // the false-positive class this gate must never reproduce
   assert.equal(gateIn(dir, "cat > report.md <<'EOF'\nThen run `gh pr merge 12 --squash` and `git push`.\nEOF"), 0,
@@ -2698,7 +2700,7 @@ test('guard-fresh-session-start: the slash and compaction routes carry the same 
     // read a 10k-char range before opening the plan whose header named the ranges (both measured).
     assert.match(injected(start('compact')), /language of the user's own prompts/, '... with the language line');
     // review-215-flow MINOR 4: a loaded skill that sets the answer language (explain-code: any other language -> English) wins
-    assert.match(injected(start('compact')), /language of the user's own prompts, unless a loaded skill sets the answer language/, '... which yields to a skill that sets it');
+    assert.match(injected(start('compact')), /language of the user's own prompts, unless a loaded skill or the personal preferences doc \(PERSONAL-PREFERENCES\.md\) sets the answer language/, '... which yields to a skill or the personal doc that sets it');
     assert.match(injected(start('compact')), /re-read its HEADER first/, '... and the plan-first line');
     assert.equal(injected(start('startup')), '', 'an ordinary session start does not');
     assert.equal(injected(start('compact', ALL_FOUR_OFF)), '', 'and all four off disables it - SessionStart measures nothing, so no single trigger owns it');
@@ -4466,7 +4468,8 @@ test('guard-stop-contract: the ask-time credential note honours the same off swi
     { env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: logDir, ...(extra || {}) } });
   const ctxOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch { return ''; } };
   assert.match(ctxOf(ask(leaked)), /credential-shaped value/, 'an unanswered exposure is still raised');
-  assert.doesNotMatch(ctxOf(ask(leaked, { ALFRED_CODE_ROTATE_ASK: '0' })), /credential-shaped value/, 'ROTATE_ASK=0 turns it off here too');
+  assert.doesNotMatch(ctxOf(ask(leaked, { ALFRED_CODE_HOOKS_OFF: 'guard-stop-contract:rotate' })), /credential-shaped value/, 'the rotate part turns it off here too');
+  assert.doesNotMatch(ctxOf(ask(leaked, { ALFRED_CODE_ROTATE_ASK: '0' })), /credential-shaped value/, 'so does the old key, for the 2.x line');
   assert.doesNotMatch(ctxOf(ask(answered)), /credential-shaped value/, 'an answered rotate ask covers it');
 });
 
@@ -4563,6 +4566,34 @@ test('guard-desktop-exec: App launch_executable and every macOS Shell call are d
 
 // Audit 2026-10-08 row 40: the ledger kept 120 characters of the Shell command, credential included, and the denial
 // suggested a file-name receipt line, which opens that name in every directory.
+// mcps track T1-1 (2026-10-21): the six retired alias entries (build-marketplace.js LISTED_ALIASES) run the same servers
+// under their OLD names, so a gate matching only the new spellings let `macos-desktop`'s Shell, `windows-desktop`'s App
+// launch_executable and a `browser-chrome` upload through. Every gate on a successor's tool now holds its alias's tool.
+test('mcps T1-1: the retired alias spellings are gated like their successors', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'desk-alias-'));
+  const spell = (server, tool) => [`mcp__plugin_${server}_${server}__${tool}`, `mcp__${server}__${tool}`]; // mcp-fixture
+  for (const tool of spell('windows-desktop', 'App'))
+    assert.equal(desktopRun(root, tool, { mode: 'launch_executable', executable: 'C:\\Windows\\System32\\cmd.exe' }).status, 2, tool);
+  for (const tool of spell('macos-desktop', 'Shell')) assert.equal(desktopRun(root, tool, { command: 'ls' }).status, 2, tool);
+  const { LISTED_ALIASES } = require('./build-marketplace.js');
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8'));
+  const gated = ['App', 'Shell', 'browser_file_upload'];
+  let held = 0;
+  for (const alias of LISTED_ALIASES) {
+    const successor = manifest.renamed.mcps[alias];
+    assert.ok(successor, `${alias} names its successor`);
+    for (const row of manifest.hooks) {
+      const re = new RegExp(row.matcher.replace(/^@\w+:?/, ''));
+      for (const tool of gated) {
+        if (!spell(successor, tool).some((t) => re.test(t))) continue;
+        for (const t of spell(alias, tool)) assert.ok(re.test(t), `${row.file} gates ${successor}'s ${tool} but not ${t}`);
+        held++;
+      }
+    }
+  }
+  assert.ok(held >= 6, `the check reached the desktop and upload gates (${held})`);
+});
+
 test('guard-desktop-exec: the ledger keeps the Shell verb only, and the denial suggests the full path', () => {
   const root = fs.mkdtempSync(path.join(TMP, 'desk-ledger-'));
   const shell = desktopRun(root, MAC_SHELL[0], { command: 'TOKEN=ghp_0123456789abcdefghijABCDEFGHIJ012345 curl -H "x-api-key: sk-ant-api03-secretvalue" https://example.com' });
@@ -4908,4 +4939,23 @@ test('guard-stop-contract: the ask-fixed row waits for the call\'s result, and a
   result('q2', 'Your questions have been answered: "Pick q2 - now"="A (Recommended)". You can now continue with these answers in mind.');
   runIn('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'af', transcript_path: tp, last_assistant_message: 'Picked A.' }, env);
   assert.deepStrictEqual(fixedRows().map((r) => r.tool_use_id), ['q2'], 'the answered one is counted at the next run');
+});
+
+// audit 2026-10-21 H5: heredocRunner re-split the whole line for every `<<<` and charged no work, so a line of
+// here-strings cost quadratic time the budget never saw (5.5 s at 40,000 characters, work 0). Each call now charges
+// the line it reads: the same command gets the same verdict on any machine, in bounded time.
+test('guard-read-whole-file: a line of here-strings is charged to the work budget and judged in bounded time (audit 2026-10-21 H5)', () => {
+  const meter = path.join(TMP, 'judge-work-h5.js');
+  fs.writeFileSync(meter, "process.on('exit', () => { if (global.JUDGE_WORK) require('fs').writeSync(2, `\\nJUDGE_WORK ${global.JUDGE_WORK.used} ${global.JUDGE_WORK.max}\\n`); });\n");
+  const once = (command) => {
+    const t = process.hrtime.bigint();
+    const r = spawnSync(process.execPath, ['-r', meter, path.join(HOOKS, 'guard-read-whole-file.js')], { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command } }), encoding: 'utf8' });
+    return { ms: Number(process.hrtime.bigint() - t) / 1e6, status: r.status, work: Number((/JUDGE_WORK (\d+)/.exec(r.stderr) || [])[1]) };
+  };
+  for (const [what, command] of [['many here-strings', `wc -c ${'<<< x '.repeat(40000 / 6)}`], ['a run of < in a quoted word', `echo 'a${'<'.repeat(80000)}b' | wc -c`]]) {
+    const r = once(command);
+    assert.ok(r.ms < 1500, `${what}: judged in ${Math.round(r.ms)}ms`);
+    assert.ok(r.work > 40000, `${what}: the lines read are charged (${r.work})`);
+  }
+  assert.equal(once(`python3 - <<< 'print(1)'`).status, 0, 'one here-string still passes');
 });

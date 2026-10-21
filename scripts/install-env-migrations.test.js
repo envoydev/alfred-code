@@ -12,7 +12,12 @@ const REAL = require(path.join(__dirname, '..', 'meta', 'migrations.json'));
 test('every settings-env migration in the real file reaches applyEnv', () =>
 {
     const m = envMigrations(REAL);
-    assert.deepEqual(Object.keys(m).sort(), ['offWith', 'renames', 'reseed', 'retired']);
+    assert.deepEqual(Object.keys(m).sort(), ['folds', 'offWith', 'renames', 'reseed', 'retired']);
+    assert.deepEqual(m.folds.map(([k, , entry]) => `${k}>${entry}`).sort(), [
+        'ALFRED_CODE_CONFIG_PROTECT>guard-config-protection', 'ALFRED_CODE_DOCS_ASK>docs-session:ask', 'ALFRED_CODE_DOCS_BLOCK>docs-session:block',
+        'ALFRED_CODE_DOCS_GATE>docs-session:gate', 'ALFRED_CODE_DONE_GATE>guard-stop-contract:done', 'ALFRED_CODE_PUSH_GATE>guard-ungated-commit:push',
+        'ALFRED_CODE_ROTATE_ASK>guard-stop-contract:rotate'], 'the env audit of 2026-10-21 folds seven switches into the hooks csv');
+    assert.ok(m.folds.every(([, into, , when]) => into === 'ALFRED_CODE_HOOKS_OFF' && when === '0'));
     assert.deepEqual(m.offWith, [['ALFRED_CODE_CONTEXT_WINDOW_DEFAULT',
         ['ALFRED_CODE_CONTEXT_WINDOW_FOR_1M', 'ALFRED_CODE_CONTEXT_WINDOW_FOR_300K', 'ALFRED_CODE_CONTEXT_WINDOW_FOR_200K'], ['300000', '180000'], '0']],
         'three tiers at 0 carry the DEFAULT to 0 (item 12, 2026-10-21)');
@@ -28,6 +33,8 @@ test('every settings-env migration in the real file reaches applyEnv', () =>
     assert.ok(m.reseed.some(([k, bad, to]) => k === 'ALFRED_CODE_CONTEXT_WINDOW_FOR_200K' && bad === '150000' && to === '180000'));
     assert.ok(m.reseed.some(([k, bad, to]) => k === 'ALFRED_CODE_CONTEXT_WINDOW_DEFAULT' && bad === '300000' && to === '180000'),
         'the default became a trigger (the user\'s ruling, 2026-10-21): its old window seed moves to the trigger seed');
+    assert.ok(m.reseed.some(([k, bad, to]) => k === 'ALFRED_CODE_HISTORY' && bad === '1' && to === '3'),
+        'the history switch became a session count (item 10, 2026-10-21): the old on seed moves to the count seed');
 });
 
 test('an old install is migrated by the real file', () =>
@@ -115,6 +122,60 @@ test('the overlay is carried in its own file, and an absent DEFAULT is never add
     assert.ok(!('ALFRED_CODE_CONTEXT_WINDOW_DEFAULT' in beneath), 'a value in the file beneath is the user\'s - nothing hides it');
 });
 
+test('the history on-switch the stack seeded becomes the count 3; a typed value and the off switch stay', () =>
+{
+    assert.equal(run({ ALFRED_CODE_HISTORY: '1' }).env.ALFRED_CODE_HISTORY, '3');
+    assert.equal(run({ ALFRED_CODE_HISTORY: '1' }, { stackWrote: () => false }).env.ALFRED_CODE_HISTORY, '1', 'typed by hand: one session');
+    assert.equal(run({ ALFRED_CODE_HISTORY: '0' }).env.ALFRED_CODE_HISTORY, '0');
+    assert.equal(run({ ALFRED_CODE_HISTORY: '7' }).env.ALFRED_CODE_HISTORY, '7');
+});
+
+// The env audit of 2026-10-21: seven on/off keys fold into ALFRED_CODE_HOOKS_OFF. A key at `0` (the user switched the part
+// or hook off) becomes its entry in the csv; at any other value it is the seed's 'on', and goes.
+const FOLD_LOG = /ALFRED_CODE_DOCS_GATE folded into ALFRED_CODE_HOOKS_OFF as docs-session:gate/;
+test('a part or hook switched off with its old key becomes an entry in ALFRED_CODE_HOOKS_OFF; an on value just goes', () =>
+{
+    const { env, lines } = run({ ALFRED_CODE_HOOKS_OFF: 'guard-answer', ALFRED_CODE_DOCS_GATE: '0', ALFRED_CODE_PUSH_GATE: '1', ALFRED_CODE_CONFIG_PROTECT: '0', OTHER: 'x' });
+    assert.equal(env.ALFRED_CODE_HOOKS_OFF, 'guard-answer,docs-session:gate,guard-config-protection');
+    for (const k of ['ALFRED_CODE_DOCS_GATE', 'ALFRED_CODE_PUSH_GATE', 'ALFRED_CODE_CONFIG_PROTECT']) assert.ok(!(k in env), k);
+    assert.equal(env.OTHER, 'x');
+    assert.ok(lines.some((l) => FOLD_LOG.test(l)), lines.join('\n'));
+    assert.ok(lines.some((l) => /ALFRED_CODE_PUSH_GATE removed \(on - the part runs unless ALFRED_CODE_HOOKS_OFF names guard-ungated-commit:push\)/.test(l)), lines.join('\n'));
+});
+
+test('the fold makes the csv when there is none, never doubles an entry, and a re-run changes nothing', () =>
+{
+    assert.equal(run({ ALFRED_CODE_DOCS_ASK: '0' }).env.ALFRED_CODE_HOOKS_OFF, 'docs-session:ask');
+    assert.equal(run({ ALFRED_CODE_HOOKS_OFF: 'docs-session:ask', ALFRED_CODE_DOCS_ASK: '0' }).env.ALFRED_CODE_HOOKS_OFF, 'docs-session:ask');
+    assert.equal(run({ ALFRED_CODE_HOOKS_OFF: ' ', ALFRED_CODE_DOCS_ASK: '0' }).env.ALFRED_CODE_HOOKS_OFF, 'docs-session:ask', 'a blank csv is empty');
+    const first = run({ ALFRED_CODE_HOOKS_OFF: 'guard-answer', ALFRED_CODE_ROTATE_ASK: '0', ALFRED_CODE_DONE_GATE: '0' });
+    assert.equal(first.env.ALFRED_CODE_HOOKS_OFF, 'guard-answer,guard-stop-contract:rotate,guard-stop-contract:done');
+    const again = run({ ...first.env });
+    assert.equal(again.changed, false);
+    assert.deepEqual(again.lines, []);
+});
+
+test('the fold lands where the csv takes effect: the overlay keeps its own, and a committed key also reaches an overlay csv', () =>
+{
+    const overlay = { ALFRED_CODE_DOCS_ASK: '0' };
+    const env = { ALFRED_CODE_HOOKS_OFF: 'guard-answer' };
+    run(env, { overlay });
+    assert.equal(overlay.ALFRED_CODE_HOOKS_OFF, 'guard-answer,docs-session:ask', 'an overlay key folds into an overlay csv made from the one beneath');
+    assert.equal(env.ALFRED_CODE_HOOKS_OFF, 'guard-answer', 'the committed csv is not the overlay key\'s to change');
+    const held = { ALFRED_CODE_HOOKS_OFF: 'instrument-tool-usage' };
+    const committed = { ALFRED_CODE_HOOKS_OFF: '', ALFRED_CODE_DOCS_GATE: '0' };
+    run(committed, { overlay: held });
+    assert.equal(committed.ALFRED_CODE_HOOKS_OFF, 'docs-session:gate', 'the team\'s file keeps the team\'s switch');
+    assert.equal(held.ALFRED_CODE_HOOKS_OFF, 'instrument-tool-usage,docs-session:gate', 'and the overlay csv that shadows it carries it too');
+});
+
+test('a walk that answered the hooks layer rewrites the hook names and keeps every part entry', () =>
+{
+    const env = { ALFRED_CODE_HOOKS_OFF: 'instrument-tool-usage,docs-session:gate,guard-ungated-commit:push' };
+    applyEnv(env, { catalog: [], migrations: envMigrations(REAL), hooksAnswered: true, hooksOff: ['guard-answer'], log: () => {} });
+    assert.equal(env.ALFRED_CODE_HOOKS_OFF, 'guard-answer,docs-session:gate,guard-ungated-commit:push');
+});
+
 test('envMigrations translates each entry kind into its flat list', () =>
 {
     const file = { migrations: [
@@ -123,6 +184,7 @@ test('envMigrations translates each entry kind into its flat list', () =>
         { remove_settings_env: { key: 'ALFRED_CODE_BAZ', when_value: '1' } },
         { clear_settings_env: { key: 'ALFRED_CODE_BAR', when_value: 'x', to: 'y' } },
         { off_settings_env: { key: 'ALFRED_CODE_QUX', with: ['ALFRED_CODE_A', 'ALFRED_CODE_B'], when_value: ['5'], to: '0' } },
+        { fold_settings_env: { key: 'ALFRED_CODE_ZED', when_value: '0', into: 'ALFRED_CODE_HOOKS_OFF', entry: 'some-hook:part' } },
         { id: 'file-only', remove: ['a.js'] }
     ] };
     const m = envMigrations(file);
@@ -130,7 +192,8 @@ test('envMigrations translates each entry kind into its flat list', () =>
     assert.deepEqual(m.retired, [['ALFRED_CODE_FOO', null], ['ALFRED_CODE_BAZ', '1']]);
     assert.deepEqual(m.reseed, [['ALFRED_CODE_BAR', 'x', 'y']]);
     assert.deepEqual(m.offWith, [['ALFRED_CODE_QUX', ['ALFRED_CODE_A', 'ALFRED_CODE_B'], ['5'], '0']]);
-    assert.deepEqual(envMigrations(null), { renames: [], retired: [], reseed: [], offWith: [] });
+    assert.deepEqual(m.folds, [['ALFRED_CODE_ZED', 'ALFRED_CODE_HOOKS_OFF', 'some-hook:part', '0']]);
+    assert.deepEqual(envMigrations(null), { renames: [], retired: [], reseed: [], offWith: [], folds: [] });
 });
 
 test('CLAUDE_AUTOCOMPACT_PCT_OVERRIDE is dropped only while it still holds the old stack seed', () =>

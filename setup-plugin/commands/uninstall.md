@@ -26,8 +26,15 @@ worktree), before anything is downloaded:
 
 ## 2. Confirm once
 
-Put ONE AskUserQuestion: 'Uninstall the stack from this project (Recommended)' vs 'Keep it'. The
-question names what goes (the stack's plugin rows and MCP registrations at this project's scope, its
+Put ONE AskUserQuestion:
+
+```ask
+Uninstall the stack from this project? Goes: <what goes>. Stays: <what stays>.
+- 'Uninstall the stack from this project (Recommended)' - the seed removes what its ledger recorded, nothing of the user's
+- 'Keep it' - nothing changes and nothing is downloaded
+```
+
+The question names what goes (the stack's plugin rows and MCP registrations at this project's scope, its
 settings entries, hook wirings and copied files, the stamp) and what stays (anything the user added or
 changed since the stack wrote it, a user-scope plugin row or MCP registration, the data root (the
 docs, the navigation index, the browser profiles - `.alfred/` by default, or a 2.0.0 `.serena/` /

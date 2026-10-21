@@ -30,7 +30,7 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   in two installs, still naming `context7`, ~700-char descriptions on every call). Update now takes such a copy
   over and says so (`taking over a copy the stamp did not record`); `library-check.js` names it `unrecorded`
   before then. The core's SessionStart line
-  (`setup-plugin/hooks/library-stamp.js`) says when the copies
+  (`setup-plugin/hooks/library-stamp.js`, at a startup, a `/clear` and a resume - never a compaction, loading audit 2026-10-21 G12) says when the copies
   are older than the stack - and, for a stamp from before 2.1.0 (no `seats-route:`) under a core at or
   past it, that the skills and seat denies wait for `/alfred-code:update` (the skew window: the core
   updates itself, the copies do not). `ALFRED_CODE_SKILLS_VIA_PLUGIN=false` restores the 0.2.x copy
@@ -38,8 +38,10 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   there, the seats it lists beside the copies are denied the same way.
 
 - `stack/AGENTS.template.md` - the stack-neutral per-project skeleton a consuming project's
-  `AGENTS.md` is filled in from (seeded to `.claude/AGENTS.md`, only when the project has no AGENTS.md or CLAUDE.md; a root
-  AGENTS.md the project owns is checked and improved in place, never overwritten; an unedited `.claude/CLAUDE.md` an
+  `AGENTS.md` is filled in from (seeded to `.claude/AGENTS.md`, only when the project has no AGENTS.md or CLAUDE.md - the root
+  `AGENTS.md` on init's place answer, `--instructions-at root`, which with `claude` also moves an existing AGENTS.md /
+  CLAUDE.md between the two places on init's or configure's ask; the ledger's `AGENTS.md` row is read where the seed sits,
+  `seeds.seededAgentsMdPath`; a root AGENTS.md the project owns is checked and improved in place, never overwritten; an unedited `.claude/CLAUDE.md` an
   earlier release seeded is moved by `update`, an edited one named with its `mv` command; Claude Code reads AGENTS.md
   natively from 2.1.277, and only while no CLAUDE.md or CLAUDE.local.md sits beside or above it). Conventions ship separately in `stack/rules/*-conventions.md`. Its
   authoring outline (Setup and Key files among it) and keep-out list say WHAT an AGENTS.md holds; the
@@ -115,8 +117,9 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   there once it resumes (divergences only: `model: inherit`, no `tools:` allowlist, no auto-delegation
   hard-disable).
 - `stack/rules/` - twenty single-job rules, each a library copy in `.claude/rules/`. Seven always-on `alfred-*.md`
-  (no `paths:`): interaction, quality-gates, security, git (the commit checkpoint itself is the
-  `habits-commit-checkpoint` skill), navigation, docs-root (always `<data root>/docs` since 2.8.0 - `ALFRED_CODE_DOCS_PATH` is retired, a leftover
+  (no `paths:`): interaction, quality-gates, security, preferences (a pointer to the four preferences docs and
+  when each is read - the git lines live in the seeded `GIT-PREFERENCES.md`, the commit checkpoint itself is the
+  `habits-commit-checkpoint` skill; the installer stamps the root over its `__DOCS_ROOT__` too), navigation, docs-root (always `<data root>/docs` since 2.8.0 - `ALFRED_CODE_DOCS_PATH` is retired, a leftover
   read first for the 2.x line and moved and removed by update; the installer stamps the root over `__DOCS_ROOT__` on
   every run),
   memory (what belongs in the shared `memory` MCP, when to save it, and to search before asking or
@@ -129,12 +132,14 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   `convention-rule-first-action` in shared-rules.json, and the load receipt pinned as `convention-rule-load-receipt`
   in the same eleven files (`scripts/rule-prose.test.js` fails a mismatch) - a new one copies both, never paraphrases them.
   The `baseline-` prefix is retired (2.1.6, the user's ruling): the seven shipped rules and the generated
-  `project-*` ones are `alfred-*` (`alfred-git`, `alfred-awareness`, ...), and `baseline-*` names live only in
+  `project-*` ones are `alfred-*` (`alfred-git` - retired 2026-10-21 into `alfred-preferences` -, `alfred-awareness`, ...), and `baseline-*` names live only in
   `retired.rules`, `renamed.rules`, the migration code and its tests, and the `docs/*-evidence.md` history. An update over
   an older install prunes the seven old library copies by the `retired` list (the existing policy: by name, hand-edited
   or not, one `rule pruned (retired upstream)` line each) and writes the new ones - an old copy the stamp holds no hash
   for goes only when its successor is recorded and its text is one the stack shipped (`scripts/install/retired-rules.js`,
-  audit 2026-10-10 C10), so an edited one stays; the disk read-back maps a leftover old
+  audit 2026-10-10 C10), so an edited one stays. A successor renamed since counts as recorded under its older name
+  (`baseline-git` maps to `alfred-preferences`, and a 2.8.0 stamp records `alfred-git`; `renamedRuleClaim`), and with no
+  rule recorded a shipped text goes too, whatever the successor opens with. The disk read-back maps a leftover old
   name to the new one through `renamed.rules` (`selection.renameLines`), so no `not found in the stack source` note. The four generated files
   (`agent-capabilities`, `related-context`, `architecture`, `run-book`) are MOVED with their content kept
   (`selection.moveGeneratedRules`, before the docs-root re-stamp) because their captures never re-run by themselves - a

@@ -24,7 +24,8 @@ test('session start pushes the orientation block and how to read by section', ()
     assert.match(text, /node \.claude\/hooks\/docs\.js where <path>/);
     assert.match(text, /node \.claude\/hooks\/docs\.js show <file>#<id>/);
     assert.match(text, /Before your first change under src\/ or tests\//);
-    assert.strictEqual(r.hook({ hook_event_name: 'SessionStart', session_id: sid() }, { ALFRED_CODE_DOCS_BLOCK: '0' }).stdout, '');
+    assert.strictEqual(r.hook({ hook_event_name: 'SessionStart', session_id: sid() }, { ALFRED_CODE_HOOKS_OFF: 'docs-session:block' }).stdout, '');
+    assert.strictEqual(r.hook({ hook_event_name: 'SessionStart', session_id: sid() }, { ALFRED_CODE_DOCS_BLOCK: '0' }).stdout, '', 'the old key, read for the 2.x line');
   } finally { r.rm(); }
 });
 
@@ -454,12 +455,13 @@ test('the manifest wires docs-session on the two kept navigation edit tools, bot
   }
 });
 
-test('source roots come from watch.json; ALFRED_CODE_DOCS_GATE=0 turns the gate off', () => {
+test('source roots come from watch.json; docs-session:gate in ALFRED_CODE_HOOKS_OFF turns the gate off', () => {
   const r = repo({ files: { 'app/Orders/Refund.cs': 'x\n', 'src/Other.cs': 'x\n' }, docs: { 'references/patterns.md': section('orders', 'app/Orders/**', 'App rule.'), 'watch.json': JSON.stringify({ sourceRoots: ['app'] }) } });
   try {
     assert.ok(denied(r.hook(pre('Edit', { file_path: 'app/Orders/Refund.cs' }, sid()))));
     assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Other.cs' }, sid()))));
-    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'app/Orders/Refund.cs' }, sid()), { ALFRED_CODE_DOCS_GATE: '0' })));
+    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'app/Orders/Refund.cs' }, sid()), { ALFRED_CODE_HOOKS_OFF: 'docs-session:gate' })));
+    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'app/Orders/Refund.cs' }, sid()), { ALFRED_CODE_DOCS_GATE: '0' })), 'the old key, read for the 2.x line');
   } finally { r.rm(); }
 });
 
@@ -580,7 +582,8 @@ test('no hit, stop_hook_active, the ask switched off, or no watch.json: silent',
     // sibling caused is judged (it never asked before) - and the ask still comes once per session.
     assert.match(r.hook(stopEv(b, true)).stdout, /"decision":"block"/, 'a continuation a sibling Stop hook caused is judged');
     assert.strictEqual(r.hook(stopEv(b, true)).stdout, '', 'its own continuation is silent');
-    assert.strictEqual(r.hook(stopEv(b), { ALFRED_CODE_DOCS_ASK: '0' }).stdout, '', 'switched off');
+    assert.strictEqual(r.hook(stopEv(b), { ALFRED_CODE_HOOKS_OFF: 'docs-session:ask' }).stdout, '', 'switched off');
+    assert.strictEqual(r.hook(stopEv(b), { ALFRED_CODE_DOCS_ASK: '0' }).stdout, '', 'the old key, read for the 2.x line');
     fs.rmSync(`${r.root}/.claude/docs/architecture/watch.json`);
     const c = sid(); start(r, c);
     r.write('src/Api/Program.cs', 'z\n');
@@ -1837,20 +1840,26 @@ test('audit 2026-10-10 C03 C23: a word-only hit is named as a candidate, never p
   } finally { r.rm(); }
 });
 
-test('audit 2026-10-10 C23: a covering section is the documented context; a covering code-style section is preferred and is the convention', () => {
+test('audit 2026-10-10 C23: a covering section is the documented context; a preferences section is preferences-session\'s to hand over (2026-10-21)', () => {
   const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
   try {
     const plain = r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, sid()));
     assert.match(plain.stdout, /patterns#orders covers src\/Api\/Orders\/Refund\.cs - here it is/);
     assert.match(plain.stdout, /That is the documented context for this path\. Now make the change\./);
     assert.doesNotMatch(plain.stdout, /convention this change follows/);
-    r.write('.claude/docs/code-style/watch.json', '{}\n');
-    r.write('.claude/docs/code-style/csharp.md', section('handlers', 'src/Api/Orders/**', 'A handler returns a Result, never throws for a business rule, and stays under forty lines of body text.'));
-    const styled = r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, sid()));
-    assert.match(styled.stdout, /csharp#handlers covers src\/Api\/Orders\/Refund\.cs - here it is/, 'the code-style section is the one pasted');
-    assert.match(styled.stdout, /Also covering it: patterns#orders/);
-    assert.match(styled.stdout, /That is the convention this change follows\./);
+    r.write('.claude/docs/preferences/watch.json', '{}\n');
+    r.write('.claude/docs/preferences/PROJECT-CODE-PREFERENCES.md', section('handlers', 'src/Api/Orders/**', 'A handler returns a Result, never throws for a business rule, and stays under forty lines of body text.'));
+    const both = r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, sid()));
+    assert.match(both.stdout, /patterns#orders covers src\/Api\/Orders\/Refund\.cs - here it is/, 'the architecture section is still the one pasted');
+    assert.doesNotMatch(both.stdout, /A handler returns a Result/, 'the preferences section is not pasted here');
+    assert.doesNotMatch(both.stdout, /PROJECT-CODE-PREFERENCES#handlers/, 'nor named');
   } finally { r.rm(); }
+  const only = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' } });
+  try {
+    only.write('.claude/docs/preferences/watch.json', JSON.stringify({ sourceRoots: ['src'] }));
+    only.write('.claude/docs/preferences/PROJECT-CODE-PREFERENCES.md', section('handlers', 'src/Api/Orders/**', 'A handler returns a Result.'));
+    assert.ok(!denied(only.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, sid()))), 'preferences docs alone: no docs hold');
+  } finally { only.rm(); }
 });
 
 test('audit 2026-10-10 C23: a section naming the changed file verbatim is asked about first; a near spelling is not', () => {
@@ -2371,4 +2380,58 @@ test('S3: a stamp written while the last question timed out is denied; a delete,
     fs.rmSync(marker, { force: true });
     assert.ok(!denied(write('APPROVED 1 - "build it"\n')), 'once the next answer clears the marker, the stamp is written');
   } finally { r.rm(); fs.rmSync(logs, { recursive: true, force: true }); }
+});
+
+// ---- audit 2026-10-21 (preferences.md PF-8, loading.md G1 / G4 / G8) ----------------------------------------------
+const PREFS_DOC = '# Personal preferences\n\nUpdated: 2026-10-21\n\n## P1 - Short\n<!-- id: p1 -->\n- Rule: be short.\n';
+const prefsRepo = () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS, 'ORIENTATION.md': ORIENT } });
+  r.write('.claude/docs/preferences/PERSONAL-PREFERENCES.md', PREFS_DOC);
+  r.write('.claude/docs/preferences/watch.json', '{}\n');
+  return r;
+};
+const editRefund = (s, extra = {}) => ({ ...pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s), ...extra });
+
+test('PF-8: reading a preferences doc earns no credit with the docs gate', () => {
+  const r = prefsRepo();
+  try {
+    const s = sid();
+    r.hook(pre('Read', { file_path: '.claude/docs/preferences/PERSONAL-PREFERENCES.md' }, s));
+    r.hook(pre('Bash', { command: 'node .claude/hooks/docs.js show PERSONAL-PREFERENCES#p1' }, s));
+    assert.ok(denied(r.hook(editRefund(s))), 'the preferences are preferences-session\'s to hand over');
+    const t = sid();
+    r.hook(pre('Read', { file_path: '.claude/docs/architecture/references/patterns.md' }, t));
+    assert.ok(!denied(r.hook(editRefund(t))), 'an architecture read still counts');
+  } finally { r.rm(); }
+});
+
+test('G1: a seat\'s edit in .claude/worktrees/<n> is judged as the project path it mirrors', () => {
+  const r = prefsRepo();
+  try {
+    const out = r.hook(pre('Edit', { file_path: `${r.root}/.claude/worktrees/agent-1/src/Api/Orders/Refund.cs` }, sid()));
+    assert.ok(denied(out), out.stdout);
+    assert.match(out.stdout, /Refunds are ledgered before the payment call/);
+  } finally { r.rm(); }
+});
+
+test('G4: the gate is per actor, and a compaction re-arms the actor it summarized', () => {
+  const r = prefsRepo();
+  try {
+    const s = sid();
+    r.hook({ ...pre('Read', { file_path: '.claude/docs/architecture/references/patterns.md' }, s), agent_id: 'a1', agent_type: 'dotnet-implementer' });
+    assert.ok(denied(r.hook(editRefund(s))), 'a seat\'s read never reached the main context');
+    const t = sid();
+    r.hook(pre('Read', { file_path: '.claude/docs/architecture/references/patterns.md' }, t));
+    assert.ok(denied(r.hook(editRefund(t, { agent_id: 'a2', agent_type: 'dotnet-implementer' }))), 'nor main\'s the seat\'s');
+    assert.ok(!denied(r.hook(editRefund(t))), 'main read it');
+    r.hook({ hook_event_name: 'SessionStart', session_id: t, source: 'compact' });
+    assert.ok(denied(r.hook(editRefund(t))), 'the summary dropped the section: held again');
+  } finally { r.rm(); }
+});
+
+test('G8: a seat\'s start block names conflict markers too', () => {
+  const r = repo({ tracked: true, docs: { 'references/patterns.md': `${PATTERNS}\n<<<<<<< HEAD\nA.\n=======\nB.\n>>>>>>> feat\n`, 'ORIENTATION.md': ORIENT } });
+  try {
+    assert.match(ctx(r.hook({ hook_event_name: 'SubagentStart', session_id: sid(), agent_id: 'a9', agent_type: 'dotnet-implementer' })), /The docs need a repair before they are trusted: merge conflict markers/);
+  } finally { r.rm(); }
 });

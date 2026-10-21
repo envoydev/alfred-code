@@ -28,7 +28,7 @@ const manifestRows = () => JSON.parse(read('meta/stack-manifest.json')).hooks;
 
 test('I1: CLAUDE.md names the Monitor route and the widened dispatcher matcher', () => {
   const text = claude();
-  assert.match(text, /The nine guards with a\s+`Bash\|PowerShell\|Monitor` row are wired as ONE hook/);
+  assert.match(text, /The ten guards with a\s+`Bash\|PowerShell\|Monitor` row are wired as ONE hook/);
   assert.doesNotMatch(text, /The eight guards with a\s+`Bash\|PowerShell` row/);
   for (const row of manifestRows().filter((r) => !r.matcher.startsWith('@') && /(^|\|)Bash(\||$)/.test(r.matcher)))
     assert.strictEqual(row.matcher, 'Bash|PowerShell|Monitor', `${row.file}: every shell row names Monitor`);
@@ -65,12 +65,20 @@ test('I10: the desktop gate is one wired hook, counted everywhere the hooks are 
     assert.ok(re.test(name), name);
   for (const name of ['mcp__plugin_windows-control_windows-control__Click', 'mcp__plugin_macos-control_macos-control__App', `mcp__${'windows-control'}__AppX`])
     assert.ok(!re.test(name), `${name} is not matched`);
-  assert.match(claude(), /`stack\/hooks\/` - seventeen hooks/);
-  assert.match(claude(), /all seventeen, generated from the manifest's `hooks\[\]`/);
+  assert.match(claude(), /`stack\/hooks\/` - eighteen hooks/);
+  assert.match(claude(), /all eighteen, generated from the manifest's `hooks\[\]`/);
   assert.match(claude(), /`guard-desktop-exec\.js` \(PreToolUse on the desktop servers' two process launchers/);
-  assert.doesNotMatch(read('README.md'), /eighteen/);
-  assert.doesNotMatch(read('docs/install-footprint.md'), /eighteen/);
-  assert.doesNotMatch(read('setup-plugin/references/walk.md'), /all eighteen|monitor-session/);
+  assert.doesNotMatch(read('README.md'), /seventeen/);
+  assert.doesNotMatch(read('docs/install-footprint.md'), /seventeen/);
+  // The walk's own count follows the manifest's hook files (hooks track H6, 2026-10-21: the pin forbade 'all eighteen'
+  // from the days eighteen was stale, and preferences-session made it right again).
+  const words = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',
+    'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty', 'twenty-one', 'twenty-two'];
+  const walk = read('setup-plugin/references/walk.md');
+  const counted = [...walk.matchAll(/\ball ([a-z-]+teen|[a-z]+ty(?:-[a-z]+)?)\b/g)].map((m) => m[1]);
+  assert.ok(counted.length, 'the walk counts its hooks');
+  assert.deepStrictEqual([...new Set(counted)], [words[new Set(manifestRows().map((r) => r.file)).size]]);
+  assert.doesNotMatch(walk, /monitor-session/);
 });
 
 test('I12: CLAUDE.md names the two kept navigation edit tools on docs-session and check-turn-build', () => {

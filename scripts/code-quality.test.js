@@ -156,9 +156,9 @@ test('the capture writes only quality/CODE-ASSESSMENT.md, fresh every run, and O
     assert.match(b, /no `watch\.json`/);
     assert.match(b, /code-quality-analyzer/, 'the seat it fans out');
     assert.match(b, /`<docs-path>\/quality\/loops\/`/, 'rule source: the numbered prompts');
-    assert.match(b, /`<docs-path>\/code-style\/CODE-STYLE\.md`/, 'rule source: the recorded style');
+    assert.match(b, /`<docs-path>\/preferences\/PROJECT-CODE-PREFERENCES\.md`/, 'rule source: the recorded style');
     assert.match(b, /convention rules/, 'rule source: the stack convention rules');
-    assert.match(b, /No `loops\/` folder[^.]*: say so[^.]*judge against the other sources alone \(`CODE-PREFERENCES\.md`, `CODE-STYLE\.md`, the convention rules\)/, 'the fallback is said, not silent, and keeps the preferences');
+    assert.match(b, /No `loops\/` folder[^.]*: say so[^.]*judge against the other sources alone \(`PERSONAL-CODE-PREFERENCES\.md`, `PROJECT-CODE-PREFERENCES\.md`, the convention rules\)/, 'the fallback is said, not silent, and keeps the preferences');
     // Skill audit 2026-10-20b P3: an ARCHITECTURE-PREFERENCES breach is the architecture-quality capture's - one fact, one doc.
     assert.match(b, /check --all --area code` once/);
     assert.match(b, /An `ARCHITECTURE-PREFERENCES\.md` entry is the architecture-quality capture's to record: one a seat meets is a `handoff:` line here/);
@@ -178,7 +178,7 @@ test('the capture writes only quality/CODE-ASSESSMENT.md, fresh every run, and O
     assert.match(b, /\*\*Reads decisions, never writes them - hard rule\.\*\*/);
     // No rule source at all: stop, write nothing - a doc judged against nothing reads as clean code.
     assert.match(b, /\*\*No rule source at all - stop\.\*\*[^*]*writing nothing/);
-    assert.match(b, /No rule source at all - stop\.\*\*[^*]*`\/capture-preferences`[^*]*`\/capture-code-style`[^*]*`\/loop-code-quality`/, 'and names the three ways to get rules, all slash-typed');
+    assert.match(b, /No rule source at all - stop\.\*\*[^*]*`\/capture-preferences`[^*]*`\/capture-project-code-style`[^*]*`\/loop-code-quality`/, 'and names the three ways to get rules, all slash-typed');
     // A remediation is checked against the OTHER handed rules, or the loop oscillates between them.
     const judge = squash(raw.slice(raw.indexOf('### 3. JUDGE'), raw.indexOf('### 4. RE-GATHER')));
     assert.match(judge, /Cross-check every Must-fix remediation against the other rules/);
@@ -186,7 +186,7 @@ test('the capture writes only quality/CODE-ASSESSMENT.md, fresh every run, and O
     // The neighbours with their destinations live in the body's When to use (the 160-char description cannot hold them).
     const whenToUse = raw.slice(raw.indexOf('## When to use'), raw.indexOf('## Execution modes'));
     assert.ok(whenToUse.length > 0, 'the body has a When to use section before Execution modes');
-    for (const dest of ['/loop-code-quality', 'capture-architecture-quality', 'capture-code-style', '/security-review', 'task-verify-code'])
+    for (const dest of ['/loop-code-quality', 'capture-architecture-quality', 'capture-project-code-style', '/security-review', 'task-verify-code'])
         assert.ok(whenToUse.includes(dest), `Not for ... (${dest})`);
     assert.ok(read('stack/skills/capture-architecture-quality/SKILL.md').split('\n')[2].includes('(capture-code-quality)'),
         'the architecture-quality capture sends code quality to its new neighbour');

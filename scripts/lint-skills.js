@@ -97,7 +97,7 @@ const NON_SKILL_TOKENS = new Set([
     'user-run',
     // the old bare mode word the task, capture and loop skills name as starting nothing (`/loop-code-quality --auto-mode` is the flag) - not a skill.
     'auto-mode',
-    // the commit-gate hook, referenced by name from alfred-git.md and task-verify-code - a hook, not a skill.
+    // the commit-gate hook, referenced by name from the git preferences seed and task-verify-code - a hook, not a skill.
     'guard-ungated-commit',
     // the env-gated usage instrument, named by the usage analyzer as the thing to switch on - a hook, not a skill.
     'instrument-tool-usage',
@@ -1213,23 +1213,40 @@ const ASK_FLOW_SKILLS = Object.keys(ASK_FLOW_TEMPLATES);
 // per-row change to typing). Pinned per file like the flow skills, so a layer ask dropped back to prose goes red.
 const SETUP_ASK_TEMPLATES = {
     // +1: the mobile-control ask (2026-10-13).
-    'setup-plugin/references/walk.md': 13,
+    // +1: the plugin settings ask (audit 2026-10-21 commands T2-12).
+    'setup-plugin/references/walk.md': 14,
     // +1: screen B's compact-or-fresh-session ask (2026-10-14). The install phase of /alfred-code:init since setup merged
     // into it (2026-10-17).
-    'setup-plugin/references/init-install.md': 3,
+    // +7: screen A's scope, root, profile and GitHub CLI asks, step 2's permission mode, step 10's blockers and the
+    // git-hygiene ask (audit 2026-10-21 commands T2-12).
+    'setup-plugin/references/init-install.md': 10,
+    // the instruction files' place, one template per `instructions:` case - read by init's step 1 and configure's step 12
+    // (2026-10-21).
+    'setup-plugin/references/instructions-place.md': 3,
     // the legacy-unstamped ask: update this install or install from scratch (2026-10-17).
     'setup-plugin/commands/init.md': 1,
-    // +2: step 1's closing ask, one template per case (audit 2026-10-11, session a9e06780).
-    'setup-plugin/commands/configure.md': 6,
+    // +2: step 1's closing ask, one template per case (audit 2026-10-11, session a9e06780). +1: step 7's memory level,
+    // its table inline (audit 2026-10-21 commands T2-04: it pointed at init's table, which configure never loads).
+    // +3: step 2's areas, step 10's permission mode and step 11's pins (audit 2026-10-21 commands T2-12).
+    'setup-plugin/commands/configure.md': 10,
     // audit 2026-10-11: update's three asks plus step 6's re-spell of the project's own AGENTS.md (session b3f8193f).
     // Audit 2026-10-20 C15: update.md is a router, so a gate-refused run carries none of them - the data-root and
     // instruction-file asks ride the walk (steps 1-3), the re-spell and git-hygiene asks the close (steps 6-8).
     'setup-plugin/commands/update.md': 0,
     // +1: the hand-set docs root ask (the user's answer of 2026-10-20).
-    'setup-plugin/references/update-walk.md': 3,
+    // +2: the new-items ask, one template per case (audit 2026-10-21 commands T2-12).
+    'setup-plugin/references/update-walk.md': 5,
     'setup-plugin/references/update-close.md': 2,
-    // validate's AGENTS.md check ask, 'Leave them' recommended and first (audit 2026-10-11, session 6288ad94).
-    'setup-plugin/commands/validate.md': 1,
+    // audit 2026-10-21 commands T2-12: the prune confirm and the guard-hook adoption ask; uninstall's confirm; status's
+    // area pick; init's machine-install ask.
+    'setup-plugin/references/update-slow-path.md': 2,
+    'setup-plugin/commands/uninstall.md': 1,
+    'setup-plugin/commands/status.md': 1,
+    'setup-plugin/references/init-bootstrap.md': 1,
+    // validate's AGENTS.md check ask, 'Leave them' recommended and first (audit 2026-10-11, session 6288ad94). +2: step 2's
+    // detection confirm and its dispute follow-up, which was asked in plain text (audit 2026-10-21 commands T2-08).
+    // +3: the layer and environment consent rounds and the install audit's high-row ask (T2-12).
+    'setup-plugin/commands/validate.md': 6,
 };
 // The setup-plugin files that carry ask templates, read from `root` (the repo, or a fixture).
 function setupAskFiles(root, fsLike = fs)

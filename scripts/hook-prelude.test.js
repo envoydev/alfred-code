@@ -8,7 +8,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const PRELUDE = path.join(__dirname, '..', 'stack', 'hooks', 'hook-prelude.js');
-const { hookDisabled, yieldToCopiedTwin, standDown, neverSetUp, checkoutsOf, cursorHost, cursorStandDown, PROTECTIVE: PROTECTIVE_SET } = require(PRELUDE);
+const { hookDisabled, partOff, PART_SWITCHES, yieldToCopiedTwin, standDown, neverSetUp, checkoutsOf, cursorHost, cursorStandDown, PROTECTIVE: PROTECTIVE_SET } = require(PRELUDE);
 const { spawnSync, execFileSync } = require('node:child_process');
 const { coreEntry } = require('./build-marketplace.js');
 
@@ -33,6 +33,25 @@ test('ALFRED_CODE_HOOKS_OFF names hooks exactly, with or without the .js suffix'
     assert.strictEqual(hookDisabled('guard-secret', env), false, 'a prefix is NOT a match');
     assert.strictEqual(hookDisabled('guard-secret-value-extra', env), false);
     assert.strictEqual(hookDisabled('guard-stop-contract', env), false);
+});
+
+// The env audit of 2026-10-21: a hook's PART is switched off as `<hook>:<part>` in the same csv. The old per-part key at
+// `0` still turns it off for the 2.x line - an update folds it into the csv, and a plugin update can land first.
+test('partOff reads <hook>:<part> from ALFRED_CODE_HOOKS_OFF, exactly, and the old key at 0', () => {
+    const on = (env) => partOff('docs-session', 'gate', env);
+    assert.strictEqual(on({ ALFRED_CODE_HOOKS_OFF: 'docs-session:gate' }), true);
+    assert.strictEqual(on({ ALFRED_CODE_HOOKS_OFF: 'guard-answer, Docs-Session.js:GATE ' }), true, 'case, space and .js are not a way to miss');
+    assert.strictEqual(on({ ALFRED_CODE_HOOKS_OFF: 'docs-session:ga' }), false, 'a prefix is NOT a match');
+    assert.strictEqual(on({ ALFRED_CODE_HOOKS_OFF: 'docs-session:block' }), false, 'another part');
+    assert.strictEqual(on({ ALFRED_CODE_HOOKS_OFF: 'other-hook:gate' }), false, 'another hook');
+    assert.strictEqual(on({ ALFRED_CODE_DOCS_GATE: '0' }), true, 'the old key at 0, read for the 2.x line');
+    assert.strictEqual(on({ ALFRED_CODE_DOCS_GATE: '1' }), false);
+    for (const value of [undefined, '', ' , '])
+        assert.strictEqual(on({ ALFRED_CODE_HOOKS_OFF: value }), false, `HOOKS_OFF ${JSON.stringify(value)}`);
+    assert.strictEqual(hookDisabled('docs-session', { ALFRED_CODE_HOOKS_OFF: 'docs-session:gate' }), false, 'a part entry never switches the whole hook off');
+    assert.deepStrictEqual(Object.keys(PART_SWITCHES).sort(), ['docs-session:ask', 'docs-session:block', 'docs-session:gate',
+        'guard-stop-contract:done', 'guard-stop-contract:rotate', 'guard-ungated-commit:push']);
+    assert.strictEqual(PART_SWITCHES['guard-ungated-commit:push'], 'PUSH_GATE');
 });
 
 test('an empty, absent or junk ALFRED_CODE_HOOKS_OFF disables nothing', () => {
@@ -237,7 +256,10 @@ test('every hook points at the prelude header for its gates instead of listing t
     {
         const text = fs.readFileSync(path.join(dir, file), 'utf8');
         assert.match(text, /STACK HOOK GATES - they live in hook-prelude\.js, whose header lists them/, file);
-        assert.doesNotMatch(text, /both live in hook-prelude|migration window|ALFRED_CODE_HOOKS_OFF/, `${file} lists the gates itself`);
+        // A part's own switch is named where the hook says how to turn that part off (`<hook>:<part> in
+        // ALFRED_CODE_HOOKS_OFF`, hook-prelude.js partOff) - that is no gate list, so the phrase is taken out first.
+        const own = text.replace(/`?[\w<>-]+:[\w<>]+`? in ALFRED_CODE_HOOKS_OFF/g, '');
+        assert.doesNotMatch(own, /both live in hook-prelude|migration window|ALFRED_CODE_HOOKS_OFF/, `${file} lists the gates itself`);
     }
 });
 

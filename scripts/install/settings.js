@@ -363,6 +363,43 @@ function offWithTiers(env, migrations, log, label, { only = () => true, stackWro
     return changed;
 }
 
+// Step 1b, after the renames: a retired on/off key folds into a csv (`fold_settings_env` - the env audit of 2026-10-21 moved
+// seven switches into ALFRED_CODE_HOOKS_OFF as `<hook>:<part>` or a hook name). At its off value it becomes the entry, at
+// any other it was the seed's 'on' and just goes. The csv is made where it is missing, from `baseCsv` (the value beneath an
+// overlay) when given; `alsoInto` is an overlay csv that shadows this file's, which must carry the entry too.
+const csvEntryKey = (entry) => { const at = entry.indexOf(':'); const hook = (at > 0 ? entry.slice(0, at) : entry).trim().toLowerCase().replace(/\.js$/, ''); return at > 0 ? `${hook}:${entry.slice(at + 1).trim().toLowerCase()}` : hook; };
+function addCsvEntry(csv, entry)
+{
+    const items = String(csv || '').split(',').map((x) => x.trim()).filter(Boolean);
+    if (items.some((x) => csvEntryKey(x) === csvEntryKey(entry))) return csv;
+    return [...items, entry].join(',');
+}
+function foldEnv(env, migrations, log, label, { baseCsv = null, alsoInto = null, alsoLabel = '' } = {})
+{
+    let changed = false;
+    for (const [key, into, entry, offValue] of migrations.folds || [])
+    {
+        if (!Object.hasOwn(env, key)) continue;
+        const was = String(env[key]).trim();
+        delete env[key];
+        changed = true;
+        if (was !== offValue)
+        {
+            log(`  ${label} env: ${key} removed (on - ${entry.includes(':') ? 'the part' : 'the hook'} runs unless ${into} names ${entry})`);
+            continue;
+        }
+        const now = addCsvEntry(Object.hasOwn(env, into) ? env[into] : (baseCsv || ''), entry);
+        if (now !== env[into]) env[into] = now;
+        log(`  ${label} env: ${key} folded into ${into} as ${entry}`);
+        if (alsoInto && Object.hasOwn(alsoInto, into))
+        {
+            const there = addCsvEntry(alsoInto[into], entry);
+            if (there !== alsoInto[into]) { alsoInto[into] = there; log(`  ${alsoLabel} env: ${into} carries ${entry} too (it shadows ${label}'s)`); }
+        }
+    }
+    return changed;
+}
+
 // `inherited` (N6): the env of a file Claude Code lays THIS file over - settings.json beneath a
 // local-scope run's settings.local.json. A key it holds, under any spelling the renames carry, counts as
 // present for every absent-only seed below: a default here would hide the user's value there. Renames,
@@ -386,6 +423,7 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
     if (held)
     {
         renameEnv(held, migrations, log, overlayLabel);
+        foldEnv(held, migrations, log, overlayLabel, { baseCsv: env.ALFRED_CODE_HOOKS_OFF ?? beneath.ALFRED_CODE_HOOKS_OFF ?? '' });
         offWithTiers(held, migrations, log, overlayLabel, { only: isStackKey, stackWrote });
         retireAndReseed(held, migrations, log, overlayLabel, isStackKey, stackWrote);
     }
@@ -394,6 +432,7 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
     // Where a decision about `key` lands: the overlay when it holds the key, else this file.
     const at = (key) => (heldHere(key) ? { into: held, lab: overlayLabel, mine: false } : { into: env, lab: label, mine: true });
 
+    if (foldEnv(env, migrations, log, label, { alsoInto: held, alsoLabel: overlayLabel })) changed = true;
     if (offWithTiers(env, migrations, log, label, { stackWrote, absentOk: (key) => !present(key) && !(held && key in held) })) changed = true;
     if (retireAndReseed(env, migrations, log, label, undefined, stackWrote)) changed = true;
 
@@ -483,11 +522,13 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
     }
 
     // ALFRED_CODE_HOOKS_OFF: a walk that answered the hooks layer THIS run wins over the stored
-    // value - the one exception to absent-only, because the user is looking at the question.
-    const off = (hooksOff || []).join(',');
+    // value - the one exception to absent-only, because the user is looking at the question. The walk answers HOOKS, so a
+    // stored `<hook>:<part>` entry (a part switched off, hook-prelude.js partOff) is no part of its answer and is kept.
     if (hooksAnswered)
     {
         const { into, lab, mine } = at('ALFRED_CODE_HOOKS_OFF');
+        const parts = String(into.ALFRED_CODE_HOOKS_OFF || '').split(',').map((x) => x.trim()).filter((x) => x.indexOf(':') > 0);
+        const off = parts.reduce(addCsvEntry, (hooksOff || []).join(','));
         if (into.ALFRED_CODE_HOOKS_OFF !== off)
         { into.ALFRED_CODE_HOOKS_OFF = off; if (mine) changed = true; log(`  ${lab} env: ALFRED_CODE_HOOKS_OFF = ${off || '(empty - every hook runs)'}`); }
     }
@@ -688,7 +729,19 @@ function writeSettings(opts)
         if (recorded && !heldTools.has(toolKey(rule))) { declinedDeny.push(rule); continue; }
         deny.push(rule); changed = true; addedTools.push(rule);
     }
-    if (addedTools.length) log(`  ${label}: denied ${addedTools.length} memory server tool(s) the stack never calls (${addedTools.map((r) => r.replace(/^.*__/, '')).join(', ')}) - out of every session's context; take one out of permissions.deny to use it, and it stays out`);
+    // A browser engine's row (`<engine>-control` or its `browser-<engine>` alias) is named per tool and engine; the rest
+    // are the memory server's.
+    const engineRow = (rule) => /^mcp__(?:([a-z]+)-control|browser-([a-z]+))__(browser_\w+)$/.exec(toolKey(rule));
+    const memoryAdded = addedTools.filter((r) => !engineRow(r));
+    if (memoryAdded.length) log(`  ${label}: denied ${memoryAdded.length} memory server tool(s) the stack never calls (${memoryAdded.map((r) => r.replace(/^.*__/, '')).join(', ')}) - out of every session's context; take one out of permissions.deny to use it, and it stays out`);
+    const browserAdded = new Map();
+    for (const m of addedTools.map(engineRow).filter(Boolean))
+    {
+        const engines = browserAdded.get(m[3]) || new Set();
+        browserAdded.set(m[3], engines.add(m[1] || m[2]));
+    }
+    for (const [tool, engines] of browserAdded)
+        log(`  ${label}: denied ${tool} on ${[...engines].join(', ')} - it runs any code in the browser process; take it out of permissions.deny to use it, and it stays out`);
     // I1 (fix round 1): the pass below also runs over settings.local.json's deny list - a seat the
     // user switched off for themselves is re-spelled THERE, never moved into the shared file.
     const respellSeats = (list, lab) =>
@@ -791,7 +844,7 @@ function writeSettings(opts)
         }
     }
 
-    // alfred-git forbids AI attribution; the `attribution` setting enforces it. Key by key and add-only:
+    // The git preferences forbid AI attribution; the `attribution` setting enforces it. Key by key and add-only:
     // a value the project set stays, and at local scope a settings.json value is never hidden by a seed.
     const attrBefore = plain(data.attribution) ? Object.keys(data.attribution) : [];
     if (attribution && (data.attribution === undefined || (data.attribution && typeof data.attribution === 'object' && !Array.isArray(data.attribution))))

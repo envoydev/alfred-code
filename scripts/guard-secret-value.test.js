@@ -2569,6 +2569,13 @@ test('browser_file_upload: a credential file or the sensitive-data store is refu
     assert.ok(re.test(`mcp__${engine}-control__browser_file_upload`), `${engine} (copy route)`); // mcp-fixture
   }
   assert.ok(!re.test(`mcp__plugin_chrome-control_chrome-control__browser_file_upload${'_x'}`), 'anchored at the end');
+  // mcps track T1-1: a retired 2.4.0 alias runs the same server under its old name, and the guard holds it there too.
+  for (const engine of ['chrome', 'msedge', 'firefox', 'webkit']) {
+    const alias = `browser-${engine}`;
+    assert.ok(re.test(`mcp__plugin_${alias}_${alias}__browser_file_upload`), `${alias}: the manifest wires it`);
+    assert.strictEqual(upload(`mcp__plugin_${alias}_${alias}__browser_file_upload`, [env]).status, 2, `${alias}: the guard holds it`);
+    assert.strictEqual(upload(`mcp__${alias}__browser_file_upload`, [env]).status, 2, `${alias} (copy route)`); // mcp-fixture
+  }
 });
 
 // hooks review 2026-10-16: a comparison of two credential files kept only the first, so `cmp -s A B && echo SAME || echo
@@ -2782,4 +2789,23 @@ test('guard-secret-value: node "$G" --presence passes when $G only locates the g
   // the garbled hint (audit 2026-10-20): it says where a value a .mcp.json expands belongs
   const r = run({ tool_name: 'Read', tool_input: { file_path: f.dotenv }, session_id: 'suite' });
   assert.match(r.stderr, /a value a \.mcp\.json\s+expands \(`\$\{NAME\}`\) belongs in the ACCOUNT settings file/);
+});
+
+// audit 2026-10-21 H5: a stage's trailing-paren match was `/(?:\s*\))+\s*$/`, which retries every start inside a run of
+// spaces - 3,970 ms for 80,000 spaces in one jq argument, the Windows VM's miss of the 5,000 ms bound above. Anchored at
+// a run boundary the match is the same and linear; heredocReader charges the line it reads, like the read guard's twin.
+test('guard-secret-value: a long run of spaces in one stage is judged in bounded time, and a line of heredocs is charged (audit 2026-10-21 H5)', () => {
+  const meter = path.join(TMP, 'judge-work-h5.js');
+  fs.writeFileSync(meter, "process.on('exit', () => { if (global.JUDGE_WORK) require('fs').writeSync(2, `\\nJUDGE_WORK ${global.JUDGE_WORK.used} ${global.JUDGE_WORK.max}\\n`); });\n");
+  const once = (command) => {
+    const t = process.hrtime.bigint();
+    const r = spawnSync(process.execPath, ['-r', meter, HOOK], { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, session_id: 'h5' }), encoding: 'utf8' });
+    return { ms: Number(process.hrtime.bigint() - t) / 1e6, verdict: verdict(r), work: Number((/JUDGE_WORK (\d+)/.exec(r.stderr) || [])[1]) };
+  };
+  const spaces = once(`printf '%s' '{"k": [${' '.repeat(80000)}]}' | jq .`);
+  assert.ok(spaces.ms < 1500, `80,000 spaces judged in ${Math.round(spaces.ms)}ms`);
+  assert.equal(spaces.verdict, 0, 'a print of a literal passes');
+  const docs = once(`cat ${'<<E '.repeat(10000)}\n${'E\n'.repeat(10000)}`);
+  assert.ok(docs.work > 40000, `the heredoc lines read are charged (${docs.work})`);
+  assert.ok(docs.ms < 1500, `a line of 10,000 heredocs judged in ${Math.round(docs.ms)}ms`);
 });

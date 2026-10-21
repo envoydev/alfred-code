@@ -16,7 +16,7 @@ const squash = (s) => s.replace(/\s+/g, ' ');
 
 const ROUTE_FILES = [
     'stack/skills/capture-awareness/references/project.md',
-    'stack/skills/capture-code-style/references/doc-shape.md',
+    'stack/skills/capture-project-code-style/references/doc-shape.md',
     'stack/skills/capture-awareness/references/related-projects.md',
 ];
 
@@ -109,9 +109,9 @@ test('audit 2026-10-08: each capture close is a literal template with its post-w
     for (const ref of ['project', 'related-projects'])
         assert.ok(squash(read(`stack/skills/capture-awareness/references/${ref}.md`)).includes('node .claude/hooks/docs.js lint awareness'), `${ref} lints the awareness domain`);
     assert.ok(!aware.includes('Verify before reporting:'), 'the prose close is gone');
-    const style = read('stack/skills/capture-code-style/SKILL.md');
+    const style = read('stack/skills/capture-project-code-style/SKILL.md');
     assert.match(style, /^Verify: +</m, 'code-style close carries Verify:');
-    assert.ok(squash(style).includes('`node .claude/hooks/docs.js lint code-style`'), 'code-style lints its domain');
+    assert.ok(squash(style).includes('`node .claude/hooks/docs.js lint preferences`'), 'code-style lints its domain');
     const aq = read('stack/skills/capture-architecture-quality/SKILL.md');
     assert.ok(aq.includes('| `Ceilings:` |'), 'the Known-ceilings flag has a receipt field');
     const look = read('stack/skills/capture-first-look/SKILL.md');
@@ -172,8 +172,8 @@ test('audit 2026-10-08: capture-architecture keeps its anecdotes in the evidence
 // e1b790fe fixed the related-projects capture; the same wording now covers the other three.
 test('audit 2026-10-14 SKC01: no capture loads markdown-style for its docs-root doc', () => {
     const files = [
-        'stack/skills/capture-code-style/SKILL.md',
-        'stack/skills/capture-code-style/references/doc-shape.md',
+        'stack/skills/capture-project-code-style/SKILL.md',
+        'stack/skills/capture-project-code-style/references/doc-shape.md',
         'stack/skills/capture-architecture/SKILL.md',
         'stack/skills/capture-architecture/references/doc-shapes.md',
         'stack/skills/capture-test-coverage/SKILL.md',
@@ -181,8 +181,8 @@ test('audit 2026-10-14 SKC01: no capture loads markdown-style for its docs-root 
     ];
     for (const rel of files)
         assert.doesNotMatch(read(rel), /markdown-style/, `${rel}: names markdown-style for a docs-root doc`);
-    assert.ok(squash(read('stack/skills/capture-code-style/SKILL.md')).includes('no formatting skill loads for it (the docs root belongs to the skill that writes it)'),
-        'capture-code-style states why no formatting skill loads');
+    assert.ok(squash(read('stack/skills/capture-project-code-style/SKILL.md')).includes('no formatting skill loads for it (the docs root belongs to the skill that writes it)'),
+        'capture-project-code-style states why no formatting skill loads');
     assert.ok(read('stack/skills/capture-architecture/references/doc-shapes.md').includes('Load `docs-as-code` before writing'), 'the diagram load stays');
 });
 

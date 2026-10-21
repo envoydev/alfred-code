@@ -15,5 +15,5 @@ directory, so an ordinary repo never sees the ask.
 
 `guard-ungated-commit` enforces the publish half too. A push that publishes nothing - a dry run, or a branch
 already level with its upstream - is never gated, and a repo whose remote is already gated by branch
-protection or a required review turns the half off for good with `ALFRED_CODE_PUSH_GATE=0` in the
+protection or a required review turns the half off for good with `guard-ungated-commit:push` in `ALFRED_CODE_HOOKS_OFF` in the
 settings.json env block.

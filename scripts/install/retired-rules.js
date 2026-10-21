@@ -1,6 +1,7 @@
 'use strict';
 // THE TEXTS THE STACK SHIPPED under each renamed rule's old name - the seven `baseline-*` rules that 2.1.6 renamed to
-// `alfred-*`. Each list holds the first 16 hex of the sha256 of every version any commit held (CRLF read as LF), and for
+// `alfred-*`, and `alfred-git`, whose lines became the seeded GIT-PREFERENCES.md on 2026-10-21 (`alfred-preferences`
+// took its place). Each list holds the first 16 hex of the sha256 of every version any commit held (CRLF read as LF), and for
 // the docs-root rule also that text stamped with each default root (the legacy one and today's), as an install wrote
 // it. Frozen: a retired name never gets new text. A leftover copy that hashes to one is the stack's, unedited, and goes;
 // any other text is a user's edit and stays (`retiredKeep` in alfred-code.js, audit 2026-10-10 C10).
@@ -13,6 +14,7 @@ const SHIPPED = {
     'baseline-memory': '1398a66bd31a1fbd 212ea9c1fbb066df 55dca43187af8d88 588a4248f6771c51 5d29f4364f20f63a 8dd57db098f81dd5 c9ee9c6cba37860b ccd590e855a63980 d18eb53fb1791d24 eaef3b8894cb60c1',
     'baseline-navigation': '00ce9a9bfe09e8a4 1317314c030a6f84 24ed61297ef0c79a 3f44dce0b6e15363 40cea6d68d1f3667 45b7a78b4f7a0bbe 4ebbc0a5e6725816 4fbe619d9c5614c9 51375eea12825e4d 603883842e1701c9 6a19d7ee1568874c 6b0afc14a3c95e88 6e3632cbb88e2570 7484383beb8c372f 7a60b6aaf5713eb1 7b5ee15976c722d3 8186993994b6ca8c 8262d893c457b8d0 8581642bb7c658dd a28040167b7f8fca a795c1225126eefc a84c9d0263c5595a a86a05956bee38b6 a93f94513ff7317f b3463d53cd253aa1 b777ccf80f777f82 db797aa90902cf2f dcd833b71faf3e4d ed21892962bbb62d ef73ca55d5ef1471 f443cec553c21317 fcaed96ecf9f48ba',
     'baseline-quality-gates': '087a14a127a27b1b 0f5b46be1ba92358 424ae0cc25dca126 4a9a5b4f3c8982c7 4f0a150d59657ca3 5266ab0dc94fd901 531ca97b0f22fc4c 6122f3c8cb033341 6da036fc431af177 87af6bf6bf2da593 a217ec8124895159 a3d6afc582f2419a a6e7ba702a794e58 b65ffb062edc8e67 c1cdee6acbb9cbe1 ca68062f0ede5b0b cb5530fbd8b88aaa cffaa2b4f5e86443 e5c23206a522a942 f41ad084130b71d0 f491eae5a51ecea5 fc7b40cf14a88fc8 fd5ab8ac10f916bb',
+    'alfred-git': '3624e3e4f2cd4163 37591ca0b8387db4 3c30b03234373996 7df7cb101c76c7c1 845768139953ac68 b6c5608140582b8e c595c3676d9a659e d478d7ae0386910d f5d2f9fbe20e471b',
     'baseline-security': '05321b65cd65e98f 0b4ddcc173bfee50 0fc31af6e8acc4ec 16f40eb31e77ab78 2a188212cdb96da2 30df5a29c2546b75 3408f57de733b0c5 36f3cd4daf19bf49 3c4e3041629750b9 467125042af83795 4d3c059a45b9f6d1 50f14a428ad60bc9 514ac774749cdcbe 52bd904f387a0947 52bda9fccdef7a69 539bf51851231c79 7289a990a5c7cb45 7ee2403a1c7baf22 8302d332bfcc6b56 92c65cb785b35f19 a01459fe9069dca4 a45328508d8d442c aa2aa67dde630c1c bd86cf8b3e707978 bfbcf34e9b607d8e c150c851958721e0 ea92d681b7be0066 f1bf6b3709cbcf2b f7e0da468e181d1e',
 };
 

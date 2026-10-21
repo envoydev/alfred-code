@@ -68,9 +68,17 @@ One table, no ask - it is six rows and every other area reads against it:
 ## 3. One question - what else to show
 
 One AskUserQuestion multi-select (the tool caps a question at four options, so the areas ship in
-this FIXED grouping, all four marked Recommended): 'Skills + Agents + Rules', 'Hooks + MCPs +
-Plugins' (the health columns live here), 'Environment', 'Usage + Generated docs & data' - single
-area numbers via Other. Render only the chosen areas, in this fixed order:
+this FIXED grouping; AskUserQuestion has no pre-selection, so an empty pick shows all four - audit 2026-10-21
+C-T4-01); a typed answer names single area numbers:
+
+```ask
+What else to show? None ticked shows all four.
+- 'Skills + Agents + Rules (Recommended)' - areas 1-3
+- 'Hooks + MCPs + Plugins' - areas 4-6, where the health columns live
+- 'Environment' - area 7
+- 'Usage + Generated docs & data' - areas 8-9
+```
+ Render only the chosen areas, in this fixed order:
 
 ```
  1 skills   2 agents   3 rules   4 hooks   5 mcps   6 plugins
@@ -117,13 +125,12 @@ for a carried seat).
 
 | rule | scope | origin |
 |---|---|---|
-| alfred-git | always-on | stack |
+| alfred-preferences | always-on | stack |
 | typescript-conventions | paths: `**/*.ts`, `**/*.tsx` | stack |
 | alfred-architecture | always-on | GENERATED |
-| project-code-style | paths: `**/*.js` | GENERATED |
 
 `scope` comes from the `paths:` frontmatter (absent = always-on). `origin`: `GENERATED` for the
-capture-written rules (`alfred-architecture.md`, `alfred-awareness.md`, `project-code-style.md`), `stack` otherwise,
+capture-written rules (`alfred-architecture.md`, `alfred-awareness.md`), `stack` otherwise,
 `user-authored` when clearly neither.
 
 Then ONE extra line under that table - the always-on FLOOR this install pays, because nothing
@@ -269,26 +276,22 @@ nothing; `unreached: unknown` adds the line under the table (measured: a project
 engine whose only record was another project's, and the session searched for its tools three times).
 
 **Environment** - the install's knobs, one row each, from the STACK VIEW (`settings.local.json` over
-`settings.json` key by key, at every scope):
+`settings.json` key by key, at every scope). The rows are the catalog's: read `${CLAUDE_PLUGIN_ROOT}/meta/environment.json`
+and print one row per `env` entry - its `key`, the value the stack view holds, and its `what` cut to one clause - never a
+copied list, which drifts (2026-10-21: a copy here had lost five of the catalog's rows). `ALFRED_CODE_HOOKS_OFF` prints
+its `<hook>:<part>` entries, or none. Two rows the catalog cannot carry ride beside them:
 
 | item | value |
 |---|---|
 | autoMemoryEnabled | false - the one-time import succeeded, Claude's own memory is off |
-| ALFRED_CODE_INSTRUMENT | 0 (default - off) |
-| ALFRED_CODE_PUSH_GATE | 1 (default - on) - the publish half of the commit gate; 0 where the remote is already gated |
-| ALFRED_CODE_ROTATE_ASK | 1 (default - on) - the stop contract's once-per-exposure rotate ask |
-| ALFRED_CODE_CONTEXT_WINDOW_FOR_1M | 400000 (default) - the fresh-session gate's trigger on a window of 1M or more; 0 = off for that tier |
-| ALFRED_CODE_CONTEXT_WINDOW_FOR_300K | 280000 (default) - the same trigger on a window of 300k up to 1M; 0 = off for that tier |
-| ALFRED_CODE_CONTEXT_WINDOW_FOR_200K | 180000 (default) - the same trigger on a window of 200k up to 300k; 0 = off for that tier. The window is the session model's own capacity, its row in `.claude/hooks/model-windows.json` |
-| ALFRED_CODE_AUTO_COMPACT | 0 (default) - offer a fresh session at the trigger; 1 = compact there instead (each model's `autoCompactWindow` set, no fresh-session ask) |
-| ALFRED_CODE_CONTEXT_WINDOW_DEFAULT | 180000 (default) - the trigger itself for a session with no tier: a model `.claude/hooks/model-windows.json` does not list, a window under 200k, a model not known yet, or a tier left unset or garbage; 0 = off for such a session |
+| <each catalog key> | <value>, or `<default> (default)` - <its what, one clause> |
 | CONTEXT7_API_KEY (account env) | set (N chars) / absent - absent = the keyless free tier |
 
 Mark `(default)` when the key is absent and a house default applies. `autoMemoryEnabled` is a
 TOP-LEVEL key, not under `env`, written by init's memory import into the scope file - never the
 account file, which would silence every other project's memory too: print `false` as done, `true`
 or the key ABSENT as `true/absent - the one-time import has not completed yet, Claude's own memory
-is still on` (never read an absent key as success). The rows above are the keys the stack SEEDS;
+is still on` (never read an absent key as success). The catalog's rows are the keys the stack SEEDS;
 any other `ALFRED_CODE_*` key the file carries (`ALFRED_CODE_ALLOW_WRITE_OUTSIDE`, a key a newer
 release added) gets its own row, value as written - this table is not a filter. A key matching the
 catalog's `secret_key_pattern` (`meta/environment.json`) or a row flagged `secret: true` is printed
@@ -346,7 +349,8 @@ the seat handoff notes still in the memory database (`node .claude/hooks/memory.
 | architecture/watch.json | yes | - | 2026-07-24 |
 | quality/ARCHITECTURE-ASSESSMENT.md | yes | as of main@a1b2c3d, 2026-07-24 (recomputed, not a domain) | 2026-07-24 |
 | quality/CODE-ASSESSMENT.md | no | - | - |
-| code-style/CODE-STYLE.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
+| preferences/PROJECT-CODE-PREFERENCES.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
+| preferences/GIT-PREFERENCES.md | yes | - | 2026-07-25 |
 | awareness/AGENTS-AWARENESS.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
 | awareness/PROJECT-AWARENESS.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
 | awareness/RELATED-PROJECTS-AWARENESS.md | no | - | - |

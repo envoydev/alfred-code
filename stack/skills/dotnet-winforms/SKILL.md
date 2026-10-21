@@ -17,7 +17,7 @@ runtime you are on; the version-specific mechanics live in the references.
 
 A `*.Designer.cs` belongs to the designer: change it through the designer or in its own generated shape - no logic, nothing it cannot round-trip; initialization that touches controls goes after `InitializeComponent()`.
 
-**Read `references/winforms-style.md` before naming a control or handler, hand-editing a `*.Designer.cs`, or touching a user-facing string** - it owns control/event-handler naming, the designer-file round-trip rules, and the resx localization discipline. This SKILL.md owns the architecture (MVP passive view, DI-resolvable forms, disposal, high-DPI, virtual-mode grids); the C# naming baseline is the `csharp` skill. Above these general conventions, a project's own `.editorconfig` and its `<docs-path>/code-style/CODE-STYLE.md` are higher priority - follow the project where it diverges.
+**Read `references/winforms-style.md` before naming a control or handler, hand-editing a `*.Designer.cs`, or touching a user-facing string** - it owns control/event-handler naming, the designer-file round-trip rules, and the resx localization discipline. This SKILL.md owns the architecture (MVP passive view, DI-resolvable forms, disposal, high-DPI, virtual-mode grids); the C# naming baseline is the `csharp` skill. Above these general conventions, a project's own `.editorconfig` and its `<docs-path>/preferences/PROJECT-CODE-PREFERENCES.md` are higher priority - follow the project where it diverges. The user's own preferences docs there rank higher still: where an entry and this skill disagree, ask the user which wins, the entry's side marked (Recommended).
 
 **Load the version reference for the concrete mechanics:**
 

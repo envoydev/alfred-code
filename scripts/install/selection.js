@@ -36,7 +36,7 @@ const { stackNames } = require('./manifest.js');
 // to-do: the alfred-project-* rules to alfred-*, the run book to alfred-project-awareness, agent capabilities to
 // alfred-agent-awareness - three of which alfred-awareness replaced on 2026-10-16) left them beside the shipped alfred-*.md baseline, so a pattern would take one for the
 // other. Keyed by the name the stack generated first (`baseline-project-<key>`, then `alfred-project-<key>`), which
-// moveGeneratedRules carries forward; project-code-style is capture-code-style's and never moved.
+// moveGeneratedRules carries forward; project-code-style is capture-project-code-style's and never moved.
 const GENERATED_RULES = { 'agent-capabilities': 'alfred-agent-awareness', 'related-context': 'alfred-related-context', architecture: 'alfred-architecture', 'run-book': 'alfred-project-awareness' };
 const GENERATED_RULE_NAMES = Object.keys(GENERATED_RULES);
 // Newest legacy spelling first: a project holding both moves the newer file, and the older one is judged against it.
@@ -47,10 +47,10 @@ const LEGACY_GENERATED = GENERATED_RULE_NAMES.flatMap((key) => [[`alfred-project
 // is itself a current name there.
 const AWARENESS_RULE = 'alfred-awareness';
 const AWARENESS_SUCCEEDS = { 'alfred-agent-awareness': AWARENESS_RULE, 'alfred-project-awareness': AWARENESS_RULE, 'alfred-related-context': AWARENESS_RULE };
-// capture-preferences' rule carries the preferences docs inline under headers naming each doc's path, so a docs-root
-// move re-spells it too (its hash covers the docs' names and text, never a path, so the re-spell keeps it current).
-const PREFERENCES_RULE = 'alfred-preferences';
-const GENERATED_FILES = new Set([...Object.values(GENERATED_RULES), AWARENESS_RULE, PREFERENCES_RULE, 'project-code-style', ...LEGACY_GENERATED.filter(([old]) => old.startsWith('alfred-project-')).map(([old]) => old)]);
+// `alfred-preferences` is no generated rule since 2026-10-21: it ships, and a capture's copy is taken over by the library
+// copy. `project-code-style` is no longer written (the code style is preferences/PROJECT-CODE-PREFERENCES.md, which
+// docs.js migratePreferences moves), but a copy the update kept as the project's own stays out of the read-back's picks.
+const GENERATED_FILES = new Set([...Object.values(GENERATED_RULES), AWARENESS_RULE, 'project-code-style', ...LEGACY_GENERATED.filter(([old]) => old.startsWith('alfred-project-')).map(([old]) => old)]);
 // The awareness docs an update re-spells beside the generated rules: the capture writes them, so they name the stack's
 // own skills, servers and docs root too. `agentsOnly`: the inventory alone, which names the seats and the MCP rows.
 function awarenessDocs(projectRoot, docsPath, { agentsOnly = false } = {})

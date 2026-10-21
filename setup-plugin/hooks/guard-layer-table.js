@@ -28,6 +28,21 @@
 // that has printed a step banner, a gap in the banner numbers denies the next ask. Each has its own valve of three.
 // exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unreadable.
 //
+// PreToolUse (Bash), 2026-10-21: a walk that never ASKS gives the gate above nothing to judge. A real init run printed the
+// hooks table, narrated 'Next I'll decide which to keep' and moved on; its plugins layer rendered a table of its own
+// through `node -e` and went straight to the prerequisite check. Inside a typed init / configure walk the walk's next
+// step - a `stack-select.js`, `plugin-settings.js` or installer call - is denied while the latest layer table has no
+// answered ask after it, and in init (which walks all six layers) while an earlier layer's table never ran. Each has its
+// own valve of three. Any other Bash command leaves before the prelude loads.
+// Step 6.5 (the same day): the walk outlives a typed reply. It is found back to the newest TYPED init / configure command
+// (a 2MB tail on this path): a typed reply counts as the user's answer where it stands, a harness prompt (a task notice, a
+// seat's hand-back, a command's output) is neither, another typed slash command ends the walk, a compaction summary
+// starts it again only when it names the walk - and past one init's order check stands down, since the layers walked
+// before it are out of the span (hooks track H1) - and an ask the idle timeout closed, or one whose result is an error
+// (another hook's denial, a validation error, the user's rejection), is no answer (H2). The layer ask check above
+// reads the same span, and only inside such a walk (commands track T2-03: validate's '<Layer>: ...' consent asks were
+// denied for a `--table` call validate never makes).
+//
 // STACK HOOK GATES (2.1.5 M4) - the core's hook-prelude.js, reached from the plugin root (the core entry ships
 // the whole repo). The csv opt-out, `hook_profile: minimal` and a Cursor payload all stand it down
 // like any non-protective hook; GATE 4 is skipped (`setUp: false`), since it serves the install walk before any
@@ -38,6 +53,17 @@ const path = require('path');
 const MARKER = 'alfred-code layer-table gate';
 const MAX_DENIALS = 3;
 const PRELUDE = path.join(__dirname, '..', '..', 'stack', 'hooks', 'hook-prelude.js');
+
+let payload;
+try {
+  payload = JSON.parse(fs.readFileSync(0, 'utf8'));
+} catch {
+  process.exit(0);
+}
+if (!payload || typeof payload !== 'object') process.exit(0);
+const WALK_STEP = /(?:stack-select|plugin-settings|install[\\/]alfred-code)\.js\b/;
+const bashCommand = payload.tool_name === 'Bash' ? String((payload.tool_input && payload.tool_input.command) || '') : '';
+if (payload.tool_name === 'Bash' && !WALK_STEP.test(bashCommand)) process.exit(0);
 
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 let unsetRepo = true;
@@ -52,18 +78,11 @@ if (require.main === module) {
   if (off) process.exit(0);
 }
 
-let payload;
-try {
-  payload = JSON.parse(fs.readFileSync(0, 'utf8'));
-} catch {
-  process.exit(0);
-}
-if (!payload || typeof payload !== 'object') process.exit(0);
 // GATE 6: a Cursor payload runs only the protective guards - outside the try, a caller's exit must not be swallowed.
 let cursorOff = false;
 try { cursorOff = require(PRELUDE).cursorStandDown(payload, __filename); } catch { /* no prelude: run */ }
 if (cursorOff) process.exit(0);
-if (payload.tool_name !== 'AskUserQuestion' || !payload.transcript_path) process.exit(0);
+if (!['AskUserQuestion', 'Bash'].includes(payload.tool_name) || !payload.transcript_path) process.exit(0);
 
 // One block row in the hook-blocks ledger, so this gate's block RATE is measured like every other guard's - in the data
 // root's statistics/ (2.8.0, stack/hooks/layout.js; this plugin's hooks ship apart from it, so the reader is inline).
@@ -83,9 +102,10 @@ function blockRow(reason, table) {
   } catch { /* telemetry is never allowed to break the gate */ }
 }
 
-const readRows = () => {
+const WALK_TAIL = 2 * 1024 * 1024;
+const readRows = (tail = 512 * 1024) => {
   const size = fs.statSync(payload.transcript_path).size;
-  const start = Math.max(0, size - 512 * 1024);
+  const start = Math.max(0, size - tail);
   const fd = fs.openSync(payload.transcript_path, 'r');
   try {
     const buf = Buffer.alloc(size - start);
@@ -144,45 +164,30 @@ const tailHasTable = (rs) => {
 // hooks, skills, agents, rules are shown'), so such an ask needs that layer's `--table` call since the
 // typed prompt - judged only inside a walk (a `stack-select.js` call in the same span).
 const LAYERS = 'rules|agents|skills|hooks|mcps|plugins';
-const LAYER_ASK = new RegExp(`^\\s*(?:(${LAYERS})\\s*:|(?:add to|drop from) the installed (${LAYERS})\\b)`, 'i');
+// The MCP layer is asked as 'MCPs' or 'MCP servers' (commands track T2-15: the second passed with no table).
+const ASKED_LAYERS = 'rules|agents|skills|hooks|mcps|mcp\\s+servers?|plugins';
+const LAYER_ASK = new RegExp(`^\\s*(?:(${ASKED_LAYERS})\\s*:|(?:add to|drop from) the installed (${ASKED_LAYERS})\\b)`, 'i');
 const layersAsked = (input) => {
   const qs = input && Array.isArray(input.questions) ? input.questions : [];
   const out = new Set();
   for (const q of qs) {
     const m = LAYER_ASK.exec(String((q && q.question) || ''));
-    if (m) out.add((m[1] || m[2]).toLowerCase());
+    if (m) out.add(/^mcp/i.test(m[1] || m[2]) ? 'mcps' : (m[1] || m[2]).toLowerCase());
   }
   return [...out];
 };
 const unrunLayer = (rs, asked) => {
+  const w = walkSpan(rs);
+  if (!w || !w.uses.some((b) => /stack-select\.js\b/.test(String((b.input && b.input.command) || '')))) return null;
   const ran = new Set();
-  const results = {};
-  let walk = false;
-  let answered = false;
-  const denials = {};
-  for (let i = rs.length - 1; i >= 0; i--) {
-    let o;
-    try { o = JSON.parse(rs[i]); } catch { continue; }
-    const content = o && o.message && o.message.content;
-    if (o && o.type === 'user' && typeof content === 'string') break;
-    if (!Array.isArray(content)) continue;
-    for (const b of content) {
-      if (!b) continue;
-      if (o.type === 'user' && b.type === 'tool_result') {
-        const r = resultText(b.content);
-        results[b.tool_use_id] = r;
-        const d = !answered && new RegExp(`${MARKER}: the (${LAYERS}) table never ran`).exec(r);
-        if (d) denials[d[1]] = (denials[d[1]] || 0) + 1;
-      }
-      if (o.type !== 'assistant' || b.type !== 'tool_use') continue;
-      if (b.name === 'AskUserQuestion' && b.id !== ownId && b.id in results && !results[b.id].includes(MARKER)) answered = true;
-      const cmd = String((b.input && b.input.command) || '');
-      if (/stack-select\.js\b/.test(cmd)) walk = true;
-      const m = TABLE_RE.exec(cmd);
-      if (m) ran.add(m[1].toLowerCase());
-    }
+  let denials = {};
+  for (const b of w.uses) {
+    if (b.typed || answeredAsk(w, b)) { denials = {}; continue; }
+    const d = b.id in w.results && new RegExp(`${MARKER}: the (${LAYERS}) table never ran`).exec(w.results[b.id]);
+    if (d) denials[d[1]] = (denials[d[1]] || 0) + 1;
+    const m = TABLE_RE.exec(String((b.input && b.input.command) || ''));
+    if (m) ran.add(m[1].toLowerCase());
   }
-  if (!walk) return null;
   return asked.find((l) => !ran.has(l) && (denials[l] || 0) < MAX_DENIALS) || null;
 };
 
@@ -249,15 +254,122 @@ const guidedRun = (rs) => {
   return GUIDED.test(s.prompt) && s.texts.some((t) => /\[step \d+\/\d+ - /.test(t));
 };
 
+// THE NEXT STEP (2026-10-21): a Bash walk step is judged against the walk so far - the latest layer table needs an
+// answered ask after it, and init's walk (all six layers, in order) needs every earlier layer's table to have run before
+// a later table, the prerequisite check (`--emit`) or the installer. Configure walks only the areas its user picked, so
+// it gets the first check alone. Both are judged only since a typed init / configure prompt.
+const ORDER = ['rules', 'agents', 'skills', 'hooks', 'mcps', 'plugins'];
+const WALKS = /\balfred-code:(init|configure)\b/;
+const EMIT_RE = /stack-select\.js\b(?:[^\n]|\\\r?\n)*?--emit\b/;
+const INSTALL_RE = /install[\\/]alfred-code\.js["']?\s+install\b/;
+// The walk's span (step 6.5): rows back to the newest typed init / configure command, its tool calls in order with each
+// typed reply as a `{ typed: true }` entry where it stands, and the results by tool_use_id; null outside a walk.
+const SLASH_RE = /^\s*(?:<command-(?:message|name)>|\/[A-Za-z][\w:-]*(?:\s|$))/;
+const SHELL_ROW_RE = /^\s*<bash-(?:input|stdout|stderr)>/;
+let harnessPrompt = () => false;   // no prelude: a harness prompt reads as a typed reply, an answer - the open side
+try { harnessPrompt = require(PRELUDE).harnessPrompt; } catch { /* run without it */ }
+let askTimedOut = () => false;
+try { askTimedOut = require(PRELUDE).askTimedOut; } catch { /* run without it */ }
+const rowText = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((x) => (x && x.type === 'text' && x.text) || '').join('\n') : '');
+function walkSpan(rs) {
+  const rows = [];
+  let walk = null;
+  let compacted = false;
+  for (let i = rs.length - 1; i >= 0 && !walk; i--) {
+    let o;
+    try { o = JSON.parse(rs[i]); } catch { continue; }
+    const content = o && o.message && o.message.content;
+    if (o && o.type === 'user' && o.isCompactSummary) {
+      walk = WALKS.exec(rowText(content));
+      if (!walk) return null;
+      compacted = true;
+      break;
+    }
+    if (o && o.type === 'user' && typeof content === 'string') {
+      if (o.isMeta || harnessPrompt(content) || SHELL_ROW_RE.test(content)) continue;
+      walk = WALKS.exec(content);
+      if (walk) break;
+      if (SLASH_RE.test(content)) return null;
+      rows.unshift({ typed: true });
+      continue;
+    }
+    if (Array.isArray(content)) rows.unshift({ type: o.type, content });
+  }
+  if (!walk) return null;
+  const results = {};
+  const failed = {};
+  const uses = [];
+  for (const o of rows) {
+    if (o.typed) { uses.push(o); continue; }
+    for (const b of o.content) {
+      if (!b) continue;
+      if (o.type === 'user' && b.type === 'tool_result') {
+        results[b.tool_use_id] = resultText(b.content);
+        if (b.is_error === true) failed[b.tool_use_id] = true;
+      }
+      if (o.type === 'assistant' && b.type === 'tool_use' && b.id !== ownId) uses.push(b);
+    }
+  }
+  return { walk: walk[1], compacted, uses, results, failed };
+}
+// An ask the user answered: a result that is no error (every real answer arrives with is_error false), no denial of
+// ours, and no idle timeout's close (ruling S3).
+const answeredAsk = (w, b) => b.name === 'AskUserQuestion' && b.id !== ownId && b.id in w.results && !w.failed[b.id]
+  && !w.results[b.id].includes(MARKER) && !askTimedOut(w.results[b.id]);
+function judgeStep(rs, cmd) {
+  const w = walkSpan(rs);
+  if (!w) return;
+  const { uses, results } = w;
+  const ran = new Set();
+  let last = null;
+  let answeredAt = -1;
+  uses.forEach((b, at) => {
+    if (b.typed || answeredAsk(w, b)) answeredAt = at;
+    const m = TABLE_RE.exec(String((b.input && b.input.command) || ''));
+    if (m) { last = { layer: m[1].toLowerCase(), at }; ran.add(last.layer); }
+  });
+  const denials = (kind) => uses.slice(answeredAt + 1).filter((b) => b.id in results && results[b.id].includes(`${MARKER}: ${kind}`)).length;
+  const deny = (text, branch) => {
+    blockRow(text.split('\n')[0], branch);
+    process.stderr.write(text);
+    process.exit(2);
+  };
+  const next = TABLE_RE.exec(cmd);
+  const nextLayer = next && next[1].toLowerCase();
+  if (last && answeredAt < last.at && nextLayer !== last.layer && denials(`the ${last.layer} ask never happened`) < MAX_DENIALS) {
+    const Layer = last.layer === 'mcps' ? 'MCPs' : last.layer[0].toUpperCase() + last.layer.slice(1);
+    deny(`${MARKER}: the ${last.layer} ask never happened - the ${last.layer} table ran, but no answered question ` +
+      `followed it, and the user decides every layer (auto mode included). Do not move on: send ONE message - the step ` +
+      `banner, the table output byte-for-byte inside a fenced code block (it is already in your context; do not re-run ` +
+      `it), then the layer's selection ask from walk.md ('${Layer}: ...' fresh, 'Add to / Drop from the installed ` +
+      `${last.layer}?' in configure). Only after the answer, run this step.\n`, `${last.layer} ask`);
+  }
+  if (w.walk !== 'init' || w.compacted) return;
+  const upTo = nextLayer ? ORDER.indexOf(nextLayer) : (EMIT_RE.test(cmd) || INSTALL_RE.test(cmd)) ? ORDER.length : -1;
+  const missing = ORDER.slice(0, Math.max(upTo, 0)).filter((l) => !ran.has(l));
+  if (missing.length && denials('layers never walked') < MAX_DENIALS) {
+    deny(`${MARKER}: layers never walked - init walks all six layers in order (rules, agents, skills, hooks, MCPs, ` +
+      `plugins), and the ${missing.join(', ')} table${missing.length > 1 ? 's' : ''} never ran. Walk each missing layer ` +
+      `first (walk.md, its three beats): \`node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table ` +
+      `${missing[0]} ...\` with the walk's other flags, never redirected and never a table of your own (a \`node -e\` ` +
+      `script or a hand-written list is no table), its output pasted in a fenced code block, then the layer's ask.\n`, 'layers never walked');
+  }
+}
+
 let rows;
+if (payload.tool_name === 'Bash') {
+  try { judgeStep(readRows(WALK_TAIL), bashCommand); } catch { /* fail-open */ }
+  process.exit(0);
+}
 try {
   rows = readRows();
   const asked = layersAsked(payload.tool_input);
-  const missing = asked.length ? unrunLayer(rows, asked) : null;
+  // A layer ask is rare, so it alone pays for the walk's 2MB tail.
+  const missing = asked.length ? unrunLayer(readRows(WALK_TAIL), asked) : null;
   if (missing) {
     const denial =
       `${MARKER}: the ${missing} table never ran - this ask is the ${missing} layer's selection, and the user decides ` +
-      `from the layer's WHOLE catalog. Run \`node "$TMP/repo/scripts/stack-select.js" --selection raw.json --table ${missing}\` ` +
+      `from the layer's WHOLE catalog. Run \`node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table ${missing}\` ` +
       `with the walk's other flags (walk.md, per layer beat 2), never redirected, then send ONE message: the step banner, ` +
       `its output byte-for-byte inside a fenced code block, then this same ask.\n`;
     blockRow(denial.split('\n')[0], `${missing} table`);

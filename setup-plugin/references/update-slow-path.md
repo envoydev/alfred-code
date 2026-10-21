@@ -11,8 +11,15 @@ stays in those two.
 The installer reads the install back itself (`--installed-only`), so the ask below needs only the compare.
 
 Show the version delta, the refresh counts by category (step 2's `changed-here:`), and the NAMED prune
-list - each detected migration with its why. Ask ONE question through AskUserQuestion: proceed with
-refresh + prune (recommended), or refresh only. The answer governs those removals alone: 'refresh only'
+list - each detected migration with its why. Ask ONE question through AskUserQuestion:
+
+```ask
+Refresh and prune? <the version delta and refresh counts>; prune: <each migration's path and why>. The copies the release retired or renamed go either way.
+- 'Refresh and prune (Recommended)' - the installer refreshes, then step 5 removes what the migrations name
+- 'Refresh only' - no migration removal; the stack's own retired and renamed copies still go
+```
+
+The answer governs those removals alone: 'refresh only'
 means step 3's installer run and no migration removal, while the copies the release retired or renamed go
 either way - the installer prunes the stack's own on both answers, so the ask says so in one clause and
 never offers to keep them. For example:
@@ -103,7 +110,15 @@ hook the release ships, and the run logs `installed-only: adopting hook <name>` 
 DROPPED is not resurrected - the stamp records the catalog each run shipped, so 'shipped then, absent now' reads
 as a deliberate drop and is left out, logged as such. Put adoption through AskUserQuestion only when the installer
 did NOT adopt it - a `guard-*` ENFORCEMENT hook still absent after the run (the derivation fell back, or it was
-dropped before) - and on 'adopt now' copy it from `$TMP/repo/stack/hooks/` into `.claude/hooks/` and wire its
+dropped before):
+
+```ask
+Adopt <hook>? <what it blocks, from its header's first lines>. The update did not add it.
+- 'Adopt now (Recommended)' - copied into .claude/hooks/ and wired as the installer wires it
+- 'Leave it off' - it stays absent; /alfred-code:configure adds it later
+```
+
+On 'Adopt now' copy it from `$TMP/repo/stack/hooks/` into `.claude/hooks/` and wire its
 matcher entries into settings.json exactly as the installer's hook step does. To author that ask, read the hook's
 own header comment and nothing else (`head -8 "$TMP/repo/stack/hooks/<file>"`) - every guard states what it blocks
 in its first lines; reading the hook to understand it cost 3.6k tokens and the session's largest context spike in

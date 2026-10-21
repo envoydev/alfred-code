@@ -1,10 +1,11 @@
 'use strict';
 // THE SMALL SEEDS - the per-project files and account values a run lays down once.
 //
-//   - `.claude/AGENTS.md`, from the stack-neutral template, ONLY when the project has no `AGENTS.md`,
-//     `.claude/AGENTS.md`, `CLAUDE.md` or `.claude/CLAUDE.md` - beside a CLAUDE.md the seed would never load,
-//     beside another AGENTS.md it would be a second copy of the project's instructions. A root AGENTS.md is
-//     the project's own file: checked and improved in place, never overwritten.
+//   - `.claude/AGENTS.md` (the root `AGENTS.md` on `--instructions-at root`), from the stack-neutral template, ONLY
+//     when the project has no `AGENTS.md`, `.claude/AGENTS.md`, `CLAUDE.md` or `.claude/CLAUDE.md` - beside a CLAUDE.md
+//     the seed would never load, beside another AGENTS.md it would be a second copy of the project's instructions. A
+//     root AGENTS.md is the project's own file: checked and improved in place, never overwritten - only moved, on the
+//     user's answer to the place question (`placeInstructionFiles`).
 //   - The ACCOUNT settings.json `env` keys. At project scope too, deliberately: the account file is
 //     the one whose env reaches `.mcp.json` URL and header expansion (measured on 2.1.266 - a
 //     project `.claude/settings.json` leaves the 'Missing environment variables' warning in place).
@@ -89,7 +90,17 @@ function existingInstructionFile(projectRoot)
     return null;
 }
 
-function seedAgentsMd({ projectRoot, sourceDir, log = () => {}, note = () => {} })
+// Where the stack's seed sits: .claude/AGENTS.md while it is there, else a root AGENTS.md (seeded or moved there on
+// --instructions-at root), else .claude/AGENTS.md, where a seed goes. The ledger's `AGENTS.md` row is read at this path,
+// and only a file at that row's hash is the stack's - a root AGENTS.md the project wrote never reads as the seed.
+function seededAgentsMdPath(projectRoot)
+{
+    const inClaude = path.join(projectRoot, '.claude', 'AGENTS.md');
+    const atRoot = path.join(projectRoot, 'AGENTS.md');
+    return !fs.existsSync(inClaude) && fs.existsSync(atRoot) ? atRoot : inClaude;
+}
+
+function seedAgentsMd({ projectRoot, sourceDir, at = '', log = () => {}, note = () => {} })
 {
     const have = existingInstructionFile(projectRoot);
     if (have)
@@ -99,14 +110,15 @@ function seedAgentsMd({ projectRoot, sourceDir, log = () => {}, note = () => {} 
     }
     const body = agentsMdBody({ projectRoot, sourceDir });
     if (body === null) { note('AGENTS.template.md not found in the stack source'); return false; }
-    const dest = path.join(projectRoot, '.claude', 'AGENTS.md');
+    const dest = at === 'root' ? path.join(projectRoot, 'AGENTS.md') : path.join(projectRoot, '.claude', 'AGENTS.md');
     try
     {
         fs.mkdirSync(path.dirname(dest), { recursive: true });
         fs.writeFileSync(dest, body);
     }
     catch (err) { note(`AGENTS.md could not be seeded (${err.message})`); return false; }
-    log("  AGENTS.md: seeded to .claude/AGENTS.md - write the project top from its authoring-outline comment, and keep the '.claude/*' + '!.claude/AGENTS.md' gitignore lines so it stays committed");
+    if (at === 'root') log('  AGENTS.md: seeded to AGENTS.md at the project root - write the project top from its authoring-outline comment');
+    else log("  AGENTS.md: seeded to .claude/AGENTS.md - write the project top from its authoring-outline comment, and keep the '.claude/*' + '!.claude/AGENTS.md' gitignore lines so it stays committed");
     log(`  ${AGENTS_MD_NOTE}${fs.existsSync(path.join(projectRoot, 'CLAUDE.local.md')) ? ' - the CLAUDE.local.md here already switches it off (Project instructions: claude-md-and-agents-md in /config reads both)' : ''}`);
     return true;
 }
@@ -117,7 +129,7 @@ function seedAgentsMd({ projectRoot, sourceDir, log = () => {}, note = () => {} 
 // 2026-10-17 update matrix). True when the file now holds this release's seed.
 function refreshSeededAgentsMd({ projectRoot, sourceDir, log = () => {}, note = () => {} })
 {
-    const dest = path.join(projectRoot, '.claude', 'AGENTS.md');
+    const dest = seededAgentsMdPath(projectRoot);
     let now;
     try { now = fs.readFileSync(dest, 'utf8'); } catch { return false; }
     // The name the seed was stamped with, not this folder's: a second checkout under another folder name rewrote the
@@ -128,7 +140,7 @@ function refreshSeededAgentsMd({ projectRoot, sourceDir, log = () => {}, note = 
     if (body === null) return false;
     if (now === body) return true;
     try { fs.writeFileSync(dest, body); }
-    catch (err) { note(`.claude/AGENTS.md could not be refreshed from this release's template (${err.message}) - it keeps the earlier seed`); return false; }
+    catch (err) { note(`${path.relative(projectRoot, dest).split(path.sep).join('/')} could not be refreshed from this release's template (${err.message}) - it keeps the earlier seed`); return false; }
     log("  AGENTS.md: the unfilled seed refreshed from this release's template - nothing in it was yours");
     return true;
 }
@@ -226,6 +238,47 @@ function moveSeededClaudeMd({ projectRoot, sourceDir, ledgerHash = '', hash, tra
 }
 
 // Only the engines whose build Playwright ships itself; chrome and msedge use the installed browser.
+// The user's answer to init's / configure's place question (--instructions-at): each instruction file at the other place
+// moves - `git mv` where git tracks it, so history follows. A destination already holding one is never overwritten:
+// both are named and left. CLAUDE.local.md stays at the root, the one place Claude Code reads it. A file moved into
+// .claude/ that git now ignores (untracked, under a '.claude/*' line) is named with the re-include it needs. Returns
+// the moves made, `<from> -> <to>` each.
+function placeInstructionFiles({ projectRoot, at = '', tracked = () => false, gitMv = null, ignored = () => false, log = () => {}, note = () => {} })
+{
+    if (at !== 'root' && at !== 'claude') return [];
+    const moved = [];
+    for (const name of ['AGENTS.md', 'CLAUDE.md'])
+    {
+        const [fromRel, toRel] = at === 'root' ? [`.claude/${name}`, name] : [name, `.claude/${name}`];
+        const from = path.join(projectRoot, ...fromRel.split('/'));
+        const to = path.join(projectRoot, ...toRel.split('/'));
+        if (!fs.existsSync(from)) continue;
+        if (fs.existsSync(to)) { log(`  ${fromRel}: left in place - ${fromRel} and ${toRel} both exist - merge them by hand and delete one`); continue; }
+        const git = Boolean(gitMv) && tracked(from);
+        try
+        {
+            fs.mkdirSync(path.dirname(to), { recursive: true });
+            if (git) gitMv(from, to);
+            else fs.renameSync(from, to);
+        }
+        catch (err) { note(`${fromRel} could not be moved to ${toRel} (${String(err.message).trim()}) - to do it by hand: ${git ? 'git mv' : 'mv'} ${fromRel} ${toRel}`); continue; }
+        moved.push(`${fromRel} -> ${toRel}`);
+        log(`  ${fromRel} -> ${toRel}: moved on your answer${git ? ' (git mv, staged as a rename)' : ''}`);
+        if (at === 'claude' && ignored(to)) log(`  !! ${toRel} is git-ignored here - add '!${toRel}' after the '.claude/*' line in .gitignore, or it stays out of git`);
+    }
+    return moved;
+}
+
+// The place question's fact line (update-preflight.js --offers): where the instruction files are - `none`, `claude`
+// (all under .claude/), `root` or `split` - then each one found.
+function instructionsLine(projectRoot)
+{
+    const have = ['AGENTS.md', 'CLAUDE.md', '.claude/AGENTS.md', '.claude/CLAUDE.md'].filter((rel) => fs.existsSync(path.join(projectRoot, ...rel.split('/'))));
+    if (!have.length) return 'instructions: none';
+    const inClaude = have.filter((rel) => rel.startsWith('.claude/')).length;
+    return `instructions: ${inClaude === have.length ? 'claude' : inClaude ? 'split' : 'root'} ${have.join(' ')}`;
+}
+
 function playwrightDownloads({ browsers = [], pin = '', run, log = () => {} })
 {
     const done = [];
@@ -239,4 +292,4 @@ function playwrightDownloads({ browsers = [], pin = '', run, log = () => {} })
     return done;
 }
 
-module.exports = { seedAccountEnv, seedAccountKeys, seedAgentsMd, refreshSeededAgentsMd, agentsMdBody, moveSeededClaudeMd, claudeMdOffer, respellReinclude, playwrightDownloads };
+module.exports = { seedAccountEnv, seedAccountKeys, seedAgentsMd, seededAgentsMdPath, refreshSeededAgentsMd, agentsMdBody, moveSeededClaudeMd, claudeMdOffer, respellReinclude, placeInstructionFiles, instructionsLine, playwrightDownloads };

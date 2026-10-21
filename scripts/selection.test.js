@@ -25,7 +25,8 @@ test('environment catalog: every row is askable, seeded and shaped', () =>
     // ALFRED_CODE_HOOKS_OFF, which replaced the walk's hooks layer once the set stopped being copied.
     // 'absolute-path' is a resolved filesystem path the install WRITES rather than asks -
     // ALFRED_CODE_MEMORY_DB, the channel a plugin MCP entry cannot expand and its launcher reads.
-    const TYPES = new Set(['percent', 'enum', 'relative-path', 'absolute-path', 'int-or-auto', 'tokens', 'window', 'csv']);
+    // 'hours' is a duration the idle-gap offer reads with parseFloat: decimals allowed, 0 meaning off.
+    const TYPES = new Set(['percent', 'enum', 'relative-path', 'absolute-path', 'int-or-auto', 'tokens', 'window', 'csv', 'hours']);
     assert.ok(cat.env.length >= 5, 'the catalog carries the stack env values');
     for (const row of cat.env)
     {
@@ -52,6 +53,13 @@ test('environment catalog: every row is askable, seeded and shaped', () =>
             const n = Number(row.default);
             assert.ok(Number.isInteger(n) && n >= 0, `${row.key} default is a whole token count`);
             assert.strictEqual(row.validate.min, 0, `${row.key} accepts 0 - the hook reads it as off, not as invalid`);
+            assert.strictEqual(row.validate.off, '0', `${row.key} documents 0 as its off switch`);
+        }
+        // an hour count (the idle-gap offer) takes decimals; 0 is its off switch
+        if (row.validate.type === 'hours')
+        {
+            const n = Number(row.default);
+            assert.ok(Number.isFinite(n) && n >= 0, `${row.key} default is a non-negative hour count`);
             assert.strictEqual(row.validate.off, '0', `${row.key} documents 0 as its off switch`);
         }
         if (row.validate.type === 'window')

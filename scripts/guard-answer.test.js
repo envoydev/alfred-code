@@ -296,3 +296,12 @@ test('S3: an ask the idle timeout closed is no answer - marker, row and note; an
     assert.strictEqual(prelude.askTimedOut({ answers: { a: 'b' } }), false, 'a human-resolved result has no afkTimeoutMs');
     assert.strictEqual(prelude.askTimedOut('Your questions have been answered: "a"="b".'), false);
 });
+
+// Loading audit 2026-10-21 G3 and preferences ask Q-3 (the Recommended option, taken under the user's standing rule): a
+// seat's own compaction start gets no answer budget - its report has its own shape - and a personal preferences entry
+// sets the budget.
+test('a seat\'s own compaction start carries no budget; the budget names the personal preferences doc', () => {
+    assert.strictEqual(run({ hook_event_name: 'SessionStart', source: 'compact', session_id: 's', agent_id: 'agent-1', agent_type: 'alfred-code:web-angular-implementer' }).stdout, '');
+    const text = JSON.parse(run({ hook_event_name: 'SessionStart', source: 'compact', session_id: 's' }).stdout).hookSpecificOutput.additionalContext;
+    assert.match(text, /an entry of the user's personal preferences doc sets it/);
+});

@@ -2,8 +2,9 @@
 
 <!-- Fill-in block - delete once done. The installer seeds this file as .claude/AGENTS.md when the project has
      no AGENTS.md or CLAUDE.md (Claude Code 2.1.277 or later loads it; keeps the
-     repo root tidy) - copy it there by hand only when that seed step was skipped. To keep it committed, the
-     project's .gitignore must ignore the .claude contents but track this file:
+     repo root tidy), or as the root AGENTS.md on init's place answer - copy it there by hand only when that seed
+     step was skipped. To keep a .claude/ one committed, the project's .gitignore must ignore the .claude contents
+     but track this file:
      `.claude/*` + `!.claude/AGENTS.md` - a bare directory ignore blocks the re-include.
 The habits-adjust-agents-md skill fills it (create) or brings an existing one up to date (improve), and
 ends on the deterministic check; by hand, the steps are:
@@ -14,12 +15,12 @@ ends on the deterministic check; by hand, the steps are:
    row whose capture skill this install skipped (its /command will not resolve).
 3. The rows marked GENERATED come from captures /alfred-code:init already ran for the installed ones -
    filling this file never re-runs one whose file exists. A row whose file is missing takes its capture, in the post-install
-   order: /capture-architecture, /capture-code-style, then
+   order: /capture-architecture, /capture-project-code-style, then
    /capture-awareness LAST, so its generated inventory reflects the final install (it writes the
-   run book and maps the sibling repos too, where the project has any). The preferences row is no
-   capture of the code: init never runs /capture-preferences - the user records their own wants when
-   they have any (before /capture-awareness when both run) - so its row is dropped while its file is
-   missing. All but /capture-architecture are slash-only: the user types them - a model Skill call is refused.
+   run book and maps the sibling repos too, where the project has any). The preferences row is the
+   installer's and always stays; init never runs /capture-preferences - the user records their own wants
+   when they have any (before /capture-awareness when both run). All but /capture-architecture are
+   slash-only: the user types them - a model Skill call is refused.
 If the repo already has a root AGENTS.md (for other agent tooling), it IS the project's file: the
 installer seeds nothing beside it, and it is improved in place, never replaced by this template. Claude
 Code reads an AGENTS.md on its own only while no CLAUDE.md, .claude/CLAUDE.md or CLAUDE.local.md sits in
@@ -37,8 +38,8 @@ seats load none of it) - keep it lean (target: under 200 live lines) and route w
 observable trigger (an artifact, a command, a checkpoint). The test for every line you add: would removing it make Claude make a mistake? If not, cut it - what Claude can read from the code ('the UserService handles users'), standard language conventions, generic advice ('write clean code', 'test new features'), file-by-file tours, rules the formatter already owns (.editorconfig, ESLint, Prettier, dotnet format), a one-off fix that will not recur, and a paragraph where one line says it never earn their tokens; Bash commands it cannot guess, conventions that differ from defaults, gotchas and repository etiquette do.
 Five shapes to keep out, whatever they cost: the aspiration document (vague wishes), the wishlist
 (conventions the author wants instead of the ones the code enforces - an inherited codebase's own
-conventions win; a code, architecture or git convention the USER wants is a preference, which
-/capture-preferences records and whose rule outranks this file, so it never lands here), the
+conventions win; a working rule, code, architecture or git convention the USER wants is a preference,
+which /capture-preferences records and whose docs outrank this file, so it never lands here), the
 freeze (never touched while the repo moved on), the TODO ledger (scratch notes), and the single
 source (everything here, nothing routed to a scoped rule or a skill).
 Prune it when things go wrong, and test a change by watching whether behaviour shifts. The cross-project working conventions
@@ -93,8 +94,8 @@ map, a dependency rule's why - plus a pointer to its sections, never a second co
 ## Rules
 
 The rules this project runs on, all in `.claude/rules/`: every `alfred-*` file loads each session,
-and a path-scoped rule (`project-code-style.md` below, and the other path-scoped rules the install
-copied) attaches on a matching file touch - its own `paths:` frontmatter says when.
+and a path-scoped rule (the convention rules the install copied) attaches on a matching file touch -
+its own `paths:` frontmatter says when.
 
 In GENERATED rows, `user-run` marks a slash-only capture (`disable-model-invocation`): only the
 user can invoke it - a model Skill call is refused, so name the command to the user rather than
@@ -104,5 +105,4 @@ running it.
 |---|---|
 | `.claude/rules/alfred-awareness.md` (GENERATED - user-run /capture-awareness after install, update, or a trim) | imports `<docs-path>/awareness/` into every session: the skill / agent usage policy and this project's skill / seat / MCP inventory, the app's run book, and the sibling repos where the project has any |
 | `.claude/rules/alfred-architecture.md` (GENERATED - run /capture-architecture) | architecture capture marker - the docs exist, read them before a structural change; where they live is the docs-root baseline's, the orientation itself arrives through the docs hook |
-| `.claude/rules/project-code-style.md` (GENERATED - user-run /capture-code-style; path-scoped, plus the full doc) | the project's actual code style - the condensed core auto-attaches on any matching file touch (main session and subagents); the full capture stays in `<docs-path>/code-style/CODE-STYLE.md` |
-| `.claude/rules/alfred-preferences.md` (GENERATED - user-run /capture-preferences when the user states a code, architecture or git preference) | the user's own preferences from `<docs-path>/preferences/`, carried inline into every session and seat - where one contradicts this file, the preference wins |
+| `.claude/rules/alfred-preferences.md` (installer-managed; the git doc is seeded at install, the others come from user-run /capture-project-code-style and /capture-preferences) | names the preferences docs in `<docs-path>/preferences/` - how the user wants the assistant to work (pushed at every session start), the project's actual code style, the user's own code, architecture and git preferences - and when each is read; where one contradicts this file, the session asks, the entry's side marked (Recommended) |

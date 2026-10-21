@@ -5,12 +5,12 @@ description: "Use before a non-trivial git commit, git push or gh pr merge - 'co
 
 # Commit checkpoint - the gate before a commit or a publish
 
-The protocol `alfred-git.md` points at: what runs before a non-trivial commit, the exemptions, the receipt the `guard-ungated-commit` hook reads, and the same ceremony for `git push` / `gh pr merge`. The commit-message shape and the branch discipline stay in the rule - or in the user's `GIT-PREFERENCES.md`, which overrides them where present. Why each rule exists is `references/evidence.md` - an audit appendix, not a run-time load.
+The protocol the git preferences' locked checkpoint entry points at: what runs before a non-trivial commit, the exemptions, the receipt the `guard-ungated-commit` hook reads, and the same ceremony for `git push` / `gh pr merge`. The commit-message shape and the branch discipline live in the user's `<docs-path>/preferences/GIT-PREFERENCES.md`. Why each rule exists is `references/evidence.md` - an audit appendix, not a run-time load.
 
 ## When to use
 
 - Before any non-trivial git commit, git push or gh pr merge - 'commit this', 'push it', 'open the PR', 'merge it' - or before presenting a crypto / secret / auth / payment / data-access change, or when the commit guard denies one for a missing COMMIT-GATE or PUSH-GATE receipt.
-- Not for the done gate before it, which proves the change works, or the commit message's shape, which the git baseline owns.
+- Not for the done gate before it, which proves the change works, or the commit message's shape, which the user's `GIT-PREFERENCES.md` owns.
 
 ## Pre-commit checkpoint
 
@@ -33,14 +33,14 @@ On any non-trivial diff, before committing or presenting, in order:
    (`alfred-security.md` owns the trigger) - the security half below.
 4. **Done gate.** Satisfy the Definition-of-done gate.
 5. **Ask.** No commit words from the user this conversation: name the paths (the scope derived fresh,
-   as the git baseline spells it) and anything still owed, then put ONE AskUserQuestion; a picked
+   `git diff HEAD --stat; git ls-files -o --exclude-standard`) and anything still owed, then put ONE AskUserQuestion; a picked
    option is the receipt's `answered:` line. Words the user already typed for THIS commit skip it -
    they are the `authorized:` line. The local commit takes the mark - it stays on this machine and
    `git reset --soft HEAD~1` undoes it; when the question names anything still owed, 'Show the diff first'
    takes the mark instead, listed first:
 
    ```ask
-   Commit <N files - the session's own paths> on <branch>? <VERIFIED phrase | still owed: <gate>>.
+   Commit <N files - the session's own paths> on <branch>? <VERIFIED phrase>.
    - 'Commit now (Recommended)' - stage exactly the named paths and commit them under the receipt
    - 'Show the diff first' - print the stat and the diff, then ask again; nothing is committed yet
    - 'Hold' - nothing is committed and no receipt is written

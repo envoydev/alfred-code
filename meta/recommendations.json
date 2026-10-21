@@ -13,10 +13,10 @@
   ],
   "rules": [
    "alfred-docs-root",
-   "alfred-git",
    "alfred-interaction",
    "alfred-memory",
    "alfred-navigation",
+   "alfred-preferences",
    "alfred-quality-gates",
    "alfred-security",
    "markdown-docs",
@@ -45,6 +45,7 @@
    "guard-answer",
    "instrument-tool-usage",
    "docs-session",
+   "preferences-session",
    "memory-session",
    "check-turn-build",
    "history-session"
@@ -64,7 +65,7 @@
    "capture-architecture-quality",
    "loop-architecture-quality",
    "capture-code-quality",
-   "capture-code-style",
+   "capture-project-code-style",
    "habits-commit-checkpoint",
    "issue-diagnoser",
    "capture-first-look",

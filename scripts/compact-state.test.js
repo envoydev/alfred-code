@@ -47,7 +47,7 @@ function project()
     const flow = path.join(root, '.alfred', 'docs', 'flow');
     const sessions = path.join(root, '.alfred', 'state', 'sessions');
     const approvals = path.join(root, '.alfred', 'state', 'approvals');
-    const state = path.join(sessions, 'COMPACT-STATE');
+    const state = path.join(sessions, `COMPACT-STATE-${sid}`);
     const stamp = (name, minutesOld, dir = approvals) =>
     {
         fs.mkdirSync(dir, { recursive: true });
@@ -682,4 +682,69 @@ test('compact-state: a plan\'s stamp is listed as <plan id>/APPROVAL, an empty p
     p.run({ hook_event_name: 'PreCompact', trigger: 'auto', transcript_path: p.transcript([]) });
     const text = fs.readFileSync(p.state, 'utf8');
     assert.match(text, /^flow stamps:\n  cart\/APPROVAL - 4 min old\n  COMMIT-GATE - 6 min old$/m);
+});
+
+// ---- loading audit 2026-10-21: G2 nested flows, G9 Skill-route bodies, G10 one snapshot per session, G3 a seat's own
+// compaction, PF-23 the personal doc's answer language ----------------------------------------------------------------
+const skillFile = (p, name, chars = 100) =>
+{
+    const dir = path.join(p.root, '.claude', 'skills', name);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'SKILL.md'), `---\nname: ${name}\n---\n${'x'.repeat(chars)}\n`);
+};
+
+test('G2: a slash flow that calls another flow through the Skill tool keeps both, and the compact start re-reads the slash one', () =>
+{
+    const p = project();
+    skillFile(p, 'task-solve');
+    skillFile(p, 'task-implement');
+    const tp = p.transcript([userRow('<command-name>/task-solve</command-name>'), toolUse('Skill', { skill: 'task-implement' }), usageRow('a1', { cache_read_input_tokens: 900 })]);
+    p.run({ hook_event_name: 'PreCompact', trigger: 'auto', transcript_path: tp });
+    const state = fs.readFileSync(p.state, 'utf8');
+    assert.match(state, /^open flows:$/m);
+    assert.match(state, /^ {2}\/task-solve - slash command - body .*task-solve\/SKILL\.md - re-read$/m);
+    assert.match(state, /^ {2}\/task-implement - Skill call - body .*task-implement\/SKILL\.md \(\d+ chars, 0 Skill calls after it\)$/m, 'a short newest Skill run is not marked re-read');
+    const start = startText(p.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tp }));
+    assert.match(start, /\/task-solve, typed as a slash command, so its body was NOT carried through the compaction - Read .*task-solve\/SKILL\.md again/);
+    assert.doesNotMatch(start, /Read .*task-implement\/SKILL\.md/, 'a short newest Skill body comes back whole');
+});
+
+test('G9: a Skill-route body past the 5,000-token re-attach, or one pushed out by later Skill calls, is re-read', () =>
+{
+    const p = project();
+    skillFile(p, 'task-implement', 19000);
+    const tp = p.transcript([userRow('go'), toolUse('Skill', { skill: 'task-implement' })]);
+    p.run({ hook_event_name: 'PreCompact', trigger: 'auto', transcript_path: tp });
+    assert.match(startText(p.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tp })), /\/task-implement, a Skill call whose body .*Read .*task-implement\/SKILL\.md again/);
+    const q = project();
+    skillFile(q, 'task-implement');
+    const later = Array.from({ length: 5 }, (_, i) => toolUse('Skill', { skill: `habits-${i}` }));
+    const tq = q.transcript([userRow('go'), toolUse('Skill', { skill: 'task-implement' }), ...later]);
+    q.run({ hook_event_name: 'PreCompact', trigger: 'auto', transcript_path: tq });
+    assert.match(startText(q.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tq })), /Read .*task-implement\/SKILL\.md again/);
+});
+
+test('G10: each session keeps its own snapshot - another session\'s PreCompact never takes this one\'s pointer', () =>
+{
+    const p = project();
+    p.run({ hook_event_name: 'PreCompact', trigger: 'auto' });
+    p.run({ hook_event_name: 'PreCompact', trigger: 'auto', session_id: 'parallel-session' });
+    assert.match(startText(p.run({ hook_event_name: 'SessionStart', source: 'compact' })), /COMPACT-STATE/);
+    assert.match(startText(p.run({ hook_event_name: 'SessionStart', source: 'compact', session_id: 'parallel-session' })), /COMPACT-STATE-parallel-session/);
+});
+
+test('G3: a seat\'s own compaction start says nothing, arms no hold and records no model', () =>
+{
+    const p = project();
+    p.run({ hook_event_name: 'PreCompact', trigger: 'auto' });
+    const r = p.run({ hook_event_name: 'SessionStart', source: 'compact', agent_id: 'agent-3', agent_type: 'alfred-code:web-angular-implementer', model: 'claude-haiku-5-5' });
+    assert.strictEqual(r.stdout, '', r.stdout);
+    assert.deepStrictEqual(fs.readdirSync(p.tmpdir).filter((f) => f.startsWith('guard-fresh-compact-')), []);
+});
+
+test('PF-23: after a compaction the answer language follows the personal preferences doc too', () =>
+{
+    const p = project();
+    p.run({ hook_event_name: 'PreCompact', trigger: 'auto' });
+    assert.match(startText(p.run({ hook_event_name: 'SessionStart', source: 'compact' })), /unless a loaded skill or the personal preferences doc \(PERSONAL-PREFERENCES\.md\) sets the answer language/);
 });

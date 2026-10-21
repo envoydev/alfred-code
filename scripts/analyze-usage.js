@@ -559,7 +559,7 @@ function readJsonl(file, onObj) {
 
 // A rule or preamble written before the capture was renamed carries its old name, read from the
 // manifest's `renamed` map rather than spelled here.
-const STYLE_SKILL = 'capture-code-style';
+const STYLE_SKILL = 'capture-project-code-style';
 const STYLE_SKILL_NAMES = [STYLE_SKILL, ...Object.entries(loadManifest(path.join(__dirname, '..')).renamed.skills)
   .filter(([, now]) => now === STYLE_SKILL).map(([old]) => old)];
 const STYLE_RULE_MARKERS = STYLE_SKILL_NAMES.map((n) => `the ${n} skill owns this rule`);
