@@ -131,6 +131,33 @@ no `tsserver.js` - and `csharp-lsp`'s `csharp-ls` 0.28 needs the .NET 10 SDK. An
 settings yet and written, never refused as bad JSON. Say the two plugin prerequisites in the close only where the
 project picked that plugin.
 
+## in 2.9.0 - the code style joins the preferences docs; a personal doc; the fresh-session trigger follows the model
+
+Update moves the code style into the preferences docs, with no ask: `code-style/CODE-STYLE.md` becomes
+`<docs-path>/preferences/PROJECT-CODE-PREFERENCES.md`, `CODE-PREFERENCES.md` becomes `PERSONAL-CODE-PREFERENCES.md`,
+their section ids and `watch.json` entries are re-spelled, and `code-style/` goes once empty. The code-style capture is
+`/capture-project-code-style` now (the table below). The generated `project-code-style.md` goes when it holds the capture's text; one the user
+wrote is kept and named. A doc already at the new path wins: the old one stays where it is, named, for the user to merge.
+Report every `docs migration (preferences)`, `renamed:` and `!!` line.
+
+`alfred-git.md` and the generated `alfred-preferences.md` give way to a shipped `alfred-preferences.md` that names each
+preferences doc and when to read it, nothing inlined. The install seeds `GIT-PREFERENCES.md` from the former git rule,
+its consent, scope, checkpoint and safety entries locked: a git doc the user already has keeps its entries and gains the
+locked ones it lacks, and an edited locked entry is restored from the seed, the replaced text logged. Report the
+`preferences:` line.
+
+`/capture-preferences` also writes `PERSONAL-PREFERENCES.md` now - how the user wants the assistant to work. A new hook
+pushes it into every main session's start, again after each compaction, and hands the other preferences docs over at an
+actor's first edit and first git write. Under git versioning the two personal docs stay out of git. The hook takes effect
+from the next session - name the restart.
+
+The env switches fold into `ALFRED_CODE_HOOKS_OFF`: a `0` for `ALFRED_CODE_PUSH_GATE`, `ALFRED_CODE_DOCS_GATE` and the
+like becomes a `<hook>:<part>` entry, a `1` is dropped, and `ALFRED_CODE_CONFIG_PROTECT` goes. A stack-seeded
+`ALFRED_CODE_HISTORY` of 1 becomes 3 (the sessions read back; 0 is off, at most 10). The fresh-session trigger follows the
+session model's capacity tier, and `ALFRED_CODE_CONTEXT_WINDOW_DEFAULT` is the trigger of a session with no tier (seeded
+180000): the old 300000 seed moves, and where the three tiers are already 0 the DEFAULT is set to 0 too, so all four at 0
+stays the off switch. Say the env changes in the close.
+
 ## table - every renamed command, was -> now
 
 The installer's `renamed:` lines name each rename this install carried; this table is the whole list, for a user

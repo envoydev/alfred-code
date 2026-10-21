@@ -145,7 +145,7 @@
   },
   {
    "id": "context-window-default-off-with-the-tiers",
-   "since": "2.8.1",
+   "since": "2.9.0",
    "detect": {
     "settings_env_all": {
      "keys": [
@@ -175,7 +175,7 @@
   },
   {
    "id": "context-window-default-is-a-trigger",
-   "since": "2.8.1",
+   "since": "2.9.0",
    "detect": {
     "settings_env_value": {
      "key": "ALFRED_CODE_CONTEXT_WINDOW_DEFAULT",
@@ -193,7 +193,7 @@
   },
   {
    "id": "history-switch-is-a-count",
-   "since": "2.8.1",
+   "since": "2.9.0",
    "detect": {
     "settings_env_value": {
      "key": "ALFRED_CODE_HISTORY",
@@ -211,7 +211,7 @@
   },
   {
    "id": "docs-block-switch-folded",
-   "since": "2.8.1",
+   "since": "2.9.0",
    "detect": {
     "settings_env_key": "ALFRED_CODE_DOCS_BLOCK"
    },
@@ -227,7 +227,7 @@
   },
   {
    "id": "docs-gate-switch-folded",
-   "since": "2.8.1",
+   "since": "2.9.0",
    "detect": {
     "settings_env_key": "ALFRED_CODE_DOCS_GATE"
    },
@@ -243,7 +243,7 @@
   },
   {
    "id": "docs-ask-switch-folded",
-   "since": "2.8.1",
+   "since": "2.9.0",
    "detect": {
     "settings_env_key": "ALFRED_CODE_DOCS_ASK"
    },
@@ -259,7 +259,7 @@
   },
   {
    "id": "push-gate-switch-folded",
-   "since": "2.8.1",
+   "since": "2.9.0",
    "detect": {
     "settings_env_key": "ALFRED_CODE_PUSH_GATE"
    },
@@ -275,7 +275,7 @@
   },
   {
    "id": "rotate-ask-switch-folded",
-   "since": "2.8.1",
+   "since": "2.9.0",
    "detect": {
     "settings_env_key": "ALFRED_CODE_ROTATE_ASK"
    },
@@ -291,7 +291,7 @@
   },
   {
    "id": "done-gate-switch-folded",
-   "since": "2.8.1",
+   "since": "2.9.0",
    "detect": {
     "settings_env_key": "ALFRED_CODE_DONE_GATE"
    },
@@ -307,7 +307,7 @@
   },
   {
    "id": "config-protect-switch-folded",
-   "since": "2.8.1",
+   "since": "2.9.0",
    "detect": {
     "settings_env_key": "ALFRED_CODE_CONFIG_PROTECT"
    },
