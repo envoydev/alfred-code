@@ -273,8 +273,10 @@ test('C24 65abb00a#4 65abb00a#5 f10cb06a#3 f10cb06a#4 + C16 65abb00a#2: the AGEN
     assert.ok(ask, 'step 5.4 is an ask template');
     assert.strictEqual(ask.options[0], 'Apply the additions and verified fixes (Recommended)');
     assert.match(t, /\*\*a verified fix\*\* - a stale path whose new target this run confirmed on disk/);
-    // 65abb00a#1: the check now prints the Rules drift itself (scripts/agents-md-check.js `rule` rows, both directions).
-    assert.match(t, /a named rule with no file and a rule file the list does not name are both `rule` rows/);
+    // 65abb00a#1, superseded 2026-10-21 (the user's ruling): the rules load themselves, so the check no longer holds a
+    // Rules list to .claude/rules/ - it names an older seed's list (`stack-rules`), and its removal is a verified fix.
+    assert.match(t, /A `stack-rules` row is the rules list an older template seeded - step 3 drafts its removal/);
+    assert.match(t, /or the section a `stack-rules` row names: its lines that name the stack's rules or repeat the template's rules text go/);
     // f10cb06a#2: a row the user keeps for good is silenced by the check's own marker, written on their word.
     assert.match(t, /end it with `<!-- agents-md-check: keep -->` - the check then raises no row on it/);
     assert.match(t, /Every `\.env\*` file, `\.env\.example` included, sits behind the install's secret-file read deny/);

@@ -170,7 +170,6 @@ test('5b9ce9c5#8 / a9e06780#7: the rule glob proxy scores only paths under the s
     const outside = run([write(dir, rows, 'outside.jsonl')]).inventory;
     const used = (inv, name) => (inv.rules.find((r) => r.name === name) || {}).how || [];
     assert.deepStrictEqual(used(outside, 'markdown-docs.md'), [], 'three .md files outside the project attach nothing');
-    assert.deepStrictEqual(used(outside, 'skill-authoring.md'), []);
     const inside = [
       ...rows,
       asst('m2', T(3), [
@@ -182,7 +181,6 @@ test('5b9ce9c5#8 / a9e06780#7: the rule glob proxy scores only paths under the s
     ];
     const inv = run([write(dir, inside, 'inside.jsonl')]).inventory;
     assert.deepStrictEqual(used(inv, 'markdown-docs.md'), ['glob proxy x2'], 'guide.md and SKILL.md, nothing outside');
-    assert.deepStrictEqual(used(inv, 'skill-authoring.md'), ['glob proxy x1'], 'the in-project SKILL.md only');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

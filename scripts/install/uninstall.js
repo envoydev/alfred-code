@@ -25,13 +25,15 @@ const path = require('node:path');
 const { hashItem } = require('./library.js');
 const { commonJsScope } = require('./copy.js');
 const { entryHash } = require('./stamp.js');
-const { seededAgentsMdPath } = require('./seeds.js');
+const { locateSeed } = require('./seeds.js');
 
 const isMarker = (file) => { try { const j = JSON.parse(fs.readFileSync(file, 'utf8')); return Object.keys(j).length === 1 && j.type === 'commonjs'; } catch { return false; } };
 
 // Every library copy (library-*) and every other copy (managed-files) whose hash still matches.
-function removeManagedFiles({ claudeDir, skillsDir, library = {}, files = {}, log = () => {} })
+function removeManagedFiles({ claudeDir, skillsDir, library = {}, files = {}, instructionsKind = 'agents', log = () => {} })
 {
+    // the seed where it sits at its row's hash, under either name (review 2026-10-23: a rename the answer could not make)
+    const seedAt = locateSeed(path.dirname(claudeDir), instructionsKind, files['AGENTS.md'] || '');
     const items = [
         ...Object.entries(library.skills || {}).map(([n, h]) => ['skill', n, path.join(skillsDir, n), h]),
         ...Object.entries(library.agents || {}).map(([n, h]) => ['agent', n, path.join(claudeDir, 'agents', `${n}.md`), h]),
@@ -39,8 +41,8 @@ function removeManagedFiles({ claudeDir, skillsDir, library = {}, files = {}, lo
         ...Object.entries(files).map(([rel, h]) =>
         {
             const [kind, name] = rel.includes('/') ? rel.split('/') : ['file', rel];
-            // The seed's row is read where it sits: .claude/, or the root on --instructions-at root.
-            const at = rel === 'AGENTS.md' ? seededAgentsMdPath(path.dirname(claudeDir)) : kind === 'skills' ? path.join(skillsDir, name) : path.join(claudeDir, ...rel.split('/'));
+            // The seed's row is read where the seed sits (seedAt above).
+            const at = rel === 'AGENTS.md' ? seedAt : kind === 'skills' ? path.join(skillsDir, name) : path.join(claudeDir, ...rel.split('/'));
             return [kind.replace(/s$/, ''), name, at, h];
         }),
     ];
@@ -48,7 +50,7 @@ function removeManagedFiles({ claudeDir, skillsDir, library = {}, files = {}, lo
     // the item must sit directly inside the folder of its kind (a skill directory, a seat or rule file). The one exception
     // is the seed at the project root - that exact file, at the hash the stack wrote.
     const home = { skill: skillsDir, agent: path.join(claudeDir, 'agents'), rule: path.join(claudeDir, 'rules'), hook: path.join(claudeDir, 'hooks'), file: claudeDir };
-    const rootSeed = path.resolve(path.dirname(claudeDir), 'AGENTS.md');
+    const rootSeed = path.resolve(seedAt);
     const inside = (label, at) => (Boolean(home[label]) && path.dirname(path.resolve(at)) === path.resolve(home[label])) || (label === 'file' && path.resolve(at) === rootSeed);
     for (const [label, name, at, hash] of items)
     {

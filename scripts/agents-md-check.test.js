@@ -143,39 +143,43 @@ test('C24: a backticked dependency name is a package, and a line marked keep rai
     assert.deepStrictEqual(kinds(run(root, 'Name a client `x.api.ts`. <!-- keep -->\nAnd `y.api.ts`.')), ['1 path x.api.ts', '2 path y.api.ts'], 'only the exact marker, only its own line');
 });
 
-// Audit 2026-10-20 C23 (e43969a7, 24841a36): a path-scoped rule attaches by its own `paths:` glob and the Rules prose
-// says so instead of listing it - 11 such files were rows on every run, asked about in update and validate.
-test('rule: a path-scoped rule the list does not name is no row; an unnamed always-on rule still is', () =>
+// The user's ruling of 2026-10-21: every file in .claude/rules/ loads itself, so the `## Rules` list an older template
+// seeded only repeats the rules in every session - one row at its heading, which the improve mode offers to remove.
+test('stack-rules: a `## Rules` section naming the stack\'s own rules is one row at its heading - a table, the old prose, a baseline name', () =>
 {
-    const scoped = '---\ndescription: d\npaths: ["**/*.md"]\n---\n\nbody\n';
-    const root = tree({ '.claude/rules/alfred-git.md': 'x', '.claude/rules/alfred-memory.md': '---\ndescription: always\n---\nbody\n',
-        '.claude/rules/markdown-docs.md': scoped, '.claude/rules/sql-conventions.md': scoped.replace(/\n/g, '\r\n') });
+    const root = tree({ '.claude/rules/alfred-git.md': 'x', '.claude/rules/markdown-docs.md': 'x' });
     const check = (text) => kinds(checkText({ root, file: 'AGENTS.md', text, template: TEMPLATE, locate: onPath([]), isIgnored: () => true }));
     const table = (rows) => ['# App', '', '## Rules', '', '| Rule | What |', '|---|---|', ...rows.map((r) => `| \`${r}\` | x |`)].join('\n');
-    assert.deepStrictEqual(check(table(['.claude/rules/alfred-git.md'])), ['3 rule .claude/rules/alfred-memory.md'],
-        'the path-scoped files (LF and CRLF) are skipped, the unnamed always-on rule is still a row');
-    assert.deepStrictEqual(check(table(['.claude/rules/alfred-git.md', '.claude/rules/alfred-memory.md', '.claude/rules/gone.md'])), ['9 rule gone.md'],
-        'a NAMED rule with no file is still a row');
+    assert.deepStrictEqual(check(table(['.claude/rules/alfred-git.md'])), ['3 stack-rules ## Rules']);
+    assert.deepStrictEqual(check(['# App', '', '## Rules', '', 'Every `alfred-*` file loads each session.'].join('\n')), ['3 stack-rules ## Rules'], 'the older seeds\' prose');
+    assert.deepStrictEqual(check(table(['.claude/rules/baseline-git.md'])), ['3 stack-rules ## Rules'], 'a pre-2.1.6 name');
+    assert.deepStrictEqual(check(['# App', '', '## Rules', '', '### Baseline', '', '| `.claude/rules/alfred-git.md` | x |'].join('\n')), ['3 stack-rules ## Rules'], 'a ### under it is still the section');
+    assert.deepStrictEqual(check(table(['.claude/rules/alfred-git.md']).replace('## Rules', '## Rules <!-- agents-md-check: keep -->')), [], 'a kept heading is silenced');
 });
 
-// Usage audit 2026-10-10, 65abb00a (T4 cross-track): an improve pass never compared the Rules list with
-// `.claude/rules/` - it missed the unlisted skill-authoring rule and twice called the table stale, wrongly.
-test('rule: the Rules list against .claude/rules - a named rule with no file, and an enumerating list\'s unnamed file', () =>
+// The temp-project matrix of 2026-10-21: a filled 2.9.0 seed drew the section's row plus one path row per generated or
+// retired rule its table named - four rows for one fix. The section's removal covers them, so its row stands alone.
+test('stack-rules: inside the flagged section no path row is raised - its removal covers them; after it the path check runs again', () =>
 {
-    const root = tree({ '.claude/rules/alfred-git.md': 'x', '.claude/rules/alfred-memory.md': 'x', '.claude/rules/skill-authoring.md': 'x',
-        '.claude/rules/angular-conventions.md': 'x', 'docs/README.md': 'x' });
-    // Everything git ignores, as in a project that ignores .claude/: the rule rows hold all the same.
-    const check = (text) => kinds(checkText({ root, file: 'AGENTS.md', text, template: TEMPLATE, locate: onPath([]), isIgnored: () => true }));
-    const table = (rows) => ['# App', '', '## Rules', '', '| Rule | What |', '|---|---|', ...rows.map((r) => `| \`${r}\` | x |`), '', '## Other', '', '`skill-authoring.md` here is not the list.'].join('\n');
-    assert.deepStrictEqual(check(table(['.claude/rules/alfred-git.md', '.claude/rules/alfred-memory.md', '.claude/rules/angular-conventions.md', '.claude/rules/baseline-git.md'])),
-        ['3 rule .claude/rules/skill-authoring.md', '10 rule baseline-git.md'], 'the unlisted file on the heading, the named one with no file on its line');
-    assert.deepStrictEqual(check(table(['alfred-*', '.claude/rules/angular-conventions.md', 'skill-authoring.md'])), [], 'a glob covers, a bare rule name counts');
-    assert.deepStrictEqual(check(['# App', '', '## Rules', '', 'Every `alfred-*` file loads each session; `.claude/rules/alfred-project-awareness.md` once captured; see `docs/README.md`.'].join('\n')), [],
-        'a list naming only the generated rules and a pattern does not enumerate, and a generated name waits for its capture');
-    assert.deepStrictEqual(check(table(['.claude/rules/alfred-git.md']).replace('## Rules', '## Rules <!-- agents-md-check: keep -->')), [], 'a kept heading silences the unnamed rows');
+    const root = tree({});
+    const text = ['# App', '', '## Rules', '', '| `.claude/rules/alfred-git.md` | x |', '| `.claude/rules/alfred-architecture.md` (GENERATED) | `.alfred/docs/awareness/` |',
+        '', '## Key files', '', '- `src/gone.ts`'].join('\n');
+    assert.deepStrictEqual(kinds(run(root, text)), ['3 stack-rules ## Rules', '10 path src/gone.ts']);
+    assert.deepStrictEqual(kinds(run(root, text.replace('## Rules', '## Rules <!-- agents-md-check: keep -->'))),
+        ['5 path .claude/rules/alfred-git.md', '6 path .claude/rules/alfred-architecture.md', '6 path .alfred/docs/awareness/', '10 path src/gone.ts'], 'a kept section is checked line by line');
+});
+
+test('stack-rules: a list of the project\'s own rules, or a stack rule named outside the section, is no row - a named rule with no file is the path check\'s', () =>
+{
+    const root = tree({ '.claude/rules/alfred-git.md': 'x', '.claude/rules/markdown-docs.md': 'x' });
+    const check = (text, isIgnored = () => true) => kinds(checkText({ root, file: 'AGENTS.md', text, template: TEMPLATE, locate: onPath([]), isIgnored }));
+    const table = (rows) => ['# App', '', '## Rules', '', '| Rule | What |', '|---|---|', ...rows.map((r) => `| \`${r}\` | x |`)].join('\n');
+    assert.deepStrictEqual(check(table(['.claude/rules/markdown-docs.md'])), [], 'the project\'s own list');
+    assert.deepStrictEqual(check(`${table(['.claude/rules/markdown-docs.md'])}\n\n## Other\n\nThe git rule is \`.claude/rules/alfred-git.md\`.`), [], 'a later section is no list');
+    assert.deepStrictEqual(check(table(['.claude/rules/gone.md']), () => false), ['7 path .claude/rules/gone.md']);
     const bare = tree({ 'docs/x.md': 'x' });
     assert.deepStrictEqual(kinds(checkText({ root: bare, file: 'AGENTS.md', text: table(['.claude/rules/alfred-git.md']), template: TEMPLATE, locate: onPath([]), isIgnored: () => false })),
-        ['7 path .claude/rules/alfred-git.md'], 'no .claude/rules/ at all: the path check answers as before');
+        ['3 stack-rules ## Rules'], 'no .claude/rules/ at all: the section\'s row covers the path it names');
 });
 
 // I1 (final review of the rename): read over four real consuming projects the check gave 39 rows and 1 was
@@ -420,23 +424,15 @@ test('cli: --file checks one file; an unreadable template skips only the templat
 });
 
 // A HAND copy of the template (the fill-in block's route when the seed step was skipped) keeps its
-// placeholder H1: on a project whose captures all ran, it is flagged unfilled and by that placeholder
-// alone; a GENERATED row whose capture never ran names files that are not there.
-test('cli: a hand copy of the shipped template is flagged unfilled and by its placeholder alone - and a skipped capture\'s row by its files', () =>
+// placeholder H1: it is flagged unfilled and by that placeholder alone - its only live line is the H1, so a
+// project with no rules and no docs yet adds no row.
+test('cli: a hand copy of the shipped template is flagged unfilled and by its placeholder alone, on a project with no rules or docs', () =>
 {
     const template = fs.readFileSync(path.join(__dirname, '..', 'stack', 'AGENTS.template.md'), 'utf8');
-    const rules = ['alfred-interaction', 'alfred-quality-gates', 'alfred-security', 'alfred-preferences', 'alfred-navigation', 'alfred-docs-root', 'alfred-memory',
-        'alfred-awareness', 'alfred-architecture'];
-    const files = { '.claude/AGENTS.md': template, '.alfred/docs/preferences/PROJECT-CODE-PREFERENCES.md': '', '.alfred/docs/awareness/PROJECT-AWARENESS.md': '',
-        '.alfred/docs/preferences/PERSONAL-CODE-PREFERENCES.md': '' };
-    for (const r of rules) files[`.claude/rules/${r}.md`] = '';
-    const root = tree(files, { git: true });
+    const root = tree({ '.claude/AGENTS.md': template }, { git: true });
     const r = cli(root);
     assert.strictEqual(r.status, 1, r.stdout + r.stderr);
     assert.deepStrictEqual(r.stdout.trim().split('\n').map((l) => l.replace(/ - .*/, '')), ['.claude/AGENTS.md:1 template: the template', '.claude/AGENTS.md:1 placeholder: __PROJECT_NAME__', 'agents-md-check: 2 finding(s) in 1 file(s)']);
-    fs.rmSync(path.join(root, '.claude/rules/alfred-architecture.md'));
-    const skipped = cli(root).stdout.trim().split('\n').map((l) => l.replace(/:\d+ /, ' ').replace(/ - .*/, ''));
-    assert.deepStrictEqual(skipped.slice(2, -1), ['.claude/AGENTS.md path: .claude/rules/alfred-architecture.md'], 'the row names the capture that never ran');
 });
 
 // The skill's first read: which CLAUDE.md files exist and whether one is still the untouched seed - the
@@ -453,7 +449,7 @@ test('cli --list: every CLAUDE.md with its size, the untouched seed marked, and 
 
 // Measured by the skill's walkthrough (2026-09-26): the installer stamps the H1 with the folder name, so
 // the file it seeds carries no `__PROJECT_NAME__` - an unfilled seed is known by what the installer
-// leaves: the template's fill-in block still there, and no live section but the H1 and `## Rules`.
+// leaves: the template's fill-in block still there, and no live section but the H1 (and an older seed's `## Rules`).
 test('the seed the installer writes reads as the unfilled template - listed as such, and a finding - until a section of the project\'s own lands', () =>
 {
     const { agentsMdBody } = require('./install/seeds.js');
@@ -465,8 +461,11 @@ test('the seed the installer writes reads as the unfilled template - listed as s
     assert.deepStrictEqual(cli(root, ['--list']).stdout.trim().split('\n'), [`.claude/AGENTS.md: ${seed.replace(/\n$/, '').split('\n').length} lines, the seeded template (unfilled)`]);
     const r = cli(root);
     assert.strictEqual(r.status, 1, r.stdout);
-    assert.match(r.stdout, /^\.claude\/AGENTS\.md:1 template: the template - never filled: only its H1 and ## Rules are live$/m);
-    const filled = seed.replace('\n## Rules\n', '\n## Commands\n\n- `git status`\n\n## Rules\n');
+    assert.match(r.stdout, /^\.claude\/AGENTS\.md:1 template: the template - never filled: no section of the project's own$/m);
+    assert.doesNotMatch(seed, /^## Rules/m, 'the seed lists no rules');
+    fs.writeFileSync(path.join(root, '.claude/AGENTS.md'), `${seed}\n## Rules\n\n| Rule | What |\n|---|---|\n| \`.claude/rules/alfred-git.md\` | x |\n`);
+    assert.match(cli(root, ['--list']).stdout, /unfilled/, 'an older seed\'s rules list is no section of the project\'s own');
+    const filled = `${seed}\n## Commands\n\n- \`git status\`\n`;
     fs.writeFileSync(path.join(root, '.claude/AGENTS.md'), filled);
     assert.doesNotMatch(cli(root, ['--list']).stdout, /unfilled/, 'a section of the project\'s own makes it the project\'s file');
     assert.doesNotMatch(cli(root).stdout, /never filled/);
@@ -474,8 +473,8 @@ test('the seed the installer writes reads as the unfilled template - listed as s
 
 // I3 (final review of the rename): the seed with its H1 renamed and two lines of the user's own rules under
 // it - no `##` of their own - read as unfilled, so the skill took Create mode and wrote over the user's
-// text with no diff shown. Live text outside the H1 and `## Rules` that the template does not carry is the
-// project's own; the template's own live lines, or the installer's AGENTS import, are not.
+// text with no diff shown. Live text outside the H1 and an older seed's `## Rules` that the template does not carry
+// is the project's own; the template's own live lines, or the installer's AGENTS import, are not.
 test('I3: the seed holding the user\'s own lines under a renamed H1 is the project\'s file; the template\'s own lines or the AGENTS import keep it unfilled', () =>
 {
     const { agentsMdBody } = require('./install/seeds.js');
@@ -489,9 +488,8 @@ test('I3: the seed holding the user\'s own lines under a renamed H1 is the proje
     assert.doesNotMatch(cli(root).stdout, /never filled/);
     write(seed.replace(/^# [^\n]*\n/, '# Orders service\n'));
     assert.match(listed(), /unfilled/, 'a renamed H1 alone is still the seed');
-    const rulesLine = seed.split('\n').find((l) => l.startsWith('The rules this project runs on'));
-    write(seed.replace(/^# [^\n]*\n/, `# Orders service\n\n${rulesLine}\n`));
-    assert.match(listed(), /unfilled/, 'a line the template itself carries is not the project\'s text');
+    write(`${seed.replace(/^# [^\n]*\n/, '# Orders service\n')}\n## Rules\n\nThe rules this project runs on, all in \`.claude/rules/\`: every \`alfred-*\` file loads each session.\n`);
+    assert.match(listed(), /unfilled/, 'an older seed\'s rules prose is not the project\'s text');
     const withAgents = tree({ 'AGENTS.md': '# agents\n', '.claude/rules/': '' }, { git: true });
     fs.writeFileSync(path.join(withAgents, '.claude/AGENTS.md'), agentsMdBody({ projectRoot: withAgents, sourceDir: path.join(__dirname, '..') }));
     assert.match(cli(withAgents, ['--list']).stdout, /unfilled/, 'the import the installer writes under the H1 is the installer\'s');
@@ -506,7 +504,7 @@ test('SD04: a bare name in a list of glob patterns is a pattern, never a claimed
     const root = tree({ 'Directory.Build.props': '', '.claude/rules/dotnet-repair-agents.md': '' });
     const list = '- `**/*.csproj`, `**/*.sln`, `Directory.Build.props`, `Directory.Packages.props`, `**/*.targets`, `nuget.config` (and every `.cs`/`.xaml` touch) -> `dotnet-repair-agents.md` - routes a broken build.';
     const text = ['# Orders', '', '## Rules', '', list, '- `**/*.ts` or `tsconfig.app.json` -> `angular-repair-agents.md`'].join('\n');
-    assert.deepStrictEqual(kinds(run(root, text)), ['6 rule angular-repair-agents.md'], 'the list names attach patterns; the routed rule is still held to .claude/rules');
+    assert.deepStrictEqual(kinds(run(root, text)), ['6 path angular-repair-agents.md'], 'the list names attach patterns; the routed rule is still a path');
     const prose = ['# Orders', '', 'Sources match `src/**/*.cs`; the solution config is `Gone.props`.'].join('\n');
     assert.deepStrictEqual(kinds(run(root, prose)), ['3 path Gone.props'], 'a glob elsewhere on the line, past prose, makes no list of the path');
 });
@@ -553,17 +551,18 @@ test('generated rules: every rule a capture skill writes is a generated name, an
     for (const stem of shipped) assert.ok(!generated(stem), `${stem} ships with the stack`);
 });
 
-test('generated rules: the awareness and architecture rules - a pointer is no template text, naming them lists nothing, an uncaptured one is a path', () =>
+test('generated rules: the awareness and architecture rules - a pointer is no template text, an uncaptured one is a path, a Rules list of them is the stack\'s', () =>
 {
     const files = { '.claude/rules/alfred-awareness.md': '' };
     for (const r of ['interaction', 'quality-gates', 'security', 'preferences', 'navigation', 'docs-root', 'memory']) files[`.claude/rules/alfred-${r}.md`] = '';
     const root = tree(files);
     const pointer = '- MCP routing is NOT hand-filled here - it lives in the generated <docs-path>/awareness/AGENTS-AWARENESS.md, which .claude/rules/alfred-awareness.md imports.';
-    const text = ['# Orders', '', '## Stack', '', pointer, '- .NET 10.', '', '## Rules', '', '| Rule | What |', '|---|---|',
+    const text = ['# Orders', '', '## Stack', '', pointer, '- .NET 10.', '', '## Key files', '', '| Rule | What |', '|---|---|',
         '| `.claude/rules/alfred-awareness.md` (GENERATED) | the inventory |', '| `.claude/rules/alfred-architecture.md` (GENERATED) | the architecture marker |'].join('\n');
     assert.deepStrictEqual(kinds(run(root, text, { file: '.claude/AGENTS.md', template: SHIPPED_TEMPLATE })), ['13 path .claude/rules/alfred-architecture.md']);
     fs.writeFileSync(path.join(root, '.claude/rules/alfred-architecture.md'), '');
     assert.deepStrictEqual(kinds(run(root, text, { file: '.claude/AGENTS.md', template: SHIPPED_TEMPLATE })), []);
+    assert.deepStrictEqual(kinds(run(root, text.replace('## Key files', '## Rules'), { file: '.claude/AGENTS.md', template: SHIPPED_TEMPLATE })), ['8 stack-rules ## Rules']);
 });
 
 test('SD04 --outline: each numbered outline section with the heading that holds it, or lacks - informational, exit 0', () =>

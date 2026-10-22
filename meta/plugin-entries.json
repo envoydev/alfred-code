@@ -162,6 +162,11 @@
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
                 "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js\"",
+                "timeout": 10
               }
             ]
           },
@@ -203,6 +208,26 @@
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
                 "timeout": 10
               },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "^mcp__(plugin_(alfred-)?navigation_)?(alfred-)?navigation__(find_symbol|find_referencing_symbols|get_symbols_overview|find_declaration|find_implementations)$",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "LSP",
+            "hooks": [
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js\"",
@@ -317,11 +342,21 @@
         ],
         "UserPromptExpansion": [
           {
-            "matcher": "(^|[^A-Za-z0-9_-])((alfred-)?(loop-[a-z][a-z0-9-]*|capture-[a-z][a-z0-9-]*|task-[a-z][a-z0-9-]*|issue-[a-z][a-z0-9-]*)|security-review|init|update|configure|validate)$",
+            "matcher": "(^|[^A-Za-z0-9_-])((alfred-)?(loop-[a-z][a-z0-9-]*|capture-[a-z][a-z0-9-]*|task-[a-z][a-z0-9-]*|issue-[a-z][a-z0-9-]*|review-code|review-security)|security-review|init|update|configure|validate)$",
             "hooks": [
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "^((alfred-)?(capture|loop|task|issue)-[a-z][a-z0-9-]*|review-code|review-security|code-review|security-review)$",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js\"",
                 "timeout": 10
               }
             ]

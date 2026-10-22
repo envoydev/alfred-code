@@ -22,18 +22,21 @@ On any non-trivial diff, before committing or presenting, in order:
    the formatter's check mode - over EVERY staged path, inherited files included, not only the files
    this session edited; fix what it names with the formatter's write mode, re-stage, check again.
    Its clean verdict is the receipt's `format:` line.
-2. **Review.** Run the house review `task-verify-code` - model-invocable, so the gate holds
-   in autonomous flows too (`/code-review` - the bundled correctness review of the current diff - is
-   not this gate; `/simplify` applies cleanup findings in place) - plus any diff gates named in the
-   project's `AGENTS.md`. A DISPATCHED domain-verifier pass over exactly this diff satisfies it the
+2. **Review.** Run the house review - `task-verify-code` when a plan built the change, else
+   `review-code` over the paths this commit takes in (the Scope paragraph below), named as its target; both are model-invocable, so the gate holds in autonomous flows
+   too - plus any diff gates named in the project's `AGENTS.md`. A DISPATCHED domain-verifier pass over exactly this diff satisfies it the
    same way - the right call when the session's context is already heavy. Either way the review is
-   a real invocation THIS session: a receipt claiming 'task-verify-code inline' with no Skill
-   call in the transcript is a replay from memory, not the gate.
+   a real invocation THIS session: a receipt claiming 'task-verify-code inline' or 'review-code inline' with no Skill
+   call in the transcript is a replay from memory, not the gate. It must be FRESH, like the format
+   check: a review that started before a file's last edit never saw it, so a fix made after the
+   review gets `review-code` over the fixed files before the receipt.
 3. **Security review** when the diff touches auth, crypto, secrets, payment or data-access paths
    (`alfred-security.md` owns the trigger) - the security half below.
 4. **Done gate.** Satisfy the Definition-of-done gate.
 5. **Ask.** No commit words from the user this conversation: name the paths (the scope derived fresh,
-   `git diff HEAD --stat; git ls-files -o --exclude-standard`) and anything still owed, then put ONE AskUserQuestion; a picked
+   `git diff HEAD --stat; git ls-files -o --exclude-standard`, which never moves the index) and anything still owed (a gate
+   not run, a review skipped), then put ONE AskUserQuestion - after steps 1-4, since an answer given before the review ran
+   is void; a picked
    option is the receipt's `answered:` line. Words the user already typed for THIS commit skip it -
    they are the `authorized:` line. The local commit takes the mark - it stays on this machine and
    `git reset --soft HEAD~1` undoes it; when the question names anything still owed, 'Show the diff first'
@@ -56,7 +59,8 @@ sha>`, named in the start block). Stage the session's own paths by name, review 
 user names it - the commit guard blocks a `git add` that would sweep it in (`-A`, `.`, a directory)
 until `<data root>/state/approvals/UNTRACKED-ALLOW` lists it.
 
-**Exemptions.** Skip the checkpoint for typos / one-line / formatting-only diffs - and for a diff an
+**Exemptions.** Skip the checkpoint for typos / one-line diffs, and a formatting-only diff inside the
+hook's trivial bar (below - above it a sweep needs a review like any change) - and for a diff an
 equivalent-or-stronger check just cleared: the active quality-loop's own dispatched re-verify plus
 final gate, or the cross-task flow's domain-verifier sign-offs plus the integration-reviewer final
 gate (a self-granted skip on any other reasoning is not this exemption; the security half has its
@@ -67,30 +71,15 @@ the stages in the commit body rather than splitting an unverifiable diff.
 ## The security half
 
 `alfred-security.md` owns the trigger (crypto / secret / auth / payment / data-access work), the
-honesty rules and the `VERIFIED` bar; this is how the review runs. **Do the scoped review yourself,
-first:** apply the vulnerability checklist to exactly the change - a read-only general-purpose seat
-where dispatch exists, inline otherwise. Inside a flow whose dispatch is explicit-only (the solve
-flows) it runs inline unless the stop that led here offered the seat and the user picked it, and inline
-inside a stamped flow whose dispatch guard blocks generic seats.
-Feed it the FULL change set, read without touching the index - `git diff HEAD` plus, for each
-file `git ls-files -o --exclude-standard` lists, `git diff --no-index -- /dev/null <file>`, so a
-brand-new file is reviewed too. First the tracked diff and the untracked list:
-
-```bash
-git diff HEAD; git ls-files -o --exclude-standard
-```
-
-then ONE call naming each listed file, `|| true` because `--no-index` exits 1 whenever the files differ:
-
-```bash
-git diff --no-index -- /dev/null <file-1> || true; git diff --no-index -- /dev/null <file-2> || true
-```
-
-Name every file; never a loop or `xargs` over the list - the secret guard masks only a `git diff` whose
-path it can read. Never `git add -N` and never `git reset` in a review or scope read. The review's file list is the
-set `spec:` counts - hold the two against each other before the verdict - and the `security:` line
-ends `- over <N> files`, that count. `/security-review` recomputes a whole-branch diff whatever base it
-is handed: use it only when the whole branch really is the scope and the diff is small.
+honesty rules and the `VERIFIED` bar; `review-security` is how the review runs. **Run it yourself,
+first:** load `review-security` with the Skill tool over the paths this commit takes in (the Scope paragraph above), named as its
+target. It reads them without touching the index (a brand-new file included), applies its method and not-a-finding list, and
+offers the security-auditor seat past its size bar. Inside a flow whose dispatch is explicit-only (the
+solve flows) it runs inline unless the stop that led here offered the seat and the user picked it.
+Never `git add -N` and never `git reset` in a review or scope read. The review's file list is the set
+`spec:` counts - hold the two against each other before the verdict - and the `security:` line ends
+`- over <N> files`, that count; the line is the review's verdict. Its leads are listed in the close and
+never block `VERIFIED`.
 
 The checkpoint exemption above skips this half only when the gate that cleared the diff carried a
 security pass - the integration-reviewer gate does, the quality loop's does not - or when every path
@@ -153,11 +142,16 @@ Own-call receipt, then the commit, then clear it.
 
 The `guard-ungated-commit` hook blocks a non-trivial `git commit` without a fresh receipt. It
 judges 'trivial' mechanically - at most 2 files and 15 changed lines across the session's change - this
-commit plus the session's earlier commits that passed without a receipt - so a prose-exempt diff above
-that bar (a formatting-only sweep) still writes `VERIFIED` naming the exemption; never split a real
-change into small commits to slip under it. One receipt covers a reviewed batch: a later commit passes on
-it while its `head:` is an ancestor of HEAD and every commit since touches only files its review
-covered; clear it after the LAST commit of the batch. The hook's staged-diff scan (a conflict marker, a
+commit plus the session's earlier commits that passed without a receipt - so a diff above that bar
+needs a review whatever it changes, a formatting-only sweep included (spacing inside a string, or one
+that splits a shell word, is code). Any `VERIFIED` line, whatever it says, needs a review of the code
+that started in this session after the last edit to every file the commit takes in - a file whose bytes
+a review saw (its staged copy too) still passes (a stash and pop), a review pointed at paths covers
+those alone, a seat covers what its brief names (`git diff HEAD` for the whole change), a review call a
+hook refused is no review, a verifier seat counts once it has reported (a background one at its
+completed notification), and a review skill counts once its result line - `Findings:`, a loop's
+`Outcome:` - follows it; never split a real change into small commits to slip under it. One receipt covers a reviewed batch: a later commit passes on it while its `head:` is an
+ancestor of HEAD and every commit since touches only files its review covered; clear it after the LAST commit of the batch. The hook's staged-diff scan (a conflict marker, a
 debugger, a focused test, a credential-shaped literal, a hidden character) is a fact check this receipt
 never opens: remove the hit and stage again, or, on the user's 'Commit it as is' in the denial's own
 ask, write the `<data root>/state/approvals/STAGED-SCAN-ALLOW` receipt it names.

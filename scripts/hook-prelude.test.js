@@ -258,7 +258,7 @@ test('every hook points at the prelude header for its gates instead of listing t
         assert.match(text, /STACK HOOK GATES - they live in hook-prelude\.js, whose header lists them/, file);
         // A part's own switch is named where the hook says how to turn that part off (`<hook>:<part> in
         // ALFRED_CODE_HOOKS_OFF`, hook-prelude.js partOff) - that is no gate list, so the phrase is taken out first.
-        const own = text.replace(/`?[\w<>-]+:[\w<>]+`? in ALFRED_CODE_HOOKS_OFF/g, '');
+        const own = text.replace(/`?[\w<>-]+:[\w<>-]+`? in ALFRED_CODE_HOOKS_OFF/g, '');
         assert.doesNotMatch(own, /both live in hook-prelude|migration window|ALFRED_CODE_HOOKS_OFF/, `${file} lists the gates itself`);
     }
 });
@@ -948,4 +948,95 @@ test('HOOKS_OFF: an old hook name in the csv still switches the renamed hook off
   assert.strictEqual(prelude.hookDisabled('guard-answer.js', { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length.js, history-session' }), true, 'with .js, in a list');
   assert.strictEqual(prelude.hookDisabled('guard-answer.js', { ALFRED_CODE_HOOKS_OFF: 'guard-answer' }), true, 'the new name');
   assert.strictEqual(prelude.hookDisabled('guard-stop-contract.js', { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' }), false, 'no other hook');
+});
+
+// The user's 'Fix ALL left gaps' (2026-10-22): a seat covers what its brief names, a review counts at its result line,
+// and the snapshot matches byte for byte only.
+test('briefTargets: a whole-change git diff, else the paths a brief names that exist, else nothing', () =>
+{
+    const { briefTargets } = require(PRELUDE);
+    const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'prelude-brief-')));
+    fs.mkdirSync(path.join(dir, 'src'));
+    for (const f of ['src/a.ts', 'src/b.ts', 'notes.md']) fs.writeFileSync(path.join(dir, f), 'x\n');
+    const t = (prompt) => briefTargets(prompt, dir);
+    for (const p of ['Read the change with `git diff HEAD` and review it', 'git diff', 'run git diff --cached --stat', 'git -C . diff HEAD; then report'])
+    {
+        assert.strictEqual(t(p), null, `whole change: ${p}`);
+    }
+    assert.deepStrictEqual(t('review `git diff HEAD -- src/a.ts` only'), [path.join(dir, 'src', 'a.ts')], 'a pathspec narrows to its path');
+    assert.deepStrictEqual(t('review `git diff main..HEAD`'), [], 'a commit range reads none of the uncommitted change');
+    assert.deepStrictEqual(t('review git diff HEAD~3 HEAD'), [], 'two revisions compare commits');
+    assert.deepStrictEqual(t('check src/a.ts:12 and (src/b.ts).'), [path.join(dir, 'src', 'a.ts'), path.join(dir, 'src', 'b.ts')], 'paths with a line suffix or punctuation');
+    assert.deepStrictEqual(t('look at notes.md, e.g. the intro'), [path.join(dir, 'notes.md')], 'a bare file name that exists');
+    assert.deepStrictEqual(t('the src/ folder'), [path.join(dir, 'src')], 'a folder');
+    assert.deepStrictEqual(t('review the parser change'), [], 'no path and no diff: nothing');
+    assert.deepStrictEqual(t('review src/missing.ts'), [], 'a path that does not exist');
+    assert.deepStrictEqual(t(''), [], 'an empty brief');
+    assert.deepStrictEqual(t(undefined), [], 'no brief');
+});
+
+test('REVIEW_PROOF / reviewProof: the result line a review opens, by kind', () =>
+{
+    const { REVIEW_PROOF, reviewProof } = require(PRELUDE);
+    const kinds = (text) => Object.keys(REVIEW_PROOF).filter((k) => REVIEW_PROOF[k].test(text));
+    for (const text of ['Findings: none', 'table\nFindings: 1 BLOCKER, 0 MATERIAL, 0 MINOR', '**Findings:** none', '**Findings**: 2 HIGH', '| Findings | none |', '- Findings - none'])
+    {
+        assert.deepStrictEqual(kinds(text), ['findings'], text);
+    }
+    for (const text of ['**Outcome**: SATISFIED on round 2', 'Outcome: PLATEAU', '**Outcome** - CAPPED on round 4']) assert.deepStrictEqual(kinds(text), ['outcome'], text);
+    for (const text of ['No findings so far', 'findings: none', 'the Findings: field', 'Outcomes: x', '']) assert.deepStrictEqual(kinds(text), [], `no result line: ${text}`);
+    assert.strictEqual(reviewProof('alfred-code:loop-test-coverage'), 'outcome');
+    assert.strictEqual(reviewProof('loop-architecture-quality'), 'outcome');
+    for (const name of ['review-code', 'review-security', 'task-verify-code', 'task-verify-plan']) assert.strictEqual(reviewProof(name), 'findings', name);
+});
+
+test('heldByReview: a snapshot vouches byte for byte only', () =>
+{
+    const { heldByReview } = require(PRELUDE);
+    const sha = (s) => require('node:crypto').createHash('sha1').update(s).digest('hex');
+    const reviews = [{ ts: 1, id: 'r', files: { '/p/a.py': sha('if x:\n    y()\n') } }];
+    assert.strictEqual(heldByReview(reviews, '/p/a.py', Buffer.from('if x:\n    y()\n')), true, 'the same bytes');
+    assert.strictEqual(heldByReview(reviews, '/p/a.py', Buffer.from('if x:\ny()\n')), false, 'a line moved out of the if');
+    assert.strictEqual(heldByReview(reviews, '/p/a.py', Buffer.from('if x:\n    y( )\n')), false, 'spacing inside the line');
+    assert.strictEqual(heldByReview(reviews, '/p/b.py', Buffer.from('if x:\n    y()\n')), false, 'another file');
+    assert.strictEqual(heldByReview([], '/p/a.py', Buffer.from('x')), false, 'no review');
+});
+
+// Review 2026-10-23: two seats dispatched in one message start two hooks at once, and one shared snapshot file read,
+// extended and renamed by each kept only the last one's; and the hashing had no total cap inside a 10s hook.
+test('snapshotReview: one file per call, so calls started together all keep theirs; a total byte cap per call', async () =>
+{
+    const { spawn } = require('node:child_process');
+    const { snapshotReview, readReviewSnapshots, REVIEW_SNAPSHOT } = require(PRELUDE);
+    const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'prelude-snap-')));
+    const git = (...a) => execFileSync('git', a, { cwd: dir, stdio: 'ignore', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
+    git('init', '-q');
+    for (const f of ['a.txt', 'b.txt']) fs.writeFileSync(path.join(dir, f), 'base\n');
+    fs.writeFileSync(path.join(dir, '.gitignore'), '/.alfred/\n');   // as an install ignores its data root
+    git('add', '-A'); git('commit', '-qm', 'base', '--no-verify');
+    for (const f of ['a.txt', 'b.txt']) fs.writeFileSync(path.join(dir, f), 'changed!\n');   // 9 bytes each
+    const env = { ...process.env };
+    for (const k of Object.keys(env)) if (/^ALFRED_CODE_/.test(k)) delete env[k];
+    const call = (id) => new Promise((resolve) =>
+    {
+        const kid = spawn(process.execPath, ['-e', `require(${JSON.stringify(PRELUDE)}).snapshotReview(${JSON.stringify(dir)}, 'sess', { toolUseId: ${JSON.stringify(id)} })`], { stdio: 'ignore', env });
+        kid.on('exit', resolve);
+    });
+    await Promise.all(Array.from({ length: REVIEW_SNAPSHOT.kept }, (_, i) => call(`call${i}`)));
+    const ids = readReviewSnapshots(dir, 'sess', env).map((r) => r.id).sort();
+    assert.deepStrictEqual(ids, Array.from({ length: REVIEW_SNAPSHOT.kept }, (_, i) => `call${i}`), 'every call started together keeps its snapshot');
+    assert.ok(readReviewSnapshots(dir, 'sess', env).every((r) => Object.keys(r.files).length === 2), 'each holds both changed files');
+    // one more, later: the oldest goes, the newest `kept` stay
+    snapshotReview(dir, 'sess', { env, now: Date.now() + 60000, toolUseId: 'late' });
+    const after = readReviewSnapshots(dir, 'sess', env).map((r) => r.id);
+    assert.strictEqual(after.length, REVIEW_SNAPSHOT.kept, 'pruned back to kept');
+    assert.strictEqual(after[0], 'late', 'newest first');
+    assert.deepStrictEqual(readReviewSnapshots(dir, 'other', env), [], 'another session reads none of them');
+    // the total cap: 9 + 9 bytes over a 12-byte budget records one file, the other is left to its time
+    assert.ok(snapshotReview(dir, 'cap', { env, toolUseId: 'c', limits: { ...REVIEW_SNAPSHOT, total: 12 } }));
+    assert.strictEqual(Object.keys(readReviewSnapshots(dir, 'cap', env)[0].files).length, 1, 'past the total, a file is not recorded');
+    // garbage beside them holds nothing and breaks nothing
+    fs.writeFileSync(path.join(dir, '.alfred', 'state', 'sessions', 'review-snapshot-cap@junk.json'), '{not json');
+    assert.strictEqual(readReviewSnapshots(dir, 'cap', env).length, 1, 'an unreadable snapshot file is skipped');
+    fs.rmSync(dir, { recursive: true, force: true });
 });

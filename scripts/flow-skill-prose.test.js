@@ -178,11 +178,11 @@ test('M90: the checkpoint publish step asks through a template, and names its ex
 });
 
 // ---- M91: headings ----------------------------------------------------------------------------------------------
-test('M91: adjust-agents-md is titled as the habit it is, and explain-code opens with an H1', () => {
+test('M91: adjust-agents-md is titled as the habit it is, and explain-topic opens with an H1', () => {
     const adjust = body(skill('habits-adjust-agents-md')).trimStart();
     assert.doesNotMatch(adjust, /^# CLAUDE\.md capture/);
     assert.match(adjust, /^# Adjust AGENTS\.md - /);
-    assert.match(body(skill('habits-explain-code')).trimStart(), /^# Explain code - /);
+    assert.match(body(skill('habits-explain-topic')).trimStart(), /^# Explain a topic - /);
 });
 
 // ---- M92: the greenfield close names every missing capture in the template's order -------------------------------
@@ -224,8 +224,8 @@ test('M94: task-design keeps the seat method in SKILL.md and the orchestrator ha
 });
 
 // ---- M95: explain-code's language rule states the fallback language -------------------------------------------
-test('M95: explain-code says which language answers a request in another language', () => {
-    const lang = flat(section(body(skill('habits-explain-code')), 'Language'));
+test('M95: explain-topic says which language answers a request in another language', () => {
+    const lang = flat(section(body(skill('habits-explain-topic')), 'Language'));
     assert.match(lang, /A request written in any other language is answered in English/);
 });
 
@@ -290,10 +290,10 @@ test('M100: solve-cross reads spec-check.js from its own folder, never task-solv
 });
 
 // ---- M101 + M102: the two descriptions ------------------------------------------------------------------------
-test('M101: verify-code\'s description is the plan-bound review, clear of /code-review and the done gate', () => {
+test('M101: verify-code\'s description is the plan-bound review, clear of review-code and the done gate', () => {
     const d = description('task-verify-code');
     assert.match(d, /against its plan/);
-    assert.match(d, /\/code-review/);
+    assert.match(d, /review-code/, 'an unplanned change is review-code\'s (2026-10-22, the user\'s ruling \'use ours\')');
     assert.match(d, /done gate/);
     assert.doesNotMatch(d, /'check the code'/, 'the phrase /code-review owns');
     assert.ok(d.length <= 160, `${d.length} chars`);

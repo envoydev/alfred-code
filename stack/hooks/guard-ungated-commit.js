@@ -3,8 +3,8 @@
 // PreToolUse gate (matcher: Bash): the PUBLISH ceremony, mechanized - one hook because commit
 // and push are one gate family and share the receipt machinery, the heredoc blanking and the
 // quote masking below. A non-trivial
-// `git commit` runs only after the house review gate (task-verify-code, plus
-// /security-review on auth/crypto/data-access paths) or the user's explicit waiver -
+// `git commit` runs only after the house review gate (task-verify-code or review-code, plus
+// review-security on auth/crypto/data-access paths) or the user's explicit waiver -
 // recorded as a receipt file the gate step writes. Prose measured unreliable: 8 ungated
 // commit events across 6 audited sessions, including one where the git rule was
 // provably read into context the same session and skipped anyway, and one commit with
@@ -192,7 +192,7 @@ if (PUSH_GATE_ON) {
 }
 
 // --- add -N without a chained reset -------------------------------------------------------
-// GIT-PREFERENCES.md's locked scope entry derives the scope with a survey that never moves the index (`git diff HEAD --stat; git ls-files -o
+// The commit checkpoint's ask derives the scope with a survey that never moves the index (`git diff HEAD --stat; git ls-files -o
 // --exclude-standard`): the older `git add -N . && ...; git reset -q` unstaged a session's own `git rm` deletions (audit
 // 2026-10-10, session f24eb967). A bare `git add -N .` left its
 // intent-to-add entries open across 6 more Bash calls in one measured session, ending in an
@@ -211,7 +211,7 @@ if (addN && !calls.some((c) => c.sub === 'reset')) {
     `file to fully staged). Survey the scope without touching the index - the tracked diff, then the\n` +
     `untracked files:\n` +
     `  ${INDEX_FREE_SURVEY}\n` +
-    `(GIT-PREFERENCES.md's survey - a reset after -N would unstage work already staged).`,
+    `(the commit checkpoint's survey - a reset after -N would unstage work already staged).`,
   );
   process.exit(2);
 }
@@ -535,18 +535,56 @@ function consentIn(text, gate) {
 // by line, newest 64MB at most (a work count, never time). One pass collects what the checks ask: whether a Skill ran,
 // every AskUserQuestion option label the assistant wrote, and the user's own typed turns.
 const TRANSCRIPT_SCAN_MAX = 64 * 1024 * 1024;
-const SKILL_RAN_RE = /"name"\s*:\s*"Skill"|<command-name>\/(?:[\w-]+:)?(?:(?:alfred|project)-[\w-]+|(?:capture|habits|issue|loop|task)-[\w-]+)<\/command-name>/;
+// A skill's bare name, a review's kind whatever its spelling, and the words that make a skill or a seat a review live in
+// hook-prelude.js since 2026-10-22, shared with the session-start guard that snapshots a review this guard judges. With
+// the prelude missing, or older than this hook, no review is seen - every check that needs one refuses, a carried review
+// or the user's waiver still passes - where a throwing load let every commit and push through (the dispatcher fails a
+// throwing guard open; review 2026-10-23).
+const reviewWords = (() => { try { return require('./hook-prelude.js'); } catch { return {}; } })();
+const NEVER = /(?!)/;
+const bareSkill = reviewWords.bareSkill || ((s) => String(s || '').trim().toLowerCase().replace(/^[\w-]+:/, '').replace(/^alfred-/, ''));
+const reviewKind = reviewWords.reviewKind || (() => null);
+const REVIEW_SKILL = reviewWords.REVIEW_SKILL || NEVER;
+const REVIEW_SEAT = reviewWords.REVIEW_SEAT || NEVER;
+const reviewTargets = reviewWords.reviewTargets || (() => []);
+const reviewCovers = reviewWords.reviewCovers || (() => false);
+const briefTargets = reviewWords.briefTargets || (() => []);
+const REVIEW_PROOF = reviewWords.REVIEW_PROOF || { findings: NEVER, outcome: NEVER };
+const reviewProof = reviewWords.reviewProof || (() => 'findings');
+const readReviewSnapshots = reviewWords.readReviewSnapshots || (() => []);
+const heldByReview = reviewWords.heldByReview || (() => false);
 const normQuote = (t) => String(t).replace(/\s*\(recommended\)\s*$/i, '').replace(/\s+/g, ' ').trim().toLowerCase();
-// A review the checkpoint names: the house verify skills and loops, /security-review, or a verifier / reviewer seat.
-const REVIEW_SKILL = /(?:^|:)(?:(?:project-|task-)?verify-(?:code|plan)|quality-loop|(?:alfred-)?loop-(?:quality|code-quality|architecture-quality|test-coverage)|security-review)$/i;
-const REVIEW_SEAT = /verifier|reviewer/i;
 let _scan;
 function transcriptScan() {
   if (_scan) return _scan;
-  // reviews: when each review started (ms); answers: each AskUserQuestion answer, its labels and when it landed.
-  _scan = { skillRan: false, labels: new Set(), typed: [], reviews: [], answers: [] };
+  // ran: the bare name of every skill run - the model's Skill call or the user's typed slash command; reviews: when each
+  // review started (ms); reviewSeat: a verifier or reviewer seat reported; codeReviews: when each review of the CODE
+  // started (the plan review left out) and what it covered (null: the whole change); answers: each AskUserQuestion
+  // answer, its labels and when it landed; done: the tool_use ids of the review calls that counted; typedDone: when each
+  // typed review that counted started.
+  _scan = { ran: new Set(), labels: new Set(), typed: [], reviews: [], reviewSeat: false, codeReviews: [], answers: [], refused: new Set(),
+    done: new Set(), typedDone: [] };
   const tp = payload.transcript_path;
   if (!tp) return _scan;
+  // A Skill or seat call counts once the scan is done, and only when its result was no error: a call another hook
+  // refused, or a skill that does not exist, still leaves its tool_use row (a fifth side note, 2026-10-22: the
+  // fresh-session gate refused review-code late in a session, and that call passed for the review). A review SEAT counts
+  // only once it reported (a seventh side note; the user's ruling 'Seats must finish', 2026-10-22): a foreground seat's
+  // result row is its report; a background one's is a launch notice (`toolUseResult.status: async_launched`), so it
+  // counts at its `<task-notification>` naming its `<tool-use-id>` with `<status>completed</status>`. A review SKILL, the
+  // model's call or the user's typed command, counts once its result line followed it (the user's 'Fix ALL left gaps',
+  // 2026-10-22: a Skill review counted once it launched) - hook-prelude.js REVIEW_PROOF, in the model's own text or in the
+  // report of a seat dispatched after the call (review-code and review-security hand a large change to one).
+  const calls = [];
+  const proofs = [];
+  const seatIds = new Set();
+  const seatDone = new Set();
+  const agentAt = new Map();
+  const proofsIn = (text, at, after = 0) => {
+    for (const [kind, re] of Object.entries(REVIEW_PROOF)) if (re.test(text)) proofs.push({ at, kind, after });
+  };
+  const textOf = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((p) => (p && typeof p.text === 'string' ? p.text : '')).join('\n') : '');
+  let rowNo = 0;
   let fd;
   try {
     const size = fs.statSync(tp).size;
@@ -557,17 +595,33 @@ function transcriptScan() {
     const buf = Buffer.alloc(CHUNK);
     const tsOf = (row) => { const t = Date.parse(row && row.timestamp); return Number.isFinite(t) ? t : 0; };
     const onLine = (line) => {
-      if (!_scan.skillRan && SKILL_RAN_RE.test(line)) _scan.skillRan = true;
-      if (line.length < 1024 * 1024 && (/"name"\s*:\s*"(?:Skill|Agent|Task)"/.test(line) || line.includes('"answers"'))) {
+      // each row's place in the transcript, a block's place inside its row
+      const at = ++rowNo * 1000;
+      if (line.length < 1024 * 1024 && (/"name"\s*:\s*"(?:Skill|Agent|Task)"/.test(line) || line.includes('"answers"')
+        || (/"type"\s*:\s*"assistant"/.test(line) && /Findings|Outcome/.test(line)))) {
         let row = null;
         try { row = JSON.parse(line); } catch { row = null; }
         const c = row && row.message && row.message.content;
         if (row && row.type === 'assistant' && Array.isArray(c)) {
-          for (const b of c) {
-            if (!b || b.type !== 'tool_use' || !b.input) continue;
+          c.forEach((b, i) => {
+            if (!b) return;
+            if (b.type === 'text' && typeof b.text === 'string') proofsIn(b.text, at + i);
+            if (b.type !== 'tool_use' || !b.input) return;
+            if (/^(?:Agent|Task)$/.test(b.name) && b.id) agentAt.set(String(b.id), at + i);
             const named = b.name === 'Skill' ? String(b.input.skill || b.input.command || '') : /^(?:Agent|Task)$/.test(b.name) ? String(b.input.subagent_type || '') : '';
-            if (named && (b.name === 'Skill' ? REVIEW_SKILL.test(named.trim()) : REVIEW_SEAT.test(named))) _scan.reviews.push(tsOf(row));
-          }
+            if (!named) return;
+            const ts = tsOf(row);
+            const base = row.cwd || projectDir || root;
+            const seat = b.name !== 'Skill' && REVIEW_SEAT.test(named);
+            const review = b.name === 'Skill' && REVIEW_SKILL.test(named.trim()) ? reviewKind(named) : null;
+            if (seat && b.id) seatIds.add(String(b.id));
+            calls.push({ id: b.id ? String(b.id) : '', at: at + i, seat, review, apply: () => {
+              if (b.name === 'Skill') _scan.ran.add(bareSkill(named));
+              if (seat) { _scan.reviews.push(ts); _scan.reviewSeat = true; _scan.codeReviews.push({ ts, targets: briefTargets(b.input.prompt, base) }); }
+              if (review) _scan.reviews.push(ts);
+              if (review && review !== 'verify-plan') _scan.codeReviews.push({ ts, targets: reviewTargets(named, b.input.args, base) });
+            } });
+          });
         }
         const answers = row && row.toolUseResult && row.toolUseResult.answers;
         if (answers && typeof answers === 'object') {
@@ -575,6 +629,44 @@ function transcriptScan() {
           for (const a of Object.values(answers)) for (const one of [a, ...String(a).split(/,\s*/)]) if (normQuote(one)) labels.push(normQuote(one));
           if (labels.length) _scan.answers.push({ ts: tsOf(row), labels, text: Object.values(answers).map(String).join(', ') });
         }
+      }
+      // a seat's own result: a review seat's report, unless it is a background seat's launch notice (a report past 1MB
+      // is no notice), and any seat's report may carry a Skill review's result line
+      if (agentAt.size && line.includes('"tool_result"')) {
+        for (const id of new Set([...line.matchAll(/"tool_use_id"\s*:\s*"([^"]+)"/g)].map((m) => m[1]))) {
+          const sentAt = agentAt.get(id);
+          if (sentAt === undefined) continue;
+          if (line.length >= 1024 * 1024) { if (seatIds.has(id)) seatDone.add(id); continue; }
+          let row = null;
+          try { row = JSON.parse(line); } catch { row = null; }
+          const c = row && row.message && row.message.content;
+          const own = Array.isArray(c) && c.find((x) => x && x.type === 'tool_result' && String(x.tool_use_id) === id);
+          if (!own || own.is_error === true) continue;
+          const text = textOf(own.content);
+          if ((row.toolUseResult && row.toolUseResult.status === 'async_launched') || /^\s*Async agent launched/.test(text)) continue;
+          if (seatIds.has(id)) seatDone.add(id);
+          proofsIn(text, at, sentAt);
+        }
+      }
+      // a background seat's completion, and the report it carries
+      if (agentAt.size && line.includes('<task-notification>')) {
+        let text = line;
+        if (line.length < 1024 * 1024) {
+          try { const row = JSON.parse(line); text = textOf(row && row.message && row.message.content) || line; } catch { text = line; }
+        }
+        for (const [block] of text.matchAll(/<task-notification>[\s\S]*?(?:<\/task-notification>|$)/g)) {
+          const id = (/<tool-use-id>([^<]+)<\/tool-use-id>/.exec(block) || [])[1];
+          if (!id || !agentAt.has(id) || (/<status>([a-z_]+)<\/status>/.exec(block) || [])[1] !== 'completed') continue;
+          if (seatIds.has(id)) seatDone.add(id);
+          if (text !== line) proofsIn(block, at, agentAt.get(id));
+        }
+      }
+      // a call's error result: the call never ran (an error result is short; a longer row is a seat's report)
+      if (line.includes('"tool_result"') && /"is_error"\s*:\s*true/.test(line) && line.length < 1024 * 1024) {
+        let row = null;
+        try { row = JSON.parse(line); } catch { row = null; }
+        const c = row && row.message && row.message.content;
+        if (Array.isArray(c)) for (const b of c) if (b && b.type === 'tool_result' && b.is_error === true && b.tool_use_id) _scan.refused.add(String(b.tool_use_id));
       }
       if (line.includes('"label"')) {
         for (const m of line.matchAll(/"label"\s*:\s*"((?:[^"\\]|\\.)*)"/g)) {
@@ -589,13 +681,23 @@ function transcriptScan() {
         let row;
         try { row = JSON.parse(line); } catch { return; }
         if (!row || row.type !== 'user' || row.isMeta) return;
-        const c = row.message && row.message.content;
-        const text = typeof c === 'string' ? c
-          : Array.isArray(c) ? c.filter((p) => p && p.type === 'text').map((p) => p.text).join('\n') : '';
+        const text = textOf(row.message && row.message.content);
         if (text && !/^\s*<(?:command-name|local-command|bash-|task-notification)/.test(text)) _scan.typed.push(normQuote(text));
-        // a review the user TYPED as a slash command is a review run too
+        // a review the user TYPED as a slash command is a review run too, once its result line followed it
         const typedSkill = /<command-name>\/?([\w:-]+)<\/command-name>/.exec(text);
-        if (typedSkill && REVIEW_SKILL.test(typedSkill[1])) _scan.reviews.push(tsOf(row));
+        if (typedSkill && REVIEW_SKILL.test(typedSkill[1])) {
+          const name = typedSkill[1];
+          const ts = tsOf(row);
+          const review = reviewKind(name);
+          const typedArgs = (/<command-args>([\s\S]*?)<\/command-args>/.exec(text) || [])[1];
+          const base = row.cwd || projectDir || root;
+          calls.push({ id: '', at, seat: false, review, apply: () => {
+            _scan.ran.add(bareSkill(name));
+            _scan.reviews.push(ts);
+            _scan.typedDone.push(ts);
+            if (review !== 'verify-plan') _scan.codeReviews.push({ ts, targets: reviewTargets(name, typedArgs, base) });
+          } });
+        } else if (typedSkill) _scan.ran.add(bareSkill(typedSkill[1]));
       }
     };
     while (pos < size) {
@@ -611,8 +713,27 @@ function transcriptScan() {
       for (const l of lines) onLine(l);
     }
     if (carry) onLine(carry);
-  } catch { /* unreadable: nothing collected */ }
+  } catch { /* unreadable: nothing more collected */ }
   try { if (fd !== undefined) fs.closeSync(fd); } catch { /* closed */ }
+  // Each result line closes the NEWEST open review when it is that review's kind, and nothing otherwise: a review left
+  // unfinished stays open under a later one, and a loop's verifier reporting Findings closes no review-code before it.
+  // A seat's report closes only a review started before the seat was sent.
+  const reviewCalls = calls.filter((k) => k.review && !(k.id && _scan.refused.has(k.id)));
+  const open = [];
+  const proven = new Set();
+  const events = [...reviewCalls.map((k) => ({ at: k.at, call: k })), ...proofs.map((p) => ({ at: p.at, proof: p }))].sort((a, b) => a.at - b.at);
+  for (const e of events) {
+    if (e.call) { open.push(e.call); continue; }
+    const top = open[open.length - 1];
+    if (top && reviewProof(top.review) === e.proof.kind && (!e.proof.after || e.proof.after > top.at)) proven.add(open.pop());
+  }
+  for (const k of calls) {
+    if (k.id && _scan.refused.has(k.id)) continue;
+    if (k.seat && !seatDone.has(k.id)) continue;   // a seat still running, or one whose result is not on record
+    if (k.review && !proven.has(k)) continue;      // a review skill with no result line yet
+    if (k.id) _scan.done.add(k.id);
+    k.apply();
+  }
   return _scan;
 }
 // Is this exact string one of the assistant's own AskUserQuestion option labels? Compared with the
@@ -659,34 +780,89 @@ function answeredAt(label) {
   return at;
 }
 
-// Did a Skill run in THIS session? The tool-usage ledger (instrument-tool-usage.js, when switched on) records every
-// Skill row under the session id, so it answers first; the whole-session transcript scan answers otherwise. A skill
-// the user TYPED writes no Skill call, only the harness's `<command-name>` row, and it is as much a run of that
-// skill as the model's own call (measured: slash-run loops, zero Skill events).
-function ledgerSkillRan() {
-  const sid = String(payload.session_id || '').replace(/[^A-Za-z0-9._-]/g, '');
-  if (!sid) return false;
-  const logs = new Set();
-  const own = envOf(process.env, 'INSTRUMENT_LOG');
-  if (own) logs.add(path.resolve(own));
-  // the data root's statistics/ (2.8.0), then the pre-2.8.0 docs root an older instrumentation copy still writes
-  for (const base of [projectDir, payload.cwd, root].filter(Boolean)) {
-    if (layout) logs.add(layout.statsPath(base, ['tools-usage', `${sid}.jsonl`]));
-    logs.add(path.resolve(base, docsRoot, 'tools-usage', `${sid}.jsonl`));
-  }
-  for (const f of logs) {
-    let text = '';
-    try { text = fs.readFileSync(f, 'utf8'); } catch { continue; }
-    for (const line of text.split('\n')) {
-      if (!line.includes('"Skill"')) continue;
-      let row;
-      try { row = JSON.parse(line); } catch { continue; }
-      if (row && row.tool === 'Skill' && (!row.session || row.session === payload.session_id)) return true;
-    }
-  }
-  return false;
+// Which skills ran in THIS session, by bare name, is the whole-session transcript scan's to say: the model's Skill call,
+// or the harness's `<command-name>` row a skill the user TYPED leaves (measured: slash-run loops, zero Skill events). Only
+// the NAME proves a review: any skill load once passed for one, so a receipt could claim a review that never ran
+// (2026-10-22). The tool-usage ledger is no evidence (the user's 'Fix ALL left gaps', 2026-10-22): its row is written at
+// PreToolUse and carries no target, no result and no refusal, so a review past the transcript scan is a review to run again.
+// The reviews a VERIFIED line names, and of those the ones no run in this session meets, both sides read by kind -
+// `verify-code` is met by `task-verify-code`, never by another skill.
+const REVIEW_NAMED_RE = /(?<![\w-])[\w-]*?(?:verify-(?:code|plan)|quality-loop|coverage-loop|loop-(?:quality|code-quality|architecture-quality|test-coverage)|review-(?:code|security))(?![\w-])/gi;
+// a name with no kind is none: a prelude without the review words gives every name null, and null matched null (review 2026-10-23)
+const reviewsNamed = (line) => [...new Set([...String(line).matchAll(REVIEW_NAMED_RE)].map((m) => reviewKind(m[0])).filter(Boolean))];
+function reviewsNotRun(line) {
+  const named = reviewsNamed(line);
+  if (!named.length) return [];
+  const ran = new Set([...transcriptScan().ran].map(reviewKind));
+  return named.filter((n) => !ran.has(n));
 }
-const skillCallRan = () => ledgerSkillRan() || transcriptScan().skillRan;
+// Did ANY review of the code run in this session: a review skill (the model's call or the user's typed command - a plan
+// review reads no code, so verify-plan alone is none) or a verifier / reviewer seat.
+function codeReviewRan() {
+  const s = transcriptScan();
+  if (s.reviewSeat) return true;
+  return [...s.ran].some((n) => { const k = reviewKind(n); return k !== 'verify-plan' && reviewsNamed(k).length > 0; });
+}
+// The reviews of the code this session ran that carry a time, each with what it covered (null: the whole change).
+function timedCodeReviews() {
+  return transcriptScan().codeReviews.filter((r) => r.ts > 0);
+}
+// When the newest review of the code in this session started (ms) - 0 when none carries a time, which judges nothing.
+function lastCodeReviewMs() {
+  const times = timedCodeReviews().map((r) => r.ts);
+  return times.length ? Math.max(...times) : 0;
+}
+// The files this commit takes in that changed after the newest review COVERING each started, or that no review covered
+// - a version no review saw (2026-10-22, a side agent's note; the user's ruling 'After the last edit'; a review pointed at
+// paths covers those alone, the ruling 'Match path targets'), each as { rel, at }. The 2s slack is the receipt check's.
+// A file gone from the tree whose index still stages a version of its own is late whatever the times say: that version is
+// committed and its time is unknown (a staged removal commits no content and is skipped). A file a review's snapshot saw
+// with the content it holds now passes whatever its time says: a stash and pop or a branch round-trip moved the time,
+// not the code (a third side note; the user's ruling 'Snapshot at review' - hook-prelude.js snapshotReview).
+function editedAfterReview() {
+  const set = commitSet();
+  let top = set.top;
+  try { top = fs.realpathSync.native(set.top); } catch { /* the path as git gave it */ }
+  const reviews = timedCodeReviews();
+  const late = [];
+  for (const rel of [...set.tracked.keys(), ...set.untracked]) {
+    const abs = path.join(top, rel);
+    let changed;
+    try { changed = fs.statSync(abs).mtimeMs; } catch {
+      if (!stagedBlob(top, rel)) continue;
+      changed = Infinity;
+    }
+    const at = Math.max(0, ...reviews.filter((r) => reviewCovers(r.targets, abs)).map((r) => r.ts));
+    if (!at || changed > at + 2000) late.push({ rel, at });
+  }
+  if (!late.length) return late;
+  // only a snapshot whose call counted vouches: a refused or unfinished call's does not, and one taken for a typed
+  // review (no call id) counts beside a typed review that counted, started within two minutes of it
+  const { done, typedDone } = transcriptScan();
+  const snaps = readReviewSnapshots(projectDir || root, payload.session_id)
+    .filter((r) => (r.id ? done.has(String(r.id)) : typedDone.some((t) => Math.abs(t - Number(r.ts)) <= 120000)));
+  return late.filter((f) => {
+    const versions = versionsCommitted(top, f.rel);
+    return !(versions.length && versions.every((v) => heldByReview(snaps, path.join(top, f.rel), v)));
+  });
+}
+// The version of `rel` the index stages when it differs from HEAD's, or null - none of its own, or a staged removal.
+function stagedBlob(top, rel) {
+  const run = (args) => execFileSync(...gitSafe(args, { cwd: top, timeout: 5000, maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }));
+  try { run(['diff', '--cached', '--quiet', '--', `:(literal)${rel}`]); return null; } catch { /* the index stages a version */ }
+  try { return run(['cat-file', 'blob', `:0:${rel}`]); } catch { return null; }
+}
+// The versions of `rel` the commit may take in: the work tree's, and the index's as well when it stages one of its own -
+// a plain commit takes the index, `-a`, a named path or a chained add the tree - so a file the two differ on passes the
+// snapshot only when a review saw both (2026-10-22: the snapshot read the tree alone, so staging an unreviewed version
+// and putting the reviewed text back in the tree passed).
+function versionsCommitted(top, rel) {
+  const out = [];
+  try { out.push(fs.readFileSync(path.join(top, rel))); } catch { /* not in the tree */ }
+  const staged = stagedBlob(top, rel);
+  if (staged && (!out.length || !staged.equals(out[0]))) out.push(staged);
+  return out;
+}
 
 // The paths a spec: line names (`spec: 2 files - src/a.cs, src/b.cs`), as written: a word carrying a `/` or a file
 // extension. A count-only spec (`spec: 3 files - the fixtures`) names none.
@@ -950,9 +1126,35 @@ function judgeReceipt(body, opts) {
   // consent in 45 seconds and defeats the freshness check.
   // The loop arm names both spellings: the 1.x `quality-loop` and the 2.0.0 `alfred-loop-<name>` and the 2.2.0 `loop-<name>`
   // family - the rename left this arm matching nothing, so a receipt naming the loop minted consent.
-  if (/\b(project-)?verify-(code|plan)\b|\bquality-loop\b|\b(?:alfred-)?loop-(?:quality|code-quality|architecture-quality|test-coverage)\b/i.test(first) && !skillCallRan() && !field('carried')) {
-    r.problem = `the VERIFIED line names a verify skill but no Skill call ran in this session - if this review is carried from an earlier cycle say so: \`carried: <cycle id>, reviewed <date>\``;
+  const notRun = field('carried') ? [] : reviewsNotRun(first);
+  if (notRun.length) {
+    r.problem = `the VERIFIED line names ${notRun.join(', ')}, but no run of ${notRun.length > 1 ? 'them' : 'it'} in this session reached its result line (\`Findings:\`, a loop's \`Outcome:\`) - a launched, refused or unfinished review is not this review, nor another skill's load; if this review is carried from an earlier cycle say so: \`carried: <cycle id>, reviewed <date>\``;
     return r;
+  }
+  // A commit line that names NO review still needs one (2026-10-22, a side agent's note; the user's ruling 'Need any
+  // review run'): free wording skipped the check above, so `VERIFIED the checkpoint` passed with no review in the session.
+  // A line naming only the plan review names no review of the code. A whitespace-only diff is no exemption (the user's
+  // 'Fix ALL left gaps', 2026-10-22): git's -w read `rm -rf / tmp` for `/tmp`, spacing inside a string and a Python
+  // line moved out of its `if` as no change.
+  const namesCodeReview = reviewsNamed(first).some((k) => k !== 'verify-plan');
+  if (opts && opts.gate === 'COMMIT-GATE' && !field('carried') && !namesCodeReview && !codeReviewRan()) {
+    r.problem = 'the VERIFIED line names no review and no review ran in this session - run review-code (task-verify-code for a planned build) and name it on the line; a review from an earlier cycle says `carried: <cycle id>, reviewed <date>`, and only the user can waive one';
+    return r;
+  }
+  // And the review saw what is committed: a review early in a long session covered no file edited after it.
+  if (opts && opts.gate === 'COMMIT-GATE' && !field('carried')) {
+    const last = lastCodeReviewMs();
+    const late = last ? editedAfterReview() : [];
+    if (late.length) {
+      const one = late.length === 1;
+      const shown = late.slice(0, 5).map((f) => f.rel).join(', ') + (late.length > 5 ? `, and ${late.length - 5} more` : '');
+      const at = Math.max(...late.map((f) => f.at));
+      const hhmm = (t) => new Date(t).toTimeString().slice(0, 5);
+      const why = at ? `changed after the last review of the code covering ${one ? 'it' : 'them'} started (${hhmm(at)})`
+        : `${one ? 'is' : 'are'} in no review of the code this session ran (the last, at ${hhmm(last)}, was pointed at other paths, or was a seat whose brief named none of ${one ? 'it' : 'them'} and no \`git diff\` of the whole change)`;
+      r.problem = `${shown} ${why} - no review saw that version; run review-code on ${one ? 'it' : 'those files'} and copy its Findings field into the receipt`;
+      return r;
+    }
   }
   return r;
 }
@@ -1649,7 +1851,7 @@ process.stderr.write(
     : c.problem
       ? `Blocked: git commit - the gate receipt at ${c.gate} does not hold: ${c.problem}.\n`
       : `Blocked: git commit on a non-trivial diff without the pre-commit gate receipt.\n`) +
-    `Run the checkpoint first (load habits-commit-checkpoint): the formatter, then task-verify-code, plus /security-review\n` +
+    `Run the checkpoint first (load habits-commit-checkpoint): the formatter, then task-verify-code or review-code, plus review-security\n` +
     `on auth, crypto, secrets, payment or data-access paths. Then write ${c.write} with the skill's scripts/receipt.js\n` +
     `(\`commit\`) - it fills head:, spec: and the counts from git:\n` +
     `  VERIFIED <what was reviewed, one phrase>\n` +

@@ -1,6 +1,6 @@
 ---
-name: habits-skill-writing
-description: "Use when writing, changing or reviewing a skill or its description - or when one does not fire. Not for a plugin manifest, which the plugin guide owns."
+name: skill-authoring
+description: "Use when writing, changing or reviewing a skill or its description - or when one does not fire. Not for a plugin manifest, which plugin-authoring owns."
 ---
 
 # Skill writing - a trigger that fires, a body that changes the run, proof on both sides
@@ -15,7 +15,8 @@ second and every session pays for a description that changes nothing.
 
 - Fires for writing, changing or reviewing a skill - its SKILL.md, description or frontmatter, or a file under its references/ folder - when a skill does not fire, fires on the wrong request or is ignored after it loads, or when deciding whether a piece of guidance belongs in a skill at all rather than a rule, a hook or a reference.
 - The skill-authoring method, from the trigger to the proof that the skill changes a run.
-- Not for a plugin's manifest or marketplace entry, which the plugin authoring guide covers, or a project's AGENTS.md, which its instruction-file tooling owns.
+- This repo's own skill since 2026-10-22, beside `plugin-authoring`: it serves authoring the stack, so no install carries it.
+- Not for a plugin's manifest or marketplace entry, which `plugin-authoring` covers, or a project's AGENTS.md, which its instruction-file tooling owns.
 
 ## Is it a skill at all
 
@@ -104,8 +105,8 @@ every message whether it fires or not.
 
 ## Prove it before shipping
 
-A skill is code the model runs, so its test comes first and is seen to fail - the loop
-`habits-test-first` runs for code, applied to prose:
+A skill is code the model runs, so its test comes first and is seen to fail - the
+test-first loop for code, applied to prose:
 
 1. **Baseline WITHOUT the skill.** Give a fresh context a realistic task that invites the failure,
    and record what it did and the reasons it gave. No failure seen means nothing to write - stop.

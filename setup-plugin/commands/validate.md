@@ -574,8 +574,7 @@ and left as-is (disputed detections, deliberate extras, declined suggestions, de
 judgment proposals), plus one ENVIRONMENT line naming every key seeded, renamed or corrected (or
 saying the block already matched), and step 7's MEMORY line (level + database, and the
 `autoMemoryEnabled` reading). Remind that a restart picks up MCP registration changes, and surface
-the installer's gitignore reminder. If an AGENTS.md rules table names a rule you added or removed,
-offer to reconcile that row (additive, shown before writing) - never rewrite the user's prose.
+the installer's gitignore reminder.
 
 Then audit the config the install left, on every path that reaches this step (a clean bill
 included), before `$TMP` goes:
@@ -635,8 +634,8 @@ node "$TMP/repo/scripts/agents-md-check.js" --root .
 Paste the output byte-for-byte in the same fenced block (`agents-md-check: clean (...)` or `no
 AGENTS.md or CLAUDE.md in this project` is the whole paste). Each row is `<file>:<line> <kind>: ...` - a named path
 that is gone, a command whose program is not on PATH, a placeholder or TODO left, a line still
-carrying the template's authoring text, or a CLAUDE.md that keeps an AGENTS.md from loading (`shadowed`, the import it
-needs named in the row). Rows get ONE ask, leaving them marked and first - the check is
+carrying the template's authoring text, the stack's old rules list (`stack-rules`), or a CLAUDE.md that keeps an AGENTS.md
+from loading (`shadowed`, the import it needs named in the row). Rows get ONE ask, leaving them marked and first - the check is
 heuristic, a row can be correct text it could not resolve (a folder under a prefixed name, a program a
 script installs), and the approver takes the first option (audit 2026-10-11, session 6288ad94: 'Review'
 listed first and unmarked was taken, and the review of 4 rows that were all false positives cost ~825k):

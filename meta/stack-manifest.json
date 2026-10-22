@@ -13,8 +13,8 @@
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "habits-explain-code",
-      "note": "senior-mentor explainer for code/bug/concept/trade-off via real-file walkthrough; depth ELI5/intermediate/expert"
+      "name": "habits-explain-topic",
+      "note": "senior-mentor explainer for any topic on a depth ask: this project's code (bug/concept/trade-off) via a real-file walkthrough, anything else as a layered answer (analogy and its limit, steps, worked example, mix-ups, recap, check-yourself, glossary), an offline inline-SVG diagram under <docs root>/tutorial/; depth ELI5/intermediate/expert"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -94,12 +94,22 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "task-verify-plan",
-      "note": "audit an implementation plan BEFORE building - risk-coverage review (traps named per the stack skill, scope, edges, minimal); precedes /code-review"
+      "note": "audit an implementation plan BEFORE building - risk-coverage review (traps named per the stack skill, scope, edges, minimal); precedes the build and task-verify-code"
     },
     {
       "repo": "envoydev/alfred-code",
       "name": "task-verify-code",
-      "note": "single-chat, no-dispatch review of an assembled build - the inline alternative to /code-review: rerun build/test, gate vs plan, RUN the app on failable inputs, trace wire-contract changes to consumers, ranked punch-list"
+      "note": "single-chat, no-dispatch review of an assembled build - the plan-gated review (review-code takes a change no plan built): rerun build/test, gate vs plan, RUN the app on failable inputs, trace wire-contract changes to consumers, ranked punch-list"
+    },
+    {
+      "repo": "envoydev/alfred-code",
+      "name": "review-code",
+      "note": "the stack's own code review of a change set, branch, PR or path - the method borrowed from Claude Code's bundled review as eight inline passes, a refute pass voting CONFIRMED / PLAUSIBLE / REFUTED on a quoted line, depth quick / standard / deep (a gap sweep); one ranked table, fixes nothing; the commit checkpoint's review when no plan built the change; a verifier seat offered past 600 changed lines or two stacks where the roster lists one"
+    },
+    {
+      "repo": "envoydev/alfred-code",
+      "name": "review-security",
+      "note": "the stack's own security review of a bounded target - repo context, departures from the project's own helpers, a taint trace, the auditor's categories, confidence bands (8-10 a finding, 5-7 a lead, under 5 dropped) and a refute pass against references/not-a-finding.md, which keeps markdown, prompt content, env vars and DoS in scope; the commit checkpoint's security half, its verdict the receipt's security: line; leads never block VERIFIED; security-auditor offered past 600 changed lines or two stacks"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -109,7 +119,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "task-implement",
-      "note": "single-chat build step: execute a verified plan task-by-task (contracts + per-task green gate + inline red-resolution, no dispatch), finish via /code-review + the done-gate"
+      "note": "single-chat build step: execute a verified plan task-by-task (contracts + per-task green gate + inline red-resolution, no dispatch), finish via task-verify-code + the done-gate"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -160,11 +170,6 @@
       "repo": "envoydev/alfred-code",
       "name": "habits-clarify",
       "note": "the clarify discipline's one home (R106): one AskUserQuestion at a time, 2-3 options with the recommended one marked, until one reading is left - the requirement, never the implementation; loaded by task-solve step 1, task-solve-cross and task-build-from-scratch before any design"
-    },
-    {
-      "repo": "envoydev/alfred-code",
-      "name": "habits-skill-writing",
-      "note": "skill writing (Task 21, written fresh): skill vs rule / hook / reference, the description as the trigger, one home per piece, a lean platform-neutral body, proven without and with the skill plus the adverse phrasing; loaded by the skill-authoring rule on every skill file"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -503,7 +508,7 @@
     },
     {
       "file": "security-auditor.md",
-      "note": "analysis phase (opus/xhigh): read-only cross-stack security posture audit - OWASP/CWE punch-list routed to implementers, complements /security-review"
+      "note": "analysis phase (opus/xhigh): read-only cross-stack security posture audit - OWASP/CWE punch-list routed to implementers, complements review-security (one diff)"
     },
     {
       "file": "integration-reviewer.md",
@@ -662,10 +667,6 @@
       "note": "markdown-style routing, path-scoped **/*.md"
     },
     {
-      "file": "skill-authoring.md",
-      "note": "skill-writing routing, path-scoped **/SKILL.md + **/skills/**/*.md"
-    },
-    {
       "file": "javascript-conventions.md",
       "note": "JS-family conventions, path-scoped js/jsx/mjs/cjs"
     },
@@ -799,11 +800,11 @@
       "file": "guard-fresh-session-start.js",
       "matcher": "Skill",
       "event": "",
-      "note": "PreToolUse Skill: block a deliberate orchestration run starting on another run's carried history past the window-scaled trigger - route it through an AskUserQuestion fresh-session choice. `--auto-mode` in the call's args on a task, capture, loop or issue skill writes the run's session-named AUTO stamp first and injects the auto-mode contract instead - only when the user's newest typed prompt is such a command opening with the flag (the user's rulings: 2026-10-15, a prose mention starts nothing; 2026-10-17, captures joined and the flag replaced the bare word). A message the user types mid-run is input to the run and keeps auto-mode on; it ends only on the user's word to stop ('stop auto-mode', a bare 'stop', or a new flow command without the flag) or the run's own close. COMPACT INSTEAD: under ALFRED_CODE_AUTO_COMPACT=1 nothing is offered or held; the session's first orchestration run and an automatic compaction's start are told the session compacts and goes on."
+      "note": "PreToolUse Skill: block a deliberate orchestration run starting on another run's carried history past the window-scaled trigger - route it through an AskUserQuestion fresh-session choice. `--auto-mode` in the call's args on a task, capture, loop or issue skill writes the run's session-named AUTO stamp first and injects the auto-mode contract instead - only when the user's newest typed prompt is such a command opening with the flag (the user's rulings: 2026-10-15, a prose mention starts nothing; 2026-10-17, captures joined and the flag replaced the bare word). A message the user types mid-run is input to the run and keeps auto-mode on; it ends only on the user's word to stop ('stop auto-mode', a bare 'stop', or a new flow command without the flag) or the run's own close. COMPACT INSTEAD: under ALFRED_CODE_AUTO_COMPACT=1 nothing is offered or held; the session's first orchestration run and an automatic compaction's start are told the session compacts and goes on. BUILT-IN REVIEWS (the user's ruling of 2026-10-22, 'Stop the model using theirs'): the model's or a seat's call to bare code-review / security-review with no skill of that name on disk is denied, naming /review-code or /review-security, once the model can load ours (a personal or project copy skillOverrides leaves on - before update copies it, the built-in passes); guard-fresh-session-start:builtin-review in ALFRED_CODE_HOOKS_OFF switches it off."
     },
     {
       "file": "guard-fresh-session-start.js",
-      "matcher": "@UserPromptExpansion:(^|[^A-Za-z0-9_-])((alfred-)?(loop-[a-z][a-z0-9-]*|capture-[a-z][a-z0-9-]*|task-[a-z][a-z0-9-]*|issue-[a-z][a-z0-9-]*)|security-review|init|update|configure|validate)$",
+      "matcher": "@UserPromptExpansion:(^|[^A-Za-z0-9_-])((alfred-)?(loop-[a-z][a-z0-9-]*|capture-[a-z][a-z0-9-]*|task-[a-z][a-z0-9-]*|issue-[a-z][a-z0-9-]*|review-code|review-security)|security-review|init|update|configure|validate)$",
       "event": "",
       "note": "the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - UserPromptExpansion fires on that typed command and names it; the matcher (a regex with no colon, which the row format splits on) lists the orchestration commands under either spelling - every task-* and loop-* name, a project's own and a digit included (audit 2026-10-14 HK06: a typed /task-migrate-v2 auto-mode never spawned it) - so no ordinary prompt spawns the hook; it injects the ask, never blocks (a blocked expansion shows its reason to the user only). `--auto-mode` as the first word of command_args on a task, capture, loop or issue command (the user's rulings of 2026-10-15 and 2026-10-17; the bare word, or the flag anywhere else, is the task's text) writes the run's session-named AUTO stamp before the run and injects the auto-mode contract instead of any offer. Every capture-* and issue-* name spawns it too (the user's ruling of 2026-10-15): each typed task-*, capture-*, loop-* or issue-* command gets the MODE BANNER after whatever else it injects - two lines its first reply opens with, auto-mode ON or OFF and how the session meets a full context (it compacts, or offers a fresh session at its trigger), with the window numbers."
     },
@@ -947,9 +948,9 @@
     },
     {
       "file": "preferences-session.js",
-      "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit",
+      "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit|Grep",
       "event": "",
-      "note": "the user's preferences docs: the FIRST edit of each actor (the main session, each seat) held until the code docs that exist were read, PERSONAL-CODE and ARCHITECTURE handed over whole and PROJECT-CODE's sections covering the target inline (a later edit a not-yet-handed section covers waits again); only a whole Read of a doc marks it read; a doc that is a link is never read; a seat's .claude/worktrees/<n>/ target is judged as the project path it mirrors - run inside file-guards.js"
+      "note": "the user's preferences docs: the FIRST edit of each actor (the main session, each seat) held until the code docs that exist were read, the PERSONAL-CODE and ARCHITECTURE entries whose Scope: reaches the target and PROJECT-CODE's sections covering it inline, in parts past one room (a later edit a not-yet-handed entry or section reaches waits again); a judge's (a designer, a verifier, the code-quality analyzer, the security auditor, the integration reviewer), a handed architecture analyzer's and the main session's in a review run first reads (a Read, a Grep - its denial steering to the navigation server -, an LSP call or a symbol lookup) held while its start left entries unhanded, each handing over the next part; only a whole Read of a doc marks it read; a doc that is a link is never read; a seat's .claude/worktrees/<n>/ target is judged as the project path it mirrors - run inside file-guards.js"
     },
     {
       "file": "preferences-session.js",
@@ -959,21 +960,45 @@
     },
     {
       "file": "preferences-session.js",
+      "matcher": "^mcp__(plugin_(alfred-)?navigation_)?(alfred-)?navigation__(find_symbol|find_referencing_symbols|get_symbols_overview|find_declaration|find_implementations)$",
+      "event": "",
+      "note": "a judge's first symbol lookups held like its first Reads while its start left entries unhanded, each handing over the next part - a seat that locates before it reads may never call Read; both routes' spellings"
+    },
+    {
+      "file": "preferences-session.js",
+      "matcher": "LSP",
+      "event": "",
+      "note": "a judge's first LSP calls held like its first Reads while its start left entries unhanded, each handing over the next part - the filePath under the preferences folder never held"
+    },
+    {
+      "file": "preferences-session.js",
       "matcher": "Bash|PowerShell|Monitor",
       "event": "",
-      "note": "the FIRST git write of each actor (index, tree, ref, stash, a branch, tag or worktree branch made, gh pr merge / create, gh release create / edit / delete) held until GIT-PREFERENCES.md was read, handed over live with its locked entries first as the seed states them; one command that edits and commits shares one room, git first; a shell source write is an edit, a whole-file reader naming a doc (no head, grep or pipe into one) marks it read - run inside shell-guards.js"
+      "note": "the FIRST git write of each actor (index, tree, ref, stash, a branch, tag or worktree branch made, gh pr merge / create, gh release create / edit / delete) held until GIT-PREFERENCES.md was read, handed over live with its locked entries first as the seed states them; one command that edits and commits shares one room, git first; a shell source write is an edit, a whole-file reader naming a doc (no head, grep or pipe into one) marks it read; a judge's, a handed architecture analyzer's or a reviewing main session's shell read of a file outside the preferences folder (cat, sed, head, grep, rg ... with a path argument on disk, through a variable the command sets, or as a glob an entry matches; a search given no path - rg reading no pipe, a recursive grep; a reader find -exec or xargs runs; a Select-String fed by a file listing - never wc or ls) is held like its Read, a grep word earning the steer line - run inside shell-guards.js"
     },
     {
       "file": "preferences-session.js",
       "matcher": "@SessionStart",
       "event": "",
-      "note": "PERSONAL-PREFERENCES.md pushed at every MAIN session start - startup, resume, clear, compact and fork, so it is back after each compaction; a compaction or a clear also deletes that actor's read record, so the held docs are handed over again; a seat's own compaction (the payload carries its agent_id) deletes only its record and pushes nothing"
+      "note": "PERSONAL-PREFERENCES.md pushed at every MAIN session start - startup, resume, clear, compact and fork, so it is back after each compaction; a compaction or a clear also deletes that actor's read record, so the held docs are handed over again - a compaction keeps the record's run and architecture hand-over, a clear ends them; a seat's own compaction (the payload carries its agent_id) deletes only its record and pushes nothing"
     },
     {
       "file": "preferences-session.js",
       "matcher": "@SubagentStart",
       "event": "",
-      "note": "a solution designer (agent_type ending solution-designer) has no edit tool, so no hold reaches it: the code docs are handed over at its start, every project-doc section as far as the one room fits; any other seat gets nothing here"
+      "note": "a judge - a solution designer or a verifier (agent_type ending solution-designer or -verifier), or a finding seat (code-quality-analyzer, security-auditor, integration-reviewer) - has no edit tool, so no edit hold reaches it: the code docs are handed over at its start, every project-doc section as far as the one room fits, and marked in its record; the entries the room could not hold come with its first reads (a Read, a Grep, an LSP call or a symbol lookup). The architecture analyzer is handed ARCHITECTURE-PREFERENCES.md alone, and told to report a departure as a smell naming its id, only inside an architecture quality run (the main session's run, below) - the map capture dispatches the same seat to describe the code as it is. alfred-code:<seat> always; a bare name only where the install stamp's library-agents: line records its copy, so a project's own agent or another plugin's seat of the same name gets nothing; any other seat gets nothing here"
+    },
+    {
+      "file": "preferences-session.js",
+      "matcher": "Skill",
+      "event": "",
+      "note": "the main session's run: a Skill call naming a capture-, loop-, task- or issue- skill, review-code or review-security (or the built-in code-review / security-review a user types; bare) is recorded as the run, with where the transcript stood - the run ends at the user's next typed turn other than a go-on reply (continue, go on, yes, ok ...), read only at an analyzer's start and a reviewing main session's held read; a review run's (review-code, review-security, the built-in two, the code and architecture quality captures and loops) first call waits until the code docs were handed over, in parts past one room - the main session reviewing without an edit never meets the edit hold; a seat's Skill call passes"
+    },
+    {
+      "file": "preferences-session.js",
+      "matcher": "@UserPromptExpansion:^((alfred-)?(capture|loop|task|issue)-[a-z][a-z0-9-]*|review-code|review-security|code-review|security-review)$",
+      "event": "",
+      "note": "a typed run emits no Skill call (code.claude.com/docs/en/hooks: typing /name bypasses PreToolUse) - its expansion records the run, and a typed review is handed the code docs as a judge's start is, the rest with the main session's first reads; the matcher keeps every other prompt from spawning the hook"
     },
     {
       "file": "memory-session.js",
@@ -1135,6 +1160,7 @@
       "alfred-habits-done-gate",
       "alfred-habits-execution-strategy",
       "alfred-habits-explain-code",
+      "habits-explain-code",
       "alfred-habits-plan-writing",
       "alfred-habits-root-cause",
       "alfred-habits-skill-writing",
@@ -1156,7 +1182,8 @@
       "alfred-task-version-upgrade",
       "capture-agent-awareness",
       "capture-project-awareness",
-      "capture-related-projects"
+      "capture-related-projects",
+      "habits-skill-writing"
     ],
     "agents": [
       "angular-solution-designer.md",
@@ -1194,7 +1221,8 @@
       "baseline-navigation.md",
       "baseline-quality-gates.md",
       "baseline-security.md",
-      "alfred-git.md"
+      "alfred-git.md",
+      "skill-authoring.md"
     ],
     "hooks": [
       "require-convention-skill.js",
@@ -1244,7 +1272,7 @@
       "alfred-habits-adjust-claude-md": "habits-adjust-agents-md",
       "alfred-capture-stack-usage": "capture-usage-report",
       "create-ticket": "habits-create-ticket",
-      "explain-code-tutor": "habits-explain-code",
+      "explain-code-tutor": "habits-explain-topic",
       "alfred-capture-agent-capabilities": "capture-awareness",
       "capture-agent-capabilities": "capture-awareness",
       "alfred-capture-architecture": "capture-architecture",
@@ -1265,10 +1293,10 @@
       "alfred-habits-create-ticket": "habits-create-ticket",
       "alfred-habits-done-gate": "habits-done-gate",
       "alfred-habits-execution-strategy": "habits-execution-strategy",
-      "alfred-habits-explain-code": "habits-explain-code",
+      "alfred-habits-explain-code": "habits-explain-topic",
+      "habits-explain-code": "habits-explain-topic",
       "alfred-habits-plan-writing": "habits-plan-writing",
       "alfred-habits-root-cause": "habits-root-cause",
-      "alfred-habits-skill-writing": "habits-skill-writing",
       "alfred-habits-test-first": "habits-test-first",
       "alfred-issue-diagnoser": "issue-diagnoser",
       "alfred-issue-signatures-ci": "issue-signatures-ci",

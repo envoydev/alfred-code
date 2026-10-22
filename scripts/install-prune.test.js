@@ -166,3 +166,61 @@ test('seed update: an unreadable recorded file keeps its ledger row and the run 
     assert.ok(row(steps[0]), `the install did not record its seed: ${steps[0]}`);
     assert.strictEqual(row(steps[1]), row(steps[0]), 'the row moved or went');
 });
+
+// Review 2026-10-23, the instruction-file name answer. (1) A 2.1.6 seed under its CLAUDE.md row, renamed on an `agents`
+// answer, passed to the project unsaid: the answer skipped the unedited-seed move, and only an AGENTS.md row was re-keyed.
+// (2) A seed the answer could not rename (a root file already carried the other name) had its row read under the answered
+// name - the project's own root file.
+const ledgerOf = (repo) => (/^managed-files: (.*)$/m.exec(fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8')) || [])[1] || '';
+const rowOf = (s, name) => (new RegExp(`(?:^|,)${name.replace('.', '\\.')}=([0-9a-f]+)`).exec(s) || [])[1] || '';
+const stampRow = (repo, from, to) =>
+{
+    const f = path.join(repo, '.claude', 'alfred-code.stamp');
+    fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(new RegExp(`(^managed-files: .*?)(?:^|(?<=[ ,]))${from.replace('.', '\\.')}=[0-9a-f]+`, 'm'), `$1${to}`));
+};
+
+test('name answer: a 2.1.6 .claude/CLAUDE.md seed renamed on an agents answer stays the stack\'s - refreshed, ledgered under AGENTS.md', () =>
+{
+    const { steps } = seedRun(['install', 'update'], SELECTION, {
+        args: [[], ['--installed-only', '--instructions-file', 'agents']],
+        each: (repo, i) =>
+        {
+            const at = (name) => path.join(repo, '.claude', name);
+            if (i === 0)
+            {
+                // the 2.1.6 shape: the seed is .claude/CLAUDE.md under a CLAUDE.md row
+                fs.renameSync(at('AGENTS.md'), at('CLAUDE.md'));
+                stampRow(repo, 'AGENTS.md', `CLAUDE.md=${hashItem(at('CLAUDE.md'))}`);
+                return ledgerOf(repo);
+            }
+            return { ledger: ledgerOf(repo), agents: fs.existsSync(at('AGENTS.md')), claude: fs.existsSync(at('CLAUDE.md')), hash: hashItem(at('AGENTS.md')) };
+        },
+    });
+    assert.ok(rowOf(steps[0], 'CLAUDE.md') && !rowOf(steps[0], 'AGENTS.md'), `the fixture: ${steps[0]}`);
+    const after = steps[1];
+    assert.ok(after.agents && !after.claude, 'renamed to .claude/AGENTS.md');
+    assert.strictEqual(rowOf(after.ledger, 'AGENTS.md'), after.hash, `the seed's row follows it: ${after.ledger}`);
+    assert.strictEqual(rowOf(after.ledger, 'CLAUDE.md'), '', 'and the old row is gone');
+});
+
+test('name answer: a seed the answer could not rename keeps its row where it sits - the project\'s root file is never read as it', () =>
+{
+    const { steps } = seedRun(['install', 'update', 'uninstall'], SELECTION, {
+        args: [[], ['--installed-only', '--instructions-file', 'claude'], []],
+        each: (repo, i) =>
+        {
+            const seed = path.join(repo, '.claude', 'AGENTS.md');
+            const own = path.join(repo, 'CLAUDE.md');
+            if (i === 0) { fs.writeFileSync(own, '# Ours\n\nThe team\'s own file.\n'); return { ledger: ledgerOf(repo), seed: hashItem(seed) }; }
+            if (i === 1) return { ledger: ledgerOf(repo), seed: hashItem(seed), seedThere: fs.existsSync(seed), own: fs.readFileSync(own, 'utf8') };
+            return { seedThere: fs.existsSync(seed), own: fs.existsSync(own) ? fs.readFileSync(own, 'utf8') : null };
+        },
+    });
+    assert.strictEqual(rowOf(steps[0].ledger, 'AGENTS.md'), steps[0].seed, 'the install ledgered its seed');
+    const upd = steps[1];
+    assert.ok(upd.seedThere, 'the seed stays .claude/AGENTS.md - the root CLAUDE.md already carried the answer');
+    assert.strictEqual(upd.own, '# Ours\n\nThe team\'s own file.\n', 'the project\'s root file is untouched');
+    assert.strictEqual(rowOf(upd.ledger, 'AGENTS.md'), upd.seed, `the row still names the seed, not the root file: ${upd.ledger}`);
+    assert.ok(!steps[2].seedThere, 'uninstall removes the seed where it sits');
+    assert.strictEqual(steps[2].own, '# Ours\n\nThe team\'s own file.\n', 'and keeps the project\'s file');
+});

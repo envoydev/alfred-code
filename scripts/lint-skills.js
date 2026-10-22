@@ -93,8 +93,11 @@ const PLUGIN_MARKETPLACE_URLS = new Set([
 // Every entry here MUST appear as a backtick in some skill file (check 11 fails
 // any dead entry), so this stays an exact, self-pruning allowlist.
 const NON_SKILL_TOKENS = new Set([
-    // the AGENTS.template.md rules table's slash-only-capture notation - a marker, not a skill.
-    'user-run',
+    // the AGENTS.md check's row kind for an older seed's rules list (scripts/agents-md-check.js) - a row kind, not a skill.
+    'stack-rules',
+    // habits-explain-topic's diagram rules: a CSS media feature and an SVG accessibility attribute - not skills.
+    'prefers-color-scheme',
+    'aria-labelledby',
     // the old bare mode word the task, capture and loop skills name as starting nothing (`/loop-code-quality --auto-mode` is the flag) - not a skill.
     'auto-mode',
     // the commit-gate hook, referenced by name from the git preferences seed and task-verify-code - a hook, not a skill.
@@ -1221,21 +1224,24 @@ const SETUP_ASK_TEMPLATES = {
     // git-hygiene ask (audit 2026-10-21 commands T2-12).
     'setup-plugin/references/init-install.md': 10,
     // the instruction files' place, one template per `instructions:` case - read by init's step 1 and configure's step 12
-    // (2026-10-21).
-    'setup-plugin/references/instructions-place.md': 3,
+    // (2026-10-21); +3: the name, one per `instructions-file:` files= case (the user's ask of 2026-10-21, after 2.9.0);
+    // +1: update's rename-first name ask for a never-asked .claude/CLAUDE.md install (the user's rulings of 2026-10-22).
+    'setup-plugin/references/instructions-place.md': 7,
     // the legacy-unstamped ask: update this install or install from scratch (2026-10-17).
     'setup-plugin/commands/init.md': 1,
     // +2: step 1's closing ask, one template per case (audit 2026-10-11, session a9e06780). +1: step 7's memory level,
     // its table inline (audit 2026-10-21 commands T2-04: it pointed at init's table, which configure never loads).
     // +3: step 2's areas, step 10's permission mode and step 11's pins (audit 2026-10-21 commands T2-12).
-    'setup-plugin/commands/configure.md': 10,
+    // -1: step 12's old-seed rename ask, folded into instructions-place.md's name ask (2026-10-22).
+    'setup-plugin/commands/configure.md': 9,
     // audit 2026-10-11: update's three asks plus step 6's re-spell of the project's own AGENTS.md (session b3f8193f).
     // Audit 2026-10-20 C15: update.md is a router, so a gate-refused run carries none of them - the data-root and
     // instruction-file asks ride the walk (steps 1-3), the re-spell and git-hygiene asks the close (steps 6-8).
     'setup-plugin/commands/update.md': 0,
     // +1: the hand-set docs root ask (the user's answer of 2026-10-20).
     // +2: the new-items ask, one template per case (audit 2026-10-21 commands T2-12).
-    'setup-plugin/references/update-walk.md': 5,
+    // -1: the old-seed rename ask - the walk asks instructions-place.md's name templates instead (2026-10-22).
+    'setup-plugin/references/update-walk.md': 4,
     'setup-plugin/references/update-close.md': 2,
     // audit 2026-10-21 commands T2-12: the prune confirm and the guard-hook adoption ask; uninstall's confirm; status's
     // area pick; init's machine-install ask.

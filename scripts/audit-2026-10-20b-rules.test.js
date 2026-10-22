@@ -22,7 +22,7 @@ test('R1: the preferences rule and the git seed agree on what a git preference c
     const shape = flat(read('stack/skills/capture-preferences/references/doc-shape.md'));
     assert.ok(shape.includes("A preference never overrides security, input validation, error handling or accessibility, never opens a hook's gate, and no entry weakens a `locked` one."), 'the doc shape');
     const seed = read('stack/skills/capture-preferences/references/git-seed.md');
-    for (const key of ['consent', 'scope', 'checkpoint', 'safety']) assert.ok(seed.includes(`<!-- locked: ${key} -->`), key);
+    for (const key of ['consent', 'checkpoint', 'safety', 'attribution', 'checks']) assert.ok(seed.includes(`<!-- locked: ${key} -->`), key);
     const entry = JSON.parse(read('meta/shared-rules.json')).rules['git-preferences-carve-out'];
     assert.strictEqual(entry.owner.file, 'stack/rules/alfred-preferences.md');
     // the capture's own conflict check restates it beside the doc shape (final review 2026-10-20b S1)

@@ -162,11 +162,12 @@ test('row 7: a per-dispatch effort is possible, and only on the user\'s explicit
 
 // Row 8 (DRIFTED): `/code-review` runs as one background subagent at the typed effort; only `ultra` is multi-agent
 // (code.claude.com/docs/en/commands, /docs/en/code-review-local).
-test('row 8: task-verify-code no longer says /code-review always fans out', () =>
+test('row 8: task-verify-code no longer says a review always fans out', () =>
 {
     const t = flat(read('stack/skills/task-verify-code/SKILL.md'));
     assert.doesNotMatch(t, /always fans out|parallel-angle/);
-    assert.match(t, /runs as its own subagent \(in the background in a terminal session\) and, with `ultra`, as a multi-agent cloud review/);
+    // 2026-10-22, the user's ruling 'use ours': the alternative named is the house review, not the built-in.
+    assert.match(t, /a change no plan built goes to `review-code` instead/);
 });
 
 // Row 12: the multi-home clusters the audit named are registered, so a one-copy edit goes red at lint 24.
@@ -212,16 +213,16 @@ test('row 13: the named prose stops are ask templates, each marking one option f
     assert.doesNotMatch(flat(read('stack/skills/capture-architecture-quality/SKILL.md')), /The run gate offers it as its first option/);
 });
 
-// S9: 'step by step' lifts the answer budget (the rules track adds the word); nothing in habits-explain-code says a bare
+// S9: 'step by step' lifts the answer budget (the rules track adds the word); nothing in habits-explain-topic says a bare
 // 'explain' lifts it, and its trigger keeps the phrase.
-test('S9: habits-explain-code agrees with the budget rule', () =>
+test('S9: habits-explain-topic agrees with the budget rule', () =>
 {
-    const t = read('stack/skills/habits-explain-code/SKILL.md');
+    const t = read('stack/skills/habits-explain-topic/SKILL.md');
     assert.match(t.split('---')[1], /'step by step'/, 'the description trigger stays');
     const b = flat(t);
-    assert.match(b, /a bare 'explain X' or 'how does this work' is capped like any other answer/);
-    assert.match(b, /Where they did not - a bare 'explain X', 'how does this work' - answer inside the budget and offer the walkthrough in one line instead/);
-    assert.match(flat(read('stack/skills/capture-usage-report/references/diagnosis-discipline.md')), /'in detail', 'walk me through', 'step by step', 'write a plan' \(in any language\) lifts the cap/);
+    assert.match(b, /a bare 'explain X', 'what is X' or 'how does this work' is capped like any other answer/);
+    assert.match(b, /Where they did not - a bare 'explain X', 'what is X', 'how does this work' - answer inside the budget and offer the walkthrough in one line instead/);
+    assert.match(flat(read('stack/skills/capture-usage-report/references/diagnosis-discipline.md')), /'in detail', 'walk me through', 'step by step', 'teach me', 'ELI5', 'write a plan' \(in any language\) lifts the cap/);
 });
 
 // Row 15: the small items.

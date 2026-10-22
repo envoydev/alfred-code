@@ -38,17 +38,22 @@
 //                                           (a leftover ALFRED_CODE_DOCS_PATH the user set by hand - no release seeded
 //                                           it and the ledger does not record it - holding the stack's docs: it moves
 //                                           only on update's ask, `--docs-root-move move|keep`; a project install only)
-//   agents-md: offer .claude/CLAUDE.md -> .claude/AGENTS.md | none (<why>)
-//                                           (the stack's file is AGENTS.md; a project install only)
+//   instructions-file: <agents|claude> files=<none|agents|claude|both> answer=<agents|claude|none> local=<yes|no>
+//            update=<ask-rename|ask|record-claude|none>
+//                                           (the instruction file's name: the install's, the files', the stamp's
+//                                           answer, a CLAUDE.local.md, and what the update does - seeds.js
+//                                           instructionsFileLine; a project install only)
 //   env-keys: <comma-separated key names>   (or 'env-keys: none')
 //   unattended: on                          (only with ALFRED_CODE_UNATTENDED=1)
 //
 // Exit codes are stamp-compare's, passed through so the caller's branching is unchanged:
 // 0 = compare done, 2 = no stamp, 3 = compare unreachable. A usage error is 1.
 //
-// `--offers` prints the `data-move:` and `agents-md:` lines alone (no --snapshot, no compare): configure's asks. With
-// them, the place question's fact line (init's and configure's `--instructions-at` ask, a project install only):
+// `--offers` prints the `data-move:` line alone (no --snapshot, no compare): configure's asks. With it, the place
+// question's fact line and the name question's (init's and configure's `--instructions-at` / `--instructions-file`
+// asks, a project install only):
 //   instructions: none | <claude|root|split> <file> ...   (the AGENTS.md / CLAUDE.md files at the root and in .claude/)
+//   instructions-file: ...                  (the full read's line above)
 //
 // `--log <installer-log>` is a SEPARATE post-install mode (no --snapshot needed): it reads the
 // installer's own log - the command already captures it via the fixed `tee "$TMP/install.log"`
@@ -574,8 +579,8 @@ function main()
         console.log(accountDir ? 'data-move: none (an account install)' : dataMoveLine({ root, claudeDir, stampFile, stampScope }));
         if (!accountDir)
         {
-            console.log(require('./install/seeds.js').claudeMdOffer(path.resolve(root)));
             console.log(require('./install/seeds.js').instructionsLine(path.resolve(root)));
+            console.log(require('./install/seeds.js').instructionsFileLine(path.resolve(root), require('./install/stamp.js').readInstructionsAnswer(stampFile)));
         }
         return;
     }
@@ -628,7 +633,7 @@ function main()
     {
         console.log(dataMoveLine({ root, claudeDir, stampFile, stampScope }));
         console.log(docsMoveLine({ root, claudeDir, stampFile }));
-        console.log(require('./install/seeds.js').claudeMdOffer(path.resolve(root)));
+        console.log(require('./install/seeds.js').instructionsFileLine(path.resolve(root), require('./install/stamp.js').readInstructionsAnswer(stampFile)));
     }
 
     const keys = settings && settings.env ? Object.keys(settings.env).sort() : [];

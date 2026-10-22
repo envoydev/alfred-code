@@ -32,7 +32,7 @@ const GUARDS = [
     // no Glob: a Glob is no read of a section and no write, so docs-session did nothing on it but cost a process per call
     // (deep hooks review 2026-10-16)
     ['docs-session', ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Grep']],
-    ['preferences-session', ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit']],
+    ['preferences-session', ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Grep']],
 ];
 const NAMES = GUARDS.map(([g]) => g);
 const TOOLS = new Map(GUARDS);

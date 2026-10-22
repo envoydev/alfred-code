@@ -249,7 +249,7 @@
       "mcps": [],
       "plugins": []
     },
-    "habits-explain-code": {
+    "habits-explain-topic": {
       "mcps": [],
       "plugins": []
     },
@@ -258,10 +258,6 @@
       "plugins": []
     },
     "habits-root-cause": {
-      "mcps": [],
-      "plugins": []
-    },
-    "habits-skill-writing": {
       "mcps": [],
       "plugins": []
     },
@@ -332,6 +328,14 @@
       "plugins": []
     },
     "postgres": {
+      "mcps": [],
+      "plugins": []
+    },
+    "review-code": {
+      "mcps": [],
+      "plugins": []
+    },
+    "review-security": {
       "mcps": [],
       "plugins": []
     },
@@ -1115,18 +1119,6 @@
       "plugins": [],
       "paths": [
         "**/*.md"
-      ]
-    },
-    "skill-authoring": {
-      "skills": [
-        "habits-skill-writing"
-      ],
-      "agents": [],
-      "mcps": [],
-      "plugins": [],
-      "paths": [
-        "**/SKILL.md",
-        "**/skills/**/*.md"
       ]
     },
     "sql-conventions": {

@@ -34,6 +34,10 @@ const ENUMS = {
     // there and a file at the other place moves (seeds.placeInstructionFiles). Not given, nothing moves and a seed goes to
     // .claude/.
     instructionsAt: { values: ['', 'root', 'claude'], text: "--instructions-at must be 'root' or 'claude'" },
+    // The instruction file's name - init's and configure's answer: a seed takes it, a file of the other name at the root
+    // and in .claude/ is renamed (seeds.renameInstructionFiles), and the stamp keeps it. Not given, the stamp's answer
+    // stands, else AGENTS.md.
+    instructionsFile: { values: ['', 'agents', 'claude'], text: "--instructions-file must be 'agents' or 'claude'" },
 };
 
 // ONE canonical order, so a server list never depends on how the flag was typed.
@@ -47,14 +51,13 @@ const VALUED = new Map([
     ['--playwright-browsers', 'playwrightBrowsersRaw'], ['--playwright-enabled', 'playwrightEnabledRaw'],
     ['--docs-versioning', 'docsVersioning'], ['--memory-level', 'memoryLevel'],
     ['--data-move', 'dataMove'], ['--docs-move', 'dataMove'], ['--data-path', 'dataPath'], ['--docs-root-move', 'docsRootMove'], ['--docs-root-leave', 'docsRootLeaveRaw'], ['--auto-compact', 'autoCompact'],
-    ['--instructions-at', 'instructionsAt'],
+    ['--instructions-at', 'instructionsAt'], ['--instructions-file', 'instructionsFile'],
     ['--selection', 'selection'], ['--source', 'source'], ['--plan-out', 'planOut'],
 ]);
 
 const BOOLEAN = new Map([
     ['--github-cli', 'githubCli'], ['--keep-pins', 'keepPins'],
     ['--installed-only', 'installedOnly'], ['--print-plan', 'printPlan'], ['--skills-only', 'skillsOnly'],
-    ['--rename-claude-md', 'renameClaudeMd'],
 ]);
 
 // The flags 2.0.0 took out with the servers they configured (the sentry and context7-local cut, R26
@@ -75,7 +78,7 @@ const SCOPE_OF = /^([a-z0-9-]+)=(global|user|project|local)$/;
 
 const ALIASES = new Map([['--playwright-browsers', '--browsers'], ['--playwright-enabled', '--browser-enabled'], ['--docs-move', '--data-move']]);
 
-const FLAG_LIST = '--space, --scope, --memory-level, --browsers, --browser-enabled, --docs-versioning, --data-path, --data-move, --docs-root-move, --docs-root-leave, --auto-compact, --instructions-at, --github-cli, --keep-pins, --selection, --installed-only, --add, --drop, --scope-of, --print-plan, --plan-out, --skills-only, --rename-claude-md, --source';
+const FLAG_LIST = '--space, --scope, --memory-level, --browsers, --browser-enabled, --docs-versioning, --data-path, --data-move, --docs-root-move, --docs-root-leave, --auto-compact, --instructions-at, --instructions-file, --github-cli, --keep-pins, --selection, --installed-only, --add, --drop, --scope-of, --print-plan, --plan-out, --skills-only, --source';
 
 // One selection line, the shape the walks write: `<category> <name>`.
 const ADD_LINE = /^(skill|agent|rule|hook|mcp|plugin) [A-Za-z0-9._-]+$/;
@@ -93,7 +96,7 @@ function parseArgs(argv)
 {
     const out = {
         action: '', space: '', scope: '',
-        playwrightBrowsersRaw: '', playwrightEnabledRaw: '', docsVersioning: '', memoryLevel: '', dataMove: '', dataPath: '', docsRootMove: '', docsRootLeaveRaw: '', autoCompact: '', instructionsAt: '',
+        playwrightBrowsersRaw: '', playwrightEnabledRaw: '', docsVersioning: '', memoryLevel: '', dataMove: '', dataPath: '', docsRootMove: '', docsRootLeaveRaw: '', autoCompact: '', instructionsAt: '', instructionsFile: '',
         selection: '', source: '', planOut: '',
         githubCli: false, keepPins: false, installedOnly: false, printPlan: false, skillsOnly: false,
         add: [], drop: [], scopeOf: {},
@@ -182,6 +185,7 @@ function parseArgs(argv)
     out.docsRootMove = lower(out.docsRootMove);
     out.autoCompact = lower(out.autoCompact);
     out.instructionsAt = lower(out.instructionsAt);
+    out.instructionsFile = lower(out.instructionsFile);
     // The data root is a folder INSIDE the project (stack/mcp/data-root.js checkDataPath says what is refused
     // and why) - refused here, before a path that would prompt, escape the project or break a server lands.
     if (out.dataPath)

@@ -68,6 +68,8 @@ test('the first edit waits for the code docs and hands them over inline; the ret
         assert.match(text, /An Angular front end over an ASP\.NET API/, 'the cover-less project section');
         assert.doesNotMatch(text, /File-scoped namespaces/, 'another language\'s section is not pasted');
         assert.match(text, /PROJECT-CODE-PREFERENCES\.md \('C#'\)/, 'it is named instead');
+        const notPasted = (/Not pasted here[^\n]*/.exec(text) || [''])[0];
+        assert.doesNotMatch(notPasted, /TypeScript|Project type/, 'a pasted section is never also named as not pasted');
         assert.doesNotMatch(text, /<!--/, 'comment lines stay out');
         assert.doesNotMatch(text, /Do NOT commit or push/, 'the git doc waits for a git write');
         assert.ok(!denied(p.hook(edit('src/app.ts', s))), 'the retry goes through');
@@ -77,7 +79,7 @@ test('the first edit waits for the code docs and hands them over inline; the ret
         assert.strictEqual(rows[0].hook, 'preferences-session.js');
         assert.strictEqual(rows[0].kind, 'code');
         const state = JSON.parse(p.read(`.alfred/state/sessions/preferences-${s}-main.json`));
-        assert.deepStrictEqual(Object.keys(state).sort(), ['ARCHITECTURE', 'PERSONAL-CODE', 'PROJECT-CODE#project-type', 'PROJECT-CODE#typescript'], 'the C# section waits for a C# edit');
+        assert.deepStrictEqual(Object.keys(state).sort(), ['ARCHITECTURE#a1', 'PERSONAL-CODE#c1', 'PROJECT-CODE#project-type', 'PROJECT-CODE#typescript'], 'the C# section waits for a C# edit');
     }
     finally { p.rm(); }
 });
@@ -252,7 +254,7 @@ test('it fails open: a garbage payload, a garbage record, a doc that is a folder
         const held = p.hook(edit('src/app.ts', s));
         assert.strictEqual(held.status, 0, held.stderr);
         assert.ok(denied(held), 'a record it cannot read is no record');
-        assert.ok(JSON.parse(p.read(`.alfred/state/sessions/preferences-${s}-main.json`))['PERSONAL-CODE'], 'and it is written whole again');
+        assert.ok(JSON.parse(p.read(`.alfred/state/sessions/preferences-${s}-main.json`))['PERSONAL-CODE#c1'], 'and it is written whole again');
     }
     finally { p.rm(); }
     const odd = project({ docs: { 'PERSONAL-CODE-PREFERENCES.md': 'just some words the user wrote, no headings\n' } });
@@ -289,6 +291,107 @@ test('the hand-over stays inside its cap on a huge project doc and names what it
         assert.match(text, /Prefer readonly fields/, 'the covering section is pasted as far as it fits');
         assert.match(text, /more chars/, 'and its cut is said');
         assert.match(text, /PROJECT-CODE-PREFERENCES\.md \('Lang 3'\)/, 'the others are named');
+    }
+    finally { p.rm(); }
+});
+
+// ---- the hand-over is capped, never the user's docs (the user's ruling of 2026-10-22) -------------------------------
+const entry = (id, title, body) => `## ${id.toUpperCase()} - ${title}\n<!-- id: ${id} -->\n${body}\n`;
+const codeDoc = (...entries) => `# Personal code preferences\n\nUpdated: 2026-10-22\n\n${entries.join('\n')}`;
+
+test('the hand-over leaves out each entry\'s Check: line and keeps its Why:', () =>
+{
+    const p = project({ docs: { 'PERSONAL-CODE-PREFERENCES.md': codeDoc(entry('c1', 'No static classes', '- Rule: model behaviour as instances behind an interface.\n- Scope: every language\n- Why: testable without touching callers.\n- Check: regex `static class` in `src/**/*.cs`')) } });
+    try
+    {
+        const text = reason(p.hook(edit('src/app.ts', sid())));
+        assert.match(text, /model behaviour as instances/);
+        assert.match(text, /testable without touching callers/, 'the Why: stays');
+        assert.doesNotMatch(text, /Check:/, 'the Check: is the script\'s data, never pasted');
+    }
+    finally { p.rm(); }
+});
+
+test('an entry whose Scope: globs miss the edited file is named, and handed over at the first edit they reach', () =>
+{
+    const p = project({ docs: { 'PERSONAL-CODE-PREFERENCES.md': codeDoc(
+        entry('c1', 'Records for DTOs', '- Rule: a DTO is a record.\n- Scope: api/**/*.cs'),
+        entry('c2', 'Readonly fields', '- Rule: prefer readonly fields.\n- Scope: *.ts'),
+        entry('c3', 'Small units', '- Rule: one reason to change per unit.\n- Scope: every language, Node.js'),
+        entry('c4', 'No barrels inside a feature', '- Rule: import a sibling file directly.'),
+    ) } });
+    try
+    {
+        const s = sid();
+        const ts = reason(p.hook(edit('src/app.ts', s)));
+        assert.match(ts, /prefer readonly fields/, 'a bare *.ts reaches a file in any folder');
+        assert.match(ts, /one reason to change per unit/, 'a plain-area Scope: is handed over for every edit');
+        assert.match(ts, /import a sibling file directly/, 'and so is an entry with no Scope:');
+        assert.doesNotMatch(ts, /a DTO is a record/, 'the C# entry is not pasted for a TypeScript edit');
+        assert.match(ts, /C1 - Records for DTOs/, 'it is named instead');
+        assert.ok(!denied(p.hook(edit('src/app.ts', s))));
+        const cs = p.hook(edit('api/Orders/Order.cs', s));
+        assert.ok(denied(cs), 'the first C# edit waits for the C# entry');
+        assert.match(reason(cs), /a DTO is a record/);
+        assert.doesNotMatch(reason(cs), /prefer readonly fields/, 'what was handed stays handed');
+        assert.ok(!denied(p.hook(edit('api/Orders/Order.cs', s))));
+        assert.match(reason(p.hook(edit('api/Program.cs', sid()))), /a DTO is a record/, 'api/**/*.cs reaches a file straight under api/');
+    }
+    finally { p.rm(); }
+});
+
+test('docs past one room are handed over in parts: each retry brings the next part, and the docs after them wait', () =>
+{
+    // 14 entries of about 830 chars - some 11,700 chars, past what one denial holds.
+    const long = (i) => entry(`c${i}`, `Entry ${i}`, `- Rule: rule number ${i} ${'stays put. '.repeat(70)}\n- Scope: every language`);
+    const p = project({ docs: { 'PERSONAL-CODE-PREFERENCES.md': codeDoc(...Array.from({ length: 14 }, (_, i) => long(i + 1))), 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE } });
+    try
+    {
+        const s = sid();
+        const texts = [];
+        for (let r = p.hook(edit('src/app.ts', s)); denied(r); r = p.hook(edit('src/app.ts', s)))
+        {
+            texts.push(reason(r));
+            assert.ok(texts.length < 5, 'the holds end');
+        }
+        assert.strictEqual(texts.length, 2, texts.map((t) => t.length).join(', '));
+        for (const t of texts) assert.ok(t.length < 9000, `${t.length} chars`);
+        assert.match(texts[0], /retry/i, 'the first part says the next one comes with the retry');
+        assert.doesNotMatch(texts[0], /a handler validates/, 'the architecture doc waits behind the personal one');
+        assert.match(texts[1], /a handler validates/);
+        const seen = new Set(texts.flatMap((t) => [...t.matchAll(/rule number (\d+) /g)].map((m) => Number(m[1]))));
+        assert.deepStrictEqual([...seen].sort((a, b) => a - b), Array.from({ length: 14 }, (_, i) => i + 1), 'every entry handed over once');
+
+        const t = sid();
+        assert.ok(denied(p.hook(edit('src/app.ts', t))));
+        p.hook(pre('Read', { file_path: path.join(p.root, PREFS, 'PERSONAL-CODE-PREFERENCES.md') }, t));
+        const next = reason(p.hook(edit('src/app.ts', t)));
+        assert.match(next, /a handler validates/, 'a whole Read ends the parts; the doc behind it comes next');
+        assert.doesNotMatch(next, /rule number/);
+        assert.ok(!denied(p.hook(edit('src/app.ts', t))));
+
+        const push = String(out(p.hook({ hook_event_name: 'SubagentStart', session_id: sid(), agent_id: 'agent-9', agent_type: 'alfred-code:aspnet-solution-designer' })).additionalContext || '');
+        assert.ok(push.length < 9000, `${push.length}`);
+        assert.match(push, /rule number 1 /);
+        assert.match(push, /C14 - Entry 14/, 'what did not fit is listed');
+        assert.match(push, /first Read or symbol lookup hands them over/, 'and comes with the seat\'s first Read');
+    }
+    finally { p.rm(); }
+});
+
+test('an entry too long for any room is cut once, naming the file, and the next hold moves on', () =>
+{
+    const p = project({ docs: { 'PERSONAL-CODE-PREFERENCES.md': codeDoc(entry('c1', 'Huge', `- Rule: ${'a very long rule text. '.repeat(450)}`)), 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE } });
+    try
+    {
+        const s = sid();
+        const first = reason(p.hook(edit('src/app.ts', s)));
+        assert.match(first, /more chars: Read \S*PERSONAL-CODE-PREFERENCES\.md/);
+        const second = p.hook(edit('src/app.ts', s));
+        assert.ok(denied(second), 'the architecture doc had no room left');
+        assert.match(reason(second), /a handler validates/);
+        assert.doesNotMatch(reason(second), /a very long rule/, 'the cut entry is not handed over again');
+        assert.ok(!denied(p.hook(edit('src/app.ts', s))));
     }
     finally { p.rm(); }
 });
@@ -462,7 +565,7 @@ test('PF-3: one command that edits and commits shares ONE room - git first, the 
 test('PF-4: the Locked block is the seed\'s - an edited locked entry is handed over as the house line, an unknown key is a plain entry', () =>
 {
     const edited = SEED.replace(/- Rule: Do NOT commit or push until[^\n]*/, '- Rule: commit when the task is done.')
-        .replace(/## G4 - Keep history recoverable[\s\S]*?(?=## G5)/, '')
+        .replace(/## G3 - Never lose work[\s\S]*?(?=## G4)/, '')
         + '\n## G9 - My own lock\n<!-- id: g9 -->\n<!-- locked: mine -->\n- Rule: mine-rule-text.\n';
     const p = project({ docs: { 'GIT-PREFERENCES.md': edited } });
     try
@@ -701,7 +804,7 @@ test('G6: a second language\'s project section is handed over at its first edit'
     finally { p.rm(); }
 });
 
-test('G5: a solution designer is handed the code docs at its start; other seats are not', () =>
+test('G5: a solution designer and a verifier are handed the code docs at their start; other seats are not', () =>
 {
     const p = project();
     try
@@ -714,9 +817,453 @@ test('G5: a solution designer is handed the code docs at its start; other seats 
         assert.match(text, /a handler validates/);
         assert.match(text, /Single quotes|File-scoped namespaces/);
         assert.ok(text.length < 9000, `${text.length}`);
-        for (const type of ['general-purpose', 'alfred-code:web-angular-implementer', 'Explore'])
-            assert.strictEqual(p.hook(sub(type)).stdout, '', type);
+        const v = String(out(p.hook(sub('alfred-code:aspnet-verifier'))).additionalContext || '');
+        assert.match(v, /put behaviour on the type/, 'a verifier is handed them too');
+        assert.match(v, /a handler validates/);
+        assert.strictEqual(p.hook(sub('web-angular-verifier')).stdout, '', 'bare, with no stamp recording the copy: no seat of the stack\'s');
+        p.write('.claude/alfred-code.stamp', 'seats-route: copy\nlibrary-agents: web-angular-verifier=0a1b\n');
+        assert.match(String(out(p.hook(sub('web-angular-verifier'))).additionalContext || ''), /a handler validates/, 'bare too, where the stamp records the copy');
+        for (const type of ['general-purpose', 'alfred-code:web-angular-implementer', 'Explore', 'agent-sdk-dev:agent-sdk-verifier-py', 'other:code-verifier', 'other:aspnet-solution-designer'])
+            assert.strictEqual(p.hook(sub(type)).stdout, '', `${type}: only the stack's own seats, bare or alfred-code:`);
         assert.strictEqual(p.hook(sub('alfred-code:aspnet-solution-designer'), { ALFRED_CODE_HOOKS_OFF: 'preferences-session' }).stdout, '');
+    }
+    finally { p.rm(); }
+});
+
+test('the finding seats - the code-quality analyzer, the security auditor, the integration reviewer - are judges too; the other read-only seats are not', () =>
+{
+    const long = (i) => entry(`c${i}`, `Entry ${i}`, `- Rule: rule number ${i} ${'stays put. '.repeat(70)}\n- Scope: every language`);
+    const small = project();
+    const big = project({ docs: { 'PERSONAL-CODE-PREFERENCES.md': codeDoc(...Array.from({ length: 14 }, (_, i) => long(i + 1))), 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE } });
+    try
+    {
+        for (const q of [small, big]) q.write('.claude/alfred-code.stamp', 'library-agents: code-quality-analyzer=1,integration-reviewer=2\n');
+        const sub = (type, s = sid()) => ({ hook_event_name: 'SubagentStart', session_id: s, agent_id: 'agent-f1', agent_type: type });
+        for (const type of ['alfred-code:code-quality-analyzer', 'code-quality-analyzer', 'alfred-code:security-auditor', 'alfred-code:integration-reviewer', 'integration-reviewer'])
+        {
+            assert.match(String(out(small.hook(sub(type))).additionalContext || ''), /a handler validates/, `${type}: handed at its start`);
+            const s = sid();
+            assert.match(String(out(big.hook(sub(type, s))).additionalContext || ''), /Not pasted yet/, `${type}: the rest named`);
+            const r = big.hook(pre('Read', { file_path: path.join(big.root, 'src/app.ts') }, s, { agent_id: 'f1', agent_type: type }));
+            assert.ok(denied(r), `${type}: its first Read brings the next part`);
+            assert.match(reason(r), /now make the read again/);
+        }
+        for (const type of ['alfred-code:code-style-analyzer', 'alfred-code:test-coverage-analyzer', 'alfred-code:issue-diagnoser-ci', 'alfred-code:evidence-gatherer', 'other:code-quality-analyzer-lite', 'someplugin:security-auditor', 'other:integration-reviewer', 'other:code-quality-analyzer'])
+            assert.strictEqual(small.hook(sub(type)).stdout, '', type);
+        // Another plugin's seat under one of these names is not the stack's: no push, and its Reads are never held.
+        for (const type of ['someplugin:security-auditor', 'other:aspnet-verifier'])
+        {
+            const s = sid();
+            assert.strictEqual(big.hook(sub(type, s)).stdout, '', type);
+            assert.ok(!denied(big.hook(pre('Read', { file_path: path.join(big.root, 'src/app.ts') }, s, { agent_id: 'f1', agent_type: type }))), `${type}: its Read passes`);
+        }
+    }
+    finally { small.rm(); big.rm(); }
+});
+
+test('a designer or verifier whose docs fit one room is never held on a Read; nor is any other actor', () =>
+{
+    const p = project();
+    try
+    {
+        const s = sid();
+        const read = (file, extra) => pre('Read', { file_path: path.join(p.root, file) }, s, extra);
+        for (const [id, type] of [['x1', 'alfred-code:aspnet-solution-designer'], ['x2', 'alfred-code:aspnet-verifier']])
+        {
+            assert.match(String(out(p.hook({ hook_event_name: 'SubagentStart', session_id: s, agent_id: id, agent_type: type })).additionalContext || ''), /a handler validates/);
+            assert.ok(!denied(p.hook(read('src/app.ts', { agent_id: id, agent_type: type }))), `${type}: everything came with the start`);
+        }
+        assert.ok(!denied(p.hook(read('src/app.ts'))), 'the main session');
+        assert.ok(!denied(p.hook(read('src/app.ts', { agent_id: 'x3', agent_type: 'alfred-code:aspnet-implementer' }))), 'an implementer - its edits are held instead');
+    }
+    finally { p.rm(); }
+});
+
+test('docs past one room reach a designer or verifier in parts: its first Reads are held, each handing over the next part', () =>
+{
+    const long = (i) => entry(`c${i}`, `Entry ${i}`, `- Rule: rule number ${i} ${'stays put. '.repeat(70)}\n- Scope: every language`);
+    const p = project({ docs: { 'PERSONAL-CODE-PREFERENCES.md': codeDoc(...Array.from({ length: 14 }, (_, i) => long(i + 1))), 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE } });
+    try
+    {
+        p.write('.claude/alfred-code.stamp', 'library-agents: aspnet-verifier=1\n');
+        for (const [startId, toolId, type] of [['agent-d1', 'd1', 'alfred-code:aspnet-solution-designer'], ['v1', 'v1', 'aspnet-verifier']])
+        {
+            const s = sid();
+            const push = String(out(p.hook({ hook_event_name: 'SubagentStart', session_id: s, agent_id: startId, agent_type: type })).additionalContext || '');
+            const texts = [push];
+            const read = (file) => pre('Read', { file_path: path.join(p.root, file) }, s, { agent_id: toolId, agent_type: type });
+            assert.ok(!denied(p.hook(read(`${PREFS}/GIT-PREFERENCES.md`))), `${type}: a read of a preferences doc is never held`);
+            let r = p.hook(read('src/app.ts'));
+            assert.ok(denied(r), `${type}: the first Read after a start that could not hold everything waits`);
+            for (; denied(r); r = p.hook(read('src/app.ts')))
+            {
+                texts.push(reason(r));
+                assert.ok(texts.length < 6, 'the holds end');
+            }
+            for (const t of texts) assert.ok(t.length < 9000, `${t.length} chars`);
+            assert.match(texts[1], /now make the read again/, 'the denial says to read again');
+            const seen = texts.flatMap((t) => [...t.matchAll(/rule number (\d+) /g)].map((m) => Number(m[1])));
+            assert.deepStrictEqual(seen.slice().sort((a, b) => a - b), Array.from({ length: 14 }, (_, i) => i + 1), `${type}: every entry handed over exactly once`);
+            assert.ok(texts.some((t) => /a handler validates/.test(t)), 'and the doc behind them');
+            assert.ok(!denied(p.hook(read('src/other.ts'))), 'every later Read passes');
+            const rows = p.read(`.alfred/statistics/hook-blocks/${s}.jsonl`).trim().split('\n').map((l) => JSON.parse(l));
+            assert.ok(rows.every((x) => x.kind === 'read'), JSON.stringify(rows));
+        }
+
+        const t = sid();
+        assert.ok(denied(p.hook(pre('Read', { file_path: path.join(p.root, 'src/app.ts') }, t, { agent_id: 'v2', agent_type: 'alfred-code:aspnet-verifier' }))), 'a verifier whose start never ran is handed the docs at its first Read');
+    }
+    finally { p.rm(); }
+});
+
+test('a navigation lookup is a read: a designer\'s or verifier\'s first symbol lookup is held like its first Read', () =>
+{
+    const long = (i) => entry(`c${i}`, `Entry ${i}`, `- Rule: rule number ${i} ${'stays put. '.repeat(70)}\n- Scope: every language`);
+    const p = project({ docs: { 'PERSONAL-CODE-PREFERENCES.md': codeDoc(...Array.from({ length: 14 }, (_, i) => long(i + 1))), 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE } });
+    try
+    {
+        const lookups = [
+            ['mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', { name_path_pattern: 'x', include_body: true }],
+            ['mcp__alfred-navigation__get_symbols_overview', { relative_path: 'src/app.ts' }], // mcp-fixture: the copy route spells the server bare
+            ['mcp__plugin_alfred-navigation_alfred-navigation__find_referencing_symbols', { name_path: 'x', relative_path: 'src/app.ts' }],
+            ['mcp__plugin_alfred-navigation_alfred-navigation__find_declaration', { name_path: 'x' }],
+            ['mcp__plugin_alfred-navigation_alfred-navigation__find_implementations', { name_path: 'x' }],
+        ];
+        for (const [tool, input] of lookups)
+        {
+            const s = sid();
+            const who = { agent_id: 'v1', agent_type: 'alfred-code:aspnet-verifier' };
+            p.hook({ hook_event_name: 'SubagentStart', session_id: s, ...who });
+            const r = p.hook(pre(tool, input, s, who));
+            assert.ok(denied(r), `${tool}: held`);
+            assert.match(reason(r), /rule number 14 /, `${tool}: it hands over the next part`);
+            assert.ok(!denied(p.hook(pre(tool, input, s, { agent_id: 'i1', agent_type: 'alfred-code:aspnet-implementer' }))), `${tool}: an implementer's lookup is not`);
+            assert.ok(!denied(p.hook(pre(tool, input, s))), `${tool}: nor the main session's`);
+        }
+        const s = sid();
+        const who = { agent_id: 'd1', agent_type: 'alfred-code:aspnet-solution-designer' };
+        p.hook({ hook_event_name: 'SubagentStart', session_id: s, ...who });
+        const nav = lookups[0];
+        let holds = 0;
+        for (let r = p.hook(pre(nav[0], nav[1], s, who)); denied(r); r = p.hook(pre(nav[0], nav[1], s, who))) assert.ok(++holds < 5, 'the holds end');
+        assert.ok(holds >= 1);
+        assert.ok(!denied(p.hook(pre('Read', { file_path: path.join(p.root, 'src/app.ts') }, s, who))), 'what a lookup handed over a Read does not ask for again');
+    }
+    finally { p.rm(); }
+});
+
+// 2026-10-22, the user's ruling 'Hold both, steer off Grep': a Grep or an LSP call reads code as a Read does, so a judge that
+// greps instead of locating no longer skips the parts its start could not hold - and a held Grep says to locate instead.
+test('a Grep or an LSP call is a read: a judge\'s first one is held like its first Read, and a held Grep steers to the navigation server', () =>
+{
+    const long = (i) => entry(`c${i}`, `Entry ${i}`, `- Rule: rule number ${i} ${'stays put. '.repeat(70)}\n- Scope: every language`);
+    const p = project({ docs: { 'PERSONAL-CODE-PREFERENCES.md': codeDoc(...Array.from({ length: 14 }, (_, i) => long(i + 1))), 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE } });
+    const STEER = /^Locate a symbol through the navigation server or LSP - Grep is for a literal you already located\.$/m;
+    try
+    {
+        const calls = [
+            ['Grep', { pattern: 'Order', path: path.join(p.root, 'src') }],
+            ['Grep', { pattern: 'Order', glob: '*.ts' }],
+            ['Grep', { pattern: 'Order', path: 'src' }],
+            ['LSP', { operation: 'findReferences', filePath: path.join(p.root, 'src/app.ts'), line: 1, character: 14 }],
+            ['LSP', { operation: 'workspaceSymbol', filePath: 'src/app.ts', line: 1, character: 1, query: 'x' }],
+        ];
+        for (const [tool, input] of calls)
+        {
+            const s = sid();
+            const who = { agent_id: 'v1', agent_type: 'alfred-code:aspnet-verifier' };
+            p.hook({ hook_event_name: 'SubagentStart', session_id: s, ...who });
+            const label = `${tool} ${JSON.stringify(input)}`;
+            assert.ok(!denied(p.hook(pre(tool, { ...input, path: path.join(p.root, PREFS), filePath: path.join(p.root, PREFS, 'PERSONAL-CODE-PREFERENCES.md') }, s, who))), `${label}: one on the preferences folder passes`);
+            const r = p.hook(pre(tool, input, s, who));
+            assert.ok(denied(r), `${label}: held`);
+            assert.match(reason(r), /rule number 14 /, `${label}: it hands over the next part`);
+            assert.match(reason(r), /now make the read again/);
+            if (tool === 'Grep') assert.match(reason(r), STEER, 'a held Grep steers to the navigation server');
+            else assert.doesNotMatch(reason(r), STEER, 'an LSP call is already the right tool');
+            let holds = 1;
+            for (let q = p.hook(pre(tool, input, s, who)); denied(q); q = p.hook(pre(tool, input, s, who))) assert.ok(++holds < 6, 'the holds end');
+            assert.ok(!denied(p.hook(pre('Read', { file_path: path.join(p.root, 'src/app.ts') }, s, who))), `${label}: what it handed over a Read does not ask for again`);
+            assert.ok(!denied(p.hook(pre(tool, input, s, { agent_id: 'i1', agent_type: 'alfred-code:aspnet-implementer' }))), `${label}: an implementer's is not held`);
+            assert.ok(!denied(p.hook(pre(tool, input, s))), `${label}: nor the main session's`);
+            assert.ok(!denied(p.hook(pre(tool, input, s, { agent_id: 'o1', agent_type: 'other:aspnet-verifier' }))), `${label}: nor another plugin's seat`);
+        }
+        const s = sid();
+        const who = { agent_id: 'q1', agent_type: 'alfred-code:code-quality-analyzer' };
+        p.hook({ hook_event_name: 'SubagentStart', session_id: s, ...who });
+        const viaFiles = p.hook(pre('Grep', { pattern: 'Order' }, s, who), {}, path.join(HOOKS, 'file-guards.js'));
+        assert.ok(denied(viaFiles) && STEER.test(reason(viaFiles)), `the file guards carry the Grep hold: ${viaFiles.stdout}`);
+    }
+    finally { p.rm(); }
+});
+
+// 2026-10-22, the user's 'close' of the four design limits. A bare seat name is the copy route's spelling, so it is the
+// stack's own seat only where the install stamp records that copy - a project's own `security-auditor` is not.
+test('a bare seat name is the stack\'s own only where the install stamp records its copy; alfred-code: always is', () =>
+{
+    const long = (i) => entry(`c${i}`, `Entry ${i}`, `- Rule: rule number ${i} ${'stays put. '.repeat(70)}\n- Scope: every language`);
+    const p = project({ docs: { 'PERSONAL-CODE-PREFERENCES.md': codeDoc(...Array.from({ length: 14 }, (_, i) => long(i + 1))), 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE } });
+    try
+    {
+        const sub = (type, s) => p.hook({ hook_event_name: 'SubagentStart', session_id: s, agent_id: 'b1', agent_type: type });
+        const read = (type, s) => p.hook(pre('Read', { file_path: path.join(p.root, 'src/app.ts') }, s, { agent_id: 'b1', agent_type: type }));
+        const pushedTo = (type) => { const s = sid(); const r = sub(type, s); return { push: r.stdout !== '', held: denied(read(type, s)) }; };
+        assert.deepStrictEqual(pushedTo('security-auditor'), { push: false, held: false }, 'no stamp: a project\'s own agent');
+        assert.deepStrictEqual(pushedTo('alfred-code:security-auditor'), { push: true, held: true }, 'the plugin spelling needs no stamp');
+        p.write('.claude/alfred-code.stamp', 'seats-route: plugin\nlibrary-agents: \n');
+        assert.deepStrictEqual(pushedTo('security-auditor'), { push: false, held: false }, 'a plugin-route stamp copies no seat');
+        p.write('.claude/alfred-code.stamp', 'seats-route: copy\nlibrary-agents: aspnet-verifier=ab12,security-auditor=cd34\n');
+        assert.deepStrictEqual(pushedTo('security-auditor'), { push: true, held: true }, 'a recorded copy');
+        assert.deepStrictEqual(pushedTo('aspnet-verifier'), { push: true, held: true });
+        assert.deepStrictEqual(pushedTo('wpf-verifier'), { push: false, held: false }, 'a copy the stamp does not record');
+        p.write('.claude/alfred-code.stamp', '\u0000garbage\nlibrary-agents');
+        assert.deepStrictEqual(pushedTo('security-auditor'), { push: false, held: false }, 'a garbage stamp records nothing, and nothing crashes');
+    }
+    finally { p.rm(); }
+});
+
+// A judge's shell read of code reads as its Read does, so it brings the next part too; the docs.js show it is told to
+// run for the rest, a read of the docs themselves and every other command pass.
+test('a judge\'s first shell read of code is held like its first Read; the docs, docs.js and other commands pass', () =>
+{
+    const long = (i) => entry(`c${i}`, `Entry ${i}`, `- Rule: rule number ${i} ${'stays put. '.repeat(70)}\n- Scope: every language`);
+    const p = project({ docs: { 'PERSONAL-CODE-PREFERENCES.md': codeDoc(...Array.from({ length: 14 }, (_, i) => long(i + 1))), 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE } });
+    const STEER = /^Locate a symbol through the navigation server or LSP - Grep is for a literal you already located\.$/m;
+    try
+    {
+        const who = { agent_id: 's1', agent_type: 'alfred-code:aspnet-verifier' };
+        const fresh = () => { const s = sid(); p.hook({ hook_event_name: 'SubagentStart', session_id: s, ...who }); return s; };
+        let s = fresh();
+        for (const command of ['node .claude/hooks/docs.js show PERSONAL-CODE-PREFERENCES#c14', 'ls src', 'git status', 'wc -l src/app.ts', 'git log | rg Order', 'rg Order < notes.txt', 'git diff | grep -n Order', 'grep -n Order', 'echo src/app.ts', `head -5 ${PREFS}/ARCHITECTURE-PREFERENCES.md`, 'ls src/*.ts', 'git log | Select-String Order', `find ${PREFS} -name '*.md' -exec cat {} +`, 'cat $UNSET/app.ts'])
+            assert.ok(!denied(p.hook(bash(command, s, who))), `${command}: passes`);
+        for (const [command, steer] of [['cat src/app.ts', false], ['grep -n Order src/app.ts', true], ["sed -n '1,5p' src/app.ts | head -3", false], ['rg -n x src', true], ['rg Order', true], ['grep -rn Order', true], ['cat a.txt | grep -R Order', true], ['egrep --recursive Order', true], ['F=src/app.ts; cat $F', false], ['cat src/*.ts', false], ['rg -n Order src/**/*.ts', true], ["find src -name '*.ts' -exec cat {} +", false], ['find . -exec grep -n Order {} ;', true], ['git ls-files | xargs grep -n Order', true], ['Get-ChildItem -Recurse *.ts | Select-String Order', true], ['Select-String -Path src/*.ts -Pattern Order', true]])
+        {
+            s = fresh();
+            const r = p.hook(bash(command, s, who));
+            assert.ok(denied(r), `${command}: held`);
+            assert.match(reason(r), /rule number 14 /, `${command}: the next part`);
+            assert.match(reason(r), /now make the read again/);
+            assert.strictEqual(STEER.test(reason(r)), steer, `${command}: the steer line only on a grep`);
+            let holds = 1;
+            for (let q = p.hook(bash(command, s, who)); denied(q); q = p.hook(bash(command, s, who))) assert.ok(++holds < 6, 'the holds end');
+            assert.ok(!denied(p.hook(pre('Read', { file_path: path.join(p.root, 'src/app.ts') }, s, who))), `${command}: a later Read asks nothing again`);
+            for (const other of [{ agent_id: 'i1', agent_type: 'alfred-code:aspnet-implementer' }, {}, { agent_id: 'o1', agent_type: 'other:aspnet-verifier' }])
+                assert.ok(!denied(p.hook(bash(command, sid(), other))), `${command}: ${other.agent_type || 'the main session'} is never held`);
+        }
+        s = fresh();
+        assert.ok(!denied(p.hook(bash(`cat ${PREFS}/PERSONAL-CODE-PREFERENCES.md ${PREFS}/ARCHITECTURE-PREFERENCES.md`, s, who))), 'a whole read of the docs passes');
+        assert.ok(!denied(p.hook(bash('cat src/app.ts', s, who))), 'and marks it, so the code read after asks nothing');
+        const viaShell = p.hook(bash('cat src/app.ts', fresh(), who), {}, path.join(HOOKS, 'shell-guards.js'));
+        assert.match(viaShell.stdout, /rule number 14 /, `the shell guards carry the hold: ${viaShell.stdout}`);
+    }
+    finally { p.rm(); }
+});
+
+// The main session reviewing without an edit never met the edit hold: its first review skill waits for the code docs
+// (the user's answer 'Hold its first review skill').
+test('the main session\'s first review skill waits for the code docs, in parts; other skills and every seat pass', () =>
+{
+    const long = (i) => entry(`c${i}`, `Entry ${i}`, `- Rule: rule number ${i} ${'stays put. '.repeat(70)}\n- Scope: every language`);
+    const big = project({ docs: { 'PERSONAL-CODE-PREFERENCES.md': codeDoc(...Array.from({ length: 14 }, (_, i) => long(i + 1))), 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE } });
+    const small = project();
+    try
+    {
+        const skill = (q, name, s, extra) => q.hook(pre('Skill', { skill: name }, s, extra));
+        // the stack's own reviews (2026-10-22, the user's ruling 'use ours'), and the built-ins a user may still type
+        for (const name of ['review-code', 'review-security', '/review-code', 'code-review', 'security-review', 'capture-code-quality', 'capture-architecture-quality', 'loop-code-quality', 'loop-architecture-quality', '/code-review'])
+        {
+            const s = sid();
+            const r = skill(small, name, s);
+            assert.ok(denied(r), `${name}: held`);
+            assert.match(reason(r), /^Before this review, read the user's code preferences/, name);
+            assert.match(reason(r), /put behaviour on the type/);
+            assert.match(reason(r), /a handler validates/);
+            assert.match(reason(r), /now start the review again/);
+            assert.ok(!denied(skill(small, name, s)), `${name}: the retry passes`);
+            assert.ok(!denied(skill(small, 'loop-code-quality', s)), `${name}: and every later review skill`);
+        }
+        const s = sid();
+        const texts = [];
+        for (let r = skill(big, 'capture-code-quality', s); denied(r); r = skill(big, 'capture-code-quality', s)) { texts.push(reason(r)); assert.ok(texts.length < 6, 'the holds end'); }
+        const seen = texts.flatMap((t) => [...t.matchAll(/rule number (\d+) /g)].map((m) => Number(m[1])));
+        assert.deepStrictEqual(seen.sort((a, b) => a - b), Array.from({ length: 14 }, (_, i) => i + 1), 'every entry once, in parts');
+        assert.match(texts[0], /now start the review again for the next part/);
+        for (const name of ['javascript', 'superpowers:requesting-code-review', 'other:code-review', 'capture-preferences'])
+            assert.ok(!denied(skill(small, name, sid())), `${name}: no review skill`);
+        assert.ok(!denied(skill(small, 'code-review', sid(), { agent_id: 'v1', agent_type: 'alfred-code:aspnet-verifier' })), 'a seat\'s skill call: its start already handed them');
+        const read = sid();
+        small.hook(bash(`cat ${PREFS}/PERSONAL-CODE-PREFERENCES.md ${PREFS}/ARCHITECTURE-PREFERENCES.md ${PREFS}/PROJECT-CODE-PREFERENCES.md`, read));
+        assert.ok(!denied(skill(small, 'code-review', read)), 'docs read whole already: nothing held');
+        assert.ok(denied(skill(small, 'code-review', sid())), 'a fresh session is held again');
+        assert.strictEqual(small.hook(pre('Skill', { skill: 'code-review' }, sid()), { ALFRED_CODE_HOOKS_OFF: 'preferences-session' }).stdout, '', 'the off-list stands it down');
+    }
+    finally { big.rm(); small.rm(); }
+});
+
+// The architecture seat judged nothing, so its briefs listed the entries by hand (the user's answer 'Hook pushes the arch
+// doc'): inside an architecture quality run its start hands it the architecture entries alone - never the code docs -
+// and its first reads the rest. The map capture dispatches the same seat to describe the code as it is, so outside such
+// a run it gets nothing.
+const typed = (command, session) => ({ hook_event_name: 'UserPromptExpansion', session_id: session, expansion_type: 'slash_command', command_name: command, command_args: '', prompt: `/${command}` });
+test('architecture-analyzer is handed the architecture entries alone in an architecture quality run; past one room its first reads bring the rest', () =>
+{
+    const longA = (i) => entry(`a${i}`, `Arch ${i}`, `- Rule: arch rule number ${i} ${'stays put. '.repeat(70)}`);
+    const small = project();
+    const big = project({ docs: { 'PERSONAL-CODE-PREFERENCES.md': PERSONAL, 'ARCHITECTURE-PREFERENCES.md': codeDoc(...Array.from({ length: 14 }, (_, i) => longA(i + 1))).replace('# Code preferences', '# Architecture preferences') } });
+    try
+    {
+        const who = { agent_id: 'a1', agent_type: 'alfred-code:architecture-analyzer' };
+        const qualityRun = (q) => { const s = sid(); q.hook(typed('capture-architecture-quality', s)); return s; };
+        const push = String(out(small.hook({ hook_event_name: 'SubagentStart', session_id: qualityRun(small), ...who })).additionalContext || '');
+        assert.match(push, /The user's architecture preferences/);
+        assert.match(push, /a handler validates/);
+        assert.doesNotMatch(push, /put behaviour on the type|Single quotes|File-scoped namespaces/, 'no code doc');
+        assert.match(push, /report each place the code departs from one as a smell naming its id/);
+        const s = qualityRun(big);
+        const first = String(out(big.hook({ hook_event_name: 'SubagentStart', session_id: s, ...who })).additionalContext || '');
+        assert.match(first, /Not pasted yet/);
+        const texts = [first];
+        let r = big.hook(pre('Read', { file_path: path.join(big.root, 'src/app.ts') }, s, who));
+        assert.ok(denied(r), 'its first Read brings the next part');
+        for (; denied(r); r = big.hook(pre('Read', { file_path: path.join(big.root, 'src/app.ts') }, s, who))) { texts.push(reason(r)); assert.ok(texts.length < 6, 'the holds end'); }
+        const seen = texts.flatMap((t) => [...t.matchAll(/arch rule number (\d+) /g)].map((m) => Number(m[1])));
+        assert.deepStrictEqual(seen.sort((a, b) => a - b), Array.from({ length: 14 }, (_, i) => i + 1), 'every architecture entry once');
+        assert.ok(!texts.some((t) => /put behaviour on the type/.test(t)), 'the code doc never');
+        const start = (session, extra = who) => big.hook({ hook_event_name: 'SubagentStart', session_id: session, ...extra });
+        assert.strictEqual(start(qualityRun(big), { agent_id: 'x', agent_type: 'other:architecture-analyzer' }).stdout, '', 'another plugin\'s analyzer gets nothing');
+        assert.strictEqual(start(qualityRun(big), { agent_id: 'x', agent_type: 'architecture-analyzer' }).stdout, '', 'bare with no stamp: nothing');
+        // Outside a quality run - none, the map capture typed or called, a scoping pass - nothing, and no read is held.
+        const quiet = (s, label) => {
+            assert.strictEqual(start(s).stdout, '', `${label}: no push`);
+            assert.ok(!denied(big.hook(pre('Read', { file_path: path.join(big.root, 'src/app.ts') }, s, who))), `${label}: no held read`);
+        };
+        quiet(sid(), 'no run');
+        let m = sid(); big.hook(typed('capture-architecture', m)); quiet(m, 'the typed map capture');
+        m = qualityRun(big); big.hook(pre('Skill', { skill: 'capture-architecture' }, m)); quiet(m, 'the map capture called after a quality run');
+        m = qualityRun(big); big.hook(typed('task-solve-cross', m)); quiet(m, 'a solve run');
+        m = sid(); big.hook(pre('Skill', { skill: 'capture-architecture' }, m)); big.hook(pre('Skill', { skill: 'javascript' }, m));
+        quiet(m, 'a skill that is no run leaves the map run on');
+        m = sid(); big.hook(pre('Skill', { skill: 'loop-architecture-quality' }, m));
+        assert.match(String(out(start(m)).additionalContext || ''), /arch rule number 1 /, 'the loop called is a quality run');
+        // A compaction keeps the run: the next analyzer is still handed the doc.
+        m = qualityRun(big); big.hook({ hook_event_name: 'SessionStart', session_id: m, source: 'compact' });
+        assert.match(String(out(start(m)).additionalContext || ''), /arch rule number 1 /, 'the run survives a compaction');
+        m = qualityRun(big); big.hook({ hook_event_name: 'SessionStart', session_id: m, source: 'clear' });
+        assert.strictEqual(start(m).stdout, '', 'a /clear ends it');
+    }
+    finally { small.rm(); big.rm(); }
+});
+
+// A typed review emits no Skill call (code.claude.com/docs/en/hooks: typing /name bypasses PreToolUse; UserPromptExpansion
+// fires): its expansion is handed the code docs, and past one room the main session's first reads bring the rest.
+test('a typed review is handed the code docs at its expansion; past one room the main session\'s first reads bring the rest', () =>
+{
+    const long = (i) => entry(`c${i}`, `Entry ${i}`, `- Rule: rule number ${i} ${'stays put. '.repeat(70)}\n- Scope: every language`);
+    const big = project({ docs: { 'PERSONAL-CODE-PREFERENCES.md': codeDoc(...Array.from({ length: 14 }, (_, i) => long(i + 1))), 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE } });
+    const small = project();
+    try
+    {
+        for (const command of ['review-code', 'review-security', 'code-review', 'security-review', 'capture-code-quality', 'loop-architecture-quality'])
+        {
+            const s = sid();
+            const r = small.hook(typed(command, s));
+            assert.strictEqual(out(r).hookEventName, 'UserPromptExpansion', command);
+            assert.match(String(out(r).additionalContext || ''), /put behaviour on the type[\s\S]*a handler validates/, `${command}: both of the user's docs`);
+            assert.ok(!denied(small.hook(pre('Read', { file_path: path.join(small.root, 'src/app.ts') }, s))), `${command}: all of it fit, so no read waits`);
+            assert.strictEqual(small.hook(typed(command, s)).stdout, '', `${command}: typed again, nothing more`);
+        }
+        for (const command of ['capture-architecture', 'task-solve', 'javascript', 'superpowers:requesting-code-review', 'other:code-review', 'other:review-code'])
+            assert.strictEqual(small.hook(typed(command, sid())).stdout, '', `${command}: no review`);
+        assert.strictEqual(small.hook({ ...typed('code-review', sid()), agent_id: 'v1', agent_type: 'alfred-code:aspnet-verifier' }).stdout, '', 'never inside a seat');
+        const s = sid();
+        const texts = [String(out(big.hook(typed('code-review', s))).additionalContext || '')];
+        assert.match(texts[0], /Not pasted yet/);
+        let r = big.hook(pre('Grep', { pattern: 'Order', path: path.join(big.root, 'src') }, s));
+        assert.ok(denied(r), 'its first read brings the next part');
+        assert.match(reason(r), /^Locate a symbol through the navigation server or LSP/m, 'a Grep earns the steer');
+        for (; denied(r); r = big.hook(pre('Read', { file_path: path.join(big.root, 'src/app.ts') }, s))) { texts.push(reason(r)); assert.ok(texts.length < 7, 'the holds end'); }
+        const seen = texts.flatMap((t) => [...t.matchAll(/rule number (\d+) /g)].map((m) => Number(m[1])));
+        assert.deepStrictEqual(seen.sort((a, b) => a - b), Array.from({ length: 14 }, (_, i) => i + 1), 'every entry once');
+        const other = sid();
+        big.hook(typed('capture-architecture', other));
+        assert.ok(!denied(big.hook(pre('Read', { file_path: path.join(big.root, 'src/app.ts') }, other))), 'outside a review run the main session reads freely');
+        assert.strictEqual(small.hook(typed('code-review', sid()), { ALFRED_CODE_HOOKS_OFF: 'preferences-session' }).stdout, '', 'the off-list stands it down');
+    }
+    finally { big.rm(); small.rm(); }
+});
+
+// A run is the last one started, so it outlived its turn: the run ends at the user's next typed turn - any but the run's
+// own command row (the user's answer 'Transcript check at the hold'). Read only where it matters: an architecture
+// analyzer's start, and a reviewing main session's held read.
+const row = (o) => `${JSON.stringify(o)}\n`;
+const human = (text) => row({ type: 'user', message: { role: 'user', content: text } });
+test('a run ends at the user\'s next typed turn: the analyzer and a reviewing main session stop being handed the docs', () =>
+{
+    const long = (i) => entry(`c${i}`, `Entry ${i}`, `- Rule: rule number ${i} ${'stays put. '.repeat(70)}\n- Scope: every language`);
+    const p = project({ docs: { 'PERSONAL-CODE-PREFERENCES.md': codeDoc(...Array.from({ length: 14 }, (_, i) => long(i + 1))), 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE } });
+    try
+    {
+        const T = path.join(p.root, 'transcript.jsonl');
+        fs.writeFileSync(T, human('hello'));
+        let seat = 0;
+        const analyzer = (s) => /a handler validates/.test(String(out(p.hook({ hook_event_name: 'SubagentStart', session_id: s, transcript_path: T, agent_id: `a${++seat}`, agent_type: 'alfred-code:architecture-analyzer' })).additionalContext || ''));
+        let s = sid();
+        p.hook({ ...typed('capture-architecture-quality', s), transcript_path: T });
+        fs.appendFileSync(T, human('<command-message>capture-architecture-quality is running</command-message>\n<command-name>/capture-architecture-quality</command-name>'));
+        fs.appendFileSync(T, row({ type: 'user', isMeta: true, message: { role: 'user', content: 'Base directory for this skill: ...' } }));
+        fs.appendFileSync(T, row({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Dispatching.' }] } }));
+        fs.appendFileSync(T, row({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'done' }] } }));
+        fs.appendFileSync(T, human('<task-notification>agent finished</task-notification>'));
+        fs.appendFileSync(T, row({ type: 'user', isCompactSummary: true, message: { role: 'user', content: 'summary' } }));
+        fs.appendFileSync(T, '{garbage line\n');
+        assert.ok(analyzer(s), 'its own command row, a skill body, tool results, a notification and a summary keep the run');
+        // An Esc writes a user row of its own with no isMeta (measured in real transcripts), a `!` shell command and a
+        // seat's hand-back frame are the harness's too: none is the user typing a new turn.
+        fs.appendFileSync(T, row({ type: 'user', interruptedMessageId: 'm1', message: { role: 'user', content: [{ type: 'text', text: '[Request interrupted by user]' }] } }));
+        fs.appendFileSync(T, human([{ type: 'text', text: '[Request interrupted by user for tool use]' }]));
+        fs.appendFileSync(T, human('<bash-input>git status</bash-input>'));
+        fs.appendFileSync(T, human('<bash-stdout>clean</bash-stdout><bash-stderr></bash-stderr>'));
+        fs.appendFileSync(T, human('Another Claude session sent a message:\n<agent-message>report</agent-message>'));
+        assert.ok(analyzer(s), 'an interrupt, a ! shell command and a hand-back frame keep the run');
+        // A reply that only says go on is no new turn (the user's answer 'Keep go-on replies').
+        for (const word of ['continue', '  Go on. ', 'proceed!', 'carry on', 'resume', 'keep going', 'yes', 'OK', 'okay']) fs.appendFileSync(T, human(word));
+        fs.appendFileSync(T, human([{ type: 'text', text: 'Continue' }]));
+        assert.ok(analyzer(s), 'a go-on reply keeps the run');
+        fs.appendFileSync(T, human('continue with the login bug'));
+        assert.ok(!analyzer(s), 'a typed turn ends it, a go-on word opening it included');
+        p.hook({ ...pre('Skill', { skill: 'capture-architecture-quality' }, s), transcript_path: T });
+        assert.ok(analyzer(s), 'a run called again starts again');
+        fs.appendFileSync(T, human([{ type: 'text', text: 'and the next thing' }]));
+        assert.ok(!analyzer(s), 'a typed turn as text blocks ends it too');
+        s = sid();
+        p.hook({ ...typed('capture-architecture-quality', s), transcript_path: path.join(p.root, 'gone.jsonl') });
+        assert.ok(analyzer(s), 'a transcript that cannot be read keeps the run');
+        // The reviewing main session: held while the review is the turn, free once a typed turn ended it.
+        const read = (q) => p.hook({ ...pre('Read', { file_path: path.join(p.root, 'src/app.ts') }, q), transcript_path: T });
+        s = sid();
+        p.hook({ ...typed('code-review', s), transcript_path: T });
+        assert.ok(denied(read(s)), 'the review\'s first read brings the next part');
+        fs.appendFileSync(T, human('thanks, now something else'));
+        assert.ok(!denied(read(s)), 'after a typed turn the main session reads freely');
+        assert.ok(!denied(read(s)), 'and stays free');
+        // A call another hook refused never ran (review 2026-10-23): its run ends at the refused result, so the analyzer is
+        // handed nothing for it - while this hook's own refusal, which hands a review the docs and says to start it again,
+        // keeps the run and the reads it holds.
+        const call = (skill, q, id) => p.hook({ ...pre('Skill', { skill }, q, { tool_use_id: id }), transcript_path: T });
+        const result = (id, error) => fs.appendFileSync(T, row({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, ...(error ? { is_error: true } : {}), content: error ? 'PreToolUse:Skill hook error: denied' : 'Launching skill' }] } }));
+        s = sid();
+        let n = 0;
+        for (; n < 20 && denied(call('capture-architecture-quality', s, `ca${n}`)); n++) result(`ca${n}`, true);   // its own hand-over
+        assert.ok(n > 0 && n < 20, `the code docs came in ${n} parts, then the call passed this hook`);
+        result(`ca${n}`, true);
+        assert.ok(!analyzer(s), 'a run whose call another hook refused hands the analyzer nothing');
+        assert.ok(!denied(call('capture-architecture-quality', s, 'cb')), 'called again');
+        result('cb', false);
+        assert.ok(analyzer(s), 'and run, it does');
+        s = sid();
+        assert.ok(denied(call('review-code', s, 'rv1')), 'the first review call is refused to hand the docs over');
+        result('rv1', true);
+        assert.ok(denied(read(s)), 'that refusal is this hook\'s own: the next read still brings the next part');
     }
     finally { p.rm(); }
 });

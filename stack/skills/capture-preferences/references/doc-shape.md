@@ -39,12 +39,12 @@ Retired: C1
 ```
 
 - The heading is `## <id> - <title>`, then the id line in lower case - the docs engine reads one entry by it.
-- `<!-- locked: <key> -->` - after the id line, on the git doc's seeded consent, scope, checkpoint and safety entries only. A locked entry keeps every field word for word (`lint` compares each with the seed); a merged copy may carry another id and title, and an unlocked entry under a locked one's title is a weakened copy `lint` names.
+- `<!-- locked: <key> -->` - after the id line, on the git doc's seeded consent, checkpoint, safety, attribution and checks entries only. A locked entry keeps every field word for word (`lint` compares each with the seed); a merged copy may carry another id and title, and an unlocked entry under a locked one's title is a weakened copy `lint` names.
 - `Rule:` is required: one imperative line.
-- `Scope:` - globs or a plain area, comma-separated.
+- `Scope:` - globs or a plain area, comma-separated. Globs decide which edits the first-edit hold hands the entry over for - a glob with no `/` matches the file name (`*.cs`), a path with no glob character everything under it (`api/`); a plain area, or no `Scope:`, is handed over for every edit. A glob that reaches no file hides its entry from every edit, so `lint` notes one and every update names it; `reach` shows what each pattern takes - a count, the file types, a few paths - so one aimed at the wrong existing folder shows, the capture asks the user to confirm each new glob's reach, and `lint` and every update name a `Check:` that measures files its `Scope:` does not reach.
 - `Why:` - one line.
 - `Except:` - the waivers, `;`-separated. The only place a waiver lives.
-- `Check:` - optional, in the grammar below; never on a personal entry (`lint` flags one).
+- `Check:` - optional, in the grammar below; never on a personal entry (`lint` flags one). It is the script's data: the hook never hands it over.
 - The field names stay English - `lint` and the hooks read them; the text is the user's words, in their language. A fenced block is the entry's text: a `## ` line or a field inside one is an example, never read.
 
 ## The `Check:` grammar
@@ -61,4 +61,4 @@ The preferences docs rank above every skill, house convention, quality-loop prom
 
 ## Size
 
-Each doc a hook hands over has a cap per hold: the personal code and architecture docs together at or under 5,000 chars (the first edit's hold hands both over), the git doc at or under 5,000 (the first git write's hold). The personal doc stays at or under 3,000 on its own: the hook pushes it into every session's start and again after each compaction, so it is paid on every session. `lint` counts all three; `PROJECT-CODE-PREFERENCES.md` is held by the docs engine's own section cap instead.
+The personal code and architecture docs have no doc cap (the user's ruling of 2026-10-22: the hook caps what it hands over, never the user's words). The first edit's hold hands each entry over where its `Scope:` reaches, without its `Check:` line, and what does not fit one room comes with the retry; one entry stays at or under 5,000 chars, since no hold hands a longer one over whole, and past 5,000 together `lint` prints a `note:` line - every editing actor reads them, and a seat that judges without editing - a solution designer, a verifier, the code-quality analyzer, the security auditor, the integration reviewer, and the architecture analyzer in an architecture quality run (the architecture doc alone) - is handed them at its start and the rest with its first reads (a Read, a Grep, an LSP call, a symbol lookup or a shell read of a file); a review of the main session's is handed them before it starts. The git doc stays at or under 5,000: the first git write's hold hands it over whole. The personal doc stays at or under 3,000 on its own: the hook pushes it into every session's start and again after each compaction, so it is paid on every session. `PROJECT-CODE-PREFERENCES.md` is held by the docs engine's own section cap instead.

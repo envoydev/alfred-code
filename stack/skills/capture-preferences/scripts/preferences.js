@@ -9,6 +9,7 @@
 //                     --diff alone reads the files changed since HEAD plus the untracked ones; after a commit, name the base
 //   node .../preferences.js lint      the docs' shape, the locked git entries and the three caps; exits 1 on a problem
 //   node .../preferences.js next --area personal|code|architecture|git   the id a new entry takes
+//   node .../preferences.js reach [--id <id>]   what each code or architecture entry's Scope: takes, and its Check: outside it
 //   --project <dir>   the project root (default: the current directory)
 //
 // A `Check:` is DATA, never a command: regex `<pattern>` in `<glob>`[, `<glob>`] [excluding `<glob>`[, `<glob>`]].
@@ -36,10 +37,11 @@ const DOCS = [
 const AREAS = DOCS.map((d) => d.area);
 // The name the personal code doc had until 2026-10-21; an update renames it (install/docs.js).
 const OLD_CODE_DOC = 'CODE-PREFERENCES.md';
-// One cap per hold (the user's ruling S-Q3 of 2026-10-21): the first edit's hold hands the personal code and architecture
-// docs over together, the first git write's the git doc alone, each inside the hook's 7,000-char room with the frame and
-// the project doc's sections beside it. The personal doc rides every session start and every compaction, so it stays
-// under 1K tokens.
+// The first git write's hold hands the git doc over whole (the user's ruling S-Q3 of 2026-10-21), inside the hook's
+// 7,000-char room. The first edit's hold hands the personal code and architecture docs over entry by entry, in parts past
+// one room (the user's ruling of 2026-10-22: the hand-over is capped, never the user's docs), so CAP binds one entry
+// there and their sum is only noted. The personal doc rides every session start and every compaction, so it stays under
+// 1K tokens.
 const CAP = 5000;
 const GIT_CAP = 5000;
 const PERSONAL_CAP = 3000;
@@ -136,6 +138,22 @@ const CHECK = new RegExp(String.raw`^regex \x60([^\x60]+)\x60 in (${GLOBS})(?:\s
 const COMMAND = /\$\(|\||;|&&|>|^\s*(?:grep|rg|find|sh|bash|node|npm|npx|git|cat|ls)\b/;
 const globsOf = (s) => [...String(s || '').matchAll(/`([^`]+)`/g)].map((m) => m[1].trim());
 const listOf = (s, sep) => String(s || '').split(sep).map((x) => x.replace(/`/g, '').trim()).filter(Boolean);
+// A Scope: value's parts: its commas outside a `{a,b}` glob, so `src/**/*.{ts,tsx}` stays one glob (review 2026-10-23).
+function scopeParts(value)
+{
+    const parts = [];
+    let depth = 0;
+    let cur = '';
+    for (const c of String(value || ''))
+    {
+        if (c === '{') depth++;
+        else if (c === '}' && depth) depth--;
+        if (c === ',' && !depth) { parts.push(cur); cur = ''; }
+        else cur += c;
+    }
+    parts.push(cur);
+    return parts.map((x) => x.replace(/`/g, '').trim()).filter(Boolean);
+}
 
 // The `Check:` value as data, or null when it is not the grammar.
 function parseCheck(value)
@@ -193,13 +211,34 @@ function headOf(text)
 }
 const retiredIds = (text) => listOf((RETIRED.exec(headOf(text)) || [])[1], /,/);
 
+// Each entry's span - its heading to the next one, a fenced `## ` line staying text - and its size, trailing blanks out.
+function entrySpans(text)
+{
+    const out = [];
+    let cur = null;
+    let fence = null;
+    for (const line of String(text || '').replace(/\r\n/g, '\n').split('\n'))
+    {
+        const fm = FENCE.exec(line);
+        if (fence) { if (fm && fm[1][0] === fence) fence = null; }
+        else if (fm) fence = fm[1][0];
+        else
+        {
+            const h = HEADING.exec(line);
+            if (h) { const id = ENTRY_ID.exec(h[1]); cur = { heading: h[1], id: id ? `${id[1]}${id[2]}` : null, lines: [] }; out.push(cur); }
+        }
+        if (cur) cur.lines.push(line);
+    }
+    return out.map((e) => ({ heading: e.heading, id: e.id, chars: e.lines.join('\n').trimEnd().length }));
+}
+
 function parseDoc(text)
 {
     return parseSections(text).map((s) => ({
         id: s.id,
         title: s.title,
         rule: s.fields.Rule || '',
-        scope: listOf(s.fields.Scope, /,/),
+        scope: scopeParts(s.fields.Scope),
         why: s.fields.Why || '',
         except: listOf(s.fields.Except, /;/),
         check: s.fields.Check === undefined ? null : parseCheck(s.fields.Check),
@@ -233,6 +272,23 @@ function globSource(glob)
     return out;
 }
 const globRe = (glob) => new RegExp(`^${globSource(glob.replace(/^\.\//, ''))}$`);
+
+// What an entry's Scope: reaches - the one reader, preferences-session.js loads it from here: nothing
+// when any part is a plain area ('every language', 'Node.js') - the hook hands such an entry over for every edit; else
+// one test per glob, where a glob with no `/` matches the file name and a path with no glob character matches itself and
+// everything under it.
+function scopeOf(value)
+{
+    const parts = scopeParts(value);
+    if (!parts.length || parts.some((x) => /\s/.test(x) || !/[*?/{]/.test(x))) return [];
+    return parts.map((glob) =>
+    {
+        const g = glob.replace(/^\.?\//, '');
+        if (!/[*?{]/.test(g)) { const dir = g.replace(/\/+$/, ''); return { glob, test: (t) => t === dir || t.startsWith(`${dir}/`) }; }
+        const re = new RegExp(`^${globSource(g)}$`);
+        return { glob, test: g.includes('/') ? (t) => re.test(t) : (t) => re.test(t.slice(t.lastIndexOf('/') + 1)) };
+    });
+}
 
 function gitList(projectRoot, args)
 {
@@ -279,6 +335,88 @@ function fileList(projectRoot, mode, base = null)
     const rels = [...new Set(mode === 'all' ? allFiles(projectRoot) : changed || [])].sort();
     return rels.map((rel) => ({ rel: rel.split(path.sep).join('/'), abs: path.join(projectRoot, rel) }))
         .filter((f) => { try { return fs.statSync(f.abs).isFile(); } catch { return false; } });
+}
+
+// Each code or architecture entry's Scope: glob that reaches no file in the project, as { doc, id, glob }: the hook hands
+// an entry over only where its Scope: reaches (the user's ruling of 2026-10-22), so a dead glob hides the entry from every
+// edit. The file list is read once, and only when some entry names a glob.
+function deadScopesIn(projectRoot, docs)
+{
+    const wanted = [];
+    for (const d of docs.filter((x) => x.area === 'code' || x.area === 'architecture'))
+        for (const s of parseSections(d.text))
+            for (const part of scopeOf(s.fields.Scope)) wanted.push({ doc: d, id: s.id || s.heading, part });
+    if (!wanted.length) return [];
+    const files = allFiles(projectRoot);
+    return wanted.filter((w) => !files.some((f) => w.part.test(f))).map((w) => ({ doc: w.doc, id: w.id, glob: w.part.glob }));
+}
+// The code and architecture docs in `dir` - the update's reads, which name the docs root it migrated (a linked doc is
+// never read).
+function codeDocsIn(dir)
+{
+    return DOCS.filter((d) => d.area === 'code' || d.area === 'architecture').map((d) =>
+    {
+        const abs = path.join(dir, d.file);
+        return isLink(abs) ? null : { ...d, abs, text: readText(abs) };
+    }).filter((d) => d && d.text !== null);
+}
+const deadScopes = (projectRoot, dir = prefsDir(projectRoot)) => deadScopesIn(projectRoot, codeDocsIn(dir));
+
+// What each code or architecture entry's Scope: takes (null for a plain area or none: every edit), and the files its
+// Check: measures outside it. A Scope: aimed at the wrong existing folder hides its entry from the edits meant, and no
+// script can know the folder meant, so `reach` shows what each pattern takes and lint names the one mismatch a script can
+// see (the user's ruling of 2026-10-22). The file list is read once, and only when some entry names a glob.
+function reachIn(projectRoot, docs)
+{
+    let files = null;
+    const list = () => files || (files = allFiles(projectRoot));
+    const out = [];
+    for (const d of docs.filter((x) => x.area === 'code' || x.area === 'architecture'))
+        for (const s of parseSections(d.text))
+        {
+            const parts = scopeOf(s.fields.Scope);
+            const check = parseCheck(s.fields.Check);
+            const scoped = (f) => parts.some((p) => p.test(f));
+            let outside = [];
+            if (parts.length && check)
+            {
+                const include = check.include.map(globRe);
+                const exclude = check.exclude.map(globRe);
+                outside = list().filter((f) => include.some((g) => g.test(f)) && !exclude.some((g) => g.test(f)) && !scoped(f));
+            }
+            out.push({ doc: d, id: s.id || s.heading, scope: String(s.fields.Scope || '').replace(/`/g, '').trim(), reached: parts.length ? list().filter(scoped) : null, outside });
+        }
+    return out;
+}
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const sampleOf = (files, n = 3) => { const s = [...files].sort(); return s.slice(0, n).join(', ') + (s.length > n ? `, and ${s.length - n} more` : ''); };
+// The entries whose Check: measures files their Scope: does not reach, as { doc, id, count, sample } - the update names
+// each on every run, as lint notes it.
+const scopeMismatches = (projectRoot, dir = prefsDir(projectRoot)) => reachIn(projectRoot, codeDocsIn(dir))
+    .filter((r) => r.outside.length).map((r) => ({ doc: r.doc, id: r.id, count: r.outside.length, sample: sampleOf(r.outside), files: plural(r.outside.length, 'file') }));
+// The three commonest file types a Scope: takes - a wrong folder shows as the wrong language.
+function tallyOf(files)
+{
+    const counts = new Map();
+    for (const f of files) { const ext = path.posix.extname(f) || '(no extension)'; counts.set(ext, (counts.get(ext) || 0) + 1); }
+    return [...counts].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, 3).map(([ext, k]) => `${ext} ${k}`).join(', ');
+}
+
+// `reach` - one line per entry (or the one `--id` names): what its Scope: takes, and what its Check: measures outside it.
+function reach(projectRoot, id = null)
+{
+    const want = id ? String(id).toUpperCase() : null;
+    const rows = reachIn(projectRoot, presentDocs(projectRoot)).filter((r) => !want || String(r.id).toUpperCase() === want);
+    if (want && !rows.length) { console.error(`reach: ${want} is no code or architecture entry`); return 1; }
+    for (const r of rows)
+    {
+        const what = r.reached === null ? `every edit (${r.scope ? 'a plain area' : 'no Scope:'})`
+            : !r.reached.length ? `no file yet - no edit is handed ${r.id} until one exists`
+            : `${plural(r.reached.length, 'file')} (${tallyOf(r.reached)}): ${sampleOf(r.reached)}`;
+        console.log(`reach: ${r.id} Scope: ${r.scope || '(none)'} -> ${what}`);
+        if (r.outside.length) console.log(`reach: ${r.id} Check: reaches ${plural(r.outside.length, 'file')} its Scope: does not: ${sampleOf(r.outside)}`);
+    }
+    return 0;
 }
 
 // ---------------------------------------------------------------- check
@@ -439,13 +577,27 @@ function lint(projectRoot)
             catch (err) { problems.push(`${file}: ${s.id} Check: regex does not compile (${err.message})`); }
         }
     }
-    const chars = docs.filter((d) => d.area === 'code' || d.area === 'architecture').reduce((n, d) => n + d.text.length, 0);
-    if (chars > CAP) problems.push(`${shown(projectRoot, prefsDir(projectRoot))}/: the personal code and architecture docs are ${chars} chars, over ${CAP} - the first edit's hold hands both over; cut them`);
+    // The edit hold's two docs have no doc cap (the user's ruling of 2026-10-22): the hook hands their entries over by
+    // Scope:, without Check: lines, and in parts past one room - so only an entry no room holds whole is a problem.
+    const notes = [];
+    const codeDocs = docs.filter((d) => d.area === 'code' || d.area === 'architecture');
+    for (const d of codeDocs)
+        for (const e of entrySpans(d.text).filter((x) => x.chars > CAP))
+            problems.push(`${shown(projectRoot, d.abs)}: ${e.id || `\`## ${e.heading}\``} is ${e.chars} chars, over ${CAP} - no hold hands it over whole; split it`);
+    // A glob for files not written yet is fair, so a dead one is a note, never a problem.
+    for (const x of deadScopesIn(projectRoot, codeDocs))
+        notes.push(`${shown(projectRoot, x.doc.abs)}: ${x.id} Scope: \`${x.glob}\` reaches no file in the project - the first-edit hold hands ${x.id} over for no edit until one exists; fix the pattern if it is a typo`);
+    // A Check: that measures files the Scope: never hands the entry over for is the one wrong-folder sign a script can see.
+    for (const r of reachIn(projectRoot, codeDocs).filter((x) => x.outside.length))
+        notes.push(`${shown(projectRoot, r.doc.abs)}: ${r.id} Check: reaches ${plural(r.outside.length, 'file')} its Scope: does not (${sampleOf(r.outside)}) - the first-edit hold hands ${r.id} over only where its Scope: reaches; widen the Scope: or narrow the Check:`);
+    const chars = codeDocs.reduce((n, d) => n + d.text.length, 0);
+    if (chars > CAP) notes.push(`${shown(projectRoot, prefsDir(projectRoot))}/: the personal code and architecture docs are ${chars} chars, past ${CAP} - the first edit's hold hands them over in parts (each entry where its Scope: reaches, no Check: lines), and every editing actor and every judging seat reads them; no cut needed`);
     for (const d of docs.filter((x) => x.area === 'git' && x.text.length > GIT_CAP))
         problems.push(`${shown(projectRoot, d.abs)} is ${d.text.length} chars, over ${GIT_CAP} - the first git write's hold hands it over; cut an entry that is not locked`);
     for (const d of docs.filter((x) => x.pushed && x.text.length > PERSONAL_CAP))
         problems.push(`${shown(projectRoot, d.abs)} is ${d.text.length} chars, over ${PERSONAL_CAP} - a hook pushes it at every session start; cut it`);
     for (const p of problems) console.log(`PROBLEM ${p}`);
+    for (const n of notes) console.log(`note: ${n}`);
     console.log(`lint: ${problems.length} problems`);
     return problems.length ? 1 : 0;
 }
@@ -477,16 +629,17 @@ function main(argv)
         return check(projectRoot, { mode: flag('--all') ? 'all' : 'diff', area: area || null, base: base && !base.startsWith('--') ? base : null });
     }
     if (cmd === 'lint') return lint(projectRoot);
+    if (cmd === 'reach') return reach(projectRoot, value('--id') || null);
     if (cmd === 'next')
     {
         const area = value('--area');
         if (!DOCS.some((d) => d.area === area)) { console.error('preferences: next needs --area personal|code|architecture|git'); return 2; }
         return nextId(projectRoot, area);
     }
-    console.error('usage: preferences.js check [--diff [<base>] | --all] [--area code|architecture|git] | lint | next --area personal|code|architecture|git  [--project <dir>]');
+    console.error('usage: preferences.js check [--diff [<base>] | --all] [--area code|architecture|git] | lint | next --area personal|code|architecture|git | reach [--id <id>]  [--project <dir>]');
     return 2;
 }
 
-module.exports = { parseDoc, parseSections, runCheck, parseCheck, globRe, docsRoot, CAP, GIT_CAP, PERSONAL_CAP, HOUSE_KEYS };
+module.exports = { parseDoc, parseSections, runCheck, parseCheck, globRe, scopeOf, deadScopes, scopeMismatches, docsRoot, CAP, GIT_CAP, PERSONAL_CAP, HOUSE_KEYS };
 
 if (require.main === module) process.exitCode = main(process.argv.slice(2));

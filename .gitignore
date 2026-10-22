@@ -24,6 +24,7 @@ Thumbs.db
 !.claude/skills/
 .claude/skills/*
 !.claude/skills/plugin-authoring/
+!.claude/skills/skill-authoring/
 !.claude/skills/javascript/
 !.claude/skills/markdown-style/
 !.claude/rules/
@@ -36,6 +37,7 @@ Thumbs.db
 !.claude/rules/repo-mcp.md
 !.claude/rules/repo-memory-data.md
 !.claude/rules/repo-meta.md
+!.claude/rules/skill-authoring.md
 !.claude/rules/superpowers-location.md
 !.claude/skills/repo-audit-agents/
 !.claude/skills/repo-audit-claude-md/

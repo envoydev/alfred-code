@@ -143,7 +143,8 @@ test('C46: the per-item gaps', () =>
     assert.match(rc, /^description: ".*build or auth error.*"$/m);
     assert.match(flat(rc), /Each option names the measured quantity it changes/);
     assert.match(flat(read('stack/skills/ilspy-decompile/SKILL.md')), /its answer good for THIS session only/);
-    assert.match(flat(read('stack/skills/capture-preferences/references/git-seed.md')), /the ask comes after the checkpoint's review, naming anything still owed/);
+    // 2026-10-21: the git seed keeps only its crucial lines; the scope ask's order lives in the checkpoint's ask step.
+    assert.match(flat(read('stack/skills/habits-commit-checkpoint/SKILL.md')), /anything still owed \(a gate not run, a review skipped\), then put ONE AskUserQuestion - after steps 1-4, since an answer given before the review ran is void/);
     const sec = flat(read('stack/rules/alfred-security.md'));
     assert.match(sec, /A check a server enforces .* is never patched around client-side/);
     assert.match(sec, /the guard is the file the session's `Sensitive data:` line runs, never a `\.claude\/hooks\/` copy/);

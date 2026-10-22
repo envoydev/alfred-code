@@ -19,8 +19,7 @@
    "alfred-preferences",
    "alfred-quality-gates",
    "alfred-security",
-   "markdown-docs",
-   "skill-authoring"
+   "markdown-docs"
   ],
   "mcps": [
    "alfred-navigation",
@@ -57,7 +56,6 @@
    "habits-execution-strategy",
    "habits-plan-writing",
    "habits-root-cause",
-   "habits-skill-writing",
    "habits-test-first",
    "capture-awareness",
    "capture-preferences",
@@ -79,6 +77,8 @@
    "loop-test-coverage",
    "task-verify-code",
    "task-verify-plan",
+   "review-code",
+   "review-security",
    "task-version-upgrade"
   ]
  },

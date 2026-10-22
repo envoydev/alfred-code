@@ -16,11 +16,12 @@ Then read `$TMP/repo/stack/skills/habits-adjust-agents-md/SKILL.md` - the whole 
 diff (measured: a run that skipped it and diffed the `## ` headings left every improve-mode check unrun) - and follow it inline with
 `<stack>` = the `$TMP/repo` path, pasted as a literal, exactly as the sibling `configure` command's step 13: its improve mode adds the
 sections the template gained and OFFERS a fix for what its check reports (never in the recommended
-option - a check row is heuristic, applied only when the user picks it), this run's own part is the rules
-table for what it pruned, the project's own prose is never overwritten, and every change is shown
-before writing.
+option - a check row is heuristic, applied only when the user picks it), an older seed's rules list (a
+`stack-rules` row) is offered for removal, the project's own prose is never overwritten, and every change is
+shown before writing.
 The installer touches the old names only where the stack wrote them: an instruction file it seeded and still
-holds at its hash it rewrites from this release's template (`AGENTS.md: the unfilled seed refreshed ...`), and
+holds at its hash it rewrites from this release's template (`AGENTS.md: the unfilled seed refreshed ...`, `CLAUDE.md:`
+on an install whose name answer was CLAUDE.md), and
 the generated rules it re-spells (one `renamed: <file> - <n> ...` line per file) - report those lines. A file that is the project's own it only NAMES, and step 3's `--log` call carries
 that as `warn: !! <file> is yours and names <n> old stack name(s) ...`. Never splice those by hand (audit
 2026-10-11, session b3f8193f: a hand `sed -i` after an ask that showed no diff, on a file git did not track).
@@ -41,11 +42,11 @@ Re-spell the old stack names in <file>? The diff is in the message before this q
 
 On a yes, the same call with `--apply` writes those lines alone and prints `respelled: <file> - <n> line(s)`
 - report it. Unattended, take the Recommended option and log it.
-The installer has also dealt with the seeded file's name: an unedited `.claude/CLAUDE.md` it seeded is
-moved to `.claude/AGENTS.md` (`git mv` where git tracks it), and so is the user's own on step 2's
-rename answer (`--rename-claude-md`); without that answer an edited one, or any when an AGENTS.md
-already holds the project's instructions, is left in place and named in one line - report those lines,
-and never rename a file outside that answer.
+The installer has also dealt with the file's name: on step 2's name answer (`--instructions-file`) it renamed each file
+of the other name - root, `.claude/` and each part, `git mv` where git tracks it - and named any it left (a file of the
+new name beside it); with no answer this run, an unedited `.claude/CLAUDE.md` an earlier release seeded moves to
+`.claude/AGENTS.md` on an AGENTS.md install and an edited one is named. Report those lines, and never rename a file
+outside that answer.
 
 **Run the compare whatever the delta says** - the template being unchanged UPSTREAM says nothing about whether THIS
 project's AGENTS.md still matches it (measured: a user asked it twice, verbatim, five and a half minutes apart, after

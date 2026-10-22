@@ -447,3 +447,13 @@ test('install-args: --instructions-at places the instruction file - root or clau
     fails(['install', '--instructions-at', 'docs'], /--instructions-at must be 'root' or 'claude'/);
     fails(['install', '--instructions-at'], /--instructions-at.*needs a value/);
 });
+
+test('install-args: --instructions-file names the instruction file - agents or claude, lower-cased, anything else refused', () =>
+{
+    assert.strictEqual(ok(['install']).instructionsFile, '', 'not given: the stamp\'s answer stands, else AGENTS.md');
+    assert.strictEqual(ok(['install', '--instructions-file', 'claude']).instructionsFile, 'claude');
+    assert.strictEqual(ok(['update', '--instructions-file=Agents']).instructionsFile, 'agents');
+    fails(['install', '--instructions-file', 'CLAUDE.md'], /--instructions-file must be 'agents' or 'claude'/);
+    fails(['install', '--instructions-file'], /--instructions-file.*needs a value/);
+    fails(['update', '--rename-claude-md'], /unknown argument '--rename-claude-md'/, 'the name answer renames now - the old flag is gone');
+});

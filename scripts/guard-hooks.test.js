@@ -5,6 +5,7 @@
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
 require('./hook-test-env').isolateHookSuite({ ownTmp: true }); // audit 2026-10-08: its hooks' tmp state stays in a dir of its own
+const { reviewedTranscript, REVIEW_ROW } = require('./hook-test-env');
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -14,6 +15,9 @@ const { spawnSync } = require('node:child_process');
 
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-hooks-'));
+// a session where a review ran: every commit receipt needs one since 2026-10-22, so the commit gate's cases judging
+// another line of it run over this transcript unless they hand their own
+const REVIEWED = reviewedTranscript(TMP);
 const BIG = path.join(__dirname, 'lint-skills.js'); // a real, long source file in this repo
 
 function run(hook, payload) {
@@ -380,6 +384,8 @@ test('guard-fresh-session-start: gates orchestration runs only, and only past th
   const oldLoop = Object.entries(require('../meta/stack-manifest.json').renamed.skills).find(([o, n]) => n === 'loop-code-quality' && /^loop-/.test(o))[0];
   assert.equal(call(oldLoop, hot('f')), 2, 'the renamed loop under its old name');
   assert.equal(call('issue-diagnoser', hot('c')), 2, 'the gated diagnosis flow chained onto carried history');
+  assert.equal(call('review-code', hot('g')), 2, 'the stack\'s own code review is an orchestration run');
+  assert.equal(call('alfred-code:review-security', hot('h')), 2, 'and its security review, namespaced');
   assert.equal(call('loop-code-quality', cold), 0, 'under the threshold');
   assert.equal(call('csharp', hot('d')), 0, 'an ordinary skill is never gated');
   // A subagent's Skill call carries agent_id: the carry this hook reads is the parent session's, and
@@ -529,7 +535,7 @@ function cleanRepo() {
   fs.writeFileSync(path.join(dir, 'seed.txt'), 'seed\n'); git('add', '-A'); git('commit', '-qm', 'seed');
   return dir;
 }
-const gateIn = (dir, command, env = {}) => runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command } }, {
+const gateIn = (dir, command, env = {}) => runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command }, transcript_path: REVIEWED }, {
   env: { ...process.env, CLAUDE_PROJECT_DIR: dir, ...env }, cwd: dir,
 }).status;
 const forty = () => Array.from({ length: 40 }, (_, i) => `line ${i}`).join('\n');
@@ -758,18 +764,22 @@ test('guard-ungated-commit: the receipt states', () => {
   receipt(full({ first: 'VERIFIED loop-architecture-quality stage 3' })); assert.equal(gateT('git commit -am x'), 2, 'the architecture loop too');
   // ... while a loop the user TYPED is a run of it: a slash invocation writes no Skill call at all
   // (measured: 4 of 4 slash-run loops, zero Skill events), only the harness's command row
-  const slash = transcript('slash-loop', [{ type: 'user', message: { role: 'user', content: '<command-name>/alfred-code:loop-code-quality</command-name>' } }, assistantRow('m1', 'round 2 green')]);
+  // a loop counts once its final report's Outcome line follows (2026-10-22)
+  const slash = transcript('slash-loop', [{ type: 'user', message: { role: 'user', content: '<command-name>/alfred-code:loop-code-quality</command-name>' } }, assistantRow('m1', '**Outcome**: SATISFIED on round 2')]);
   const gateS = (cmd) => runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: cmd }, transcript_path: slash },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }).status;
   // a receipt is the session's own only when written after its transcript began (audit 2026-10-20 H4)
   const touch = () => { const now = Date.now() / 1000 + 1; fs.utimesSync(gate, now, now); };
+  touch();
+  assert.equal(gateS('git commit -am x'), 2, 'the typed loop is loop-code-quality, never the architecture loop the receipt names');
+  receipt(full({ first: 'VERIFIED loop-code-quality round 2 gate' }));
   touch();
   assert.equal(gateS('git commit -am x'), 0, 'a slash-invoked loop ran');
   // a session that typed the pre-2.2.0 spelling ran the same loop
   const loopRenamed = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8')).renamed.skills;
   const oldLoop = Object.keys(loopRenamed).find((o) => loopRenamed[o] === 'loop-code-quality' && /^alfred-/.test(o));
   assert.ok(oldLoop, 'the map renames loop-code-quality from its alfred- spelling');
-  const slashOld = transcript('slash-loop-old', [{ type: 'user', message: { role: 'user', content: `<command-name>/${oldLoop}</command-name>` } }, assistantRow('m1', 'round 2 green')]);
+  const slashOld = transcript('slash-loop-old', [{ type: 'user', message: { role: 'user', content: `<command-name>/${oldLoop}</command-name>` } }, assistantRow('m1', '**Outcome**: SATISFIED on round 2')]);
   touch();
   assert.equal(runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: 'git commit -am x' }, transcript_path: slashOld },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }).status, 0, 'the old spelling typed is a run too');
@@ -801,6 +811,7 @@ test('guard-ungated-commit: an option label THIS run wrote is not the user askin
   const gate = path.join(dir, '.alfred', 'docs', 'flow', 'COMMIT-GATE');
   fs.mkdirSync(path.dirname(gate), { recursive: true });
   const tp = transcript('own-label', [
+    JSON.parse(REVIEW_ROW),
     { type: 'assistant', message: { id: 'q1', content: [{ type: 'tool_use', id: 'u1', name: 'AskUserQuestion', input: { questions: [{ question: 'Next?', options: [{ label: 'Commit now (Recommended)', description: 'land it' }, { label: 'Hold', description: 'wait' }] }] } }] } },
   ]);
   const body = (auth) => `VERIFIED the checkpoint\n${auth}\nhead: ${head}\nspec: 3 files\nlive-probe: npm test\nformat: npx prettier --check - clean over 3 staged files\nfindings: none\n`;
@@ -3590,7 +3601,7 @@ test('guard-ungated-commit: an ABSOLUTE docs root inside the repo does not fail 
   fs.writeFileSync(path.join(docs, 'flow', 'COMMIT-GATE'),
     `VERIFIED the three fixtures\nauthorized: "commit it"\nhead: ${head}\nspec: 3 files - the fixtures\nlive-probe: tests green\nformat: npx prettier --check - clean over 3 staged files\nfindings: none\n`);
   const status = spawnSync(process.execPath, [path.join(HOOKS, 'guard-ungated-commit.js')], {
-    input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git commit -am wip' } }),
+    input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git commit -am wip' }, transcript_path: REVIEWED }),
     encoding: 'utf8',
     env: { ...process.env, CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_DOCS_PATH: docs },
     cwd: dir,
@@ -3634,6 +3645,74 @@ test('guard-fresh-session-start: a disable-model-invocation skill is denied to t
         { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
     assert.equal(typed.status, 0, 'the user typing the command is never blocked');
     assert.doesNotMatch(typed.stdout + typed.stderr, /disable-model-invocation/, 'and never told the skill is the model\'s to refuse');
+});
+
+// The user's ruling of 2026-10-22, 'Stop the model using theirs': the stack reviews with /review-code and
+// /review-security, so the model's (or a seat's) call to Claude Code's bundled review is denied with a pointer. A skill
+// of that name on disk - the user's own, or another plugin's - is no built-in, and the user's typed command is theirs.
+test('guard-fresh-session-start: the model\'s call to a built-in review is denied, ours and the user\'s own pass', () =>
+{
+    const root = fs.mkdtempSync(path.join(TMP, 'builtin-review-'));
+    const cfg = fs.mkdtempSync(path.join(TMP, 'builtin-review-cfg-'));
+    const env = { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: cfg };
+    delete env.CLAUDE_PLUGIN_ROOT;
+    delete env.ALFRED_CODE_HOOKS_OFF;
+    const put = (file, name, front = '') => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, `---\nname: ${name}\ndescription: a test skill\n${front}---\n\nbody\n`); };
+    put(path.join(root, '.claude', 'skills', 'loop-code-quality', 'SKILL.md'), 'loop-code-quality', 'disable-model-invocation: true\n');
+    const skillCall = (skill, extra = {}, over = {}) => runIn('guard-fresh-session-start.js',
+        { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill }, cwd: root, session_id: 'builtin-review', ...extra },
+        { env: { ...env, ...over } });
+
+    // Ours is not on disk yet (the core updated itself, the copies wait for /alfred-code:update; or skillOverrides
+    // turned it off): the deny would leave the model with no reviewer, so the built-in passes.
+    assert.equal(skillCall('code-review').status, 0, 'with no review-code on disk the built-in is not denied');
+    assert.equal(skillCall('security-review').status, 0, 'nor the security one with no review-security');
+    // the core's own library source in the plugin cache is no copy the model can load (every skill is a library copy)
+    const core = fs.mkdtempSync(path.join(TMP, 'builtin-review-core-'));
+    put(path.join(core, 'stack', 'skills', 'review-code', 'SKILL.md'), 'review-code');
+    fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), ''); // a set-up project: with a plugin root the hook judges only there
+    assert.equal(skillCall('code-review', {}, { CLAUDE_PLUGIN_ROOT: core }).status, 0, 'the plugin root\'s library source is not ours on disk');
+    put(path.join(root, '.claude', 'skills', 'review-code', 'SKILL.md'), 'review-code');
+    put(path.join(root, '.claude', 'skills', 'review-security', 'SKILL.md'), 'review-security');
+    // a copy skillOverrides switched off (or left to the user) is not the model's either
+    const local = path.join(root, '.claude', 'settings.local.json');
+    fs.writeFileSync(local, JSON.stringify({ skillOverrides: { 'review-code': 'off' } }));
+    assert.equal(skillCall('code-review').status, 0, 'review-code switched off: the built-in passes');
+    fs.writeFileSync(local, JSON.stringify({ skillOverrides: { 'review-code': 'user-invocable-only' } }));
+    assert.equal(skillCall('code-review').status, 0, 'review-code left to the user: the built-in passes');
+    fs.writeFileSync(local, '{ not json');
+    assert.equal(skillCall('code-review').status, 2, 'a settings file that does not parse switches nothing off');
+    fs.rmSync(local);
+
+    const code = skillCall('code-review');
+    assert.equal(code.status, 2, 'the model may not call the bundled code review');
+    assert.match(code.stderr, /\/review-code/, 'the denial names ours');
+    const security = skillCall('security-review');
+    assert.equal(security.status, 2, 'nor the bundled security review');
+    assert.match(security.stderr, /\/review-security/, 'and names ours');
+    assert.equal(skillCall('code-review', { agent_id: 'a1', agent_type: 'alfred-code:aspnet-verifier' }).status, 2, 'a seat is denied too');
+    const slashed = skillCall('/code-review');
+    assert.equal(slashed.status, 2, 'the slash spelling is the same built-in');
+    assert.match(slashed.stderr, /the user can type \/code-review themselves/, 'the denial says the typed route stays the user\'s');
+    const rows = fs.readFileSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', 'builtin-review.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.ok(rows.some((r) => r.detail && r.detail.branch === 'builtin-review'), 'each denial writes a block row naming its branch');
+
+    assert.equal(skillCall('other-plugin:code-review').status, 0, 'another plugin\'s skill of that name is not the built-in');
+    assert.equal(skillCall('code-review', {}, { ALFRED_CODE_HOOKS_OFF: 'guard-fresh-session-start:builtin-review' }).status, 0, 'the part switch stands the deny down');
+    assert.equal(skillCall('loop-code-quality', {}, { ALFRED_CODE_HOOKS_OFF: 'guard-fresh-session-start:builtin-review' }).status, 2, 'while the manual-only gate keeps working');
+    const typed = runIn('guard-fresh-session-start.js',
+        { hook_event_name: 'UserPromptExpansion', expansion_type: 'slash_command', command_name: 'code-review', prompt: '/code-review', cwd: root, session_id: 'builtin-review' },
+        { env });
+    assert.equal(typed.status, 0, 'the user typing the built-in is never blocked');
+    assert.doesNotMatch(typed.stdout + typed.stderr, /review-code/, 'and never redirected');
+
+    put(path.join(root, '.claude', 'skills', 'code-review', 'SKILL.md'), 'code-review');
+    assert.equal(skillCall('code-review').status, 0, 'the project\'s own code-review skill is callable');
+    put(path.join(cfg, 'skills', 'security-review', 'SKILL.md'), 'security-review');
+    assert.equal(skillCall('security-review').status, 0, 'so is a personal one');
+    fs.rmSync(path.join(root, '.claude', 'skills', 'code-review'), { recursive: true });
+    put(path.join(cfg, 'plugins', 'cache', 'm', 'p', '1.0.0', 'skills', 'code-review', 'SKILL.md'), 'code-review');
+    assert.equal(skillCall('code-review').status, 0, 'and a plugin skill a cache serves under the bare name');
 });
 
 // The same gate, on the route where the skill is NOT copied into the project. Reading only
@@ -4399,10 +4478,14 @@ test('guard-ungated-commit: a STAGED-SCAN-ALLOW receipt keeps exactly the hits i
   fs.writeFileSync(allow, 'a.spec.ts:1\nb.ts\n');
   assert.equal(gateIn(dir, 'git commit -m "x"'), 0, 'every hit named - the commit passes');
   const hours = (h) => { const t = new Date(Date.now() - h * 3600 * 1000); fs.utimesSync(allow, t, t); };
+  // the 8h window alone: with no transcript there is no session start, which a 7.9h-old receipt would predate (H4)
+  const noSession = () => runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: 'git commit -m "x"' } }, {
+    env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir,
+  }).status;
   hours(7.9);
-  assert.equal(gateIn(dir, 'git commit -m "x"'), 0, 'just under 8h still holds');
+  assert.equal(noSession(), 0, 'just under 8h still holds');
   hours(8.1);
-  assert.equal(gateIn(dir, 'git commit -m "x"'), 2, 'past 8h the receipt is absent');
+  assert.equal(noSession(), 2, 'past 8h the receipt is absent');
   stateReceipt(dir, 'STAGED-SCAN-ALLOW', 'a.spec.ts:1\nb.ts\n');
   assert.equal(gateIn(dir, 'git commit -m "x"'), 0, '2.8.0: the receipt under state/approvals/ is read');
 });

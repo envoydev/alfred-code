@@ -79,4 +79,18 @@ function isolateHookSuite({ ownTmp = false } = {})
     return { project, tmp };
 }
 
-module.exports = { isolateHookSuite, scrubbed, strayWrites, strayRoots, STACK_KEY, SESSION_KEYS };
+// A review run the commit guard reads - the model's Skill call of review-code, then its result line (a review counts
+// once its `Findings:` line follows the call, 2026-10-22). Since 2026-10-22 a commit receipt's VERIFIED line needs one in
+// the session whatever it names, so a suite judging another line of the receipt hands the guard a transcript holding
+// it. No timestamp: the guard's answered-before-review check reads it as no time at all.
+const REVIEW_ROW = JSON.stringify({ type: 'assistant', message: { id: 'm-review', content: [{ type: 'tool_use', id: 't-review', name: 'Skill', input: { skill: 'review-code' } },
+    { type: 'text', text: 'Findings: none\nReviewed: 1 files, 1 changed lines, depth standard' }] } });
+let reviewedCount = 0;
+function reviewedTranscript(dir, rows = [])
+{
+    const file = path.join(dir, `reviewed-${process.pid}-${++reviewedCount}.jsonl`);
+    fs.writeFileSync(file, [REVIEW_ROW, ...rows].join('\n') + '\n');
+    return file;
+}
+
+module.exports = { isolateHookSuite, scrubbed, strayWrites, strayRoots, reviewedTranscript, REVIEW_ROW, STACK_KEY, SESSION_KEYS };

@@ -32,7 +32,7 @@
 // line as 0.8.0 (PowerShell) - and those read as current too, so /alfred-code:init never rewrites a line claude-hud's
 // own setup just wrote (audit 2026-10-14, PL7: two writers of one key, each undoing the other). Re-read on 0.12.0 (audit
 // 2026-10-20b): scripts/setup.mjs and scripts/statusline.mjs are unchanged since 0.11.2, and dist/index.js still exports
-// the `main` the launcher below calls.
+// the `main` the launcher below calls; 0.12.1 leaves both scripts byte for byte.
 const fs = require('node:fs');
 const path = require('node:path');
 

@@ -29,6 +29,8 @@
 //                             ruling of 2026-10-15), else the idle-gap offer (audit 2026-10-10 C09): the prompt ending a
 //                             gap past the clock route's hours injects the offer once per gap. It runs beside the
 //                             two other prompt hooks, in parallel, and reads one 1MB tail; it never judges a command.
+// A review of the code starting on the Skill, Agent or expansion route also takes the REVIEW SNAPSHOT the commit guard
+// reads (below), whatever the fresh-session decision is.
 //
 // The incoming skill must be one of the orchestration entry points below - everything else passes -
 // and then EITHER trigger is enough: the session's context is already past the threshold, or - on
@@ -140,6 +142,28 @@ const IS_SKILL_CALL = payload.tool_name === 'Skill';
 // the rest is a single short step. Reads (Read, Grep, Glob) pass: the plan header is read first.
 const HOLD_TOOL_RE = /^(?:Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell|Monitor|Agent|Task|Skill)$/;
 const IS_HOLD_CALL = HOLD_TOOL_RE.test(String(payload.tool_name || '')) && (EVENT === 'PreToolUse' || !EVENT);
+// THE REVIEW SNAPSHOT (2026-10-22, the user's ruling 'Snapshot at review'): a review of the code starting - the model's
+// review skill, a verifier or reviewer seat, the typed command - records what each changed file holds, so the commit
+// guard can tell a file rewritten since with its code unchanged from one edited since (hook-prelude.js snapshotReview).
+// Before the early exits below: a seat's dispatch leaves at the first of them.
+{
+  const input = payload.tool_input || {};
+  // [tool, name, the arguments a review reads its target from]
+  const typedArgs = () => (typeof payload.command_args === 'string' ? payload.command_args
+    : (String(payload.prompt || '').match(/^\s*\/[A-Za-z0-9:_-]+\s*([\s\S]*)$/) || [])[1] || '');
+  const call = IS_SKILL_CALL && (EVENT === 'PreToolUse' || !EVENT) ? ['Skill', input.skill || input.name, input.args]
+    : /^(?:Agent|Task)$/.test(String(payload.tool_name || '')) && (EVENT === 'PreToolUse' || !EVENT) ? ['Agent', input.subagent_type, input.prompt]
+      : EVENT === 'UserPromptExpansion' ? ['Skill', payload.command_name, typedArgs()] : null;
+  try {
+    const pre = require('./hook-prelude.js');
+    const project = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+    if (call && pre.codeReviewCall(call[0], call[1])) {
+      const base = payload.cwd || project;
+      const targets = call[0] === 'Agent' ? pre.briefTargets(call[2], base) : pre.reviewTargets(call[1], call[2], base);
+      pre.snapshotReview(project, payload.session_id, { toolUseId: payload.tool_use_id, targets });
+    }
+  } catch { /* never blocks the call */ }
+}
 function compactHoldFile() {
   const key = String(payload.transcript_path || payload.session_id || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
   return nodePath.join(envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir(), `guard-fresh-compact-${key}.hold`);
@@ -562,7 +586,7 @@ function sessionWrites() {
 // after that spend. `capture-awareness` is here because the stack's own next-steps card
 // tells the user to run it after every update (its 2026-10-16 parts keep their old names here for an old copy). The guided plugin commands are here because
 // they are multi-phase walks too, and the slash route is what finally reaches them.
-const ORCHESTRATION = /^((alfred-)?(loop-(quality|code-quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|awareness|code-quality|code-style|project-code-style|preferences|test-coverage|usage-report|related-projects|agent-awareness|project-awareness|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|alfred-code:(init|update|configure|validate))$/;
+const ORCHESTRATION = /^((alfred-)?(loop-(quality|code-quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|awareness|code-quality|code-style|project-code-style|preferences|test-coverage|usage-report|related-projects|agent-awareness|project-awareness|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser|review-code|review-security)|security-review|alfred-code:(init|update|configure|validate))$/;
 // a plugin-namespaced Skill call arrives as `<plugin>:<skill>`; the guided commands are
 // matched on their FULL name, so a bare `/setup` from some other plugin is not read as one of them - and only this
 // stack's own namespace is stripped, so another plugin's `other:task-solve` is not this stack's run (audit 2026-10-08)
@@ -812,6 +836,42 @@ if (IS_SKILL_CALL && skill) {
       process.exit(2);
     }
   } catch { /* no such skill on disk, or unreadable - not this guard's business */ }
+}
+
+// --- Claude Code's bundled reviews are not this stack's (the user's ruling of 2026-10-22, 'Stop the model using theirs') ---
+// The stack reviews with /review-code and /review-security, which borrowed the method; the model's - or a seat's - call
+// to the bundled /code-review or /security-review is denied with a pointer. A skill of that name on disk (the user's
+// own, a project's, another plugin's) is no built-in and passes, and a typed command never reaches this route. So does
+// every call while the model cannot load ours (the skew window before /alfred-code:update, or skillOverrides switched
+// it off): a deny then would leave the model with no reviewer at all (final review 2026-10-22, I1). Ours is a library
+// copy - personal or project - never the core's own stack/skills source in the plugin cache.
+// `guard-fresh-session-start:builtin-review` in ALFRED_CODE_HOOKS_OFF switches this part off.
+const BUILTIN_REVIEW = { 'code-review': '/review-code', 'security-review': '/review-security' };
+function oursLoadable(root, ours) {
+  const cfg = process.env.CLAUDE_CONFIG_DIR || nodePath.join(process.env.HOME || process.env.USERPROFILE || '', '.claude');
+  if (![nodePath.join(cfg, 'skills', ours, 'SKILL.md'), nodePath.join(root, '.claude', 'skills', ours, 'SKILL.md')].some((f) => fs.existsSync(f))) return false;
+  // skillOverrides, the most local file first: `off` hides the skill, `user-invocable-only` keeps it from the model
+  for (const f of [nodePath.join(root, '.claude', 'settings.local.json'), nodePath.join(root, '.claude', 'settings.json'), nodePath.join(cfg, 'settings.json')]) {
+    let o;
+    try { o = JSON.parse(fs.readFileSync(f, 'utf8')).skillOverrides; } catch { continue; }
+    if (o && typeof o === 'object' && Object.prototype.hasOwnProperty.call(o, ours)) return !/^(?:off|user-invocable-only)$/.test(String(o[ours]));
+  }
+  return true;
+}
+if (IS_SKILL_CALL && Object.prototype.hasOwnProperty.call(BUILTIN_REVIEW, skill.trim().replace(/^\//, ''))) {
+  const name = skill.trim().replace(/^\//, '');
+  let off = false;
+  try { off = require('./hook-prelude.js').partOff('guard-fresh-session-start', 'builtin-review'); } catch { /* no prelude: the part is on */ }
+  const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+  if (!off && !skillHeads(root, name).some((f) => fs.existsSync(f)) && oursLoadable(root, BUILTIN_REVIEW[name].slice(1))) {
+    global.BLOCK_DETAIL = { branch: 'builtin-review', skill: name };
+    process.stderr.write(
+      `Blocked: ${name} is Claude Code's built-in review, not this stack's. Use ${BUILTIN_REVIEW[name]} instead - load it\n` +
+      `with the Skill tool; never retry the built-in under another spelling. If the user asked for the built-in by name,\n` +
+      `say so: the user can type /${name} themselves.\n`,
+    );
+    process.exit(2);
+  }
 }
 // A phase Skill call after a compaction is a change like any other (the post-compaction hold above).
 if (IS_SKILL_CALL) compactHold();

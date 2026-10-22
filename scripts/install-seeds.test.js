@@ -264,45 +264,6 @@ test('move: both .claude files present is named and left, and no CLAUDE.md at al
     assert.strictEqual(seeds.moveSeededClaudeMd({ projectRoot: dir(), sourceDir: dir(TEMPLATE), hash: hashOf }), 'none');
 });
 
-test('move: --rename-claude-md moves the user\'s own edited file and re-spells the re-include in both ignore files', () =>
-{
-    const projectRoot = dir({ '.claude/CLAUDE.md': '# mine\r\n', '.gitignore': '.claude/*\r\n!.claude/CLAUDE.md\r\n', 'excl': '!/.claude/CLAUDE.md\n# keep me\n' });
-    const logs = [];
-    const gitMvs = [];
-    const r = seeds.moveSeededClaudeMd({
-        projectRoot, sourceDir: dir(TEMPLATE), ledgerHash: '', hash: hashOf, tracked: () => true, force: true,
-        ignoreFiles: [path.join(projectRoot, 'excl'), path.join(projectRoot, 'absent')],
-        gitMv: (a, b) => { gitMvs.push([a, b]); fs.renameSync(a, b); }, log: (m) => logs.push(m), note: (m) => logs.push(`NOTE ${m}`),
-    });
-    assert.strictEqual(r, 'moved');
-    assert.strictEqual(gitMvs.length, 1);
-    assert.strictEqual(fs.readFileSync(path.join(projectRoot, '.claude', 'AGENTS.md'), 'utf8'), '# mine\r\n', 'every byte kept');
-    assert.strictEqual(fs.readFileSync(path.join(projectRoot, '.gitignore'), 'utf8'), '.claude/*\r\n!.claude/AGENTS.md\r\n', 'CRLF kept');
-    assert.strictEqual(fs.readFileSync(path.join(projectRoot, 'excl'), 'utf8'), '!/.claude/AGENTS.md\n# keep me\n');
-    assert.ok(logs.some((l) => /your file, on your answer/.test(l)) && logs.some((l) => /re-include line now names/.test(l)), logs.join(' | '));
-    assert.ok(!fs.existsSync(path.join(projectRoot, 'absent')), 'a missing ignore file is not created');
-});
-
-test('move: --rename-claude-md still never splits the instructions - a root AGENTS.md or a .claude/AGENTS.md wins', () =>
-{
-    for (const files of [{ 'AGENTS.md': '# a\n' }, { '.claude/AGENTS.md': '# b\n' }])
-    {
-        const projectRoot = dir({ ...files, '.claude/CLAUDE.md': '# mine\n' });
-        const r = seeds.moveSeededClaudeMd({ projectRoot, sourceDir: dir(TEMPLATE), hash: hashOf, force: true });
-        assert.match(r, /^kept-/);
-        assert.strictEqual(fs.readFileSync(path.join(projectRoot, '.claude', 'CLAUDE.md'), 'utf8'), '# mine\n');
-    }
-});
-
-test('offer: the agents-md line offers only a clean rename', () =>
-{
-    assert.strictEqual(seeds.claudeMdOffer(dir({ '.claude/CLAUDE.md': 'x' })), 'agents-md: offer .claude/CLAUDE.md -> .claude/AGENTS.md');
-    assert.match(seeds.claudeMdOffer(dir()), /^agents-md: none \(no \.claude\/CLAUDE\.md\)/);
-    assert.match(seeds.claudeMdOffer(dir({ '.claude/CLAUDE.md': 'x', 'AGENTS.md': 'y' })), /root AGENTS\.md/);
-    assert.match(seeds.claudeMdOffer(dir({ '.claude/CLAUDE.md': 'x', '.claude/AGENTS.md': 'y' })), /exists beside it/);
-    assert.match(seeds.claudeMdOffer(dir({ '.claude/CLAUDE.md': 'x', 'CLAUDE.local.md': 'y' })), /CLAUDE\.local\.md would keep/);
-});
-
 // --- where the instruction file lives (--instructions-at) ------------------
 
 test('place: --instructions-at root seeds AGENTS.md at the root, and no .claude/ re-include is asked for', () =>
@@ -487,4 +448,135 @@ test('pins: a file carrying no pin at all is not snapshotted', () =>
     const logs = [];
     assert.strictEqual(pins.snapshotPins({ files, log: (m) => logs.push(m) }).size, 0);
     assert.ok(logs.some((m) => /snapshotted model\/effort from 0 file/.test(m)), logs.join(' | '));
+});
+
+// The user's ask of 2026-10-21 (after 2.9.0): init and configure ask which name the instruction file carries - AGENTS.md or
+// CLAUDE.md - and the seed, a switch, the update and a part's own file follow the answer the stamp keeps.
+test('name: a CLAUDE.md answer seeds .claude/CLAUDE.md (the root on the place answer), with no AGENTS.md floor line', () =>
+{
+    const source = dir(TEMPLATE);
+    for (const [at, rel] of [['', '.claude/CLAUDE.md'], ['root', 'CLAUDE.md']])
+    {
+        const projectRoot = dir();
+        const logs = [];
+        assert.strictEqual(seeds.seedAgentsMd({ projectRoot, sourceDir: source, at, kind: 'claude', log: (m) => logs.push(m) }), true);
+        assert.strictEqual(fs.readFileSync(path.join(projectRoot, ...rel.split('/')), 'utf8'), `# ${path.basename(projectRoot)}\n\nOutline.\n`);
+        assert.ok(!fs.existsSync(path.join(projectRoot, '.claude', 'AGENTS.md')) && !fs.existsSync(path.join(projectRoot, 'AGENTS.md')), 'no AGENTS.md');
+        assert.ok(!logs.some((m) => /2\.1\.277/.test(m)) && logs.some((m) => m.includes(`seeded to ${rel === 'CLAUDE.md' ? 'CLAUDE.md at the project root' : '.claude/CLAUDE.md'}`)), logs.join(' | '));
+        assert.strictEqual(seeds.seededAgentsMdPath(projectRoot, 'claude'), path.join(projectRoot, ...rel.split('/')), 'the ledger row reads the seed under its name');
+    }
+});
+
+test('name: the refresh follows the answer - a CLAUDE.md seed is refreshed under its own name', () =>
+{
+    const source = dir({ 'stack/AGENTS.template.md': '# __PROJECT_NAME__\n\nNew outline.\n' });
+    const projectRoot = dir({ '.claude/CLAUDE.md': '# shop\n\nOld outline.\n' });
+    assert.strictEqual(seeds.refreshSeededAgentsMd({ projectRoot, sourceDir: source, kind: 'claude' }), true);
+    assert.strictEqual(fs.readFileSync(path.join(projectRoot, '.claude', 'CLAUDE.md'), 'utf8'), '# shop\n\nNew outline.\n');
+});
+
+test('name: a switch renames the root, .claude/ and each part file, re-spells the re-include, names a clash, and a re-run renames nothing', () =>
+{
+    const projectRoot = dir({ 'AGENTS.md': 'root', '.claude/AGENTS.md': 'seed', 'web/AGENTS.md': 'web', 'api/AGENTS.md': 'api', 'api/CLAUDE.md': 'api own',
+        '.gitignore': 'node_modules/\n.claude/*\n!.claude/AGENTS.md\n' });
+    const logs = [];
+    const parts = ['web/AGENTS.md', 'api/AGENTS.md', 'api/CLAUDE.md'];
+    const moved = seeds.renameInstructionFiles({ projectRoot, kind: 'claude', parts, log: (m) => logs.push(m) });
+    assert.deepStrictEqual(moved, ['AGENTS.md -> CLAUDE.md', '.claude/AGENTS.md -> .claude/CLAUDE.md', 'web/AGENTS.md -> web/CLAUDE.md']);
+    const read = (rel) => fs.readFileSync(path.join(projectRoot, ...rel.split('/')), 'utf8');
+    assert.deepStrictEqual(['CLAUDE.md', '.claude/CLAUDE.md', 'web/CLAUDE.md', 'api/AGENTS.md', 'api/CLAUDE.md'].map(read), ['root', 'seed', 'web', 'api', 'api own'], 'content kept, the clash untouched');
+    assert.strictEqual(read('.gitignore'), 'node_modules/\n.claude/*\n!.claude/CLAUDE.md\n');
+    assert.ok(logs.some((m) => m === '  api/AGENTS.md: left as it is - api/CLAUDE.md exists beside it; merge them by hand and delete one'), logs.join(' | '));
+    assert.ok(logs.some((m) => m === '  .gitignore: the re-include line now names .claude/CLAUDE.md'), logs.join(' | '));
+    assert.deepStrictEqual(seeds.renameInstructionFiles({ projectRoot, kind: 'claude', parts: ['web/CLAUDE.md', 'api/AGENTS.md', 'api/CLAUDE.md'] }), [], 'a re-run renames nothing');
+    assert.deepStrictEqual(seeds.renameInstructionFiles({ projectRoot, kind: 'agents', parts: ['web/CLAUDE.md'] }),
+        ['CLAUDE.md -> AGENTS.md', '.claude/CLAUDE.md -> .claude/AGENTS.md', 'web/CLAUDE.md -> web/AGENTS.md'], 'and back');
+    assert.strictEqual(read('.gitignore'), 'node_modules/\n.claude/*\n!.claude/AGENTS.md\n');
+    assert.deepStrictEqual(seeds.renameInstructionFiles({ projectRoot, kind: '' }), [], 'no answer, no rename');
+});
+
+test('name: a tracked file goes through git mv; a failed one stays, named with its command; CLAUDE.local.md never moves', () =>
+{
+    const projectRoot = dir({ 'AGENTS.md': 'root', 'CLAUDE.local.md': 'mine' });
+    const calls = [];
+    seeds.renameInstructionFiles({ projectRoot, kind: 'claude', tracked: () => true, gitMv: (from, to) => { calls.push([path.basename(from), path.basename(to)]); fs.renameSync(from, to); } });
+    assert.deepStrictEqual(calls, [['AGENTS.md', 'CLAUDE.md']]);
+    assert.ok(fs.existsSync(path.join(projectRoot, 'CLAUDE.local.md')), 'the personal file keeps its name');
+    const stuck = dir({ '.claude/CLAUDE.md': 'seed' });
+    const notes = [];
+    assert.deepStrictEqual(seeds.renameInstructionFiles({ projectRoot: stuck, kind: 'agents', tracked: () => true, gitMv: () => { throw new Error('index.lock exists'); }, note: (m) => notes.push(m) }), []);
+    assert.ok(fs.existsSync(path.join(stuck, '.claude', 'CLAUDE.md')) && /to do it by hand: git mv \.claude\/CLAUDE\.md \.claude\/AGENTS\.md/.test(notes.join(' ')), notes.join(' | '));
+});
+
+test('name: an answer a root or .claude/ file already carries renames nothing, a part included; with none there, the parts follow it', () =>
+{
+    const keep = dir({ '.claude/AGENTS.md': 'seed', 'web/CLAUDE.md': 'web' });
+    assert.deepStrictEqual(seeds.renameInstructionFiles({ projectRoot: keep, kind: 'agents', parts: ['web/CLAUDE.md'] }), []);
+    assert.ok(fs.existsSync(path.join(keep, 'web', 'CLAUDE.md')), 'a Keep answer leaves a part of the other name as it is');
+    const both = dir({ 'AGENTS.md': 'a', '.claude/CLAUDE.md': 'c', 'web/AGENTS.md': 'w' });
+    for (const kind of ['agents', 'claude'])
+        assert.deepStrictEqual(seeds.renameInstructionFiles({ projectRoot: both, kind, parts: ['web/AGENTS.md'] }), [], `files=both, ${kind}: neither is renamed`);
+    const partsOnly = dir({ 'web/AGENTS.md': 'w' });
+    assert.deepStrictEqual(seeds.renameInstructionFiles({ projectRoot: partsOnly, kind: 'claude', parts: ['web/AGENTS.md'] }), ['web/AGENTS.md -> web/CLAUDE.md'], 'no root file yet: the part takes the seed\'s name');
+});
+
+test('name: the fact line - the install\'s name, the files\' names, the stamp\'s answer, a CLAUDE.local.md, and what an update does', () =>
+{
+    const line = seeds.instructionsFileLine;
+    assert.strictEqual(line(dir()), 'instructions-file: agents files=none answer=none local=no update=none');
+    // an install from 2.9.0 or earlier never answered: its first update asks once, whichever name the file carries
+    assert.strictEqual(line(dir({ '.claude/AGENTS.md': 'x' })), 'instructions-file: agents files=agents answer=none local=no update=ask');
+    // still on .claude/CLAUDE.md and never asked: the rename-first ask, the nudge 2.9.0's update gave (the user's ruling of
+    // 2026-10-22); a root CLAUDE.md is the team's own file, which no update renamed, so it gets the plain ask, Keep first
+    assert.strictEqual(line(dir({ '.claude/CLAUDE.md': 'x' })), 'instructions-file: agents files=claude answer=none local=no update=ask-rename');
+    assert.strictEqual(line(dir({ 'CLAUDE.md': 'x' })), 'instructions-file: agents files=claude answer=none local=no update=ask');
+    assert.strictEqual(line(dir({ 'CLAUDE.md': 'x', '.claude/CLAUDE.md': 'y' })), 'instructions-file: agents files=claude answer=none local=no update=ask');
+    assert.strictEqual(line(dir({ 'AGENTS.md': 'x', '.claude/CLAUDE.md': 'y' })), 'instructions-file: agents files=both answer=none local=no update=ask');
+    // answered: asked again only when the files carry the other name
+    assert.strictEqual(line(dir({ '.claude/CLAUDE.md': 'x' }), 'claude'), 'instructions-file: claude files=claude answer=claude local=no update=none');
+    assert.strictEqual(line(dir({ '.claude/AGENTS.md': 'x' }), 'claude'), 'instructions-file: claude files=agents answer=claude local=no update=ask');
+    assert.strictEqual(line(dir({ 'AGENTS.md': 'x', '.claude/CLAUDE.md': 'y' }), 'agents'), 'instructions-file: agents files=both answer=agents local=no update=none');
+    // a CLAUDE.local.md keeps every AGENTS.md unread: a CLAUDE.md file is recorded as the answer, never asked about
+    for (const local of ['CLAUDE.local.md', '.claude/CLAUDE.local.md'])
+        assert.strictEqual(line(dir({ '.claude/CLAUDE.md': 'x', [local]: 'y' })), 'instructions-file: agents files=claude answer=none local=yes update=record-claude', local);
+    assert.strictEqual(line(dir({ '.claude/CLAUDE.md': 'x', 'CLAUDE.local.md': 'y' }), 'agents'), 'instructions-file: agents files=claude answer=agents local=yes update=record-claude');
+    assert.strictEqual(line(dir({ '.claude/CLAUDE.md': 'x', 'CLAUDE.local.md': 'y' }), 'claude'), 'instructions-file: claude files=claude answer=claude local=yes update=none');
+    assert.strictEqual(line(dir({ '.claude/AGENTS.md': 'x', 'CLAUDE.local.md': 'y' })), 'instructions-file: agents files=agents answer=none local=yes update=ask');
+    assert.strictEqual(line(dir({ 'web/CLAUDE.md': 'x' }), 'bogus'), 'instructions-file: agents files=none answer=none local=no update=none', 'a part file is no root fact; an unknown answer is none');
+});
+
+test('name: the stamp keeps the answer for either name, and no line means it was never asked', () =>
+{
+    const stamp = require('./install/stamp.js');
+    const base = { repoUrl: 'u', ref: 'r', sha: 's', version: '1', installed: 'i', action: 'install', scope: 'project', hooks: [], alwaysRules: [], alwaysMcps: [] };
+    const root = dir();
+    const file = path.join(root, 'alfred-code.stamp');
+    fs.writeFileSync(file, stamp.renderStamp({ ...base, instructionsFile: 'claude' }));
+    assert.match(fs.readFileSync(file, 'utf8'), /^instructions-file: claude$/m);
+    assert.strictEqual(stamp.readInstructionsFile(file), 'claude');
+    assert.strictEqual(stamp.readInstructionsAnswer(file), 'claude');
+    fs.writeFileSync(file, stamp.renderStamp({ ...base, instructionsFile: 'agents' }));
+    assert.match(fs.readFileSync(file, 'utf8'), /^instructions-file: agents$/m, 'an AGENTS.md answer is kept too, so the update does not ask again');
+    assert.deepStrictEqual([stamp.readInstructionsFile(file), stamp.readInstructionsAnswer(file)], ['agents', 'agents']);
+    fs.writeFileSync(file, stamp.renderStamp(base));
+    assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /instructions-file/, 'no answer, no line');
+    assert.deepStrictEqual([stamp.readInstructionsFile(file), stamp.readInstructionsAnswer(file)], ['agents', '']);
+    fs.writeFileSync(file, 'sha: s\ninstructions-file: weird\n');
+    assert.deepStrictEqual([stamp.readInstructionsFile(file), stamp.readInstructionsAnswer(file)], ['agents', ''], 'a garbage line is no answer');
+    assert.deepStrictEqual([stamp.readInstructionsFile(path.join(root, 'none.stamp')), stamp.readInstructionsAnswer(path.join(root, 'none.stamp'))], ['agents', '']);
+});
+
+test('name: the seed\'s ledger row follows a rename - its hash folds in the file name, so the unedited seed stays the stack\'s', () =>
+{
+    const library = require('./install/library.js');
+    const projectRoot = dir({ '.claude/AGENTS.md': '# shop\n\nOutline.\n' });
+    const held = library.hashItem(path.join(projectRoot, '.claude', 'AGENTS.md'));
+    seeds.renameInstructionFiles({ projectRoot, kind: 'claude' });
+    const now = path.join(projectRoot, '.claude', 'CLAUDE.md');
+    assert.notStrictEqual(library.hashItem(now), held, 'the premise: the same bytes hash apart under the new name');
+    assert.strictEqual(seeds.seedRowAfterRename(held, now), library.hashItem(now), 'the row is re-keyed to the new name');
+    fs.writeFileSync(now, '# shop\n\nMine.\n');
+    assert.strictEqual(seeds.seedRowAfterRename(held, now), held, 'an edited file keeps the old row - it is the user\'s');
+    assert.strictEqual(seeds.seedRowAfterRename('', now), '', 'no row, none made');
+    assert.strictEqual(seeds.seedRowAfterRename(held, path.join(projectRoot, 'absent.md')), held, 'a missing file changes nothing');
 });

@@ -158,6 +158,47 @@ session model's capacity tier, and `ALFRED_CODE_CONTEXT_WINDOW_DEFAULT` is the t
 180000): the old 300000 seed moves, and where the three tiers are already 0 the DEFAULT is set to 0 too, so all four at 0
 stays the off switch. Say the env changes in the close.
 
+## after 2.9.0 - the git doc keeps only the crucial lines
+
+The seeded `GIT-PREFERENCES.md` keeps only the crucial git lines, each locked: ask before any commit or push, run the
+commit checkpoint first, never lose work (no discard or history rewrite without asking, `--force-with-lease` only), no AI
+attribution, and never bypass a check (`--no-verify` and the like). Update removes each entry an earlier seed wrote and
+this one dropped - the commit scope, branch names, pull request size and the commit message shape with its `Critical:`
+line - while it is still as seeded, its id joining `Retired:`; it locks the attribution entry in place, moves the safety
+entry to the new text and adds the bypass entry. An entry the user changed stays theirs, and a changed scope entry loses
+its lock, named with `!!`. Report the `preferences:` lines; branch, pull request and commit-message rules are the user's
+to add through `/capture-preferences`.
+
+## after 2.9.0 - AGENTS.md lists no rules
+
+The AGENTS.md template has no `## Rules` section now: every file in `.claude/rules/` loads itself, so the list only
+repeated them in every session. Update refreshes a seed nobody filled from the new template. In a filled file the
+AGENTS.md check names the old list as a `stack-rules` row, and the improve step offers its removal like any other
+change, shown first - the project's own lines under that heading stay.
+
+## after 2.9.0 - the instruction file can be CLAUDE.md
+
+Init's install and `/alfred-code:configure` (step 12) now ask which name the project's instruction file carries -
+AGENTS.md or CLAUDE.md - beside the place ask (root or `.claude/`). The seed, the fill, its check and each part's own
+file follow the answer, and the stamp keeps it. A switch renames the root, `.claude/` and part files with `git mv`, since
+Claude Code reads no AGENTS.md at all while a CLAUDE.md sits at or above the working directory. The first update asks
+the name once, since an install from 2.9.0 or earlier never answered it - 'Rename to AGENTS.md' recommended where the
+file is still `.claude/CLAUDE.md`, as before, and 'Keep CLAUDE.md' where a root CLAUDE.md sits, which no update renamed -
+and CLAUDE.md is recorded unasked beside a CLAUDE.local.md, which keeps any AGENTS.md unread. The old 'rename .claude/CLAUDE.md' ask and its `--rename-claude-md` flag are gone: the name ask does both.
+
+## after 2.9.0 - the code and architecture preferences have no size cap
+
+`PERSONAL-CODE-PREFERENCES.md` and `ARCHITECTURE-PREFERENCES.md` lose their shared 5,000-char cap: the first edit's hold
+hands each entry over where its `Scope:` reaches, without its `Check:` line, and what does not fit one denial comes with
+the retry; a seat that judges without an edit tool - a solution designer, a verifier, the code-quality analyzer, the
+security auditor, the integration reviewer - is handed them at its start and what one room cannot hold with its first reads (a Read, a Grep, an LSP call, a symbol lookup or a shell `cat` / `grep` of a file); the architecture analyzer is handed the architecture doc alone, and only inside an architecture quality run, never the map capture's; a review run of the main session - `/review-code`, `/review-security`, Claude Code's built-in reviews when the user types one, a quality capture or loop - is handed the code docs first, typed or called; a run ends at the user's next typed message other than a go-on reply such as continue. A copied seat counts by the install stamp's record, so a project's own agent of the same name is handed nothing. `preferences.js lint` prints a `note:` line past 5,000 together instead of a problem, and fails only one entry
+past 5,000. Nothing changes on disk; an entry cut earlier to fit can be written in full again through
+`/capture-preferences`. The git doc keeps its 5,000 and the personal doc its 3,000. Since a `Scope:` glob now decides
+which edits see an entry, every update names one that reaches no file in the project (`!! preferences: ... reaches no
+file`) - report each; a typo is fixed through `/capture-preferences`, a glob for files still to come stays. `preferences.js reach`
+shows what each entry's `Scope:` takes (a count, the file types, a few paths), so one aimed at the wrong existing folder
+shows, `/capture-preferences` asks you to confirm each new glob's reach, and `lint` and every update name a `Check:` that measures files its `Scope:` does not reach (`!! preferences: ... Check: reaches N files its Scope: does not`) - report each; it is fixed through `/capture-preferences`.
+
 ## table - every renamed command, was -> now
 
 The installer's `renamed:` lines name each rename this install carried; this table is the whole list, for a user
@@ -192,7 +233,7 @@ who asks about a name the log did not print.
 | `/alfred-habits-adjust-claude-md` | `/habits-adjust-agents-md` |
 | `/alfred-capture-stack-usage` | `/capture-usage-report` |
 | `/create-ticket` | `/habits-create-ticket` |
-| `/explain-code-tutor` | `/habits-explain-code` |
+| `/explain-code-tutor` | `/habits-explain-topic` |
 | seat `ci-failure-diagnoser` | seat `issue-diagnoser-ci` |
 | seat `runtime-failure-diagnoser` | seat `issue-diagnoser-runtime` |
 | `/capture-agent-capabilities` | `/capture-awareness` |
@@ -215,10 +256,9 @@ who asks about a name the log did not print.
 | `/alfred-habits-create-ticket` | `/habits-create-ticket` |
 | `/alfred-habits-done-gate` | `/habits-done-gate` |
 | `/alfred-habits-execution-strategy` | `/habits-execution-strategy` |
-| `/alfred-habits-explain-code` | `/habits-explain-code` |
+| `/alfred-habits-explain-code` | `/habits-explain-topic` |
 | `/alfred-habits-plan-writing` | `/habits-plan-writing` |
 | `/alfred-habits-root-cause` | `/habits-root-cause` |
-| `/alfred-habits-skill-writing` | `/habits-skill-writing` |
 | `/alfred-habits-test-first` | `/habits-test-first` |
 | `/alfred-issue-diagnoser` | `/issue-diagnoser` |
 | `/alfred-issue-signatures-ci` | `/issue-signatures-ci` |
@@ -240,3 +280,43 @@ who asks about a name the log did not print.
 | `/capture-related-projects` | `/capture-awareness` |
 | seat `alfred-issue-diagnoser-ci` | seat `issue-diagnoser-ci` |
 | seat `alfred-issue-diagnoser-runtime` | seat `issue-diagnoser-runtime` |
+| `/habits-explain-code` | `/habits-explain-topic` |
+
+## after 2.9.0 - the stack's own code and security reviews
+
+Two skills join the always-installed set: `/review-code` (a change set, branch, PR or path - eight passes, a refute
+pass, one ranked table) and `/review-security` (the project's own helpers first, a taint trace, confidence bands - 8-10
+a finding, 5-7 a lead - and a refute pass against its not-a-finding list). The commit checkpoint runs them -
+`task-verify-code` for a planned build, else `review-code`; `review-security` is its security half, the verdict the
+receipt's `security:` line - and the commit guard counts both as the review. The model's call to Claude Code's built-in
+`code-review` / `security-review` is denied with a pointer to ours once this update has copied them (until then, or with
+ours switched off in `skillOverrides`, the built-in still runs); a project skill of that name passes, and
+`guard-fresh-session-start:builtin-review` in `ALFRED_CODE_HOOKS_OFF` switches the denial off. Typing a built-in review
+yourself still works. A commit receipt whose `VERIFIED` line names a review now needs a run of that review in the
+session that reached its result line - `Findings:` (a loop's `Outcome:`), in the answer or in the report of an agent it
+dispatched - so a launched, refused or abandoned review, or another skill's load, no longer passes for one, and the
+tool-usage log is no evidence. A commit `VERIFIED` line that names no review needs some review of the code in the
+session (a review skill or a verifier or reviewer agent), unless the review is `carried:` or you waived it - a
+formatting-only sweep above the trivial bar included, since spacing inside a string or between two shell words is code.
+That review must have started after the last edit to every committed file: a fix made after it gets a short
+`review-code` over the fixed files first. A file rewritten since with its bytes unchanged (a stash and pop) still
+passes: the review records what each changed file held when it started, and a staged copy must match it too - a
+formatter's spacing is a change. A review pointed at files or folders covers those alone, and a verifier or reviewer
+agent covers what its brief names - `git diff HEAD` in the brief for the whole change; the rest still need a review that
+read them. An agent counts once it has reported - one still running, or in the background, does not.
+
+## after 2.9.0 - explain any topic
+
+The code explainer is `habits-explain-topic` now (the rename table above names its old name). A depth ask still
+fires it - 'teach me', 'ELI5', 'in detail', 'step by step', 'walk me through', and 'teach me' and 'ELI5' now lift the
+answer budget too; a bare 'explain X' or 'what is X' stays a short answer. This project's code keeps the real-file walkthrough; any other topic gets a layered
+answer - the short answer, an analogy and where it breaks, steps, a worked example, the common mix-ups, a recap,
+check-yourself questions and a glossary - and, when the topic has a shape, one offline HTML diagram under
+`<docs root>/tutorial/`. Update carries a pick and a `skillOverrides` key to the new name and prunes the old copy.
+
+## after 2.9.0 - skill writing leaves the stack
+
+The skill-writing habit and its `skill-authoring.md` rule no longer ship: they serve authoring the stack itself, which
+happens in its own repo, and a project that writes skills of its own keeps nothing from them but the cost of a listed
+description. Update prunes both copies as retired upstream; a copy edited since the stack wrote it stays
+and is named, to merge what you need and remove by hand. Report those lines.

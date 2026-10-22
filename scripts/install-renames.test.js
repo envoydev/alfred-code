@@ -55,7 +55,7 @@ test('the renamed map: every old name is retired, every new name ships, and no n
     const m = loadManifest(ROOT);
     const skills = new Set(m.catalogs.skills.map((e) => e.split('|').pop()));
     const agents = new Set(m.agents.map((f) => f.replace(/\.md$/, '')));
-    assert.strictEqual(Object.keys(RENAMED.skills).length, 71, 'the 23 project-* skills, the three 2.1.0 renames, the 2.1.6 AGENTS.md one, the 2.1.7 usage-report one, the 36 alfred- prefixes 2.2.0 dropped, the two awareness captures (2026-10-13), the code-quality loop, the three awareness captures capture-awareness merged (2026-10-16) and the project code-style capture (2026-10-21)');
+    assert.strictEqual(Object.keys(RENAMED.skills).length, 71, 'the 23 project-* skills, the three 2.1.0 renames, the 2.1.6 AGENTS.md one, the 2.1.7 usage-report one, the 36 alfred- prefixes 2.2.0 dropped (one of them the skill-writing habit, which left the stack on 2026-10-22), the two awareness captures (2026-10-13), the code-quality loop, the three awareness captures capture-awareness merged (2026-10-16) the project code-style capture (2026-10-21) and the code explainer that explains any topic now (2026-10-22)');
     assert.strictEqual(Object.keys(RENAMED.agents).length, 4, 'the two failure diagnosers, then their alfred- prefix (2.2.0)');
     for (const [from, to] of Object.entries(RENAMED.skills))
     {
@@ -73,8 +73,9 @@ test('the renamed map: every old name is retired, every new name ships, and no n
 });
 
 // 2.1.0: three more skills take habits-* names, and plugin-authoring leaves the shipped catalog
-// (it is retired, not renamed - this repo keeps its own copy in .claude/skills).
-const V21 = { 'alfred-capture-claude-md': 'habits-adjust-agents-md', 'create-ticket': 'habits-create-ticket', 'explain-code-tutor': 'habits-explain-code' };
+// (it is retired, not renamed - this repo keeps its own copy in .claude/skills). explain-code-tutor maps straight to
+// habits-explain-topic since habits-explain-code took that name (2026-10-22): a renamed row names today's skill.
+const V21 = { 'alfred-capture-claude-md': 'habits-adjust-agents-md', 'create-ticket': 'habits-create-ticket', 'explain-code-tutor': 'habits-explain-topic' };
 
 test('2.1.0 renames: each old skill maps to its new name, is retired, and plugin-authoring is retired and no longer ships', () =>
 {
@@ -90,7 +91,7 @@ test('2.1.0 renames: each old skill maps to its new name, is retired, and plugin
     assert.ok(m.retired.skills.includes('plugin-authoring') && !skills.has('plugin-authoring'), 'plugin-authoring is retired and not in the catalog');
     assert.ok(!fs.existsSync(path.join(ROOT, 'stack', 'skills', 'plugin-authoring')), 'plugin-authoring is not under stack/skills');
     assert.deepStrictEqual(selection.renamePicked({ skills: ['create-ticket@alfred-code', 'explain-code-tutor', 'alfred-capture-claude-md@alfred-code'], agents: [] }, { renamed: RENAMED, log: () => {}, said: new Set() }),
-        { skills: ['habits-create-ticket@alfred-code', 'habits-explain-code', 'habits-adjust-agents-md@alfred-code'], agents: [] }, 'a pick keeps its home and takes the new name');
+        { skills: ['habits-create-ticket@alfred-code', 'habits-explain-topic', 'habits-adjust-agents-md@alfred-code'], agents: [] }, 'a pick keeps its home and takes the new name');
 });
 
 // The instruction file is AGENTS.md now: the 2.1.6 skill name maps to it, is retired and is gone from disk, and the
@@ -838,7 +839,7 @@ test('seed update --installed-only: a seat deny and a skillOverrides key under a
         write(repo, '.claude/settings.json', JSON.stringify({ skillOverrides: { 'explain-code-tutor': 'off' }, env: { MY_OWN_KEY: 'mine' } }, null, 2));
     };
     const { result: r } = seedRun('update', '', { env: COPY_ROUTE, args: ['--installed-only'], prepare, inspect });
-    assert.strictEqual((r.settings.skillOverrides || {})['habits-explain-code'], 'off', JSON.stringify(r.settings.skillOverrides));
+    assert.strictEqual((r.settings.skillOverrides || {})['habits-explain-topic'], 'off', JSON.stringify(r.settings.skillOverrides));
     assert.ok(!('explain-code-tutor' in (r.settings.skillOverrides || {})), JSON.stringify(r.settings.skillOverrides));
     assert.strictEqual(r.settings.env.MY_OWN_KEY, 'mine');
 });

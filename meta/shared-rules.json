@@ -4109,7 +4109,7 @@
       ]
     },
     "convention-rule-first-action": {
-      "_note": "A convention rule's load is the FIRST action after the attach, not a 'before the edit' hint - the weak phrasing lost across 12 measured edits with two rule bodies in context, while the strong form held. Restated in each rule that carries it, because a project installs only the rules for the stacks it has. markdown-docs.md carries it too: it is the same attach, for the .md family, and its own docs-as-code half was the measured miss (3 loads against 22 matching edits). skill-authoring.md carries it for skill files, where the load is the skill-writing habit.",
+      "_note": "A convention rule's load is the FIRST action after the attach, not a 'before the edit' hint - the weak phrasing lost across 12 measured edits with two rule bodies in context, while the strong form held. Restated in each rule that carries it, because a project installs only the rules for the stacks it has. markdown-docs.md carries it too: it is the same attach, for the .md family, and its own docs-as-code half was the measured miss (3 loads against 22 matching edits). skill-authoring.md carried it for skill files until the rule left the stack (2026-10-22).",
       "owner": {
         "file": "stack/rules/csharp-conventions.md",
         "marker": "the FIRST action after this rule attaches is"
@@ -4149,10 +4149,6 @@
         },
         {
           "file": "stack/rules/markdown-docs.md",
-          "marker": "the FIRST action after this rule attaches is"
-        },
-        {
-          "file": "stack/rules/skill-authoring.md",
           "marker": "the FIRST action after this rule attaches is"
         }
       ]
@@ -4251,7 +4247,7 @@
       ]
     },
     "convention-rule-load-receipt": {
-      "_note": "The second half of the convention-rule attach contract, restated in every rule that carries [convention-rule-first-action] - the nine convention rules, markdown-docs and skill-authoring (audit M66: skill-authoring carried the text unregistered, markdown-docs had no receipt at all; scripts/rule-prose.test.js fails when the two entries list different files): the load is SAID out loud, because an unstated load is indistinguishable from no load in the transcript and in the user's reading alike. Pinned separately because the two halves are edited independently.",
+      "_note": "The second half of the convention-rule attach contract, restated in every rule that carries [convention-rule-first-action] - the nine convention rules and markdown-docs (audit M66: skill-authoring carried the text unregistered, markdown-docs had no receipt at all; scripts/rule-prose.test.js fails when the two entries list different files): the load is SAID out loud, because an unstated load is indistinguishable from no load in the transcript and in the user's reading alike. Pinned separately because the two halves are edited independently.",
       "owner": {
         "file": "stack/rules/csharp-conventions.md",
         "marker": "the receipt is what makes the load happen"
@@ -4291,10 +4287,6 @@
         },
         {
           "file": "stack/rules/markdown-docs.md",
-          "marker": "the receipt is what makes the load happen"
-        },
-        {
-          "file": "stack/rules/skill-authoring.md",
           "marker": "the receipt is what makes the load happen"
         }
       ]
@@ -5429,19 +5421,6 @@
         }
       ]
     },
-    "post-install-capture-order": {
-      "_note": "The post-install capture ORDER and its manual-only property: the three deliberate captures run architecture -> code-style -> awareness LAST (the inventory, the run book and the sibling repos in one run), the order init-plan.js CAPTURES runs, so the generated inventory reflects the final install, and the user types them because they carry disable-model-invocation. It lives in two homes because each one reaches a different reader at a different moment - the reference the guided walks open, and the seeded CLAUDE.md the adopter fills in. Phase 7b (R33) deleted the frozen shell/PowerShell twins, which used to print this same order in their own next-steps log as a third and fourth home; the Node seed never carried this text (the walk's own report covers it).",
-      "owner": {
-        "file": "setup-plugin/references/post-install.md",
-        "marker": "`/capture-awareness` - LAST, so its generated inventory reflects the final install"
-      },
-      "sites": [
-        {
-          "file": "stack/AGENTS.template.md",
-          "marker": "/capture-awareness LAST, so its generated inventory reflects the final install"
-        }
-      ]
-    },
     "convention-rule-framework-deferral": {
       "_note": "The baseline convention rules (csharp, typescript) defer the FIRST action to the framework/surface rule that attached on the same touch - the fix for two rules each declaring themselves first (angular over typescript on a .component.ts, winforms over csharp on a *Form.cs). Verbatim in both baseline rules because either can ship without the other; the winning surface rules state the mirror in their own words.",
       "owner": {
@@ -6306,6 +6285,10 @@
       },
       "sites": [
         {
+          "file": "stack/skills/review-security/SKILL.md",
+          "marker": "when no installed skill matches, keep the finding in this report tagged with its surface and mark it UNVERIFIED"
+        },
+        {
           "file": "stack/skills/dotnet-security/SKILL.md",
           "marker": "when no installed skill matches, keep the finding in this report tagged with its surface and mark it UNVERIFIED"
         },
@@ -6952,6 +6935,14 @@
         },
         {
           "file": "stack/skills/task-version-upgrade/SKILL.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/skills/review-code/SKILL.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/skills/review-security/SKILL.md",
           "marker": "exactly as the roster spells it"
         }
       ]
@@ -7950,7 +7941,7 @@
       ]
     },
     "git-preferences-carve-out": {
-      "_note": "No git preference weakens a locked one: GIT-PREFERENCES.md is seeded from the git preferences seed, whose consent, commit scope, checkpoint and safety entries carry `<!-- locked: <key> -->`, and the capture never drops or edits them (the user's ruling of 2026-10-21, 'Seeded, safety locked'). The shipped alfred-preferences.md rule owns the clause; the capture and its doc shape restate it beside their own never-list. Before 2026-10-21 alfred-git.md owned it as 'never its consent or safety lines' (rules audit 2026-10-20b: a preference such as 'force-push freely' outranked the git rule's safety line in one rule and not the other).",
+      "_note": "No git preference weakens a locked one: GIT-PREFERENCES.md is seeded from the git preferences seed, whose consent, checkpoint, safety, attribution and checks entries carry `<!-- locked: <key> -->`, and the capture never drops or edits them (the user's ruling of 2026-10-21, 'Seeded, safety locked'). The shipped alfred-preferences.md rule owns the clause; the capture and its doc shape restate it beside their own never-list. Before 2026-10-21 alfred-git.md owned it as 'never its consent or safety lines' (rules audit 2026-10-20b: a preference such as 'force-push freely' outranked the git rule's safety line in one rule and not the other).",
       "owner": {
         "file": "stack/rules/alfred-preferences.md",
         "marker": "no entry weakens a `locked` one"
@@ -8012,15 +8003,15 @@
       ]
     },
     "commit-scope-fresh": {
-      "_note": "The commit ask's scope is derived fresh, untracked files counted and the index never moved (locked G2 of the git preferences seed). The checkpoint's ask step inlines the command because the hook hands the git doc over only at the first git WRITE, after that ask (skills audit 2026-10-21 S-13).",
+      "_note": "The commit ask's scope is derived fresh, untracked files counted and the index never moved. The checkpoint's ask step owns it since the git preferences seed kept only its crucial lines (the user's ruling of 2026-10-21; it was the seed's locked G2 before), and the commit guard's add -N denial names the same survey (skills audit 2026-10-21 S-13).",
       "owner": {
-        "file": "stack/skills/capture-preferences/references/git-seed.md",
+        "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
         "marker": "`git diff HEAD --stat; git ls-files -o --exclude-standard`"
       },
       "sites": [
         {
-          "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
-          "marker": "`git diff HEAD --stat; git ls-files -o --exclude-standard`"
+          "file": "stack/hooks/guard-ungated-commit.js",
+          "marker": "git diff HEAD --stat; git ls-files -o --exclude-standard"
         }
       ]
     },
@@ -8031,10 +8022,6 @@
         "marker": "the entry's side marked (Recommended)"
       },
       "sites": [
-        {
-          "file": "stack/AGENTS.template.md",
-          "marker": "the entry's side marked (Recommended)"
-        },
         {
           "file": "stack/agents/aspnet-implementer.md",
           "marker": "the entry's side marked (Recommended)"

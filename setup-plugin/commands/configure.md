@@ -99,8 +99,8 @@ comparable banner by banner; the content varies, the skeleton never does.
   ```
 
   Then read the two offers this run may ask about, with no compare: `node "$TMP/repo/scripts/update-preflight.js"
-  --offers --root .` prints a `data-move:` line (step 9's data question) and an `agents-md:` line (step 12's rename
-  ask) - `offer ...` or `none (<why>)` each - then an `instructions:` line (step 12's place ask). It prints no
+  --offers --root .` prints a `data-move:` line (step 9's data question) - `offer ...` or `none (<why>)` - then an
+  `instructions:` line and an `instructions-file:` line (step 12's place and name asks). It prints no
   `docs-move:` line: a docs root set by hand is moved by `/alfred-code:update` alone, never here (audit 2026-10-21 C-Q1).
 
   `$TMP/installed.json` is the walk's inventory (`--installed`): `{rules, agents, skills, hooks,
@@ -402,20 +402,11 @@ Keep this install's own model and effort pins? An existing install often carries
 
 ## 12. Update + removals
 
-**The instruction file's name - on step 1's `agents-md: offer` line only, asked before the delta:**
-
-```ask
-Rename .claude/CLAUDE.md to .claude/AGENTS.md? The stack's instruction file is AGENTS.md now; the content stays as it is, only the name changes.
-- 'Rename it (Recommended)' - git mv where git tracks it, and a '!.claude/CLAUDE.md' re-include in .gitignore or .git/info/exclude follows the new name
-- 'Keep CLAUDE.md' - nothing moves; Claude Code still reads it
-```
-
-A yes adds `--rename-claude-md` to the installer call below and is a change on its own, so the installer runs.
-
-**The instruction files' place - on step 1's `instructions:` line unless it reads `none`, asked before the delta:** read
-`${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/instructions-place.md` and ask its template for the line, in the same call
-as the rename ask when both apply. A move adds `--instructions-at root|claude` to the installer call below and is a change
-on its own, so the installer runs.
+**The instruction file's name and place - on step 1's `instructions-file:` and `instructions:` lines unless they read
+`files=none` / `none`, asked before the delta:** read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/instructions-place.md`
+and ask its templates for the lines in one call (its `local=yes` rule may leave the name unasked). A name answer that
+differs from the line's `answer=` (any, on `answer=none`) adds `--instructions-file agents|claude` and a move
+`--instructions-at root|claude` to the installer call below, each a change on its own, so the installer runs.
 
 **First, is there anything to do?** Run the delta - `node "$TMP/repo/scripts/derive-state.js"
 --delta --installed "$TMP/installed.json" --selection "$TMP/selection.txt" --picked "$TMP/raw.json"`
@@ -440,7 +431,7 @@ kept, or the plugins layer not walked); the narration line before the call names
 `placement: not asked - <why>`). That answer is where the `--scope-of` flags come from, so an installer run
 before it owes a second run when the answer moves an item (audit 2026-10-20 C46, 878f253d).
 
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--space <name>] [--keep-pins] [--browsers <csv>] [--scope-of <item>=<global|project|local>]... [--docs-versioning git|local] [--data-path <folder> --data-move move] [--memory-level global|scoped|project] [--rename-claude-md] [--instructions-at root|claude] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. One `--scope-of` per optional item the walk's last ask moved (`references/walk.md`, 'Where each optional item installs'), plus one per newly added item made global - none for 'Keep each where it is': an update keeps every item where it lives, and this flag is the one way one moves. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--space <name>] [--keep-pins] [--browsers <csv>] [--scope-of <item>=<global|project|local>]... [--docs-versioning git|local] [--data-path <folder> --data-move move] [--memory-level global|scoped|project] [--instructions-file agents|claude] [--instructions-at root|claude] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. One `--scope-of` per optional item the walk's last ask moved (`references/walk.md`, 'Where each optional item installs'), plus one per newly added item made global - none for 'Keep each where it is': an update keeps every item where it lives, and this flag is the one way one moves. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
 - **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED` set to `shell`). The frozen OS twin is gone, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
 - `--docs-versioning` only when the user's own invocation names a value (`/alfred-code:configure
   --docs-versioning local`): the installer writes it over the current value and prints the old and new
@@ -529,8 +520,8 @@ On a yes, read `$TMP/repo/stack/skills/habits-adjust-agents-md/SKILL.md` and fol
 with `<stack>` = the `$TMP/repo` path, pasted as a literal - the one home of the fill: its improve mode adds the sections the template
 gained, offers a fix for what its check reports (applied only when the user picks it) and shows every
 change before writing, never overwriting the
-project's own prose. This run's own part is the selection-tied lines - the rules table and any
-capability mentions - for what it added or dropped. Never offer skill/agent/MCP additions here -
+project's own prose. This run's own part is the selection-tied lines - any capability mentions - for
+what it added or dropped. Never offer skill/agent/MCP additions here -
 the walk owned the selection.
 
 ## Post-check

@@ -854,3 +854,14 @@ test('--offers: the instructions line says where the instruction files are, for 
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+test('the name line: the full read and --offers both print it from the stamp\'s answer; the agents-md line is gone', () => {
+    const { snap, install, fixtureFile } = scaffold({ stamp: 'sha: aaa111\nversion: 0.2.60\ninstructions-file: claude\n' });
+    fs.writeFileSync(path.join(install, '.claude', 'AGENTS.md'), '# x\n');
+    const full = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out;
+    assert.match(full, /^instructions-file: claude files=agents answer=claude local=no update=ask$/m, full);
+    assert.doesNotMatch(full, /^agents-md:/m);
+    const offers = run(['--offers', '--root', install]).out;
+    assert.match(offers, /^instructions-file: claude files=agents answer=claude local=no update=ask$/m, offers);
+    assert.doesNotMatch(offers, /^agents-md:/m);
+});

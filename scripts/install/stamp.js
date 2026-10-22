@@ -246,7 +246,7 @@ function readLedger(file)
 
 function renderStamp(fields)
 {
-    const { repoUrl, ref, sha, version, installed, installedMs, action, scope, initialised, hooks, hooksRoute, seatsRoute, alwaysRules, alwaysMcps, picked = {}, playwright = [], playwrightEnabled, stoodDown = [], mcpHeld = [], mcpDenied = [], toolIgnores = {}, library = {}, ledger = null, data = null } = fields;
+    const { repoUrl, ref, sha, version, installed, installedMs, action, scope, initialised, hooks, hooksRoute, seatsRoute, alwaysRules, alwaysMcps, picked = {}, playwright = [], playwrightEnabled, stoodDown = [], mcpHeld = [], mcpDenied = [], toolIgnores = {}, library = {}, ledger = null, data = null, instructionsFile = '' } = fields;
     const hashes = (map) => Object.entries(map || {}).map(([n, h]) => `${n}=${h}`).join(',');
     return [
         '# alfred-code install stamp - machine-local, written by the alfred-code installer.',
@@ -279,6 +279,7 @@ function renderStamp(fields)
         ...(data && data.root ? [`data-root: ${data.root}`] : []),
         ...(data ? require('../../stack/mcp/data-root.js').renderPending(data.pending || []) : []),
         ...(data && data.kept ? ['data-move: kept'] : []),
+        ...(['agents', 'claude'].includes(instructionsFile) ? [`instructions-file: ${instructionsFile}`] : []),
         `library-skills: ${hashes(library.skills)}`,
         `library-agents: ${hashes(library.agents)}`,
         `library-rules: ${hashes(library.rules)}`,
@@ -304,7 +305,7 @@ function writeStamp(opts)
 {
     const {
         source, action, scope, configDir, projectRoot, mcpFile, hooksCatalog, hooksRoute, seatsRoute, picked, playwright, playwrightEnabled, stoodDown, mcpHeld, mcpDenied, toolIgnores, library, ledger, data,
-        version = '', now = new Date(), log = () => {}, note = () => {},
+        instructionsFile = '', version = '', now = new Date(), log = () => {}, note = () => {},
     } = opts;
     const initialised = opts.initialised || initialisedValue({ claudeDir: stampDir({ projectRoot }), now });
 
@@ -333,6 +334,7 @@ function writeStamp(opts)
             action, scope, initialised,
             hooks: shippedHooks(hooksCatalog), hooksRoute, seatsRoute,
             alwaysRules: always.rules, alwaysMcps: always.mcps, picked, playwright, playwrightEnabled, stoodDown, mcpHeld, mcpDenied, toolIgnores, library, ledger, data,
+            instructionsFile,
         }));
     }
     catch (err) { note(`stamp could not be written to ${dest} (${err.message})`); return null; }
@@ -509,6 +511,21 @@ function readDataLines(file)
     const dr = require('../../stack/mcp/data-root.js');
     const root = (/^data-root: *(\S+) *$/m.exec(text) || [])[1] || '';
     return { root: dr.checkDataPath(root).ok ? root : '', pending: dr.readPending(text), kept: /^data-move: *kept *$/m.test(text) };
+}
+
+// The instruction file's name the user answered (`instructions-file: agents|claude`) - '' with no stamp, no line or a
+// garbage one: an install from 2.9.0 or earlier was never asked, so its first update asks (seeds.instructionsFileLine).
+function readInstructionsAnswer(file)
+{
+    let text = '';
+    try { text = fs.readFileSync(file, 'utf8'); } catch { return ''; }
+    return (/^instructions-file: *(agents|claude) *$/m.exec(text) || [])[1] || '';
+}
+
+// The name the install works with: the answer, else AGENTS.md.
+function readInstructionsFile(file)
+{
+    return readInstructionsAnswer(file) || 'agents';
 }
 
 // NM1 (fix round 3): the full stamp - including this same `hooks-route:` line - is only written once,
@@ -701,7 +718,7 @@ function markInitialised(claudeDir, now = new Date())
 
 module.exports = {
     writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways, family,
-    readPicked, readLibrary, readLedger, renderLedger, emptyLedger, readToolIgnores, valueHash, entryHash, LEDGER_FILES, readStampScope, readHooksRoute, readSeatsRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readBrowserLines, readStoodDown, readMcpHeld, readMcpDenied, readVersion, readInstalledAt, validItemName,
+    readPicked, readLibrary, readLedger, renderLedger, emptyLedger, readToolIgnores, valueHash, entryHash, LEDGER_FILES, readStampScope, readHooksRoute, readSeatsRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readBrowserLines, readStoodDown, readMcpHeld, readMcpDenied, readVersion, readInstalledAt, readInstructionsFile, readInstructionsAnswer, validItemName,
     readInitialised, initialisedValue, isInitialised, installState, markInitialised, legacySignature, legacyUnstamped, worktreeMain, installScope, readDataLines,
     accountDir,
 };

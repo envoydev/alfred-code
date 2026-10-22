@@ -159,7 +159,8 @@ function build(gate, args, ctx) {
   if (missing.length) fail(`missing ${missing.map((k) => `--${k.split(' ')[0]}`).join(', ')} - the guard refuses a receipt without ${missing.length > 1 ? 'them' : 'it'}`);
   let head = '';
   try { head = ctx.git(['rev-parse', 'HEAD']).trim(); } catch { fail('this repository has no commit yet - the receipt names the HEAD the review ran against'); }
-  const security = lead(args.security);
+  // a verdict that brings its own ` - over <N> files` loses it: the line ends with the commit's own count, once
+  const security = lead(args.security).replace(/\s*-\s*over\s+\d+\s+files?\s*$/i, '');
   if (/\bsecurity\b/i.test(args.verified) && !lead(args.carried) && (!security || /^(no findings?|none|n\/a|clean|ok|0 findings?)\.?$/i.test(security)))
     fail('--verified claims a security review, so --security must name each category checked and its verdict (auth ok, secrets ok, injection ok, data-access n/a)');
   const out = [`VERIFIED ${lead(args.verified)}`];
