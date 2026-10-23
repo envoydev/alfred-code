@@ -43,7 +43,7 @@
   "hints": {
     "kinds": { "github": "github", "gitlab": "gitlab", "dev.azure.com": "azure", "visualstudio.com": "azure", "bitbucket": "bitbucket", "gitea": "gitea", "codeberg": "gitea", "forgejo": "gitea" },
     "clis": { "github": "gh", "gitlab": "glab", "azure": "az", "gitea": "tea" },
-    "mcpLaunch": ["github-mcp-server", "api.githubcopilot.com", "mcp-gitlab", "/api/v4/mcp", "server-gitlab", "azure-devops/mcp", "mcp.dev.azure.com", "gitea-mcp", "mcp.atlassian.com"],
+    "mcpLaunch": ["github-mcp-server", "api.githubcopilot.com", "mcp-gitlab", "/api/v4/mcp", "glab mcp", "server-gitlab", "azure-devops/mcp", "mcp.dev.azure.com", "gitea-mcp", "mcp.atlassian.com"],
     "install": {
       "gh": { "brew": "gh", "how": "https://cli.github.com" },
       "glab": { "brew": "glab", "how": "https://gitlab.com/gitlab-org/cli" },

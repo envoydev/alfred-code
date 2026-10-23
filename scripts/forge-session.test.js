@@ -73,6 +73,7 @@ test('mcp found by launch', () => {
   const dir = repo('git@gitlab.com:g/r.git');
   fs.writeFileSync(path.join(dir, '.mcp.json'), JSON.stringify({ mcpServers: {
     work: { command: 'npx', args: ['@zereight/mcp-gitlab'] },
+    'My Odd.Server-1': { command: '/opt/homebrew/bin/glab', args: ['mcp', 'serve'] }, // glab's own stdio server (1.124.0)
     github: { command: 'npx', args: ['some-unrelated-server'] }, // the key alone never makes a forge server
     'alfred-navigation': { command: 'npx', args: ['github-mcp-server'] }, // the stack's own servers are never listed
   } }));
@@ -81,7 +82,7 @@ test('mcp found by launch', () => {
     mcpServers: { hub: { type: 'http', url: 'https://api.githubcopilot.com/mcp/' } },
     projects: { [dir]: { mcpServers: { ado: { command: 'npx', args: ['-y', '@azure-devops/mcp', 'org'] } } } },
   }));
-  assert.deepStrictEqual(profile(dir, env).mcp.sort(), ['ado', 'hub', 'work']);
+  assert.deepStrictEqual(profile(dir, env).mcp.sort(), ['My Odd.Server-1', 'ado', 'hub', 'work']);
 });
 
 test('a CLI on PATH is listed', () => {
@@ -151,6 +152,20 @@ test('outside a git repo, and on garbage stdin, the hook is silent', () => {
   const g = runHook(plain, '{garbage', { ...envFor(plain), PATH: process.env.PATH });
   assert.strictEqual(g.status, 0);
   assert.strictEqual(g.stdout, '');
+});
+
+test('a malformed lexicon overlay is named to the user at start, once - the line still goes out', () => {
+  const dir = repo('git@gitlab.com:o/r.git');
+  fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.alfred', 'forge-lexicon.json'), '{ not json');
+  const env = { ...envFor(dir), PATH: process.env.PATH };
+  const start = JSON.parse(runHook(dir, { hook_event_name: 'SessionStart', source: 'startup' }, env).stdout);
+  assert.match(start.systemMessage, /forge-lexicon\.json overlay at .* is not valid JSON .* ignored, the base vocabulary applies/);
+  assert.match(start.hookSpecificOutput.additionalContext, /^Forge: gitlab\.com \(gitlab\)/);
+  const seat = JSON.parse(runHook(dir, { hook_event_name: 'SubagentStart', agent_id: 'a1' }, env).stdout);
+  assert.strictEqual(seat.systemMessage, undefined);
+  fs.writeFileSync(path.join(dir, '.alfred', 'forge-lexicon.json'), JSON.stringify({ verbs: { merge: ['ship'] } }));
+  assert.strictEqual(JSON.parse(runHook(dir, { hook_event_name: 'SessionStart', source: 'startup' }, env).stdout).systemMessage, undefined);
 });
 
 // --- the ref watch: every branch and tag, diffed after a strong call and at the end of a turn -----------------------

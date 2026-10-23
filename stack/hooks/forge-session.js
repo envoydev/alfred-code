@@ -523,7 +523,10 @@ async function main() {
     const p = profile(cwd, process.env);
     // The baseline is the main session's; a seat's own compaction runs SessionStart inside it with the main session id.
     if (event === 'SessionStart' && !payload.agent_id && p.watch !== 'off') spawnSnapshot(cwd, payload.session_id, payload.source);
-    process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: profileLine(p) } }));
+    // A malformed overlay is ignored - said to the user once a session, or the words they added go unread unnoticed.
+    let notice = null;
+    if (event === 'SessionStart') { try { notice = forge.loadLexicon(cwd, process.env).notice; } catch { notice = null; } }
+    process.stdout.write(JSON.stringify({ ...(notice ? { systemMessage: `Forge: ${notice}.` } : {}), hookSpecificOutput: { hookEventName: event, additionalContext: profileLine(p) } }));
     return 0;
   }
   if (partOff('watch', process.env)) return 0;
