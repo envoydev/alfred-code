@@ -186,6 +186,38 @@ handshake alone 1.4-1.7 s) and p50 571 ms over HTTPS, 10 runs each. Over past se
 (1,616 of 2,650) ran a call the Stop counts as non-read, so that is the share of turns that pay one `ls-remote`. No
 budget is set here; the numbers decide it.
 
+## The pause and publish-only
+
+Some git logins ask the user on every SSH connection: a security key that needs a touch, an approval dialog from the
+agent app. `networkEnv`'s batch mode stops git's and ssh's own prompts, but not those, so a check at the end of most
+turns could ask on most turns.
+
+A time throttle was measured first and dropped. Over 365 past sessions (2,660 turns, 1,752 of them non-read), turns end a
+median 698 s apart (p25 205 s, p75 2,146 s), so a 15 min throttle still checks 68% as often, and a 30 min one 57%.
+
+What shipped instead:
+
+- **The pause.** A check that fails or takes over 3 s - what a key waiting for a touch, or an approval dialog, looks like
+  from git's side - pauses the end-of-turn check for 30 min, said to the user once a session. A turn that made a forge
+  call or a gated push (the push's ledger act confirmed at PostToolUse) still checks, and an answer within 3 s lifts the
+  pause. A held turn loses no move: the next check diffs against the same baseline and says `since the last check N min
+  ago`.
+- **The SSH notice.** A key tapped quickly answers inside 3 s, so the pause never trips, and timing cannot tell it from a
+  slow network. An approval app gives no signal at all. So the first check over an SSH remote names the way out, once per
+  repo: `ALFRED_CODE_FORGE_WATCH=publish-only`.
+- **publish-only.** Checks the remote only after a turn that made a forge call or a gated push. A move is then reported
+  at the next such check, not the turn it happened.
+- **One call at the start.** The start snapshot reads HEAD's symref and every branch and tag in one `ls-remote`
+  (`HEAD`, `refs/heads/*`, `refs/tags/*`), where it took two before. The refs and shas match the plain call, nested
+  branches and annotated tags included.
+
+On the installed hooks, with a fake ssh that sleeps a set time and logs each connection, the start snapshot made 1
+connection. A Stop answered in 3.5 s gave the pause line, and the next Stop made no connection and stayed silent while
+main moved. The forge call that followed was checked, blocked with `main moved <a>..<b> since the last check`, and lifted
+the pause: 5 connections in all. The SSH notice showed once and not in a second session. Under `publish-only`, the session
+line says `ref watch: publish-only`, a build turn stays silent and the forge call is checked. A user's own `publish-only`
+survives an update on both routes.
+
 ## Not run
 
 - A plugin-provided MCP server in the stub probe (its `mcp__plugin_<plugin>_<server>__` names are read from past

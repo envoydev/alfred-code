@@ -23,7 +23,9 @@
 // - The end snapshot is kept per repo (REFS-LAST.json); the next session's child diffs against it and reports only when
 //   that session asked about a forge call (an armed auto-merge landing later).
 // An unreachable remote is `ref watch: not checked (<why>)`, never clean. `forge-session:watch` in ALFRED_CODE_HOOKS_OFF
-// turns the watch off; ALFRED_CODE_FORGE_WATCH=loud-only drops the summary tier and the session line says so.
+// turns the watch off; ALFRED_CODE_FORGE_WATCH=loud-only drops the summary tier and the session line says so. A check
+// that fails or answers slowly pauses the catch-all (THE PAUSE below); ALFRED_CODE_FORGE_WATCH=publish-only holds it to
+// turns that made a forge call or a gated push.
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
@@ -36,6 +38,7 @@ try { forge = require(path.join(__dirname, 'forge.js')); } catch { /* no engine:
 let prelude = null;
 try { prelude = require(path.join(__dirname, 'hook-prelude.js')); prelude.blockingStdio(); } catch { /* no prelude: the bare ALFRED_CODE_ reads */ }
 const envOf = (env, suffix) => (prelude ? prelude.envOf(env, suffix) : env[`ALFRED_CODE_${suffix}`]);
+const watchSetting = (env) => String(envOf(env, 'FORGE_WATCH') || '').trim().toLowerCase();
 const partOff = (part, env) => !!prelude && prelude.partOff('forge-session', part, env);
 
 const LINE_MAX = 200;
@@ -69,7 +72,7 @@ function clisOnPath(names, env) {
   return names.filter((name) => dirs.some((dir) => exts.some((ext) => runnable(path.join(dir, name + ext)) || runnable(path.join(dir, name + ext.toLowerCase())))));
 }
 
-// { host, kind, remote, clis, mcp, watch: 'on' | 'off' | 'loud-only', why } for the repo at `cwd`.
+// { host, kind, remote, clis, mcp, watch: 'on' | 'off' | 'loud-only' | 'publish-only', why } for the repo at `cwd`.
 function profile(cwd, env = process.env) {
   const h = hints();
   const root = env.CLAUDE_PROJECT_DIR || forge.gitOut(cwd, ['rev-parse', '--show-toplevel']) || cwd;
@@ -83,7 +86,7 @@ function profile(cwd, env = process.env) {
   let watch = 'on', why = null;
   if (partOff('watch', env)) { watch = 'off'; why = 'switched off'; }
   else if (!remote) { watch = 'off'; why = 'no remote'; }
-  else if (String(envOf(env, 'FORGE_WATCH') || '').trim().toLowerCase() === 'loud-only') watch = 'loud-only';
+  else if (watchSetting(env) === 'loud-only' || watchSetting(env) === 'publish-only') watch = watchSetting(env);
   return { host, kind: remote ? kindOf(host, h.kinds) : null, remote, clis, mcp, watch, why };
 }
 
@@ -145,24 +148,61 @@ function writeJson(file, value) {
 const short = (ref) => String(ref).replace(/^refs\/(?:heads|tags)\//, '');
 const isTag = (ref) => /^refs\/tags\//.test(String(ref));
 const s7 = (sha) => String(sha || '').slice(0, 7);
-const loudOnly = (env) => String(envOf(env, 'FORGE_WATCH') || '').trim().toLowerCase() === 'loud-only';
+const loudOnly = (env) => watchSetting(env) === 'loud-only';
 const rootOf = (cwd, env) => env.CLAUDE_PROJECT_DIR || forge.gitOut(cwd, ['rev-parse', '--show-toplevel']) || cwd;
 // The watch's state lives with the repository, where the commit guard ledgers its acts (forge.js ledgerRoot): a session
 // in the main checkout and a push from its worktree read one ledger.
 const stateRoot = (cwd, env) => forge.ledgerRoot(cwd) || rootOf(cwd, env);
 
-// { ok, remote, refs: { ref: sha }, at, head?, reason? } - every branch and tag; `symref` also reads the default branch.
+// { ok, remote, refs: { ref: sha }, at, ms, head?, reason? } - every branch and tag, and how long the remote took;
+// `symref` also reads the default branch, in the same call (one round trip, one key touch).
 function snapshot(cwd, remote, { symref = false } = {}) {
-  const r = forge.lsRemote(cwd, remote);
+  const t0 = Date.now();
+  const r = symref ? forge.lsRemote(cwd, remote, ['HEAD', 'refs/heads/*', 'refs/tags/*'], { symref: true }) : forge.lsRemote(cwd, remote);
   const at = Date.now();
-  if (!r.ok) return { ok: false, remote, refs: {}, at, reason: String(r.reason || 'no answer').replace(/[.\s]+$/, '') };
-  const out = { ok: true, remote, refs: Object.fromEntries(r.refs), at };
-  if (symref) {
-    const h = forge.lsRemote(cwd, remote, ['HEAD'], { symref: true });
-    if (h.ok && h.head) out.head = h.head;
-  }
+  if (!r.ok) return { ok: false, remote, refs: {}, at, ms: at - t0, reason: String(r.reason || 'no answer').replace(/[.\s]+$/, '') };
+  const out = { ok: true, remote, refs: Object.fromEntries([...r.refs].filter(([ref]) => /^refs\/(?:heads|tags)\//.test(ref))), at, ms: at - t0 };
+  if (symref && r.head) out.head = r.head;
   return out;
 }
+
+// THE PAUSE - a check that failed or took over SLOW_MS is what a security key waiting for a touch, or an approval dialog,
+// looks like from git's side: asking every turn would prompt every turn. The end-of-turn check then runs at most every
+// PAUSE_MS this session; a turn that made a forge call or a gated push still checks, and an answer within SLOW_MS lifts the
+// pause. ALFRED_CODE_FORGE_WATCH=publish-only holds the check to those turns from the start. A skipped check loses no move:
+// the next one diffs against the same baseline and says 'since the last check'.
+const SLOW_MS = 3000;
+const PAUSE_MS = 30 * 60 * 1000;
+const pauseFile = (root, session, env) => stateFile(root, `PAUSE-${sid(session)}.json`, env);
+const slowWhy = (now) => (!now.ok ? 'the check failed' : now.ms > SLOW_MS ? `the remote took ${(now.ms / 1000).toFixed(1)} s to answer` : null);
+const pauseActive = (root, session, env) => { const p = readJson(pauseFile(root, session, env)); return !!p && Number(p.until) > Date.now(); };
+function afterCheck(root, session, env, now) {
+  const file = pauseFile(root, session, env);
+  const p = readJson(file);
+  const why = slowWhy(now);
+  if (why) writeJson(file, { why, until: Date.now() + PAUSE_MS, told: !!(p && p.told) });
+  else if (p && Number(p.until) > Date.now()) writeJson(file, { ...p, until: 0 });
+}
+// The pause named to the user once a session - by the next Stop or PostToolUse, since spawnSnapshot discards the
+// snapshot child's output (stdio 'ignore').
+function pauseLine(root, session, env) {
+  const file = pauseFile(root, session, env);
+  const p = readJson(file);
+  if (!p || p.told || !(Number(p.until) > Date.now())) return null;
+  writeJson(file, { ...p, told: true });
+  return `Ref watch: ${p.why} - the end-of-turn check now runs at most every 30 min this session, so a security-key touch or an approval prompt does not ask every turn; a push or forge call is still checked (ALFRED_CODE_FORGE_WATCH=publish-only: only then).`;
+}
+// THE SSH NOTICE - a key tapped quickly answers inside SLOW_MS, so the pause never trips and that login asks on every checked
+// turn; timing cannot tell it from a slow network, and an approval app leaves no trace at all. So the first check over an
+// SSH remote names the way out, once per repo - unless the pause line already did, or publish-only is set.
+const viaSsh = (url) => /^(?:ssh|git\+ssh|ssh\+git):\/\//i.test(url) || (!/^[a-z][a-z0-9+.-]*:\/\//i.test(url) && /^(?:[^@/\\]+@)?[^:/\\]{2,}:(?!\/\/)/.test(url));
+function sshNotice(cwd, remote, root, env, speak) {
+  const file = stateFile(root, 'SSH-NOTICE.json', env);
+  if (readJson(file) || !viaSsh(String(forge.gitOut(cwd, ['remote', 'get-url', remote]) || ''))) return null;
+  writeJson(file, { at: Date.now() });
+  return speak ? 'Ref watch: this repo\'s remote is checked over SSH at the end of most turns. If your SSH login asks you each time (a security-key touch, an approval prompt), set ALFRED_CODE_FORGE_WATCH=publish-only to check only after a push or forge call.' : null;
+}
+const sinceLast = (at) => { const min = Math.floor((Date.now() - Number(at || 0)) / 60000); return `since the last check ${min < 1 ? 'under a minute' : `${min} min`} ago`; };
 // Every ref whose sha differs, created (from null) and deleted (to null) included.
 function diffRefs(before, after) {
   const a = before || {}, b = after || {};
@@ -323,6 +363,7 @@ function snapshotChild(cwd, session, source, env) {
   // retakes it, so moves between sessions are never this session's report.
   if (source === 'compact' && readJson(file)) return;
   const now = snapshot(cwd, remote, { symref: true });
+  afterCheck(root, session, env, now);
   if (!now.ok) return;
   writeJson(file, { ...now, reported: {} });
   const last = readJson(lastFile(root, env));
@@ -337,7 +378,7 @@ function snapshotChild(cwd, session, source, env) {
     }
   }
   if (!last || last.session !== session) writeJson(lastFile(root, env), { ...now, session, unknown: false });
-  if (prelude) for (const prefix of ['REFS-', 'NOTE-', 'ACTS-']) { try { prelude.sweepStale(path.dirname(file), prefix); } catch { /* best effort */ } }
+  if (prelude) for (const prefix of ['REFS-', 'NOTE-', 'ACTS-', 'PAUSE-']) { try { prelude.sweepStale(path.dirname(file), prefix); } catch { /* best effort */ } }
 }
 function spawnSnapshot(cwd, session, source) {
   try {
@@ -437,31 +478,35 @@ async function postCall(payload, env) {
   const cwd = payload.cwd || process.cwd();
   const root = stateRoot(cwd, env);
   const session = payload.session_id;
-  forge.confirmAct(root, session, payload.tool_use_id, env);
+  const gated = forge.confirmAct(root, session, payload.tool_use_id, env);
   const file = sessionFile(root, session, env);
   let state = readJson(file);
   if (!state) return null; // no baseline (no remote, or the child failed): the Stop speaks
-  if (!state.dirty && !callIsRead({ name: payload.tool_name, input: payload.tool_input || {} }, cwd)) {
-    state = { ...state, dirty: true };
-    writeJson(file, state);
-  }
   let r = null;
   try { r = forge.classify(payload); } catch { r = null; }
-  if (!r || !(r.strength === 'unknown' || [MERGE, BRANCH, RELEASE].includes(r.concept))) return null;
+  const strong = !!r && (r.strength === 'unknown' || [MERGE, BRANCH, RELEASE].includes(r.concept));
+  // `strong`: this turn made a forge call or a gated push, so its Stop checks even while the end-of-turn check is paused.
+  const marks = { ...(!state.dirty && !callIsRead({ name: payload.tool_name, input: payload.tool_input || {} }, cwd) ? { dirty: true } : {}),
+    ...(!state.strong && (gated || strong) ? { strong: true } : {}) };
+  if (Object.keys(marks).length) { state = { ...state, ...marks }; writeJson(file, state); }
+  if (!strong) return null;
   // The gate ledgers merges and pushes; a release is held by preferences, not gated, so its act is written here.
   if (r.strength === 'known' && r.concept === RELEASE) forge.recordAct(root, session, { concept: RELEASE, ref: r.ref }, env);
   const remote = forge.remoteOf(cwd);
   if (!remote) return null;
   const now = snapshot(cwd, remote);
-  if (!now.ok) return { systemMessage: `Ref watch: not checked (${now.reason}).` };
+  afterCheck(root, session, env, now);
+  const told = pauseLine(root, session, env);
+  if (!now.ok) return { systemMessage: [`Ref watch: not checked (${now.reason}).`, told].filter(Boolean).join('\n') };
   const reported = state.reported || {};
   const moves = diffRefs(state.refs, now.refs).filter((m) => reported[m.ref] !== (m.to || ''));
   // An armed act is used up at the Stop, which judges these moves again.
   const { ctx, loud, notes } = judge(cwd, remote, state, rootOf(cwd, env), moves, windowActs(root, session, state, env));
-  if (!loud.length) return null;
+  if (!loud.length) return told ? { systemMessage: told } : null;
   for (const m of loud) reported[m.ref] = m.to || '';
   writeJson(file, { ...state, reported });
-  return { decision: 'block', reason: `${[...loud.map((m) => loudLine(m, ctx, 'right after this call')), ...notes].join('\n')}\nStop and report this to the user before anything else; do not try to undo it unless they ask.` };
+  const when = state.skipped ? sinceLast(state.at) : 'right after this call';
+  return { decision: 'block', reason: `${[...loud.map((m) => loudLine(m, ctx, when)), ...notes].join('\n')}\nStop and report this to the user before anything else; do not try to undo it unless they ask.`, ...(told ? { systemMessage: told } : {}) };
 }
 
 // Work still running when the turn ends can move a ref after this diff, so the next Stop diffs too - the Stop input's
@@ -483,12 +528,17 @@ async function stopTurn(payload, env) {
   const calls = typeof payload.transcript_path === 'string' ? turnCalls(payload.transcript_path) : null;
   const marked = readJson(sessionFile(root, session, env));
   const ran = calls === null || !!(marked && marked.dirty) || calls.some((c) => !callIsRead(c, cwd));
+  // Paused, or publish-only: only a turn that made a forge call or a gated push checks. A turn held back keeps the cycle
+  // dirty, so the first check after the pause diffs whatever it was.
+  const held = (watchSetting(env) === 'publish-only' || pauseActive(root, session, env)) && !(marked && marked.strong);
+  if (ran && held && marked && !(marked.skipped && marked.dirty)) writeJson(sessionFile(root, session, env), { ...marked, skipped: true, dirty: true });
   const loudLines = [...((note && note.loud) || [])];
   const notes = [];
   if (note && note.summary && !loudOnly(env)) notes.push(note.summary);
-  if (ran) {
+  if (ran && !held) {
     const state = await baselineOf(root, session, env, 1500);
     const now = snapshot(cwd, remote);
+    afterCheck(root, session, env, now);
     const live = backgroundLive(payload);
     if (!now.ok) notes.push(`Ref watch: not checked (${now.reason}).`);
     else if (!state) {
@@ -498,19 +548,23 @@ async function stopTurn(payload, env) {
       const reported = state.reported || {};
       const moves = diffRefs(state.refs, now.refs).filter((m) => reported[m.ref] !== (m.to || ''));
       const { ctx, loud, summary, used, notes: unsure } = judge(cwd, remote, state, rootOf(cwd, env), moves, windowActs(root, session, state, env));
-      loudLines.push(...loud.map((m) => loudLine(m, ctx)), ...unsure);
-      const line = loudOnly(env) ? null : summaryLine(summary, 'other branches moved this turn');
+      const when = state.skipped ? sinceLast(state.at) : 'this turn';
+      loudLines.push(...loud.map((m) => loudLine(m, ctx, when)), ...unsure);
+      const line = loudOnly(env) ? null : summaryLine(summary, `other branches moved ${when}`);
       if (line) notes.push(line);
       writeJson(sessionFile(root, session, env), { ...now, head: state.head || now.head, reported: {}, consumed: consumedAfter(state, used), dirty: live });
       const unknown = forge.readActs(root, session, env).some((a) => a && a.asked && a.confirmed);
       writeJson(lastFile(root, env), { ...now, head: state.head || now.head, session, unknown });
     }
   }
+  const told = pauseLine(root, session, env);
+  const ssh = ran && !held && watchSetting(env) !== 'publish-only' ? sshNotice(cwd, remote, root, env, !told) : null;
+  const forUser = [told, ssh].filter(Boolean);
   if (loudLines.length && !(prelude && prelude.stopHeldThisCycle('forge-session', payload, env))) {
     if (prelude) prelude.markStopHeld('forge-session', payload, env);
-    return { decision: 'block', reason: [...loudLines, ...notes, 'Tell the user what moved before anything else; do not try to undo it unless they ask.'].join('\n') };
+    return { decision: 'block', reason: [...loudLines, ...notes, 'Tell the user what moved before anything else; do not try to undo it unless they ask.'].join('\n'), ...(forUser.length ? { systemMessage: forUser.join('\n') } : {}) };
   }
-  const shown = [...loudLines, ...notes];
+  const shown = [...loudLines, ...notes, ...forUser];
   return shown.length ? { systemMessage: shown.join('\n') } : null;
 }
 

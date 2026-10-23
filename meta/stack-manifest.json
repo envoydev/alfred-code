@@ -1070,7 +1070,7 @@
       "file": "forge-session.js",
       "matcher": "@Stop",
       "event": "",
-      "note": "the ref watch's catch-all: when the turn ran anything but a known read (a script, a seat, a browser click, an unknown tool) or a PostToolUse marked the cycle, and again after a turn that left background work running, every branch and tag is diffed once more - a loud move blocks once per cycle, the rest is one summary line for the user; an unreachable remote is 'not checked', never clean; forge-session:watch in ALFRED_CODE_HOOKS_OFF turns it off, ALFRED_CODE_FORGE_WATCH=loud-only drops the summary"
+      "note": "the ref watch's catch-all: when the turn ran anything but a known read (a script, a seat, a browser click, an unknown tool) or a PostToolUse marked the cycle, and again after a turn that left background work running, every branch and tag is diffed once more - a loud move blocks once per cycle, the rest is one summary line for the user; an unreachable remote is 'not checked', never clean; forge-session:watch in ALFRED_CODE_HOOKS_OFF turns it off, ALFRED_CODE_FORGE_WATCH=loud-only drops the summary; a check that fails or takes over 3s pauses the catch-all for 30 min (a turn that made a forge call or a gated push still checks), and publish-only holds it to those turns"
     },
     {
       "file": "instrument-tool-usage.js",

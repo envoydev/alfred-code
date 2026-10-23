@@ -306,7 +306,7 @@ test('read-only turn skips the diff', () => {
   w.git('remote', 'set-url', 'origin', path.join(w.base, 'gone.git'));
   const reads = [['Read', { file_path: 'a.txt' }], ['Bash', { command: 'git status && git diff --stat && ls -la | head -5' }], ['Grep', { pattern: 'x' }], ['mcp__gitlab__get_merge_request', { merge_request_iid: 1 }]];
   assert.strictEqual(stop(w.dir, reads).stdout, '', 'no ls-remote ran, so nothing was not checked');
-  assert.match(out(stop(w.dir, [['Bash', { command: 'npm test' }]])).systemMessage, /^Ref watch: not checked \('.+gone\.git' does not appear to be a git repository\)\.$/);
+  assert.match(out(stop(w.dir, [['Bash', { command: 'npm test' }]])).systemMessage, /^Ref watch: not checked \('.+gone\.git' does not appear to be a git repository\)\.\n/);
 });
 
 test('a seat dispatch and an unknown tool count as a non-read turn', () => {
@@ -326,7 +326,99 @@ test('unreachable remote', () => {
   const o = out(stop(w.dir));
   assert.ok(Date.now() - t0 < 9000, `took ${Date.now() - t0}ms`);
   assert.strictEqual(o.decision, undefined);
-  assert.match(o.systemMessage, /^Ref watch: not checked \(.+\)\.$/);
+  assert.match(o.systemMessage, /^Ref watch: not checked \(.+\)\.\n/);
+});
+
+// A remote behind a fake ssh that sleeps the seconds in `delay` and logs each connection - from git's side, a security key
+// waiting for a touch or an approval dialog looks like this.
+function slowRemote(w) {
+  const unix = (p) => p.replace(/\\/g, '/');
+  const ssh = path.join(w.base, 'slow-ssh.sh'), delay = path.join(w.base, 'delay'), log = path.join(w.base, 'ssh.log');
+  fs.writeFileSync(delay, '0');
+  fs.writeFileSync(ssh, `#!/bin/sh\n[ "$1" = "-G" ] && exit 0\necho x >> '${unix(log)}'\nsleep "$(cat '${unix(delay)}')"\nexec git-upload-pack '${unix(w.remote)}'\n`, { mode: 0o755 });
+  w.git('config', 'core.sshCommand', `sh '${unix(ssh)}'`);
+  w.git('remote', 'set-url', 'origin', 'ssh://fakehost/x.git');
+  return {
+    setDelay: (s) => fs.writeFileSync(delay, String(s)),
+    calls: () => { try { return fs.readFileSync(log, 'utf8').split('\n').filter(Boolean).length; } catch { return 0; } },
+  };
+}
+const SINCE = '(?:since the last check (?:\\d+ min|under a minute) ago)';
+
+test('the start snapshot reads the refs and the default branch in one call', () => {
+  const w = watchRepo();
+  const s = slowRemote(w);
+  assert.strictEqual(snap(w.dir).status, 0);
+  assert.strictEqual(s.calls(), 1);
+  const state = JSON.parse(fs.readFileSync(path.join(w.dir, '.alfred', 'state', 'forge', `REFS-${SID}.json`), 'utf8'));
+  assert.strictEqual(state.head, 'refs/heads/main');
+  assert.deepStrictEqual(Object.keys(state.refs), ['refs/heads/main']);
+});
+
+test('a slow answer pauses the end-of-turn check - said once; a forge call still checks, and a quick answer lifts it', () => {
+  const w = watchRepo();
+  const s = slowRemote(w);
+  assert.strictEqual(snap(w.dir).status, 0);
+  s.setDelay(3.5);
+  const first = out(stop(w.dir));
+  assert.strictEqual(s.calls(), 2);
+  assert.strictEqual(first.decision, undefined);
+  assert.match(first.systemMessage, /^Ref watch: the remote took \d+\.\d s to answer - the end-of-turn check now runs at most every 30 min this session/);
+  s.setDelay(0);
+  const before = w.git('rev-parse', 'HEAD').stdout.trim();
+  const landed = w.mateCommit('landed'); w.mate('push', '-q', 'origin', 'main');
+  assert.strictEqual(stop(w.dir).stdout, '', 'paused: no check, and the pause is not said again');
+  assert.strictEqual(s.calls(), 2);
+  const p = out(post(w.dir, 'mcp__gitlab__pull_request_frobnicate', { iid: 4 }));
+  assert.strictEqual(s.calls(), 3, 'a forge call is still checked');
+  assert.strictEqual(p.decision, 'block');
+  assert.match(p.reason, new RegExp(`main moved ${before.slice(0, 7)}\\.\\.${landed.slice(0, 7)} ${SINCE}; no gated act explains it`));
+  stop(w.dir);
+  stop(w.dir);
+  assert.strictEqual(s.calls(), 5, 'the quick answer lifted the pause: every non-read turn checks again');
+});
+
+test('a failed check pauses the end-of-turn check too, and the pause ends after 30 min', () => {
+  const w = watchRepo();
+  assert.strictEqual(snap(w.dir).status, 0);
+  w.git('remote', 'set-url', 'origin', path.join(w.base, 'gone.git'));
+  assert.match(out(stop(w.dir)).systemMessage, /^Ref watch: not checked \(.+\)\.\nRef watch: the check failed - the end-of-turn check now runs at most every 30 min this session/);
+  assert.strictEqual(stop(w.dir).stdout, '', 'paused: not checked, not said again');
+  const pause = path.join(w.dir, '.alfred', 'state', 'forge', `PAUSE-${SID}.json`);
+  fs.writeFileSync(pause, JSON.stringify({ ...JSON.parse(fs.readFileSync(pause, 'utf8')), until: Date.now() - 1 }));
+  assert.match(out(stop(w.dir)).systemMessage, /^Ref watch: not checked \(.+\)\.$/, 'checked again once the 30 min are up, the pause said once');
+});
+
+test('the first check over SSH names the publish-only way out, once per repo - a quick key tap never trips the pause', () => {
+  const w = watchRepo();
+  slowRemote(w);
+  assert.strictEqual(snap(w.dir).status, 0);
+  assert.match(out(stop(w.dir)).systemMessage, /^Ref watch: this repo's remote is checked over SSH at the end of most turns\. If your SSH login asks you each time \(a security-key touch, an approval prompt\), set ALFRED_CODE_FORGE_WATCH=publish-only/);
+  assert.strictEqual(stop(w.dir).stdout, '');
+  assert.strictEqual(snap(w.dir, 'next').status, 0);
+  assert.strictEqual(stop(w.dir, BUILD, {}, 'next').stdout, '', 'once per repo, not per session');
+  const local = watchRepo();
+  assert.strictEqual(snap(local.dir).status, 0);
+  assert.strictEqual(stop(local.dir).stdout, '', 'a local or https remote asks for no key');
+});
+
+test('publish-only checks only after a push or forge call, and at the end of that turn', () => {
+  const w = watchRepo();
+  const s = slowRemote(w);
+  const env = { ALFRED_CODE_FORGE_WATCH: 'publish-only' };
+  assert.strictEqual(snap(w.dir, SID, env).status, 0);
+  w.mateCommit('landed'); w.mate('push', '-q', 'origin', 'main');
+  assert.strictEqual(stop(w.dir, BUILD, env).stdout, '');
+  assert.strictEqual(s.calls(), 1);
+  const p = out(post(w.dir, 'mcp__gitlab__pull_request_frobnicate', { iid: 4 }, env));
+  assert.strictEqual(p.decision, 'block');
+  assert.match(p.reason, new RegExp(`main moved \\S+ ${SINCE}`));
+  assert.strictEqual(s.calls(), 2);
+  stop(w.dir, BUILD, env);
+  assert.strictEqual(s.calls(), 3, 'the turn that made a forge call checks at its end');
+  stop(w.dir, BUILD, env);
+  assert.strictEqual(s.calls(), 3);
+  assert.match(profileLine(profile(w.dir, watchEnv(w.dir, env))), /ref watch: publish-only\.$/);
 });
 
 test('a remote that wants a password never reaches an askpass program', async () => {

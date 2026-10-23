@@ -176,12 +176,13 @@
       "key": "ALFRED_CODE_FORGE_WATCH",
       "default": "all",
       "ask": false,
-      "what": "forge-session.js's ref watch: `all` (the seed) reports every branch and tag that moved with no gated act behind it - the default branch, the upstream, a branch the git preferences name, a commit from this checkout and any tag loud, the rest as one summary line; `loud-only` drops the summary line for a busy team repo, and the session's Forge: line says so, since the watch then no longer covers every branch. `forge-session:watch` in ALFRED_CODE_HOOKS_OFF turns the watch off.",
+      "what": "forge-session.js's ref watch: `all` (the seed) reports every branch and tag that moved with no gated act behind it - the default branch, the upstream, a branch the git preferences name, a commit from this checkout and any tag loud, the rest as one summary line; `loud-only` drops the summary line for a busy team repo, and the session's Forge: line says so, since the watch then no longer covers every branch; `publish-only` checks the remote only after a turn that made a forge call or a gated push, for a git login that asks every time (a security key that needs a touch, an approval dialog) - a move is then reported at the next such check, not the turn it happened. `forge-session:watch` in ALFRED_CODE_HOOKS_OFF turns the watch off.",
       "validate": {
         "type": "enum",
         "values": [
           "all",
-          "loud-only"
+          "loud-only",
+          "publish-only"
         ]
       }
     },

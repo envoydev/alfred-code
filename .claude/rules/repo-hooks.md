@@ -1233,7 +1233,13 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     tag - blocked once per cycle; the rest is one summary `systemMessage`. An ASKED act covers nothing (Task 6 ruling,
     revising Task 2's). `REFS-LAST.json` carries the end snapshot to the next session, which reports only after an
     asked call. Unreachable is `not checked (<why>)`, never clean. `forge-session:watch` in `ALFRED_CODE_HOOKS_OFF` off,
-    `ALFRED_CODE_FORGE_WATCH=loud-only` drops the summary (the session line says so). The verified routes it is tested
+    `ALFRED_CODE_FORGE_WATCH=loud-only` drops the summary (the session line says so). A check that fails or takes over 3 s
+    (a key waiting for a touch, an approval dialog) pauses the catch-all for 30 min (`PAUSE-<session>.json`, said once);
+    a turn marked `strong` (a forge call, a gated push PostToolUse confirmed) still checks, an answer within 3 s lifts
+    it, and `publish-only` holds the catch-all to those turns. A held turn marks the baseline `skipped`, so the next
+    diff says `since the last check`. A quick key tap never trips the pause (timing cannot tell it from the network), so
+    the first check over an SSH remote names `publish-only` once per repo (`SSH-NOTICE.json`). The start snapshot reads
+    HEAD and the refs in ONE call. Evidence: `docs/forge-routes-evidence.md`, 'The pause and publish-only'. The verified routes it is tested
     against are `scripts/fixtures/forge-corpus.js`.
   - Formatter after an edit: DECLINED (hooks audit 2026-10-08, coverage map) - no measured incident; formatting is
     the project's lint and the verifier's job, and a PostToolUse formatter rewrites files under the model between its
