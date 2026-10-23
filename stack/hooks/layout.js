@@ -29,7 +29,7 @@ const docsRoot = (env = process.env) => envOf(env, 'DOCS_PATH') || `${dataRoot(e
 const APPROVAL_NAME = /^(?:APPROVAL|COMMIT-GATE|PUSH-GATE|[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-ALLOW)$/;
 const flowKind = (name) => (APPROVAL_NAME.test(String(name)) ? 'approvals' : 'sessions');
 
-const STATE_KINDS = new Set(['approvals', 'sessions', 'history']);
+const STATE_KINDS = new Set(['approvals', 'sessions', 'history', 'forge']);
 const kindOf = (kind) =>
 {
     if (!STATE_KINDS.has(kind)) throw new Error(`layout: unknown state kind '${kind}'`);

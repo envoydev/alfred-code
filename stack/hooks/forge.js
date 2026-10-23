@@ -326,11 +326,11 @@ function classifyCli(c, name, argv) {
   const concept = conceptOf(cls, object, true);
   return concept ? result(concept, 'known', 'shell', `${label}${cls !== verb.cls ? ` (${cls} by its flags)` : ''}`, extra) : null;
 }
-function classifyShell(c, raw, cwd) {
+function classifyShell(c, raw, cwd, pre) {
   let sw;
   try { sw = require('./shell-writes.js'); } catch { return []; }
-  let read;
-  try { read = sw.gitText(String(raw || ''), cwd || process.cwd()); } catch { return []; }
+  let read = pre;
+  if (!read) { try { read = sw.gitText(String(raw || ''), cwd || process.cwd()); } catch { return []; } }
   const { command, parsed } = read;
   let words;
   try { words = sw.commandWords(command, parsed); } catch { return []; }
@@ -434,10 +434,35 @@ function classify(payload, opts = {}) {
   }
   return null;
 }
-// Every act a shell command carries, in order - for a gate that judges each one (the commit guard).
+// Every act a shell command carries, in order - for a gate that judges each one (the commit guard). `parsed` reuses a
+// shell-writes parse of the alias-expanded `command`, so the spans index the text that gate already holds.
 function classifyCommand(command, cwd, opts = {}) {
   const c = compile(opts.lexicon || loadLexicon(cwd || process.cwd()));
-  return classifyShell(c, command, cwd);
+  return classifyShell(c, command, cwd, opts.parsed ? { command, parsed: opts.parsed } : null);
 }
 
-module.exports = { classify, classifyCommand, loadLexicon, isStackServer, tokens, CONCEPTS, PUBLISH, PREF_HOLD };
+// ---- the act ledger ------------------------------------------------------------------------------------------------
+// Every publish a gate ALLOWS (and every unknown call it asked about) is one row in
+// <data root>/state/forge/ACTS-<session>.jsonl - what the ref watch reads to tell a gated move from an ungated one.
+// Written at PreToolUse, before the act runs: a row whose act was then refused or failed only ever covers a move that did
+// not happen. Best effort - a ledger write never changes a verdict.
+const sessionFile = (sessionId) => `ACTS-${String(sessionId || 'unknown').replace(/[^A-Za-z0-9_-]/g, '_')}.jsonl`;
+function actsPath(projectRoot, sessionId, env = process.env) {
+  return require('./layout.js').statePath(projectRoot, 'forge', sessionFile(sessionId), env);
+}
+function recordAct(projectRoot, sessionId, act, env = process.env) {
+  try {
+    const file = actsPath(projectRoot, sessionId, env);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const row = { concept: act.concept || null, change: act.change || null, ref: act.ref || null, head: act.head || null, asked: !!act.asked, at: Date.now() };
+    fs.appendFileSync(file, `${JSON.stringify(row)}\n`);
+  } catch { /* the ledger is never allowed to break a gate */ }
+}
+function readActs(projectRoot, sessionId, env = process.env) {
+  try {
+    return fs.readFileSync(actsPath(projectRoot, sessionId, env), 'utf8').split('\n').filter(Boolean)
+      .map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+  } catch { return []; }
+}
+
+module.exports = { classify, classifyCommand, loadLexicon, isStackServer, tokens, recordAct, readActs, actsPath, CONCEPTS, PUBLISH, PREF_HOLD };

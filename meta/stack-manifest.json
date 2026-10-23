@@ -779,6 +779,12 @@
       "note": "block a non-trivial git commit without the data-root state/approvals/COMMIT-GATE receipt (VERIFIED/WAIVED), and a git push / gh pr merge without state/approvals/PUSH-GATE (guard-ungated-commit:push in ALFRED_CODE_HOOKS_OFF turns that half off)"
     },
     {
+      "file": "guard-ungated-commit.js",
+      "matcher": "^mcp__(?!(plugin_alfred-[a-z-]+_)?alfred-).*",
+      "event": "",
+      "note": "the publish half on every MCP server outside the stack: forge.js reads the tool by its words (accept_merge_request, repo_pull_request_write with autoComplete, push_files), so a merge or a branch write through any forge server needs the PUSH-GATE receipt git push and a CLI merge do; a forge call with no known verb is an ask (a deny when nobody is at the terminal); the stack's own servers are skipped by the lookahead"
+    },
+    {
       "file": "guard-stop-contract.js",
       "matcher": "@Stop",
       "event": "",

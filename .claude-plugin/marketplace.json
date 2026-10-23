@@ -576,6 +576,16 @@
             ]
           },
           {
+            "matcher": "^mcp__(?!(plugin_alfred-[a-z-]+_)?alfred-).*",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-ungated-commit.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
             "matcher": "Skill",
             "hooks": [
               {
