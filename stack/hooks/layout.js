@@ -29,7 +29,7 @@ const docsRoot = (env = process.env) => envOf(env, 'DOCS_PATH') || `${dataRoot(e
 const APPROVAL_NAME = /^(?:APPROVAL|COMMIT-GATE|PUSH-GATE|[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-ALLOW)$/;
 const flowKind = (name) => (APPROVAL_NAME.test(String(name)) ? 'approvals' : 'sessions');
 
-const STATE_KINDS = new Set(['approvals', 'sessions', 'history', 'forge']);
+const STATE_KINDS = new Set(['approvals', 'sessions', 'history', 'forge', 'handoff']);
 const kindOf = (kind) =>
 {
     if (!STATE_KINDS.has(kind)) throw new Error(`layout: unknown state kind '${kind}'`);
@@ -109,7 +109,83 @@ const LAYOUT_MOVES = Object.freeze([
     { from: '.branches', removeIfEmpty: true },
 ].map(Object.freeze));
 
+// THE PROJECT A FOLDER BELONGS TO (moved here from the retired memory engine, 2026-10-24). The launch directory of a
+// command or a seat's Bash, bounded the way hook-prelude's set-up gate reads a folder: the checkout is the git top level
+// (gitTopOf), or the nearest folder between the start and that top level holding the install record; with no git it is
+// the start alone. Nothing above the checkout's top level is read - a record planted in a shared ancestor would redirect
+// the state (T1). A home directory is never passed: its .claude/ is the account dir.
+//   checkout  the folder the session works in.
+//   project   the install the checkout belongs to - in a linked worktree the main checkout whenever that one holds a record,
+//             so a seat in a worktree writes the state the main session and the next seat read.
+const INSTALL_RECORDS = [['alfred-code.stamp'], ['hooks', 'docs.js']];
+const holdsRecord = (dir) => INSTALL_RECORDS.some((r) => fs.existsSync(path.join(dir, '.claude', ...r)));
+
+function realpathOrSelf(p)
+{
+    try { return fs.realpathSync.native(p); } catch { /* not there */ }
+    try { return fs.realpathSync(p); } catch { /* not there */ }
+    // Not created yet: its deepest existing folder resolved natively, the rest re-attached (an 8.3 parent kept short
+    // while its project resolved long - 2.1.7, the windows-2025 job).
+    const abs = path.resolve(p);
+    const rest = [];
+    for (let dir = abs; ;)
+    {
+        const up = path.dirname(dir);
+        if (up === dir) return abs;
+        rest.unshift(path.basename(dir));
+        dir = up;
+        try { return path.join(fs.realpathSync.native(dir), ...rest); } catch { /* keep climbing */ }
+    }
+}
+// The form two directory spellings are compared in: folded on Windows, where names are case-insensitive.
+const dirKey = (p) => { const r = realpathOrSelf(p); return path.sep === '\\' ? r.toLowerCase() : r; };
+
+// The main checkout of a linked worktree (a `.git` FILE naming `<main>/.git/worktrees/<n>`), read from the files alone.
+function worktreeMain(top)
+{
+    try
+    {
+        const line = /^gitdir:\s*(.+?)\s*$/m.exec(fs.readFileSync(path.join(top, '.git'), 'utf8'));
+        if (!line) return null;
+        const gitdir = path.resolve(top, line[1]);
+        let common = null;
+        try { common = path.resolve(gitdir, fs.readFileSync(path.join(gitdir, 'commondir'), 'utf8').trim()); }
+        catch { if (path.basename(path.dirname(gitdir)) === 'worktrees') common = path.dirname(path.dirname(gitdir)); }
+        return common && path.basename(common) === '.git' ? path.dirname(common) : null;
+    }
+    catch { return null; }
+}
+
+// The checkout's git top level: the first folder at or above `from` holding a `.git`, '' when a home or '/' comes first.
+// A `.git` another user owns is no repository (git(1) SECURITY, safe.directory). `uid` is null where the platform has none.
+const ownUid = () => (typeof process.getuid === 'function' ? process.getuid() : null);
+function gitTopOf(from, { home = require('os').homedir(), uid = ownUid() } = {})
+{
+    for (let at = from; ;)
+    {
+        if (dirKey(at) === dirKey(home)) return '';
+        let git = null;
+        try { git = fs.statSync(path.join(at, '.git')); } catch { /* not this level */ }
+        if (git) return uid === null || git.uid === uid ? at : '';
+        const up = path.dirname(at);
+        if (up === at) return '';
+        at = up;
+    }
+}
+
+function projectRootOf(start, { home = require('os').homedir() } = {})
+{
+    const from = path.resolve(start || process.cwd());
+    const top = gitTopOf(from, { home });
+    if (!top) return { checkout: from, project: from };
+    let checkout = top;
+    for (let at = from; at !== top; at = path.dirname(at)) if (holdsRecord(at)) { checkout = at; break; }
+    const main = worktreeMain(top);
+    if (main) for (const at of [path.join(main, path.relative(top, checkout)), main]) if (holdsRecord(at)) return { checkout, project: at };
+    return { checkout, project: checkout };
+}
+
 module.exports = {
     dataRoot, docsRoot, flowKind, statePath, statsPath, legacyStatePath, legacyStatsPath, findState, findStats, planDirs, LAYOUT_MOVES,
-    PLAN_ID, planIdOf, approvalPath, approvalStamps,
+    PLAN_ID, planIdOf, approvalPath, approvalStamps, projectRootOf, gitTopOf, worktreeMain, holdsRecord, dirKey,
 };
