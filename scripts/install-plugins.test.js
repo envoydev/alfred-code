@@ -1336,7 +1336,8 @@ test('seed: copy -> plugin -> copy hands the plugin route\'s hooks back, never a
     const shipped = [...new Set(loadManifest(ROOT).catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
     const listing = JSON.stringify(['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
     const copies = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' };
-    const MODULES = ['hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js', 'shell-guards.js', 'file-guards.js'];
+    // The installer's own list, so a module added there is never a stack hook here.
+    const MODULES = require('./install/alfred-code.js').HOOK_MODULES;
     const read = (repo) => ({
         files: fs.readdirSync(path.join(repo, '.claude', 'hooks')),
         off: String(JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')).env.ALFRED_CODE_HOOKS_OFF || '').split(',').filter(Boolean).sort(),
@@ -1893,7 +1894,7 @@ test('seed: a copy-route None survives a plugin-route run that dies after the ma
 {
     const s = hooksRouteSandbox('m9-', 'skill markdown-style\nhook none\n');
     const fullCopy = { ...s.env, ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
-    const stackHooks = () => s.onDisk().filter((f) => !HOOK_ENGINES.includes(f) && !['hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js', 'shell-guards.js', 'file-guards.js'].includes(f));
+    const stackHooks = () => s.onDisk().filter((f) => !HOOK_ENGINES.includes(f) && !require('./install/alfred-code.js').HOOK_MODULES.includes(f));
     try
     {
         // Step 1: the full copy route with the user's None - the stamp says 'copy', no stack hook copied.

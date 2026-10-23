@@ -65,8 +65,8 @@ test('I10: the desktop gate is one wired hook, counted everywhere the hooks are 
     assert.ok(re.test(name), name);
   for (const name of ['mcp__plugin_windows-control_windows-control__Click', 'mcp__plugin_macos-control_macos-control__App', `mcp__${'windows-control'}__AppX`])
     assert.ok(!re.test(name), `${name} is not matched`);
-  assert.match(claude(), /`stack\/hooks\/` - eighteen hooks/);
-  assert.match(claude(), /all eighteen, generated from the manifest's `hooks\[\]`/);
+  assert.match(claude(), /`stack\/hooks\/` - nineteen hooks/);
+  assert.match(claude(), /all nineteen, generated from the manifest's `hooks\[\]`/);
   assert.match(claude(), /`guard-desktop-exec\.js` \(PreToolUse on the desktop servers' two process launchers/);
   assert.doesNotMatch(read('README.md'), /seventeen/);
   assert.doesNotMatch(read('docs/install-footprint.md'), /seventeen/);

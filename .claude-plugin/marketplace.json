@@ -724,6 +724,11 @@
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/history-session.js\"",
                 "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/forge-session.js\"",
+                "timeout": 10
               }
             ]
           },
@@ -863,6 +868,11 @@
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/memory-session.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/forge-session.js\"",
                 "timeout": 10
               }
             ]

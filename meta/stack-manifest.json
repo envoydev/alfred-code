@@ -1043,6 +1043,18 @@
       "note": "records this session: commits, files left dirty, the user's AskUserQuestion answers - machine-local, <data root>/state/history/"
     },
     {
+      "file": "forge-session.js",
+      "matcher": "@SessionStart",
+      "event": "",
+      "note": "one line of forge facts at start (no network): the remote's host and kind, the forge CLIs on PATH, the MCP servers that are forge servers by their launch command or URL (never their name) and whether the ref watch is on - the model maps each concept onto the tool it has and never guesses the remote; engine forge.js beside it"
+    },
+    {
+      "file": "forge-session.js",
+      "matcher": "@SubagentStart",
+      "event": "",
+      "note": "the same forge line for a dispatched subagent - SessionStart context never reaches one at dispatch, and a seat that merges or watches a pipeline needs the same facts"
+    },
+    {
       "file": "instrument-tool-usage.js",
       "matcher": ".*",
       "event": "",

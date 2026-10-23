@@ -261,11 +261,11 @@ windows-service sets; ionic-angular, data, browser-extension, js), plus one ques
 ## Hooks
 
 Leaf picks - nothing requires a hook and a hook requires nothing, so every row is free and the
-cascade never reaches here. Recommended (FRESH) = all eighteen: the twelve always-on guards, the
-four session engines (`docs-session` - the docs start block and finish ask - `preferences-session` - the
+cascade never reaches here. Recommended (FRESH) = all nineteen: the twelve always-on guards, the
+five session engines (`docs-session` - the docs start block and finish ask - `preferences-session` - the
 preferences docs handed over before the first edit and the first git write - `memory-session` - the
-shared-memory slice at session start - and `history-session` - what the last sessions on this branch
-did and ruled), the turn-end build check (`check-turn-build` - run inside history-session's Stop, inert until
+shared-memory slice at session start - `history-session` - what the last sessions on this branch
+did and ruled - and `forge-session` - the forge line at session and seat start), the turn-end build check (`check-turn-build` - run inside history-session's Stop, inert until
 `ALFRED_CODE_TURN_CHECK` flips to `1`, seeded `0`), plus the env-gated `instrument-tool-usage` (wired
 like the guards, but inert until `ALFRED_CODE_INSTRUMENT` flips to `1` - so keeping it costs nothing
 idle, and dropping it leaves the install unable to record a measured run without a manual re-wire).
@@ -273,7 +273,7 @@ idle, and dropping it leaves the install unable to record a measured run without
 The whole set ships together inside the core `alfred-code` plugin, so nothing is copied and nothing
 is wired per project: the answer is written as `ALFRED_CODE_HOOKS_OFF` in the scope's settings file
 env - the rows dropped are the ones named there, re-adding a row removes its name, and **None** names
-all eighteen (the emitted selection carries `hook none` for it; `--hooks-answered` at the
+all nineteen (the emitted selection carries `hook none` for it; `--hooks-answered` at the
 prerequisite check is what writes it). It can be changed later by editing that value, no reinstall.
 An install on the hooks copy route (`ALFRED_CODE_HOOKS_VIA_PLUGIN=false`) keeps the old behaviour -
 dropping a hook removes its file and its wiring - and, while the core is on for the skills or the

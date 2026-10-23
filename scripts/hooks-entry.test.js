@@ -23,7 +23,7 @@ test('the wirings come from the installer table, not a second list', () => {
         : w.file === `${fileDispatcher.SELF}.js` ? fileDispatcher.NAMES.map(g => `${g}.js`)
         // The turn build check rides history-session's Stop process (2026-10-16): a hook, though it starts no process of its own.
         : w.file === 'history-session.js' && w.event === 'Stop' ? [w.file, ...historySession.RIDERS.map(g => `${g}.js`)] : [w.file])));
-    assert.strictEqual(files.size, 18, 'eighteen hooks, however many wirings they take');
+    assert.strictEqual(files.size, 19, 'nineteen hooks, however many wirings they take');
     for (const w of wirings) assert.ok(/^[a-z-]+\.js$/.test(w.file), `odd file name: ${w.file}`);
 });
 

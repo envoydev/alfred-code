@@ -2976,4 +2976,4 @@ if (require.main === module)
     });
 }
 
-module.exports = { main, USAGE, CORE_DEP_PLUGINS, HOOK_ENGINES, SECRET_DENY, RETIRED_DENY, SHIPPED_DENY, MEMORY_TOOLS_USED, memoryToolDeny, browserToolDeny };
+module.exports = { main, USAGE, CORE_DEP_PLUGINS, HOOK_ENGINES, HOOK_MODULES, SECRET_DENY, RETIRED_DENY, SHIPPED_DENY, MEMORY_TOOLS_USED, memoryToolDeny, browserToolDeny };
