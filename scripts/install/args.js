@@ -17,7 +17,7 @@
 const ENUMS = {
     scope: { values: ['', 'project', 'user', 'local'], text: "--scope must be 'project', 'user' or 'local'" },
     docsVersioning: { values: ['', 'git', 'local'], text: "--docs-versioning must be 'git' or 'local'" },
-    memoryLevel: { values: ['', 'global', 'scoped', 'project'], text: "--memory-level must be 'global', 'scoped' or 'project'" },
+    memoryLevel: { values: ['', 'global', 'project'], text: "--memory-level must be 'global' or 'project'" },
     // The answer to the data move (docs.dataOffer): 'move' carries the docs, the navigation server's
     // folder, the browser profiles and a project-level memory database under the data root; 'keep' leaves
     // the layout as it is and no later update offers again. Not given, nothing moves. `--docs-move` is the
@@ -47,7 +47,7 @@ const ENUMS = {
 const { ENGINES: PW_ENGINES } = require('../../stack/mcp/data-root.js');
 
 const VALUED = new Map([
-    ['--space', 'space'], ['--scope', 'scope'],
+    ['--scope', 'scope'],
     ['--browsers', 'playwrightBrowsersRaw'], ['--browser-enabled', 'playwrightEnabledRaw'],
     // The pre-2.0.0 spellings (the playwright -> browser rename), read for one release: a command body
     // from before it still passes them. Never beside the new spelling of the same flag.
@@ -81,7 +81,7 @@ const SCOPE_OF = /^([a-z0-9-]+)=(global|user|project|local)$/;
 
 const ALIASES = new Map([['--playwright-browsers', '--browsers'], ['--playwright-enabled', '--browser-enabled'], ['--docs-move', '--data-move']]);
 
-const FLAG_LIST = '--space, --scope, --memory-level, --browsers, --browser-enabled, --docs-versioning, --data-path, --data-move, --docs-root-move, --docs-root-leave, --auto-compact, --instructions-at, --instructions-file, --instructions-seed, --github-cli, --keep-pins, --selection, --installed-only, --add, --drop, --scope-of, --print-plan, --plan-out, --skills-only, --source';
+const FLAG_LIST = '--scope, --memory-level, --browsers, --browser-enabled, --docs-versioning, --data-path, --data-move, --docs-root-move, --docs-root-leave, --auto-compact, --instructions-at, --instructions-file, --instructions-seed, --github-cli, --keep-pins, --selection, --installed-only, --add, --drop, --scope-of, --print-plan, --plan-out, --skills-only, --source';
 
 // One selection line, the shape the walks write: `<category> <name>`.
 const ADD_LINE = /^(skill|agent|rule|hook|mcp|plugin) [A-Za-z0-9._-]+$/;
@@ -98,7 +98,7 @@ const lower = (v) => String(v ?? '').toLowerCase();
 function parseArgs(argv)
 {
     const out = {
-        action: '', space: '', scope: '',
+        action: '', scope: '',
         playwrightBrowsersRaw: '', playwrightEnabledRaw: '', docsVersioning: '', memoryLevel: '', dataMove: '', dataPath: '', docsRootMove: '', docsRootLeaveRaw: '', autoCompact: '', instructionsAt: '', instructionsFile: '', instructionsSeed: '',
         selection: '', source: '', planOut: '',
         githubCli: false, keepPins: false, installedOnly: false, printPlan: false, skillsOnly: false,
@@ -164,12 +164,6 @@ function parseArgs(argv)
     for (const flag of ['add', 'drop'])
         if (out[flag].length && !out.installedOnly) fail(`--${flag} needs --installed-only - a walk writes its picks into the --selection file`);
     if (out.planOut && !out.printPlan) fail('--plan-out needs --print-plan - it writes the inventory the plan prints');
-
-    // --space is baked into a path (~/.claude-<space>, memory_<space>.db), so its characters are
-    // checked here rather than discovered as a broken directory name later. Its CASING is
-    // significant - it names a directory - which is why it is the one value not lower-cased.
-    if (out.space && !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(out.space))
-        fail(`--space '${out.space}' must start alphanumeric; chars [A-Za-z0-9._-]`);
 
     // I3 (R47): the flag, else '' - NOT a default of 'project' here, the same 'an empty string means
     // not given' rule this file's own header states for docsVersioning and memoryLevel. `update` without

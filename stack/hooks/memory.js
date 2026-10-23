@@ -40,8 +40,7 @@
 //                          an older release's navigation-server notes still on disk - then one `row <name>` /
 //                          `legacy <path>` line each. Exit 1, no number, when the database cannot be read: a
 //                          count is never guessed.
-// Levels -> db (FACT-SCHEMA / cross-task-facts.md): global ~/.alfred-memory/memory.db; scoped
-// ~/.alfred-memory/memory_<space>.db (no space: memory_default.db); project
+// Levels -> db (FACT-SCHEMA / cross-task-facts.md): global ~/.alfred-memory/memory.db; project
 // <project>/<data root>/.alfred-memory/memory.db (ALFRED_CODE_DATA_PATH, default .alfred). The 2.0.0 folder
 // `.memory-mcp` (~/.memory-mcp, <project>/.memory-mcp) still reads as its level, and a database the memory
 // launcher has not moved yet is read where it is (liveDbPath) - the shapes are stack/mcp/data-root.js's,
@@ -81,9 +80,8 @@ function dataRootOf(projectRoot) {
   return '.alfred';
 }
 
-function pathForLevel(level, { home, space, projectRoot, root } = {}) {
+function pathForLevel(level, { home, projectRoot, root } = {}) {
   if (level === 'global') return path.join(home, MEMORY_FOLDER, 'memory.db');
-  if (level === 'scoped') return path.join(home, MEMORY_FOLDER, `memory_${space || 'default'}.db`);
   if (level === 'project') return path.join(projectRoot, ...(root || dataRootOf(projectRoot)).split('/'), MEMORY_FOLDER, 'memory.db');
   throw new Error(`unknown memory level: ${level}`);
 }
@@ -128,7 +126,7 @@ function realpathOrSelf(p) {
 // would restore its case) - folded there, never on posix, where case is part of the name.
 const dirKey = (p) => { const r = realpathOrSelf(p); return path.sep === '\\' ? r.toLowerCase() : r; };
 
-// The inverse of pathForLevel - null for a path matching none of the three shapes exactly (not a
+// The inverse of pathForLevel - null for a path matching none of the two shapes exactly (not a
 // substring or prefix match: a foreign path is never mistaken for one of ours). A 'project' level
 // registration is compared against the MAIN checkout root first (the installer writes the db there,
 // same as projectName below), the given projectRoot second - inside a worktree that second candidate
@@ -145,7 +143,6 @@ function levelOfPath(dbPath, { home, projectRoot } = {}) {
     }
     if (home && root === dirKey(home)) return 'global';
   }
-  if (home && root === dirKey(home) && /^memory_[^/\\]+\.db$/.test(leaf.file)) return 'scoped';
   return null;
 }
 

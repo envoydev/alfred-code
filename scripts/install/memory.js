@@ -37,13 +37,13 @@ function memoryServerOf(servers)
     return undefined;
 }
 
-// Three shapes, nothing else. `root` is the project's data root (ALFRED_CODE_DATA_PATH).
-function pathForLevel(level, { home, space, projectRoot, root = dataRoot.DATA_ROOT_DEFAULT })
+// Two shapes, nothing else. `root` is the project's data root (ALFRED_CODE_DATA_PATH).
+function pathForLevel(level, { home, projectRoot, root = dataRoot.DATA_ROOT_DEFAULT })
 {
-    return dataRoot.memoryDbFor(level, { home, space, projectRoot, root });
+    return dataRoot.memoryDbFor(level, { home, projectRoot, root });
 }
 
-// The inverse, matching one of the three shapes EXACTLY - never a prefix or substring match, so a
+// The inverse, matching one of the two shapes EXACTLY - never a prefix or substring match, so a
 // foreign path is never mistaken for one of ours - under the new folder or the 2.0.0 `.memory-mcp`.
 // '' when it is none of them.
 function levelOfPath(p, { home, projectRoot })
@@ -52,7 +52,7 @@ function levelOfPath(p, { home, projectRoot })
 }
 
 // --memory-level, resolved. GIVEN: that level's default path. ABSENT: an EXISTING registration keeps its
-// level - and a CUSTOM path its MCP_MEMORY_SQLITE_PATH byte-for-byte; one of the three shapes is re-spelled
+// level - and a CUSTOM path its MCP_MEMORY_SQLITE_PATH byte-for-byte; one of the two shapes is re-spelled
 // to its current place (the `.alfred-memory` folder, the project level under the data root), which is where
 // its launcher moves the file and where every reader looks first (data-root.js liveMemoryDb falls back to
 // the old place until then). With no registration at all it is `global` - unless a record that could hold
@@ -60,19 +60,19 @@ function levelOfPath(p, { home, projectRoot })
 // nothing re-points the server or writes the key (F2). A fresh install has no level to keep, so it takes the
 // default (review 2.1.6 M1: `kept` there registered no memory server at all on the full copy route). A level
 // change never copies or deletes a database: whichever file the old memories are in stays there, which is why
-// the caller's log line names both.
-function resolveLevel({ flag, registeredPath, unread = [], stamped = false, home, space, projectRoot, root = dataRoot.DATA_ROOT_DEFAULT })
+// the caller's log line names both. The `scoped` level (`memory_<space>.db`) is gone (the user's ruling of 2026-10-23):
+// a registration still naming one is a custom path, kept as written.
+function resolveLevel({ flag, registeredPath, unread = [], stamped = false, home, projectRoot, root = dataRoot.DATA_ROOT_DEFAULT })
 {
-    if (flag) return { level: flag, dbPath: pathForLevel(flag, { home, space, projectRoot, root }), from: 'flag' };
+    if (flag) return { level: flag, dbPath: pathForLevel(flag, { home, projectRoot, root }), from: 'flag' };
     if (registeredPath)
     {
         const level = levelOfPath(registeredPath, { home, projectRoot });
         if (!level) return { level: 'custom', dbPath: registeredPath, from: 'registration' };
-        const scopedSpace = level === 'scoped' ? /^memory_(.+)\.db$/.exec(path.basename(registeredPath))[1] : space;
-        return { level, dbPath: pathForLevel(level, { home, space: scopedSpace, projectRoot, root }), from: 'registration' };
+        return { level, dbPath: pathForLevel(level, { home, projectRoot, root }), from: 'registration' };
     }
     if (unread.length && stamped) return { level: 'kept', dbPath: '', from: 'unreadable' };
-    return { level: 'global', dbPath: pathForLevel('global', { home, space, projectRoot, root }), from: 'default' };
+    return { level: 'global', dbPath: pathForLevel('global', { home, projectRoot, root }), from: 'default' };
 }
 
 // The memory database this project's install already records, where it was read, and the records that could
@@ -217,7 +217,7 @@ function countNotes({ projectRoot, configDir, home })
     try
     {
         // This run's account dir is always scanned; the importer's own scan adds $HOME/.claude and its
-        // `.claude-<space>` siblings, so a folder the import would read is never missed here.
+        // `.claude-<name>` siblings, so a folder the import would read is never missed here.
         const { findNotes } = require('../memory-import.js');
         return findNotes(projectRoot, configDir, configDir, home, null).noteEntries.length;
     }
@@ -253,8 +253,8 @@ function importNotes({ gate, importer, runImport, settingsFile, log = () => {} }
 
 // --- /alfred-code:init's memory step --------------------------------------------
 //
-//   node scripts/install/memory.js init --project-root <root> --level <global|scoped|project>
-//        [--space <name>] [--config-dir <dir>] [--memory-dir <dir>]
+//   node scripts/install/memory.js init --project-root <root> --level <global|project>
+//        [--config-dir <dir>] [--memory-dir <dir>]
 //
 // setup installs with no level (the import waits); init asks it and lands it HERE - the settings key
 // the plugin's launcher reads, the project database's own .gitignore, then the gated import and the
@@ -263,7 +263,7 @@ function importNotes({ gate, importer, runImport, settingsFile, log = () => {} }
 // registration is the installer's to re-point, so a different path there is refused, never edited - in
 // the file the importer would spawn from: .mcp.json, else the account .claude.json (M4).
 // Exit 0: imported, already off, or nothing to import. 1: a refusal or a failed import. 2: usage.
-const USAGE = 'usage: memory.js init --project-root <root> --level <global|scoped|project> [--space <name>] [--config-dir <dir>] [--memory-dir <dir>]';
+const USAGE = 'usage: memory.js init --project-root <root> --level <global|project> [--config-dir <dir>] [--memory-dir <dir>]';
 
 function readObject(file)
 {
@@ -333,9 +333,9 @@ function initMemory(argv, { which, runNode, homedir, log = console.log, err = co
     const flag = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
     const level = String(flag('--level') || '').toLowerCase();
     const root = flag('--project-root');
-    if (!root || !['global', 'scoped', 'project'].includes(level))
+    if (!root || !['global', 'project'].includes(level))
     {
-        err(`memory init: ${root ? '--level must be global, scoped or project' : '--project-root is required'}\n${USAGE}`);
+        err(`memory init: ${root ? '--level must be global or project' : '--project-root is required'}\n${USAGE}`);
         return 2;
     }
     const projectRoot = path.resolve(root);
@@ -343,7 +343,7 @@ function initMemory(argv, { which, runNode, homedir, log = console.log, err = co
     // The project level sits under the data root this project's settings name (the launchers read it the
     // same way, data-root.js dataRootOf), never a shell export.
     const { root: data } = dataRoot.dataRootOf({ env: flag('--config-dir') ? { CLAUDE_CONFIG_DIR: flag('--config-dir') } : {}, projectDir: projectRoot });
-    const named = pathForLevel(level, { home, space: flag('--space'), projectRoot, root: data });
+    const named = pathForLevel(level, { home, projectRoot, root: data });
     // Where that level's database LIVES now: a 2.0.0 file its launcher has not moved yet is the one the
     // notes go into and the key names (data-root.js - the installer names it the same way).
     let dbPath = dataRoot.liveMemoryDb(named, { home, projectRoot });

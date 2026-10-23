@@ -159,18 +159,19 @@ test('machine: a project-scope claude-hud gets its status line in this project\'
     assert.strictEqual(hudLine(), 'machine: claude-hud status line + compact layout - skip: claude-hud is switched off for this project');
 });
 
-test('machine: the claude-hud item reads the account --space names when CLAUDE_CONFIG_DIR is unset', () =>
+test('machine: the claude-hud item reads the account a second CLAUDE_CONFIG_DIR names, never ~/.claude', () =>
 {
     const root = project();
     const home = path.join(TMP, `space-home-${seq++}`);
     fs.mkdirSync(path.join(home, '.claude-work'), { recursive: true });
-    const lines = render(plan({ inv: INV(), root, platform: 'linux', env: { HOME: home }, probe: NONE, space: 'work' }));
+    const env = { HOME: home, CLAUDE_CONFIG_DIR: path.join(home, '.claude-work') };
+    const lines = render(plan({ inv: INV(), root, platform: 'linux', env, probe: NONE }));
     assert.strictEqual(lineOf(lines, /claude-hud/), 'machine: claude-hud status line + compact layout - skip: claude-hud is not installed for this project or this account');
     const cached = path.join(home, '.claude-work', 'plugins', 'cache', 'claude-hud', 'claude-hud', '0.8.0', 'dist');
     fs.mkdirSync(cached, { recursive: true });
     fs.writeFileSync(path.join(cached, 'index.js'), '');
     fs.writeFileSync(path.join(home, '.claude-work', 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'claude-hud@claude-hud': [{ scope: 'user' }] } }));
-    const again = render(plan({ inv: INV(), root, platform: 'linux', env: { HOME: home }, probe: NONE, space: 'work' }));
+    const again = render(plan({ inv: INV(), root, platform: 'linux', env, probe: NONE }));
     assert.match(lineOf(again, /claude-hud/), new RegExp(`--config-dir "${path.join(home, '.claude-work').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}" --project "[^"]+" # adds 13 claude-hud keys: `));
 });
 
@@ -348,27 +349,6 @@ test('captures: at local scope the docs root is the personal file\'s, at project
     stamp('project');
     assert.match(line(), /^capture: capture-architecture - run: /, 'project scope never reads the personal file');
 });
-
-// R134, the I-4 class: a --space that names no profile exits 2 - never the default account's plan.
-for (const [name, args] of [
-    ['--space with no value', ['--space']],
-    ['--space with an empty value', ['--space', '']],
-    ['the --space=<name> form', ['--space=work']],
-])
-{
-    test(`CLI: ${name} exits 2 with no plan`, () =>
-    {
-        const root = project();
-        const inv = path.join(root, 'installed.json');
-        fs.writeFileSync(inv, JSON.stringify(INV()));
-        const home = path.join(TMP, `cli-home-${seq++}`);
-        fs.mkdirSync(home);
-        const r = spawnSync(process.execPath, [SCRIPT, '--installed', inv, '--root', root, ...args], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home } });
-        assert.strictEqual(r.status, 2, r.stdout + r.stderr);
-        assert.match(r.stderr, /^init-plan: --space needs a profile name, as --space <name>$/m);
-        assert.strictEqual(r.stdout, '');
-    });
-}
 
 // The home that prints the post-install capture order to a reader must follow the order this script runs
 // (the shared-rules pin covers only the 'agent-capabilities LAST' clause, which is how the template drifted).

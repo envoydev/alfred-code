@@ -54,8 +54,6 @@ test('each level maps to its database under .alfred-memory and back', () => {
   const projectRoot = '/work/app';
   const cases = [
     ['global', { home, projectRoot }, '/home/u/.alfred-memory/memory.db'],
-    ['scoped', { home, space: 'work', projectRoot }, '/home/u/.alfred-memory/memory_work.db'],
-    ['scoped', { home, projectRoot }, '/home/u/.alfred-memory/memory_default.db'],
     ['project', { home, projectRoot }, '/work/app/.alfred/.alfred-memory/memory.db'],
     ['project', { home, projectRoot, root: '.data' }, '/work/app/.data/.alfred-memory/memory.db'],
   ];
@@ -69,7 +67,9 @@ test('a 2.0.0 .memory-mcp database still reads as its level', () => {
   const home = '/home/u';
   const projectRoot = '/work/app';
   assert.strictEqual(m.levelOfPath('/home/u/.memory-mcp/memory.db', { home, projectRoot }), 'global');
-  assert.strictEqual(m.levelOfPath('/home/u/.memory-mcp/memory_x.db', { home, projectRoot }), 'scoped');
+  // The scoped level is gone (2026-10-23): its file reads as no level, a custom path.
+  assert.strictEqual(m.levelOfPath('/home/u/.memory-mcp/memory_x.db', { home, projectRoot }), null);
+  assert.strictEqual(m.levelOfPath('/home/u/.alfred-memory/memory_x.db', { home, projectRoot }), null);
   assert.strictEqual(m.levelOfPath('/work/app/.memory-mcp/memory.db', { home, projectRoot }), 'project');
 });
 
@@ -108,8 +108,9 @@ test('an unknown level throws, a foreign path has no level', () => {
   const home = '/home/u';
   const projectRoot = '/work/app';
   assert.throws(() => m.pathForLevel('team', { home, projectRoot }), /level/);
+  assert.throws(() => m.pathForLevel('scoped', { home, projectRoot }), /level/, 'the scoped level is gone (2026-10-23)');
   assert.strictEqual(m.levelOfPath('/elsewhere/memory.db', { home, projectRoot }), null);
-  // A path merely under the scoped directory but not shaped memory_<space>.db is not scoped either.
+  // A path merely under the home memory folder but not named memory.db is no level either.
   assert.strictEqual(m.levelOfPath('/home/u/.memory-mcp/notes.db', { home, projectRoot }), null);
 });
 
@@ -668,13 +669,11 @@ test('win32: a registration spelled with forward slashes, a drive letter in anot
   const root = 'C:\\work\\app';
   const w = loadAsWin32({ dirs: { 'c:\\users\\dev': home, 'c:\\work\\app': root } });
   assert.strictEqual(w.levelOfPath('C:/Users/dev/.memory-mcp/memory.db', { home, projectRoot: root }), 'global');
-  assert.strictEqual(w.levelOfPath('c:\\users\\DEV\\.memory-mcp\\memory_work.db', { home, projectRoot: root }), 'scoped');
   assert.strictEqual(w.levelOfPath('C:/work/app/.memory-mcp/memory.db', { home, projectRoot: 'c:\\work\\app' }), 'project');
   // Neither directory exists: the spellings are still resolved before they are compared (the Windows
   // run of 'each level maps to its database and back' read '\home\u' against '/home/u' and answered null).
   const bare = loadAsWin32();
   assert.strictEqual(bare.levelOfPath('/home/u/.memory-mcp/memory.db', { home: '/home/u', projectRoot: '/work/app' }), 'global');
-  assert.strictEqual(bare.levelOfPath('/home/u/.memory-mcp/memory_default.db', { home: '/home/u', projectRoot: '/work/app' }), 'scoped');
   assert.strictEqual(bare.levelOfPath('/work/app/.memory-mcp/memory.db', { home: '/home/u', projectRoot: '/work/app' }), 'project');
   assert.strictEqual(bare.levelOfPath('/elsewhere/.memory-mcp/memory.db', { home: '/home/u', projectRoot: '/work/app' }), null);
 });

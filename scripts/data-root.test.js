@@ -99,13 +99,12 @@ test('layout: every kind of data has one place under the root', () =>
 
 // ------------------------------------------------------------------ the memory folder (Task 7a)
 
-test('memory: every level names .alfred-memory - the home folder for global and scoped, the data root for project', () =>
+test('memory: every level names .alfred-memory - the home folder for global, the data root for project', () =>
 {
     const home = '/h/me';
     const projectRoot = '/w/app';
     assert.strictEqual(dr.memoryDbFor('global', { home }), path.join(home, '.alfred-memory', 'memory.db'));
-    assert.strictEqual(dr.memoryDbFor('scoped', { home, space: 'work' }), path.join(home, '.alfred-memory', 'memory_work.db'));
-    assert.strictEqual(dr.memoryDbFor('scoped', { home }), path.join(home, '.alfred-memory', 'memory_default.db'));
+    assert.strictEqual(dr.memoryDbFor('scoped', { home }), '', 'the scoped level is gone (2026-10-23)');
     assert.strictEqual(dr.memoryDbFor('project', { home, projectRoot }), path.join(projectRoot, '.alfred', '.alfred-memory', 'memory.db'));
     assert.strictEqual(dr.memoryDbFor('project', { home, projectRoot, root: '.data' }), path.join(projectRoot, '.data', '.alfred-memory', 'memory.db'));
     assert.strictEqual(dr.memoryDbFor('project', { home }), '', 'no project, no project database');
@@ -118,8 +117,8 @@ test('memory: the level of a path reads the new AND the old folder, and nothing 
     const at = (p) => dr.memoryLevelOf(p, { home, projectRoot });
     assert.strictEqual(at(path.join(home, '.alfred-memory', 'memory.db')), 'global');
     assert.strictEqual(at(path.join(home, '.memory-mcp', 'memory.db')), 'global');
-    assert.strictEqual(at(path.join(home, '.alfred-memory', 'memory_x.db')), 'scoped');
-    assert.strictEqual(at(path.join(home, '.memory-mcp', 'memory_default.db')), 'scoped');
+    assert.strictEqual(at(path.join(home, '.alfred-memory', 'memory_x.db')), '', 'a former scoped file is no level - a custom path');
+    assert.strictEqual(at(path.join(home, '.memory-mcp', 'memory_default.db')), '');
     assert.strictEqual(at(path.join(projectRoot, '.alfred', '.alfred-memory', 'memory.db')), 'project');
     assert.strictEqual(at(path.join(projectRoot, '.data', '.alfred-memory', 'memory.db')), 'project', 'a custom data root is still this project');
     assert.strictEqual(at(path.join(projectRoot, '.memory-mcp', 'memory.db')), 'project');

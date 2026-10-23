@@ -2525,9 +2525,9 @@ test('guard-cross-project-write: space account dirs, ~ in the allowance, and unr
   const tmpReal = fs.realpathSync(os.tmpdir());
   const homeInTmp = !!home && (() => { try { const h = fs.realpathSync(home); return h === tmpReal || h.startsWith(tmpReal + path.sep); } catch { return false; } })();
   if (home && !homeInTmp) {
-    // A --space install keeps its memory under ~/.claude-<space>; the old check disabled that
+    // A second account (CLAUDE_CONFIG_DIR ~/.claude-<name>) keeps its memory there; the old check disabled that
     // allowance for every project living under HOME, i.e. every real project (reproduced).
-    assert.equal(inRepo({ tool_name: 'Write', tool_input: { file_path: path.join(home, '.claude-work', 'projects', 'p', 'memory', 'm.md') } }), 0, 'a space account dir');
+    assert.equal(inRepo({ tool_name: 'Write', tool_input: { file_path: path.join(home, '.claude-work', 'projects', 'p', 'memory', 'm.md') } }), 0, 'a second account dir');
     assert.equal(inRepo({ tool_name: 'Write', tool_input: { file_path: path.join(home, '.claude-x', '..', 'elsewhere', 'f.txt') } }), 2, 'reaching back out of one');
     const owned = path.join(home, `alfred-code-owned-tree-${process.pid}`); // never created - realish resolves through the missing tail
     assert.equal(inRepo({ tool_name: 'Write', tool_input: { file_path: path.join(owned, 'f.txt') } }), 2, 'a second tree under HOME is outside');

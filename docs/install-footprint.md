@@ -34,7 +34,7 @@ Written later, or only on one route:
   - claude-hud's `statusLine`, for a claude-hud installed globally (one installed for this project alone gets it in the project, above);
   - claude-hud's own `plugins/claude-hud/config.json` (add-only keys);
   - a `settings.json.bak.<time>` backup, taken before that run's first account write.
-- **`~/.alfred-memory/`** - at the `global` or `scoped` memory level, `memory.db` (or `memory_<space>.db` under a `--space` profile). A 2.0.0 `~/.memory-mcp` is moved there by the memory server's launcher once idle, with a link left behind. The `project` level stays inside the project.
+- **`~/.alfred-memory/`** - at the `global` memory level, `memory.db`. A 2.0.0 `~/.memory-mcp` is moved there by the memory server's launcher once idle, with a link left behind. The `project` level stays inside the project.
 
 Nothing is written outside the project and the account-dir writes named above, and nothing is deleted that the run did not install.
 

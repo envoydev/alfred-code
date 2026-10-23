@@ -289,7 +289,7 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
   row hands over to that engine's `runAtRoot` (in a linked worktree with none of its own, the main checkout's), which
   starts the server at the project and resolves the database there; with no engine it says one line on stderr naming
   `/alfred-code:update`. So the committed `.mcp.json` holds only project-relative paths, the same in every checkout, and
-  no parse-time variable. An account-level memory database (global, scoped) is always committed as
+  no parse-time variable. An account-level memory database (global, or a custom file in the home memory folder) is always committed as
   `~/.alfred-memory/<file>`, and `runAtRoot` resolves it on the machine that starts the server (the engine's
   `liveDbPath`: the new place, else an unmoved 2.0.0 `~/.memory-mcp` twin - T6), so each teammate's checkout gets its
   own right path; a local- or user-scope registration keeps the absolute path. `mcp.identityOf` reads the server after

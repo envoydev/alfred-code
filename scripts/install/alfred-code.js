@@ -160,12 +160,10 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         err('error: no account directory - HOME, USERPROFILE and CLAUDE_CONFIG_DIR are all unset; set one and run again\n');
         return 1;
     }
-    const configDir = env.CLAUDE_CONFIG_DIR
-        || path.join(home, args.space ? `.claude-${args.space}` : '.claude');
-    // A-I5 (final review A, ruling): a `claude` spawned with the run's own env uses the account THAT env
-    // names - with --space and no CLAUDE_CONFIG_DIR, the default one, while every write of the installer's
-    // own lands in the space's. So every CLI spawn carries the space's account; one set already wins.
-    const cliEnv = args.space && !env.CLAUDE_CONFIG_DIR ? { ...env, CLAUDE_CONFIG_DIR: configDir } : env;
+    // The account is the one the run's own env names - CLAUDE_CONFIG_DIR, else ~/.claude - for the installer's writes
+    // and every `claude` it spawns alike (the --space profile flag is gone, the user's ruling of 2026-10-23).
+    const configDir = env.CLAUDE_CONFIG_DIR || path.join(home, '.claude');
+    const cliEnv = env;
     // The account file the CLI keeps its user- and local-scope MCP registrations in (mcp.registrationsAt).
     const accountFile = path.join(cliEnv.CLAUDE_CONFIG_DIR || home, '.claude.json');
     const projectRoot = rt.gitRoot(cwd, home) || cwd; // a repo at the home directory is no project's top (seam m3)
@@ -202,8 +200,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     const skillsDir = path.join(projectRoot, '.claude', 'skills');
     const mcpFile = path.join(projectRoot, '.mcp.json');
     // The memory database this install points at: the flag's level, else the path already registered,
-    // else global. C9 (R136 r): CLAUDE_CONFIG_DIR alone names the account, but the global and scoped
-    // databases live under the HOME - with none they would be a RELATIVE path, written into settings and
+    // else global. C9 (R136 r): CLAUDE_CONFIG_DIR alone names the account, but the global
+    // database lives under the HOME - with none they would be a RELATIVE path, written into settings and
     // resolved against whatever cwd reads it. Refused like the no-home case above, before anything runs.
     // THE DATA ROOT (stack/mcp/data-root.js): the one folder this run lays the project's data under - the
     // docs, serena's folder and home, the browser profiles, a project-level memory database. Resolved before
@@ -224,7 +222,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     let level = memory.resolveLevel({
         flag: args.memoryLevel,
         registeredPath: recorded.path, unread: recorded.unread, stamped: stampedBefore,
-        home, space: args.space, projectRoot, root: dataInfo.root,
+        home, projectRoot, root: dataInfo.root,
     });
     if (!home && level.dbPath && !path.isAbsolute(level.dbPath))
     {
@@ -335,7 +333,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             : recorded.from === 'registration' && memory.MEMORY_SERVERS.some((n) => (priorLedger.mcp || {})[n] === stampLayer.entryHash(recorded.entry)));
         if (vouched)
         {
-            level = { level: 'project', dbPath: memory.pathForLevel('project', { home, space: args.space, projectRoot, root: dataInfo.root }), from: 'moved' };
+            level = { level: 'project', dbPath: memory.pathForLevel('project', { home, projectRoot, root: dataInfo.root }), from: 'moved' };
             log(`  memory: the project-level database this install recorded, ${recorded.path}, is in another folder (${movedFrom}) - this project moved or was copied here, so its level is this folder's own: ${level.dbPath}${fs.existsSync(level.dbPath) ? '' : ' (none came with the folder - a new, empty one)'}`);
         }
         // Said first, before any registration: which settings file hid the level, and what stands in its place.
@@ -772,11 +770,11 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             // one. A teammate's server never opens this machine's folder, nor a second, empty database (re-verify 3 S2).
             SERENA_CONTEXT: 'claude-code', MEMORY_DB_PATH: regScope !== 'project' ? level.dbPath
                 : level.level === 'project' && inProject(projectRoot, level.dbPath) ? inProject(projectRoot, level.dbPath)
-                    : ['global', 'scoped'].includes(level.level) && inProject(home, level.dbPath) ? `~/${dataRoot.MEMORY_FOLDER}/${path.basename(level.dbPath)}` : level.dbPath,
+                    : level.level !== 'project' && [dataRoot.MEMORY_FOLDER, dataRoot.LEGACY_MEMORY_FOLDER].some((f) => path.dirname(path.resolve(level.dbPath)) === path.join(home, f))
+                        ? `~/${dataRoot.MEMORY_FOLDER}/${path.basename(level.dbPath)}` : level.dbPath,
             // The copy route's `uvx --python`: the same machine-level answer the plugin launchers use.
             // Read from the SEED's own tree, never the snapshot's: a snapshot older than the seed has no
             // such file, and its manifest then carries no @UV_PYTHON@ to resolve anyway.
-            // A-I5: the account the run's claude calls use - a --space run's own, not the default one.
             UV_PYTHON: pythonRequest({ env: cliEnv, projectDir: projectRoot }),
             // windows-control's own: windows-mcp 0.8.6+ needs 3.14 (uv-python.js SERVER_PYTHON, the user's ruling of 2026-10-14).
             WINDOWS_CONTROL_PYTHON: pythonRequest({ env: cliEnv, projectDir: projectRoot, server: 'windows-control' }),
@@ -1310,7 +1308,7 @@ function liveMemoryPath({ level, projectRoot, home, liveOf, owed, registered })
         const found = path.join(projectRoot, ...liveOf('memory').split('/'), 'memory.db');
         if (fs.existsSync(found)) live = found;
     }
-    else if (level.level === 'global' || level.level === 'scoped') live = dataRoot.liveMemoryDb(level.dbPath, { home, projectRoot });
+    else if (level.level === 'global') live = dataRoot.liveMemoryDb(level.dbPath, { home, projectRoot });
     // The same file under another spelling of its directory (macOS /var -> /private/var) keeps the registered
     // one - never a 2.0.0 folder name reaching the moved database through its link, which is re-spelled.
     const real = (p) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
@@ -2860,7 +2858,6 @@ function summarise(ctx, failures)
         + `, mcps=${ctx.lists.mcps.length}, hooks=${hookFiles.size}, agents=${ctx.lists.agents.length}, rules=${ctx.lists.rules.length}`
         + (ctx.memoryGone ? '; memory=unregistered (the account file lost its registration, and a settings file that could not be read hides its level - fix the file and re-run)'
             : `; memory=${ctx.level.level} (${ctx.level.level === 'kept' ? 'a settings file could not be read - nothing re-pointed' : ctx.level.dbPath})`);
-    if (ctx.args.space) line += `; space=${ctx.args.space}`;
     line += ctx.args.keepPins ? '; keep-pins=on' : '; keep-pins=off (agent model/effort pins reset to catalog defaults)';
     const engines = pwEngines(ctx);
     if (engines.length) line += `; browser=${engines.join(',')}`;

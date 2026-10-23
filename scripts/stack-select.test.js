@@ -829,8 +829,7 @@ test('the documentation server selected without a key warns, never blocks; with 
     assert.ok(!none.warnings.some(w => /context7/i.test(w.need)), 'context7 not selected - no warning');
 });
 
-// A --space install keeps its account under ~/.claude-<space>; the model's shell rarely carries
-// CLAUDE_CONFIG_DIR, so the check must be told which account file to read.
+// A second account keeps its own dir (CLAUDE_CONFIG_DIR), so the check can be told which account file to read.
 // Measured 2026-09-15: macOS installs a browser as an app, never on PATH, so a machine WITH one was
 // told to install it. Edge and Chrome are the browsers a kept playwright engine needs from the machine.
 test('browserCandidates: Edge is probed at its app install locations on every platform', () => {
@@ -845,7 +844,7 @@ test('browserCandidates: Edge is probed at its app install locations on every pl
     assert.deepStrictEqual(browserCandidates('firefox', 'darwin', env), [], 'a Playwright-built engine is never probed as a machine app');
 });
 
-test('detectEnvironment reads the account settings.json env from --config-dir (a --space account)', () => {
+test('detectEnvironment reads the account settings.json env from --config-dir (a second account)', () => {
     const fs = require('node:fs');
     const os = require('node:os');
     const { detectEnvironment } = require('./stack-select.js');

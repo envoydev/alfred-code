@@ -101,8 +101,8 @@ touches no committed file). The lines, minus anything the project already covers
 
 ## 3. Check the shared memory landed
 
-The memory MCP is required in every install, at the level chosen during init (`global`,
-`scoped`, or `project` - `/alfred-code:status` names it and the database file). Init also
+The memory MCP is required in every install, at the level chosen during init (`global`
+or `project` - `/alfred-code:status` names it and the database file). Init also
 imported this project's old `MEMORY.md` notes into that database once, and switched off Claude's
 own memory ONLY if that import succeeded - a failed import leaves it on rather than risk losing a
 note (with no notes to import, the install switched it off already). Check it once: `/alfred-code:status` shows `autoMemoryEnabled` in the Environment table;

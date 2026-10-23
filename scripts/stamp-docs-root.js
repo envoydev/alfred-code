@@ -89,7 +89,7 @@ function restampLibraryHash(claudeDir, ruleFile)
 }
 
 // claudeDir holds rules/ + settings.json: <project>/.claude for a project install, the account dir
-// (~/.claude, ~/.claude-<space>) for a 1.x global one. `value` is the root a project run resolved at
+// (~/.claude, or CLAUDE_CONFIG_DIR) for a 1.x global one. `value` is the root a project run resolved at
 // its scope; the account-dir mode reads that dir's settings.json alone.
 function stampDir(claudeDir, value)
 {

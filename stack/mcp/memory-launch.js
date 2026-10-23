@@ -2,8 +2,8 @@
 'use strict';
 // THE MEMORY SERVER'S LAUNCHER - it exists for exactly one reason.
 //
-// The memory database's path is the INSTALL's level choice (global ~/.alfred-memory/memory.db, scoped
-// ~/.alfred-memory/memory_<space>.db, project <project>/<data root>/.alfred-memory/memory.db), so it
+// The memory database's path is the INSTALL's level choice (global ~/.alfred-memory/memory.db, project
+// <project>/<data root>/.alfred-memory/memory.db, or a custom path), so it
 // differs per project. A plugin MCP entry cannot read that: measured 2026-09-22, a plugin entry expands ${KEY}
 // from the SHELL and the ACCOUNT settings.json env only - a PROJECT .claude/settings.json env key
 // arrives as the literal ${KEY} (docs/plugin-migration-evidence.md, 'Phase 6 spikes'; S10's note to

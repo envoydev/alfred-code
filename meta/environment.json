@@ -186,7 +186,7 @@
       "default": "~/.alfred-memory/memory.db",
       "ask": false,
       "written": true,
-      "what": "the shared `memory` MCP database this install points at - the path the `--memory-level` choice resolved to (`global` ~/.alfred-memory/memory.db, `scoped` ~/.alfred-memory/memory_<space>.db, `project` <project>/<data root>/.alfred-memory/memory.db). The plugin route's launcher (`stack/mcp/memory-launch.js`) reads it from this file because a plugin MCP entry cannot expand a project env key; with the key absent it falls back to the global default. A 2.0.0 `~/.memory-mcp` is moved to `~/.alfred-memory` by that launcher once no server holds it, with a link left at the old path. Written every run from the resolved level, never seeded - change it with `--memory-level` / `-MemoryLevel`, never by hand, and note that re-pointing the registration never moves or touches the old database file.",
+      "what": "the shared `memory` MCP database this install points at - the path the `--memory-level` choice resolved to (`global` ~/.alfred-memory/memory.db, `project` <project>/<data root>/.alfred-memory/memory.db). The plugin route's launcher (`stack/mcp/memory-launch.js`) reads it from this file because a plugin MCP entry cannot expand a project env key; with the key absent it falls back to the global default. A 2.0.0 `~/.memory-mcp` is moved to `~/.alfred-memory` by that launcher once no server holds it, with a link left at the old path. Written every run from the resolved level, never seeded - change it with `--memory-level` / `-MemoryLevel`, never by hand, and note that re-pointing the registration never moves or touches the old database file.",
       "validate": {
         "type": "absolute-path"
       }

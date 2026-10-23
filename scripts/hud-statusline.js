@@ -3,9 +3,9 @@
 // hud-statusline.js - claude-hud arrives CONFIGURED: /alfred-code:init's claude-hud item, made
 // deterministic instead of a model walk through claude-hud's own /claude-hud:setup.
 //
-//   node scripts/hud-statusline.js [--config-dir <dir> | --space <name>] [--project <dir>] [--catalog <file>]
+//   node scripts/hud-statusline.js [--config-dir <dir>] [--project <dir>] [--catalog <file>]
 //
-// Two writes, both add-only, into the ACCOUNT dir (CLAUDE_CONFIG_DIR, else ~/.claude-<space>, else ~/.claude -
+// Two writes, both add-only, into the ACCOUNT dir (CLAUDE_CONFIG_DIR, else ~/.claude -
 // the installer's rule, stamp.js accountDir) - or, for the status line, into the project when claude-hud is
 // installed for that project alone (2.2.0: an optional item at the scope the user chose; a project- or
 // local-scope row naming `--project`, and no user-scope row): `<project>/.claude/settings.local.json`, since the
@@ -320,12 +320,9 @@ function hudInstall(configDir, settings, project)
     return { ok: true, scope };
 }
 
-function resolveConfigDir({ flag, space, env = process.env })
+function resolveConfigDir({ flag, env = process.env })
 {
-    if (flag) return path.resolve(flag);
-    // The installer's own check (args.js): --space is baked into a directory name.
-    if (space && !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(space)) throw new Error(`--space '${space}' must start alphanumeric; chars [A-Za-z0-9._-]`);
-    return accountDir(env, space || '');
+    return flag ? path.resolve(flag) : accountDir(env);
 }
 
 // The statusLine block as the run writes it: the command set, every other key the user had kept.
@@ -457,13 +454,13 @@ function applyHud(plan, run = {})
     return { code: 0, lines };
 }
 
-const USAGE = 'usage: node scripts/hud-statusline.js [--config-dir <dir> | --space <name>] [--project <dir>] [--catalog <file>]';
+const USAGE = 'usage: node scripts/hud-statusline.js [--config-dir <dir>] [--project <dir>] [--catalog <file>]';
 
 // Strict: a flag this script does not know, one without a value, the `--flag=value` form or a flag
 // given twice throws - never read as absent, which would fall back to the environment's account.
 function parseArgs(argv)
 {
-    const known = ['--config-dir', '--space', '--project', '--catalog'];
+    const known = ['--config-dir', '--project', '--catalog'];
     const args = {};
     for (let i = 0; i < argv.length; i += 1)
     {
@@ -486,7 +483,7 @@ function main(argv, { env = process.env, out = (s) => process.stdout.write(s) } 
     try
     {
         const args = parseArgs(argv);
-        configDir = resolveConfigDir({ flag: args['--config-dir'], space: args['--space'], env });
+        configDir = resolveConfigDir({ flag: args['--config-dir'], env });
         project = args['--project'] ? path.resolve(args['--project']) : undefined;
         if (args['--catalog'] && !(catalog = readJsonFile(args['--catalog']))) throw new Error(`--catalog ${args['--catalog']} is not readable JSON`);
     }

@@ -31,26 +31,24 @@ const GATE = (root, over = {}) => ({
 
 // --- the level -> path rule ----------------------------------------------
 
-test('level: the three levels resolve to the three shapes under .alfred-memory, and back again', () =>
+test('level: the two levels resolve to the two shapes under .alfred-memory, and back again', () =>
 {
-    const at = { home: '/home/u', space: 'work', projectRoot: '/repo' };
+    const at = { home: '/home/u', projectRoot: '/repo' };
     assert.strictEqual(memory.pathForLevel('global', at), path.join('/home/u', '.alfred-memory', 'memory.db'));
-    assert.strictEqual(memory.pathForLevel('scoped', at), path.join('/home/u', '.alfred-memory', 'memory_work.db'));
     assert.strictEqual(memory.pathForLevel('project', at), path.join('/repo', '.alfred', '.alfred-memory', 'memory.db'));
     assert.strictEqual(memory.pathForLevel('project', { ...at, root: '.data' }), path.join('/repo', '.data', '.alfred-memory', 'memory.db'), 'the project database follows the data root');
-    assert.strictEqual(memory.pathForLevel('scoped', { ...at, space: '' }), path.join('/home/u', '.alfred-memory', 'memory_default.db'));
-    for (const level of ['global', 'scoped', 'project'])
+    assert.strictEqual(memory.pathForLevel('scoped', at), '', 'the scoped level is gone (2026-10-23)');
+    for (const level of ['global', 'project'])
         assert.strictEqual(memory.levelOfPath(memory.pathForLevel(level, at), at), level, level);
 });
 
 test('level: a 2.0.0 .memory-mcp path still reads as its level, and resolving it names the .alfred-memory path', () =>
 {
-    const at = { home: '/home/u', space: 'work', projectRoot: '/repo' };
+    const at = { home: '/home/u', projectRoot: '/repo' };
     assert.strictEqual(memory.levelOfPath(path.join('/home/u', '.memory-mcp', 'memory.db'), at), 'global');
-    assert.strictEqual(memory.levelOfPath(path.join('/home/u', '.memory-mcp', 'memory_work.db'), at), 'scoped');
     assert.strictEqual(memory.levelOfPath(path.join('/repo', '.memory-mcp', 'memory.db'), at), 'project');
-    assert.deepStrictEqual(memory.resolveLevel({ registeredPath: path.join('/home/u', '.memory-mcp', 'memory_work.db'), ...at }),
-        { level: 'scoped', dbPath: path.join('/home/u', '.alfred-memory', 'memory_work.db'), from: 'registration' });
+    assert.deepStrictEqual(memory.resolveLevel({ registeredPath: path.join('/home/u', '.memory-mcp', 'memory.db'), ...at }),
+        { level: 'global', dbPath: path.join('/home/u', '.alfred-memory', 'memory.db'), from: 'registration' });
     assert.strictEqual(memory.resolveLevel({ registeredPath: path.join('/repo', '.memory-mcp', 'memory.db'), ...at, root: '.data' }).dbPath,
         path.join('/repo', '.data', '.alfred-memory', 'memory.db'));
 });
@@ -232,9 +230,15 @@ test('order: an importer missing from the snapshot is reported, and nothing is s
 
 test('level: the flag wins, an existing registration is kept BYTE-FOR-BYTE, else global', () =>
 {
-    const at = { home: '/home/u', space: 'work', projectRoot: '/repo' };
-    assert.deepStrictEqual(memory.resolveLevel({ flag: 'scoped', ...at }),
-        { level: 'scoped', dbPath: path.join('/home/u', '.alfred-memory', 'memory_work.db'), from: 'flag' });
+    const at = { home: '/home/u', projectRoot: '/repo' };
+    assert.deepStrictEqual(memory.resolveLevel({ flag: 'project', ...at }),
+        { level: 'project', dbPath: path.join('/repo', '.alfred', '.alfred-memory', 'memory.db'), from: 'flag' });
+    // A registration of the scoped level, gone since 2026-10-23, is a custom path: its file is kept, its spelling too.
+    for (const folder of ['.alfred-memory', '.memory-mcp'])
+    {
+        const scoped = path.join('/home/u', folder, 'memory_work.db');
+        assert.deepStrictEqual(memory.resolveLevel({ registeredPath: scoped, ...at }), { level: 'custom', dbPath: scoped, from: 'registration' }, folder);
+    }
     // A level change never copies or deletes a database, so an absent flag must not re-point one.
     const kept = memory.resolveLevel({ registeredPath: '/somewhere/else/memory.db', ...at });
     assert.strictEqual(kept.dbPath, '/somewhere/else/memory.db');
@@ -418,13 +422,13 @@ test('init: the level lands in the key the launcher reads, the notes are importe
     assert.strictEqual(sb.callCount(), calls, 'a re-run stored the notes again');
 });
 
-test('init: scoped names the space\'s file, global the machine\'s; the key goes where settings.local.json already keeps it', { skip: POSIX_ONLY.skip }, () =>
+test('init: global names the machine\'s file; the key goes where settings.local.json already keeps it', { skip: POSIX_ONLY.skip }, () =>
 {
     const sb = initSandbox({ uvx: false });
     fs.writeFileSync(path.join(sb.root, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_MEMORY_DB: '/old.db', X: '1' } }));
-    const r = sb.run('--level', 'scoped', '--space', 'work');
+    const r = sb.run('--level', 'global');
     const local = JSON.parse(fs.readFileSync(path.join(sb.root, '.claude', 'settings.local.json'), 'utf8'));
-    assert.strictEqual(local.env.ALFRED_CODE_MEMORY_DB, path.join(sb.work, '.alfred-memory', 'memory_work.db'));
+    assert.strictEqual(local.env.ALFRED_CODE_MEMORY_DB, path.join(sb.work, '.alfred-memory', 'memory.db'));
     assert.strictEqual(local.env.X, '1');
     assert.strictEqual(sb.settingsNow().env.ALFRED_CODE_MEMORY_DB, '/elsewhere/memory.db', 'the shared file is not written when the local one holds the key');
     // No uvx: the level is set, the import is not run, and Claude's own memory stays on - a failure exit.
@@ -498,7 +502,10 @@ test('init: refuses a registration it cannot re-point, a malformed settings file
 
     const u = sb.run('--level', 'account');
     assert.strictEqual(u.status, 2);
-    assert.match(u.stderr, /--level must be global, scoped or project/);
+    assert.match(u.stderr, /--level must be global or project/);
+    const s = sb.run('--level', 'scoped');
+    assert.strictEqual(s.status, 2, 'the scoped level is gone (2026-10-23)');
+    assert.match(s.stderr, /--level must be global or project/);
 });
 
 // I1 (Task 18a review): 'initialised' is the stamp line only init writes. Before it, no run IMPORTS
@@ -948,14 +955,14 @@ test('seed install and update (full copy route, project scope): the anchored reg
     assert.match(out, /memory=project/, out);
 });
 
-// Re-verify 3 S2, the account levels: the committed .mcp.json named the global (or scoped) database by this machine's home,
+// Re-verify 3 S2, the account level: the committed .mcp.json named the global database by this machine's home,
 // so a teammate's server opened a folder that is not theirs until their update rewrote the tracked file to their own. It is
 // named from the home (`~/`), and ROOT_BOOT's runAtRoot expands that against the home of the machine that starts it.
-test('seed install (full copy route, project scope): the global and scoped levels are named from the home in .mcp.json, and a start expands it on the machine that runs it', POSIX_ONLY, () =>
+test('seed install (full copy route, project scope): the global level is named from the home in .mcp.json, and a start expands it on the machine that runs it', POSIX_ONLY, () =>
 {
     const engine = require('../stack/hooks/memory.js');
     const COPY = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
-    for (const [level, file] of [['global', 'memory.db'], ['scoped', 'memory_default.db']])
+    for (const [level, file] of [['global', 'memory.db']])
     {
         const { result, out } = seedRun('install', 'rule alfred-memory\nmcp navigation\nmcp documentation\nmcp memory\n', {
             env: COPY, args: ['--scope', 'project', '--memory-level', level],
@@ -980,6 +987,29 @@ test('seed install (full copy route, project scope): the global and scoped level
         assert.strictEqual(result.engineDb, path.join(result.home, '.alfred-memory', file), `${level}: the engine reads another database`);
         assert.match(out, new RegExp(`memory=${level}`), out);
     }
+});
+
+// The scoped level left with --space (the user's ruling of 2026-10-23): an install still registered to a
+// `memory_<space>.db` keeps that file as a custom path on update, and the committed .mcp.json keeps naming it from
+// the home - never this machine's absolute path.
+test('seed update (full copy route, project scope): a former scoped registration stays its own file, named from the home', POSIX_ONLY, () =>
+{
+    const COPY = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
+    const mcpOf = (repo) => path.join(repo, '.mcp.json');
+    const { outs, result } = seedRun(['install', 'update'], 'rule alfred-memory\nmcp navigation\nmcp documentation\nmcp memory\n', {
+        env: COPY, args: ['--scope', 'project'],
+        each: (repo, i) =>
+        {
+            if (i !== 0) return null;
+            const j = JSON.parse(fs.readFileSync(mcpOf(repo), 'utf8'));
+            j.mcpServers['alfred-memory'].env.MCP_MEMORY_SQLITE_PATH = '~/.alfred-memory/memory_work.db';
+            fs.writeFileSync(mcpOf(repo), JSON.stringify(j, null, 2) + '\n');
+            return null;
+        },
+        inspect: (repo) => JSON.parse(fs.readFileSync(mcpOf(repo), 'utf8')).mcpServers['alfred-memory'].env.MCP_MEMORY_SQLITE_PATH,
+    });
+    assert.strictEqual(result, '~/.alfred-memory/memory_work.db', 'the former scoped file is kept, from the home');
+    assert.match(outs[1], /memory=custom \(/, outs[1]);
 });
 
 // Re-verify 4 T2 (wtFull*, wtPlug*): a linked worktree of an installed checkout must share the main checkout's project

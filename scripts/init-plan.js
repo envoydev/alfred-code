@@ -2,7 +2,7 @@
 'use strict';
 // WHAT /alfred-code:init DOES IN THIS PROJECT - stated by a script, so the command never infers it.
 //
-//   node scripts/init-plan.js --installed <plan-out.json> --root <project> [--plugin-root <dir>] [--space <name>]
+//   node scripts/init-plan.js --installed <plan-out.json> --root <project> [--plugin-root <dir>]
 //
 // `--installed` is `update --installed-only --print-plan --plan-out`'s read-back. Two blocks:
 //
@@ -14,7 +14,7 @@
 //     one is here only when that download failed; chrome and msedge run the machine's own browser,
 //     probed like stack-select's msedge check, and one that is not there is `blocked` with its fix.
 //     Last, claude-hud's status line + compact layout (hud-statusline.js, the account dir CLAUDE_CONFIG_DIR,
-//     else ~/.claude-<space>; the line in the project's settings.local.json when claude-hud is installed for
+//     else ~/.claude; the line in the project's settings.local.json when claude-hud is installed for
 //     this project alone): `skip` when claude-hud is absent or switched off, or
 //     the statusLine is the user's own with nothing else to add; `refresh` when claude-hud's own line
 //     has a stale shape. Its command ends in `# adds <n> claude-hud keys: <names>`, a shell comment.
@@ -95,7 +95,7 @@ function pinOf(name)
 
 const nonEmptyDir = (dir) => { try { return fs.readdirSync(dir).length > 0; } catch { return false; } };
 
-function plan({ inv, root, platform = process.platform, arch = process.arch, env = process.env, probe = probes, pluginRoot = '', space = '' })
+function plan({ inv, root, platform = process.platform, arch = process.arch, env = process.env, probe = probes, pluginRoot = '' })
 {
     const machine = [];
     const add = (what, state, detail = '') => machine.push({ what, state, detail });
@@ -159,7 +159,7 @@ function plan({ inv, root, platform = process.platform, arch = process.arch, env
     // claude-hud arrives configured: its statusLine (the account's, or this project's settings.local.json for a
     // claude-hud installed for this project alone) plus the plugin-settings row, one command.
     // The runtime is planHud's default - the node the command itself finds on this PATH.
-    const configDir = resolveConfigDir({ space, env });
+    const configDir = resolveConfigDir({ env });
     const hud = planHud({ configDir, project: root, platform, env });
     const hudCommand = `node "${path.join(REPO, 'scripts', 'hud-statusline.js')}" --config-dir "${configDir}" --project "${root}"`;
     add(HUD_ITEM, hud.item.state, ['missing', 'refresh'].includes(hud.item.state)
@@ -230,12 +230,6 @@ if (require.main === module)
     const argv = process.argv.slice(2);
     const flag = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
     if (argv.includes('--mode')) { console.log(`unattended: ${isUnattended() ? 'on' : 'off'}`); process.exit(0); }
-    // A --space that names no profile would plan the default account instead.
-    if (argv.some((a) => a.startsWith('--space=')) || (argv.includes('--space') && !flag('--space')))
-    {
-        console.error('init-plan: --space needs a profile name, as --space <name>');
-        process.exit(2);
-    }
     const file = flag('--installed');
     let inv;
     try { inv = JSON.parse(fs.readFileSync(file, 'utf8')); if (!inv || typeof inv !== 'object') throw new Error('not an object'); }
@@ -248,7 +242,7 @@ if (require.main === module)
     let lines;
     try
     {
-        const planned = plan({ inv, root, pluginRoot: flag('--plugin-root') || '', space: flag('--space') || '' });
+        const planned = plan({ inv, root, pluginRoot: flag('--plugin-root') || '' });
         lines = render(planned).concat(isUnattended() ? unattended(planned) : []);
     }
     catch (err) { console.error(`init-plan: ${err.message}`); process.exit(2); }

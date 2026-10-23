@@ -491,9 +491,8 @@ merge - write it by running `node "$TMP/repo/scripts/stamp-docs-root.js" <projec
 (it reads and writes the stamp's scope file, as the installer does), which re-probes at the write instead of trusting the
 table's preview a step stale, and report its printed line. Every other accepted row still goes
 through the generic merge. Emit + prereq-check it -
-`node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/final.json" --graph "$TMP/repo/meta/stack-graph.json" --emit "$TMP/selection.txt" --check [--config-dir ~/.claude-<space>]` (an added browser's engines sit in `final.json` as `<engine>-control`; the run prints them as one `browsers: <csv>` line, and a picked `msedge` warns when Edge is not installed)
-(`--config-dir` under a `--space`
-profile), output to `$TMP/select.out` - then:
+`node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/final.json" --graph "$TMP/repo/meta/stack-graph.json" --emit "$TMP/selection.txt" --check` (an added browser's engines sit in `final.json` as `<engine>-control`; the run prints them as one `browsers: <csv>` line, and a picked `msedge` warns when Edge is not installed),
+output to `$TMP/select.out` - then:
 
 - **Apply**: run the delta, then the installer from the snapshot. `node "$TMP/repo/scripts/derive-state.js" --delta --installed "$TMP/installed.json" --selection "$TMP/selection.txt" --picked "$TMP/final.json"`
   prints one `add <line>` / `drop <line>` per accepted change against step 1's read-back, or
@@ -519,7 +518,7 @@ profile), output to `$TMP/select.out` - then:
   nothing (the installer reads its browsers back from the stamp, and switches none). A server 2.0.0 cut is no reconcile row: the run uninstalls the stack's own copy and prints
   its `add it back:` line - pass it through. Presence, never the value - run this
   and paste its lines as-is: `node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" CONTEXT7_API_KEY`
-  (the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable; a `--space <name>` install reads `~/.claude-<name>/settings.json`). Output is `KEY=set (N chars)`, `KEY=empty (present, no value)` or `KEY=absent` - nothing else is ever printed; a shell dump of that file is rewritten by the same hook into its redacted view (every credential value shown as `<set (N chars)>`), and the Read tool on it is blocked. The installer closes the selection and copies the added artifacts; already-installed
+  (the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable). Output is `KEY=set (N chars)`, `KEY=empty (present, no value)` or `KEY=absent` - nothing else is ever printed; a shell dump of that file is rewritten by the same hook into its redacted view (every credential value shown as `<set (N chars)>`), and the Read tool on it is blocked. The installer closes the selection and copies the added artifacts; already-installed
   ones are simply re-laid, harmless. Show the prereq report first; never install past a blocker.
 - **Removes**: on the Node seed the `--drop` lines ARE the removal, applied by that run: a core
   seat is denied, a hook on the plugin route is named in `ALFRED_CODE_HOOKS_OFF`, a copied or

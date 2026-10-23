@@ -42,10 +42,9 @@ test('install-args: the action is positional and REQUIRED - there is no default 
 test('install-args: both spellings of every valued flag mean the same thing', () =>
 {
     for (const [flag, value, key] of [
-        ['--space', 'work', 'space'],
         ['--scope', 'local', 'scope'],
         ['--docs-versioning', 'local', 'docsVersioning'],
-        ['--memory-level', 'scoped', 'memoryLevel'],
+        ['--memory-level', 'project', 'memoryLevel'],
         ['--selection', '/tmp/sel.txt', 'selection'],
         ['--source', '/tmp/src', 'source'],
     ])
@@ -59,7 +58,7 @@ test('install-args: both spellings of every valued flag mean the same thing', ()
 
 test('install-args: a valued flag given LAST with no value is refused, not read as empty', () =>
 {
-    for (const flag of ['--space', '--scope',
+    for (const flag of ['--scope',
         '--docs-versioning', '--memory-level', '--selection', '--source'])
         fails(['install', flag], new RegExp(`${flag}.*needs a value`));
 });
@@ -84,17 +83,17 @@ test('install-args: the enums are lower-cased, so PowerShell casing works on bot
 {
     assert.strictEqual(ok(['install', '--scope', 'Local']).scope, 'local');
     assert.strictEqual(ok(['install', '--docs-versioning', 'Git']).docsVersioning, 'git');
-    assert.strictEqual(ok(['install', '--memory-level', 'Scoped']).memoryLevel, 'scoped');
+    assert.strictEqual(ok(['install', '--memory-level', 'Project']).memoryLevel, 'project');
 });
 
-test('install-args: --space is baked into a PATH, so its characters are checked', () =>
+// The --space profile flag and the scoped memory level are gone (the user's ruling of 2026-10-23): the account is the
+// one CLAUDE_CONFIG_DIR names, so either spelling of the flag is an unknown argument, and scoped no level.
+test('install-args: --space is refused as unknown, and scoped is no memory level', () =>
 {
-    assert.strictEqual(ok(['install', '--space', 'work-2.0_x']).space, 'work-2.0_x');
-    fails(['install', '--space', '-lead'], /--space/);
-    fails(['install', '--space', 'has space'], /--space/);
-    fails(['install', '--space', 'sl/ash'], /--space/);
-    // the casing of a space IS significant - it names a directory
-    assert.strictEqual(ok(['install', '--space', 'Work']).space, 'Work');
+    fails(['install', '--space', 'work'], /unknown argument '--space'/);
+    fails(['install', '--space=work'], /unknown argument '--space=work'/);
+    fails(['install', '--memory-level', 'scoped'], /--memory-level must be 'global' or 'project'/);
+    assert.ok(!('space' in ok(['install'])), 'no space key is parsed');
 });
 
 test('install-args: every enum refuses a value outside its set', () =>
@@ -216,7 +215,7 @@ test('install-entry: a bad flag prints the usage and exits 1 - nothing is resolv
 
 test('install-entry: --print-plan prints the six resolved lists and exits 0, writing nothing', () =>
 {
-    const r = run(['install', '--source', ROOT, '--print-plan', '--memory-level', 'scoped']);
+    const r = run(['install', '--source', ROOT, '--print-plan', '--memory-level', 'project']);
     assert.strictEqual(r.code, 0, `--print-plan failed: ${r.err}`);
     assert.match(r.out, /source: .*\(provided\)/);
     for (const list of ['skills', 'plugins', 'mcps', 'agents', 'rules', 'hooks'])

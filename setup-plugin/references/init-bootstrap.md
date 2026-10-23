@@ -17,7 +17,7 @@ One call, nothing changed: `node "$TMP/repo/scripts/install/alfred-code.js" upda
 
 ## 2. The plan - a script states it, never you
 
-`node "$TMP/repo/scripts/init-plan.js" --installed "$TMP/installed.json" --root . --plugin-root "${CLAUDE_PLUGIN_ROOT}"` (plus `--space <name>` on step 4's rule) - paste its lines byte-for-byte in ONE fenced block. It probes this machine and names, in order (unattended, followed by one `unattended:` line per ask of steps 3 to 6 - the answers, taken exactly):
+`node "$TMP/repo/scripts/init-plan.js" --installed "$TMP/installed.json" --root . --plugin-root "${CLAUDE_PLUGIN_ROOT}"` - paste its lines byte-for-byte in ONE fenced block. It probes this machine and names, in order (unattended, followed by one `unattended:` line per ask of steps 3 to 6 - the answers, taken exactly):
 
 - `machine: <what> - present | missing: <command> | missing after uv: <command> | refresh: <command> | blocked: <why> | skip: <why>` -
   uv, the pinned Python fetched through it, `csharp-ls` when `csharp-lsp` is kept, `typescript-language-server`
@@ -75,7 +75,6 @@ The shared memory database the `alfred-memory` server reads. Paste this table fi
 | level | database | who shares it |
 |---|---|---|
 | global (Recommended) | ~/.alfred-memory/memory.db | every Claude account and Cursor on this machine |
-| scoped | ~/.alfred-memory/memory_<space>.db (memory_default.db with no space) | just this one Claude account, and Cursor installed with the same space |
 | project | <project>/.alfred/.alfred-memory/memory.db (under the data root), gitignored | this project only, from any account |
 ```
 
@@ -83,16 +82,15 @@ A 2.0.0 database under `~/.memory-mcp` (or `<project>/.memory-mcp`) is the same 
 server's launcher moves the folder at its next start once no server holds it, and links the old path
 so Cursor and an install not yet updated reach the same file; until then the level names it where it is.
 
-Then ONE AskUserQuestion with those three options, `global` marked Recommended - the whole point of
+Then ONE AskUserQuestion with those two options, `global` marked Recommended - the whole point of
 shared memory. Picking `project` while this project's awareness docs name sibling repos
 (`<docs-path>/awareness/RELATED-PROJECTS-AWARENESS.md`) means their memories are not visible from
 here - one caveat line in the close.
 
 Apply it with the init-only entry point - no reinstall; under `.claude/` only the settings key and the
 stamp's `initialised:` line change:
-`node "$TMP/repo/scripts/install/memory.js" init --project-root . --level <answer> [--space <name>]`
-(`--space` when this session's account dir is `~/.claude-<name>`; the same `PATH` prefix as step 3
-after a fresh uv). It writes the level into the
+`node "$TMP/repo/scripts/install/memory.js" init --project-root . --level <answer>`
+(the same `PATH` prefix as step 3 after a fresh uv). It writes the level into the
 `ALFRED_CODE_MEMORY_DB` key the server's launcher reads (the settings file the stamp's scope names),
 keeps the database folder out of git at `project` level (the data root's `.gitignore` does it; a folder outside the root gets its own), imports this project's old `MEMORY.md` /
 `memory/*.md` notes into THAT database once through the memory service, and - only when the import

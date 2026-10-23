@@ -233,12 +233,12 @@ test('uv-python: the override is read from the settings files a plugin server ne
     assert.strictEqual(ask(), '3.13', 'no override anywhere is the machine default');
 });
 
-// F4 item 2: a --space account's directory is named by CLAUDE_CONFIG_DIR, never derived from HOME.
+// F4 item 2: a second account's directory is named by CLAUDE_CONFIG_DIR, never derived from HOME.
 // overrideFrom resolves the account dir as `env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude')`
 // - already CLAUDE_CONFIG_DIR-first. Proven here with an account directory that is NOT '<home>/.claude'
-// (the shape a --space account actually has, e.g. '<home>/.claude-work'): the value the module reads
+// (the shape a second account actually has, e.g. '<home>/.claude-work'): the value the module reads
 // is the one at the CLAUDE_CONFIG_DIR path, so the lookup is not hardcoded to a HOME-derived layout.
-test('uv-python: the account read is keyed by CLAUDE_CONFIG_DIR itself, not a HOME-derived .claude path (a --space account)', () =>
+test('uv-python: the account read is keyed by CLAUDE_CONFIG_DIR itself, not a HOME-derived .claude path (a second account)', () =>
 {
     const spaceDir = path.join(TMP, 'uvpy-space-acct-not-dot-claude');
     fs.mkdirSync(spaceDir, { recursive: true });

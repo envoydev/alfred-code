@@ -95,7 +95,7 @@ comparable banner by banner; the content varies, the skeleton never does.
   `--print-plan` run writes nothing:
 
   ```bash
-  node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only --print-plan --plan-out "$TMP/installed.json" [--space <name>] > "$TMP/plan.out" 2>&1
+  node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only --print-plan --plan-out "$TMP/installed.json" > "$TMP/plan.out" 2>&1
   ```
 
   Then read the two offers this run may ask about, with no compare: `node "$TMP/repo/scripts/update-preflight.js"
@@ -237,7 +237,7 @@ passes a changed pick).
 Whenever `alfred-memory` is PRESENT after this round - kept from before, or newly pulled in by adding
 `alfred-memory` at step 3 - ask the shared memory level. Read what is registered today first:
 `node "$TMP/repo/stack/hooks/memory.js" level` prints `<level> <dbPath>` or `none` (no prior
-registration - a fresh add, default to `global`). Paste this table - all three levels offered at every
+registration - a fresh add, default to `global`). Paste this table - both levels offered at every
 scope, `--scope user` on the FULL copy route (all three `ALFRED_CODE_*_VIA_PLUGIN=false`) included:
 that route registers memory in THIS project's own `.mcp.json`, never one path baked into an
 account-wide registration, so `project` is safe there too:
@@ -246,7 +246,6 @@ account-wide registration, so `project` is safe there too:
 | level | database | who shares it |
 |---|---|---|
 | global | ~/.alfred-memory/memory.db | every Claude account and Cursor on this machine |
-| scoped | ~/.alfred-memory/memory_<space>.db (memory_default.db with no space) | just this one Claude account, and Cursor installed with the same space |
 | project | <project>/.alfred/.alfred-memory/memory.db (under the data root), gitignored | this project only, from any account |
 ```
 
@@ -272,7 +271,7 @@ own drop handling applies like any other server.
 
 Presence, never the value - run this and paste its lines as-is:
 `node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" CONTEXT7_API_KEY`
-(the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable; a `--space <name>` install reads `~/.claude-<name>/settings.json`). Output is `KEY=set (N chars)`, `KEY=empty (present, no value)` or `KEY=absent` - nothing else is ever printed; a shell dump of that file is rewritten by the same hook into its redacted view (every credential value shown as `<set (N chars)>`), and the Read tool on it is blocked.
+(the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable). Output is `KEY=set (N chars)`, `KEY=empty (present, no value)` or `KEY=absent` - nothing else is ever printed; a shell dump of that file is rewritten by the same hook into its redacted view (every credential value shown as `<set (N chars)>`), and the Read tool on it is blocked.
 
 ## 8. Plugins
 
@@ -360,7 +359,7 @@ skipped, or nothing changed: one narration line, nothing written.
 
 Runs regardless of which areas were chosen at step 2 - it is not part of that picker (the tool caps a
 question there at 4 options, already spent on rules+agents+skills / hooks / MCPs+plugins /
-environment). Read the account settings.json (`~/.claude/settings.json`, or the `--space` profile's)
+environment). Read the account settings.json (`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json`)
 `permissions.defaultMode` and whether the project's own scope file (`.claude/settings.local.json` at
 local scope, else `.claude/settings.json`) already sets one - report both in one line (`account:
 auto · project: unset`). Read the key with ONE call per file, the file piped into a stdin reader -
@@ -379,10 +378,9 @@ Environment step - every other key in `permissions` (`allow` / `deny` / `ask` /
 
 ## 11. Prerequisite check
 
-Run: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --emit "$TMP/selection.txt" --check [--hooks-answered] [--config-dir ~/.claude-<space>]`
+Run: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --emit "$TMP/selection.txt" --check [--hooks-answered]`
 (`--hooks-answered` whenever the Hooks area was walked this run, so a walk that switched every hook off emits `hook none` rather than no hook line - which reads as 'every hook'; no `--browsers` here: the engines picked at step 7 sit in `raw.json` as `<engine>-control`, and the run prints them as one `browsers: <csv>` line - a picked `msedge` warns
-when Edge is not installed; `--config-dir` under a `--space` profile, so the env probe reads that account's
-settings.json), output redirected to `$TMP/select.out` like every recompute. **Fixed shape, three blocks:** (1) one
+when Edge is not installed), output redirected to `$TMP/select.out` like every recompute. **Fixed shape, three blocks:** (1) one
 verdict line - `blockers: N · warnings: N`; (2) the closed selection grouped by category - closure
 adds marked with their reasons, the final drop list (incl. accepted orphans) named; (3) each
 blocker with its fix, each warning listed. Never run past a blocker
@@ -431,7 +429,7 @@ kept, or the plugins layer not walked); the narration line before the call names
 `placement: not asked - <why>`). That answer is where the `--scope-of` flags come from, so an installer run
 before it owes a second run when the answer moves an item (audit 2026-10-20 C46, 878f253d).
 
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--space <name>] [--keep-pins] [--browsers <csv>] [--scope-of <item>=<global|project|local>]... [--docs-versioning git|local] [--data-path <folder> --data-move move] [--memory-level global|scoped|project] [--instructions-file agents|claude] [--instructions-at root|claude] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. One `--scope-of` per optional item the walk's last ask moved (`references/walk.md`, 'Where each optional item installs'), plus one per newly added item made global - none for 'Keep each where it is': an update keeps every item where it lives, and this flag is the one way one moves. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--keep-pins] [--browsers <csv>] [--scope-of <item>=<global|project|local>]... [--docs-versioning git|local] [--data-path <folder> --data-move move] [--memory-level global|project] [--instructions-file agents|claude] [--instructions-at root|claude] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. One `--scope-of` per optional item the walk's last ask moved (`references/walk.md`, 'Where each optional item installs'), plus one per newly added item made global - none for 'Keep each where it is': an update keeps every item where it lives, and this flag is the one way one moves. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
 - **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED` set to `shell`). The frozen OS twin is gone, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
 - `--docs-versioning` only when the user's own invocation names a value (`/alfred-code:configure
   --docs-versioning local`): the installer writes it over the current value and prints the old and new
@@ -441,8 +439,8 @@ before it owes a second run when the answer moves an item (audit 2026-10-20 C46,
   level: the installer re-points the registration to that level's database (nothing copied or
   deleted) and prints `memory: level <old> -> <new>: <newPath> (old memories stay in <oldPath>)`.
   Nothing changed at step 7 - the level already matches, or memory was dropped - needs no flag.
-- `--scope` is the stamp's own `scope:` line (`project`, `user` or `local`), and `--space` the
-  profile that owns the install - pass them unchanged unless the user asked to MOVE the install.
+- `--scope` is the stamp's own `scope:` line (`project`, `user` or `local`) - pass it unchanged unless
+  the user asked to MOVE the install.
   Moving a `local` install to `project` or `user` clears the stack's own entries out of
   `settings.local.json` first, or they would keep overriding the shared file: the seat denies move
   into settings.json, the copied-hook wiring and `.mcp.json` approvals go, and so does every

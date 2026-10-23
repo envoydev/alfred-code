@@ -15,9 +15,10 @@ The memory levels and stores, where the docs root and the data root live, and th
 
 - **`memory` is required like navigation and documentation**, chosen per install by LEVEL rather than by
   a droppable pick: `global` (`~/.alfred-memory/memory.db`, every Claude account and Cursor on the
-  machine - the default for a fresh install), `scoped` (`~/.alfred-memory/memory_<space>.db`,
-  `memory_default.db` with no space - one account), `project` (`<project>/<data root>/.alfred-memory/memory.db`,
-  gitignored - this project only). The folder is `.alfred-memory` wherever it sits (2.1.0); the 2.0.0
+  machine - the default for a fresh install) or `project` (`<project>/<data root>/.alfred-memory/memory.db`,
+  gitignored - this project only). The `scoped` level (`memory_<space>.db`, one account) left with the `--space` profile
+  flag (the user's ruling of 2026-10-23): a registration still naming one reads as a custom path, kept as written, and
+  the copy route commits a custom file in the home memory folder as `~/.alfred-memory/<file>` like the global one. The folder is `.alfred-memory` wherever it sits (2.1.0); the 2.0.0
   `~/.memory-mcp` is moved by the memory launcher at a start when no database in it is open (no `-wal` /
   `-shm` - Windows refuses renaming an open file, and SQLite calls renaming an open database undefined),
   and a link is left at the old path (a junction on Windows) so Cursor and an install not yet updated reach
@@ -93,7 +94,7 @@ The memory levels and stores, where the docs root and the data root live, and th
 
 - **Two memory stores and one record, don't conflate:** the `memory` MCP is the SHARED memory - preferences,
   corrections, project facts and agent lessons, searchable by meaning, one database per chosen
-  level (global/scoped/project) read by every Claude account and Cursor at that level - and, since the user's
+  level (global/project) read by every Claude account and Cursor at that level - and, since the user's
   2026-10-13 ruling ('Serena is just for navigation, for memory it's only alfred memory'), the EPHEMERAL handoff bus
   between agents within one feature too: rows tagged `handoff`, read by exact tags, purged at the run's close, never
   re-sent by the session-start push (`memory.js` `isHandoff`), and never a place for what should outlast the run. The

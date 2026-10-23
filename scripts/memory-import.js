@@ -25,8 +25,7 @@
 //     `CLAUDE_CODE_PROJECT_DIR_NAME` ONLY when the live `CLAUDE_CONFIG_DIR` env var is also set (Claude
 //     Code itself ignores that variable otherwise - FACT-AUTOMEM), else the slugified git top level;
 //   - every OTHER account dir on the machine found the same way: `$HOME/.claude`, every `$HOME/.claude-*`,
-//     and a live `CLAUDE_CONFIG_DIR` if one is set - so a second Claude account, or a `--space` install,
-//     is never skipped;
+//     and a live `CLAUDE_CONFIG_DIR` if one is set - so a second Claude account is never skipped;
 //   - re-review (final-review-A.md, 'I7's wrong-folder guard'): every account dir's `projects/*/`
 //     folder NOT already covered above, whose own transcript's `cwd` (read line by line, stopping at
 //     the first line that carries one, bounded per file) names this project's main checkout or one of
@@ -198,7 +197,7 @@ function defaultMemoryDir(projectRoot, configDir, home = os.homedir())
 
 // final review A, I7: every account dir on the machine that could hold this project's notes -
 // the explicit --config-dir / CLAUDE_CONFIG_DIR (already the primary), $HOME/.claude, and every
-// $HOME/.claude-<space> sibling. Order is stable but not meaningful - the caller dedupes.
+// $HOME/.claude-<name> sibling. Order is stable but not meaningful - the caller dedupes.
 function accountConfigDirs(home, explicitConfigDir)
 {
     const set = new Set();

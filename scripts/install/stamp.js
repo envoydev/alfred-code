@@ -583,10 +583,9 @@ function initialisedValue({ claudeDir, now = new Date() })
     return memoryOff(claudeDir) ? `${isoSeconds(now)} (memory already off before this release)` : 'pending';
 }
 
-// The account dir - the installer's own rule (alfred-code.js): CLAUDE_CONFIG_DIR, else the --space
-// profile's ~/.claude-<space>, else ~/.claude.
-const accountDir = (env = process.env, space = '') => env.CLAUDE_CONFIG_DIR
-    || path.join(env.HOME || env.USERPROFILE || require('node:os').homedir(), space ? `.claude-${space}` : '.claude');
+// The account dir - the installer's own rule (alfred-code.js): CLAUDE_CONFIG_DIR, else ~/.claude.
+const accountDir = (env = process.env) => env.CLAUDE_CONFIG_DIR
+    || path.join(env.HOME || env.USERPROFILE || require('node:os').homedir(), '.claude');
 
 // The checkout that holds this directory's install record - the prelude's own record list over the
 // prelude's own checkouts (the dir, its git top level, a worktree's main checkout), so the router and

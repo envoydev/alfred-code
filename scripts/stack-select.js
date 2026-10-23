@@ -230,8 +230,8 @@ function accountSettingsEnv(configDir)
 {
     // The env block of the ACCOUNT settings.json (--config-dir, else CLAUDE_CONFIG_DIR, else ~/.claude) -
     // the one file whose env reaches .mcp.json ${VAR} expansion at launch (measured; a project-level
-    // settings.json does not). A --space install keeps its account under ~/.claude-<space>, and the
-    // model's shell rarely carries CLAUDE_CONFIG_DIR, so the guided commands pass the dir explicitly.
+    // settings.json does not). A second account keeps its own dir (CLAUDE_CONFIG_DIR), so the guided
+    // commands may pass the dir explicitly.
     const os = require('os');
     const p = require('path');
     const dir = configDir || process.env.CLAUDE_CONFIG_DIR || p.join(os.homedir(), '.claude');

@@ -192,10 +192,9 @@ function ensureRootIgnore({ projectDir, root, env = process.env })
 
 // ------------------------------------------------------------------ the memory database
 
-function memoryDbFor(level, { home, space, projectRoot, root = DATA_ROOT_DEFAULT } = {})
+function memoryDbFor(level, { home, projectRoot, root = DATA_ROOT_DEFAULT } = {})
 {
     if (level === 'global') return path.join(home, MEMORY_FOLDER, 'memory.db');
-    if (level === 'scoped') return path.join(home, MEMORY_FOLDER, `memory_${space || 'default'}.db`);
     if (level === 'project') return projectRoot ? path.join(projectRoot, ...String(root).split('/'), MEMORY_FOLDER, 'memory.db') : '';
     return '';
 }
@@ -233,11 +232,7 @@ function memoryLevelOf(p, { home, projectRoot } = {})
         if (dir === path.join(root, LEGACY_MEMORY_FOLDER)) return 'project';
         if (path.basename(dir) === MEMORY_FOLDER && inside(dir, root)) return 'project';
     }
-    if (home && [MEMORY_FOLDER, LEGACY_MEMORY_FOLDER].some((f) => dir === path.join(realish(home), f)))
-    {
-        if (file === 'memory.db') return 'global';
-        if (/^memory_.+\.db$/.test(file)) return 'scoped';
-    }
+    if (home && file === 'memory.db' && [MEMORY_FOLDER, LEGACY_MEMORY_FOLDER].some((f) => dir === path.join(realish(home), f))) return 'global';
     return '';
 }
 

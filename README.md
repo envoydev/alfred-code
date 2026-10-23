@@ -227,7 +227,7 @@ The flags you are most likely to want:
 | Flag | Does |
 | --- | --- |
 | `--scope project\|user\|local` | where the install is enabled |
-| `--memory-level global\|scoped\|project` | which memory database to use |
+| `--memory-level global\|project` | which memory database to use |
 | `--browsers chrome,firefox` | which browsers the browser server gets: chrome, msedge, firefox, webkit |
 | `--add 'skill dotnet'` | add one skill, agent, rule, hook, mcp or plugin |
 | `--drop 'mcp browser'` | remove one |

@@ -434,7 +434,7 @@ plugin the snapshot's `$TMP/repo/meta/plugin-settings.json` has a row for (today
 kept - its config file is ACCOUNT-level whichever scope it is installed at), report the delta and ASK
 here - the answer is applied after the installer runs, exactly like the environment choices:
 
-1. `node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir> --installed <kept plugins csv>` - paste its output verbatim in a fenced block. Each line reads `missing` (would be added), `differs` (the user already chose something else) or `match`; `--config-dir` is `~/.claude`, or `~/.claude-<space>` under a profile.
+1. `node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir> --installed <kept plugins csv>` - paste its output verbatim in a fenced block. Each line reads `missing` (would be added), `differs` (the user already chose something else) or `match`; `--config-dir` is `${CLAUDE_CONFIG_DIR:-$HOME/.claude}`.
 2. ONE AskUserQuestion carrying those counts:
 
 ```ask

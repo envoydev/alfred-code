@@ -113,41 +113,46 @@ for (const record of [true, false])
     });
 }
 
-// A-I5 (final review A, ruling): `--space <name>` with no CLAUDE_CONFIG_DIR puts the installer's own
-// writes in ~/.claude-<name>, but every `claude` spawn inherited an env naming no account, so the CLI
-// installed the core and its plugins into the DEFAULT one. Each spawn now carries the space's account; a
-// CLAUDE_CONFIG_DIR already set wins, as it does for the installer's own writes. The recording stub logs
-// the CLAUDE_CONFIG_DIR each call received.
+// A-I5 (final review A, ruling): every `claude` spawn uses the account the installer's own writes land in. Since the
+// --space profile flag left (the user's ruling of 2026-10-23) that is the run's env alone - CLAUDE_CONFIG_DIR, else
+// ~/.claude, which a spawn naming no account uses too. The recording stub logs the CLAUDE_CONFIG_DIR each call received.
 const ENV_STUB = ['printf \'%s|%s\\n\' "${CLAUDE_CONFIG_DIR:-unset}" "$*" >> "$CLAUDE_STUB_LOG"',
     'if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then cat "$CLAUDE_STUB_PLUGINS"; fi', 'exit 0'].join('\n');
-for (const [label, env, dir] of [['no CLAUDE_CONFIG_DIR', { CLAUDE_CONFIG_DIR: undefined }, '.claude-work'], ['CLAUDE_CONFIG_DIR set', {}, 'acct']])
+for (const [label, env, dir, seen] of [['no CLAUDE_CONFIG_DIR', { CLAUDE_CONFIG_DIR: undefined }, '.claude', 'unset'], ['CLAUDE_CONFIG_DIR set', {}, 'acct', 'acct']])
 {
-    test(`install-scope: a --space run with ${label} hands every claude call the account it writes (A-I5)`, POSIX_ONLY, () =>
+    test(`install-scope: a run with ${label} hands every claude call the account it writes (A-I5)`, POSIX_ONLY, () =>
     {
         let work = '';
         const { calls, out } = seedRun('install', SELECTION, {
-            env, args: ['--space', 'work'], tools: { claude: ENV_STUB },
+            env, tools: { claude: ENV_STUB },
             prepare: (repo, w) => { work = w; },
         });
         const want = path.join(work, dir);
+        const spawned = seen === 'unset' ? 'unset' : want;
         assert.match(out, new RegExp(`account=${want.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]`), out);
         assert.ok(calls.some((c) => c.endsWith('|plugin install alfred-code@envoydev --scope project -y')), calls.join('\n'));
-        assert.deepStrictEqual(calls.filter((c) => !c.startsWith(`${want}|`)), [], `a claude call ran against another account (want ${want})`);
+        assert.deepStrictEqual(calls.filter((c) => !c.startsWith(`${spawned}|`)), [], `a claude call ran against another account (want ${spawned})`);
     });
 }
 
+test('install-scope: --space is refused before anything runs - the profile flag is gone (2026-10-23)', POSIX_ONLY, () =>
+{
+    const { calls, err, code } = seedRun('install', SELECTION, { args: ['--space', 'work'], tools: { claude: ENV_STUB }, failOk: true });
+    assert.notStrictEqual(code, 0);
+    assert.match(err, /unknown argument '--space'/, err);
+    assert.deepStrictEqual(calls, [], 'a claude call ran before the refusal');
+});
+
 // A-I5 completion (F4 re-review, item 2): the copy route writes the machine's Python pin into each uvx
-// registration, and `ALFRED_CODE_UV_PYTHON` is read from the account settings last. The installer asked
-// uv-python with the run's own env, so a `--space` run from a plain shell read the DEFAULT account's
-// override, not the space's. It asks with the env its claude calls carry.
-test('install-scope: a --space run with no CLAUDE_CONFIG_DIR takes the space account\'s Python override for the copy route (A-I5)', POSIX_ONLY, () =>
+// registration, and `ALFRED_CODE_UV_PYTHON` is read from the account settings last - the account the run's env
+// names (the sandbox's CLAUDE_CONFIG_DIR, a second account), never the default ~/.claude.
+test('install-scope: a run under a second account\'s CLAUDE_CONFIG_DIR takes that account\'s Python override for the copy route (A-I5)', POSIX_ONLY, () =>
 {
     const { calls } = seedRun('install', SELECTION, {
-        env: { CLAUDE_CONFIG_DIR: undefined, ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' },
-        args: ['--space', 'work'],
+        env: { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' },
         prepare: (repo, work) =>
         {
-            for (const [dir, pin] of [['.claude-work', '3.10'], ['.claude', '3.11']])
+            for (const [dir, pin] of [['acct', '3.10'], ['.claude', '3.11']])
             {
                 fs.mkdirSync(path.join(work, dir), { recursive: true });
                 fs.writeFileSync(path.join(work, dir, 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_UV_PYTHON: pin } }));
@@ -156,7 +161,7 @@ test('install-scope: a --space run with no CLAUDE_CONFIG_DIR takes the space acc
     });
     const serena = calls.find((c) => /^mcp add --scope project alfred-navigation /.test(c));
     assert.ok(serena, calls.join('\n'));
-    assert.match(serena, / uvx --python 3\.10 /, `not the space account's pin: ${serena}`);
+    assert.match(serena, / uvx --python 3\.10 /, `not the run's account pin: ${serena}`);
 });
 
 // R29: the memory db path is resolved PER PROJECT by the launcher, never baked into the
@@ -745,11 +750,11 @@ test('install-entry: no home and no CLAUDE_CONFIG_DIR is refused with one line, 
     assert.deepStrictEqual(run.result, { claude: false, mcp: false }, 'the project was written');
 });
 
-// C9 (R136 r): CLAUDE_CONFIG_DIR alone names the account, but the global and scoped memory databases
-// live under the HOME - with none, the path was a RELATIVE `.memory-mcp/memory.db`, written into
+// C9 (R136 r): CLAUDE_CONFIG_DIR alone names the account, but the global memory database
+// lives under the HOME - with none, the path was a RELATIVE `.memory-mcp/memory.db`, written into
 // settings.json and resolved against whatever cwd reads it. Refused like the no-home case: one line,
 // before any call or write. The project level needs no home, and runs.
-for (const [label, args, refused] of [['the default level', [], true], ['--memory-level scoped', ['--memory-level', 'scoped'], true], ['--memory-level project', ['--memory-level', 'project'], false]])
+for (const [label, args, refused] of [['the default level', [], true], ['--memory-level global', ['--memory-level', 'global'], true], ['--memory-level project', ['--memory-level', 'project'], false]])
 {
     test(`install-entry: CLAUDE_CONFIG_DIR with no HOME and ${label} ${refused ? 'is refused before anything is called or written' : 'runs - its database is the project\'s'} (C9)`, POSIX_ONLY, () =>
     {
@@ -778,7 +783,7 @@ for (const [label, args, refused] of [['the default level', [], true], ['--memor
         assert.notStrictEqual(run.code, 0, run.out);
         const said = run.err.trim().split('\n');
         assert.strictEqual(said.length, 1, run.err);
-        assert.match(said[0], /no home directory - HOME and USERPROFILE are unset, so the (global|scoped) memory database would be the relative path/);
+        assert.match(said[0], /no home directory - HOME and USERPROFILE are unset, so the global memory database would be the relative path/);
         assert.deepStrictEqual(run.calls, [], `a claude call ran:\n${run.calls.join('\n')}`);
         assert.strictEqual(run.result.claude, false, 'the project was written');
     });

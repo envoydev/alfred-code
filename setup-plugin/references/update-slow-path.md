@@ -98,7 +98,7 @@ only seeded when missing.
 is the no-questions fast path, and an existing registration is otherwise left exactly where it is. The
 installer re-points the registration to that level's database (nothing is copied or deleted) and
 prints `memory: level <old> -> <new>: <newPath> (old memories stay in <oldPath>)`; any value outside
-`global` / `scoped` / `project` is refused before anything is written. `--memory-level project` rides
+`global` / `project` is refused before anything is written. `--memory-level project` rides
 every scope, `--scope user` included: the plugin launcher resolves the db path per PROJECT at launch
 (never baked into the registration), and the full copy route - the one route that registers memory
 itself - registers it in this project's own `.mcp.json` at every scope.

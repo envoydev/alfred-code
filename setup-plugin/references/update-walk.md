@@ -181,11 +181,11 @@ Run the installer; it reads the install back itself, closes new dependencies thr
 any `installed-only: required:` additions. **One fixed capture form, always** - `2>&1 | tee "$TMP/install.log"` on
 the call itself (the shared contract is in `source-protocol.md`'s 'Capture the installer's own output'):
 
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add "<category> <name>"]... [--drop "<category> <name>"]... [--space <name>] --keep-pins [--docs-versioning git|local] [--data-move move|keep] [--data-path <folder>] [--docs-root-move move [--docs-root-leave <entry>,...]] [--memory-level global|scoped|project] [--instructions-file agents|claude] 2>&1 | tee "$TMP/install.log"`
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add "<category> <name>"]... [--drop "<category> <name>"]... --keep-pins [--docs-versioning git|local] [--data-move move|keep] [--data-path <folder>] [--docs-root-move move [--docs-root-leave <entry>,...]] [--memory-level global|project] [--instructions-file agents|claude] 2>&1 | tee "$TMP/install.log"`
 - **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED` set to `shell`). The frozen OS twin is gone, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
 
-`<scope>` comes from `node "$TMP/repo/scripts/install/stamp.js" scope .` (`project`, `user` or `local`) and
-`--space` names the profile that owns the install. `--keep-pins` is the default here - a fast refresh must not
+`<scope>` comes from `node "$TMP/repo/scripts/install/stamp.js" scope .` (`project`, `user` or `local`).
+`--keep-pins` is the default here - a fast refresh must not
 flatten deliberate local model/effort pin edits. `--docs-versioning` and `--memory-level` ride the call ONLY when the
 user's own invocation names a value - read `update-slow-path.md`'s 'Flags' section first. An install with no
 memory registration yet needs no flag: the read-back adopts the `alfred-memory` rule and MCP at `global`; the notes
@@ -230,7 +230,7 @@ restart for the hook delta.
 Presence, never the value - the grep already carries the installer's own `KEY=` presence output on most runs. Run
 this ONLY when it returned no `KEY=` line, and paste its lines as-is:
 `node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" CONTEXT7_API_KEY`
-(the same line runs on Windows; a `--space <name>` install reads `~/.claude-<name>/settings.json`). Output is
+(the same line runs on Windows). Output is
 `KEY=set (N chars)`, `KEY=empty (present, no value)` or `KEY=absent` - nothing else is ever printed. A key the user
 wants set: `update-slow-path.md`'s 'A credential the user wants set' - the value never travels through the chat.
 

@@ -1221,8 +1221,8 @@ const SETUP_ASK_TEMPLATES = {
     // +1: screen B's compact-or-fresh-session ask (2026-10-14). The install phase of /alfred-code:init since setup merged
     // into it (2026-10-17).
     // +7: screen A's scope, root, profile and GitHub CLI asks, step 2's permission mode, step 10's blockers and the
-    // git-hygiene ask (audit 2026-10-21 commands T2-12).
-    'setup-plugin/references/init-install.md': 10,
+    // git-hygiene ask (audit 2026-10-21 commands T2-12). -1: the profile ask, with --space (the user's ruling of 2026-10-23).
+    'setup-plugin/references/init-install.md': 9,
     // the instruction files' place, one template per `instructions:` case - read by init's step 1 and configure's step 12
     // (2026-10-21); +3: the name, one per `instructions-file:` files= case (the user's ask of 2026-10-21, after 2.9.0);
     // +1: update's rename-first name ask for a never-asked .claude/CLAUDE.md install (the user's rulings of 2026-10-22).

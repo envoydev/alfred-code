@@ -40,7 +40,7 @@ Detect silently first - the OS (the installer itself is one `node` command on ev
 printf 'os=%s\n' "$(uname -s 2>/dev/null || echo Windows)"; git rev-parse --show-toplevel 2>/dev/null || echo "mode=no-repo root=$(pwd)"
 ```
 
-Denied by the permission classifier? ASK, do not re-probe. Re-issuing the same detection under different syntax reads as working around the denial, and the measured run got two declines and an interrupt for it. Put the two facts through one AskUserQuestion instead ('which OS?' / 'is this directory the project root?') with the likely answer marked - the user knows both without a probe. Then ask TWO AskUserQuestion screens (the tool caps four questions per call; each default marked Recommended). **Screen A - the install itself:** scope - where the PLUGINS are enabled, nothing else: `project` (default - `.claude/settings.json`, everyone who clones the repo), `user` (every project of this account) or `local` (this checkout only - the stack's own settings writes then go to `.claude/settings.local.json` too); the library copies, rules, hook engines, settings and stamp live in the project's `.claude/` at every scope. In no-repo mode screen A opens with the root confirmation instead - install into this directory, or stop and run from the project's root (recommended when this directory is not the project) - profile (the optional `--space` account name, default none), and the one conditional extra: 'install the GitHub CLI?', asked ONLY when `gh` is not already on PATH and skipped entirely when it is - each in its template below. **The instruction file's name and place** - read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/instructions-place.md` and ask its two templates for the project's `instructions-file:` and `instructions:` lines: they ride screen A while that screen holds two questions or fewer, else they are one call of their own right after. **Screen B - the environment:** one question per `ask: true` row of the snapshot's `$TMP/repo/meta/environment.json`, which is the ONE list of the values the install writes into the scope's settings file `env` (`.claude/settings.local.json` at `local`, else `.claude/settings.json`) - never a list typed from memory here, or a variable a release adds would silently stop being asked. Each question shows the row's `default` and its `what` in plain words; free text via Other. `ALFRED_CODE_DATA_PATH` is the plugin DATA question - where Alfred Code keeps this project's data in general, not the docs alone - asked in this shape:
+Denied by the permission classifier? ASK, do not re-probe. Re-issuing the same detection under different syntax reads as working around the denial, and the measured run got two declines and an interrupt for it. Put the two facts through one AskUserQuestion instead ('which OS?' / 'is this directory the project root?') with the likely answer marked - the user knows both without a probe. Then ask TWO AskUserQuestion screens (the tool caps four questions per call; each default marked Recommended). **Screen A - the install itself:** scope - where the PLUGINS are enabled, nothing else: `project` (default - `.claude/settings.json`, everyone who clones the repo), `user` (every project of this account) or `local` (this checkout only - the stack's own settings writes then go to `.claude/settings.local.json` too); the library copies, rules, hook engines, settings and stamp live in the project's `.claude/` at every scope. In no-repo mode screen A opens with the root confirmation instead - install into this directory, or stop and run from the project's root (recommended when this directory is not the project) - and the one conditional extra: 'install the GitHub CLI?', asked ONLY when `gh` is not already on PATH and skipped entirely when it is - each in its template below. **The instruction file's name and place** - read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/instructions-place.md` and ask its two templates for the project's `instructions-file:` and `instructions:` lines: they ride screen A while that screen holds two questions or fewer, else they are one call of their own right after. **Screen B - the environment:** one question per `ask: true` row of the snapshot's `$TMP/repo/meta/environment.json`, which is the ONE list of the values the install writes into the scope's settings file `env` (`.claude/settings.local.json` at `local`, else `.claude/settings.json`) - never a list typed from memory here, or a variable a release adds would silently stop being asked. Each question shows the row's `default` and its `what` in plain words; free text via Other. `ALFRED_CODE_DATA_PATH` is the plugin DATA question - where Alfred Code keeps this project's data in general, not the docs alone - asked in this shape:
 
 Screen A's templates, one question each in the one call:
 
@@ -55,12 +55,6 @@ Where should the stack's plugins be enabled? The library copies, rules, hook eng
 Install into <this directory>? It is no git repository, so it is the root the install writes .claude/ into.
 - 'Install here (Recommended)' - this directory is the project root; move the mark to 'Stop' when it holds no project files
 - 'Stop - run from the project root' - nothing is written; start again from the project's top folder
-```
-
-```ask
-Install under an account profile (--space)? None means the account at ~/.claude.
-- 'No profile (Recommended)' - the default account
-- 'A named profile' - the name is asked next; the install reads and writes ~/.claude-<name>
 ```
 
 ```ask
@@ -172,7 +166,7 @@ in the scope's settings file env.
 
 walk.md's MCPs layer, the browser engines picked as rows of their own (step 11 passes them).
 
-The memory LEVEL is not asked here: `/alfred-code:init` asks it (global, scoped or project) in the
+The memory LEVEL is not asked here: `/alfred-code:init` asks it (global or project) in the
 session after the restart, and imports this project's old notes into the database it names. Until
 then the install points the memory server at the global database and leaves Claude's own memory on.
 
@@ -182,7 +176,7 @@ walk.md's Plugins layer, the plugin-settings ask included - applied at step 11a.
 
 ## 10. Prerequisite check
 
-Run: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --emit "$TMP/selection.txt" --hooks-answered --check --defer-init [--github-cli] [--config-dir ~/.claude-<space>]` (no `--browsers` here: the engines picked at step 8 sit in `raw.json` as `<engine>-control`, and the run prints them as one `browsers: <csv>` line - a picked `msedge` warns when Edge is not installed; `--config-dir` only under a `--space` profile, so the env probe reads THAT account's settings.json instead of `~/.claude`; `--github-cli` only when they opted in at step 1). Redirect its output to `$TMP/select.out` like every recompute. It writes `selection.txt` - the closed installer selection. **Fixed shape, three blocks:** (1) one verdict line - `blockers: N · warnings: N`; (2) the closed selection grouped by category, closure adds marked with their reasons; (3) the lists:
+Run: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --emit "$TMP/selection.txt" --hooks-answered --check --defer-init [--github-cli]` (no `--browsers` here: the engines picked at step 8 sit in `raw.json` as `<engine>-control`, and the run prints them as one `browsers: <csv>` line - a picked `msedge` warns when Edge is not installed; `--github-cli` only when they opted in at step 1). Redirect its output to `$TMP/select.out` like every recompute. It writes `selection.txt` - the closed installer selection. **Fixed shape, three blocks:** (1) one verdict line - `blockers: N · warnings: N`; (2) the closed selection grouped by category, closure adds marked with their reasons; (3) the lists:
 
 - Blockers: list each with its fix, then AskUserQuestion. Never install past a blocker.
 
@@ -218,7 +212,7 @@ the install writes.
 
 Then run the installer **from the snapshot**, and pass it back with `--source` so it installs from what you already downloaded instead of fetching again:
 
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" install --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [--space <name>] [--browsers <csv>] [--scope-of <item>=global ...] [--docs-versioning git|local] [--data-path <folder>] [--auto-compact on|off] [--instructions-file agents|claude] [--instructions-at root|claude] [--github-cli]`
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" install --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [--browsers <csv>] [--scope-of <item>=global ...] [--docs-versioning git|local] [--data-path <folder>] [--auto-compact on|off] [--instructions-file agents|claude] [--instructions-at root|claude] [--github-cli]`
 - **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED` set to `shell`). The frozen OS twin is gone, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
 
 `--scope-of` carries the walk's last answer (`references/walk.md`, 'Where each optional item installs'): one `--scope-of <item>=global` per optional pick the user made global; every other one installs in this project, so a 'This project, all of them' answer passes none.
@@ -238,7 +232,7 @@ The documentation server key is ACCOUNT-level, not project-level: when `CONTEXT7
 
 Presence, never the value - run this and paste its lines as-is:
 `node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" CONTEXT7_API_KEY`
-(the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable; a `--space <name>` install reads `~/.claude-<name>/settings.json`). Output is `KEY=set (N chars)`, `KEY=empty (present, no value)` or `KEY=absent` - nothing else is ever printed; a shell dump of that file is rewritten by the same hook into its redacted view (every credential value shown as `<set (N chars)>`), and the Read tool on it is blocked.
+(the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable). Output is `KEY=set (N chars)`, `KEY=empty (present, no value)` or `KEY=absent` - nothing else is ever printed; a shell dump of that file is rewritten by the same hook into its redacted view (every credential value shown as `<set (N chars)>`), and the Read tool on it is blocked.
 
 Then apply the step-1 environment choices where they differ from what the installer left: a merge on the scope's settings file touching ONLY the chosen keys - every key screen B asked about (the catalog's rows, `env.` prefixed - but `ALFRED_CODE_DATA_PATH` and `ALFRED_CODE_AUTO_COMPACT`, which the installer already wrote from `--data-path` and `--auto-compact`) - everything else in the file preserved. The installer seeds these only when absent, so the values written here are the user's and survive every later update untouched. An accepted default needs no write only where the FILE already holds that value, so read the block back after the install and compare: one row's seed is DETECTED from the repo rather than constant (its `what` says so), and there the catalog default and the seeded value can differ.
 
