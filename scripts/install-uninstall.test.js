@@ -44,9 +44,9 @@ test('removeManagedFiles: a copy whose hash still matches goes, an edited one an
     assert.match(logs.join('\n'), /rule edited: kept - changed since the stack wrote it, so it is yours/);
 });
 
-// --instructions-at root: the seed sits at the project root, and an unedited one goes like the .claude/ one; an edited
-// one, a root AGENTS.md beside a .claude/ seed, and any other root file stay.
-test('removeManagedFiles: an unedited root seed goes, an edited one stays, and the .claude/ seed is the row while it is there', () =>
+// --instructions-at root: the seed sits at the project root, and an unedited one goes like the .claude/ one - on the
+// user's 'remove' answer (2026-10-23); an edited one, a root AGENTS.md beside a .claude/ seed, and any other root file stay.
+test('removeManagedFiles: an unedited root seed goes on remove, an edited one stays, and the .claude/ seed is the row while it is there', () =>
 {
     const project = path.join(TMP, `f-${seq++}`);
     const claudeDir = path.join(project, '.claude');
@@ -54,18 +54,65 @@ test('removeManagedFiles: an unedited root seed goes, an edited one stays, and t
     put(path.join(project, 'README.md'), '# seed\n');
     const files = { 'AGENTS.md': hashItem(path.join(project, 'AGENTS.md')), 'README.md': hashItem(path.join(project, 'README.md')) };
     const logs = [];
-    uninstall.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), files, log: (m) => logs.push(m) });
+    uninstall.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), files, seed: 'remove', log: (m) => logs.push(m) });
     assert.ok(!fs.existsSync(path.join(project, 'AGENTS.md')), `the unedited root seed goes: ${logs.join(' | ')}`);
     assert.ok(fs.existsSync(path.join(project, 'README.md')), 'no other root file is ever removed');
 
     put(path.join(project, 'AGENTS.md'), '# seed, filled in\n');
-    uninstall.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), files: { 'AGENTS.md': files['AGENTS.md'] }, log: () => {} });
+    uninstall.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), files: { 'AGENTS.md': files['AGENTS.md'] }, seed: 'remove', log: () => {} });
     assert.strictEqual(fs.readFileSync(path.join(project, 'AGENTS.md'), 'utf8'), '# seed, filled in\n', 'an edited root seed is the project\'s');
 
     put(path.join(project, 'AGENTS.md'), '# seed\n');
     put(path.join(claudeDir, 'AGENTS.md'), '# the .claude seed, edited\n');
-    uninstall.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), files: { 'AGENTS.md': files['AGENTS.md'] }, log: () => {} });
+    uninstall.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), files: { 'AGENTS.md': files['AGENTS.md'] }, seed: 'remove', log: () => {} });
     assert.ok(fs.existsSync(path.join(project, 'AGENTS.md')) && fs.existsSync(path.join(claudeDir, 'AGENTS.md')), 'with a .claude/AGENTS.md there, the root one is not the row');
+});
+
+// The user's ask of 2026-10-23: the seed is the one file an uninstall asks about. With no answer it stays, and the line
+// names the flag; a 'keep' answer says so; seedPlan is the read-only preview /alfred-code:uninstall asks from.
+test('removeManagedFiles: an unedited seed stays without a remove answer, said with the flag; seedPlan previews it', () =>
+{
+    const project = path.join(TMP, `f-${seq++}`);
+    const claudeDir = path.join(project, '.claude');
+    const seed = path.join(claudeDir, 'AGENTS.md');
+    put(seed, '# seed\n');
+    const files = { 'AGENTS.md': hashItem(seed) };
+    assert.deepStrictEqual(uninstall.seedPlan({ projectRoot: project, files }), [{ rel: '.claude/AGENTS.md', state: 'unedited' }]);
+    const logs = [];
+    uninstall.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), files, log: (m) => logs.push(m) });
+    assert.ok(fs.existsSync(seed), 'no answer: the seed stays');
+    assert.match(logs.join('\n'), /\.claude\/AGENTS\.md: kept - .*--instructions-seed remove/);
+    const kept = [];
+    uninstall.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), files, seed: 'keep', log: (m) => kept.push(m) });
+    assert.ok(fs.existsSync(seed));
+    assert.match(kept.join('\n'), /\.claude\/AGENTS\.md: kept on your answer/);
+
+    fs.writeFileSync(seed, '# seed, filled in\n');
+    assert.deepStrictEqual(uninstall.seedPlan({ projectRoot: project, files }), [{ rel: '.claude/AGENTS.md', state: 'edited' }]);
+    fs.rmSync(seed);
+    assert.deepStrictEqual(uninstall.seedPlan({ projectRoot: project, files }), [], 'no file at the row');
+    assert.deepStrictEqual(uninstall.seedPlan({ projectRoot: project, files: {} }), [], 'no row');
+    put(path.join(project, 'CLAUDE.md'), '# seed\n');
+    assert.deepStrictEqual(uninstall.seedPlan({ projectRoot: project, files: { 'AGENTS.md': hashItem(path.join(project, 'CLAUDE.md')) }, instructionsKind: 'claude' }),
+        [{ rel: 'CLAUDE.md', state: 'unedited' }], 'a root seed under the CLAUDE.md answer');
+});
+
+// Review 2026-10-23: a 2.1.6 install recorded its seed under a `CLAUDE.md` row (.claude/CLAUDE.md). It is the
+// instruction file all the same: previewed, and removed only on the remove answer - one reading for both.
+test('removeManagedFiles: a 2.1.6 seed under its CLAUDE.md row is previewed and asked about like the AGENTS.md one', () =>
+{
+    const project = path.join(TMP, `f-${seq++}`);
+    const claudeDir = path.join(project, '.claude');
+    const seed = path.join(claudeDir, 'CLAUDE.md');
+    put(seed, '# seed\n');
+    const files = { 'CLAUDE.md': hashItem(seed) };
+    assert.deepStrictEqual(uninstall.seedPlan({ projectRoot: project, files }), [{ rel: '.claude/CLAUDE.md', state: 'unedited' }]);
+    const logs = [];
+    uninstall.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), files, log: (m) => logs.push(m) });
+    assert.ok(fs.existsSync(seed), `no answer: the 2.1.6 seed stays: ${logs.join(' | ')}`);
+    assert.match(logs.join('\n'), /\.claude\/CLAUDE\.md: kept - .*--instructions-seed remove/);
+    uninstall.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), files, seed: 'remove', log: () => {} });
+    assert.ok(!fs.existsSync(seed), 'remove: it goes');
 });
 
 // Review finding 14: the CommonJS marker scopes every .js in .claude/hooks - the user's own CommonJS hooks
@@ -138,6 +185,7 @@ test('uninstall: every stack file and managed entry goes, the user\'s own hook, 
 {
     const { calls, result, outs } = seedRun(['install', 'uninstall'], 'skill csharp\nrule markdown-docs\n', {
         plugins: LISTING,
+        args: [[], ['--instructions-seed', 'remove']],
         each: (repo, i) =>
         {
             if (i !== 0) return null;
@@ -170,6 +218,26 @@ test('uninstall: every stack file and managed entry goes, the user\'s own hook, 
     assert.match(outs[1], /stamp removed/);
 });
 
+// The preview and the answer through the real installer: `uninstall.js seed` names the unedited seed, and an uninstall
+// given no answer keeps it while everything else goes (the user's ask of 2026-10-23).
+test('uninstall: the seed preview names the unedited seed, and with no answer the seed alone stays', POSIX_ONLY, () =>
+{
+    const script = path.join(__dirname, 'install', 'uninstall.js');
+    const { result, outs, steps } = seedRun(['install', 'uninstall'], 'rule markdown-docs\n', {
+        plugins: LISTING,
+        each: (repo, i) => (i === 0 ? execFileSync(process.execPath, [script, 'seed', repo], { encoding: 'utf8' }) : null),
+        inspect: (repo) => ({
+            claude: fs.existsSync(path.join(repo, '.claude')) ? fs.readdirSync(path.join(repo, '.claude')).sort() : [],
+            after: execFileSync(process.execPath, [script, 'seed', repo], { encoding: 'utf8' }),
+        }),
+    });
+    assert.strictEqual(steps[0], 'instructions-seed: .claude/AGENTS.md unedited\n');
+    assert.ok(result.claude.includes('AGENTS.md'), `the seed stays: ${result.claude}`);
+    assert.ok(!result.claude.includes('alfred-code.stamp'), 'the rest of the uninstall ran');
+    assert.match(outs[1], /\.claude\/AGENTS\.md: kept - .*--instructions-seed remove/);
+    assert.strictEqual(result.after, 'instructions-seed: none\n', 'no stamp left: nothing to preview');
+});
+
 // A project the stack never touched before: nothing already there is adopted (no stamp = nothing
 // managed yet), so the user's own deny entry and attribution key survive the round trip even at the
 // value the stack would have written; with nothing else of theirs, every stack file goes.
@@ -177,6 +245,7 @@ test('uninstall: what the project held before the first install is never the sta
 {
     const { result } = seedRun(['install', 'uninstall'], 'rule markdown-docs\n', {
         plugins: LISTING,
+        args: [[], ['--instructions-seed', 'remove']],
         prepare: (repo) => put(path.join(repo, '.claude', 'settings.json'), JSON.stringify({ permissions: { deny: ['Read(.env)'] }, attribution: { commit: '' } })),
         inspect: (repo) => ({
             files: fs.readdirSync(path.join(repo, '.claude')).sort(),

@@ -181,7 +181,7 @@ function refreshSeededAgentsMd({ projectRoot, sourceDir, kind = 'agents', file =
 // the AGENTS.md name (`git mv` where git tracks it, so history follows). An edited one is the user's: left
 // untouched, named with its move command, never renamed for them. A root AGENTS.md means the project's
 // instructions already live there - moving would split them, so it is named and left. Returns
-// 'moved' | 'kept-edited' | 'kept-root' | 'kept-both' | 'none' (a re-run finds nothing to do).
+// 'moved' | 'kept-edited' | 'kept-root' | 'kept-both' | 'kept-local' | 'none' (a re-run finds nothing to do).
 //   ledgerHash - the hash the last run recorded for `CLAUDE.md`; hash(path) - the installer's file hash
 //   tracked(path) / gitMv(from, to) - injected so the module stays free of a git call of its own
 // A re-include of the old name in the project's ignore files follows the rename, or the moved file is ignored.
@@ -216,6 +216,13 @@ function moveSeededClaudeMd({ projectRoot, sourceDir, ledgerHash = '', hash, tra
     {
         log('  .claude/CLAUDE.md: left in place - .claude/AGENTS.md exists beside it, and Claude Code ignores AGENTS.md while a CLAUDE.md is there; merge them and delete one');
         return 'kept-both';
+    }
+    // An AGENTS.md answer kept beside a CLAUDE.local.md (update's ask-local): the renamed seed would sit unread there.
+    const local = ['CLAUDE.local.md', path.join('.claude', 'CLAUDE.local.md')].find((rel) => fs.existsSync(path.join(projectRoot, rel)));
+    if (local)
+    {
+        log(`  .claude/CLAUDE.md: left in place - ${local.split(path.sep).join('/')} keeps any AGENTS.md unread, so a renamed seed would stop loading`);
+        return 'kept-local';
     }
     let unedited = false;
     try
@@ -339,16 +346,18 @@ function seedRowAfterRename(held, file)
 
 // The name question's fact line (update-preflight.js, the full read and --offers): the name this install works with -
 // `agents` or `claude` (the stamp's answer, else AGENTS.md) - then which names the project's instruction files at the root
-// and in .claude/ carry (`none`, `agents`, `claude` or `both`), the stamp's answer (`none` before 2.9.1 asked it),
+// and in .claude/ carry (`none`, `agents`, `claude` or `both`), the stamp's answer (`none` before 2.10.0 asked it),
 // whether a CLAUDE.local.md sits at the root or in .claude/, and what an update does with it:
 //   ask-rename    - no answer yet and the one CLAUDE.md is .claude/'s: the update asks with 'Rename to AGENTS.md'
 //                   recommended, so an unattended update renames as 2.9.0's did (the user's rulings of 2026-10-22)
 //   ask           - no answer yet otherwise (a root CLAUDE.md among them, Keep first), or the files carry the other
 //                   name than the answer: the update asks once
-//   record-claude - the files are CLAUDE.md beside a CLAUDE.local.md, which keeps any AGENTS.md unread (Claude Code reads
-//                   AGENTS.md only while no CLAUDE.md or CLAUDE.local.md sits beside or above it): CLAUDE.md, unasked -
-//                   an earlier `agents` answer included, which cannot load there and whose ask would offer a rename that
-//                   stops the file loading (review 2026-10-23 kept it; said in one line)
+//   record-claude - no answer yet, and the files are CLAUDE.md beside a CLAUDE.local.md, which keeps any AGENTS.md unread
+//                   (Claude Code reads AGENTS.md only while no CLAUDE.md or CLAUDE.local.md sits beside or above it):
+//                   CLAUDE.md, unasked
+//   ask-local     - the same files under an `agents` answer: the update asks with that reason - keep CLAUDE.md
+//                   (recommended), or keep the answer and rename nothing - and never writes over the answer unasked
+//                   (review 2026-10-23, finding 5)
 //   none          - nothing to name, or the answer the files already carry
 function instructionsFileLine(projectRoot, answer = '')
 {
@@ -362,7 +371,8 @@ function instructionsFileLine(projectRoot, answer = '')
     // 2.9.0's update only ever renamed .claude/CLAUDE.md: a root CLAUDE.md is the team's own file, so it gets the plain
     // ask, Keep first, and an unattended update leaves it be.
     const update = files === 'none' ? 'none'
-        : local && files === 'claude' && said !== 'claude' ? 'record-claude'
+        : local && files === 'claude' && !said ? 'record-claude'
+            : local && files === 'claude' && said === 'agents' ? 'ask-local'
             : !said && files === 'claude' && !at('CLAUDE.md') ? 'ask-rename'
                 : !said || (files !== 'both' && files !== said) ? 'ask' : 'none';
     return `instructions-file: ${said || 'agents'} files=${files} answer=${said || 'none'} local=${local ? 'yes' : 'no'} update=${update}`;

@@ -29,11 +29,35 @@ const { locateSeed } = require('./seeds.js');
 
 const isMarker = (file) => { try { const j = JSON.parse(fs.readFileSync(file, 'utf8')); return Object.keys(j).length === 1 && j.type === 'commonjs'; } catch { return false; } };
 
-// Every library copy (library-*) and every other copy (managed-files) whose hash still matches.
-function removeManagedFiles({ claudeDir, skillsDir, library = {}, files = {}, instructionsKind = 'agents', log = () => {} })
+// The instruction-file seeds the ledger records, each where it sits now: the `AGENTS.md` row under either name
+// (locateSeed - review 2026-10-23: a rename the answer could not make), and a 2.1.6 install's `CLAUDE.md` row, the
+// .claude/CLAUDE.md it seeded. One reading for the preview and the removal, so the question and the deletion agree.
+function seedRows({ projectRoot, files = {}, instructionsKind = 'agents' })
 {
-    // the seed where it sits at its row's hash, under either name (review 2026-10-23: a rename the answer could not make)
-    const seedAt = locateSeed(path.dirname(claudeDir), instructionsKind, files['AGENTS.md'] || '');
+    return [
+        files['AGENTS.md'] && { row: 'AGENTS.md', at: locateSeed(projectRoot, instructionsKind, files['AGENTS.md']), held: files['AGENTS.md'] },
+        files['CLAUDE.md'] && { row: 'CLAUDE.md', at: path.join(projectRoot, '.claude', 'CLAUDE.md'), held: files['CLAUDE.md'] },
+    ].filter(Boolean);
+}
+
+// What an uninstall would do with each seed - read only, the preview /alfred-code:uninstall asks from (the user's ask of
+// 2026-10-23): the seed's path from the project root, and `unedited` (still at its row's hash - removed only on
+// `--instructions-seed remove`) or `edited` (the project's, kept); a row with no file at it is left out.
+function seedPlan({ projectRoot, files = {}, instructionsKind = 'agents' })
+{
+    return seedRows({ projectRoot, files, instructionsKind }).map(({ at, held }) =>
+    {
+        const have = hashItem(at);
+        return { rel: path.relative(projectRoot, at).split(path.sep).join('/'), state: !have ? 'none' : have === held ? 'unedited' : 'edited' };
+    }).filter((p) => p.state !== 'none');
+}
+
+// Every library copy (library-*) and every other copy (managed-files) whose hash still matches - but the instruction-file
+// seed only on the user's `seed: 'remove'` answer: it is the one file the project reads as its own instructions, so the
+// uninstall asks before it goes (2026-10-23).
+function removeManagedFiles({ claudeDir, skillsDir, library = {}, files = {}, instructionsKind = 'agents', seed = '', log = () => {} })
+{
+    const seeds = new Map(seedRows({ projectRoot: path.dirname(claudeDir), files, instructionsKind }).map((r) => [r.row, r.at]));
     const items = [
         ...Object.entries(library.skills || {}).map(([n, h]) => ['skill', n, path.join(skillsDir, n), h]),
         ...Object.entries(library.agents || {}).map(([n, h]) => ['agent', n, path.join(claudeDir, 'agents', `${n}.md`), h]),
@@ -41,8 +65,8 @@ function removeManagedFiles({ claudeDir, skillsDir, library = {}, files = {}, in
         ...Object.entries(files).map(([rel, h]) =>
         {
             const [kind, name] = rel.includes('/') ? rel.split('/') : ['file', rel];
-            // The seed's row is read where the seed sits (seedAt above).
-            const at = rel === 'AGENTS.md' ? seedAt : kind === 'skills' ? path.join(skillsDir, name) : path.join(claudeDir, ...rel.split('/'));
+            // A seed's row is read where the seed sits (seedRows).
+            const at = seeds.has(rel) ? seeds.get(rel) : kind === 'skills' ? path.join(skillsDir, name) : path.join(claudeDir, ...rel.split('/'));
             return [kind.replace(/s$/, ''), name, at, h];
         }),
     ];
@@ -50,14 +74,22 @@ function removeManagedFiles({ claudeDir, skillsDir, library = {}, files = {}, in
     // the item must sit directly inside the folder of its kind (a skill directory, a seat or rule file). The one exception
     // is the seed at the project root - that exact file, at the hash the stack wrote.
     const home = { skill: skillsDir, agent: path.join(claudeDir, 'agents'), rule: path.join(claudeDir, 'rules'), hook: path.join(claudeDir, 'hooks'), file: claudeDir };
-    const rootSeed = path.resolve(seedAt);
-    const inside = (label, at) => (Boolean(home[label]) && path.dirname(path.resolve(at)) === path.resolve(home[label])) || (label === 'file' && path.resolve(at) === rootSeed);
+    const seedPaths = new Set([...seeds.values()].map((at) => path.resolve(at)));
+    const isSeed = (label, at) => label === 'file' && seedPaths.has(path.resolve(at));
+    const inside = (label, at) => (Boolean(home[label]) && path.dirname(path.resolve(at)) === path.resolve(home[label])) || isSeed(label, at);
     for (const [label, name, at, hash] of items)
     {
         if (!inside(label, at)) { log(`  ${label} name skipped (${String(name).length} chars) - not an item inside its .claude folder`); continue; }
         const have = hashItem(at);
         if (!have) continue;
         if (have !== hash) { log(`  ${label} ${name}: kept - changed since the stack wrote it, so it is yours`); continue; }
+        if (isSeed(label, at) && seed !== 'remove')
+        {
+            const rel = path.relative(path.dirname(claudeDir), at).split(path.sep).join('/');
+            log(seed === 'keep' ? `  ${rel}: kept on your answer - the instruction file the stack seeded, unedited`
+                : `  ${rel}: kept - the instruction file the stack seeded, unedited; it goes only with --instructions-seed remove (/alfred-code:uninstall asks)`);
+            continue;
+        }
         fs.rmSync(at, { recursive: true, force: true });
         log(`  ${label} removed: ${name}`);
     }
@@ -142,4 +174,19 @@ function removeScopedMcp({ mcpAt = {}, readAt, cli, log = () => {}, note = () =>
     }
 }
 
-module.exports = { removeManagedFiles, removePlugins, removeScopedMcp };
+module.exports = { seedPlan, removeManagedFiles, removePlugins, removeScopedMcp };
+
+// `node uninstall.js seed <project root>` - seedPlan over the stamp's ledger, nothing written: one
+// `instructions-seed: <path> unedited|edited` line per seed, or `instructions-seed: none` (no stamp, no ledger, no seed).
+if (require.main === module)
+{
+    require('../../stack/hooks/hook-prelude.js').blockingStdio();
+    const [cmd, root = '.'] = process.argv.slice(2);
+    if (cmd !== 'seed') { process.stderr.write('usage: node uninstall.js seed <project root>\n'); process.exit(2); }
+    const stamp = require('./stamp.js');
+    const projectRoot = path.resolve(root);
+    const file = stamp.stampFiles({ projectRoot }).read;
+    const ledger = file ? stamp.readLedger(file) : null;
+    const plans = ledger ? seedPlan({ projectRoot, files: ledger.files || {}, instructionsKind: stamp.readInstructionsFile(file) }) : [];
+    process.stdout.write(plans.length ? plans.map((p) => `instructions-seed: ${p.rel} ${p.state}\n`).join('') : 'instructions-seed: none\n');
+}

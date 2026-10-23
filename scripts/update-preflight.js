@@ -39,7 +39,7 @@
 //                                           it and the ledger does not record it - holding the stack's docs: it moves
 //                                           only on update's ask, `--docs-root-move move|keep`; a project install only)
 //   instructions-file: <agents|claude> files=<none|agents|claude|both> answer=<agents|claude|none> local=<yes|no>
-//            update=<ask-rename|ask|record-claude|none>
+//            update=<ask-rename|ask|ask-local|record-claude|none>
 //                                           (the instruction file's name: the install's, the files', the stamp's
 //                                           answer, a CLAUDE.local.md, and what the update does - seeds.js
 //                                           instructionsFileLine; a project install only)

@@ -284,7 +284,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     let rawListing = null;
 
     if (args.action === 'uninstall')
-        return runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountUnread, backupDirs, env, hasClaude, claudeBroken, cli, readRaw, readMarkets, log, note, err, failures: () => failures });
+        return runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountUnread, backupDirs, env, hasClaude, claudeBroken, cli, readRaw, readMarkets, instructionsSeed: args.instructionsSeed, log, note, err, failures: () => failures });
 
     try
     {
@@ -2746,7 +2746,7 @@ function pruneDroppedCopies(ctx)
 // THE UNINSTALL ORDER (uninstall.js holds the decisions): plugin rows, then .mcp.json and the local- and
 // user-scope registrations, then the settings entries, then the copies, then the stamp - last, and only
 // when nothing failed.
-function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountUnread, backupDirs, env, hasClaude, claudeBroken, cli, readRaw, readMarkets, log, note, err, failures })
+function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountUnread, backupDirs, env, hasClaude, claudeBroken, cli, readRaw, readMarkets, instructionsSeed = '', log, note, err, failures })
 {
     const file = stampLayer.stampFiles({ projectRoot }).read;
     const raw = stampLayer.readStampScope(file).toLowerCase();
@@ -2811,10 +2811,10 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
     // M4: read before the settings pass removes ALFRED_CODE_DATA_PATH - the stamp's record first.
     const keptRoot = stampLayer.readDataLines(file).root || dataRoot.dataRootOf({ env: {}, projectDir: projectRoot }).root;
     settings.removeManagedSettings({ claudeDir, ledger, shippedDeny: SHIPPED_DENY, mcpRemoved: removed, scope, log, note });
-    uninstallLayer.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), library: stampLayer.readLibrary(file) || {}, files: ledger.files || {}, instructionsKind: stampLayer.readInstructionsFile(file), log });
+    uninstallLayer.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), library: stampLayer.readLibrary(file) || {}, files: ledger.files || {}, instructionsKind: stampLayer.readInstructionsFile(file), seed: instructionsSeed, log });
     toolIgnoresLayer.removeToolIgnores({ projectRoot, record: stampLayer.readToolIgnores(file), log, note });
     const memoryOff = ['settings.json', 'settings.local.json'].some((n) => readJson(path.join(claudeDir, n)).autoMemoryEnabled === false);
-    log(`  kept, yours or your data: an AGENTS.md you filled in, the data root (the docs, the navigation index, the browser profiles - ${keptRoot}/, or a 2.0.0 .serena/ / .playwright/), the memory database${memoryOff ? '; autoMemoryEnabled: false stays - Claude\'s own memory is off until you remove that key' : ''}`);
+    log(`  kept, yours or your data: the instruction file (AGENTS.md or CLAUDE.md) if you filled it in or kept it, the data root (the docs, the navigation index, the browser profiles - ${keptRoot}/, or a 2.0.0 .serena/ / .playwright/), the memory database${memoryOff ? '; autoMemoryEnabled: false stays - Claude\'s own memory is off until you remove that key' : ''}`);
     if (failures()) { log(`  stamp kept - ${path.basename(file)} still lists what is left; run uninstall again to finish`); return 0; }
     fs.rmSync(file, { force: true });
     log(`  stamp removed: ${path.basename(file)} - every item the ledger listed is gone, or named above as kept`);

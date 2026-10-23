@@ -184,7 +184,9 @@ file follow the answer, and the stamp keeps it. A switch renames the root, `.cla
 Claude Code reads no AGENTS.md at all while a CLAUDE.md sits at or above the working directory. The first update asks
 the name once, since an install from 2.9.0 or earlier never answered it - 'Rename to AGENTS.md' recommended where the
 file is still `.claude/CLAUDE.md`, as before, and 'Keep CLAUDE.md' where a root CLAUDE.md sits, which no update renamed -
-and CLAUDE.md is recorded unasked beside a CLAUDE.local.md, which keeps any AGENTS.md unread. The old 'rename .claude/CLAUDE.md' ask and its `--rename-claude-md` flag are gone: the name ask does both.
+and CLAUDE.md is recorded unasked beside a CLAUDE.local.md, which keeps any AGENTS.md unread, while no name was answered.
+An AGENTS.md answer there is never written over: the update asks to keep CLAUDE.md, or to keep the answer and rename
+nothing. The old 'rename .claude/CLAUDE.md' ask and its `--rename-claude-md` flag are gone: the name ask does both.
 
 ## after 2.9.0 - the code and architecture preferences have no size cap
 
@@ -320,3 +322,10 @@ The skill-writing habit and its `skill-authoring.md` rule no longer ship: they s
 happens in its own repo, and a project that writes skills of its own keeps nothing from them but the cost of a listed
 description. Update prunes both copies as retired upstream; a copy edited since the stack wrote it stays
 and is named, to merge what you need and remove by hand. Report those lines.
+
+## after 2.9.0 - uninstall asks before deleting the instruction file
+
+`/alfred-code:uninstall` asks before it deletes the AGENTS.md or CLAUDE.md the stack seeded, and only while that file is
+still exactly as the stack wrote it - an edited one is kept unasked, as before. 'Delete it' is recommended, since an
+unedited seed only describes the tools the uninstall removes. Run without the command, the installer keeps it and names
+`--instructions-seed remove`. Nothing changes for an update.

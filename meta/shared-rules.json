@@ -1911,7 +1911,7 @@
         },
         {
           "file": "setup-plugin/commands/uninstall.md",
-          "marker": "`node \"$TMP/repo/scripts/install/alfred-code.js\" uninstall --source \"$TMP/repo\" 2>&1 | tee"
+          "marker": "`node \"$TMP/repo/scripts/install/alfred-code.js\" uninstall --source \"$TMP/repo\" [--instructions-seed remove|keep] 2>&1 | tee"
         }
       ]
     },

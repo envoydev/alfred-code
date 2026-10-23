@@ -54,7 +54,9 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
     install audit at its post-check - `scripts/audit-install.js` rows on unpinned launches, wide shell
     grants, hook wirings and credential literals, pasted before one ask, never auto-fixed, and the
     AGENTS.md check - `agents-md-check.js` rows offered to the skill's improve mode, 'Leave them' recommended and first), `/alfred-code:uninstall`
-    (the seed's `uninstall` over the stamp's ledger, below; user-scope plugin rows and MCP registrations printed, never run). In a git
+    (the seed's `uninstall` over the stamp's ledger, below; user-scope plugin rows and MCP registrations printed, never run; the
+    unedited instruction-file seed goes only on its own question, the user's ask of 2026-10-23 - `uninstall.js seed .` previews
+    it, `--instructions-seed remove|keep` carries the answer, and with none the seed stays and the log names the flag). In a git
     worktree of an installed checkout every command stops and names the main checkout. A legacy copy-route install that never
     wrote a stamp reads `legacy-unstamped` (`stamp.js legacySignature`: no install record, and TWO of the stack's hook files, a
     stack env key, three or more skill / seat / rule names only the stack uses - its `alfred-` / `project-` prefixes or a renamed

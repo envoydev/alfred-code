@@ -762,8 +762,14 @@ test('every command holds to the shared one-download protocol and the router ski
 // the marketplace), which the command never runs. A stamp from before the ledger routes to update once.
 test('uninstall runs the seed after one confirmation, and never runs a command the seed only printed (R10)', () => {
     const body = flat(cmdBody('uninstall'));
-    assert.match(body, /node "\$TMP\/repo\/scripts\/install\/alfred-code\.js" uninstall --source "\$TMP\/repo" 2>&1 \| tee "\$TMP\/install\.log"/);
+    assert.match(body, /node "\$TMP\/repo\/scripts\/install\/alfred-code\.js" uninstall --source "\$TMP\/repo" \[--instructions-seed remove\|keep\] 2>&1 \| tee "\$TMP\/install\.log"/);
     assert.match(body, /AskUserQuestion/);
+    // the user's ask of 2026-10-23: the unedited seed gets its own question in the one confirmation call, from the
+    // read-only preview, and the answer travels as the flag
+    assert.match(body, /node "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/install\/uninstall\.js" seed \./);
+    assert.match(body, /'Delete it \(Recommended\)'.*'Keep the file'.*'Delete it' -> `--instructions-seed remove`.*'Keep the file' -> `--instructions-seed keep`/);
+    // one label per answer in the one call: the confirmation's cancel and the seed's keep never read alike (review 2026-10-23)
+    assert.doesNotMatch(body, /'Keep it' -> `--instructions-seed keep`/);
     assert.match(body, /predates the install ledger.*\/alfred-code:update/);
     assert.match(body, /never run a printed command/i);
     assert.match(body, /rm -rf "\$TMP" "\$MARK"|Clean up the temp dir/);
@@ -1420,4 +1426,12 @@ test('C21: configure reports in a fixed shape - one table, then labelled lines',
     const post = c.slice(c.indexOf('## Post-check'), c.indexOf('**Git hygiene'));
     assert.match(post, /\| category \| refreshed \| added \| dropped \| kept \(orphan or required\) \|/);
     for (const label of ['AGENTS.md:', 'Memory:', 'Deferred by you:', 'Warnings:', 'Restart:']) assert.ok(post.includes(`\`${label}\``), label);
+});
+
+// Review 2026-10-23: an unattended update never writes over the user's AGENTS.md answer - ask-local's Recommended option
+// does, so that verdict takes the option that changes nothing.
+test('update-walk: unattended, ask-local keeps the AGENTS.md answer instead of the Recommended option', () =>
+{
+    const body = flat(fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'update-walk.md'), 'utf8'));
+    assert.match(body, /Unattended, take the Recommended option.*except on `update=ask-local`, which takes 'Keep the AGENTS\.md answer'/);
 });

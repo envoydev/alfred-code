@@ -206,7 +206,7 @@ test('name answer: a 2.1.6 .claude/CLAUDE.md seed renamed on an agents answer st
 test('name answer: a seed the answer could not rename keeps its row where it sits - the project\'s root file is never read as it', () =>
 {
     const { steps } = seedRun(['install', 'update', 'uninstall'], SELECTION, {
-        args: [[], ['--installed-only', '--instructions-file', 'claude'], []],
+        args: [[], ['--installed-only', '--instructions-file', 'claude'], ['--instructions-seed', 'remove']],
         each: (repo, i) =>
         {
             const seed = path.join(repo, '.claude', 'AGENTS.md');

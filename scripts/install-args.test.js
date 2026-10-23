@@ -457,3 +457,16 @@ test('install-args: --instructions-file names the instruction file - agents or c
     fails(['install', '--instructions-file'], /--instructions-file.*needs a value/);
     fails(['update', '--rename-claude-md'], /unknown argument '--rename-claude-md'/, 'the name answer renames now - the old flag is gone');
 });
+
+// The user's ask of 2026-10-23: /alfred-code:uninstall asks before an unedited instruction-file seed is deleted, and
+// passes the answer; a run with no answer keeps the file.
+test('install-args: --instructions-seed is uninstall\'s answer for the seed - keep or remove, lower-cased, anything else refused', () =>
+{
+    assert.strictEqual(ok(['uninstall']).instructionsSeed, '', 'not given: the seed is kept');
+    assert.strictEqual(ok(['uninstall', '--instructions-seed', 'remove']).instructionsSeed, 'remove');
+    assert.strictEqual(ok(['uninstall', '--instructions-seed=Keep']).instructionsSeed, 'keep');
+    assert.ok(require('./install/args.js').FLAG_LIST.includes('--instructions-seed'));
+    fails(['uninstall', '--instructions-seed', 'delete'], /--instructions-seed must be 'keep' or 'remove'/);
+    fails(['uninstall', '--instructions-seed'], /--instructions-seed.*needs a value/);
+    fails(['update', '--instructions-seed', 'remove'], /--instructions-seed is uninstall's answer/);
+});

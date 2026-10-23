@@ -210,6 +210,21 @@ test('move: an unedited seeded .claude/CLAUDE.md is renamed to .claude/AGENTS.md
     assert.strictEqual(fs.readFileSync(path.join(projectRoot, '.claude', 'AGENTS.md'), 'utf8'), '# seed\n');
 });
 
+// An AGENTS.md answer kept beside a CLAUDE.local.md (update's ask-local): a renamed seed would sit unread there, so the
+// 2.1.6 move leaves it in place, at the root or in .claude/ alike (review 2026-10-23, finding 5).
+test('move: an unedited seed beside a CLAUDE.local.md stays .claude/CLAUDE.md - an AGENTS.md there would go unread', () =>
+{
+    for (const local of ['CLAUDE.local.md', '.claude/CLAUDE.local.md'])
+    {
+        const projectRoot = dir({ '.claude/CLAUDE.md': '# seed\n', [local]: '# mine\n' });
+        const { r, logs, gitMvs } = move(projectRoot);
+        assert.strictEqual(r, 'kept-local', local);
+        assert.ok(fs.existsSync(path.join(projectRoot, '.claude', 'CLAUDE.md')) && !fs.existsSync(path.join(projectRoot, '.claude', 'AGENTS.md')), local);
+        assert.deepStrictEqual(gitMvs, []);
+        assert.ok(logs.some((m) => /left in place/.test(m) && /CLAUDE\.local\.md/.test(m)), logs.join(' | '));
+    }
+});
+
 test('move: a tracked seed goes through git mv, and a gitignore re-include of the old name is named', () =>
 {
     const projectRoot = dir({ '.claude/CLAUDE.md': '# seed\n', '.gitignore': '.claude/*\n!.claude/CLAUDE.md\n' });
@@ -536,10 +551,14 @@ test('name: the fact line - the install\'s name, the files\' names, the stamp\'s
     assert.strictEqual(line(dir({ '.claude/CLAUDE.md': 'x' }), 'claude'), 'instructions-file: claude files=claude answer=claude local=no update=none');
     assert.strictEqual(line(dir({ '.claude/AGENTS.md': 'x' }), 'claude'), 'instructions-file: claude files=agents answer=claude local=no update=ask');
     assert.strictEqual(line(dir({ 'AGENTS.md': 'x', '.claude/CLAUDE.md': 'y' }), 'agents'), 'instructions-file: agents files=both answer=agents local=no update=none');
-    // a CLAUDE.local.md keeps every AGENTS.md unread: a CLAUDE.md file is recorded as the answer, never asked about
+    // a CLAUDE.local.md keeps every AGENTS.md unread: a CLAUDE.md file is recorded as the answer while none was given,
+    // and an AGENTS.md answer is asked about with that reason, never written over unasked (review 2026-10-23, finding 5)
     for (const local of ['CLAUDE.local.md', '.claude/CLAUDE.local.md'])
+    {
         assert.strictEqual(line(dir({ '.claude/CLAUDE.md': 'x', [local]: 'y' })), 'instructions-file: agents files=claude answer=none local=yes update=record-claude', local);
-    assert.strictEqual(line(dir({ '.claude/CLAUDE.md': 'x', 'CLAUDE.local.md': 'y' }), 'agents'), 'instructions-file: agents files=claude answer=agents local=yes update=record-claude');
+        assert.strictEqual(line(dir({ '.claude/CLAUDE.md': 'x', [local]: 'y' }), 'agents'), 'instructions-file: agents files=claude answer=agents local=yes update=ask-local', local);
+    }
+    assert.strictEqual(line(dir({ 'CLAUDE.md': 'x', 'CLAUDE.local.md': 'y' }), 'agents'), 'instructions-file: agents files=claude answer=agents local=yes update=ask-local', 'a root CLAUDE.md too');
     assert.strictEqual(line(dir({ '.claude/CLAUDE.md': 'x', 'CLAUDE.local.md': 'y' }), 'claude'), 'instructions-file: claude files=claude answer=claude local=yes update=none');
     assert.strictEqual(line(dir({ '.claude/AGENTS.md': 'x', 'CLAUDE.local.md': 'y' })), 'instructions-file: agents files=agents answer=none local=yes update=ask');
     assert.strictEqual(line(dir({ 'web/CLAUDE.md': 'x' }), 'bogus'), 'instructions-file: agents files=none answer=none local=no update=none', 'a part file is no root fact; an unknown answer is none');

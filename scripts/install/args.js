@@ -38,6 +38,9 @@ const ENUMS = {
     // and in .claude/ is renamed (seeds.renameInstructionFiles), and the stamp keeps it. Not given, the stamp's answer
     // stands, else AGENTS.md.
     instructionsFile: { values: ['', 'agents', 'claude'], text: "--instructions-file must be 'agents' or 'claude'" },
+    // Uninstall's answer for an unedited instruction-file seed - /alfred-code:uninstall asks it (the user's ask of
+    // 2026-10-23). Not given, the seed stays and the log names this flag; an edited one is the project's either way.
+    instructionsSeed: { values: ['', 'keep', 'remove'], text: "--instructions-seed must be 'keep' or 'remove'" },
 };
 
 // ONE canonical order, so a server list never depends on how the flag was typed.
@@ -51,7 +54,7 @@ const VALUED = new Map([
     ['--playwright-browsers', 'playwrightBrowsersRaw'], ['--playwright-enabled', 'playwrightEnabledRaw'],
     ['--docs-versioning', 'docsVersioning'], ['--memory-level', 'memoryLevel'],
     ['--data-move', 'dataMove'], ['--docs-move', 'dataMove'], ['--data-path', 'dataPath'], ['--docs-root-move', 'docsRootMove'], ['--docs-root-leave', 'docsRootLeaveRaw'], ['--auto-compact', 'autoCompact'],
-    ['--instructions-at', 'instructionsAt'], ['--instructions-file', 'instructionsFile'],
+    ['--instructions-at', 'instructionsAt'], ['--instructions-file', 'instructionsFile'], ['--instructions-seed', 'instructionsSeed'],
     ['--selection', 'selection'], ['--source', 'source'], ['--plan-out', 'planOut'],
 ]);
 
@@ -78,7 +81,7 @@ const SCOPE_OF = /^([a-z0-9-]+)=(global|user|project|local)$/;
 
 const ALIASES = new Map([['--playwright-browsers', '--browsers'], ['--playwright-enabled', '--browser-enabled'], ['--docs-move', '--data-move']]);
 
-const FLAG_LIST = '--space, --scope, --memory-level, --browsers, --browser-enabled, --docs-versioning, --data-path, --data-move, --docs-root-move, --docs-root-leave, --auto-compact, --instructions-at, --instructions-file, --github-cli, --keep-pins, --selection, --installed-only, --add, --drop, --scope-of, --print-plan, --plan-out, --skills-only, --source';
+const FLAG_LIST = '--space, --scope, --memory-level, --browsers, --browser-enabled, --docs-versioning, --data-path, --data-move, --docs-root-move, --docs-root-leave, --auto-compact, --instructions-at, --instructions-file, --instructions-seed, --github-cli, --keep-pins, --selection, --installed-only, --add, --drop, --scope-of, --print-plan, --plan-out, --skills-only, --source';
 
 // One selection line, the shape the walks write: `<category> <name>`.
 const ADD_LINE = /^(skill|agent|rule|hook|mcp|plugin) [A-Za-z0-9._-]+$/;
@@ -96,7 +99,7 @@ function parseArgs(argv)
 {
     const out = {
         action: '', space: '', scope: '',
-        playwrightBrowsersRaw: '', playwrightEnabledRaw: '', docsVersioning: '', memoryLevel: '', dataMove: '', dataPath: '', docsRootMove: '', docsRootLeaveRaw: '', autoCompact: '', instructionsAt: '', instructionsFile: '',
+        playwrightBrowsersRaw: '', playwrightEnabledRaw: '', docsVersioning: '', memoryLevel: '', dataMove: '', dataPath: '', docsRootMove: '', docsRootLeaveRaw: '', autoCompact: '', instructionsAt: '', instructionsFile: '', instructionsSeed: '',
         selection: '', source: '', planOut: '',
         githubCli: false, keepPins: false, installedOnly: false, printPlan: false, skillsOnly: false,
         add: [], drop: [], scopeOf: {},
@@ -186,6 +189,8 @@ function parseArgs(argv)
     out.autoCompact = lower(out.autoCompact);
     out.instructionsAt = lower(out.instructionsAt);
     out.instructionsFile = lower(out.instructionsFile);
+    out.instructionsSeed = lower(out.instructionsSeed);
+    if (out.instructionsSeed && out.action !== 'uninstall') fail('--instructions-seed is uninstall\'s answer - install and update never remove the seed');
     // The data root is a folder INSIDE the project (stack/mcp/data-root.js checkDataPath says what is refused
     // and why) - refused here, before a path that would prompt, escape the project or break a server lands.
     if (out.dataPath)

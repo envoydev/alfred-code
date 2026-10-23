@@ -1226,7 +1226,8 @@ const SETUP_ASK_TEMPLATES = {
     // the instruction files' place, one template per `instructions:` case - read by init's step 1 and configure's step 12
     // (2026-10-21); +3: the name, one per `instructions-file:` files= case (the user's ask of 2026-10-21, after 2.9.0);
     // +1: update's rename-first name ask for a never-asked .claude/CLAUDE.md install (the user's rulings of 2026-10-22).
-    'setup-plugin/references/instructions-place.md': 7,
+    // +1: the CLAUDE.local.md ask over an AGENTS.md answer, never written over unasked (review 2026-10-23, finding 5).
+    'setup-plugin/references/instructions-place.md': 8,
     // the legacy-unstamped ask: update this install or install from scratch (2026-10-17).
     'setup-plugin/commands/init.md': 1,
     // +2: step 1's closing ask, one template per case (audit 2026-10-11, session a9e06780). +1: step 7's memory level,
@@ -1246,7 +1247,8 @@ const SETUP_ASK_TEMPLATES = {
     // audit 2026-10-21 commands T2-12: the prune confirm and the guard-hook adoption ask; uninstall's confirm; status's
     // area pick; init's machine-install ask.
     'setup-plugin/references/update-slow-path.md': 2,
-    'setup-plugin/commands/uninstall.md': 1,
+    // +1: the unedited instruction-file seed's own delete question (the user's ask of 2026-10-23).
+    'setup-plugin/commands/uninstall.md': 2,
     'setup-plugin/commands/status.md': 1,
     'setup-plugin/references/init-bootstrap.md': 1,
     // validate's AGENTS.md check ask, 'Leave them' recommended and first (audit 2026-10-11, session 6288ad94). +2: step 2's

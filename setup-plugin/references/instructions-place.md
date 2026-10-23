@@ -10,7 +10,7 @@ only while no CLAUDE.md or CLAUDE.local.md sits beside or above it), so both are
 prints the two lines these asks read (configure's step 1 already printed them; update's full read prints the first):
 
 - `instructions-file: <agents|claude> files=<none|agents|claude|both> answer=<agents|claude|none> local=<yes|no>
-  update=<ask-rename|ask|record-claude|none>` - the name the install works with (AGENTS.md until a name was answered),
+  update=<ask-rename|ask|ask-local|record-claude|none>` - the name the install works with (AGENTS.md until a name was answered),
   the names the files at the root and in `.claude/` carry, the answer the stamp keeps (`none` on an install from 2.9.0
   or earlier, never asked), whether a CLAUDE.local.md sits at the root or in `.claude/`, and what an update does;
 - `instructions: none` or `claude` / `root` / `split` followed by each file found.
@@ -19,13 +19,14 @@ Ask the template for each case, the name first, both in ONE call - never an impr
 
 ## The name
 
-**`local=yes` with `files=none` or `files=claude`: no name ask** (unless `answer=claude` already). A CLAUDE.local.md
-keeps every AGENTS.md unread - Claude Code reads one only while no CLAUDE.md or CLAUDE.local.md sits beside or above it -
-so the answer is CLAUDE.md: pass `--instructions-file claude` and say why in one line.
+**`local=yes` with `files=none` or `files=claude` and `answer=none`: no name ask.** A CLAUDE.local.md keeps every
+AGENTS.md unread - Claude Code reads one only while no CLAUDE.md or CLAUDE.local.md sits beside or above it - so the
+answer is CLAUDE.md: pass `--instructions-file claude` and say why in one line. Under `answer=agents` the answer is never
+written over unasked: `files=claude` there asks the CLAUDE.local.md template below (review 2026-10-23).
 
 **`/alfred-code:update` reads the line's `update=` verdict, never the cases below on its own:** `ask-rename` asks the
-first template here, `ask` the one for the line's `files=`, `record-claude` is the rule above (passed unasked), and
-`none` asks nothing. The place is configure's alone.
+first template here, `ask` the one for the line's `files=`, `ask-local` the CLAUDE.local.md template, `record-claude` is
+the rule above (passed unasked), and `none` asks nothing. The place is configure's alone.
 
 `update=ask-rename` - update only: an install from 2.9.0 or earlier whose one CLAUDE.md is `.claude/CLAUDE.md` (the
 user's rulings of 2026-10-22 keep the nudge 2.9.0's update gave it; a root CLAUDE.md is the team's own file, which no
@@ -61,8 +62,18 @@ This project has both an AGENTS.md and a CLAUDE.md. Which should the stack work 
 - '<other>' - the seed refresh, the fill and its check move to it
 ```
 
+`files=claude` and `local=yes` under `answer=agents` - update's `update=ask-local`, configure's step 12 alike:
+
+```ask
+Your answer was AGENTS.md, but this project's instruction file is CLAUDE.md beside a CLAUDE.local.md, which keeps any AGENTS.md unread. Keep working with CLAUDE.md?
+- 'Keep CLAUDE.md (Recommended)' - nothing is renamed; the file keeps loading, and CLAUDE.md becomes the answer
+- 'Keep the AGENTS.md answer' - nothing is renamed and the answer stands; the next update or configure asks again while the CLAUDE.local.md is there
+```
+
 **The answer goes to the installer as one flag**, `--instructions-file agents|claude` - the name picked or kept: 'Keep
-<have>' passes <have>, a rename the other name. The stamp records it, so an update asks no more. Init passes it on every
+<have>' passes <have>, a rename the other name; 'Keep CLAUDE.md' passes `claude`, and 'Keep the AGENTS.md answer' passes
+none - the answer already reads `agents`, and the flag would rename the file out of loading. The stamp records it, so an
+update asks no more. Init passes it on every
 answer; configure and update when it differs from the line's `answer=` (any answer on `answer=none`), each a change on
 its own, so the installer runs. A Keep, or `files=both`, renames nothing: the installer renames only while no root or
 `.claude/` file carries the answered name. Then it renames each file of the other name - each part's own too, since
