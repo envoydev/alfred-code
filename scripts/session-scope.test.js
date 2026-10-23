@@ -7,6 +7,7 @@
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
 require('./hook-test-env').isolateHookSuite();
+const { reviewedTranscript } = require('./hook-test-env');
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint never decides a hook case
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -21,6 +22,8 @@ const DOCS = '.alfred/docs';
 // a receipt written to the pre-2.8.0 flow/ below (p.flow) is still read
 const SESSIONS = '.alfred/state/sessions';
 const forty = Array.from({ length: 40 }, (_, i) => `line ${i}`).join('\n');
+// a session where a review ran, kept outside every project tree: a commit receipt needs one since 2026-10-22
+const REVIEWED = reviewedTranscript(fs.mkdtempSync(path.join(os.tmpdir(), 'session-scope-reviewed-')));
 
 function project() {
     const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'session-scope-')));
@@ -36,7 +39,7 @@ function project() {
     const env = { ...process.env, CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_DOCS_PATH: DOCS };
     const run = (hook, payload) => spawnSync(process.execPath, [path.join(HOOKS, hook)], { cwd: dir, input: JSON.stringify(payload), encoding: 'utf8', env });
     const start = (s, source = 'startup') => run('docs-session.js', { hook_event_name: 'SessionStart', session_id: s, source, cwd: dir });
-    const bash = (s, command) => run('guard-ungated-commit.js', { hook_event_name: 'PreToolUse', tool_name: 'Bash', session_id: s, cwd: dir, tool_input: { command } });
+    const bash = (s, command) => run('guard-ungated-commit.js', { hook_event_name: 'PreToolUse', tool_name: 'Bash', session_id: s, cwd: dir, tool_input: { command }, transcript_path: REVIEWED });
     const head = () => git('rev-parse', 'HEAD').stdout.trim();
     const record = () => path.join(dir, SESSIONS, `untracked-at-start-${head()}`);
     const dropRecords = () => { for (const d of [SESSIONS, path.join(DOCS, 'flow')]) for (const f of fs.existsSync(path.join(dir, d)) ? fs.readdirSync(path.join(dir, d)) : []) if (f.startsWith('untracked-at-start-')) fs.rmSync(path.join(dir, d, f)); };

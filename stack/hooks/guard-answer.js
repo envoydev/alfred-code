@@ -131,7 +131,7 @@ function proseOf(text) {
 const BUDGET_TEXT =
         `Answer budget (alfred-interaction.md): 3 sentences plus bullets, ~${BUDGET} characters of prose, result first; fit it before sending. ` +
         `Code, tables and command output are exempt. Only THIS message's depth words lift it (in detail / walk me ` +
-        `through / step by step / write a plan), and an entry of the user's personal preferences doc sets it. Single dashes and single quotes, an ` +
+        `through / step by step / teach me / ELI5 / write a plan), and an entry of the user's personal preferences doc sets it. Single dashes and single quotes, an ` +
         `AskUserQuestion's text included.`;
 
 // --- the correction streak: N short human turns in a row, each right after a long answer -----

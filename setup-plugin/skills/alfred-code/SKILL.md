@@ -46,9 +46,11 @@ Then:
   with nothing to change -> `/alfred-code:status` (read-only tables, per area or all).
 - Installed and the ask is to REMOVE the stack from this project -> `/alfred-code:uninstall` (the
   install ledger says what the stack wrote; the user's own keys, hooks and servers stay).
-- The ask is whether THIS project's `AGENTS.md` still matches the stack template, or needs an
+- The ask is whether THIS project's `AGENTS.md` (or `CLAUDE.md`) still matches the stack template, or needs an
   update -> `/alfred-code:update` (its step 6 compare) - never answer this from the
   template alone; a generic answer here has shipped a wrong 'no update needed'.
+- The ask is to work with `CLAUDE.md` instead of `AGENTS.md` (or back), or to move the file between the root and
+  `.claude/` -> `/alfred-code:configure` (its step 12 name and place asks; a rename keeps the content).
 - The install just finished and the ask is 'what now?' -> not installed-and-initialised yet means
   `/alfred-code:init`; after it, walk them through
   `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/post-install.md`.

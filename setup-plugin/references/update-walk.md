@@ -71,8 +71,10 @@ It prints, in order:
   `data-move: none (<why>)`. Only `offer` is asked, below.
 - `docs-move: offer <from> -> <to><TAB>moves=<names><TAB>stack=<n><TAB>own=<names|none>` - a docs root the user set by
   hand holds the stack's docs, or `docs-move: none (<why>)`. Only `offer` is asked, below.
-- `agents-md: offer .claude/CLAUDE.md -> .claude/AGENTS.md` - the instruction file still carries the old name and no
-  AGENTS.md sits beside it or at the root, or `agents-md: none (<why>)`. Only `offer` is asked, below.
+- `instructions-file: <agents|claude> files=<...> answer=<...> local=<yes|no> update=<ask-rename|ask|ask-local|record-claude|none>`
+  - the instruction file's name: the install's, the files', the stamp's answer (`none` before 2.10.0 asked it), a
+  CLAUDE.local.md, and the verdict. Only `ask-rename`, `ask` and `ask-local` are asked, below; `record-claude` is passed
+  unasked.
 - `env-keys: <names>` - the scope's settings `env` KEY NAMES before the run, the before-state step 7 diffs against.
   Names only: the script never prints a value, and neither do you. An `unattended: on` line closes the output: nobody answers this run, and every
   ask below is answered by `/alfred-code:init`'s Unattended rule (references/init-bootstrap.md) instead of AskUserQuestion.
@@ -163,18 +165,15 @@ none of the stack's and nothing moved: ask again from the names it lists. Unatte
 where tracked), and the log's `docs root: moved` line names what moved, so the team can move one back with
 `git mv <to>/<entry> <from>/<entry>` - say that line in the close.
 
-**The instruction file's name - ONE ask, and only on `agents-md: offer`.** Before the installer runs,
-in the same AskUserQuestion call as the other asks (one question each):
-
-```ask
-Rename .claude/CLAUDE.md to .claude/AGENTS.md? The stack's instruction file is AGENTS.md now; the content stays as it is, only the name changes.
-- 'Rename it (Recommended)' - git mv where git tracks it, and a '!.claude/CLAUDE.md' re-include in .gitignore or .git/info/exclude follows the new name
-- 'Keep CLAUDE.md' - nothing moves; Claude Code still reads it, and the next update asks again
-```
-
-A yes is `--rename-claude-md` on the installer call of whichever path runs; its log line says what moved
-(an unedited seed moves without the flag). Unattended, take the Recommended option: a rename keeps every
-byte and its git history.
+**The instruction file's name - ONE ask, on `update=ask-rename`, `update=ask` or `update=ask-local` only.** Before the installer runs, in
+the same AskUserQuestion call as the other asks (one question each): read
+`"$TMP/repo/setup-plugin/references/instructions-place.md"` and ask the name template its `update=` rule names - never
+the place, which is configure's. The answer is `--instructions-file agents|claude` on the installer call of whichever
+path runs (`update=record-claude`: `--instructions-file claude`, unasked, said in one line; `update=ask-local`'s 'Keep the
+AGENTS.md answer' passes none and is asked again while the CLAUDE.local.md is there); the stamp records any other
+answer, so the next update asks no more. The log names each rename. Unattended, take the Recommended option: a rename keeps every byte
+and its git history - except on `update=ask-local`, which takes 'Keep the AGENTS.md answer': the Recommended one writes over
+the user's own answer, and an unattended run replaces nothing of theirs (review 2026-10-23).
 
 ## 3. Fast path - refresh in place (the common case)
 
@@ -182,7 +181,7 @@ Run the installer; it reads the install back itself, closes new dependencies thr
 any `installed-only: required:` additions. **One fixed capture form, always** - `2>&1 | tee "$TMP/install.log"` on
 the call itself (the shared contract is in `source-protocol.md`'s 'Capture the installer's own output'):
 
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add "<category> <name>"]... [--drop "<category> <name>"]... [--space <name>] --keep-pins [--docs-versioning git|local] [--data-move move|keep] [--data-path <folder>] [--docs-root-move move [--docs-root-leave <entry>,...]] [--memory-level global|scoped|project] [--rename-claude-md] 2>&1 | tee "$TMP/install.log"`
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add "<category> <name>"]... [--drop "<category> <name>"]... [--space <name>] --keep-pins [--docs-versioning git|local] [--data-move move|keep] [--data-path <folder>] [--docs-root-move move [--docs-root-leave <entry>,...]] [--memory-level global|scoped|project] [--instructions-file agents|claude] 2>&1 | tee "$TMP/install.log"`
 - **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED` set to `shell`). The frozen OS twin is gone, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
 
 `<scope>` comes from `node "$TMP/repo/scripts/install/stamp.js" scope .` (`project`, `user` or `local`) and

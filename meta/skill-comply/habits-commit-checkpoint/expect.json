@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "skill": "habits-commit-checkpoint",
-  "sources": ["stack/skills/habits-commit-checkpoint/SKILL.md"],
+  "sources": ["stack/skills/habits-commit-checkpoint/SKILL.md", "stack/skills/review-security/SKILL.md"],
   "extracted": "2026-10-14",
   "note": "The fixture diff touches an auth path (a modified session module and a new, untracked token module), so the security half is owed as well as the formatter and the review. Every step quotes the sentence it grades.",
   "run": {
     "max_turns": 30,
     "stacks": ["javascript"],
     "allowed_tools": ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "Skill", "Agent", "AskUserQuestion"],
-    "selection": { "skills": ["habits-commit-checkpoint", "task-verify-code"] }
+    "selection": { "skills": ["habits-commit-checkpoint", "task-verify-code", "review-code", "review-security"] }
   },
   "prompts": {
     "explicit": "Run the pre-commit checkpoint on the working tree - formatter, review, the security review, then the receipt - and commit the session expiry change.",
@@ -62,7 +62,7 @@
     },
     {
       "id": "security-full-change-set",
-      "from": "stack/skills/habits-commit-checkpoint/SKILL.md",
+      "from": "stack/skills/review-security/SKILL.md",
       "quote": "Feed it the FULL change set, read without touching the index",
       "graders": [
         {

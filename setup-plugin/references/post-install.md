@@ -75,8 +75,9 @@ touches no committed file). The lines, minus anything the project already covers
 
 - `.claude/` - the install and the stamp are machine-local, while `.claude/AGENTS.md` is the team's
   seeded, init-filled instruction file and stays committed, so the pair above is what ignores the rest:
-  `.claude/*` + `!.claude/AGENTS.md` - a bare directory ignore blocks the re-include. With the instruction file at the
-  root (init's or configure's place answer), the re-include keeps nothing and `.claude/*` stands alone.
+  `.claude/*` + `!.claude/AGENTS.md` - a bare directory ignore blocks the re-include. Where the install's name answer
+  was CLAUDE.md, the re-include names `.claude/CLAUDE.md`. With the instruction file at the root (init's or configure's
+  place answer), the re-include keeps nothing and `.claude/*` stands alone.
 - `.alfred/` - the data root (`ALFRED_CODE_DATA_PATH`), outside `.claude/` because Claude Code prompts
   for every write there: the docs (`.alfred/docs/`), the navigation server's index, handoff notes and
   language servers (`.alfred/serena/`), the browser profiles holding session cookies

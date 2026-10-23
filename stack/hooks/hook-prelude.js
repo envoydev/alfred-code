@@ -729,8 +729,192 @@ function askTimeoutMarker(sessionId, env = process.env)
     return path.join(envOf(env, 'HOOK_LOG_DIR') || os.tmpdir(), `alfred-ask-timeout-${part}`);
 }
 
+// A REVIEW, whatever its spelling - the one home of these words since 2026-10-22, when the session-start guard began to
+// snapshot a review the commit guard judges. Every rename of a review (a 1.x `project-` name, the 2.0.0 `alfred-` prefix,
+// a loop's older word order) kept the words that say what it reviews, so the kind is read from those words - never from
+// a copy of the old names, which live only in the manifest's renamed map (guard-commit-gate.test.js runs each of its
+// review rows through the gate). A loop needs `loop` in its name: a capture of the same words is no review.
+const bareSkill = (s) => String(s || '').trim().toLowerCase().replace(/^[\w-]+:/, '').replace(/^alfred-/, '');
+function reviewKind(s)
+{
+    const b = bareSkill(s);
+    const verify = /(?:^|-)verify-(code|plan)$/.exec(b);
+    if (verify) return `verify-${verify[1]}`;
+    if (/(?:^|-)loop(?:-|$)/.test(b))
+    {
+        if (/(?:^|-)architecture-quality(?:-|$)/.test(b)) return 'loop-architecture-quality';
+        if (/(?:^|-)test-coverage(?:-|$)/.test(b)) return 'loop-test-coverage';
+        if (/(?:^|-)quality(?:-|$)/.test(b)) return 'loop-code-quality';
+    }
+    return b;
+}
+// A review the checkpoint names: the house verify skills and loops, review-code and review-security, or a verifier /
+// reviewer seat - never Claude Code's built-in reviews (2026-10-22, the user's ruling 'use ours').
+const REVIEW_SKILL = /(?:^|:)(?:(?:project-|task-)?verify-(?:code|plan)|quality-loop|(?:alfred-)?loop-(?:quality|code-quality|architecture-quality|test-coverage)|review-(?:code|security))$/i;
+const REVIEW_SEAT = /verifier|reviewer/i;
+// A call that reviews the CODE: a review skill other than the plan review, which reads none, or a review seat.
+function codeReviewCall(tool, name)
+{
+    const n = String(name || '').trim();
+    if (!n) return false;
+    return tool === 'Skill' ? REVIEW_SKILL.test(n) && reviewKind(n) !== 'verify-plan' : REVIEW_SEAT.test(n);
+}
+
+// WHAT A REVIEW WAS POINTED AT (a sixth side note; the user's ruling 'Match path targets', 2026-10-22): review-code and
+// review-security read their first arguments as the target, so the files and folders those arguments name that exist
+// (resolved from `base`, realpaths) are what such a review covered; arguments that name no existing path - a branch, a
+// PR - cover none of the uncommitted change. Null - the whole change - for one with no target argument (the change set)
+// and for task-verify-code and a loop, which review the change. A seat's target is its brief (briefTargets below).
+function reviewTargets(name, args, base)
+{
+    const kind = reviewKind(name);
+    if (kind !== 'review-code' && kind !== 'review-security') return null;
+    const words = String(args || '').match(/"[^"]*"|'[^']*'|\S+/g) || [];
+    const out = [];
+    let named = false;
+    for (let i = 0; i < words.length; i++)
+    {
+        const w = words[i].replace(/^["']|["']$/g, '');
+        if (w === '--depth') { i++; continue; }
+        if (!w || w.startsWith('-')) continue;
+        named = true;
+        try { out.push(fs.realpathSync.native(path.resolve(base || process.cwd(), w))); } catch { /* a branch, a PR or no such path */ }
+    }
+    return named ? out : null;
+}
+// Whether a review pointed at `targets` covered the file at `abs` (a realpath).
+function reviewCovers(targets, abs)
+{
+    return !targets || targets.some((t) => abs === t || abs.startsWith(t.endsWith(path.sep) ? t : t + path.sep));
+}
+// What a review SEAT was pointed at (2026-10-22, the user's 'Fix ALL left gaps': a seat cleared every file): its brief.
+// A brief that reads the whole uncommitted change - `git diff` with no range, no second revision, no `--no-index` and no
+// pathspec - covers the whole change (null). Otherwise the paths it names that exist, as review-code's arguments are read
+// (a word shaped like a path: a `/` inside it, a trailing `/` or a file extension; a `:line` suffix dropped). A brief
+// naming neither covers nothing ([]): what the seat read is free text no hook can judge.
+function briefTargets(prompt, base)
+{
+    const text = String(prompt || '');
+    for (const m of text.matchAll(/\bgit(?:\s+-C\s+\S+)?\s+diff\b([^\n;&|)`]*)/g))
+    {
+        const words = m[1].trim().split(/\s+/).filter(Boolean);
+        if (words.includes('--') || words.includes('--no-index') || words.some((w) => w.includes('..'))) continue;
+        if (words.filter((w) => !w.startsWith('-')).length <= 1) return null;
+    }
+    const out = new Set();
+    for (const raw of text.split(/[\s,;()[\]{}<>]+/))
+    {
+        const w = raw.replace(/^[`'"@*]+|[`'"*.,:!?]+$/g, '').replace(/:\d+(?:[-:]\d+)*$/, '');
+        if (!w || !(/[\w*.-]\/[\w*.-]/.test(w) || /\/$/.test(w) || /^[\w.-]+\.[A-Za-z][A-Za-z0-9]{0,7}$/.test(w))) continue;
+        try { out.add(fs.realpathSync.native(path.resolve(base || process.cwd(), w))); } catch { /* names no path */ }
+    }
+    return [...out];
+}
+// The line a review's RESULT opens with (2026-10-22, the user's 'Fix ALL left gaps': a Skill review counted once it
+// launched): `Findings:` for the reviews whose report carries that field - review-code, review-security, task-verify-code,
+// task-verify-plan - and `Outcome:` for a loop's final report; bold, a list marker or a table cell around the word,
+// and a ` - ` after it, count. A review counts once the session's text after its call - the model's own, or a seat's
+// report - holds the line.
+const REVIEW_PROOF = Object.freeze({ findings: /^[ \t>|*_-]*Findings(?:\*\*|__)?[ \t]*(?::|\||-[ \t])/m, outcome: /^[ \t>|*_-]*Outcome(?:\*\*|__)?[ \t]*(?::|\||-[ \t])/m });
+const reviewProof = (name) => (/^loop-/.test(reviewKind(name)) ? 'outcome' : 'findings');
+
+// THE REVIEW SNAPSHOT (2026-10-22, a side agent's note; the user's ruling 'Snapshot at review'). The commit guard asks
+// for a review that started after the last change to every committed file, and a file's time moves when its code does
+// not - a stash and pop, a branch round-trip. So when a review of the code starts, the session-start guard records the
+// hash of every file the change holds, and the commit guard passes a file changed since whose bytes still match - only
+// for a call that counted (its `id`, the call's tool_use_id: neither refused nor unfinished in the transcript). Byte for
+// byte only (the user's 'Fix ALL left gaps', 2026-10-22): a whitespace-blind match passed a line moved out of a Python
+// `if`, spacing inside a string and `rm -rf / tmp` for `/tmp`. Kept per session, the newest `kept` reviews; a file past
+// `bytes`, past the first `files`, or past `total` bytes read for the call, is not recorded, so its time alone decides -
+// the stricter rule, never a pass; `total` keeps the hashing well inside the hook's 10s timeout (review 2026-10-23). A
+// review pointed at paths records only the files it covered (`targets`, reviewTargets and briefTargets above). One file
+// per call, `review-snapshot-<session>@<call>.json`: two seats dispatched in one message start two hooks at once, and a
+// shared file read, extended and renamed by each kept only the last one's snapshot (review 2026-10-23).
+const REVIEW_SNAPSHOT = Object.freeze({ files: 2000, bytes: 4 * 1024 * 1024, total: 64 * 1024 * 1024, kept: 8, prefix: 'review-snapshot-' });
+const snapshotName = (part) => String(part).replace(/[^\w.-]/g, '_').slice(-80);
+// The session's snapshot files: the folder, and the name prefix every one of them carries.
+function reviewSnapshotFile(root, sessionId, env = process.env)
+{
+    if (!layout || !sessionId) return null;
+    const file = layout.statePath(root, 'sessions', `${REVIEW_SNAPSHOT.prefix}${snapshotName(sessionId)}@`, env);
+    return file ? { dir: path.dirname(file), prefix: path.basename(file) } : null;
+}
+const contentHash = (buf) => require('node:crypto').createHash('sha1').update(buf).digest('hex');
+function snapshotReview(root, sessionId, { env = process.env, now = Date.now(), toolUseId = null, targets = null, limits = REVIEW_SNAPSHOT } = {})
+{
+    const where = reviewSnapshotFile(root, sessionId, env);
+    if (!where) return false;
+    try
+    {
+        const { execFileSync } = require('node:child_process');
+        const run = (argv, cwd) => execFileSync(...gitSafe(['-c', 'core.quotePath=false', ...argv], { cwd, timeout: 5000, maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] })).toString('utf8');
+        const top = fs.realpathSync.native(run(['rev-parse', '--show-toplevel'], root).trim());
+        let changed;
+        try { changed = run(['diff', 'HEAD', '--name-only', '-z'], top); }
+        catch { changed = run(['ls-files', '-c', '-z'], top); }   // no commit yet: every tracked file is new
+        const names = [...new Set([...changed.split('\0'), ...run(['ls-files', '-o', '--exclude-standard', '-z'], top).split('\0')].filter(Boolean))];
+        const files = {};
+        let read = 0;
+        for (const rel of names.slice(0, limits.files))
+        {
+            const abs = path.join(top, rel);
+            if (!reviewCovers(targets, abs)) continue;
+            try
+            {
+                const st = fs.statSync(abs);
+                if (!st.isFile() || st.size > limits.bytes || read + st.size > limits.total) continue;
+                read += st.size;
+                files[abs] = contentHash(fs.readFileSync(abs));
+            }
+            catch { /* removed in the change: nothing to hold */ }
+        }
+        fs.mkdirSync(where.dir, { recursive: true });
+        const file = path.join(where.dir, `${where.prefix}${snapshotName(toolUseId || `t${now}-${process.pid}`)}.json`);
+        const tmp = `${file}.${process.pid}.tmp`;
+        fs.writeFileSync(tmp, JSON.stringify({ ts: now, id: toolUseId || null, files }));
+        fs.renameSync(tmp, file);
+        // the newest `kept` stay; another call's hook pruning at the same moment removes the same files
+        for (const old of snapshotFiles(where).slice(limits.kept)) fs.rmSync(old.file, { force: true });
+        sweepStale(where.dir, REVIEW_SNAPSHOT.prefix);
+        return true;
+    }
+    catch { return false; }
+}
+// The session's snapshot files, newest first, each read back - an unreadable one is skipped.
+function snapshotFiles(where)
+{
+    let names;
+    try { names = fs.readdirSync(where.dir).filter((n) => n.startsWith(where.prefix) && n.endsWith('.json')); } catch { return []; }
+    const out = [];
+    for (const n of names)
+    {
+        const file = path.join(where.dir, n);
+        try
+        {
+            const r = JSON.parse(fs.readFileSync(file, 'utf8'));
+            if (r && r.files && typeof r.files === 'object') out.push({ file, review: r });
+        }
+        catch { /* half-written or garbage: holds nothing */ }
+    }
+    return out.sort((a, b) => (Number(b.review.ts) || 0) - (Number(a.review.ts) || 0));
+}
+function readReviewSnapshots(root, sessionId, env = process.env)
+{
+    const where = reviewSnapshotFile(root, sessionId, env);
+    return where ? snapshotFiles(where).slice(0, REVIEW_SNAPSHOT.kept).map((s) => s.review) : [];
+}
+// Whether one of those reviews saw what `abs` holds now - or `content`, another version of it (its staged copy) - byte
+// for byte.
+function heldByReview(reviews, abs, content)
+{
+    if (!reviews.length) return false;
+    let now;
+    try { now = contentHash(content || fs.readFileSync(abs)); } catch { return false; }
+    return reviews.some((r) => r.files[abs] === now);
+}
+
 // The dashes the house voice replaces with a single dash - the em-dash, the en-dash and the horizontal bar - ONE class for
 // the stop contract's ask deny (the answer hook's Stop block shared it until 2026-10-20; they disagreed before audit 2026-10-08).
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
-module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, harnessPrompt, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS };
+module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, harnessPrompt, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview };

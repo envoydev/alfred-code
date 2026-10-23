@@ -20,7 +20,7 @@ never mixed:
 
 - A project's AGENTS.md written, filled in or brought up to date: the seeded `.claude/AGENTS.md` still unfilled, an AGENTS.md gone stale against the code (a moved path, a changed build or test command, a missing setup step), an audit or improvement of the instruction file, a separate part of the repo (web/, api/, a package) that needs its own AGENTS.md, or what the AGENTS.md check reported.
 - Covers setup, commands, key files and architecture sections, what to keep out, and the deterministic check that closes it.
-- Not for a skill, a rule or a hook - the skill-authoring method owns those - nor a README, nor a preference or lesson, which the shared memory server keeps.
+- Not for a skill, a rule or a hook, nor a README, nor a preference or lesson, which the shared memory server keeps.
 
 ## 1. Resolve the stack's files
 
@@ -38,24 +38,29 @@ echo "stack: ${STACK:-absent}"
 ```
 
 `stack: absent` (a copy-only install): the check cannot run - say so in the report, and take the
-outline from the seeded `.claude/AGENTS.md` when it still carries its comment blocks; with neither,
+outline from the seeded instruction file when it still carries its comment blocks; with neither,
 stop and name `/alfred-code:update`, which brings the stack's files back.
 
 ## 2. Pick the mode - the script says what is on disk
 
 ```bash
 node "<stack>/scripts/agents-md-check.js" --root . --list
+node "<stack>/scripts/update-preflight.js" --offers --root . | grep '^instructions-file:'
 ```
 
+The second line names the file this install works with - `instructions-file: agents` is AGENTS.md, `claude` is
+CLAUDE.md (the user's answer to the name ask of init, configure or update). Every file this skill writes takes that name, called
+`<name>` below; never pick it yourself.
+
 - **Create** - it printed `no AGENTS.md or CLAUDE.md in this project`, or every file it lists is `the
-  seeded template (unfilled)`. The target is the seeded `.claude/AGENTS.md`; with none, write that file
+  seeded template (unfilled)`. The target is the seeded file; with none, write `.claude/<name>`
   from `<stack>/stack/AGENTS.template.md` (the spot the installer seeds, loaded like a root one).
 - **Improve** - any listed file holds the project's own text. Every listed file is in scope: the
   root `AGENTS.md`, `.claude/AGENTS.md`, each part's own, and a `CLAUDE.md` the project already keeps.
 
 A root `AGENTS.md` is the project's own file, whoever wrote it: the installer seeds nothing beside
 it, and it is improved in place with every change shown first, never overwritten or replaced by the
-template. A project's own `CLAUDE.md` is improved as it stands and never renamed for the user - say in
+template. A project's own `CLAUDE.md` is improved as it stands and never renamed here (the name ask of configure or update renames) - say in
 the report that Claude Code (2.1.277 or later) reads an AGENTS.md itself only while no CLAUDE.md or
 CLAUDE.local.md sits beside or above it, so with both files the CLAUDE.md wins, and an
 `@AGENTS.md` import from it keeps both loading, or the user sets Project instructions to
@@ -83,7 +88,7 @@ Every fact a section states comes from a file that states it, in this order:
 
 A separate part is a top-level folder with its own manifest whose stack or commands differ from the
 root's (a `web/package.json` beside a .NET solution, an `api/` with its own solution). It gets its own
-`<part>/AGENTS.md` - Claude loads it when it reads a file there, in a folder with no CLAUDE.md - carrying only that part's Setup,
+`<part>/<name>` - Claude loads it when it reads a file there (an AGENTS.md only while no CLAUDE.md sits there or above) - carrying only that part's Setup,
 Commands and Key files, which the root file then does not repeat (it points at the part's file); what
 two parts share stays in the root file.
 
@@ -91,10 +96,9 @@ two parts share stays in the root file.
 
 1. Write the sections the template's outline numbers, in its order, only where step 3 found a fact -
    an empty section is not written. The H1 is the project's own name.
-2. Trim the `## Rules` table to the rules in `.claude/rules/`, dropping each GENERATED row whose file
-   is absent.
-3. Delete the template's two comment blocks once the sections are in.
-4. Write each part's `<part>/AGENTS.md`.
+2. Delete the template's two comment blocks once the sections are in. No rules list: every file in
+   `.claude/rules/` loads itself.
+3. Write each part's `<part>/<name>`.
 
 The write needs no second ask when the user asked for it; a run the user did not ask for shows the
 outline it would write, then asks through ONE AskUserQuestion:
@@ -119,23 +123,24 @@ Either way the report names every file written with its line count.
    It prints each numbered outline section with the heading that holds it, or `lacks`. A `lacks` row
    step 3 has a fact for is an addition (Setup and Key files most often); a matched heading is a guess,
    so a section filed under another name is read before it is called missing, and the report says how
-   many sections lack and how many this run added. Its Rules list is held against
-   `.claude/rules/` by the check: a named rule with no file and a rule file the list does not name
-   are both `rule` rows - read them in both directions before saying anything about the table.
+   many sections lack and how many this run added. A `stack-rules` row is the rules list an older
+   template seeded - step 3 drafts its removal.
 3. Draft three kinds of change, nothing else:
    - **a verified fix** - a stale path whose new target this run confirmed on disk (a listing, a
-     read, `git log --follow`), or a Rules-list row step 2 matched against `.claude/rules/` - fact,
-     not heuristic;
+     read, `git log --follow`), or the section a `stack-rules` row names: its lines that name the
+     stack's rules or repeat the template's rules text go, and the heading with them when nothing of
+     the project's own is left under it - fact, not heuristic;
    - **a fix per check row** - only the flagged token changes: the path it moved to (the navigation
      server's symbol lookup, or `git log --follow --name-status -- <old path>`), the command the
      manifest or CI now runs. A path that is simply gone comes out of its line, the rule around it
      kept - the whole line only when the path was all it said. A TODO or placeholder in the
      project's own text is the user's to fill: named in the report, never invented;
    - **an addition** - a section the template's outline numbers that the file lacks and step 3 found a
-     fact for, a missing line in an existing section, or a separate part's own `<part>/AGENTS.md` where
+     fact for, a missing line in an existing section, or a separate part's own `<part>/<name>` where
      it has none (step 3).
 
-   The project's own wording, order and sections are never reworded, reordered or deleted beyond that,
+   The project's own wording, order and sections are never reworded, reordered or deleted beyond that
+   (the stack's rules list is the stack's text, not the project's),
    and a line the project wrote is never extended - an addition goes on a line of its own.
 4. Show every change before writing: per file, a `diff` block and one line saying why it helps a
    future session - in the reply, and again as the `preview` of each option that writes (the

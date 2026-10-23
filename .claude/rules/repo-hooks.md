@@ -591,16 +591,88 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     2026-10-10 C18), and `findings: <the review's Findings field>` (a 'skipped' one only with the user's quoted
     waiver); a `security: ... - over <N> files` count below what the commit takes in refuses, and so does a staged
     file changed more than 2s after the receipt was written (the review never saw it). An `answered:` ask answered
-    before every review the transcript shows (a verify Skill call, a typed verify command, a verifier or reviewer
-    seat) is no consent to the reviewed commit, and a refused consent quote names the session's latest ask answer.
+    before every review the transcript shows (a verify Skill call - `review-code` and `review-security` count, the
+    built-in reviews no longer since 2026-10-22 - a typed verify command, a verifier or reviewer seat) is no consent to the reviewed commit, and a refused consent quote names the session's latest ask answer.
+    A VERIFIED line that names a review (`task-verify-code`, a quality loop, `review-code`, `review-security`) needs a
+    run of EACH one it names in this session - the model's Skill call or the user's typed command - both sides read by
+    kind (`reviewKind`: every rename kept the words that say what the review checks, so an old spelling is read from its
+    words, never a copied list of old names, which only the renamed map may hold; guard-commit-gate.test.js runs each of
+    the map's review rows through the gate) - unless the receipt says `carried:`. Any skill load once passed for it, so a
+    receipt could claim a review that never ran (2026-10-22). A COMMIT line that names no review of the code (none, or
+    only the plan review) needs one in the session all the same - a review skill by either route, or a verifier /
+    reviewer seat (`codeReviewRan`) - unless the receipt says `carried:`; a PUSH line names what is published and is not
+    judged (a side agent's note and the user's ruling 'Need any review run', 2026-10-22: `VERIFIED the checkpoint` passed
+    with no review at all).
+    The newest review of the code must also have STARTED after the last change to every file the commit takes in (2s
+    slack, the receipt check's): its time is the transcript row's `timestamp` (`lastCodeReviewMs`; a plan review never
+    counts), and a file whose mtime is later is named, `review-code` on it asked for (`editedAfterReview`). A file gone
+    from the tree whose index still stages a version of its own is late whatever the times say (that version is
+    committed; a staged removal commits no content and is skipped). A review with no time on record judges nothing;
+    `carried:` skips it. A second side note and the user's ruling 'After the last edit', 2026-10-22: one review early in a
+    long session covered every later commit. A quality loop passes because its verifier seats return after its fixes.
+    A file's time moves when its code does not too, so a review of the code that STARTS - the model's review skill or a
+    verifier / reviewer seat (`guard-fresh-session-start.js` on PreToolUse `Skill` / `Agent`, before its early exits) or
+    the typed command (its UserPromptExpansion) - writes `<data root>/state/sessions/review-snapshot-<sid>@<call>.json`:
+    the sha1 of each file `git diff HEAD` and the untracked list hold (newest 8 reviews, 2000 files, 4MB a file, 64MB read
+    in all, swept after 7 days; `hook-prelude.js snapshotReview`), and a late file whose bytes match passes
+    (`heldByReview`) - a stash and pop, a branch round-trip. A file past 4MB, past the first 2000 or past the 64MB total is
+    not recorded, so its time alone decides: the stricter rule, never a pass - and the total keeps the hashing inside the
+    hook's 10s timeout. One file per call (the review of 2026-10-23): two seats dispatched in one message start two hooks
+    at once, and one shared file each read, extended and renamed kept only the last one's snapshot. A third side note and
+    the user's ruling 'Snapshot at review', 2026-10-22. The review words (`bareSkill`, `reviewKind`, `REVIEW_SKILL`,
+    `REVIEW_SEAT`, `codeReviewCall`) moved to the prelude for both hooks; the commit guard loads them inside a try, and
+    without them (a prelude older than the hook) it sees no review - every check that needs one refuses, a carried review
+    or the user's waiver still passes - where an unguarded load threw and the dispatcher passed every commit (2026-10-23).
+    SPACING IS A CHANGE in every format. A fourth side note and the user's ruling 'Exact for those types', 2026-10-22,
+    took Python, YAML and a Makefile out of both spacing exemptions (a line moved out of an `if`, a YAML key one level
+    up); the user's 'Fix ALL left gaps' the same day removed both everywhere, since spacing inside a string and `rm -rf /
+    tmp` for `/tmp` are code too: a whitespace-only commit needs a review like any other (git's `-w` proof and
+    `whitespaceOnly` are gone), and the snapshot holds one hash, the bytes (its whitespace-blind hash and
+    `WHITESPACE_MEANS` are gone). The cost: a formatter-only commit runs `review-code` first, cheap on a spacing diff.
+    A review CALL another hook refused is no review (a fifth side note, 2026-10-22: the fresh-session gate refused
+    review-code late in a session and the refused call passed): the transcript scan defers each Skill / seat call to its
+    end and drops one whose `tool_result` carries `is_error: true` (a hook's denial, an unknown skill) - for the named
+    review, the no-name rule and the freshness time alike - and the snapshot the call took (its `id`).
+    A review covers only what it was pointed at (a sixth side note; the user's ruling 'Match path targets', 2026-10-22: a
+    `review-code` of one file cleared five). `review-code` and `review-security` read their target from the call's `args`,
+    the typed `<command-args>` or the expansion's `command_args` (`hook-prelude.js reviewTargets`: each word naming an
+    existing file or folder, realpath'd from the row's `cwd`; words naming none - a branch, a PR - cover none of the
+    uncommitted change); no target word, `task-verify-code` and a loop cover the whole change. A SEAT covers what its
+    brief names (`briefTargets`; 'Fix ALL left gaps': a seat cleared every file): a `git diff` with no range, no second
+    revision, no `--no-index` and no pathspec covers the whole change; else each path-shaped word that exists (a `:line`
+    suffix dropped); else nothing - the house verifier briefs (review-code's and review-security's seat dispatch) name
+    their read commands. Each committed file is judged by the newest timed review covering it (`reviewCovers`,
+    `timedCodeReviews`), one no review covered is refused as such, and a pointed review's snapshot holds only its targets.
+    A review SEAT counts only once it reported (a seventh side note; the user's ruling 'Seats must finish', 2026-10-22:
+    a seat still running, or sent to the background, counted from its dispatch): a foreground seat at its own
+    `tool_result`, a background one - whose result is the launch notice, `toolUseResult.status: async_launched` - at its
+    `<task-notification>` naming its `<tool-use-id>` with `<status>completed</status>`; until then its time and the
+    snapshot its dispatch took count for nothing.
+    A review SKILL counts only once its RESULT LINE followed it ('Fix ALL left gaps': its result only ever says it
+    launched): `Findings:` for `review-code`, `review-security`, `task-verify-code` and `task-verify-plan`, `Outcome:` for a
+    loop (`hook-prelude.js REVIEW_PROOF` / `reviewProof`; bold, a list marker, a table cell and ` - ` after the word count),
+    in the model's own text or in the report of a seat dispatched after the call (review-code and review-security hand a
+    large change to one). Each line closes the NEWEST open review when it is that review's kind and nothing otherwise, so
+    a review left unfinished stays open under a later one; a refused call takes none. The typed command is held the same
+    way, and the snapshot its expansion took (no call id) counts beside a typed review that counted, started within two
+    minutes of it. review-security's Report carries the line since this ruling, and loop-test-coverage names its
+    `**Outcome**` field. The model can write the line without the review: the rule catches an abandoned or interrupted
+    review, not a forged one.
+    THE TOOL-USAGE LEDGER IS NO EVIDENCE ('Fix ALL left gaps'): its row is written at PreToolUse and keeps no target, no
+    result and no refusal, so a review the newest 64MB of the transcript does not hold is a review to run again.
+    The snapshot reads the work tree, while a plain commit takes the index: a late file whose index stages a version of
+    its own passes only when a review saw BOTH (`versionsCommitted`, `stagedBlob` - `git diff --cached --quiet`, then `git
+    cat-file blob :0:<path>`), so staging an unreviewed version and putting the reviewed text back in the tree is refused
+    (found in the close of the rulings above, 2026-10-22; the user's 'Fix that gap'). Conservative for `-a`, which takes
+    the tree alone.
     The consent lists read ENGLISH ONLY (deep hooks review 2026-10-16, the user's ruling): a quote holding any letter
     outside ASCII is no consent (`foreignQuote` - the Ukrainian lists it replaced read 'committed it, don't push' as
     consent), and the denial says to ask instead. A waiver can be a picked option too - `WAIVED - answered: <label>`,
     `format:` / `findings: skipped - answered: <label>` (`answeredWaiver`) - when the label skips the review in the waiver
     words, an ask THIS session answered carries it, and the run is not unattended (auto-mode answers its own Recommended
     option, and a skipped review is never the run's call).
-    An unknown receipt line is never refused. A verify-skill VERIFIED line needs a Skill run in THIS session, read from the tool-usage ledger
-    and then the whole transcript (newest 64MB) - a 256KB tail refused three sessions whose review sat further back.
+    An unknown receipt line is never refused. A verify-skill VERIFIED line needs a Skill run in THIS session, read from the
+    whole transcript (newest 64MB) - a 256KB tail refused three sessions whose review sat further back.
     A `git add -N .` survey chained to a bare `git reset -q` blocks while the index holds staged work (the reset
     would unstage it); the denial names `git diff HEAD --stat; git ls-files -o --exclude-standard`. The act a
     denial echoes is capped at 200 characters with a URL credential masked, and the publish denial names `habits-commit-checkpoint`.
@@ -833,7 +905,14 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     2026-10-08: the guided commands - six since setup merged into init, 2026-10-17 - and `alfred-code` were never resolved;
     a plugin COMMAND is read only under its plugin's namespace, since a bare name is a personal or project command or a
     built-in - audit 2026-10-20 H10: the built-in `/init` reached the Skill route as `init`, matched the core's flagged
-    `commands/init.md` and was denied; a plugin SKILL still answers to its bare name), and
+    `commands/init.md` and was denied; a plugin SKILL still answers to its bare name), denies the same call to Claude Code's BUILT-IN `code-review` /
+    `security-review` (bare, a leading `/` stripped) when no skill of that name sits where `skillHeads` looks and ours is loadable
+    (`oursLoadable`: a personal or project copy that `skillOverrides` neither turns `off` nor leaves `user-invocable-only` -
+    never the core's own `stack/skills` source in the plugin cache, so the skew window before update passes; final review
+    2026-10-22 I1), naming
+    `/review-code` / `/review-security` (one block row, `branch: 'builtin-review'`; a namespaced call, a personal, project or
+    plugin copy of the name, the user's typed expansion and `guard-fresh-session-start:builtin-review` in
+    `ALFRED_CODE_HOOKS_OFF` pass - the user's ruling of 2026-10-22, 'Stop the model using theirs'), and
     offers a fresh session before a deliberate orchestration run (capture, loop, solve flow, review,
     guided walk; only the `alfred-code:` namespace is stripped, so another plugin's `other:task-solve` is not one) when the
     context is past the window trigger OR (slash route only) this session already
@@ -995,14 +1074,25 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     cut (audit 2026-10-08).
   - `docs-session.js` (`SessionStart`, `SubagentStart`, `SubagentStop`, PreToolUse on Read/Edit/Write/MultiEdit/NotebookEdit/Grep (no Glob since 2026-10-16: it did nothing there), the shell route and the navigation server's two kept edit tools `rename_symbol` / `safe_delete_symbol` - held like an Edit, the file in `relative_path`, both routes' spellings (I12); a rename is credited to that declaring file alone - the references it rewrote in other files fall to the Stop ask's 'no actor claimed' bucket and outside the turn check's root, an accepted gap (final review R9) - PreToolUse `SubagentHandback`, `Stop`) with its engine `docs.js` (copied beside it, not wired) - every docs DOMAIN (a top-level folder under the docs root holding a `watch.json`, plus the grandfathered `architecture/`) follows the branch, and HOW is declared at install time in `ALFRED_CODE_DOCS_VERSIONING` (`--docs-versioning` writes it; absent, ONE rule seeds it and is the engine's fallback, in three homes - `install/docs.js`, `stamp-docs-root.js`, `docs.js` - pinned by one table-driven test: `local` only when the docs are kept out of git - no domain tracked, and a domain exists or git ignores the docs root - else `git`, a fresh project included): `git` means the docs are committed and git versions them per branch, `local` means per-branch section overlays under `<docs-path>/.branches/`, folded into mainline at the first mainline session after the branch merges. The setting WINS over what the repo does, and a disagreement is reported in `status` and the start block rather than resolved the other way. The start block pushes `ORIENTATION.md`, cut at 4KB with a note so the read lines after it survive the harness's 10,000-character context cap (audit 2026-10-08), each branch list after it (conflicts, deleted-unmerged, on-mainline, overrides, stranded) cut at six names with a count (audit 2026-10-20, the hooks track's minor list), less any line that copies the hook's own footer (`docs.js HOOK_FOOTER`; one project's file carried a stale copy into 310 starts, and `docs.js lint` now names it - deep hooks review 2026-10-16); `SubagentStart` skips Claude Code's own seats that write no project code (`Explore`, `Plan`, `claude-code-guide`, `statusline-setup`: no block, no snapshot, never asked - the block was 27% of all hook text, 40 of its starts on those seats), and names conflict markers and duplicate ids from the engine's `integrity()` (one parse per file, never the whole lint) - a PROVISIONAL one (the first-look scan's, `scan-evidence.js --orientation`) with a stale warning, and `status` / `stale` call it stale by definition; the first change under a source root waits for a section read, per actor - a section handed to a seat never reached the main context, nor the main session's read a seat (loading audit 2026-10-21 G4) - (two holds, then a logged bypass; no hold when no doc file can be read by section) - a `docs.js show` the shell RUNS of a ref the engine resolves, or a Read, Grep or reading shell command of a `.md` under a domain; a Glob, an `ls`, a `watch.json` read, an echoed show line and a show of a missing ref are no read (audit 2026-10-08), and a read of a plan under `<docs-path>/work/plans/` credits the sections its `Oriented:` line names when the engine resolves them (audit 2026-10-20 C25: the first edit of every /clear resume was held); the hold pastes only a section that DECLARES a cover of the target, as 'the documented context for this path', and never one of the preferences domain - preferences-session hands those over, so one denial never carries a section twice (2026-10-21; a covering code-style section was pasted first, as 'the convention this change follows', before); word-only hits are named as candidates with their `show` line and the hold does not repeat (audit 2026-10-10 C03 / C23: a cover-less section matched on words was pasted as the convention for a test helper); a path git ignores, or one under a `TestResults/` folder, is a run artifact and leaves the hold's targets (audit 2026-10-11 SD09, session 5f9fec85: `rm -f` of an ignored `.trx` was held); the FINISH ask fires only when a changed file hits the capture's `watch.json` - for what a seat WROTE at its first `SubagentHandback`, denied once with the ask so the report it sends again carries the docs line (deep hooks review 2026-10-16: asked at `SubagentStop`, 48 of 48 asks came after the hand-back had delivered the report and 41 were the transcript's last row; PreToolUse fires on that tool, 35 runs recorded), else at `SubagentStop` for a seat that stopped without one (a harness with no such tool, Cursor among them) (a tool event carries `agent_id` only inside a subagent, so every write is attributed to its actor - the main session included, under one key of its own - and intersected with the tree diff; a read-only seat running beside a writer is never asked, a write the gate DENIED is never credited, and paths are compared in git's spelling on every platform), then once at `Stop` for what the session wrote itself plus every change no actor claimed - that bucket only once the main session ran a shell command that may write (`recordRun`: any step outside `READ_STEP`, or a redirect; the 2026-10-17 usage audit: a session that only read was asked about another session's uncommitted diff no claim named; a `changed-unclaimed` row instead; a `git stash` push / pop / apply records the files it moves as `moved`, claimed against sibling sessions and never asked of the session that only moved them, and the Stop ask is deferred - at most three times, an `ask-deferred` row each - while the payload's `background_tasks` shows unsettled work: audit 2026-10-20 C25) (a script's output, a tool this hook is not wired on), both in the same shape: the section named, its file, its current FIRST SENTENCE quoted, and a `set ... --expect <hash> < <file holding its new text>` that refuses a rewrite of a section another agent moved meanwhile, with a line saying the new text is the section as `show` prints it, from a file or piped in (audit 2026-10-11 SD09, session 2ca8e8ee). A section whose own text names a hit file verbatim (`docs.js` `namingSections`) is asked about before the watch entry's sections, and 'changed' counts only the commits made since the snapshot (merges aside) within the tree diff, so a checkout or merge bringing another branch's commit in is not the session's change (audit 2026-10-10 C23: sessions f6c591fa and 349e4825). HEAD's reflog since the snapshot says how each commit arrived (audit 2026-10-11 SD09, sessions cc87fa6c / e7c8cbb6): a `commit` entry (amend, initial) is the session's own, a rebase or cherry-pick pick is its own only when AUTHORED after the snapshot, and a pull, merge or checkout brings commits no entry names; with no entry since the snapshot the committer clock decides. An unclaimed change whose file was last written inside an idle span of the transcript (10 minutes or more between rows, 30s off each edge, newest 32MB) is the user's own: logged as `changed-outside-session`, never asked (session fdce35ae: a version bump made in the IDE during a 4h33m gap). So is a change another session on the same checkout recorded as its own write: each actor file carries the project `root` beside `wrote`, and one written after this session's snapshot claims its paths for that session - logged as `changed-by-other-session`, never asked; a file this session wrote too stays its own, and a claim with no `root`, another root, an older write or an unreadable file claims nothing (2026-10-16: a read-only session was asked about a parallel session's migration). At `Stop` the ask also says its reply is the session's last message: the docs line, then the task summary in at most three lines (pilot 4: all 8 flow cells ended on 'docs ok'); a seat's `SubagentStop` ask closes on its reply being what the caller receives - the docs line, then the report its brief asks for, its `status:` / `contract_version:` lines unchanged (audit 2026-10-08 row 25) - and the hand-back ask on the report not being delivered: answer, then `SubagentHandback` again with the docs line first and the report unchanged; that retry passes and writes the `ask-answer` row (`via: handback`). With nobody at the terminal the hold and the Stop ask each write one `mode: unattended` row - once per kind per session, an exclusive `alfred-docs-unattended-<session>-<kind>` marker in the hook temp dir (audit 2026-10-20 H11: one per Stop and per held write, 61 in one session); with no watch entry and no new-module rule in any domain neither stop diffs the tree; the per-session state is written through a temp file and a rename, so a parallel call never reads it half-written; and past 2,000 dirty paths the ones a watch glob or a source root names are kept first. At `SessionStart`, before any domain check, it writes `<data root>/state/sessions/untracked-at-start-<HEAD sha>` ONCE per HEAD - the paths untracked when the change began, at most 20,000 (past the cap a path reads as the change's own), which the commit guard and `habits-commit-checkpoint` keep out of the change. Every later session on that HEAD (a resume, a compact start, a fresh-session hand-off, a `/clear`) reuses it, so an earlier session's new files stay the change's own; a commit moves HEAD, the next session takes a fresh one, and the guard falls back to the newest record until then. Only a first start (`source` startup, clear or none) snapshots, and it names the record in `<data root>/state/sessions/untracked-session-<sid>`: a compact or resume start reuses that record and never snapshots a HEAD the session itself moved (audit 2026-10-10 C09, session c6142301: a compact start after a checkout listed 7 of the session's own new files), and the commit guard reads the session's pointer first. Writing a record sweeps the ones past 7 days. It is named in one start line when it is not empty. Also at PreToolUse, before any domain check: a write to `<docs-path>/work/plans/<name>.md` stamped `Completed:` is denied unless every line it adds or removes is a stamp line (Gated, Approved, Conformance, Completed, Status, Deviations, Result) - an Edit by its strings, a Write against the file, a shell write always - except the close that ADDED the stamp: its own actor's writes to that plan pass until an ask is answered or a prompt typed after it (`closeStillOpen`, a temp-dir marker holding the transcript's size; the 2026-10-17 usage audit: the memories line written right after the stamp was denied) - since new scope after the stamp is a new plan file or a stated `ungated: <why>` (audit 2026-10-10, session 84eedb4b). Beside it (the user's ruling S3, 2026-10-20): while this session's ask-timeout marker stands (the answer hook writes it when an AskUserQuestion closes on Claude Code's idle timeout and clears it on the next answer or typed prompt), a main-session write that puts an `APPROVED` / `AUTO` line into `<data root>/state/approvals/APPROVAL` - a file tool, or a shell write carrying the word - is denied 'the question timed out - re-ask'; a delete of the stamp and every other flow file pass. Also before any domain check (a first capture writes before one exists): a main-session write under `<docs-path>/architecture/` - a file tool, a shell write, a `docs.js set` of an architecture ref - is denied while a capture analyzer seat (`architecture` / `code-quality` / `code-style` / `related-project` / `test-coverage-analyzer`, bare or `alfred-code:`) this session dispatched has not handed back: its tool_result, or for a background seat a DELIVERED task notification with a status, its `[Subagent hand-back]` message or a TaskStop naming it, read only on such a write and only past where the last read stopped (`seatsOut`, newest 8MB); held once per dispatch (the write sent again passes, a `seat-bypass` row), never for a seat's own call, an unreadable transcript or `_GATE=0` (audit 2026-10-20 C43, add5a91e: 42 reference Edits landed while a sixth analyzer ran; a replay of the 130 audit transcripts holds that one write and no other). `docs-session:block` / `:gate` / `:ask` in `ALFRED_CODE_HOOKS_OFF` switch the parts off (the old
     `ALFRED_CODE_DOCS_BLOCK` / `_GATE` / `_ASK` at `0` are read for the 2.x line, and an update folds them in). The engine's `ceilings [--prune]` lists the map's Known-ceilings rows that are closed (a revisit cell opening on lifted / closed / resolved / done) and moves them to `architecture/history/known-ceilings-closed.md`, one appended table, through `set` with the section's own hash - the register only grew before (audit 2026-10-20 C27, the user's ruling 'prune only'); a row whose `where` path (holding a '/') is gone is named `stale` and kept, never moved, since a rename or move in a refactor leaves the shortcut in the code.
-  - `preferences-session.js` (PreToolUse on Read/Edit/Write/MultiEdit/NotebookEdit, the navigation server's two edit tools
-    and the shell route, each row run inside its dispatcher; `SessionStart`, every source; `SubagentStart`) - the user's
+  - `preferences-session.js` (PreToolUse on Read/Edit/Write/MultiEdit/NotebookEdit/Grep, the navigation server's two edit tools
+    and five lookups, LSP, Skill and the shell route, the file and shell rows run inside their dispatchers; `SessionStart`, every
+    source; `SubagentStart`; `UserPromptExpansion` on the run names) - the user's
     preferences docs under `<docs-path>/preferences/` bind every actor, and a rule only asks for the read (the user's rulings
     of 2026-10-21: `alfred-preferences.md` is a read-on-trigger pointer, this hook makes the read happen). The FIRST file edit
     of each actor (the main session, and each seat by `agent_id`) is held until the code docs that exist were read -
-    `PERSONAL-CODE-PREFERENCES.md` and `ARCHITECTURE-PREFERENCES.md` whole, then `PROJECT-CODE-PREFERENCES.md`'s sections that
-    cover the target plus its cover-less ones, the other sections only named (a later edit a not-yet-handed section covers
-    waits again) - and the FIRST git write (`shell-writes.js` `gitMutates`, plus a branch, tag or worktree branch made by
+    the entries of `PERSONAL-CODE-PREFERENCES.md` and `ARCHITECTURE-PREFERENCES.md` whose `Scope:` reaches the target
+    (`scopeOf`: preferences.js's glob reading, a glob with no `/` matched on the file name, a path with none matching
+    everything under it; a plain area or no `Scope:` reaches every edit), each without its `Check:` line, then
+    `PROJECT-CODE-PREFERENCES.md`'s sections that cover the target plus its cover-less ones, the other entries and sections
+    only named (a later edit a not-yet-handed entry or section reaches waits again). The user's two docs have no doc cap
+    (the user's ruling of 2026-10-22: the hand-over is capped, never their docs): an entry that does not fit the room stays
+    unmarked and the retry hands it over, every doc after it waiting its turn (`codeParts` `later`), and only an entry no
+    room holds whole is cut once with a Read line - `preferences.js lint` fails one past 5,000; a designer's start, which has
+    no retry, names what did not fit. A glob reaching no file would hide its entry from every edit, so `preferences.js lint`
+    notes it and every update names it (`docs.deadScopeLines`, through the capture's `deadScopes`; the hook reads
+    `Scope:` through the script's own `scopeOf`, one reader since review 2026-10-23, so the two cannot drift); a glob aimed at the wrong EXISTING folder no script can
+    judge, so `preferences.js reach` shows what each `Scope:` takes (count, file types, three paths - the capture reports
+    it; the capture asks the user to confirm each new glob's reach) and `lint` and every update name a `Check:` that measures files its `Scope:` does not reach (`reachIn`, `docs.mismatchLines` through the capture's `scopeMismatches`) - and the FIRST git write (`shell-writes.js` `gitMutates`, plus a branch, tag or worktree branch made by
     name, `gh pr merge` / `create`, `gh release create` / `edit` / `delete`, and text naming git that `gitText` could not read)
     until `GIT-PREFERENCES.md` was, read live with its `<!-- locked: <key> -->` entries first as the SEED states them (an
     edited copy is named, never handed over as locked). The denial HANDS THE DOCS OVER, so a retry is all it costs; both
@@ -1010,12 +1100,55 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     left out capped at 700, the rest named as a `node .claude/hooks/docs.js show <ref>` line when the engine and
     `preferences/watch.json` are there, else a Read line). Only a WHOLE read marks a doc read (audit 2026-10-21 H-Q1): a Read
     with no range or one reaching its last line, a whole-file shell reader naming it (no `head`, `grep` or pipe into one), a
-    `docs.js show` of each of its sections. A solution designer holds no edit tool (checked against `meta/seat-tools.json`),
-    so no hold reaches it: `SubagentStart` hands it the code docs, every project-doc section the room fits; any other seat
-    gets nothing there. The record is per actor, `<data root>/state/sessions/preferences-<session>-<actor>.json` (the OS temp
+    `docs.js show` of each of its sections. A judge (`JUDGE`: an `agent_type` ending `solution-designer` or `-verifier`, or
+    one of the three finding seats `code-quality-analyzer`, `security-auditor`, `integration-reviewer` - `alfred-code:<seat>`
+    always, a BARE name only where the install stamp's `library-agents:` line records its copy (`copiedSeats`: the copy
+    route; none on the plugin route), so another plugin's or the project's own `security-auditor` is no judge: side notes
+    of 2026-10-22, the user's rulings 'Alfred's own, all judges' and 'drop the names') holds no edit tool (checked against `meta/seat-tools.json`), so no edit hold reaches it: `SubagentStart` hands it the code
+    docs, every project-doc section the room fits, and marks them in its record; the entries one room could not hold come
+    with its first reads (the user's ruling of 2026-10-22) - each Read, Grep (`path`) or LSP call (`filePath`) outside the preferences folder - a held Grep's denial adds
+    `GREP_STEER`, locate through the navigation server or LSP, Grep only for a literal already located (the user's
+    ruling 'Hold both, steer off Grep'; Grep rides `file-guards.js`, LSP its own row) - and each
+    navigation-server symbol lookup (`NAV_READ`: `find_symbol`, `find_referencing_symbols`, `get_symbols_overview`,
+    `find_declaration`, `find_implementations` - a seat told to locate before it reads may never call Read), and each
+    shell read of a file (`shellReads`: `cat`, `sed`, `head`, `grep`, `rg` ... with an argument naming a path on disk outside
+    the preferences folder - as written, through a variable the command itself sets (`scanShell` `expandVars`), or as a glob
+    one entry matches; never `wc`, `ls`, a pattern or a sed / awk program; a search given no path, `rg` reading no pipe or
+    `<` input or a recursive `grep`, reads the folder it runs in, as the Grep tool does; so does a reader `find -exec` or
+    `xargs` runs, and a `Select-String` fed by a file listing; a grep word earns the steer too - the user's answer 'Stale
+    run + cheap shell cases'; a computed path `$(...)` and an inline script `node -e` stay unseen, the next visible read
+    holding instead), is denied with the next part
+    until every entry has come, so an install whose docs fit one room sees no Read held. The main session's RUN - the last
+    `capture-` / `loop-` / `task-` / `issue-` skill, `review-code` or `review-security` (or a built-in `code-review` /
+    `security-review` the user types) it started, bare - is kept in its
+    record: from a `Skill` call, or from `UserPromptExpansion`, since a typed command makes no Skill call
+    (code.claude.com/docs/en/hooks, read 2026-10-22: typing /name bypasses PreToolUse); a skill that is no run leaves it.
+    A review run (`REVIEW_RUN`: `review-code`, `review-security`, the two built-in reviews and the code and architecture quality captures and loops) is the
+    main session reviewing without an edit, which no edit hold reached (the user's ruling 'Hold its first review skill'):
+    its first Skill call is denied with the code docs in parts, a typed one is handed them at its expansion, and the main
+    session's reads then hold like a judge's until every entry has come. The architecture analyzer is handed
+    `ARCHITECTURE-PREFERENCES.md` alone at its start, told to report a departure as a smell by id, only inside an
+    architecture quality run (`ARCH_RUN`; the user's ruling 'Hook pushes the arch doc', which replaced the brief's
+    hand-listed entries) - the map capture, the solve flow's scoping pass and the version upgrade dispatch the same seat
+    to describe the code as it is, so a side note of 2026-10-22 kept them out (up to 7,000 chars per module seat, and a
+    smell the map should not carry; the user kept it, 2026-10-22); a seat handed it keeps an `arch` mark so its reads bring the rest.
+    Where no hook ran, the quality brief opens with `Run: architecture quality` and the seat reads the doc itself on that mark
+    (the user's answer 'Yes, the brief marks the run'). The run ENDS at
+    the user's next typed turn - any but the run's own `<command-name>` row; a skill body, a summary, a command's output, a
+    notification, a hand-back frame, a `!` shell row, an Esc's interrupt marker (a user row with no `isMeta`, measured) and a
+    tool result are no turn, nor a reply that only says go on (`GO_ON`: continue, go on, proceed, carry on, resume, keep
+    going, yes, ok - the user's answer 'Keep go-on replies', after a side note that a typed 'continue' after an Esc ended
+    the run) (`typedTurn`) - checked only where it matters, an analyzer's start and a
+    reviewing main session's held read, from the transcript offset the record took when the run started (`runAt`,
+    `runFile`; the user's answer 'Transcript check at the hold', so no hook runs per prompt); an ended review run is dropped
+    from the record, and a transcript that cannot be read keeps the run. A compaction keeps the run and the `arch` mark, a
+    `/clear` ends both. Any other typed message ends it; a later analyzer then reads the doc on the brief's mark. The actor key
+    drops an `agent-` prefix, since the documented examples spell one seat's id with it on one event and without it on
+    another. Any other seat gets nothing there: the other analyzers and diagnosers record or diagnose rather than judge
+    against the preferences, so alfred-preferences.md alone points them at the docs. The record is per actor, `<data root>/state/sessions/preferences-<session>-<actor>.json` (the OS temp
     dir when that cannot be written, and a one-line note instead of a hold when neither can), written through a temp file and
-    a rename and swept past 7 days (`sweepStale`); a `compact` or `clear` start deletes that actor's record, since the summary
-    dropped the docs, and a seat's own compaction - which runs the SessionStart hooks inside the seat, the payload carrying
+    a rename and swept past 7 days (`sweepStale`); a `compact` or `clear` start deletes that actor's marks, since the summary
+    dropped the docs (a compaction keeps the run and the `arch` mark), and a seat's own compaction - which runs the SessionStart hooks inside the seat, the payload carrying
     its `agent_id` (loading audit 2026-10-21 G3: 77 of 77 seat compactions) - deletes only its record and pushes nothing.
     `PERSONAL-PREFERENCES.md` - how the user wants the assistant to work (the user's ruling of 2026-10-21: loaded at session
     start and present after a compaction) - binds every main turn, so every main SessionStart (startup, resume, clear,

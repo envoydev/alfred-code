@@ -2,25 +2,16 @@
 
 <!-- Fill-in block - delete once done. The installer seeds this file as .claude/AGENTS.md when the project has
      no AGENTS.md or CLAUDE.md (Claude Code 2.1.277 or later loads it; keeps the
-     repo root tidy), or as the root AGENTS.md on init's place answer - copy it there by hand only when that seed
-     step was skipped. To keep a .claude/ one committed, the project's .gitignore must ignore the .claude contents
-     but track this file:
-     `.claude/*` + `!.claude/AGENTS.md` - a bare directory ignore blocks the re-include.
+     repo root tidy), or as the root AGENTS.md on init's place answer - named CLAUDE.md instead on init's name
+     answer - copy it there by hand only when that seed step was skipped. To keep a .claude/ one committed, the
+     project's .gitignore must ignore the .claude contents but track this file:
+     `.claude/*` + `!.claude/AGENTS.md` - a bare directory ignore blocks the re-include (`!.claude/CLAUDE.md` for that name).
 The habits-adjust-agents-md skill fills it (create) or brings an existing one up to date (improve), and
 ends on the deterministic check; by hand, the steps are:
-1. Write the project top from the authoring outline in the comment below - replace the
-   `__PROJECT_NAME__` H1 with the project's own name, put the sections above ## Rules so the rules
-   table stays last - then delete that comment.
-2. Trim the ## Rules table to what the installer actually laid down - and drop any GENERATED
-   row whose capture skill this install skipped (its /command will not resolve).
-3. The rows marked GENERATED come from captures /alfred-code:init already ran for the installed ones -
-   filling this file never re-runs one whose file exists. A row whose file is missing takes its capture, in the post-install
-   order: /capture-architecture, /capture-project-code-style, then
-   /capture-awareness LAST, so its generated inventory reflects the final install (it writes the
-   run book and maps the sibling repos too, where the project has any). The preferences row is the
-   installer's and always stays; init never runs /capture-preferences - the user records their own wants
-   when they have any (before /capture-awareness when both run). All but /capture-architecture are
-   slash-only: the user types them - a model Skill call is refused.
+1. Write the sections from the authoring outline in the comment below - replace the
+   `__PROJECT_NAME__` H1 with the project's own name - then delete that comment.
+2. List no rules here: every file in .claude/rules/ loads itself (the `alfred-*` set each session, a
+   path-scoped rule on its own `paths:`), so a list only repeats them in every session.
 If the repo already has a root AGENTS.md (for other agent tooling), it IS the project's file: the
 installer seeds nothing beside it, and it is improved in place, never replaced by this template. Claude
 Code reads an AGENTS.md on its own only while no CLAUDE.md, .claude/CLAUDE.md or CLAUDE.local.md sits in
@@ -29,7 +20,7 @@ the working directory or above it - one of those makes it ignore this file (a CL
 claude-md-and-agents-md in /config). Never `@import` anything under .claude/rules/: those files
 auto-load, so an import pays for them twice.
 In a repo with separate parts (a `web/` beside the service, packages in a monorepo) this is the ROOT
-file - shared conventions only; each part gets its own thin <part>/AGENTS.md carrying just what is
+file - shared conventions only; each part gets its own thin <part>/AGENTS.md (<part>/CLAUDE.md when this file is a CLAUDE.md) carrying just what is
 specific to that subtree (Claude loads it when it reads a file there, or at launch from that
 folder, where no CLAUDE.md sits - never a sibling's), so anything two parts share belongs here, and `claudeMdExcludes` in
 settings.json keeps another team's ancestor file out.
@@ -44,11 +35,11 @@ freeze (never touched while the repo moved on), the TODO ledger (scratch notes),
 source (everything here, nothing routed to a scoped rule or a skill).
 Prune it when things go wrong, and test a change by watching whether behaviour shifts. The cross-project working conventions
 are NOT here: they load from the always-on baseline rules in .claude/rules/ (installer-managed,
-refreshed on update) - never restate them in this file. (HTML comment: stripped from injection,
+refreshed on update) - never restate or list them in this file. (HTML comment: stripped from injection,
 so an unfilled template pays nothing for this block.) -->
 
 <!-- Authoring outline - write these sections into the project-specific top of this file, in the
-numbered order below, with ## Rules left last: a fixed order means every filled file keeps the same
+numbered order below: a fixed order means every filled file keeps the same
 fact in the same place, and the two highest-traffic facts (stack, commands) sit at the top. Keep
 each section lean, then delete this comment block. Comments are stripped from injection, so this
 outline costs nothing even while it sits here. Where the architecture capture ran, the docs hook
@@ -88,21 +79,5 @@ map, a dependency rule's why - plus a pointer to its sections, never a second co
 12. Testing approach - per-layer strategy, what's excluded, the integration / regression net.
 13. Load by artifact - a table mapping this repo's concrete files / types / constructs to the skills
     that cover them but never fire on their own keywords, typically an installed plugin's skills
-    (the house-style ones self-fire through the path-scoped rules above, so they are not in it).
+    (the house-style ones self-fire through their path-scoped rules, so they are not in it).
 -->
-
-## Rules
-
-The rules this project runs on, all in `.claude/rules/`: every `alfred-*` file loads each session,
-and a path-scoped rule (the convention rules the install copied) attaches on a matching file touch -
-its own `paths:` frontmatter says when.
-
-In GENERATED rows, `user-run` marks a slash-only capture (`disable-model-invocation`): only the
-user can invoke it - a model Skill call is refused, so name the command to the user rather than
-running it.
-
-| Rule | What it governs |
-|---|---|
-| `.claude/rules/alfred-awareness.md` (GENERATED - user-run /capture-awareness after install, update, or a trim) | imports `<docs-path>/awareness/` into every session: the skill / agent usage policy and this project's skill / seat / MCP inventory, the app's run book, and the sibling repos where the project has any |
-| `.claude/rules/alfred-architecture.md` (GENERATED - run /capture-architecture) | architecture capture marker - the docs exist, read them before a structural change; where they live is the docs-root baseline's, the orientation itself arrives through the docs hook |
-| `.claude/rules/alfred-preferences.md` (installer-managed; the git doc is seeded at install, the others come from user-run /capture-project-code-style and /capture-preferences) | names the preferences docs in `<docs-path>/preferences/` - how the user wants the assistant to work (pushed at every session start), the project's actual code style, the user's own code, architecture and git preferences - and when each is read; where one contradicts this file, the session asks, the entry's side marked (Recommended) |

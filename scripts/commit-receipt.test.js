@@ -3,6 +3,7 @@
 const test = require('node:test');
 // No inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
 require('./hook-test-env').isolateHookSuite();
+const { reviewedTranscript } = require('./hook-test-env');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -13,6 +14,8 @@ const HELPER = path.join(__dirname, '..', 'stack', 'skills', 'habits-commit-chec
 const GUARD = path.join(__dirname, '..', 'stack', 'hooks', 'guard-ungated-commit.js');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'commit-receipt-'));
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
+// the session ran a review: the guard refuses a VERIFIED receipt with none since 2026-10-22
+const REVIEWED = reviewedTranscript(TMP);
 
 const forty = () => Array.from({ length: 40 }, (_, i) => `line ${i}`).join('\n');
 function repo({ remote = false } = {}) {
@@ -33,7 +36,7 @@ function repo({ remote = false } = {}) {
 const helper = (dir, args, { cwd = dir, env = {} } = {}) =>
   spawnSync(process.execPath, [HELPER, ...args], { cwd, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir, ...env } });
 const guard = (dir, command, env = {}) => spawnSync(process.execPath, [GUARD], {
-  input: JSON.stringify({ hook_event_name: 'PreToolUse', session_id: 'receipt-test', tool_name: 'Bash', tool_input: { command }, cwd: dir }),
+  input: JSON.stringify({ hook_event_name: 'PreToolUse', session_id: 'receipt-test', tool_name: 'Bash', tool_input: { command }, cwd: dir, transcript_path: REVIEWED }),
   cwd: dir, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir, ...env },
 });
 // 2.8.0 layout: the receipt lives in <data root>/state/approvals/, whatever the docs root
@@ -135,6 +138,9 @@ test('refusals: a missing judgment line, a security claim with no categories, no
   assert.equal(helper(dir, [...sec, '--security', 'none']).status, 2, 'an empty verdict is no category');
   assert.equal(helper(dir, [...sec, '--security', 'auth ok, secrets ok, injection ok']).status, 0);
   assert.match(receiptOf(dir), /^security: auth ok, secrets ok, injection ok - over 1 files$/m);
+  // final review 2026-10-22 minor: a verdict that already ends in its own over-clause gets one clause, the commit's count
+  assert.equal(helper(dir, [...sec, '--security', 'auth ok, secrets ok, injection ok - over 7 files']).status, 0);
+  assert.match(receiptOf(dir), /^security: auth ok, secrets ok, injection ok - over 1 files$/m, 'one clause, the commit\'s own count');
   assert.equal(guard(dir, 'git add -A && git commit -m x').status, 0);
   const clean = repo();
   assert.equal(helper(clean.dir, COMMIT).status, 2, 'a clean tree takes in no file');

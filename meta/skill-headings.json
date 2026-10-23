@@ -505,10 +505,8 @@
       "3fe3cdb123db8011",
       "6f55c235415fcb74"
     ],
-    "habits-explain-code": [
-      "0a24e004723bae8c",
-      "5428a20919d4e046",
-      "6f0049472a1f4a0f"
+    "habits-explain-topic": [
+      "c438f2b1003570e5"
     ],
     "habits-plan-writing": [
       "30d9f464beea9d6c",
@@ -519,9 +517,6 @@
       "b5c79631301d4ff8",
       "c4934afe03eee84d",
       "f38b268391cbbbfa"
-    ],
-    "habits-skill-writing": [
-      "d40fd47b027c8f57"
     ],
     "habits-test-first": [
       "30e7b07297b6b97d"
@@ -608,6 +603,12 @@
       "e2c2428a8e113b4e",
       "f40e28833448576e"
     ],
+    "review-code": [
+      "202c384ab34a8792"
+    ],
+    "review-security": [
+      "061202c135afc216"
+    ],
     "sqlite": [
       "4a79fdc01add88f4",
       "4d37c25600437d92",
@@ -633,7 +634,10 @@
       "c322315094dc2d7c"
     ],
     "task-verify-code": [
-      "19f42bcacdddef87"
+      "19f42bcacdddef87",
+      "57155957995a9b88",
+      "69e620075f8ffbfd",
+      "d8320f2b5983f98b"
     ],
     "task-verify-plan": [
       "29717162bc7c4b70",

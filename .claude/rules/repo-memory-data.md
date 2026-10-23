@@ -207,8 +207,8 @@ The memory levels and stores, where the docs root and the data root live, and th
   deliberately (that skill or `loop-architecture-quality`), never after each change. The
   preferences live in `<docs-path>/preferences/`: the code style in `PROJECT-CODE-PREFERENCES.md` (owned by
   `capture-project-code-style`), the user's own `PERSONAL-`, `PERSONAL-CODE-`, `ARCHITECTURE-` and `GIT-PREFERENCES.md`
-  (owned by `capture-preferences`; the install seeds the git doc from `git-seed.md`, its consent, scope, checkpoint and
-  safety entries `locked`, and an update restores an edited locked entry from the seed; nothing seeds the personal doc). The
+  (owned by `capture-preferences`; the install seeds the git doc from `git-seed.md`, its consent, checkpoint, safety, attribution and
+  checks entries `locked`, and an update restores an edited locked entry from the seed; nothing seeds the personal doc). The
   two personal docs (`PERSONAL-` and `PERSONAL-CODE-PREFERENCES.md`) are the user's own, never the team's: under git
   versioning the data root's ignore lines keep them out of git (`DOCS_STATE_IGNORE`, audit 2026-10-21 Q-1), so a linked
   worktree reads them from the main checkout (the hook and `preferences.js` alike). No rule carries their text: the shipped

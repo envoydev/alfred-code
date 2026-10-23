@@ -42,16 +42,17 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   `AGENTS.md` on init's place answer, `--instructions-at root`, which with `claude` also moves an existing AGENTS.md /
   CLAUDE.md between the two places on init's or configure's ask; the ledger's `AGENTS.md` row is read where the seed sits,
   `seeds.seededAgentsMdPath`; a root AGENTS.md the project owns is checked and improved in place, never overwritten; an unedited `.claude/CLAUDE.md` an
-  earlier release seeded is moved by `update`, an edited one named with its `mv` command; Claude Code reads AGENTS.md
+  earlier release seeded is moved by a flag-less `update`, an edited one named with its `mv` command (a run carrying the name
+  answer renames instead) - never on an install whose name answer was CLAUDE.md, where the seed, the fill and a part's own file all take that name (the user's ask of 2026-10-21); Claude Code reads AGENTS.md
   natively from 2.1.277, and only while no CLAUDE.md or CLAUDE.local.md sits beside or above it). Conventions ship separately in `stack/rules/*-conventions.md`. Its
   authoring outline (Setup and Key files among it) and keep-out list say WHAT an AGENTS.md holds; the
   always-on `habits-adjust-agents-md` skill is HOW, the one home of the fill (create, or improve with
   every change shown first, a separate part getting its own `<part>/AGENTS.md`) - `/alfred-code:init`,
   `update` and `configure` follow it inline; and `scripts/agents-md-check.js` (AGENTS.md and any CLAUDE.md the project keeps) is the verdict it closes
   on: every named path exists, every command's program resolves on PATH or in the project, no
-  placeholder, `TODO` or template text is left, the `## Rules` list matches `.claude/rules/` (a `rule` row: a named
-  rule with no file, or - once the list enumerates the install's rules - a file it neither names nor globs; usage audit
-  2026-10-10), and an installer seed still unfilled is named (`--list` marks it). A name in a list of glob patterns is a
+  placeholder, `TODO` or template text is left, no `## Rules` section still lists the stack's rules (a `stack-rules`
+  row: the template lists none since the user's ruling of 2026-10-21 - every rule loads itself - and improve offers an
+  older seed's list for removal), and an installer seed still unfilled is named (`--list` marks it). A name in a list of glob patterns is a
   pattern, a path its own line places in the parent directory is read from there, and a line pointing at a generated
   rule is no template text (audit 2026-10-11 SD04: 4 of 4 rows false in six sessions); `--outline` lists each outline
   section a file holds or lacks, the improve pass's compare. Validate runs the check for drift. Its rows are heuristic (measured 2026-09-26
@@ -116,7 +117,7 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   the same rename while its mirror is paused - a protocol change here usually needs the same edit
   there once it resumes (divergences only: `model: inherit`, no `tools:` allowlist, no auto-delegation
   hard-disable).
-- `stack/rules/` - twenty single-job rules, each a library copy in `.claude/rules/`. Seven always-on `alfred-*.md`
+- `stack/rules/` - nineteen single-job rules, each a library copy in `.claude/rules/`. Seven always-on `alfred-*.md`
   (no `paths:`): interaction, quality-gates, security, preferences (a pointer to the four preferences docs and
   when each is read - the git lines live in the seeded `GIT-PREFERENCES.md`, the commit checkpoint itself is the
   `habits-commit-checkpoint` skill; the installer stamps the root over its `__DOCS_ROOT__` too), navigation, docs-root (always `<data root>/docs` since 2.8.0 - `ALFRED_CODE_DOCS_PATH` is retired, a leftover
@@ -126,11 +127,11 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   reading - locks the server in the way `alfred-navigation` locks the navigation server).
   Skill/agent usage policy + MCP routing live in the GENERATED
   `<docs-path>/awareness/AGENTS-AWARENESS.md`, which the generated `alfred-awareness.md` imports.
-  Thirteen path-scoped: `markdown-docs.md`, `skill-authoring.md`, the repair routers
+  Twelve path-scoped: `markdown-docs.md`, the repair routers
   (`dotnet-repair-agents.md`, `angular-repair-agents.md`) and nine convention rules, each
   glob-attaching ONE file family to its house-style skill. Every convention rule uses the imperative form pinned as
   `convention-rule-first-action` in shared-rules.json, and the load receipt pinned as `convention-rule-load-receipt`
-  in the same eleven files (`scripts/rule-prose.test.js` fails a mismatch) - a new one copies both, never paraphrases them.
+  in the same ten files (`scripts/rule-prose.test.js` fails a mismatch; `skill-authoring.md` left the stack for this repo's own `.claude/rules/` on 2026-10-22) - a new one copies both, never paraphrases them.
   The `baseline-` prefix is retired (2.1.6, the user's ruling): the seven shipped rules and the generated
   `project-*` ones are `alfred-*` (`alfred-git` - retired 2026-10-21 into `alfred-preferences` -, `alfred-awareness`, ...), and `baseline-*` names live only in
   `retired.rules`, `renamed.rules`, the migration code and its tests, and the `docs/*-evidence.md` history. An update over

@@ -10,7 +10,7 @@ The docs in `__DOCS_ROOT__/preferences/` bind every session and seat - the perso
 - `PROJECT-CODE-PREFERENCES.md` - how this codebase writes each language, a section per language.
 - `PERSONAL-CODE-PREFERENCES.md` - how the user wants one unit written.
 - `ARCHITECTURE-PREFERENCES.md` - how the user wants units to relate.
-- `GIT-PREFERENCES.md` - branches, commits, pull requests and history; its `locked` entries are the consent, commit scope, checkpoint and safety lines.
+- `GIT-PREFERENCES.md` - branches, commits, pull requests and history; its `locked` entries are the consent, checkpoint, safety, attribution and checks lines.
 
 - The personal doc is pushed into the main session's start and again after each compaction - a seat answers the main session, not the user; when it exists and is not in your context, read it before your first reply.
 - Read the project, personal code and architecture docs before changing code, before writing a design plan, and when the user asks to discuss code; read the git doc before any git write (stage, commit, push, merge, rebase, reset, a branch or tag made or deleted). No commit or push without the user's word. Once per session and per seat, again after a compaction - a hook hands them over at the first edit and the first git write where it runs.

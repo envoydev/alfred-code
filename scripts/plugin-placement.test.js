@@ -28,8 +28,8 @@ test('every skill is a library copy, every habit included; no seat is', () => {
     assert.deepStrictEqual(p.library.skills, Object.keys(graph.skills).sort());
     assert.deepStrictEqual(p.library.agents, []);
     for (const s of ['habits-root-cause', 'habits-done-gate', 'habits-test-first', 'habits-plan-writing',
-        'habits-clarify', 'habits-skill-writing', 'habits-execution-strategy', 'habits-code-comments', 'habits-commit-checkpoint',
-        'habits-adjust-agents-md', 'habits-create-ticket', 'habits-explain-code'])
+        'habits-clarify', 'habits-execution-strategy', 'habits-code-comments', 'habits-commit-checkpoint',
+        'habits-adjust-agents-md', 'habits-create-ticket', 'habits-explain-topic'])
         assert.ok(p.library.skills.includes(s), `${s} is a project copy`);
 });
 

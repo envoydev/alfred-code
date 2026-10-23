@@ -240,9 +240,9 @@ function respellFiles(files, keys, domain, { projectRoot, label, fix, log })
 // are DOCS_MIGRATIONS'; what a move leaves broken is here, migrateAwareness' way: the section ids the moved docs and
 // watch.json name take the new file keys (`CODE-STYLE#naming` -> `PROJECT-CODE-PREFERENCES#naming`), code-style/watch.json
 // joins preferences/watch.json, the branch versions under `.branches/` move to the folder the engine now composes, the old
-// folder goes once it holds nothing else, and the generated project-code-style.md goes with it. Then the git doc: the house
-// git lines the retired alfred-git.md carried are seeded as GIT-PREFERENCES.md, and an existing one gets each locked entry
-// it lacks - so the consent, scope, checkpoint and safety lines exist in every project.
+// folder goes once it holds nothing else, and the generated project-code-style.md goes with it. Then the git doc: the
+// crucial house git lines are seeded as GIT-PREFERENCES.md, and an existing one gets each locked entry it lacks - so the
+// consent, checkpoint, safety, attribution and checks lines exist in every project.
 const PREFERENCES = 'preferences';
 const PREFERENCES_HOMES = {
     'PROJECT-CODE-PREFERENCES': [['code-style', 'CODE-STYLE']],
@@ -257,7 +257,7 @@ const LOCKED = /<!--\s*locked:\s*([a-z][a-z-]*)\s*-->/g;
 
 function migratePreferences({ projectRoot, base, log = () => {} })
 {
-    const out = { respelled: [], overlays: [], watch: 'none', git: 'none', rule: 'none' };
+    const out = { respelled: [], overlays: [], watch: 'none', git: 'none', rule: 'none', scopes: [], reach: [] };
     if (!fs.existsSync(projectRoot)) return out;
     const dir = path.join(base, PREFERENCES);
     const keys = completedKeys(base, PREFERENCES, PREFERENCES_HOMES);
@@ -273,7 +273,31 @@ function migratePreferences({ projectRoot, base, log = () => {} })
         out.rule = dropStyleRule(projectRoot, log);
     }
     out.git = seedGitPreferences(projectRoot, path.join(dir, GIT_DOC), log);
+    out.scopes = deadScopeLines(projectRoot, dir, log);
+    out.reach = mismatchLines(projectRoot, dir, log);
     return out;
+}
+
+// A code or architecture entry's Scope: glob that reaches no file: the hook hands that entry over for no edit (the user's
+// ruling of 2026-10-22), so each is named on every run until it is fixed - through the capture's own reader, so lint and
+// the update judge a glob one way. Nothing when the snapshot's capture has no reader yet.
+function deadScopeLines(projectRoot, dir, log)
+{
+    let found;
+    try { found = require(CAPTURE).deadScopes(projectRoot, dir); } catch { return []; }
+    for (const x of found)
+        log(`  !! preferences: ${path.relative(projectRoot, x.doc.abs).split(path.sep).join('/')} ${x.id} Scope: \`${x.glob}\` reaches no file - the first-edit hold hands ${x.id} over for no edit; fix the pattern through /capture-preferences`);
+    return found.map((x) => `${x.doc.file} ${x.id} ${x.glob}`);
+}
+// A Scope: aimed at the wrong existing folder reaches files, so no line above names it; a Check: that measures files its
+// Scope: never reaches is the one sign a script can see (the capture's reader, so lint and the update judge it one way).
+function mismatchLines(projectRoot, dir, log)
+{
+    let found;
+    try { found = require(CAPTURE).scopeMismatches(projectRoot, dir); } catch { return []; }
+    for (const x of found)
+        log(`  !! preferences: ${path.relative(projectRoot, x.doc.abs).split(path.sep).join('/')} ${x.id} Check: reaches ${x.files} its Scope: does not (${x.sample}) - the first-edit hold hands ${x.id} over only where its Scope: reaches; widen the Scope: or narrow the Check: through /capture-preferences`);
+    return found.map((x) => `${x.doc.file} ${x.id} ${x.count}`);
 }
 
 // code-style/watch.json asks whether a language's section still holds when its files change - the code style is kept
@@ -379,17 +403,104 @@ function entrySpans(lines)
     return out;
 }
 
+// Every seed a release shipped, verbatim, so an entry still as a release seeded it is told from the user's own text.
+const SHIPPED_GIT_SEEDS = ['git-seed-2.9.0.md'].map((name) => path.join(__dirname, name));
+const fieldsOf = (sec) => LOCKED_FIELDS.map((f) => foldText(sec.fields[f])).join('\n');
+function shippedSections(parse)
+{
+    const out = [];
+    for (const file of SHIPPED_GIT_SEEDS)
+    {
+        try { out.push(...parse(fs.readFileSync(file, 'utf8'))); }
+        catch { /* a snapshot without it carries nothing */ }
+    }
+    return out;
+}
+
+// The seed keeps only the crucial git lines (the user's ruling of 2026-10-21): consent, the checkpoint, never losing work,
+// no AI attribution and never bypassing a check - every one locked. An entry an earlier seed wrote and this one dropped
+// goes while it is still word for word as shipped, its id joining Retired:; one this seed now locks takes the lock in
+// place; a lock on a key the seed no longer has is dropped and the entry, changed by the user, stays as theirs. A locked
+// entry whose text the seed rewrote is restoreLocked's.
+function carryShippedEntries(text, seed, rel, log)
+{
+    const out = { text, retired: [], locked: [], unlocked: [] };
+    const parse = captureParser();
+    if (!parse) return out;
+    const now = parse(seed);
+    const nowLocked = new Map(now.filter((sec) => sec.locked).map((sec) => [sec.locked, sec]));
+    const nowFields = new Set(now.map(fieldsOf));
+    const dropped = new Set(shippedSections(parse).map(fieldsOf).filter((f) => !nowFields.has(f)));
+    const lines = text.replace(/\r\n/g, '\n').split('\n');
+    const have = new Set(parse(text).map((sec) => sec.locked).filter(Boolean));
+    for (const span of entrySpans(lines).reverse())
+    {
+        const [sec] = parse(lines.slice(span.start, span.end).join('\n'));
+        if (!sec || (sec.locked && nowLocked.has(sec.locked))) continue;
+        const name = sec.id || sec.heading;
+        const lockAt = lines.slice(span.start, span.end).findIndex((l) => LOCKED_LINE.test(l));
+        const adopt = !sec.locked && [...nowLocked].find(([key, s]) => !have.has(key) && fieldsOf(s) === fieldsOf(sec));
+        if (adopt)
+        {
+            const idAt = lines.slice(span.start, span.end).findIndex((l) => /^\s*<!--\s*id:/.test(l));
+            lines.splice(span.start + (idAt < 0 ? 0 : idAt) + 1, 0, `<!-- locked: ${adopt[0]} -->`);
+            have.add(adopt[0]);
+            out.locked.unshift(adopt[0]);
+            log(`  preferences: ${rel} - ${name} is the house '${adopt[0]}' line, now locked`);
+        }
+        else if (dropped.has(fieldsOf(sec)))
+        {
+            lines.splice(span.start, span.end - span.start);
+            if (sec.id) out.retired.unshift(sec.id);
+            log(`  preferences: ${rel} - removed ${name}, a git line the seed no longer carries (unchanged since it was seeded)`);
+        }
+        else if (sec.locked)
+        {
+            lines.splice(span.start + lockAt, 1);
+            out.unlocked.unshift(name);
+            log(`  !! preferences: ${rel} ${name} was locked as '${sec.locked}', a key the seed no longer has - its lock is dropped and the entry, changed since it was seeded, stays yours`);
+        }
+    }
+    if (!out.retired.length && !out.locked.length && !out.unlocked.length) return out;
+    if (out.retired.length)
+    {
+        const at = lines.findIndex((l) => /^Retired:/.test(l));
+        const prior = at < 0 ? [] : lines[at].replace(/^Retired:\s*/, '').split(/\s*,\s*/).filter(Boolean);
+        const ids = [...new Set([...prior, ...out.retired])].sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
+        const line = `Retired: ${ids.join(', ')}`;
+        if (at >= 0) lines[at] = line;
+        else
+        {
+            // under Updated:, else under the title, else above the first entry - the head the capture reads it from; a doc
+            // with no Updated: line had it written above its title (review 2026-10-23)
+            const updated = lines.findIndex((l) => /^Updated:/.test(l));
+            const title = lines.findIndex((l) => /^#\s+\S/.test(l));
+            const first = entrySpans(lines)[0];
+            if (updated >= 0) lines.splice(updated + 1, 0, line);
+            else if (title >= 0 && (!first || title < first.start)) lines.splice(title + 1, 0, '', line);
+            else if (first) lines.splice(first.start, 0, line, '');
+            else lines.unshift(line);
+        }
+    }
+    out.text = `${lines.join('\n').replace(/\s+$/, '')}\n`;
+    return out;
+}
+const LOCKED_LINE = /^\s*<!--\s*locked:\s*[a-z][a-z-]*\s*-->\s*$/;
+
 // A locked entry is the seed's word for word (audit 2026-10-21 Q-4, ruling 'Restore it on update'): one whose fields moved
-// gets the seed's lines back under its own heading and id, and the text it held is named. An unlocked entry under a locked
-// one's title (the lock dropped, edge 110) is named, never removed - the user's text. Returns the restored keys.
+// gets the seed's lines back under its own heading and id, and the text it held is named - or, when it held an earlier
+// seed's text for that key, it is updated to this one's. An unlocked entry under a locked one's title (the lock dropped,
+// edge 110) is named, never removed - the user's text. Returns the restored and the updated keys.
 function restoreLocked(text, seed, rel, log)
 {
     const parse = captureParser();
-    if (!parse) return { text, restored: [] };
+    if (!parse) return { text, restored: [], updated: [] };
     const seedByKey = new Map(parse(seed).filter((sec) => sec.locked).map((sec) => [sec.locked, sec]));
     const seedText = new Map(seedEntries(seed).filter((e) => e.locked).map((e) => [e.locked, e.text]));
+    const shipped = new Set(shippedSections(parse).filter((sec) => sec.locked).map((sec) => `${sec.locked}\n${fieldsOf(sec)}`));
     const lines = text.replace(/\r\n/g, '\n').split('\n');
     const restored = [];
+    const updated = [];
     for (const span of entrySpans(lines).reverse())
     {
         const block = lines.slice(span.start, span.end);
@@ -410,15 +521,22 @@ function restoreLocked(text, seed, rel, log)
         const idLine = block.find((l) => /^\s*<!--\s*id:/.test(l)) || `<!-- id: ${String(sec.id || '').toLowerCase()} -->`;
         const body = seedText.get(sec.locked).split('\n').slice(1).filter((l) => !/^\s*<!--\s*id:/.test(l));
         lines.splice(span.start, last, block[0], idLine, ...body);
+        if (shipped.has(`${sec.locked}\n${fieldsOf(sec)}`))
+        {
+            log(`  preferences: ${rel} - updated the locked '${sec.locked}' entry (${sec.id || sec.heading}) to this release's text`);
+            updated.unshift(sec.locked);
+            continue;
+        }
         const was = moved.map((f) => `${f}: ${sec.fields[f] === undefined ? '(none)' : sec.fields[f]}`).join('; ');
         log(`  preferences: ${rel} - restored the locked '${sec.locked}' entry (${sec.id || sec.heading}) from the seed; it read: ${was.length > 300 ? `${was.slice(0, 299)}...` : was}`);
         restored.unshift(sec.locked);
     }
-    return { text: lines.join('\n'), restored };
+    return { text: lines.join('\n'), restored, updated };
 }
 
-// 'seeded', 'present', 'restored <keys>', 'merged <keys>' (both, `; `-joined) or 'failed'. An id is never reused: a merged
-// entry takes the number past every id the doc has used, its Retired: line included.
+// 'seeded', 'present', 'failed', or what changed, `; `-joined: 'retired <ids>', 'locked <keys>', 'unlocked <ids>',
+// 'updated <keys>', 'restored <keys>', 'merged <keys>'. An id is never reused: a merged entry takes the number past every
+// id the doc has used, its Retired: line included.
 function seedGitPreferences(projectRoot, file, log)
 {
     const rel = path.relative(projectRoot, file).split(path.sep).join('/');
@@ -436,23 +554,25 @@ function seedGitPreferences(projectRoot, file, log)
     {
         try { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, seed); }
         catch (err) { log(`  !! preferences: ${rel} could not be written (${err.code || err.message}) - the house git lines are in no doc; re-run /alfred-code:update`); return 'failed'; }
-        log(`  preferences: ${rel} seeded with the house git lines - its consent, scope, checkpoint and safety entries are locked`);
+        log(`  preferences: ${rel} seeded with the house git lines - consent, checkpoint, safety, attribution and checks, each locked`);
         return 'seeded';
     }
-    const fixed = restoreLocked(text, seed, rel, log);
-    const have = new Set([...text.matchAll(LOCKED)].map((m) => m[1]));
+    const carried = carryShippedEntries(text, seed, rel, log);
+    const fixed = restoreLocked(carried.text, seed, rel, log);
+    const have = new Set([...fixed.text.matchAll(LOCKED)].map((m) => m[1]));
     const missing = seedEntries(seed).filter((e) => e.locked && !have.has(e.locked));
-    if (!missing.length && !fixed.restored.length) return 'present';
-    const used = [...text.matchAll(/^## G(\d+)\b/gm), ...(((/^Retired:\s*(.*)$/m.exec(text) || [])[1] || '').matchAll(/\bG(\d+)\b/g))].map((m) => Number(m[1]));
+    const changed = [['retired', carried.retired], ['locked', carried.locked], ['unlocked', carried.unlocked], ['updated', fixed.updated], ['restored', fixed.restored]];
+    if (!missing.length && changed.every(([, list]) => !list.length)) return 'present';
+    const used = [...fixed.text.matchAll(/^## G(\d+)\b/gm), ...(((/^Retired:\s*(.*)$/m.exec(fixed.text) || [])[1] || '').matchAll(/\bG(\d+)\b/g))].map((m) => Number(m[1]));
     let n = used.length ? Math.max(...used) : 0;
     const added = missing.map((e) => { n += 1; return e.text.replace(/^## G\d+ /, `## G${n} `).replace(/<!--\s*id:\s*g\d+\s*-->/, `<!-- id: g${n} -->`); });
     const next = added.length ? `${fixed.text.replace(/\s+$/, '')}\n\n${added.join('\n\n')}\n` : fixed.text;
     const keys = (list) => list.join(', ');
     try { fs.writeFileSync(file, next); }
-    catch (err) { log(`  !! preferences: ${rel} lacks the locked entries ${keys([...fixed.restored, ...missing.map((e) => e.locked)])} as the seed has them and could not be written (${err.code || err.message}) - re-run /alfred-code:update`); return 'failed'; }
+    catch (err) { log(`  !! preferences: ${rel} differs from this release's git lines and could not be written (${err.code || err.message}) - re-run /alfred-code:update`); return 'failed'; }
     const names = keys(missing.map((e) => e.locked));
     if (added.length) log(`  preferences: ${rel} - added the locked entries it lacked: ${names}`);
-    return [fixed.restored.length ? `restored ${keys(fixed.restored)}` : '', added.length ? `merged ${names}` : ''].filter(Boolean).join('; ');
+    return [...changed, ['merged', missing.map((e) => e.locked)]].filter(([, list]) => list.length).map(([verb, list]) => `${verb} ${keys(list)}`).join('; ');
 }
 
 // THE AWARENESS LAYOUT (the user's ruling of 2026-10-16): the inventory, the run book and the sibling doc live in ONE

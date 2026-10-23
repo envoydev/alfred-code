@@ -22,8 +22,8 @@
 //   placeholder - a `__NAME__` placeholder the template seeds is still there
 //   todo        - a TODO left in the live text
 //   template    - a live line still carries the template's own authoring text
-//   rule        - the `## Rules` list names a rule `.claude/rules/` does not hold; or, once it names a rule
-//                 the install copies, a rule file there it neither names nor covers with a glob (`alfred-*`)
+//   stack-rules - a `## Rules` section listing the stack's `alfred-*` rules, which an older template seeded: every
+//                 rule in `.claude/rules/` loads itself, so the list only repeats them (the user's ruling of 2026-10-21)
 //   shadowed    - a CLAUDE.md, .claude/CLAUDE.md or CLAUDE.local.md on an AGENTS.md's path keeps Claude Code
 //                 from reading it (the project's or any folder above for the root file, a part's own folder for a
 //                 part's), unless it imports that AGENTS.md; the row names the CLAUDE.md, line 1
@@ -76,10 +76,10 @@ const PLACEHOLDER = /__[A-Z][A-Z0-9_]*__/g;
 const SHINGLE = 8;
 // What the installer leaves in a file it seeded (scripts/install/seeds.js stamps the H1 with the folder
 // name, so no placeholder is left to find): the template's fill-in block, no live section of the
-// project's own - only the H1 and `## Rules` - and no live line outside those two the template does not
-// carry itself (the seed's AGENTS import aside). A line of the user's own under the H1 makes it the
-// project's file: Create mode would write over it with no diff shown. The `## Rules` section is not
-// read line by line - its table changes between releases, so an older seed's rows are no user text.
+// project's own - only the H1, and an older seed's `## Rules` - and no live line outside those the template does
+// not carry itself (the seed's AGENTS import aside). A line of the user's own under the H1 makes it the
+// project's file: Create mode would write over it with no diff shown. An older seed's `## Rules` section is not
+// read line by line - its table changed between releases, so its rows are no user text.
 const FILL_IN = '<!-- Fill-in block - delete once done.';
 const SEED_IMPORT = '@../AGENTS.md';
 const readFileOrNull = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch { return null; } };
@@ -109,19 +109,12 @@ const WHY = {
     placeholder: "the template's placeholder was never filled",
     todo: 'a TODO left in the live text',
     template: "still the template's own authoring text - replace it with this project's",
-    rule: 'named in the Rules list, but .claude/rules/ holds no such file',
-    ruleUnnamed: 'installed in .claude/rules/, but the Rules list neither names it nor covers it with a glob',
+    'stack-rules': "the stack's rules list - every rule in .claude/rules/ loads itself, so this section only repeats them; remove it",
 };
 
 const posix = (p) => p.split(path.sep).join('/');
 const exists = (p) => { try { fs.statSync(p); return true; } catch { return false; } };
 const isFile = (p) => { try { return fs.statSync(p).isFile(); } catch { return false; } };
-// A rule file whose frontmatter carries `paths:` - Claude Code attaches it on a matching file touch, by its own glob.
-const pathScoped = (p) =>
-{
-    try { return /^paths\s*:/m.test((/^---\r?\n([\s\S]*?)\r?\n---/.exec(fs.readFileSync(p, 'utf8')) || [])[1] || ''); }
-    catch { return false; }
-};
 const normalize = (text) => String(text).replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
 
 // The comments blanked out, every newline kept, so a line number means the same in both.
@@ -425,30 +418,10 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
         ? `does not exist - the docs root is \`${docsNow}\` now, where \`${docsNow}/${target.slice(LEGACY_DOCS.length)}\` does`
         : WHY.path);
 
-    // The `## Rules` list against `.claude/rules/` (usage audit 2026-10-10, 65abb00a: an improve pass missed an unlisted
-    // rule and twice called the table stale, both against the folder it never compared). A named rule file the folder
-    // lacks is a `rule` row whatever git ignores; a GENERATED name (GENERATED_STEM) waits for its
-    // capture, as the template seeds them first. Unnamed files count only once the list ENUMERATES - names a rule the
-    // install copies - since the template covers the rest by pattern (`alfred-*`, 'the other path-scoped rules').
-    const RULES_DIR = path.join(root, '.claude', 'rules');
-    const hasRules = (() => { try { return fs.statSync(RULES_DIR).isDirectory(); } catch { return false; } })();
-    const generatedRule = (stem) => new RegExp(`^${GENERATED_STEM}$`).test(stem);
-    const globRe = (g) => new RegExp(`^${g.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`);
+    // A `## Rules` section naming the stack's own rules is the list an older template seeded (the user's ruling of
+    // 2026-10-21: the rules load themselves, so it only repeats them) - one row at its heading, offered for removal.
+    const STACK_RULE_REF = /\.claude\/rules\/(?:alfred|baseline)-|`(?:\.claude\/rules\/)?alfred-\*/;
     let rules = null;
-    // A span in the Rules list: true when it was a rule name this check answered, so the path check skips it.
-    const ruleSpan = (text, n, col) =>
-    {
-        const t = text.trim();
-        // `.claude/rules/<name>.md`, a bare rule-shaped `<name>.md` (lowercase, hyphenated - never a `README.md`), or a glob.
-        const m = /^\.claude\/rules\/([A-Za-z0-9_.*-]+)\.md$/.exec(t) || /^([a-z0-9*]+(?:-[a-z0-9*]+)+)\.md$/.exec(t)
-            || (/^[A-Za-z0-9_-]*\*[A-Za-z0-9_*-]*$/.test(t) ? [t, t] : null);
-        if (!m) return false;
-        if (m[1].includes('*')) { rules.globs.push(globRe(m[1])); return true; }
-        rules.named.add(m[1]);
-        if (!hasRules || generatedRule(m[1]) || isFile(path.join(RULES_DIR, `${m[1]}.md`))) return false;
-        add(n, col, 'rule', `${m[1]}.md`);
-        return true;
-    };
 
     let fence = null;
     let heading = '';
@@ -480,9 +453,10 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
         if (h)
         {
             heading = h[2];
-            if (h[1].length === 2 && /^Rules\b/i.test(heading)) rules = { line: n, named: new Set(), globs: [], open: true };
-            else if (h[1].length <= 2 && rules) rules.open = false;
+            if (h[1].length === 2 && /^Rules\b/i.test(heading)) rules = { line: n, end: lines.length, stack: false, open: true };
+            else if (h[1].length <= 2 && rules && rules.open) { rules.open = false; rules.end = n - 1; }
         }
+        if (rules && rules.open && STACK_RULE_REF.test(line)) rules.stack = true;
 
         const spans = spansOf(line);
         const patterns = patternSpans(line, spans);
@@ -495,7 +469,6 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
 
         for (const [k, span] of spans.entries())
         {
-            if (rules && rules.open && ruleSpan(span.text, n, span.col)) continue;
             // A dot-token written onto a word (appsettings`.local`) is that word's suffix.
             const suffix = span.text.trim().startsWith('.') && /[\w*]/.test(line[span.col - 1] || '');
             const p = suffix || patterns.has(k) ? null : pathOf(span.text, docs);
@@ -518,23 +491,13 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
         }
     }
     if (template) checkTemplateText();
-    if (rules && hasRules && [...rules.named].some((s) => !generatedRule(s) && isFile(path.join(RULES_DIR, `${s}.md`))))
-    {
-        let files = [];
-        try { files = fs.readdirSync(RULES_DIR).filter((f) => f.endsWith('.md') && isFile(path.join(RULES_DIR, f))).sort(); }
-        catch { files = []; }
-        for (const f of files)
-        {
-            const stem = f.slice(0, -3);
-            // A path-scoped rule attaches by its own `paths:` glob, and the template's Rules prose says so instead of
-            // listing each one: an unnamed one is no gap. Counting them raised 11 false rows per install, asked about
-            // in update and again in validate (audit 2026-10-20 C23, e43969a7, 24841a36).
-            if (!rules.named.has(stem) && !rules.globs.some((re) => re.test(stem)) && !pathScoped(path.join(RULES_DIR, f))) add(rules.line, 0, 'rule', `.claude/rules/${f}`, WHY.ruleUnnamed);
-        }
-    }
-    if (unfilledSeed(text, template === null ? readTemplate() : template)) add(1, -1, 'template', 'the template', 'never filled: only its H1 and ## Rules are live');
+    if (rules && rules.stack) add(rules.line, 0, 'stack-rules', '## Rules');
+    if (unfilledSeed(text, template === null ? readTemplate() : template)) add(1, -1, 'template', 'the template', 'never filled: no section of the project\'s own');
     const kept = new Set(normalize(text).split('\n').map((l, k) => (KEEP_MARKER.test(l) ? k + 1 : 0)).filter(Boolean));
-    return findings.filter((f) => !kept.has(f.line)).sort((a, b) => a.line - b.line || a.col - b.col).map(({ col, ...f }) => f);
+    // The flagged section goes whole, so a path it names is no row of its own (the 2026-10-21 matrix: one fix, four rows);
+    // a kept heading has the section checked line by line.
+    const listed = (f) => rules && rules.stack && !kept.has(rules.line) && f.kind === 'path' && f.line > rules.line && f.line <= rules.end;
+    return findings.filter((f) => !kept.has(f.line) && !listed(f)).sort((a, b) => a.line - b.line || a.col - b.col).map(({ col, ...f }) => f);
 
     function checkProgram(program, line, col)
     {

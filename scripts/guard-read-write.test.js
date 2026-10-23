@@ -60,29 +60,18 @@ test('guard-read-whole-file: the convention rule is announced for the WRITE TARG
   assert.match(ng, /typescript-conventions\.md/, '... and the TypeScript baseline beside it');
 });
 
-test('guard-read-whole-file: a shell write to a skill file names the skill-authoring rule, a project skill under .claude included', () => {
-  // Twin of skill-authoring.md's `paths:` - a run authoring a skill through the shell gets no attach
-  // until it uses a file tool, so the hook names the rule on the first shell write, as it does for
-  // every other convention rule. The markdown rule still attaches beside it on a tracked skill file.
+// 2026-10-22: the skill-authoring rule left the stack (this repo's own now), so the hook names it on no shell write - a
+// skill file is a markdown file like any other, and the install's own tree stays silent with no skill-file carve-out.
+test('guard-read-whole-file: a shell write to a skill file names no skill-authoring rule - the stack ships none', () => {
   const both = announce("sed -i '' 's/a/b/' stack/skills/foo/SKILL.md", sid());
-  assert.match(both, /skill-authoring\.md/, 'a SKILL.md edit');
-  assert.match(both, /markdown-docs\.md/, 'the markdown rule on the same touch');
-  assert.match(announce('printf x > skills/foo/references/api.md', sid()), /skill-authoring\.md/, 'a reference under a skill');
-  // `.claude/skills/` is where a project keeps its own skills - authoring there is skill writing, even
-  // though the markdown rule leaves the install's own tree alone.
-  const own = announce('printf x > .claude/skills/mine/SKILL.md', sid());
-  assert.match(own, /skill-authoring\.md/, 'a project skill under .claude');
-  assert.doesNotMatch(own, /markdown-docs\.md/, 'the markdown rule still leaves .claude alone');
-  assert.doesNotMatch(announce('printf x > README.md', sid()), /skill-authoring/, 'a plain doc is not a skill');
-  assert.doesNotMatch(announce('printf x > docs/skills.md', sid()), /skill-authoring/, 'nor a doc that is only named for skills');
-  assert.equal(announce('printf x > .claude/docs/notes.md', sid()), '', 'the install tree outside a skill stays silent');
-  // The glob is case-SENSITIVE: a lowercase skill.md outside a skills/ folder is no skill file, and a
-  // backup copy is not SKILL.md.
-  assert.doesNotMatch(announce('printf x > docs/demo/skill.md', sid()), /skill-authoring/, 'a lowercase skill.md is not SKILL.md');
-  assert.doesNotMatch(announce('cp stack/skills/foo/SKILL.md stack/skills/foo/SKILL.md.bak', sid()), /skill-authoring/, 'nor is a .bak copy');
+  assert.doesNotMatch(both, /skill-authoring/, 'a SKILL.md edit');
+  assert.match(both, /markdown-docs\.md/, 'the markdown rule on a tracked skill file');
+  assert.doesNotMatch(announce('printf x > skills/foo/references/api.md', sid()), /skill-authoring/, 'a reference under a skill');
+  assert.equal(announce('printf x > .claude/skills/mine/SKILL.md', sid()), '', 'a project skill under .claude: the install tree stays silent');
+  assert.equal(announce('printf x > .claude/docs/notes.md', sid()), '', 'the install tree outside a skill too');
 });
 
-test('guard-read-whole-file: a .md under .claude or the docs root names no OTHER rule - the carve-out lifts for skill files only', () => {
+test('guard-read-whole-file: a .md under .claude or the docs root names no rule', () => {
   // Review I1: the carve-out once dropped every such .md target before ANY rule was matched. Scoping
   // it to markdown-docs alone let a docs note whose NAME carries another rule's pattern spend that
   // rule's once-per-session announcement, so the real write later got nothing.
@@ -90,9 +79,7 @@ test('guard-read-whole-file: a .md under .claude or the docs root names no OTHER
   assert.equal(announce('printf x > .claude/docs/architecture/references/Dockerfile.md', sid()), '', 'a docs page named for a Dockerfile');
   const committedRoot = { env: { ...process.env, ALFRED_CODE_DOCS_PATH: 'docs' } };
   assert.equal(announce('printf x > docs/architecture/Dockerfile.md', sid(), READ, committedRoot), '', 'a committed docs root too');
-  const skill = announce('printf x > .claude/skills/csharp/references/x.cs.md', sid());
-  assert.match(skill, /skill-authoring\.md/, 'a skill file under .claude still names the skill rule');
-  assert.doesNotMatch(skill, /csharp-conventions\.md/, '... and no other');
+  assert.equal(announce('printf x > .claude/skills/csharp/references/x.cs.md', sid()), '', 'a skill file under .claude names no rule either');
   // ... while the same names outside those trees still announce their rules
   assert.match(announce('printf x > .claude/hooks/local-check.js', sid()), /javascript-conventions\.md/, 'a non-.md write under .claude still announces');
 });

@@ -284,7 +284,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     let rawListing = null;
 
     if (args.action === 'uninstall')
-        return runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountUnread, backupDirs, env, hasClaude, claudeBroken, cli, readRaw, readMarkets, log, note, err, failures: () => failures });
+        return runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountUnread, backupDirs, env, hasClaude, claudeBroken, cli, readRaw, readMarkets, instructionsSeed: args.instructionsSeed, log, note, err, failures: () => failures });
 
     try
     {
@@ -837,6 +837,9 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             desktopHeld: null,
             // M3: the skills a same-named project folder kept from this run - never recorded as the stack's picks.
             foreignSkills: new Set(),
+            // The instruction file's name: this run's answer (--instructions-file), else the stamp's, else AGENTS.md.
+            instructionsAnswer: args.instructionsFile || stampLayer.readInstructionsAnswer(stampFile),
+            instructionsKind: args.instructionsFile || stampLayer.readInstructionsFile(stampFile),
         };
         // R116 (j): an engine left off does not load. At project scope the copy route lists it in
         // disabledMcpjsonServers; at local and user scope no settings key reaches a registration, so
@@ -887,6 +890,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             library: ctx.library || { skills: {}, agents: {}, rules: {} },
             ledger: ledgerOf(ctx),
             data: { root: dataInfo.root, pending: dataPlan.pending, kept: dataPlan.kept },
+            instructionsFile: ctx.instructionsAnswer,
         });
 
         warmMemoryModel(ctx);
@@ -948,17 +952,42 @@ function runLayers(ctx)
         try { docs.migrateLayout({ projectRoot: ctx.projectRoot, docsPath, dataPath: ctx.dataInfo.root, log: ctx.log }); }
         catch (err) { ctx.note(`the 2.8.0 folder layout could not be applied under ${docsPath} (${err.message}) - every file is back where it was; re-run /alfred-code:update`); }
     }
-    // An update moves the seed an earlier release wrote as .claude/CLAUDE.md - only while it is still unedited.
-    if (args.action === 'update')
+    // An update moves the seed an earlier release wrote as .claude/CLAUDE.md - only while it is still unedited, only while
+    // the install works with AGENTS.md (on a CLAUDE.md answer that file already has the name the user picked), and only
+    // when no name answer came this run: an answer renames through renameInstructionFiles below.
+    if (args.action === 'update' && ctx.instructionsKind === 'agents' && !args.instructionsFile)
         ctx.stackAgentsMd = seeds.moveSeededClaudeMd({
             projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, ledgerHash: (ctx.ledger && ctx.ledger.files && ctx.ledger.files['CLAUDE.md']) || '',
             hash: library.hashItem, tracked: (at) => gitTracks(ctx, at),
             gitMv: (from, to) => ctx.rt.execCommand('git', ['mv', '--', from, to], { cwd: path.dirname(from), stdio: 'ignore' }),
-            force: Boolean(args.renameClaudeMd), ignoreFiles: args.renameClaudeMd ? excludeFileOf(ctx) : [],
             log: ctx.log, note: ctx.note,
         }) === 'moved';
+    // The name question's answer (init's, configure's and update's --instructions-file): each file of the other name is
+    // renamed, a part's own included (seeds.js says why), unless a root or .claude/ file already carries the answer - before
+    // the place move below, so a renamed file travels too.
+    if (args.instructionsFile)
+    {
+        const renamed = seeds.renameInstructionFiles({
+            projectRoot: ctx.projectRoot, kind: args.instructionsFile,
+            tracked: (at) => gitTracks(ctx, at), ignoreFiles: excludeFileOf(ctx), parts: instructionParts(ctx),
+            gitMv: (from, to) => ctx.rt.execCommand('git', ['mv', '--', from, to], { cwd: path.dirname(from), stdio: 'ignore' }),
+            log: ctx.log, note: ctx.note,
+        });
+        // The renamed seed stays the stack's: its ledger row follows the new name (seeds.seedRowAfterRename says why).
+        const files = ctx.ledger && ctx.ledger.files;
+        if (renamed.length && files && files['AGENTS.md'])
+            files['AGENTS.md'] = seeds.seedRowAfterRename(files['AGENTS.md'], ledgerPath(ctx, 'AGENTS.md'));
+        // A 2.1.6 seed under its CLAUDE.md row, renamed on an `agents` answer, is the seed under its new name - taken over
+        // as moveSeededClaudeMd's move takes it while unedited, so it is refreshed, ledgered and uninstalled; without this
+        // the answer skipped that move and the seed passed to the project unsaid (review 2026-10-23).
+        else if (files && files['CLAUDE.md'] && args.instructionsFile === 'agents' && renamed.includes('.claude/CLAUDE.md -> .claude/AGENTS.md'))
+        {
+            const row = seeds.seedRowAfterRename(files['CLAUDE.md'], path.join(ctx.projectRoot, '.claude', 'AGENTS.md'));
+            if (row !== files['CLAUDE.md']) { files['AGENTS.md'] = row; delete files['CLAUDE.md']; ctx.stackAgentsMd = true; }
+        }
+    }
     // The place question's answer (init's and configure's --instructions-at): each instruction file at the other place
-    // moves - after the rename above, so a renamed seed travels too, and before a seed is laid down there.
+    // moves - after the renames above, so a renamed seed travels too, and before a seed is laid down there.
     if (args.instructionsAt)
         seeds.placeInstructionFiles({
             projectRoot: ctx.projectRoot, at: args.instructionsAt,
@@ -966,7 +995,10 @@ function runLayers(ctx)
             gitMv: (from, to) => ctx.rt.execCommand('git', ['mv', '--', from, to], { cwd: path.dirname(from), stdio: 'ignore' }),
             log: ctx.log, note: ctx.note,
         });
-    if (args.action === 'install') ctx.stackAgentsMd = seeds.seedAgentsMd({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, at: args.instructionsAt, log: ctx.log, note: ctx.note });
+    if (args.action === 'install') ctx.stackAgentsMd = seeds.seedAgentsMd({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, at: args.instructionsAt, kind: ctx.instructionsKind, log: ctx.log, note: ctx.note });
+    // Every move above done: where the seed the ledger records sits now, under either name (seeds.locateSeed) - read for its
+    // refresh, its re-spelling, its ledger row and nothing else.
+    ctx.seedFile = seeds.locateSeed(ctx.projectRoot, ctx.instructionsKind, (ctx.ledger && ctx.ledger.files && ctx.ledger.files['AGENTS.md']) || '');
     // An update brings a seed the stack still owns - just moved, or held by the ledger at its hash - onto this release's
     // template, so a template change reaches it; an edited one is the project's and only re-spelled below.
     if (args.action === 'update')
@@ -975,14 +1007,16 @@ function runLayers(ctx)
         let unedited = false;
         try { unedited = Boolean(held) && library.hashItem(ledgerPath(ctx, 'AGENTS.md')) === held; } catch { /* unreadable: not ours to judge */ }
         if (ctx.stackAgentsMd || unedited)
-            ctx.stackAgentsMd = seeds.refreshSeededAgentsMd({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, log: ctx.log, note: ctx.note }) || ctx.stackAgentsMd;
+            ctx.stackAgentsMd = seeds.refreshSeededAgentsMd({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, kind: ctx.instructionsKind, file: ctx.seedFile, log: ctx.log, note: ctx.note }) || ctx.stackAgentsMd;
     }
     // Only a seed the ledger still holds at its hash is the stack's to re-spell; a re-spelled one keeps its ledger row. The
-    // AGENTS.md row is the file at the seed's place (the root on --instructions-at root), never another one of that name.
+    // AGENTS.md row is the seed under the install's name at the seed's place (the root on --instructions-at root), never
+    // another file; the CLAUDE.md row is the 2.1.6 seed's.
     const seedRow = (rel) =>
     {
-        const row = rel === '.claude/AGENTS.md' || rel === 'AGENTS.md' ? 'AGENTS.md' : rel === '.claude/CLAUDE.md' ? 'CLAUDE.md' : '';
-        return row && path.join(ctx.projectRoot, ...rel.split('/')) === ledgerPath(ctx, row) ? row : '';
+        const at = path.join(ctx.projectRoot, ...rel.split('/'));
+        if (at === ledgerPath(ctx, 'AGENTS.md')) return 'AGENTS.md';
+        return rel === '.claude/CLAUDE.md' && at === ledgerPath(ctx, 'CLAUDE.md') ? 'CLAUDE.md' : '';
     };
     ctx.respelledSeeds = new Set();
     selection.respellRenamed({
@@ -1387,6 +1421,14 @@ function rehashKind(map, dir)
 // A copy git tracks is the project's own commit, not a stale stack copy - this repo keeps its
 // plugin-authoring skill in .claude/skills after the catalog retired it. Outside a work tree, or with
 // git missing, nothing counts as tracked.
+// Each part's own instruction file (`web/AGENTS.md`) the AGENTS.md check finds - git's tracked and unignored files, or a
+// walk outside git; dependency folders and nested repositories are skipped. The root and .claude/ ones are not parts.
+function instructionParts(ctx)
+{
+    try { return require('../agents-md-check.js').findFiles(ctx.projectRoot).filter((rel) => rel.includes('/') && !rel.startsWith('.claude/')); }
+    catch { return []; }
+}
+
 function gitTracks(ctx, target)
 {
     const r = ctx.rt.spawnCommand('git', ['ls-files', '-z', '--', target], { cwd: path.dirname(target), encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
@@ -2660,8 +2702,9 @@ function readOrNull(file)
     catch { return null; }
 }
 
-// The AGENTS.md row is read where the seed sits - .claude/, or the root on --instructions-at root (seeds.seededAgentsMdPath).
-const ledgerPath = (ctx, rel) => (rel === 'AGENTS.md' ? seeds.seededAgentsMdPath(ctx.projectRoot)
+// The AGENTS.md row is read where the seed sits, under the install's name - .claude/, or the root on --instructions-at root
+// (seeds.seededAgentsMdPath).
+const ledgerPath = (ctx, rel) => (rel === 'AGENTS.md' ? ctx.seedFile || seeds.seededAgentsMdPath(ctx.projectRoot, ctx.instructionsKind)
     : rel.startsWith('skills/') ? path.join(ctx.skillsDir, rel.slice(7)) : path.join(ctx.claudeDir, ...rel.split('/')));
 
 // R10: a copy the last run recorded that this RELEASE no longer ships at all goes - when it still holds
@@ -2703,7 +2746,7 @@ function pruneDroppedCopies(ctx)
 // THE UNINSTALL ORDER (uninstall.js holds the decisions): plugin rows, then .mcp.json and the local- and
 // user-scope registrations, then the settings entries, then the copies, then the stamp - last, and only
 // when nothing failed.
-function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountUnread, backupDirs, env, hasClaude, claudeBroken, cli, readRaw, readMarkets, log, note, err, failures })
+function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountUnread, backupDirs, env, hasClaude, claudeBroken, cli, readRaw, readMarkets, instructionsSeed = '', log, note, err, failures })
 {
     const file = stampLayer.stampFiles({ projectRoot }).read;
     const raw = stampLayer.readStampScope(file).toLowerCase();
@@ -2768,10 +2811,10 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
     // M4: read before the settings pass removes ALFRED_CODE_DATA_PATH - the stamp's record first.
     const keptRoot = stampLayer.readDataLines(file).root || dataRoot.dataRootOf({ env: {}, projectDir: projectRoot }).root;
     settings.removeManagedSettings({ claudeDir, ledger, shippedDeny: SHIPPED_DENY, mcpRemoved: removed, scope, log, note });
-    uninstallLayer.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), library: stampLayer.readLibrary(file) || {}, files: ledger.files || {}, log });
+    uninstallLayer.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), library: stampLayer.readLibrary(file) || {}, files: ledger.files || {}, instructionsKind: stampLayer.readInstructionsFile(file), seed: instructionsSeed, log });
     toolIgnoresLayer.removeToolIgnores({ projectRoot, record: stampLayer.readToolIgnores(file), log, note });
     const memoryOff = ['settings.json', 'settings.local.json'].some((n) => readJson(path.join(claudeDir, n)).autoMemoryEnabled === false);
-    log(`  kept, yours or your data: an AGENTS.md you filled in, the data root (the docs, the navigation index, the browser profiles - ${keptRoot}/, or a 2.0.0 .serena/ / .playwright/), the memory database${memoryOff ? '; autoMemoryEnabled: false stays - Claude\'s own memory is off until you remove that key' : ''}`);
+    log(`  kept, yours or your data: the instruction file (AGENTS.md or CLAUDE.md) if you filled it in or kept it, the data root (the docs, the navigation index, the browser profiles - ${keptRoot}/, or a 2.0.0 .serena/ / .playwright/), the memory database${memoryOff ? '; autoMemoryEnabled: false stays - Claude\'s own memory is off until you remove that key' : ''}`);
     if (failures()) { log(`  stamp kept - ${path.basename(file)} still lists what is left; run uninstall again to finish`); return 0; }
     fs.rmSync(file, { force: true });
     log(`  stamp removed: ${path.basename(file)} - every item the ledger listed is gone, or named above as kept`);

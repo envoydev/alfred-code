@@ -186,7 +186,7 @@ test('the capture writes only quality/CODE-ASSESSMENT.md, fresh every run, and O
     // The neighbours with their destinations live in the body's When to use (the 160-char description cannot hold them).
     const whenToUse = raw.slice(raw.indexOf('## When to use'), raw.indexOf('## Execution modes'));
     assert.ok(whenToUse.length > 0, 'the body has a When to use section before Execution modes');
-    for (const dest of ['/loop-code-quality', 'capture-architecture-quality', 'capture-project-code-style', '/security-review', 'task-verify-code'])
+    for (const dest of ['/loop-code-quality', 'capture-architecture-quality', 'capture-project-code-style', 'review-security', 'task-verify-code'])
         assert.ok(whenToUse.includes(dest), `Not for ... (${dest})`);
     assert.ok(read('stack/skills/capture-architecture-quality/SKILL.md').split('\n')[2].includes('(capture-code-quality)'),
         'the architecture-quality capture sends code quality to its new neighbour');
@@ -461,4 +461,42 @@ test('the two quality captures write the whole file whatever the brief, and the 
     }
     for (const loop of ['stack/skills/loop-architecture-quality/SKILL.md', `${LOOP}/SKILL.md`])
         assert.match(flat(read(loop)), /mode and TARGET only - never a status of the findings \(which shipped, which remain\)/, loop);
+});
+
+// 2026-10-22: the preferences hook now hands the code entries to the code-quality analyzer at its start, so the capture
+// pasting them too sent them twice; the architecture analyzer was handed no entry at all, so a breach of one with no
+// Check: line surfaced only by chance; and the quality loop's line left the preferences out of what the capture judges.
+// Then (the user's answer 'Hook pushes the arch doc'): the hook hands the architecture entries too, inside an
+// architecture quality run only - the map capture dispatches the same seat to describe the code as it is.
+test('the preferences reach each quality seat once: the hook hands the code and the architecture entries, the loop names them', () =>
+{
+    const capture = squash(read('stack/skills/capture-code-quality/SKILL.md'));
+    assert.ok(!capture.includes('hand them to every seat'), 'the capture no longer pastes the entries');
+    assert.match(capture, /the preferences hook hands them to each code-quality-analyzer at its start[^.]*so a brief never pastes them/, 'the hook is the one hand-over');
+    const seat = squash(read('stack/agents/code-quality-analyzer.md'));
+    assert.match(seat, /come at your start from the preferences hook, not in the brief; when none came and `PERSONAL-CODE-PREFERENCES\.md` exists, Read it whole/, 'the seat reads the doc where no hook ran');
+    assert.match(seat, /an `A<n>` entry handed beside them is the architecture pair's - a breach of one is a `handoff:` line/, 'an architecture entry stays a hand-off');
+    const archCapture = squash(read('stack/skills/capture-architecture-quality/SKILL.md'));
+    assert.ok(!archCapture.includes('each brief lists the'), 'the brief no longer lists the entries');
+    assert.match(archCapture, /the preferences hook hands each architecture-analyzer the `ARCHITECTURE-PREFERENCES\.md` entries at its start during this run[^.]*so a brief never lists them/, 'the hook is the one hand-over');
+    const archSeat = squash(read('stack/agents/architecture-analyzer.md'));
+    assert.ok(!archSeat.includes('The dispatch may list'), 'no brief list');
+    assert.match(archSeat, /The user's architecture preference entries come at your start from the preferences hook, inside an architecture quality run only[^.]*report each place the code departs from one as a smell naming its id/, 'the analyzer reports a departure by id');
+    assert.match(archSeat, /With none handed, leave preferences out of the verdict - a map describes the code as it is/, 'the map run stays a description');
+    // Hooks off (the user's answer 'Yes, the brief marks the run'): the quality brief marks the run, and the seat reads the doc itself.
+    assert.match(archCapture, /Open each brief with the line `Run: architecture quality`/, 'the brief marks the run');
+    assert.match(archSeat, /unless the brief opens with `Run: architecture quality`: then Read `<docs-path>\/preferences\/ARCHITECTURE-PREFERENCES\.md` whole when it exists/, 'the seat reads the doc where no hook handed it');
+    assert.match(squash(read('stack/skills/loop-code-quality/SKILL.md')), /`capture-code-quality`, which judges the code against the user's code preferences, the loops prompts, the convention rules and the recorded code style/, 'the loop names the preferences first');
+});
+
+// 2026-10-22: the hook's start push pastes the recorded style's sections as far as its room allows, so a brief that
+// pasted the relevant ones too sent them twice; the brief now names them, and the seat reads one its start did not bring.
+test('the recorded style reaches the analyzer once: the brief names its sections by id, the seat reads one its start did not bring', () =>
+{
+    const capture = squash(read('stack/skills/capture-code-quality/SKILL.md'));
+    assert.ok(!capture.includes('sections pasted rather than the whole doc'), 'the brief no longer pastes the sections');
+    assert.match(capture, /the RELEVANT `PROJECT-CODE-PREFERENCES\.md` sections named by id \(`PROJECT-CODE-PREFERENCES\.md#<id>`\), never pasted - the preferences hook pastes the doc at the seat's start as far as its room allows and names the rest/, 'named, the hook pastes');
+    const seat = squash(read('stack/agents/code-quality-analyzer.md'));
+    assert.ok(!seat.includes('the pasted sections of the recorded code style'), 'the seat no longer expects them pasted in the brief');
+    assert.match(seat, /the recorded code style's sections the brief names by id - one your start did not paste, read with `node \.claude\/hooks\/docs\.js show PROJECT-CODE-PREFERENCES#<id>` \(or a ranged Read of that section\)/, 'the seat reads a named section its start did not bring');
 });

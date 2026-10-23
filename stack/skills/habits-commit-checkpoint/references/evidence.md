@@ -101,9 +101,10 @@ tree, and the retry cost a full edit-and-redo - measured at ~471k tokens.
   it is the right call once the session's carried context is heavy.
 - **No `git reset` in a review or scope read.** A mixed reset during a merge drops `MERGE_HEAD`, and the
   merge state has to be rebuilt by hand.
-- **`/security-review` is unbounded.** It recomputes a whole-branch diff whatever base it is handed, so an
-  explicit base does not scope it, and a branch level with origin on a clean tree overflows the same way -
-  'long-lived branch' is not the trigger either. The bound is not the caller's to set.
+- **Why ours keeps the bounded read.** Claude Code's bundled security review recomputes a whole-branch diff
+  whatever base it is handed, so an explicit base does not scope it, and a branch level with origin on a clean
+  tree overflows the same way - 'long-lived branch' is not the trigger either. `review-security` reads the
+  change set the checkpoint reads, so the bound is the stack's, never the caller's.
 - **The untracked record is kept per HEAD.** A later session on the same HEAD (a resume, a compact start,
   a fresh-session hand-off) keeps the earlier session's new files as the change's own.
 - **The quality loop's gate carries no security pass.** So a loop diff on auth, crypto, secret, payment

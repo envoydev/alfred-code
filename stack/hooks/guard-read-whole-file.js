@@ -1843,7 +1843,6 @@ const CONVENTION_RULES = [
   [/\.sql\b/i, 'sql-conventions.md'],
   // Twin of the rule's own `paths:` - containers, compose, the three pipeline families, deploy scripts and env templates.
   [/\bDockerfile\b|\b(docker-)?compose[^\s]*\.ya?ml\b|\.github\/workflows\/[^\s]+\.ya?ml\b|\.github\/actions\/(?:\S+\/)?action\.ya?ml$|(?:^|\/)azure-pipelines[^\s\/]*\.ya?ml$|(?:^|\/)\.gitlab-ci\.yml$|(?:^|\/)deploy[^\s\/]*\.(?:sh|ps1)$|(?:^|\/)[^\s\/]*\.env\.(?:example|template)$/i, 'devops-conventions.md'],
-  [/(?:^|\/)SKILL\.md$|(?:^|\/)skills\/\S*\.md$/, 'skill-authoring.md'], // twin of the rule's paths: **/SKILL.md + **/skills/**/*.md, case-sensitive, no .bak
   [/\.md\b/i, 'markdown-docs.md'],
 ];
 // The announcement is HELD until the call is allowed, and only then marked as said: a denial and an
@@ -1920,8 +1919,7 @@ const ruleInstalled = (rule) => {
 // The generated docs root is not governed by markdown-docs.md - the rule's own body says so - and
 // neither is the install's own `.claude/` tree, so a `.md` target there names no rule - not even one
 // whose pattern its NAME happens to carry (`next.js-upgrade.md`, `Dockerfile.md`): that would spend the
-// rule's once-per-session announcement on a docs note. The one exception is skill-authoring.md -
-// `.claude/skills/` is where a project keeps its own skills, and a skill file is governed wherever it lives.
+// rule's once-per-session announcement on a docs note.
 // The docs root is RESOLVED, not assumed: hard-coding `.claude/` meant that with a docs root of
 // `docs` (a pre-2.8.0 ALFRED_CODE_DOCS_PATH an update has not drained yet) a write to
 // `docs/architecture/ARCHITECTURE.md` still drew the announcement the rule says does not apply.
@@ -1956,7 +1954,7 @@ function announceRules(text, extra = [], cds = []) {
   if (!targets.length) return;
   const hit = [];
   for (const t of targets) for (const [re, rule] of CONVENTION_RULES)
-    if (re.test(t) && !hit.includes(rule) && !(rule !== 'skill-authoring.md' && /\.md\b/i.test(t) && ungoverned(t))) hit.push(rule);
+    if (re.test(t) && !hit.includes(rule) && !(/\.md\b/i.test(t) && ungoverned(t))) hit.push(rule);
   if (!hit.length) return;
   let state = {};
   const f = sessionStateFile();

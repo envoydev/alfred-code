@@ -126,8 +126,8 @@ standalone repo) - and its script decides what needs rewriting.
 
 Not required - open with WHERE it lives and WHAT a yes changes, then AskUserQuestion (fill it in -
 recommended / skip); a 'no' ends the step cleanly. The installer seeded `.claude/AGENTS.md` from
-`stack/AGENTS.template.md` when the project had none; a AGENTS.md with the project's own text (root,
-`.claude/` or a part's own) is NEVER overwritten. On a yes, read
+`stack/AGENTS.template.md` when the project had none - `CLAUDE.md`, and the root, where the install's name and place
+answers said so; an instruction file with the project's own text (root, `.claude/` or a part's own) is NEVER overwritten. On a yes, read
 `$TMP/repo/stack/skills/habits-adjust-agents-md/SKILL.md` (through Bash) and follow it inline, start to finish,
 with `<stack>` = the `$TMP/repo` path, pasted as a literal - it is this step's instructions, the one home of the fill: its script picks
 create (the seed is still unfilled) or improve (every change shown before it is written), and the

@@ -125,13 +125,17 @@ test('the five method skills are the habits group, and no shipped surface names 
     assert.deepStrictEqual(hits, [], 'a shipped surface still names a habit by its old spelling');
 });
 
-// Task 21: the sixth habit, skill writing, replaces the optional plugin's skill-authoring method.
-// Its fixed trigger is a path-scoped rule on skill files in the pinned convention-rule form, installed
-// everywhere like the markdown rule (a path-scoped rule costs nothing until a matching file is
-// touched), and plugin-authoring points at it for the skill half instead of restating it.
-test('the skill-writing habit is the sixth habit, in the core, and says what a skill is for and how it is proven', () => {
-    const body = read('stack/skills/habits-skill-writing/SKILL.md');
-    assert.match(body, /^name: habits-skill-writing$/m, 'it names itself');
+// Task 21 made skill writing the sixth habit, replacing the optional plugin's method. On 2026-10-22 it left the stack
+// (the user's ruling: 'it's more about alfred code itself, not its stack'): this repo's own skill-authoring skill, beside
+// plugin-authoring, with its path-scoped rule in this repo's .claude/rules - retired upstream, so an update prunes both.
+test('skill writing is this repo\'s own skill, ships in no install, and says what a skill is for and how it is proven', () => {
+    const body = read('.claude/skills/skill-authoring/SKILL.md');
+    assert.match(body, /^name: skill-authoring$/m, 'it names itself');
+    assert.ok(!fs.existsSync(path.join(ROOT, 'stack', 'skills', 'habits-skill-writing')), 'no stack copy left');
+    const shipped = JSON.parse(read('meta/stack-manifest.json'));
+    assert.ok(!shipped.skills.some((e) => e.name === 'habits-skill-writing'), 'the catalog lists it no more');
+    assert.ok(shipped.retired.skills.includes('habits-skill-writing'), 'retired, so an update prunes the copy');
+    assert.ok(!Object.values(shipped.renamed.skills).includes('habits-skill-writing'), 'no rename points at it');
     const desc = (body.match(/^description:\s*"?(.*?)"?$/m) || [])[1] || '';
     assert.match(desc, /^Use when /, 'the description opens on its trigger');
     assert.match(desc, /\bNot for\b/, 'and says what must not fire it');
@@ -163,28 +167,31 @@ test('the skill-writing habit is the sixth habit, in the core, and says what a s
     for (const pinned of ['1% of the context window', '1,536'])
         assert.ok(!flat.includes(pinned), `the habit reads the budget at use, never pins '${pinned}'`);
     const recs = JSON.parse(read('meta/recommendations.json'));
-    assert.ok(recs.always.skills.includes('habits-skill-writing'), 'seeded in the always set, like the other five');
+    assert.ok(!recs.always.skills.includes('habits-skill-writing'), 'no longer seeded');
     assert.match(read('setup-plugin/references/walk.md'), /the `habits-\*` habits/, 'the walk names the habits without a count - the count drifted from the always list');
 });
 
-test('the skill-authoring rule attaches on skill files and its first action is the habit', () => {
-    const rule = read('stack/rules/skill-authoring.md');
+test('the skill-authoring rule is this repo\'s own: it attaches on skill files and its first action is the skill', () => {
+    const rule = read('.claude/rules/skill-authoring.md');
     assert.match(rule, /^paths: \["\*\*\/SKILL\.md", "\*\*\/skills\/\*\*\/\*\.md"\]$/m, 'the two skill-file globs');
-    assert.ok(squash(rule).includes('the FIRST action after this rule attaches is the `habits-skill-writing` Skill call, before the NEXT write'),
-        'the pinned convention-rule first-action form, naming the habit');
-    const pin = JSON.parse(read('meta/shared-rules.json')).rules['convention-rule-first-action'];
-    assert.ok(pin.sites.some((s) => s.file === 'stack/rules/skill-authoring.md'), 'the form is pinned in this rule too');
+    assert.ok(squash(rule).includes('the FIRST action after this rule attaches is the `skill-authoring` Skill call, before the NEXT write'),
+        'the convention-rule first-action form, naming the skill');
+    assert.ok(!fs.existsSync(path.join(ROOT, 'stack', 'rules', 'skill-authoring.md')), 'no stack copy left');
+    const pins = JSON.parse(read('meta/shared-rules.json')).rules;
+    for (const key of ['convention-rule-first-action', 'convention-rule-load-receipt'])
+        assert.ok(!pins[key].sites.some((s) => /skill-authoring\.md$/.test(s.file)), `${key} pins no copy outside the stack`);
 
     const recs = JSON.parse(read('meta/recommendations.json'));
-    assert.ok(recs.always.rules.includes('skill-authoring'), 'installed on every install, like markdown-docs');
+    assert.ok(!recs.always.rules.includes('skill-authoring'), 'installed nowhere');
     const manifest = JSON.parse(read('meta/stack-manifest.json'));
-    assert.ok(manifest.rules.some((r) => r.file === 'skill-authoring.md'), 'the manifest ships it');
-    assert.deepStrictEqual(graph.rules['skill-authoring'].skills, ['habits-skill-writing'], 'the rule pulls the habit');
-    assert.deepStrictEqual(graph.rules['skill-authoring'].paths, ['**/SKILL.md', '**/skills/**/*.md']);
+    assert.ok(!manifest.rules.some((r) => r.file === 'skill-authoring.md'), 'the manifest ships it no more');
+    assert.ok(manifest.retired.rules.includes('skill-authoring.md'), 'retired, so an update prunes the copy');
+    assert.ok(!graph.rules['skill-authoring'], 'the graph carries no such rule');
+    const globs = JSON.parse(rule.match(/^paths: (\[.*\])$/m)[1]);
 
     // The attach, through the analyzer's own model of a `paths:` glob (the subset the harness honours).
     const { globToRe } = require('./analyze-usage.js');
-    const attaches = (p) => graph.rules['skill-authoring'].paths.some((g) => globToRe(g).test(p));
+    const attaches = (p) => globs.some((g) => globToRe(g).test(p));
     for (const p of ['stack/skills/csharp/SKILL.md', '.claude/skills/my-skill/SKILL.md', 'SKILL.md', '/work/app/skills/api/references/endpoints.md',
         'stack/skills/devops/references/compose.md'])
         assert.ok(attaches(p), `attaches on ${p}`);
@@ -206,7 +213,8 @@ test('plugin-authoring is self-contained (it names no stack skill), and the repo
     assert.ok(!/DESCRIPTION is wrong, not the body/.test(evals), 'the eval reference no longer restates the trigger rule');
     assert.ok(!evals.includes('habits-skill-writing'), 'the eval reference names no stack skill either');
     const md = squash(read('CLAUDE.md'));
-    assert.ok(md.includes('Authoring a skill in `stack/skills/`: the method is `habits-skill-writing`'), 'CLAUDE.md points at the habit');
+    assert.ok(md.includes('Authoring a skill in `stack/skills/`: the method is this repo\'s own `skill-authoring` skill'), 'CLAUDE.md points at the repo skill');
+    assert.ok(!md.includes('habits-skill-writing'), 'and never at the retired habit');
     assert.ok(!md.includes('writing-skills is a reference'), 'and no longer at the optional plugin');
 });
 
@@ -222,9 +230,9 @@ test('the habit descriptions are triggers only - when, and what they are not for
         'habits-code-comments': ['ticket id', 'change narration', 'one short line', 'CS1573'],
         'habits-execution-strategy': ['single agent', 'parallel tool calls', 'three tiers', 'contracts first'],
     };
-    for (const skill of [...Object.keys(retold), 'habits-skill-writing'])
+    for (const skill of [...Object.keys(retold), 'skill-authoring'])
     {
-        const text = read(`stack/skills/${skill}/SKILL.md`);
+        const text = read(skill === 'skill-authoring' ? '.claude/skills/skill-authoring/SKILL.md' : `stack/skills/${skill}/SKILL.md`);
         const desc = (text.match(/^description:\s*"?(.*?)"?$/m) || [])[1] || '';
         const extra = (text.match(/^when_to_use:\s*"?(.*?)"?$/m) || [])[1] || '';
         assert.match(desc, /^(Use when|Use before|Load when|Load before) /, `${skill} opens on its trigger`);
@@ -300,8 +308,8 @@ test('audit 2026-10-08: the root-cause loop cuts to steps 1-5 for the in-chat di
 
 // Audit 2026-10-08 C11 (BLOCKER 6) pinned every trigger phrase against the answer hook's Stop depth gate; that gate is
 // gone (the user's ruling of 2026-10-20), so the walkthrough's length is lifted by the user's own words alone.
-test('habits-explain-code: the user\'s own words lift the budget, and no hook gate is named', () => {
-    const text = squash(read('stack/skills/habits-explain-code/SKILL.md'));
+test('habits-explain-topic: the user\'s own words lift the budget, and no hook gate is named', () => {
+    const text = squash(read('stack/skills/habits-explain-topic/SKILL.md'));
     assert.ok(text.includes("The user's own words decide, not this file"), 'the body defers to the user\'s words');
     assert.doesNotMatch(text, /answer-length gate/, 'no gate left to defer to');
 });
@@ -339,14 +347,16 @@ test('audit 2026-10-08: the checkpoint carries the test-only carve-out, a templa
 // continuation, so the WAIVED alternative opened on a dangling parenthesis; `/code-review` was called a user-run
 // parallel sweep (the docs list it as the bundled correctness review of the current diff, multi-agent only at
 // `ultra`); and the why-each-line and trivial-bar arithmetic sat in a body loaded on every commit.
-test('audit 2026-10-14: the checkpoint receipt reads in order, names /code-review right, and keeps its why in evidence', () => {
+test('audit 2026-10-14: the checkpoint receipt reads in order, names the house review right, and keeps its why in evidence', () => {
     const cp = squash(read('stack/skills/habits-commit-checkpoint/SKILL.md'));
     const ev = squash(read('stack/skills/habits-commit-checkpoint/references/evidence.md'));
     assert.match(cp, /\. On the user's explicit waiver the receipt is `WAIVED - "<the user's words, verbatim>"` alone/, 'the waiver starts its own sentence');
     assert.match(cp, /``` The quality-loop and cross-task gate exemptions count as VERIFIED - name the loop or gate\./, 'the exemptions sentence follows the receipt block');
     assert.ok(cp.indexOf('`format: none configured') > cp.indexOf('`carried: <cycle id>, reviewed <date>`'), 'the no-formatter paragraph follows the line rules');
     assert.doesNotMatch(cp, /\(the quality-loop and cross-task/, 'no dangling parenthesis');
-    assert.ok(cp.includes('`/code-review` - the bundled correctness review of the current diff - is not this gate'), '/code-review named as the docs do');
+    // 2026-10-22, the user's ruling 'use ours': step 2 names the house reviews, never the built-in.
+    assert.ok(cp.includes('`task-verify-code` when a plan built the change, else `review-code` over the paths this commit takes in'), 'the house review named');
+    assert.doesNotMatch(cp, /\/code-review/, 'no built-in review named');
     assert.doesNotMatch(cp, /user-run parallel sweep/);
     assert.doesNotMatch(cp, /Each line answers a way the receipt once passed/, 'the why-each-line moved to evidence');
     assert.doesNotMatch(cp, /2h age cap/, 'the age-cap reason moved to evidence');
@@ -362,7 +372,7 @@ test('audit 2026-10-08: the habits record their evidence and carry no copy of an
     assert.ok(squash(read('stack/skills/habits-create-ticket/SKILL.md')).includes('file it via the connector (Recommended) vs copy-paste only'));
     assert.ok(squash(read('stack/skills/habits-test-first/SKILL.md')).includes('`red: <test> - <assertion line>`'), 'the red run leaves evidence');
     assert.ok(squash(read('stack/skills/habits-done-gate/SKILL.md')).includes("at the close gate (a seat's per-task gate runs the scope its brief names)"), 'a seat runs its brief\'s scope');
-    const sw = squash(read('stack/skills/habits-skill-writing/SKILL.md'));
+    const sw = squash(read('.claude/skills/skill-authoring/SKILL.md'));
     assert.ok(sw.includes('Across skills, a rule two skills both need is copied into each and the copies kept in sync'), 'S2: the cross-skill copy rule');
     assert.ok(sw.includes('is billed: ONE AskUserQuestion first, the unbilled route recommended'), 'a billed replay asks through the tool');
     const plan = squash(read('stack/skills/habits-plan-writing/SKILL.md'));

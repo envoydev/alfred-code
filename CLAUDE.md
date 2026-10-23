@@ -23,7 +23,7 @@ change (see the invariants below).
 
 The mechanism notes for each part live in a path-scoped rule in `.claude/rules/` and load when you edit its files. Read the named rule before you change that part; it holds the why, the measurements and the edge cases this file leaves out.
 
-- `stack/skills/` (library skills, each copied per pick), `stack/agents/` (44 seats in the core plugin), `stack/rules/` (twenty shipped rules) and `stack/AGENTS.template.md` (the per-project instruction skeleton): `repo-catalog.md`.
+- `stack/skills/` (library skills, each copied per pick), `stack/agents/` (44 seats in the core plugin), `stack/rules/` (nineteen shipped rules) and `stack/AGENTS.template.md` (the per-project instruction skeleton): `repo-catalog.md`.
 - `stack/hooks/` - eighteen hooks folded into the core `alfred-code` plugin, generated from the manifest's `hooks[]`: `repo-hooks.md`.
 - `scripts/install/` - THE INSTALLER, the ONLY route, one `node` command on every OS - and `setup-plugin/`, the six commands and the router skill. The delivery-surfaces table, the install stamp and the snapshot gotchas are there too: `repo-installer.md`.
 - `stack/mcp/` and the generated MCP plugin entries (one plugin, one server, same name): `repo-mcp.md`.
@@ -130,14 +130,15 @@ The mechanism notes for each part live in a path-scoped rule in `.claude/rules/`
   TypeScript install, 200K window, Claude Code 2.1.284: '39 skills, 19901 chars > 8000 budget' before the cap,
   '39 skills, 10781 chars' after it (the drop is exactly the 9,120 chars the stack's 24 listed descriptions
   lost) - the stack's share now ~4.3K, the other 15 entries (~6.5K) not the stack's to trim. The authoring
-  method is `habits-skill-writing`.
+  method is this repo's own `skill-authoring` skill.
 
 ## Maintenance gotchas
 
 - Editing a consuming project's installed copy is local-only; mirror it into `scripts/install/` here
   (and into cursor-stack when it touches the shared baseline or a twinned agent/rule).
-- Authoring a skill in `stack/skills/`: the method is `habits-skill-writing` (the
-  `skill-authoring.md` rule loads it; its A/B is `scripts/skill-comply.js`); on top of it here - the
+- Authoring a skill in `stack/skills/`: the method is this repo's own `skill-authoring` skill (`.claude/skills/`,
+  beside `plugin-authoring`; this repo's `skill-authoring.md` rule loads it; its A/B is `scripts/skill-comply.js`). It
+  left the stack on 2026-10-22 - it serves authoring the stack, so no install carries it. On top of it here - the
   parity lint, HTML + count sync, house voice. A stop's question is written as an ASK TEMPLATE - a
   fenced `ask` block, the question on its first line, then one `- '<label>' - <why>` line per option -
   and lint check 61 fails one that marks no option `(Recommended)`, or two, or lists the marked one anywhere

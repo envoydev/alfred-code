@@ -1,8 +1,8 @@
 'use strict';
 // The preferences engine (stack/skills/capture-preferences/scripts/preferences.js): `check` measures each entry's
-// `Check:` regex over the changed files or the tree, `lint` holds the entry docs to their shape, each hold to its cap
-// (5,000 for the edit hold's two docs, 5,000 for the git doc, 3,000 for the personal doc) and the git doc to its locked
-// entries. No rule is written: alfred-preferences.md ships and points at the docs (2026-10-21). A `Check:` is data - a regex and globs - never a command.
+// `Check:` regex over the changed files or the tree, `lint` holds the entry docs to their shape, the git doc to 5,000
+// and the personal doc to 3,000 (the edit hold's two docs only to 5,000 per entry - the hook caps what it hands over,
+// the user's ruling of 2026-10-22) and the git doc to its locked entries. No rule is written: alfred-preferences.md ships and points at the docs (2026-10-21). A `Check:` is data - a regex and globs - never a command.
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -34,9 +34,9 @@ function git(cwd, ...args)
     return r.stdout;
 }
 
-// A git project with `files` committed, then `prefs` ({ 'PERSONAL-CODE', ARCHITECTURE, GIT, 'PROJECT-CODE' } doc texts)
+// A git project with `files` committed (by default one C# file, so the C3 example's Scope: reaches a file), then `prefs` ({ 'PERSONAL-CODE', ARCHITECTURE, GIT, 'PROJECT-CODE' } doc texts)
 // under the docs root.
-function project({ files = {}, prefs = {}, docsRoot = '.alfred/docs', settings = null } = {})
+function project({ files = { 'src/a.cs': 'class A {}\n' }, prefs = {}, docsRoot = '.alfred/docs', settings = null } = {})
 {
     const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'preferences-')));
     const put = (rel, text) => { fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true }); fs.writeFileSync(path.join(dir, rel), text); };
@@ -273,9 +273,11 @@ const sized = (n) =>
     const base = doc('Code preferences', C3);
     return `${base}\n${'x'.repeat(n - base.length - 2)}\n`;
 };
+// The edit hold's two docs have no cap of their own since the user's ruling of 2026-10-22 - the hook caps what it hands
+// over - so past 5,000 lint only notes that the hold now hands them over in parts.
 for (const [n, over] of [[CAP + 1, true], [CAP, false], [CAP - 1, false]])
 {
-    test(`lint ${over ? 'flags' : 'passes'} the docs at ${n} chars (the cap is ${CAP})`, () =>
+    test(`lint ${over ? 'notes' : 'passes quietly'} the docs at ${n} chars (one hold's room is ${CAP}), never a problem`, () =>
     {
         const text = sized(n);
         assert.strictEqual(text.length, n);
@@ -283,13 +285,139 @@ for (const [n, over] of [[CAP + 1, true], [CAP, false], [CAP - 1, false]])
         try
         {
             const r = run(p.dir, 'lint');
-            assert.strictEqual(r.code, over ? 1 : 0, r.out);
-            if (over) assert.match(r.out, new RegExp(`PROBLEM \\S*preferences/: the personal code and architecture docs are ${n} chars, over ${CAP} - the first edit's hold hands both over`));
+            assert.strictEqual(r.code, 0, r.out);
+            assert.doesNotMatch(r.out, /PROBLEM/);
+            if (over) assert.match(r.out, new RegExp(`^note: \\S*preferences/: the personal code and architecture docs are ${n} chars, past ${CAP} - the first edit's hold hands them over in parts`, 'm'));
             else assert.deepStrictEqual(r.lines, ['lint: 0 problems']);
         }
         finally { p.rm(); }
     });
 }
+
+// A Scope: glob decides which edits the hook hands an entry over for, so one that reaches no file hides the entry (the
+// side note on the user's ruling of 2026-10-22; the user's answer 'Flag dead patterns').
+test('lint notes each Scope: glob that reaches no file - never a live one, a plain area or a live folder', () =>
+{
+    const entry = (id, scope) => `## ${id} - Rule ${id}\n<!-- id: ${id.toLowerCase()} -->\n- Rule: rule ${id}.\n- Scope: ${scope}`;
+    const p = project({
+        files: { 'src/app.ts': 'x\n', 'api/Orders/Order.cs': 'x\n' },
+        prefs: {
+            'PERSONAL-CODE': doc('Code preferences', entry('C1', 'api/**/*.cs'), entry('C2', '`*.ts`, `*.tsx`'), entry('C3', 'every language'), entry('C4', 'apii/**/*.cs'), entry('C5', 'api/')),
+            ARCHITECTURE: doc('Architecture preferences', entry('A1', 'web/')),
+        },
+    });
+    try
+    {
+        const r = run(p.dir, 'lint');
+        assert.strictEqual(r.code, 0, r.out);
+        const notes = r.lines.filter((l) => l.startsWith('note: '));
+        assert.deepStrictEqual(notes.map((l) => (/ (\w\d+) Scope: `([^`]+)` reaches no file in the project - the first-edit hold hands \1 over for no edit/.exec(l) || []).slice(1).join(' ')),
+            ['C2 *.tsx', 'C4 apii/**/*.cs', 'A1 web/'], r.out);
+    }
+    finally { p.rm(); }
+});
+
+// A Scope: that reaches the wrong existing folder hides its entry from the edits meant (the user's ruling of 2026-10-22,
+// 'fix both'): no script can know the folder meant, so reach shows what each pattern takes, and lint names the one
+// mismatch a script can see - a Check: that measures files its Scope: never hands the entry over for.
+test('reach shows what each Scope: takes - a count, the file types, a few paths; one id alone with --id', () =>
+{
+    const entry = (id, scope) => `## ${id} - Rule ${id}\n<!-- id: ${id.toLowerCase()} -->\n- Rule: rule ${id}.\n- Scope: ${scope}`;
+    const p = project({
+        files: { 'src/app.ts': 'x\n', 'src/b.ts': 'x\n', 'api/Orders/Order.cs': 'x\n', 'api/Users/User.cs': 'x\n', 'api/x.cs': 'x\n', 'api/y.cs': 'x\n' },
+        prefs: {
+            'PERSONAL-CODE': doc('Code preferences', entry('C1', 'api/**/*.cs'), entry('C2', 'every language'), entry('C3', 'web/')),
+            ARCHITECTURE: doc('Architecture preferences', entry('A1', 'src/')),
+        },
+    });
+    try
+    {
+        const r = run(p.dir, 'reach');
+        assert.strictEqual(r.code, 0, r.out + r.err);
+        assert.deepStrictEqual(r.lines, [
+            'reach: C1 Scope: api/**/*.cs -> 4 files (.cs 4): api/Orders/Order.cs, api/Users/User.cs, api/x.cs, and 1 more',
+            'reach: C2 Scope: every language -> every edit (a plain area)',
+            'reach: C3 Scope: web/ -> no file yet - no edit is handed C3 until one exists',
+            'reach: A1 Scope: src/ -> 2 files (.ts 2): src/app.ts, src/b.ts',
+        ], r.out);
+        const one = run(p.dir, 'reach', '--id', 'c1');
+        assert.deepStrictEqual(one.lines, [r.lines[0]], 'one id alone, in any case');
+        const none = run(p.dir, 'reach', '--id', 'C9');
+        assert.strictEqual(none.code, 1);
+        assert.match(none.out + none.err, /C9 is no code or architecture entry/);
+    }
+    finally { p.rm(); }
+});
+
+test('lint notes a Check: that measures files its Scope: does not reach - never a plain area, a matching pair or excluded files', () =>
+{
+    const entry = (id, scope, check) => `## ${id} - Rule ${id}\n<!-- id: ${id.toLowerCase()} -->\n- Rule: rule ${id}.\n- Scope: ${scope}\n- Check: ${check}`;
+    const p = project({
+        files: { 'src/a.cs': 'class A {}\n', 'api/Orders/Order.cs': 'x\n', 'api/Gen/OrderExtensions.cs': 'x\n', 'web/app.ts': 'x\n' },
+        prefs: {
+            'PERSONAL-CODE': doc('Code preferences', C3,
+                entry('C4', 'api/**/*.cs', 'regex `static` in `**/*.cs`'),
+                entry('C5', 'every language', 'regex `static` in `**/*.cs`'),
+                entry('C6', 'api/', 'regex `static` in `api/**/*.cs`, excluding `**/*Extensions.cs`'),
+                entry('C7', '`api/**/*.cs`', 'regex `static` in `**/*.cs` excluding `src/**`')),
+            ARCHITECTURE: doc('Architecture preferences', entry('A1', 'api/', 'regex `new Http` in `**/*.cs`, `**/*.ts`')),
+        },
+    });
+    try
+    {
+        const r = run(p.dir, 'lint');
+        assert.strictEqual(r.code, 0, r.out);
+        const notes = r.lines.filter((l) => / Check: reaches /.test(l));
+        assert.deepStrictEqual(notes.map((l) => (/ (\w\d+) Check: reaches (\d+) files? its Scope: does not \(([^)]+)\) - the first-edit hold hands \1 over only where its Scope: reaches; widen the Scope: or narrow the Check:$/.exec(l) || []).slice(1).join(' ')),
+            ['C4 1 src/a.cs', 'A1 2 src/a.cs, web/app.ts'], r.out);
+        assert.ok(r.lines.every((l) => !l.startsWith('PROBLEM')), 'a note, never a problem');
+        const reach = run(p.dir, 'reach', '--id', 'C4');
+        assert.ok(reach.lines.includes('reach: C4 Check: reaches 1 file its Scope: does not: src/a.cs'), reach.out);
+    }
+    finally { p.rm(); }
+});
+
+test('the script and the hook read a Scope: alike - one table, every path', () =>
+{
+    const script = require(SCRIPT);
+    const hook = require(path.join(ROOT, 'stack', 'hooks', 'preferences-session.js'));
+    const scopes = ['api/**/*.cs', '*.ts', '`src/**/*.ts`, `*.tsx`', 'every language', 'Node.js', 'api/', 'src/api', '/src/**', './web/*.{ts,html}', '**/*Extensions.cs', ',,', '', 'src/*.ts', 'src/?.ts', 'src/**/*.{ts,tsx}', '`*.{cs,ts}`, web/'];
+    const paths = ['api/Orders/Order.cs', 'api/Program.cs', 'src/app.ts', 'src/a/b.tsx', 'src/b.ts', 'web/x.html', 'web/sub/x.ts', 'src/api/x.cs', 'src/apix/y.cs', 'lib/FooExtensions.cs', 'README.md'];
+    for (const s of scopes)
+    {
+        const a = script.scopeOf(s);
+        const b = hook.scopeOf(s);
+        assert.strictEqual(a.length, b.length, s);
+        for (const t of paths) assert.strictEqual(a.some((x) => x.test(t)), b.some((f) => f(t)), `${s} on ${t}`);
+    }
+    // a brace glob's comma is inside the glob (review 2026-10-23): one part, reaching what it names and nothing else
+    for (const f of [script.scopeOf('src/**/*.{ts,tsx}').map((x) => x.test), hook.scopeOf('src/**/*.{ts,tsx}')])
+    {
+        assert.strictEqual(f.length, 1, 'one glob, not two plain words');
+        assert.ok(f[0]('src/a/b.tsx') && f[0]('src/app.ts'), 'reaches both extensions');
+        assert.ok(!f[0]('src/x.py') && !f[0]('web/x.ts'), 'and nothing else');
+    }
+    assert.strictEqual(hook.scopeOf('`*.{cs,ts}`, web/').length, 2, 'a comma outside the braces still separates');
+});
+
+test('lint fails one entry past 5,000 chars - no hold hands it over whole', () =>
+{
+    const entryOf = (n) => { const head = '## C4 - Long one\n<!-- id: c4 -->\n- Rule: '; return `${head}${'y'.repeat(n - head.length)}`; };
+    for (const [n, over] of [[CAP + 1, true], [CAP, false]])
+    {
+        const e = entryOf(n);
+        assert.strictEqual(e.length, n);
+        const p = project({ prefs: { 'PERSONAL-CODE': doc('Code preferences', C3, e) } });
+        try
+        {
+            const r = run(p.dir, 'lint');
+            assert.strictEqual(r.code, over ? 1 : 0, r.out);
+            if (over) assert.match(r.out, new RegExp(`PROBLEM \\S*PERSONAL-CODE-PREFERENCES\\.md: C4 is ${n} chars, over ${CAP} - no hold hands it over whole; split it`));
+            else assert.doesNotMatch(r.out, /PROBLEM/);
+        }
+        finally { p.rm(); }
+    }
+});
 
 test('a Check: holding $( or a pipe is rejected by lint as a command', () =>
 {
@@ -325,7 +453,7 @@ test('lint passes the seeded git doc as it is, and fails one missing a locked en
     try
     {
         assert.deepStrictEqual(run(p.dir, 'lint').lines, ['lint: 0 problems']);
-        const gone = seeded().replace(/## G1 - [\s\S]*?(?=## G2 )/, '').replace(/## G4 - [\s\S]*?(?=## G5 )/, '');
+        const gone = seeded().replace(/## G1 - [\s\S]*?(?=## G2 )/, '').replace(/## G3 - [\s\S]*?(?=## G4 )/, '');
         p.put('.alfred/docs/preferences/GIT-PREFERENCES.md', gone);
         const r = run(p.dir, 'lint');
         assert.strictEqual(r.code, 1);
@@ -492,7 +620,7 @@ test('PF-4: lint compares every field of a locked entry, refuses an unknown lock
     const cases = [
         [seeded().replace(/(<!-- locked: consent -->\n[\s\S]*?- Scope: )every commit, push, merge and publish/, '$1commits only'), /G1 is the locked 'consent' entry and its Scope: was changed/],
         [seeded().replace(/(<!-- locked: consent -->\n- Rule: [^\n]*\n)/, '$1- Except: hotfix branches\n'), /G1 is the locked 'consent' entry and its Except: was changed/],
-        [`${seeded()}\n## G9 - Mine\n<!-- id: g9 -->\n<!-- locked: mine -->\n- Rule: x.\n`, /G9 carries locked: mine - only the house keys \(consent, scope, checkpoint, safety\) are locked; drop the line/],
+        [`${seeded()}\n## G9 - Mine\n<!-- id: g9 -->\n<!-- locked: mine -->\n- Rule: x.\n`, /G9 carries locked: mine - only the house keys \(consent, checkpoint, safety, attribution, checks\) are locked; drop the line/],
         [`${seeded()}\n## G9 - Ask before any commit or push\n<!-- id: g9 -->\n- Rule: just commit when done.\n`, /G9 repeats the locked 'consent' entry's title without its lock - a locked entry is never edited; remove G9/],
     ];
     for (const [text, problem] of cases)
@@ -586,4 +714,17 @@ test('Q-1: in a linked worktree, check reads a doc git keeps out from the main c
         assert.deepStrictEqual(run(wt, 'next', '--area', 'code').lines, ['Next: C1']);
     }
     finally { fs.rmSync(wt, { recursive: true, force: true }); p.rm(); }
+});
+
+// No script can tell which folder a Scope: was meant for, so the capture asks the user about each new glob's reach (the
+// user's ruling of 2026-10-22, closing the 'wrong Scope: folder' limit), keeping the pattern as the recommended answer.
+test('the capture asks about each new or changed glob Scope:\'s reach, keeping it recommended first', () =>
+{
+    const body = fs.readFileSync(path.join(ROOT, 'stack/skills/capture-preferences/SKILL.md'), 'utf8');
+    const ask = /```ask\n(<id>'s Scope: `<pattern>` takes <n> files[^\n]*\?)\n((?:- [^\n]*\n)+)```/.exec(body);
+    assert.ok(ask, 'the reach ask is a template');
+    assert.match(body, /`<script> reach --id <id>`[^]*?ask about each new or changed entry whose `Scope:` names a glob, its reach line in hand - up to four entries in one call/);
+    const options = ask[2].trim().split('\n');
+    assert.match(options[0], /^- 'Yes, those files \(Recommended\)' - /);
+    assert.match(options[1], /^- 'Change the pattern' - [^\n]*run reach again$/);
 });

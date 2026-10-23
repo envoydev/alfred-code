@@ -45,3 +45,15 @@ The structure below shows the shape and density, not real project code - your sn
 **Concept mode (Ukrainian request):** same five-part shape, but step 3 carries two labeled lines - **Головна ідея:** (the mental model) and **Підводний камінь:** (the gotcha) - and step 4 shows a real call flowing through rather than a bug fix.
 
 **Compare mode:** step 2 walks one short path per approach (A then B) from real code, step 3 is **The verdict:** (when A wins, when B wins, the deciding axis, then a one-line recommendation), and step 4 puts the key differing lines of A and B side by side.
+
+**Topic track (English request, no level signals - 'teach me why the sky is blue'):** start simple, then deepen in layers.
+
+> **The short answer:** sunlight holds every colour, and the tiny molecules of air scatter blue light around the sky far more than red, so blue reaches your eyes from every direction.
+>
+> **Picture it like this:** throw small and big balls through a forest - the small ones bounce off trees everywhere, the big ones mostly go straight through. Blue light acts like the small balls. Where it breaks down: light is not little balls hitting trees; it is a wave, and the molecules are far smaller than its wavelength.
+>
+> **Common mix-ups:** 'the sky is blue because it reflects the ocean' - wrong: the sky is just as blue over a desert. It feels right because the sea looks blue, but the sea is blue partly because it reflects the sky.
+>
+> **The diagram:** `<docs root>/tutorial/why-the-sky-is-blue.html` - before-and-after panels: sunlight entering the air, short blue arrows scattering in every direction, long red arrows going mostly straight. Look first at the blue arrows reaching the eye from the side.
+
+The steps, the worked example (sunset: the light crosses far more air, so the blue is scattered away before it arrives), the recap, the check-yourself questions with their answers after them, and the glossary (scattering, wavelength, molecule) follow in the same order.

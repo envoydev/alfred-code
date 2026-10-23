@@ -50,7 +50,7 @@ const seed = (root) => docs.docsVersioningSeed({ projectRoot: root, docsPath: '.
 // No awareness doc under the docs root: the awareness step moves nothing and writes no rule.
 const NO_AWARENESS = { respelled: [], overlays: [], agents: 'none', rule: 'not written - no awareness doc yet' };
 // Every project's first run seeds the git doc (the preferences layout, 2026-10-21); a later run finds it there.
-const PREFS_RESULT = (git) => ({ respelled: [], overlays: [], watch: 'none', git, rule: 'none' });
+const PREFS_RESULT = (git) => ({ respelled: [], overlays: [], watch: 'none', git, rule: 'none', scopes: [], reach: [] });
 
 // --- the versioning seed, the four-home rule ------------------------------
 
@@ -589,8 +589,8 @@ test('awareness: a docs-root move re-stamps the rule\'s import lines and the inv
 
 // --- the preferences layout (the user's ruling of 2026-10-21) ----------------------------------------------------
 // Every doc under preferences/ binds: the project's code style joins them as PROJECT-CODE-PREFERENCES.md, the user's
-// code preferences become PERSONAL-CODE-PREFERENCES.md, and GIT-PREFERENCES.md is seeded with the house git lines -
-// the consent, scope, checkpoint and safety entries locked - so the git safety lines exist in every project.
+// code preferences become PERSONAL-CODE-PREFERENCES.md, and GIT-PREFERENCES.md is seeded with the crucial house git lines,
+// every one locked - so the git safety lines exist in every project.
 
 const PREFS = '.alfred/docs/preferences';
 const TODAY = () => new Date().toISOString().slice(0, 10);
@@ -604,7 +604,7 @@ test('preferences: a fresh project gets GIT-PREFERENCES.md from the seed, dated 
     const git = fs.readFileSync(path.join(root, PREFS, 'GIT-PREFERENCES.md'), 'utf8');
     assert.match(git, new RegExp(`^Updated: ${TODAY()}$`, 'm'));
     assert.doesNotMatch(git, /__TODAY__/);
-    assert.deepStrictEqual(lockedKeys(git), ['consent', 'scope', 'checkpoint', 'safety']);
+    assert.deepStrictEqual(lockedKeys(git), ['consent', 'checkpoint', 'safety', 'attribution', 'checks']);
     assert.match(git, /'Show the diff first' takes the mark/, 'the consent line is carried word for word');
     assert.strictEqual(out.preferences.git, 'seeded');
     assert.deepStrictEqual(out.switched, ['preferences']);
@@ -629,11 +629,11 @@ test('preferences: an existing GIT-PREFERENCES.md keeps its entries and gains ea
     const out = prefsRun(root, (m) => logs.push(m));
     const git = fs.readFileSync(path.join(root, PREFS, 'GIT-PREFERENCES.md'), 'utf8');
     assert.ok(git.startsWith(own), 'the user\'s own entries stay first, unchanged');
-    assert.deepStrictEqual(lockedKeys(git), ['checkpoint', 'consent', 'scope', 'safety'], 'the checkpoint it held is not added twice');
-    assert.deepStrictEqual([...git.matchAll(/^## (G\d+) - /gm)].map((m) => m[1]), ['G1', 'G3', 'G4', 'G5', 'G6'], 'new ids skip the retired G2 and every used one');
-    assert.deepStrictEqual([...git.matchAll(/<!-- id: (g\d+) -->/g)].map((m) => m[1]), ['g1', 'g3', 'g4', 'g5', 'g6']);
-    assert.strictEqual(out.preferences.git, 'merged consent, scope, safety');
-    assert.ok(logs.some((m) => /GIT-PREFERENCES\.md - added the locked entries it lacked: consent, scope, safety/.test(m)), logs.join(' | '));
+    assert.deepStrictEqual(lockedKeys(git), ['checkpoint', 'consent', 'safety', 'attribution', 'checks'], 'the checkpoint it held is not added twice');
+    assert.deepStrictEqual([...git.matchAll(/^## (G\d+) - /gm)].map((m) => m[1]), ['G1', 'G3', 'G4', 'G5', 'G6', 'G7'], 'new ids skip the retired G2 and every used one');
+    assert.deepStrictEqual([...git.matchAll(/<!-- id: (g\d+) -->/g)].map((m) => m[1]), ['g1', 'g3', 'g4', 'g5', 'g6', 'g7']);
+    assert.strictEqual(out.preferences.git, 'merged consent, safety, attribution, checks');
+    assert.ok(logs.some((m) => /GIT-PREFERENCES\.md - added the locked entries it lacked: consent, safety, attribution, checks/.test(m)), logs.join(' | '));
     assert.strictEqual(prefsRun(root).preferences.git, 'present', 'a re-run adds nothing');
 });
 
@@ -652,7 +652,7 @@ test('preferences: a GIT-PREFERENCES.md that cannot be read is named, never repl
 const SEED_TEXT = () => fs.readFileSync(path.join(__dirname, '..', 'stack', 'skills', 'capture-preferences', 'references', 'git-seed.md'), 'utf8').replace(/__TODAY__/g, TODAY());
 const lintOf = (root) => require('node:child_process').spawnSync(process.execPath, [path.join(__dirname, '..', 'stack', 'skills', 'capture-preferences', 'scripts', 'preferences.js'), 'lint'], { cwd: root, encoding: 'utf8' });
 
-test('PF-20: an empty or blank GIT-PREFERENCES.md is seeded whole - title, date and the four locked entries - and lint passes', () =>
+test('PF-20: an empty or blank GIT-PREFERENCES.md is seeded whole - title, date and the five locked entries - and lint passes', () =>
 {
     for (const blank of ['', '  \n\n'])
     {
@@ -681,6 +681,41 @@ test('Q-4: an edited locked entry is restored from the seed on update, its id an
     assert.strictEqual(prefsRun(root).preferences.git, 'present', 'a re-run changes nothing');
 });
 
+test('an update names each code or architecture Scope: glob that reaches no file - the hook would hand that entry over for no edit', () =>
+{
+    const entry = (id, scope) => `## ${id} - Rule ${id}\n<!-- id: ${id.toLowerCase()} -->\n- Rule: rule ${id}.\n- Scope: ${scope}\n`;
+    const root = project({ files: {
+        'src/app.ts': 'x\n',
+        [`${PREFS}/PERSONAL-CODE-PREFERENCES.md`]: `# Code preferences\n\nUpdated: 2026-10-22\n\n${entry('C1', 'src/**/*.ts')}\n${entry('C2', 'apii/**/*.cs')}\n${entry('C3', 'every language')}`,
+        [`${PREFS}/ARCHITECTURE-PREFERENCES.md`]: `# Architecture preferences\n\nUpdated: 2026-10-22\n\n${entry('A1', 'web/')}`,
+    } });
+    const logs = [];
+    const out = prefsRun(root, (m) => logs.push(m));
+    assert.deepStrictEqual(out.preferences.scopes, ['PERSONAL-CODE-PREFERENCES.md C2 apii/**/*.cs', 'ARCHITECTURE-PREFERENCES.md A1 web/']);
+    assert.ok(logs.some((m) => /!! preferences: \S*PERSONAL-CODE-PREFERENCES\.md C2 Scope: `apii\/\*\*\/\*\.cs` reaches no file - the first-edit hold hands C2 over for no edit; fix the pattern through \/capture-preferences/.test(m)), logs.join(' | '));
+    assert.ok(!logs.some((m) => / C[13] Scope:/.test(m)), 'a live glob and a plain area are never named');
+    fs.mkdirSync(path.join(root, 'web'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'web', 'index.html'), 'x\n');
+    assert.deepStrictEqual(prefsRun(root).preferences.scopes, ['PERSONAL-CODE-PREFERENCES.md C2 apii/**/*.cs'], 'a folder that now holds a file reaches it');
+});
+
+// A Scope: aimed at the wrong existing folder reaches files, so no dead-glob line names it; a Check: that measures files
+// the Scope: never reaches is the one sign a script can see, and the update names it as lint does.
+test('an update names each entry whose Check: measures files its Scope: does not reach', () =>
+{
+    const entry = (id, scope, check) => `## ${id} - Rule ${id}\n<!-- id: ${id.toLowerCase()} -->\n- Rule: rule ${id}.\n- Scope: ${scope}\n${check ? `- Check: ${check}\n` : ''}`;
+    const root = project({ files: {
+        'src/app.ts': 'x\n', 'src/lib.ts': 'x\n', 'tools/run.ts': 'x\n',
+        [`${PREFS}/PERSONAL-CODE-PREFERENCES.md`]: `# Code preferences\n\nUpdated: 2026-10-22\n\n${entry('C1', 'tools/**/*.ts', 'regex `any` in `src/**/*.ts`')}\n${entry('C2', 'src/**/*.ts', 'regex `any` in `src/**/*.ts`')}\n${entry('C3', 'every language', 'regex `any` in `**/*.ts`')}`,
+    } });
+    const logs = [];
+    const out = prefsRun(root, (m) => logs.push(m));
+    assert.deepStrictEqual(out.preferences.reach, ['PERSONAL-CODE-PREFERENCES.md C1 2']);
+    assert.ok(logs.some((m) => /!! preferences: \S*PERSONAL-CODE-PREFERENCES\.md C1 Check: reaches 2 files its Scope: does not \(src\/app\.ts, src\/lib\.ts\) - the first-edit hold hands C1 over only where its Scope: reaches; widen the Scope: or narrow the Check: through \/capture-preferences/.test(m)), logs.join(' | '));
+    assert.ok(!logs.some((m) => / C[23] Check:/.test(m)), 'a Check: inside its Scope: and a plain area are never named');
+    assert.deepStrictEqual(prefsRun(root).preferences.reach, ['PERSONAL-CODE-PREFERENCES.md C1 2'], 'named on every run until fixed');
+});
+
 test('edge 110: an entry that dropped its lock and weakened the rule gets the house entry back beside it, and is named', () =>
 {
     const seed = SEED_TEXT();
@@ -691,6 +726,86 @@ test('edge 110: an entry that dropped its lock and weakened the rule gets the ho
     assert.strictEqual(prefsRun(root, (m) => logs.push(m)).preferences.git, 'merged consent');
     assert.ok(logs.some((m) => new RegExp(`!! preferences: .*GIT-PREFERENCES\\.md G\\d+ repeats the locked 'consent' entry's title without its lock - remove it`).test(m)), logs.join(' | '));
     assert.match(lintOf(root).stdout, /G1 repeats the locked 'consent' entry's title without its lock/);
+});
+
+// The user's ruling of 2026-10-21: the seed keeps only the crucial git lines, every one locked. A 2.9.0 doc's entries the
+// seed dropped go while still as seeded, the attribution line takes its lock, and anything the user changed stays.
+const SEED_290 = () => fs.readFileSync(path.join(__dirname, 'install', 'git-seed-2.9.0.md'), 'utf8').replace(/__TODAY__/g, '2026-10-21');
+const headsOf = (text) => [...text.matchAll(/^## (G\d+) - /gm)].map((m) => m[1]);
+
+test('crucial seed: a 2.9.0 doc left as seeded keeps G1, G3, G4 and G6 under their ids, retires the rest and gains the new lock', () =>
+{
+    const root = project({ files: { [`${PREFS}/GIT-PREFERENCES.md`]: SEED_290() } });
+    const logs = [];
+    const out = prefsRun(root, (m) => logs.push(m));
+    const git = fs.readFileSync(path.join(root, PREFS, 'GIT-PREFERENCES.md'), 'utf8');
+    assert.strictEqual(out.preferences.git, 'retired G2, G5, G7, G8; locked attribution; updated safety; merged checks');
+    assert.deepStrictEqual(headsOf(git), ['G1', 'G3', 'G4', 'G6', 'G9'], 'the kept ids stay, the new entry takes the next one');
+    assert.deepStrictEqual(lockedKeys(git), ['consent', 'checkpoint', 'safety', 'attribution', 'checks']);
+    assert.match(git, /^Updated: 2026-10-21\nRetired: G2, G5, G7, G8\n/m);
+    assert.doesNotMatch(git, /Commit message shape|Critical:|Branch names|under 400 LOC|derived FRESH/);
+    assert.match(git, /^## G4 - Keep history recoverable\n<!-- id: g4 -->\n<!-- locked: safety -->\n- Rule: ask before any git command that discards or rewrites work/m, 'the safety entry takes this release\'s text under its own heading');
+    assert.match(git, /^## G6 - No AI attribution\n<!-- id: g6 -->\n<!-- locked: attribution -->\n- Rule: never mention yourself/m);
+    assert.ok(git.endsWith('ships what the check exists to stop.\n'), JSON.stringify(git.slice(-80)));
+    assert.ok(logs.some((m) => /GIT-PREFERENCES\.md - updated the locked 'safety' entry \(G4\) to this release's text/.test(m)), logs.join(' | '));
+    assert.ok(logs.some((m) => /GIT-PREFERENCES\.md - removed G8, a git line the seed no longer carries/.test(m)), logs.join(' | '));
+    assert.ok(!logs.some((m) => /restored the locked|!!/.test(m)), logs.join(' | '));
+    assert.strictEqual(lintOf(root).stdout.trim(), 'lint: 0 problems');
+    assert.strictEqual(prefsRun(root).preferences.git, 'present', 'a re-run changes nothing');
+    assert.strictEqual(fs.readFileSync(path.join(root, PREFS, 'GIT-PREFERENCES.md'), 'utf8'), git);
+});
+
+// Review 2026-10-23: a doc with no Updated: line had its new Retired: line written as line 1, above the title, where the
+// capture's head reader finds it but the doc no longer opens on its title.
+test('crucial seed: a 2.9.0 doc with no Updated: line gets its Retired: line under the title, never above it', () =>
+{
+    const root = project({ files: { [`${PREFS}/GIT-PREFERENCES.md`]: SEED_290().replace('Updated: 2026-10-21\n', '') } });
+    prefsRun(root);
+    const git = fs.readFileSync(path.join(root, PREFS, 'GIT-PREFERENCES.md'), 'utf8');
+    assert.ok(git.startsWith('# Git preferences\n'), JSON.stringify(git.slice(0, 80)));
+    assert.match(git, /^# Git preferences\n\n(?:\n)?Retired: G2, G5, G7, G8\n/, JSON.stringify(git.slice(0, 120)));
+    assert.strictEqual(lintOf(root).stdout.trim().split('\n').filter((l) => /^PROBLEM/.test(l)).map((l) => l.replace(/^PROBLEM \S+: /, '')).join(' | '), 'no `Updated: <date>` line', 'the doc\'s own missing stamp is its one problem');
+    assert.strictEqual(prefsRun(root).preferences.git, 'present', 'a re-run changes nothing');
+});
+
+test('crucial seed: what the user changed in a 2.9.0 doc stays - an edited entry kept, an edited scope lock dropped, their ids and Retired: line respected', () =>
+{
+    const edited = SEED_290()
+        .replace('Updated: 2026-10-21\n', 'Updated: 2026-10-21\nRetired: G10\n')
+        .replace(/(<!-- locked: scope -->\n- Rule: )the scope at a commit ask/, '$1for us, the scope at a commit ask')
+        .replace("- Rule: name a branch `<type>/<short-description>` or `<type>/<ticket-id>`.", '- Rule: name a branch `feature/<ticket>`.')
+        .replace(/(## G8 - Commit message shape\n<!-- id: g8 -->\n- Rule: )[^\n]*/, '$1one line, the ticket id first.')
+        + '\n## G9 - Sign every tag\n<!-- id: g9 -->\n- Rule: sign every release tag.\n';
+    const root = project({ files: { [`${PREFS}/GIT-PREFERENCES.md`]: edited } });
+    const logs = [];
+    const out = prefsRun(root, (m) => logs.push(m));
+    const git = fs.readFileSync(path.join(root, PREFS, 'GIT-PREFERENCES.md'), 'utf8');
+    assert.strictEqual(out.preferences.git, 'retired G7; locked attribution; unlocked G2; updated safety; merged checks');
+    assert.deepStrictEqual(headsOf(git), ['G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G8', 'G9', 'G11']);
+    assert.match(git, /^Retired: G7, G10$/m);
+    assert.match(git, /^## G2 - Derive the commit scope fresh\n<!-- id: g2 -->\n- Rule: for us, the scope/m, 'the changed entry stays, its lock dropped');
+    assert.match(git, /feature\/<ticket>/);
+    assert.match(git, /- Rule: one line, the ticket id first\./);
+    assert.match(git, /Critical: the probe path/, 'an edited entry keeps its example too');
+    assert.match(git, /sign every release tag/);
+    assert.ok(logs.some((m) => /!! preferences: .*GIT-PREFERENCES\.md G2 was locked as 'scope', a key the seed no longer has - its lock is dropped/.test(m)), logs.join(' | '));
+    assert.strictEqual(lintOf(root).stdout.trim(), 'lint: 0 problems');
+    assert.strictEqual(prefsRun(root).preferences.git, 'present', 'a re-run changes nothing');
+});
+
+test('crucial seed: an attribution entry the user changed is not locked over - the house line is merged and the copy named', () =>
+{
+    const edited = SEED_290().replace(/(## G6 - No AI attribution\n<!-- id: g6 -->\n- Rule: [^\n]*\n- Scope: )[^\n]*/, '$1commit messages only');
+    const root = project({ files: { [`${PREFS}/GIT-PREFERENCES.md`]: edited } });
+    const logs = [];
+    const out = prefsRun(root, (m) => logs.push(m));
+    const git = fs.readFileSync(path.join(root, PREFS, 'GIT-PREFERENCES.md'), 'utf8');
+    assert.strictEqual(out.preferences.git, 'retired G2, G5, G7, G8; updated safety; merged attribution, checks');
+    assert.deepStrictEqual(headsOf(git), ['G1', 'G3', 'G4', 'G6', 'G9', 'G10']);
+    assert.match(git, /^## G6 - No AI attribution\n<!-- id: g6 -->\n- Rule: never mention yourself[^\n]*\n- Scope: commit messages only/m, 'the user\'s copy stays unlocked');
+    assert.match(git, /^## G9 - No AI attribution\n<!-- id: g9 -->\n<!-- locked: attribution -->/m);
+    assert.ok(logs.some((m) => /!! preferences: .*G6 repeats the locked 'attribution' entry's title without its lock/.test(m)), logs.join(' | '));
+    assert.match(lintOf(root).stdout, /G6 repeats the locked 'attribution' entry's title without its lock/);
 });
 
 test('PF-21: an old CODE-PREFERENCES.md equal to PERSONAL-CODE-PREFERENCES.md is removed; a different one stays for a hand merge', () =>
@@ -735,7 +850,7 @@ test('preferences: CODE-STYLE.md moves to preferences/PROJECT-CODE-PREFERENCES.m
     assert.strictEqual(out.preferences.watch, 'moved');
     const again = prefsRun(root);
     assert.deepStrictEqual(again.moved, []);
-    assert.deepStrictEqual(again.preferences, { respelled: [], overlays: [], watch: 'none', git: 'present', rule: 'none' }, 'a re-run is quiet');
+    assert.deepStrictEqual(again.preferences, { respelled: [], overlays: [], watch: 'none', git: 'present', rule: 'none', scopes: [], reach: [] }, 'a re-run is quiet');
 });
 
 test('preferences: the loose PROJECT-CODE-STYLE.md of 0.2.x chains straight to preferences/', () =>

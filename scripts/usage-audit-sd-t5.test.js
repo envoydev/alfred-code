@@ -89,13 +89,18 @@ test('SD13 177c5743#3 e90a1845#2 42951e5b#7 7f8803eb#9: JSON through node -e, re
 
 // ---- SD16: the security review reads the full change set without moving the index ------------------------------------
 test('SD16 42951e5b#3: the review read is git diff HEAD plus each untracked file against /dev/null - never add -N or reset', () => {
-    // Audit 2026-10-14 RU02: the recipe lives in the checkpoint's security half; the always-on rule points at it.
+    // Audit 2026-10-14 RU02: the always-on rule points at the checkpoint; since 2026-10-22 the recipe lives in the two
+    // house reviews' Target sections, which the checkpoint runs, and the checkpoint keeps the never line.
     assert.match(flat(read('stack/rules/alfred-security.md')), /untracked files included, for vulnerabilities - the FIRST action is the `habits-commit-checkpoint` Skill call/);
-    const t = flat(read('stack/skills/habits-commit-checkpoint/SKILL.md'));
-    assert.match(t, /`git diff HEAD` plus, for each file `git ls-files -o --exclude-standard` lists, `git diff --no-index -- \/dev\/null <file>`/);
-    assert.match(t, /never a loop or `xargs` over the list - the secret guard masks only a `git diff` whose path it can read/);
-    assert.match(t, /Never `git add -N` and never `git reset` in a review or scope read/);
-    assert.doesNotMatch(t, /git add -N \. && git diff HEAD; git reset -q/, 'no rule prescribes the reset recipe');
+    assert.match(flat(read('stack/skills/habits-commit-checkpoint/SKILL.md')), /Never `git add -N` and never `git reset` in a review or scope read/);
+    for (const skill of ['review-code', 'review-security'])
+    {
+        const t = flat(read(`stack/skills/${skill}/SKILL.md`));
+        assert.match(t, /`git diff HEAD` plus, for each file `git ls-files -o --exclude-standard` lists, `git diff --no-index -- \/dev\/null <file>`/);
+        assert.match(t, /never a loop or `xargs` over the list - the secret guard masks only a `git diff` whose path it can read/);
+        assert.match(t, /Never `git add -N` and never `git reset` in a review or scope read/);
+        assert.doesNotMatch(t, /git add -N \. && git diff HEAD; git reset -q/, 'no rule prescribes the reset recipe');
+    }
     for (const f of fs.readdirSync(path.join(ROOT, 'stack', 'rules'))) assert.doesNotMatch(read(`stack/rules/${f}`), /git add -N \.[^`]*git reset/, `${f} prescribes add -N + reset`);
 });
 

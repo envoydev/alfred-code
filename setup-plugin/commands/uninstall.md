@@ -1,5 +1,5 @@
 ---
-description: "Remove the Alfred Code stack from THIS project, and nothing of the user's with it. The install ledger in the stamp (every env key, deny entry, hook wiring, MCP registration and copied file the installer wrote, each at the hash it wrote it with) is the whole list: an item still matching its hash goes, one changed since is the user's and is kept and named, and anything the ledger does not name (the user's own hook, server or key) is never touched. The stack's plugin rows and MCP registrations at project or local scope are removed; a user-scope one serves every project on the account, so its commands are printed and never run, like a third-party pick's and the marketplace's. One confirmation first. A stamp from before the ledger is refused with the route (one /alfred-code:update records it). NOT for dropping some items - that is the sibling configure command."
+description: "Remove the Alfred Code stack from THIS project, and nothing of the user's with it. The install ledger in the stamp (every env key, deny entry, hook wiring, MCP registration and copied file the installer wrote, each at the hash it wrote it with) is the whole list: an item still matching its hash goes, one changed since is the user's and is kept and named, and anything the ledger does not name (the user's own hook, server or key) is never touched. The stack's plugin rows and MCP registrations at project or local scope are removed; a user-scope one serves every project on the account, so its commands are printed and never run, like a third-party pick's and the marketplace's. One confirmation first, which also asks before the instruction file the stack seeded (AGENTS.md or CLAUDE.md, still unedited) is deleted. A stamp from before the ledger is refused with the route (one /alfred-code:update records it). NOT for dropping some items - that is the sibling configure command."
 disable-model-invocation: true
 ---
 
@@ -26,7 +26,13 @@ worktree), before anything is downloaded:
 
 ## 2. Confirm once
 
-Put ONE AskUserQuestion:
+First the instruction file, read only: `node "${CLAUDE_PLUGIN_ROOT}/scripts/install/uninstall.js" seed .` writes nothing
+and prints one line per seed the ledger records (one on almost every install) - `instructions-seed: <path> unedited` (the
+AGENTS.md or CLAUDE.md the stack seeded, still exactly as it wrote it), `instructions-seed: <path> edited` (the project's
+own now, kept unasked) - or `instructions-seed: none`.
+
+Then put ONE AskUserQuestion - the confirmation, and on any `unedited` line the seed question as a second question in the same
+call (the user's ask of 2026-10-23: an uninstall asks before it deletes the file the project reads as its instructions):
 
 ```ask
 Uninstall the stack from this project? Goes: <what goes>. Stays: <what stays>.
@@ -34,12 +40,22 @@ Uninstall the stack from this project? Goes: <what goes>. Stays: <what stays>.
 - 'Keep it' - nothing changes and nothing is downloaded
 ```
 
-The question names what goes (the stack's plugin rows and MCP registrations at this project's scope, its
+```ask
+Delete <path> too? The stack seeded it and it is unedited since, so nothing of yours is in it.
+- 'Delete it (Recommended)' - it only describes the stack's tools, which this uninstall removes
+- 'Keep the file' - it stays, and Claude Code keeps loading it though the tools it names are gone
+```
+
+`<path>` names every `unedited` line's path. 'Delete it' -> `--instructions-seed remove` on step 3's call, 'Keep the
+file' -> `--instructions-seed keep`. With no `unedited` line there is no second question and neither flag - an edited file
+is kept either way, and with no answer the seed keeps an unedited one too.
+
+The confirmation names what goes (the stack's plugin rows and MCP registrations at this project's scope, its
 settings entries, hook wirings and copied files, the stamp) and what stays (anything the user added or
 changed since the stack wrote it, a user-scope plugin row or MCP registration, the data root (the
 docs, the navigation index, the browser profiles - `.alfred/` by default, or a 2.0.0 `.serena/` /
 `.playwright/`), the memory database; at user scope also the seats denied here and `ALFRED_CODE_HOOKS_OFF`,
-since the user-scope core stays loaded). 'Keep it' -> end the turn, nothing downloaded.
+since the user-scope core stays loaded). Its 'Keep it' -> end the turn, nothing downloaded, whatever the seed answer.
 
 ## 3. Resolve the snapshot, then run the seed
 
@@ -48,7 +64,9 @@ the snapshot once into `$TMP/repo` from the plugin cache, exactly as it says, an
 every exit path (step 5). A resolve line reporting `seed=shell` (`ALFRED_CODE_SEED=shell`) is refused:
 print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
 
-`node "$TMP/repo/scripts/install/alfred-code.js" uninstall --source "$TMP/repo" 2>&1 | tee "$TMP/install.log"`
+`node "$TMP/repo/scripts/install/alfred-code.js" uninstall --source "$TMP/repo" [--instructions-seed remove|keep] 2>&1 | tee "$TMP/install.log"`
+
+The flag is step 2's seed answer, and only when it was asked.
 
 Open the call with `set -o pipefail;` and append `; echo "install exit: $?"`, then read that exit - the pipe
 makes a bare `$?` `tee`'s, and `${PIPESTATUS[0]}` reads empty in zsh. Exit 1 carries one `error:` line and nothing was touched:

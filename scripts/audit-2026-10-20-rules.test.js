@@ -34,7 +34,7 @@ test('row 2 + S9: the budget spares a baseline close line, and step by step lift
 {
     const rule = injected('alfred-interaction');
     assert.match(rule, /never trim a field a skill's report contract or a baseline rule's close line requires, or a self-correction disclosure\./);
-    assert.match(rule, /Only the user's own message lifts it \('in detail', 'walk me through', 'step by step', 'write a plan', the same ask in any language\), and an entry of their personal preferences doc sets it; 'explain' does not\./);
+    assert.match(rule, /Only the user's own message lifts it \('in detail', 'walk me through', 'step by step', 'teach me', 'ELI5', 'write a plan', the same ask in any language\), and an entry of their personal preferences doc sets it; 'explain' does not\./);
 });
 
 // Row 3: three pros and three cons per candidate in prose blew the budget; a table is exempt.
@@ -70,16 +70,17 @@ test('rows 6, 7, 15: the handoff line has one home, the no-op pointer and the do
 });
 
 // Row 14: where the docs live is the docs-root baseline's; the navigation rule names no docs location.
-test('row 14: the template and capture-architecture point at the docs-root baseline for the docs location', () =>
+// 2026-10-21: the template's rules table went (the user's ruling), so capture-architecture is the one pointer left.
+test('row 14: capture-architecture points at the docs-root baseline for the docs location; the template keeps no rules table', () =>
 {
     const nav = injected('alfred-navigation');
     assert.ok(!/__DOCS_ROOT__|ALFRED_CODE_DOCS_PATH/.test(nav), 'the navigation rule names no docs root');
     assert.match(injected('alfred-docs-root'), /This install's root: `__DOCS_ROOT__`/);
-    const row = read('stack/AGENTS.template.md').split('\n').find((l) => l.startsWith('| `.claude/rules/alfred-architecture.md`'));
-    assert.ok(row && row.includes("where they live is the docs-root baseline's"), row);
+    const template = read('stack/AGENTS.template.md');
+    assert.ok(!/^\| `\.claude\/rules\//m.test(template), 'no rules row in the template');
     const skill = flat(read('stack/skills/capture-architecture/SKILL.md'));
     assert.ok(skill.includes("where the docs live and how to read them by section are the docs-root baseline's"));
-    assert.ok(!/navigation baseline's/.test(row + skill), 'no stale pointer left in either');
+    assert.ok(!/navigation baseline's/.test(template + skill), 'no stale pointer left in either');
 });
 
 // The audit skill's own principles carry lint 33's real cap.

@@ -376,7 +376,7 @@ it, the user can drop it (2.2.0 - it was a required `dependency` before; a `clau
 stays off: updated, never switched back on). `csharp-lsp` and `typescript-lsp` are pre-selected only as
 `evidence` (the scan matched a `*.csproj` / `*.sln`, a `tsconfig.json` or `typescript` dependency - the
 reason names the manifest) or as a confirmed stack's LSP seed, and otherwise `-`, freely addable. 2.0.0
-retired `claude-md-management` and `security-guidance` (the core's AGENTS.md skill and `/security-review`
+retired `claude-md-management` and `security-guidance` (the core's AGENTS.md skill and `review-security`
 cover them): neither is a row, and `/alfred-code:update` removes each from this project's scope with the
 line that adds it back.
 

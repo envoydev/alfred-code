@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 You record the user's own wants in the docs every session and seat reads, and ranks them above every other source. The artifacts are four docs under `<docs-path>/preferences/`: `PERSONAL-PREFERENCES.md` (how the user wants the assistant to work with them - pushed into every session's start and again after each compaction), `PERSONAL-CODE-PREFERENCES.md`, `ARCHITECTURE-PREFERENCES.md` and `GIT-PREFERENCES.md` (read before any code, design, code discussion or git job) - one `##` entry per preference, ids `P<n>`, `C<n>`, `A<n>`, `G<n>`, in the shape `references/doc-shape.md` lays out. No rule is written: the shipped `alfred-preferences.md` names the docs and says when each is read, so an edit binds at the next session start (the personal doc) or the next read (the others). The two personal docs (`PERSONAL-` and `PERSONAL-CODE-PREFERENCES.md`) stay out of git where the docs are committed - the data root's ignore lines keep them on this machine - so a linked worktree reads them from the main checkout.
 
-The install seeds `GIT-PREFERENCES.md` from `references/git-seed.md`: the house git lines, its consent, commit scope, checkpoint and safety entries marked `<!-- locked: <key> -->`. A locked entry is never removed or changed, and no entry weakens a `locked` one; `lint` fails a doc missing one or carrying one edited. `PROJECT-CODE-PREFERENCES.md`, the fifth doc there, is the code-style capture's - this skill reads it in the conflict check and never writes it.
+The install seeds `GIT-PREFERENCES.md` from `references/git-seed.md`: the crucial house git lines, each marked `<!-- locked: <key> -->` - consent, checkpoint, safety, attribution and checks. A locked entry is never removed or changed, and no entry weakens a `locked` one; `lint` fails a doc missing one or carrying one edited. `PROJECT-CODE-PREFERENCES.md`, the fifth doc there, is the code-style capture's - this skill reads it in the conflict check and never writes it.
 
 ## When to use
 
@@ -75,10 +75,18 @@ A clash with a convention or style the project merely follows is no ask: the pre
 
 ### 4. WRITE
 
-Write each touched doc whole: its title, `Updated: <today>` (not a `Captured:` stamp - the docs record the user's words, not the code), `Retired:` once an id has been removed, then the entries in id order, each locked entry byte for byte as it stands. A removal deletes the entry and adds its id to `Retired:`. Write `watch.json` holding `{}` beside the docs when it is absent - the folder is a docs domain. Then `<script> lint`; every `PROBLEM` line is fixed before the next step. Each hold has its own cap, since a hook hands its docs over in one denial: the personal code and architecture docs together 5,000 chars (the first edit's hold), the git doc 5,000 (the first git write's hold). Over one, ask what to cut - for the git doc, the longest list names entries that are not locked, since a locked one is never cut:
+Write each touched doc whole: its title, `Updated: <today>` (not a `Captured:` stamp - the docs record the user's words, not the code), `Retired:` once an id has been removed, then the entries in id order, each locked entry byte for byte as it stands. A removal deletes the entry and adds its id to `Retired:`. Write `watch.json` holding `{}` beside the docs when it is absent - the folder is a docs domain. Then `<script> lint`; every `PROBLEM` line is fixed before the next step, and a `note:` line goes in the report - nothing is cut for it. The personal code and architecture docs have no size cap (the user's ruling of 2026-10-22): the first edit's hold hands each entry over where its `Scope:` reaches, without its `Check:` line, and in parts past one room - so write each entry in full; only one entry past 5,000 chars is a problem, split into two. A `note:` that a `Scope:` glob reaches no file means no edit is ever handed that entry: fix the pattern when it is a typo, keep it when the files are still to come, and say which in the report. Then `<script> reach --id <id>` for each new or changed code or architecture entry: its line shows what the `Scope:` takes - a count, the file types, a few paths - so a pattern aimed at the wrong existing folder shows as the wrong files, and no script can tell which folder was meant. So ask about each new or changed entry whose `Scope:` names a glob, its reach line in hand - up to four entries in one call, one question each:
 
 ```ask
-<the docs over the cap> hold <n> chars, over the 5,000 cap. Longest: <id> (<n> chars), <id> (<n>), <id> (<n>). What gets cut?
+<id>'s Scope: `<pattern>` takes <n> files (<types>): <a few paths>. Is that the code <id> is meant for?
+- 'Yes, those files (Recommended)' - the entry is handed over at their edits
+- 'Change the pattern' - I ask which folder or files next, in plain text, write it and run reach again
+```
+
+A `note:` or `reach:` line that the entry's `Check:` measures files its `Scope:` does not means a breach there is counted but never handed the entry: widen the `Scope:` or narrow the `Check:`. The git doc's cap is 5,000, since the first git write's hold hands it over whole. Over it, ask what to cut - the longest list names entries that are not locked, since a locked one is never cut:
+
+```ask
+The git doc holds <n> chars, over its 5,000 cap. Longest unlocked: <id> (<n> chars), <id> (<n>), <id> (<n>). What gets cut?
 - 'Tighten those three (Recommended)' - I shorten their Scope:, Why: and Except: lines, keep each Rule: as written, and show the new text before it is written
 - 'Remove entries' - I ask which ids next, in plain text; each joins `Retired:`
 ```
@@ -102,6 +110,7 @@ The personal doc holds <n> chars, over its 3,000 cap - every session start pays 
 Docs: <doc> - <ids added | changed | removed>; overrides <what a preference beats, or none>
 Conflicts: <the sources step 3 read> - <each clash asked and its answer | none>
 Check: <id> <n> violations[, <id> <n> violations] | none with a Check:
+Reach: <each reach: line, verbatim> | no code or architecture entry touched
 Lint: <the script's lint: line, verbatim>
 ```
 

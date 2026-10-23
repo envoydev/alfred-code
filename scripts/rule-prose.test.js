@@ -46,12 +46,11 @@ test('M64: the C# depth hint lives in the always-on navigation rule, beside the 
 
 // ------------------------------------------------------------------ M65
 
-test('M65: skill-authoring.md ships no restated description cap and no repo trivia', () =>
+// 2026-10-22: skill-authoring.md left the stack for this repo's own .claude/rules (the user's ruling), so no install
+// carries it and the repo trivia M65 kept out of it is no concern of a consuming project.
+test('M65: skill-authoring.md ships in no install', () =>
 {
-    const text = squash(rule('skill-authoring'));
-    assert.ok(!text.includes('160 characters'), 'the skill it loads owns the cap');
-    assert.ok(!text.includes('lint check 15c'), 'a consuming project has no lint check 15c');
-    assert.ok(!text.includes('Alfred Code repo'), 'no repo trivia');
+    assert.ok(!fs.existsSync(path.join(ROOT, 'stack', 'rules', 'skill-authoring.md')), 'no stack copy');
 });
 
 // ------------------------------------------------------------------ M66
@@ -62,7 +61,7 @@ test('M66: every FIRST-action rule carries the whole attach contract, and both h
     const first = homes(reg['convention-rule-first-action']).map((h) => h.file).sort();
     const receipt = homes(reg['convention-rule-load-receipt']).map((h) => h.file).sort();
     assert.deepStrictEqual(receipt, first, 'the load receipt is pinned wherever the first action is');
-    assert.strictEqual(first.length, 11, 'nine convention rules, markdown-docs and skill-authoring');
+    assert.strictEqual(first.length, 10, 'nine convention rules and markdown-docs');
     for (const file of first)
     {
         const text = squash(read(file));
@@ -78,7 +77,7 @@ test('M66: every FIRST-action rule carries the whole attach contract, and both h
 
 test('M67: the shell-no-attach rationale is a maintainer comment in the path rules, and stays live only where a shell run reads it', () =>
 {
-    for (const name of ['csharp-conventions', 'markdown-docs', 'skill-authoring'])
+    for (const name of ['csharp-conventions', 'markdown-docs'])
     {
         const live = injected(name);
         assert.ok(!/through the shell|first shell write/.test(live), `${name}.md: the injected text still explains the shell route: ${live}`);
@@ -88,7 +87,7 @@ test('M67: the shell-no-attach rationale is a maintainer comment in the path rul
     const nav = injected('alfred-navigation');
     assert.ok(nav.includes('Only a plain one-file view (`cat`, `head`, `tail`, `sed -n`, `grep`, no pipe or redirect) attaches path-scoped rules; a shell write never does, so the read guard names the governing rule on the first shell write.'), 'the always-on copy reaches the shell run and stays');
     assert.ok(!nav.includes('do not attach on the shell route'), 'the drifted claim');
-    for (const name of ['csharp-conventions', 'markdown-docs', 'skill-authoring'])
+    for (const name of ['csharp-conventions', 'markdown-docs'])
         assert.ok(squash(rule(name)).includes('gets no attach on a shell write'), `${name}.md: the comment names the shell write`);
 });
 
@@ -170,17 +169,14 @@ test('the repair routers route a status-less resolver return as a seat death', (
 // ------------------------------------------------------------------ 2026-10-08 audit (rules.md F3-F16, hooks.md #14)
 // Each case names the report row it holds, so a regression reads as the audit line it reopens.
 
-test('rules F3: the AGENTS template restates none of the seven always-on rules - each loads itself every session', () =>
+// 2026-10-21, the user's ruling: every rule loads itself (the always-on set each session, a path-scoped one on its own
+// `paths:`), so the template lists none - the GENERATED rows it kept until then went with the section.
+test('rules F3: the AGENTS template restates and lists none of the rules - each loads itself', () =>
 {
     const text = read('stack/AGENTS.template.md');
-    const rulesSection = text.slice(text.indexOf('\n## Rules'));
-    for (const name of ['interaction', 'quality-gates', 'security', 'navigation', 'docs-root', 'memory'])
-        assert.ok(!rulesSection.includes(`| \`.claude/rules/alfred-${name}.md\` |`), `alfred-${name}.md has a template row`);
-    for (const generated of ['alfred-awareness', 'alfred-architecture'])
-        assert.ok(rulesSection.includes(`| \`.claude/rules/${generated}.md\` (GENERATED`), `${generated}.md keeps its GENERATED row`);
-    // 2026-10-21: the preferences rule ships, and its row names the captures that write the docs it points at;
-    // the code-style capture writes no rule any more.
-    assert.ok(rulesSection.includes('| `.claude/rules/alfred-preferences.md` (installer-managed;'), 'the preferences row');
+    assert.ok(!text.includes('\n## Rules'), 'no Rules section');
+    assert.ok(!/^\| `\.claude\/rules\//m.test(text), 'no rules row');
+    assert.ok(text.includes('never restate or list them in this file'), 'the fill-in block says why');
     assert.ok(!text.includes('project-code-style.md'), 'no row or note for the retired generated rule');
 });
 
@@ -266,12 +262,11 @@ test('rules F11: the docs root exempts instruction files and drops capture-inter
     assert.ok(!line.includes('watch.json'));
 });
 
-test('rules F12 + F13: the commit header and the memory verify clause are each stated once', () =>
+test('rules F12 + F13: the git seed states no commit header shape, and the memory verify clause is stated once', () =>
 {
-    // 2026-10-21: the git lines live in the seeded GIT-PREFERENCES.md.
+    // 2026-10-21: the seed keeps only the crucial git lines - the commit message shape is the user's to capture.
     const vcs = squash(read(GIT_SEED));
-    assert.strictEqual((vcs.match(/Conventional[- ]Commits/g) || []).length, 1, vcs);
-    assert.match(vcs, /Rule: the header is one line - the ticket id \(`PROJ-142`\) or a Conventional-Commits subject/);
+    assert.strictEqual((vcs.match(/Conventional[- ]Commits|Commit message shape|Critical:/g) || []).length, 0, vcs);
     const memory = injected('alfred-memory');
     assert.strictEqual((memory.match(/verified before use/g) || []).length, 1, memory);
 });
@@ -396,8 +391,8 @@ test('C17: the commit-ask scope survey lists untracked files and leaves the inde
 {
     const { execFileSync } = require('node:child_process');
     const os = require('node:os');
-    const survey = (/derived FRESH - `([^`]+)`/.exec(squash(read(GIT_SEED))) || [])[1];
-    assert.ok(survey, 'the rule names its survey command');
+    const survey = (/scope derived fresh, `([^`]+)`/.exec(squash(read('stack/skills/habits-commit-checkpoint/SKILL.md'))) || [])[1];
+    assert.ok(survey, 'the checkpoint names its survey command');
     const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'c17-survey-'));
     try
     {

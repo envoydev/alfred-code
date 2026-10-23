@@ -370,31 +370,24 @@ for (const [name, args] of [
     });
 }
 
-// Both homes that print the post-install capture order to a reader must follow the order this script runs
+// The home that prints the post-install capture order to a reader must follow the order this script runs
 // (the shared-rules pin covers only the 'agent-capabilities LAST' clause, which is how the template drifted).
-for (const rel of ['stack/AGENTS.template.md', 'setup-plugin/references/post-install.md'])
-{
-    test(`capture order: ${rel} names the captures in CAPTURES order`, () =>
-    {
-        const { CAPTURES } = require('./init-plan.js');
-        const names = CAPTURES.map((c) => c.skill);
-        const text = fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
-        const firstSeen = [];
-        for (const m of text.matchAll(/\/(capture-[a-z-]+)/g)) if (names.includes(m[1]) && !firstSeen.includes(m[1])) firstSeen.push(m[1]);
-        assert.deepStrictEqual(firstSeen, names);
-    });
-}
-
-// Template audit 2026-10-20: the template put /capture-preferences into 'the post-install order', which init never runs -
-// the preferences are the user's words, not a capture of the code. The order the template prints is CAPTURES' alone.
-test('capture order: the template\'s post-install order names only the captures init runs', () =>
+test('capture order: setup-plugin/references/post-install.md names the captures in CAPTURES order', () =>
 {
     const { CAPTURES } = require('./init-plan.js');
+    const names = CAPTURES.map((c) => c.skill);
+    const text = fs.readFileSync(path.join(__dirname, '..', 'setup-plugin', 'references', 'post-install.md'), 'utf8');
+    const firstSeen = [];
+    for (const m of text.matchAll(/\/(capture-[a-z-]+)/g)) if (names.includes(m[1]) && !firstSeen.includes(m[1])) firstSeen.push(m[1]);
+    assert.deepStrictEqual(firstSeen, names);
+});
+
+// The user's ruling of 2026-10-21: the template's `## Rules` section went - its GENERATED rows were the second home of
+// the capture order, and the order lives in post-install.md alone, so the template cannot drift from it again.
+test('capture order: the template prints no post-install order', () =>
+{
     const flat = fs.readFileSync(path.join(__dirname, '..', 'stack', 'AGENTS.template.md'), 'utf8').replace(/\s+/g, ' ');
-    const order = /in the post-install order: (.*?) LAST/.exec(flat);
-    assert.ok(order, 'the template prints the post-install order');
-    assert.deepStrictEqual([...order[1].matchAll(/\/(capture-[a-z-]+)/g)].map((m) => m[1]), CAPTURES.map((c) => c.skill));
-    assert.match(flat, /init never runs \/capture-preferences/);
+    assert.doesNotMatch(flat, /post-install order/);
 });
 
 // --- unattended (ALFRED_CODE_UNATTENDED=1) ---------------------------------------------------------

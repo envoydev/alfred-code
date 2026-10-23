@@ -127,7 +127,7 @@ Three options, one recommended, reason stated:
   eyes that did not write it; frontmatter model unless the user names one.
 - **'skip'** - straight to step 6's done-gate; never the recommendation.
 
-For a broad parallel sweep the user can still invoke `/code-review` themselves - it is not part of
+For a broader sweep the user can run `/review-code --depth deep` themselves - it is not part of
 this flow. The user can inspect the diff themselves at this stop before answering.
 
 ## Conformance - step 5
