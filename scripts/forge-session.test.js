@@ -329,6 +329,26 @@ test('unreachable remote', () => {
   assert.match(o.systemMessage, /^Ref watch: not checked \(.+\)\.$/);
 });
 
+test('a remote that wants a password never reaches an askpass program', async () => {
+  // A smart-HTTP stand-in answering every request 401 Basic, in its own process (ls-remote blocks this one).
+  const { spawn } = require('node:child_process');
+  const srv = spawn(process.execPath, ['-e', "require('http').createServer((q, s) => { s.writeHead(401, { 'WWW-Authenticate': 'Basic realm=\"x\"' }); s.end(); }).listen(0, '127.0.0.1', function () { console.log(this.address().port); })"], { stdio: ['ignore', 'pipe', 'ignore'] });
+  try {
+    const port = await new Promise((ok) => srv.stdout.once('data', (d) => ok(String(d).trim())));
+    const dir = repo(`http://127.0.0.1:${port}/r.git`);
+    const log = path.join(dir, '..', `askpass-${port}.log`);
+    const askpass = path.join(dir, '..', `askpass-${port}${process.platform === 'win32' ? '.cmd' : '.sh'}`);
+    fs.writeFileSync(askpass, process.platform === 'win32' ? `@echo called>>"${log}"\r\n@echo nope\r\n` : `#!/bin/sh\necho called >> '${log}'\necho nope\n`);
+    fs.chmodSync(askpass, 0o755);
+    const saved = { GIT_ASKPASS: process.env.GIT_ASKPASS, SSH_ASKPASS: process.env.SSH_ASKPASS };
+    process.env.GIT_ASKPASS = askpass; process.env.SSH_ASKPASS = askpass;
+    let r;
+    try { r = forge.lsRemote(dir, 'origin'); } finally { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } }
+    assert.strictEqual(r.ok, false);
+    assert.ok(!fs.existsSync(log), 'the askpass program ran');
+  } finally { srv.kill(); }
+});
+
 test('many branches', () => {
   const w = watchRepo();
   const seed = w.git('rev-parse', 'HEAD').stdout.trim();
@@ -402,6 +422,153 @@ test('a push names the refs it writes', () => {
   assert.deepStrictEqual(forge.pushTargets(['origin', 'HEAD'], cur), ['feat/here']);
   assert.strictEqual(forge.pushTargets(['--all', 'origin'], cur), null);
   assert.strictEqual(forge.pushTargets(['--tags'], cur), null);
+});
+
+// --- what an act explains: the ref it aims at, or one landing - never every move --------------------------------------
+test('an act at a head covers only the ref it aims at', () => {
+  const w = watchRepo();
+  assert.strictEqual(snap(w.dir).status, 0);
+  w.git('checkout', '-q', '-b', 'feat/mine');
+  fs.writeFileSync(path.join(w.dir, 'm.txt'), 'm\n');
+  w.git('add', '-A'); w.git('commit', '-qm', 'm');
+  const head = w.git('rev-parse', 'HEAD').stdout.trim();
+  forge.recordAct(w.dir, SID, { concept: 'branch.write', ref: 'feat/mine', head }, watchEnv(w.dir));
+  w.git('push', '-q', 'origin', `${head}:refs/heads/feat/mine`, `${head}:refs/heads/main`);
+  const o = out(stop(w.dir));
+  assert.strictEqual(o.decision, 'block', JSON.stringify(o));
+  assert.match(o.reason, /main moved/);
+  assert.doesNotMatch(o.reason, /feat\/mine/);
+});
+
+test('a merge naming no base covers its one landing; the rest is still reported', () => {
+  const w = watchRepo();
+  assert.strictEqual(snap(w.dir).status, 0);
+  forge.recordAct(w.dir, SID, { concept: 'change.merge', change: '4', ref: null, head: null }, watchEnv(w.dir));
+  w.mateCommit('landed'); w.mate('push', '-q', 'origin', 'main');
+  w.mate('checkout', '-q', '-b', 'feat/x'); w.mateCommit('x'); w.mate('push', '-q', 'origin', 'feat/x');
+  const o = out(stop(w.dir));
+  assert.strictEqual(o.decision, undefined, JSON.stringify(o));
+  assert.match(o.systemMessage, /other branches moved this turn: feat\/x - /);
+});
+
+test('a merge naming no base explains one of two loud moves, and says so', () => {
+  const w = watchRepo();
+  assert.strictEqual(snap(w.dir).status, 0);
+  forge.recordAct(w.dir, SID, { concept: 'change.merge', change: '4', ref: null, head: null }, watchEnv(w.dir));
+  w.mateCommit('landed'); w.mate('push', '-q', 'origin', 'main');
+  w.git('checkout', '-q', '-b', 'feat/y');
+  fs.writeFileSync(path.join(w.dir, 'y.txt'), 'y\n');
+  w.git('add', '-A'); w.git('commit', '-qm', 'y'); w.git('push', '-q', 'origin', 'feat/y');
+  const o = out(stop(w.dir));
+  assert.strictEqual(o.decision, 'block', JSON.stringify(o));
+  assert.match(o.reason, /main moved/);
+  assert.match(o.reason, /feat\/y appeared/);
+  assert.match(o.reason, /one gated merge this turn explains at most one of: feat\/y, main/);
+});
+
+test('a merge covers the deletion of its head branch', () => {
+  const w = watchRepo();
+  w.mate('checkout', '-q', '-b', 'feat/h'); const head = w.mateCommit('h'); w.mate('push', '-q', 'origin', 'feat/h');
+  assert.strictEqual(snap(w.dir).status, 0);
+  forge.recordAct(w.dir, SID, { concept: 'change.merge', change: '5', ref: null, head }, watchEnv(w.dir));
+  w.mate('checkout', '-q', 'main'); w.mate('merge', '-q', '--no-ff', '-m', 'merge', 'feat/h');
+  w.mate('push', '-q', 'origin', 'main', ':feat/h');
+  assert.strictEqual(stop(w.dir).stdout, '');
+});
+
+test('a release names its tag, not its --target', () => {
+  const w = watchRepo();
+  assert.strictEqual(snap(w.dir).status, 0);
+  w.git('tag', 'v3'); w.git('push', '-q', 'origin', 'v3');
+  const p = post(w.dir, 'Bash', { command: 'gh release create v3 --target main --notes x' });
+  assert.strictEqual(p.status, 0, p.stderr);
+  assert.strictEqual(p.stdout, '');
+});
+
+test('a fetched teammate commit is not this checkout\'s', () => {
+  const w = watchRepo();
+  assert.strictEqual(snap(w.dir).status, 0);
+  w.mate('checkout', '-q', '-b', 'feat/z'); w.mateCommit('z'); w.mate('push', '-q', 'origin', 'feat/z');
+  w.git('fetch', '-q', 'origin');
+  const o = out(stop(w.dir));
+  assert.strictEqual(o.decision, undefined, JSON.stringify(o));
+  assert.match(o.systemMessage, /other branches moved this turn: feat\/z/);
+});
+
+// --- which turns are diffed: a seat's call, background work and a turn longer than the tail all count ------------------
+test('a seat\'s non-read call makes the Stop diff', () => {
+  const w = watchRepo();
+  assert.strictEqual(snap(w.dir).status, 0);
+  w.mateCommit('seat'); w.mate('push', '-q', 'origin', 'main');
+  const p = runHook(w.dir, { hook_event_name: 'PostToolUse', session_id: SID, agent_id: 'seat-1', tool_name: 'Bash', tool_input: { command: 'node build.js' }, tool_response: {} }, watchEnv(w.dir));
+  assert.strictEqual(p.status, 0, p.stderr);
+  assert.strictEqual(out(stop(w.dir, [['Read', { file_path: 'a.txt' }]])).decision, 'block');
+});
+
+test('background work keeps the next turn diffed', () => {
+  const w = watchRepo();
+  assert.strictEqual(snap(w.dir).status, 0);
+  assert.strictEqual(post(w.dir, 'Bash', { command: 'node build.js' }).status, 0);
+  const bg = runHook(w.dir, { hook_event_name: 'Stop', session_id: SID, stop_hook_active: false, transcript_path: turn(w.dir, BUILD), background_tasks: [{ id: 'b1', status: 'running' }] }, watchEnv(w.dir));
+  assert.strictEqual(bg.stdout, '');
+  w.mateCommit('late'); w.mate('push', '-q', 'origin', 'main');
+  assert.strictEqual(out(stop(w.dir, [['Read', { file_path: 'a.txt' }]])).decision, 'block');
+  assert.strictEqual(stop(w.dir, [['Read', { file_path: 'a.txt' }]]).stdout, '', 'settled: the read-only turn after is skipped again');
+});
+
+test('a turn longer than the read tail reads as unknown', () => {
+  const { turnCalls } = require(HOOK);
+  const file = path.join(TMP, `long-${Date.now()}.jsonl`);
+  const rows = [{ type: 'user', message: { role: 'user', content: 'go on' } },
+    { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'b', name: 'Bash', input: { command: 'node build.js' } }] } }];
+  const pad = JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'r', name: 'Read', input: { file_path: 'x'.repeat(2000) } }] } });
+  fs.writeFileSync(file, `${rows.map((r) => JSON.stringify(r)).join('\n')}\n${`${pad}\n`.repeat(2200)}`);
+  assert.strictEqual(turnCalls(file), null);
+});
+
+test('only known read tools are reads', () => {
+  const { callIsRead } = require(HOOK);
+  for (const name of ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'NotebookEdit', 'TodoWrite', 'WebFetch', 'WebSearch', 'ToolSearch', 'Skill', 'AskUserQuestion', 'LSP']) assert.strictEqual(callIsRead({ name, input: {} }, TMP), true, name);
+  for (const name of ['SendMessage', 'Workflow', 'RemoteTrigger', 'BrandNewTool']) assert.strictEqual(callIsRead({ name, input: {} }, TMP), false, name);
+});
+
+// --- an armed auto-merge lands later; an act PostToolUse never confirmed did not run ---------------------------------
+const oldAct = (dir, act) => {
+  const file = forge.actsPath(dir, SID, watchEnv(dir));
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.appendFileSync(file, `${JSON.stringify({ asked: false, change: null, ref: null, head: null, at: Date.now() - 60000, ...act })}\n`);
+};
+test('an armed auto-merge covers its landing in a later turn, once', () => {
+  const w = watchRepo();
+  assert.strictEqual(snap(w.dir).status, 0);
+  oldAct(w.dir, { concept: 'change.merge', change: '4', armed: true, id: 'arm-1' });
+  w.mateCommit('green'); w.mate('push', '-q', 'origin', 'main');
+  assert.strictEqual(stop(w.dir).stdout, '', 'the landing is the armed merge');
+  w.mateCommit('again'); w.mate('push', '-q', 'origin', 'main');
+  assert.strictEqual(out(stop(w.dir)).decision, 'block', 'consumed: a second landing is not explained');
+});
+
+test('an act PostToolUse never confirmed covers nothing', () => {
+  for (const confirmed of [false, true]) {
+    const w = watchRepo();
+    assert.strictEqual(snap(w.dir).status, 0);
+    fs.writeFileSync(path.join(w.dir, 'c.txt'), 'c\n');
+    w.git('add', '-A'); w.git('commit', '-qm', 'c');
+    forge.recordAct(w.dir, SID, { concept: 'branch.write', ref: 'main', head: w.git('rev-parse', 'HEAD').stdout.trim(), tool_use_id: 'tu-9' }, watchEnv(w.dir));
+    w.git('push', '-q', 'origin', 'main');
+    if (confirmed) assert.strictEqual(runHook(w.dir, { hook_event_name: 'PostToolUse', session_id: SID, tool_use_id: 'tu-9', tool_name: 'Bash', tool_input: { command: 'git push origin main' }, tool_response: {} }, watchEnv(w.dir)).status, 0);
+    const o = out(stop(w.dir));
+    assert.strictEqual(o.decision, confirmed ? undefined : 'block', `confirmed ${confirmed}: ${JSON.stringify(o)}`);
+  }
+});
+
+test('a worktree and its main checkout share one ledger', () => {
+  const w = watchRepo();
+  const wt = path.join(w.base, 'wt');
+  w.git('worktree', 'add', '-q', '-b', 'feat/wt', wt);
+  assert.strictEqual(fs.realpathSync(forge.ledgerRoot(wt)), fs.realpathSync(w.dir));
+  assert.strictEqual(fs.realpathSync(forge.ledgerRoot(path.join(w.dir))), fs.realpathSync(w.dir));
+  assert.strictEqual(forge.ledgerRoot(fs.mkdtempSync(path.join(TMP, 'nogit-'))), null);
 });
 
 // --- the forge CLI: which one, and how it is installed (--forge-cli, init's ask, the prerequisite check) ------------

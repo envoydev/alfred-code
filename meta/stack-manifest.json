@@ -1056,9 +1056,9 @@
     },
     {
       "file": "forge-session.js",
-      "matcher": "@PostToolUse:Bash|PowerShell",
+      "matcher": "@PostToolUse:Bash|PowerShell|Monitor",
       "event": "",
-      "note": "the ref watch's strong window: after a shell call forge.js reads as a merge, a branch write, a release or a forge call it cannot read, every branch and tag is re-read with git ls-remote and diffed against the session's baseline; a loud move no ledger act covers (the default branch, the upstream, a branch GIT-PREFERENCES.md names, a commit in this checkout, a tag) blocks with feedback to stop and report it"
+      "note": "the ref watch's PostToolUse: every call confirms the act the commit guard ledgered for it (an act never confirmed covers nothing), and one that could move a ref marks the cycle for the Stop's diff, a seat's calls included; the strong window: after a shell call forge.js reads as a merge, a branch write, a release or a forge call it cannot read, every branch and tag is re-read with git ls-remote and diffed against the session's baseline; a loud move no ledger act covers (the default branch, the upstream, a branch GIT-PREFERENCES.md names, a commit in this checkout, a tag) blocks with feedback to stop and report it"
     },
     {
       "file": "forge-session.js",
@@ -1070,7 +1070,7 @@
       "file": "forge-session.js",
       "matcher": "@Stop",
       "event": "",
-      "note": "the ref watch's catch-all: when the turn ran anything but a known read (a script, a seat, a browser click, an unknown tool), every branch and tag is diffed once more - a loud move blocks once per cycle, the rest is one summary line for the user; an unreachable remote is 'not checked', never clean; forge-session:watch in ALFRED_CODE_HOOKS_OFF turns it off, ALFRED_CODE_FORGE_WATCH=loud-only drops the summary"
+      "note": "the ref watch's catch-all: when the turn ran anything but a known read (a script, a seat, a browser click, an unknown tool) or a PostToolUse marked the cycle, and again after a turn that left background work running, every branch and tag is diffed once more - a loud move blocks once per cycle, the rest is one summary line for the user; an unreachable remote is 'not checked', never clean; forge-session:watch in ALFRED_CODE_HOOKS_OFF turns it off, ALFRED_CODE_FORGE_WATCH=loud-only drops the summary"
     },
     {
       "file": "instrument-tool-usage.js",

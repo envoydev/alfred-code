@@ -195,3 +195,45 @@ test('a bare git push ledgers the branch it pushes, a --tags push no target', ()
   assert.strictEqual(run(dir, bash('git push --tags')).status, 0);
   assert.deepStrictEqual(acts(dir).map((a) => a.ref), ['main', null]);
 });
+
+test('a push naming no ref is ledgered as covering all; the act carries its tool call', () => {
+  const { dir, git } = pushRepo();
+  fs.writeFileSync(path.join(dir, 'b.txt'), 'b\n');
+  git('add', '-A'); git('commit', '-qm', 'b');
+  receipt(dir, headOf(dir));
+  assert.strictEqual(run(dir, { ...bash('git push --tags'), tool_use_id: 'tu-1' }).status, 0);
+  const [row] = acts(dir);
+  assert.strictEqual(row.all, true);
+  assert.strictEqual(row.tool_use_id, 'tu-1');
+});
+
+test('an auto-merge is ledgered armed', () => {
+  const { dir } = pushRepo();
+  receipt(dir, headOf(dir));
+  assert.strictEqual(run(dir, mcp('merge_merge_request', { merge_request_iid: 4, merge_when_pipeline_succeeds: true })).status, 0);
+  assert.strictEqual(run(dir, bash('gh pr merge 4 --squash')).status, 0);
+  assert.deepStrictEqual(acts(dir).map((a) => !!a.armed), [true, false]);
+});
+
+test('with the push half off, what it lets through is still ledgered', () => {
+  const { dir, git } = pushRepo();
+  const off = { ALFRED_CODE_HOOKS_OFF: 'guard-ungated-commit:push' };
+  assert.strictEqual(run(dir, mcp('accept_merge_request', { merge_request_iid: 4 }), off).status, 0);
+  fs.writeFileSync(path.join(dir, 'b.txt'), 'b\n');
+  git('add', '-A'); git('commit', '-qm', 'b');
+  assert.strictEqual(run(dir, bash('git push origin main'), off).status, 0);
+  assert.strictEqual(run(dir, bash('git push --dry-run origin main'), off).status, 0);
+  assert.deepStrictEqual(acts(dir).map((a) => [a.concept, a.ref]), [['change.merge', null], ['branch.write', 'main']]);
+});
+
+test('a push from a worktree is ledgered where the main checkout\'s ref watch reads', () => {
+  const { dir, git } = pushRepo();
+  const wt = path.join(path.dirname(dir), 'wt');
+  git('worktree', 'add', '-q', '-b', 'feat/wt', wt);
+  fs.writeFileSync(path.join(wt, 'w.txt'), 'w\n');
+  spawnSync('git', ['-C', wt, 'add', '-A']); spawnSync('git', ['-C', wt, 'commit', '-qm', 'w']);
+  receipt(wt, headOf(wt));
+  const r = run(wt, bash('git push -u origin feat/wt'), { CLAUDE_PROJECT_DIR: dir });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.deepStrictEqual(acts(dir).map((a) => a.ref), ['feat/wt']);
+});

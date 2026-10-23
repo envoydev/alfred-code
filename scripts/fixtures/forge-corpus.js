@@ -171,7 +171,7 @@ const BENIGN = [
   row('docker tag', sh('docker tag img:1 img:latest'), null),
   row('git log origin/main', sh('git log origin/main --oneline'), null),
   row('git push is the git parse, not the lexicon', sh('git push origin feat'), null),
-  row('sentry create_release has no forge noun beyond release', mcp('sentry', 'create_release', { version: '1' }), RELEASE),
+  row('sentry create_release - a release on a server that is no forge', mcp('sentry', 'create_release', { version: '1' }), null),
   row('jira create_issue', mcp('jira', 'create_issue', { summary: 'x' }), null),
   row('issue comment', mcp('github', 'add_issue_comment', { issue_number: 3, body: 'x' }), null),
   row('curl a read', sh('curl -s https://api.github.com/repos/o/r/pulls/3'), READ),

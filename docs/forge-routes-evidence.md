@@ -19,6 +19,21 @@ and the help names every flag the row uses. Result: **60 of 60 pass**.
 | az | 12 | `repos pr create` (`--auto-complete`), `repos pr update` (`--status --auto-complete --bypass-policy --bypass-policy-reason --title`), `repos pr set-vote / show / list`, `pipelines run / build queue / runs list / release create`, `repos ref create`, `devops invoke` (`--area --resource --http-method --in-file`), `devops configure` (`--use-git-aliases`, the `git pr` alias) |
 | tea | 7 | `pulls create`, `pr merge` (`--style`), bare `pr`, `releases create` (`--tag`), `actions runs list`, `actions workflows dispatch`, `api` (`--method`) |
 
+## Subcommands of the four CLIs
+
+The corpus checks the routes someone wrote down; it does not show that a subcommand nobody listed reads right. In the
+same container (gh 2.103.1, glab 1.124.0, tea 0.16.0, azure-cli 2.91.0 with azure-devops 1.1.0), a script walked
+`<cli> <noun> [<sub>] --help` two levels deep under every forge noun and recorded each subcommand with the aliases its
+help lists: **315 rows** (gh 42, az 80, tea 140, glab 53), kept as `scripts/fixtures/forge-subcommands.js`. Each
+row is classified as `<cli> <subcommand> 1`. The first pass found **29 that asked** (an ask is a deny when unattended):
+`tea pulls m` / `c` / `e` and its other short aliases, `glab mr note`, `gh pr lock`, `glab mr subscribe` / `todo`,
+`az repos policy approver-count create`, `az repos pr work-item add` and the like. The lexicon gained `shellVerbs`
+(short aliases keyed by the object's class) and the missing annotate words. The classifier now reads a review or
+annotation noun after a change noun as part of the object, and skips one sub-group word before a verb, but never onto a
+merge or a push: `yarn run build git push` is a script's arguments. After that: **0 ask**, and the only publishes are
+`az repos ref create / delete`, `gh pr merge`, `glab mr merge`, `tea pulls merge` and `tea pulls m`.
+`scripts/forge-classify.test.js` holds all 315.
+
 `glab mcp serve` also exists in glab 1.124.0 (marked deprecated in favour of GitLab's hosted server, still shipping), so
 `glab mcp` is one of the launch marks that list a configured server as a forge server in the session line. tea ships no
 MCP command.
@@ -29,6 +44,12 @@ The MCP rows in the corpus take their tool names and operation selectors from ea
 `github-mcp-server`, GitLab's hosted server (`/api/v4/mcp`) and `@zereight/mcp-gitlab`, `@azure-devops/mcp`,
 `gitea-mcp` and Atlassian's Rovo server. The classifier reads them by their words, so a server keyed under any name, or
 one nobody listed, classifies the same way. What Claude Code actually sends is the stub-session probe below.
+
+A change-request word and a push count on every server. A branch, tag, file or release word counts only on a
+forge-shaped server: the input names a remote repository (`owner` + `repo`, a `group/project` path, a repository id),
+or the server's key carries a forge word and the input names no local checkout (`repo_path`, an absolute path), or the
+MCP configs launch it as a forge server. So Supabase's and Neon's `create_branch`, Sentry's `create_release`, AWS's
+`tag_resource` and a local git server's `git_commit` are not forge calls, and are neither denied nor asked.
 
 ## Stub-session probe - the real payload, no model
 
@@ -49,17 +70,17 @@ Claude Code 2.1.309 ran `-p` in a copy-route install with its own `HOME` and `CL
 ## Replay over past sessions
 
 Every shell and MCP call in the local transcript store was replayed through `classify` as the commit guard would see it:
-2,003 transcripts, 149,034 calls (139,239 shell, 9,795 MCP, of which 2,716 were the stack's own servers and never
-classified).
+2,004 transcripts, 149,337 calls (139,541 shell, 9,796 MCP, of which 2,717 were the stack's own servers and never
+classified). The replay ran again after the final-review fixes, with the same counts in every row.
 
 | Read as | Calls | Checked by hand |
 |---|---|---|
-| merge (a publish) | 10 | All 10 are real `gh pr merge <n>` calls; the receipt heredocs around them are prose |
+| merge (a publish) | 11 | 10 are real `gh pr merge <n>` calls (the receipt heredocs around them are prose); 1 is the final reviewer's own probe script, which embeds `gh pr merge` in a heredoc |
 | create | 13 | All 13 are real `gh pr create` calls |
 | release | 1 | A real `gh release create` call |
-| an ask (unknown verb) | 7 before the fix, 0 after | See below |
+| an ask (unknown verb) | 7 before the fix, then 2 | The 2 are the final reviewer's probes of the raw-text interpreter scan (a heredoc fed to `node`) |
 | read, watch, pipeline, annotate | 1,574 | Never gated |
-| not a forge call | 147,436 | - |
+| not a forge call | 147,736 | - |
 
 Zero reads were classified as a publish. The 7 asks were 4 distinct inline-interpreter calls: python heredocs writing a
 release-download link, an image link and a repository link into files, and a `node -e` printing one. An ask is a deny in
@@ -78,9 +99,9 @@ isolated `HOME` and `CLAUDE_CONFIG_DIR`, with a stub `claude`, and the written f
 
 | Case | Result |
 |---|---|
-| Fresh install, copy route | `forge-session.js`, `forge.js`, `forge-lexicon.json` copied; `settings.json` wires forge-session at SessionStart, SubagentStart, PostToolUse (`Bash\|PowerShell` and the non-stack `mcp__` pattern) and Stop, and the commit guard at PreToolUse for shell and non-stack MCP calls; `ALFRED_CODE_FORGE_WATCH=all` |
+| Fresh install, copy route | `forge-session.js`, `forge.js`, `forge-lexicon.json` copied; `settings.json` wires forge-session at SessionStart, SubagentStart, PostToolUse (`Bash\|PowerShell\|Monitor` and the non-stack `mcp__` pattern) and Stop, and the commit guard at PreToolUse for shell and non-stack MCP calls; `ALFRED_CODE_FORGE_WATCH=all` |
 | Fresh install, plugin route | `ALFRED_CODE_HOOKS_OFF` does not name forge-session (the core plugin runs it) |
-| Re-run (install, update, update) | Second update changes 0 files on both routes; the first changes only the stamp's `action:` line |
+| Re-run (install, update, update) | Second update changes 0 files on both routes. The first changes the stamp, and on the plugin route also writes `.alfred/serena/home/serena_config.yml` - an install from the branch's base commit writes the same file at the same step, so it predates this branch |
 | Update over a 2.10.0 install | Both routes end with forge-session on - a hook new in the release defaults on, as in a fresh install |
 | forge-session dropped | Copy route: no forge-session file or rows, `forge.js` and the lexicon stay for the commit guard. Plugin route: `ALFRED_CODE_HOOKS_OFF` names it |
 | User's own config | A `settings.json` key, an `env` variable and a `PostToolUse` hook of the user's, and a `.mcp.json` server keyed `My Odd.Server-1`, all kept |
@@ -105,6 +126,31 @@ second clone moved refs as a teammate (or a tool that bypassed the gate) would.
 | main moved after a ledgered merge act | Silent |
 | An unreadable MCP verb, then main moved | The PostToolUse window blocks right after the call |
 | origin gone after the baseline | `Ref watch: not checked (<git's reason>).` |
+| A merge naming no base, then main lands and a teammate pushes `feat/x` | main explained (one landing); `feat/x` the summary line |
+| The same merge, while main lands and this checkout pushes `feat/y` | Both loud, plus `one gated merge this turn explains at most one of: feat/y, main` - an ambiguous act covers neither |
+| A push aimed at `feat/mine`, whose head also lands on main | `feat/mine` explained; main loud |
+| `gh release create v3 --target main`, then tag v3 appears | Silent at PostToolUse and Stop - the tag is read from the verb's argument, never `--target` |
+| A teammate branch this checkout fetched | The summary line, not loud - only a commit a local branch holds marks a move as this checkout's |
+| A seat ran a build while the main turn only read | Stop blocks: the PostToolUse of the seat's call marks the turn dirty |
+| A turn ends with a background task running, main lands after | That Stop is silent; the next read-only turn's Stop still diffs and blocks; once settled, a read-only turn is silent again |
+| `SendMessage` in an otherwise read-only turn | Diffed and blocks - only an allowlist of read tools keeps a turn read-only |
+| An auto-merge the guard ledgered (`merge_when_pipeline_succeeds`) | Silent at turns 1-3 and at its landing in turn 3; a second landing in turn 4 blocks |
+| The guard ledgered a push whose call never finished (no PostToolUse) | Loud - an unconfirmed act explains nothing; the same push confirmed is silent |
+| The push half of the guard off | Nothing gated, the push still ledgered, the Stop silent |
+| A push from a worktree, the session in the main checkout | The act is ledgered at the repository root and explains `feat/wt`; no ledger in the worktree |
+| Supabase / Sentry / local-git `create_branch`, `create_release`, `git_commit` | Neither denied nor asked, attended or not; `github__create_branch {owner, repo}` and `tea pulls m 3` are gated |
+| `glab mr subscribe`, `gh pr lock`, `az repos pr reviewer add`, `tea pulls reject` unattended | Not denied |
+
+## No credential prompt
+
+`git ls-remote` runs `GIT_ASKPASS` (then `core.askPass`, then `SSH_ASKPASS`) even with `GIT_TERMINAL_PROMPT=0`. Against a
+local stand-in that answers every request `401 Basic`, with a logging askpass program on `GIT_ASKPASS`, the watch's call
+asked it for a username and then a password (git 2.56.0). The watch now clears both askpass variables, sets
+`SSH_ASKPASS_REQUIRE=never` and `GCM_INTERACTIVE=never`, and passes `-c credential.interactive=false`: the program is not
+called, and the watch reports `not checked (...)`. Each layer alone also kept it silent. On the installed hooks the Stop
+answered `Ref watch: not checked (unable to get password from user).` and the program was not called, while a plain
+`git ls-remote` against the same stand-in, with the same `GIT_ASKPASS`, called it. A stored credential (osxkeychain, a
+credential store) still answers.
 
 ## The 6 s ls-remote cap
 
@@ -114,10 +160,10 @@ within 6.03 s.
 
 | Delay | Result | Wall time |
 |---|---|---|
-| 4.5 s | ok | 4,538 ms |
-| 5.9 s | ok | 5,947 ms |
-| 6.0 s | not checked (no answer within 6s) | 6,013 ms |
-| 6.1 s | not checked | 6,010 ms |
+| 4.5 s | ok | 4,551 ms |
+| 5.9 s | ok | 5,955 ms |
+| 6.0 s | not checked (no answer within 6s) | 6,020 ms |
+| 6.1 s | not checked | 6,025 ms |
 | 7.5 s | not checked | 6,019 ms |
 
 ## Cost

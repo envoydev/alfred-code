@@ -25,8 +25,8 @@ const rankOf = (r) => (!r ? 0 : r.strength === 'unknown' ? 6 : RANK[r.concept] |
 // Verb classes, strongest first: a tool or a command naming two verbs is read by the stronger.
 const VERB_ORDER = ['merge', 'push', 'create', 'write', 'pipeline', 'annotate', 'watch', 'read'];
 const METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']);
-const LEX_KEYS = ['nouns', 'groups', 'verbs', 'watchFlags', 'mergeFlags', 'selectors', 'changeKeys', 'refKeys', 'headKeys',
-  'forgeServerWords', 'apiCommands', 'interpreters', 'requestCalls', 'paths', 'hints'];
+const LEX_KEYS = ['nouns', 'groups', 'verbs', 'shellVerbs', 'watchFlags', 'mergeFlags', 'armWords', 'selectors', 'changeKeys', 'refKeys', 'tagKeys',
+  'headKeys', 'forgeServerWords', 'apiCommands', 'interpreters', 'requestCalls', 'paths', 'hints'];
 
 // ---- the vocabulary ------------------------------------------------------------------------------------------------
 let BASE = null;
@@ -74,7 +74,7 @@ function compile(lex) {
   const c = {
     lex, nounOf, verbOf, paths,
     groups: new Set(lex.groups || []), selectors: new Set(lex.selectors || []), watchFlags: new Set(lex.watchFlags || []),
-    mergeFlags: new Set(lex.mergeFlags || []), apiCommands: new Set(lex.apiCommands || []), interpreters: new Set(lex.interpreters || []),
+    mergeFlags: new Set(lex.mergeFlags || []), armWords: new Set(lex.armWords || []), apiCommands: new Set(lex.apiCommands || []), interpreters: new Set(lex.interpreters || []),
     requestCall: new RegExp(`(?:^|[^a-z0-9_])(?:${(lex.requestCalls || []).map((w) => String(w).toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') || '(?!)'})`, 'i'),
     forgeServer: new RegExp(`(?:^|[^a-z])(?:${(lex.forgeServerWords || ['git']).map((w) => w.replace(/[^a-z0-9]/g, '')).join('|')})`, 'i'),
   };
@@ -106,13 +106,15 @@ function bestVerb(c, words) {
   }
   return best;
 }
+// A merge that lands LATER - an auto-merge, a merge queue: the ref watch keeps its act until it explains one landing.
+const armedBy = (c, words) => words.some((w) => c.armWords.has(String(w).toLowerCase()));
 function nounsIn(c, words) {
   const found = {};
   for (const w of words) { const cls = c.nounOf.get(w); if (cls && !found[cls]) found[cls] = w; }
   return found;
 }
-// The concept a verb class makes of the object its nouns name. `fileAsRef` says the call is shaped like a forge write
-// (a branch key in its input, or a forge server) - a bare `write_file` is a filesystem, never a branch.
+// The concept a verb class makes of the object its nouns name. `fileAsRef` reads a file word as a ref write - on the MCP
+// route the forge-shape check then decides, so a bare `write_file` on a filesystem server is never a branch.
 function conceptOf(verb, nouns, fileAsRef) {
   const change = nouns.change || nouns.review;
   const ref = nouns.ref || (fileAsRef && nouns.file);
@@ -153,7 +155,7 @@ function classifyApi(c, { method, url, body, bodyHidden }, transport) {
     const words = tokens(mut[1]);
     const verb = bestVerb(c, words);
     const concept = verb && conceptOf(verb.cls, nounsIn(c, words), true);
-    if (concept) return result(concept, 'known', transport, `GraphQL mutation ${mut[1]}`);
+    if (concept) return result(concept, 'known', transport, `GraphQL mutation ${mut[1]}`, concept === MERGE && armedBy(c, words) ? { armed: true } : {});
     return unknownOf(nounsIn(c, words), transport, `GraphQL mutation ${mut[1]} has no known verb`) || null;
   }
   const segs = tokens(p);
@@ -290,23 +292,36 @@ function interpreterCalls(c, code) {
 }
 // A CLI's argv read in CLI order: group words skipped, then the nouns, then the verb - `gh pr merge`, `az repos pr update`,
 // `tea actions runs list`. A noun that is also a verb and ends the nouns is the verb (`az pipelines run`, `gh pr checks`).
+// After a change noun a review or annotation noun is part of the object (`az repos pr reviewer add`, `glab mr note create`);
+// so is a sub-group word right before a verb that publishes nothing (`az repos policy approver-count create`, `tea releases
+// assets create`).
+// The verb slot also reads the lexicon's `shellVerbs` - short aliases (`tea pulls m`) keyed by the object's class.
 function classifyCli(c, name, argv) {
   const lead = [];
   for (const a of argv) { if (isFlag(a)) break; lead.push(a); }
   let i = 0;
   let grouped = false;
   while (i < lead.length && c.groups.has(lead[i])) { i++; grouped = true; }
-  const shellNoun = (w) => { const cls = c.nounOf.get(w); return cls === 'change' || cls === 'release' || cls === 'pipeline' || (grouped && cls === 'ref') ? cls : null; };
   const nouns = [];
+  const ofChange = () => nouns.some((n) => c.nounOf.get(n) === 'change');
+  const shellNoun = (w) => { const cls = c.nounOf.get(w); return cls === 'change' || cls === 'release' || cls === 'pipeline' || (grouped && cls === 'ref') || ((cls === 'review' || cls === 'annotation') && ofChange()) ? cls : null; };
   while (i < lead.length && shellNoun(lead[i])) nouns.push(lead[i++]);
   if (!nouns.length) return null;
+  const objectClass = () => { const k = new Set(nouns.map((n) => c.nounOf.get(n))); return k.has('release') ? 'release' : k.has('ref') ? 'ref' : k.has('change') ? 'change' : 'pipeline'; };
+  const alias = (w) => { const own = ((c.lex.shellVerbs || {})[objectClass()]) || {}; const cls = VERB_ORDER.find((v) => (own[v] || []).includes(w)); return cls ? { cls, word: w } : null; };
+  const exact = (w) => !!w && (c.verbOf.has(w) || !!alias(w));
+  // A sub-group names a sub-resource (a pipeline's variable, a release's asset), which never moves a ref: a skip never
+  // lands on a merge or a push - `yarn run build git push` is a script's arguments.
+  const publishes = (w) => { const v = alias(w) || { cls: c.verbOf.get(w) }; return v.cls === 'merge' || v.cls === 'push'; };
+  if (lead[i] && !exact(lead[i]) && !/^#?\d+$/.test(lead[i]) && exact(lead[i + 1]) && !publishes(lead[i + 1])) i++;
   let verbWord = lead[i];
-  let verb = verbWord ? bestVerb(c, tokens(verbWord)) : null;
+  let verb = verbWord ? alias(verbWord) || bestVerb(c, tokens(verbWord)) : null;
   if (!verb && nouns.length > 1 && c.verbOf.has(nouns[nouns.length - 1])) { verbWord = nouns.pop(); verb = { cls: c.verbOf.get(verbWord), word: verbWord }; }
   else if (!verb && nouns.length === 1 && c.verbOf.get(nouns[0]) === 'read' && !verbWord) { verb = { cls: 'read', word: nouns[0] }; }
   const classes = {};
   for (const n of nouns) { const cls = c.nounOf.get(n); classes[cls] = n; }
-  const object = classes.release ? { release: classes.release } : classes.ref ? { ref: classes.ref } : classes.change ? { change: classes.change } : { pipeline: classes.pipeline };
+  const object = classes.release ? { release: classes.release } : classes.ref ? { ref: classes.ref }
+    : classes.change ? { change: classes.change, review: classes.review, annotation: classes.annotation } : { pipeline: classes.pipeline };
   if (nouns.some((n) => c.nounOf.get(n) === 'pipeline') && !classes.release && !classes.ref && !classes.change) object.pipeline = classes.pipeline;
   const rest = argv.slice(lead.length);
   const flagWords = rest.filter(isFlag).map((f) => f.replace(/=.*$/, ''));
@@ -328,7 +343,14 @@ function classifyCli(c, name, argv) {
     if (flagSaysMerge || valueSaysMerge) cls = 'merge';
   }
   const concept = conceptOf(cls, object, true);
-  return concept ? result(concept, 'known', 'shell', `${label}${cls !== verb.cls ? ` (${cls} by its flags)` : ''}`, extra) : null;
+  if (!concept) return null;
+  // A release is read by its tag (the word after the verb, or --tag), never --target - that is the commit it tags.
+  if (concept === RELEASE) extra.ref = flagValue(argv, ['--tag', '--tag-name']) || (lead[i + 1] && !/^#?\d+$/.test(lead[i + 1]) ? lead[i + 1] : null);
+  if (concept === MERGE) {
+    const off = (k) => /^(?:false|0|no|off)$/i.test(rest[k].includes('=') ? rest[k].slice(rest[k].indexOf('=') + 1) : String(rest[k + 1] || ''));
+    if (rest.some((a, k) => isFlag(a) && armedBy(c, tokens(a.replace(/=.*$/, ''))) && !off(k))) extra.armed = true;
+  }
+  return result(concept, 'known', 'shell', `${label}${cls !== verb.cls ? ` (${cls} by its flags)` : ''}`, extra);
 }
 function classifyShell(c, raw, cwd, pre) {
   let sw;
@@ -370,32 +392,64 @@ function classifyShell(c, raw, cwd, pre) {
 const STACK_SERVER = /^mcp__(?:plugin_alfred-[a-z0-9-]+_)?alfred-[a-z0-9-]+__/;
 const isStackServer = (toolName) => STACK_SERVER.test(String(toolName || ''));
 const keyValue = (input, keys) => { for (const k of keys) { const v = input[k]; if (typeof v === 'string' || typeof v === 'number') return String(v); } return null; };
-function classifyMcp(c, toolName, input, server) {
+// FORGE-SHAPED: a branch, tag, file or release word means a git ref only on a forge server - Supabase and Neon branch a
+// database, Sentry releases a build, AWS tags a resource, a local git server commits to disk. Shaped: the input names a
+// remote repository (owner + repo, a `group/project` path, a repository id); or the server's key carries a forge word and
+// the input is not a local checkout's (a `repo_path`, an absolute path); or the MCP configs launch it as a forge server
+// (forgeServersOf, read only when the first two say no). A change-request word and a push are every server's.
+const LOCAL_KEY = /^(?:repo_?path|repository_?path|local_?path|cwd|dir|directory|working_?dir|workdir|worktree)$/i;
+const ABS_PATH = /^(?:\/|~[\\/]|[A-Za-z]:[\\/]|\\\\)/;
+function coordinates(inp) {
+  const s = (k) => (typeof inp[k] === 'string' && inp[k] ? inp[k] : null);
+  if ((s('owner') || s('org') || s('organization') || s('namespace') || s('workspace')) && (s('repo') || s('repository') || s('repo_slug') || s('repoSlug'))) return true;
+  for (const k of ['repo', 'repository', 'project', 'project_id', 'projectId', 'project_path', 'projectPath', 'full_name', 'fullName']) if (/^[\w.-]+(?:\/[\w.-]+)+$/.test(s(k) || '')) return true;
+  return ['repositoryId', 'repository_id', 'repoId', 'repo_id'].some((k) => (typeof inp[k] === 'string' && inp[k]) || typeof inp[k] === 'number');
+}
+const localOnly = (inp) => Object.entries(inp).some(([k, v]) => typeof v === 'string' && (LOCAL_KEY.test(k) || (/path|repo|dir/i.test(k) && ABS_PATH.test(v))));
+const serverKey = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '_');
+function forgeShaped(c, serverName, inp, opts) {
+  if (coordinates(inp)) return true;
+  if (localOnly(inp)) return false;
+  if (c.forgeServer.test(serverName)) return true;
+  let listed = opts.forgeServers;
+  if (!Array.isArray(listed)) { try { listed = forgeServersOf(process.env.CLAUDE_PROJECT_DIR || opts.cwd || process.cwd(), process.env, (c.lex.hints || {}).mcpLaunch); } catch { listed = []; } }
+  return listed.some((n) => serverKey(n) === serverKey(serverName));
+}
+function classifyMcp(c, toolName, input, server, opts = {}) {
   const name = String(toolName);
   const at = name.lastIndexOf('__');
   const tool = name.slice(at + 2);
   const serverName = (server && server.name) || name.slice(5, at);
   const inp = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
   const extra = { change: keyValue(inp, c.lex.changeKeys || []), ref: keyValue(inp, c.lex.refKeys || []), head: keyValue(inp, c.lex.headKeys || []) };
-  // A passthrough to the forge's own API: read as that HTTP call.
-  const urlKey = ['path', 'url', 'endpoint', 'uri'].find((k) => typeof inp[k] === 'string');
-  if (urlKey && typeof inp.method === 'string' && METHODS.has(inp.method.toUpperCase())) {
-    const r = classifyApi(c, { method: inp.method, url: inp[urlKey], body: JSON.stringify(inp.body || inp.data || ''), bodyHidden: false }, 'mcp');
-    return r && { ...r, ...extra, why: `${tool}: ${r.why}` };
-  }
-  if (typeof inp.query === 'string' && /\b(?:query|mutation)\b|\{/.test(inp.query) && tokens(tool).includes('graphql')) {
-    const r = classifyApi(c, { method: 'POST', url: '/graphql', body: inp.query }, 'mcp');
-    return r && { ...r, ...extra, why: `${tool}: ${r.why}` };
-  }
   const toolWords = tokens(tool);
   const selectorWords = [];
   const flagWords = [];
   for (const k of Object.keys(inp)) {
     if (c.selectors.has(k) && typeof inp[k] === 'string') selectorWords.push(...tokens(inp[k]));
-    else if (inp[k] === true) flagWords.push(...tokens(k));
+    else if (inp[k] === true) flagWords.push(...tokens(k), k.toLowerCase());
+  }
+  // Every result leaves through here: a ref or release act needs a forge-shaped server; a release is read by its tag, a
+  // merge that lands later is armed.
+  const done = (r) => {
+    if (!r) return null;
+    if ((r.concept === BRANCH || r.concept === RELEASE) && !forgeShaped(c, serverName, inp, opts)) return null;
+    const out = { ...r };
+    if (r.concept === RELEASE) out.ref = keyValue(inp, c.lex.tagKeys || []) || r.ref;
+    if (r.concept === MERGE && armedBy(c, [...toolWords, ...selectorWords, ...flagWords])) out.armed = true;
+    return out;
+  };
+  // A passthrough to the forge's own API: read as that HTTP call.
+  const urlKey = ['path', 'url', 'endpoint', 'uri'].find((k) => typeof inp[k] === 'string');
+  if (urlKey && typeof inp.method === 'string' && METHODS.has(inp.method.toUpperCase())) {
+    const r = classifyApi(c, { method: inp.method, url: inp[urlKey], body: JSON.stringify(inp.body || inp.data || ''), bodyHidden: false }, 'mcp');
+    return done(r && { ...r, ...extra, why: `${tool}: ${r.why}` });
+  }
+  if (typeof inp.query === 'string' && /\b(?:query|mutation)\b|\{/.test(inp.query) && toolWords.includes('graphql')) {
+    const r = classifyApi(c, { method: 'POST', url: '/graphql', body: inp.query }, 'mcp');
+    return done(r && { ...r, ...extra, why: `${tool}: ${r.why}` });
   }
   const nouns = nounsIn(c, [...toolWords, ...selectorWords]);
-  const fileAsRef = !!extra.ref || c.forgeServer.test(serverName);
   if (!(nouns.change || nouns.review || nouns.release || nouns.ref || nouns.file || nouns.pipeline) && !toolWords.includes('push')) return null;
   const toolVerb = bestVerb(c, toolWords);
   const label = `${tool}${selectorWords.length ? ` (${selectorWords.join('_')})` : ''}`;
@@ -403,7 +457,7 @@ function classifyMcp(c, toolName, input, server) {
   // `{state: 'completed'}` on a list is a filter, not a completion.
   if (toolVerb && (toolVerb.cls === 'read' || toolVerb.cls === 'watch') && !toolWords.some((w) => { const v = c.verbOf.get(w); return v && v !== 'read' && v !== 'watch'; })) {
     const concept = conceptOf(toolVerb.cls, nouns, true);
-    return concept ? result(concept, 'known', 'mcp', label, extra) : null;
+    return concept ? done(result(concept, 'known', 'mcp', label, extra)) : null;
   }
   const flagVerb = bestVerb(c, flagWords);
   const selVerb = bestVerb(c, selectorWords);
@@ -414,14 +468,13 @@ function classifyMcp(c, toolName, input, server) {
     if (!other.length || other.some((w) => c.nounOf.get(w) === 'ref' || c.nounOf.get(w) === 'file' || c.nounOf.get(w) === 'change')) return result(BRANCH, 'known', 'mcp', label, extra);
     return null;
   }
-  if (!verb) return unknownOf(nouns, 'mcp', `${label}: names a forge object but no known verb`, extra);
-  const concept = conceptOf(verb.cls, nouns, fileAsRef);
-  if (concept) return result(concept, 'known', 'mcp', label, extra);
-  return null;
+  if (!verb) return done(unknownOf(nouns, 'mcp', `${label}: names a forge object but no known verb`, extra));
+  const concept = conceptOf(verb.cls, nouns, true);
+  return concept ? done(result(concept, 'known', 'mcp', label, extra)) : null;
 }
 
 // ---- the one entry -------------------------------------------------------------------------------------------------
-// classify(payload, { lexicon? }) - a PreToolUse payload (`tool_name`, `tool_input`, `mcp_server`, `cwd`) read as one
+// classify(payload, { lexicon?, forgeServers? }) - a PreToolUse payload (`tool_name`, `tool_input`, `mcp_server`, `cwd`) read as one
 // result: { concept, strength: 'known'|'unknown', transport: 'shell'|'api'|'mcp', change, ref, head, why } plus, on the
 // shell route, `at` / `end` - where the act sits in the (alias-expanded) command. Several acts in one command: the
 // strongest. Not a forge call: null.
@@ -431,7 +484,7 @@ function classify(payload, opts = {}) {
   const input = payload.tool_input || {};
   const lex = opts.lexicon || loadLexicon(payload.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd());
   const c = compile(lex);
-  if (/^mcp__/.test(toolName)) return isStackServer(toolName) ? null : classifyMcp(c, toolName, input, payload.mcp_server);
+  if (/^mcp__/.test(toolName)) return isStackServer(toolName) ? null : classifyMcp(c, toolName, input, payload.mcp_server, { forgeServers: opts.forgeServers, cwd: payload.cwd });
   if (/^(?:Bash|PowerShell|Monitor)$/.test(toolName)) {
     const all = classifyShell(c, input.command, payload.cwd);
     return all.reduce((best, r) => (rankOf(r) > rankOf(best) ? r : best), null);
@@ -447,33 +500,93 @@ function classifyCommand(command, cwd, opts = {}) {
 
 // ---- the act ledger ------------------------------------------------------------------------------------------------
 // Every publish a gate ALLOWS (and every unknown call it asked about) is one row in
-// <data root>/state/forge/ACTS-<session>.jsonl - what the ref watch reads to tell a gated move from an ungated one.
-// Written at PreToolUse, before the act runs: a row whose act was then refused or failed only ever covers a move that did
-// not happen. Best effort - a ledger write never changes a verdict.
+// <data root>/state/forge/ACTS-<session>.jsonl under the REPOSITORY's root (ledgerRoot: a worktree and its main checkout
+// share one) - what the ref watch reads to tell a gated move from an ungated one. Written at PreToolUse with the call's
+// tool_use_id, before the act runs; the watch's PostToolUse appends a `confirm` row once the call finished, and a row never
+// confirmed (refused, failed, interrupted) covers nothing. A row with no tool_use_id counts as confirmed. Best effort - a
+// ledger write never changes a verdict.
 const sessionFile = (sessionId) => `ACTS-${String(sessionId || 'unknown').replace(/[^A-Za-z0-9_-]/g, '_')}.jsonl`;
 function actsPath(projectRoot, sessionId, env = process.env) {
   return require('./layout.js').statePath(projectRoot, 'forge', sessionFile(sessionId), env);
+}
+// The repository's one root: the main checkout a worktree belongs to (the parent of the common `.git`), else the work
+// tree's top; null outside git.
+function ledgerRoot(cwd) {
+  const common = gitOut(cwd, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
+  if (common && path.basename(common) === '.git') return path.dirname(common);
+  return gitOut(cwd, ['rev-parse', '--show-toplevel']);
 }
 function recordAct(projectRoot, sessionId, act, env = process.env) {
   try {
     const file = actsPath(projectRoot, sessionId, env);
     fs.mkdirSync(path.dirname(file), { recursive: true });
     const row = { concept: act.concept || null, change: act.change || null, ref: act.ref || null, head: act.head || null, asked: !!act.asked, at: Date.now() };
+    if (act.all) row.all = true;
+    // An armed merge (forge.js armedBy) lives until it explains one landing, so it carries an id the watch marks used.
+    if (act.armed) { row.armed = true; row.id = act.id || `${Date.now().toString(36)}-${process.pid}-${Math.random().toString(36).slice(2, 8)}`; }
+    if (act.tool_use_id) row.tool_use_id = String(act.tool_use_id);
     fs.appendFileSync(file, `${JSON.stringify(row)}\n`);
   } catch { /* the ledger is never allowed to break a gate */ }
 }
-function readActs(projectRoot, sessionId, env = process.env) {
+function ledgerRows(projectRoot, sessionId, env) {
   try {
     return fs.readFileSync(actsPath(projectRoot, sessionId, env), 'utf8').split('\n').filter(Boolean)
-      .map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+      .map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter((r) => r && typeof r === 'object');
   } catch { return []; }
+}
+// The acts, each with `confirmed`.
+function readActs(projectRoot, sessionId, env = process.env) {
+  const rows = ledgerRows(projectRoot, sessionId, env);
+  const done = new Set(rows.filter((r) => r.confirm).map((r) => String(r.confirm)));
+  return rows.filter((r) => !r.confirm).map((r) => ({ ...r, confirmed: !r.tool_use_id || done.has(String(r.tool_use_id)) }));
+}
+// PostToolUse: the call `toolUseId` finished - confirm its act, when the ledger holds one. True when it did.
+function confirmAct(projectRoot, sessionId, toolUseId, env = process.env) {
+  if (!toolUseId) return false;
+  const id = String(toolUseId);
+  if (!ledgerRows(projectRoot, sessionId, env).some((r) => !r.confirm && r.tool_use_id === id)) return false;
+  try { fs.appendFileSync(actsPath(projectRoot, sessionId, env), `${JSON.stringify({ confirm: id, at: Date.now() })}\n`); return true; } catch { return false; }
+}
+
+// ---- the forge MCP servers the configs launch -----------------------------------------------------------------------
+// Every MCP server outside the stack whose launch command, arguments or URL carries a forge server's mark (the lexicon's
+// hints.mcpLaunch), never its name: the project's .mcp.json, the account's user-scope servers and its entry for this
+// project (keyed by the path as the CLI spelled it). Read once per process: a Stop classifies every MCP call of its turn,
+// and ~/.claude.json runs to megabytes.
+const serversRead = new Map();
+const readJsonObject = (file) => { try { const v = JSON.parse(fs.readFileSync(file, 'utf8')); return v && typeof v === 'object' && !Array.isArray(v) ? v : null; } catch { return null; } };
+function forgeServersOf(root, env = process.env, marks = null) {
+  const home = env.HOME || env.USERPROFILE || (() => { try { return require('node:os').homedir(); } catch { return ''; } })();
+  const accountFile = path.join(env.CLAUDE_CONFIG_DIR || home, '.claude.json');
+  const memo = `${root}\0${accountFile}\0${(marks || []).join('\0')}`;
+  if (serversRead.has(memo)) return serversRead.get(memo);
+  const account = readJsonObject(accountFile) || {};
+  const projects = account.projects && typeof account.projects === 'object' ? account.projects : {};
+  const own = projects[root] || projects[String(root).split(path.sep).join('/')] || {};
+  const sources = [(readJsonObject(path.join(root, '.mcp.json')) || {}).mcpServers, account.mcpServers, own.mcpServers];
+  const wanted = (marks || (baseLexicon().hints || {}).mcpLaunch || []).map((m) => String(m).toLowerCase());
+  const found = new Set();
+  for (const servers of sources) {
+    if (!servers || typeof servers !== 'object') continue;
+    for (const [name, entry] of Object.entries(servers)) {
+      if (!entry || typeof entry !== 'object' || isStackServer(`mcp__${name}__x`)) continue;
+      const args = Array.isArray(entry.args) ? entry.args : [];
+      const launch = [entry.command, ...args, entry.url].filter((v) => typeof v === 'string').join(' ').toLowerCase();
+      if (wanted.some((m) => launch.includes(m))) found.add(name);
+    }
+  }
+  serversRead.set(memo, [...found]);
+  return [...found];
 }
 
 // ---- the remote, read with plain git -------------------------------------------------------------------------------
 // Every forge speaks git, so the remote's refs are the one transport-neutral fact: `git ls-remote`, bounded so a dead
-// network or a credential prompt never hangs a hook (a timed-out PreToolUse hook fails OPEN). No terminal prompt; ssh in
-// batch mode with a connect timeout - appended to the user's own GIT_SSH_COMMAND, and left alone when core.sshCommand
-// carries their key setup (the spawn cap still bounds it).
+// network or a credential prompt never hangs a hook (a timed-out PreToolUse hook fails OPEN). No prompt of any kind: no
+// terminal, no askpass program (git runs GIT_ASKPASS / core.askPass / SSH_ASKPASS with terminal prompts off - an editor's
+// askpass pops a dialog; measured 2026-10-23, a 401 remote asked it for a username and a password), no interactive
+// credential helper (`credential.interactive=false`, git 2.46+; GCM_INTERACTIVE for Git Credential Manager); a stored
+// credential still answers. ssh in batch mode with a connect timeout - appended to the user's own GIT_SSH_COMMAND, and
+// left alone when core.sshCommand carries their key setup (the spawn cap still bounds it).
 const LS_REMOTE_MS = 6000;
 const { spawnSync } = require('node:child_process');
 const gitOut = (cwd, args, ms = 5000) => {
@@ -481,7 +594,8 @@ const gitOut = (cwd, args, ms = 5000) => {
   return r.status === 0 ? String(r.stdout || '').trim() : null;
 };
 function networkEnv(cwd) {
-  const env = { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0' };
+  // An empty GIT_ASKPASS ends git's whole askpass chain: core.askPass and SSH_ASKPASS are read only when it is unset.
+  const env = { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', GIT_ASKPASS: '', SSH_ASKPASS: '', SSH_ASKPASS_REQUIRE: 'never', GCM_INTERACTIVE: 'never' };
   const batch = '-o BatchMode=yes -o ConnectTimeout=5';
   if (env.GIT_SSH_COMMAND) env.GIT_SSH_COMMAND = `${env.GIT_SSH_COMMAND} ${batch}`;
   else if (!gitOut(cwd, ['config', 'core.sshCommand'])) env.GIT_SSH_COMMAND = `ssh ${batch}`;
@@ -499,7 +613,7 @@ function remoteOf(cwd) {
 // when `symref` is set).
 function lsRemote(cwd, remote, patterns = null, opts = {}) {
   if (!remote) return { ok: false, refs: new Map(), reason: 'no remote' };
-  const args = ['ls-remote', ...(opts.symref ? ['--symref'] : []), ...(patterns ? [] : ['--heads', '--tags']), remote, ...(patterns || [])];
+  const args = ['-c', 'credential.interactive=false', 'ls-remote', ...(opts.symref ? ['--symref'] : []), ...(patterns ? [] : ['--heads', '--tags']), remote, ...(patterns || [])];
   const r = spawnSync('git', ['-c', 'core.fsmonitor=false', ...args], { cwd, timeout: opts.timeout || LS_REMOTE_MS, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'], env: networkEnv(cwd) });
   if (r.error || r.status !== 0) {
     // git's first `fatal:` / `ssh:` line names the cause; the lines after it are advice ('and the repository exists').
@@ -548,7 +662,8 @@ function unseenHead({ cwd, change, sha, receiptHead }) {
 
 // The branches and tags a `git push` writes, from its argv after `push`: each refspec's destination (`src:dst`, `+dst`,
 // `:dst` deletes it, a bare name is its own), the current branch's upstream name when it names none or `HEAD`. Null when it
-// pushes refs it does not name (`--all`, `--mirror`, `--tags`, `--follow-tags`) - a null target covers every move.
+// pushes refs it does not name (`--all`, `--mirror`, `--tags`, `--follow-tags`) - such an act covers every move. A detached
+// HEAD it cannot name is left out: [] names nothing, and the act then lands one move at its head.
 const PUSH_VALUE = new Set(['--repo', '-o', '--push-option', '--receive-pack', '--exec']);
 function pushTargets(argv, cwd) {
   const words = (argv || []).map(String);
@@ -565,16 +680,16 @@ function pushTargets(argv, cwd) {
     return merge ? merge.replace(/^refs\/heads\//, '') : branch;
   };
   const specs = positional.slice(1);
-  if (!specs.length) { const c = current(); return c ? [c] : null; }
+  if (!specs.length) { const c = current(); return c ? [c] : []; }
   const out = [];
   for (const spec of specs) {
     const s = spec.replace(/^\+/, '');
     let dst = s.includes(':') ? s.slice(s.lastIndexOf(':') + 1) : s;
     dst = dst.replace(/^refs\/(?:heads|tags)\//, '');
-    if (!dst || dst === 'HEAD') { const c = current(); if (!c) return null; dst = c; }
+    if (!dst || dst === 'HEAD') { const c = current(); if (!c) continue; dst = c; }
     out.push(dst);
   }
   return out;
 }
 
-module.exports = { classify, classifyCommand, loadLexicon, isStackServer, tokens, recordAct, readActs, actsPath, remoteOf, lsRemote, changeHead, unseenHead, pushTargets, gitOut, LS_REMOTE_MS, CONCEPTS, PUBLISH, PREF_HOLD };
+module.exports = { classify, classifyCommand, loadLexicon, isStackServer, tokens, recordAct, readActs, confirmAct, actsPath, ledgerRoot, forgeServersOf, remoteOf, lsRemote, changeHead, unseenHead, pushTargets, gitOut, LS_REMOTE_MS, CONCEPTS, PUBLISH, PREF_HOLD };

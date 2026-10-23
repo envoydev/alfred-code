@@ -1214,14 +1214,22 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     not a list of CLIs or servers). `forge.js` reads any call as a concept by its WORDS - a CLI's noun then verb, an API
     call's method and path, an MCP tool's name and its selector values - so `guard-ungated-commit.js` gates a merge or a
     branch write on every transport and `preferences-session.js` holds the first one; a forge noun with no known verb is
-    `unknown` (an ask, a deny when unattended). Every publish the gate allows is ledgered in
-    `<data root>/state/forge/ACTS-<session>.jsonl`, a `git push` one row per ref it names (`forge.js pushTargets`).
+    `unknown` (an ask, a deny when unattended). On the MCP route a branch, tag, file or release word counts only on a
+    FORGE-SHAPED server (repo coordinates in the input, a forge word in the key with no local `repo_path`, or launched as
+    a forge server) - Supabase branches, Sentry releases and AWS tags are not forge calls (final review F3). Every publish
+    the gate allows, the push half off included, is ledgered in `<data root>/state/forge/ACTS-<session>.jsonl` under the
+    REPOSITORY's root (`forge.js ledgerRoot` - a worktree and its main checkout share one), a `git push` one row per
+    ref it names (`forge.js pushTargets`), each with its `tool_use_id`; the watch trusts a row once its PostToolUse
+    confirmed it.
     The hook itself: one line under 200 chars at start (the remote, its host and kind, the forge CLIs on PATH, the MCP
     servers that are forge servers by launch command or URL, never by name, the watch state); then the REF WATCH -
     a detached `--snapshot` child takes the baseline (`REFS-<session>.json`, every branch and tag by `git ls-remote`,
     `GIT_TERMINAL_PROMPT=0`, ssh BatchMode, 6s cap); PostToolUse after a merge, branch write, release or unknown call
-    re-reads and blocks on a LOUD move no act covers; `Stop` diffs once more when the turn ran anything but a known read.
-    Loud: the default branch, the upstream, a branch GIT-PREFERENCES.md names in backticks, a commit in this checkout, any
+    re-reads and blocks on a LOUD move no act covers; `Stop` diffs once more when the turn ran anything but a known read
+    (an allowlist of read tools), a PostToolUse marked the cycle (a seat's call), or the last turn left background work
+    running. An act covers the ref it aims at; one naming no ref lands ONE move (at its head, else the single loud
+    candidate - with several it covers none and says so); an armed auto-merge persists across turns until it lands.
+    Loud: the default branch, the upstream, a branch GIT-PREFERENCES.md names in backticks, a commit a local branch holds, any
     tag - blocked once per cycle; the rest is one summary `systemMessage`. An ASKED act covers nothing (Task 6 ruling,
     revising Task 2's). `REFS-LAST.json` carries the end snapshot to the next session, which reports only after an
     asked call. Unreachable is `not checked (<why>)`, never clean. `forge-session:watch` in `ALFRED_CODE_HOOKS_OFF` off,

@@ -11,19 +11,21 @@
 //
 // THE REF WATCH - every branch and tag on the remote, read with plain git (`ls-remote`, bounded in forge.js), so a move no
 // gated act explains is reported whichever tool made it: a script, a browser click, a forge tool no lexicon names.
-// - SessionStart spawns a detached `--snapshot` child: the session's baseline in <data root>/state/forge/REFS-<session>.json.
-// - PostToolUse after a merge, a branch write, a release or a forge call nobody could read: re-read and diff; a LOUD move
-//   no ledger act covers blocks with feedback to stop and report it.
-// - Stop, when the turn ran anything but a known read: diff once more. Loud moves block once per cycle; the rest is one
-//   summary line for the user (`systemMessage`). Loud: the default branch, the upstream, a branch GIT-PREFERENCES.md names,
-//   a branch whose new sha is a commit in this checkout, any tag. The baseline then moves to now.
+// - SessionStart spawns a detached `--snapshot` child: the session's baseline in <data root>/state/forge/REFS-<session>.json,
+//   under the repository's root (forge.js ledgerRoot), beside the commit guard's act ledger.
+// - PostToolUse on every gated route: confirm the call's ledgered act, and mark the cycle dirty when the call could move a
+//   ref (a seat's calls too). After a merge, a branch write, a release or a forge call nobody could read: re-read and diff;
+//   a LOUD move no ledger act covers blocks with feedback to stop and report it.
+// - Stop, when the turn ran anything but a known read, the cycle is dirty, or background work was left running: diff once
+//   more. Loud moves block once per cycle; the rest is one summary line for the user (`systemMessage`). Loud: the default
+//   branch, the upstream, a branch GIT-PREFERENCES.md names, a branch whose new sha a local branch holds, any tag. The
+//   baseline then moves to now.
 // - The end snapshot is kept per repo (REFS-LAST.json); the next session's child diffs against it and reports only when
 //   that session asked about a forge call (an armed auto-merge landing later).
 // An unreachable remote is `ref watch: not checked (<why>)`, never clean. `forge-session:watch` in ALFRED_CODE_HOOKS_OFF
 // turns the watch off; ALFRED_CODE_FORGE_WATCH=loud-only drops the summary tier and the session line says so.
 'use strict';
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 
 // The classifier engine beside it; an install without it says nothing (fail-open, like a missing prelude).
@@ -67,28 +69,6 @@ function clisOnPath(names, env) {
   return names.filter((name) => dirs.some((dir) => exts.some((ext) => runnable(path.join(dir, name + ext)) || runnable(path.join(dir, name + ext.toLowerCase())))));
 }
 
-// Every MCP server outside the stack whose launch command, arguments or URL carries a forge server's mark: the project's
-// .mcp.json, the account's user-scope servers and its entry for this project (keyed by the path as the CLI spelled it).
-function forgeServers(root, env, marks) {
-  const home = env.HOME || env.USERPROFILE || (() => { try { return os.homedir(); } catch { return ''; } })();
-  const account = readJson(path.join(env.CLAUDE_CONFIG_DIR || home, '.claude.json')) || {};
-  const projects = account.projects && typeof account.projects === 'object' ? account.projects : {};
-  const own = projects[root] || projects[root.split(path.sep).join('/')] || {};
-  const sources = [(readJson(path.join(root, '.mcp.json')) || {}).mcpServers, account.mcpServers, own.mcpServers];
-  const wanted = (marks || []).map((m) => String(m).toLowerCase());
-  const found = new Set();
-  for (const servers of sources) {
-    if (!servers || typeof servers !== 'object') continue;
-    for (const [name, entry] of Object.entries(servers)) {
-      if (!entry || typeof entry !== 'object' || forge.isStackServer(`mcp__${name}__x`)) continue;
-      const args = Array.isArray(entry.args) ? entry.args : [];
-      const launch = [entry.command, ...args, entry.url].filter((v) => typeof v === 'string').join(' ').toLowerCase();
-      if (wanted.some((m) => launch.includes(m))) found.add(name);
-    }
-  }
-  return [...found];
-}
-
 // { host, kind, remote, clis, mcp, watch: 'on' | 'off' | 'loud-only', why } for the repo at `cwd`.
 function profile(cwd, env = process.env) {
   const h = hints();
@@ -98,7 +78,8 @@ function profile(cwd, env = process.env) {
   const host = remote ? hostOf(url) : null;
   const clis = clisOnPath([...new Set(Object.values(h.clis || {}))], env);
   let mcp = [];
-  try { mcp = forgeServers(path.resolve(root), env, h.mcpLaunch); } catch { /* a config we cannot read lists no server */ }
+  // A forge MCP server is found by its launch command or URL in the MCP configs (forge.js forgeServersOf).
+  try { mcp = forge.forgeServersOf(path.resolve(root), env, h.mcpLaunch); } catch { /* a config we cannot read lists no server */ }
   let watch = 'on', why = null;
   if (partOff('watch', env)) { watch = 'off'; why = 'switched off'; }
   else if (!remote) { watch = 'off'; why = 'no remote'; }
@@ -166,6 +147,9 @@ const isTag = (ref) => /^refs\/tags\//.test(String(ref));
 const s7 = (sha) => String(sha || '').slice(0, 7);
 const loudOnly = (env) => String(envOf(env, 'FORGE_WATCH') || '').trim().toLowerCase() === 'loud-only';
 const rootOf = (cwd, env) => env.CLAUDE_PROJECT_DIR || forge.gitOut(cwd, ['rev-parse', '--show-toplevel']) || cwd;
+// The watch's state lives with the repository, where the commit guard ledgers its acts (forge.js ledgerRoot): a session
+// in the main checkout and a push from its worktree read one ledger.
+const stateRoot = (cwd, env) => forge.ledgerRoot(cwd) || rootOf(cwd, env);
 
 // { ok, remote, refs: { ref: sha }, at, head?, reason? } - every branch and tag; `symref` also reads the default branch.
 function snapshot(cwd, remote, { symref = false } = {}) {
@@ -186,17 +170,26 @@ function diffRefs(before, after) {
   for (const ref of new Set([...Object.keys(a), ...Object.keys(b)])) if ((a[ref] || null) !== (b[ref] || null)) moves.push({ ref, from: a[ref] || null, to: b[ref] || null });
   return moves.sort((x, y) => (x.ref < y.ref ? -1 : x.ref > y.ref ? 1 : 0));
 }
-// The commits among `shas` this checkout holds - one `cat-file --batch-check` for all of them.
+// The commits among `shas` a LOCAL branch holds - this checkout's own work, not a teammate's commit a fetch brought in: one
+// `cat-file --batch-check` for which exist, then `for-each-ref --contains` for each that does (capped; past the cap, or when
+// git cannot answer, an existing commit counts as local - failing toward loud).
+const LOCAL_CHECK_MAX = 16;
 function localShas(cwd, shas) {
   const list = [...new Set(shas.filter(Boolean))];
-  const have = new Set();
-  if (!list.length) return have;
+  const local = new Set();
+  if (!list.length) return local;
   const r = spawnSync('git', ['-c', 'core.fsmonitor=false', 'cat-file', '--batch-check'], { cwd, input: `${list.join('\n')}\n`, encoding: 'utf8', timeout: 3000, maxBuffer: 16 * 1024 * 1024, stdio: ['pipe', 'pipe', 'ignore'] });
+  const have = [];
   for (const line of String(r.stdout || '').split('\n')) {
     const m = /^([0-9a-f]{40,64}) (\S+)/.exec(line);
-    if (m && m[2] !== 'missing') have.add(m[1]);
+    if (m && m[2] !== 'missing') have.push(m[1]);
   }
-  return have;
+  have.forEach((sha, n) => {
+    if (n >= LOCAL_CHECK_MAX) { local.add(sha); return; }
+    const b = spawnSync('git', ['-c', 'core.fsmonitor=false', 'for-each-ref', '--count=1', '--format=%(refname)', '--contains', sha, 'refs/heads'], { cwd, encoding: 'utf8', timeout: 3000, stdio: ['ignore', 'pipe', 'ignore'] });
+    if (b.status !== 0 || String(b.stdout || '').trim()) local.add(sha);
+  });
+  return local;
 }
 // The branch names GIT-PREFERENCES.md spells in backticks (`main`, `develop`, `release/2.x`) - the first copy found.
 function preferenceBranches(root) {
@@ -245,21 +238,38 @@ function actTarget(ref, remote) {
   if (remote && s.startsWith(`${remote}/`)) s = s.slice(remote.length + 1);
   return !s || s === 'HEAD' ? null : s;
 }
-// Covered: the new sha is a ledger act's head, or a gated merge / push targeted this ref (or named none), or a release
-// explains a new tag. An ASKED act covers nothing - the gate could not read it, so what moved after it is reported.
-function covered(move, acts, remote) {
-  const { MERGE, BRANCH, RELEASE } = forge.CONCEPTS;
-  const name = short(move.ref);
-  return (acts || []).some((a) => {
-    if (!a || a.asked) return false;
-    const head = String(a.head || '');
-    if (move.to && head.length >= 7 && (move.to.startsWith(head) || head.startsWith(move.to))) return true;
+// Which moves the ledger explains. An act AIMED at a ref - a push's refspec, a merge's base, a release's tag - covers that
+// ref; a merge also covers the deletion of the branch its head sat on (deleted on merge). A push naming refs it does not
+// list (`all`: --all, --tags, --mirror) covers every move. An act naming no ref lands ONE move: the one at its head, else
+// the one loud move it could be - with several, it explains none of them and says so (`ambiguous`). An ASKED act, or one
+// whose call PostToolUse never confirmed, covers nothing. `used`: the armed acts that explained a move.
+const ACT_WORD = { 'change.merge': 'merge', 'release.write': 'release', 'branch.write': 'branch write' };
+function explain(moves, acts, remote, ctx) {
+  const { MERGE, RELEASE } = forge.CONCEPTS;
+  const open = new Set(moves);
+  const used = new Set();
+  const ambiguous = [];
+  const atHead = (a, sha) => { const h = String(a.head || ''); return !!sha && h.length >= 7 && (sha.startsWith(h) || h.startsWith(sha)); };
+  const fits = (a, m) => (a.concept === RELEASE ? isTag(m.ref) : a.concept === MERGE ? !isTag(m.ref) : true);
+  const take = (a, m) => { open.delete(m); if (a.armed && a.id) used.add(a.id); };
+  const loose = [];
+  for (const a of (acts || []).filter((x) => x && !x.asked && x.confirmed !== false)) {
+    if (a.all) { for (const m of [...open]) take(a, m); continue; }
+    if (a.concept === MERGE) for (const m of [...open]) if (!m.to && !isTag(m.ref) && atHead(a, m.from)) take(a, m);
     const target = actTarget(a.ref, remote);
-    const aims = target === null || target === name;
-    if (a.concept === RELEASE) return isTag(move.ref) && aims;
-    if (a.concept === BRANCH) return aims;
-    return a.concept === MERGE && !isTag(move.ref) && aims;
-  });
+    if (target === null) { loose.push(a); continue; }
+    for (const m of [...open]) if (short(m.ref) === target && fits(a, m)) take(a, m);
+  }
+  for (const a of loose) {
+    const can = [...open].filter((m) => m.to && fits(a, m) && (a.concept !== RELEASE || !m.from));
+    const hit = can.find((m) => atHead(a, m.to));
+    const loud = can.filter((m) => tierOf(m, ctx) === 'loud');
+    if (hit) take(a, hit);
+    else if (loud.length === 1) take(a, loud[0]);
+    else if (loud.length > 1) ambiguous.push({ act: a, moves: loud });
+    else if (can.length === 1) take(a, can[0]);
+  }
+  return { open: [...open], used, ambiguous: ambiguous.map((x) => ({ ...x, moves: x.moves.filter((m) => open.has(m)) })).filter((x) => x.moves.length > 1) };
 }
 function moveText(m) {
   const name = isTag(m.ref) ? `tag ${short(m.ref)}` : short(m.ref);
@@ -275,14 +285,23 @@ function summaryLine(moves, lead) {
   const shown = names.slice(0, SUMMARY_NAMES).join(', ') + (names.length > SUMMARY_NAMES ? ` +${names.length - SUMMARY_NAMES} more` : '');
   return `Ref watch: ${lead}: ${shown} - teammates or this session.`;
 }
-// The loud and summary moves among `moves` that no act covers and nothing reported already.
-function judge(cwd, remote, state, root, moves, acts) {
-  const open = moves.filter((m) => !covered(m, acts, remote));
-  const ctx = tierContext(cwd, remote, state, root, open);
+// The loud and summary moves among `moves` that no act covers, the line naming each act that could be one of several, and
+// the armed acts used up.
+function judge(cwd, remote, state, prefsRoot, moves, acts) {
+  const ctx = tierContext(cwd, remote, state, prefsRoot, moves);
+  const { open, used, ambiguous } = explain(moves, acts, remote, ctx);
   const loud = open.filter((m) => tierOf(m, ctx) === 'loud');
-  return { ctx, loud, summary: open.filter((m) => !loud.includes(m)) };
+  const notes = ambiguous.map((x) => `Ref watch: one gated ${ACT_WORD[x.act.concept] || 'act'} this turn explains at most one of: ${x.moves.map((m) => short(m.ref)).join(', ')}.`);
+  return { ctx, loud, summary: open.filter((m) => !loud.includes(m)), used, notes };
 }
-const actsSince = (root, session, at, env) => forge.readActs(root, session, env).filter((a) => Number(a.at) >= Number(at || 0) - 1000);
+// The acts that can explain a move now: this cycle's (since the baseline, a second of clock slack), and an armed merge from
+// any earlier turn of the session until it explains one landing - an auto-merge lands when its checks pass.
+function windowActs(root, session, state, env) {
+  const consumed = new Set((state && state.consumed) || []);
+  const since = Number((state && state.at) || 0) - 1000;
+  return forge.readActs(root, session, env).filter((a) => Number(a.at) >= since || (a.armed && a.id && !consumed.has(a.id)));
+}
+const consumedAfter = (state, used) => [...new Set([...((state && state.consumed) || []), ...(used || [])])].slice(-200);
 async function baselineOf(root, session, env, waitMs) {
   const file = sessionFile(root, session, env);
   for (let waited = 0; ; waited += 100) {
@@ -298,7 +317,7 @@ function snapshotChild(cwd, session, source, env) {
   if (!forge || !cwd || partOff('watch', env)) return;
   const remote = forge.remoteOf(cwd);
   if (!remote) return;
-  const root = rootOf(cwd, env);
+  const root = stateRoot(cwd, env);
   const file = sessionFile(root, session, env);
   // A compaction keeps the live baseline (the turn it interrupted is still being watched); a start, resume or clear
   // retakes it, so moves between sessions are never this session's report.
@@ -310,7 +329,7 @@ function snapshotChild(cwd, session, source, env) {
   if (last && last.session !== session && last.unknown && last.remote === remote && last.refs) {
     const moves = diffRefs(last.refs, now.refs);
     if (moves.length) {
-      const { ctx, loud, summary } = judge(cwd, remote, now, root, moves, []);
+      const { ctx, loud, summary } = judge(cwd, remote, now, rootOf(cwd, env), moves, []);
       writeJson(noteFile(root, session, env), {
         loud: loud.map((m) => loudLine(m, ctx, 'since the last session, which made a forge call the gate could not read')),
         summary: summaryLine(summary, 'since the last session (a forge call the gate could not read), other branches moved'),
@@ -328,14 +347,14 @@ function spawnSnapshot(cwd, session, source) {
 }
 
 // ---- which calls a turn ran, and which of them could move a ref ------------------------------------------------------
-// The turn is everything after the last real prompt in the transcript's tail; null when the transcript cannot be read
-// (the Stop then diffs - failing toward a check).
+// The turn is everything after the last real prompt in the transcript's tail; null when the transcript cannot be read, or
+// the tail holds no prompt - the turn began before it (the Stop then diffs - failing toward a check).
 const TAIL_BYTES = 4 * 1024 * 1024;
 function turnCalls(file) {
-  let text;
+  let text, from;
   try {
     const size = fs.statSync(file).size;
-    const from = Math.max(0, size - TAIL_BYTES);
+    from = Math.max(0, size - TAIL_BYTES);
     const fd = fs.openSync(file, 'r');
     try { const buf = Buffer.alloc(size - from); fs.readSync(fd, buf, 0, buf.length, from); text = buf.toString('utf8'); } finally { fs.closeSync(fd); }
   } catch { return null; }
@@ -347,17 +366,18 @@ function turnCalls(file) {
   };
   const calls = [];
   const lines = text.split('\n');
+  let prompt = false;
   for (let i = lines.length - 1; i >= 0; i--) {
     if (!lines[i]) continue;
     let o;
     try { o = JSON.parse(lines[i]); } catch { continue; }
     if (!o || typeof o !== 'object') continue;
-    if (o.type === 'user' && isPrompt(o)) break;
+    if (o.type === 'user' && isPrompt(o)) { prompt = true; break; }
     if (o.type === 'assistant' && o.message && Array.isArray(o.message.content)) {
       for (const b of o.message.content) if (b && b.type === 'tool_use') calls.push({ name: String(b.name || ''), input: b.input || {} });
     }
   }
-  return calls;
+  return prompt || from === 0 ? calls : null;
 }
 // The local programs a shell turn may run and still be a read for the remote's refs, and git's local subcommands. Not a
 // boundary - anything else, a script or a build included, makes the Stop diff.
@@ -390,10 +410,15 @@ function shellIsRead(command, cwd) {
   }
   return true;
 }
-// A call that cannot move a remote ref: an editor or reader tool, a stack server, a forge read, a read-only shell turn.
+// The tools that cannot move a remote ref by themselves: readers, local editors, the model's own bookkeeping. Anything not
+// named - a seat dispatch, a message to one, a workflow, a tool a later release adds - counts as one that can.
+const READ_TOOLS = new Set(['Read', 'Grep', 'Glob', 'LS', 'Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'NotebookRead',
+  'TodoWrite', 'TodoRead', 'TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet', 'TaskOutput', 'WebFetch', 'WebSearch',
+  'ToolSearch', 'Skill', 'AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode', 'LSP', 'ListMcpResourcesTool',
+  'ReadMcpResourceTool']);
+// A call that cannot move a remote ref: a read tool, a stack server, a forge read, a read-only shell turn.
 function callIsRead(call, cwd) {
-  const name = call.name;
-  if (/^(?:Agent|Task)$/.test(name)) return false;
+  const name = String(call.name || '');
   if (/^(?:Bash|PowerShell|Monitor)$/.test(name)) return shellIsRead(call.input && call.input.command, cwd);
   if (/^mcp__/.test(name)) {
     if (forge.isStackServer(name)) return true;
@@ -401,65 +426,83 @@ function callIsRead(call, cwd) {
     try { r = forge.classify({ tool_name: name, tool_input: call.input, cwd }); } catch { r = null; }
     return !!r && r.strength === 'known' && (r.concept === forge.CONCEPTS.READ || r.concept === forge.CONCEPTS.WATCH);
   }
-  return true;
+  return READ_TOOLS.has(name);
 }
 
-// PostToolUse: the strong window after a call that may have moved a ref.
+// PostToolUse: confirm the call's ledgered act (forge.js confirmAct), mark the cycle dirty when the call could move a ref -
+// a seat's calls included, which the Stop's main transcript never shows - and the strong window after a call that may have
+// moved one.
 async function postCall(payload, env) {
   const { MERGE, BRANCH, RELEASE } = forge.CONCEPTS;
   const cwd = payload.cwd || process.cwd();
-  const root = rootOf(cwd, env);
+  const root = stateRoot(cwd, env);
   const session = payload.session_id;
-  if (!readJson(sessionFile(root, session, env))) return null; // no baseline (no remote, or the child failed): the Stop speaks
+  forge.confirmAct(root, session, payload.tool_use_id, env);
+  const file = sessionFile(root, session, env);
+  let state = readJson(file);
+  if (!state) return null; // no baseline (no remote, or the child failed): the Stop speaks
+  if (!state.dirty && !callIsRead({ name: payload.tool_name, input: payload.tool_input || {} }, cwd)) {
+    state = { ...state, dirty: true };
+    writeJson(file, state);
+  }
   let r = null;
   try { r = forge.classify(payload); } catch { r = null; }
   if (!r || !(r.strength === 'unknown' || [MERGE, BRANCH, RELEASE].includes(r.concept))) return null;
   // The gate ledgers merges and pushes; a release is held by preferences, not gated, so its act is written here.
   if (r.strength === 'known' && r.concept === RELEASE) forge.recordAct(root, session, { concept: RELEASE, ref: r.ref }, env);
   const remote = forge.remoteOf(cwd);
-  const state = readJson(sessionFile(root, session, env));
-  if (!remote || !state) return null;
+  if (!remote) return null;
   const now = snapshot(cwd, remote);
   if (!now.ok) return { systemMessage: `Ref watch: not checked (${now.reason}).` };
   const reported = state.reported || {};
   const moves = diffRefs(state.refs, now.refs).filter((m) => reported[m.ref] !== (m.to || ''));
-  const { ctx, loud } = judge(cwd, remote, state, root, moves, actsSince(root, session, state.at, env));
+  // An armed act is used up at the Stop, which judges these moves again.
+  const { ctx, loud, notes } = judge(cwd, remote, state, rootOf(cwd, env), moves, windowActs(root, session, state, env));
   if (!loud.length) return null;
   for (const m of loud) reported[m.ref] = m.to || '';
-  writeJson(sessionFile(root, session, env), { ...state, reported });
-  return { decision: 'block', reason: `${loud.map((m) => loudLine(m, ctx, 'right after this call')).join('\n')}\nStop and report this to the user before anything else; do not try to undo it unless they ask.` };
+  writeJson(file, { ...state, reported });
+  return { decision: 'block', reason: `${[...loud.map((m) => loudLine(m, ctx, 'right after this call')), ...notes].join('\n')}\nStop and report this to the user before anything else; do not try to undo it unless they ask.` };
 }
 
-// Stop: the catch-all diff, and the report the last session left.
+// Work still running when the turn ends can move a ref after this diff, so the next Stop diffs too - the Stop input's
+// `background_tasks` (code.claude.com/docs/en/hooks; the settled statuses as docs-session.js reads them).
+const SETTLED_STATUS = /^(?:completed?|done|failed|killed|stopped|cancell?ed|error|finished)$/i;
+const backgroundLive = (payload) => Array.isArray(payload.background_tasks)
+  && payload.background_tasks.some((t) => t && typeof t === 'object' && !SETTLED_STATUS.test(String(t.status || '')));
+
+// Stop: the catch-all diff, and the report the last session left. It diffs when the turn's transcript ran anything but a
+// read, or a PostToolUse marked the cycle dirty.
 async function stopTurn(payload, env) {
   const cwd = payload.cwd || process.cwd();
   const remote = forge.remoteOf(cwd);
   if (!remote) return null;
-  const root = rootOf(cwd, env);
+  const root = stateRoot(cwd, env);
   const session = payload.session_id;
   const note = readJson(noteFile(root, session, env));
   if (note) { try { fs.rmSync(noteFile(root, session, env), { force: true }); } catch { /* reported once either way */ } }
   const calls = typeof payload.transcript_path === 'string' ? turnCalls(payload.transcript_path) : null;
-  const ran = calls === null || calls.some((c) => !callIsRead(c, cwd));
+  const marked = readJson(sessionFile(root, session, env));
+  const ran = calls === null || !!(marked && marked.dirty) || calls.some((c) => !callIsRead(c, cwd));
   const loudLines = [...((note && note.loud) || [])];
   const notes = [];
   if (note && note.summary && !loudOnly(env)) notes.push(note.summary);
   if (ran) {
     const state = await baselineOf(root, session, env, 1500);
     const now = snapshot(cwd, remote);
+    const live = backgroundLive(payload);
     if (!now.ok) notes.push(`Ref watch: not checked (${now.reason}).`);
     else if (!state) {
       notes.push('Ref watch: not checked (no start snapshot yet; watching from now).');
-      writeJson(sessionFile(root, session, env), { ...now, reported: {} });
+      writeJson(sessionFile(root, session, env), { ...now, reported: {}, dirty: live });
     } else {
       const reported = state.reported || {};
       const moves = diffRefs(state.refs, now.refs).filter((m) => reported[m.ref] !== (m.to || ''));
-      const { ctx, loud, summary } = judge(cwd, remote, state, root, moves, actsSince(root, session, state.at, env));
-      loudLines.push(...loud.map((m) => loudLine(m, ctx)));
+      const { ctx, loud, summary, used, notes: unsure } = judge(cwd, remote, state, rootOf(cwd, env), moves, windowActs(root, session, state, env));
+      loudLines.push(...loud.map((m) => loudLine(m, ctx)), ...unsure);
       const line = loudOnly(env) ? null : summaryLine(summary, 'other branches moved this turn');
       if (line) notes.push(line);
-      writeJson(sessionFile(root, session, env), { ...now, head: state.head || now.head, reported: {} });
-      const unknown = forge.readActs(root, session, env).some((a) => a && a.asked);
+      writeJson(sessionFile(root, session, env), { ...now, head: state.head || now.head, reported: {}, consumed: consumedAfter(state, used), dirty: live });
+      const unknown = forge.readActs(root, session, env).some((a) => a && a.asked && a.confirmed);
       writeJson(lastFile(root, env), { ...now, head: state.head || now.head, session, unknown });
     }
   }
@@ -538,5 +581,5 @@ async function main() {
   return 0;
 }
 
-module.exports = { profile, profileLine, hostOf, cliPlan, askLine, LINE_MAX, snapshot, diffRefs, tierOf, covered, turnCalls, callIsRead };
+module.exports = { profile, profileLine, hostOf, cliPlan, askLine, LINE_MAX, snapshot, diffRefs, tierOf, explain, turnCalls, callIsRead };
 if (require.main === module) main().catch(() => 0).then((code) => process.exit(code));

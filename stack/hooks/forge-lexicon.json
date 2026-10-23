@@ -1,5 +1,5 @@
 {
-  "_note": "The forge concept vocabulary forge.js reads every tool call through - WORDS, never a list of CLIs or servers. `requestCalls` are the call shapes that mark inline code (`node -e`, a heredoc into python) as making an HTTP request - a URL in code without one is text. A user overlay at <data root>/forge-lexicon.json adds words to these classes (arrays are appended); docs/forge-routes-evidence.md holds the verified routes the words are tested against.",
+  "_note": "The forge concept vocabulary forge.js reads every tool call through - WORDS, never a list of CLIs or servers. `shellVerbs` are a CLI's short aliases and verbs that are only verbs in a command's verb slot (`tea pulls m`, `glab mr for`), keyed by the class of the noun they follow - never read in a tool name or an API path. `requestCalls` are the call shapes that mark inline code (`node -e`, a heredoc into python) as making an HTTP request - a URL in code without one is text. A user overlay at <data root>/forge-lexicon.json adds words to these classes (arrays are appended); docs/forge-routes-evidence.md holds the verified routes the words are tested against.",
   "nouns": {
     "change": ["pull_request", "merge_request", "pr", "prs", "mr", "mrs", "pull", "pulls", "pullrequest", "pullrequests", "mergerequest", "mergerequests", "pull-request", "merge-request"],
     "release": ["release", "releases"],
@@ -7,7 +7,7 @@
     "file": ["file", "files", "contents"],
     "pipeline": ["pipeline", "pipelines", "pipe", "run", "runs", "workflow", "workflows", "build", "builds", "job", "jobs", "actions", "action", "stage", "stages", "ci", "check", "checks", "policy", "policies"],
     "review": ["review", "reviews", "reviewer", "reviewers", "approval", "approvals"],
-    "annotation": ["comment", "comments", "reply", "label", "labels", "vote", "thread", "threads", "assignee", "assignees", "reaction"]
+    "annotation": ["comment", "comments", "reply", "label", "labels", "vote", "thread", "threads", "assignee", "assignees", "reaction", "note", "notes"]
   },
   "groups": ["repos", "repo"],
   "verbs": {
@@ -16,15 +16,21 @@
     "create": ["create", "new", "open", "save", "propose", "submit", "revert"],
     "write": ["update", "edit", "delete", "remove", "close", "reopen", "put", "patch", "upload", "publish", "write", "set", "rebase", "ready", "draft", "rename", "move", "erase", "manage"],
     "pipeline": ["rerun", "retry", "trigger", "run", "dispatch", "cancel", "play", "queue", "restart", "stop", "trig"],
-    "annotate": ["approve", "review", "vote", "comment", "reply", "resolve", "unresolve", "assign", "unassign", "label", "unlabel", "revoke", "react", "request"],
+    "annotate": ["approve", "review", "vote", "comment", "reply", "resolve", "unresolve", "assign", "unassign", "label", "unlabel", "revoke", "react", "request", "reject", "note", "lock", "unlock", "subscribe", "unsubscribe", "todo"],
     "watch": ["watch", "wait"],
     "read": ["get", "list", "read", "view", "show", "diff", "status", "checks", "log", "logs", "trace", "search", "download", "fetch", "find", "count", "compare", "info", "stats", "co", "checkout", "ls", "browse", "inspect", "describe", "query", "output", "content"]
   },
+  "shellVerbs": {
+    "change": { "merge": ["m"], "create": ["c", "for"], "write": ["e", "clean"], "annotate": ["a", "lgtm", "add"], "read": ["rc", "approvers", "issues"] },
+    "release": { "create": ["c"], "write": ["e", "rm"] }
+  },
   "watchFlags": ["--watch", "--live", "--wait"],
   "mergeFlags": ["--status", "--state"],
+  "armWords": ["auto", "automerge", "autocomplete", "merge_when_pipeline_succeeds", "enqueue"],
   "selectors": ["method", "action", "operation", "op", "event", "status", "state", "state_event", "mode"],
   "changeKeys": ["pull_number", "pullNumber", "pull_request_number", "pullRequestNumber", "number", "index", "merge_request_iid", "mergeRequestIid", "iid", "pullRequestId", "pull_request_id", "prNumber", "pr_number"],
   "refKeys": ["branch", "ref", "branchName", "branch_name", "target_branch", "targetBranch", "base", "targetRefName", "tag_name", "tagName", "from_branch"],
+  "tagKeys": ["tag_name", "tagName", "tag"],
   "headKeys": ["sha", "head_sha", "headSha", "expected_head_sha", "match_head_commit"],
   "forgeServerWords": ["git", "github", "gitlab", "gitea", "forgejo", "codeberg", "bitbucket", "azure", "ado", "devops", "atlassian", "forge"],
   "apiCommands": ["curl", "wget", "http", "https", "xh", "invoke-restmethod", "invoke-webrequest", "irm", "iwr"],

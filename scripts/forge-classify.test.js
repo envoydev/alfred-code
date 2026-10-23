@@ -11,8 +11,14 @@ const path = require('node:path');
 const forge = require('../stack/hooks/forge.js');
 const corpus = require('./fixtures/forge-corpus.js');
 const { sh, mcp } = corpus;
+// A server the MCP configs launch as a forge server is shaped by them: an empty account, and a project whose .mcp.json
+// launches one GitLab server keyed `lab` - so the machine's own configs never decide a case (forge.js reads them once).
+process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-classify-acct-'));
+process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-classify-proj-'));
+fs.writeFileSync(path.join(process.env.CLAUDE_PROJECT_DIR, '.mcp.json'), JSON.stringify({ mcpServers: { lab: { command: 'npx', args: ['-y', '@zereight/mcp-gitlab'] } } }));
+test.after(() => { for (const k of ['CLAUDE_CONFIG_DIR', 'CLAUDE_PROJECT_DIR']) fs.rmSync(process.env[k], { recursive: true, force: true }); });
 
-const conceptOf = (payload) => { const r = forge.classify(payload); return r ? r.concept : null; };
+const conceptOf = (payload, opts) => { const r = forge.classify(payload, opts); return r ? r.concept : null; };
 
 for (const family of ['GITHUB', 'GITLAB', 'AZURE', 'GITEA_BITBUCKET', 'BENIGN']) {
   test(`corpus rows classify - ${family}`, () => {
@@ -128,4 +134,84 @@ test('an overlay adds words', () => {
   const lexicon = forge.loadLexicon(root, {});
   assert.strictEqual(forge.classify(mcp('x', 'landit_pull_request', {}), { lexicon }).concept, 'change.merge');
   fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('a branch, tag, file or release on a server that is no forge is not a forge call', () => {
+  for (const [server, tool, input] of [
+    ['supabase', 'create_branch', { project_id: 'abcd', name: 'dev' }],
+    ['neon', 'create_branch', { projectId: 'p-1' }],
+    ['supabase', 'merge_branch', { branch_id: 'b1' }],
+    ['sentry', 'create_release', { organization_slug: 'o', version: '1' }],
+    ['aws', 'tag_resource', { resourceArn: 'arn:x', tags: {} }],
+    ['redis', 'release_lock', { key: 'k' }],
+    ['fs', 'write_file', { path: 'a', content: 'b' }],
+    ['git', 'git_commit', { repo_path: '/work/r', message: 'x' }],
+    ['git', 'git_create_branch', { repo_path: '/work/r', branch_name: 'x' }],
+  ]) assert.strictEqual(forge.classify(mcp(server, tool, input)), null, `${server} ${tool}`);
+});
+
+test('a forge-shaped server keeps its branch, tag and release words', () => {
+  assert.strictEqual(conceptOf(mcp('github', 'create_branch', { owner: 'o', repo: 'r', branch: 'b' })), 'branch.write');
+  assert.strictEqual(conceptOf(mcp('work', 'create_branch', { owner: 'o', repo: 'r', branch: 'b' })), 'branch.write', 'repo coordinates');
+  assert.strictEqual(conceptOf(mcp('work', 'create_release', { project_id: 'g/r', tag_name: 'v1' })), 'release.write', 'a project path');
+  assert.strictEqual(conceptOf(mcp('work', 'repo_create_branch', { repositoryId: 'x', branchName: 'b' })), 'branch.write');
+  assert.strictEqual(conceptOf({ ...mcp('My Odd.Server-1', 'create_branch', { name: 'b' }), mcp_server: { name: 'My Odd.Server-1', source: 'project' } }, { forgeServers: ['My Odd.Server-1'] }), 'branch.write', 'a server found by its launch command');
+  assert.strictEqual(conceptOf(mcp('lab', 'create_branch', { project_id: 123, branch: 'b' })), 'branch.write', 'the project\'s .mcp.json launches it as a forge server');
+  assert.strictEqual(conceptOf(mcp('other', 'create_branch', { project_id: 123, branch: 'b' })), null, 'a server nothing launches as a forge server');
+  assert.strictEqual(conceptOf(mcp('git', 'git_push', { repo_path: '/work/r' })), 'branch.write', 'a push publishes on any server');
+  assert.strictEqual(conceptOf(mcp('anything', 'merge_pull_request', {})), 'change.merge', 'change words are every server\'s');
+});
+
+test('an auto-merge is armed: it lands later', () => {
+  const armed = (p) => { const r = forge.classify(p); return r && r.concept === 'change.merge' ? !!r.armed : null; };
+  assert.strictEqual(armed(sh('gh pr merge 3 --auto --squash')), true);
+  assert.strictEqual(armed(sh('glab mr merge 4 --auto-merge')), true);
+  assert.strictEqual(armed(sh('az repos pr update --id 3 --auto-complete true')), true);
+  assert.strictEqual(armed(mcp('github', 'enable_pull_request_auto_merge', { pullNumber: 3 })), true);
+  assert.strictEqual(armed(mcp('gitlab', 'merge_merge_request', { merge_request_iid: 4, merge_when_pipeline_succeeds: true })), true);
+  assert.strictEqual(armed(mcp('ado', 'repo_pull_request_write', { action: 'update', pullRequestId: 3, autoComplete: true })), true);
+  assert.strictEqual(armed(sh('gh pr merge 3 --squash')), false);
+  assert.strictEqual(armed(mcp('gitlab', 'merge_merge_request', { merge_request_iid: 4 })), false);
+});
+
+test('a release is read by its tag, not the commit it targets', () => {
+  assert.strictEqual(forge.classify(sh('gh release create v2 --target main --notes x')).ref, 'v2');
+  assert.strictEqual(forge.classify(sh('glab release create v1.0 --ref main')).ref, 'v1.0');
+  assert.strictEqual(forge.classify(sh('tea releases create --tag v4 --target main')).ref, 'v4');
+  assert.strictEqual(forge.classify(mcp('gitlab', 'create_release', { tag_name: 'v1', ref: 'main' })).ref, 'v1');
+});
+
+test('every subcommand of the four forge CLIs reads as a concept - none asks, only merges and ref writes publish', () => {
+  const subs = require('./fixtures/forge-subcommands.js');
+  const unknown = [], publish = [];
+  for (const [cli, rows] of Object.entries(subs)) {
+    for (const row of rows) {
+      const r = forge.classify(sh(`${cli} ${row} 1`));
+      if (r && r.strength === 'unknown') unknown.push(`${cli} ${row}: ${r.why}`);
+      else if (r && forge.PUBLISH.has(r.concept)) publish.push(`${cli} ${row}`);
+    }
+  }
+  assert.deepStrictEqual(unknown, []);
+  assert.deepStrictEqual(publish.sort(), ['az repos ref create', 'az repos ref delete', 'gh pr merge', 'glab mr merge', 'tea pulls m', 'tea pulls merge']);
+});
+
+test('a short alias reads by the object it follows; a sub-group word before a verb is part of the object', () => {
+  assert.strictEqual(conceptOf(sh('tea pulls m 3')), 'change.merge');
+  assert.strictEqual(conceptOf(sh('tea pulls c --title x')), 'change.create');
+  assert.strictEqual(conceptOf(sh('tea releases c --tag v1')), 'release.write');
+  assert.strictEqual(conceptOf(sh('tea releases assets create v1 a.zip')), 'release.write');
+  assert.strictEqual(conceptOf(sh('glab mr note create 3 -m x')), 'change.annotate');
+  assert.strictEqual(conceptOf(sh('glab mr note -m "needs X" 3')), 'change.annotate');
+  assert.strictEqual(conceptOf(sh('az repos pr reviewer add --id 3 --reviewers a')), 'change.annotate');
+  assert.strictEqual(conceptOf(sh('az repos pr work-item list --id 3')), 'read');
+  assert.strictEqual(conceptOf(sh('az repos policy approver-count create --blocking true')), 'pipeline.write');
+  assert.strictEqual(conceptOf(mcp('github', 'search_for_pull_requests', { q: 'x' })), 'read', 'a shell alias never reaches a tool name');
+  assert.strictEqual(conceptOf(mcp('gitlab', 'wait_for_pipeline', { pipeline_id: 7 })), 'pipeline.watch');
+});
+
+test('a skipped sub-group word never reaches a publish verb - a script runner\'s arguments are not a push', () => {
+  assert.strictEqual(conceptOf(sh('yarn run build git push')), null);
+  assert.strictEqual(conceptOf(sh('npm run ci git merge')), null);
+  assert.strictEqual(conceptOf(sh('gh pr frobnicate merge 3')), 'change.merge', 'an unknown verb on a change request still asks');
+  assert.strictEqual(forge.classify(sh('gh pr frobnicate merge 3')).strength, 'unknown');
 });
