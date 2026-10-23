@@ -28,8 +28,23 @@ MCP command.
 The MCP rows in the corpus take their tool names and operation selectors from each server's documentation: GitHub's
 `github-mcp-server`, GitLab's hosted server (`/api/v4/mcp`) and `@zereight/mcp-gitlab`, `@azure-devops/mcp`,
 `gitea-mcp` and Atlassian's Rovo server. The classifier reads them by their words, so a server keyed under any name, or
-one nobody listed, classifies the same way. What Claude Code actually sends for each (`tool_input` verbatim,
-`mcp_server`, plugin-scoped names) is the stub-server probe below, NOT RUN.
+one nobody listed, classifies the same way. What Claude Code actually sends is the stub-session probe below.
+
+## Stub-session probe - the real payload, no model
+
+Claude Code 2.1.309 ran `-p` in a copy-route install with its own `HOME` and `CLAUDE_CONFIG_DIR`, a dummy API key and
+`ANTHROPIC_BASE_URL` pointed at a local Messages API stand-in that scripts three calls on a stdio MCP server: a merge
+(`merge_merge_request`), a read (`get_merge_request`, declared `readOnlyHint`) and a verb no lexicon word knows
+(`frobnicate_merge_request`). A recorder hook logged every payload beside the installed hooks. No model was called.
+
+- The PreToolUse payload carries `tool_input` verbatim and `mcp_server: {name, source}` - `source: "dynamic"` for a
+  `--mcp-config` server, `"project"` for one in `.mcp.json`. A server keyed `work forge` is named `mcp__work_forge__*`
+  in `tool_name` and `work forge` in `mcp_server.name`.
+- Tool annotations (`readOnlyHint`) do not reach the hook, so the classifier cannot lean on them.
+- In all five permission modes (`manual`, `auto`, `bypassPermissions`, `dontAsk`, `acceptEdits`) the installed commit
+  guard refused the merge, let the read run (its PostToolUse fired), and refused the unknown verb as unattended.
+- A hook answering `ask` in print mode is refused in every one of those modes, `bypassPermissions` included - so the
+  guard's deny-when-unattended is what the CLI would do with the ask anyway.
 
 ## Replay over past sessions
 
@@ -127,8 +142,8 @@ budget is set here; the numbers decide it.
 
 ## Not run
 
-- The stub MCP payload probe: what `tool_input`, `mcp_server` and plugin-scoped names Claude Code sends per server type,
-  and what a hook's `ask` does in `claude -p` and auto mode. It needs a live model call.
-- The Sonnet probe: a GitLab-only temp project, 'merge it once CI is green' repeated. Billed.
+- A plugin-provided MCP server in the stub probe (its `mcp__plugin_<plugin>_<server>__` names are read from past
+  transcripts instead), and an interactive session in `auto` mode answering a hook's `ask`.
+- The Sonnet probe: a GitLab-only temp project, 'merge it once CI is green' repeated. Billed, and not chosen.
 - The cost rows on the Windows VM.
 - The Atlassian Rovo server's action field name and GitHub ignoring push options remain unverified from the docs alone.

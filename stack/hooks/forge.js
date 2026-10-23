@@ -476,8 +476,8 @@ function readActs(projectRoot, sessionId, env = process.env) {
 // carries their key setup (the spawn cap still bounds it).
 const LS_REMOTE_MS = 6000;
 const { spawnSync } = require('node:child_process');
-const gitOut = (cwd, args, timeout = 5000) => {
-  const r = spawnSync('git', ['-c', 'core.fsmonitor=false', ...args], { cwd, timeout, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } });
+const gitOut = (cwd, args, ms = 5000) => {
+  const r = spawnSync('git', ['-c', 'core.fsmonitor=false', ...args], { cwd, timeout: ms, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } });
   return r.status === 0 ? String(r.stdout || '').trim() : null;
 };
 function networkEnv(cwd) {
@@ -500,7 +500,7 @@ function remoteOf(cwd) {
 function lsRemote(cwd, remote, patterns = null, opts = {}) {
   if (!remote) return { ok: false, refs: new Map(), reason: 'no remote' };
   const args = ['ls-remote', ...(opts.symref ? ['--symref'] : []), ...(patterns ? [] : ['--heads', '--tags']), remote, ...(patterns || [])];
-  const r = spawnSync('git', args, { cwd, timeout: opts.timeout || LS_REMOTE_MS, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'], env: networkEnv(cwd) });
+  const r = spawnSync('git', ['-c', 'core.fsmonitor=false', ...args], { cwd, timeout: opts.timeout || LS_REMOTE_MS, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'], env: networkEnv(cwd) });
   if (r.error || r.status !== 0) {
     // git's first `fatal:` / `ssh:` line names the cause; the lines after it are advice ('and the repository exists').
     const lines = String(r.stderr || (r.error && r.error.message) || `git exited ${r.status}`).split('\n').map((l) => l.trim()).filter(Boolean);
@@ -542,7 +542,7 @@ function unseenHead({ cwd, change, sha, receiptHead }) {
   const t7 = target.slice(0, 12), h7 = h.slice(0, 12);
   if (gitOut(cwd, ['cat-file', '-e', `${target}^{commit}`]) === null)
     return `the change's head ${t7} is not in this checkout, so the review at ${h7} never saw it - fetch the change, review its head and write head: again`;
-  if (spawnSync('git', ['merge-base', '--is-ancestor', target, h], { cwd, timeout: 5000, stdio: 'ignore' }).status === 0) return null;
+  if (spawnSync('git', ['-c', 'core.fsmonitor=false', 'merge-base', '--is-ancestor', target, h], { cwd, timeout: 5000, stdio: 'ignore' }).status === 0) return null;
   return `the change's head ${t7} carries commits the review at ${h7} never saw - review the change's head and write head: again`;
 }
 

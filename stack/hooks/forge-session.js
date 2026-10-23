@@ -32,10 +32,9 @@ try { forge = require(path.join(__dirname, 'forge.js')); } catch { /* no engine:
 // STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in every hook. Fail-open: no
 // prelude runs the hook, the switches read bare.
 let prelude = null;
-try { prelude = require(path.join(__dirname, 'hook-prelude.js')); } catch { /* no prelude: the bare ALFRED_CODE_ reads */ }
+try { prelude = require(path.join(__dirname, 'hook-prelude.js')); prelude.blockingStdio(); } catch { /* no prelude: the bare ALFRED_CODE_ reads */ }
 const envOf = (env, suffix) => (prelude ? prelude.envOf(env, suffix) : env[`ALFRED_CODE_${suffix}`]);
-const partOff = (part, env) => (prelude ? prelude.partOff('forge-session', part, env)
-  : String(env.ALFRED_CODE_HOOKS_OFF || '').split(',').some((e) => e.trim().toLowerCase() === `forge-session:${part}`));
+const partOff = (part, env) => !!prelude && prelude.partOff('forge-session', part, env);
 
 const LINE_MAX = 200;
 const hints = () => { try { return forge.loadLexicon(null).hints || {}; } catch { return {}; } };
@@ -192,7 +191,7 @@ function localShas(cwd, shas) {
   const list = [...new Set(shas.filter(Boolean))];
   const have = new Set();
   if (!list.length) return have;
-  const r = spawnSync('git', ['cat-file', '--batch-check'], { cwd, input: `${list.join('\n')}\n`, encoding: 'utf8', timeout: 3000, maxBuffer: 16 * 1024 * 1024, stdio: ['pipe', 'pipe', 'ignore'] });
+  const r = spawnSync('git', ['-c', 'core.fsmonitor=false', 'cat-file', '--batch-check'], { cwd, input: `${list.join('\n')}\n`, encoding: 'utf8', timeout: 3000, maxBuffer: 16 * 1024 * 1024, stdio: ['pipe', 'pipe', 'ignore'] });
   for (const line of String(r.stdout || '').split('\n')) {
     const m = /^([0-9a-f]{40,64}) (\S+)/.exec(line);
     if (m && m[2] !== 'missing') have.add(m[1]);

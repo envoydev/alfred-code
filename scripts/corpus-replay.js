@@ -51,6 +51,9 @@ const ROUTES = [
   { hook: 'guard-secret-value.js', event: 'PreToolUse', tools: ['Read', 'Bash', 'PowerShell', 'Monitor', 'Grep'], deny: true },
   { hook: 'guard-unapproved-dispatch.js', event: 'PreToolUse', tools: ['Task', 'Agent'], deny: true },
   { hook: 'guard-ungated-commit.js', event: 'PreToolUse', tools: ['Bash', 'PowerShell', 'Monitor'], deny: true },
+  // Every MCP server outside the stack (a forge merge under any server key or plugin), replayed on forge tool names.
+  { hook: 'guard-ungated-commit.js', event: 'PreToolUse', deny: true, pattern: '^mcp__(?!(plugin_alfred-[a-z-]+_)?alfred-).*',
+    tools: ['mcp__github__merge_pull_request', 'mcp__work_forge__accept_merge_request', 'mcp__plugin_acme_ado__repo_pull_request_write'] },
   { hook: 'guard-stop-contract.js', event: 'PreToolUse', tools: ['AskUserQuestion'], deny: false, needsTranscript: true },
   { hook: 'guard-fresh-session-start.js', event: 'PreToolUse', tools: ['Skill'], deny: true, needsTranscript: true },
   { hook: 'guard-cross-project-write.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Monitor'], deny: true },

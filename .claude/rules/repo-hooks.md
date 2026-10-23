@@ -570,7 +570,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     a subagent's `Agent(<type>)` list is ignored, so the grant alone let it start a writing seat (2.1.5 M48).
     In a repo never set up only an `alfred-code:`-spelled implementer target is judged - the diagnoser pin,
     then the implementer gate - and no block row is written (M9, `standDown(..., { setUp: false })`).
-  - `guard-ungated-commit.js` (PreToolUse, the shell route and every MCP server outside the stack) - blocks a non-trivial `git commit` without the
+  - `guard-ungated-commit.js` (PreToolUse, the shell route) and the same gate on every MCP server outside the stack - blocks a non-trivial `git commit` without the
     `<data root>/state/approvals/COMMIT-GATE` receipt, and `git push` / `gh pr merge` without `PUSH-GATE`. A dry
     run or a branch level with upstream is never gated; `guard-ungated-commit:push` in `ALFRED_CODE_HOOKS_OFF` turns the push half off
     (`hook-prelude.js partOff`, the env audit of 2026-10-21; the old `ALFRED_CODE_PUSH_GATE=0` is still read for the 2.x
