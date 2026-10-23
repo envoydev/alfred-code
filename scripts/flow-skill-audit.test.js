@@ -419,9 +419,9 @@ test('SKF-05: no flow skill hands off, purges or deletes a note on the navigatio
     for (const f of flowFiles())
         assert.doesNotMatch(flat(read(f)), /navigation-server hand-off|navigation server cursor note|purge the navigation-server/, f);
     const close = flat(skill('issue-diagnoser'));
-    assert.match(close, /Delete this run's cursor rows \(`memory_delete`, tags `note:<slug>\/diagnosis` and the project tag, `tag_match: 'all'`\)/);
-    assert.match(close, /store the signature and its fix as ONE alfred-memory row without the `handoff` \/ `note:` tags - the reusable half/);
-    assert.match(flat(read('stack/skills/loop-code-quality/references/staged-mode.md')), /purge the run's alfred-memory handoff notes fold-first/);
+    // 2026-10-24: the cursor is a note on the handoff bus, and the reusable half lands in the findings file the next run greps.
+    assert.match(close, /Purge this run's cursor \(`node \.claude\/hooks\/handoff\.js purge <slug>`\); when the cause was proven, first write the signature and its fix into the findings file's `Cause` stamp - the reusable half, which a later diagnosis greps `<docs-path>\/work\/diagnoses\/` for/);
+    assert.match(flat(read('stack/skills/loop-code-quality/references/staged-mode.md')), /purge the run's handoff notes fold-first/);
 });
 
 // SKF-09 / SKF-15: task-design and task-verify-plan collided at Jaccard 0.278 with neither naming the other's case; the

@@ -40,8 +40,8 @@ Before reading the plan, load `habits-plan-writing` (the Skill tool) - the shape
    - **A behaviour change the ask did not name is the user's call.** A `## Decisions` entry that changes what the user sees, which `Asked:` does not name, passes only with the user's answer on the entry (`asked: <the answer>`); without it, a MAJOR `judgment` finding (measured: an always-shown month passed both gates inside option descriptions and was reverted by the user after `Completed`).
 3. **Existence.** Every thing the plan NAMES is checked to exist before the plan passes: a symbol,
    a file, a config key, a CSS or design token, an API the plan calls, a package version floor, a
-   capability it assumes a tool or seat has. Check it - `find_symbol`, a read of the config, a
-   documentation-server lookup for the external ones - and mark anything you could not confirm `unverified` in
+   capability it assumes a tool or seat has. Check it - a symbol lookup, a read of the config, a
+   documentation lookup for the external ones - and mark anything you could not confirm `unverified` in
    the finding, never in the plan's prose as fact. This pass exists because asserted existence is
    the most expensive defect class in the corpus - two repairs measured in millions of tokens,
    written up in `references/evidence.md`, both from a name that was asserted rather than looked up.

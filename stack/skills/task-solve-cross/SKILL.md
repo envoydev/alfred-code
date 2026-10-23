@@ -38,7 +38,7 @@ Before you scope a feature or dispatch any designer, load `habits-clarify` (the 
 Scoping is yours, not a seat's. Establish the task's true blast radius from what is already in context, plus a bounded look at the code:
 
 1. **Read what is pre-loaded.** The docs hook's start block carries the map (`alfred-architecture` points at the docs when the hook is off), and `alfred-awareness` the sibling entries with their `relation` and `seam` - the dependency directions; follow into the architecture map for the area the task names, by the route `alfred-navigation.md` sets.
-2. **Locate, bounded.** Verify the touched symbols and their one-level callers with the navigation server - **hard cap: 2 locating passes**; past that, dispatch architecture-analyzer (sonnet/medium), exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it), for a digest instead of reading on - the cheap seat absorbs the reads, you keep the judgment.
+2. **Locate, bounded.** Verify the touched symbols and their one-level callers with the navigation tools - **hard cap: 2 locating passes**; past that, dispatch architecture-analyzer (sonnet/medium), exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it), for a digest instead of reading on - the cheap seat absorbs the reads, you keep the judgment.
 3. **Walk the seam catalog.** Read `references/seam-catalog.md` - the stack-keyed traps that turn a 'local' task cross-domain (a shared DTO edit, a migration, an app-wide singleton service, an event contract); a discovered shared-interface edit is itself the cross-domain signal.
 4. **State the verdict:** the size line first, by the size table below (a trivial or small single-domain task runs that row's steps, never this pipeline), then the affected domains, the dependency direction (who produces, who consumes - from the sibling entries or the map), the risks the plan must absorb, and open questions (back to the clarify gate). The verdict CARRIES the seam check - one line naming the catalog traps the task touches, or 'no catalog trap applies - <why>'; a verdict without that line skipped step 3, not summarized it.
 
@@ -102,7 +102,7 @@ Full spec - designed and audited in one step (<the five audit verdicts>). Build 
 - 'Changes needed' - edit the plan, or I ask what to change
 ```
 
-Each dispatch brief stays lean and capability-wired: the seat's terseness discipline is `references/token-reduction.md`, and `references/capability-reuse.md` names the installed capability - house skill, documentation server, navigation server, memory handoff note - that removes a guess or a re-read.
+Each dispatch brief stays lean and capability-wired: the seat's terseness discipline is `references/token-reduction.md`, and `references/capability-reuse.md` names the installed capability - house skill, documentation tools, navigation tools, handoff note - that removes a guess or a re-read.
 
 ## Close-out - any mode
 
@@ -124,7 +124,7 @@ This run started <what is still up>. Tear it down - nothing later in this run ne
 
 The close opens with a **pending sweep** - anything undecided or unlanded is named as its own line or ask option, never dropped at the session's end (what counts: `references/close-out.md`'s `pending:` field). A flagged-but-unfixed bug also goes into the ledger or task docs BEFORE any memory purge, so the purge cannot destroy its only record.
 
-Before the close report, Read `references/close-out.md` and run it: the doc-drift triggers, the filing of every `where | limit | revisit when` row a seat reported into the architecture map's Known ceilings, and the close report's fixed shape - one block, no re-pasted plans or ledgers, `memories purged: <names|none>` among its required fields.
+Before the close report, Read `references/close-out.md` and run it: the doc-drift triggers, the filing of every `where | limit | revisit when` row a seat reported into the architecture map's Known ceilings, and the close report's fixed shape - one block, no re-pasted plans or ledgers, `notes purged: <names|none>` among its required fields.
 
 ## The seam is law
 
@@ -138,5 +138,5 @@ Keep a durable ledger - a short file, not just in-context notes - so a mid-run c
 
 - Each reference named at its step is that policy's shared home - route seats to it, never restate it in a brief; `references/model-routing.md`'s per-task stamps are read again at fan-out.
 - The main session is the only orchestrator. Domain seats carry no Agent tool, so the fan-out stays flat.
-- Durable orientation is the docs under the project's docs root: `alfred-navigation.md` owns which architecture doc to open and when, `alfred-preferences.md` which preferences doc to read. Every seat orients from them instead of re-deriving the project; the `alfred-memory` handoff note is the transient inter-agent comms bus, never the durable store. The docs refresh deliberately, never inside this flow - reconciling them after a structural change is a purposeful capture run (`capture-architecture`, or the user's `/loop-architecture-quality`).
+- Durable orientation is the docs under the project's docs root: `alfred-navigation.md` owns which architecture doc to open and when, `alfred-preferences.md` which preferences doc to read. Every seat orients from them instead of re-deriving the project; the handoff note on the bus is the transient inter-agent comms channel, never the durable store. The docs refresh deliberately, never inside this flow - reconciling them after a structural change is a purposeful capture run (`capture-architecture`, or the user's `/loop-architecture-quality`).
 - A causal claim about a dispatched seat's actions - to the user, or in a re-brief - is checked against the seat's `tools:` grant and its transcript first: a seat without a write tool did not mutate the tree, whatever the timeline suggests; when the real actor is unknown, say unresolved rather than assign it.

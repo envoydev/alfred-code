@@ -40,7 +40,7 @@ the ADR names the why, the diagram shows the outcome, each links the other.
 - Renderers lag the library (GitLab and wiki plugins run older majors). Before relying on newer
   syntax: (1) parse it locally with the Mermaid CLI where the project can run it
   (`npx -p @mermaid-js/mermaid-cli mmdc -i <file>.mmd -o <tmp>/out.svg` - confirm the package and
-  flags through the documentation server first) and quote what it printed, (2) render on the actual
+  flags through the documentation tools first) and quote what it printed, (2) render on the actual
   target platform when you can, (3) otherwise say plainly that it was not rendered. A diagram that
   has only ever been parsed or previewed is UNVERIFIED on the platform it ships to.
 - Never hardcode a theme in an init directive - it breaks the reader's dark/light mode on GitHub.

@@ -47,9 +47,9 @@ const docLabel = (projectRoot, file) => { const rel = relTo(projectRoot, file); 
 // The orchestration skills that carry NO `disable-model-invocation` by design, so the architecture, code-quality
 // and coverage loops can invoke them - they belong with the slash-only set in the rule, marked as the exception.
 const MODEL_INVOCABLE_BY_DESIGN = new Set(['capture-architecture', 'capture-architecture-quality', 'capture-code-quality', 'capture-test-coverage']);
-// One catalog server expands into one registration per kept browser; every installed-name reader
-// maps them back to the catalog name, and so does the routing row.
-const PLAYWRIGHT_SERVER = /^(?:browser-(chrome|msedge|firefox|webkit)|(chrome|msedge|firefox|webkit)-control)$/;
+// The record registers the browser server once per engine (`playwright-chrome`, ...), the upstream docs once as
+// `playwright`: every name maps to the one routing row.
+const PLAYWRIGHT_SERVER = /^playwright(?:-(?:chrome|msedge|firefox|webkit))?$/;
 const SEAT_ROLES = ['-solution-designer', '-implementer', '-verifier'];
 const REQUIRED_HEADINGS = ['## Orchestration skills', '## Subagent seats', '## MCP routing'];
 
@@ -427,10 +427,9 @@ const pluginEntries = (line) => new Map(String(line).split(/,\s+(?=[^,()]+\s\()/
 
 // ---------------------------------------------------------------- the routing map
 
-const routingKey = (name) => (PLAYWRIGHT_SERVER.test(name) ? 'browser' : name);
+const routingKey = (name) => (PLAYWRIGHT_SERVER.test(name) ? 'playwright' : name);
 
-// A row names one server, or several that share it (`- \`navigation\`, \`documentation\`, \`memory\` - ...`,
-// the locked three, whose load lines live in their always-on baselines): every name maps to the same entry.
+// A row names one server, or several that share it (`- \`a\`, \`b\` - ...`): every name maps to the same entry.
 function routingMap()
 {
     const lines = (readText(path.join(SKILL_DIR, AGENTS_REF)) || '').split(/\r?\n/);
@@ -482,18 +481,15 @@ function dataRoot(projectRoot, env = process.env)
 }
 
 // The literal values a row carries into the rule: the generated rule is a pointer and cannot itself hold
-// the slot it exists to resolve (a browser row told the model to prefix a filename with `<data root>/...`).
-function fillSlots(row, server, slots = {})
+// the slot it exists to resolve (a desktop row told the model to write `<data root>/...`).
+function fillSlots(row, slots = {})
 {
     let out = row;
     if (slots.dataRoot) out = out.replace(/<data root>/g, slots.dataRoot);
-    const m = PLAYWRIGHT_SERVER.exec(server);
-    const engine = m && (m[1] || m[2]);
-    if (engine) out = out.replace(/<engine>/g, engine);
     if (slots.docsRoot) out = out.replace(/<docs-path>/g, String(slots.docsRoot).replace(/[\\/]+$/, ''));
     return out;
 }
-const UNRESOLVED_SLOT = /<(data root|engine|docs-path|server)>/g;
+const UNRESOLVED_SLOT = /<(data root|docs-path|server)>/g;
 
 // Every row here is for a server REGISTERED in .mcp.json (every add-back line of the 2.0.0 cut lands
 // there), and a registration's tools are `mcp__<name>__<tool>`. The catalog rows name the plugin
@@ -507,7 +503,7 @@ function routingRow(name, map, slots)
     if (!hit) return `- \`${name}\` - routing: see project docs. first call: \`ToolSearch select:\` plus the \`mcp__${name}__*\` names the session's own listing shows.`;
     let row = collapse(hit.text).replace(/<server>/g, name);
     if (key !== name) row = row.replace(`\`${key}\``, `\`${name}\``);
-    return fillSlots(row.replace(new RegExp(`mcp__plugin_${escapeRe(name)}_${escapeRe(name)}__`, 'g'), `mcp__${name}__`), name, slots);
+    return fillSlots(row.replace(new RegExp(`mcp__plugin_${escapeRe(name)}_${escapeRe(name)}__`, 'g'), `mcp__${name}__`), slots);
 }
 
 // A server an enabled PLUGIN provides - the default route, where nothing sits in .mcp.json (pilot 2:
@@ -521,12 +517,12 @@ function pluginRoutingRow(plugin, server, map, slots)
     if (!hit) return `- \`${server}\` - routing: see project docs. first call: \`ToolSearch select:\` plus the \`mcp__plugin_${plugin}_${server}__*\` names the session's own listing shows.`;
     let row = collapse(hit.text).replace(/<server>/g, server);
     if (key !== server) row = row.replace(`\`${key}\``, `\`${server}\``);
-    return fillSlots(row.replace(new RegExp(`mcp__plugin_${escapeRe(server)}_${escapeRe(server)}__`, 'g'), `mcp__plugin_${plugin}_${server}__`), server, slots);
+    return fillSlots(row.replace(new RegExp(`mcp__plugin_${escapeRe(server)}_${escapeRe(server)}__`, 'g'), `mcp__plugin_${plugin}_${server}__`), slots);
 }
 
 // Every row, in the order the servers come (registrations, then plugin servers): a row several servers
-// share is printed ONCE, at its first server, naming only the ones present - a locked server the install
-// lacks is not claimed. Its text names no tool, so it needs no re-spelling for either route.
+// share is printed ONCE, at its first server, naming only the ones present - a server the install lacks is not
+// claimed. Its text names no tool, so it needs no re-spelling for either route.
 function routingRowsFor(servers, map, slots)
 {
     const out = [];
@@ -539,7 +535,7 @@ function routingRowsFor(servers, map, slots)
             if (done.has(hit)) continue;
             done.add(hit);
             const present = hit.keys.filter((k) => servers.some((o) => routingKey(o.name) === k));
-            out.push(fillSlots(collapse(hit.text).replace(hit.head, present.map((k) => `\`${k}\``).join(', ')), s.name, slots));
+            out.push(fillSlots(collapse(hit.text).replace(hit.head, present.map((k) => `\`${k}\``).join(', ')), slots));
         }
         else out.push(s.plugin ? pluginRoutingRow(s.plugin, s.name, map, slots) : routingRow(s.name, map, slots));
     }

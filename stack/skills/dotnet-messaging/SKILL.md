@@ -19,7 +19,7 @@ Floor is .NET 10 / C# 14; .NET 8 / 9 are past support from 2026-11-10 - deltas b
 
 Default to Wolverine. Its core is MIT open-core, and it folds the in-process mediator and the out-of-process message bus into one programming model, so a handler that today runs inline can be moved onto a queue by changing routing, not code. The outbox, sagas, scheduled messages, and convention-discovered handlers are all in the box.
 
-MassTransit is mature and well-documented but is no longer OSS-first, so reach for it only with a deliberate, paid-for reason - an existing licensed estate, a transport only it supports. New code starts on Wolverine. Before quoting a licence term or an end-of-maintenance date to anyone, read `references/library-licensing.md` and re-check it: those terms move, and a stale one is a commercial decision made on bad information. In an existing MassTransit estate, keep it - the outbox, idempotency, retry and contract rules below apply unchanged through its own APIs; fetch those through the documentation server rather than porting the Wolverine samples.
+MassTransit is mature and well-documented but is no longer OSS-first, so reach for it only with a deliberate, paid-for reason - an existing licensed estate, a transport only it supports. New code starts on Wolverine. Before quoting a licence term or an end-of-maintenance date to anyone, read `references/library-licensing.md` and re-check it: those terms move, and a stale one is a commercial decision made on bad information. In an existing MassTransit estate, keep it - the outbox, idempotency, retry and contract rules below apply unchanged through its own APIs; fetch those through the documentation tools rather than porting the Wolverine samples.
 
 ```csharp
 builder.Host.UseWolverine(opts =>

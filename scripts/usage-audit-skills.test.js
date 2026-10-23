@@ -91,7 +91,7 @@ test('C20 69dbed46#4: the related-projects doc says where a card addressed to th
 
 test('C20 close receipts (390aebcb#8 3ce6b036#2 49cb4b82#6 a1fa1b2b#3 f24eb967#9 e499fc94#5 a6a24815#4 3b53e0e8#3): they ride the Result field', () => {
     const t = skill('task-solve');
-    assert.match(t, /The close stop's `Result:` line carries the receipts - `Completed <date>, memories purged: <names\|none>`/);
+    assert.match(t, /The close stop's `Result:` line carries the receipts - `Completed <date>, notes purged: <names\|none>`/);
     assert.doesNotMatch(t, /print one line with it - `Completed - the next scope starts a NEW plan file, not this one`/);
     assert.match(t, /it rides the first stop's `Result:`, `Spec:` beside it/);
     assert.match(t, /this stop's `Result:` line carries `mechanics: read` as the receipt/);

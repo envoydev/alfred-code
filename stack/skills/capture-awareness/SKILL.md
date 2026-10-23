@@ -28,7 +28,7 @@ to the skill that writes it).
 - The deliberate awareness capture: after an install, an update, a configure run or a trim (the inventory moved), when the run book is missing or stale, or to add or refresh a sibling repo.
 - Arguments: sibling locations - local paths that exist or git URLs, each with an optional relation hint (`../backend`, `git@github.com:org/contracts.git provides-to`) - add or refresh those related projects; `refresh` re-asks the run book and rewrites the inventory even when nothing on disk moved. Any other text is a NOTE - a fact the user typed for the run book (step 2).
 - A re-run is cheap: the inventory is one script call, the run book is asked again only when it is missing, stale or `refresh` was passed, and the related projects only when siblings are passed or none were ever recorded.
-- Not for the architecture map (capture-architecture), the code style (capture-project-code-style), or dynamic cross-repo findings - those go to the shared `alfred-memory` MCP, tagged with the sibling's name.
+- Not for the architecture map (capture-architecture), the code style (capture-project-code-style), or dynamic cross-repo findings - those go to Claude Code's own memory, naming the sibling.
 
 The four files are generated: a re-run refreshes them in place, and nobody edits them by hand. The rule stays out
 of the installer's catalog and no installer ledger records any of them, so `/alfred-code:update` never overwrites

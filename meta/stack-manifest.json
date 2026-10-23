@@ -659,10 +659,6 @@
       "note": "generated-docs root - always <data root>/docs (ALFRED_CODE_DOCS_PATH retired in 2.8.0)"
     },
     {
-      "file": "alfred-memory.md",
-      "note": "what goes to the memory MCP - locks it in, like alfred-navigation locks the navigation server"
-    },
-    {
       "file": "markdown-docs.md",
       "note": "markdown-style routing, path-scoped **/*.md"
     },
@@ -1264,7 +1260,8 @@
       "baseline-quality-gates.md",
       "baseline-security.md",
       "alfred-git.md",
-      "skill-authoring.md"
+      "skill-authoring.md",
+      "alfred-memory.md"
     ],
     "hooks": [
       "require-convention-skill.js",

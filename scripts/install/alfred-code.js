@@ -1551,6 +1551,10 @@ function renamedRuleClaim(ctx, dir, name, recorded)
     // A successor renamed since is still this copy's: `baseline-git` maps to `alfred-preferences` now, and a stamp from
     // before 2026-10-21 records `alfred-git`, whose own copy opens with the git heading the preferences rule lacks.
     const heirs = [next, ...Object.keys(renamed).filter((old) => renamed[old] === next && old !== name)];
+    // A successor retired since leaves no heir a stamp will record again (`baseline-memory` -> the retired `alfred-memory`,
+    // 2026-10-24): the shipped text alone decides.
+    const retired = new Set(((ctx.manifest.retired || {}).rules || []).map((f) => f.replace(/\.md$/, '')));
+    if (heirs.every((heir) => retired.has(heir))) return shippedText(name, readText(file));
     if (Object.keys(recorded).length) return heirs.some((heir) => Object.hasOwn(recorded, heir)) && shippedText(name, readText(file));
     if (shippedText(name, readText(file))) return true;
     const ours = ruleOpening(path.join(ctx.source.dir, 'stack', 'rules', `${next}.md`));

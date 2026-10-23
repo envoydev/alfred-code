@@ -566,7 +566,7 @@ test('classifyNew: an always-closure item arrives, a stack item is offered, the 
     const added = [
         { category: 'skill', name: 'markdown-style' }, { category: 'skill', name: 'dotnet-web-backend' },
         { category: 'agent', name: 'evidence-gatherer' }, { category: 'agent', name: 'code-style-analyzer' },
-        { category: 'rule', name: 'alfred-memory' }, { category: 'rule', name: 'sql-conventions' },
+        { category: 'rule', name: 'alfred-security' }, { category: 'rule', name: 'sql-conventions' },
         { category: 'hook', name: 'docs-session' }, { category: 'hook', name: 'guard-answer' },
         { category: 'skill', name: 'angular-material' }, { category: 'rule', name: 'markdown-docs' },
     ];
@@ -579,7 +579,7 @@ test('classifyNew: an always-closure item arrives, a stack item is offered, the 
     assert.deepStrictEqual([by['skill dotnet-web-backend'].verdict, by['skill dotnet-web-backend'].entry, by['skill dotnet-web-backend'].recommend], ['offer', null, 'leave'], 'library - copied only on a yes');
     assert.strictEqual(by['agent evidence-gatherer'].verdict, 'arrives');
     assert.strictEqual(by['agent code-style-analyzer'].verdict, 'off');
-    assert.strictEqual(by['rule alfred-memory'].verdict, 'arrives', 'the locked baseline is adopted');
+    assert.strictEqual(by['rule alfred-security'].verdict, 'arrives', 'the locked baseline is adopted');
     assert.deepStrictEqual([by['rule sql-conventions'].verdict, by['rule sql-conventions'].recommend], ['offer', 'leave'], 'its closure copies library items - no free take');
     assert.ok(by['rule sql-conventions'].copies.length > 0, 'and it names them');
     assert.deepStrictEqual(by['rule sql-conventions'].enables, [], 'the core is enabled, so a yes switches no entry on');

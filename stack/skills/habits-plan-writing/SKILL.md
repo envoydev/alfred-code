@@ -101,5 +101,5 @@ whole file, and never another ticket's plan in place of this shape.
 
 - The execution mode, a banner, or advice on how to run it - that is the solve flow's mode ask.
 - A whole implementation pasted in - anchors and shapes, not code.
-- A library or vendor claim from memory - verify it via the documentation server or the vendor doc and cite it,
+- A library or vendor claim from memory - verify it via the documentation tools or the vendor doc and cite it,
   or mark it `unverified`.

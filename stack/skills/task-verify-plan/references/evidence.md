@@ -15,7 +15,7 @@ a run.
   wrong chat message does not.
 
 Both are the same failure: a name asserted rather than looked up. The pass costs one
-`find_symbol`, one config read, or one documentation-server lookup per named thing.
+symbol lookup, one config read, or one documentation lookup per named thing.
 
 ## Why the audit runs before the build, not after
 

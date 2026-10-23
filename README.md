@@ -144,7 +144,7 @@ More on the two task flows: [`docs/solve-skills-guide.md`](docs/solve-skills-gui
 | --- | --- | --- |
 | **Skills** | 91 | house conventions and workflows |
 | **Agents** | 44 | designers, implementers, verifiers, reviewers |
-| **Rules** | 19 | always-on basics and per-file conventions |
+| **Rules** | 18 | always-on basics and per-file conventions |
 | **Hooks** | 19 | the guards, plus the docs, memory and history hooks |
 | **MCP servers** | 4 | alfred-navigation, alfred-documentation, alfred-memory (required) and the browser (optional), plus the opt-in desktop pair and mobile server |
 | **Plugins** | 3 | optional: claude-hud (recommended) and the C# and TypeScript language servers |

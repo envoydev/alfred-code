@@ -23,11 +23,11 @@ run-time load.
   build mode, `Conformance` verdict or `skipped`, `Completed`), per-task status + evidence - and its
   `Resume:` line is the one cursor (current step, chosen modes, next task), rewritten at EVERY stop and
   task tick. On any conflict with memory or the chat, the file wins.
-- **Handoff notes** (`alfred-memory` rows) are the seats' hand-offs in agents mode
+- **Handoff notes** (the handoff bus, `node .claude/hooks/handoff.js`) are the seats' hand-offs in agents mode
   (`<feature>/<contract_version>/<seat>/<task>`), never a second cursor.
 
-**On invocation, resume before starting:** `memory_list` with the tags `handoff:<feature>` and the project tag,
-`tag_match: 'all'` (the run's seat notes), and read the plan file's stamps and `Resume:` line. A cycle mid-flight resumes at its cursor - never restart a step whose stamp says it
+**On invocation, resume before starting:** `node .claude/hooks/handoff.js left <feature>` (the run's seat notes, by name;
+`list <feature>/<contract_version>` prints them), and read the plan file's stamps and `Resume:` line. A cycle mid-flight resumes at its cursor - never restart a step whose stamp says it
 already passed. A resume paste that lands in a chat still holding the earlier cycle's conversation (no
 `/clear` between) is answered with one line - `/clear first, then paste it again` - and nothing else.
 A NEW cycle starting after a finished one in this same session recommends the fresh-session hand-off
@@ -213,9 +213,8 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
 6. **CLOSE** - apply any fixes the step-5 review handed back, then the done gate
    (load `habits-done-gate` - each acceptance criterion, and each Verify or Done-when bullet of a
    card the ask cited, demonstrated by a run this session, quoted). Stamp `Completed: <date>` with the per-task evidence table - it
-   closes this plan file - and name the `## Decisions` ledger by its entry count, never re-pasted. Purge the notes - `mcp__plugin_alfred-memory_alfred-memory__memory_delete` with
-   `tags: ['handoff:<feature>', 'project:<name>']`, `tag_match: 'all'` - then the purge count (`references/step-mechanics.md`).
-   The close stop's `Result:` line carries the receipts - `Completed <date>, memories purged: <names|none>` -
+   closes this plan file - and name the `## Decisions` ledger by its entry count, never re-pasted. Purge the notes - `node .claude/hooks/handoff.js purge <feature>` - then the purge count (`references/step-mechanics.md`).
+   The close stop's `Result:` line carries the receipts - `Completed <date>, notes purged: <names|none>` -
    plus `Deviations: <each Decisions entry that departs from the Asked: words, one apiece | none>`,
    under AUTO the user's first sight of them.
    *Stop* - this stop is where the close-out decisions live: anything PENDING (an uncommitted diff, an

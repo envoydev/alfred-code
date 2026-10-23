@@ -251,7 +251,7 @@ test('row 14: zoneless, capacitor, desktop gate, Azure DevOps Mermaid and Vitest
     assert.doesNotMatch(read('stack/skills/capacitor-release/SKILL.md'), /experimental in 6/);
     const desk = flat(read('stack/skills/desktop-automation/SKILL.md'));
     assert.doesNotMatch(desk, /Windows-MCP starts with PowerShell/);
-    assert.match(desk, /Windows-MCP enables every tool by default; the stack launches it with PowerShell, Registry, Process and FileSystem excluded/);
+    assert.match(desk, /Windows-MCP enables every tool by default, so it is registered with PowerShell, Registry, Process and FileSystem excluded unless the user wants them/);
     const dac = flat(read('stack/skills/docs-as-code/SKILL.md'));
     assert.match(dac, /the Azure DevOps wiki renders it with limited syntax \(`graph`, not `flowchart`; no HTML tags\)/);
     assert.match(flat(read('stack/skills/capture-test-coverage/SKILL.md')), /which needs `@vitest\/coverage-v8` installed - a missing one is an unmeasured surface, never an install by this capture/);

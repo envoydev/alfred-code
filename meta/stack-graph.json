@@ -2,9 +2,7 @@
   "generatedBy": "stack-graph",
   "skills": {
     "angular-conventions": {
-      "mcps": [
-        "alfred-documentation"
-      ],
+      "mcps": [],
       "plugins": []
     },
     "angular-material": {
@@ -68,9 +66,7 @@
       "plugins": []
     },
     "csharp": {
-      "mcps": [
-        "alfred-documentation"
-      ],
+      "mcps": [],
       "plugins": []
     },
     "csharp-design-patterns": {
@@ -78,9 +74,7 @@
       "plugins": []
     },
     "database-conventions": {
-      "mcps": [
-        "alfred-documentation"
-      ],
+      "mcps": [],
       "plugins": []
     },
     "database-security": {
@@ -96,9 +90,7 @@
       "plugins": []
     },
     "devops": {
-      "mcps": [
-        "alfred-documentation"
-      ],
+      "mcps": [],
       "plugins": []
     },
     "docs-as-code": {
@@ -210,15 +202,11 @@
       "plugins": []
     },
     "dotnet-winforms": {
-      "mcps": [
-        "alfred-documentation"
-      ],
+      "mcps": [],
       "plugins": []
     },
     "dotnet-wpf": {
-      "mcps": [
-        "alfred-documentation"
-      ],
+      "mcps": [],
       "plugins": []
     },
     "habits-adjust-agents-md": {
@@ -278,9 +266,7 @@
       "plugins": []
     },
     "issue-diagnoser": {
-      "mcps": [
-        "alfred-memory"
-      ],
+      "mcps": [],
       "plugins": []
     },
     "issue-signatures-ci": {
@@ -292,27 +278,19 @@
       "plugins": []
     },
     "javascript": {
-      "mcps": [
-        "alfred-documentation"
-      ],
+      "mcps": [],
       "plugins": []
     },
     "loop-architecture-quality": {
-      "mcps": [
-        "alfred-memory"
-      ],
+      "mcps": [],
       "plugins": []
     },
     "loop-code-quality": {
-      "mcps": [
-        "alfred-memory"
-      ],
+      "mcps": [],
       "plugins": []
     },
     "loop-test-coverage": {
-      "mcps": [
-        "alfred-memory"
-      ],
+      "mcps": [],
       "plugins": []
     },
     "markdown-style": {
@@ -344,9 +322,7 @@
       "plugins": []
     },
     "task-build-from-scratch": {
-      "mcps": [
-        "alfred-memory"
-      ],
+      "mcps": [],
       "plugins": []
     },
     "task-design": {
@@ -358,15 +334,11 @@
       "plugins": []
     },
     "task-solve": {
-      "mcps": [
-        "alfred-memory"
-      ],
+      "mcps": [],
       "plugins": []
     },
     "task-solve-cross": {
-      "mcps": [
-        "alfred-memory"
-      ],
+      "mcps": [],
       "plugins": []
     },
     "task-verify-code": {
@@ -910,21 +882,10 @@
       "plugins": [],
       "paths": []
     },
-    "alfred-memory": {
-      "skills": [],
-      "agents": [],
-      "mcps": [
-        "alfred-memory"
-      ],
-      "plugins": [],
-      "paths": []
-    },
     "alfred-navigation": {
       "skills": [],
       "agents": [],
-      "mcps": [
-        "alfred-navigation"
-      ],
+      "mcps": [],
       "plugins": [],
       "paths": []
     },
@@ -941,9 +902,7 @@
         "habits-done-gate"
       ],
       "agents": [],
-      "mcps": [
-        "alfred-documentation"
-      ],
+      "mcps": [],
       "plugins": [],
       "paths": []
     },

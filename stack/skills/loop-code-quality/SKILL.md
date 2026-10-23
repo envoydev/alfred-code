@@ -52,7 +52,7 @@ The capture's output is this loop's work list: the assessment's Must-fix finding
 ### 2. TRIAGE + FIX by tier
 Take the open findings in the assessment's rank order (severity first) with the green baseline confirmed, so a regression is visible. Every fix holds the fix discipline. A user preference's breach (its rule `PERSONAL-CODE-PREFERENCES.md#c<n>`) is fixed like any other; one whose fix sweeps many modules - wrap every external package - is structural, taken one module per round. Route each by its tier:
 
-- **small** (a localized edit) - dispatch the matching domain implementer with the module's small findings batched into one scoped brief - shape in `references/loop-mechanics.md`; it states `memory: none` unless it hands a note, which it then names literally. An ambiguity the remediation leaves open is decided by the codebase's own precedent, never asked, and appended to `<docs-path>/quality/loops/DECISIONS.md` with that precedent. Re-run build + tests.
+- **small** (a localized edit) - dispatch the matching domain implementer with the module's small findings batched into one scoped brief - shape in `references/loop-mechanics.md`; it states `note: none` unless it hands a note, which it then names literally. An ambiguity the remediation leaves open is decided by the codebase's own precedent, never asked, and appended to `<docs-path>/quality/loops/DECISIONS.md` with that precedent. Re-run build + tests.
 - **substantial** (a designer-led multi-task change) - five steps in order, none of them optional:
   1. **Decompose** - dispatch the domain solution-designer to turn the remediation into a decomposition.
   2. **Gate the plan** - `task-verify-plan`, an actual Skill invocation, recording its `Passes:` line.
@@ -112,7 +112,7 @@ The reconcile reruns the capture; <the substitute> covers <what>.
 - '<the substitute>' - <what it leaves stale>
 ```
 
-A run that shipped nothing skips both. Then emit the final report with the fields `references/loop-mechanics.md` defines: **Outcome**, **Resolved**, **Deferred**, **Proposed decisions**, **Docs**, **Baseline**, **Anti-gaming**, **Memories** (`memories purged: <names|none>`, fold-first), **Next actions**, **Mechanics**.
+A run that shipped nothing skips both. Then emit the final report with the fields `references/loop-mechanics.md` defines: **Outcome**, **Resolved**, **Deferred**, **Proposed decisions**, **Docs**, **Baseline**, **Anti-gaming**, **Notes** (`notes purged: <names|none>`, fold-first), **Next actions**, **Mechanics**.
 
 When the report closes with uncommitted work and no next round queued, delete the round's APPROVED stamp first - every implementer and verifier has returned, and the checkpoint's generic security seat bounces off a live one (an AUTO stamp stays with its owner, and the checkpoint runs that half inline) - then the commit decision is the ask below, never a prose 'your call' bullet. The same close names what this round's runs started and still have up - a Docker container or compose stack, seeded integration-test data, a background process - and puts tear-down-vs-keep through the same AskUserQuestion call (started-nothing is said plainly, and what the round did not start is never touched):
 

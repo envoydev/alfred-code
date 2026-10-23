@@ -40,12 +40,10 @@ Read it at step 1, before the tier is named.
   an observable, the evidence tier, every digest's key lines, the hypotheses with their verdicts,
   the proven cause, and the stamps this run adds (`Tier`, `Gathered`, `Cause`, `Outcome`). On any
   conflict with memory or the chat, the file wins.
-- **The handoff note** (an `alfred-memory` row tagged `note:<slug>/diagnosis`, stored as `alfred-memory.md` says) is the working cursor: current
-  step, chosen mode, resume pointer, the error signature and its proven fix once found - that
-  last part is the reusable half, keyed to the signature, never a dump of the log.
+- **The handoff note** (`<slug>/diagnosis/cursor` on the handoff bus, `node .claude/hooks/handoff.js put <slug>/diagnosis/cursor <<'EOF'`) is the working cursor: current
+  step, chosen mode, resume pointer, the error signature and its proven fix once found, never a dump of the log.
 
-**On invocation, resume before starting:** `memory_list` with the tags `note:<slug>/diagnosis` and the project tag,
-`tag_match: 'all'` - the newest row is the cursor - and read the findings file's stamps. A run
+**On invocation, resume before starting:** `node .claude/hooks/handoff.js list <slug>/diagnosis/cursor` - the newest copy is the cursor - and read the findings file's stamps. A run
 mid-flight resumes at its cursor - never re-run a step already stamped. A run between steps 2
 and 3 looks like:
 
@@ -123,7 +121,7 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    bounded commands inline. Correlate multiple sources on a shared key - a correlation/trace id,
    a timestamp window, a release version - and say which sources agreed and which did not. At
    tier 4, with no source to pull, this step is code-first instead: locate the named behaviour
-   with the navigation server per `.claude/rules/alfred-navigation.md`, read the paths that could produce the
+   with the navigation tools per `.claude/rules/alfred-navigation.md`, read the paths that could produce the
    symptom, and attempt a repro. Never slurp a large log into this context - grep to the signal
    and quote a bounded window. If it cannot be reproduced, say so with what you tried, and work
    from the evidence and the code. Append the digests' key lines to the findings file, stamp
@@ -201,9 +199,8 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    This close-out stop carries anything
    pending: an unwritten task card, a source the user still has to paste, a sibling repo that
    needs the same fix (that handoff is a FILE - a task card under `<docs-path>/work/cross-project-tasks/`,
-   printed as the docs-root rule's hand-off block - never chat-only prose). Delete this run's cursor rows (`memory_delete`, tags `note:<slug>/diagnosis`
-   and the project tag, `tag_match: 'all'`); when the cause was proven, first store the signature and its
-   fix as ONE alfred-memory row without the `handoff` / `note:` tags - the reusable half.
+   printed as the docs-root rule's hand-off block - never chat-only prose). Purge this run's cursor (`node .claude/hooks/handoff.js purge <slug>`); when the cause was proven, first write the signature and its
+   fix into the findings file's `Cause` stamp - the reusable half, which a later diagnosis greps `<docs-path>/work/diagnoses/` for.
 
 ## Do not
 

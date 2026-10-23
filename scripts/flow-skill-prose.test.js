@@ -276,7 +276,7 @@ test('M99: task-solve-cross\'s body is under 18,000 chars with its stops, ledger
     // Nothing was deleted: the close-out detail and the lookup moved to references the body names at their step.
     assert.match(flat(b), /Before the close report, Read `references\/close-out\.md`/);
     const close = flat(read('stack/skills/task-solve-cross/references/close-out.md'));
-    for (const piece of [/## Doc-drift/, /`\/capture-architecture` named in the close report/, /docs\.js set architecture\/ARCHITECTURE\.md#known-ceilings/, /memories purged: <names\|none>/])
+    for (const piece of [/## Doc-drift/, /`\/capture-architecture` named in the close report/, /docs\.js set architecture\/ARCHITECTURE\.md#known-ceilings/, /notes purged: <names\|none>/])
         assert.match(close, piece);
     assert.match(read('stack/skills/task-solve-cross/references/full-spec.md'), /node "\$SPEC" <<'REQUEST'/);
 });
@@ -378,19 +378,19 @@ test('a status-less seat return is a seat death in every orchestrator that route
 
 // 2.1.6 review B3: a solve run lists its own feature's notes at resume, never the whole store, and its close
 // purges the whole feature and counts what is left with the trio protocol's own line, kept in the step mechanics
-// (read at step 3) since the body sits at its cap. Since the user's 2026-10-13 ruling the notes are alfred-memory
-// rows, so the resume and the purge go by the `handoff:<feature>` tag plus the project tag.
-test('solve resumes by the feature tag and closes on the counted purge', () =>
+// (read at step 3) since the body sits at its cap. Since 2026-10-24 the notes live on the handoff bus, so the resume
+// and the purge go by the feature through `node .claude/hooks/handoff.js`.
+test('solve resumes by the feature and closes on the counted purge', () =>
 {
     const solve = flat(skill('task-solve'));
-    assert.match(solve, /\*\*On invocation, resume before starting:\*\* `memory_list` with the tags `handoff:<feature>` and the project tag, `tag_match: 'all'`/);
-    assert.doesNotMatch(solve, /Delete or archive the cycle note/);
-    assert.match(solve, /`mcp__plugin_alfred-memory_alfred-memory__memory_delete` with `tags: \['handoff:<feature>', 'project:<name>'\]`, `tag_match: 'all'` - then the purge count \(`references\/step-mechanics\.md`\)/);
+    assert.match(solve, /\*\*On invocation, resume before starting:\*\* `node \.claude\/hooks\/handoff\.js left <feature>`/);
+    assert.doesNotMatch(solve, /Delete or archive the cycle note|memory_list|memory_delete/);
+    assert.match(solve, /Purge the notes - `node \.claude\/hooks\/handoff\.js purge <feature>` - then the purge count \(`references\/step-mechanics\.md`\)/);
     // Usage audit 2026-10-10 (C20): the receipt rides the close stop's Result field, where the stop check reads.
-    assert.match(solve, /The close stop's `Result:` line carries the receipts - `Completed <date>, memories purged: <names\|none>`/);
+    assert.match(solve, /The close stop's `Result:` line carries the receipts - `Completed <date>, notes purged: <names\|none>`/);
     const line = (text) => (/The purge is counted, not claimed\.\*\* At close, from the project root: `([^`]+)`/.exec(text) || [])[1];
     const own = line(flat(read('stack/skills/task-solve/references/step-mechanics.md')));
-    assert.strictEqual(own, 'node .claude/hooks/memory.js handoff <feature>', 'the step mechanics carry the purge count line');
+    assert.strictEqual(own, 'node .claude/hooks/handoff.js left <feature>', 'the step mechanics carry the purge count line');
     assert.strictEqual(own, line(flat(read('stack/skills/task-solve-cross/references/domain-trio-protocol.md'))), 'the same line as the trio protocol');
 });
 

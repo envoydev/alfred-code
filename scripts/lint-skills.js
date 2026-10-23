@@ -160,11 +160,11 @@ const NON_SKILL_TOKENS = new Set([
     // file-naming style term backticked in the typescript style reference - a
     // convention name, not a house skill.
     'kebab-case',
-    // the desktop and mobile MCP server names, keyed in the capability capture's routing map (a row is found by
-    // its backticked name) - servers, not skills.
-    'windows-control',
-    'macos-control',
-    'mobile-control',
+    // the desktop and mobile MCP server names of the record of the servers the stack shipped (stack/mcp/original-mcps.json),
+    // keyed in the capability capture's routing map (a row is found by its backticked name) - servers, not skills.
+    'windows-desktop',
+    'macos-desktop',
+    'appium-mcp',
 ]);
 
 const findings = [];

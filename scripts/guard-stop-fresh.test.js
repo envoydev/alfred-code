@@ -756,17 +756,19 @@ test('guard-stop-contract: a solve-task stop that owes a receipt is told which o
   assert.match(note('rc-passes', [marker, ...answered('u8'), gateRun, assistantRow('a', mech)], approve), /`Passes: risk <v>/);
   assert.equal(note('rc-passes-ok', [marker, ...answered('u9'), gateRun, assistantRow('a', `${mech} Passes: risk pass | scope pass | existence pass | edges MINOR | soundness pass`)], approve), '');
   assert.equal(note('rc-passes-none', [marker, ...answered('u10'), assistantRow('a', mech)], approve), '', 'no gate ran this cycle, no Passes owed');
-  // 390aebcb, 3ce6b036, 49cb4b82: the close with no `memories purged:`
+  // 390aebcb, 3ce6b036, 49cb4b82: the close with no `notes purged:` (`memories purged:` before 2026-10-24, still read)
   const completed = { type: 'assistant', message: { id: 'done', content: [{ type: 'tool_use', id: 'w1', name: 'Edit',
     input: { file_path: '/p/.alfred/docs/plans/2026-10-08-x.md', old_string: 'Approved:', new_string: 'Approved: yes\nCompleted: 2026-10-08' } }] } };
-  assert.match(note('rc-close', [marker, ...answered('u4'), completed, assistantRow('a', fields)], goOn), /memories purged/);
+  assert.match(note('rc-close', [marker, ...answered('u4'), completed, assistantRow('a', fields)], goOn), /`notes purged: <names\|none>`/);
   assert.equal(note('rc-close-ok', [marker, ...answered('u5'), completed,
-    assistantRow('a', 'Result: Completed 2026-10-08, memories purged: none. Progress: 6 of 6 steps. Leftovers: none.')], goOn), '');
-  assert.doesNotMatch(note('rc-after-close', [marker, ...answered('u6'), completed, ...answered('u7'), assistantRow('a', fields)], goOn), /memories purged/,
+    assistantRow('a', 'Result: Completed 2026-10-08, notes purged: none. Progress: 6 of 6 steps. Leftovers: none.')], goOn), '');
+  assert.equal(note('rc-close-old', [marker, ...answered('u5b'), completed,
+    assistantRow('a', 'Result: Completed 2026-10-08, memories purged: none. Progress: 6 of 6 steps. Leftovers: none.')], goOn), '', 'an older skill copy\'s spelling still closes');
+  assert.doesNotMatch(note('rc-after-close', [marker, ...answered('u6'), completed, ...answered('u7'), assistantRow('a', fields)], goOn), /notes purged/,
     'an ask after the close was answered is no close');
   // a6a24815: the cross close report with no `ceilings:`
   const cross = typed('<command-name>/task-solve-cross</command-name>');
-  const report = `${fields}\nmode: agents | contract: n/a\nlanes: api - endpoints - SIGNED_OFF\nfinal gate: PASS\npending: none\nleftovers: none\nmemories purged: none`;
+  const report = `${fields}\nmode: agents | contract: n/a\nlanes: api - endpoints - SIGNED_OFF\nfinal gate: PASS\npending: none\nleftovers: none\nnotes purged: none`;
   assert.match(note('rc-cross', [cross, ...answered('u8'), assistantRow('a', report)], goOn), /ceilings:/);
   assert.equal(note('rc-cross-ok', [cross, ...answered('u9'), assistantRow('a', `${report}\nceilings: none`)], goOn), '');
   assert.equal(note('rc-noflow', [typed('fix the typo'), assistantRow('a', 'hello')], approve), '', 'a session that never ran the flow owes nothing');

@@ -29,5 +29,5 @@ pending: <each undecided or unlanded item, or none - an earlier ask still unansw
 leftovers: <what this run started and still has up, or none>
 doc-drift: <the one line, or none>
 ceilings: <rows filed under architecture/ARCHITECTURE.md#known-ceilings, or none>
-memories purged: <names|none>
+notes purged: <names|none>
 ```

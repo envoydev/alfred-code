@@ -111,7 +111,7 @@ lives, never by value. Before a local start, run the Data target check; before a
 - Reach: <the URL and port, the window, or the CLI entry>
 - Log in: <numbered steps - the screen, the fields, the role to pick - or 'no login, the app is open'>
 - Accounts: <one line per role - its purpose and the user name's home>
-- Credentials live in: <env var `<NAME>` | `<data root>/.sensitive-data`, key `<NAME>` | vault item `<name>`> - checked for presence, never printed; a browser login types the KEY name (`<NAME>`) in `browser_type` / `browser_fill_form`, which the browser server fills from the sensitive data and shows as `<secret>NAME</secret>` - read that marker in the first fill's result before concluding - no marker means the server holds no store (the full copy route passes none), so ask the user to sign in, never retype the key; a key added after the browser server started needs a reconnect (`/mcp`) first; any other typed value goes through the secret guard's ask
+- Credentials live in: <env var `<NAME>` | `<data root>/.sensitive-data`, key `<NAME>` | vault item `<name>`> - checked for presence, never printed; a browser login through a browser server started with the sensitive data as its secrets (Playwright MCP's `--secrets <data root>/.sensitive-data`) types the KEY name (`<NAME>`) in `browser_type` / `browser_fill_form`, which the server fills from the store and shows as `<secret>NAME</secret>` - read that marker in the first fill's result before concluding - no marker means the server holds no store, so ask the user to sign in, never retype the key; a key added after the server started needs a reconnect (`/mcp`) first; any other typed value goes through the secret guard's ask
 
 ## Flows to verify
 <!-- id: flows-to-verify -->

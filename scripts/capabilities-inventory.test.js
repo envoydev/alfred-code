@@ -74,7 +74,7 @@ function project(name, opts = {})
     }
     write(path.join(root, '.claude', 'rules', 'alfred-navigation.md'), '---\n---\n\n# nav\n', -100);
     write(path.join(root, '.claude', 'rules', 'markdown-docs.md'), '---\npaths: ["**/*.md"]\n---\n\n# md\n', -100);
-    write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { 'alfred-navigation': {}, 'alfred-documentation': {}, 'alfred-memory': {}, 'chrome-control': {} } }, null, 2), -100);
+    write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { serena: {}, context7: {}, memory: {}, 'playwright-chrome': {} } }, null, 2), -100);
     write(path.join(root, '.claude', 'alfred-code.stamp'), 'sha: abcdef1234567890\nversion: 0.2.79\n', -100);
     if (opts.rule !== false) write(DOC(root), opts.rule || '# This project\'s capabilities\n\nCaptured: 2026-09-01 from 0.2.79@abcdef1\n', 0);
     return root;
@@ -166,12 +166,12 @@ test('inventory: the MCP block is the LIVE list, not .mcp.json alone, and every 
     const bin = stubCli(path.join(TMP, 'live-cli'), {
         // `Failed to connect` carries the word `connect`, so a connected-first test would report a
         // dead server as live - the one claim in this block nothing downstream can catch.
-        mcp: 'alfred-navigation: cmd - ✔ Connected\nalfred-memory: uvx x - ✗ Failed to connect\nclaude.ai Notion: https://mcp.notion.com/mcp - ✔ Connected',
+        mcp: 'serena: cmd - ✔ Connected\nmemory: uvx x - ✗ Failed to connect\nclaude.ai Notion: https://mcp.notion.com/mcp - ✔ Connected',
     });
     const { out } = run([], { cwd: root, bin });
-    assert.match(out, /alfred-memory\s+registered\s+live: failed/);
+    assert.match(out, /memory\s+registered\s+live: failed/);
     // registered but NOT connected, and live but NOT registered - the two facts the file cannot give
-    assert.match(out, /alfred-documentation\s+registered\s+live: not in the live list/);
+    assert.match(out, /context7\s+registered\s+live: not in the live list/);
     assert.match(out, /claude\.ai Notion\s+-\s+live: connected\s+\(reaches the session from the account or the harness/);
     // Audit 2026-10-20 C44 (0738b25a): the live-only line states why it has no routing row, so the Flags line the
     // report copies reads as information - and says whether the project's own AGENTS.md routes it.
@@ -180,23 +180,22 @@ test('inventory: the MCP block is the LIVE list, not .mcp.json alone, and every 
     const named = run([], { cwd: root, bin }).out;
     assert.match(named, /claude\.ai Notion .*no routing row by design - the project's AGENTS\.md names it\)/);
     const rows = out.split('\n').filter((l) => /^\s+- `/.test(l));
-    // The locked three share one row pointing at the load line their baselines carry (audit I24).
-    assert.equal(rows.length, 2, 'one routing row per registered server, the locked servers on one');
-    for (const row of rows) assert.match(row, /first call: (`ToolSearch select:|the `ToolSearch select:` line each names)/, `no first call: in ${row.slice(0, 60)}`);
+    assert.equal(rows.length, 4, 'one routing row per registered server');
+    for (const row of rows) assert.match(row, /first call: `ToolSearch select:/, `no first call: in ${row.slice(0, 60)}`);
 });
 
 test('inventory: a browser engine server gets the catalog row with its own registered name', { skip: posixOnly }, () =>
 {
     const root = project('browser');
-    write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { 'chrome-control': {} } }), -100);
+    write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { 'playwright-chrome': {} } }), -100);
     const { out } = run([], { cwd: root, bin: stubCli(path.join(TMP, 'pw-cli')) });
-    assert.match(out, /chrome-control\s+registered .*routing: browser/);
-    assert.match(out, /- `chrome-control` - the browser server \(Playwright MCP\): drive a browser/);
+    assert.match(out, /playwright-chrome\s+registered .*routing: playwright/);
+    assert.match(out, /- `playwright-chrome` - the browser server \(Playwright MCP\): drive a browser/);
     // A .mcp.json server's tools are `mcp__<name>__<tool>` - the plugin spelling finds nothing there
     // (R63). The bare name is assembled here so lint check 54 never reads it as shipped text.
-    const bare = `mcp_${'_chrome-control__'}`;
+    const bare = `mcp_${'_playwright-chrome__'}`;
     assert.ok(out.includes(`${bare}browser_snapshot`), 'the catalog row is re-spelled for the registration');
-    assert.doesNotMatch(out, /mcp__plugin_chrome-control_chrome-control__/);
+    assert.doesNotMatch(out, /mcp__plugin_playwright-chrome_playwright-chrome__/); // mcp-fixture
 });
 
 // Every add-back line of the 2.0.0 MCP cut registers into .mcp.json, and those servers carry no
@@ -532,12 +531,12 @@ test('report: an unreadable skill frontmatter is reported as unreadable, never f
 const routingRows = (out) => out.split('\n').filter((l) => /^\s+- `/.test(l)).map((l) => l.trim());
 const PLUGIN_LIST = JSON.stringify([
     { id: 'alfred-code@envoydev', enabled: true },
-    { id: 'alfred-navigation@envoydev', enabled: true, mcpServers: { 'alfred-navigation': {} } },
-    { id: 'alfred-documentation@envoydev', enabled: true, mcpServers: { 'alfred-documentation': {} } },
-    { id: 'alfred-memory@envoydev', enabled: true, mcpServers: { 'alfred-memory': {} } },
-    { id: 'chrome-control@envoydev', enabled: true, mcpServers: { 'chrome-control': {} } },
-    { id: 'firefox-control@envoydev', enabled: false, mcpServers: { 'firefox-control': {} } },
-    { id: 'windows-control@envoydev', enabled: true, mcpServers: { 'windows-control': {} }, projectPath: '/nowhere/else' },
+    { id: 'serena@acme', enabled: true, mcpServers: { serena: {} } },
+    { id: 'context7@acme', enabled: true, mcpServers: { context7: {} } },
+    { id: 'memory@acme', enabled: true, mcpServers: { memory: {} } },
+    { id: 'playwright@claude-plugins-official', enabled: true, mcpServers: { playwright: {} } },
+    { id: 'playwright-firefox@acme', enabled: false, mcpServers: { 'playwright-firefox': {} } },
+    { id: 'windows-desktop@acme', enabled: true, mcpServers: { 'windows-desktop': {} }, projectPath: '/nowhere/else' },
     { id: 'csharp-lsp@claude-plugins-official', enabled: true },
 ]);
 
@@ -546,46 +545,46 @@ test('inventory: every server an enabled plugin provides gets its routing row in
     const root = project('plugin-mcp');
     fs.rmSync(path.join(root, '.mcp.json'));
     const bin = stubCli(path.join(TMP, 'plugin-mcp-cli'), {
-        mcp: 'plugin:alfred-navigation:alfred-navigation: uvx x - ✔ Connected\nplugin:alfred-memory:alfred-memory: uvx y - ✗ Failed to connect',
+        mcp: 'plugin:serena:serena: uvx x - ✔ Connected\nplugin:memory:memory: uvx y - ✗ Failed to connect',
         plugins: PLUGIN_LIST,
     });
     const { out } = run([], { cwd: root, bin });
     assert.match(out, /MCP:\s+0 registered in \.mcp\.json \(no \.mcp\.json\), 4 from enabled plugins/);
-    assert.match(out, /alfred-navigation\s+plugin\s+live: connected\s+from alfred-navigation/);
-    assert.match(out, /alfred-memory\s+plugin\s+live: failed/);
-    assert.match(out, /alfred-documentation\s+plugin\s+live: not in the live list/);
-    assert.doesNotMatch(out, /plugin:alfred-navigation:alfred-navigation.*reaches the session from the account or the harness/, 'a plugin server is not an account connector');
+    assert.match(out, /serena\s+plugin\s+live: connected\s+from serena/);
+    assert.match(out, /memory\s+plugin\s+live: failed/);
+    assert.match(out, /context7\s+plugin\s+live: not in the live list/);
+    assert.doesNotMatch(out, /plugin:serena:serena.*reaches the session from the account or the harness/, 'a plugin server is not an account connector');
     const rows = routingRows(out);
-    assert.deepStrictEqual(rows.map((r) => /^- ((?:`[^`]+`(?:, )?)+) - /.exec(r)[1]), ['`alfred-navigation`, `alfred-documentation`, `alfred-memory`', '`chrome-control`'],
-        'one row per enabled plugin server, the locked ones on one - never a disabled one, another project\'s, or a plugin with no server');
-    assert.match(rows[1], /first call: `ToolSearch select:mcp__plugin_chrome-control_chrome-control__browser_snapshot/, 'plugin spelling');
-    assert.match(rows[0], /first call: the `ToolSearch select:` line each names/, 'the locked row points at the baselines\' load lines');
+    assert.deepStrictEqual(rows.map((r) => /^- `([^`]+)` - /.exec(r)[1]), ['context7', 'memory', 'playwright', 'serena'],
+        'one row per enabled plugin server - never a disabled one, another project\'s, or a plugin with no server');
+    assert.match(rows[2], /first call: `ToolSearch select:mcp__plugin_playwright_playwright__browser_snapshot/, 'plugin spelling'); // mcp-fixture
+    assert.match(rows[3], /^- `serena` - routing: see project docs\. first call: `ToolSearch select:` plus the `mcp__plugin_serena_serena__\*` names/, 'a server the map does not key'); // mcp-fixture
 });
 
 test('inventory: with no CLI, the project settings enabledPlugins name the plugin servers', { skip: posixOnly }, () =>
 {
     const root = project('plugin-settings');
     fs.rmSync(path.join(root, '.mcp.json'));
-    write(path.join(root, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'alfred-navigation@envoydev': true, 'alfred-memory@envoydev': true, 'csharp-lsp@claude-plugins-official': true, 'alfred-code@envoydev': true } }), -100);
-    write(path.join(root, '.claude', 'settings.local.json'), JSON.stringify({ enabledPlugins: { 'alfred-memory@envoydev': false } }), -100);
+    write(path.join(root, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'playwright@claude-plugins-official': true, 'windows-desktop@acme': true, 'serena@acme': true, 'csharp-lsp@claude-plugins-official': true, 'alfred-code@envoydev': true } }), -100);
+    write(path.join(root, '.claude', 'settings.local.json'), JSON.stringify({ enabledPlugins: { 'windows-desktop@acme': false } }), -100);
     const { out } = run([], { cwd: root });
     assert.match(out, /live list unavailable - CLI absent/);
-    assert.deepStrictEqual(routingRows(out).map((r) => /^- ((?:`[^`]+`(?:, )?)+) - /.exec(r)[1]), ['`alfred-navigation`'], 'settings.local.json switches memory off; the core and the LSP carry no server');
-    assert.match(routingRows(out)[0], /first call: the `ToolSearch select:` line each names/);
+    assert.deepStrictEqual(routingRows(out).map((r) => /^- ((?:`[^`]+`(?:, )?)+) - /.exec(r)[1]), ['`playwright`'], 'settings.local.json switches the desktop one off; the core, the LSP and a name the map does not key carry no server');
+    assert.match(routingRows(out)[0], /first call: `ToolSearch select:mcp__plugin_playwright_playwright__browser_snapshot/); // mcp-fixture
 });
 
 test('inventory: a registered server keeps its own row, and a third-party plugin server is spelled by its plugin', { skip: posixOnly }, () =>
 {
     const root = project('plugin-both');
-    write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { 'alfred-navigation': {} } }), -100);
+    write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { playwright: {} } }), -100);
     const bin = stubCli(path.join(TMP, 'plugin-both-cli'), {
         plugins: JSON.stringify([
-            { id: 'alfred-navigation@envoydev', enabled: true, mcpServers: { 'alfred-navigation': {} } },
+            { id: 'playwright@claude-plugins-official', enabled: true, mcpServers: { playwright: {} } },
             { id: 'acme-tools@acme', enabled: true, mcpServers: { tracker: {} } },
         ]),
     });
     const rows = routingRows(run([], { cwd: root, bin }).out);
-    assert.deepStrictEqual(rows.map((r) => /^- `([^`]+)`/.exec(r)[1]), ['alfred-navigation', 'tracker'], 'one row per server name');
+    assert.deepStrictEqual(rows.map((r) => /^- `([^`]+)`/.exec(r)[1]), ['playwright', 'tracker'], 'one row per server name');
     assert.doesNotMatch(rows[0], /mcp__plugin_/, 'the registration wins its name and keeps its own spelling');
     assert.match(rows[1], /routing: see project docs\. first call: `ToolSearch select:` plus the `mcp__plugin_acme-tools_tracker__\*` names/); // mcp-fixture
 });
@@ -598,7 +597,7 @@ test('--verify: a rule built from plugin-provided rows passes', { skip: posixOnl
     const rows = routingRows(run([], { cwd: root, bin }).out);
     const rule = write(path.join(root, 'composed.md'), validRule().replace(/## MCP routing\n[\s\S]*?\n\n/, `## MCP routing\n${rows.join('\n')}\n\n`));
     const r = run(['--verify', rule], { cwd: root, bin });
-    assert.match(r.out, /mcp rows:\s+ok - 2 of 2 carry their 'first call:' line/);
+    assert.match(r.out, /mcp rows:\s+ok - 4 of 4 carry their 'first call:' line/);
 });
 
 // Pilot 2 (2026-09-27): init's capture wrote its composed body to the session temp dir with the Write

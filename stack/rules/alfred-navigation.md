@@ -8,20 +8,19 @@ description: House baseline - code navigation and reading. Always-on (no paths),
 
 - Read only what is needed: `Read` is for code already located, never a whole file to find a symbol (`guard-read-whole-file.js` blocks it). Answer a blocked read with the ranged read its denial names - never the same read in another shape or against a second path; before editing, read the body and what it calls.
 - A shell read (`cat`, `sed`, `head`, `awk`, python, a heredoc) is the same read under the same rules. Only a plain one-file view (`cat`, `head`, `tail`, `sed -n`, `grep`, no pipe or redirect) attaches path-scoped rules; a shell write never does, so the read guard names the governing rule on the first shell write.
-- Never fetch what is already in context, by any route - no repeat `find_symbol`, no second read of an unchanged file or range; re-check an edit at the edited range only.
+- Never fetch what is already in context, by any route - no repeat symbol lookup, no second read of an unchanged file or range; re-check an edit at the edited range only.
 - No docs block at session start means no capture ran: say so once and navigate from code.
 - What the STACK does or wants is read from its own artifacts - the owning command's doc for a reconcile, the rule or hook that reads a setting for what it does - never guessed by hand-comparing files.
 
 ## Locating symbols
 
-- Symbols, callers and resolved types go through the `alfred-navigation` server (Serena) inline, never an `Explore` / `general-purpose` dispatch (the dispatch guard blocks a symbol brief); an installed `LSP` plugin adds compiler-exact lookups. A scoped grep for a literal you already located is fine; a symbol question is not, because name-matches lie.
-- The navigation-server tools are DEFERRED - naming them is not having them. Load them in one call: `ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__find_symbol,mcp__plugin_alfred-navigation_alfred-navigation__find_referencing_symbols,mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview`. A seat whose tools grant them - by name or as the whole server - has them loaded already; it calls them directly.
-- A symbol its language server cannot resolve (a large or SDK-heavy C# solution indexes slowly) falls back to the `LSP` plugin, then to a scoped grep reported as name-matched, not resolved. The navigation server keeps symbol lookup, `rename_symbol` and `safe_delete_symbol`; every other edit goes through Edit / Write, the tools the edit hooks watch.
-- `Active language servers: []` is a run-level fact: say so once, take that fallback, never re-issue the call class this run, and hand the fact to the seats you dispatch next.
-- A language the navigation server's `project.yml` (`<data root>/serena/`) does not list takes the fallback from its first call.
+- A job's tools are the ones the session-start tool order ranks for it, first rank first - for navigation the `LSP` tool when nothing else is registered (`workspaceSymbol` for a symbol, `findReferences` for its callers, `goToDefinition`, `documentSymbol` for a file's outline), then a scoped grep. The navigation tools and the documentation tools named across the stack are those ranks.
+- Symbols, callers and resolved types go through the navigation tools inline, never an `Explore` / `general-purpose` dispatch (the dispatch guard blocks a symbol brief). A scoped grep for a literal you already located is fine; a symbol question is not, because name-matches lie - a grep answer is reported as name-matched, not resolved.
+- Deferred tools are not held until loaded - naming them is not having them. Load a rank's tools with the `ToolSearch select:` line the tool order gives it, in one call; a seat whose tools grant them calls them directly.
+- A symbol the first rank cannot resolve (a large or SDK-heavy C# solution indexes slowly) takes the next rank, down to the scoped grep. A tool that reports no language server for the file is a run-level fact: say so once, take the next rank, never re-issue the call class this run, and hand the fact to the seats you dispatch next.
+- Edits go through Edit / Write, the tools the edit hooks watch; of a navigation server's own edit tools only a symbol rename or a safe delete is used.
 - A large JSON / YAML / lock / fixture file is queried (a `node -e` projection - Git for Windows ships no `jq` - or `grep -n`, then a ranged Read), never read whole.
-- A large symbol is fetched WITHOUT its body first (signature, children), then read by range.
-- `get_symbols_overview` takes ONE file, never a directory - list the directory first; on C# pass `depth: 2` (the default stops at the namespace, so it returns only its name; 2 reaches the type members, nested-type members need 3; a top-level-statements file returns `{}` at any depth).
+- A large file is outlined first (`documentSymbol`: its symbols and their line ranges), then read by range. `documentSymbol` takes ONE file, never a directory - list the directory first.
 - An EMPTY reference result for a symbol that plausibly has callers is suspect (a multi-tsconfig monorepo hides cross-lib callers): cross-check with a grep before saying 'no callers'.
 
 ## Compact Instructions

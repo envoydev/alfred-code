@@ -5,7 +5,7 @@ description: "Load when authoring or reviewing a Dockerfile, compose file, workf
 
 # DevOps - containers, CI/CD, and safe deploys for the .NET/Angular house
 
-For any action, image, or tool flag not pinned down here, resolve it with the `alfred-documentation` MCP rather than memory.
+For any action, image, or tool flag not pinned down here, resolve it with the documentation tools rather than memory.
 
 The pipeline is production code - a broken workflow blocks every merge and a leaked secret is an incident, not a warning. This is the delivery-surface map for the house stacks (ASP.NET Core, Angular, and their SQL/data layer). With no companion skill present for orchestration, migrations or hardening, the rules here are the whole guidance and any check one would have run is reported UNVERIFIED. The rule under all of it - the build is reproducible, the secret never touches an image or a log, and every deploy is reversible.
 

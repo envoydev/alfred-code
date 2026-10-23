@@ -11,7 +11,7 @@ for them. Audit material: read it to learn WHY a rule is shaped the way it is, n
 - **Lenses are disjoint by construction; sweeps find what captures miss** - proven practice across eleven consecutive rounds of one project's loop: sweeps surfaced real off-list production bugs, including a fee under-charging money bug and a silent config zero-default, that captures and the work list never held
 
 ## 2. TRIAGE + FIX by tier
-- **The brief states `memory: none`; a note handed is named literally** - measured: un-briefed seats wrote unrequested notes and ran full-store note listings
+- **The brief states `note: none`; a note handed is named literally** - measured: un-briefed seats wrote unrequested notes and ran full-store note listings
 - **gate the returned plan with an actual Skill invocation, stated here** - the reference carrying it went unread in two runs, one of which paid 41k tokens of rework for a defect the gate exists to catch
 - **a self-declared downgrade on the old small-tier stamp is the silent downgrade** - measured: 'so I'm proceeding' built a substantial fix on a 29-minute-old stamp for an unrelated consent
 

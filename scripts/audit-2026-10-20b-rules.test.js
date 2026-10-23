@@ -44,15 +44,12 @@ test('R2: inherited conventions beat the house rules, the user\'s preferences be
 // tool lines only). Such a preference is stored and handed to the user as the slash-only capture that binds every seat.
 test('R3: a code, architecture or git preference is stored and routed to /capture-preferences', () =>
 {
-    const mem = injected('alfred-memory');
-    assert.match(mem, /^# Shared memory Project truth lives in the docs domains; memory holds what they do not - corrections, lessons, and preferences the `preferences\/` docs lack/);
-    assert.ok(mem.includes('A personal, code, architecture or git preference is stored too, then named to the user as `/capture-preferences <their words>` to run - only the preferences docs reach every session'), mem);
+    // 2026-10-24: the memory rule retired with the memory server; the nudge moved into the preferences rule.
+    const prefs = injected('alfred-preferences');
+    assert.ok(prefs.includes('A personal, code, architecture or git preference the user states in chat is named back to them as `/capture-preferences <their words>` to run - only the preferences docs reach every session'), prefs);
     const skill = read('stack/skills/capture-preferences/SKILL.md');
     assert.match(skill, /^disable-model-invocation: true$/m, 'slash-only, so the rule hands it to the user');
     assert.ok(JSON.parse(read('meta/recommendations.json')).always.skills.includes('capture-preferences'), 'every install carries it, so the always-on rule may name it');
-    const hook = read('stack/hooks/memory-session.js');
-    const seatBranch = hook.slice(hook.indexOf("if (event === 'SubagentStart')"), hook.indexOf('const level = memory.levelOfPath'));
-    assert.ok(seatBranch.includes("return emit('SubagentStart'") && !seatBranch.includes('selectForSession'), 'a seat gets the tag and tool lines, no memory block');
 });
 
 // R4: the markdown carve-out lists the generated rules by name, and 2.8.0 added alfred-preferences.md (written by the

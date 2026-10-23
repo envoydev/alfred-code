@@ -57,12 +57,11 @@ test('row 5: ambiguity has one first action', () =>
 test('rows 6, 7, 15: the handoff line has one home, the no-op pointer and the docs-root coupling are gone', () =>
 {
     const nav = injected('alfred-navigation');
-    const mem = injected('alfred-memory');
     assert.ok(!/memory tools are off/.test(nav), 'navigation no longer repeats the memory rule');
-    assert.ok(mem.includes("A seat's handoff note - what one agent leaves the next within a run - lives here too, never in the navigation server (its memory tools are off)"), 'memory owns it');
+    // 2026-10-24: the memory rule retired with the memory server; the handoff note's home is the trio protocol's bus.
+    assert.ok(!fs.existsSync(path.join(ROOT, 'stack', 'rules', 'alfred-memory.md')), 'alfred-memory.md is retired');
+    assert.ok(JSON.parse(read('meta/stack-manifest.json')).retired.rules.includes('alfred-memory.md'), 'and listed as retired, so an update prunes it');
     assert.ok(!nav.includes("The traps of this host's own shell"), 'the no-op pointer');
-    assert.ok(!mem.includes('alfred-docs-root.md'), 'memory names no other rule file for the root');
-    assert.match(mem, /^# Shared memory Project truth lives in the docs domains; memory holds what they do not/);
     const raw = read('stack/rules/alfred-navigation.md');
     assert.match(raw, /## Shell commands\n\n<!-- Kept in this file, not split into a rule of its own:[^\n]*-->\n/);
     assert.ok(!nav.includes('Kept in this file'), 'the comment is stripped before injection');

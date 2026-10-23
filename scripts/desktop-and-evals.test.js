@@ -62,8 +62,8 @@ test('I10: FileSystem is in the default gate, and the launcher comment states wh
 test('I10: the skill and windows.md say what stays on and that a house guard denies App launch_executable unless DESKTOP-EXEC-ALLOW allows it', () =>
 {
     const skill = flat(read('stack/skills/desktop-automation/SKILL.md'));
-    // stack audit 2026-10-20 row 14: Windows-MCP 0.8.8 enables every tool; the stack's launcher is what excludes them
-    assert.match(skill, /the stack launches it with PowerShell, Registry, Process and FileSystem excluded/);
+    // stack audit 2026-10-20 row 14: Windows-MCP 0.8.8 enables every tool; since 2026-10-24 the user's registration excludes them
+    assert.match(skill, /Windows-MCP enables every tool by default, so it is registered with PowerShell, Registry, Process and FileSystem excluded unless the user wants them/);
     assert.match(skill, /a house guard denies App's `launch_executable` mode[^.]*and every MacOS-MCP `Shell` call unless the user allowed it in `<data root>\/state\/approvals\/DESKTOP-EXEC-ALLOW`/);
     const win = flat(read('stack/skills/desktop-automation/references/windows.md'));
     assert.match(win, /--exclude-tools PowerShell,Registry,Process,FileSystem/);
@@ -169,9 +169,9 @@ test('SD08: the Observe step picks the look by the question and names the scale 
     assert.match(skill, /MacOS-MCP has no Screenshot tool: its image is Snapshot with vision/);
     assert.match(skill, /`WINDOWS_MCP_SCREENSHOT_SCALE` \(0\.1 to 1\.0, default 1\.0 - full size\)[^.]*the stack seeds no value/);
     assert.match(skill, /no Snapshot, Screenshot or WaitFor between/);
-    assert.match(skill, /windows-control__WaitFor,mcp__plugin_windows-control_windows-control__Screenshot`/, 'the Windows ToolSearch line loads Screenshot');
+    assert.match(skill, /`Snapshot`, `Click`, `Type`, `WaitFor` and `Screenshot` on Windows-MCP/, 'the Windows load line takes Screenshot');
     const win = flat(read('stack/skills/desktop-automation/references/windows.md'));
-    assert.match(win, /The stack seeds no value: how far a 1080p and a 4K desktop can shrink and stay readable is not measured yet\./);
+    assert.match(win, /How far a 1080p and a 4K desktop can shrink and stay readable is not measured yet\./);
 });
 
 test('SD08: the windows-control entry seeds no screenshot scale on either route, and its note names the knob', () =>

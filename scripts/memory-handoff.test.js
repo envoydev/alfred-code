@@ -81,15 +81,14 @@ test('no shipped text tells the model to use a navigation-server memory tool', (
   assert.deepStrictEqual(hits, []);
 });
 
-test('the rules: alfred-memory.md routes the handoff notes, the trio protocol holds their calls, alfred-navigation.md and the locked row keep no memory on the server', () => {
-  const mem = read('stack/rules/alfred-memory.md');
-  assert.ok(!mem.includes("handoff notes go to the navigation server's memory"), 'the old routing is gone');
-  assert.match(mem, /A seat's handoff note - what one agent leaves the next within a run - lives here too, never in the navigation server \(its memory tools are off\); its dispatch brief names it, and the session-start block never carries a `handoff` row\./);
-  // audit 2026-10-14 RU01: the call shapes left the always-on rule - every seat body carries its own, the orchestrator's protocol the rest
-  assert.ok(!mem.includes('conversation_id'), 'no call shape in the always-on rule');
+// 2026-10-24: the memory rule retired with the memory server; the trio protocol holds the bus's calls.
+test('the rules: no memory rule ships, the trio protocol holds the bus calls, alfred-navigation.md keeps no memory on a server', () => {
+  assert.ok(!fs.existsSync(path.join(__dirname, '..', 'stack', 'rules', 'alfred-memory.md')), 'alfred-memory.md is retired');
   const trio = read('stack/skills/task-solve-cross/references/domain-trio-protocol.md');
-  for (const piece of ["`conversation_id: '<feature>/<contract_version>'`", "`metadata.type: 'note'`", '`handoff`, `handoff:<feature>`, `handoff:<feature>/<contract_version>`, `note:<note name>` and the project tag', "`tag_match: 'all'`", 'memory_delete', 'the newest note per name wins'])
+  for (const piece of ["`node .claude/hooks/handoff.js put <note name> <<'EOF'`", '`node .claude/hooks/handoff.js list <feature>/<contract_version>`', '`node .claude/hooks/handoff.js purge <feature>`', 'the newest note per name wins'])
     assert.ok(trio.includes(piece), `domain-trio-protocol.md: ${piece}`);
+  for (const gone of ['conversation_id', 'tag_match', 'memory_delete', 'memory_store'])
+    assert.ok(!trio.includes(gone), `domain-trio-protocol.md: ${gone}`);
   const nav = read('stack/rules/alfred-navigation.md');
   assert.ok(!/write_memory|seat memory handoff/.test(nav), 'alfred-navigation.md keeps no memory on the server');
   assert.ok(!/memory tools are off/.test(nav), 'stack audit 2026-10-20 rules row 6: alfred-memory.md is the one home of the line');

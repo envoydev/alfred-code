@@ -472,10 +472,13 @@ test('closeLines: a picked rule pulls in what it requires, logged as required', 
 
 test('closeLines: a skill an entry merely CARRIES pulls in nothing, and hook lines pass through untouched', () =>
 {
-    const needy = Object.keys(GRAPH.skills).find((s) => computeClosure(GRAPH, { skills: [s] }).mcps.length > 0);
-    assert.ok(needy, 'the graph has a skill that needs an MCP');
+    // No shipped skill needs a server since 2026-10-24, so the fixture graph gives one an edge.
+    const graph = structuredClone(GRAPH);
+    const needy = Object.keys(graph.skills)[0];
+    graph.skills[needy] = { ...graph.skills[needy], mcps: ['some-server'] };
+    assert.ok(computeClosure(graph, { skills: [needy] }).mcps.length > 0, 'the fixture skill needs an MCP');
     const lines = [`skill ${needy}`, 'hook none', 'skill my-own-skill'];
-    const out = sel.closeLines(lines, { from: ['hook none', 'skill my-own-skill'], graph: GRAPH });
+    const out = sel.closeLines(lines, { from: ['hook none', 'skill my-own-skill'], graph });
     assert.deepStrictEqual(out, lines, 'no closure over a carried-only skill; the user\'s own item and hook none survive');
 });
 

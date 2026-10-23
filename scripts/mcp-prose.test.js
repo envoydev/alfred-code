@@ -83,8 +83,8 @@ test('M32 the verifiers, the integration reviewer and the solve flow spell the n
     // The agents-mode dispatch rules moved to the step mechanics (usage audit 2026-10-10: the body sits at its cap).
     for (const f of ['stack/skills/task-solve/SKILL.md', 'stack/skills/task-solve/references/step-mechanics.md'])
         assert.doesNotMatch(read(f), /write_memory/, f);
-    // 2026-10-13: the brief hands the seat its literal note name and the project tag; the seat stores through alfred-memory.
-    assert.match(read('stack/skills/task-solve/references/step-mechanics.md'), /`note: <feature>\/<contract_version>\/<seat>\/<task>`, `project:<name>`/);
+    // 2026-10-13: the brief hands the seat its literal note name; since 2026-10-24 the seat stores it on the handoff bus.
+    assert.ok(read('stack/skills/task-solve/references/step-mechanics.md').includes('`note: <feature>/<contract_version>/<seat>/<task>` (the seat stores its note under that name on the handoff bus)'));
 });
 
 // M39 (2.1.6) named the handoff notes as folders serena's list_memories(topic) filtered by; since the user's
@@ -124,12 +124,12 @@ test('M39 the handoff notes keep the one grammar and are read by exact tags', ()
     {
         const text = read(f);
         assert.match(text, /ONE naming grammar: `<feature>\/<contract_version>\/<seat>`/, f);
-        assert.match(text, /the name rides the row as its `note:<name>` tag, beside `handoff:<feature>\/<contract_version>`/, f);
-        assert.match(text, /`memory_list`, `tag_match: 'all'`/, f);
+        assert.ok(text.includes("read a run with `node .claude/hooks/handoff.js list <feature>/<contract_version>` - newest first, the newest note per name wins - or one note by its exact name"), f);
+        assert.doesNotMatch(text, /memory_list|memory_store|memory_delete|tag_match/, f);
     }
     const reuse = read('stack/skills/task-solve-cross/references/capability-reuse.md');
-    assert.doesNotMatch(reuse, /prefix-matches|list_memories/);
-    assert.match(reuse, /it calls `memory_list` with `handoff:<feature>\/<contract_version>` and the project tag, `tag_match: 'all'`/);
+    assert.doesNotMatch(reuse, /prefix-matches|list_memories|memory_list/);
+    assert.ok(reuse.includes("it calls `node .claude/hooks/handoff.js list <feature>/<contract_version>`, which prints that run's notes and nothing else"));
     // Usage audit 2026-10-10 (C20): the cycle note was a second cursor nobody kept fresh - the plan's Resume line
     // is the one cursor, and the store holds only the seats' hand-offs.
     const solve = read('stack/skills/task-solve/SKILL.md');
@@ -139,87 +139,36 @@ test('M39 the handoff notes keep the one grammar and are read by exact tags', ()
     assert.match(read('stack/skills/loop-code-quality/references/delegated-mode.md'), /named `<feature>\/<contract_version>\/<seat>\/<task>`/);
 });
 
-// The purge count is a script's number, never a recollection: `node .claude/hooks/memory.js handoff <feature>` reads
-// the memory database (this project's `handoff:<feature>` rows) and an older release's navigation-server notes still on
-// disk - the feature folder and a pre-2.1.6 run's flat `<feature>__*`, a 2.0.0 `.serena/memories` too - in node, so no
-// `find` first on PATH (Windows' find.exe is a string search, review B2) can read it as 'none left'. Run as written.
+// The purge count is a script's number, never a recollection: `node .claude/hooks/handoff.js left <feature>` reads the
+// handoff bus (2026-10-24; the memory database and an older release's navigation-server notes before it) in node, so no
+// shell tool can read it as 'none left'. The engine's own cases - the data root, an unreadable store - are
+// handoff-engine.test.js; here the protocol's line is run as written.
 const purgeLine = () => /The purge is counted, not claimed\.\*\* At close, from the project root: `([^`]+)`/.exec(read(TRIO_COPIES[0]))[1];
-let SQLITE = null;
-try { process.removeAllListeners('warning'); SQLITE = require('node:sqlite'); } catch {}
-const purgeFixture = (fn) =>
-{
-    const os = require('node:os');
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'm39-purge-'));
-    const put = (rel) => { fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true }); fs.writeFileSync(path.join(dir, rel), 'x'); };
-    fs.mkdirSync(path.join(dir, '.claude', 'hooks'), { recursive: true });
-    fs.copyFileSync(path.join(ROOT, 'stack', 'hooks', 'memory.js'), path.join(dir, '.claude', 'hooks', 'memory.js'));
-    const db = path.join(dir, 'memory.db');
-    const d = new SQLITE.DatabaseSync(db);
-    d.exec(read('scripts/fixtures/memory-schema.sql'));
-    const ins = d.prepare('INSERT INTO memories (content_hash, content, tags, memory_type, created_at, deleted_at) VALUES (?, ?, ?, ?, ?, ?)');
-    const name = path.basename(dir);
-    ins.run('a', 'designer note', `handoff,handoff:csv-export,handoff:csv-export/2026-09-29-csv,note:csv-export/2026-09-29-csv/web-angular-solution-designer,project:${name}`, 'note', 1, null);
-    ins.run('b', 'purged note', `handoff,handoff:csv-export,note:csv-export/2026-09-29-csv/x,project:${name}`, 'note', 2, 3);
-    ins.run('c', 'another feature', `handoff,handoff:csv-export-v2,note:csv-export-v2/v/x,project:${name}`, 'note', 4, null);
-    ins.run('d', 'another project', 'handoff,handoff:csv-export,note:csv-export/v/y,project:other', 'note', 5, null);
-    d.close();
-    fs.writeFileSync(path.join(dir, '.mcp.json'), JSON.stringify({ mcpServers: { 'alfred-memory': { type: 'stdio', command: 'node', args: [], env: { MCP_MEMORY_SQLITE_PATH: db } } } }));
-    const env = { ...process.env, HOME: dir, USERPROFILE: dir, CLAUDE_CONFIG_DIR: path.join(dir, 'acct'), CLAUDE_PROJECT_DIR: dir };
-    delete env.ALFRED_CODE_DATA_PATH;
-    try { fn(dir, put, env); }
-    finally { fs.rmSync(dir, { recursive: true, force: true }); }
-};
-const seedPurge = (dir, put) =>
-{
-    put('.alfred/serena/memories/csv-export/cycle.md');
-    put('.alfred/serena/memories/csv-export/2026-09-29-csv/web-angular-solution-designer.md');
-    put('.alfred/serena/memories/csv-export/2026-09-29-csv/web-angular-implementer/task-2.md');
-    fs.mkdirSync(path.join(dir, '.alfred/serena/memories/csv-export/2026-09-28-csv'), { recursive: true });
-    put('.alfred/serena/memories/csv-export-v2/2026-09-29-csv/web-angular-verifier.md');
-    put('.alfred/serena/memories/csv-export-v2__2026-09-29-csv__web-angular-verifier.md');
-    put('.serena/memories/csv-export__2026-09-20-csv__web-angular-verifier.md');
-    put('.alfred/serena/home/memories/global/csv-export/note.md');
-};
-test('M39 the purge count counts this project\'s feature rows and the legacy notes, nothing else', { skip: (process.platform === 'win32' && 'the find stub is a shell script') || (!SQLITE && 'node:sqlite unavailable') }, () =>
-{
-    const { execFileSync } = require('node:child_process');
-    const os = require('node:os');
-    assert.strictEqual(purgeLine(), 'node .claude/hooks/memory.js handoff <feature>');
-    const cmd = purgeLine().replace(/<feature>/g, 'csv-export');
-    purgeFixture((dir, put, env) =>
-    {
-        const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'm39-bin-'));
-        fs.writeFileSync(path.join(bin, 'find'), '#!/bin/sh\necho "FIND: Parameter format not correct" >&2\nexit 2\n', { mode: 0o755 });
-        const count = (pathDirs) => execFileSync('bash', ['-c', cmd], { cwd: dir, env: { ...env, PATH: [...pathDirs, process.env.PATH].join(path.delimiter) }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\n')[0];
-        try
-        {
-            assert.strictEqual(count([]), '1', 'one live row of this project for the feature: purged, other-feature and other-project rows are none');
-            seedPurge(dir, put);
-            assert.strictEqual(count([]), '5', 'that row, three notes in the feature folder (an empty folder is none) and one flat 2.0.0 note');
-            assert.strictEqual(count([bin]), '5', 'a foreign find first on PATH changes nothing');
-        }
-        finally { fs.rmSync(bin, { recursive: true, force: true }); }
-    });
-});
-
-// Review B2: the count is plain node, so its logic runs the same on every platform - no shell, no find.
-test('M39 the purge count runs the same without a shell, follows the data root, and never guesses', { skip: !SQLITE && 'node:sqlite unavailable' }, () =>
+test('M39 the purge count is the bus\'s own count of the feature\'s notes, the same line in every copy', () =>
 {
     const { spawnSync } = require('node:child_process');
-    const m = /^node (\.claude\/hooks\/memory\.js) handoff <feature>$/.exec(purgeLine());
-    assert.ok(m, 'the line runs the copied engine with the feature as its argument');
-    purgeFixture((dir, put, env) =>
+    assert.strictEqual(purgeLine(), 'node .claude/hooks/handoff.js left <feature>');
+    for (const f of [...TRIO_COPIES, 'stack/skills/task-solve/references/step-mechanics.md'])
+        assert.ok(read(f).includes('`node .claude/hooks/handoff.js left <feature>`'), f);
+    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'm39-purge-')));
+    try
     {
-        seedPurge(dir, put);
-        const run = (extra = {}) => spawnSync(process.execPath, [path.join(dir, m[1]), 'handoff', 'csv-export'], { cwd: dir, env: { ...env, ...extra }, encoding: 'utf8' });
-        assert.strictEqual(run().stdout.split('\n')[0], '5');
-        fs.renameSync(path.join(dir, '.alfred'), path.join(dir, 'data'));
-        assert.strictEqual(run({ ALFRED_CODE_DATA_PATH: 'data' }).stdout.split('\n')[0], '5', 'the data root setting is followed');
-        fs.writeFileSync(path.join(dir, 'memory.db'), 'not a database');
-        const bad = run({ ALFRED_CODE_DATA_PATH: 'data' });
-        assert.strictEqual(bad.status, 1);
-        assert.strictEqual(bad.stdout, '', 'an unreadable database prints no number');
-    });
+        fs.mkdirSync(path.join(dir, '.claude', 'hooks'), { recursive: true });
+        for (const file of ['handoff.js', 'layout.js']) fs.copyFileSync(path.join(ROOT, 'stack', 'hooks', file), path.join(dir, '.claude', 'hooks', file));
+        const env = { ...process.env, CLAUDE_PROJECT_DIR: dir };
+        delete env.ALFRED_CODE_DATA_PATH;
+        const bus = (args, input) => spawnSync(process.execPath, [path.join(dir, '.claude', 'hooks', 'handoff.js'), ...args], { cwd: dir, env, input, encoding: 'utf8' });
+        bus(['put', 'csv-export/2026-09-29-csv/web-angular-solution-designer'], 'designer note');
+        bus(['put', 'csv-export/2026-09-29-csv/web-angular-implementer/task-2'], 'implementer note');
+        bus(['put', 'csv-export-v2/v/web-angular-verifier'], 'another feature');
+        const [cmd, ...args] = purgeLine().replace(/<feature>/g, 'csv-export').split(' ');
+        assert.strictEqual(cmd, 'node');
+        const count = () => spawnSync(process.execPath, args, { cwd: dir, env, encoding: 'utf8' }).stdout.split('\n')[0];
+        assert.strictEqual(count(), '2', 'the feature\'s two notes, never the other feature\'s');
+        bus(['purge', 'csv-export']);
+        assert.strictEqual(count(), '0');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 // M33: a seat names its documentation route one way - the documentation tools its start line orders (2026-10-24: no
@@ -258,9 +207,10 @@ test('M40 both desktop ToolSearch lines say the session\'s listing names more to
 {
     const skill = read('stack/skills/desktop-automation/SKILL.md');
     const rule = read('stack/skills/capture-awareness/references/agents.md');
-    for (const server of ['windows-control', 'macos-control'])
+    // 2026-10-24: the skill names no server spelling - the load line is the tool order's `desktop` line.
+    assert.ok(skill.replace(/\s+/g, ' ').includes("plus that server's other tools the session's own listing shows"), 'the skill');
+    for (const server of ['windows-desktop', 'macos-desktop'])
     {
-        assert.match(skill, new RegExp(`plus the other \`mcp__plugin_${server}_${server}__\\*\` names the session's own listing shows`), server);
         const row = rule.split('\n').find((l) => l.startsWith(`- \`${server}\``));
         assert.match(row, /plus the other `mcp__plugin_<server>_<server>__\*` names the session's own listing shows\.$/, server);
     }
@@ -274,14 +224,6 @@ test('M42 the status example row shows the plugin route launcher at the release 
     assert.ok(text.includes('node .../browser-launch.js --package @playwright/mcp@<pin> --browser firefox'), 'the plugin-route shape, at the pin');
 });
 
-// M43: mcp-memory-service reads tags only from `metadata` (server/handlers/memory.py, 11.14.0 line 193); a top-level
-// `tags` argument is dropped, and an untagged row is invisible to the session-start project filter.
-test('M43 alfred-memory names metadata.tags for the project tag', () =>
-{
-    const text = read('stack/rules/alfred-memory.md');
-    assert.match(text, /`metadata\.tags` `project:<name>`/);
-});
-
 // M44: the memory ToolSearch line had two homes no pin tied together. Audit 2026-10-14 RU10 left it ONE, the memory hook's
 // session and seat pushes; the tool preferences (phase 1, 2026-10-24) moved that home into the tool order's start line,
 // built from the adapter table's memory job and resolved per actor, so the rule never repeats it and the memory hook
@@ -289,7 +231,7 @@ test('M43 alfred-memory names metadata.tags for the project tag', () =>
 test('M44 the memory ToolSearch line has one home, the tool order\'s start line', () =>
 {
     const line = 'ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store,mcp__plugin_alfred-memory_alfred-memory__memory_search,mcp__plugin_alfred-memory_alfred-memory__memory_list';
-    assert.ok(!read('stack/rules/alfred-memory.md').includes('ToolSearch select:'), 'the rule carries no ToolSearch line');
+    assert.ok(!fs.existsSync(path.join(ROOT, 'stack', 'rules', 'alfred-memory.md')), 'no rule carries the line - the memory rule retired 2026-10-24');
     assert.strictEqual(JSON.parse(read('meta/shared-rules.json')).rules['memory-toolsearch-line'], undefined, 'no pin for a one-home line');
     const hook = read('stack/hooks/memory-session.js');
     assert.strictEqual(hook.split('ToolSearch select:').length, 2, 'the memory hook spells the line once, its fallback');
@@ -314,7 +256,8 @@ test('M45 the live probe says the browser tools are deferred and loaded through 
     const text = read('stack/skills/task-verify-code/references/live-probe.md').replace(/\s+/g, ' ');
     // Review 2.1.5 plugin, MINOR 3: 'defers MCP tools, its tools are deferred' read as a tautology.
     assert.doesNotMatch(text, /its tools are deferred/);
-    assert.match(text, /Where the harness defers MCP tools, load the browser plugin's tools through ToolSearch, by the names the deferred listing shows, before you call it absent\./);
+    // 2026-10-24: the stack ships no browser server - the tools are the tool order's `browser` line.
+    assert.match(text, /the browser tools are the `browser` line of the session-start tool order, the server the user registered, so they can be absent\. Where the harness defers MCP tools, load them with that line's `ToolSearch select:` before you call them absent\./);
 });
 
 // R3: MacOS-MCP 0.4.6 has no exclude FLAG, but `[tools] exclude` in its config.toml removes a tool

@@ -14,7 +14,6 @@
   "rules": [
    "alfred-docs-root",
    "alfred-interaction",
-   "alfred-memory",
    "alfred-navigation",
    "alfred-preferences",
    "alfred-quality-gates",

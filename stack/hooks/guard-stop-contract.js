@@ -2843,7 +2843,7 @@ function flowFieldNotes(questions, askText, turnText) {
 }
 
 // The RECEIPTS one solve-task stop owes on top of the three fields, each the proof a step's read or purge ran (audit
-// 2026-10-10, T4 cross-track: a close with no `memories purged:` in 390aebcb, 3ce6b036 and 49cb4b82, a step-3 approval
+// 2026-10-10, T4 cross-track: a close with no purge receipt in 390aebcb, 3ce6b036 and 49cb4b82, a step-3 approval
 // with no `mechanics: read` in e499fc94, a first stop with no `Size:` in 3b53e0e8, a cross close report with no
 // `ceilings:` in a6a24815). Which stop owes which is read from the transcript, never from the model's own wording:
 // the FIRST stop has no answered ask since the newest flow marker; the APPROVAL offers an 'Approve' option; the CLOSE
@@ -2870,7 +2870,8 @@ function flowReceiptsOwed(flow, text, questions) {
   }
   const solveClose = flow.completed !== null && flow.completed > flow.askAt && !flow.typedAfter;
   const crossClose = /(?:^|\n)\s*\**final gate\**\s*:/i.test(text) && /(?:^|\n)\s*\**lanes\**\s*:/i.test(text);
-  if ((solveClose || crossClose) && !has(/\bmemories purged\**\s*:/i)) owed.push('`memories purged: <names|none>` (the close)');
+  // `notes purged:` since the handoff bus (2026-10-24); an older skill copy's `memories purged:` still closes
+  if ((solveClose || crossClose) && !has(/\b(?:notes|memories) purged\**\s*:/i)) owed.push('`notes purged: <names|none>` (the close)');
   if (crossClose && !has(/(?:^|\n)\s*\**ceilings\**\s*:/i)) owed.push('`ceilings: <rows filed under known ceilings, or none>` (the cross close report)');
   return owed;
 }

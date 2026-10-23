@@ -59,26 +59,25 @@ test('a rule pulls its skills', () => {
     assert.match(c.reasons['csharp'], /csharp-conventions/);
 });
 
-test('a kept rule makes its mcp required; the capabilities skill locks none', () => {
+// 2026-10-24: the stack depends on no MCP server - the navigation rule names the job's tools, never a server, so it
+// pulls none; no rule or skill of the graph carries a server edge.
+test('no rule or skill pulls an MCP server; the capabilities skill locks none', () => {
     const c = computeClosure(graph, { rules: ['alfred-navigation'] });
-    assert.ok(c.mcps.includes('alfred-navigation'), 'the alfred-navigation rule genuinely depends on its server');
+    assert.deepStrictEqual(c.mcps, [], 'the alfred-navigation rule names the navigation tools, never a server');
+    for (const kind of ['rules', 'skills'])
+        for (const [name, node] of Object.entries(graph[kind])) assert.deepStrictEqual(node.mcps || [], [], `${kind} ${name}`);
     // The routing-map mentions in capture-awareness are subject matter, not needs -
     // picking it must never lock the whole MCP baseline into an install.
     const cap = computeClosure(graph, { skills: ['capture-awareness'] });
     assert.deepStrictEqual(cap.mcps, [], 'the awareness skill pulls no MCPs');
 });
 
-// memory is locked the SAME way serena is: alfred-memory.md names the server in backticks, the
-// graph picks up the body mention as a rule -> mcp edge, and recommendations.json's `always` set
-// keeps the rule (so the closure of every install requires the mcp) while `general` drops it - a
-// server cannot be both offered-not-seeded and locked at once.
-test('memory is locked like serena - alfred-memory pulls it in, general no longer offers it', () => {
-    const c = computeClosure(graph, { rules: ['alfred-memory'] });
-    assert.ok(c.mcps.includes('alfred-memory'), 'the alfred-memory rule genuinely depends on the memory mcp');
+// The memory rule retired with the memory server (2026-10-24): no seed picks it, and the graph holds no node for it.
+test('the memory rule is retired - no seed picks it, the graph has no node for it', () => {
     const recommendations = require('../meta/recommendations.json');
-    assert.ok((recommendations.always.rules || []).includes('alfred-memory'), 'alfred-memory is an always-on rule');
-    assert.ok((recommendations.always.mcps || []).includes('alfred-memory'), 'memory is locked into every install');
-    assert.ok(!((recommendations.general || {}).mcps || []).includes('memory'), 'memory left the general (addable) list');
+    assert.ok(!(recommendations.always.rules || []).includes('alfred-memory'), 'alfred-memory left the always-on rules');
+    assert.strictEqual(graph.rules['alfred-memory'], undefined);
+    assert.ok(!((recommendations.general || {}).mcps || []).includes('memory'), 'memory is not in the general (addable) list');
 });
 
 test('hooks are leaf picks: kept as-is, emitted, and checked against the catalog', () => {
