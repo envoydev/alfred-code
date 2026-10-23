@@ -1,49 +1,419 @@
 {
-  "note": "What each seat holds, in listing order - the one home of a seat's tools. `Read` is a built-in; `<server>:<tool>` one tool of a stack MCP server; `<server>:*` every tool of it; `<server>:!<tool>` that one removed (only beside `*`). The seat files' tools: and disallowedTools: lines are generated from this by node scripts/seat-tools.js --write: a server is granted whole and the tools it lists not are removed, so a tool a pin adds reaches no seat until named here (lint check 63).",
+  "note": "What each seat holds, in listing order - the one home of a seat's tools. `Read` is a built-in; `<server>:<tool>` one tool of a stack MCP server; `<server>:*` every tool of it; `<server>:!<tool>` that one removed (only beside `*`). The seat files' tools: and disallowedTools: lines are generated from this by node scripts/seat-tools.js --write: a server is granted whole and the tools it lists not are removed, so a tool a pin adds reaches no seat until named here (lint check 63). Since 2026-10-24 (the user's ruling: the stack depends on no MCP server) every row is built-in tools only - `LSP` and grep navigate, WebFetch checks a library's docs (every seat that judges or writes code), Bash runs the handoff bus - and lint check 43 fails a row naming a server; the server shapes stay for tool preferences phase 4.",
   "seats": {
-    "angular-test-resolver": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Edit", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "architecture-analyzer": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Bash", "Grep", "Glob"],
-    "aspnet-implementer": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Edit", "Write", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "aspnet-solution-designer": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "aspnet-verifier": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "browser-extension-implementer": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Edit", "Write", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "browser-extension-solution-designer": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "browser-extension-verifier": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "code-quality-analyzer": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Bash", "Grep", "Glob", "Skill", "alfred-documentation:*"],
-    "code-style-analyzer": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Bash", "Grep", "Glob", "Skill"],
-    "console-implementer": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Edit", "Write", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "console-solution-designer": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "console-verifier": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "data-implementer": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Edit", "Write", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "data-solution-designer": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "data-verifier": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "devops-implementer": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Edit", "Write", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "devops-solution-designer": ["alfred-navigation:find_symbol", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "devops-verifier": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "dotnet-build-error-resolver": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Edit", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "dotnet-test-failure-resolver": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Edit", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "evidence-gatherer": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Bash", "Grep", "Glob", "windows-control:Snapshot", "windows-control:Screenshot", "windows-control:WaitFor", "macos-control:Snapshot", "macos-control:Wait", "mobile-control:appium_screenshot", "mobile-control:appium_get_page_source", "mobile-control:appium_find_element", "mobile-control:appium_find_elements", "mobile-control:appium_get_text", "mobile-control:appium_get_element_attribute", "chrome-control:*", "msedge-control:*", "firefox-control:*", "webkit-control:*", "chrome-control:!browser_run_code_unsafe", "msedge-control:!browser_run_code_unsafe", "firefox-control:!browser_run_code_unsafe", "webkit-control:!browser_run_code_unsafe"],
-    "integration-reviewer": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*", "chrome-control:*", "msedge-control:*", "firefox-control:*", "webkit-control:*", "chrome-control:!browser_run_code_unsafe", "msedge-control:!browser_run_code_unsafe", "firefox-control:!browser_run_code_unsafe", "webkit-control:!browser_run_code_unsafe"],
-    "ionic-angular-implementer": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Edit", "Write", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "ionic-angular-solution-designer": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "ionic-angular-verifier": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*", "mobile-control:appium_screenshot", "mobile-control:appium_get_page_source", "mobile-control:appium_find_element", "mobile-control:appium_find_elements", "mobile-control:appium_get_text", "mobile-control:appium_get_element_attribute", "chrome-control:*", "msedge-control:*", "firefox-control:*", "webkit-control:*", "chrome-control:!browser_run_code_unsafe", "msedge-control:!browser_run_code_unsafe", "firefox-control:!browser_run_code_unsafe", "webkit-control:!browser_run_code_unsafe"],
-    "issue-diagnoser-ci": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Skill", "Agent", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "issue-diagnoser-runtime": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Skill", "Agent", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "ng-build-error-resolver": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Edit", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "related-project-analyzer": ["alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "Read", "Grep", "Glob", "Bash"],
-    "security-auditor": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Skill", "Bash", "Grep", "Glob", "WebSearch", "WebFetch", "alfred-documentation:*"],
-    "test-coverage-analyzer": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Bash", "Grep", "Glob", "Skill"],
-    "web-angular-implementer": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Edit", "Write", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "web-angular-solution-designer": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "web-angular-verifier": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*", "chrome-control:*", "msedge-control:*", "firefox-control:*", "webkit-control:*", "chrome-control:!browser_run_code_unsafe", "msedge-control:!browser_run_code_unsafe", "firefox-control:!browser_run_code_unsafe", "webkit-control:!browser_run_code_unsafe"],
-    "windows-service-implementer": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Edit", "Write", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "windows-service-solution-designer": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "windows-service-verifier": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "winforms-implementer": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Edit", "Write", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "winforms-solution-designer": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "winforms-verifier": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*", "windows-control:Snapshot", "windows-control:Screenshot", "windows-control:WaitFor", "macos-control:Snapshot", "macos-control:Wait"],
-    "wpf-implementer": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Edit", "Write", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "wpf-solution-designer": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*"],
-    "wpf-verifier": ["alfred-navigation:find_symbol", "alfred-navigation:find_referencing_symbols", "alfred-navigation:get_symbols_overview", "alfred-memory:memory_store", "alfred-memory:memory_search", "alfred-memory:memory_list", "LSP", "Read", "Skill", "Bash", "Grep", "Glob", "alfred-documentation:*", "windows-control:Snapshot", "windows-control:Screenshot", "windows-control:WaitFor", "macos-control:Snapshot", "macos-control:Wait"]
+    "angular-test-resolver": [
+      "LSP",
+      "Read",
+      "Edit",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "architecture-analyzer": [
+      "LSP",
+      "Read",
+      "Bash",
+      "Grep",
+      "Glob"
+    ],
+    "aspnet-implementer": [
+      "LSP",
+      "Read",
+      "Edit",
+      "Write",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "aspnet-solution-designer": [
+      "LSP",
+      "Read",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "aspnet-verifier": [
+      "LSP",
+      "Read",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "browser-extension-implementer": [
+      "LSP",
+      "Read",
+      "Edit",
+      "Write",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "browser-extension-solution-designer": [
+      "LSP",
+      "Read",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "browser-extension-verifier": [
+      "LSP",
+      "Read",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "code-quality-analyzer": [
+      "LSP",
+      "Read",
+      "Bash",
+      "Grep",
+      "Glob",
+      "Skill",
+      "WebFetch"
+    ],
+    "code-style-analyzer": [
+      "LSP",
+      "Read",
+      "Bash",
+      "Grep",
+      "Glob",
+      "Skill"
+    ],
+    "console-implementer": [
+      "LSP",
+      "Read",
+      "Edit",
+      "Write",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "console-solution-designer": [
+      "LSP",
+      "Read",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "console-verifier": [
+      "LSP",
+      "Read",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "data-implementer": [
+      "LSP",
+      "Read",
+      "Edit",
+      "Write",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "data-solution-designer": [
+      "LSP",
+      "Read",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "data-verifier": [
+      "LSP",
+      "Read",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "devops-implementer": [
+      "LSP",
+      "Read",
+      "Edit",
+      "Write",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "devops-solution-designer": [
+      "LSP",
+      "Read",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "devops-verifier": [
+      "LSP",
+      "Read",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "dotnet-build-error-resolver": [
+      "LSP",
+      "Read",
+      "Edit",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "dotnet-test-failure-resolver": [
+      "LSP",
+      "Read",
+      "Edit",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "evidence-gatherer": [
+      "LSP",
+      "Read",
+      "Bash",
+      "Grep",
+      "Glob"
+    ],
+    "integration-reviewer": [
+      "LSP",
+      "Read",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "ionic-angular-implementer": [
+      "LSP",
+      "Read",
+      "Edit",
+      "Write",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "ionic-angular-solution-designer": [
+      "LSP",
+      "Read",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "ionic-angular-verifier": [
+      "LSP",
+      "Read",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "issue-diagnoser-ci": [
+      "LSP",
+      "Read",
+      "Skill",
+      "Agent",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "issue-diagnoser-runtime": [
+      "LSP",
+      "Read",
+      "Skill",
+      "Agent",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "ng-build-error-resolver": [
+      "LSP",
+      "Read",
+      "Edit",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "related-project-analyzer": [
+      "Read",
+      "Grep",
+      "Glob",
+      "Bash"
+    ],
+    "security-auditor": [
+      "LSP",
+      "Read",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebSearch",
+      "WebFetch"
+    ],
+    "test-coverage-analyzer": [
+      "LSP",
+      "Read",
+      "Bash",
+      "Grep",
+      "Glob",
+      "Skill"
+    ],
+    "web-angular-implementer": [
+      "LSP",
+      "Read",
+      "Edit",
+      "Write",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "web-angular-solution-designer": [
+      "LSP",
+      "Read",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "web-angular-verifier": [
+      "LSP",
+      "Read",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "windows-service-implementer": [
+      "LSP",
+      "Read",
+      "Edit",
+      "Write",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "windows-service-solution-designer": [
+      "LSP",
+      "Read",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "windows-service-verifier": [
+      "LSP",
+      "Read",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "winforms-implementer": [
+      "LSP",
+      "Read",
+      "Edit",
+      "Write",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "winforms-solution-designer": [
+      "LSP",
+      "Read",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "winforms-verifier": [
+      "LSP",
+      "Read",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "wpf-implementer": [
+      "LSP",
+      "Read",
+      "Edit",
+      "Write",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "wpf-solution-designer": [
+      "LSP",
+      "Read",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
+    "wpf-verifier": [
+      "LSP",
+      "Read",
+      "Skill",
+      "Bash",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ]
   }
 }

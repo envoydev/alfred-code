@@ -64,7 +64,7 @@
       ]
     },
     "memory-handoff-mechanism": {
-      "_note": "The seat memory handoff through the alfred-memory MCP (the user's 2026-10-13 ruling: the navigation server is navigation only, its memory tools off): read by exact tags, never searched - the project tag fences the project, the run tag the run. Owner reference defines it; every seat restates it inline.",
+      "_note": "The seat handoff through the file bus stack/hooks/handoff.js (the user's ruling of 2026-10-24: the stack depends on no MCP server; the alfred-memory rows it replaced were the 2026-10-13 bus): read by exact name, never searched, kept under the main checkout so a worktree seat reads what the last seat wrote. Owner reference defines it; every seat restates it inline.",
       "owner": {
         "file": "stack/skills/task-solve-cross/references/capability-reuse.md",
         "marker": "Handoff notes are read by exact tags, never searched"
@@ -72,155 +72,155 @@
       "sites": [
         {
           "file": "stack/agents/aspnet-solution-designer.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/web-angular-solution-designer.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/wpf-solution-designer.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/console-solution-designer.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/ionic-angular-solution-designer.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/data-solution-designer.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/devops-solution-designer.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/browser-extension-solution-designer.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/windows-service-solution-designer.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/winforms-solution-designer.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/aspnet-implementer.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/aspnet-verifier.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/dotnet-build-error-resolver.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/dotnet-test-failure-resolver.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/ng-build-error-resolver.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/angular-test-resolver.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/issue-diagnoser-runtime.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/issue-diagnoser-ci.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/integration-reviewer.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         },
         {
           "file": "stack/agents/security-auditor.md",
-          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+          "marker": "Handoff notes: through the handoff bus, `node .claude/hooks/handoff.js` run through Bash - read by exact name, never searched"
         }
       ]
     },
@@ -379,99 +379,99 @@
       "sites": [
         {
           "file": "stack/agents/aspnet-implementer.md",
-          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
+          "marker": "the docs are the durable truth, the handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
+          "marker": "the docs are the durable truth, the handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
+          "marker": "the docs are the durable truth, the handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
+          "marker": "the docs are the durable truth, the handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
+          "marker": "the docs are the durable truth, the handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
+          "marker": "the docs are the durable truth, the handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
+          "marker": "the docs are the durable truth, the handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
+          "marker": "the docs are the durable truth, the handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
+          "marker": "the docs are the durable truth, the handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
+          "marker": "the docs are the durable truth, the handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/aspnet-verifier.md",
-          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
+          "marker": "the docs are the durable truth, the handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
+          "marker": "the docs are the durable truth, the handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
+          "marker": "the docs are the durable truth, the handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
+          "marker": "the docs are the durable truth, the handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
+          "marker": "the docs are the durable truth, the handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
+          "marker": "the docs are the durable truth, the handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
+          "marker": "the docs are the durable truth, the handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
+          "marker": "the docs are the durable truth, the handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
+          "marker": "the docs are the durable truth, the handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
+          "marker": "the docs are the durable truth, the handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/issue-diagnoser-runtime.md",
-          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
+          "marker": "the docs are the durable truth, the handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/issue-diagnoser-ci.md",
-          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
+          "marker": "the docs are the durable truth, the handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/integration-reviewer.md",
-          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
+          "marker": "the docs are the durable truth, the handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/security-auditor.md",
-          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
+          "marker": "the docs are the durable truth, the handoff note only the transient handoff"
         }
       ]
     },
@@ -1285,44 +1285,44 @@
       "_note": "The task-card anchors consumption rule - verbatim across all 10 implementers (each installs per stack).",
       "owner": {
         "file": "stack/agents/aspnet-implementer.md",
-        "marker": "go straight to them with `mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`, re-navigating only for what they don't cover"
+        "marker": "go straight to them with `LSP` `workspaceSymbol` (or a grep for the name), re-navigating only for what they don't cover"
       },
       "sites": [
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "go straight to them with `mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`, re-navigating only for what they don't cover"
+          "marker": "go straight to them with `LSP` `workspaceSymbol` (or a grep for the name), re-navigating only for what they don't cover"
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "go straight to them with `mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`, re-navigating only for what they don't cover"
+          "marker": "go straight to them with `LSP` `workspaceSymbol` (or a grep for the name), re-navigating only for what they don't cover"
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "go straight to them with `mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`, re-navigating only for what they don't cover"
+          "marker": "go straight to them with `LSP` `workspaceSymbol` (or a grep for the name), re-navigating only for what they don't cover"
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "go straight to them with `mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`, re-navigating only for what they don't cover"
+          "marker": "go straight to them with `LSP` `workspaceSymbol` (or a grep for the name), re-navigating only for what they don't cover"
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "go straight to them with `mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`, re-navigating only for what they don't cover"
+          "marker": "go straight to them with `LSP` `workspaceSymbol` (or a grep for the name), re-navigating only for what they don't cover"
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "go straight to them with `mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`, re-navigating only for what they don't cover"
+          "marker": "go straight to them with `LSP` `workspaceSymbol` (or a grep for the name), re-navigating only for what they don't cover"
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "go straight to them with `mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`, re-navigating only for what they don't cover"
+          "marker": "go straight to them with `LSP` `workspaceSymbol` (or a grep for the name), re-navigating only for what they don't cover"
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "go straight to them with `mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`, re-navigating only for what they don't cover"
+          "marker": "go straight to them with `LSP` `workspaceSymbol` (or a grep for the name), re-navigating only for what they don't cover"
         },
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "go straight to them with `mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`, re-navigating only for what they don't cover"
+          "marker": "go straight to them with `LSP` `workspaceSymbol` (or a grep for the name), re-navigating only for what they don't cover"
         }
       ]
     },
@@ -1856,23 +1856,6 @@
         }
       ]
     },
-    "serena-csharp-overview-depth": {
-      "_note": "get_symbols_overview's language-specific depth default resolves to 0 for C#, whose top-level symbol is the namespace - so the default hides every type/member; depth 2 is the C# floor (measured 2026-07-29, serena-agent 1.6.1). Owned by the navigation baseline, on its get_symbols_overview line (audit M64: the C# path rule carried it until 2.1.5, but a Serena call never attaches a path rule, so the hint arrived only after a file-tool touch); restated at the two analyzers' operative overview step because their module digest silently degrades without it.",
-      "owner": {
-        "file": "stack/rules/alfred-navigation.md",
-        "marker": "C# pass `depth: 2`"
-      },
-      "sites": [
-        {
-          "file": "stack/agents/architecture-analyzer.md",
-          "marker": "C# pass `depth: 2`"
-        },
-        {
-          "file": "stack/agents/code-quality-analyzer.md",
-          "marker": "C# pass `depth: 2`"
-        }
-      ]
-    },
     "one-snapshot-download": {
       "_note": "The release-archive-first, -b-main-clone-fallback source download (URL + pin). Canonical in the plugin source protocol; the usage-analyzer skill fetches the analyzer the same way. Phase 7b (R33) deleted the frozen shell/PowerShell twins, which used to carry the same URL as a third and fourth site.",
       "owner": {
@@ -1964,48 +1947,48 @@
       "_note": "The verifiers' quality-loop stage-rubric carve-out (rubric is the audit spec; skip plan diff, build+test rerun, and the memory-handoff WRITE unless the brief asks - read-only orientation stays fine) - identical in all 10 verifier seats for the same selective-install reason. security-auditor carries only the parts its Method has (the keyed shape, no posture footer, the memory-handoff WRITE skip) - 2.1.5 M51.",
       "owner": {
         "file": "stack/agents/aspnet-verifier.md",
-        "marker": "the memory handoff WRITE unless the dispatch brief asks for it"
+        "marker": "the handoff WRITE unless the dispatch brief asks for it"
       },
       "sites": [
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "the memory handoff WRITE unless the dispatch brief asks for it"
+          "marker": "the handoff WRITE unless the dispatch brief asks for it"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "the memory handoff WRITE unless the dispatch brief asks for it"
+          "marker": "the handoff WRITE unless the dispatch brief asks for it"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "the memory handoff WRITE unless the dispatch brief asks for it"
+          "marker": "the handoff WRITE unless the dispatch brief asks for it"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "the memory handoff WRITE unless the dispatch brief asks for it"
+          "marker": "the handoff WRITE unless the dispatch brief asks for it"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "the memory handoff WRITE unless the dispatch brief asks for it"
+          "marker": "the handoff WRITE unless the dispatch brief asks for it"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "the memory handoff WRITE unless the dispatch brief asks for it"
+          "marker": "the handoff WRITE unless the dispatch brief asks for it"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "the memory handoff WRITE unless the dispatch brief asks for it"
+          "marker": "the handoff WRITE unless the dispatch brief asks for it"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "the memory handoff WRITE unless the dispatch brief asks for it"
+          "marker": "the handoff WRITE unless the dispatch brief asks for it"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "the memory handoff WRITE unless the dispatch brief asks for it"
+          "marker": "the handoff WRITE unless the dispatch brief asks for it"
         },
         {
           "file": "stack/agents/security-auditor.md",
-          "marker": "the memory handoff WRITE unless the dispatch brief asks for it"
+          "marker": "the handoff WRITE unless the dispatch brief asks for it"
         }
       ]
     },
@@ -2013,44 +1996,44 @@
       "_note": "The verifiers' direct-dispatch carve-out (audit 2026-10-14 AG02, the user's ruling: option a): a brief with no contract_version - a review over a diff from the single-chat review or the commit checkpoint, or a plan audit from the plan-gate flow - is its own spec: review the diff (and a named plan file), a plan audit runs no build or test and returns the output fields its brief names (task-verify-plan's eight - stack audit 2026-10-20 C6), the ledger checks and the memory-handoff WRITE are skipped, and the close keeps the status vocabulary with `contract_version: none`. Before it those dispatches got a build rerun or a CONTRACT_MISMATCH for 'missing task context'. The footer clause says the direct dispatch is excepted beside the rubric audit. Identical in all 10 verifier seats for the same selective-install reason as the rubric carve-out beside it.",
       "owner": {
         "file": "stack/agents/aspnet-verifier.md",
-        "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
+        "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the handoff WRITE"
       },
       "sites": [
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the handoff WRITE"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the handoff WRITE"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the handoff WRITE"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the handoff WRITE"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the handoff WRITE"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the handoff WRITE"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the handoff WRITE"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the handoff WRITE"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the memory handoff WRITE"
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun and return the output fields the brief names (a plan audit's eight, `Passes:` among them) above the closing lines; skip the ledger checks and the handoff WRITE"
         }
       ]
     },
@@ -2445,16 +2428,16 @@
       "_note": "An analyzer's first tool call locates with the navigation server, never a whole-file Read the read guard blocks (measured: 10 of 13 analyzer seats spent their first Read on a blocked dump). 2026-10-08 agents audit F13. code-style-analyzer's copy opens with its Glob and config reads first and pins only the locate clause - its first CODE read (stack audit 2026-10-20 #14: three competing 'first' steps).",
       "owner": {
         "file": "stack/agents/architecture-analyzer.md",
-        "marker": "FIRST tool call of your run: locate with the navigation server, never a whole-file `Read` - the read guard blocks one and the block costs a turn"
+        "marker": "FIRST tool call of your run: locate with the navigation tools your start line orders, never a whole-file `Read` - the read guard blocks one and the block costs a turn"
       },
       "sites": [
         {
           "file": "stack/agents/code-quality-analyzer.md",
-          "marker": "FIRST tool call of your run: locate with the navigation server, never a whole-file `Read` - the read guard blocks one and the block costs a turn"
+          "marker": "FIRST tool call of your run: locate with the navigation tools your start line orders, never a whole-file `Read` - the read guard blocks one and the block costs a turn"
         },
         {
           "file": "stack/agents/code-style-analyzer.md",
-          "marker": "locate with the navigation server, never a whole-file `Read` - the read guard blocks one and the block costs a turn"
+          "marker": "locate with the navigation tools your start line orders, never a whole-file `Read` - the read guard blocks one and the block costs a turn"
         }
       ]
     },
@@ -2514,43 +2497,43 @@
       "sites": [
         {
           "file": "stack/agents/aspnet-solution-designer.md",
-          "marker": "the documentation server or the vendor doc"
+          "marker": "the documentation tools your start line orders or the vendor doc"
         },
         {
           "file": "stack/agents/web-angular-solution-designer.md",
-          "marker": "the documentation server or the vendor doc"
+          "marker": "the documentation tools your start line orders or the vendor doc"
         },
         {
           "file": "stack/agents/ionic-angular-solution-designer.md",
-          "marker": "the documentation server or the vendor doc"
+          "marker": "the documentation tools your start line orders or the vendor doc"
         },
         {
           "file": "stack/agents/wpf-solution-designer.md",
-          "marker": "the documentation server or the vendor doc"
+          "marker": "the documentation tools your start line orders or the vendor doc"
         },
         {
           "file": "stack/agents/winforms-solution-designer.md",
-          "marker": "the documentation server or the vendor doc"
+          "marker": "the documentation tools your start line orders or the vendor doc"
         },
         {
           "file": "stack/agents/console-solution-designer.md",
-          "marker": "the documentation server or the vendor doc"
+          "marker": "the documentation tools your start line orders or the vendor doc"
         },
         {
           "file": "stack/agents/windows-service-solution-designer.md",
-          "marker": "the documentation server or the vendor doc"
+          "marker": "the documentation tools your start line orders or the vendor doc"
         },
         {
           "file": "stack/agents/data-solution-designer.md",
-          "marker": "the documentation server or the vendor doc"
+          "marker": "the documentation tools your start line orders or the vendor doc"
         },
         {
           "file": "stack/agents/devops-solution-designer.md",
-          "marker": "the documentation server or the vendor doc"
+          "marker": "the documentation tools your start line orders or the vendor doc"
         },
         {
           "file": "stack/agents/browser-extension-solution-designer.md",
-          "marker": "the documentation server or the vendor doc"
+          "marker": "the documentation tools your start line orders or the vendor doc"
         },
         {
           "file": "stack/skills/habits-plan-writing/SKILL.md",
@@ -4505,159 +4488,159 @@
       ]
     },
     "seat-start-memory-read": {
-      "_note": "The trio memory bus START step - memory_list on the alfred-memory MCP with exact tags and tag_match 'all' - in every dispatched seat that hands off through it (the user's 2026-10-13 ruling moved the bus off the navigation server). Owner aspnet-implementer (the reference twin). Then 'the notes it lists' with handoff:<feature>/<contract_version> plus the project tag (implementers, verifiers, security-auditor - every note of the run) or 'the newest note it lists' with note:<own note name> plus the project tag (designers, resolvers, diagnosers, integration-reviewer - their own earlier pass; a run's whole note set measured p95 17,535 chars, max 42,082 over 39 local runs, so they never list the run). The marker is the shared head.",
+      "_note": "The trio handoff START step - `handoff.js list` - in every dispatched seat that hands off through the bus (2026-10-24: the bus left the alfred-memory MCP). Owner aspnet-implementer (the reference twin). Then `list <feature>/<contract_version>` (implementers, verifiers, security-auditor - every note of the run) or `list <feature>/<contract_version>/<seat>` (designers, resolvers, diagnosers, integration-reviewer - their own earlier pass; a run's whole note set measured p95 17,535 chars, max 42,082 over 39 local runs, so they never list the run). The marker is the shared head.",
       "owner": {
         "file": "stack/agents/aspnet-implementer.md",
-        "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+        "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
       },
       "sites": [
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/aspnet-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/aspnet-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/browser-extension-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/console-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/data-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/devops-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/ionic-angular-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/web-angular-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/windows-service-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/winforms-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/wpf-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/security-auditor.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/angular-test-resolver.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/ng-build-error-resolver.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/dotnet-build-error-resolver.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/dotnet-test-failure-resolver.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/issue-diagnoser-ci.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/issue-diagnoser-runtime.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         },
         {
           "file": "stack/agents/integration-reviewer.md",
-          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
+          "marker": "At START, `node .claude/hooks/handoff.js list <feature>/<contract_version>"
         }
       ]
     },
@@ -4710,44 +4693,44 @@
       "_note": "A loop findings-plan dispatch (no contract_version) skips the START memory sequence and the contract_version line; the trio contract applies to designer-decomposition tasks only. Restated in the implementers that carry the carve-out.",
       "owner": {
         "file": "stack/agents/aspnet-implementer.md",
-        "marker": "The trio contract above applies to designer-decomposition tasks, where the memory bus IS the handoff"
+        "marker": "The trio contract above applies to designer-decomposition tasks, where the handoff notes ARE the handoff"
       },
       "sites": [
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "The trio contract above applies to designer-decomposition tasks, where the memory bus IS the handoff"
+          "marker": "The trio contract above applies to designer-decomposition tasks, where the handoff notes ARE the handoff"
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "The trio contract above applies to designer-decomposition tasks, where the memory bus IS the handoff"
+          "marker": "The trio contract above applies to designer-decomposition tasks, where the handoff notes ARE the handoff"
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "The trio contract above applies to designer-decomposition tasks, where the memory bus IS the handoff"
+          "marker": "The trio contract above applies to designer-decomposition tasks, where the handoff notes ARE the handoff"
         },
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "The trio contract above applies to designer-decomposition tasks, where the memory bus IS the handoff"
+          "marker": "The trio contract above applies to designer-decomposition tasks, where the handoff notes ARE the handoff"
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "The trio contract above applies to designer-decomposition tasks, where the memory bus IS the handoff"
+          "marker": "The trio contract above applies to designer-decomposition tasks, where the handoff notes ARE the handoff"
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "The trio contract above applies to designer-decomposition tasks, where the memory bus IS the handoff"
+          "marker": "The trio contract above applies to designer-decomposition tasks, where the handoff notes ARE the handoff"
         },
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "The trio contract above applies to designer-decomposition tasks, where the memory bus IS the handoff"
+          "marker": "The trio contract above applies to designer-decomposition tasks, where the handoff notes ARE the handoff"
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "The trio contract above applies to designer-decomposition tasks, where the memory bus IS the handoff"
+          "marker": "The trio contract above applies to designer-decomposition tasks, where the handoff notes ARE the handoff"
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "The trio contract above applies to designer-decomposition tasks, where the memory bus IS the handoff"
+          "marker": "The trio contract above applies to designer-decomposition tasks, where the handoff notes ARE the handoff"
         }
       ]
     },
@@ -7723,23 +7706,6 @@
         {
           "file": "stack/skills/task-solve-cross/SKILL.md",
           "marker": "| trivial | one file, no new dependency, no behaviour a test would see (typo, comment, format, rename inside a file) | edit -> scoped check -> close. No design, no audit, no stop |"
-        }
-      ]
-    },
-    "support-seat-memory-search": {
-      "_note": "Three read-only support seats hold the shared memory by spec (lint check 43: every seat searches and saves) but never used it (stack audit 2026-10-20 agents T2, the user's ruling: keep the grant, make them search). One search after the first locate call; the caller owns the notes, so they save nothing.",
-      "owner": {
-        "file": "stack/agents/architecture-analyzer.md",
-        "marker": "on the area's name, right after your first locate call: a prior finding or ruling about it is evidence you cite or contradict"
-      },
-      "sites": [
-        {
-          "file": "stack/agents/code-quality-analyzer.md",
-          "marker": "on the area's name, right after your first locate call: a prior finding or ruling about it is evidence you cite or contradict"
-        },
-        {
-          "file": "stack/agents/evidence-gatherer.md",
-          "marker": "on the area's name, right after your first locate call: a prior finding or ruling about it is evidence you cite or contradict"
         }
       ]
     },

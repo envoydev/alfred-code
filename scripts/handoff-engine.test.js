@@ -46,6 +46,24 @@ test('a stored note is listed for its run, the newest per name first', () =>
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
+test('a note name lists that one note alone, its newest copy', () =>
+{
+    const root = project();
+    try
+    {
+        run(root, ['put', 'checkout/v1/designer'], 'first pass\n');
+        run(root, ['put', 'checkout/v1/implementer/t1'], 'landed\n');
+        run(root, ['put', 'checkout/v1/designer'], 'second pass\n');
+        const l = run(root, ['list', 'checkout/v1/designer']);
+        assert.strictEqual(l.status, 0);
+        assert.match(l.out, /^## checkout\/v1\/designer /);
+        assert.ok(l.out.includes('second pass') && !l.out.includes('first pass') && !l.out.includes('landed'), l.out);
+        assert.strictEqual(run(root, ['list', 'checkout/v1/verifier']).out, 'handoff: none\n');
+        assert.strictEqual(run(root, ['list', 'checkout/v1/implementer']).out, 'handoff: none\n', 'a seat name is no prefix of its task notes');
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test('a run with no note says none; left counts what a feature still holds; purge empties it', () =>
 {
     const root = project();

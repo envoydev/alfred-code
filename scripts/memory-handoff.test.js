@@ -64,39 +64,13 @@ test('the navigation server context switches all six memory tools off and its pr
   assert.match(yml, /a note one agent\s+leaves for the next goes through the alfred-memory MCP/);
 });
 
-test('no seat grants a navigation-server memory tool, and every seat with a handoff line grants memory_list and memory_store', () => {
-  const dir = path.join(ROOT, 'stack', 'agents');
-  let handoffSeats = 0;
-  for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.md'))) {
-    const text = fs.readFileSync(path.join(dir, f), 'utf8');
-    // what the seat holds as Claude Code resolves it: a whole-server grant minus its removals (scripts/seat-tools.js)
-    const tools = [...require('./seat-tools.js').effectiveTools((/^tools:(.*)$/m.exec(text) || [, ''])[1], (/^disallowedTools:(.*)$/m.exec(text) || [, ''])[1])];
-    for (const t of SERENA_MEMORY_TOOLS) assert.ok(!tools.includes(`${NAV}${t}`), `${f} grants ${t}`);
-    if (!/^- Memory handoff:/m.test(text)) continue;
-    handoffSeats++;
-    for (const t of ['memory_list', 'memory_store']) assert.ok(tools.includes(`${MEM}${t}`), `${f} lists ${t} in tools:`);
-  }
-  assert.strictEqual(handoffSeats, 38, 'the 38 handoff seats');
-});
-
-test('every seat handoff line reads by exact tags and stores the protocol alfred-memory.md states', () => {
-  const dir = path.join(ROOT, 'stack', 'agents');
-  for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.md'))) {
-    const line = (/^- Memory handoff:.*$/m.exec(fs.readFileSync(path.join(dir, f), 'utf8')) || [null])[0];
-    if (!line) continue;
-    assert.ok(line.startsWith('- Memory handoff: through the alfred-memory MCP, never the navigation server'), f);
-    assert.ok(line.includes(`At START, \`${MEM}memory_list\` with \`tags: ['`) && line.includes("`tag_match: 'all'`"), `${f}: START lists by exact tags`);
-    assert.ok(/tags: \['(handoff:<feature>\/<contract_version>|note:<feature>\/<contract_version>\/<seat>)', 'project:<name>'\]/.test(line), `${f}: the run tag or its own note tag, with the project tag`);
-    assert.ok(line.includes(`At HAND-OFF, \`${MEM}memory_store\``), `${f}: HAND-OFF stores`);
-    for (const piece of ["`conversation_id: '<feature>/<contract_version>'`", "`metadata.type: 'note'`", '`handoff`', '`handoff:<feature>`', '`handoff:<feature>/<contract_version>`', '`project:<name>`'])
-      assert.ok(line.includes(piece), `${f}: stores ${piece}`);
-    assert.match(line, /`note:<feature>\/<contract_version>\/<seat>(\/<task>)?`/, `${f}: the note tag`);
-  }
-});
+// The seats' handoff left this server on 2026-10-24 (the file bus, scripts/handoff-engine.test.js; seat-grants.test.js
+// holds every seat to it).
 
 test('no shipped text tells the model to use a navigation-server memory tool', () => {
   const files = [...walk(path.join(ROOT, 'stack')), ...walk(path.join(ROOT, 'setup-plugin'))]
-    .filter((f) => !f.endsWith(path.join('mcp', 'navigation-context.yml')));
+    // the record of how the stack shipped its servers keeps the navigation context verbatim - read by nothing
+    .filter((f) => !f.endsWith(path.join('mcp', 'navigation-context.yml')) && !f.endsWith(path.join('mcp', 'shipped-mcps.json')));
   const hits = [];
   for (const f of files) {
     const text = fs.readFileSync(f, 'utf8');
@@ -116,11 +90,6 @@ test('the rules: alfred-memory.md routes the handoff notes, the trio protocol ho
   const trio = read('stack/skills/task-solve-cross/references/domain-trio-protocol.md');
   for (const piece of ["`conversation_id: '<feature>/<contract_version>'`", "`metadata.type: 'note'`", '`handoff`, `handoff:<feature>`, `handoff:<feature>/<contract_version>`, `note:<note name>` and the project tag', "`tag_match: 'all'`", 'memory_delete', 'the newest note per name wins'])
     assert.ok(trio.includes(piece), `domain-trio-protocol.md: ${piece}`);
-  const seats = fs.readdirSync(path.join(ROOT, 'stack', 'agents')).filter((f) => /Memory handoff:/.test(read(`stack/agents/${f}`)));
-  assert.ok(seats.length >= 30, `the seats carrying a handoff line (${seats.length})`);
-  for (const f of seats)
-    for (const piece of ["`conversation_id: '<feature>/<contract_version>'`", "`metadata.type: 'note'`", "`tag_match: 'all'`"])
-      assert.ok(read(`stack/agents/${f}`).includes(piece), `${f}: ${piece}`);
   const nav = read('stack/rules/alfred-navigation.md');
   assert.ok(!/write_memory|seat memory handoff/.test(nav), 'alfred-navigation.md keeps no memory on the server');
   assert.ok(!/memory tools are off/.test(nav), 'stack audit 2026-10-20 rules row 6: alfred-memory.md is the one home of the line');

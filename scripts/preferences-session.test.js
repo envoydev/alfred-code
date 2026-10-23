@@ -1365,7 +1365,9 @@ test('every seat start carries its tools line; a judge also gets its code docs',
         const v = seatText(p.hook(seatStart('alfred-code:aspnet-verifier')));
         assert.ok(v.includes('Tool order - the stack\'s defaults'), v);
         assert.ok(!v.includes('ToolSearch'), 'a stack seat calls what its tools grant');
-        assert.ok(v.includes('Call them directly - your tools grant them.'), v);
+        // built-in tools only since 2026-10-24: the LSP and grep navigate, WebFetch reads a library's docs
+        assert.match(v, /- navigation \([^)]*\): LSP > Grep\./, v);
+        assert.match(v, /- documentation \([^)]*\): WebFetch\./, v);
         assert.match(v, /put behaviour on the type/, 'the judge is still handed the code docs');
         assert.ok(v.indexOf('put behaviour') < v.indexOf('Tool order'), 'the code docs come first');
         const e = seatText(p.hook(seatStart('alfred-code:evidence-gatherer')));

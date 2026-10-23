@@ -82,9 +82,10 @@ test('agents T2-12: integration-reviewer reports its items first and ends on the
     assert.doesNotMatch(t, /End with literal `status:`, `contract_version:`, and `commit_allowed:` lines/);
 });
 
-// agents T2-14: the devops designer preloads task-design, whose no-docs fallback calls get_symbols_overview
-test('agents T2-14: the devops designer is granted the overview task-design prescribes', () => {
-    assert.ok(JSON.parse(read('meta/seat-tools.json')).seats['devops-solution-designer'].includes('alfred-navigation:get_symbols_overview'));
+// agents T2-14: the devops designer preloads task-design, whose no-docs fallback outlines a file - the LSP's documentSymbol
+// since the stack left its navigation server (2026-10-24)
+test('agents T2-14: the devops designer is granted the outline task-design prescribes', () => {
+    assert.ok(JSON.parse(read('meta/seat-tools.json')).seats['devops-solution-designer'].includes('LSP'));
 });
 
 // agents T2-15: the turn build check reads git status at Stop, so no edit-route line names it among the edit hooks

@@ -82,16 +82,17 @@ test('drift: a hand edit, a seat with no row and a row with no seat are findings
     assert.deepStrictEqual(st.drift({ intent: { a: intent.a, b: ['Read'] }, pins: PINS, dir }), []);
 });
 
-test('the shipped seats match their rows, and every seat still holds the shared memory\'s store, search and list', () =>
+// The user's ruling of 2026-10-24: the stack depends on no MCP server, so every shipped row is built-in tools only and
+// no seat lists a removal. The generator keeps its server shapes (the fixtures above) for the day a seat holds one again.
+test('the shipped seats match their rows, and every seat holds built-in tools only', () =>
 {
     assert.deepStrictEqual(st.drift(), []);
     const dir = path.join(__dirname, '..', 'stack', 'agents');
     for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.md')))
     {
         const { tools, disallowed } = st.linesOf(fs.readFileSync(path.join(dir, f), 'utf8'));
-        const held = st.effectiveTools(tools, disallowed);
-        for (const t of ['memory_store', 'memory_search', 'memory_list']) assert.ok(held.has(`${MEM}__${t}`), `${f}: ${t}`);
-        assert.ok(!tools.split(',').some((t) => /^\s*mcp__plugin_[^,]*__/.test(t)), `${f}: one grant per server, no tool names in tools:`);
+        assert.ok(tools && !/mcp__/.test(tools), `${f}: ${tools}`);
+        assert.ok(!disallowed, `${f}: no removals`);
     }
 });
 
@@ -139,8 +140,9 @@ test('every server a seat names tool by tool carries a release pin, so the unpin
     const intent = JSON.parse(fs.readFileSync(st.INTENT_FILE, 'utf8')).seats;
     const pins = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'mcp-pins.json'), 'utf8')).pins;
     assert.deepStrictEqual(unpinnedNamedServers(intent, pins), []);
-    const named = new Set(Object.values(intent).flat().filter((t) => /:[^*!]/.test(t)).map((t) => st.roleOf(t.slice(0, t.indexOf(':')))));
-    assert.ok(named.has('alfred-navigation') && named.has('alfred-memory'), 'the walk saw the named grants');
+    // the shipped rows name no server (2026-10-24), so the guard is held on a row that does
+    const named = { a: ['alfred-memory:memory_store', 'Read'] };
+    assert.deepStrictEqual(unpinnedNamedServers(named, pins), []);
     const nulled = { ...pins, 'alfred-memory': { ...pins['alfred-memory'], version: null } };
-    assert.ok(unpinnedNamedServers(intent, nulled).some((r) => r.startsWith('alfred-memory ')), 'red with one pin nulled');
+    assert.ok(unpinnedNamedServers(named, nulled).some((r) => r.startsWith('alfred-memory ')), 'red with one pin nulled');
 });

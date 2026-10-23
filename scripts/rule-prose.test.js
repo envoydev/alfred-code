@@ -41,7 +41,6 @@ test('M64: the C# depth hint lives in the always-on navigation rule, beside the 
     assert.match(nav, /`get_symbols_overview` takes ONE file, never a directory[^.]*on C# pass `depth: 2`/, 'the overview bullet carries the C# depth');
     assert.match(nav, /nested-type members need 3; a top-level-statements file returns `\{\}` at any depth/, 'the move kept the two edge facts the C# rule carried');
     assert.ok(!injected('csharp-conventions').includes('depth: 2'), 'the path rule no longer carries a hint only a file-tool touch delivers');
-    assert.strictEqual(registry()['serena-csharp-overview-depth'].owner.file, 'stack/rules/alfred-navigation.md');
 });
 
 // ------------------------------------------------------------------ M65

@@ -68,8 +68,9 @@ test('M24 the post-install connect check names the escape for an index with no u
 });
 
 // M32: a short tool name inside a call-shaped backtick is called as written and fails 'No such tool' (the pin
-// serena-tools-are-deferred measured seven such failures), so the seats spell the full plugin name.
-test('M32 the verifiers, the integration reviewer and the solve flow spell the navigation tools in full', () =>
+// serena-tools-are-deferred measured seven such failures). Since 2026-10-24 the seats hold no server: a blocked target is
+// reopened through the LSP, whose operations are arguments of the one `LSP` tool.
+test('M32 the verifiers, the integration reviewer and the solve flow spell the navigation tools as they are called', () =>
 {
     const seats = each('stack/agents', /(-verifier|integration-reviewer)\.md$/);
     assert.strictEqual(seats.length, 11);
@@ -77,7 +78,7 @@ test('M32 the verifiers, the integration reviewer and the solve flow spell the n
     {
         const text = read(f);
         assert.doesNotMatch(text, /\(`get_symbols_overview` \/ `find_symbol`\)/, f);
-        assert.match(text, /reopen it through the navigation server \(`mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview` \/ `mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`\)/, f);
+        assert.match(text, /reopen it through the navigation tools your start line orders \(`LSP` `documentSymbol` for its outline, `workspaceSymbol` for a symbol\)/, f);
     }
     // The agents-mode dispatch rules moved to the step mechanics (usage audit 2026-10-10: the body sits at its cap).
     for (const f of ['stack/skills/task-solve/SKILL.md', 'stack/skills/task-solve/references/step-mechanics.md'])
@@ -103,7 +104,8 @@ test('M39 the handoff notes keep the one grammar and are read by exact tags', ()
         assert.doesNotMatch(text, /<feature>__<contract_version>/, `${f}: the old __ grammar`);
         assert.doesNotMatch(text, /<feature>__cycle|csv-export__cycle/, `${f}: the old cycle-note name`);
     }
-    const seats = each('stack/agents', /\.md$/).filter((f) => /Memory handoff:/.test(read(f)));
+    // 2026-10-24: the bus is a file, `node .claude/hooks/handoff.js`, and a note is read by its exact name
+    const seats = each('stack/agents', /\.md$/).filter((f) => /^- Handoff notes:/m.test(read(f)));
     assert.strictEqual(seats.length, 38);
     for (const f of seats)
     {
@@ -111,11 +113,11 @@ test('M39 the handoff notes keep the one grammar and are read by exact tags', ()
         // 2.1.6 review B4: the 17 seats that read ONE note (their own earlier pass) still read one - a run's whole
         // note set is p95 17,535 chars, max 42,082 (39 local runs) - and the 21 that read every note still read the run's.
         const own = /(-solution-designer|-resolver|issue-diagnoser-(ci|runtime)|integration-reviewer)\.md$/.test(f);
-        const tags = own ? "'note:<feature>/<contract_version>/<seat>', 'project:<name>'" : "'handoff:<feature>/<contract_version>', 'project:<name>'";
-        const reads = own ? 'the newest note it lists - your own earlier pass -' : 'the notes it lists (newest first; the newest note per name wins)';
-        assert.ok(text.includes(`At START, \`mcp__plugin_alfred-memory_alfred-memory__memory_list\` with \`tags: [${tags}]\`, \`tag_match: 'all'\`, \`page_size: 100\` - read ${reads} for `), `${f}: reads ${reads}`);
+        const run = own ? '<feature>/<contract_version>/<seat>' : '<feature>/<contract_version>';
+        const reads = own ? 'the note it prints - your own earlier pass -' : 'the notes it prints (newest first; the newest note per name wins)';
+        assert.ok(text.includes(`At START, \`node .claude/hooks/handoff.js list ${run}\` - read ${reads} for `), `${f}: reads ${reads}`);
         const name = /-implementer\.md$/.test(f) ? '<feature>/<contract_version>/<seat>/<task>' : '<feature>/<contract_version>/<seat>';
-        assert.ok(text.includes(`\`note:${name}\` and \`project:<name>\``), `${f}: hands off as ${name}`);
+        assert.ok(text.includes(`\`node .claude/hooks/handoff.js put ${name} <<'EOF'\``), `${f}: hands off as ${name}`);
     }
     assert.strictEqual(TRIO_COPIES.length, 5);
     for (const f of TRIO_COPIES)
@@ -220,9 +222,9 @@ test('M39 the purge count runs the same without a shell, follows the data root, 
     });
 });
 
-// M33: the documentation server is locked into every install, so a seat names it by its role and never hedges
-// on it being absent; what is left is the unreachable case.
-test('M33 the seats name the locked documentation server one way and never as optional', () =>
+// M33: a seat names its documentation route one way - the documentation tools its start line orders (2026-10-24: no
+// server is locked any more) - and never by a server's name; what is left is the unreachable case.
+test('M33 the seats name the documentation tools one way', () =>
 {
     for (const f of each('stack/agents', /\.md$/))
     {
@@ -232,7 +234,7 @@ test('M33 the seats name the locked documentation server one way and never as op
     }
     for (const f of ['angular-test-resolver', 'dotnet-build-error-resolver', 'dotnet-test-failure-resolver', 'ng-build-error-resolver', 'console-implementer', 'ionic-angular-implementer',
         'console-solution-designer', 'devops-solution-designer', 'ionic-angular-solution-designer', 'wpf-solution-designer'])
-        assert.match(read(`stack/agents/${f}.md`), /the documentation server/, f);
+        assert.match(read(`stack/agents/${f}.md`), /the documentation tools your start line orders/, f);
 });
 
 // M34: the house rule names a server by its role, never its upstream as a verb.
@@ -359,9 +361,11 @@ test('M35 no seat grants or denies an old spelling of a renamed server', () =>
         for (const key of ['tools', 'disallowedTools'])
             for (const t of line(text, key))
             {
-                if (/^mcp__plugin_alfred-/.test(t)) seen += 1;
+                seen += 1;
                 assert.ok(!old.some((o) => t.startsWith(`mcp__plugin_${o}_${o}__`)), `${f} ${key} still names ${t}`);
+                // 2026-10-24: no seat names a server at all, the current spelling included
+                assert.ok(!t.startsWith('mcp__'), `${f} ${key} names ${t}`);
             }
     }
-    assert.ok(seen > 0, 'no seat names an alfred- tool - the check read nothing');
+    assert.ok(seen > 0, 'no seat lists a tool - the check read nothing');
 });

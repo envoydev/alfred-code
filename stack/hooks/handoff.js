@@ -6,7 +6,7 @@
 // notes at the close. Notes live under the MAIN checkout's <data root>/state/handoff/<feature>.jsonl (layout.js
 // projectRootOf), so a seat in a linked worktree writes where the next one reads; state/ is never committed.
 //   node .claude/hooks/handoff.js put <feature>/<contract_version>/<seat>[/<task>]   the note on stdin (a heredoc)
-//   node .claude/hooks/handoff.js list <feature>/<contract_version>                  the run's notes, newest first
+//   node .claude/hooks/handoff.js list <feature>/<contract_version>[/<seat>[/<task>]] the run's notes newest first, or one note
 //   node .claude/hooks/handoff.js left [<feature>]                                    first line: notes left, then `note <name>`
 //   node .claude/hooks/handoff.js purge <feature>                                     the feature's notes removed, named
 // A note is cut at NOTE_CAP: a handoff is a resume brief, never a dump of the diff.
@@ -56,11 +56,14 @@ function put(name, text, { cwd } = {}) {
   return { code: 0, out: `handoff: stored ${name}` };
 }
 
+// A run (<feature>/<contract_version>) lists every note of it; a note's own name lists that note alone - a designer's
+// or a resolver's earlier pass, never the whole run.
 function list(run, { cwd } = {}) {
-  const parts = segments(run, 2, 2);
-  if (!parts) return { code: 2, err: 'handoff: list takes <feature>/<contract_version>' };
+  const parts = segments(run, 2, 4);
+  if (!parts) return { code: 2, err: 'handoff: list takes <feature>/<contract_version> or one note name' };
   const prefix = `${run}/`;
-  const notes = latest(readNotes(fileOf(storeDir(cwd), parts[0])).filter((n) => n.name.startsWith(prefix)));
+  const wanted = parts.length === 2 ? (n) => n.name.startsWith(prefix) : (n) => n.name === run;
+  const notes = latest(readNotes(fileOf(storeDir(cwd), parts[0])).filter(wanted));
   if (!notes.length) return { code: 0, out: 'handoff: none' };
   return { code: 0, out: notes.map((n) => `## ${n.name} (${n.at})\n${n.text}`).join('\n\n') };
 }
@@ -103,7 +106,7 @@ if (require.main === module) {
     } else if (cmd === 'list') finish(list(arg));
     else if (cmd === 'left') finish(left(arg));
     else if (cmd === 'purge') finish(purge(arg));
-    else finish({ code: 2, err: 'usage: handoff.js put <name> | list <feature>/<contract_version> | left [<feature>] | purge <feature>' });
+    else finish({ code: 2, err: 'usage: handoff.js put <name> | list <feature>/<contract_version>[/<seat>[/<task>]] | left [<feature>] | purge <feature>' });
   } catch (err) {
     finish({ code: 1, err: `handoff: the store cannot be read (${err.code || err.name})` });
   }

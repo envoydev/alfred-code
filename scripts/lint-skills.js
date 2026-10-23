@@ -1141,27 +1141,23 @@ function lintSkillHeadings(root = ROOT)
     return out;
 }
 
-// 43. Every agent's `tools:` allowlist must grant the shared memory MCP's store, search and list
-// tools. The memory MCP is the required shared memory (CLAUDE.md's MCP catalog): a seat that can
-// search but not save, or save but not search, defeats the point - the spec gives every seat both,
-// read-only support seats included (the rule that scopes what gets SAVED to lessons lives beside
-// the grant, not instead of it). An agent with no `tools:` line inherits every tool, memory
-// included, so it has nothing to fix. What a seat holds is read as Claude Code resolves it - a whole-server grant
-// is every pinned tool of that server, minus its `disallowedTools` (scripts/seat-tools.js, check 63).
-const MEMORY_TOOLS = ['mcp__plugin_alfred-memory_alfred-memory__memory_store', 'mcp__plugin_alfred-memory_alfred-memory__memory_search', 'mcp__plugin_alfred-memory_alfred-memory__memory_list'];
-
-function lintAgentMemoryTools(label, text)
+// 43. A seat grants no MCP server, and a seat that runs the handoff bus holds Bash. The user's ruling of 2026-10-24:
+// the stack depends on no MCP server - a seat navigates with the LSP and grep, checks docs with WebFetch, and hands off
+// through `node .claude/hooks/handoff.js`, which needs Bash (the alfred-memory grant this check required before is
+// gone). Tool preferences phase 4 is where a seat may hold a server again, behind its own gate. An agent with no
+// `tools:` line inherits every tool, so it has nothing to fix.
+function lintAgentServerFree(label, text)
 {
+    const out = [];
     const line = /^tools:\s*(.+)$/m.exec(text || '');
-    if (!line) return [];
-
+    if (!line) return out;
     const removed = /^disallowedTools:\s*(.+)$/m.exec(text || '');
-    const tools = require('./seat-tools.js').effectiveTools(line[1], removed ? removed[1] : '');
-    const missing = MEMORY_TOOLS.filter(t => !tools.has(t));
-    if (missing.length === 0) return [];
-
-    return [`${label} tools: allowlist is missing ${missing.join(', ')} - every seat must be able to `
-        + `search and save the shared memory`];
+    const servers = [line[1], removed ? removed[1] : ''].join(',').split(',').map(s => s.trim()).filter(s => s.startsWith('mcp__'));
+    if (servers.length) out.push(`${label} names MCP server tools (${servers.join(', ')}) - the stack depends on no MCP server, so a seat holds built-in tools only`);
+    const tools = line[1].split(',').map(s => s.trim());
+    if (/handoff\.js (put|list)/.test(text) && !tools.includes('Bash'))
+        out.push(`${label} runs \`node .claude/hooks/handoff.js\` but its tools: allowlist holds no Bash - the handoff bus runs through it`);
+    return out;
 }
 
 // 41. A reference over 100 lines opens with a table of contents, inside the first 15 lines. Without
@@ -2024,8 +2020,8 @@ function main()
             // 40. ... and every name in that allowlist resolves to a real tool.
             for (const finding of lintAgentTools(`agents/${agentFile}`, text)) flag(finding);
 
-            // 43. ... and every allowlist grants the shared memory MCP's store, search and list tools.
-            for (const finding of lintAgentMemoryTools(`agents/${agentFile}`, text)) flag(finding);
+            // 43. ... and no allowlist names an MCP server, and a seat running the handoff bus holds Bash.
+            for (const finding of lintAgentServerFree(`agents/${agentFile}`, text)) flag(finding);
         }
     }
 
@@ -3357,8 +3353,7 @@ module.exports = {
     lintSkillDescription,
     SKILL_DESC_LIMIT,
     lintAgentTools,
-    lintAgentMemoryTools,
-    MEMORY_TOOLS,
+    lintAgentServerFree,
     lintReferencePointers,
     lintReferenceContents,
     lintAskTemplates,

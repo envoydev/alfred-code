@@ -659,35 +659,29 @@ test('check 35: a trailing load verb with a back-reference is a directive too', 
     assert.strictEqual(fires('Load `angular-security` before the edit.'), 1);
 });
 
-// 43. Every agent's tools: allowlist must grant the shared memory MCP's store, search and list
-// tools - the spec gives every seat search AND save, not just the implementers who already write.
-test('check 43: an agent tools: allowlist must grant the shared memory tools', () => {
-    const { lintAgentMemoryTools, MEMORY_TOOLS } = require('./lint-skills.js');
-    assert.deepStrictEqual(MEMORY_TOOLS, ['mcp__plugin_alfred-memory_alfred-memory__memory_store', 'mcp__plugin_alfred-memory_alfred-memory__memory_search', 'mcp__plugin_alfred-memory_alfred-memory__memory_list']);
+// 43. A seat grants no MCP server (the user's ruling of 2026-10-24: the stack depends on none), and a seat whose body
+// runs the handoff bus holds the Bash it runs through.
+test('check 43: a seat names no MCP server, and one that runs the handoff bus holds Bash', () => {
+    const { lintAgentServerFree } = require('./lint-skills.js');
 
-    // A fixture agent with serena tools but no memory tools - the new check reports it by file.
-    const noMemory = 'tools: mcp__plugin_alfred-navigation_alfred-navigation__find_symbol, mcp__plugin_alfred-navigation_alfred-navigation__write_memory, mcp__plugin_alfred-navigation_alfred-navigation__read_memory, mcp__plugin_alfred-navigation_alfred-navigation__list_memories, LSP, Read, Edit, Skill, Bash, Grep, Glob\n';
-    const found = lintAgentMemoryTools('agents/fixture.md', noMemory);
+    const granted = 'tools: mcp__plugin_alfred-memory_alfred-memory, LSP, Read, Bash\n';
+    const found = lintAgentServerFree('agents/fixture.md', granted);
     assert.strictEqual(found.length, 1, found.join('\n'));
     assert.match(found[0], /agents\/fixture\.md/);
-    assert.match(found[0], /mcp__plugin_alfred-memory_alfred-memory__memory_store/);
-    assert.match(found[0], /mcp__plugin_alfred-memory_alfred-memory__memory_search/);
-    assert.match(found[0], /mcp__plugin_alfred-memory_alfred-memory__memory_list/);
+    assert.match(found[0], /mcp__plugin_alfred-memory_alfred-memory/);
 
-    // The granted allowlist is clean.
-    const granted = 'tools: mcp__plugin_alfred-navigation_alfred-navigation__find_symbol, mcp__plugin_alfred-navigation_alfred-navigation__write_memory, mcp__plugin_alfred-navigation_alfred-navigation__read_memory, mcp__plugin_alfred-navigation_alfred-navigation__list_memories, mcp__plugin_alfred-memory_alfred-memory__memory_store, mcp__plugin_alfred-memory_alfred-memory__memory_search, mcp__plugin_alfred-memory_alfred-memory__memory_list, LSP, Read, Edit, Skill, Bash, Grep, Glob\n';
-    assert.deepStrictEqual(lintAgentMemoryTools('agents/fixture.md', granted), []);
+    const removal = 'tools: Read, Bash\ndisallowedTools: mcp__other__thing\n';
+    assert.strictEqual(lintAgentServerFree('agents/fixture.md', removal).length, 1, 'a removal names a server too');
 
-    // Partial grant still fails, naming only what is missing.
-    const partial = 'tools: Read, Grep, Glob, Bash, mcp__plugin_alfred-memory_alfred-memory__memory_store\n';
-    const partialFound = lintAgentMemoryTools('agents/partial.md', partial);
-    assert.strictEqual(partialFound.length, 1, partialFound.join('\n'));
-    assert.ok(!partialFound[0].includes('mcp__plugin_alfred-memory_alfred-memory__memory_store,'), 'the already-granted tool is not listed as missing');
-    assert.match(partialFound[0], /mcp__plugin_alfred-memory_alfred-memory__memory_search/);
-    assert.match(partialFound[0], /mcp__plugin_alfred-memory_alfred-memory__memory_list/);
+    const noBash = 'tools: Read, Grep\n---\nAt HAND-OFF, `node .claude/hooks/handoff.js put a/v1/seat`.\n';
+    const bashFound = lintAgentServerFree('agents/fixture.md', noBash);
+    assert.strictEqual(bashFound.length, 1, bashFound.join('\n'));
+    assert.match(bashFound[0], /handoff\.js/);
+    assert.match(bashFound[0], /Bash/);
 
-    // No tools: line at all = every tool inherited, memory included - nothing to report.
-    assert.deepStrictEqual(lintAgentMemoryTools('agents/fixture.md', 'no frontmatter tools line here\n'), []);
+    assert.deepStrictEqual(lintAgentServerFree('agents/fixture.md', 'tools: LSP, Read, Bash, WebFetch\n---\nnode .claude/hooks/handoff.js list a/v1\n'), []);
+    // No tools: line at all = every tool inherited, Bash included - nothing to report.
+    assert.deepStrictEqual(lintAgentServerFree('agents/fixture.md', 'no frontmatter tools line here\nhandoff.js put x\n'), []);
 });
 
 test('checks 44 + 45: the real repo passes placement and its entries are current', () => {

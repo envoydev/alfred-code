@@ -321,7 +321,7 @@ test('built-in review: security-auditor takes review-security\'s diff brief as i
     assert.ok(bullet.includes('dispatched by the `review-security` skill with a diff brief'), bullet);
     assert.ok(bullet.includes('that brief is the spec'), 'the brief is the spec');
     assert.ok(/bands/.test(bullet) && /leads/.test(bullet) && bullet.includes('`security:`'), 'its bands, leads and receipt line');
-    assert.ok(bullet.includes('skip the memory handoff WRITE'), 'no hand-off write');
+    assert.ok(bullet.includes('skip the handoff WRITE'), 'no hand-off write');
     const dispatch = squash((read('stack/skills/review-security/SKILL.md').split(/^## Dispatch\s*$/m)[1] || '').split(/^## /m)[0]);
     assert.ok(dispatch.includes('a diff brief'), 'review-security names the brief the seat keys on');
     assert.doesNotMatch(dispatch, /returns the same table/, 'no claim the posture report matches');

@@ -399,7 +399,8 @@ test('AG06 the unpinned line names the tool-by-tool seats it widens, read from t
     for (const bad of [path.join(TMP, 'absent.json'), (() => { const f = path.join(TMP, `garbage-${seq++}.json`); fs.writeFileSync(f, '{ nope'); return f; })(), ''])
         assert.match(lines(bad), /no release pin for alfred-navigation in this source - installing unpinned$/m, `fail-open for ${bad || 'no file'}`);
     const shipped = lines(path.join(__dirname, '..', 'meta', 'seat-tools.json'), {});
-    assert.match(shipped, /no release pin for alfred-navigation .* tool-by-tool seats it widens: \S/, 'the shipped seats name the navigation server tool by tool');
+    // 2026-10-24: the shipped seats hold built-in tools only, so an unpinned server widens no seat
+    assert.match(shipped, /no release pin for alfred-navigation in this source - installing unpinned$/m, 'the shipped seats name no server');
 });
 
 // M24: the copy route registers uvx itself, so each uvx row carries the release's dependency cut-off - the pins
@@ -2224,7 +2225,7 @@ for (const [label, account, reregistered] of [
 // B seam (final review B): on the FULL copy route no core plugin serves `alfred-code:<skill>`, so a seat's
 // preload in that spelling loaded nothing - the copy route installed the skill bare. The copied seat
 // preloads the bare name; the plugin route keeps the shipped text.
-test('seed install + re-run (full copy route): copies hold the registered tool names and bare preloads from the first write, and a re-run rewrites nothing (C17, B seam)', POSIX_ONLY, () =>
+test('seed install + re-run (full copy route): copies hold no server and bare preloads from the first write, and a re-run rewrites nothing (C17, B seam)', POSIX_ONLY, () =>
 {
     const seat = path.join('.claude', 'agents', 'angular-test-resolver.md');
     // The walk's closure brings a seat's preloaded skills along; a raw selection names them.
@@ -2247,13 +2248,10 @@ test('seed install + re-run (full copy route): copies hold the registered tool n
     const front = steps[0].seat.split('\n---')[0];
     assert.match(front, /^ {2}- habits-root-cause$/m, front);
     assert.doesNotMatch(front, /alfred-code:/, 'a preload still names the core plugin');
-    // Built, never written out: a bare spelling in a tracked file is lint check 54's finding. The seat grants the server
-    // whole and removes the rest (scripts/seat-tools.js), so both lines take the registered spelling.
+    // 2026-10-24: the seat holds built-in tools only, so the copy names no server in either spelling
     const tokens = (key) => ((front.split('\n').find((l) => l.startsWith(`${key}:`)) || '').slice(key.length + 1)).split(',').map((t) => t.trim()).filter(Boolean);
-    assert.ok(tokens('tools').includes(['mcp', 'alfred-navigation'].join('__')), `the tools list grants the registered server:\n${front}`);
-    assert.ok(!tokens('tools').some((t) => t.startsWith('mcp__plugin_alfred-navigation_')), 'no plugin spelling of a registered server is left in tools:');
-    const removed = tokens('disallowedTools').filter((t) => t.includes('alfred-navigation'));
-    assert.ok(removed.length && removed.every((t) => t.startsWith(['mcp', 'alfred-navigation', ''].join('__'))), `the removals take the registered spelling too:\n${front}`);
+    assert.ok(tokens('tools').length && !tokens('tools').some((t) => t.startsWith('mcp__')), `the tools list names no server:\n${front}`);
+    assert.deepStrictEqual(tokens('disallowedTools'), [], 'no removals');
     assert.ok(steps[0].preloaded, 'the preloaded skill is not installed as a copy');
     const touched = Object.keys(steps[0].mtimes).filter((f) => steps[1].mtimes[f] !== steps[0].mtimes[f]);
     assert.deepStrictEqual(touched, [], `a re-run rewrote unchanged copies:\n${outs[1]}`);
@@ -2305,7 +2303,7 @@ for (const [route, env, scope, registered] of [
     ['full copy route', COPY_ENV, 'user', ['chrome', 'webkit']],
 ])
 {
-    test(`seed install (${route}, ${scope} scope): a copied seat names each engine the run registered bare by its own bare name, and every other engine by its plugin name (F7, F1 D)`, POSIX_ONLY, () =>
+    test(`seed install (${route}, ${scope} scope): a copied seat names no engine in either spelling (F7, F1 D, since 2026-10-24)`, POSIX_ONLY, () =>
     {
         const { result, out } = seedRun('install', `skill markdown-style\nrule markdown-docs\nmcp browser\n${SEATS.map((s) => `agent ${s}\n`).join('')}`, {
             env, args: ['--scope', scope, '--playwright-browsers', 'chrome,webkit', '--playwright-enabled', 'chrome'],
@@ -2318,10 +2316,8 @@ for (const [route, env, scope, registered] of [
                 const bare = registered.includes(engine);
                 const tools = lineTokens(result[seat], 'tools');
                 const removed = lineTokens(result[seat], 'disallowedTools');
-                const [want, other] = bare ? [bareTools(server), pluginTools(server)] : [pluginTools(server), bareTools(server)];
-                assert.ok(tools.includes(want), `${seat}: ${server} is not spelled ${bare ? 'bare' : 'as the plugin'}:\n${result[seat]}\n${out}`);
-                assert.ok(!tools.includes(other), `${seat}: ${server} kept the other spelling:\n${result[seat]}`);
-                assert.ok(removed.includes(`${want}__browser_run_code_unsafe`), `${seat}: ${server}'s unsafe tool is not removed in the grant's spelling:\n${result[seat]}`);
+                // 2026-10-24: the seats hold built-in tools only, so no engine reaches a copy in either spelling
+                assert.ok(![...tools, ...removed].some((x) => x === bareTools(server) || x === pluginTools(server) || x.startsWith(`${bareTools(server)}__`) || x.startsWith(`${pluginTools(server)}__`)), `${seat}: ${server} (${bare ? 'registered bare' : 'not registered'}):\n${result[seat]}\n${out}`);
             }
     });
 }
