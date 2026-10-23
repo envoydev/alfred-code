@@ -1,0 +1,47 @@
+{
+  "_note": "The forge concept vocabulary forge.js reads every tool call through - WORDS, never a list of CLIs or servers. A user overlay at <data root>/forge-lexicon.json adds words to these classes (arrays are appended); docs/forge-routes-evidence.md holds the verified routes the words are tested against.",
+  "nouns": {
+    "change": ["pull_request", "merge_request", "pr", "prs", "mr", "mrs", "pull", "pulls", "pullrequest", "pullrequests", "mergerequest", "mergerequests", "pull-request", "merge-request"],
+    "release": ["release", "releases"],
+    "ref": ["branch", "branches", "ref", "refs", "tag", "tags", "commit", "commits", "remote"],
+    "file": ["file", "files", "contents"],
+    "pipeline": ["pipeline", "pipelines", "pipe", "run", "runs", "workflow", "workflows", "build", "builds", "job", "jobs", "actions", "action", "stage", "stages", "ci", "check", "checks", "policy", "policies"],
+    "review": ["review", "reviews", "reviewer", "reviewers", "approval", "approvals"],
+    "annotation": ["comment", "comments", "reply", "label", "labels", "vote", "thread", "threads", "assignee", "assignees", "reaction"]
+  },
+  "groups": ["repos", "repo"],
+  "verbs": {
+    "merge": ["merge", "accept", "complete", "completed", "automerge", "autocomplete", "enqueue", "merge_when_pipeline_succeeds", "bypass-policy", "bypass_policy", "bypasspolicy"],
+    "push": ["push"],
+    "create": ["create", "new", "open", "save", "propose", "submit", "revert"],
+    "write": ["update", "edit", "delete", "remove", "close", "reopen", "put", "patch", "upload", "publish", "write", "set", "rebase", "ready", "draft", "rename", "move", "erase", "manage"],
+    "pipeline": ["rerun", "retry", "trigger", "run", "dispatch", "cancel", "play", "queue", "restart", "stop", "trig"],
+    "annotate": ["approve", "review", "vote", "comment", "reply", "resolve", "unresolve", "assign", "unassign", "label", "unlabel", "revoke", "react", "request"],
+    "watch": ["watch", "wait"],
+    "read": ["get", "list", "read", "view", "show", "diff", "status", "checks", "log", "logs", "trace", "search", "download", "fetch", "find", "count", "compare", "info", "stats", "co", "checkout", "ls", "browse", "inspect", "describe", "query", "output", "content"]
+  },
+  "watchFlags": ["--watch", "--live", "--wait"],
+  "mergeFlags": ["--status", "--state"],
+  "selectors": ["method", "action", "operation", "op", "event", "status", "state", "state_event", "mode"],
+  "changeKeys": ["pull_number", "pullNumber", "pull_request_number", "pullRequestNumber", "number", "index", "merge_request_iid", "mergeRequestIid", "iid", "pullRequestId", "pull_request_id", "prNumber", "pr_number"],
+  "refKeys": ["branch", "ref", "branchName", "branch_name", "target_branch", "targetBranch", "base", "targetRefName", "tag_name", "tagName", "from_branch"],
+  "headKeys": ["sha", "head_sha", "headSha", "expected_head_sha", "match_head_commit"],
+  "forgeServerWords": ["git", "github", "gitlab", "gitea", "forgejo", "codeberg", "bitbucket", "azure", "ado", "devops", "atlassian", "forge"],
+  "apiCommands": ["curl", "wget", "http", "https", "xh", "invoke-restmethod", "invoke-webrequest", "irm", "iwr"],
+  "interpreters": ["node", "nodejs", "python", "python3", "ruby", "perl", "php", "deno", "bun", "pwsh", "powershell"],
+  "paths": [
+    { "re": "/(?:pulls|merge_requests|pullrequests)/\\d+/merge(?:-async)?$", "concept": "change.merge" },
+    { "re": "/merge_requests/\\d+/cancel_auto_merge$", "concept": "change.annotate" },
+    { "re": "/(?:pulls|merge_requests|pullrequests)/\\d+$", "concept": "change.item" },
+    { "re": "/(?:pulls|merge_requests|pullrequests)/\\d+/", "concept": "change.annotate" },
+    { "re": "/(?:pulls|merge_requests|pullrequests)$", "concept": "change.create" },
+    { "re": "/releases(?:/|$)", "concept": "release.write" },
+    { "re": "/(?:git/refs|refs|repository/branches|repository/tags|repository/files|repository/commits|contents|merges|branches|tags)(?:/|$)", "concept": "branch.write" },
+    { "re": "/(?:actions|pipelines?|jobs|builds|workflows|runs)(?:/|$)", "concept": "pipeline.write" }
+  ],
+  "hints": {
+    "kinds": { "github": "github", "gitlab": "gitlab", "dev.azure.com": "azure", "visualstudio.com": "azure", "bitbucket": "bitbucket", "gitea": "gitea", "codeberg": "gitea", "forgejo": "gitea" },
+    "clis": { "github": "gh", "gitlab": "glab", "azure": "az", "gitea": "tea" },
+    "mcpLaunch": ["github-mcp-server", "api.githubcopilot.com", "mcp-gitlab", "/api/v4/mcp", "server-gitlab", "azure-devops/mcp", "mcp.dev.azure.com", "gitea-mcp", "mcp.atlassian.com"]
+  }
+}

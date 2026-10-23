@@ -62,9 +62,9 @@ function awarenessDocs(projectRoot, docsPath, { agentsOnly = false } = {})
 }
 // A generated, project-owned file is not a stack item: the captures rewrite those.
 const RULE_EXCLUDE = { test: (name) => GENERATED_FILES.has(name) };
-// docs.js / memory.js / history.js / fresh-session.js / shell-writes.js / hidden-chars.js are ENGINES, hook-prelude.js the shared gate
+// docs.js / memory.js / history.js / fresh-session.js / shell-writes.js / hidden-chars.js / forge.js are ENGINES, hook-prelude.js the shared gate
 // module and shell-guards.js / file-guards.js the dispatchers that run the picked shell and file guards - none is a hook item.
-const HOOK_EXCLUDE = /^(inject-code-style|docs|memory|history|hook-prelude|fresh-session|shell-writes|hidden-chars|shell-guards|file-guards)$/;
+const HOOK_EXCLUDE = /^(inject-code-style|docs|memory|history|hook-prelude|fresh-session|shell-writes|hidden-chars|forge|shell-guards|file-guards)$/;
 const { ENGINE_SERVER: PW_ENGINE, engineServer } = require('../../stack/mcp/data-root.js');
 const { ENGINES: PW_ORDER } = require('../../stack/mcp/data-root.js');
 const engineOf = (name) => (PW_ENGINE.exec(String(name)) || [])[1];

@@ -195,7 +195,7 @@ the plugins listing and `ALFRED_CODE_HOOKS_VIA_PLUGIN` not `false` the installed
 release's whole hook catalog (the stamp's `shipped-hooks:` line) MINUS the names in
 `ALFRED_CODE_HOOKS_OFF` read from the stack view; otherwise (the copy route, where the core's own copies stand down for the
 wired ones), `.claude/hooks/*.js` bare basenames, excluding the engines (`docs`, `memory`,
-`history`, `fresh-session`, `shell-writes`, `hidden-chars`), the shared `hook-prelude`, the dispatchers
+`history`, `fresh-session`, `shell-writes`, `hidden-chars`, `forge`), the shared `hook-prelude`, the dispatchers
 (`shell-guards`, `file-guards`) and the generated legacy `inject-code-style.js` - `HOOK_EXCLUDE` in
 `scripts/install/selection.js` is the list. On the plugin route the `wired` column reads `plugin` for every row and the
 matcher comes from the release catalog; a row named in `ALFRED_CODE_HOOKS_OFF` reads `off (env)`.
