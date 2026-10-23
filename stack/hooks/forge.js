@@ -465,4 +465,78 @@ function readActs(projectRoot, sessionId, env = process.env) {
   } catch { return []; }
 }
 
-module.exports = { classify, classifyCommand, loadLexicon, isStackServer, tokens, recordAct, readActs, actsPath, CONCEPTS, PUBLISH, PREF_HOLD };
+// ---- the remote, read with plain git -------------------------------------------------------------------------------
+// Every forge speaks git, so the remote's refs are the one transport-neutral fact: `git ls-remote`, bounded so a dead
+// network or a credential prompt never hangs a hook (a timed-out PreToolUse hook fails OPEN). No terminal prompt; ssh in
+// batch mode with a connect timeout - appended to the user's own GIT_SSH_COMMAND, and left alone when core.sshCommand
+// carries their key setup (the spawn cap still bounds it).
+const LS_REMOTE_MS = 6000;
+const { spawnSync } = require('node:child_process');
+const gitOut = (cwd, args, timeout = 5000) => {
+  const r = spawnSync('git', ['-c', 'core.fsmonitor=false', ...args], { cwd, timeout, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } });
+  return r.status === 0 ? String(r.stdout || '').trim() : null;
+};
+function networkEnv(cwd) {
+  const env = { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0' };
+  const batch = '-o BatchMode=yes -o ConnectTimeout=5';
+  if (env.GIT_SSH_COMMAND) env.GIT_SSH_COMMAND = `${env.GIT_SSH_COMMAND} ${batch}`;
+  else if (!gitOut(cwd, ['config', 'core.sshCommand'])) env.GIT_SSH_COMMAND = `ssh ${batch}`;
+  return env;
+}
+// The remote the current branch pushes to: its configured remote, else `origin`, else the only one; null when none.
+function remoteOf(cwd) {
+  const branch = gitOut(cwd, ['symbolic-ref', '--short', '-q', 'HEAD']);
+  const own = branch && gitOut(cwd, ['config', `branch.${branch}.remote`]);
+  if (own && own !== '.') return own;
+  const all = (gitOut(cwd, ['remote']) || '').split('\n').filter(Boolean);
+  return all.includes('origin') ? 'origin' : all.length === 1 ? all[0] : null;
+}
+// { ok, refs: Map<ref, sha>, reason } - `patterns` narrows the listing (`--heads --tags` by default; a symref answer for HEAD
+// when `symref` is set).
+function lsRemote(cwd, remote, patterns = null, opts = {}) {
+  if (!remote) return { ok: false, refs: new Map(), reason: 'no remote' };
+  const args = ['ls-remote', ...(opts.symref ? ['--symref'] : []), ...(patterns ? [] : ['--heads', '--tags']), remote, ...(patterns || [])];
+  const r = spawnSync('git', args, { cwd, timeout: opts.timeout || LS_REMOTE_MS, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'], env: networkEnv(cwd) });
+  if (r.error || r.status !== 0) {
+    const why = r.error && r.error.code === 'ETIMEDOUT' ? `no answer within ${(opts.timeout || LS_REMOTE_MS) / 1000}s`
+      : String(r.stderr || (r.error && r.error.message) || `git exited ${r.status}`).trim().split('\n').pop().slice(0, 160);
+    return { ok: false, refs: new Map(), reason: why };
+  }
+  const refs = new Map();
+  let head = null;
+  for (const line of String(r.stdout || '').split('\n')) {
+    const sym = /^ref: (\S+)\s+HEAD$/.exec(line);
+    if (sym) { head = sym[1]; continue; }
+    const m = /^([0-9a-f]{40,64})\s+(\S+)$/.exec(line);
+    if (m && !m[2].endsWith('^{}')) refs.set(m[2], m[1]);
+  }
+  return { ok: true, refs, head, reason: null };
+}
+// The head of change request `change` on the remote, by the ref each forge publishes it under - GitHub and Gitea
+// refs/pull/<n>/head, GitLab refs/merge-requests/<n>/head. Azure publishes only refs/pull/<n>/merge, a merge commit and
+// not the head, so it is not read. Null when no such ref (or no answer).
+function changeHead(cwd, remote, change) {
+  if (!/^\d+$/.test(String(change || ''))) return null;
+  const want = [`refs/pull/${change}/head`, `refs/merge-requests/${change}/head`];
+  const r = lsRemote(cwd, remote, want);
+  if (!r.ok) return null;
+  for (const ref of want) if (r.refs.has(ref)) return r.refs.get(ref);
+  return null;
+}
+// Why a merge's head is NOT covered by the review a receipt names, or null when it is (or cannot be judged - no head:
+// line in a waiver, no change ref, no network: the local-HEAD rule the receipt already passed stands). Covered: the head
+// is the reviewed sha or an ancestor of it.
+function unseenHead({ cwd, change, sha, receiptHead }) {
+  const h = String(receiptHead || '').toLowerCase();
+  if (!/^[0-9a-f]{7,64}$/.test(h)) return null;
+  const target = sha && /^[0-9a-f]{7,64}$/i.test(sha) ? String(sha).toLowerCase() : changeHead(cwd, remoteOf(cwd), change);
+  if (!target) return null;
+  if (target.startsWith(h) || h.startsWith(target)) return null;
+  const t7 = target.slice(0, 12), h7 = h.slice(0, 12);
+  if (gitOut(cwd, ['cat-file', '-e', `${target}^{commit}`]) === null)
+    return `the change's head ${t7} is not in this checkout, so the review at ${h7} never saw it - fetch the change, review its head and write head: again`;
+  if (spawnSync('git', ['merge-base', '--is-ancestor', target, h], { cwd, timeout: 5000, stdio: 'ignore' }).status === 0) return null;
+  return `the change's head ${t7} carries commits the review at ${h7} never saw - review the change's head and write head: again`;
+}
+
+module.exports = { classify, classifyCommand, loadLexicon, isStackServer, tokens, recordAct, readActs, actsPath, remoteOf, lsRemote, changeHead, unseenHead, gitOut, LS_REMOTE_MS, CONCEPTS, PUBLISH, PREF_HOLD };

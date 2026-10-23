@@ -1327,6 +1327,21 @@ if (publishMatch) {
       process.exit(2);
     }
   }
+  // A merge lands the CHANGE's head, not this checkout's: the receipt's head: must be that head or a descendant of it
+  // (forge.js unseenHead - read with plain git, so on every forge and transport; no change ref or no network leaves the
+  // local-HEAD rule above standing). The atomic receipt in the command is the newest, then the file.
+  if (!dryRun && ahead && forgeLib && publishMatch.forge && publishMatch.forge.concept === forgeLib.CONCEPTS.MERGE) {
+    let text = command.slice(0, publishMatch.index);
+    try { text += `\n${fs.readFileSync(receiptRead('PUSH-GATE'), 'utf8')}`; } catch { /* no file: the atomic receipt alone */ }
+    const receiptHead = (/^\s*head:[^\n]*?\b([0-9a-f]{7,40})\b/im.exec(text) || [])[1];
+    let unseen = null;
+    try { unseen = forgeLib.unseenHead({ cwd: root, change: publishMatch.forge.change, sha: publishMatch.forge.head, receiptHead }); } catch { unseen = null; }
+    if (unseen) {
+      process.stderr.write(`Blocked: ${act} - ${unseen}.\n` +
+        'The publish receipt reviewed a different tree than the one this merge lands; the checkpoint\'s publish half reviews the change as it stands.');
+      process.exit(2);
+    }
+  }
   // Allowed: the act ledger the ref watch reads (forge.js recordAct) - what moved, where, from which head.
   if (!dryRun && ahead && forgeLib) {
     const f = publishMatch.forge || {};

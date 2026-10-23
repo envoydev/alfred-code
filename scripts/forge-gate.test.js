@@ -120,3 +120,57 @@ test('the push switch turns the transport-neutral half off too', () => {
   const { dir } = pushRepo();
   assert.strictEqual(run(dir, mcp('accept_merge_request', { merge_request_iid: 4 }), { ALFRED_CODE_HOOKS_OFF: 'guard-ungated-commit:push' }).status, 0);
 });
+
+// --- the PR-head check: a merge lands the CHANGE's head, so the receipt must have reviewed it -----------------------------
+// The head is read with plain git (refs/pull/<n>/head, refs/merge-requests/<n>/head, refs/pull/<n>/merge), so it holds on
+// every forge and every transport; no ref or no network falls back to the local-HEAD rule.
+const pushHead = (git, sha, ref) => git('push', '-q', 'origin', `${sha}:${ref}`);
+
+test('a merge of the reviewed head passes', () => {
+  const { dir, git } = pushRepo();
+  pushHead(git, headOf(dir), 'refs/pull/7/head');
+  receipt(dir, headOf(dir));
+  const r = run(dir, bash('gh pr merge 7 --squash'));
+  assert.strictEqual(r.status, 0, r.stderr);
+});
+
+test('a merge whose head carries commits the review never saw is denied', () => {
+  const { dir, git } = pushRepo();
+  const reviewed = headOf(dir);
+  fs.writeFileSync(path.join(dir, 'b.txt'), 'later\n');
+  git('add', '-A'); git('commit', '-qm', 'unreviewed');
+  pushHead(git, headOf(dir), 'refs/merge-requests/7/head');
+  git('reset', '-q', '--hard', reviewed);
+  receipt(dir, reviewed);
+  const r = run(dir, bash('glab mr merge 7'));
+  assert.strictEqual(r.status, 2, r.stderr);
+  assert.match(r.stderr, /never saw/);
+});
+
+test('a merge with no change ref on the remote falls back to the local rule', () => {
+  const { dir } = pushRepo();
+  receipt(dir, headOf(dir));
+  assert.strictEqual(run(dir, bash('gh pr merge 9')).status, 0);
+});
+
+test('an unreachable remote falls back within the cap', () => {
+  const { dir, git } = pushRepo();
+  receipt(dir, headOf(dir));
+  git('remote', 'set-url', 'origin', 'ssh://git@nohost.invalid/x.git');
+  const t0 = Date.now();
+  const r = run(dir, bash('gh pr merge 9'));
+  assert.ok(Date.now() - t0 < 9000, `took ${Date.now() - t0}ms`);
+  assert.notStrictEqual(r.status, null, 'the hook ended on its own');
+});
+
+test('an MCP merge sha is compared directly', () => {
+  const { dir, git } = pushRepo();
+  const reviewed = headOf(dir);
+  fs.writeFileSync(path.join(dir, 'b.txt'), 'later\n');
+  git('add', '-A'); git('commit', '-qm', 'unreviewed');
+  const later = headOf(dir);
+  git('reset', '-q', '--hard', reviewed);
+  receipt(dir, reviewed);
+  assert.strictEqual(run(dir, mcp('accept_merge_request', { merge_request_iid: 4, sha: later })).status, 2);
+  assert.strictEqual(run(dir, mcp('accept_merge_request', { merge_request_iid: 4, sha: reviewed })).status, 0);
+});
