@@ -329,3 +329,15 @@ and is named, to merge what you need and remove by hand. Report those lines.
 still exactly as the stack wrote it - an edited one is kept unasked, as before. 'Delete it' is recommended, since an
 unedited seed only describes the tools the uninstall removes. Run without the command, the installer keeps it and names
 `--instructions-seed remove`. Nothing changes for an update.
+
+## after 2.10.0 - the tools start line, /capture-preferences tools and its refresh
+
+Every session and seat start carries a tool order now: for each job (navigation, library docs, memory, the browser) the
+tools to use first, from the stack's defaults or from `preferences/TOOLS-PREFERENCES.md` once `/capture-preferences tools`
+ranks them. It replaces the memory hook's `ToolSearch select:` line - the order's own load clause carries those tools; with
+`preferences-session` or its `tools` part in `ALFRED_CODE_HOOKS_OFF` the memory hook says it again. An
+update from v2.10.0 writes no doc and takes no inventory, so the order is the stack's defaults until the capture runs.
+Every update after a capture refreshes its inventory (`<data root>/state/tools-inventory.json`): a stack server and a
+known type at its pin are re-read from the table and never started, a registration whose launch changed is listed again
+(at most a minute), and one that is gone leaves. Report every `tools:` and `!! tools:` line; a `!!` line names a server
+that could not be re-listed or a ranked tool that is gone, and `/capture-preferences tools` settles both.

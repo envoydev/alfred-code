@@ -601,6 +601,17 @@ when it names THIS credential in THIS file; then the row is one report line, 'ro
 and any other credential row is still the ask (one run skipped it on a ruling about a different file, and its
 close was blocked and re-sent - audit 2026-10-20 C16, b1c22192).
 
+Then the tool order's rows, from the preferences capture's own script:
+
+```bash
+node "$TMP/repo/stack/skills/capture-preferences/scripts/tools.js" validate --project .
+```
+
+Paste its rows byte for byte in the same fenced block, with no ask; nothing printed means no rows. Each row names its
+fix: a rank this machine has no inventory entry for, or does not reach, is `/capture-preferences tools`; a registration
+changed since the inventory was taken is `/alfred-code:update` (or the capture again); an inventory that is not valid
+JSON is the capture again.
+
 Then check the LIBRARY copies - every skill (no plugin carries one since 2.1.0), a seat on its copy
 route, and every RULE (no plugin ever carries one), is a project copy, and the stamp holds the hash of
 what the last install wrote:

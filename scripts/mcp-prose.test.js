@@ -6,6 +6,7 @@ const test = require('node:test');
 require('./hook-test-env').isolateHookSuite();
 const assert = require('node:assert');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
@@ -279,18 +280,30 @@ test('M43 alfred-memory names metadata.tags for the project tag', () =>
     assert.match(text, /`metadata\.tags` `project:<name>`/);
 });
 
-// M44: the memory ToolSearch line had two homes no pin tied together. Audit 2026-10-14 RU10 left it ONE: the session-start
-// hook hands it to the session and, since then, to every seat at SubagentStart, so the always-on rule no longer repeats it.
-test('M44 the memory ToolSearch line has one home, the hook, at SessionStart and SubagentStart', () =>
+// M44: the memory ToolSearch line had two homes no pin tied together. Audit 2026-10-14 RU10 left it ONE, the memory hook's
+// session and seat pushes; the tool preferences (phase 1, 2026-10-24) moved that home into the tool order's start line,
+// built from the adapter table's memory job and resolved per actor, so the rule never repeats it and the memory hook
+// says it only while the order is switched off (memory-session.test.js holds both sides).
+test('M44 the memory ToolSearch line has one home, the tool order\'s start line', () =>
 {
     const line = 'ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store,mcp__plugin_alfred-memory_alfred-memory__memory_search,mcp__plugin_alfred-memory_alfred-memory__memory_list';
     assert.ok(!read('stack/rules/alfred-memory.md').includes('ToolSearch select:'), 'the rule carries no ToolSearch line');
     assert.strictEqual(JSON.parse(read('meta/shared-rules.json')).rules['memory-toolsearch-line'], undefined, 'no pin for a one-home line');
     const hook = read('stack/hooks/memory-session.js');
-    assert.ok(hook.includes(`const TOOL_SEARCH_LINE = '${line}';`));
-    // audit 2026-10-14 RU13: the seat's push ends on the host's shell lines (withHost)
-    assert.match(hook, /emit\('SubagentStart', withHost\(\[[^\]]*\$\{TOOL_SEARCH_LINE\}/);
-    assert.match(hook, /const searchLine = `Store, search or list more: \$\{TOOL_SEARCH_LINE\}`/);
+    assert.strictEqual(hook.split('ToolSearch select:').length, 2, 'the memory hook spells the line once, its fallback');
+    assert.strictEqual(hook.split('TOOL_SEARCH_LINE}').length - 1, hook.split('orderOff() ?').length - 1, 'every use of it sits behind the order-off check');
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'm44-')));
+    const config = path.join(root, 'config');
+    try
+    {
+        fs.mkdirSync(path.join(root, 'repo', '.claude'), { recursive: true });
+        fs.mkdirSync(config);
+        fs.writeFileSync(path.join(root, 'repo', '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'alfred-memory@envoydev': true } }));
+        const tools = require('../stack/skills/capture-preferences/scripts/tools.js');
+        const text = tools.toolsLine({ projectRoot: path.join(root, 'repo'), env: { ...process.env, CLAUDE_CONFIG_DIR: config }, seat: null, suggest: false });
+        assert.ok(text.includes(line), text);
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
 // M45: where the capabilities capture never ran, nothing told the main thread the browser tools are deferred.

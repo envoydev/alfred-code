@@ -261,6 +261,6 @@ function cloneMain({ repoUrl, tmpdir = os.tmpdir() } = {})
 }
 
 module.exports = {
-    which, locate, unrunnable, cliRunner, capture, resolveWin, resolveOnce, cmdArg, spawnCommand, spawnCommandAsync, execCommand,
+    which, locate, unrunnable, cliRunner, capture, resolveWin, resolveOnce, cmdArg, commandPlan, spawnCommand, spawnCommandAsync, execCommand,
     gitRoot, gitRevision, runNode, lines, fetchArchive, cloneMain, join: path.join,
 };

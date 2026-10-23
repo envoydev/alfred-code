@@ -26,23 +26,27 @@ const GIT = '# Git preferences\n\nUpdated: 2026-10-21\n\n## G1 - Branch names\n<
 let n = 0;
 const sid = () => `prefs-test-${process.pid}-${++n}`;
 
-function project({ docs = { 'PERSONAL-CODE-PREFERENCES.md': PERSONAL, 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE, 'PROJECT-CODE-PREFERENCES.md': PROJECT, 'GIT-PREFERENCES.md': GIT }, watch = true } = {})
+// `tools` keeps the tool-order start line on: off, the hook's every other push is tested as it was before the line came.
+// The account config is a folder of the test's own, so this machine's enabled plugins never reach the line.
+function project({ docs = { 'PERSONAL-CODE-PREFERENCES.md': PERSONAL, 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE, 'PROJECT-CODE-PREFERENCES.md': PROJECT, 'GIT-PREFERENCES.md': GIT }, watch = true, tools = false } = {})
 {
     const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'prefs-hook-')));
+    const config = fs.mkdtempSync(path.join(os.tmpdir(), 'prefs-config-'));
     const write = (rel, text) => { const p = path.join(root, rel); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, text); };
     const git = (...args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' });
     git('init', '-q', '-b', 'develop');
     write('.gitignore', '.alfred/\n');
     write('src/app.ts', 'export const x = 1;\n');
+    write('.claude/settings.json', JSON.stringify({ enabledPlugins: { 'alfred-navigation@envoydev': true, 'alfred-documentation@envoydev': true, 'alfred-memory@envoydev': true } }));
     for (const [name, text] of Object.entries(docs)) write(path.join(PREFS, name), text);
     if (watch && Object.keys(docs).length) write(path.join(PREFS, 'watch.json'), '{}\n');
-    const env = (extra) => ({ ...process.env, CLAUDE_PROJECT_DIR: root, ...extra });
+    const env = (extra) => ({ ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: config, ...(tools ? {} : { ALFRED_CODE_HOOKS_OFF: 'preferences-session:tools' }), ...extra });
     const hook = (payload, extra = {}, file = HOOK) => spawnSync(process.execPath, [file], { cwd: root, input: typeof payload === 'string' ? payload : JSON.stringify({ cwd: root, ...payload }), encoding: 'utf8', env: env(extra) });
     return {
         root, write, hook,
         read: (rel) => fs.readFileSync(path.join(root, rel), 'utf8'),
         exists: (rel) => fs.existsSync(path.join(root, rel)),
-        rm: () => fs.rmSync(root, { recursive: true, force: true }),
+        rm: () => { fs.rmSync(root, { recursive: true, force: true }); fs.rmSync(config, { recursive: true, force: true }); },
     };
 }
 const pre = (tool, input, session, extra = {}) => ({ hook_event_name: 'PreToolUse', session_id: session, tool_name: tool, tool_input: input, ...extra });
@@ -1284,4 +1288,156 @@ test('a run ends at the user\'s next typed turn: the analyzer and a reviewing ma
         assert.ok(denied(read(s)), 'that refusal is this hook\'s own: the next read still brings the next part');
     }
     finally { p.rm(); }
+});
+
+// ---- tool preferences, phase 1: the tool-order start line ----------------------------------------------------------
+const NAV_LOAD = 'Load: ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__find_symbol,';
+const seatStart = (type, extra = {}) => ({ hook_event_name: 'SubagentStart', session_id: sid(), agent_id: 'agent-t1', agent_type: type, ...extra });
+const seatText = (r) => String(out(r).additionalContext || '');
+const suggested = (p) => p.exists('.alfred/state/tool-preferences/suggested');
+
+// The personal doc leads: the tools line is the part a capped hook output can lose (the final review, I2).
+test('the main session start carries the personal doc, then the tools line', () =>
+{
+    const p = project({ docs: { 'PERSONAL-PREFERENCES.md': PERSONAL_PREFS }, tools: true });
+    try
+    {
+        const r = p.hook(start(sid(), 'startup'));
+        assert.strictEqual(r.status, 0, r.stderr);
+        const text = pushed(r);
+        assert.ok(text.includes('\n\nTool order - the stack\'s defaults (no TOOLS-PREFERENCES.md)'), text);
+        assert.ok(text.includes(NAV_LOAD), text);
+        assert.ok(text.includes('mcp__plugin_alfred-memory_alfred-memory__memory_store'), 'the memory load line rides here now');
+        assert.ok(text.indexOf('lead with the verdict') < text.indexOf('Tool order'), 'the personal doc comes first');
+        assert.match(text, /lead with the verdict/);
+    }
+    finally { p.rm(); }
+});
+
+test('the suggestion is sent once per project, and never once a doc exists', () =>
+{
+    const p = project({ docs: {}, tools: true });
+    try
+    {
+        const first = pushed(p.hook(start(sid(), 'startup')));
+        assert.ok(first.endsWith('\nThe user can rank their own with /capture-preferences tools.'), first);
+        assert.ok(suggested(p), 'the marker is written');
+        for (const source of ['startup', 'compact'])
+        {
+            const again = pushed(p.hook(start(sid(), source)));
+            assert.match(again, /^Tool order/, source);
+            assert.ok(!again.includes('/capture-preferences'), source);
+        }
+    }
+    finally { p.rm(); }
+    const q = project({ docs: { 'TOOLS-PREFERENCES.md': '# Tools preferences\n\nUpdated: 2026-10-24\n\n## T1 - Code navigation\n<!-- id: t1 -->\n- Job: navigation\n- Order: LSP > Grep\n' }, tools: true });
+    try
+    {
+        const text = pushed(q.hook(start(sid(), 'startup')));
+        assert.match(text, /^Tool order - the user's, from \.alfred\/docs\/preferences\/TOOLS-PREFERENCES\.md/);
+        assert.ok(text.includes('- navigation (locate symbols, callers and types before reading or editing code): LSP > Grep.'), text);
+        assert.ok(!text.includes('/capture-preferences'));
+        assert.ok(!suggested(q));
+    }
+    finally { q.rm(); }
+});
+
+test('an unwritable state folder still prints the line', () =>
+{
+    const p = project({ docs: {}, tools: true });
+    try
+    {
+        p.write('blocked', 'a file where the data root would be\n');
+        const r = p.hook(start(sid(), 'startup'), { ALFRED_CODE_DATA_PATH: 'blocked' });
+        assert.strictEqual(r.status, 0, r.stderr);
+        const text = pushed(r);
+        assert.match(text, /^Tool order/);
+        assert.ok(text.endsWith('/capture-preferences tools.'), 'the suggestion prints with no marker to keep');
+    }
+    finally { p.rm(); }
+});
+
+test('every seat start carries its tools line; a judge also gets its code docs', () =>
+{
+    const p = project({ tools: true });
+    try
+    {
+        const v = seatText(p.hook(seatStart('alfred-code:aspnet-verifier')));
+        assert.ok(v.includes('Tool order - the stack\'s defaults'), v);
+        assert.ok(!v.includes('ToolSearch'), 'a stack seat calls what its tools grant');
+        assert.ok(v.includes('Call them directly - your tools grant them.'), v);
+        assert.match(v, /put behaviour on the type/, 'the judge is still handed the code docs');
+        assert.ok(v.indexOf('put behaviour') < v.indexOf('Tool order'), 'the code docs come first');
+        const e = seatText(p.hook(seatStart('alfred-code:evidence-gatherer')));
+        assert.match(e, /^Tool order/);
+        assert.doesNotMatch(e, /put behaviour on the type/, 'a gatherer gets the tools line only');
+        assert.ok(!e.includes('- documentation'), 'its tools grant no documentation rank');
+        p.write('.claude/agents/my-seat.md', '---\nname: my-seat\ntools: Grep, Read\n---\nbody\n');
+        const own = seatText(p.hook(seatStart('my-seat')));
+        assert.ok(own.includes('- navigation (locate symbols, callers and types before reading or editing code): Grep.'), `a project seat reads its own file: ${own}`);
+    }
+    finally { p.rm(); }
+});
+
+test('a built-in seat gets the main session\'s line without the suggestion; the guide seats get none', () =>
+{
+    const p = project({ docs: {}, tools: true });
+    try
+    {
+        const text = seatText(p.hook(seatStart('general-purpose')));
+        assert.ok(text.includes('Load: ToolSearch select:'), text);
+        assert.ok(!text.includes('/capture-preferences'), text);
+        assert.ok(!suggested(p), 'a seat never spends the suggestion');
+        assert.ok(seatText(p.hook(seatStart('other-plugin:helper'))).includes(NAV_LOAD), 'another plugin\'s seat');
+        for (const type of ['claude-code-guide', 'statusline-setup']) assert.strictEqual(p.hook(seatStart(type)).stdout, '', type);
+    }
+    finally { p.rm(); }
+});
+
+test('a seat\'s own compaction re-sends its tools line', () =>
+{
+    const p = project({ docs: { 'PERSONAL-PREFERENCES.md': PERSONAL_PREFS }, tools: true });
+    try
+    {
+        const text = pushed(p.hook({ ...start(sid(), 'compact'), agent_id: 'agent-t4', agent_type: 'alfred-code:evidence-gatherer' }));
+        assert.match(text, /^Tool order/);
+        assert.ok(!text.includes('lead with the verdict'), 'the personal doc stays the main session\'s');
+        assert.ok(!text.includes('/capture-preferences'));
+        assert.strictEqual(p.hook({ ...start(sid(), 'compact'), agent_id: 'agent-t4' }).stdout, '', 'no agent type: nothing to resolve');
+    }
+    finally { p.rm(); }
+});
+
+test('preferences-session:tools switches the line off and nothing else', () =>
+{
+    const p = project({ docs: { 'PERSONAL-PREFERENCES.md': PERSONAL_PREFS, 'PERSONAL-CODE-PREFERENCES.md': PERSONAL }, tools: true });
+    try
+    {
+        const off = { ALFRED_CODE_HOOKS_OFF: 'preferences-session:tools' };
+        const text = pushed(p.hook(start(sid(), 'startup'), off));
+        assert.match(text, /^The user's personal preferences/);
+        assert.ok(!suggested(p), 'nor is the suggestion spent');
+        const v = seatText(p.hook(seatStart('alfred-code:aspnet-verifier'), off));
+        assert.match(v, /^The user's code preferences/);
+        assert.strictEqual(p.hook(seatStart('alfred-code:evidence-gatherer'), off).stdout, '');
+    }
+    finally { p.rm(); }
+});
+
+test('a missing tools.js leaves every other push as it was', () =>
+{
+    const p = project({ docs: { 'PERSONAL-PREFERENCES.md': PERSONAL_PREFS, 'PERSONAL-CODE-PREFERENCES.md': PERSONAL }, tools: true });
+    const lone = fs.mkdtempSync(path.join(os.tmpdir(), 'prefs-lone-'));
+    try
+    {
+        // the hook with no ../skills beside it: an install whose capture-preferences copy is gone
+        const file = path.join(lone, 'hooks', 'preferences-session.js');
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.copyFileSync(HOOK, file);
+        const r = p.hook(start(sid(), 'startup'), {}, file);
+        assert.strictEqual(r.status, 0, r.stderr);
+        assert.match(pushed(r), /^The user's personal preferences/);
+        assert.match(seatText(p.hook(seatStart('alfred-code:aspnet-verifier'), {}, file)), /^The user's code preferences/);
+    }
+    finally { p.rm(); fs.rmSync(lone, { recursive: true, force: true }); }
 });

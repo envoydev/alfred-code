@@ -30,7 +30,15 @@ if (require.main === module) {
 
 const CAP_BYTES = 4096;
 const STDIN_TIMEOUT_MS = 2000;
+// How the memory tools load is the tool order's line (preferences-session.js). Switched off - the hook, or its tools part -
+// that line is gone, so this push carries the load line again, as it did before the order came.
 const TOOL_SEARCH_LINE = 'ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store,mcp__plugin_alfred-memory_alfred-memory__memory_search,mcp__plugin_alfred-memory_alfred-memory__memory_list';
+function orderOff() {
+  try {
+    const prelude = require('./hook-prelude.js');
+    return prelude.hookDisabled('preferences-session') || prelude.partOff('preferences-session', 'tools');
+  } catch { return false; }
+}
 
 // A plain `fs.readFileSync(0)` blocks forever when stdin never closes (a TTY, or a harness that keeps
 // the pipe open) - this hook only ever needs `cwd` out of the payload, and that already has a
@@ -106,8 +114,9 @@ async function main() {
   const dbPath = memory.registeredDbPath(root, { home });
   if (!dbPath) return; // no memory server registered for this project - nothing to push
   if (event === 'SubagentStart') {
+    // How the memory tools load is the tool order's start line (preferences-session.js), resolved against the seat's tools.
     return emit('SubagentStart', withHost([`This project's memory tag: project:${memory.projectName(root)}`,
-      `Store, search or list more: ${TOOL_SEARCH_LINE} - a seat whose tools grant them, by name or as the whole server, has them loaded already and calls them directly.`]).join('\n'));
+      ...(orderOff() ? [`Store, search or list more: ${TOOL_SEARCH_LINE} - a seat whose tools grant them, by name or as the whole server, has them loaded already and calls them directly.`] : [])]).join('\n'));
   }
   const level = memory.levelOfPath(dbPath, { home, projectRoot: root }) || 'unknown';
   const project = memory.projectName(root);
@@ -119,16 +128,16 @@ async function main() {
   const { text } = memory.selectForSession(dbPath, { project, related, capBytes: CAP_BYTES });
   // Whenever a memory registration exists, the model needs its own project's tag to save under - even
   // (especially) inside a git worktree, where projectName() already names the MAIN checkout, never the
-  // worktree's own folder (I5). Nothing selected: keep the push to just this line plus the search hint,
-  // no header, no body - still short enough to never be worth suppressing.
+  // worktree's own folder (I5). Nothing selected: keep the push to just this line, no header, no body.
+  // How the tools load is the tool order's start line (preferences-session.js), never repeated here.
   const tagLine = `This project's memory tag: project:${project}`;
-  const searchLine = `Store, search or list more: ${TOOL_SEARCH_LINE}`;
+  const searchLines = orderOff() ? [`Store, search or list more: ${TOOL_SEARCH_LINE}`] : [];
   // The frame (memory.js's own two lines) sits between the header and the rows, so every recalled row
   // is read as context under it; an older engine copy without it prints the rows as before.
   const frame = Array.isArray(memory.MEMORY_FRAME) ? memory.MEMORY_FRAME : [];
   const lines = text
-    ? [`Memory (memory MCP, ${level}):`, tagLine, ...frame, text, '', searchLine]
-    : [tagLine, searchLine];
+    ? [`Memory (memory MCP, ${level}):`, tagLine, ...frame, text, ...(searchLines.length ? ['', ...searchLines] : [])]
+    : [tagLine, ...searchLines];
   emit('SessionStart', withHost(lines).join('\n'));
 }
 

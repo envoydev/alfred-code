@@ -992,13 +992,13 @@
       "file": "preferences-session.js",
       "matcher": "@SessionStart",
       "event": "",
-      "note": "PERSONAL-PREFERENCES.md pushed at every MAIN session start - startup, resume, clear, compact and fork, so it is back after each compaction; a compaction or a clear also deletes that actor's read record, so the held docs are handed over again - a compaction keeps the record's run and architecture hand-over, a clear ends them; a seat's own compaction (the payload carries its agent_id) deletes only its record and pushes nothing"
+      "note": "PERSONAL-PREFERENCES.md pushed at every MAIN session start - startup, resume, clear, compact and fork, so it is back after each compaction; a compaction or a clear also deletes that actor's read record, so the held docs are handed over again - a compaction keeps the record's run and architecture hand-over, a clear ends them; a seat's own compaction (the payload carries its agent_id) deletes only its record and pushes only that seat's tool order. After the personal doc: the tool order (tools.js toolsLine) - each job's ranks from TOOLS-PREFERENCES.md, or the adapter table's defaults for a job it leaves out, resolved against what this machine reaches, each with its ToolSearch select: load line (the memory tools' line folded in from memory-session), and once per project with no doc the /capture-preferences tools suggestion; preferences-session:tools in ALFRED_CODE_HOOKS_OFF off"
     },
     {
       "file": "preferences-session.js",
       "matcher": "@SubagentStart",
       "event": "",
-      "note": "a judge - a solution designer or a verifier (agent_type ending solution-designer or -verifier), or a finding seat (code-quality-analyzer, security-auditor, integration-reviewer) - has no edit tool, so no edit hold reaches it: the code docs are handed over at its start, every project-doc section as far as the one room fits, and marked in its record; the entries the room could not hold come with its first reads (a Read, a Grep, an LSP call or a symbol lookup). The architecture analyzer is handed ARCHITECTURE-PREFERENCES.md alone, and told to report a departure as a smell naming its id, only inside an architecture quality run (the main session's run, below) - the map capture dispatches the same seat to describe the code as it is. alfred-code:<seat> always; a bare name only where the install stamp's library-agents: line records its copy, so a project's own agent or another plugin's seat of the same name gets nothing; any other seat gets nothing here"
+      "note": "a judge - a solution designer or a verifier (agent_type ending solution-designer or -verifier), or a finding seat (code-quality-analyzer, security-auditor, integration-reviewer) - has no edit tool, so no edit hold reaches it: the code docs are handed over at its start, every project-doc section as far as the one room fits, and marked in its record; the entries the room could not hold come with its first reads (a Read, a Grep, an LSP call or a symbol lookup). The architecture analyzer is handed ARCHITECTURE-PREFERENCES.md alone, and told to report a departure as a smell naming its id, only inside an architecture quality run (the main session's run, below) - the map capture dispatches the same seat to describe the code as it is. alfred-code:<seat> always; a bare name only where the install stamp's library-agents: line records its copy, so a project's own agent or another plugin's seat of the same name gets no docs. Every seat but Claude Code's two guides is told its tool order after any doc push: a seat whose definition the hook finds (the core's own, a project copy) only the ranks its tools: and disallowedTools: grant, with no load line, any other the main session's"
     },
     {
       "file": "preferences-session.js",
@@ -1022,7 +1022,7 @@
       "file": "memory-session.js",
       "matcher": "@SubagentStart",
       "event": "",
-      "note": "the project's memory tag line for a dispatched subagent - SessionStart context never reaches one at dispatch (a seat's own compaction runs SessionStart inside it), and a seat stores and reads its handoff note under that tag - and the memory tools line, which a seat whose tools grant the server skips: it calls them directly; then this host's shell traps (win32: the Git Bash line; a zsh $SHELL: the two zsh lines)"
+      "note": "the project's memory tag line for a dispatched subagent - SessionStart context never reaches one at dispatch (a seat's own compaction runs SessionStart inside it), and a seat stores and reads its handoff note under that tag (how the memory tools load is the tool order's line, preferences-session.js); then this host's shell traps (win32: the Git Bash line; a zsh $SHELL: the two zsh lines)"
     },
     {
       "file": "check-turn-build.js",

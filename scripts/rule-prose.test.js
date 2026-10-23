@@ -277,9 +277,10 @@ test('agents F03 + AG01: a seat whose tools grant a locked server\'s tools - by 
 {
     const clause = 'A seat whose tools grant them - by name or as the whole server - has them loaded already; it calls them directly.';
     assert.ok(injected('alfred-navigation').includes(clause), 'alfred-navigation');
-    // RU10 moved the memory line into the hook's SubagentStart push, carve-out and all.
-    assert.ok(fs.readFileSync(path.join(ROOT, 'stack', 'hooks', 'memory-session.js'), 'utf8')
-        .includes('a seat whose tools grant them, by name or as the whole server, has them loaded already and calls them directly'), 'memory-session.js');
+    // RU10 moved the memory line into the memory hook's SubagentStart push, carve-out and all; the tool order's start
+    // line carries both since 2026-10-24 - a seat with a tools: line is told its ranks with no load line.
+    assert.ok(fs.readFileSync(path.join(ROOT, 'stack', 'skills', 'capture-preferences', 'scripts', 'tools.js'), 'utf8')
+        .includes("'Call them directly - your tools grant them.'"), 'tools.js');
     assert.ok(injected('alfred-quality-gates').includes('then the query (a seat whose tools grant them - by name or as the whole server - calls them directly)'));
     for (const name of ['alfred-navigation', 'alfred-memory', 'alfred-quality-gates'])
         assert.ok(!injected(name).includes('list names them'), `${name}: the exact-name-only clause`);

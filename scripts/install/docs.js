@@ -19,6 +19,7 @@
 //     overlay, so the probe is written to fail toward `git`.
 const fs = require('node:fs');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const { parseJson } = require('./json-file.js');
 const rt = require('./runtime.js');  // R105: every external command through the one Windows-safe spawn
 
@@ -178,7 +179,7 @@ function lastHome(to)
 
 // `rules` are the generated rules (selection.generatedRules), `instructions` the project's own AGENTS.md /
 // CLAUDE.md files to name - see repointDocs.
-function migrateDocsDomains({ projectRoot, docsPath, rules = [], instructions = [], log = () => {} })
+function migrateDocsDomains({ projectRoot, docsPath, rules = [], instructions = [], log = () => {}, spawn = spawnSync })
 {
     // resolve, not join: a docs root the user set may be absolute (migrateUsageReport and migratePlans read it so too)
     const base = path.resolve(projectRoot, String(docsPath || '').replace(/\/+$/, ''));
@@ -195,7 +196,7 @@ function migrateDocsDomains({ projectRoot, docsPath, rules = [], instructions = 
         if (migrateDocsFile(path.join(base, from), path.join(base, to), label, { log })) moved.push(to);
     }
     // Before the switch-on: the git doc it seeds, and code-style/watch.json it carries over, decide what is switched on.
-    const preferences = migratePreferences({ projectRoot, base, log });
+    const preferences = migratePreferences({ projectRoot, base, log, spawn });
     const switched = [];
     for (const [dir, doc] of DOCS_SWITCH_ON)
         if (switchOnDomain(path.join(base, dir), doc, { log })) switched.push(dir);
@@ -255,9 +256,9 @@ const STYLE_RULE = 'project-code-style.md';
 const STYLE_RULE_HEAD = /^# Project code style \(generated\b/m;
 const LOCKED = /<!--\s*locked:\s*([a-z][a-z-]*)\s*-->/g;
 
-function migratePreferences({ projectRoot, base, log = () => {} })
+function migratePreferences({ projectRoot, base, log = () => {}, spawn = spawnSync })
 {
-    const out = { respelled: [], overlays: [], watch: 'none', git: 'none', rule: 'none', scopes: [], reach: [] };
+    const out = { respelled: [], overlays: [], watch: 'none', git: 'none', rule: 'none', scopes: [], reach: [], tools: [] };
     if (!fs.existsSync(projectRoot)) return out;
     const dir = path.join(base, PREFERENCES);
     const keys = completedKeys(base, PREFERENCES, PREFERENCES_HOMES);
@@ -275,6 +276,26 @@ function migratePreferences({ projectRoot, base, log = () => {} })
     out.git = seedGitPreferences(projectRoot, path.join(dir, GIT_DOC), log);
     out.scopes = deadScopeLines(projectRoot, dir, log);
     out.reach = mismatchLines(projectRoot, dir, log);
+    out.tools = toolsRefreshLines(projectRoot, log, { spawn });
+    return out;
+}
+
+// The tools inventory brought up to date where /capture-preferences tools took one: the snapshot's tools.js re-lists each
+// server whose registration changed, in its own process so a server that hangs costs the update at most a minute. Nothing
+// when no inventory was taken, or when the snapshot's capture has no refresh yet.
+const TOOLS = path.join(__dirname, '..', '..', 'stack', 'skills', 'capture-preferences', 'scripts', 'tools.js');
+const TOOLS_REFRESH_MS = 60000;
+function toolsRefreshLines(projectRoot, log, { spawn = spawnSync } = {})
+{
+    let file;
+    try { file = require(TOOLS).inventoryPath(projectRoot); } catch { return []; }
+    if (!fs.existsSync(file)) return [];
+    const r = spawn(process.execPath, [TOOLS, 'refresh', '--project', projectRoot], { cwd: projectRoot, encoding: 'utf8', timeout: TOOLS_REFRESH_MS, windowsHide: true });
+    // What it said before a cap or a stop is kept; the reason follows it.
+    const out = String(r.stdout || '').split(/\r?\n/).filter(Boolean);
+    if (r.error && r.error.code === 'ETIMEDOUT') out.push(`!! tools: the inventory refresh did not finish in ${TOOLS_REFRESH_MS / 1000}s - its recorded tools stand; /capture-preferences tools takes it again`);
+    else if (r.status !== 0) out.push(`!! tools: the inventory refresh stopped (${r.error ? r.error.code || r.error.name : `exit ${r.status}`}) - its recorded tools stand; /capture-preferences tools takes it again`);
+    for (const line of out) log(`  ${line}`);
     return out;
 }
 

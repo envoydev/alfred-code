@@ -1,0 +1,30 @@
+{
+  "note": "Hand-edited. Each known MCP server type: how a registration is recognised (a stack server name, a launch package, a URL host), which of its tools serve each job, and which edit files or act outward. `node scripts/tool-adapters.js --write` builds stack/skills/capture-preferences/scripts/tool-adapters.json with each type's pinned version and tool list from meta/mcp-tools.json; lint check 66 fails a stale copy.",
+  "builtins": ["LSP", "Grep", "Glob", "Read", "Bash", "WebFetch", "WebSearch"],
+  "jobs": {
+    "navigation": { "purpose": "locate symbols, callers and types before reading or editing code", "default": ["serena", "LSP", "Grep"] },
+    "documentation": { "purpose": "check a library's API or version before using it", "default": ["context7", "WebFetch"] },
+    "memory": { "purpose": "store and search what this project learned", "default": ["memory-service"] },
+    "browser": { "purpose": "drive the app in a browser" },
+    "desktop": { "purpose": "drive a desktop app" },
+    "mobile": { "purpose": "drive a mobile app" }
+  },
+  "types": {
+    "serena": { "pin": "alfred-navigation", "stack": ["alfred-navigation"], "packages": ["serena-agent"], "hosts": [],
+      "jobs": { "navigation": ["find_symbol", "find_referencing_symbols", "get_symbols_overview"] },
+      "context": "stack/mcp/navigation-context.yml",
+      "edit": ["delete_lines", "insert_at_line", "rename_symbol", "replace_lines", "safe_delete_symbol", "jet_brains_inline_symbol", "jet_brains_move", "jet_brains_rename", "jet_brains_safe_delete"] },
+    "context7": { "pin": "alfred-documentation", "stack": ["alfred-documentation"], "packages": ["@upstash/context7-mcp"], "hosts": ["mcp.context7.com"],
+      "jobs": { "documentation": ["resolve-library-id", "query-docs"] }, "edit": [] },
+    "memory-service": { "pin": "alfred-memory", "stack": ["alfred-memory"], "packages": ["mcp-memory-service"], "hosts": [],
+      "jobs": { "memory": ["memory_store", "memory_search", "memory_list"] }, "edit": ["memory_delete", "memory_update"] },
+    "playwright": { "pin": "browser", "stack": ["chrome-control", "msedge-control", "firefox-control", "webkit-control"], "packages": ["@playwright/mcp"], "hosts": [],
+      "jobs": { "browser": ["browser_navigate", "browser_snapshot", "browser_click", "browser_type", "browser_take_screenshot"] }, "edit": ["browser_evaluate", "browser_file_upload"] },
+    "windows-mcp": { "pin": "windows-control", "stack": ["windows-control"], "packages": ["windows-mcp"], "hosts": [],
+      "jobs": { "desktop": ["Snapshot", "Click", "Type", "Screenshot", "App"] }, "edit": ["PowerShell", "Registry", "FileSystem", "Process"] },
+    "macos-mcp": { "pin": "macos-control", "stack": ["macos-control"], "packages": ["macos-mcp"], "hosts": [],
+      "jobs": { "desktop": ["Snapshot", "Click", "Type", "App"] }, "edit": ["Shell"] },
+    "appium": { "pin": "mobile-control", "stack": ["mobile-control"], "packages": ["appium-mcp"], "hosts": [],
+      "jobs": { "mobile": ["select_device", "appium_session_management", "appium_find_element", "appium_get_page_source", "appium_screenshot"] }, "edit": ["appium_mobile_file", "appium_app_lifecycle"] }
+  }
+}

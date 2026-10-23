@@ -62,3 +62,34 @@ The preferences docs rank above every skill, house convention, quality-loop prom
 ## Size
 
 The personal code and architecture docs have no doc cap (the user's ruling of 2026-10-22: the hook caps what it hands over, never the user's words). The first edit's hold hands each entry over where its `Scope:` reaches, without its `Check:` line, and what does not fit one room comes with the retry; one entry stays at or under 5,000 chars, since no hold hands a longer one over whole, and past 5,000 together `lint` prints a `note:` line - every editing actor reads them, and a seat that judges without editing - a solution designer, a verifier, the code-quality analyzer, the security auditor, the integration reviewer, and the architecture analyzer in an architecture quality run (the architecture doc alone) - is handed them at its start and the rest with its first reads (a Read, a Grep, an LSP call, a symbol lookup or a shell read of a file); a review of the main session's is handed them before it starts. The git doc stays at or under 5,000: the first git write's hold hands it over whole. The personal doc stays at or under 3,000 on its own: the hook pushes it into every session's start and again after each compaction, so it is paid on every session. `PROJECT-CODE-PREFERENCES.md` is held by the docs engine's own section cap instead.
+
+## The tools doc
+
+`TOOLS-PREFERENCES.md` holds which tools each job uses first, what each job is for, and which servers stay with the main session. `tools.js` owns it (`lint`, `next`, `order`), and the start line every session and seat gets is built from it.
+
+```markdown
+# Tools preferences
+
+Updated: 2026-10-23
+
+## T1 - Code navigation
+<!-- id: t1 -->
+- Job: navigation
+- Order: own:jetbrains find_usages, get_symbol_info > serena find_symbol, find_referencing_symbols > LSP > Grep
+- Purpose: locate symbols, callers and types before reading or editing code
+
+## T2 - Not for agents
+<!-- id: t2 -->
+- Job: deny
+- Deny: own:postgres, own:jetbrains execute_terminal_command
+- Why: database access stays with the main session
+```
+
+- `Job:` - the machine key; the heading is the user's words. `navigation`, `documentation`, `memory`, `browser`, `desktop` and `mobile` are the table's jobs, any other lower-case name is the user's own, and `deny` holds the agents' deny list. One entry per job.
+- `Order:` - ranks separated by ` > `, the first used before the next. A rank is a server type followed by the tools of it that serve the job (`serena find_symbol, find_referencing_symbols`), or one built-in alone (`LSP`, `Grep`, `Glob`, `Read`, `Bash`, `WebFetch`, `WebSearch`). A type is a known one from the adapter table (`serena`, `context7`, `memory-service`, `playwright`, `windows-mcp`, `macos-mcp`, `appium`) or `own:<label>` for a server the stack does not know - never a local registration name, so a committed doc works on another machine; this machine's inventory maps each `own:` label to its server. Behaviour words ('say it is unverified') belong in `Purpose:`, never in a rank.
+- `Purpose:` - what the job is for, one line; the start line carries it.
+- `Held:` - optional, navigation only: which fallbacks a later release holds (by default Grep and a shell grep).
+- `Deny:` - on the `deny` entry: types or `type tool` pairs agents never call. A ranked tool that is also denied is a `note:` - the main session keeps it, agents skip that rank.
+- `Why:` - one line.
+- With no doc, every session is told the adapter table's defaults: `serena` > `LSP` > `Grep` for navigation, `context7` > `WebFetch` for documentation, `memory-service` for memory. A doc that does not lint never falls back to them: the start line names its problems.
+- The doc stays at or under 3,000 chars: the main session gets every entry at every start. An `own:` type this machine never captured is a `note:`, not a problem - the doc may be a teammate's; run `/capture-preferences tools` here to record it.

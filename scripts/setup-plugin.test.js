@@ -517,6 +517,16 @@ test('every command that runs the installer runs the SEED, and names the shell s
     assert.ok(!/alfred-code\.(sh|ps1)|install\/alfred-code\.js/.test(status), 'status must stay read-only');
 });
 
+// The tool order: status shows the start line the next session gets, validate prints the inventory's rows - both from the
+// capture skill's script, at a path this tree ships.
+test('status and validate run tools.js from a path this tree has', () => {
+    const status = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'status.md'), 'utf8');
+    const validate = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'validate.md'), 'utf8');
+    assert.ok(status.includes('node "${CLAUDE_PLUGIN_ROOT}/stack/skills/capture-preferences/scripts/tools.js" order --project .'), 'status runs tools.js order');
+    assert.ok(validate.includes('node "$TMP/repo/stack/skills/capture-preferences/scripts/tools.js" validate --project .'), 'validate runs tools.js validate');
+    assert.ok(fs.existsSync(path.join(__dirname, '..', 'stack', 'skills', 'capture-preferences', 'scripts', 'tools.js')));
+});
+
 // D1: from 2.0.0 the shell seed is refused. The frozen twin cannot resolve a 2.0.0 registration, so
 // a body that still RUNS it on `seed=shell` installs a broken release. Every body names the refusal
 // line the seed itself prints, and runs no twin.

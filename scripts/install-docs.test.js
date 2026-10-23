@@ -50,7 +50,7 @@ const seed = (root) => docs.docsVersioningSeed({ projectRoot: root, docsPath: '.
 // No awareness doc under the docs root: the awareness step moves nothing and writes no rule.
 const NO_AWARENESS = { respelled: [], overlays: [], agents: 'none', rule: 'not written - no awareness doc yet' };
 // Every project's first run seeds the git doc (the preferences layout, 2026-10-21); a later run finds it there.
-const PREFS_RESULT = (git) => ({ respelled: [], overlays: [], watch: 'none', git, rule: 'none', scopes: [], reach: [] });
+const PREFS_RESULT = (git) => ({ respelled: [], overlays: [], watch: 'none', git, rule: 'none', scopes: [], reach: [], tools: [] });
 
 // --- the versioning seed, the four-home rule ------------------------------
 
@@ -850,7 +850,7 @@ test('preferences: CODE-STYLE.md moves to preferences/PROJECT-CODE-PREFERENCES.m
     assert.strictEqual(out.preferences.watch, 'moved');
     const again = prefsRun(root);
     assert.deepStrictEqual(again.moved, []);
-    assert.deepStrictEqual(again.preferences, { respelled: [], overlays: [], watch: 'none', git: 'present', rule: 'none', scopes: [], reach: [] }, 'a re-run is quiet');
+    assert.deepStrictEqual(again.preferences, PREFS_RESULT('present'), 'a re-run is quiet');
 });
 
 test('preferences: the loose PROJECT-CODE-STYLE.md of 0.2.x chains straight to preferences/', () =>
@@ -931,4 +931,48 @@ test('preferences: a project-code-style.md the capture did not write is kept and
     assert.strictEqual(out.preferences.rule, 'kept');
     assert.strictEqual(fs.readFileSync(path.join(root, '.claude/rules/project-code-style.md'), 'utf8'), '# Our own style rule\n');
     assert.ok(logs.some((m) => /!! \.claude\/rules\/project-code-style\.md .*not the capture's text/.test(m)), logs.join(' | '));
+});
+
+// --- the tools inventory's refresh (tool preferences, phase 1) ------------
+
+// A stack plugin's server recorded from the table at the pin it ships now: a refresh finds nothing to do.
+const TABLE_ONLY = () =>
+{
+    const t = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'stack', 'skills', 'capture-preferences', 'scripts', 'tool-adapters.json'), 'utf8')).types.serena;
+    const prefix = 'mcp__plugin_alfred-navigation_alfred-navigation__';
+    const tools = Object.fromEntries(t.tools.map((n) => [n, { readOnly: null, destructive: t.edit.includes(n) ? true : null, target: null }]));
+    return `${JSON.stringify({ version: 1, captured: '2026-10-24', servers: { [prefix]: { name: 'alfred-navigation', prefix, scope: 'plugin', plugin: 'alfred-navigation', type: 'serena', version: t.version, registration: 'x', listed: 'table', tools } } }, null, 2)}\n`;
+};
+const INVENTORY = '.alfred/state/tools-inventory.json';
+
+test('preferences: a table-only inventory is refreshed to nothing and left byte for byte', () =>
+{
+    const body = TABLE_ONLY();
+    const root = project({ files: { [INVENTORY]: body } });
+    const out = docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs' });
+    assert.deepStrictEqual(out.preferences.tools, []);
+    assert.strictEqual(fs.readFileSync(path.join(root, INVENTORY), 'utf8'), body);
+});
+
+test('preferences: the refresh runs the snapshot\'s tools.js only where an inventory was taken, and logs what it says', () =>
+{
+    const calls = [];
+    const answer = (result) => (cmd, args, opts) => { calls.push({ cmd, args, opts }); return result; };
+    const bare = project();
+    assert.deepStrictEqual(docs.migrateDocsDomains({ projectRoot: bare, docsPath: '.claude/docs', spawn: answer({ status: 0, stdout: '' }) }).preferences.tools, []);
+    assert.strictEqual(calls.length, 0, 'no inventory: nothing spawned');
+    const root = project({ files: { [INVENTORY]: TABLE_ONLY() } });
+    const logs = [];
+    const out = docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs', log: (m) => logs.push(m), spawn: answer({ status: 0, stdout: 'tools: mcp__x__ re-listed - 3 tools\n' }) });
+    assert.deepStrictEqual(out.preferences.tools, ['tools: mcp__x__ re-listed - 3 tools']);
+    assert.strictEqual(calls[0].cmd, process.execPath);
+    assert.ok(calls[0].args[0].endsWith(path.join('capture-preferences', 'scripts', 'tools.js')), calls[0].args[0]);
+    assert.deepStrictEqual(calls[0].args.slice(1), ['refresh', '--project', root]);
+    assert.strictEqual(calls[0].opts.timeout, 60000);
+    assert.ok(logs.includes('  tools: mcp__x__ re-listed - 3 tools'), logs.join('\n'));
+    const late = docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs', log: () => {}, spawn: answer({ status: null, error: Object.assign(new Error('t'), { code: 'ETIMEDOUT' }), stdout: '' }) });
+    assert.deepStrictEqual(late.preferences.tools, ['!! tools: the inventory refresh did not finish in 60s - its recorded tools stand; /capture-preferences tools takes it again']);
+    // what it said before the cap is kept, the late line after it (the final review, I5)
+    const partial = docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs', log: () => {}, spawn: answer({ status: null, error: Object.assign(new Error('t'), { code: 'ETIMEDOUT' }), stdout: 'tools: mcp__x__ re-listed - 3 tools\n' }) });
+    assert.deepStrictEqual(partial.preferences.tools, ['tools: mcp__x__ re-listed - 3 tools', '!! tools: the inventory refresh did not finish in 60s - its recorded tools stand; /capture-preferences tools takes it again']);
 });

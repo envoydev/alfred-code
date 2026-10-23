@@ -92,7 +92,7 @@ test('a session start with a registered, populated database pushes the memory bl
     const ownIdx = text.indexOf('own project note');
     const sibIdx = text.indexOf('a sibling note');
     assert.ok(prefIdx > -1 && ownIdx > prefIdx && sibIdx > ownIdx, text);
-    assert.match(text, /ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store,mcp__plugin_alfred-memory_alfred-memory__memory_search,mcp__plugin_alfred-memory_alfred-memory__memory_list/);
+    assert.doesNotMatch(text, /ToolSearch select:/, 'how the tools load is the tool order\'s start line now (preferences-session.js)');
     // Proof this is the real end-to-end stdout, not a shape assumption.
     console.log('--- memory-session.js real stdout (fixture project) ---\n' + r.stdout + '\n--- end ---');
   } finally { p.rm(); }
@@ -122,7 +122,7 @@ test('an instruction-shaped memory is injected under the frame: context, never i
   } finally { p.rm(); }
 });
 
-test('an empty database still names the project tag and the search hint - never fully silent once registered (I5)', { skip: skipNoSqlite }, () => {
+test('an empty database still names the project tag - never fully silent once registered (I5)', { skip: skipNoSqlite }, () => {
   const p = fixtureProject({ rows: [] });
   try {
     const projectName = path.basename(p.root);
@@ -131,27 +131,22 @@ test('an empty database still names the project tag and the search hint - never 
     assert.notStrictEqual(r.stdout, '');
     const out = JSON.parse(r.stdout);
     const text = out.hookSpecificOutput.additionalContext;
-    // Kept short: just the tag line and the search hint, no 'Memory (...)' header, no frame, no body.
-    assert.strictEqual(text, withHost([
-      `This project's memory tag: project:${projectName}`,
-      'Store, search or list more: ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store,mcp__plugin_alfred-memory_alfred-memory__memory_search,mcp__plugin_alfred-memory_alfred-memory__memory_list',
-    ]).join('\n'));
+    // Kept short: just the tag line, no 'Memory (...)' header, no frame, no body. How the memory tools load is the tool
+    // order's line now (preferences-session.js), never this push's.
+    assert.strictEqual(text, withHost([`This project's memory tag: project:${projectName}`]).join('\n'));
   } finally { p.rm(); }
 });
 
-// Audit 2026-10-14 RU10: the seat's memory-tools line moves out of the always-on rule into the SubagentStart push, so
-// a seat learns both the tag and how its tools load - with the carve-out, since a stack seat holds no ToolSearch.
-test('SubagentStart: the tag line, then the tool line with the seat carve-out (RU10)', { skip: skipNoSqlite }, () => {
+// Audit 2026-10-14 RU10 moved the seat's memory-tools line out of the always-on rule into this push; the tool order's
+// start line (preferences-session.js) carries it since, resolved against what the seat's tools grant - the tag stays here.
+test('SubagentStart: the tag line alone (RU10, the tool line moved to the tool order)', { skip: skipNoSqlite }, () => {
   const p = fixtureProject({ rows: [{ content: 'a project fact', tags: 'project:x', memory_type: 'reference' }] });
   try {
     const r = p.hook({ hook_event_name: 'SubagentStart', session_id: 's9', agent_id: 'a1', agent_type: 'reviewer', cwd: p.root });
     assert.strictEqual(r.status, 0, r.stderr);
     const out = JSON.parse(r.stdout).hookSpecificOutput;
     assert.strictEqual(out.hookEventName, 'SubagentStart');
-    assert.strictEqual(out.additionalContext, withHost([
-      `This project's memory tag: project:${path.basename(p.root)}`,
-      'Store, search or list more: ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store,mcp__plugin_alfred-memory_alfred-memory__memory_search,mcp__plugin_alfred-memory_alfred-memory__memory_list - a seat whose tools grant them, by name or as the whole server, has them loaded already and calls them directly.',
-    ]).join('\n'));
+    assert.strictEqual(out.additionalContext, withHost([`This project's memory tag: project:${path.basename(p.root)}`]).join('\n'));
     // no registration: still silent
     const bare = fixtureProject({ registered: false });
     try { assert.strictEqual(bare.hook({ hook_event_name: 'SubagentStart', agent_id: 'a1', cwd: bare.root }).stdout, ''); } finally { bare.rm(); }
@@ -428,6 +423,27 @@ test('RU13: a win32 host\'s session and seat starts end on the Windows line, wit
       assert.match(win, /\n\nShell commands on this host:\n- On Windows \(Git Bash\)/, event);
       assert.match(win, /`MSYS2_ARG_CONV_EXCL='\*'`/, event);
       assert.doesNotMatch(win, ZSH_LINE, `${event}: Git Bash is no zsh`);
+    }
+  } finally { p.rm(); }
+});
+
+// The tool order (preferences-session.js) carries the memory tools' load line - unless it is switched off, whole or its
+// tools part: then this push gives the line back, so switching the order off never loses how the memory tools load
+// (the final review, Minor 11, re-graded).
+test('with the tool order off, the memory push carries its own load line again', { skip: skipNoSqlite }, () => {
+  const line = 'Store, search or list more: ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store,mcp__plugin_alfred-memory_alfred-memory__memory_search,mcp__plugin_alfred-memory_alfred-memory__memory_list';
+  const p = fixtureProject({ rows: [] });
+  try {
+    const text = (payload, off) => JSON.parse(p.hook(payload, off === null ? {} : { ALFRED_CODE_HOOKS_OFF: off }).stdout).hookSpecificOutput.additionalContext;
+    const main = { hook_event_name: 'SessionStart', session_id: 's31', cwd: p.root };
+    const seat = { hook_event_name: 'SubagentStart', session_id: 's32', agent_id: 'a1', agent_type: 'reviewer', cwd: p.root };
+    for (const off of ['preferences-session', 'preferences-session:tools', 'guard-answer, preferences-session:TOOLS']) {
+      assert.ok(text(main, off).includes(`\n${line}`), off);
+      assert.ok(text(seat, off).includes(`\n${line} - a seat whose tools grant them, by name or as the whole server, has them loaded already and calls them directly.`), off);
+    }
+    for (const off of [null, 'guard-answer', 'preferences-session:other']) {
+      assert.ok(!text(main, off).includes('ToolSearch'), String(off));
+      assert.ok(!text(seat, off).includes('ToolSearch'), String(off));
     }
   } finally { p.rm(); }
 });

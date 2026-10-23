@@ -3002,4 +3002,4 @@ if (require.main === module)
     });
 }
 
-module.exports = { main, USAGE, CORE_DEP_PLUGINS, HOOK_ENGINES, HOOK_MODULES, forgeCliStep, SECRET_DENY, RETIRED_DENY, SHIPPED_DENY, MEMORY_TOOLS_USED, memoryToolDeny, browserToolDeny };
+module.exports = { main, USAGE, CORE_DEP_PLUGINS, HOOK_ENGINES, HOOK_MODULES, forgeCliStep, SECRET_DENY, RETIRED_DENY, SHIPPED_DENY, MEMORY_TOOLS_USED, BROWSER_TOOLS_OFF, memoryToolDeny, browserToolDeny };

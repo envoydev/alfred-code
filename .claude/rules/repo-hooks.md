@@ -1156,7 +1156,27 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     preferences.js lints the doc at 3,000) with a Read line naming the rest; a resume or fork pushes it again (ruling G7: the
     duplicate is cheaper than a session without it); a missing doc, an empty one or one with no `##` entry pushes nothing, and
     the rule says to read it before the first reply when the push is missing (the hook off, `minimal`). A seat answers the
-    main session, never the user: nothing is pushed into one. Each doc is read where it first sits - the session's folder,
+    main session, never the user: nothing is pushed into one.
+    THE TOOL ORDER (tool preferences phase 1, 2026-10-24; spec `docs/superpowers/specs/2026-10-23-tool-preferences-design.md`,
+    machine-local): after the personal doc, every main SessionStart pushes the capture-preferences script's `toolsLine`
+    (`stack/skills/capture-preferences/scripts/tools.js`, required from `../skills/` beside the hook; absent, the line is
+    absent and every other push stands) - one line per job, its ranks from `TOOLS-PREFERENCES.md` or, for a job the doc
+    leaves out, the adapter table's defaults (`tool-adapters.json`, built from `meta/tool-adapters.json`), each rank this
+    machine cannot reach named once and left out, each job with its `ToolSearch select:` load line (the memory tools' line
+    lives here now; switched off - the hook or its `tools` part - the memory hook says it again). A malformed doc - its shape, never a tool this machine or this pin lacks, which only skips that rank - states only the entries
+    that resolve plus three of its problems, never a default; an over-cap one states nothing but its problem. The line has its own
+    cap (`TOOLS_LINE_CAP`, 4,000 chars): past it the Load clauses go, then the tail, so the personal push before it and the
+    line together stay well under Claude Code's hook-output cap. Once
+    per project with no doc it suggests `/capture-preferences tools` (`suggestOnce`, a `<data root>/state/tool-preferences/
+    suggested` marker; one that cannot be written says it again). Every SubagentStart but Claude Code's two guides
+    (`claude-code-guide`, `statusline-setup`) gets the seat's own order after any doc push: a seat whose definition the hook
+    finds - the core's `stack/agents/<seat>.md` for `alfred-code:<seat>`, else the project's `.claude/agents/<name>.md` -
+    only the ranks its `tools:` / `disallowedTools:` grant, with no load line when it has a `tools:` line; any other seat
+    the main session's, no suggestion; a seat's own compaction re-sends its order. `preferences-session:tools` in
+    `ALFRED_CODE_HOOKS_OFF` switches the line off and nothing else. Measured on a default install (no doc, the three stack
+    plugins): 1,104 chars at a main start, 603 at a verifier's or an implementer's, 450 at the evidence gatherer's - against
+    the 207 / 321 chars of the memory line it replaced.
+    Each doc is read where it first sits - the session's folder,
     its checkouts up to the git top level, then a linked worktree's main checkout (`hook-prelude.js checkoutsOf`), which alone
     holds the two personal docs git keeps out (audit 2026-10-21 Q-1; `preferences.js` reads the same way); a doc that is a
     link where it first sits is never read, nor passed over for another copy (PF-1: a cloned repo could point one at a
@@ -1166,8 +1186,10 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     block row per hold (`kind` `code`, `git` or `git+code`), and fails open: malformed state reads as no record and is
     rewritten.
   - `memory-session.js` (`SessionStart`; on `SubagentStart` only the `This project's memory tag:` line, the tag a
-    seat stores and lists its handoff note under - 2026-10-13 - and the tool line with its seat carve-out: a seat whose
-    tools grant the server calls the tools directly, no ToolSearch - audit 2026-10-14 RU10; both pushes then end on THIS
+    seat stores and lists its handoff note under - 2026-10-13; the memory tools' `ToolSearch select:` line it carried since
+    audit 2026-10-14 RU10 moved into preferences-session's tool order on 2026-10-24 (tool preferences phase 1, M44), and
+    comes back on both pushes only while that order is off (`orderOff`: the hook or its `tools` part); both
+    pushes then end on THIS
     host's shell traps, `hostLines`: the Windows Git Bash line on win32, the two zsh lines under a zsh `$SHELL`, nothing on
     bash - audit 2026-10-14 RU13, the user's ruling, moved out of the always-on `alfred-navigation.md`, which keeps a
     pointer; a per-host hook line is no per-OS rule copy, `rule-prose.test.js` M68) with its engine `memory.js` (copied beside it, not wired -

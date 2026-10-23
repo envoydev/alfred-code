@@ -1,0 +1,381 @@
+{
+  "generatedBy": "tool-adapters",
+  "builtins": [
+    "LSP",
+    "Grep",
+    "Glob",
+    "Read",
+    "Bash",
+    "WebFetch",
+    "WebSearch"
+  ],
+  "jobs": {
+    "navigation": {
+      "purpose": "locate symbols, callers and types before reading or editing code",
+      "default": [
+        "serena",
+        "LSP",
+        "Grep"
+      ]
+    },
+    "documentation": {
+      "purpose": "check a library's API or version before using it",
+      "default": [
+        "context7",
+        "WebFetch"
+      ]
+    },
+    "memory": {
+      "purpose": "store and search what this project learned",
+      "default": [
+        "memory-service"
+      ]
+    },
+    "browser": {
+      "purpose": "drive the app in a browser"
+    },
+    "desktop": {
+      "purpose": "drive a desktop app"
+    },
+    "mobile": {
+      "purpose": "drive a mobile app"
+    }
+  },
+  "types": {
+    "serena": {
+      "pin": "alfred-navigation",
+      "stack": [
+        "alfred-navigation"
+      ],
+      "packages": [
+        "serena-agent"
+      ],
+      "hosts": [],
+      "jobs": {
+        "navigation": [
+          "find_symbol",
+          "find_referencing_symbols",
+          "get_symbols_overview"
+        ]
+      },
+      "edit": [
+        "delete_lines",
+        "insert_at_line",
+        "rename_symbol",
+        "replace_lines",
+        "safe_delete_symbol",
+        "jet_brains_inline_symbol",
+        "jet_brains_move",
+        "jet_brains_rename",
+        "jet_brains_safe_delete"
+      ],
+      "version": "2.1.0",
+      "tools": [
+        "activate_project",
+        "delete_lines",
+        "find_declaration",
+        "find_implementations",
+        "find_referencing_symbols",
+        "find_symbol",
+        "get_current_config",
+        "get_diagnostics_for_file",
+        "get_diagnostics_for_symbol",
+        "get_symbols_overview",
+        "initial_instructions",
+        "insert_at_line",
+        "jet_brains_debug",
+        "jet_brains_find_declaration",
+        "jet_brains_find_implementations",
+        "jet_brains_find_referencing_symbols",
+        "jet_brains_find_symbol",
+        "jet_brains_get_symbols_overview",
+        "jet_brains_inline_symbol",
+        "jet_brains_list_inspections",
+        "jet_brains_move",
+        "jet_brains_rename",
+        "jet_brains_run_inspections",
+        "jet_brains_safe_delete",
+        "jet_brains_type_hierarchy",
+        "list_queryable_projects",
+        "open_dashboard",
+        "query_project",
+        "remove_project",
+        "rename_symbol",
+        "replace_lines",
+        "restart_language_server",
+        "safe_delete_symbol",
+        "serena_info",
+        "serena_repl"
+      ]
+    },
+    "context7": {
+      "pin": "alfred-documentation",
+      "stack": [
+        "alfred-documentation"
+      ],
+      "packages": [
+        "@upstash/context7-mcp"
+      ],
+      "hosts": [
+        "mcp.context7.com"
+      ],
+      "jobs": {
+        "documentation": [
+          "resolve-library-id",
+          "query-docs"
+        ]
+      },
+      "edit": [],
+      "version": null,
+      "tools": [
+        "query-docs",
+        "resolve-library-id"
+      ]
+    },
+    "memory-service": {
+      "pin": "alfred-memory",
+      "stack": [
+        "alfred-memory"
+      ],
+      "packages": [
+        "mcp-memory-service"
+      ],
+      "hosts": [],
+      "jobs": {
+        "memory": [
+          "memory_store",
+          "memory_search",
+          "memory_list"
+        ]
+      },
+      "edit": [
+        "memory_delete",
+        "memory_update"
+      ],
+      "version": "12.1.1",
+      "tools": [
+        "memory_delete",
+        "memory_list",
+        "memory_search",
+        "memory_store",
+        "memory_update"
+      ]
+    },
+    "playwright": {
+      "pin": "browser",
+      "stack": [
+        "chrome-control",
+        "msedge-control",
+        "firefox-control",
+        "webkit-control"
+      ],
+      "packages": [
+        "@playwright/mcp"
+      ],
+      "hosts": [],
+      "jobs": {
+        "browser": [
+          "browser_navigate",
+          "browser_snapshot",
+          "browser_click",
+          "browser_type",
+          "browser_take_screenshot"
+        ]
+      },
+      "edit": [
+        "browser_evaluate",
+        "browser_file_upload"
+      ],
+      "version": "0.0.83",
+      "tools": [
+        "browser_annotate",
+        "browser_click",
+        "browser_close",
+        "browser_console_messages",
+        "browser_drag",
+        "browser_drop",
+        "browser_emulate_media",
+        "browser_evaluate",
+        "browser_file_upload",
+        "browser_fill_form",
+        "browser_find",
+        "browser_handle_dialog",
+        "browser_hide_highlight",
+        "browser_highlight",
+        "browser_hover",
+        "browser_mouse_click_xy",
+        "browser_mouse_down",
+        "browser_mouse_drag_xy",
+        "browser_mouse_move_xy",
+        "browser_mouse_up",
+        "browser_mouse_wheel",
+        "browser_navigate",
+        "browser_navigate_back",
+        "browser_network_request",
+        "browser_network_requests",
+        "browser_pdf_save",
+        "browser_press_key",
+        "browser_resize",
+        "browser_resume",
+        "browser_select_option",
+        "browser_snapshot",
+        "browser_start_recording",
+        "browser_start_tracing",
+        "browser_start_video",
+        "browser_stop_recording",
+        "browser_stop_tracing",
+        "browser_stop_video",
+        "browser_tabs",
+        "browser_take_screenshot",
+        "browser_type",
+        "browser_video_chapter",
+        "browser_video_hide_actions",
+        "browser_video_show_actions",
+        "browser_wait_for"
+      ]
+    },
+    "windows-mcp": {
+      "pin": "windows-control",
+      "stack": [
+        "windows-control"
+      ],
+      "packages": [
+        "windows-mcp"
+      ],
+      "hosts": [],
+      "jobs": {
+        "desktop": [
+          "Snapshot",
+          "Click",
+          "Type",
+          "Screenshot",
+          "App"
+        ]
+      },
+      "edit": [
+        "PowerShell",
+        "Registry",
+        "FileSystem",
+        "Process"
+      ],
+      "version": "0.8.8",
+      "tools": [
+        "App",
+        "Click",
+        "Clipboard",
+        "ControlStatus",
+        "DisplayInventory",
+        "FileSystem",
+        "Move",
+        "MultiEdit",
+        "MultiSelect",
+        "Notification",
+        "PowerShell",
+        "Process",
+        "Registry",
+        "Scrape",
+        "Screenshot",
+        "Scroll",
+        "Shortcut",
+        "Snapshot",
+        "Type",
+        "Wait",
+        "WaitFor"
+      ]
+    },
+    "macos-mcp": {
+      "pin": "macos-control",
+      "stack": [
+        "macos-control"
+      ],
+      "packages": [
+        "macos-mcp"
+      ],
+      "hosts": [],
+      "jobs": {
+        "desktop": [
+          "Snapshot",
+          "Click",
+          "Type",
+          "App"
+        ]
+      },
+      "edit": [
+        "Shell"
+      ],
+      "version": "0.4.6",
+      "tools": [
+        "App",
+        "Click",
+        "Desktop",
+        "Move",
+        "Notification",
+        "Scrape",
+        "Scroll",
+        "Shell",
+        "Shortcut",
+        "Snapshot",
+        "Type",
+        "Wait"
+      ]
+    },
+    "appium": {
+      "pin": "mobile-control",
+      "stack": [
+        "mobile-control"
+      ],
+      "packages": [
+        "appium-mcp"
+      ],
+      "hosts": [],
+      "jobs": {
+        "mobile": [
+          "select_device",
+          "appium_session_management",
+          "appium_find_element",
+          "appium_get_page_source",
+          "appium_screenshot"
+        ]
+      },
+      "edit": [
+        "appium_mobile_file",
+        "appium_app_lifecycle"
+      ],
+      "version": "1.97.1",
+      "tools": [
+        "appium_alert",
+        "appium_app_lifecycle",
+        "appium_context",
+        "appium_drag_and_drop",
+        "appium_driver_settings",
+        "appium_find_element",
+        "appium_find_elements",
+        "appium_generate_tests",
+        "appium_geolocation",
+        "appium_gesture",
+        "appium_get_active_element",
+        "appium_get_element_attribute",
+        "appium_get_page_source",
+        "appium_get_text",
+        "appium_get_window_size",
+        "appium_mobile_clipboard",
+        "appium_mobile_device_control",
+        "appium_mobile_device_info",
+        "appium_mobile_file",
+        "appium_mobile_keyboard",
+        "appium_mobile_permissions",
+        "appium_mobile_press_key",
+        "appium_orientation",
+        "appium_perform_actions",
+        "appium_prepare_ios_real_device",
+        "appium_screen_recording",
+        "appium_screenshot",
+        "appium_session_management",
+        "appium_set_value",
+        "generate_locators",
+        "prepare_ios_simulator",
+        "select_device"
+      ]
+    }
+  }
+}

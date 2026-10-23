@@ -41,6 +41,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const zlib = require('node:zlib');
 const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
+const client = require('../stack/skills/capture-preferences/scripts/mcp-client.js');
 const { PYTHON, pythonFor, excludeNewerOf } = require('../stack/mcp/uv-python.js');
 
 const REPO = path.join(__dirname, '..');
@@ -225,52 +226,17 @@ function serenaGate({ was, now, contextFile = CONTEXT, fetch = upstreamContext }
 }
 
 // --- the tool lists ----------------------------------------------------------------------------------------
-// One MCP exchange over stdio: initialize, then tools/list; the names, or null on any failure or the timeout.
+// One MCP exchange, initialize then tools/list, through the client the tools capture ships with
+// (stack/skills/capture-preferences/scripts/mcp-client.js); the names, or null on any failure or the timeout. The
+// pinned servers start through the installer's own Windows-safe spawn.
 function stdioTools(command, args, { env = process.env, timeoutMs = 240000 } = {})
 {
-    return new Promise((resolve) =>
-    {
-        let child;
-        try { child = rt.spawnCommandAsync(command, args, { stdio: ['pipe', 'pipe', 'ignore'], env, windowsHide: true }); }
-        catch { resolve(null); return; }
-        let buf = '';
-        let done = false;
-        const finish = (value) => { if (done) return; done = true; clearTimeout(timer); try { child.kill(); } catch { /* gone */ } resolve(value); };
-        const timer = setTimeout(() => finish(null), timeoutMs);
-        const send = (msg) => { try { child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', ...msg })}\n`); } catch { finish(null); } };
-        child.on('error', () => finish(null));
-        child.on('exit', () => finish(null));
-        child.stdin.on('error', () => finish(null));
-        child.stdout.on('data', (chunk) =>
-        {
-            buf += chunk.toString('utf8');
-            let at;
-            while ((at = buf.indexOf('\n')) >= 0)
-            {
-                const line = buf.slice(0, at);
-                buf = buf.slice(at + 1);
-                let msg;
-                try { msg = JSON.parse(line); } catch { continue; }
-                if (msg.id === 1) { send({ method: 'notifications/initialized' }); send({ id: 2, method: 'tools/list', params: {} }); }
-                else if (msg.id === 2) finish(msg.result && Array.isArray(msg.result.tools) ? msg.result.tools.map((t) => t.name) : null);
-            }
-        });
-        send({ id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'refresh-mcp-pins', version: '1' } } });
-    });
+    return client.listStdio(command, args, { env, timeoutMs, spawn: rt.spawnCommandAsync }).then((r) => (r.ok ? r.tools.map((t) => t.name) : null));
 }
 
-async function httpTools(url)
+function httpTools(url)
 {
-    try
-    {
-        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
-            body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }), signal: AbortSignal.timeout(30000) });
-        const text = await res.text();
-        const data = text.split('\n').filter((l) => l.startsWith('data:')).map((l) => l.slice(5)).join('') || text;
-        const msg = JSON.parse(data);
-        return msg.result && Array.isArray(msg.result.tools) ? msg.result.tools.map((t) => t.name) : null;
-    }
-    catch { return null; }
+    return client.listHttp(url, { timeoutMs: 30000 }).then((r) => (r.ok ? r.tools.map((t) => t.name) : null));
 }
 
 const DESKTOP_TOOL = /@mcp\.tool\(\s*name\s*=\s*['"]([A-Za-z0-9_-]+)['"]/g;

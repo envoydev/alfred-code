@@ -351,6 +351,7 @@ the seat handoff notes still in the memory database (`node .claude/hooks/memory.
 | quality/CODE-ASSESSMENT.md | no | - | - |
 | preferences/PROJECT-CODE-PREFERENCES.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
 | preferences/GIT-PREFERENCES.md | yes | - | 2026-07-25 |
+| preferences/TOOLS-PREFERENCES.md | yes | - | 2026-07-25 |
 | awareness/AGENTS-AWARENESS.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
 | awareness/PROJECT-AWARENESS.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
 | awareness/RELATED-PROJECTS-AWARENESS.md | no | - | - |
@@ -368,6 +369,14 @@ exists. One row is conditional, not a gap: awareness/RELATED-PROJECTS-AWARENESS.
 applies only to a project with sibling repos - a standalone repo reads `no` there, or `yes` with no entry once the
 capture recorded it as standalone.
 A leftover architecture/BRANCH-DELTA.md from an older capture is listed as a note, never deleted.
+
+Under the table, the tool order the next session start is told:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/stack/skills/capture-preferences/scripts/tools.js" order --project .
+```
+
+Paste its output as-is in a fenced block - the stack's defaults until `/capture-preferences tools` ranks the user's own.
 
 ## 5. Close
 

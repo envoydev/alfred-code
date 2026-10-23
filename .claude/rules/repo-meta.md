@@ -65,6 +65,11 @@ What each meta file owns and what the repo-level scripts (lint, usage analysis, 
     append-only - the rule twin of `skill-headings.json`. The installer's `ruleClaim` takes over a pre-stamp stack rule
     copy whose opening is listed (audit 2026-10-20 C23: two stack rules sat as the user's own across 2.2.0-2.5.0);
     `scripts/rule-openings.test.js` fails when a current opening is missing, so run it after a rule's first line changes.
+  - `tool-adapters.json` - hand-edited, the one home of each known MCP server type (how a registration is recognised, the
+    tools that serve each job, the ones that edit or act outward) and each job's defaults; `npm run tool-adapters`
+    (`scripts/tool-adapters.js`) builds the copy the capture skill and the hooks read,
+    `stack/skills/capture-preferences/scripts/tool-adapters.json`, with each type's pinned version and tool list folded
+    in from `mcp-tools.json` (check 66 fails a stale copy).
   - `seat-tools.json` - hand-edited, the one home of what each seat holds (`Read`, `<server>:<tool>`, `<server>:*`,
     `<server>:!<tool>`); the seats' `tools:` / `disallowedTools:` lines are its output (`scripts/seat-tools.js`, check 63).
   - `model-prices.json` - the list prices `analyze-usage.js` bills its cost row from, with the source page and

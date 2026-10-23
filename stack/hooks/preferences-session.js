@@ -66,6 +66,14 @@ try { layout = require('./layout.js'); } catch { /* an older copy route: the pat
 let shellReader = null;
 try { shellReader = require(path.join(__dirname, 'shell-writes.js')); } catch { /* no reader: the shell route judges nothing */ }
 let forgeLib = null;
+// The tool order's start line (the capture-preferences tools area); null when the copy is not there.
+let toolsCache;
+const toolsLib = () => {
+  if (toolsCache === undefined) {
+    try { toolsCache = require(path.join(__dirname, '..', 'skills', 'capture-preferences', 'scripts', 'tools.js')); } catch { toolsCache = null; }
+  }
+  return toolsCache;
+};
 try { forgeLib = require(path.join(__dirname, 'forge.js')); } catch { /* no classifier: forge writes past git go unread */ }
 const prelude = () => { try { return require('./hook-prelude.js'); } catch { return null; } };
 
@@ -757,6 +765,34 @@ function seatPush(ctx, files, seat, extra = {}) {
   ].join('\n');
 }
 
+// The seats that never touch the project's code - Claude Code's guides - are told no tool order.
+const NO_ORDER_SEAT = /^(?:claude-code-guide|statusline-setup)$/;
+// What the tool order resolves a seat against: its definition's frontmatter where the file is found - the core's own seat
+// beside this hook (`alfred-code:<seat>`), else the project's copy - and 'other' (the main session's reach) where not.
+function seatOf(ctx, type) {
+  const m = /^(alfred-code:)?([\w-]+)$/.exec(String(type || ''));
+  if (!m) return 'other';
+  const files = [...(m[1] ? [path.join(__dirname, '..', 'agents', `${m[2]}.md`)] : []), path.join(ctx.home, '.claude', 'agents', `${m[2]}.md`)];
+  for (const file of files) {
+    try {
+      const fd = fs.openSync(file, 'r');
+      try { const buf = Buffer.alloc(STAMP_BYTES); return { frontmatter: buf.toString('utf8', 0, fs.readSync(fd, buf, 0, STAMP_BYTES, 0)) }; } finally { fs.closeSync(fd); }
+    } catch { /* the next place */ }
+  }
+  return 'other';
+}
+// The tool order an actor is told at its start, or '' with the part switched off or the tools script absent. Only the
+// main session's start may spend the one suggestion, and only once the part is on.
+function toolsText(ctx, seat) {
+  try { if (prelude().partOff('preferences-session', 'tools')) return ''; } catch { /* no prelude: on */ }
+  const lib = toolsLib();
+  if (!lib) return '';
+  try {
+    const suggest = seat === null && lib.suggestOnce(ctx.home);
+    return lib.toolsLine({ projectRoot: ctx.home, env: process.env, seat, suggest });
+  } catch { return ''; }
+}
+
 function emit(event, extra) {
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, ...extra } }));
 }
@@ -808,16 +844,23 @@ function main() {
       dropRecord(files);
       if (Object.keys(kept).length) saveMarks(files, kept);
     }
-    if (input.agent_id) return;   // a seat's own compaction: the personal doc is the main session's
-    const text = personalPush(ctx);
+    if (input.agent_id) {
+      // a seat's own compaction: the personal doc is the main session's, the seat's tool order is its own
+      const tools = input.agent_type && !NO_ORDER_SEAT.test(String(input.agent_type)) ? toolsText(ctx, seatOf(ctx, input.agent_type)) : '';
+      if (tools) emit('SessionStart', { additionalContext: tools });
+      return;
+    }
+    // The personal doc leads: in an output Claude Code caps, the tools line is the part to lose.
+    const text = [personalPush(ctx), toolsText(ctx, null)].filter(Boolean).join('\n\n');
     if (text) emit('SessionStart', { additionalContext: text });
     return;
   }
   if (input.hook_event_name === 'SubagentStart') {
+    const tools = NO_ORDER_SEAT.test(String(input.agent_type || '')) ? '' : toolsText(ctx, seatOf(ctx, input.agent_type));
     const main = loadMarks(recordFiles(ctx, input.session_id, 'main'));
     const seat = seatDocs(ctx, input.agent_type, ARCH_RUN.test(String(main.run || '')) && runLive(main));
-    if (!seat) return;
-    const text = seatPush(ctx, input.agent_id ? files : null, seat, seat.kind === 'architecture' ? { arch: true } : {});
+    const docs = seat ? seatPush(ctx, input.agent_id ? files : null, seat, seat.kind === 'architecture' ? { arch: true } : {}) : '';
+    const text = [docs, tools].filter(Boolean).join('\n\n');
     if (text) emit('SubagentStart', { additionalContext: text });
     return;
   }

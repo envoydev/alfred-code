@@ -1,6 +1,6 @@
 ---
 name: capture-preferences
-description: "Use when asked to capture or change the user's personal, code, architecture or git preferences ('answer briefly', 'avoid static classes'). Manual, /-only."
+description: "Use when asked to capture or change the user's personal, code, architecture, git or tool preferences ('answer briefly', 'rank my tools'). Manual, /-only."
 disable-model-invocation: true
 ---
 
@@ -8,13 +8,14 @@ disable-model-invocation: true
 
 You record the user's own wants in the docs every session and seat reads, and ranks them above every other source. The artifacts are four docs under `<docs-path>/preferences/`: `PERSONAL-PREFERENCES.md` (how the user wants the assistant to work with them - pushed into every session's start and again after each compaction), `PERSONAL-CODE-PREFERENCES.md`, `ARCHITECTURE-PREFERENCES.md` and `GIT-PREFERENCES.md` (read before any code, design, code discussion or git job) - one `##` entry per preference, ids `P<n>`, `C<n>`, `A<n>`, `G<n>`, in the shape `references/doc-shape.md` lays out. No rule is written: the shipped `alfred-preferences.md` names the docs and says when each is read, so an edit binds at the next session start (the personal doc) or the next read (the others). The two personal docs (`PERSONAL-` and `PERSONAL-CODE-PREFERENCES.md`) stay out of git where the docs are committed - the data root's ignore lines keep them on this machine - so a linked worktree reads them from the main checkout.
 
-The install seeds `GIT-PREFERENCES.md` from `references/git-seed.md`: the crucial house git lines, each marked `<!-- locked: <key> -->` - consent, checkpoint, safety, attribution and checks. A locked entry is never removed or changed, and no entry weakens a `locked` one; `lint` fails a doc missing one or carrying one edited. `PROJECT-CODE-PREFERENCES.md`, the fifth doc there, is the code-style capture's - this skill reads it in the conflict check and never writes it.
+The install seeds `GIT-PREFERENCES.md` from `references/git-seed.md`: the crucial house git lines, each marked `<!-- locked: <key> -->` - consent, checkpoint, safety, attribution and checks. A locked entry is never removed or changed, and no entry weakens a `locked` one; `lint` fails a doc missing one or carrying one edited. `TOOLS-PREFERENCES.md` beside them ranks which tools each job uses first and which servers stay with the main session, ids `T<n>`: `scripts/tools.js` owns it and this machine's inventory of every tool it reaches, and its run is `references/tools-area.md`. `PROJECT-CODE-PREFERENCES.md`, also there, is the code-style capture's - this skill reads it in the conflict check and never writes it.
 
 ## When to use
 
 - `/capture-preferences <text>` - one or more preferences, split on `;` or new lines: `/capture-preferences answer with the verdict first; avoid static classes; branches are feature/<ticket>`.
 - `/capture-preferences personal` (or `code`, `architecture`, `git`) - walk that area's entries with the user: keep, change or remove each; a locked entry is shown as locked, never offered for change.
 - `/capture-preferences remove <id>` - drop one entry; a locked one is refused in one line.
+- `/capture-preferences tools` - rank which tools each job uses first, and which servers stay with the main session; the flow is `references/tools-area.md`.
 - No arguments - one ask per area, the personal rules first; the user types theirs or skips the area.
 - Not for the style the code already follows (the code-style capture reads that off the code) or the architecture map. A preference is what the user WANTS, in their words.
 
@@ -22,7 +23,7 @@ The install seeds `GIT-PREFERENCES.md` from `references/git-seed.md`: the crucia
 
 `<script>` is `node .claude/skills/capture-preferences/scripts/preferences.js`, run from the project root.
 
-With no arguments, the four area asks go in ONE AskUserQuestion call, one question per area - personal, code, architecture, git, in that order; the personal one asks for the personal rules the user wants added (how to answer, which language, when to ask, what to never do):
+With no arguments, the four area asks go in ONE AskUserQuestion call, one question per area - personal, code, architecture, git, in that order; the personal one asks for the personal rules the user wants added (how to answer, which language, when to ask, what to never do). Ranking tools is no fifth question - it lists this machine's servers first - so the personal question's text ends with 'Ranking tools is its own run: /capture-preferences tools.':
 
 ```ask
 Any <area> preferences to record? Type them via Other - one per line, or split on `;`.
@@ -47,6 +48,7 @@ Each preference goes to one area:
 - **code** - how ONE unit is written: a class, a function, naming, error handling inside it.
 - **architecture** - how units relate: dependencies, boundaries, layers, packages, what may call what.
 - **git** - branches, commits, pull requests, history.
+- **tools** - which tool a job uses first, or which server agents never call ('use jetbrains for navigation'): it runs through `references/tools-area.md`, since a rank names a server this machine's inventory has to hold.
 
 One that genuinely reads as two areas is asked as one question naming both readings - never split silently:
 
@@ -105,6 +107,8 @@ The personal doc holds <n> chars, over its 3,000 cap - every session start pays 
 `<script> check --all --area <area>` for each area the run touched but personal (it has no `Check:`): count each new or changed entry's `violation:` lines - how many places break it today. Fix none of them here; the quality loops and the next task do.
 
 ### 6. REPORT
+
+A tools run reports in `references/tools-area.md`'s shape instead, its `Order:` line the `tools.js order` lines verbatim. Every other run:
 
 ```
 Docs: <doc> - <ids added | changed | removed>; overrides <what a preference beats, or none>

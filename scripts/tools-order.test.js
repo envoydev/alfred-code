@@ -1,0 +1,399 @@
+'use strict';
+// The order each actor is told at its start: the tools doc's ranks - or the adapter table's defaults - resolved against
+// what this machine reaches (the enabled stack plugins, the project's registrations, the inventory) and, for a seat,
+// against what its tools grant. A rank that cannot be reached is named once and left out.
+const test = require('node:test');
+const assert = require('node:assert');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+const TOOLS = path.join(__dirname, '..', 'stack', 'skills', 'capture-preferences', 'scripts', 'tools.js');
+const tools = require(TOOLS);
+
+// The data root and docs root are read from the process env as the hooks read them; this machine's own must not leak in.
+delete process.env.ALFRED_CODE_DATA_PATH;
+delete process.env.ALFRED_CODE_DOCS_PATH;
+
+const NAV = 'mcp__plugin_alfred-navigation_alfred-navigation__';
+const MEMORY_LINE = 'ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store,mcp__plugin_alfred-memory_alfred-memory__memory_search,mcp__plugin_alfred-memory_alfred-memory__memory_list';
+const DOC_REL = '.alfred/docs/preferences/TOOLS-PREFERENCES.md';
+const STACK = { 'alfred-navigation@envoydev': true, 'alfred-documentation@envoydev': true, 'alfred-memory@envoydev': true };
+
+function sandbox()
+{
+    const work = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'tools-order-')));
+    const root = path.join(work, 'repo');
+    const config = path.join(work, 'config');
+    fs.mkdirSync(config, { recursive: true });
+    const write = (file, value) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, typeof value === 'string' ? value : JSON.stringify(value)); };
+    write(path.join(root, '.claude', 'settings.json'), { enabledPlugins: STACK });
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: config };
+    const s = {
+        work, root, config, env, write,
+        doc: (lines) => write(path.join(root, DOC_REL), ['# Tools preferences', '', 'Updated: 2026-10-24', '', ...lines, ''].join('\n')),
+        inventory: (servers) => write(path.join(root, '.alfred', 'state', 'tools-inventory.json'), { version: 1, captured: '2026-10-24', servers }),
+        line: (extra = {}) => tools.toolsLine({ projectRoot: root, env, seat: null, suggest: false, ...extra }),
+        done: () => fs.rmSync(work, { recursive: true, force: true }),
+    };
+    return s;
+}
+const server = (prefix, type, names, extra = {}) => ({ [prefix]: { name: prefix.slice(5, -2), prefix, scope: 'user', type, version: null, registration: null, listed: 'exchange',
+    tools: Object.fromEntries(names.map((n) => [n, { readOnly: true, destructive: null, target: null }])), ...extra } });
+const JETBRAINS = server('mcp__jetbrains__', 'own:jetbrains', ['find_usages', 'get_symbol_info', 'execute_terminal_command']);
+const NAV_ENTRY = ['## T1 - Code navigation', '<!-- id: t1 -->', '- Job: navigation', '- Order: own:jetbrains find_usages > serena find_symbol > LSP > Grep'];
+
+test('no doc: the defaults, each with its load line', () =>
+{
+    const s = sandbox();
+    try
+    {
+        const text = s.line();
+        assert.match(text, /^Tool order - the stack's defaults \(no TOOLS-PREFERENCES\.md\)/);
+        assert.ok(text.includes(`- navigation (locate symbols, callers and types before reading or editing code): serena find_symbol, find_referencing_symbols, get_symbols_overview > LSP > Grep. Load: ToolSearch select:${NAV}find_symbol,${NAV}find_referencing_symbols,${NAV}get_symbols_overview`), text);
+        assert.ok(text.includes('- documentation (check a library\'s API or version before using it): context7 resolve-library-id, query-docs > WebFetch. Load: ToolSearch select:mcp__plugin_alfred-documentation_alfred-documentation__resolve-library-id,'), text);
+        assert.ok(text.includes(MEMORY_LINE), text);
+        assert.ok(!text.includes('Skipped here'), text);
+        assert.ok(text.length <= 1200, `${text.length} chars`);
+    }
+    finally { s.done(); }
+});
+
+test('the suggestion rides only when asked, and never to a seat', () =>
+{
+    const s = sandbox();
+    try
+    {
+        assert.ok(s.line({ suggest: true }).endsWith('\nThe user can rank their own with /capture-preferences tools.'));
+        assert.ok(!s.line({ suggest: false }).includes('/capture-preferences'));
+        const other = s.line({ seat: 'other', suggest: true });
+        assert.ok(!other.includes('/capture-preferences'), other);
+        assert.ok(other.includes(MEMORY_LINE), 'a built-in seat loads its MCP tools as the main session does');
+    }
+    finally { s.done(); }
+});
+
+test('a ranked own server comes first with its own names; the jobs the doc leaves out keep the defaults', () =>
+{
+    const s = sandbox();
+    try
+    {
+        s.doc(NAV_ENTRY);
+        s.inventory(JETBRAINS);
+        const text = s.line();
+        assert.match(text, /^Tool order - the user's, from \.alfred\/docs\/preferences\/TOOLS-PREFERENCES\.md \(the stack's defaults for the jobs it leaves out\): /);
+        assert.ok(text.includes(`- navigation (locate symbols, callers and types before reading or editing code): own:jetbrains find_usages > serena find_symbol > LSP > Grep. Load: ToolSearch select:mcp__jetbrains__find_usages,${NAV}find_symbol\n`), text);
+        assert.ok(text.includes(MEMORY_LINE), 'the memory default stays');
+        assert.ok(text.includes('- documentation ('), 'the documentation default stays');
+    }
+    finally { s.done(); }
+});
+
+test('a doc that ranks every default job states no defaults', () =>
+{
+    const s = sandbox();
+    try
+    {
+        s.doc([...NAV_ENTRY, '', '## T2 - Docs', '<!-- id: t2 -->', '- Job: documentation', '- Order: WebFetch', '', '## T3 - Memory', '<!-- id: t3 -->', '- Job: memory', '- Order: memory-service memory_search']);
+        s.inventory(JETBRAINS);
+        const text = s.line();
+        assert.match(text, /^Tool order - the user's, from \.alfred\/docs\/preferences\/TOOLS-PREFERENCES\.md: /);
+        assert.ok(text.includes('- documentation (check a library\'s API or version before using it): WebFetch.\n'), text);
+        assert.ok(text.includes('- memory (store and search what this project learned): memory-service memory_search. Load: ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_search'), text);
+    }
+    finally { s.done(); }
+});
+
+test('own rank with no inventory entry is skipped and named', () =>
+{
+    const s = sandbox();
+    try
+    {
+        s.doc(NAV_ENTRY);
+        const text = s.line();
+        assert.ok(text.includes(': serena find_symbol > LSP > Grep. Load: '), text);
+        assert.ok(text.includes('\nSkipped here: own:jetbrains (no inventory entry here).'), text);
+    }
+    finally { s.done(); }
+});
+
+test('a stack seat is told only what its tools grant, with no load clause', () =>
+{
+    const s = sandbox();
+    try
+    {
+        s.doc(NAV_ENTRY);
+        s.inventory(JETBRAINS);
+        const fm = '---\nname: x\ntools: mcp__plugin_alfred-navigation_alfred-navigation, LSP, Read, Grep\n---\n';
+        const text = s.line({ seat: { frontmatter: fm }, suggest: true });
+        assert.ok(!text.includes('ToolSearch'), text);
+        assert.ok(!text.includes('/capture-preferences'), text);
+        assert.match(text, /- navigation .*: serena find_symbol > LSP > Grep\./);
+        assert.ok(text.includes('own:jetbrains (not in your tools)'), text);
+        assert.ok(!text.includes('documentation'), 'a job with no reachable rank is left out');
+        assert.ok(!text.includes('memory'), text);
+        assert.ok(text.endsWith('\nCall them directly - your tools grant them.'), text);
+        assert.ok(text.length <= 700, `${text.length} chars`);
+    }
+    finally { s.done(); }
+});
+
+test('a seat with no tools line reaches what the main session does and loads it', () =>
+{
+    const s = sandbox();
+    try
+    {
+        const text = s.line({ seat: { frontmatter: '---\nname: x\nmodel: sonnet\n---\n' } });
+        assert.ok(text.includes(MEMORY_LINE), text);
+        assert.ok(!text.includes('Call them directly'), text);
+    }
+    finally { s.done(); }
+});
+
+test('disallowedTools narrows a rank; an emptied rank is skipped', () =>
+{
+    const s = sandbox();
+    try
+    {
+        let fm = `---\ntools: mcp__plugin_alfred-navigation_alfred-navigation, LSP, Grep\ndisallowedTools: ${NAV}find_referencing_symbols\n---\n`;
+        let text = s.line({ seat: { frontmatter: fm } });
+        assert.ok(text.includes(': serena find_symbol, get_symbols_overview > LSP > Grep.'), text);
+        fm = `---\ntools: mcp__plugin_alfred-navigation_alfred-navigation, LSP, Grep\ndisallowedTools: ${NAV}find_symbol, ${NAV}find_referencing_symbols, ${NAV}get_symbols_overview, LSP\n---\n`;
+        text = s.line({ seat: { frontmatter: fm } });
+        assert.ok(text.includes(': Grep.'), text);
+        assert.ok(text.includes('Skipped here: serena (not in your tools), LSP (not in your tools).'), text);
+        fm = `---\ntools:\n  - ${NAV}find_symbol\n  - Grep\n---\n`;
+        text = s.line({ seat: { frontmatter: fm } });
+        assert.ok(text.includes(': serena find_symbol > Grep.'), `a YAML list grant: ${text}`);
+    }
+    finally { s.done(); }
+});
+
+test('a denied ranked tool is skipped for a seat, kept for the main session', () =>
+{
+    const s = sandbox();
+    try
+    {
+        s.doc(['## T1 - Code navigation', '<!-- id: t1 -->', '- Job: navigation', '- Order: own:jetbrains find_usages > serena find_symbol, find_referencing_symbols > Grep', '',
+            '## T4 - Not for agents', '<!-- id: t4 -->', '- Job: deny', '- Deny: own:jetbrains, serena find_symbol', '- Why: the IDE stays with the main session']);
+        s.inventory(JETBRAINS);
+        const main = s.line();
+        assert.ok(main.includes(': own:jetbrains find_usages > serena find_symbol, find_referencing_symbols > Grep.'), main);
+        const seat = s.line({ seat: 'other' });
+        assert.ok(seat.includes(': serena find_referencing_symbols > Grep.'), seat);
+        assert.ok(seat.includes('Skipped here: own:jetbrains (denied to agents).'), seat);
+    }
+    finally { s.done(); }
+});
+
+test('a malformed doc names its problems and never states the defaults', () =>
+{
+    const s = sandbox();
+    try
+    {
+        s.doc(['## T1 - Code navigation', '<!-- id: t1 -->', '- Job: navigation', '- Order: jetbrains find_usages > serena find_symbol > LSP', '',
+            '## T2 - Browser', '<!-- id: t2 -->', '- Job: browser', '- Order: chrome x', '',
+            '## T3 - Database', '<!-- id: t3 -->', '- Job: database', '',
+            '## T5 - Shell', '<!-- id: t5 -->', '- Job: shell', '- Order: own:sh run, > Bash', '',
+            '## Untitled', '- Job: other', '- Order: Grep']);
+        const text = s.line();
+        assert.match(text, /^Tool order - the user's, from \.alfred\/docs\/preferences\/TOOLS-PREFERENCES\.md: /);
+        assert.ok(!text.includes('stack\'s defaults'), text);
+        assert.ok(!text.includes('- memory'), 'no default fills a malformed doc');
+        assert.ok(text.includes(': serena find_symbol > LSP.'), 'the entries that resolve are stated');
+        assert.strictEqual((text.match(/^Doc problem: /gm) || []).length, 3, text);
+        assert.ok(text.includes('\nDoc problem: T1: jetbrains is neither a known type nor own:<label>\n'), text);
+        assert.ok(text.includes('\n... and 2 more - run tools.js lint'), text);
+        const seat = s.line({ seat: 'other' });
+        assert.ok(!seat.includes('Doc problem'), 'a seat cannot fix the doc');
+    }
+    finally { s.done(); }
+});
+
+test('a plugin server whose plugin was switched off is not reached; a project registration of a known type is', () =>
+{
+    const s = sandbox();
+    try
+    {
+        s.write(path.join(s.root, '.claude', 'settings.local.json'), { enabledPlugins: { 'alfred-navigation@envoydev': false, 'alfred-documentation@envoydev': false } });
+        s.write(path.join(s.root, '.mcp.json'), { mcpServers: { docs: { type: 'http', url: 'https://mcp.context7.com/mcp' } } });
+        s.inventory({ ...server('mcp__gone__', 'own:gone', ['a'], { scope: 'project' }), ...server('mcp__plugin_jb_idea__', 'own:idea', ['b'], { scope: 'plugin', plugin: 'jb' }) }); // mcp-fixture
+        const main = tools.mainReach({ projectRoot: s.root, env: s.env, inventory: tools.readInventory(s.root) });
+        assert.ok(!main.servers.has('serena'));
+        assert.strictEqual(main.servers.get('context7').prefix, 'mcp__docs__'); // mcp-fixture
+        assert.ok(!main.servers.has('own:gone'), 'a project server .mcp.json no longer holds');
+        assert.ok(!main.servers.has('own:idea'), 'a plugin server whose plugin is not enabled');
+        const text = s.line();
+        assert.ok(text.includes(': LSP > Grep.'), text);
+        assert.ok(text.includes('Skipped here: serena (not on this machine).'), text);
+        assert.ok(text.includes('Load: ToolSearch select:mcp__docs__resolve-library-id,mcp__docs__query-docs'), text); // mcp-fixture
+    }
+    finally { s.done(); }
+});
+
+test('a ranked tool the server no longer has is skipped and named', () =>
+{
+    const s = sandbox();
+    try
+    {
+        s.doc(['## T1 - Code navigation', '<!-- id: t1 -->', '- Job: navigation', '- Order: own:jetbrains find_usages, find_old > LSP']);
+        s.inventory(JETBRAINS);
+        const text = s.line();
+        assert.ok(text.includes(': LSP.'), text);
+        assert.ok(text.includes('Skipped here: own:jetbrains find_old (gone from mcp__jetbrains__).'), text);
+    }
+    finally { s.done(); }
+});
+
+test('a doc that is a link is never read', { skip: process.platform === 'win32' && 'a symlink needs elevation' }, () =>
+{
+    const s = sandbox();
+    try
+    {
+        const target = path.join(s.work, 'elsewhere.md');
+        fs.writeFileSync(target, ['## T1 - Code navigation', '<!-- id: t1 -->', '- Job: navigation', '- Order: Grep', '- Purpose: SECRET'].join('\n'));
+        fs.mkdirSync(path.dirname(path.join(s.root, DOC_REL)), { recursive: true });
+        fs.symlinkSync(target, path.join(s.root, DOC_REL));
+        const text = s.line();
+        assert.ok(!text.includes('SECRET'), text);
+        assert.match(text, /^Tool order - the stack's defaults/);
+    }
+    finally { s.done(); }
+});
+
+test('toolsLine never throws', () =>
+{
+    assert.strictEqual(tools.toolsLine({ projectRoot: null, env: {}, seat: null, suggest: false }), '');
+});
+
+test('validateRows', () =>
+{
+    const s = sandbox();
+    try
+    {
+        assert.deepStrictEqual(tools.validateRows(s.root, s.env), [], 'a clean project prints nothing');
+        s.doc([...NAV_ENTRY, '', '## T2 - Browser', '<!-- id: t2 -->', '- Job: browser', '- Order: playwright browser_navigate']);
+        const jira = { command: 'npx', args: ['-y', 'jira-mcp@1.0.0'] };
+        s.write(path.join(s.root, '.mcp.json'), { mcpServers: { jira } });
+        const hash = tools.registrationHash(jira);
+        s.inventory(server('mcp__jira__', 'own:jira', ['search'], { scope: 'project', registration: hash }));
+        assert.deepStrictEqual(tools.validateRows(s.root, s.env), [
+            '!! tools: T1 ranks own:jetbrains, which has no inventory entry on this machine - run /capture-preferences tools',
+            '!! tools: T2 ranks playwright, which this machine does not reach - add the server or change the rank through /capture-preferences tools']);
+        s.write(path.join(s.root, '.mcp.json'), { mcpServers: { jira: { ...jira, args: ['-y', 'jira-mcp@2.0.0'] } } });
+        assert.ok(tools.validateRows(s.root, s.env).includes('!! tools: mcp__jira__ changed since the inventory was taken - run /alfred-code:update or /capture-preferences tools'));
+        s.write(path.join(s.root, '.alfred', 'state', 'tools-inventory.json'), 'garbage{');
+        assert.strictEqual(tools.validateRows(s.root, s.env)[0], '!! tools: tools-inventory.json is not valid JSON - re-run /capture-preferences tools');
+    }
+    finally { s.done(); }
+});
+
+test('the order and validate commands', () =>
+{
+    const s = sandbox();
+    try
+    {
+        const run = (...args) => spawnSync(process.execPath, [TOOLS, ...args, '--project', s.root], { encoding: 'utf8', env: { ...s.env, ALFRED_CODE_DATA_PATH: '', ALFRED_CODE_DOCS_PATH: '' } });
+        let r = run('order');
+        assert.strictEqual(r.status, 0, r.stderr);
+        assert.match(r.stdout, /^Tool order - the stack's defaults/);
+        const seat = path.join(s.work, 'seat.md');
+        fs.writeFileSync(seat, '---\nname: x\ntools: Grep\n---\nbody\n');
+        r = run('order', '--seat', seat);
+        assert.ok(r.stdout.includes('- navigation (locate symbols, callers and types before reading or editing code): Grep.'), r.stdout);
+        r = run('validate');
+        assert.strictEqual(r.status, 0);
+        assert.strictEqual(r.stdout, '');
+        s.doc(NAV_ENTRY);
+        r = run('validate');
+        assert.match(r.stdout, /^!! tools: T1 ranks own:jetbrains/);
+    }
+    finally { s.done(); }
+});
+
+// A doc that holds no entry - an empty file, or text that is not the shape - is broken, not a doc ranking nothing: read as
+// valid it would fill every job with the defaults the user may have meant to outrank (matrix M6).
+test('an empty or entry-less doc names its problem and states no default', () =>
+{
+    for (const body of ['', 'garbage{{ not a doc\n'])
+    {
+        const s = sandbox();
+        try
+        {
+            s.write(path.join(s.root, '.alfred', 'docs', 'preferences', 'TOOLS-PREFERENCES.md'), body);
+            const text = s.line();
+            assert.match(text, /^Tool order - the user's, from \.alfred\/docs\/preferences\/TOOLS-PREFERENCES\.md: /, JSON.stringify(body));
+            assert.ok(!/^- /m.test(text), `no job is stated: ${text}`);
+            assert.ok(text.includes('\nDoc problem: TOOLS-PREFERENCES.md holds no `## T<n>` entry - rank a job through /capture-preferences tools, or remove the file for the stack\'s defaults'), text);
+        }
+        finally { s.done(); }
+    }
+});
+
+// A fact true of this machine (its server lacks a ranked tool) or of this release (the pin dropped one) is no shape
+// problem: the rank is skipped and named, and the doc keeps the defaults for the jobs it leaves out (the final review, I3).
+test('a ranked tool this machine or this pin lacks skips its rank, never the defaults', () =>
+{
+    const s = sandbox();
+    try
+    {
+        s.inventory(server('mcp__jb__', 'own:jb', ['find_usages']));
+        s.doc(['## T1 - Code navigation', '<!-- id: t1 -->', '- Job: navigation', '- Order: own:jb find_usages, get_symbol_info > serena find_symbol_v9 > LSP > Grep']);
+        const text = s.line();
+        assert.match(text, /^Tool order - the user's, from \.alfred\/docs\/preferences\/TOOLS-PREFERENCES\.md \(the stack's defaults for the jobs it leaves out\): /, text);
+        assert.ok(text.includes('- navigation (locate symbols, callers and types before reading or editing code): LSP > Grep.'), text);
+        assert.ok(text.includes(MEMORY_LINE), 'the memory default stays');
+        assert.ok(text.includes('- documentation ('), 'the documentation default stays');
+        assert.ok(/Skipped here: [^\n]*own:jb get_symbol_info \(gone from mcp__jb__\)/.test(text), text);
+        assert.ok(/Skipped here: [^\n]*serena find_symbol_v9 \(gone from /.test(text), text);
+        assert.ok(!text.includes('Doc problem'), text);
+        assert.ok(tools.lintToolsDoc(fs.readFileSync(path.join(s.root, DOC_REL), 'utf8'), { inventory: tools.readInventory(s.root) }).problems.length === 2, 'lint still names both');
+    }
+    finally { s.done(); }
+});
+
+// The line rides every start beside the personal push, inside one hook output Claude Code caps: an over-cap doc states
+// nothing but its problem, and a long valid order loses its Load clauses, then its tail, before it passes the line's own
+// cap (the final review, I2).
+test('an over-cap doc states no entry', () =>
+{
+    const s = sandbox();
+    try
+    {
+        s.doc(['## T1 - Code navigation', '<!-- id: t1 -->', '- Job: navigation', '- Order: serena find_symbol > LSP > Grep', `- Purpose: ${'x'.repeat(3100)}`]);
+        const text = s.line();
+        assert.ok(/\nDoc problem: TOOLS-PREFERENCES\.md is \d+ chars - the cap is 3000/.test(text), text.slice(0, 300));
+        assert.ok(!/^- /m.test(text), 'no entry is stated');
+        assert.ok(text.length < 400, `${text.length} chars`);
+    }
+    finally { s.done(); }
+});
+
+test('a long valid order drops its Load clauses to stay under the line cap', () =>
+{
+    const s = sandbox();
+    try
+    {
+        const names = (n) => Array.from({ length: 10 }, (_, i) => `a_rather_long_tool_name_${n}_${String(i).padStart(2, '0')}`);
+        const jobs = ['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot'];
+        s.inventory(Object.assign({}, ...jobs.map((j) => server(`mcp__${j}__`, `own:${j}`, names(j)))));
+        s.doc(jobs.flatMap((j, i) => [`## T${i + 1} - ${j}`, `<!-- id: t${i + 1} -->`, `- Job: ${j}`, `- Order: own:${j} ${names(j).join(', ')}`, '']));
+        assert.deepStrictEqual(tools.lintToolsDoc(fs.readFileSync(path.join(s.root, DOC_REL), 'utf8'), { inventory: tools.readInventory(s.root) }).problems, [], 'the doc is valid');
+        const text = s.line();
+        assert.ok(text.length <= tools.TOOLS_LINE_CAP, `${text.length} chars`);
+        for (const j of jobs) assert.ok(text.includes(`\n- ${j}: own:${j} a_rather_long_tool_name_${j}_00`), j);
+        assert.ok(!text.includes('Load: ToolSearch'), 'the Load clauses go first');
+        assert.ok(text.includes('\nLoad clauses cut for size: load a rank\'s tools with ToolSearch by name before its first call.'), text.slice(-300));
+    }
+    finally { s.done(); }
+});
+
+test('a line still over the cap keeps its head and says where the rest is', () =>
+{
+    const rank = (i) => ({ label: `own:s${i} ${'t'.repeat(400)}`, names: [] });
+    const jobs = Array.from({ length: 20 }, (_, i) => ({ job: `job${i}`, purpose: '', ranks: [rank(i)], skipped: [], isDefault: false }));
+    const text = tools.startLine({ jobs, docRel: 'TOOLS-PREFERENCES.md', load: true });
+    assert.ok(text.length <= tools.TOOLS_LINE_CAP, `${text.length} chars`);
+    assert.ok(text.startsWith('Tool order - the user\'s, from TOOLS-PREFERENCES.md: '), text.slice(0, 80));
+    assert.ok(text.endsWith(`\n... cut at ${tools.TOOLS_LINE_CAP} chars - run tools.js order for the whole order`), text.slice(-120));
+});

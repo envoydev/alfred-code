@@ -93,6 +93,8 @@ const PLUGIN_MARKETPLACE_URLS = new Set([
 // Every entry here MUST appear as a backtick in some skill file (check 11 fails
 // any dead entry), so this stays an exact, self-pruning allowlist.
 const NON_SKILL_TOKENS = new Set([
+    // the tools preferences' known MCP server types (meta/tool-adapters.json) - a doc's rank names them, not skills.
+    'memory-service', 'windows-mcp', 'macos-mcp',
     // the AGENTS.md check's row kind for an older seed's rules list (scripts/agents-md-check.js) - a row kind, not a skill.
     'stack-rules',
     // habits-explain-topic's diagram rules: a CSS media feature and an SVG accessibility attribute - not skills.
@@ -2576,6 +2578,12 @@ function main()
     try { seatDrift = require('./seat-tools.js').drift(); }
     catch (err) { seatDrift = [`meta/seat-tools.json or meta/mcp-tools.json could not be read (${err.message}), so no seat's tool lines were checked`]; }
     for (const finding of seatDrift) flag(finding);
+    // 66. The adapter table the capture skill and the hooks read is what meta/tool-adapters.json builds
+    // (scripts/tool-adapters.js): a stale copy, or a job or edit tool its pinned server does not have, is a finding.
+    let adapterDrift;
+    try { adapterDrift = require('./tool-adapters.js').drift(); }
+    catch (err) { adapterDrift = [`meta/tool-adapters.json or meta/mcp-tools.json could not be read (${err.message}), so the adapter table was not checked`]; }
+    for (const finding of adapterDrift) flag(finding);
     // 64. meta/skill-headings.json holds every stack skill's CURRENT heading, so the next description change still knows
     // this one (the installer's M3 claim of an older copy the stamp does not record, scripts/install/skill-headings.js).
     for (const finding of lintSkillHeadings()) flag(finding);

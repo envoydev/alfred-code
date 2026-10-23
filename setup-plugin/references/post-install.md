@@ -187,6 +187,9 @@ Optional, whenever you have one to record: `/capture-preferences <your words>` -
 architecture or git preferences ('avoid static classes', 'branches are feature/<ticket>'), which every
 seat then follows. Init never runs it: the preferences are yours to state, not the codebase's to read.
 
+Optional, whenever you want your own tools first: `/capture-preferences tools` - rank your own tools per job; until
+then every session is told the stack's defaults.
+
 ## Later - after switching to a structurally different branch
 
 A branch switch that meaningfully changes the structure (new modules, moved projects, different
