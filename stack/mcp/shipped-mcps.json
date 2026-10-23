@@ -1,0 +1,357 @@
+{
+  "note": "How the stack shipped its MCP servers until it stopped (2026-10-24, after f779a349): every server under the name it was registered by, the original name it came from (original-mcps.json is that name's paste-ready entry), the plugin-route entry the marketplace listed (its launcher resolved the Python, the data root paths and the project at each start), the copy-route .mcp.json arguments the installer resolved (@TOKEN@ placeholders), the pins and the dependency cut-off, the Python each uvx server ran on, and the navigation context the Serena launcher swapped in for claude-code. Read only - nothing in the stack loads it.",
+  "from": "f779a349",
+  "original": {
+    "alfred-navigation": "serena",
+    "alfred-documentation": "context7",
+    "alfred-memory": "memory",
+    "chrome-control": "playwright-chrome",
+    "msedge-control": "playwright-msedge",
+    "firefox-control": "playwright-firefox",
+    "webkit-control": "playwright-webkit",
+    "windows-control": "windows-desktop",
+    "macos-control": "macos-desktop",
+    "mobile-control": "appium-mcp"
+  },
+  "pins": {
+    "refreshed": "2026-10-20",
+    "browser": {
+      "package": "@playwright/mcp",
+      "registry": "npm",
+      "spelling": "@<v>",
+      "version": "0.0.83",
+      "refreshed": "2026-10-20"
+    },
+    "alfred-navigation": {
+      "package": "serena-agent",
+      "registry": "pypi",
+      "spelling": "@<v>",
+      "version": "2.1.0"
+    },
+    "alfred-memory": {
+      "package": "mcp-memory-service",
+      "registry": "pypi",
+      "spelling": "==<v>",
+      "version": "12.1.1"
+    },
+    "windows-control": {
+      "package": "windows-mcp",
+      "registry": "pypi",
+      "spelling": "==<v>",
+      "version": "0.8.8"
+    },
+    "macos-control": {
+      "package": "macos-mcp",
+      "registry": "pypi",
+      "spelling": "==<v>",
+      "version": "0.4.6"
+    },
+    "mobile-control": {
+      "package": "appium-mcp",
+      "registry": "npm",
+      "spelling": "@<v>",
+      "version": "1.97.1",
+      "refreshed": "2026-10-21",
+      "advisories": {
+        "checked": "2026-10-21",
+        "critical": 20,
+        "high": 21,
+        "total": 44
+      }
+    }
+  },
+  "python": {
+    "default": "3.13",
+    "windows-control": "3.14 (the x64 build on Windows on ARM)"
+  },
+  "launchers": {
+    "alfred-navigation": "serena-launch.js: uvx on the pinned Python with the cut-off; SERENA_HOME at <data root>/serena/home; --context claude-code swapped for navigationContext below; the project folder at <data root>/serena",
+    "alfred-memory": "memory-launch.js: the database at the install's level - ~/.alfred-memory/memory.db (global) or <project>/<data root>/.alfred-memory/memory.db (project) - then uvx --with numpy --from mcp-memory-service[sqlite] memory server",
+    "browser": "browser-launch.js: npx -y @playwright/mcp --browser <engine> --user-data-dir <data root>/<engine>-control --output-dir <same>/output --no-webmcp, plus --secrets <the project's .sensitive-data> when it exists; absolute paths",
+    "windows-control": "desktop-launch.js: exits on any OS but Windows; uvx on Python 3.14; the tool gate --exclude-tools PowerShell,Registry,Process,FileSystem (ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE replaced it, none dropped it)",
+    "macos-control": "desktop-launch.js: exits on any OS but macOS; uvx on Python 3.13",
+    "mobile-control": "mobile-launch.js: ANDROID_HOME and JAVA_HOME looked up when unset; NO_UI=true, ALLOW_REMOTE_APP_URLS=false and a local-only REMOTE_SERVER_URL_ALLOW_REGEX unless set; the screenshot and page-source folders under <data root>/mobile-control; npm_config_before the pin's own cut-off"
+  },
+  "plugin": {
+    "chrome-control": {
+      "plugin": "chrome-control",
+      "entry": {
+        "command": "node",
+        "args": [
+          "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
+          "--package",
+          "@playwright/mcp@0.0.83",
+          "--browser",
+          "chrome"
+        ]
+      }
+    },
+    "msedge-control": {
+      "plugin": "msedge-control",
+      "entry": {
+        "command": "node",
+        "args": [
+          "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
+          "--package",
+          "@playwright/mcp@0.0.83",
+          "--browser",
+          "msedge"
+        ]
+      }
+    },
+    "firefox-control": {
+      "plugin": "firefox-control",
+      "entry": {
+        "command": "node",
+        "args": [
+          "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
+          "--package",
+          "@playwright/mcp@0.0.83",
+          "--browser",
+          "firefox"
+        ]
+      }
+    },
+    "webkit-control": {
+      "plugin": "webkit-control",
+      "entry": {
+        "command": "node",
+        "args": [
+          "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
+          "--package",
+          "@playwright/mcp@0.0.83",
+          "--browser",
+          "webkit"
+        ]
+      }
+    },
+    "windows-control": {
+      "plugin": "windows-control",
+      "entry": {
+        "command": "node",
+        "args": [
+          "${CLAUDE_PLUGIN_ROOT}/stack/mcp/desktop-launch.js",
+          "--server",
+          "windows-control",
+          "--package",
+          "windows-mcp==0.8.8",
+          "--exclude-newer",
+          "2026-10-20T23:59:59Z",
+          "--",
+          "serve",
+          "--exclude-tools",
+          "PowerShell,Registry,Process,FileSystem"
+        ],
+        "env": {
+          "ANONYMIZED_TELEMETRY": "false"
+        }
+      }
+    },
+    "macos-control": {
+      "plugin": "macos-control",
+      "entry": {
+        "command": "node",
+        "args": [
+          "${CLAUDE_PLUGIN_ROOT}/stack/mcp/desktop-launch.js",
+          "--server",
+          "macos-control",
+          "--package",
+          "macos-mcp==0.4.6",
+          "--exclude-newer",
+          "2026-10-20T23:59:59Z",
+          "--",
+          "serve"
+        ],
+        "env": {
+          "ANONYMIZED_TELEMETRY": "false"
+        }
+      }
+    },
+    "alfred-navigation": {
+      "plugin": "alfred-navigation",
+      "entry": {
+        "command": "node",
+        "args": [
+          "${CLAUDE_PLUGIN_ROOT}/stack/mcp/serena-launch.js",
+          "--package",
+          "serena-agent@2.1.0",
+          "--exclude-newer",
+          "2026-10-20T23:59:59Z",
+          "--",
+          "start-mcp-server",
+          "--context",
+          "claude-code",
+          "--enable-web-dashboard",
+          "false",
+          "--project-from-cwd",
+          "--agent-interface",
+          "tools"
+        ],
+        "env": {
+          "SERENA_USAGE_REPORTING": "false"
+        }
+      }
+    },
+    "alfred-documentation": {
+      "plugin": "alfred-documentation",
+      "entry": {
+        "type": "http",
+        "url": "https://mcp.context7.com/mcp",
+        "headers": {
+          "Context7-API-Key": "${CONTEXT7_API_KEY:-}"
+        }
+      }
+    },
+    "alfred-memory": {
+      "plugin": "alfred-memory",
+      "entry": {
+        "command": "node",
+        "args": [
+          "${CLAUDE_PLUGIN_ROOT}/stack/mcp/memory-launch.js",
+          "--package",
+          "mcp-memory-service[sqlite]==12.1.1",
+          "--exclude-newer",
+          "2026-10-20T23:59:59Z"
+        ],
+        "env": {
+          "MCP_MEMORY_STORAGE_BACKEND": "sqlite_vec",
+          "MCP_MEMORY_SQLITE_PRAGMAS": "busy_timeout=15000"
+        }
+      }
+    },
+    "mobile-control": {
+      "plugin": "mobile-control",
+      "entry": {
+        "command": "node",
+        "args": [
+          "${CLAUDE_PLUGIN_ROOT}/stack/mcp/mobile-launch.js",
+          "--package",
+          "appium-mcp@1.97.1",
+          "--before",
+          "2026-10-21T23:59:59Z"
+        ]
+      }
+    },
+    "browser-chrome": {
+      "plugin": "browser-chrome",
+      "entry": {
+        "command": "node",
+        "args": [
+          "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
+          "--package",
+          "@playwright/mcp@0.0.83",
+          "--browser",
+          "chrome"
+        ]
+      }
+    },
+    "browser-msedge": {
+      "plugin": "browser-msedge",
+      "entry": {
+        "command": "node",
+        "args": [
+          "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
+          "--package",
+          "@playwright/mcp@0.0.83",
+          "--browser",
+          "msedge"
+        ]
+      }
+    },
+    "browser-firefox": {
+      "plugin": "browser-firefox",
+      "entry": {
+        "command": "node",
+        "args": [
+          "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
+          "--package",
+          "@playwright/mcp@0.0.83",
+          "--browser",
+          "firefox"
+        ]
+      }
+    },
+    "browser-webkit": {
+      "plugin": "browser-webkit",
+      "entry": {
+        "command": "node",
+        "args": [
+          "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
+          "--package",
+          "@playwright/mcp@0.0.83",
+          "--browser",
+          "webkit"
+        ]
+      }
+    },
+    "windows-desktop": {
+      "plugin": "windows-desktop",
+      "entry": {
+        "command": "node",
+        "args": [
+          "${CLAUDE_PLUGIN_ROOT}/stack/mcp/desktop-launch.js",
+          "--server",
+          "windows-control",
+          "--package",
+          "windows-mcp==0.8.8",
+          "--exclude-newer",
+          "2026-10-20T23:59:59Z",
+          "--",
+          "serve",
+          "--exclude-tools",
+          "PowerShell,Registry,Process,FileSystem"
+        ],
+        "env": {
+          "ANONYMIZED_TELEMETRY": "false"
+        }
+      }
+    },
+    "macos-desktop": {
+      "plugin": "macos-desktop",
+      "entry": {
+        "command": "node",
+        "args": [
+          "${CLAUDE_PLUGIN_ROOT}/stack/mcp/desktop-launch.js",
+          "--server",
+          "macos-control",
+          "--package",
+          "macos-mcp==0.4.6",
+          "--exclude-newer",
+          "2026-10-20T23:59:59Z",
+          "--",
+          "serve"
+        ],
+        "env": {
+          "ANONYMIZED_TELEMETRY": "false"
+        }
+      }
+    }
+  },
+  "copy": {
+    "alfred-navigation": {
+      "args": "-e SERENA_HOME=@SERENA_HOME@ -e SERENA_USAGE_REPORTING=false -- node -e @ROOT_BOOT@ -- checkout uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from serena-agent@SERENA_PIN@ serena start-mcp-server --context @SERENA_CONTEXT@ --enable-web-dashboard false @SERENA_PROJECT_FLAG@ @SERENA_PROJECT_DIR@ --agent-interface tools"
+    },
+    "browser": {
+      "args": "-- node -e @ROOT_BOOT@ -- checkout npx -y @playwright/mcp@PW_PIN@ --user-data-dir @BROWSER_DIR@ --output-dir @BROWSER_DIR@/output --no-webmcp"
+    },
+    "alfred-memory": {
+      "args": "-e MCP_MEMORY_STORAGE_BACKEND=@MEMORY_BACKEND@ -e MCP_MEMORY_SQLITE_PATH=@MEMORY_DB_PATH@ -e MCP_MEMORY_SQLITE_PRAGMAS=busy_timeout=15000 -- node -e @ROOT_BOOT@ -- project uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --with numpy --from mcp-memory-service[sqlite]@MEMORY_PIN@ memory server"
+    },
+    "alfred-documentation": {
+      "args": "@HTTP@"
+    },
+    "windows-control": {
+      "args": "-e WINDOWS_MCP_EXCLUDE_TOOLS=@WINDOWS_CONTROL_EXCLUDE@ -e WINDOWS_MCP_TOOLS= -e ANONYMIZED_TELEMETRY=false -- uvx --python @WINDOWS_CONTROL_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from windows-mcp@WINDOWS_CONTROL_PIN@ windows-mcp serve",
+      "active": false
+    },
+    "macos-control": {
+      "args": "-e ANONYMIZED_TELEMETRY=false -- uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from macos-mcp@MACOS_CONTROL_PIN@ macos-mcp serve",
+      "active": false
+    },
+    "mobile-control": {
+      "args": "-e NO_UI=@MOBILE_NO_UI@ -e ALLOW_REMOTE_APP_URLS=@MOBILE_REMOTE_APPS@ -e REMOTE_SERVER_URL_ALLOW_REGEX=@MOBILE_REMOTE_ALLOW@ -e SCREENSHOTS_DIR=@MOBILE_SCREENSHOTS@ -e PAGE_SOURCES_DIR=@MOBILE_PAGE_SOURCES@ -e npm_config_before=@MOBILE_BEFORE@ -- node -e @ROOT_BOOT@ -- checkout npx -y appium-mcp@MOBILE_CONTROL_PIN@",
+      "active": false
+    }
+  },
+  "navigationContext": "# THE NAVIGATION SERVER'S CONTEXT - serena-agent 2.1.0's own `claude-code` context\n# (src/serena/resources/config/contexts/claude-code.yml at the v2.1.0 tag, unchanged since 1.7.0), with a house\n# prompt and twelve more tools off. The line below is that upstream file's hash: scripts/refresh-mcp-pins.js refuses a serena bump\n# whose claude-code.yml hashes otherwise, until this file is re-diffed against it and the line re-recorded (R7).\n# upstream: serena-agent 2.1.0 claude-code.yml sha256 78403573e7c71fe70b82253cb12a19b99b5c48f9702ea671f64257ad0e59c492\n# serena reads it as a custom context: `--context <path>` takes a file when the value holds a path separator\n# or ends in .yml (context_mode.py, SerenaAgentContext.load).\n#\n# Why: the upstream context serves seven file-writing tools, and a write through one of them bypasses every\n# hook matched on Edit / Write (the config-protection guard, the docs hold, the turn's edit list, the done\n# gate). The five plain writers are off; rename_symbol and safe_delete_symbol stay - reference-aware\n# refactors a hand edit cannot match. onboarding is off: the capture skills own the project's orientation.\n# The six memory tools are off (the user's 2026-10-13 ruling: this server is navigation only, memory is the\n# alfred-memory MCP alone) - a seat's handoff note is an alfred-memory row tagged `handoff` (alfred-memory.md).\n#\n# The plugin route: serena-launch.js swaps the entry's `--context claude-code` for this file beside it. The\n# full copy route: the installer copies it to the project's `.claude/navigation-context.yml` and registers the\n# relative `--context .claude/navigation-context.yml`, resolved against the server's cwd - the checkout, where the\n# row starts through ROOT_BOOT (2.1.5 R6: serena fails closed on a context path that does not resolve).\nname: alfred-code\ndescription: Alfred Code navigation - serena's claude-code context (single project; file, shell and search work is the harness's) with editing left to the harness except the reference-aware rename and safe delete.\nprompt: |\n  You are running inside Claude Code, whose own tools read files, search, run commands and edit. The\n  house hooks watch those tools - config protection, the docs hold, the turn's edit list, the done gate -\n  and see nothing this server writes, so every edit goes through the harness's Edit or Write tool.\n\n  This server's job is code intelligence:\n  - Locate before you read: get_symbols_overview for a file's structure, find_symbol for a symbol (its\n    body only when you need it), find_referencing_symbols for its callers, find_declaration and\n    find_implementations for the rest. Then read or edit the located range with the harness tools.\n  - Two reference-aware refactors stay on this server: rename_symbol renames a symbol across the\n    codebase, and safe_delete_symbol deletes one only when nothing still uses it. Prefer them to editing\n    every usage by hand.\n  - This server keeps no memory in this install: its memory tools are not served, and a note one agent\n    leaves for the next goes through the alfred-memory MCP.\n\n  Load only the tools the task needs through the tool search, not every tool at once. Where Serena's own\n  manual below names replace_symbol_body, insert_after_symbol, insert_before_symbol, replace_content or\n  replace_in_files, those tools are not served in this install: make that change with the Edit tool.\n\nexcluded_tools:\n  # serena 1.7.0 claude-code's own six: file, shell and pattern-search work is the harness's\n  - create_text_file\n  - read_file\n  - execute_shell_command\n  - find_file\n  - list_dir\n  - search_for_pattern\n  # the house's twelve: the plain writers no hook sees, onboarding, and every memory tool\n  - replace_content\n  - replace_in_files\n  - replace_symbol_body\n  - insert_after_symbol\n  - insert_before_symbol\n  - onboarding\n  - write_memory\n  - read_memory\n  - list_memories\n  - edit_memory\n  - rename_memory\n  - delete_memory\n\ntool_description_overrides: {}\n\n# Upstream's: with a project given at start, the tool set is cut to that project's own configuration and\n# activate_project is off - project switching is not allowed.\nsingle_project: true\n\n# Upstream's: Claude Code does not unpack structured tool output, so it stays off.\nstructured_tool_output: false\n"
+}

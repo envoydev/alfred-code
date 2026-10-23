@@ -1,0 +1,172 @@
+{
+  "mcpServers": {
+    "serena": {
+      "command": "uvx",
+      "args": [
+        "--python",
+        "3.13",
+        "--exclude-newer",
+        "2026-10-20T23:59:59Z",
+        "--from",
+        "serena-agent@2.1.0",
+        "serena",
+        "start-mcp-server",
+        "--context",
+        "claude-code",
+        "--enable-web-dashboard",
+        "false",
+        "--project-from-cwd",
+        "--agent-interface",
+        "tools"
+      ],
+      "env": {
+        "SERENA_USAGE_REPORTING": "false",
+        "SERENA_HOME": ".alfred/serena/home"
+      }
+    },
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp",
+      "headers": {
+        "Context7-API-Key": "${CONTEXT7_API_KEY:-}"
+      }
+    },
+    "memory": {
+      "command": "uvx",
+      "args": [
+        "--python",
+        "3.13",
+        "--exclude-newer",
+        "2026-10-20T23:59:59Z",
+        "--with",
+        "numpy",
+        "--from",
+        "mcp-memory-service[sqlite]==12.1.1",
+        "memory",
+        "server"
+      ],
+      "env": {
+        "MCP_MEMORY_STORAGE_BACKEND": "sqlite_vec",
+        "MCP_MEMORY_SQLITE_PATH": "${HOME}/.alfred-memory/memory.db",
+        "MCP_MEMORY_SQLITE_PRAGMAS": "busy_timeout=15000"
+      }
+    },
+    "playwright-chrome": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@0.0.83",
+        "--browser",
+        "chrome",
+        "--user-data-dir",
+        ".alfred/chrome-control",
+        "--output-dir",
+        ".alfred/chrome-control/output",
+        "--no-webmcp"
+      ],
+      "env": {
+        "npm_config_before": "2026-10-20T23:59:59Z"
+      }
+    },
+    "playwright-msedge": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@0.0.83",
+        "--browser",
+        "msedge",
+        "--user-data-dir",
+        ".alfred/msedge-control",
+        "--output-dir",
+        ".alfred/msedge-control/output",
+        "--no-webmcp"
+      ],
+      "env": {
+        "npm_config_before": "2026-10-20T23:59:59Z"
+      }
+    },
+    "playwright-firefox": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@0.0.83",
+        "--browser",
+        "firefox",
+        "--user-data-dir",
+        ".alfred/firefox-control",
+        "--output-dir",
+        ".alfred/firefox-control/output",
+        "--no-webmcp"
+      ],
+      "env": {
+        "npm_config_before": "2026-10-20T23:59:59Z"
+      }
+    },
+    "playwright-webkit": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@0.0.83",
+        "--browser",
+        "webkit",
+        "--user-data-dir",
+        ".alfred/webkit-control",
+        "--output-dir",
+        ".alfred/webkit-control/output",
+        "--no-webmcp"
+      ],
+      "env": {
+        "npm_config_before": "2026-10-20T23:59:59Z"
+      }
+    },
+    "windows-desktop": {
+      "command": "uvx",
+      "args": [
+        "--python",
+        "3.14",
+        "--exclude-newer",
+        "2026-10-20T23:59:59Z",
+        "--from",
+        "windows-mcp==0.8.8",
+        "windows-mcp",
+        "serve",
+        "--exclude-tools",
+        "PowerShell,Registry,Process,FileSystem"
+      ],
+      "env": {
+        "ANONYMIZED_TELEMETRY": "false"
+      }
+    },
+    "macos-desktop": {
+      "command": "uvx",
+      "args": [
+        "--python",
+        "3.13",
+        "--exclude-newer",
+        "2026-10-20T23:59:59Z",
+        "--from",
+        "macos-mcp==0.4.6",
+        "macos-mcp",
+        "serve"
+      ],
+      "env": {
+        "ANONYMIZED_TELEMETRY": "false"
+      }
+    },
+    "appium-mcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "appium-mcp@1.97.1"
+      ],
+      "env": {
+        "NO_UI": "true",
+        "ALLOW_REMOTE_APP_URLS": "false",
+        "REMOTE_SERVER_URL_ALLOW_REGEX": "^https?://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]+)?(/[^?#]*)?$",
+        "SCREENSHOTS_DIR": ".alfred/mobile-control/screenshots",
+        "PAGE_SOURCES_DIR": ".alfred/mobile-control/page-sources",
+        "npm_config_before": "2026-10-21T23:59:59Z"
+      }
+    }
+  }
+}
