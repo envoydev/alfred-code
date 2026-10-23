@@ -298,6 +298,27 @@ test('SD10: a merge, PR or remote ask is backed only by a remote-aware read', ()
   assert.match(ask(ran('ls'), 'Commit the staged files now?'), /no `git status`/, '... and its own note without one');
 });
 
+// The forge is any forge: a watch and a remote read are concepts (forge.js), so GitLab's CLI, an MCP server or a CLI
+// nobody listed back them the way `gh` does.
+test('a pipeline watch and a forge read count on every transport', () => {
+  const ci = "I'm waiting for the pipeline on the branch head. Once it goes green I merge; a background watch tells me when it finishes.";
+  for (const command of ['glab ci status --live', 'glab pipeline status --wait'])
+    assert.strictEqual(over([typed('go')], ci, { background_tasks: [{ id: 'b9', type: 'shell', status: 'running', command }] }).status, 0, command);
+  const ask = (rows, question) => {
+    const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: `a${++seq}`, hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion',
+      transcript_path: transcript(rows), tool_input: { questions: [{ question, options: [{ label: 'Wait (Recommended)', description: 'x' }, { label: 'Go now', description: 'y' }] }] } }), encoding: 'utf8', env: logEnv() });
+    return r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext || '' : '';
+  };
+  const used = (name, input) => { const id = `r${seq}`; return [typed('go'), call(id, name, input), result(id, 'ok')]; };
+  const merged = 'The check needs the new services. Recommended: wait until ticket 3 is merged and install that build.';
+  for (const [name, input] of [['Bash', { command: 'glab mr view 4' }], ['Bash', { command: 'tea pr 5' }], ['mcp__gitlab__get_merge_request', { merge_request_iid: 4 }], ['mcp__github__pull_request_read', { method: 'get_status' }]])
+    assert.doesNotMatch(ask(used(name, input), merged), /This ask named (?:remote or job|git) state/, `a remote-aware read: ${name} ${JSON.stringify(input)}`);
+  const note = ask(used('Bash', { command: 'npm run build' }), merged);
+  assert.match(note, /no remote-aware read in this turn/, 'a build reads no remote');
+  assert.match(note, /change request or pipeline/, 'the note names the concept, not one CLI');
+  assert.doesNotMatch(note, /`gh /, 'no gh command is the advice');
+});
+
 // 31da645f: after its own prose-ask block the continuation ran an ask, a Skill, an Edit and a check, then closed on a new
 // prose question that no hook judged. A tool call after the block reopens the cycle; a bare rewrite stays held.
 test('SD10: a continuation that made a tool call after this hook\'s block is judged again', () => {

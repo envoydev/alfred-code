@@ -984,6 +984,12 @@
     },
     {
       "file": "preferences-session.js",
+      "matcher": "^mcp__(?!(plugin_alfred-[a-z-]+_)?alfred-).*",
+      "event": "",
+      "note": "the same first-git-write hold on every MCP server outside the stack: a tool forge.js reads as opening or merging a change request, a branch write or a release (create_merge_request, push_files, repo_pull_request_write with autoComplete) waits until GIT-PREFERENCES.md was read, as the shell route does"
+    },
+    {
+      "file": "preferences-session.js",
       "matcher": "@SessionStart",
       "event": "",
       "note": "PERSONAL-PREFERENCES.md pushed at every MAIN session start - startup, resume, clear, compact and fork, so it is back after each compaction; a compaction or a clear also deletes that actor's read record, so the held docs are handed over again - a compaction keeps the record's run and architecture hand-over, a clear ends them; a seat's own compaction (the payload carries its agent_id) deletes only its record and pushes nothing"

@@ -450,8 +450,25 @@ const FINITE_RE = /\b(?:tests?|build|lint|typecheck|tsc|check|checks|install|res
 const NEVER_ENDS_EXTRA_RE = /\s-w\b|--watch\w*|\bng\s+test\b(?![^;&|]*--watch=false)|\blogs?\s+-f\b|port-forward|\bngrok\b|runserver/;
 // A CI watch ENDS with the run it watches (`gh run watch`, `gh pr checks --watch`): read as a never-ending watcher, a close
 // waiting on an armed one was blocked while it ran for 9 more minutes (audit 2026-10-10 C15, bba03dad).
+// On any forge it is the concept (forge.js `pipeline.watch`: `gh run watch`, `glab ci status --live`, a CLI nobody
+// listed); the regex is the reading when the classifier is missing.
 const FINITE_WATCH_RE = /\bgh\s+(?:run\s+watch|pr\s+checks\b[^;&|\n]*--watch)\b/;
-const finiteShell = (c) => FINITE_WATCH_RE.test(c) || (!NEVER_ENDS_RE.test(c) && !NEVER_ENDS_EXTRA_RE.test(c) && FINITE_RE.test(c));
+let forgeLib = null;
+try { forgeLib = require(require('path').join(__dirname, 'forge.js')); } catch { /* no classifier: the gh regexes read */ }
+const forgeActs = (c) => { try { return forgeLib ? forgeLib.classifyCommand(String(c || ''), process.cwd()) : null; } catch { return null; } };
+const finiteWatch = (c) => { const acts = forgeActs(c); return acts ? acts.some((r) => r.concept === forgeLib.CONCEPTS.WATCH) : FINITE_WATCH_RE.test(c); };
+const finiteShell = (c) => finiteWatch(c) || (!NEVER_ENDS_RE.test(c) && !NEVER_ENDS_EXTRA_RE.test(c) && FINITE_RE.test(c));
+// A forge READ - a change request's or a pipeline's state, through any CLI, API call or MCP tool - backs remote state.
+const FORGE_READ_RE = /\bgh\s+(?:pr|run|api|repo)\b/;
+const forgeRead = (block) => {
+  const name = String((block && block.name) || '');
+  const input = (block && block.input) || {};
+  if (!forgeLib) return SHELL_TOOL_RE.test(name) && FORGE_READ_RE.test(String(input.command || ''));
+  try {
+    const r = forgeLib.classify({ tool_name: name, tool_input: input });
+    return !!r && (r.concept === forgeLib.CONCEPTS.READ || r.concept === forgeLib.CONCEPTS.WATCH);
+  } catch { return false; }
+};
 const MONITOR_END_RE = /\bMonitor (?:expired|stopped|ended|exited)\b|\bexpired after\b/i;
 // The harness's own task registry is read before the transcript, which lags the turn: a Stop payload's `background_tasks`
 // (code.claude.com/docs/en/hooks, 'Stop input': present when the registry is reachable, empty when nothing is in flight;
@@ -2284,7 +2301,7 @@ function blockStateFile() {
 //      once, across 109 asks - one session missed all 12 of its own stops.
 // The stale-scope note's remote half (read by freshStateReadThisTurn, so declared before the branch runs).
 const REMOTE_STATE_RE = /\b(?:merged?|merging|pull request|PRs?|remote|upstream|deploy(?:ed|ment)?|pipeline|CI|workflow run)\b/i;
-const REMOTE_READ_RE = /\bgit\s+(?:fetch|pull|ls-remote|remote\s+(?:update|show))\b|\bgit\s+(?:log|rev-list|branch|show|merge-base|diff|cherry)\b[^\n;|&]*\s(?:origin|upstream)\/|\bgit\s+branch\b[^\n;|&]*\s(?:-r|-a|--remotes|--all)\b|\bgh\s+(?:pr|run|api|repo)\b/;
+const REMOTE_READ_RE = /\bgit\s+(?:fetch|pull|ls-remote|remote\s+(?:update|show))\b|\bgit\s+(?:log|rev-list|branch|show|merge-base|diff|cherry)\b[^\n;|&]*\s(?:origin|upstream)\/|\bgit\s+branch\b[^\n;|&]*\s(?:-r|-a|--remotes|--all)\b/;
 // AUTO-MODE answers the ask (the user's ruling, 2026-10-14). Under a live AUTO stamp nobody is at the terminal, and the
 // user's word was 'run everything with the recommended options'. So an ask whose every question marks ONE option
 // '(Recommended)' is answered with it - the documented route: `allow` with the questions echoed and an `answers` map in
@@ -2633,8 +2650,8 @@ if (payload.tool_name === 'AskUserQuestion') {
       // Each note is its imperative alone (deep hooks review 2026-10-16, ~67k chars a window): the two stories - a
       // day-old merge read, a fifty-minute-old status overtaken by another agent - are in docs/baseline-rules-evidence.md.
       if (REMOTE_STATE_RE.test(askText)) notes.push('This ask named remote or job state that no remote-aware read in this turn backed. '
-        + 'Read it fresh (`git fetch` then `git log origin/<branch>`, `gh pr view`, `gh run`) before acting; if it moved, say so and re-ask.');
-      else notes.push('This ask named git state that no `git status` / `git diff` / `gh` call in this turn backed. '
+        + 'Read it fresh (`git fetch` then `git log origin/<branch>`, or the change request or pipeline through the forge tool this session has) before acting; if it moved, say so and re-ask.');
+      else notes.push('This ask named git state that no `git status` / `git diff` / forge read in this turn backed. '
         + 'Read it fresh before acting; if it moved, say so and re-ask.');
     }
 
@@ -3147,9 +3164,11 @@ function freshStateReadThisTurn(remote) {
       if (o.type === 'user' && isTypedTurn(o)) return false;
       if (o.type === 'assistant' && Array.isArray(o.message.content)) {
         for (const b of o.message.content) {
-          if (!b || b.type !== 'tool_use' || !SHELL_TOOL_RE.test(String(b.name))) continue;
+          if (!b || b.type !== 'tool_use') continue;
+          if (forgeRead(b)) return true;
+          if (!SHELL_TOOL_RE.test(String(b.name))) continue;
           const cmd = String((b.input && b.input.command) || '');
-          if ((remote ? REMOTE_READ_RE : /\bgit\s+(status|diff|log|show|rev-parse|rev-list|ls-files|fetch)\b|\bgh\s+(pr|run|api|repo)\b/).test(cmd)) return true;
+          if ((remote ? REMOTE_READ_RE : /\bgit\s+(status|diff|log|show|rev-parse|rev-list|ls-files|fetch)\b/).test(cmd)) return true;
         }
       }
     }

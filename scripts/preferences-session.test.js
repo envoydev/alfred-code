@@ -763,6 +763,24 @@ test('PF-13: a release and a worktree branch are git writes', () =>
     finally { p.rm(); }
 });
 
+test('a forge write on any transport is a git write: other CLIs and MCP servers, by concept', () =>
+{
+    const p = project();
+    const mcpCall = (tool, input, s) => ({ ...bash('true', s), tool_name: tool, tool_input: input });
+    try
+    {
+        for (const cmd of ['glab mr create --fill', 'glab mr merge 4', 'tea releases create --tag v1', 'az repos pr update --id 3 --status completed'])
+            assert.ok(denied(p.hook(bash(cmd, sid()))), cmd);
+        for (const [tool, input] of [['mcp__gitlab__create_merge_request', { title: 't' }], ['mcp__ado__repo_pull_request_write', { action: 'update', autoComplete: true }], ['mcp__github__push_files', { branch: 'main', files: [] }], ['mcp__gitlab__create_release', { tag_name: 'v1' }]])
+            assert.ok(denied(p.hook(mcpCall(tool, input, sid()))), tool);
+        for (const [tool, input] of [['mcp__gitlab__get_merge_request', { merge_request_iid: 4 }], ['mcp__github__pull_request_read', { method: 'get_diff' }], ['mcp__fs__write_file', { path: 'a', content: 'b' }], ['mcp__github__add_issue_comment', { body: 'x' }]])
+            assert.ok(!denied(p.hook(mcpCall(tool, input, sid()))), tool);
+        for (const cmd of ['glab mr view 4', 'glab ci status --live', 'echo glab mr merge 4'])
+            assert.ok(!denied(p.hook(bash(cmd, sid()))), cmd);
+    }
+    finally { p.rm(); }
+});
+
 test('H-Q1: only a whole read marks a doc - a ranged Read, head, grep -c, a name in an echo and a docs.js toc do not', () =>
 {
     const p = project({ docs: { 'GIT-PREFERENCES.md': GIT } });

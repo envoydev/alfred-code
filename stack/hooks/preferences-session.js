@@ -65,6 +65,8 @@ let layout = null;
 try { layout = require('./layout.js'); } catch { /* an older copy route: the paths below are spelled inline */ }
 let shellReader = null;
 try { shellReader = require(path.join(__dirname, 'shell-writes.js')); } catch { /* no reader: the shell route judges nothing */ }
+let forgeLib = null;
+try { forgeLib = require(path.join(__dirname, 'forge.js')); } catch { /* no classifier: forge writes past git go unread */ }
 const prelude = () => { try { return require('./hook-prelude.js'); } catch { return null; } };
 
 const envOf = (env, suffix) => { const v = env[`ALFRED_CODE_${suffix}`]; return v === '' ? undefined : v; };
@@ -542,14 +544,18 @@ function gitWrites(command, cwd) {
     if (c.sub === 'branch' && c.argv.some((a) => !a.startsWith('-')) && !c.argv.some((a) => BRANCH_LIST.test(a))) return true;
     if (c.sub === 'worktree' && c.argv[0] === 'add' && c.argv.some((a) => /^-[bB]/.test(a))) return true;
   }
+  // A forge write by concept, on any CLI or API call (forge.js): opening or merging a change request, a branch write, a
+  // release - `gh pr merge` and `glab mr create` alike. An unknown forge call is held too: it may be one of them.
   try {
-    for (const w of shellReader.commandWords(read.command, read.parsed)) {
-      if (w.name !== 'gh') continue;
-      if (w.argv[0] === 'pr' && /^(?:merge|create)$/.test(w.argv[1] || '')) return true;
-      if (w.argv[0] === 'release' && /^(?:create|edit|delete|upload|delete-asset)$/.test(w.argv[1] || '')) return true;
-    }
-  } catch { /* no word list: the git calls above decide */ }
+    for (const r of forgeLib.classifyCommand(read.command, cwd, { parsed: read.parsed }))
+      if (forgeLib.PREF_HOLD.has(r.concept)) return true;
+  } catch { /* no classifier: the git calls above decide */ }
   return false;
+}
+// The same hold on an MCP server outside the stack: the tool read by its words (`create_merge_request`, `push_files`,
+// `repo_pull_request_write {autoComplete: true}`).
+function mcpGitWrite(input) {
+  try { const r = forgeLib.classify(input); return !!r && forgeLib.PREF_HOLD.has(r.concept); } catch { return false; }
 }
 function shellTargets(command, cwd) {
   try {
@@ -890,6 +896,9 @@ function main() {
     if (reads && seatHold(ctx, input, files, marks, seat, reads.grep)) return;
     editTargets = targets;
     gitWrite = gitWrites(command, cwd);
+  } else if (/^mcp__/.test(name) && forgeLib && !forgeLib.isStackServer(name)) {
+    gitWrite = mcpGitWrite(input);
+    if (!gitWrite) return;
   } else return;
 
   const editing = editTargets.filter((p) => !exempt(ctx, p)).map((p) => relOf(ctx, p));
