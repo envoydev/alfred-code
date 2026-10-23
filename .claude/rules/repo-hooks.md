@@ -570,7 +570,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     a subagent's `Agent(<type>)` list is ignored, so the grant alone let it start a writing seat (2.1.5 M48).
     In a repo never set up only an `alfred-code:`-spelled implementer target is judged - the diagnoser pin,
     then the implementer gate - and no block row is written (M9, `standDown(..., { setUp: false })`).
-  - `guard-ungated-commit.js` (PreToolUse, the shell route) - blocks a non-trivial `git commit` without the
+  - `guard-ungated-commit.js` (PreToolUse, the shell route and every MCP server outside the stack) - blocks a non-trivial `git commit` without the
     `<data root>/state/approvals/COMMIT-GATE` receipt, and `git push` / `gh pr merge` without `PUSH-GATE`. A dry
     run or a branch level with upstream is never gated; `guard-ungated-commit:push` in `ALFRED_CODE_HOOKS_OFF` turns the push half off
     (`hook-prelude.js partOff`, the env audit of 2026-10-21; the old `ALFRED_CODE_PUSH_GATE=0` is still read for the 2.x
@@ -1208,6 +1208,25 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     across sessions, each session's newest kept longest, before an older session's own line (audit 2026-10-11 SD16,
     e90a1845: the older session's rulings were cut whole and re-asked) - and prunes past 200 records or 180 days. No model call, fail-open, `ALFRED_CODE_HISTORY=0` off (nothing recorded or injected); an update moves the stack's
     old on seed `1` to `3` (`history-switch-is-a-count`).
+  - `forge-session.js` (`SessionStart` + `SubagentStart`, PostToolUse on the shell route and every MCP server outside the
+    stack, `Stop`) with its engine `forge.js` (a library, the classifier) and `forge-lexicon.json` (the vocabulary, overlaid by
+    `<data root>/forge-lexicon.json`) - the forge-neutral half of the git gates (spec 2026-10-23, the user's rulings: concepts,
+    not a list of CLIs or servers). `forge.js` reads any call as a concept by its WORDS - a CLI's noun then verb, an API
+    call's method and path, an MCP tool's name and its selector values - so `guard-ungated-commit.js` gates a merge or a
+    branch write on every transport and `preferences-session.js` holds the first one; a forge noun with no known verb is
+    `unknown` (an ask, a deny when unattended). Every publish the gate allows is ledgered in
+    `<data root>/state/forge/ACTS-<session>.jsonl`, a `git push` one row per ref it names (`forge.js pushTargets`).
+    The hook itself: one line under 200 chars at start (the remote, its host and kind, the forge CLIs on PATH, the MCP
+    servers that are forge servers by launch command or URL, never by name, the watch state); then the REF WATCH -
+    a detached `--snapshot` child takes the baseline (`REFS-<session>.json`, every branch and tag by `git ls-remote`,
+    `GIT_TERMINAL_PROMPT=0`, ssh BatchMode, 6s cap); PostToolUse after a merge, branch write, release or unknown call
+    re-reads and blocks on a LOUD move no act covers; `Stop` diffs once more when the turn ran anything but a known read.
+    Loud: the default branch, the upstream, a branch GIT-PREFERENCES.md names in backticks, a commit in this checkout, any
+    tag - blocked once per cycle; the rest is one summary `systemMessage`. An ASKED act covers nothing (Task 6 ruling,
+    revising Task 2's). `REFS-LAST.json` carries the end snapshot to the next session, which reports only after an
+    asked call. Unreachable is `not checked (<why>)`, never clean. `forge-session:watch` in `ALFRED_CODE_HOOKS_OFF` off,
+    `ALFRED_CODE_FORGE_WATCH=loud-only` drops the summary (the session line says so). The verified routes it is tested
+    against are `scripts/fixtures/forge-corpus.js`.
   - Formatter after an edit: DECLINED (hooks audit 2026-10-08, coverage map) - no measured incident; formatting is
     the project's lint and the verifier's job, and a PostToolUse formatter rewrites files under the model between its
     own edits, so the next `old_string` misses.

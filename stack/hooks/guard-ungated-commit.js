@@ -1347,7 +1347,18 @@ if (publishMatch) {
     const f = publishMatch.forge || {};
     let head = f.head || null;
     if (!head) { try { head = git('rev-parse HEAD'); } catch { head = null; } }
-    forgeLib.recordAct(root, payload.session_id, { concept: f.concept || forgeLib.CONCEPTS.BRANCH, change: f.change, ref: f.ref, head });
+    // A git push is one row per ref it names, so a push of feat/x never covers a move of main; one that names none of its
+    // refs (--all, --tags) is one row with no target, which covers every move this turn.
+    let refs = [f.ref || null];
+    if (publishMatch.git && forgeLib.pushTargets) {
+      refs = [];
+      for (const p of calls.filter((c) => c.sub === 'push')) {
+        const targets = forgeLib.pushTargets(p.argv || [], gitCwd);
+        refs.push(...(targets || [null]));
+      }
+      if (!refs.length) refs = [null];
+    }
+    for (const ref of [...new Set(refs)]) forgeLib.recordAct(root, payload.session_id, { concept: f.concept || forgeLib.CONCEPTS.BRANCH, change: f.change, ref, head });
   }
 }
 

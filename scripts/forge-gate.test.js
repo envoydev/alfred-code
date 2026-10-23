@@ -174,3 +174,24 @@ test('an MCP merge sha is compared directly', () => {
   assert.strictEqual(run(dir, mcp('accept_merge_request', { merge_request_iid: 4, sha: later })).status, 2);
   assert.strictEqual(run(dir, mcp('accept_merge_request', { merge_request_iid: 4, sha: reviewed })).status, 0);
 });
+
+// --- what a gated git push ledgers: one row per ref it names, so the ref watch never reads a push of one branch as
+// covering a move of another ------------------------------------------------------------------------------------------
+test('a gated git push ledgers each ref it names', () => {
+  const { dir, git } = pushRepo();
+  fs.writeFileSync(path.join(dir, 'b.txt'), 'b\n');
+  git('add', '-A'); git('commit', '-qm', 'b');
+  receipt(dir, headOf(dir));
+  assert.strictEqual(run(dir, bash('git push origin HEAD:refs/heads/feat/x main')).status, 0);
+  assert.deepStrictEqual(acts(dir).map((a) => [a.concept, a.ref]), [['branch.write', 'feat/x'], ['branch.write', 'main']]);
+});
+
+test('a bare git push ledgers the branch it pushes, a --tags push no target', () => {
+  const { dir, git } = pushRepo();
+  fs.writeFileSync(path.join(dir, 'b.txt'), 'b\n');
+  git('add', '-A'); git('commit', '-qm', 'b');
+  receipt(dir, headOf(dir));
+  assert.strictEqual(run(dir, bash('git push')).status, 0);
+  assert.strictEqual(run(dir, bash('git push --tags')).status, 0);
+  assert.deepStrictEqual(acts(dir).map((a) => a.ref), ['main', null]);
+});

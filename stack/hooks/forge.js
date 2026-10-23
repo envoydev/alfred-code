@@ -498,8 +498,11 @@ function lsRemote(cwd, remote, patterns = null, opts = {}) {
   const args = ['ls-remote', ...(opts.symref ? ['--symref'] : []), ...(patterns ? [] : ['--heads', '--tags']), remote, ...(patterns || [])];
   const r = spawnSync('git', args, { cwd, timeout: opts.timeout || LS_REMOTE_MS, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'], env: networkEnv(cwd) });
   if (r.error || r.status !== 0) {
+    // git's first `fatal:` / `ssh:` line names the cause; the lines after it are advice ('and the repository exists').
+    const lines = String(r.stderr || (r.error && r.error.message) || `git exited ${r.status}`).split('\n').map((l) => l.trim()).filter(Boolean);
+    const cause = lines.find((l) => /^(?:fatal|error|ssh):/i.test(l)) || lines[0] || `git exited ${r.status}`;
     const why = r.error && r.error.code === 'ETIMEDOUT' ? `no answer within ${(opts.timeout || LS_REMOTE_MS) / 1000}s`
-      : String(r.stderr || (r.error && r.error.message) || `git exited ${r.status}`).trim().split('\n').pop().slice(0, 160);
+      : cause.replace(/^fatal:\s*/i, '').slice(0, 160);
     return { ok: false, refs: new Map(), reason: why };
   }
   const refs = new Map();
@@ -539,4 +542,35 @@ function unseenHead({ cwd, change, sha, receiptHead }) {
   return `the change's head ${t7} carries commits the review at ${h7} never saw - review the change's head and write head: again`;
 }
 
-module.exports = { classify, classifyCommand, loadLexicon, isStackServer, tokens, recordAct, readActs, actsPath, remoteOf, lsRemote, changeHead, unseenHead, gitOut, LS_REMOTE_MS, CONCEPTS, PUBLISH, PREF_HOLD };
+// The branches and tags a `git push` writes, from its argv after `push`: each refspec's destination (`src:dst`, `+dst`,
+// `:dst` deletes it, a bare name is its own), the current branch's upstream name when it names none or `HEAD`. Null when it
+// pushes refs it does not name (`--all`, `--mirror`, `--tags`, `--follow-tags`) - a null target covers every move.
+const PUSH_VALUE = new Set(['--repo', '-o', '--push-option', '--receive-pack', '--exec']);
+function pushTargets(argv, cwd) {
+  const words = (argv || []).map(String);
+  if (words.some((w) => /^--(?:all|mirror|tags|follow-tags|branches)$/.test(w))) return null;
+  const positional = [];
+  for (let i = 0; i < words.length; i++) {
+    if (PUSH_VALUE.has(words[i])) { i++; continue; }
+    if (!/^-/.test(words[i])) positional.push(words[i]);
+  }
+  const current = () => {
+    const branch = gitOut(cwd, ['symbolic-ref', '--short', '-q', 'HEAD']);
+    if (!branch) return null;
+    const merge = gitOut(cwd, ['config', `branch.${branch}.merge`]);
+    return merge ? merge.replace(/^refs\/heads\//, '') : branch;
+  };
+  const specs = positional.slice(1);
+  if (!specs.length) { const c = current(); return c ? [c] : null; }
+  const out = [];
+  for (const spec of specs) {
+    const s = spec.replace(/^\+/, '');
+    let dst = s.includes(':') ? s.slice(s.lastIndexOf(':') + 1) : s;
+    dst = dst.replace(/^refs\/(?:heads|tags)\//, '');
+    if (!dst || dst === 'HEAD') { const c = current(); if (!c) return null; dst = c; }
+    out.push(dst);
+  }
+  return out;
+}
+
+module.exports = { classify, classifyCommand, loadLexicon, isStackServer, tokens, recordAct, readActs, actsPath, remoteOf, lsRemote, changeHead, unseenHead, pushTargets, gitOut, LS_REMOTE_MS, CONCEPTS, PUBLISH, PREF_HOLD };
