@@ -1,5 +1,5 @@
 {
-  "_note": "The forge concept vocabulary forge.js reads every tool call through - WORDS, never a list of CLIs or servers. A user overlay at <data root>/forge-lexicon.json adds words to these classes (arrays are appended); docs/forge-routes-evidence.md holds the verified routes the words are tested against.",
+  "_note": "The forge concept vocabulary forge.js reads every tool call through - WORDS, never a list of CLIs or servers. `requestCalls` are the call shapes that mark inline code (`node -e`, a heredoc into python) as making an HTTP request - a URL in code without one is text. A user overlay at <data root>/forge-lexicon.json adds words to these classes (arrays are appended); docs/forge-routes-evidence.md holds the verified routes the words are tested against.",
   "nouns": {
     "change": ["pull_request", "merge_request", "pr", "prs", "mr", "mrs", "pull", "pulls", "pullrequest", "pullrequests", "mergerequest", "mergerequests", "pull-request", "merge-request"],
     "release": ["release", "releases"],
@@ -29,6 +29,7 @@
   "forgeServerWords": ["git", "github", "gitlab", "gitea", "forgejo", "codeberg", "bitbucket", "azure", "ado", "devops", "atlassian", "forge"],
   "apiCommands": ["curl", "wget", "http", "https", "xh", "invoke-restmethod", "invoke-webrequest", "irm", "iwr"],
   "interpreters": ["node", "nodejs", "python", "python3", "ruby", "perl", "php", "deno", "bun", "pwsh", "powershell"],
+  "requestCalls": ["fetch(", "requests.", "urlopen(", "urllib.request", "http.client", "httpx", "aiohttp", "http.request(", "https.request(", "axios", "got(", "undici", "xmlhttprequest", "net::http", "http::tiny", "lwp::", "curl_exec", "httpclient", "webclient", "invoke-restmethod", "invoke-webrequest", "irm ", "iwr "],
   "paths": [
     { "re": "/(?:pulls|merge_requests|pullrequests)/\\d+/merge(?:-async)?$", "concept": "change.merge" },
     { "re": "/merge_requests/\\d+/cancel_auto_merge$", "concept": "change.annotate" },

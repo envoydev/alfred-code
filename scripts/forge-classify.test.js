@@ -64,6 +64,17 @@ test('api inference - body flags mean a write, GraphQL mutations are tokenised',
   assert.strictEqual(conceptOf(sh(`node -e "fetch('https://api.github.com/repos/o/r/pulls/3/merge', { method: 'PUT' })"`)), 'change.merge');
   const inline = forge.classify(sh(`python3 -c "import requests; requests.request(m, 'https://h/api/v4/projects/1/merge_requests/2/merge')"`));
   assert.strictEqual(inline.strength, 'unknown');
+  const opened = forge.classify(sh(`python3 -c "import urllib.request as u; u.urlopen(u.Request('https://h/api/v4/projects/1/merge_requests/2/merge', data=b'x'))"`));
+  assert.strictEqual(opened.strength, 'unknown');
+});
+
+test('inline code names a URL without a request call - text, not a call', () => {
+  assert.strictEqual(forge.classify(sh(`node -e "const u='https://api.github.com/repos/o/r/pulls/3/merge'; console.log(u)"`)), null);
+  // the lexicon's requestCalls words are the request signal: a client nobody listed is added in the overlay
+  const lexicon = forge.loadLexicon(os.tmpdir());
+  const own = { ...lexicon, requestCalls: [...(lexicon.requestCalls || []), 'myhttp.send('] };
+  const r = forge.classify(sh(`node -e "myhttp.send('https://api.github.com/repos/o/r/pulls/3/merge')"`), { lexicon: own });
+  assert.strictEqual(r && r.strength, 'unknown');
 });
 
 test('powershell forms classify like bash', () => {

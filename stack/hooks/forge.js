@@ -26,7 +26,7 @@ const rankOf = (r) => (!r ? 0 : r.strength === 'unknown' ? 6 : RANK[r.concept] |
 const VERB_ORDER = ['merge', 'push', 'create', 'write', 'pipeline', 'annotate', 'watch', 'read'];
 const METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']);
 const LEX_KEYS = ['nouns', 'groups', 'verbs', 'watchFlags', 'mergeFlags', 'selectors', 'changeKeys', 'refKeys', 'headKeys',
-  'forgeServerWords', 'apiCommands', 'interpreters', 'paths', 'hints'];
+  'forgeServerWords', 'apiCommands', 'interpreters', 'requestCalls', 'paths', 'hints'];
 
 // ---- the vocabulary ------------------------------------------------------------------------------------------------
 let BASE = null;
@@ -75,6 +75,7 @@ function compile(lex) {
     lex, nounOf, verbOf, paths,
     groups: new Set(lex.groups || []), selectors: new Set(lex.selectors || []), watchFlags: new Set(lex.watchFlags || []),
     mergeFlags: new Set(lex.mergeFlags || []), apiCommands: new Set(lex.apiCommands || []), interpreters: new Set(lex.interpreters || []),
+    requestCall: new RegExp(`(?:^|[^a-z0-9_])(?:${(lex.requestCalls || []).map((w) => String(w).toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') || '(?!)'})`, 'i'),
     forgeServer: new RegExp(`(?:^|[^a-z])(?:${(lex.forgeServerWords || ['git']).map((w) => w.replace(/[^a-z0-9]/g, '')).join('|')})`, 'i'),
   };
   compiled.set(lex, c);
@@ -267,10 +268,13 @@ function apiCallOf(c, name, argv) {
   }
   return null;
 }
-// Inline interpreter code (`node -e`, `python -c`, a heredoc into one): every URL in it is a call, its method sniffed
-// from the code; a write path with no method the hook can see is `unknown`.
+// Inline interpreter code (`node -e`, `python -c`, a heredoc into one) that makes a request - a `requestCalls` word in it:
+// every URL in it is a call, its method sniffed from the code; a write path with no method the hook can see is `unknown`.
+// Without a request call a URL is text the code prints or writes (replay 2026-10-23: four file edits asked, a deny in
+// auto mode); a client no word names goes unasked and the ref watch reports what it moved.
 function interpreterCalls(c, code) {
   const out = [];
+  if (!c.requestCall.test(code)) return out;
   const method = (/\bmethod\s*[:=]\s*['"]?(put|post|patch|delete|get)\b/i.exec(code) || /\brequests\.(put|post|patch|delete|get)\b/i.exec(code)
     || /['"](PUT|POST|PATCH|DELETE)['"]/.exec(code) || [])[1];
   const isGraphql = /\bmutation\b/.test(code);

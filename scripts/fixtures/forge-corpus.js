@@ -175,6 +175,10 @@ const BENIGN = [
   row('jira create_issue', mcp('jira', 'create_issue', { summary: 'x' }), null),
   row('issue comment', mcp('github', 'add_issue_comment', { issue_number: 3, body: 'x' }), null),
   row('curl a read', sh('curl -s https://api.github.com/repos/o/r/pulls/3'), READ),
+  // Replay 2026-10-23: inline code that only EDITS text holding a URL asked (a deny in auto mode) - no request is made.
+  row('python heredoc writes a release-download URL', sh("python3 - <<'PY'\np='README.md'\nt=open(p).read().replace('x', 'https://github.com/o/r/releases/latest/download/a.tar.gz')\nopen(p,'w').write(t)\nPY"), null),
+  row('python heredoc writes an image URL', sh("python3 - <<'EOF'\ns=open('a.md').read()\nopen('a.md','w').write(s + '![x](https://example.com/ref.png)')\nEOF"), null),
+  row('node -e prints a PR web URL', sh(`node -e "console.log('see https://github.com/o/r/pull/7')"`), null),
 ];
 
 module.exports = { GITHUB, GITLAB, AZURE, GITEA_BITBUCKET, BENIGN, sh, mcp };
