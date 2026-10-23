@@ -122,6 +122,31 @@ function profileLine(p) {
   return `${line.slice(0, LINE_MAX - 1)}.`;
 }
 
+// The forge CLI a profile needs, and how it gets on PATH (--forge-cli, init's ask, the prerequisite check): `none` - no CLI
+// is known for this forge or there is no remote; `present` - already on PATH; `brew` - Homebrew on macOS installs it,
+// then runs `after` (az's devops extension); `manual` - what the user installs by hand, `need` naming it.
+function cliPlan(p, { platform = process.platform, hasBrew = false } = {}) {
+  const h = hints();
+  const cli = p && p.remote ? (h.clis || {})[p.kind] : null;
+  if (!cli) return { action: 'none' };
+  if ((p.clis || []).includes(cli)) return { action: 'present', cli };
+  const inst = (h.install || {})[cli] || {};
+  if (platform === 'darwin' && inst.brew) {
+    return hasBrew ? { action: 'brew', cli, formula: inst.brew, after: inst.after || null, how: inst.how }
+      : { action: 'manual', cli, need: 'Homebrew', how: `install Homebrew, then brew install ${inst.brew} (macOS) - or ${inst.how}` };
+  }
+  return { action: 'manual', cli, need: cli, how: `install ${cli} by hand: ${inst.how || 'see its forge docs'}` };
+}
+// Init's one read: the session line, then whether its forge-CLI ask is due - the forge known, its CLI absent, no forge MCP
+// server configured.
+function askLine(p) {
+  const plan = cliPlan(p);
+  if (plan.action === 'none') return `forge-cli: no ask - no CLI is known for ${p.remote ? `an ${p.kind} forge` : 'a repo with no remote'}`;
+  if (plan.action === 'present') return `forge-cli: no ask - ${plan.cli} is on PATH`;
+  if (p.mcp.length) return `forge-cli: no ask - the forge MCP server ${p.mcp.join(', ')} is configured`;
+  return `forge-cli: ask - ${plan.cli} is not on PATH and no forge MCP server is configured`;
+}
+
 // ---- the ref watch -------------------------------------------------------------------------------------------------
 const { spawn, spawnSync } = require('node:child_process');
 const sid = (s) => String(s || 'unknown').replace(/[^A-Za-z0-9_-]/g, '_');
@@ -477,6 +502,14 @@ async function main() {
     try { snapshotChild(process.argv[3], process.argv[4], process.argv[5], process.env); } catch { /* no baseline: the Stop says so */ }
     return 0;
   }
+  // /alfred-code:init's read (`node forge-session.js --profile [<dir>]`): the line and the forge-CLI ask condition.
+  if (process.argv[2] === '--profile') {
+    const cwd = path.resolve(process.argv[3] || process.cwd());
+    if (!forge.gitOut(cwd, ['rev-parse', '--git-dir'])) { process.stdout.write('Forge: not a git repository.\nforge-cli: no ask - not a git repository\n'); return 0; }
+    const p = profile(cwd, { ...process.env, CLAUDE_PROJECT_DIR: process.env.CLAUDE_PROJECT_DIR || cwd });
+    process.stdout.write(`${profileLine(p)}\n${askLine(p)}\n`);
+    return 0;
+  }
   if (prelude && prelude.standDown('forge-session')) return 0;
   let payload;
   try { payload = JSON.parse(await readStdinBounded(STDIN_TIMEOUT_MS)); } catch { return 0; }
@@ -503,5 +536,5 @@ async function main() {
   return 0;
 }
 
-module.exports = { profile, profileLine, hostOf, LINE_MAX, snapshot, diffRefs, tierOf, covered, turnCalls, callIsRead };
+module.exports = { profile, profileLine, hostOf, cliPlan, askLine, LINE_MAX, snapshot, diffRefs, tierOf, covered, turnCalls, callIsRead };
 if (require.main === module) main().catch(() => 0).then((code) => process.exit(code));

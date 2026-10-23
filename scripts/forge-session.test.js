@@ -388,3 +388,68 @@ test('a push names the refs it writes', () => {
   assert.strictEqual(forge.pushTargets(['--all', 'origin'], cur), null);
   assert.strictEqual(forge.pushTargets(['--tags'], cur), null);
 });
+
+// --- the forge CLI: which one, and how it is installed (--forge-cli, init's ask, the prerequisite check) ------------
+const { cliPlan } = require(HOOK);
+test('the forge CLI plan follows the origin kind', () => {
+  const lab = repo('git@gitlab.com:g/r.git');
+  const p = profile(lab, envFor(lab));
+  assert.deepStrictEqual(cliPlan(p, { platform: 'darwin', hasBrew: true }), { action: 'brew', cli: 'glab', formula: 'glab', after: null, how: 'https://gitlab.com/gitlab-org/cli' });
+  assert.strictEqual(cliPlan(p, { platform: 'darwin', hasBrew: false }).action, 'manual');
+  assert.match(cliPlan(p, { platform: 'darwin', hasBrew: false }).how, /install Homebrew, then brew install glab/);
+  assert.deepStrictEqual(cliPlan(p, { platform: 'linux', hasBrew: false }), { action: 'manual', cli: 'glab', need: 'glab', how: 'install glab by hand: https://gitlab.com/gitlab-org/cli' });
+  const az = repo('https://org@dev.azure.com/org/p/_git/r');
+  assert.deepStrictEqual(cliPlan(profile(az, envFor(az)), { platform: 'darwin', hasBrew: true }).after, ['az', 'extension', 'add', '--name', 'azure-devops']);
+});
+
+test('no CLI is planned for an unknown forge, one already on PATH, or no remote', () => {
+  const odd = repo('https://code.example.com/x.git');
+  assert.strictEqual(cliPlan(profile(odd, envFor(odd)), { platform: 'darwin', hasBrew: true }).action, 'none');
+  const hub = repo('git@github.com:o/r.git');
+  const env = envFor(hub);
+  onPath(env, 'gh');
+  assert.deepStrictEqual(cliPlan(profile(hub, env), { platform: 'darwin', hasBrew: true }), { action: 'present', cli: 'gh' });
+  const none = repo(null);
+  assert.strictEqual(cliPlan(profile(none, envFor(none)), { platform: 'darwin', hasBrew: true }).action, 'none');
+});
+
+// The CLI runs git, so its PATH keeps the machine's dirs - minus any that hold a forge CLI this machine happens to have.
+const gitOnlyPath = (env) => [env.PATH, ...String(process.env.PATH).split(path.delimiter)
+  .filter((d) => !['gh', 'glab', 'tea', 'az'].some((n) => fs.existsSync(path.join(d, n)) || fs.existsSync(path.join(d, `${n}.exe`))))].join(path.delimiter);
+test('init reads the profile and its ask condition from one call', () => {
+  const lab = repo('git@gitlab.com:g/r.git');
+  const env = envFor(lab);
+  env.PATH = gitOnlyPath(env);
+  const r = spawnSync(process.execPath, [HOOK, '--profile', lab], { encoding: 'utf8', env: { ...process.env, ...env } });
+  assert.strictEqual(r.status, 0, r.stderr);
+  const [line, ask] = r.stdout.trim().split('\n');
+  assert.match(line, /^Forge: gitlab\.com \(gitlab\), remote origin;/);
+  assert.strictEqual(ask, 'forge-cli: ask - glab is not on PATH and no forge MCP server is configured');
+  fs.writeFileSync(path.join(lab, '.mcp.json'), JSON.stringify({ mcpServers: { work: { command: 'npx', args: ['@zereight/mcp-gitlab'] } } }));
+  const r2 = spawnSync(process.execPath, [HOOK, '--profile', lab], { encoding: 'utf8', env: { ...process.env, ...env } });
+  assert.strictEqual(r2.stdout.trim().split('\n')[1], 'forge-cli: no ask - the forge MCP server work is configured');
+  const odd = repo('https://code.example.com/x.git');
+  const r3 = spawnSync(process.execPath, [HOOK, '--profile', odd], { encoding: 'utf8', env: { ...process.env, ...envFor(odd), PATH: env.PATH } });
+  assert.strictEqual(r3.stdout.trim().split('\n')[1], 'forge-cli: no ask - no CLI is known for an unknown forge');
+});
+
+test('--forge-cli installs the forge CLI with Homebrew, or names how', () => {
+  const { forgeCliStep } = require(path.join(__dirname, 'install', 'alfred-code.js'));
+  const run = (dir, { flag = true, platform = 'darwin', brew = true, fail = false, extraEnv = {} } = {}) => {
+    const calls = [], logs = [], notes = [];
+    const ctx = { args: { forgeCli: flag }, projectRoot: dir, env: { ...envFor(dir), ...extraEnv }, log: (s) => logs.push(s), note: (s) => notes.push(s),
+      rt: { platform, which: (c) => c === 'brew' && brew, execCommand: (bin, argv) => { calls.push([bin, ...argv]); if (fail) throw new Error('Command failed: brew\nno network'); return ''; } } };
+    forgeCliStep(ctx);
+    return { calls, logs, notes };
+  };
+  const lab = repo('git@gitlab.com:g/r.git');
+  assert.deepStrictEqual(run(lab, { flag: false }), { calls: [], logs: [], notes: [] }, 'no flag, nothing');
+  const r = run(lab);
+  assert.deepStrictEqual(r.calls, [['brew', 'install', 'glab']]);
+  assert.deepStrictEqual(r.logs, ['  forge CLI: glab installed (brew install glab)']);
+  const az = repo('https://org@dev.azure.com/org/p/_git/r');
+  assert.deepStrictEqual(run(az).calls, [['brew', 'install', 'azure-cli'], ['az', 'extension', 'add', '--name', 'azure-devops']]);
+  assert.deepStrictEqual(run(lab, { platform: 'linux', brew: false }).notes, ['forge CLI: install glab by hand: https://gitlab.com/gitlab-org/cli']);
+  assert.match(run(lab, { fail: true }).notes[0], /^forge CLI: brew install glab failed \(Command failed: brew\) - https:\/\/gitlab\.com/);
+  assert.deepStrictEqual(run(repo('https://code.example.com/x.git')).calls, [], 'no CLI known, nothing run');
+});

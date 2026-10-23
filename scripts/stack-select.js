@@ -142,7 +142,6 @@ const SCOPED_PREREQS = [
     // `claude mcp list` no longer warns for the `:-` form - so this line is the one place a missing
     // key shows up at install time.
     { when: { mcp: 'alfred-documentation' }, env: 'CONTEXT7_API_KEY', severity: 'warning', need: 'documentation server API key (Context7)', how: 'add CONTEXT7_API_KEY to the account settings.json env - export it in the shell the installer runs in and the run writes it there (optional, higher rate limits) - unset = the keyless free tier' },
-    { when: { option: 'githubCli' }, bin: 'brew', severity: 'warning', need: 'Homebrew', how: 'install Homebrew to auto-install the GitHub CLI (macOS)' },
 ];
 
 function evaluatePrereqs(selection, env, options)
@@ -190,6 +189,11 @@ function evaluatePrereqs(selection, env, options)
         if (present) continue;
         add(p.init && options.deferInit ? deferred : p.severity === 'blocker' ? blockers : warnings, p);
     }
+
+    // --forge-cli: the CLI the origin's forge needs (forge-session.js cliPlan), named only when the installer cannot put it
+    // on PATH itself - no Homebrew on macOS, or another OS. No CLI known for the forge, or one already there: nothing.
+    const plan = env.forgeCli;
+    if (options.forgeCli && plan && plan.action === 'manual') add(warnings, { need: plan.need, how: plan.how });
 
     return { blockers, warnings, deferred, ok: blockers.length === 0 };
 }
@@ -275,7 +279,15 @@ function detectEnvironment(opts)
     const set = v => typeof v === 'string' && v.trim() !== '';
     const envs = {};
     for (const e of ENVS) envs[e] = set(process.env[e]) || set(acct[e]);
-    return { bins, envs };
+    let forgeCli = null;
+    try
+    {
+        const fsn = require(path.join(__dirname, '..', 'stack', 'hooks', 'forge-session.js'));
+        const cwd = opts.cwd || process.cwd();
+        forgeCli = fsn.cliPlan(fsn.profile(cwd, { ...process.env, CLAUDE_PROJECT_DIR: cwd }), { hasBrew: bins.brew });
+    }
+    catch { /* no forge reader: nothing to plan */ }
+    return { bins, envs, forgeCli };
 }
 
 // Selection names the graph does not know: an item this release retired or renamed
@@ -815,7 +827,7 @@ function main(argv)
     }
 
     const rawFile = arg('--selection');
-    if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--hooks-answered] [--dropped <dropped.json>] [--check [--defer-init]] [--browsers <csv>] [--github-cli] [--config-dir <account dir>] [--platform win32|darwin|linux] | --redundant --installed <inv.json> --recs <recs.json> --stacks <detected>'); process.exit(2); }
+    if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--hooks-answered] [--dropped <dropped.json>] [--check [--defer-init]] [--browsers <csv>] [--forge-cli] [--config-dir <account dir>] [--platform win32|darwin|linux] | --redundant --installed <inv.json> --recs <recs.json> --stacks <detected>'); process.exit(2); }
     let raw;
     try { raw = JSON.parse(fs.readFileSync(rawFile, 'utf8')); }
     catch (e) { console.error(`stack-select: cannot read selection ${rawFile}: ${e.code || e.message}`); process.exit(1); }
@@ -884,7 +896,7 @@ function main(argv)
 
     if (has('--check'))
     {
-        const report = evaluatePrereqs(closure, detectEnvironment({ configDir: arg('--config-dir') }), { playwrightBrowsers: browsersOption(arg).length ? browsersOption(arg) : engines, githubCli: has('--github-cli'), deferInit: has('--defer-init') });
+        const report = evaluatePrereqs(closure, detectEnvironment({ configDir: arg('--config-dir') }), { playwrightBrowsers: browsersOption(arg).length ? browsersOption(arg) : engines, forgeCli: has('--forge-cli'), deferInit: has('--defer-init') });
         for (const b of report.blockers) console.log(`BLOCKER: ${b.need} -> ${b.how}`);
         for (const w of report.warnings) console.log(`warning: ${w.need} -> ${w.how}`);
         for (const d of report.deferred) console.log(`init: ${d.need} -> /alfred-code:init installs it in the next session`);

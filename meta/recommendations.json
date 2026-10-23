@@ -47,7 +47,8 @@
    "preferences-session",
    "memory-session",
    "check-turn-build",
-   "history-session"
+   "history-session",
+   "forge-session"
   ],
   "skills": [
    "habits-clarify",

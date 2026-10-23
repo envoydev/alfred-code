@@ -59,7 +59,7 @@ const VALUED = new Map([
 ]);
 
 const BOOLEAN = new Map([
-    ['--github-cli', 'githubCli'], ['--keep-pins', 'keepPins'],
+    ['--forge-cli', 'forgeCli'], ['--keep-pins', 'keepPins'],
     ['--installed-only', 'installedOnly'], ['--print-plan', 'printPlan'], ['--skills-only', 'skillsOnly'],
 ]);
 
@@ -81,7 +81,7 @@ const SCOPE_OF = /^([a-z0-9-]+)=(global|user|project|local)$/;
 
 const ALIASES = new Map([['--playwright-browsers', '--browsers'], ['--playwright-enabled', '--browser-enabled'], ['--docs-move', '--data-move']]);
 
-const FLAG_LIST = '--scope, --memory-level, --browsers, --browser-enabled, --docs-versioning, --data-path, --data-move, --docs-root-move, --docs-root-leave, --auto-compact, --instructions-at, --instructions-file, --instructions-seed, --github-cli, --keep-pins, --selection, --installed-only, --add, --drop, --scope-of, --print-plan, --plan-out, --skills-only, --source';
+const FLAG_LIST = '--scope, --memory-level, --browsers, --browser-enabled, --docs-versioning, --data-path, --data-move, --docs-root-move, --docs-root-leave, --auto-compact, --instructions-at, --instructions-file, --instructions-seed, --forge-cli, --keep-pins, --selection, --installed-only, --add, --drop, --scope-of, --print-plan, --plan-out, --skills-only, --source';
 
 // One selection line, the shape the walks write: `<category> <name>`.
 const ADD_LINE = /^(skill|agent|rule|hook|mcp|plugin) [A-Za-z0-9._-]+$/;
@@ -101,7 +101,7 @@ function parseArgs(argv)
         action: '', scope: '',
         playwrightBrowsersRaw: '', playwrightEnabledRaw: '', docsVersioning: '', memoryLevel: '', dataMove: '', dataPath: '', docsRootMove: '', docsRootLeaveRaw: '', autoCompact: '', instructionsAt: '', instructionsFile: '', instructionsSeed: '',
         selection: '', source: '', planOut: '',
-        githubCli: false, keepPins: false, installedOnly: false, printPlan: false, skillsOnly: false,
+        forgeCli: false, keepPins: false, installedOnly: false, printPlan: false, skillsOnly: false,
         add: [], drop: [], scopeOf: {},
     };
 

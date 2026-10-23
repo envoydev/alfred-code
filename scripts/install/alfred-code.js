@@ -925,6 +925,7 @@ function runLayers(ctx)
     installPlugins(ctx);
     installMcps(ctx);
     desktopNotes(ctx);
+    forgeCliStep(ctx);
     seeds.seedAccountKeys({ configDir: ctx.configDir, env: ctx.env, log: ctx.log, note: ctx.note });
     // The generated rules moved off the `baseline-` prefix in 2.1.6: before anything re-stamps or reads them.
     selection.moveGeneratedRules({ projectRoot: ctx.projectRoot, log: ctx.log, note: ctx.note });
@@ -1818,6 +1819,31 @@ function installPlugins(ctx)
 // The desktop servers' and mobile-control's prerequisites (each launcher's prereqNotes), said ONCE: on the run
 // that brings a server into this project - its plugin row, or on the copy route its registration, was not
 // there before - never on every update after it. No claude CLI installs nothing, so nothing is said.
+// --forge-cli (init's forge ask, answered 'Install'): the CLI the origin's forge needs (forge-session.js cliPlan). Homebrew
+// installs it on macOS - az then gains its devops extension, which its repos and pipelines groups live in; anywhere else,
+// or with no Homebrew, the run names what to install by hand. Without the flag nothing is installed.
+function forgeCliStep(ctx)
+{
+    if (!ctx.args.forgeCli) return;
+    let plan;
+    try
+    {
+        const fsn = require('../../stack/hooks/forge-session.js');
+        plan = fsn.cliPlan(fsn.profile(ctx.projectRoot, { ...ctx.env, CLAUDE_PROJECT_DIR: ctx.projectRoot }), { platform: ctx.rt.platform || process.platform, hasBrew: Boolean(ctx.rt.which('brew', { env: ctx.env })) });
+    }
+    catch (err) { ctx.note(`forge CLI: the forge could not be read (${err.message}) - nothing installed`); return; }
+    if (plan.action === 'none') return ctx.log('  forge CLI: none known for this forge - nothing installed');
+    if (plan.action === 'present') return ctx.log(`  forge CLI: ${plan.cli} already on PATH`);
+    if (plan.action === 'manual') return ctx.note(`forge CLI: ${plan.how}`);
+    try
+    {
+        ctx.rt.execCommand('brew', ['install', plan.formula], { cwd: ctx.projectRoot, env: ctx.env, stdio: 'ignore' });
+        if (plan.after) ctx.rt.execCommand(plan.after[0], plan.after.slice(1), { cwd: ctx.projectRoot, env: ctx.env, stdio: 'ignore' });
+        ctx.log(`  forge CLI: ${plan.cli} installed (brew install ${plan.formula}${plan.after ? `, then ${plan.after.join(' ')}` : ''})`);
+    }
+    catch (err) { ctx.note(`forge CLI: brew install ${plan.formula} failed (${String(err.message).split('\n')[0]}) - ${plan.how}`); }
+}
+
 function desktopNotes(ctx)
 {
     if (!ctx.desktopHeld) return;
@@ -2976,4 +3002,4 @@ if (require.main === module)
     });
 }
 
-module.exports = { main, USAGE, CORE_DEP_PLUGINS, HOOK_ENGINES, HOOK_MODULES, SECRET_DENY, RETIRED_DENY, SHIPPED_DENY, MEMORY_TOOLS_USED, memoryToolDeny, browserToolDeny };
+module.exports = { main, USAGE, CORE_DEP_PLUGINS, HOOK_ENGINES, HOOK_MODULES, forgeCliStep, SECRET_DENY, RETIRED_DENY, SHIPPED_DENY, MEMORY_TOOLS_USED, memoryToolDeny, browserToolDeny };

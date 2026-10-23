@@ -1304,3 +1304,18 @@ test('the MCP table lists each browser engine as its own row, and the emit names
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// --forge-cli: the CLI the origin's forge needs, named by the prerequisite check when the installer cannot install it.
+test('prereq names glab for a gitlab origin', () => {
+    const sel = { skills: [], mcps: [], plugins: [] };
+    const manual = { action: 'manual', cli: 'glab', need: 'Homebrew', how: 'install Homebrew, then brew install glab (macOS)' };
+    const w = evaluatePrereqs(sel, { ...fullEnv, forgeCli: manual }, { forgeCli: true }).warnings;
+    assert.deepStrictEqual(w, [{ need: 'Homebrew', how: 'install Homebrew, then brew install glab (macOS)' }]);
+    assert.deepStrictEqual(evaluatePrereqs(sel, { ...fullEnv, forgeCli: manual }, {}).warnings, [], 'not asked for, not named');
+});
+
+test('no prereq for an unknown forge', () => {
+    const sel = { skills: [], mcps: [], plugins: [] };
+    for (const plan of [{ action: 'none' }, { action: 'present', cli: 'gh' }, { action: 'brew', cli: 'glab', formula: 'glab' }, undefined])
+        assert.deepStrictEqual(evaluatePrereqs(sel, { ...fullEnv, forgeCli: plan }, { forgeCli: true }).warnings, [], JSON.stringify(plan));
+});

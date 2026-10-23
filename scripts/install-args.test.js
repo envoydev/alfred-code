@@ -65,12 +65,18 @@ test('install-args: a valued flag given LAST with no value is refused, not read 
 
 test('install-args: the boolean flags take no value', () =>
 {
-    const p = ok(['install', '--github-cli', '--keep-pins', '--installed-only', '--print-plan', '--skills-only']);
-    assert.strictEqual(p.githubCli, true);
+    const p = ok(['install', '--forge-cli', '--keep-pins', '--installed-only', '--print-plan', '--skills-only']);
+    assert.strictEqual(p.forgeCli, true);
     assert.strictEqual(p.keepPins, true);
     assert.strictEqual(p.installedOnly, true);
     assert.strictEqual(p.printPlan, true);
     assert.strictEqual(p.skillsOnly, true);
+});
+
+test('install-args: --github-cli is gone - --forge-cli installs the CLI of whichever forge the origin is', () =>
+{
+    fails(['install', '--github-cli'], /unknown argument '--github-cli'/);
+    assert.strictEqual(ok(['install']).forgeCli, false);
 });
 
 test('install-args: an unknown argument is refused and the message NAMES the flags', () =>

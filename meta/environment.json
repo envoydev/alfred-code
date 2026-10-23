@@ -173,6 +173,19 @@
       }
     },
     {
+      "key": "ALFRED_CODE_FORGE_WATCH",
+      "default": "all",
+      "ask": false,
+      "what": "forge-session.js's ref watch: `all` (the seed) reports every branch and tag that moved with no gated act behind it - the default branch, the upstream, a branch the git preferences name, a commit from this checkout and any tag loud, the rest as one summary line; `loud-only` drops the summary line for a busy team repo, and the session's Forge: line says so, since the watch then no longer covers every branch. `forge-session:watch` in ALFRED_CODE_HOOKS_OFF turns the watch off.",
+      "validate": {
+        "type": "enum",
+        "values": [
+          "all",
+          "loud-only"
+        ]
+      }
+    },
+    {
       "key": "ALFRED_CODE_HOOKS_OFF",
       "default": "",
       "ask": false,
