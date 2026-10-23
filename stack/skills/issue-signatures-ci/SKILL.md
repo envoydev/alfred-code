@@ -14,9 +14,9 @@ A red check is not automatically a code bug. The highest-value call in CI triage
 
 ## First: pull the right log, read the right line
 
-- Confirm it is actually red before spending the triage - `gh pr checks`; a re-run or a later push may already be green.
-- Resolve the failing run from the PR head branch, then pull only the failed step: `gh run list --branch <head> --json databaseId,conclusion`, then `gh run view <id> --log-failed`. When `--log-failed` is empty or unrevealing (a fatal warning promoted in an earlier green step is invisible to it), fall back to the full step log.
-- Read the FIRST error, not the tail - the first `error CS####` / compile line is the signal; the `Build FAILED` block and the final count just restate it. On GitHub Actions the real error is often an `##[error]` line inside a collapsed group, timestamp-prefixed and colorized - grep loose (a substring, not an exact string).
+- Confirm it is actually red before spending the triage - read the change request's checks through the forge tool the session's `Forge:` line names (`gh pr checks`, `glab ci status`, an MCP pipeline read); a re-run or a later push may already be green.
+- Resolve the failing run from the change's head branch, then pull only the failed step's log - GitHub `gh run list --branch <head> --json databaseId,conclusion`, then `gh run view <id> --log-failed`; GitLab `glab ci view`, then `glab ci trace <job>`; an MCP job-log tool. When the failed-step log is empty or unrevealing (a fatal warning promoted in an earlier green step is invisible to it), fall back to the full step log.
+- Read the FIRST error, not the tail - the first `error CS####` / compile line is the signal; the `Build FAILED` block and the final count just restate it. On GitHub Actions the real error is often an `##[error]` line inside a collapsed `##[group]`, on GitLab inside a `section_start:` block - timestamp-prefixed and colorized - grep loose (a substring, not an exact string).
 
 ## The signatures - what each means and where the fix lives
 
@@ -25,7 +25,7 @@ A red check is not automatically a code bug. The highest-value call in CI triage
 - **Quality gate.** A quality gate is usually a build with warnings promoted to errors plus a formatter check (`dotnet format --verify-no-changes`, `prettier --check`, `eslint`); a red here is committed formatting drift or a newly-promoted analyzer, not a compile break. The fix is the code - and any instinct to silence the warning or downgrade the severity is the reward-hack to resist.
 - **Signing / release** (mobile). An expired distribution cert or provisioning profile, a rotated store API key, a non-incrementing build number, a keystore-secret decode failure, or native built off a stale bundle because the sync step was skipped. Pipeline config, not app code - route the fix through the skill covering mobile build, signing, and store submission; a project without one fixes it from its own pipeline definition.
 - **Workflow-config drift.** The YAML itself - a renamed job, a broken `needs:` or matrix leg, a wrong working-directory, a bumped action. A red check whose log shows the tool never ran is config; it routes back to you, never to a code fix.
-- **Infra flake** (name the non-determinism, never bare 'flaky'). Test-ordering or shared static state (passes isolated, fails in the full parallel run); real-clock or real-network timing (a real HTTP call, a real timer that needed fake time, an implicit wait); or infra (`exit 137` = OOM/SIGKILL, `exit 143` = SIGTERM/timeout, disk-full, a container-pull blip). Proof is a re-run with no code change passing (`gh run rerun --failed`).
+- **Infra flake** (name the non-determinism, never bare 'flaky'). Test-ordering or shared static state (passes isolated, fails in the full parallel run); real-clock or real-network timing (a real HTTP call, a real timer that needed fake time, an implicit wait); or infra (`exit 137` = OOM/SIGKILL, `exit 143` = SIGTERM/timeout, disk-full, a container-pull blip). Proof is a re-run of the failed jobs with no code change passing (`gh run rerun --failed`, `glab ci retry`, the forge tool's retry).
 
 ## Execution modes
 
@@ -42,7 +42,7 @@ context with the same gatherer fan-out.
 
 ## Route it
 
-State the verdict per failing job: the signature, the code-vs-environment call, and where it goes - a code defect to the fix (the matching build/test resolver in the flow, or fix it inline), an environment / pin / workflow delta back to you with the named delta, a proven flake to a re-run. Never route a config or runner failure to a code fix. If the evidence does not fit a signature, say so and pull the fuller log rather than force-fit one. Every verdict names the check that would prove it and the run quotes that check's output: a code verdict is proven by the failing test going green, a flake by `gh run rerun --failed` passing with no change, and a config, feed or pin verdict by a re-run after the named delta was fixed and nothing else touched - an unproven verdict is reported as unproven, never as the call.
+State the verdict per failing job: the signature, the code-vs-environment call, and where it goes - a code defect to the fix (the matching build/test resolver in the flow, or fix it inline), an environment / pin / workflow delta back to you with the named delta, a proven flake to a re-run. Never route a config or runner failure to a code fix. If the evidence does not fit a signature, say so and pull the fuller log rather than force-fit one. Every verdict names the check that would prove it and the run quotes that check's output: a code verdict is proven by the failing test going green, a flake by a re-run of the failed jobs passing with no change, and a config, feed or pin verdict by a re-run after the named delta was fixed and nothing else touched - an unproven verdict is reported as unproven, never as the call.
 
 Worked example - the failed step's first error line reads:
 
@@ -56,5 +56,5 @@ The four-line verdict it produces:
 signature: restore - NU1301 against the private feed, 401
 call: environment - the runner's feed credential expired; the code and lockfile never changed
 route: fix the feed secret in the workflow, then re-run; no code fix
-proof: after the feed secret is rotated, `gh run rerun --failed` passes with no code change - NOT RUN until then
+proof: after the feed secret is rotated, a re-run of the failed jobs (`gh run rerun --failed`, `glab ci retry`) passes with no code change - NOT RUN until then
 ```

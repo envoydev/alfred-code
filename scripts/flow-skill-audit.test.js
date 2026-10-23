@@ -364,7 +364,7 @@ test('issue-signatures-ci: the worked verdict carries its proof line, and the qu
     assert.match(flat(text), /The four-line verdict it produces:/);
     const verdict = (text.match(/```text\n(signature:[\s\S]*?)```/) || [])[1] || '';
     assert.deepStrictEqual(verdict.split('\n').filter(Boolean).map((l) => l.split(':')[0]), ['signature', 'call', 'route', 'proof']);
-    assert.match(verdict, /^proof: after the feed secret is rotated, `gh run rerun --failed` passes with no code change - NOT RUN until then$/m);
+    assert.match(verdict, /^proof: after the feed secret is rotated, a re-run of the failed jobs \(`gh run rerun --failed`, `glab ci retry`\) passes with no code change - NOT RUN until then$/m);
     assert.doesNotMatch(flat(text), /The \.NET gate is a build/);
     assert.match(flat(text), /A quality gate is usually a build with warnings promoted to errors plus a formatter check \(`dotnet format --verify-no-changes`, `prettier --check`, `eslint`\)/);
 });

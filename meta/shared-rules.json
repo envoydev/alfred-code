@@ -5566,7 +5566,7 @@
       ]
     },
     "push-gate-receipt": {
-      "_note": "The publish half of the commit ceremony: <data root>/state/approvals/PUSH-GATE, the SAME five-line shape as COMMIT-GATE (VERIFIED/WAIVED, authorized:, head:, spec:, live-probe:), written as its own call before git push / gh pr merge and cleared after. the git preferences seed names it (its locked checkpoint entry; alfred-git.md before 2026-10-21), habits-commit-checkpoint owns the protocol, guard-ungated-commit enforces it - a field added to one half drifts from the others without this pin (its twin commit-gate-receipt was registered, this one was not).",
+      "_note": "The publish half of the commit ceremony: <data root>/state/approvals/PUSH-GATE, the SAME five-line shape as COMMIT-GATE (VERIFIED/WAIVED, authorized:, head:, spec:, live-probe:), written as its own call before a git push or a change-request merge and cleared after. the git preferences seed names it (its locked checkpoint entry; alfred-git.md before 2026-10-21), habits-commit-checkpoint owns the protocol, guard-ungated-commit enforces it - a field added to one half drifts from the others without this pin (its twin commit-gate-receipt was registered, this one was not).",
       "owner": {
         "file": "stack/skills/capture-preferences/references/git-seed.md",
         "marker": "same-shaped `<data root>/state/approvals/PUSH-GATE` receipt"

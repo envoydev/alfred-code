@@ -143,9 +143,11 @@ test('both reviews: a branch or PR is compared with the default branch, read at 
         assert.doesNotMatch(target, /@\{upstream\}/, `${rel}: never the branch's own upstream as the base`);
         assert.ok(target.includes('git symbolic-ref --short refs/remotes/origin/HEAD'), `${rel}: the remote's default branch`);
         assert.ok(target.includes('git show <head>:<path>'), `${rel}: a target not checked out is read at its head`);
-        assert.ok(target.includes('gh pr view <n> --json headRefOid'), `${rel}: a PR's head`);
+        // a change request is read with plain git first, on every forge; the forge tool only where no such ref exists
+        for (const s of ['git fetch <remote> refs/pull/<n>/head', 'refs/merge-requests/<n>/head', 'git rev-parse FETCH_HEAD', 'gh pr view <n> --json headRefOid'])
+            assert.ok(target.includes(s), `${rel}: a change request's head - ${s}`);
         const dispatch = section(text, 'Dispatch');
-        for (const s of ['git diff --shortstat <base>...<branch>', 'gh pr view <n> --json additions,deletions'])
+        for (const s of ['git diff --shortstat <base>...<branch>', 'git diff --shortstat <base>...<head>', 'gh pr view <n> --json additions,deletions'])
             assert.ok(dispatch.includes(s), `${rel}: the count reads the target's own diff - ${s}`);
     }
     assert.ok(squash(read('stack/skills/review-code/references/passes.md')).includes('git show <head>:<path>'), 'the passes read at the head too');

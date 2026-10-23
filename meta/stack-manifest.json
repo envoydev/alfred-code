@@ -496,7 +496,7 @@
     },
     {
       "file": "issue-diagnoser-ci.md",
-      "note": "analysis phase (opus/high - a bounded catalogue match over structured CI logs, one notch under the runtime diagnoser's open-ended root-cause search): read-only CI red-run diagnosis via gh - categorize, local repro, route"
+      "note": "analysis phase (opus/high - a bounded catalogue match over structured CI logs, one notch under the runtime diagnoser's open-ended root-cause search): read-only CI red-run diagnosis through the forge tool the session line names (gh, glab, an MCP pipeline read) - categorize, local repro, route"
     },
     {
       "file": "issue-diagnoser-runtime.md",
@@ -776,7 +776,7 @@
       "file": "guard-ungated-commit.js",
       "matcher": "Bash|PowerShell|Monitor",
       "event": "",
-      "note": "block a non-trivial git commit without the data-root state/approvals/COMMIT-GATE receipt (VERIFIED/WAIVED), and a git push / gh pr merge without state/approvals/PUSH-GATE (guard-ungated-commit:push in ALFRED_CODE_HOOKS_OFF turns that half off)"
+      "note": "block a non-trivial git commit without the data-root state/approvals/COMMIT-GATE receipt (VERIFIED/WAIVED), and a git push or a change-request merge on any CLI or API route (gh pr merge, glab mr merge, az repos pr update --status completed, a curl PUT .../merge) without state/approvals/PUSH-GATE; a forge call forge.js cannot read is an ask, a deny when unattended (guard-ungated-commit:push in ALFRED_CODE_HOOKS_OFF turns that half off)"
     },
     {
       "file": "guard-ungated-commit.js",
@@ -980,7 +980,7 @@
       "file": "preferences-session.js",
       "matcher": "Bash|PowerShell|Monitor",
       "event": "",
-      "note": "the FIRST git write of each actor (index, tree, ref, stash, a branch, tag or worktree branch made, gh pr merge / create, gh release create / edit / delete) held until GIT-PREFERENCES.md was read, handed over live with its locked entries first as the seed states them; one command that edits and commits shares one room, git first; a shell source write is an edit, a whole-file reader naming a doc (no head, grep or pipe into one) marks it read; a judge's, a handed architecture analyzer's or a reviewing main session's shell read of a file outside the preferences folder (cat, sed, head, grep, rg ... with a path argument on disk, through a variable the command sets, or as a glob an entry matches; a search given no path - rg reading no pipe, a recursive grep; a reader find -exec or xargs runs; a Select-String fed by a file listing - never wc or ls) is held like its Read, a grep word earning the steer line - run inside shell-guards.js"
+      "note": "the FIRST git write of each actor (index, tree, ref, stash, a branch, tag or worktree branch made, a change request opened or merged, a release made - by concept, on any CLI or API route) held until GIT-PREFERENCES.md was read, handed over live with its locked entries first as the seed states them; one command that edits and commits shares one room, git first; a shell source write is an edit, a whole-file reader naming a doc (no head, grep or pipe into one) marks it read; a judge's, a handed architecture analyzer's or a reviewing main session's shell read of a file outside the preferences folder (cat, sed, head, grep, rg ... with a path argument on disk, through a variable the command sets, or as a glob an entry matches; a search given no path - rg reading no pipe, a recursive grep; a reader find -exec or xargs runs; a Select-String fed by a file listing - never wc or ls) is held like its Read, a grep word earning the steer line - run inside shell-guards.js"
     },
     {
       "file": "preferences-session.js",

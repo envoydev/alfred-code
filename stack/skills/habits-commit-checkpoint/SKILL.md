@@ -1,15 +1,15 @@
 ---
 name: habits-commit-checkpoint
-description: "Use before a non-trivial git commit, git push or gh pr merge - 'commit this', 'push it', 'open the PR'. Not for the done gate, which proves the change works."
+description: "Use before a non-trivial git commit, a push or merging a change request - 'commit this', 'push it', 'merge it'. Not for the done gate, which proves it works."
 ---
 
 # Commit checkpoint - the gate before a commit or a publish
 
-The protocol the git preferences' locked checkpoint entry points at: what runs before a non-trivial commit, the exemptions, the receipt the `guard-ungated-commit` hook reads, and the same ceremony for `git push` / `gh pr merge`. The commit-message shape and the branch discipline live in the user's `<docs-path>/preferences/GIT-PREFERENCES.md`. Why each rule exists is `references/evidence.md` - an audit appendix, not a run-time load.
+The protocol the git preferences' locked checkpoint entry points at: what runs before a non-trivial commit, the exemptions, the receipt the `guard-ungated-commit` hook reads, and the same ceremony for a push or a change-request merge by any route - git, a forge CLI, an API call or an MCP tool. The commit-message shape and the branch discipline live in the user's `<docs-path>/preferences/GIT-PREFERENCES.md`. Why each rule exists is `references/evidence.md` - an audit appendix, not a run-time load.
 
 ## When to use
 
-- Before any non-trivial git commit, git push or gh pr merge - 'commit this', 'push it', 'open the PR', 'merge it' - or before presenting a crypto / secret / auth / payment / data-access change, or when the commit guard denies one for a missing COMMIT-GATE or PUSH-GATE receipt.
+- Before any non-trivial git commit, a push or merging a change request (a PR or MR, by any tool) - 'commit this', 'push it', 'open the PR', 'merge it' - or before presenting a crypto / secret / auth / payment / data-access change, or when the commit guard denies one for a missing COMMIT-GATE or PUSH-GATE receipt.
 - Not for the done gate before it, which proves the change works, or the commit message's shape, which the user's `GIT-PREFERENCES.md` owns.
 
 ## Pre-commit checkpoint
@@ -157,13 +157,13 @@ never opens: remove the hit and stage again, or, on the user's 'Commit it as is'
 ask, write the `<data root>/state/approvals/STAGED-SCAN-ALLOW` receipt it names.
 
 A commit in a second tree the cross-project guard allows gets its own receipt in THAT tree's
-`<data root>/state/approvals/`, written by `receipt.js` run from that tree and cleared the same way. A sibling repo is never committed, branched, pushed or PR'd
+`<data root>/state/approvals/`, written by `receipt.js` run from that tree and cleared the same way. A sibling repo is never committed, branched, pushed or sent as a change request
 from here, and never OFFERED as an option in an ask of the run's own making - its change is a task
 card under `<docs-path>/work/cross-project-tasks/`, printed as the docs-root rule's hand-off block.
 
-## Publishing - push and PR merge
+## Publishing - push and change-request merge
 
-The same ceremony: `git push` and `gh pr merge` leave this machine, so they carry their own
+The same ceremony: a `git push` and a change-request merge - `gh pr merge`, `glab mr merge`, an MCP merge tool, any route - leave this machine, so they carry their own
 receipt, `<data root>/state/approvals/PUSH-GATE`, in the SAME five-line shape - `VERIFIED <what is being
 published, one phrase>`, `authorized: "<the user's words asking for THIS publish, verbatim>"`,
 `head:`, `spec: <the commit set going out>` and `live-probe:` - or `WAIVED - "<their words>"`; no
@@ -173,7 +173,7 @@ actually ran something and the commit set touches more than one identifiable pro
 an extra line - `scope: <workspace, or the project list the probe ran>`, never just the project that
 was convenient to test; its edge cases, and when the gate does not apply, are `references/publishing.md`.
 
-**A no-fast-forward publish (`git merge --no-ff`, or a PR merge) creates a NEW head.** Run the merge
+**A no-fast-forward publish (`git merge --no-ff`, or a change-request merge) creates a NEW head.** Run the merge
 first, then write the receipt: `head:` names the resulting merge commit, never the pre-merge tip - a
 receipt minted before the merge still reads the pre-merge tip, a different tree from what pushes.
 
@@ -192,8 +192,11 @@ receipt minted before the merge still reads the pre-merge tip, a different tree 
 2. Write the receipt as its own call.
 3. Publish, read `git status -sb` back into the close (the branch level with its upstream), then
    clear the receipt.
-4. **Watch CI once.** Where the repo runs CI on the pushed ref and its CLI resolves (`gh` on GitHub),
-   arm ONE background watch on the pushed sha - `gh run list --commit <sha> --limit 1 --json
-   databaseId,status`, then `gh run watch <id> --exit-status` as a background task, never a foreground
-   sleep loop. The close carries its verdict, or `CI: pending - watching run <id>` when the turn ends first; a red verdict is
-   reported when it lands, with the failing job's first error. No CI or no CLI: say so in one line.
+4. **Watch CI once** - a pipeline watch, through whichever tool the session's `Forge:` line names. Where the
+   repo runs CI on the pushed ref, arm ONE watch on the pushed sha: a blocking watch as a background task when the
+   tool has one - GitHub `gh run list --commit <sha> --limit 1 --json databaseId,status`, then
+   `gh run watch <id> --exit-status`; GitLab `glab ci status --live`; an MCP pipeline-wait tool - else the status
+   read every 60s in a background loop capped at 30 minutes, one line per poll. Never a foreground sleep loop. The
+   close carries its verdict, or `CI: pending - watching <run or pipeline id>` when the turn ends first; a red
+   verdict is reported when it lands, with the failing job's first error. No CI, or no tool that reads it: say so in
+   one line.

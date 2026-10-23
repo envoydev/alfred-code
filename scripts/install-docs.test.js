@@ -739,7 +739,7 @@ test('crucial seed: a 2.9.0 doc left as seeded keeps G1, G3, G4 and G6 under the
     const logs = [];
     const out = prefsRun(root, (m) => logs.push(m));
     const git = fs.readFileSync(path.join(root, PREFS, 'GIT-PREFERENCES.md'), 'utf8');
-    assert.strictEqual(out.preferences.git, 'retired G2, G5, G7, G8; locked attribution; updated safety; merged checks');
+    assert.strictEqual(out.preferences.git, 'retired G2, G5, G7, G8; locked attribution; updated checkpoint, safety; merged checks');
     assert.deepStrictEqual(headsOf(git), ['G1', 'G3', 'G4', 'G6', 'G9'], 'the kept ids stay, the new entry takes the next one');
     assert.deepStrictEqual(lockedKeys(git), ['consent', 'checkpoint', 'safety', 'attribution', 'checks']);
     assert.match(git, /^Updated: 2026-10-21\nRetired: G2, G5, G7, G8\n/m);
@@ -780,7 +780,7 @@ test('crucial seed: what the user changed in a 2.9.0 doc stays - an edited entry
     const logs = [];
     const out = prefsRun(root, (m) => logs.push(m));
     const git = fs.readFileSync(path.join(root, PREFS, 'GIT-PREFERENCES.md'), 'utf8');
-    assert.strictEqual(out.preferences.git, 'retired G7; locked attribution; unlocked G2; updated safety; merged checks');
+    assert.strictEqual(out.preferences.git, 'retired G7; locked attribution; unlocked G2; updated checkpoint, safety; merged checks');
     assert.deepStrictEqual(headsOf(git), ['G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G8', 'G9', 'G11']);
     assert.match(git, /^Retired: G7, G10$/m);
     assert.match(git, /^## G2 - Derive the commit scope fresh\n<!-- id: g2 -->\n- Rule: for us, the scope/m, 'the changed entry stays, its lock dropped');
@@ -800,7 +800,7 @@ test('crucial seed: an attribution entry the user changed is not locked over - t
     const logs = [];
     const out = prefsRun(root, (m) => logs.push(m));
     const git = fs.readFileSync(path.join(root, PREFS, 'GIT-PREFERENCES.md'), 'utf8');
-    assert.strictEqual(out.preferences.git, 'retired G2, G5, G7, G8; updated safety; merged attribution, checks');
+    assert.strictEqual(out.preferences.git, 'retired G2, G5, G7, G8; updated checkpoint, safety; merged attribution, checks');
     assert.deepStrictEqual(headsOf(git), ['G1', 'G3', 'G4', 'G6', 'G9', 'G10']);
     assert.match(git, /^## G6 - No AI attribution\n<!-- id: g6 -->\n- Rule: never mention yourself[^\n]*\n- Scope: commit messages only/m, 'the user\'s copy stays unlocked');
     assert.match(git, /^## G9 - No AI attribution\n<!-- id: g9 -->\n<!-- locked: attribution -->/m);
