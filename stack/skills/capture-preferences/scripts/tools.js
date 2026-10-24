@@ -23,6 +23,7 @@ const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const prefs = require('./preferences.js');
 const client = require('./mcp-client.js');
+const lsp = require('./lsp-coverage.js');
 
 const TOOLS_DOC = 'TOOLS-PREFERENCES.md';
 // The doc's cap. The main session gets every entry at every start, and each rank's Load clause spells its tools in full,
@@ -555,7 +556,9 @@ function mainReach({ projectRoot, env = process.env, adapters = readAdapters(), 
         if (sv.scope === 'project' && !Object.prototype.hasOwnProperty.call(project, sv.name)) continue;
         add(sv.type, sv.prefix, []);
     }
-    return { builtins: new Set(adapters.builtins || []), servers, load: true };
+    // The install-time language-server check: no file yet keeps LSP, as before it existed.
+    const coverage = lsp.readCoverage(projectRoot);
+    return { builtins: new Set(adapters.builtins || []), servers, load: true, lspNone: !!coverage && !coverage.covered.length };
 }
 
 // A frontmatter list, as a comma line or a YAML list under the key; null when the key is absent.
@@ -608,6 +611,8 @@ const defaultEntries = (adapters) => Object.entries(adapters.jobs || {}).filter(
 // deny list narrows the ranks, and a job left with no rank is left out whole - a seat is told only its own jobs. A job the
 // user's doc ranks with nothing this actor reaches takes the stack's order for it (spec N1, N3): a seat would otherwise
 // lose the job's line, and the main session its order.
+// No enabled plugin's language server, on PATH, maps a file type the project holds (lsp-coverage.js).
+const NO_LSP = 'no language server covers this project';
 function resolveOrder({ entries, adapters = readAdapters(), inventory = null, reach, agent = false })
 {
     const types = adapters.types || {};
@@ -624,12 +629,13 @@ function resolveOrder({ entries, adapters = readAdapters(), inventory = null, re
         const skipped = [];
         // A default rank the actor cannot reach is the normal state since the stack ships no server (2.10.1), so it is left
         // out silently; one the user's doc chose is named, and so is a default whose server is here but mismatched.
-        const quiet = (why) => e.isDefault && (why === 'not on this machine' || why === 'not in your tools');
+        const quiet = (why) => e.isDefault && (why === 'not on this machine' || why === 'not in your tools' || why === NO_LSP);
         const skip = (label, why) => { if (!quiet(why)) skipped.push({ label, why }); };
         for (const r of e.ranks)
         {
             if (r.kind === 'builtin')
             {
+                if (r.name === 'LSP' && machine.lspNone) { skip(r.name, NO_LSP); continue; }
                 // A deferred built-in is loaded through ToolSearch like a server's tools (final review B2), so its rank names it.
                 if (reach.builtins.has(r.name)) ranks.push({ label: r.name, names: (adapters.deferred || []).includes(r.name) ? [r.name] : [], builtin: true });
                 else skip(r.name, machine.builtins.has(r.name) ? 'not in your tools' : 'not on this machine');
@@ -791,6 +797,11 @@ function validateRows(projectRoot, env = process.env)
             if (!e.id || e.job === 'deny') continue;
             for (const r of e.ranks)
             {
+                if (r.kind === 'builtin' && r.name === 'LSP' && main.lspNone && !named.has(`${e.id} LSP`))
+                {
+                    named.add(`${e.id} LSP`);
+                    rows.push(`!! tools: ${e.id} ranks LSP, but no language server covers this project's files - install the language's *-lsp plugin and its server, or change the rank through /capture-preferences tools`);
+                }
                 if (r.kind !== 'server' || named.has(`${e.id} ${r.type}`)) continue;
                 named.add(`${e.id} ${r.type}`);
                 if (isOwn(r.type) && !ownServer(inventory, r.type)) rows.push(`!! tools: ${e.id} ranks ${r.type}, which has no inventory entry on this machine - run /capture-preferences tools`);
@@ -864,6 +875,14 @@ function main(argv)
         return 0;
     }
     if (cmd === 'refresh') return refreshCommand(projectRoot);
+    if (cmd === 'lsp')
+    {
+        // --changed-only: the installer's call, quiet on a re-run that found what the last one did.
+        const result = lsp.computeCoverage({ projectRoot, enabled: enabledPlugins(projectRoot) });
+        const changed = lsp.writeCoverage(projectRoot, result);
+        if (changed || !rest.includes('--changed-only')) console.log(lsp.coverageLine(result));
+        return 0;
+    }
     if (cmd === 'validate')
     {
         for (const row of validateRows(projectRoot)) console.log(row);
@@ -875,7 +894,7 @@ function main(argv)
         console.log(`Next: ${nextToolsId(doc ? doc.text : '')}`);
         return 0;
     }
-    console.error('usage: tools.js lint | next | inventory [--session-tools <file>] [--label <prefix>=own:<label>] | order [--seat <file>] | validate | refresh  [--project <dir>]');
+    console.error('usage: tools.js lint | next | inventory [--session-tools <file>] [--label <prefix>=own:<label>] | order [--seat <file>] | validate | refresh | lsp [--changed-only]  [--project <dir>]');
     return 2;
 }
 

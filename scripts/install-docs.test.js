@@ -50,7 +50,7 @@ const seed = (root) => docs.docsVersioningSeed({ projectRoot: root, docsPath: '.
 // No awareness doc under the docs root: the awareness step moves nothing and writes no rule.
 const NO_AWARENESS = { respelled: [], overlays: [], agents: 'none', rule: 'not written - no awareness doc yet' };
 // Every project's first run seeds the git doc (the preferences layout, 2026-10-21); a later run finds it there.
-const PREFS_RESULT = (git) => ({ respelled: [], overlays: [], watch: 'none', git, rule: 'none', scopes: [], reach: [], tools: [] });
+const PREFS_RESULT = (git) => ({ respelled: [], overlays: [], watch: 'none', git, rule: 'none', scopes: [], reach: [], tools: [], lsp: [] });
 
 // --- the versioning seed, the four-home rule ------------------------------
 
@@ -261,10 +261,12 @@ test('migration: the orientation doc loose at the docs root moves on to awarenes
     const run = () => docs.migrateDocsDomains({ projectRoot: root, docsPath: '.alfred/docs', rules: rulesOf(root), instructions: instructionsOf(root), log: (m) => logs.push(m) });
     const out = run();
     const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
-    assert.deepStrictEqual({ ...out, awareness: { ...out.awareness, rule: out.awareness.rule.replace(/\d+ bytes/, 'N bytes') } }, {
+    // The first run reports the language-server check once - which line depends on the machine's plugins.
+    const lspOnce = out.preferences.lsp.map((l) => l.replace(/^lsp: .*/, 'lsp: ...'));
+    assert.deepStrictEqual({ ...out, awareness: { ...out.awareness, rule: out.awareness.rule.replace(/\d+ bytes/, 'N bytes') }, preferences: { ...out.preferences, lsp: lspOnce } }, {
         moved: ['related-projects/RELATED-PROJECTS.md', 'awareness/RELATED-PROJECTS-AWARENESS.md'], switched: ['preferences'], repointed: ['.claude/rules/alfred-related-context.md'],
         awareness: { respelled: [], overlays: [], agents: 'none', rule: 'created - .claude/rules/alfred-awareness.md, N bytes, imports 1' },
-        preferences: PREFS_RESULT('seeded'),
+        preferences: { ...PREFS_RESULT('seeded'), lsp: ['lsp: ...'] },
     }, 'two hops in one run, and the one rule imports the doc');
     assert.strictEqual(read('.alfred/docs/awareness/RELATED-PROJECTS-AWARENESS.md'), '# Related projects\n\n## sample-app\n');
     assert.ok(!fs.existsSync(path.join(root, '.alfred/docs/PROJECT-RELATED-CONTEXT.md')));
@@ -960,19 +962,41 @@ test('preferences: the refresh runs the snapshot\'s tools.js only where an inven
     const answer = (result) => (cmd, args, opts) => { calls.push({ cmd, args, opts }); return result; };
     const bare = project();
     assert.deepStrictEqual(docs.migrateDocsDomains({ projectRoot: bare, docsPath: '.claude/docs', spawn: answer({ status: 0, stdout: '' }) }).preferences.tools, []);
-    assert.strictEqual(calls.length, 0, 'no inventory: nothing spawned');
+    assert.strictEqual(calls.filter((c) => c.args[1] === 'refresh').length, 0, 'no inventory: no refresh spawned');
+    calls.length = 0;
     const root = project({ files: { [INVENTORY]: TABLE_ONLY() } });
     const logs = [];
     const out = docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs', log: (m) => logs.push(m), spawn: answer({ status: 0, stdout: 'tools: mcp__x__ re-listed - 3 tools\n' }) });
     assert.deepStrictEqual(out.preferences.tools, ['tools: mcp__x__ re-listed - 3 tools']);
-    assert.strictEqual(calls[0].cmd, process.execPath);
-    assert.ok(calls[0].args[0].endsWith(path.join('capture-preferences', 'scripts', 'tools.js')), calls[0].args[0]);
-    assert.deepStrictEqual(calls[0].args.slice(1), ['refresh', '--project', root]);
-    assert.strictEqual(calls[0].opts.timeout, 60000);
+    assert.strictEqual(calls.find((x) => x.args[1] === 'refresh').cmd, process.execPath);
+    assert.ok(calls.find((x) => x.args[1] === 'refresh').args[0].endsWith(path.join('capture-preferences', 'scripts', 'tools.js')), calls.find((x) => x.args[1] === 'refresh').args[0]);
+    assert.deepStrictEqual(calls.find((x) => x.args[1] === 'refresh').args.slice(1), ['refresh', '--project', root]);
+    assert.strictEqual(calls.find((x) => x.args[1] === 'refresh').opts.timeout, 60000);
     assert.ok(logs.includes('  tools: mcp__x__ re-listed - 3 tools'), logs.join('\n'));
     const late = docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs', log: () => {}, spawn: answer({ status: null, error: Object.assign(new Error('t'), { code: 'ETIMEDOUT' }), stdout: '' }) });
     assert.deepStrictEqual(late.preferences.tools, ['!! tools: the inventory refresh did not finish in 60s - its recorded tools stand; /capture-preferences tools takes it again']);
     // what it said before the cap is kept, the late line after it (the final review, I5)
     const partial = docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs', log: () => {}, spawn: answer({ status: null, error: Object.assign(new Error('t'), { code: 'ETIMEDOUT' }), stdout: 'tools: mcp__x__ re-listed - 3 tools\n' }) });
     assert.deepStrictEqual(partial.preferences.tools, ['tools: mcp__x__ re-listed - 3 tools', '!! tools: the inventory refresh did not finish in 60s - its recorded tools stand; /capture-preferences tools takes it again']);
+});
+
+test('the language-server check runs the snapshot\'s tools.js lsp on every run, an inventory or not', () =>
+{
+    const calls = [];
+    const answer = (result) => (cmd, args, opts) => { calls.push({ cmd, args, opts }); return result; };
+    const bare = project();
+    const logs = [];
+    const out = docs.migrateDocsDomains({ projectRoot: bare, docsPath: '.claude/docs', log: (m) => logs.push(m), spawn: answer({ status: 0, stdout: "lsp: none covers this project's files - navigation starts at the grep\n" }) });
+    const call = calls.find((x) => x.args[1] === 'lsp');
+    assert.ok(call, 'spawned with no inventory');
+    assert.strictEqual(call.cmd, process.execPath);
+    assert.ok(call.args[0].endsWith(path.join('capture-preferences', 'scripts', 'tools.js')), call.args[0]);
+    assert.deepStrictEqual(call.args.slice(1), ['lsp', '--changed-only', '--project', bare]);
+    assert.strictEqual(call.opts.timeout, 30000);
+    assert.deepStrictEqual(out.preferences.lsp, ["lsp: none covers this project's files - navigation starts at the grep"]);
+    assert.ok(logs.includes("  lsp: none covers this project's files - navigation starts at the grep"), logs.join('\n'));
+    const late = docs.migrateDocsDomains({ projectRoot: bare, docsPath: '.claude/docs', log: () => {}, spawn: answer({ status: null, error: Object.assign(new Error('t'), { code: 'ETIMEDOUT' }), stdout: '' }) });
+    assert.deepStrictEqual(late.preferences.lsp, ['!! lsp: the language-server check did not finish in 30s - the last result stands; the next run checks again']);
+    const stopped = docs.migrateDocsDomains({ projectRoot: bare, docsPath: '.claude/docs', log: () => {}, spawn: answer({ status: 1, stdout: '' }) });
+    assert.deepStrictEqual(stopped.preferences.lsp, ['!! lsp: the language-server check stopped (exit 1) - the last result stands; the next run checks again']);
 });

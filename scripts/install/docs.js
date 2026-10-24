@@ -258,7 +258,7 @@ const LOCKED = /<!--\s*locked:\s*([a-z][a-z-]*)\s*-->/g;
 
 function migratePreferences({ projectRoot, base, log = () => {}, spawn = spawnSync })
 {
-    const out = { respelled: [], overlays: [], watch: 'none', git: 'none', rule: 'none', scopes: [], reach: [], tools: [] };
+    const out = { respelled: [], overlays: [], watch: 'none', git: 'none', rule: 'none', scopes: [], reach: [], tools: [], lsp: [] };
     if (!fs.existsSync(projectRoot)) return out;
     const dir = path.join(base, PREFERENCES);
     const keys = completedKeys(base, PREFERENCES, PREFERENCES_HOMES);
@@ -277,6 +277,7 @@ function migratePreferences({ projectRoot, base, log = () => {}, spawn = spawnSy
     out.scopes = deadScopeLines(projectRoot, dir, log);
     out.reach = mismatchLines(projectRoot, dir, log);
     out.tools = toolsRefreshLines(projectRoot, log, { spawn });
+    out.lsp = lspCoverageLines(projectRoot, log, { spawn });
     return out;
 }
 
@@ -295,6 +296,21 @@ function toolsRefreshLines(projectRoot, log, { spawn = spawnSync } = {})
     const out = String(r.stdout || '').split(/\r?\n/).filter(Boolean);
     if (r.error && r.error.code === 'ETIMEDOUT') out.push(`!! tools: the inventory refresh did not finish in ${TOOLS_REFRESH_MS / 1000}s - its recorded tools stand; /capture-preferences tools takes it again`);
     else if (r.status !== 0) out.push(`!! tools: the inventory refresh stopped (${r.error ? r.error.code || r.error.name : `exit ${r.status}`}) - its recorded tools stand; /capture-preferences tools takes it again`);
+    for (const line of out) log(`  ${line}`);
+    return out;
+}
+
+// Whether a language server covers the project (lsp-coverage.js, spec N2), checked on EVERY run - an inventory or not - by
+// the snapshot's tools.js in its own process, so a huge tree costs the run at most its cap; the tool order reads the file.
+// It speaks only when the result changed, so a re-run is quiet.
+const TOOLS_LSP_MS = 30000;
+function lspCoverageLines(projectRoot, log, { spawn = spawnSync } = {})
+{
+    if (!fs.existsSync(TOOLS) || !fs.existsSync(projectRoot)) return [];
+    const r = spawn(process.execPath, [TOOLS, 'lsp', '--changed-only', '--project', projectRoot], { cwd: projectRoot, encoding: 'utf8', timeout: TOOLS_LSP_MS, windowsHide: true });
+    const out = String(r.stdout || '').split(/\r?\n/).filter(Boolean);
+    if (r.error && r.error.code === 'ETIMEDOUT') out.push(`!! lsp: the language-server check did not finish in ${TOOLS_LSP_MS / 1000}s - the last result stands; the next run checks again`);
+    else if (r.status !== 0) out.push(`!! lsp: the language-server check stopped (${r.error ? r.error.code || r.error.name : `exit ${r.status}`}) - the last result stands; the next run checks again`);
     for (const line of out) log(`  ${line}`);
     return out;
 }

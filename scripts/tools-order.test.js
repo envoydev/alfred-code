@@ -536,3 +536,51 @@ test('jobOrder: the ranks one job resolves to, whose they are and whether the st
     }
     finally { s.done(); }
 });
+
+// LSP only where a language server covers the project (spec N2): the install-time check's file, read at the start.
+const NO_LSP = (s) => s.write(path.join(s.root, '.alfred', 'state', 'lsp-coverage.json'), { version: 1, checked: '2026-10-24', servers: [], covered: [], missing: [] });
+
+test('no language server covers the project: the default navigation order starts at the grep, silently', () =>
+{
+    const s = sandbox();
+    try
+    {
+        NO_PLUGINS(s);
+        NO_LSP(s);
+        const main = s.line();
+        assert.ok(main.includes('): Grep.\n'), main);
+        assert.ok(!main.includes('Skipped here') && !main.includes('LSP'), main);
+    }
+    finally { s.done(); }
+});
+
+test('a user\'s LSP rank no language server covers is named', () =>
+{
+    const s = sandbox();
+    try
+    {
+        NO_PLUGINS(s);
+        NO_LSP(s);
+        s.doc(['## T1 - Code navigation', '<!-- id: t1 -->', '- Job: navigation', '- Order: LSP > Grep']);
+        const main = s.line();
+        assert.ok(main.includes('Skipped here: LSP (no language server covers this project)'), main);
+        assert.ok(main.includes('): Grep.'), main);
+        assert.ok(tools.validateRows(s.root, s.env).includes("!! tools: T1 ranks LSP, but no language server covers this project's files - install the language's *-lsp plugin and its server, or change the rank through /capture-preferences tools"));
+    }
+    finally { s.done(); }
+});
+
+test('no coverage file, or one with a covering server, keeps LSP as today', () =>
+{
+    const s = sandbox();
+    try
+    {
+        NO_PLUGINS(s);
+        const before = s.line();
+        assert.ok(before.includes(': LSP > Grep. Load: ToolSearch select:LSP\n'), before);
+        s.write(path.join(s.root, '.alfred', 'state', 'lsp-coverage.json'), { version: 1, checked: '2026-10-24', servers: [{ plugin: 'typescript-lsp', command: 'typescript-language-server', onPath: true, exts: ['.ts'] }], covered: ['.ts'], missing: [] });
+        assert.strictEqual(s.line(), before);
+        assert.deepStrictEqual(tools.validateRows(s.root, s.env), []);
+    }
+    finally { s.done(); }
+});
