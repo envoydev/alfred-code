@@ -273,3 +273,35 @@ test('two servers sharing a command keep both servers\' extensions', () =>
     }
     finally { s.done(); }
 });
+
+// Matrix case 17: git lists the stack's own files too (.claude/hooks/*.js, the data root), so a project holding nothing else
+// read as settled - and as covered wherever a server maps .js or .md. Git's list skips what the walk skips.
+test('in git the walk\'s skipped folders are skipped too: .claude, node_modules and the data root at any depth they apply', () =>
+{
+    const s = sandbox();
+    try
+    {
+        spawnSync('git', ['init', '-q'], { cwd: s.root });
+        for (const f of ['.claude/hooks/docs.js', '.claude/rules/r.md', '.alfred/docs/a.md', 'node_modules/p/i.js', 'pkg/.claude/x.js']) writeText(path.join(s.root, f), 'x\n');
+        const empty = lsp.scanProject({ projectRoot: s.root });
+        assert.deepStrictEqual([empty.files, [...empty.exts]], [0, []], 'only the stack\'s and the packages\' files: nothing of the project\'s');
+        writeText(path.join(s.root, 'src', 'a.ts'), 'x\n');
+        writeText(path.join(s.root, 'docs', '.alfred', 'b.py'), 'x\n');
+        assert.deepStrictEqual([...lsp.projectExtensions({ projectRoot: s.root })].sort(), ['.py', '.ts'], 'the data root is skipped at the top only, as the walk does');
+    }
+    finally { s.done(); }
+});
+
+test('a nested data root is skipped by its whole path, its parent folder still read', () =>
+{
+    const s = sandbox();
+    try
+    {
+        writeJson(path.join(s.root, '.claude', 'settings.json'), { env: { ALFRED_CODE_DATA_PATH: 'docs/alfred' } });
+        for (const f of ['docs/alfred/state/x.js', 'docs/guide.md']) writeText(path.join(s.root, f), 'x\n');
+        assert.deepStrictEqual([...lsp.projectExtensions({ projectRoot: s.root })], ['.md'], 'outside git');
+        spawnSync('git', ['init', '-q'], { cwd: s.root });
+        assert.deepStrictEqual([...lsp.projectExtensions({ projectRoot: s.root })], ['.md'], 'in git');
+    }
+    finally { s.done(); }
+});

@@ -104,20 +104,28 @@ function onPath(command, env = process.env, platform = process.platform, vars = 
 
 // The file types the project holds: where git answers, its tracked files and the ones not committed yet that it does not
 // ignore (a fresh repo has nothing tracked), every one of them - git hands the list over whole, so a cap would only cut
-// covered files off (final review I2) - else a breadth-first walk that skips git's, the packages', Claude Code's and the
-// stack's data folders and stops at `walkCap` files. `files` counts what was read, `capped` says the walk stopped short.
+// covered files off (final review I2) - else a breadth-first walk that stops at `walkCap` files. Both skip git's, the
+// packages' and Claude Code's folders at any depth and the stack's data root at the top: git lists the stack's own copies
+// (.claude/hooks/*.js) too, which made a project holding nothing else read as covered wherever a server maps .js.
+// `files` counts what was read, `capped` says the walk stopped short.
 function scanProject({ projectRoot, spawn = spawnSync, walkCap = WALK_CAP })
 {
     const exts = new Set();
     const add = (name) => { const e = path.extname(name).toLowerCase(); if (e) exts.add(e); };
+    const data = prefs.dataRoot(projectRoot);
+    const skipped = (rel) => { const parts = rel.split('/'); return parts.some((p) => SKIP_DIRS.has(p)) || rel === data || rel.startsWith(`${data}/`); };
     const git = spawn('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: projectRoot, encoding: 'utf8', timeout: GIT_TIMEOUT_MS, maxBuffer: 512 * 1024 * 1024, windowsHide: true });
     if (git && git.status === 0 && typeof git.stdout === 'string')
     {
         let files = 0;
-        for (const f of git.stdout.split('\0')) if (f) { files++; add(f); }
+        for (const f of git.stdout.split('\0'))
+        {
+            if (!f || skipped(path.posix.dirname(f))) continue;
+            files++;
+            add(f);
+        }
         return { exts, files, capped: false };
     }
-    const skip = new Set([...SKIP_DIRS, prefs.dataRoot(projectRoot).split('/')[0]]);
     const queue = [projectRoot];
     let n = 0;
     let capped = false;
@@ -129,7 +137,7 @@ function scanProject({ projectRoot, spawn = spawnSync, walkCap = WALK_CAP })
         catch { continue; }
         for (const d of entries)
         {
-            if (d.isDirectory()) { if (!(dir === projectRoot && skip.has(d.name)) && !SKIP_DIRS.has(d.name)) queue.push(path.join(dir, d.name)); continue; }
+            if (d.isDirectory()) { if (!skipped(path.relative(projectRoot, path.join(dir, d.name)).split(path.sep).join('/'))) queue.push(path.join(dir, d.name)); continue; }
             if (!d.isFile()) continue;
             if (n >= walkCap) { capped = true; break; }
             n++;
