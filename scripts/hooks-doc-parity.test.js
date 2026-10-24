@@ -65,11 +65,15 @@ test('I10: the desktop gate is one wired hook, counted everywhere the hooks are 
   // registration name is unknown - an `App` the macOS server holds is wired too, and the guard judges its mode.
   for (const name of ['mcp__plugin_windows-control_windows-control__App', `mcp__${'windows-control'}__App`, 'mcp__plugin_macos-control_macos-control__Shell', `mcp__${'macos-control'}__Shell`, 'mcp__windows-mcp__App', 'mcp__plugin_macos-control_macos-control__App']) // mcp-fixture
     assert.ok(re.test(name), name);
-  for (const name of ['mcp__plugin_windows-control_windows-control__Click', `mcp__${'windows-control'}__AppX`, 'App', 'mcp__x__ShellX']) // mcp-fixture
+  for (const name of ['mcp__plugin_windows-control_windows-control__Click', `mcp__${'windows-control'}__AppX`, 'App', 'mcp__x__ShellX', 'mcp__x__browser_run_code_unsafeX', 'mcp__x__browser_evaluate']) // mcp-fixture
     assert.ok(!re.test(name), `${name} is not matched`);
+  // ... and the browser server type's code runner, under any registration (ruling N9, 2026-10-24).
+  for (const name of [`mcp__${'playwright-chrome'}__browser_run_code_unsafe`, 'mcp__plugin_my-browser_my-browser__browser_run_code_unsafe']) // mcp-fixture
+    assert.ok(re.test(name), name);
   assert.match(claude(), /`stack\/hooks\/` - eighteen hooks/);
   assert.match(claude(), /all eighteen, generated from the manifest's `hooks\[\]`/);
   assert.match(claude(), /`guard-desktop-exec\.js` \(PreToolUse on the desktop server types' two process launchers, `App` and `Shell`, under any\s+registration name/);
+  assert.match(claude(), /type's code runner `browser_run_code_unsafe` the same way/);
   assert.doesNotMatch(read('README.md'), /seventeen/);
   assert.doesNotMatch(read('docs/install-footprint.md'), /seventeen/);
   // The walk's own count follows the manifest's hook files (hooks track H6, 2026-10-21: the pin forbade 'all eighteen'

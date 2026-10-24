@@ -661,7 +661,7 @@ function writeSettings(opts)
     const {
         file, hookSpecs = [], retiredHooks = [], denySpecs = [], retiredDeny = [],
         agentDeny = [], agentAllow = [],
-        mcpOff = [], catalog = [], migrations = {},
+        mcpOff = [], dropEmptyApprovals = false, catalog = [], migrations = {},
         docsVersioning, docsPath = null, dataPath = null, autoCompact = null, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null, renamed = null,
         inheritedOverrides = null, sharedFile = null, sharedKeys = [], attribution = null, worktreeBase = null, compactWindows = null, ledger = {},
         log = () => {}, note = () => {},
@@ -778,6 +778,11 @@ function writeSettings(opts)
         for (const name of mcpOff) if (list.includes(name))
         { list.splice(list.indexOf(name), 1); changed = true; dropped = true; log(`  ${label}: dropped ${listKey} entry ${name} (no longer registered here)`); }
         if (dropped && !list.length) delete data[listKey];
+        // Every release before 2.10.1 created enabledMcpjsonServers on each write, an empty one on the plugin route, so on
+        // the first update past the retirement an empty list is the stack's and goes, as uninstall takes it. An empty
+        // disabledMcpjsonServers was never the stack's (R116), so it stays.
+        else if (!dropped && !list.length && dropEmptyApprovals && listKey === 'enabledMcpjsonServers')
+        { delete data[listKey]; changed = true; log(`  ${label}: dropped the empty enabledMcpjsonServers list an earlier release created`); }
     }
 
     // The git preferences forbid AI attribution; the `attribution` setting enforces it. Key by key and add-only:

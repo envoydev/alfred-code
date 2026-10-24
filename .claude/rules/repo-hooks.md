@@ -1014,11 +1014,15 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     whether a migration was applied lives in a database no hook reads.
   - `guard-desktop-exec.js` (PreToolUse on the desktop server types' two process launchers, `App` and `Shell`, under any
     registration name - `^mcp__.+__App$|^mcp__.+__Shell$`, since the stack ships no server and the name is the user's
-    (2026-10-24, ruling N6); a bare server spelling in a test is never literal text, lint check 54) - the
+    (2026-10-24, ruling N6); a bare server spelling in a test is never literal text, lint check 54 - and the browser server
+    type's code runner `browser_run_code_unsafe` the same way, `|^mcp__.+__browser_run_code_unsafe$`: Playwright's README
+    calls it 'RCE-equivalent' and no flag switches it off, so the settings deny 2.5.0 to 2.10.0 wrote under the stack's own
+    server names is lifted and this gate holds it under any name, its block row keeping `from: code|file`, never the code
+    (2026-10-24, ruling N9, a side note's finding: an add-back under the record name ran it unjudged)) - the
     user's ruling of 2026-09-29 (I10): Windows-MCP's `App` with `mode: launch_executable` (any executable, caller-given
     args - the server excludes tools by NAME, never by mode) and every MacOS-MCP `Shell` call (a shell command no
     shell guard sees) are denied; `App`'s `launch` / `switch` / `resize` pass. 'Allow' is honoured through
-    `<data root>/state/approvals/DESKTOP-EXEC-ALLOW` (`App`, `Shell`, one executable's FULL path - either slash, and either case on
+    `<data root>/state/approvals/DESKTOP-EXEC-ALLOW` (`App`, `Shell`, `browser_run_code_unsafe`, one executable's FULL path - either slash, and either case on
     a Windows path - or `*`; a bare file name opens only a call naming it bare, never that name in every directory - audit
     2026-10-20, the hooks track's minor list); the denial suggests the full path - and names a live bare line that
     missed it, with the full path to write in its place - and a Shell block row keeps

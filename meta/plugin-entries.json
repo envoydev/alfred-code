@@ -196,7 +196,7 @@
             ]
           },
           {
-            "matcher": "^mcp__.+__App$|^mcp__.+__Shell$",
+            "matcher": "^mcp__.+__App$|^mcp__.+__Shell$|^mcp__.+__browser_run_code_unsafe$",
             "hooks": [
               {
                 "type": "command",

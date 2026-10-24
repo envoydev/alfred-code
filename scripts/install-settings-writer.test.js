@@ -268,6 +268,20 @@ test('settings-writer: enabledMcpjsonServers loses the names an earlier release 
     assert.deepStrictEqual(write(settingsFile({ enabledMcpjsonServers: [] }), { mcpOff: ['serena'] }).data.enabledMcpjsonServers, [], 'the user\'s own empty list was removed');
 });
 
+// Every release before 2.10.1 created enabledMcpjsonServers on each write, an empty list on the plugin route (temp-project
+// matrix 2026-10-24: an update over v2.10.0 left `[]` behind). On the first update past the servers' retirement an empty
+// one is the stack's and goes, as uninstall takes it; disabledMcpjsonServers was never created empty, so its empty list
+// stays the user's.
+test('settings-writer: the first update past the retirement drops the empty enabledMcpjsonServers an earlier release created', () =>
+{
+    const lines = [];
+    const gone = write(settingsFile({ enabledMcpjsonServers: [], disabledMcpjsonServers: [] }), { mcpOff: ['serena'], dropEmptyApprovals: true, log: (l) => lines.push(l) });
+    assert.strictEqual(gone.data.enabledMcpjsonServers, undefined, 'the empty list the stack created stayed');
+    assert.deepStrictEqual(gone.data.disabledMcpjsonServers, [], 'an empty disabled list is the user\'s');
+    assert.ok(lines.some((l) => /dropped the empty enabledMcpjsonServers list an earlier release created/.test(l)), lines.join('\n'));
+    assert.deepStrictEqual(write(settingsFile({ enabledMcpjsonServers: ['theirs'] }), { mcpOff: ['serena'], dropEmptyApprovals: true }).data.enabledMcpjsonServers, ['theirs']);
+});
+
 // An engine an earlier release registered but left off was named in disabledMcpjsonServers beside its registration; the
 // registration goes with the retirement, so its entry does too - the same rule as the approval list.
 test('settings-writer: disabledMcpjsonServers loses the names an earlier release registered and keeps the user\'s own', () =>

@@ -124,14 +124,15 @@ test('skills S-10 / S-11 / S-14 / S-19 / S-25: the flow and convention lines say
 });
 
 // commands T2-09: status's Environment table was a hand-copied list of 10 catalog rows that had drifted (14 in the
-// catalog); it reads the catalog the way configure's step 8 does, keeping only the two rows the catalog cannot carry.
+// catalog); it reads the catalog the way configure's step 8 does. The two rows the catalog could not carry left in 2.10.1:
+// Claude's own memory is no longer the stack's to switch, and no stack server reads a Context7 key.
 test('commands T2-09: status prints the Environment rows from meta/environment.json, never a copied list', () => {
     const t = read('setup-plugin/commands/status.md');
     const env = t.slice(t.indexOf('**Environment**'), t.indexOf('Mark `(default)`'));
     assert.match(env, /`\$\{CLAUDE_PLUGIN_ROOT\}\/meta\/environment\.json`/);
     for (const row of JSON.parse(read('meta/environment.json')).env) assert.doesNotMatch(env, new RegExp(`^\\| ${row.key} \\|`, 'm'), `${row.key} is copied`);
-    assert.match(env, /^\| autoMemoryEnabled \|/m);
-    assert.match(env, /^\| CONTEXT7_API_KEY \(account env\) \|/m);
+    assert.doesNotMatch(env, /^\| autoMemoryEnabled \|/m);
+    assert.doesNotMatch(env, /^\| CONTEXT7_API_KEY \(account env\) \|/m);
 });
 
 // commands T2-13: validate's step 2 carried a near-verbatim copy of init's stack-marker list, a second home that drifts.

@@ -4663,6 +4663,37 @@ test('guard-desktop-exec: App launch_executable and every macOS Shell call are d
   assert.ok(rows.every((row) => row.hook === 'guard-desktop-exec.js'));
 });
 
+// The browser server type's code runner (the side note of 2026-10-24, ruling N9): Playwright MCP's browser_run_code_unsafe
+// 'executes arbitrary JavaScript in the Playwright server process and is RCE-equivalent' (its README), and no flag
+// switches it off. 2.5.0 to 2.10.0 denied it in settings under the stack's own server names only, so a server added back
+// under its record name ran it unjudged - the gate holds it by tool name, under any registration.
+const RUN_CODE = [`mcp__plugin_${'chrome-control'}_${'chrome-control'}__browser_run_code_unsafe`, `mcp__${'playwright-chrome'}__browser_run_code_unsafe`, 'mcp__my-browser__browser_run_code_unsafe']; // mcp-fixture
+test('guard-desktop-exec: the browser code runner is denied under any registration name, its code never ledgered, and its receipt line opens it', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'desk-code-'));
+  for (const tool of RUN_CODE) {
+    const r = desktopRun(root, tool, { code: "async (page) => require('child_process').execSync('TOKEN=ghp_0123456789abcdefghijABCDEFGHIJ012345 curl x')" });
+    assert.equal(r.status, 2, tool);
+    assert.match(r.stderr, /arbitrary JavaScript in the browser server's own process/);
+    assert.match(r.stderr, /browser_evaluate/, 'the page tools are the way round');
+    assert.match(r.stderr, /ONE AskUserQuestion/, 'the decision goes to the user through one ask');
+    assert.match(r.stderr, /with the line `browser_run_code_unsafe`/, 'and names the receipt line that opens it');
+  }
+  assert.equal(desktopRun(root, RUN_CODE[1], { filename: 'scripts/run.js' }).status, 2, 'code loaded from a file is the same call');
+  for (const tool of RUN_CODE.map((t) => t.replace(/browser_run_code_unsafe$/, 'browser_evaluate')).concat(RUN_CODE.map((t) => `${t}X`)))
+    assert.equal(desktopRun(root, tool, { function: '() => document.title' }).status, 0, `${tool} is not this guard's`);
+  const ledger = fs.readFileSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', 'desk.jsonl'), 'utf8');
+  const rows = ledger.trim().split('\n').map((l) => JSON.parse(l));
+  assert.deepStrictEqual(rows.map((row) => row.detail), [...RUN_CODE.map(() => ({ tool: 'browser_run_code_unsafe', from: 'code' })), { tool: 'browser_run_code_unsafe', from: 'file' }]);
+  assert.doesNotMatch(ledger, /ghp_|child_process|run\.js/, 'neither the code nor the file reaches the ledger');
+  stateReceipt(root, 'DESKTOP-EXEC-ALLOW', 'Shell\nApp\n');
+  assert.equal(desktopRun(root, RUN_CODE[0], { code: 'x' }).status, 2, 'the desktop lines open no code runner');
+  stateReceipt(root, 'DESKTOP-EXEC-ALLOW', 'browser_run_code_unsafe\n');
+  assert.equal(desktopRun(root, RUN_CODE[2], { code: 'x' }).status, 0, 'its own line opens it');
+  assert.equal(desktopRun(root, 'mcp__mac__Shell', { command: 'ls' }).status, 2, 'and nothing else'); // mcp-fixture
+  stateReceipt(root, 'DESKTOP-EXEC-ALLOW', '*\n');
+  assert.equal(desktopRun(root, RUN_CODE[1], { code: 'x' }).status, 0, '`*` opens it too');
+});
+
 // Audit 2026-10-08 row 40: the ledger kept 120 characters of the Shell command, credential included, and the denial
 // suggested a file-name receipt line, which opens that name in every directory.
 // mcps track T1-1 (2026-10-21): the six retired alias entries (build-marketplace.js LISTED_ALIASES) run the same servers

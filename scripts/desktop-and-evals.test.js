@@ -122,14 +122,14 @@ test('I9: the size-first cases live with the library cases, where the eval bundl
 });
 
 // ---------------------------------------------------------------- CLAUDE.md, where these changes made it false
-test('CLAUDE.md states the new gate, the browser flag and the stack serena context', () =>
+// Since 2.10.1 the stack launches no server (the user's ruling of 2026-10-24), so the docs describe no launch flag and no
+// copied navigation context; the shipped record (stack/mcp/shipped-mcps.json) holds how each server started.
+test('CLAUDE.md describes no server launch: no Windows-MCP gate, no browser flag, no copied serena context', () =>
 {
     const doc = flat(readClaudeDocs());
-    assert.match(doc, /Windows-MCP starts with `--exclude-tools PowerShell,Registry,Process,FileSystem`/);
-    assert.doesNotMatch(doc, /Windows-MCP starts with `--exclude-tools PowerShell,Registry,Process`;/);
-    assert.match(doc, /--no-webmcp/);
-    assert.match(doc, /`stack\/mcp\/navigation-context\.yml`/);
-    assert.match(doc, /`\.claude\/navigation-context\.yml`/);
+    assert.doesNotMatch(doc, /Windows-MCP starts with `--exclude-tools/);
+    assert.doesNotMatch(doc, /--no-webmcp/);
+    assert.doesNotMatch(doc, /`\.claude\/navigation-context\.yml`/);
     assert.doesNotMatch(doc, /Cursor runs serena with `--context ide-assistant`; Claude with `claude-code`\./);
     assert.doesNotMatch(doc, /MCP entries? (?:names?|depends? on) the core/);
 });

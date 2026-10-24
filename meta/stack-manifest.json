@@ -878,9 +878,9 @@
     },
     {
       "file": "guard-desktop-exec.js",
-      "matcher": "^mcp__.+__App$|^mcp__.+__Shell$",
+      "matcher": "^mcp__.+__App$|^mcp__.+__Shell$|^mcp__.+__browser_run_code_unsafe$",
       "event": "",
-      "note": "the desktop servers' process launchers, matched by tool name under whatever server the user registered (the stack ships none since 2026-10-24): deny Windows-MCP App with mode launch_executable (any executable, caller-given args - the server excludes by tool name, never by mode) and every MacOS-MCP Shell call (a shell command no shell guard sees); App's launch / switch / resize pass; the DESKTOP-EXEC-ALLOW receipt (App, Shell, an executable, or *) honours a wanted launch"
+      "note": "the desktop servers' process launchers, matched by tool name under whatever server the user registered (the stack ships none since 2026-10-24): deny Windows-MCP App with mode launch_executable (any executable, caller-given args - the server excludes by tool name, never by mode) and every MacOS-MCP Shell call (a shell command no shell guard sees); App's launch / switch / resize pass; and a browser server's browser_run_code_unsafe (arbitrary JavaScript in the server's own process, no flag switches it off - 2026-10-24, ruling N9); the DESKTOP-EXEC-ALLOW receipt (App, Shell, browser_run_code_unsafe, an executable, or *) honours a wanted call"
     },
     {
       "file": "guard-answer.js",

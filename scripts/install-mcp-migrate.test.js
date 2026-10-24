@@ -286,6 +286,32 @@ test('update at project scope: the stack\'s .mcp.json rows go, a .mcp.json left 
     }
 });
 
+test('update at project scope names a ledgered .mcp.json row the user edited since, with its remove command, keeps it, and is quiet after', POSIX_ONLY, () =>
+{
+    const { calls, outs, steps } = seedRun(['install', 'update', 'update'], SELECTION, {
+        account: true,
+        args: [[], ['--installed-only'], ['--installed-only']],
+        each: (repo, i) =>
+        {
+            const mcpJson = path.join(repo, '.mcp.json');
+            if (i === 0)
+            {
+                putJson(mcpJson, { mcpServers: { 'alfred-navigation': shippedRow('alfred-navigation'), 'alfred-memory': { ...shippedRow('alfred-memory'), args: ['mine.js'] } } });
+                olderStamp(repo, { lines: { 'managed-mcp': ['alfred-navigation', 'alfred-memory'].map((n) => `${n}=${entryHash(shippedRow(n))}`).join(',') } });
+            }
+            if (i === 1) olderStamp(repo, { version: '2.10.1' });
+            return { calls: callCount(repo), mcp: fs.existsSync(mcpJson) ? Object.keys(jsonAt(mcpJson).mcpServers || {}) : null };
+        },
+    });
+    const removes = callsSince(calls, steps[0].calls).slice(0, steps[1].calls - steps[0].calls).filter((c) => /^mcp remove /.test(c));
+    assert.deepStrictEqual(removes, ['mcp remove alfred-navigation -s project'], outs[1]);
+    assert.deepStrictEqual(steps[1].mcp, ['alfred-memory'], outs[1]);
+    assert.match(outs[1], /mcp alfred-memory: kept - the \.mcp\.json entry is not the one the stack wrote \(changed since\), so it is yours; if it should go: claude mcp remove alfred-memory -s project/, outs[1]);
+    assert.doesNotMatch(outs[1], /add it back: claude mcp add-json --scope project alfred-memory /, 'the add-back of a name the file still holds');
+    assert.deepStrictEqual(steps[2].mcp, steps[1].mcp, outs[2]);
+    assert.doesNotMatch(outs[2], /mcp alfred-memory:/, outs[2]);
+});
+
 test('update drops a retired server plugin\'s enabledPlugins key from the project\'s settings when no install of it reaches this project', POSIX_ONLY, () =>
 {
     for (const blind of [false, true])

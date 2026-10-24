@@ -499,12 +499,13 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             renamed: manifest.renamed.mcps, rows: readRetiredPlugins(resolved.dir),
             lastVersion: stampLayer.readVersion(stampFile), compare: compareVersions,
         });
-        // R10: at project scope the ledger answers exactly - a retired name's .mcp.json entry is due only
+        // R10: at project scope the ledger answers exactly - a retired name's .mcp.json entry is pruned only
         // when the last run recorded it and nobody changed it since; the version gate is the fallback
-        // for a stamp with no ledger, and for a name the file does not hold.
+        // for a stamp with no ledger, and for a name the file does not hold. An edited entry stays due on
+        // the version gate, so retireMcps names it once with its remove command instead of keeping it silently.
         const heldMcp = mcp.registrationsAt({ scope: 'project', mcpFile, projectRoot }).servers;
         const retiredMcpsDue = priorLedger && priorLedger.mcp && cliScope === 'project'
-            ? manifest.retired.mcps.filter((n) => (heldMcp[n] ? priorLedger.mcp[n] === stampLayer.entryHash(heldMcp[n]) : versionDue.includes(n)))
+            ? manifest.retired.mcps.filter((n) => (heldMcp[n] && priorLedger.mcp[n] === stampLayer.entryHash(heldMcp[n])) || versionDue.includes(n))
             : versionDue;
         const ctx = {
             args, env, cliEnv, log, note, plain, cli, rt, source: resolved, manifest, lists, routes,
@@ -1603,6 +1604,15 @@ function retiredSince(ctx)
     return (readRetiredPlugins(ctx.source.dir).find((r) => r.name === 'alfred-navigation') || {}).retiredIn || 'this release';
 }
 
+// Whether this run is the first past the servers' retirement: the stamp's release before it, or a pre-stamp install whose
+// installer wrote the same. What an earlier release left beside its servers is the stack's only then.
+function serversRetireDue(ctx)
+{
+    const since = retiredSince(ctx);
+    const last = stampLayer.readVersion(ctx.stampFile);
+    return Boolean(ctx.legacyUnstamped) || Boolean(/^\d/.test(since) && last && compareVersions(last, since) < 0);
+}
+
 // A .mcp.json the prune just emptied held nothing but the stack's registrations - an earlier release made it: it goes, the
 // way uninstall takes it. Another top-level key, or a server left in it, keeps the file.
 function dropEmptiedMcpJson(ctx)
@@ -1757,6 +1767,7 @@ function installHooksAndRules(ctx)
         // No server is trusted: every name the stack ever registered leaves enabledMcpjsonServers - except one kept as the
         // user's own under that name, which keeps its approval (A-M3).
         mcpOff: retiredApprovals(ctx),
+        dropEmptyApprovals: serversRetireDue(ctx),
         hooksOff, hooksAnswered,
         // N6: at local scope settings.json still applies beneath the local file, so what it holds is no
         // gap for a seed to fill - a local default would hide it.
