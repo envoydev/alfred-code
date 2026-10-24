@@ -605,30 +605,33 @@ const defaultEntries = (adapters) => Object.entries(adapters.jobs || {}).filter(
 }));
 
 // Each job's ranks this actor can call, in the doc's order, and each rank it cannot with the reason. For an agent the
-// deny list narrows the ranks, and a job left with no rank is left out whole - a seat is told only its own jobs.
+// deny list narrows the ranks, and a job left with no rank is left out whole - a seat is told only its own jobs. A job the
+// user's doc ranks with nothing this actor reaches takes the stack's order for it (spec N1, N3): a seat would otherwise
+// lose the job's line, and the main session its order.
 function resolveOrder({ entries, adapters = readAdapters(), inventory = null, reach, agent = false })
 {
     const types = adapters.types || {};
     const machine = reach.parent || reach;
     const denied = agent ? entries.filter((e) => e.job === 'deny').flatMap((e) => e.deny) : [];
     const isDenied = (type, tool) => denied.some((d) => d.type === type && (!d.tool || d.tool === tool));
+    const fallbacks = defaultEntries(adapters);
     const jobs = [];
     const seen = new Set();
-    for (const e of entries)
+    // One entry's ranks this actor reaches, and the ones it does not with the reason.
+    const ranksOf = (e) =>
     {
-        if (!e.job || e.job === 'deny' || !e.hasOrder || seen.has(e.job)) continue;
-        seen.add(e.job);
-        const job = { job: e.job, purpose: e.purpose || ((adapters.jobs || {})[e.job] || {}).purpose || '', ranks: [], skipped: [], isDefault: !!e.isDefault };
+        const ranks = [];
+        const skipped = [];
         // A default rank the actor cannot reach is the normal state since the stack ships no server (2.10.1), so it is left
         // out silently; one the user's doc chose is named, and so is a default whose server is here but mismatched.
         const quiet = (why) => e.isDefault && (why === 'not on this machine' || why === 'not in your tools');
-        const skip = (label, why) => { if (!quiet(why)) job.skipped.push({ label, why }); };
+        const skip = (label, why) => { if (!quiet(why)) skipped.push({ label, why }); };
         for (const r of e.ranks)
         {
             if (r.kind === 'builtin')
             {
                 // A deferred built-in is loaded through ToolSearch like a server's tools (final review B2), so its rank names it.
-                if (reach.builtins.has(r.name)) job.ranks.push({ label: r.name, names: (adapters.deferred || []).includes(r.name) ? [r.name] : [], builtin: true });
+                if (reach.builtins.has(r.name)) ranks.push({ label: r.name, names: (adapters.deferred || []).includes(r.name) ? [r.name] : [], builtin: true });
                 else skip(r.name, machine.builtins.has(r.name) ? 'not in your tools' : 'not on this machine');
                 continue;
             }
@@ -648,7 +651,24 @@ function resolveOrder({ entries, adapters = readAdapters(), inventory = null, re
             const mine = reach.servers.get(r.type);
             names = mine ? names.filter((t) => mine.tools.has(t)) : [];
             if (!names.length) { skip(r.type, 'not in your tools'); continue; }
-            job.ranks.push({ label: `${r.type} ${names.join(', ')}`, names: names.map((t) => mine.prefix + t) });
+            ranks.push({ label: `${r.type} ${names.join(', ')}`, names: names.map((t) => mine.prefix + t) });
+        }
+        return { ranks, skipped };
+    };
+    for (const e of entries)
+    {
+        if (!e.job || e.job === 'deny' || !e.hasOrder || seen.has(e.job)) continue;
+        seen.add(e.job);
+        const job = { job: e.job, purpose: e.purpose || ((adapters.jobs || {})[e.job] || {}).purpose || '', ranks: [], skipped: [], isDefault: !!e.isDefault, fellBack: false };
+        Object.assign(job, ranksOf(e));
+        const fallback = !e.isDefault && !job.ranks.length ? fallbacks.find((d) => d.job === e.job) : null;
+        const stand = fallback ? ranksOf(fallback) : null;
+        if (stand && stand.ranks.length)
+        {
+            job.ranks = stand.ranks;
+            job.fellBack = true;
+            // A seat is told the order it can use, not the user's ranks it cannot.
+            if (agent) job.skipped = [];
         }
         if (job.ranks.length || !agent) jobs.push(job);
     }
@@ -657,7 +677,7 @@ function resolveOrder({ entries, adapters = readAdapters(), inventory = null, re
 
 const PROBLEM_LINES = 3;
 // The start line: one line per job that has a rank, then what was skipped, the doc's problems and the suggestion.
-function startLine({ jobs, docRel = null, defaults = false, problems = [], suggest = false, load = true })
+function startLine({ jobs, docRel = null, defaults = false, problems = [], suggest = false, load = true, fillNote = true })
 {
     const stated = jobs.filter((j) => j.ranks.length);
     const skipped = jobs.flatMap((j) => j.skipped);
@@ -673,6 +693,7 @@ function startLine({ jobs, docRel = null, defaults = false, problems = [], sugge
             lines.push(`- ${j.job}${j.purpose ? ` (${j.purpose})` : ''}: ${j.ranks.map((r) => r.label).join(' > ')}.${withLoad && names.length ? ` Load: ToolSearch select:${names.join(',')}` : ''}`);
         }
         if (skipped.length) lines.push(`Skipped here: ${skipped.map((x) => `${x.label} (${x.why})`).join(', ')}.`);
+        if (fillNote) for (const j of stated.filter((x) => x.fellBack)) lines.push(`Filled in: ${j.job} - your ranks reach nothing here, so the stack's order stands in; fix them with /capture-preferences tools.`);
         for (const p of problems.slice(0, PROBLEM_LINES)) lines.push(`Doc problem: ${p}`);
         if (problems.length > PROBLEM_LINES) lines.push(`... and ${problems.length - PROBLEM_LINES} more - run tools.js lint`);
         if (!load && stated.some((j) => j.ranks.some((r) => r.names.length && !r.builtin))) lines.push('Call them directly - your tools grant them.');
@@ -700,30 +721,44 @@ function startLine({ jobs, docRel = null, defaults = false, problems = [], sugge
 // built-in seat or another plugin's, which reaches what the main session does. A valid doc keeps the defaults for the
 // jobs it does not rank; a malformed one states only the entries that resolve, never a default that could outrank the
 // user's choice. Never throws: a start line is never worth a failed start.
+// Each job's order for one actor, with the doc and its problems - what the start line states and the modes lines read.
+function orderFor({ projectRoot, env = process.env, seat = null })
+{
+    const adapters = readAdapters();
+    const inventory = usableInventory(readInventory(projectRoot));
+    const main = mainReach({ projectRoot, env, adapters, inventory });
+    const reach = seat && typeof seat === 'object' ? seatReach(seat.frontmatter, main) : main;
+    const agent = seat !== null && seat !== undefined;
+    const doc = readToolsDoc(projectRoot);
+    let entries = defaultEntries(adapters);
+    let problems = [];
+    if (doc)
+    {
+        const own = parseToolsDoc(doc.text, adapters).entries;
+        problems = lintToolsDoc(doc.text, { adapters, inventory, shapeOnly: true }).problems;
+        const ranked = new Set(own.map((e) => e.job));
+        // An over-cap doc states nothing but its problem: its entries are what overran.
+        entries = doc.text.length > TOOLS_CAP ? [] : problems.length ? own : [...own, ...entries.filter((e) => !ranked.has(e.job))];
+    }
+    return { jobs: resolveOrder({ entries, adapters, inventory, reach, agent }), doc, problems, reach, agent };
+}
+
 function toolsLine({ projectRoot, env = process.env, seat = null, suggest = false })
 {
     try
     {
-        const adapters = readAdapters();
-        const inventory = usableInventory(readInventory(projectRoot));
-        const main = mainReach({ projectRoot, env, adapters, inventory });
-        const reach = seat && typeof seat === 'object' ? seatReach(seat.frontmatter, main) : main;
-        const agent = seat !== null && seat !== undefined;
-        const doc = readToolsDoc(projectRoot);
-        let entries = defaultEntries(adapters);
-        let problems = [];
-        if (doc)
-        {
-            const own = parseToolsDoc(doc.text, adapters).entries;
-            problems = lintToolsDoc(doc.text, { adapters, inventory, shapeOnly: true }).problems;
-            const ranked = new Set(own.map((e) => e.job));
-            // An over-cap doc states nothing but its problem: its entries are what overran.
-            entries = doc.text.length > TOOLS_CAP ? [] : problems.length ? own : [...own, ...entries.filter((e) => !ranked.has(e.job))];
-        }
-        const jobs = resolveOrder({ entries, adapters, inventory, reach, agent });
-        return startLine({ jobs, docRel: doc ? doc.rel : null, defaults: !doc, problems: agent ? [] : problems, suggest: suggest && !agent, load: reach.load });
+        const { jobs, doc, problems, reach, agent } = orderFor({ projectRoot, env, seat });
+        return startLine({ jobs, docRel: doc ? doc.rel : null, defaults: !doc, problems: agent ? [] : problems, suggest: suggest && !agent, load: reach.load, fillNote: !agent });
     }
     catch { return ''; }
+}
+
+// One job's ranks for one actor, by label: whether the user's doc ranks it, and whether the stack's order stood in.
+function jobOrder({ projectRoot, env = process.env, job, seat = null })
+{
+    const { jobs, doc } = orderFor({ projectRoot, env, seat });
+    const found = jobs.find((j) => j.job === job);
+    return { ranks: found ? found.ranks.map((r) => r.label) : [], own: !!found && !found.isDefault, fellBack: !!found && found.fellBack, docRel: doc ? doc.rel : null };
 }
 
 // True once per project while it has no doc: the start line then suggests the capture. The marker is written first; one
@@ -848,7 +883,7 @@ module.exports = {
     TOOLS_DOC, TOOLS_CAP, TOOLS_LINE_CAP, TOOLS_FIELD, PREFS_DIR, LIST_TIMEOUT_MS,
     readAdapters, readToolsDoc, parseToolsDoc, lintToolsDoc, nextToolsId, inventoryPath, readInventory, writeInventory,
     accountFileOf, registrations, enabledPlugins, pluginRows, classify, registrationHash, prefixOf, takeInventory, refreshInventory,
-    mainReach, seatReach, resolveOrder, startLine, toolsLine, suggestOnce, validateRows,
+    mainReach, seatReach, resolveOrder, startLine, orderFor, toolsLine, jobOrder, suggestOnce, validateRows,
 };
 
 if (require.main === module)

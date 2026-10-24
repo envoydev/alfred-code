@@ -457,3 +457,82 @@ test('the record\'s servers under their original names: the main session ranks t
     }
     finally { s.done(); }
 });
+
+// The stack's order fills in a job whose own ranks reach nothing (spec N1, N3): a seat keeps the job's line, the main
+// session is told the stack's order stands in and why.
+const SERENA_ONLY = ['## T1 - Code navigation', '<!-- id: t1 -->', '- Job: navigation', '- Order: serena find_symbol'];
+const NO_PLUGINS = (s) => s.write(path.join(s.root, '.claude', 'settings.json'), { enabledPlugins: {} });
+const FILL_NAV = 'Filled in: navigation - your ranks reach nothing here, so the stack\'s order stands in; fix them with /capture-preferences tools.';
+
+test('a seat whose tools reach none of the user\'s navigation ranks is told the stack\'s order for it', () =>
+{
+    const s = sandbox();
+    try
+    {
+        NO_PLUGINS(s);
+        s.doc(SERENA_ONLY);
+        const text = s.line({ seat: { frontmatter: '---\ntools: LSP, Read, Grep\n---\n' } });
+        assert.ok(text.includes(': LSP > Grep.'), text);
+        assert.ok(!text.includes('Skipped here') && !text.includes('Filled in'), text);
+    }
+    finally { s.done(); }
+});
+
+test('the main session is told the stack\'s order stands in when the user\'s navigation ranks reach nothing', () =>
+{
+    const s = sandbox();
+    try
+    {
+        NO_PLUGINS(s);
+        s.doc(SERENA_ONLY);
+        const main = s.line();
+        assert.ok(main.includes(': LSP > Grep. Load: ToolSearch select:LSP\n'), main);
+        assert.ok(main.includes('Skipped here: serena (not on this machine)'), main);
+        assert.ok(main.split('\n').includes(FILL_NAV), main);
+    }
+    finally { s.done(); }
+});
+
+test('a user\'s navigation entry ranking a server and a built-in: the main session is told both, a seat the built-in', () =>
+{
+    const s = sandbox();
+    try
+    {
+        NO_PLUGINS(s);
+        s.write(path.join(s.root, '.mcp.json'), { mcpServers: { serena: require('../stack/mcp/original-mcps.json').mcpServers.serena } });
+        s.doc(['## T1 - Code navigation', '<!-- id: t1 -->', '- Job: navigation', '- Order: serena find_symbol > Grep']);
+        const main = s.line();
+        assert.ok(main.includes(': serena find_symbol > Grep.'), main);
+        const seat = s.line({ seat: { frontmatter: '---\ntools: LSP, Read, Grep\n---\n' } });
+        assert.ok(seat.includes(': Grep.') && !seat.includes('Filled in'), seat);
+    }
+    finally { s.done(); }
+});
+
+test('the fill-in holds for every job with stack defaults: documentation', () =>
+{
+    const s = sandbox();
+    try
+    {
+        NO_PLUGINS(s);
+        s.doc(['## T2 - Library docs', '<!-- id: t2 -->', '- Job: documentation', '- Order: own:docs fetch_docs']);
+        const main = s.line();
+        assert.ok(main.includes(': WebFetch.'), main);
+        assert.ok(main.includes('own:docs (no inventory entry here)'), main);
+        assert.ok(main.includes('Filled in: documentation - '), main);
+    }
+    finally { s.done(); }
+});
+
+test('jobOrder: the ranks one job resolves to, whose they are and whether the stack\'s order stood in', () =>
+{
+    const s = sandbox();
+    try
+    {
+        NO_PLUGINS(s);
+        assert.deepStrictEqual(tools.jobOrder({ projectRoot: s.root, env: s.env, job: 'navigation' }), { ranks: ['LSP', 'Grep'], own: false, fellBack: false, docRel: null });
+        s.doc(SERENA_ONLY);
+        assert.deepStrictEqual(tools.jobOrder({ projectRoot: s.root, env: s.env, job: 'navigation' }), { ranks: ['LSP', 'Grep'], own: true, fellBack: true, docRel: DOC_REL });
+    }
+    finally { s.done(); }
+});
