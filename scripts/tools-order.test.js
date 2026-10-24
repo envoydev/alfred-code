@@ -29,6 +29,9 @@ function sandbox()
     const write = (file, value) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, typeof value === 'string' ? value : JSON.stringify(value)); };
     write(path.join(root, '.claude', 'settings.json'), { enabledPlugins: STACK });
     const env = { ...process.env, CLAUDE_CONFIG_DIR: config };
+    // A session that exported the stack's own keys would steer the memory mode and the data root (fix-pass review).
+    delete env.ALFRED_CODE_MEMORY;
+    delete env.ALFRED_CODE_DATA_PATH;
     const s = {
         work, root, config, env, write,
         doc: (lines) => write(path.join(root, DOC_REL), ['# Tools preferences', '', 'Updated: 2026-10-24', '', ...lines, ''].join('\n')),
@@ -776,6 +779,124 @@ test('modes: --memory custom previews the custom lines while the mode on disk is
         assert.match(r.stdout, /^memory: custom \(preview\) - no memory tool is reachable here/, r.stdout + r.stderr);
         settingsAt(s, { enabledPlugins: {}, env: { ALFRED_CODE_MEMORY: 'custom' }, autoMemoryEnabled: false });
         assert.strictEqual(tools.modeLines({ projectRoot: s.root, env: s.env, memory: 'custom' })[0], 'memory: custom - no memory tool is reachable here, so nothing is stored; rank one with /capture-preferences tools', 'the mode already custom is no preview');
+    }
+    finally { s.done(); }
+});
+
+// Final review M4: a data root the check cannot write to is one line in init's step 4, never a stack trace and no lines.
+test('modes --lsp and lsp over an unwritable data root: one line, the modes lines after it, exit 0', () =>
+{
+    const s = sandbox();
+    try
+    {
+        NO_PLUGINS(s);
+        s.write(path.join(s.root, '.alfred', 'state'), 'a file where the folder goes');
+        const run = (...args) => spawnSync(process.execPath, [TOOLS, ...args, '--project', s.root], { encoding: 'utf8', env: { ...s.env, ALFRED_CODE_DATA_PATH: '', ALFRED_CODE_DOCS_PATH: '' } });
+        const r = run('modes', '--lsp');
+        assert.strictEqual(r.status, 0, r.stderr);
+        const lines = r.stdout.trim().split('\n');
+        assert.match(lines[0], /^!! lsp: the language-server check could not write lsp-coverage\.json \([A-Z]+\) - the last result stands; the next run checks again$/, r.stdout);
+        assert.strictEqual(lines[1], MEM_DEFAULT, r.stdout);
+        assert.strictEqual(r.stderr, '');
+        const l = run('lsp', '--changed-only');
+        assert.strictEqual(l.status, 0, l.stderr);
+        assert.match(l.stdout, /^!! lsp: the language-server check could not write lsp-coverage\.json/);
+    }
+    finally { s.done(); }
+});
+
+// Final review M5: the user's own true in a project file stands under custom - every update keeps it - so validate names it.
+// One in the account file is outranked by the switch-off the next update writes into the project's file: no row.
+test('validate names custom memory beside the user\'s own autoMemoryEnabled true in a project file', () =>
+{
+    const s = sandbox();
+    try
+    {
+        const own = (rows) => rows.filter((r) => r.includes('autoMemoryEnabled is true'));
+        settingsAt(s, { enabledPlugins: STACK, env: { ALFRED_CODE_MEMORY: 'custom' }, autoMemoryEnabled: true });
+        assert.deepStrictEqual(own(tools.validateRows(s.root, s.env)), ["!! memory: ALFRED_CODE_MEMORY is custom, but autoMemoryEnabled is true in .claude/settings.json - Claude's own memory stays on beside your memory tool; remove the key from .claude/settings.json and /alfred-code:update switches it off"]);
+        // Fix-pass review m3: the choice in settings.local.json - the next update's switch-off there outranks settings.json's true.
+        settingsAt(s, { env: { ALFRED_CODE_MEMORY: 'custom' } }, 'settings.local.json');
+        assert.deepStrictEqual(own(tools.validateRows(s.root, s.env)), ["!! memory: ALFRED_CODE_MEMORY is custom, but autoMemoryEnabled is true in .claude/settings.json - Claude's own memory stays on beside your memory tool until /alfred-code:update writes the switch-off into .claude/settings.local.json"]);
+        // The true in settings.local.json outranks the switch-off written into settings.json: it stays until taken out.
+        settingsAt(s, { enabledPlugins: STACK, env: { ALFRED_CODE_MEMORY: 'custom' } });
+        settingsAt(s, { autoMemoryEnabled: true }, 'settings.local.json');
+        assert.deepStrictEqual(own(tools.validateRows(s.root, s.env)), ["!! memory: ALFRED_CODE_MEMORY is custom, but autoMemoryEnabled is true in .claude/settings.local.json - Claude's own memory stays on beside your memory tool; remove the key from .claude/settings.local.json and /alfred-code:update switches it off"]);
+        fs.rmSync(path.join(s.root, '.claude', 'settings.local.json'));
+        settingsAt(s, { enabledPlugins: STACK, env: { ALFRED_CODE_MEMORY: 'custom' } });
+        s.write(path.join(s.config, 'settings.json'), { autoMemoryEnabled: true });
+        assert.deepStrictEqual(own(tools.validateRows(s.root, s.env)), [], 'the account file\'s true');
+        settingsAt(s, { enabledPlugins: STACK, autoMemoryEnabled: true });
+        assert.deepStrictEqual(own(tools.validateRows(s.root, s.env)), [], 'native memory with true is fine');
+    }
+    finally { s.done(); }
+});
+
+// Final review M6: a switch-off the stamp records as the stack's (custom memory's, the mode hand-edited back to default
+// before the next update) is not the user's - it is named as the stack's, which that update removes.
+test('a switch-off the stamp records as the stack\'s is named as custom memory\'s, not yours', () =>
+{
+    const s = sandbox();
+    try
+    {
+        const hash = require('node:crypto').createHash('sha256').update('false').digest('hex');
+        const stamp = (file) => s.write(path.join(s.root, '.claude', 'alfred-code.stamp'), `commit: x\nmanaged-settings: ${file}:attribution.commit=abc,${file}:autoMemoryEnabled=${hash}\n`);
+        settingsAt(s, { enabledPlugins: {}, autoMemoryEnabled: false });
+        stamp('settings.json');
+        assert.strictEqual(tools.modeLines({ projectRoot: s.root, env: s.env })[1], "memory: autoMemoryEnabled is false in .claude/settings.json - custom memory's switch-off, which the next /alfred-code:update removes");
+        assert.ok(tools.validateRows(s.root, s.env).includes("!! memory: native memory is chosen, but custom memory's switch-off is still in .claude/settings.json - run /alfred-code:update to remove it"));
+        stamp('settings.local.json');
+        assert.strictEqual(tools.modeLines({ projectRoot: s.root, env: s.env })[1], 'memory: autoMemoryEnabled is false in .claude/settings.json - yours; native memory stays off until you remove it', 'a row for the other file is not this one');
+    }
+    finally { s.done(); }
+});
+
+// A developer answering default in settings.local.json under a team on custom: every update keeps the team's switch-off in
+// settings.json, so 'the next update removes it' would be wrong - the lines name the developer's own way out.
+test('the team\'s custom switch-off under a personal default names settings.local.json as the way out', () =>
+{
+    const s = sandbox();
+    try
+    {
+        const hash = require('node:crypto').createHash('sha256').update('false').digest('hex');
+        s.write(path.join(s.root, '.claude', 'alfred-code.stamp'), `commit: x\nversion: 2.10.1\nscope: project\nmanaged-settings: settings.json:autoMemoryEnabled=${hash}\n`);
+        settingsAt(s, { enabledPlugins: {}, env: { ALFRED_CODE_MEMORY: 'custom' }, autoMemoryEnabled: false });
+        settingsAt(s, { env: { ALFRED_CODE_MEMORY: 'default' } }, 'settings.local.json');
+        assert.strictEqual(tools.memoryMode({ projectRoot: s.root, env: s.env }), 'default');
+        assert.strictEqual(tools.modeLines({ projectRoot: s.root, env: s.env })[1], "memory: autoMemoryEnabled is false in .claude/settings.json - the team's custom memory switch-off, which every update keeps; set autoMemoryEnabled: true in .claude/settings.local.json to turn it on for you");
+        const rows = tools.validateRows(s.root, s.env).filter((r) => r.startsWith('!! memory:'));
+        assert.deepStrictEqual(rows, ["!! memory: native memory is chosen in .claude/settings.local.json, but the team's .claude/settings.json is on custom memory and its switch-off keeps Claude's own memory off for you - set autoMemoryEnabled: true in .claude/settings.local.json, or remove ALFRED_CODE_MEMORY there to follow the team"]);
+        // The way out taken: the local true outranks it, and nothing is named.
+        settingsAt(s, { env: { ALFRED_CODE_MEMORY: 'default' }, autoMemoryEnabled: true }, 'settings.local.json');
+        assert.deepStrictEqual(tools.validateRows(s.root, s.env).filter((r) => r.startsWith('!! memory:')), []);
+        // The team back on default: the ledgered false is the stack's again, which the next update removes.
+        settingsAt(s, { env: { ALFRED_CODE_MEMORY: 'default' } }, 'settings.local.json');
+        settingsAt(s, { enabledPlugins: {}, env: { ALFRED_CODE_MEMORY: 'default' }, autoMemoryEnabled: false });
+        assert.match(tools.modeLines({ projectRoot: s.root, env: s.env })[1], /custom memory's switch-off, which the next \/alfred-code:update removes$/);
+    }
+    finally { s.done(); }
+});
+
+// Fix-pass review m5: an install from before 2.10.1 never ledgered the old memory server's switch-off, and the first update
+// past it lifts the false from the run's own file - so it is the stack's too, never 'yours'. A 2.10.1 stamp's is the user's.
+test('a pre-2.10.1 stamp\'s switch-off in the run\'s own file is named as the old memory server\'s', () =>
+{
+    const s = sandbox();
+    try
+    {
+        const stamp = (version, scope) => s.write(path.join(s.root, '.claude', 'alfred-code.stamp'), `commit: x\nversion: ${version}\nscope: ${scope}\n`);
+        const line = () => tools.modeLines({ projectRoot: s.root, env: s.env })[1];
+        settingsAt(s, { enabledPlugins: {}, autoMemoryEnabled: false });
+        stamp('2.10.0', 'project');
+        assert.strictEqual(line(), "memory: autoMemoryEnabled is false in .claude/settings.json - the old memory server's switch-off, which the next /alfred-code:update removes");
+        assert.ok(tools.validateRows(s.root, s.env).includes("!! memory: native memory is chosen, but the old memory server's switch-off is still in .claude/settings.json - run /alfred-code:update to remove it"));
+        stamp('2.9.4', 'project');
+        assert.match(line(), /the old memory server's switch-off/, 'any release before it');
+        for (const [version, scope, why] of [['2.10.1', 'project', 'the retirement release itself'], ['2.11.0', 'project', 'a later one'], ['2.10.0', 'local', 'the lift reads settings.local.json at local scope']])
+        {
+            stamp(version, scope);
+            assert.strictEqual(line(), 'memory: autoMemoryEnabled is false in .claude/settings.json - yours; native memory stays off until you remove it', why);
+        }
     }
     finally { s.done(); }
 });

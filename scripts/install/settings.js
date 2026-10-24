@@ -939,7 +939,15 @@ function writeSettings(opts)
             log(`  ${name}: autoMemoryEnabled: false removed - ALFRED_CODE_MEMORY is no longer custom, so Claude's own memory is back on`);
         }
         else if (!custom && at.autoMemoryEnabled === false && say) log(`  ${name}: autoMemoryEnabled: false kept - yours; native memory needs it on, so Claude's own memory stays off until you remove it`);
-        if (other && oursIn(other, otherName))
+        // The shared file keeps its switch-off while its own env is custom (fix-pass review I1): one developer's
+        // settings.local.json answer is theirs alone and never strips the team's row.
+        const sharedCustom = other === data && ({ ...(plain(inheritedEnv) ? inheritedEnv : {}), ...(plain(data.env) ? data.env : {}) }).ALFRED_CODE_MEMORY === 'custom';
+        if (other && oursIn(other, otherName) && sharedCustom)
+        {
+            memOwned = true;
+            if (!custom && say) log(`  ${otherName}: autoMemoryEnabled: false kept - ALFRED_CODE_MEMORY is custom there for the team; ${name}'s default leaves Claude's own memory off for you until ${name} sets autoMemoryEnabled: true`);
+        }
+        else if (other && oursIn(other, otherName))
         {
             delete other.autoMemoryEnabled;
             if (other === data) changed = true; else localMem = true;
@@ -1266,7 +1274,7 @@ function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs =
     // there is no seed to compare.
     // A custom choice that stays here keeps its switch-off beside it (final review I1): the writer holds it in this file.
     const customStays = isObj(local.env) && local.env.ALFRED_CODE_MEMORY === 'custom';
-    if (customStays && Object.hasOwn(local, 'autoMemoryEnabled')) say('autoMemoryEnabled stays here - ALFRED_CODE_MEMORY=custom stays in this file, and the switch-off sits beside it');
+    if (customStays && ledgerSettings && Object.hasOwn(local, 'autoMemoryEnabled') && ledgerSettings.autoMemoryEnabled === valueHash(JSON.stringify(local.autoMemoryEnabled))) say('autoMemoryEnabled stays here - ALFRED_CODE_MEMORY=custom stays in this file, and the switch-off sits beside it');
     const seededPaths = [...SEEDED_SETTINGS, ...Object.keys(ledgerSettings || {}).filter((at) => at.startsWith('modelSettings.') || (at === 'autoMemoryEnabled' && !customStays)).map((at) => [at, undefined])];
     for (const [at, seed] of seededPaths)
     {

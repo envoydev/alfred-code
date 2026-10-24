@@ -624,7 +624,7 @@ function runLayers(ctx)
     // the data root's (final review 2026-10-20b: the layout pass moved a team's flow/ and history/ by name).
     if (!ctx.docsRootPending)
     {
-        docs.migrateDocsDomains({ projectRoot: ctx.projectRoot, docsPath, rules: selection.generatedRules(ctx.projectRoot), instructions: selection.instructionFiles(ctx.projectRoot), log: ctx.log });
+        docs.migrateDocsDomains({ projectRoot: ctx.projectRoot, docsPath, dataPath: ctx.dataInfo.root, rules: selection.generatedRules(ctx.projectRoot), instructions: selection.instructionFiles(ctx.projectRoot), log: ctx.log });
         // After the .gitignore names the new folder, so a raw transcript copy never lands unignored.
         try { docs.migrateUsageReport({ projectRoot: ctx.projectRoot, docsPath, dataPath: ctx.dataInfo.root, log: ctx.log }); }
         catch (err) { ctx.note(`the usage report folder could not be renamed under ${docsPath} (${err.message}) - it stays as alfred-code-usage-report/`); }
@@ -635,6 +635,9 @@ function runLayers(ctx)
         try { docs.migrateLayout({ projectRoot: ctx.projectRoot, docsPath, dataPath: ctx.dataInfo.root, log: ctx.log }); }
         catch (err) { ctx.note(`the 2.8.0 folder layout could not be applied under ${docsPath} (${err.message}) - every file is back where it was; re-run /alfred-code:update`); }
     }
+    // The language-server check writes into the data root, never the docs root, so a docs root still waiting on update's ask
+    // skips nothing of it (final review M8): every run checks.
+    docs.lspCoverageLines(ctx.projectRoot, ctx.log, { dataPath: ctx.dataInfo.root });
     // An update moves the seed an earlier release wrote as .claude/CLAUDE.md - only while it is still unedited, only while
     // the install works with AGENTS.md (on a CLAUDE.md answer that file already has the name the user picked), and only
     // when no name answer came this run: an answer renames through renameInstructionFiles below.
@@ -1548,7 +1551,7 @@ function retiredApprovals(ctx)
 // block that says what went, how to add each back and where its data stayed.
 function retiredServersStep(ctx, mcpBefore)
 {
-    liftMemorySwitchOff({ sourceDir: ctx.source.dir, stampFile: ctx.stampFile, legacyUnstamped: ctx.legacyUnstamped, claudeDir: ctx.claudeDir, scope: ctx.args.scope, ledger: ctx.ledger, log: ctx.log, note: ctx.note });
+    liftMemorySwitchOff({ sourceDir: ctx.source.dir, stampFile: ctx.stampFile, legacyUnstamped: ctx.legacyUnstamped, claudeDir: ctx.claudeDir, scope: ctx.args.scope, ledger: ctx.ledger, memory: ctx.args.memory || null, writerFollows: true, log: ctx.log, note: ctx.note });
     liftMcpDenied(ctx);
     dropEmptiedMcpJson(ctx, mcpBefore);
     sayRetiredServers(ctx);
@@ -1558,7 +1561,7 @@ function retiredServersStep(ctx, mcpBefore)
 // run's own settings file (settingsTarget - never the account's). The server is gone, so the switch-off goes: on the first
 // update or uninstall past the memory server's retirement (the stamp's release before its row's `retiredIn`, or a pre-stamp
 // install whose installer wrote it too), from this run's file alone. A switch-off set after that is the user's and stays.
-function liftMemorySwitchOff({ sourceDir, stampFile, legacyUnstamped = false, claudeDir, scope, ledger = null, log, note })
+function liftMemorySwitchOff({ sourceDir, stampFile, legacyUnstamped = false, claudeDir, scope, ledger = null, memory = null, writerFollows = false, log, note })
 {
     const row = readRetiredPlugins(sourceDir).find((r) => r.name === 'alfred-memory');
     const last = stampLayer.readVersion(stampFile);
@@ -1573,6 +1576,16 @@ function liftMemorySwitchOff({ sourceDir, stampFile, legacyUnstamped = false, cl
     if (data.autoMemoryEnabled !== false) return;
     delete data.autoMemoryEnabled;
     fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+    // Custom memory chosen for this file: the writer pass after this puts the switch-off straight back, ledgered, with its own
+    // 'written' line - a 'removed' line before it would contradict it (fix-pass review m4). The choice sits where the writer
+    // reads it: settings.local.json over settings.json, a --memory answer over both.
+    const envOf = (obj) => (obj && obj.env && typeof obj.env === 'object' && !Array.isArray(obj.env) ? obj.env : {});
+    let beside = {};
+    try { beside = envOf(settings.readSettings(path.join(claudeDir, scope === 'local' ? 'settings.json' : 'settings.local.json')).data); }
+    catch { /* an unreadable sibling holds no choice the writer reads */ }
+    const elsewhere = scope !== 'local' && Object.hasOwn(beside, 'ALFRED_CODE_MEMORY');
+    const chosen = memory || (scope === 'local' ? { ...beside, ...envOf(data) } : { ...envOf(data), ...beside }).ALFRED_CODE_MEMORY;
+    if (writerFollows && chosen === 'custom' && !elsewhere) return;
     log(`  ${path.basename(file)}: autoMemoryEnabled: false removed - the stack switched Claude's own memory off for its memory server, which it ships no more; set it back to keep it off`);
 }
 

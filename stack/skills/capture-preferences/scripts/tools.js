@@ -769,32 +769,74 @@ function jobOrder({ projectRoot, env = process.env, job, seat = null })
 
 // The memory mode (ALFRED_CODE_MEMORY): settings.local.json's env, then settings.json's, then the process env - the first that
 // sets it. Anything but exactly `custom` is the default, so a typo never leaves a project without Claude's own memory.
-function memoryMode({ projectRoot, env = process.env })
+// The project file whose env holds ALFRED_CODE_MEMORY - the installer writes the switch-off beside it - and its value.
+function memoryChoice(projectRoot)
 {
     for (const name of ['settings.local.json', 'settings.json'])
     {
         const data = readJsonFile(path.join(projectRoot, '.claude', name));
         const own = data && typeof data === 'object' && data.env && typeof data.env === 'object' ? data.env : null;
-        if (own && Object.hasOwn(own, 'ALFRED_CODE_MEMORY')) return own.ALFRED_CODE_MEMORY === 'custom' ? 'custom' : 'default';
+        if (own && Object.hasOwn(own, 'ALFRED_CODE_MEMORY')) return { name, value: own.ALFRED_CODE_MEMORY };
     }
-    return env.ALFRED_CODE_MEMORY === 'custom' ? 'custom' : 'default';
+    return null;
+}
+function memoryMode({ projectRoot, env = process.env })
+{
+    const choice = memoryChoice(projectRoot);
+    return (choice ? choice.value : env.ALFRED_CODE_MEMORY) === 'custom' ? 'custom' : 'default';
 }
 
-// The file whose `autoMemoryEnabled: false` is in effect here, as a list of none or one: the narrowest that sets the key
-// (settings.local.json, settings.json, then the account's), Claude Code's precedence - a broader false a narrower value
-// outranks switches nothing off. Shown project-relative, `~/`-relative, or in full.
-function memoryOffIn({ projectRoot, env = process.env, home = os.homedir() })
+// The `autoMemoryEnabled` in effect here: the narrowest file that sets the key (settings.local.json, settings.json, then the
+// account's), Claude Code's precedence - a broader value a narrower one outranks decides nothing. `file` is shown
+// project-relative, `~/`-relative, or in full; `project` says it is one of the project's own two files.
+function memorySetting({ projectRoot, env = process.env, home = os.homedir() })
 {
     const account = path.join(env.CLAUDE_CONFIG_DIR || path.join(home, '.claude'), 'settings.json');
-    for (const file of [path.join(projectRoot, '.claude', 'settings.local.json'), path.join(projectRoot, '.claude', 'settings.json'), account])
+    for (const abs of [path.join(projectRoot, '.claude', 'settings.local.json'), path.join(projectRoot, '.claude', 'settings.json'), account])
     {
-        const data = readJsonFile(file);
+        const data = readJsonFile(abs);
         if (!data || typeof data !== 'object' || !Object.hasOwn(data, 'autoMemoryEnabled')) continue;
-        if (data.autoMemoryEnabled !== false) return [];
-        const under = (dir) => file.startsWith(dir + path.sep) && path.relative(dir, file).split(path.sep).join('/');
-        return [under(projectRoot) || (under(home) ? `~/${under(home)}` : file)];
+        const under = (dir) => abs.startsWith(dir + path.sep) && path.relative(dir, abs).split(path.sep).join('/');
+        return { file: under(projectRoot) || (under(home) ? `~/${under(home)}` : abs), abs, value: data.autoMemoryEnabled, project: abs !== account };
     }
-    return [];
+    return null;
+}
+// The file whose `autoMemoryEnabled: false` is in effect here, as a list of none or one.
+function memoryOffIn(opts)
+{
+    const s = memorySetting(opts);
+    return s && s.value === false ? [s.file] : [];
+}
+// The team's custom switch-off kept for a developer whose settings.local.json answers default: settings.json's own env is
+// still custom, so every update keeps its false (settings.js, fix-pass review I1) and only this developer's file can turn
+// Claude's own memory back on.
+function teamSwitchOff(projectRoot, setting)
+{
+    if (!setting || setting.value !== false || setting.abs !== path.join(projectRoot, '.claude', 'settings.json')) return false;
+    const choice = memoryChoice(projectRoot);
+    const shared = readJsonFile(setting.abs);
+    const env = shared && typeof shared === 'object' && shared.env && typeof shared.env === 'object' ? shared.env : {};
+    return Boolean(choice) && choice.name === 'settings.local.json' && choice.value !== 'custom' && env.ALFRED_CODE_MEMORY === 'custom';
+}
+
+// Whose switch-off that false is when the stack wrote it, else null. Custom memory's: the stamp's ledger records it in that
+// file at its value - after a hand-edit back to default it is the stack's until the next update removes it, never 'yours'
+// (final review M6). The old memory server's: an install from before its retirement never ledgered it, and the first update
+// past it lifts the false from the run's own file (alfred-code.js liftMemorySwitchOff, fix-pass review m5).
+const MEMORY_SERVER_RETIRED_IN = '2.10.1';
+function stackSwitchOff(projectRoot, setting)
+{
+    if (!setting || !setting.project || setting.value !== false) return null;
+    const text = readText(path.join(projectRoot, '.claude', 'alfred-code.stamp')) || '';
+    const field = (key) => ((text.match(new RegExp(`^${key}: *(.*)$`, 'm')) || [])[1] || '').trim();
+    const hash = crypto.createHash('sha256').update('false').digest('hex');
+    const name = path.basename(setting.abs);
+    if (field('managed-settings').split(',').map((s) => s.trim()).includes(`${name}:autoMemoryEnabled=${hash}`)) return "custom memory's switch-off";
+    const version = field('version').split('.').map(Number);
+    const floor = MEMORY_SERVER_RETIRED_IN.split('.').map(Number);
+    const at = version.findIndex((n, i) => n !== floor[i]);
+    const older = version.length === 3 && version.every(Number.isInteger) && at !== -1 && version[at] < floor[at];
+    return older && name === (field('scope') === 'local' ? 'settings.local.json' : 'settings.json') ? "the old memory server's switch-off" : null;
 }
 
 // What memory this project uses and where Claude's own memory stands, the lines modeLines leads with. `preview: 'custom'`
@@ -802,7 +844,8 @@ function memoryOffIn({ projectRoot, env = process.env, home = os.homedir() })
 // writes it (final review C1).
 function memoryLines({ projectRoot, env = process.env, preview = null })
 {
-    const off = memoryOffIn({ projectRoot, env });
+    const setting = memorySetting({ projectRoot, env });
+    const off = setting && setting.value === false ? [setting.file] : [];
     const mode = memoryMode({ projectRoot, env });
     if (preview === 'custom' && mode !== 'custom')
     {
@@ -811,7 +854,14 @@ function memoryLines({ projectRoot, env = process.env, preview = null })
             : 'memory: custom (preview) - no memory tool is reachable here, so nothing would be stored; rank one with /capture-preferences tools'];
     }
     if (mode !== 'custom')
-        return ["memory: default - Claude Code's own memory, at its default place", ...off.map((f) => `memory: autoMemoryEnabled is false in ${f} - yours; native memory stays off until you remove it`)];
+    {
+        if (teamSwitchOff(projectRoot, setting))
+            return ["memory: default - Claude Code's own memory, at its default place", `memory: autoMemoryEnabled is false in ${setting.file} - the team's custom memory switch-off, which every update keeps; set autoMemoryEnabled: true in .claude/settings.local.json to turn it on for you`];
+        const whose = stackSwitchOff(projectRoot, setting);
+        return ["memory: default - Claude Code's own memory, at its default place", ...off.map((f) => (whose
+            ? `memory: autoMemoryEnabled is false in ${f} - ${whose}, which the next /alfred-code:update removes`
+            : `memory: autoMemoryEnabled is false in ${f} - yours; native memory stays off until you remove it`))];
+    }
     const ranks = jobOrder({ projectRoot, env, job: 'memory' }).ranks;
     const own = off.length ? "Claude's own memory is off" : "Claude's own memory is still on (autoMemoryEnabled is not false here)";
     if (ranks.length) return [`memory: custom - ${ranks.join(' > ')}; ${own}`];
@@ -888,12 +938,43 @@ function validateRows(projectRoot, env = process.env)
             if (registrationHash(regs[sv.scope].servers[sv.name]) !== sv.registration) rows.push(`!! tools: ${sv.prefix} changed since the inventory was taken - run /alfred-code:update or /capture-preferences tools`);
         }
     }
+    const setting = memorySetting({ projectRoot, env });
     if (memoryMode({ projectRoot, env }) === 'custom')
     {
         if (!jobOrder({ projectRoot, env, job: 'memory' }).ranks.length) rows.push('!! memory: ALFRED_CODE_MEMORY is custom, but the tool order ranks no memory tool this machine reaches - rank one with /capture-preferences tools, or switch to native in /alfred-code:configure');
+        // Final review M5: the user's own true in one of the project's files is kept by every update, so it stands until
+        // they take it out (one in the account file is outranked by the switch-off the next update writes here). One in
+        // settings.json under a choice in settings.local.json is outranked the same way (fix-pass review m3).
+        const below = Boolean(setting) && path.basename(setting.abs) === 'settings.json' && (memoryChoice(projectRoot) || {}).name === 'settings.local.json';
+        if (setting && setting.project && setting.value === true) rows.push(below
+            ? `!! memory: ALFRED_CODE_MEMORY is custom, but autoMemoryEnabled is true in ${setting.file} - Claude's own memory stays on beside your memory tool until /alfred-code:update writes the switch-off into .claude/settings.local.json`
+            : `!! memory: ALFRED_CODE_MEMORY is custom, but autoMemoryEnabled is true in ${setting.file} - Claude's own memory stays on beside your memory tool; remove the key from ${setting.file} and /alfred-code:update switches it off`);
     }
-    else for (const f of memoryOffIn({ projectRoot, env })) rows.push(`!! memory: native memory is chosen, but autoMemoryEnabled is false in ${f} - Claude's own memory stays off until you remove it`);
+    else if (setting && setting.value === false)
+    {
+        const whose = stackSwitchOff(projectRoot, setting);
+        if (teamSwitchOff(projectRoot, setting)) rows.push(`!! memory: native memory is chosen in .claude/settings.local.json, but the team's ${setting.file} is on custom memory and its switch-off keeps Claude's own memory off for you - set autoMemoryEnabled: true in .claude/settings.local.json, or remove ALFRED_CODE_MEMORY there to follow the team`);
+        else rows.push(whose ? `!! memory: native memory is chosen, but ${whose} is still in ${setting.file} - run /alfred-code:update to remove it`
+            : `!! memory: native memory is chosen, but autoMemoryEnabled is false in ${setting.file} - Claude's own memory stays off until you remove it`);
+    }
     return rows;
+}
+
+// The language-server check run and written. A data root the file cannot be written to is one line, never a stack trace in
+// init's step 4 (final review M4): the last result stands.
+function checkLsp(projectRoot)
+{
+    let result = null;
+    try
+    {
+        result = lsp.computeCoverage({ projectRoot, enabled: enabledPlugins(projectRoot) });
+        return { result, changed: lsp.writeCoverage(projectRoot, result) };
+    }
+    catch (err)
+    {
+        console.log(`!! lsp: the language-server check ${result ? `could not write ${lsp.FILE}` : 'stopped'} (${err.code || err.message}) - the last result stands; the next run checks again`);
+        return { result: null, changed: false };
+    }
 }
 
 // ---------------------------------------------------------------- the command line
@@ -953,16 +1034,15 @@ function main(argv)
     if (cmd === 'modes')
     {
         // --lsp: the check re-run first; status leaves it out, being read-only.
-        if (rest.includes('--lsp')) lsp.writeCoverage(projectRoot, lsp.computeCoverage({ projectRoot, enabled: enabledPlugins(projectRoot) }));
+        if (rest.includes('--lsp')) checkLsp(projectRoot);
         for (const line of modeLines({ projectRoot, memory: value('--memory') || null })) console.log(line);
         return 0;
     }
     if (cmd === 'lsp')
     {
         // --changed-only: the installer's call, quiet on a re-run that found what the last one did.
-        const result = lsp.computeCoverage({ projectRoot, enabled: enabledPlugins(projectRoot) });
-        const changed = lsp.writeCoverage(projectRoot, result);
-        if (changed || !rest.includes('--changed-only')) console.log(lsp.coverageLine(result));
+        const { result, changed } = checkLsp(projectRoot);
+        if (result && (changed || !rest.includes('--changed-only'))) console.log(lsp.coverageLine(result));
         return 0;
     }
     if (cmd === 'validate')
@@ -984,7 +1064,7 @@ module.exports = {
     TOOLS_DOC, TOOLS_CAP, TOOLS_LINE_CAP, TOOLS_FIELD, PREFS_DIR, LIST_TIMEOUT_MS,
     readAdapters, readToolsDoc, parseToolsDoc, lintToolsDoc, nextToolsId, inventoryPath, readInventory, writeInventory,
     accountFileOf, registrations, enabledPlugins, pluginRows, classify, registrationHash, prefixOf, takeInventory, refreshInventory,
-    mainReach, seatReach, resolveOrder, startLine, orderFor, toolsLine, jobOrder, AGENT_PROBE, modeLines, memoryMode, memoryOffIn, suggestOnce, validateRows,
+    mainReach, seatReach, resolveOrder, startLine, orderFor, toolsLine, jobOrder, AGENT_PROBE, modeLines, memoryMode, memoryOffIn, memorySetting, stackSwitchOff, teamSwitchOff, checkLsp, suggestOnce, validateRows,
 };
 
 if (require.main === module)

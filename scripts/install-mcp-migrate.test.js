@@ -483,3 +483,34 @@ test('the 2.10.1 lift leaves a switch-off this feature\'s ledger holds', POSIX_O
     assert.strictEqual(steps[1].autoMemoryEnabled, false, outs[1]);
     assert.doesNotMatch(outs[1], /autoMemoryEnabled: false (removed|written)/, outs[1]);
 });
+
+// Fix-pass review m4: the lift runs before the writer, so an old switch-off under --memory custom read 'removed' and then
+// 'written' in one run. The writer puts it straight back, ledgered, and says so once; with the choice in settings.local.json
+// the writer's switch-off goes there, so settings.json's removal is still said.
+test('the 2.10.1 lift says nothing where custom memory writes the switch-off straight back', POSIX_ONLY, () =>
+{
+    for (const where of ['settings.json', 'settings.local.json'])
+    {
+        const { outs, steps } = seedRun(['install', 'update'], SELECTION, {
+            args: [['--scope', 'project'], ['--installed-only', '--scope', 'project', '--memory', 'custom']],
+            each: (repo, i) =>
+            {
+                if (i === 0)
+                {
+                    olderStamp(repo);
+                    editSettings(repo, 'settings.json', (d) => { d.autoMemoryEnabled = false; });
+                    if (where === 'settings.local.json') editSettings(repo, 'settings.local.json', (d) => { d.env = { ...(d.env || {}), ALFRED_CODE_MEMORY: 'default' }; });
+                }
+                return { shared: settingsOf(repo, 'settings.json'), local: settingsOf(repo, 'settings.local.json') };
+            },
+        });
+        assert.strictEqual((where === 'settings.json' ? steps[1].shared : steps[1].local).autoMemoryEnabled, false, `${where}\n${outs[1]}`);
+        assert.match(outs[1], new RegExp(`${where.replace(/\./g, '\\.')}: autoMemoryEnabled: false written - `), outs[1]);
+        if (where === 'settings.json') assert.doesNotMatch(outs[1], /autoMemoryEnabled: false removed/, outs[1]);
+        else
+        {
+            assert.strictEqual(steps[1].shared.autoMemoryEnabled, undefined, outs[1]);
+            assert.match(outs[1], /settings\.json: autoMemoryEnabled: false removed - the stack switched/, outs[1]);
+        }
+    }
+});

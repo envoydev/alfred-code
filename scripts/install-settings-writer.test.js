@@ -1348,12 +1348,29 @@ test('settings-writer: a ledgered switch-off the user changed to true is theirs:
     assert.ok(!Object.hasOwn((next.result.managed.settings['settings.json'] || {}), 'autoMemoryEnabled'));
 });
 
-test('settings-writer: an unreadable settings file under custom writes nothing', () =>
+// Review Focus 5: nothing is written, and the run says why (final review M9 - the note was not asserted).
+test('settings-writer: an unreadable settings file under custom writes nothing, and says why', () =>
 {
     const file = settingsFile('{ not json');
-    const { result } = write(file, { memory: { value: 'custom' } });
+    const { result, notes } = write(file, { memory: { value: 'custom' } });
     assert.strictEqual(result.refused, true);
     assert.strictEqual(fs.readFileSync(file, 'utf8'), '{ not json');
+    assert.match(notes[0] || '', /not valid JSON/, notes.join('\n'));
+});
+
+// A malformed settings.local.json is no overlay - Claude Code cannot read it either - so the switch-off follows the choice
+// settings.json holds, and the local file is left byte for byte.
+test('settings-writer: an unreadable settings.local.json is left as it is; the switch-off follows settings.json\'s custom', () =>
+{
+    const file = settingsFile({ env: { ALFRED_CODE_MEMORY: 'custom' } });
+    const localFile = path.join(path.dirname(file), 'settings.local.json');
+    fs.writeFileSync(localFile, '{ "env": { "ALFRED_CODE_MEMORY": "custom" ');
+    const { data, notes, result } = write(file, { localFile });
+    assert.strictEqual(fs.readFileSync(localFile, 'utf8'), '{ "env": { "ALFRED_CODE_MEMORY": "custom" ');
+    assert.strictEqual(data.autoMemoryEnabled, false);
+    assert.strictEqual(result.managed.settings['settings.json'].autoMemoryEnabled, MEM_HASH);
+    assert.ok(!Object.hasOwn(result.managed.settings, 'settings.local.json'));
+    assert.ok(notes.some((n) => /not valid JSON/.test(n)), notes.join('\n'));
 });
 
 test('leaveLocalScope: a ledgered switch-off moves with the stack\'s rows, an unledgered one stays', () =>
@@ -1368,6 +1385,8 @@ test('leaveLocalScope: a ledgered switch-off moves with the stack\'s rows, an un
         leaveLocalScope({ claudeDir: dir, ledgerSettings, log: (m) => logs.push(m) });
         const local = JSON.parse(fs.readFileSync(path.join(dir, 'settings.local.json'), 'utf8'));
         assert.strictEqual(Object.hasOwn(local, 'autoMemoryEnabled'), !gone, logs.join('\n'));
+        // Final review M9: the other half - the move never carries the switch-off into the committed file.
+        assert.ok(!Object.hasOwn(JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8')), 'autoMemoryEnabled'), 'settings.json gets no switch-off');
         if (gone) assert.ok(logs.some((m) => /settings seeds removed .*autoMemoryEnabled/.test(m)), logs.join('\n'));
         else assert.ok(!logs.some((m) => m.includes('autoMemoryEnabled')), `a key the stack does not own by name is left alone, unsaid: ${logs.join(' | ')}`);
     }
@@ -1408,6 +1427,34 @@ test('settings-writer: the stack\'s switch-off left in settings.json goes once s
     assert.ok(!Object.hasOwn(next.result.managed.settings['settings.json'] || {}, 'autoMemoryEnabled'));
 });
 
+// Fix-pass review I1: one developer's settings.local.json answer never strips the team's switch-off from settings.json
+// while that file's own env still says custom - teammates' runs would write it straight back.
+test('settings-writer: a personal answer in settings.local.json keeps the team\'s switch-off while settings.json says custom', () =>
+{
+    const file = settingsFile({ env: { ALFRED_CODE_MEMORY: 'custom' } });
+    const first = write(file);
+    const localFile = path.join(path.dirname(file), 'settings.local.json');
+    for (const mine of ['default', 'custom'])
+    {
+        fs.writeFileSync(localFile, JSON.stringify({ env: { ALFRED_CODE_MEMORY: mine } }));
+        const next = write(file, { localFile, ledger: priorOf(first.result), memory: { value: mine } });
+        assert.strictEqual(next.data.autoMemoryEnabled, false, `${mine}: ${next.logs.join(' | ')}`);
+        assert.strictEqual(next.result.managed.settings['settings.json'].autoMemoryEnabled, MEM_HASH, `${mine}: the team's row stays ledgered`);
+        assert.ok(!next.logs.some((m) => m.includes('settings.json: autoMemoryEnabled: false removed')), next.logs.join(' | '));
+        const local = JSON.parse(fs.readFileSync(localFile, 'utf8'));
+        if (mine === 'custom') assert.strictEqual(local.autoMemoryEnabled, false, 'the personal custom gets its own switch-off beside it');
+        else
+        {
+            assert.ok(!Object.hasOwn(local, 'autoMemoryEnabled'), JSON.stringify(local));
+            assert.ok(next.logs.includes("  settings.json: autoMemoryEnabled: false kept - ALFRED_CODE_MEMORY is custom there for the team; settings.local.json's default leaves Claude's own memory off for you until settings.local.json sets autoMemoryEnabled: true"), next.logs.join('\n'));
+            // Said on the run that answers, never on every run after it.
+            const quiet = write(file, { localFile, ledger: priorOf(next.result) });
+            assert.strictEqual(quiet.data.autoMemoryEnabled, false);
+            assert.ok(!quiet.logs.some((m) => m.includes('autoMemoryEnabled')), quiet.logs.join(' | '));
+        }
+    }
+});
+
 test('leaveLocalScope: a custom choice that stays local keeps its switch-off beside it', () =>
 {
     const dir = path.join(TMP, `leave-mem-custom-${seq++}`, '.claude');
@@ -1419,4 +1466,21 @@ test('leaveLocalScope: a custom choice that stays local keeps its switch-off bes
     const local = JSON.parse(fs.readFileSync(path.join(dir, 'settings.local.json'), 'utf8'));
     assert.strictEqual(local.env.ALFRED_CODE_MEMORY, 'custom', logs.join('\n'));
     assert.strictEqual(local.autoMemoryEnabled, false, `the switch-off travels with the choice: ${logs.join(' | ')}`);
+    assert.ok(logs.some((m) => m.includes('autoMemoryEnabled stays here')), logs.join(' | '));
+});
+
+// Fix-pass review m2: the stays line speaks for the stack's ledgered false alone - a true, or a false the user set, is theirs.
+test('leaveLocalScope: a custom choice beside the user\'s own autoMemoryEnabled says nothing about it', () =>
+{
+    for (const value of [true, false])
+    {
+        const dir = path.join(TMP, `leave-mem-own-${seq++}`, '.claude');
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ env: {} }));
+        fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_MEMORY: 'custom' }, autoMemoryEnabled: value }));
+        const logs = [];
+        leaveLocalScope({ claudeDir: dir, seeds: { ALFRED_CODE_MEMORY: 'default' }, ledgerSettings: value ? { autoMemoryEnabled: MEM_HASH } : {}, log: (m) => logs.push(m) });
+        assert.ok(!logs.some((m) => m.includes('autoMemoryEnabled stays here')), `${value}: ${logs.join(' | ')}`);
+        assert.strictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'settings.local.json'), 'utf8')).autoMemoryEnabled, value, 'and leaves it');
+    }
 });

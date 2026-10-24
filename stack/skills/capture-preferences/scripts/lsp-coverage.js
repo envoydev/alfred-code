@@ -29,12 +29,14 @@ function readCoverage(projectRoot)
     return data && typeof data === 'object' && Array.isArray(data.covered) && Array.isArray(data.servers) ? data : null;
 }
 
+// A plugin's entry in a marketplace file, or null.
+const entryIn = (file, name) => (((readJson(file) || {}).plugins) || []).find((p) => p && p.name === name) || null;
+
 // One install's declared servers: `lspServers` inline, as a path, or a list of either, a file config wrapping its map or not.
 function declaredServers(installPath, name, marketDir)
 {
-    const entryIn = (file) => (((readJson(file) || {}).plugins) || []).find((p) => p && p.name === name) || null;
-    const manifests = [readJson(path.join(installPath, '.claude-plugin', 'plugin.json')), entryIn(path.join(installPath, '.claude-plugin', 'marketplace.json'))];
-    if (marketDir) manifests.push(entryIn(path.join(marketDir, '.claude-plugin', 'marketplace.json')));
+    const manifests = [readJson(path.join(installPath, '.claude-plugin', 'plugin.json')), entryIn(path.join(installPath, '.claude-plugin', 'marketplace.json'), name)];
+    if (marketDir) manifests.push(entryIn(path.join(marketDir, '.claude-plugin', 'marketplace.json'), name));
     const configs = (v) =>
     {
         if (Array.isArray(v)) return v.flatMap(configs);
@@ -57,29 +59,71 @@ function declaredServers(installPath, name, marketDir)
     return out;
 }
 
+// Whether a plugin no settings file names is on: its `defaultEnabled`, a marketplace entry's over the manifest's, true when
+// none sets it (code.claude.com/docs/en/plugins-reference, `defaultEnabled`; final review M3).
+function defaultOn(installPath, name, marketDir)
+{
+    const sources = [marketDir && entryIn(path.join(marketDir, '.claude-plugin', 'marketplace.json'), name),
+        entryIn(path.join(installPath, '.claude-plugin', 'marketplace.json'), name), readJson(path.join(installPath, '.claude-plugin', 'plugin.json'))];
+    const set = sources.find((m) => m && typeof m.defaultEnabled === 'boolean');
+    return set ? set.defaultEnabled : true;
+}
+
+// The plugins one install depends on, as `name@marketplace` keys: `"name"` (this plugin's own marketplace),
+// `"name@marketplace"` or `{ name, marketplace }` (code.claude.com/docs/en/plugins-reference, `dependencies`).
+function dependenciesOf(installPath, name, marketDir, market)
+{
+    const manifests = [readJson(path.join(installPath, '.claude-plugin', 'plugin.json')), entryIn(path.join(installPath, '.claude-plugin', 'marketplace.json'), name),
+        marketDir && entryIn(path.join(marketDir, '.claude-plugin', 'marketplace.json'), name)];
+    const keys = manifests.filter(Boolean).flatMap((m) => (Array.isArray(m.dependencies) ? m.dependencies : [])).map((d) =>
+    {
+        if (typeof d === 'string') return d.includes('@') ? d : `${d}@${market}`;
+        return d && typeof d.name === 'string' ? `${d.name}@${d.marketplace || market}` : null;
+    });
+    return [...new Set(keys.filter(Boolean))];
+}
+
 // Every enabled plugin's servers whose install record reaches this project: a record without a projectPath (user or
-// managed scope) reaches every project, one with a projectPath only that project.
+// managed scope) reaches every project, one with a projectPath only that project. A plugin the settings do not name is on
+// by its own default, or because an enabled plugin depends on it - that one starts enabled regardless (plugins-reference,
+// `defaultEnabled`; fix-pass review m6). One row per plugin, command and install folder, so each resolves
+// ${CLAUDE_PLUGIN_ROOT} against its own (m7).
 function pluginServers({ projectRoot, env, enabled })
 {
     const plugins = path.join(env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'plugins');
     const registry = readJson(path.join(plugins, 'installed_plugins.json'));
     const markets = readJson(path.join(plugins, 'known_marketplaces.json')) || {};
     const here = realOf(projectRoot);
-    const out = [];
+    const reach = [];
     for (const [key, records] of Object.entries((registry && registry.plugins) || {}))
     {
         const [name, market] = key.split('@');
-        if (!enabled || enabled.get(name) !== true) continue;
+        const named = enabled && enabled.has(name) ? enabled.get(name) === true : null;
+        if (named === false) continue;
         const marketDir = market && markets[market] && markets[market].installLocation;
         for (const r of Array.isArray(records) ? records : [])
         {
             if (!r || !r.installPath || (r.projectPath && realOf(r.projectPath) !== here)) continue;
-            for (const s of declaredServers(r.installPath, name, marketDir))
-            {
-                const same = out.find((x) => x.plugin === name && x.command === s.command);
-                if (same) same.exts = [...new Set([...same.exts, ...s.exts])].sort();
-                else out.push({ plugin: name, ...s, root: r.installPath });
-            }
+            reach.push({ key, name, market, marketDir, root: r.installPath, on: named === true || defaultOn(r.installPath, name, marketDir) });
+        }
+    }
+    // The set only grows and holds at most every key, so the pass ends.
+    const needed = new Set();
+    for (let grew = true; grew;)
+    {
+        grew = false;
+        for (const x of reach) if (x.on || needed.has(x.key))
+            for (const dep of dependenciesOf(x.root, x.name, x.marketDir, x.market)) if (!needed.has(dep)) { needed.add(dep); grew = true; }
+    }
+    const out = [];
+    for (const x of reach)
+    {
+        if (!x.on && !needed.has(x.key)) continue;
+        for (const s of declaredServers(x.root, x.name, x.marketDir))
+        {
+            const same = out.find((o) => o.plugin === x.name && o.command === s.command && o.root === x.root);
+            if (same) same.exts = [...new Set([...same.exts, ...s.exts])].sort();
+            else out.push({ plugin: x.name, ...s, root: x.root });
         }
     }
     return out;
@@ -150,18 +194,21 @@ const projectExtensions = (opts) => scanProject(opts).exts;
 
 function computeCoverage({ projectRoot, env = process.env, enabled, platform = process.platform, spawn = spawnSync, walkCap = WALK_CAP })
 {
-    const servers = pluginServers({ projectRoot, env, enabled }).map((s) => ({ plugin: s.plugin, command: s.command, onPath: onPath(s.command, env, platform, { CLAUDE_PLUGIN_ROOT: s.root, CLAUDE_PROJECT_DIR: projectRoot }), exts: s.exts }));
+    // Each install folder resolves its own ${CLAUDE_PLUGIN_ROOT}, then one row per plugin and command: on PATH from any folder.
+    const servers = [];
+    for (const s of pluginServers({ projectRoot, env, enabled }))
+    {
+        const on = onPath(s.command, env, platform, { CLAUDE_PLUGIN_ROOT: s.root, CLAUDE_PROJECT_DIR: projectRoot });
+        const same = servers.find((x) => x.plugin === s.plugin && x.command === s.command);
+        if (same) { same.onPath = same.onPath || on; same.exts = [...new Set([...same.exts, ...s.exts])].sort(); }
+        else servers.push({ plugin: s.plugin, command: s.command, onPath: on, exts: s.exts });
+    }
     const scan = scanProject({ projectRoot, spawn, walkCap });
     const held = scan.exts;
     const covered = new Set();
-    const missing = [];
-    for (const s of servers)
-    {
-        const mine = s.exts.filter((e) => held.has(e));
-        if (!mine.length) continue;
-        if (s.onPath) mine.forEach((e) => covered.add(e));
-        else missing.push({ plugin: s.plugin, command: s.command });
-    }
+    for (const s of servers) if (s.onPath) s.exts.filter((e) => held.has(e)).forEach((e) => covered.add(e));
+    // A server not on PATH is missing where it would serve a file type of the project's that nothing else covers.
+    const missing = servers.filter((s) => !s.onPath && s.exts.some((e) => held.has(e) && !covered.has(e))).map((s) => ({ plugin: s.plugin, command: s.command }));
     // Final review I3: nothing covered in an empty project or a walk cut short is no finding - LSP stays until a check settles.
     const why = !scan.files ? 'empty' : scan.capped && !covered.size ? 'capped' : null;
     return { version: 1, servers, covered: [...covered].sort(), missing, settled: !why, ...(why ? { why } : {}) };
@@ -186,13 +233,12 @@ function coverageLine(result)
     if (!result) return 'lsp: not checked yet - the next update or /alfred-code:init checks it';
     if (result.settled === false)
         return `lsp: not settled - ${result.why === 'capped' ? `the walk stopped at ${WALK_CAP} files before a covered one` : 'the project holds no files yet'}, so LSP stays in the order; /alfred-code:update checks again`;
-    if (!result.covered.length)
-    {
-        const missing = (result.missing || []).map((m) => `${m.plugin}'s ${m.command}`);
-        return `lsp: none covers this project's files - navigation starts at the grep${missing.length ? `; ${missing.join(', ')} ${missing.length > 1 ? 'are' : 'is'} not on PATH` : ''}; /alfred-code:update checks again`;
-    }
+    const missing = (result.missing || []).map((m) => `${m.plugin}'s ${m.command}`);
+    const absent = missing.length ? `; ${missing.join(', ')} ${missing.length > 1 ? 'are' : 'is'} not on PATH` : '';
+    if (!result.covered.length) return `lsp: none covers this project's files - navigation starts at the grep${absent}; /alfred-code:update checks again`;
+    // Final review M7: a server missing beside one that covers is named too - a mixed repo's other language has no LSP.
     const plugins = [...new Set(result.servers.filter((s) => s.onPath && s.exts.some((e) => result.covered.includes(e))).map((s) => s.plugin))].sort();
-    return `lsp: covers ${result.covered.join(', ')} (${plugins.join(', ')})`;
+    return `lsp: covers ${result.covered.join(', ')} (${plugins.join(', ')})${absent}`;
 }
 
-module.exports = { FILE, WALK_CAP, coveragePath, readCoverage, declaredServers, pluginServers, onPath, scanProject, projectExtensions, computeCoverage, writeCoverage, coverageLine };
+module.exports = { FILE, WALK_CAP, coveragePath, readCoverage, declaredServers, defaultOn, dependenciesOf, pluginServers, onPath, scanProject, projectExtensions, computeCoverage, writeCoverage, coverageLine };

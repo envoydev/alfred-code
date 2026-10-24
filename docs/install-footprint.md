@@ -13,13 +13,13 @@ Written at every scope:
   - `permissions.deny` - one `Agent(alfred-code:<seat>)` for each seat the project did not pick.
   - the `env` block - the stack's own keys.
   - the `attribution` keys - commit, PR and session-link attribution off, each only where the project set none.
-- **`.claude/settings.local.json`** - the same keys at local scope. At project or user scope too, for a stack key this file already holds, since it applies over `settings.json`.
+- **`.claude/settings.local.json`** - the same keys at local scope. At project or user scope too, for a stack key this file already holds, since it applies over `settings.json` - and custom memory's `autoMemoryEnabled: false` when this file holds the `ALFRED_CODE_MEMORY=custom` choice.
 - **`.claude/alfred-code.stamp`** - the source revision, your picks and a ledger of every write.
 - **`.alfred/`** (the data root, `ALFRED_CODE_DATA_PATH`) - the docs, the hooks' state, the seats' handoff notes and the sensitive-data file. Its own `.gitignore` keeps everything but the docs out of git.
 
 Written later, or only on one route:
 
-- **`/alfred-code:init`** dates the stamp's `initialised:` line at its close. It never touches `autoMemoryEnabled` unless the project picks custom memory, which writes it ledgered into the project's own file: Claude Code's own memory otherwise stays as you set it. An update or uninstall over an earlier release takes back the `autoMemoryEnabled: false` that release's init wrote.
+- **`/alfred-code:init`** dates the stamp's `initialised:` line at its close. It never touches `autoMemoryEnabled` unless the project picks custom memory, and otherwise Claude Code's own memory stays as you set it. Custom memory writes `autoMemoryEnabled: false`, ledgered, beside the choice - into `settings.local.json` when that file holds `ALFRED_CODE_MEMORY`, so a personal choice never switches a teammate's memory off, else into the file the run writes. A personal choice never takes the team's switch-off out of `settings.json` while that file still says custom. An update or uninstall over an earlier release takes back the `autoMemoryEnabled: false` that release's init wrote.
 - **`<repo>/.mcp.json`** is never written. An update over an earlier release takes the stack's own registrations out of it; a server of yours stays.
 - **`.claude/settings.local.json`** gets claude-hud's `statusLine` from `/alfred-code:init` when claude-hud is installed for this project alone - the command names this machine's `node`, so it stays out of the shared file - after a `settings.local.json.bak.<time>` copy of the file, when it already exists.
 

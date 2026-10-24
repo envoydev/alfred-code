@@ -305,3 +305,118 @@ test('a nested data root is skipped by its whole path, its parent folder still r
     }
     finally { s.done(); }
 });
+
+// Final review M3: a plugin no settings file names is on by its own default - `defaultEnabled`, the marketplace entry's over
+// the manifest's, true when none sets it; a settings entry still decides when there is one.
+test('a plugin the settings do not name follows its defaultEnabled, the marketplace entry over the manifest', () =>
+{
+    const s = sandbox({ plugins: [{ ...TS, decl: 'manifest' }] });
+    try
+    {
+        s.stub('tsls');
+        writeText(path.join(s.root, 'a.ts'), 'x');
+        const covered = (enabled) => lsp.computeCoverage({ projectRoot: s.root, env: s.env, enabled }).covered;
+        assert.deepStrictEqual(covered(new Map()), ['.ts'], 'no entry and no defaultEnabled: on');
+        const manifest = path.join(s.work, 'cache', TS.name, '.claude-plugin', 'plugin.json');
+        writeJson(manifest, { ...JSON.parse(fs.readFileSync(manifest, 'utf8')), defaultEnabled: false });
+        assert.deepStrictEqual(covered(new Map()), [], 'the manifest says off');
+        writeJson(path.join(s.work, 'market', '.claude-plugin', 'marketplace.json'), { name: 'demo', plugins: [{ name: TS.name, source: './x', defaultEnabled: true }] });
+        assert.deepStrictEqual(covered(new Map()), ['.ts'], 'the marketplace entry wins over the manifest');
+        assert.deepStrictEqual(covered(new Map([[TS.name, false]])), [], 'a settings entry decides');
+    }
+    finally { s.done(); }
+});
+
+// Fix-pass review m6: a plugin an enabled plugin depends on starts enabled whatever its defaultEnabled - in every form a
+// dependency is written, a bare name resolving against the dependent's own marketplace (plugins-reference, `dependencies`).
+test('a plugin an enabled plugin depends on is on, whatever its defaultEnabled', () =>
+{
+    const s = sandbox({ plugins: [{ ...TS, decl: 'manifest' }, { name: 'host', command: 'hostls', exts: ['.go'], decl: 'manifest' }] });
+    try
+    {
+        s.stub('tsls');
+        writeText(path.join(s.root, 'a.ts'), 'x');
+        const edit = (name, change) => { const file = path.join(s.work, 'cache', name, '.claude-plugin', 'plugin.json'); writeJson(file, { ...JSON.parse(fs.readFileSync(file, 'utf8')), ...change }); };
+        const covered = (enabled) => lsp.computeCoverage({ projectRoot: s.root, env: s.env, enabled }).covered;
+        edit(TS.name, { defaultEnabled: false });
+        assert.deepStrictEqual(covered(new Map([['host', true]])), [], 'no dependency yet: off by its default');
+        for (const dep of [TS.name, `${TS.name}@demo`, { name: TS.name }, { name: TS.name, marketplace: 'demo', version: '^1.0.0' }])
+        {
+            edit('host', { dependencies: [dep] });
+            assert.deepStrictEqual(covered(new Map([['host', true]])), ['.ts'], JSON.stringify(dep));
+        }
+        assert.deepStrictEqual(covered(new Map([['host', false]])), [], 'the dependent switched off takes nothing on');
+        assert.deepStrictEqual(covered(new Map([['host', true], [TS.name, false]])), [], 'a settings entry for the dependency still decides');
+        edit('host', { dependencies: [`${TS.name}@elsewhere`] });
+        assert.deepStrictEqual(covered(new Map([['host', true]])), [], 'another marketplace\'s plugin of the name is not this one');
+    }
+    finally { s.done(); }
+});
+
+// Fix-pass review m7: two install records of one plugin in different folders each resolve ${CLAUDE_PLUGIN_ROOT} against
+// their own - the record listed first lacking the binary no longer hides the one that has it.
+test('each install folder resolves its own ${CLAUDE_PLUGIN_ROOT}', () =>
+{
+    const s = sandbox({ plugins: [{ name: 'own-lsp', command: '${CLAUDE_PLUGIN_ROOT}/bin/srv', exts: ['.ts'], decl: 'file' }] });
+    try
+    {
+        const second = path.join(s.work, 'cache', 'own-lsp-project');
+        fs.cpSync(path.join(s.work, 'cache', 'own-lsp'), second, { recursive: true });
+        writeText(path.join(second, 'bin', 'srv'), '#!/bin/sh\n');
+        const registry = path.join(s.config, 'plugins', 'installed_plugins.json');
+        const data = JSON.parse(fs.readFileSync(registry, 'utf8'));
+        data.plugins['own-lsp@demo'].push({ scope: 'project', projectPath: s.root, installPath: second });
+        writeJson(registry, data);
+        writeText(path.join(s.root, 'a.ts'), 'x');
+        const r = lsp.computeCoverage({ projectRoot: s.root, env: s.env, enabled: s.enabled });
+        assert.deepStrictEqual(r.covered, ['.ts'], JSON.stringify(r));
+        assert.deepStrictEqual(r.missing, []);
+        assert.deepStrictEqual(r.servers, [{ plugin: 'own-lsp', command: '${CLAUDE_PLUGIN_ROOT}/bin/srv', onPath: true, exts: ['.ts'] }], 'one row per plugin and command');
+    }
+    finally { s.done(); }
+});
+
+// Final review M7: a server missing beside one that covers is named - the mixed repo's other language has no LSP. One whose
+// file types another server already covers is not.
+test('a missing server is named beside one that covers, unless another covers its file types', () =>
+{
+    const s = sandbox({ plugins: [{ ...TS, decl: 'manifest' }, { name: 'cs-lsp', command: 'csls', exts: ['.cs'], decl: 'manifest' }, { name: 'ts2-lsp', command: 'tsls2', exts: ['.ts'], decl: 'manifest' }] });
+    try
+    {
+        s.stub('tsls');
+        for (const f of ['a.ts', 'b.cs']) writeText(path.join(s.root, f), 'x');
+        const r = lsp.computeCoverage({ projectRoot: s.root, env: s.env, enabled: s.enabled });
+        assert.deepStrictEqual(r.missing, [{ plugin: 'cs-lsp', command: 'csls' }]);
+        assert.strictEqual(lsp.coverageLine(r), "lsp: covers .ts (ts-lsp); cs-lsp's csls is not on PATH");
+    }
+    finally { s.done(); }
+});
+
+// Final review M9: the positive half of a project-scope record, and git's untracked files read with the tracked ones.
+test('a project-scope install record naming this project covers it', () =>
+{
+    const s = sandbox({ plugins: [{ ...TS, decl: 'manifest', projectPath: null }] });
+    try
+    {
+        const registry = path.join(s.config, 'plugins', 'installed_plugins.json');
+        const data = JSON.parse(fs.readFileSync(registry, 'utf8'));
+        data.plugins[`${TS.name}@demo`][0] = { ...data.plugins[`${TS.name}@demo`][0], scope: 'project', projectPath: s.root };
+        writeJson(registry, data);
+        s.stub('tsls');
+        writeText(path.join(s.root, 'a.ts'), 'x');
+        assert.deepStrictEqual(lsp.computeCoverage({ projectRoot: s.root, env: s.env, enabled: s.enabled }).covered, ['.ts']);
+    }
+    finally { s.done(); }
+});
+
+test('in git the untracked files are read beside the tracked ones, whatever the walk cap', () =>
+{
+    const s = sandbox();
+    try
+    {
+        s.commit(['z.z']);
+        for (const f of ['a.a', 'b.b']) writeText(path.join(s.root, f), 'x\n');
+        assert.deepStrictEqual([...lsp.projectExtensions({ projectRoot: s.root, walkCap: 1 })].sort(), ['.a', '.b', '.z']);
+    }
+    finally { s.done(); }
+});

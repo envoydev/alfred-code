@@ -269,6 +269,31 @@ test('a docs root the user set, moved on the answer to update\'s ask: the stack\
     assert.match(r.ignore, /^!\/docs\/$/m, 'the docs live under the root now');
 });
 
+// Final review M8: the language-server check sat inside the docs block, which a hand-set docs root still waiting on
+// update's ask skips - so it ran on no run until the ask was answered. It writes into the data root and runs on every run.
+test('a docs root still waiting on update\'s ask: the language-server check runs all the same', POSIX_ONLY, () =>
+{
+    const coverage = '.alfred/state/lsp-coverage.json';
+    const { result: r, outs } = seedRun(['install', 'update'], SELECTION, {
+        env: COPY_ENV, args: [['--scope', 'project'], UPDATE],
+        each: (repo, i) =>
+        {
+            if (i !== 0) return null;
+            twoZeroLayout(repo);
+            const file = path.join(repo, '.claude', 'settings.json');
+            const s = json(file);
+            s.env.ALFRED_CODE_DOCS_PATH = 'docs';
+            fs.writeFileSync(file, JSON.stringify(s, null, 2));
+            put(path.join(repo, 'docs', 'architecture', 'ARCHITECTURE.md'), '# mine\n');
+            fs.rmSync(path.join(repo, ...coverage.split('/')), { force: true });
+            return null;
+        },
+        inspect: look,
+    });
+    assert.match(outs[1], /docs root: docs was set by hand - nothing moved yet/, outs[1]);
+    assert.ok(r.has(coverage), `the update wrote the check's result:\n${outs[1]}`);
+});
+
 // M11: the captures bake the LITERAL docs root into their generated pointer rules (the run book, the
 // architecture docs, the code style), since a rule cannot resolve a setting at load. A data move that
 // carries the docs elsewhere re-stamps each of them with the new root, as it re-stamps alfred-docs-root;

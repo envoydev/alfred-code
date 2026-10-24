@@ -50,7 +50,7 @@ const seed = (root) => docs.docsVersioningSeed({ projectRoot: root, docsPath: '.
 // No awareness doc under the docs root: the awareness step moves nothing and writes no rule.
 const NO_AWARENESS = { respelled: [], overlays: [], agents: 'none', rule: 'not written - no awareness doc yet' };
 // Every project's first run seeds the git doc (the preferences layout, 2026-10-21); a later run finds it there.
-const PREFS_RESULT = (git) => ({ respelled: [], overlays: [], watch: 'none', git, rule: 'none', scopes: [], reach: [], tools: [], lsp: [] });
+const PREFS_RESULT = (git) => ({ respelled: [], overlays: [], watch: 'none', git, rule: 'none', scopes: [], reach: [], tools: [] });
 
 // --- the versioning seed, the four-home rule ------------------------------
 
@@ -261,12 +261,10 @@ test('migration: the orientation doc loose at the docs root moves on to awarenes
     const run = () => docs.migrateDocsDomains({ projectRoot: root, docsPath: '.alfred/docs', rules: rulesOf(root), instructions: instructionsOf(root), log: (m) => logs.push(m) });
     const out = run();
     const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
-    // The first run reports the language-server check once - which line depends on the machine's plugins.
-    const lspOnce = out.preferences.lsp.map((l) => l.replace(/^lsp: .*/, 'lsp: ...'));
-    assert.deepStrictEqual({ ...out, awareness: { ...out.awareness, rule: out.awareness.rule.replace(/\d+ bytes/, 'N bytes') }, preferences: { ...out.preferences, lsp: lspOnce } }, {
+    assert.deepStrictEqual({ ...out, awareness: { ...out.awareness, rule: out.awareness.rule.replace(/\d+ bytes/, 'N bytes') } }, {
         moved: ['related-projects/RELATED-PROJECTS.md', 'awareness/RELATED-PROJECTS-AWARENESS.md'], switched: ['preferences'], repointed: ['.claude/rules/alfred-related-context.md'],
         awareness: { respelled: [], overlays: [], agents: 'none', rule: 'created - .claude/rules/alfred-awareness.md, N bytes, imports 1' },
-        preferences: { ...PREFS_RESULT('seeded'), lsp: ['lsp: ...'] },
+        preferences: PREFS_RESULT('seeded'),
     }, 'two hops in one run, and the one rule imports the doc');
     assert.strictEqual(read('.alfred/docs/awareness/RELATED-PROJECTS-AWARENESS.md'), '# Related projects\n\n## sample-app\n');
     assert.ok(!fs.existsSync(path.join(root, '.alfred/docs/PROJECT-RELATED-CONTEXT.md')));
@@ -986,17 +984,47 @@ test('the language-server check runs the snapshot\'s tools.js lsp on every run, 
     const answer = (result) => (cmd, args, opts) => { calls.push({ cmd, args, opts }); return result; };
     const bare = project();
     const logs = [];
-    const out = docs.migrateDocsDomains({ projectRoot: bare, docsPath: '.claude/docs', log: (m) => logs.push(m), spawn: answer({ status: 0, stdout: "lsp: none covers this project's files - navigation starts at the grep\n" }) });
+    const lines = docs.lspCoverageLines(bare, (m) => logs.push(m), { spawn: answer({ status: 0, stdout: "lsp: none covers this project's files - navigation starts at the grep\n" }) });
     const call = calls.find((x) => x.args[1] === 'lsp');
     assert.ok(call, 'spawned with no inventory');
     assert.strictEqual(call.cmd, process.execPath);
     assert.ok(call.args[0].endsWith(path.join('capture-preferences', 'scripts', 'tools.js')), call.args[0]);
     assert.deepStrictEqual(call.args.slice(1), ['lsp', '--changed-only', '--project', bare]);
     assert.strictEqual(call.opts.timeout, 30000);
-    assert.deepStrictEqual(out.preferences.lsp, ["lsp: none covers this project's files - navigation starts at the grep"]);
+    assert.deepStrictEqual(lines, ["lsp: none covers this project's files - navigation starts at the grep"]);
     assert.ok(logs.includes("  lsp: none covers this project's files - navigation starts at the grep"), logs.join('\n'));
-    const late = docs.migrateDocsDomains({ projectRoot: bare, docsPath: '.claude/docs', log: () => {}, spawn: answer({ status: null, error: Object.assign(new Error('t'), { code: 'ETIMEDOUT' }), stdout: '' }) });
-    assert.deepStrictEqual(late.preferences.lsp, ['!! lsp: the language-server check did not finish in 30s - the last result stands; the next run checks again']);
-    const stopped = docs.migrateDocsDomains({ projectRoot: bare, docsPath: '.claude/docs', log: () => {}, spawn: answer({ status: 1, stdout: '' }) });
-    assert.deepStrictEqual(stopped.preferences.lsp, ['!! lsp: the language-server check stopped (exit 1) - the last result stands; the next run checks again']);
+    const late = docs.lspCoverageLines(bare, () => {}, { spawn: answer({ status: null, error: Object.assign(new Error('t'), { code: 'ETIMEDOUT' }), stdout: '' }) });
+    assert.deepStrictEqual(late, ['!! lsp: the language-server check did not finish in 30s - the last result stands; the next run checks again']);
+    const stopped = docs.lspCoverageLines(bare, () => {}, { spawn: answer({ status: 1, stdout: '' }) });
+    assert.deepStrictEqual(stopped, ['!! lsp: the language-server check stopped (exit 1) - the last result stands; the next run checks again']);
+});
+
+// Fix-pass review m1: an ALFRED_CODE_DATA_PATH the session exported outranks the settings files in the child, and during a
+// --data-path move it names the old root - both children get the root this run resolved.
+test('the tools.js children read the data root this run resolved, over an exported one', () =>
+{
+    const calls = [];
+    const answer = (cmd, args, opts) => { calls.push({ args, opts }); return { status: 0, stdout: '' }; };
+    const was = process.env.ALFRED_CODE_DATA_PATH;
+    process.env.ALFRED_CODE_DATA_PATH = '.old-root';
+    try
+    {
+        const root = project({ files: { '.new-root/state/tools-inventory.json': TABLE_ONLY() } });
+        docs.lspCoverageLines(root, () => {}, { spawn: answer, dataPath: '.new-root' });
+        docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs', dataPath: '.new-root', log: () => {}, spawn: answer });
+        for (const job of ['lsp', 'refresh'])
+        {
+            const call = calls.find((x) => x.args[1] === job);
+            assert.ok(call, `${job} spawned`);
+            assert.strictEqual(call.opts.env.ALFRED_CODE_DATA_PATH, '.new-root', job);
+        }
+        calls.length = 0;
+        docs.lspCoverageLines(root, () => {}, { spawn: answer });
+        assert.strictEqual(calls[0].opts.env.ALFRED_CODE_DATA_PATH, '.old-root', 'no root handed over: the inherited env as before');
+    }
+    finally
+    {
+        if (was === undefined) delete process.env.ALFRED_CODE_DATA_PATH;
+        else process.env.ALFRED_CODE_DATA_PATH = was;
+    }
 });
