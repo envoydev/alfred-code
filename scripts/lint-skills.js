@@ -1234,7 +1234,8 @@ const SETUP_ASK_TEMPLATES = {
     // +3: step 2's areas, step 10's permission mode and step 11's pins (audit 2026-10-21 commands T2-12).
     // -1: step 12's old-seed rename ask, folded into instructions-place.md's name ask (2026-10-22).
     // -1: the memory level ask, with the memory server (the no-MCP stack, 2026-10-24).
-    'setup-plugin/commands/configure.md': 8,
+    // +2: step 8's memory and navigation asks (spec P1 + P2, 2026-10-24).
+    'setup-plugin/commands/configure.md': 10,
     // audit 2026-10-11: update's three asks plus step 6's re-spell of the project's own AGENTS.md (session b3f8193f).
     // Audit 2026-10-20 C15: update.md is a router, so a gate-refused run carries none of them - the data-root and
     // instruction-file asks ride the walk (steps 1-3), the re-spell and git-hygiene asks the close (steps 6-8).
@@ -1250,7 +1251,8 @@ const SETUP_ASK_TEMPLATES = {
     // +1: the unedited instruction-file seed's own delete question (the user's ask of 2026-10-23).
     'setup-plugin/commands/uninstall.md': 2,
     'setup-plugin/commands/status.md': 1,
-    'setup-plugin/references/init-bootstrap.md': 1,
+    // +2: step 4's memory and navigation asks (spec P1 + P2, 2026-10-24).
+    'setup-plugin/references/init-bootstrap.md': 3,
     // validate's AGENTS.md check ask, 'Leave them' recommended and first (audit 2026-10-11, session 6288ad94). +2: step 2's
     // detection confirm and its dispute follow-up, which was asked in plain text (audit 2026-10-21 commands T2-08).
     // +3: the layer and environment consent rounds and the install audit's high-row ask (T2-12).

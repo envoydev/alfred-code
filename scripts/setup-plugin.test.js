@@ -113,7 +113,7 @@ test('init install phase: no memory level, the bootstrap prerequisites deferred,
     const close = setup.slice(setup.indexOf('## Post-check'));
     assert.match(flat(close), /\*\*Restart, then `\/alfred-code:init` again\*\*/);
     assert.match(flat(close), /Nothing is pending on this run - these are yours to run when you choose\./);
-    assert.ok(!/## \d+\. AGENTS\.md/.test(setup) && /## 5\. AGENTS\.md/.test(bootstrapBody()), 'the AGENTS.md fill is the bootstrap phase\'s');
+    assert.ok(!/## \d+\. AGENTS\.md/.test(setup) && /## 6\. AGENTS\.md/.test(bootstrapBody()), 'the AGENTS.md fill is the bootstrap phase\'s');
 });
 
 // 2.10.1 (spec N5): the stack ships no MCP server, so no walk carries a server layer or a server ask, and no
@@ -129,15 +129,18 @@ test('the walk: no MCP layer, no server ask, no server flag', () => {
     assert.match(cmdBody('configure'), /--installed-only --print-plan --plan-out "\$TMP\/installed\.json"/, 'the DELTA walk reads the plan configure wrote');
 });
 
-test('init bootstrap phase: the order - read, plan, one machine ask, captures inline, AGENTS.md; no sentry', () => {
+test('init bootstrap phase: the order - read, plan, one machine ask, memory and navigation, captures inline, AGENTS.md; no sentry', () => {
     const init = bootstrapBody();
     // 2.10.1: no server runtime to install and no memory import - the stack ships no MCP server.
     assert.doesNotMatch(init, /\buvx?\b|memory\.js|--level/, 'no uv, no memory step');
     // The hook count, stated once per table: the manifest ships eighteen (forge-session joined 2026-10-23, memory-session
     // retired 2026-10-24).
     assert.match(flat(walkBody()), /Recommended \(FRESH\) = all eighteen:.*\*\*None\*\* names all eighteen/);
-    const order = ['## 1. Read the install', '## 2. The plan', '## 3. Machine installs - ONE ask', '## 4. Captures', '## 5. AGENTS.md'].map((h) => init.indexOf(h));
-    assert.ok(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), `the five steps in order: ${order}`);
+    const order = ['## 1. Read the install', '## 2. The plan', '## 3. Machine installs - ONE ask', '## 4. Memory and navigation', '## 5. Captures', '## 6. AGENTS.md'].map((h) => init.indexOf(h));
+    assert.ok(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), `the six steps in order: ${order}`);
+    // Spec P1 + P2: the step reads tools.js modes, asks the two templates, and applies a changed memory mode in one call.
+    assert.match(init, /tools\.js" modes --project \. --lsp/);
+    assert.match(init, /install\/alfred-code\.js" update --source "\$TMP\/repo" --installed-only --memory <mode>/);
     assert.match(init, /install\/alfred-code\.js" update --source "\$TMP\/repo" --installed-only --print-plan --plan-out "\$TMP\/installed\.json"/);
     assert.match(init, /scripts\/init-plan\.js" --installed "\$TMP\/installed\.json" --root \./);
     // C-T4-01: no pre-selection exists, so the one ask is a single-select and 'Pick which' opens the multi-select.

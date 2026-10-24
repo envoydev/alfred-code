@@ -6,8 +6,8 @@ this run uses them. Its preamble - the fresh-session measurement, the snapshot p
 house voice and the Bash-only reads of the stack's own files - holds for every line below. A run after an earlier one
 reads what is already in place and skips it (`present`, `done`), so it only finishes what the earlier one left.
 
-Five steps, one banner line before each: `[step n/5 - <name>] <what> · next: <name>` - 1 read the
-install · 2 the plan · 3 machine installs · 4 captures · 5 AGENTS.md.
+Six steps, one banner line before each: `[step n/6 - <name>] <what> · next: <name>` - 1 read the
+install · 2 the plan · 3 machine installs · 4 memory and navigation · 5 captures · 6 AGENTS.md.
 
 ## 1. Read the install
 
@@ -17,7 +17,7 @@ One call, nothing changed: `node "$TMP/repo/scripts/install/alfred-code.js" upda
 
 ## 2. The plan - a script states it, never you
 
-`node "$TMP/repo/scripts/init-plan.js" --installed "$TMP/installed.json" --root . --plugin-root "${CLAUDE_PLUGIN_ROOT}"` - paste its lines byte-for-byte in ONE fenced block. It probes this machine and names, in order (unattended, followed by one `unattended:` line per ask of steps 3 to 5 - the answers, taken exactly):
+`node "$TMP/repo/scripts/init-plan.js" --installed "$TMP/installed.json" --root . --plugin-root "${CLAUDE_PLUGIN_ROOT}"` - paste its lines byte-for-byte in ONE fenced block. It probes this machine and names, in order (unattended, followed by one `unattended:` line per ask of steps 3 to 6 - the answers, taken exactly):
 
 - `machine: <what> - present | missing: <command> | refresh: <command> | blocked: <why> | skip: <why>` -
   `csharp-ls` when `csharp-lsp` is kept, `typescript-language-server` (with the TypeScript 6 it reads) when
@@ -58,7 +58,29 @@ Run the picked commands in plan order and report each as installed, failed (its 
 by the answer. A language server this session started before its binary existed connects only after a restart - the
 close names it.
 
-## 4. Captures - each SKILL.md followed inline
+## 4. Memory and navigation
+
+One call, nothing changed but the language-server check it re-runs: `node "$TMP/repo/stack/skills/capture-preferences/scripts/tools.js" modes --project . --lsp` - paste its lines byte-for-byte in ONE fenced block. They say which memory the project uses, what navigation each actor gets and whether a language server covers the project's files.
+
+Each question is asked only while its mode is the stack's default: a `memory: custom` line, or a navigation line reading `yours`, is a choice already made - one narration line each (`<memory | navigation>: kept - /alfred-code:configure changes it`), no question. The rest go in ONE AskUserQuestion call:
+
+```ask
+Memory for this project?
+- 'Native, Claude's default place (Recommended)' - Claude Code keeps its own memory where it always does; nothing is written.
+- 'Custom, your memory server through the tool order' - Claude's own memory goes off and the memory tool you rank holds the lessons; ranks one now if none is.
+```
+
+```ask
+Navigation in files?
+- 'Agent decides, the stack's order (Recommended)' - every session and agent starts with the order the modes line shows (LSP then a scoped grep, or the grep alone where no language server covers the project).
+- 'Custom, rank your own tools now' - your ranking leads the main session; a server you rank reaches the main session only, and the agents use your built-in ranks.
+```
+
+- **Custom navigation:** read `$TMP/repo/stack/skills/capture-preferences/references/tools-area.md` (through Bash) and follow it inline for the navigation job alone - its step 4 asks navigation's question only - start to finish, its `lint` and `order` included.
+- **Custom memory:** follow the same file for the memory job alone, then run `modes` again. A `memory: custom - no memory tool is reachable` line means nothing would hold the lessons: apply `default` instead and say `No memory tool is ranked and reachable, so memory stays native (Claude's default place).`
+- **Apply:** a memory answer other than the `memory:` line's mode is ONE call - `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --installed-only --memory <mode>` (`default` or `custom`) - whose `ALFRED_CODE_MEMORY` and `autoMemoryEnabled` lines are reported verbatim; it applies from the next session. The same answer is no call, and so is 'Agent decides'.
+
+## 5. Captures - each SKILL.md followed inline
 
 For every `capture: ... - run: read <path>` line, in plan order: read that `SKILL.md` (through Bash)
 and follow it inline, start to finish - never a Skill call: the reads stay in this run, and the manual-only ones
@@ -73,7 +95,7 @@ here.
 its own questions on the way - the run book's gaps, and the sibling repos (typed via Other, or 'None' for a
 standalone repo) - and its script decides what needs rewriting.
 
-## 5. AGENTS.md - the user's call
+## 6. AGENTS.md - the user's call
 
 Not required - open with WHERE it lives and WHAT a yes changes, then AskUserQuestion (fill it in -
 recommended / skip); a 'no' ends the step cleanly. The installer seeded `.claude/AGENTS.md` from
@@ -93,7 +115,8 @@ too. Its one line goes in the card.
 
 **The card restates the OUTCOME of every step** - one line each, in step order: each machine item
 (installed, failed with its reason, skipped, blocked with its fix), each capture (ran and what it wrote, done, skipped
-and why), AGENTS.md (created, improved or skipped, with the check's last line), then the `initialised:` line. Then the
+and why), the modes, as `memory: <default | custom> · navigation: <the stack's order | yours>`, AGENTS.md (created, improved or skipped,
+with the check's last line), then the `initialised:` line. Then the
 user's own next steps as suggestions, each with its one reason: a restart when step 3 installed a language server
 binary; `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/post-install.md` as the durable copy. Close the card
 with this line, verbatim: 'Nothing is pending on this run - these are yours to run when you choose.'
@@ -122,7 +145,8 @@ is answered by the run itself, never AskUserQuestion, by one rule:
   it. A multi-select ask takes the options its question names as the default, a destructive one left out.
 - Log each answer as one line, `unattended: <question> -> <choice>`, with `(<why>)` when the choice is
   not the Recommended option. Step 2's plan already carries the lines for init's own asks (machine
-  installs, AGENTS.md) - apply exactly those, never re-judge them.
+  installs, memory, navigation, AGENTS.md) - apply exactly those, never re-judge them; an ask with no line is one step 4
+  does not put.
 - The stack's files are read through the Bash tool, never the Read tool (above): outside the working
   directory the Read tool asks first, and here nobody answers.
 

@@ -192,7 +192,7 @@ Which areas to adjust this run? None ticked walks all four.
 - 'Rules + Agents + Skills (Recommended)' - the three catalog layers, walked first
 - 'Hooks' - the hook layer
 - 'Plugins' - the status line and the LSP picks
-- 'Environment' - the stack's env values
+- 'Environment' - the stack's env values, the memory mode and navigation
 ```
  Only the chosen areas are walked, in the fixed dependency order rules -> agents -> skills -> hooks -> plugins -> environment; every skipped layer keeps its installed SET untouched - its files are still refreshed by the
 installer run at step 11, which works from the whole selection - and gets one narration line naming it. Cascades still cross area lines - the closure owns consistency, the picker only decides which tables you page through: a consent-drop's dependents are handled wherever they land, and orphans that fall in a SKIPPED layer are collected and presented in one combined drop round after the last walked layer, never silently kept or removed.
@@ -307,6 +307,24 @@ few turns stale, and report its printed line. A typed override (Other) for that 
 deliberate decision like any other row's and goes through the generic merge as-is. Area
 skipped, or nothing changed: one narration line, nothing written.
 
+**Memory and navigation** ride this area. First `node "$TMP/repo/stack/skills/capture-preferences/scripts/tools.js" modes --project .` - paste its lines in ONE fenced block - then ONE AskUserQuestion with both questions, each carrying its current line:
+
+```ask
+Memory for this project? (now: <the modes memory: line>)
+- 'Keep it (Recommended)' - nothing changes.
+- 'Native, Claude's default place' - Claude Code keeps its own memory where it always does; the switch-off custom memory wrote goes.
+- 'Custom, your memory server through the tool order' - Claude's own memory goes off and the memory tool you rank holds the lessons; ranks one now if none is.
+```
+
+```ask
+Navigation in files? (now: <the modes navigation: line>)
+- 'Keep it (Recommended)' - nothing changes.
+- 'Agent decides, the stack's order' - every session and agent starts with the stack's order (LSP then a scoped grep, or the grep alone where no language server covers the project); your own navigation entry, if there is one, is removed.
+- 'Custom, rank your own tools now' - your ranking leads the main session; a server you rank reaches the main session only, and the agents use your built-in ranks.
+```
+
+'Custom' follows `$TMP/repo/stack/skills/capture-preferences/references/tools-area.md` (read through Bash) inline for that job alone, start to finish; 'Agent decides' over an own navigation entry removes that entry through the same file's Write step (the id goes on its `Retired:` line), then its `lint`. After a custom memory answer run `modes` again: a `memory: custom - no memory tool is reachable` line applies `default` instead, said as `No memory tool is ranked and reachable, so memory stays native (Claude's default place).` A memory answer other than the current mode rides step 11's ONE installer call as `--memory <default|custom>` - a change on its own, so that call runs - and applies from the next session.
+
 ## 9. Permission mode
 
 Runs regardless of which areas were chosen at step 2 - it is not part of that picker (the tool caps a
@@ -380,7 +398,7 @@ kept, or the plugins layer not walked); the narration line before the call names
 `placement: not asked - <why>`). That answer is where the `--scope-of` flags come from, so an installer run
 before it owes a second run when the answer moves an item (audit 2026-10-20 C46, 878f253d).
 
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--keep-pins] [--scope-of <item>=<global|project|local>]... [--docs-versioning git|local] [--data-path <folder> --data-move move] [--instructions-file agents|claude] [--instructions-at root|claude] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. One `--scope-of` per optional item the walk's last ask moved (`references/walk.md`, 'Where each optional item installs'), plus one per newly added item made global - none for 'Keep each where it is': an update keeps every item where it lives, and this flag is the one way one moves. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--keep-pins] [--scope-of <item>=<global|project|local>]... [--docs-versioning git|local] [--data-path <folder> --data-move move] [--instructions-file agents|claude] [--instructions-at root|claude] [--memory default|custom] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. One `--scope-of` per optional item the walk's last ask moved (`references/walk.md`, 'Where each optional item installs'), plus one per newly added item made global - none for 'Keep each where it is': an update keeps every item where it lives, and this flag is the one way one moves. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
 - **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED` set to `shell`). The frozen OS twin is gone, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
 - `--docs-versioning` only when the user's own invocation names a value (`/alfred-code:configure
   --docs-versioning local`): the installer writes it over the current value and prints the old and new

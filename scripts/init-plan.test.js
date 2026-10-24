@@ -322,6 +322,8 @@ test('unattended: each of init\'s own asks gets one line - additive installs tak
     assert.deepStrictEqual(unattended(p), [
         'unattended: machine installs -> install csharp-ls, typescript-language-server',
         'unattended: machine installs -> skip claude-hud status line + compact layout (a refresh replaces the account\'s existing status line - destructive)',
+        'unattended: Memory for this project? -> Native, Claude\'s default place (Recommended)',
+        'unattended: Navigation in files? -> Agent decides, the stack\'s order (Recommended)',
         'unattended: AGENTS.md -> fill it in (Recommended)',
     ], 'the sibling ask is the awareness capture\'s own, answered inline by init.md\'s rule (its Recommended option is None)');
 });
@@ -329,7 +331,7 @@ test('unattended: each of init\'s own asks gets one line - additive installs tak
 test('unattended: nothing to install - no line for an ask that never fires', () =>
 {
     const lines = unattended({ machine: [{ what: 'csharp-ls', state: 'present', detail: '' }], captures: [{ skill: 'capture-architecture', state: 'done', detail: 'x exists' }] });
-    assert.deepStrictEqual(lines, ['unattended: AGENTS.md -> fill it in (Recommended)']);
+    assert.deepStrictEqual(lines, ['unattended: Memory for this project? -> Native, Claude\'s default place (Recommended)', 'unattended: Navigation in files? -> Agent decides, the stack\'s order (Recommended)', 'unattended: AGENTS.md -> fill it in (Recommended)'], 'the step-4 asks always fire');
 });
 
 test('unattended: the CLI prints the mode on --mode, and the decisions after the plan only when the switch is on', { skip: process.platform === 'win32' && 'shell stubs' }, () =>
@@ -369,4 +371,25 @@ test('unattended: update\'s preflight says it too, so update answers its own ask
     assert.doesNotMatch(run({}), /^unattended:/m);
     const body = fs.readFileSync(path.join(__dirname, '..', 'setup-plugin', 'references', 'update-walk.md'), 'utf8');
     assert.match(body, /`unattended: on`[^\n]*\n?[^\n]*init-bootstrap\.md/, 'update-walk.md (the update walk, audit 2026-10-20 C15) reads the line and points at the one rule');
+});
+
+test('unattended: a mode already chosen gets no line - step 4 asks only while it is the stack\'s default', () =>
+{
+    const base = { machine: [], captures: [] };
+    const lines = (extra) => unattended({ ...base, ...extra }).filter((l) => /Memory|Navigation/.test(l));
+    assert.deepStrictEqual(lines({ memory: 'custom', ownNavigation: true }), []);
+    assert.deepStrictEqual(lines({ memory: 'custom' }), ['unattended: Navigation in files? -> Agent decides, the stack\'s order (Recommended)']);
+    assert.deepStrictEqual(lines({ ownNavigation: true }), ['unattended: Memory for this project? -> Native, Claude\'s default place (Recommended)']);
+    // The CLI reads both from the project: a custom memory env and an own navigation entry.
+    const root = project();
+    fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_MEMORY: 'custom' } }));
+    const doc = path.join(root, '.alfred', 'docs', 'preferences', 'TOOLS-PREFERENCES.md');
+    fs.mkdirSync(path.dirname(doc), { recursive: true });
+    fs.writeFileSync(doc, '# Tools preferences\n\nUpdated: 2026-10-24\n\n## T1 - Code navigation\n<!-- id: t1 -->\n- Job: navigation\n- Order: Grep\n');
+    const inv = path.join(root, 'installed.json');
+    fs.writeFileSync(inv, JSON.stringify(INV({ plugins: [] })));
+    const out = spawnSync(process.execPath, [SCRIPT, '--installed', inv, '--root', root], { env: { ...process.env, HOME: root, CLAUDE_CONFIG_DIR: ACCT, ALFRED_CODE_UNATTENDED: '1', ALFRED_CODE_DATA_PATH: '', ALFRED_CODE_DOCS_PATH: '' }, encoding: 'utf8' }).stdout;
+    assert.ok(!/unattended: (Memory|Navigation)/.test(out), out);
+    assert.match(out, /unattended: AGENTS\.md -> fill it in \(Recommended\)/);
 });
