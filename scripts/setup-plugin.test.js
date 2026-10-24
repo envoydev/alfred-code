@@ -995,8 +995,14 @@ test('update: the kept and unreadable lines reach both update bodies; the local 
     const account = (work, text) => { fs.mkdirSync(path.join(work, 'acct'), { recursive: true }); fs.writeFileSync(path.join(work, 'acct', '.claude.json'), text); };
     const stale = seedRun('install', 'skill markdown-style\nrule markdown-docs\n', {
         env: COPY_ENV, args: ['--scope', 'user'],
-        // `navigation`, a name the 2.2.0 rename left behind, is judged on every run: this one is the user's own server.
-        prepare: (repo, work) => account(work, JSON.stringify({ mcpServers: { navigation: { type: 'stdio', command: 'node', args: ['my-nav.js'], env: {} } } })),
+        // `navigation`, a name the 2.2.0 rename left behind, is judged on the first run past its successor's retirement
+        // (a 2.10.0 stamp): this one is the user's own server.
+        prepare: (repo, work) =>
+        {
+            account(work, JSON.stringify({ mcpServers: { navigation: { type: 'stdio', command: 'node', args: ['my-nav.js'], env: {} } } }));
+            fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+            fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'sha: abc\nversion: 2.10.0\n');
+        },
     }).out;
     const unreadable = seedRun('install', 'skill markdown-style\nrule markdown-docs\n', {
         env: COPY_ENV, args: ['--scope', 'user'],

@@ -634,8 +634,9 @@ function hudStatusLineMissing({ plugins = [], listing = [], settingsFile, settin
 // A USER row is every other project's install too: it stays, and the run names the command that removes
 // it; a project or local row at another scope than the run's is still this project's, and goes. After
 // each uninstall the row's add-back line is printed: the retirement takes the plugin, never the user's
-// way back to the server.
-function prunedRetired({ rows, listing, retired = [], retiredRows = [], market = BRAND.marketplace, scope, cli, log = () => {}, note = () => {} })
+// way back to the server. `backTo(name, scope, line)` may take a line instead (true when it did) - the run's one
+// block of the 2.10.1 servers' add-back lines.
+function prunedRetired({ rows, listing, retired = [], retiredRows = [], market = BRAND.marketplace, scope, cli, backTo = null, log = () => {}, note = () => {} })
 {
     const all = rows || listing || [];
     const gone = [];
@@ -668,7 +669,7 @@ function prunedRetired({ rows, listing, retired = [], retiredRows = [], market =
             {
                 log(`  plugin pruned (retired upstream) [${item.scope}]: ${item.spec}`);
                 const back = addBack(item.name);
-                if (back) log(`    add it back: ${back.split('<scope>').join(item.scope)}`);
+                if (back && !(backTo && backTo(item.name, item.scope, back))) log(`    add it back: ${back.split('<scope>').join(item.scope)}`);
                 // A-I2: the old local mode had the user switch the hosted server off, and nothing else turns it on.
                 if (item.name === 'context7-local') log('  !! context7-local removed - if you ran /mcp disable context7 for it, run /mcp enable context7');
                 gone.push(item.name);
@@ -679,6 +680,41 @@ function prunedRetired({ rows, listing, retired = [], retiredRows = [], market =
     }
     for (const item of left) note(`plugin uninstall failed: ${item.spec} - remove it by hand: claude plugin uninstall ${item.spec} --scope ${item.scope}`);
     return gone;
+}
+
+// A retired SERVER plugin's key the project's own settings files still switch on while no install of it reaches this project
+// (a teammate's committed `alfred-navigation@envoydev`): Claude Code would look for a plugin the marketplace no longer lists.
+// The key goes - only for a row whose add-back registers the server (`claude mcp add-json`), only where `rows` (every scope's
+// listing, before the prune) holds no row of that spec, and never on a listing that could not be read (`blind`). A row the
+// prune just uninstalled was reached, and the CLI takes its key with it.
+function dropStaleRetired({ rows = [], blind = false, retiredRows = [], market = BRAND.marketplace, claudeDir, log = () => {}, note = () => {} })
+{
+    if (blind) return [];
+    const specs = retiredRows.filter((r) => r && /^claude mcp add-json /.test(String(r.addBack || '')))
+        .map((r) => ({ spec: retiredSpec(r.name, market, retiredRows), since: r.retiredIn }))
+        .filter(({ spec }) => !rows.some((x) => `${x.name}@${x.marketplace}` === spec));
+    const dropped = [];
+    for (const name of ['settings.json', 'settings.local.json'])
+    {
+        const file = path.join(claudeDir, name);
+        if (!fs.existsSync(file)) continue;
+        let data;
+        try { data = parseJson(fs.readFileSync(file, 'utf8')); }
+        catch { note(`${name} could not be read - a retired server plugin's enabledPlugins key there was left as it is`); continue; }
+        const on = data && typeof data === 'object' && !Array.isArray(data) ? data.enabledPlugins : null;
+        if (!on || typeof on !== 'object' || Array.isArray(on)) continue;
+        const gone = specs.filter(({ spec }) => Object.hasOwn(on, spec));
+        if (!gone.length) continue;
+        for (const { spec, since } of gone)
+        {
+            delete on[spec];
+            dropped.push(spec);
+            log(`  ${name}: enabledPlugins entry ${spec} removed - the stack retired that plugin in ${since} and no install of it reaches this project`);
+        }
+        if (!Object.keys(on).length) delete data.enabledPlugins;
+        fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+    }
+    return dropped;
 }
 
 // The plugin ids an install record reaches in this project: an account-wide record (no projectPath), or this project's
@@ -828,7 +864,7 @@ module.exports = {
     SCOPES, isManaged, scopeRank, overrideScope, scopesOf, adminOwned, atRelease, leftAt, effectiveOn, withEffective,
     pluginRoutes, committedRoutes, committedRoutesAt, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor,
     resolveStackPlugins, selectionLines, pluginSet,
-    refreshMarketplaces, stackMarket, refreshStackSource, installPlugins, prunedRetired, retirementDue, updatePlugins, extraMarketplaces,
+    refreshMarketplaces, stackMarket, refreshStackSource, installPlugins, prunedRetired, dropStaleRetired, retirementDue, updatePlugins, extraMarketplaces,
     copyRouteStandDown, restoreStoodDown, standDownScope, rowsOn, moveLocalRows, hudStatusLineMissing, unreachedPlugins,
 };
 

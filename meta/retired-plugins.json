@@ -209,6 +209,33 @@
         "package": "macos-mcp"
       },
       "addBack": "claude mcp add-json --scope <scope> macos-desktop '{\"command\":\"uvx\",\"args\":[\"--python\",\"3.13\",\"--exclude-newer\",\"2026-10-20T23:59:59Z\",\"--from\",\"macos-mcp==0.4.6\",\"macos-mcp\",\"serve\"],\"env\":{\"ANONYMIZED_TELEMETRY\":\"false\"}}'"
+    },
+    {
+      "name": "navigation",
+      "retiredIn": "2.10.1",
+      "why": "the 2.0.0 id of alfred-navigation, unlisted in 2.2.1 once every install had updated past the 2.2.0 rename; an install still holding its row gets nothing from the marketplace, and the no-MCP stack (2026-10-24) retired its successor",
+      "registration": {
+        "package": "serena-agent"
+      },
+      "addBack": "claude mcp add-json --scope <scope> serena '{\"command\":\"uvx\",\"args\":[\"--python\",\"3.13\",\"--exclude-newer\",\"2026-10-20T23:59:59Z\",\"--from\",\"serena-agent@2.1.0\",\"serena\",\"start-mcp-server\",\"--context\",\"claude-code\",\"--enable-web-dashboard\",\"false\",\"--project-from-cwd\",\"--agent-interface\",\"tools\"],\"env\":{\"SERENA_USAGE_REPORTING\":\"false\",\"SERENA_HOME\":\".alfred/serena/home\"}}'"
+    },
+    {
+      "name": "documentation",
+      "retiredIn": "2.10.1",
+      "why": "the 2.0.0 id of alfred-documentation, unlisted in 2.2.1 once every install had updated past the 2.2.0 rename; an install still holding its row gets nothing from the marketplace, and the no-MCP stack (2026-10-24) retired its successor",
+      "registration": {
+        "url": "https://mcp.context7.com/mcp"
+      },
+      "addBack": "claude mcp add-json --scope <scope> context7 '{\"type\":\"http\",\"url\":\"https://mcp.context7.com/mcp\",\"headers\":{\"Context7-API-Key\":\"${CONTEXT7_API_KEY:-}\"}}'"
+    },
+    {
+      "name": "memory",
+      "retiredIn": "2.10.1",
+      "why": "the 2.0.0 id of alfred-memory, unlisted in 2.2.1 once every install had updated past the 2.2.0 rename; an install still holding its row gets nothing from the marketplace, and the no-MCP stack (2026-10-24) retired its successor",
+      "registration": {
+        "package": "mcp-memory-service"
+      },
+      "addBack": "claude mcp add-json --scope <scope> memory '{\"command\":\"uvx\",\"args\":[\"--python\",\"3.13\",\"--exclude-newer\",\"2026-10-20T23:59:59Z\",\"--with\",\"numpy\",\"--from\",\"mcp-memory-service[sqlite]==12.1.1\",\"memory\",\"server\"],\"env\":{\"MCP_MEMORY_STORAGE_BACKEND\":\"sqlite_vec\",\"MCP_MEMORY_SQLITE_PATH\":\"${HOME}/.alfred-memory/memory.db\",\"MCP_MEMORY_SQLITE_PRAGMAS\":\"busy_timeout=15000\"}}'"
     }
   ]
 }

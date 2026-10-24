@@ -192,7 +192,7 @@ test('seed update --scope user: the prune of this project\'s .mcp.json keeps the
             pwProject(repo);
             fs.writeFileSync(path.join(repo, '.mcp.json'), `${JSON.stringify({ mcpServers: {
                 'alfred-navigation': { type: 'stdio', command: 'node', args: ['my-serena.js'], env: {} },
-                'alfred-documentation': { type: 'http', url: SHIPPED.remotes['alfred-documentation'].url, headers: { CONTEXT7_API_KEY: '${CONTEXT7_API_KEY:-}' } },
+                'alfred-documentation': shippedRow('alfred-documentation'),
             } }, null, 2)}\n`);
             fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), `${JSON.stringify({ enabledMcpjsonServers: ['alfred-navigation', 'alfred-documentation'] }, null, 2)}\n`);
         },
@@ -231,8 +231,9 @@ test('seed update --scope user: the prune of this project\'s .mcp.json never rem
 
 // A-M2 (final review A): at user scope every run removed each stack name from the account's own
 // registrations - a server of the user's own under the same name went with them. Only a registration of
-// the stack's own shape (the package it launches, or the url it calls) is removed; another is kept and
-// named once, and a name the account does not register costs no call.
+// the stack's own shape is removed (with no ledger row there, the release template's exact words - the package it
+// launches is no proof: the add-back line launches the same one, 2026-10-24); another is kept and named once, and a
+// name the account does not register costs no call.
 test('seed update --scope user (plugin route): only a stack-shaped user-scope registration is removed, the user\'s own under the same name is kept and named once (A-M2)', POSIX_ONLY, () =>
 {
     const { calls, out } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', {
@@ -241,12 +242,14 @@ test('seed update --scope user (plugin route): only a stack-shaped user-scope re
         prepare: (repo, work) =>
         {
             pwProject(repo);
-            accountMcp(work, { 'alfred-navigation': STACK_SERENA, 'webkit-control': STACK_PW('webkit'), 'alfred-documentation': { type: 'http', url: 'https://docs.example.test/mcp' } });
+            accountMcp(work, { 'alfred-navigation': shippedRow('alfred-navigation'), 'webkit-control': shippedRow('webkit-control'),
+                'alfred-memory': STACK_SERENA, 'msedge-control': STACK_PW('msedge'), 'alfred-documentation': { type: 'http', url: 'https://docs.example.test/mcp' } });
         },
     });
     const removes = calls.filter((c) => /^mcp remove /.test(c));
     assert.deepStrictEqual(removes.sort(), ['mcp remove alfred-navigation -s user', 'mcp remove webkit-control -s user'], `${removes.join('\n')}\n${out}`);
-    assert.strictEqual((out.match(/mcp alfred-documentation: the user-scope registration is not the stack's \(another server under the same name\) - kept; if it should go: claude mcp remove alfred-documentation -s user/g) || []).length, 1, out);
+    for (const name of ['alfred-documentation', 'msedge-control'])
+        assert.strictEqual((out.match(new RegExp(`mcp ${name}: the user-scope registration is not the stack's \\(another server under the same name\\) - kept; if it should go: claude mcp remove ${name} -s user`, 'g')) || []).length, 1, out);
     assert.doesNotMatch(out, /docs\.example\.test/, 'a registration of the user\'s own is never printed');
 });
 
@@ -256,7 +259,7 @@ test('seed update --scope user (plugin route): only a stack-shaped user-scope re
 test('seed update: a retired name is pruned only where the registration is the stack\'s own shape (A-M3)', POSIX_ONLY, () =>
 {
     const { calls, out, result } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', {
-        plugins: JSON.stringify(STACK_ROWS('envoydev')),
+        plugins: JSON.stringify(STACK_ROWS('envoydev')), account: true,
         inspect: (repo) => trusted(repo),
         prepare: (repo) =>
         {

@@ -320,8 +320,9 @@ function renameEnv(env, migrations, log, label = 'settings.json')
 const isStackKey = (key) => key.startsWith('ALFRED_CODE_');
 
 // C8 (R100, R101): keys that hold a value of THIS machine - the retired memory server's database path, which no run
-// writes since 2.10.1 (an update's ledger pass takes back the one an earlier release wrote). At every scope they live in
-// settings.local.json, never in the committed settings.json, so a scope move leaves one where it is.
+// writes since 2.10.1 (an update's env pass drops the one an earlier release wrote, meta/migrations.json's
+// memory-db-retired). At every scope they live in settings.local.json, never in the committed settings.json, so a scope
+// move leaves one where it is.
 const PERSONAL_KEYS = ['ALFRED_CODE_MEMORY_DB'];
 
 // Steps 2 and 3 of the env pass, in place, over the keys `only` admits. `stackWrote(label, key, value)` answers from the
@@ -767,14 +768,16 @@ function writeSettings(opts)
     // enabledMcpjsonServers: an earlier release pre-approved the .mcp.json servers it registered. The stack registers
     // none since 2.10.1, so the names it wrote leave (`mcpOff` - a name the user's own .mcp.json row holds is not
     // passed): a leftover entry names a server that no longer exists - dead config that reads like a working knob.
-    // A list this run empties goes; the user's own entries stay.
-    if (Array.isArray(data.enabledMcpjsonServers))
+    // A list this run empties goes; the user's own entries stay. disabledMcpjsonServers the same: an engine left off was
+    // registered AND named there.
+    for (const listKey of ['enabledMcpjsonServers', 'disabledMcpjsonServers'])
     {
-        const enabled = data.enabledMcpjsonServers;
+        if (!Array.isArray(data[listKey])) continue;
+        const list = data[listKey];
         let dropped = false;
-        for (const name of mcpOff) if (enabled.includes(name))
-        { enabled.splice(enabled.indexOf(name), 1); changed = true; dropped = true; log(`  ${label}: dropped enabledMcpjsonServers entry ${name} (no longer registered here)`); }
-        if (dropped && !enabled.length) delete data.enabledMcpjsonServers;
+        for (const name of mcpOff) if (list.includes(name))
+        { list.splice(list.indexOf(name), 1); changed = true; dropped = true; log(`  ${label}: dropped ${listKey} entry ${name} (no longer registered here)`); }
+        if (dropped && !list.length) delete data[listKey];
     }
 
     // The git preferences forbid AI attribution; the `attribution` setting enforces it. Key by key and add-only:
@@ -974,7 +977,16 @@ function writeSettings(opts)
             log(`  ${label}: settings.json still names skillOverrides ${from} - set as ${to} in ${label}; a local-scope run never writes settings.json, a project-scope update re-keys it`);
         }
     const localChanged = (Boolean(overlay) && JSON.stringify(overlay) !== overlayBefore) || localRekeyed || localRespelled || localAllowed;
-    if (localChanged)
+    // An env this run emptied sets nothing, and a file left with nothing at all goes: 2.10.0 made settings.local.json
+    // for the memory database path alone (the memory-db-retired migration).
+    const localEmptied = Boolean(overlay) && overlayBefore !== '{}' && !Object.keys(overlay).length;
+    if (localEmptied) delete local.env;
+    if (localChanged && localEmptied && !Object.keys(local).length)
+    {
+        fs.rmSync(localFile, { force: true });
+        log(`  ${localName} removed - it held nothing but the stack's entries`);
+    }
+    else if (localChanged)
     {
         fs.mkdirSync(path.dirname(localFile), { recursive: true });
         fs.writeFileSync(localFile, `${JSON.stringify(local, null, 2)}\n`);
@@ -1022,9 +1034,9 @@ function writeSettings(opts)
 // settings file (settings.local.json at local scope, settings.json at project scope) - the denylist merges from
 // every settings scope and blocks the name here only (code.claude.com/docs/en/managed-mcp, 'How a server is
 // evaluated'). `add` and `lift` are names; only an entry naming exactly `{ serverName: <name> }` is lifted, so a
-// row of the user's own shape stays. Returns `{ added, lifted }` as written, or null when the file could not be
-// read or its list is not a list (said once, nothing changed).
-function applyMcpDeny({ file, add = [], lift = [], log = () => {}, note = () => {} })
+// row of the user's own shape stays. `why` is the lift's reason in its line. Returns `{ added, lifted }` as written, or null
+// when the file could not be read or its list is not a list (said once, nothing changed).
+function applyMcpDeny({ file, add = [], lift = [], why = 'picked again', log = () => {}, note = () => {} })
 {
     if (!add.length && !lift.length) return { added: [], lifted: [] };
     const label = path.basename(file);
@@ -1043,7 +1055,7 @@ function applyMcpDeny({ file, add = [], lift = [], log = () => {}, note = () => 
         if (at < 0) continue;
         list.splice(at, 1);
         lifted.push(name);
-        log(`  ${label}: deniedMcpServers - ${name} (picked again)`);
+        log(`  ${label}: deniedMcpServers - ${name} (${why})`);
     }
     let grew = false;
     for (const name of add)

@@ -17,6 +17,7 @@
 // check, below).
 const fs = require('node:fs');
 const path = require('node:path');
+const { isDeepStrictEqual } = require('node:util');
 
 const { parseArgs, FLAG_LIST, ENUMS } = require('./args.js');
 const { createSource, compareVersions } = require('./source.js');
@@ -493,6 +494,11 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             names: manifest.retired.mcps, rows: readRetiredPlugins(resolved.dir),
             lastVersion: stampLayer.readVersion(stampFile), compare: compareVersions,
         });
+        // ... and the names the renames left behind, on the first update past their successor's retirement (mcp.dueLegacy).
+        const legacyDue = mcp.dueLegacy({
+            renamed: manifest.renamed.mcps, rows: readRetiredPlugins(resolved.dir),
+            lastVersion: stampLayer.readVersion(stampFile), compare: compareVersions,
+        });
         // R10: at project scope the ledger answers exactly - a retired name's .mcp.json entry is due only
         // when the last run recorded it and nobody changed it since; the version gate is the fallback
         // for a stamp with no ledger, and for a name the file does not hold.
@@ -506,8 +512,10 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             hasClaude, claudeBroken, picked, answered, dropEntries, cliScope, refreshed,
             market, marketSeen, readMarkets, retiredMcpsDue, leavingLocal, ledger: priorLedger, legacyUnstamped,
             dataInfo, dataPlan,
-            // The MCP plugin and server names the 2.0.0 rename left behind (manifest `renamed.mcps`).
-            legacyMcps: mcp.renamedFrom(manifest.renamed.mcps),
+            // The MCP plugin and server names the renames left behind (manifest `renamed.mcps`), and the ones this run prunes.
+            legacyMcps: mcp.renamedFrom(manifest.renamed.mcps), legacyMcpsDue: legacyDue,
+            // What this run took out of the servers an earlier release shipped, said once at the end of the retire step.
+            retiredServers: { removed: [], backs: new Map(), projectPruned: false },
             // A-M2/M3: the account file a user- or local-scope registration lives in, the registrations
             // read from each scope (once per run), and the names kept as another server's.
             accountFile,
@@ -595,6 +603,7 @@ function runLayers(ctx)
     installSkillsAndAgents(ctx);
     installPlugins(ctx);
     retireMcps(ctx);
+    retiredServersStep(ctx);
     forgeCliStep(ctx);
     // The generated rules moved off the `baseline-` prefix in 2.1.6: before anything re-stamps or reads them.
     selection.moveGeneratedRules({ projectRoot: ctx.projectRoot, log: ctx.log, note: ctx.note });
@@ -1292,7 +1301,8 @@ function installPlugins(ctx)
     const release = { market: ctx.market, version: releaseVersion(ctx.source.dir) };
     if (ctx.args.action === 'update')
     {
-        plugins.prunedRetired({ rows, retired, retiredRows, market: ctx.market, scope: ctx.cliScope, cli: ctx.cli, log: ctx.log, note: ctx.note });
+        plugins.prunedRetired({ rows, retired, retiredRows, market: ctx.market, scope: ctx.cliScope, cli: ctx.cli, backTo: (name, at, line) => retiredBack(ctx, name, at, line), log: ctx.log, note: ctx.note });
+        plugins.dropStaleRetired({ rows, blind, retiredRows, market: ctx.market, claudeDir: ctx.claudeDir, log: ctx.log, note: ctx.note });
         standDown();
         plugins.updatePlugins({
             plugins: set, scope: ctx.cliScope, scopes, marketplaces, before: listing, rows, fresh, restored: back.restored, refreshed: ctx.refreshed, release, cli: ctx.cli, log: ctx.log, note: ctx.note,
@@ -1410,15 +1420,21 @@ function stackIdentitiesOf(ctx)
     ctx.mcpIdentities ||= mcp.stackIdentities({ retiredRows: readRetiredPlugins(ctx.source.dir), renamed: ctx.manifest.renamed.mcps });
     return ctx.mcpIdentities;
 }
-function stackIdentity(ctx, name, entry)
+// Whether `entry` under `name` is the stack's own shape: the release template's exact words for a name the record holds a
+// template for (mcp.exactStack, an old name read as its successor's), else - the five 2.0.0 cut, whose registration rows are
+// the only shape the stack wrote them in - the package it launches or the url it calls. The package alone is never proof for
+// a templated server: the add-back line launches the same one (2026-10-24 - an update took a user's serena out).
+function stackShape(ctx, name, entry)
 {
+    const current = mcp.currentMcp(name, ctx.manifest.renamed.mcps);
+    if (mcp.hasShippedTemplate(current)) return mcp.exactStack(current, entry, { projectRoot: ctx.projectRoot });
     return (stackIdentitiesOf(ctx)[name] || new Set()).has(mcp.identityOf(entry));
 }
 
-// A-M2 / A-M3: 'stack' when `name` at `scope` is a registration of the stack's own shape (the package it
-// launches, or the url it calls - mcp.identityOf), 'absent' when the scope holds none under the name (no
-// call to make), 'foreign' when it is another server the user registered under the same name - kept and
-// named once per run - and 'unreadable' when the file cannot be read, which removes nothing, said once.
+// A-M2 / A-M3: 'stack' when `name` at `scope` is the stack's own - at local or user scope the ledger's row there at its
+// hash, else (no row) the stack's own shape (stackShape) - 'absent' when the scope holds none under the name (no call to
+// make), 'foreign' when it is another server the user registered under the same name, or the stack's changed since -
+// kept and named once per run - and 'unreadable' when the file cannot be read, which removes nothing, said once.
 function registrationOf(ctx, name, scope)
 {
     const regs = registrationsAt(ctx, scope);
@@ -1430,7 +1446,14 @@ function registrationOf(ctx, name, scope)
     }
     const entry = regs.servers[name];
     if (!entry) return 'absent';
-    if (stackIdentity(ctx, name, entry)) return 'stack';
+    const recorded = scope !== 'project' && ctx.ledger && ctx.ledger.mcpAt ? (ctx.ledger.mcpAt[scope] || {})[name] : undefined;
+    if (recorded && recorded !== stampLayer.entryHash(entry))
+    {
+        once(`${scope}:${name}`, `  mcp ${name}: kept - the ${scope}-scope registration changed since the stack registered it, so it is yours; if it should go: claude mcp remove ${name} -s ${scope}`);
+        ctx.mcpForeign.set(name, scope);
+        return 'foreign';
+    }
+    if (recorded || stackShape(ctx, name, entry)) return 'stack';
     once(`${scope}:${name}`, `  mcp ${name}: the ${scope}-scope registration is not the stack's (another server under the same name) - kept; if it should go: claude mcp remove ${name} -s ${scope}`);
     ctx.mcpForeign.set(name, scope);
     return 'foreign';
@@ -1445,8 +1468,9 @@ function registrationOf(ctx, name, scope)
 function retireMcps(ctx)
 {
     if (!ctx.hasClaude) return;
-    const retired = mcp.retiredMcps({ authored: ctx.retiredMcpsDue, legacy: ctx.legacyMcps });
-    const addBack = (name) => (readRetiredPlugins(ctx.source.dir).find((r) => r.name === name) || {}).addBack;
+    const retired = mcp.retiredMcps({ authored: ctx.retiredMcpsDue, legacy: ctx.legacyMcpsDue });
+    const rows = readRetiredPlugins(ctx.source.dir);
+    const addBack = (name) => (rows.find((r) => r.name === name) || rows.find((r) => r.name === mcp.currentMcp(name, ctx.manifest.renamed.mcps)) || {}).addBack;
     const mayRemove = (name, scope) => registrationOf(ctx, name, scope) === 'stack';
     // R10: a .mcp.json entry goes only when the ledger recorded it and nobody changed it since - one it does not list, or
     // an edited one, is the user's, kept and said once. No ledger (an older stamp) or no entry: the rule above.
@@ -1466,8 +1490,9 @@ function retireMcps(ctx)
     {
         if (!ctx.cli(['mcp', 'remove', name, '-s', scope], { quiet: true, expect: MCP_ABSENT })) return;
         ctx.log(`  mcp pruned: ${name}`);
-        const back = ctx.retiredMcpsDue.includes(name) && addBack(name);
-        if (back) ctx.log(`    add it back: ${back.split('<scope>').join(scope)}`);
+        if (scope === 'project') ctx.retiredServers.projectPruned = true;
+        const back = addBack(name);
+        if (back && !retiredBack(ctx, name, scope, back)) ctx.log(`    add it back: ${back.split('<scope>').join(scope)}`);
     };
     for (const name of retired)
         if (mayPrune(name, ctx.cliScope)) prune(name, ctx.cliScope);
@@ -1479,12 +1504,150 @@ function retireMcps(ctx)
     {
         const held = registrationsAt(ctx, 'project');
         if (held.servers.playwright) ctx.mcpForeign.set('playwright', 'project');
-        const names = [...new Set([...retired, ...mcp.PW_SERVERS])].filter((name) => name !== 'playwright');
+        const names = retired.filter((name) => name !== 'playwright');
         // An unreadable file is said once (registrationOf's line) and nothing in it is removed.
         if (held.state === 'unreadable') registrationOf(ctx, names[0], 'project');
         for (const name of names)
             if (held.servers[name] && mayPrune(name, 'project')) prune(name, 'project');
     }
+}
+
+// A retired server's add-back line, taken into the run's ONE block when it registers the server (`claude mcp add-json`, the
+// 2.10.1 retirements): true when taken. Any other add-back (a 2.0.0 cut, a third-party pick) prints beside its prune line.
+function retiredBack(ctx, name, scope, line)
+{
+    if (!/^claude mcp add-json /.test(line)) return false;
+    const block = ctx.retiredServers;
+    if (!block.removed.includes(name)) block.removed.push(name);
+    const resolved = line.split('<scope>').join(scope);
+    if (!block.backs.has(resolved)) block.backs.set(resolved, { scope, server: (/^claude mcp add-json --scope \S+ (\S+) /.exec(resolved) || [])[1] });
+    return true;
+}
+
+// The names whose approval leaves enabledMcpjsonServers / disabledMcpjsonServers: every name the stack ever registered,
+// except one .mcp.json still holds after the retire step - the user's add-back, a row kept as theirs - and one kept as the
+// user's own there (A-M3). A .mcp.json that cannot be read is no proof a name is gone: every approval stays.
+function retiredApprovals(ctx)
+{
+    const held = mcp.registrationsAt({ scope: 'project', mcpFile: ctx.mcpFile, projectRoot: ctx.projectRoot });
+    if (held.state === 'unreadable') return [];
+    return [...new Set([...ctx.manifest.retired.mcps, ...mcp.PW_SERVERS, ...ctx.legacyMcps])]
+        .filter((n) => ctx.mcpForeign.get(n) !== 'project' && !Object.hasOwn(held.servers, n));
+}
+
+// THE RETIRED SERVERS' REST (spec N4): what an earlier release wrote beside its servers, taken back on the first update past
+// the retirement - Claude's own memory switch-off, the deniedMcpServers rows, a .mcp.json the prune left empty - then the one
+// block that says what went, how to add each back and where its data stayed.
+function retiredServersStep(ctx)
+{
+    liftMemorySwitchOff(ctx);
+    liftMcpDenied(ctx);
+    dropEmptiedMcpJson(ctx);
+    sayRetiredServers(ctx);
+}
+
+// 2.0.0 to 2.10.0 switched Claude's own memory off (`autoMemoryEnabled: false`) once its memory server held the notes, in the
+// run's own settings file (settingsTarget - never the account's). The server is gone, so the switch-off goes: on the first
+// update past the memory server's retirement (the stamp's release before its row's `retiredIn`, or a pre-stamp install whose
+// installer wrote it too), from this run's file alone. A switch-off set after that is the user's and stays.
+function liftMemorySwitchOff(ctx)
+{
+    const row = readRetiredPlugins(ctx.source.dir).find((r) => r.name === 'alfred-memory');
+    const last = stampLayer.readVersion(ctx.stampFile);
+    if (!row || !row.retiredIn || !((last && compareVersions(last, row.retiredIn) < 0) || ctx.legacyUnstamped)) return;
+    const file = settings.settingsTarget(ctx.claudeDir, ctx.args.scope);
+    let data;
+    try { ({ data } = settings.readSettings(file)); }
+    catch (err) { ctx.note(`${err.message} - autoMemoryEnabled was not checked there`); return; }
+    if (data.autoMemoryEnabled !== false) return;
+    delete data.autoMemoryEnabled;
+    fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+    ctx.log(`  ${path.basename(file)}: autoMemoryEnabled: false removed - the stack switched Claude's own memory off for its memory server, which it ships no more; set it back to keep it off`);
+}
+
+// The deniedMcpServers rows an earlier release wrote (the stamp's mcp-denied line) switched a broader-scope stack server off
+// here. The stack ships none now, so each goes - unless a broader registration under the name is still there (a user-scope
+// row the update at that scope has not taken yet), which the row keeps off in this project until it is gone. A file that
+// cannot be read keeps its rows, as recorded.
+function liftMcpDenied(ctx)
+{
+    const prior = ctx.mcpDenied.prior;
+    if (!prior.length) return;
+    const regs = (scope) => mcp.registrationsAt({ scope, mcpFile: ctx.mcpFile, accountFile: ctx.accountFile, projectRoot: ctx.projectRoot });
+    const holder = (row) => (row.scope === 'local' ? ['project', 'user'] : ['user'])
+        .find((scope) => { const r = regs(scope); return r.state === 'unreadable' || Object.hasOwn(r.servers, row.name); });
+    const kept = [];
+    for (const scope of ['project', 'local'])
+    {
+        const rows = prior.filter((row) => row.scope === scope);
+        if (!rows.length) continue;
+        const file = path.join(ctx.claudeDir, scope === 'local' ? 'settings.local.json' : 'settings.json');
+        const lift = [];
+        for (const row of rows)
+        {
+            const at = holder(row);
+            if (!at) { lift.push(row.name); continue; }
+            kept.push(row);
+            ctx.log(`  ${path.basename(file)}: deniedMcpServers keeps ${row.name} - a ${at}-scope registration of it is still there, and this entry keeps it off in this project until it goes`);
+        }
+        if (lift.length && !settings.applyMcpDeny({ file, lift, why: `the stack ships no MCP server since ${retiredSince(ctx)}`, log: ctx.log, note: ctx.note }))
+            kept.push(...rows.filter((row) => lift.includes(row.name)));
+    }
+    ctx.mcpDenied.now = kept;
+}
+
+// The release the servers were retired in - the core's retirement rows' `retiredIn` (2.10.1).
+function retiredSince(ctx)
+{
+    return (readRetiredPlugins(ctx.source.dir).find((r) => r.name === 'alfred-navigation') || {}).retiredIn || 'this release';
+}
+
+// A .mcp.json the prune just emptied held nothing but the stack's registrations - an earlier release made it: it goes, the
+// way uninstall takes it. Another top-level key, or a server left in it, keeps the file.
+function dropEmptiedMcpJson(ctx)
+{
+    if (!ctx.retiredServers.projectPruned) return;
+    const now = mcp.snapshotMcp(ctx.mcpFile);
+    if (!now || !isDeepStrictEqual(now.data, { mcpServers: {} })) return;
+    fs.rmSync(ctx.mcpFile, { force: true });
+    ctx.log('  .mcp.json removed - it held nothing but the stack\'s registrations');
+}
+
+// What a retired server left in place, named in the block - never moved or deleted: the navigation index, the browser
+// profiles and the mobile captures under the data root (or their 2.0.0 homes), and the memory database the install pointed
+// at (ALFRED_CODE_MEMORY_DB, read before the env pass takes the key), else its folder.
+function serverDataLeft(ctx)
+{
+    const root = ctx.dataInfo.root || '.alfred';
+    const here = (rel) => fs.existsSync(path.join(ctx.projectRoot, rel));
+    const out = [];
+    const navigation = [`${root}/serena`, '.serena'].filter(here);
+    if (navigation.length) out.push(`the navigation index ${navigation.map((d) => `${d}/`).join(', ')}`);
+    const profiles = mcp.PW_ENGINES.flatMap((e) => [`${root}/${e}-control`, `${root}/browser/${e}`, `.playwright/${e}`]).filter(here);
+    if (profiles.length) out.push(`the browser profile${profiles.length > 1 ? 's' : ''} ${profiles.map((d) => `${d}/`).join(', ')}`);
+    if (here(`${root}/mobile-control`)) out.push(`the mobile-control captures ${root}/mobile-control/`);
+    const home = (p) => String(p).replace(/^~(?=[\\/])/, ctx.home);
+    const db = ['settings.local.json', 'settings.json'].map((n) => ((readJson(path.join(ctx.claudeDir, n)) || {}).env || {}).ALFRED_CODE_MEMORY_DB).find(Boolean);
+    const folders = [`${root}/.alfred-memory`, '~/.alfred-memory', '~/.memory-mcp']
+        .filter((d) => fs.existsSync(d.startsWith('~') ? home(d) : path.join(ctx.projectRoot, d)));
+    if (db && fs.existsSync(path.resolve(ctx.projectRoot, home(db)))) out.push(`the memory database ${db}`);
+    else if (folders.length) out.push(`the memory database folder ${folders.map((d) => `${d}/`).join(', ')}`);
+    return out;
+}
+
+// THE ONE BLOCK: printed by the run that took a server out, never by a run with nothing to take - the names that went, the
+// record that keeps each as it shipped, one add-back line per server (none for a name this scope already registers), and
+// the data left in place. Its lines start with the markers update's log read carries (`mcp <word>: the|kept`, `add it back:`).
+function sayRetiredServers(ctx)
+{
+    const block = ctx.retiredServers;
+    if (!block.removed.length) return;
+    const record = 'stack/mcp/original-mcps.json';
+    ctx.log(`  mcp servers: the stack ships none since ${retiredSince(ctx)} - removed here: ${block.removed.join(', ')}; each as it shipped is in ${record} (https://github.com/${BRAND.slug}/blob/main/${record}), and its line below adds it back`);
+    for (const [line, { scope, server }] of block.backs)
+        if (!(server && Object.hasOwn(registrationsAt(ctx, scope).servers, server))) ctx.log(`    add it back: ${line}`);
+    const data = serverDataLeft(ctx);
+    if (data.length) ctx.log(`  mcp data: kept where it was - ${data.join(', ')}; nothing reads it now, so delete it when you no longer want it`);
 }
 
 function installHooksAndRules(ctx)
@@ -1592,7 +1755,7 @@ function installHooksAndRules(ctx)
         dataPath: ctx.dataInfo.invalid ? null : { value: ctx.dataInfo.root, why: ctx.dataInfo.root !== ctx.dataInfo.current ? '--data-path' : 'the data root' },
         // No server is trusted: every name the stack ever registered leaves enabledMcpjsonServers - except one kept as the
         // user's own under that name, which keeps its approval (A-M3).
-        mcpOff: [...ctx.manifest.retired.mcps, ...mcp.PW_SERVERS, ...ctx.legacyMcps].filter((n) => ctx.mcpForeign.get(n) !== 'project'),
+        mcpOff: retiredApprovals(ctx),
         hooksOff, hooksAnswered,
         // N6: at local scope settings.json still applies beneath the local file, so what it holds is no
         // gap for a seed to fill - a local default would hide it.
@@ -1679,11 +1842,11 @@ function ledgerOf(ctx)
 }
 
 // The fallback's evidence for a .mcp.json entry with no ledger to read: a name the stack registered (every one is retired
-// now) in the stack's own shape - the package it launches or the url it calls (mcp.identityOf).
+// now, an add-back name never) in the stack's own shape (stackShape).
 function stackShaped(ctx, name, entry)
 {
     const names = new Set([...mcp.PW_SERVERS, ...ctx.manifest.retired.mcps, ...ctx.legacyMcps]);
-    return names.has(name) && stackIdentity(ctx, name, entry);
+    return names.has(name) && !mcp.ADD_BACK_NAMES.has(name) && stackShape(ctx, name, entry);
 }
 
 // Every copy outside the library this run made - the engines, and on the copy routes the hooks, their

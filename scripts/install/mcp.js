@@ -18,6 +18,9 @@ const { isDeepStrictEqual } = require('node:util');
 const { entryHash } = require('./stamp.js');
 // How each server shipped: the copy route's argument templates, the anchor code and the hosted documentation remote.
 const SHIPPED = require('../../stack/mcp/shipped-mcps.json');
+// The names the add-back lines register (stack/mcp/original-mcps.json): from 2.10.1 on a registration under one is the
+// user's, put back on purpose - the retire step never prunes or names one, whatever its shape.
+const ADD_BACK_NAMES = new Set(Object.keys(require('../../stack/mcp/original-mcps.json').mcpServers));
 
 const { ENGINES: PW_ENGINES, engineServer, engineOfServer } = require('../../stack/mcp/data-root.js');
 // Every name the browser server was registered under: the 1.x single `playwright`, the `playwright-<engine>`
@@ -70,6 +73,16 @@ function dueRetired({ names = [], rows = [], lastVersion = '', compare })
         if (!row || !row.retiredIn) return true;
         return Boolean(lastVersion) && compare(lastVersion, row.retiredIn) < 0;
     });
+}
+
+// Of the names the renames left behind, the ones this run still prunes: each on the first update past its own retirement
+// row, else its successor's (dueRetired) - never one the record hands out as an add-back name (ADD_BACK_NAMES), which the
+// shipped template of its successor matches exactly (the serena, memory and context7 lines - measured 2026-10-24).
+function dueLegacy({ renamed = {}, rows = [], lastVersion = '', compare })
+{
+    const names = renamedFrom(renamed).filter((name) => !ADD_BACK_NAMES.has(name));
+    const rowOf = (name) => rows.find((r) => r && r.name === name) || rows.find((r) => r && r.name === currentMcp(name, renamed)) || {};
+    return dueRetired({ names, rows: names.map((name) => ({ ...rowOf(name), name })), lastVersion, compare });
 }
 
 // The shipped templates' words, split FIRST and then resolved inside each word - so a resolved path with a space stays one
@@ -437,6 +450,8 @@ function ownProfile(dir, projectRoot)
 }
 // The copy route's templates as it shipped them, `name|args` (the record's copy rows).
 const SHIPPED_CATALOG = Object.entries(SHIPPED.copy).map(([name, row]) => `${name}|${row.args}`);
+// Whether the record holds the template exactStack reads `name` against - an engine's server by the browser row.
+const hasShippedTemplate = (name) => Object.hasOwn(SHIPPED.copy, anyEngineOf(name) ? 'browser' : String(name));
 function exactStack(name, entry, { catalog = SHIPPED_CATALOG, remotes = SHIPPED.remotes, projectRoot = '', boots = STACK_BOOTS } = {})
 {
     if (!entry || typeof entry !== 'object') return false;
@@ -473,7 +488,7 @@ function exactStack(name, entry, { catalog = SHIPPED_CATALOG, remotes = SHIPPED.
 }
 
 module.exports = {
-    PW_ENGINES, PW_SERVERS, corePluginOn, currentMcp, renamedFrom, retiredMcps, dueRetired, mcpArgv, expectShape, wantFor, shapeNorm, pwArgsFor,
-    snapshotMcp, keepMcpOrder, identityOf, exactStack, packageName, stackIdentities, registrationsAt, accountBackups, accountLoss,
+    PW_ENGINES, PW_SERVERS, ADD_BACK_NAMES, corePluginOn, currentMcp, renamedFrom, retiredMcps, dueRetired, dueLegacy, mcpArgv, expectShape, wantFor, shapeNorm, pwArgsFor,
+    snapshotMcp, keepMcpOrder, identityOf, exactStack, hasShippedTemplate, packageName, stackIdentities, registrationsAt, accountBackups, accountLoss,
     managedMcp, removeManagedMcp,
 };

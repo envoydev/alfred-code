@@ -268,6 +268,16 @@ test('settings-writer: enabledMcpjsonServers loses the names an earlier release 
     assert.deepStrictEqual(write(settingsFile({ enabledMcpjsonServers: [] }), { mcpOff: ['serena'] }).data.enabledMcpjsonServers, [], 'the user\'s own empty list was removed');
 });
 
+// An engine an earlier release registered but left off was named in disabledMcpjsonServers beside its registration; the
+// registration goes with the retirement, so its entry does too - the same rule as the approval list.
+test('settings-writer: disabledMcpjsonServers loses the names an earlier release registered and keeps the user\'s own', () =>
+{
+    const { data } = write(settingsFile({ disabledMcpjsonServers: ['firefox-control', 'theirs'] }), { mcpOff: ['firefox-control'] });
+    assert.deepStrictEqual(data.disabledMcpjsonServers, ['theirs']);
+    assert.strictEqual(write(settingsFile({ disabledMcpjsonServers: ['firefox-control'] }), { mcpOff: ['firefox-control'] }).data.disabledMcpjsonServers, undefined, 'a list this run emptied stays behind');
+    assert.strictEqual(write(settingsFile({}), { mcpOff: ['firefox-control'] }).data.disabledMcpjsonServers, undefined, 'a list was created');
+});
+
 test('settings-writer: a retired deny entry goes, and only that exact string', () =>
 {
     const file = settingsFile({ permissions: { deny: ['Read(./old-secret)', 'Read(./mine)'] } });
