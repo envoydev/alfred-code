@@ -47,18 +47,6 @@ test('I45: the installer\'s macOS prerequisite line names the failed start first
 // ---------------------------------------------------------------- I10 - the desktop tool gate
 // Ruling 'Gate + observe grants': FileSystem joins the default exclude list on both routes, and a house
 // guard denies App's launch_executable mode and every macOS Shell call unless DESKTOP-EXEC-ALLOW allows it.
-test('I10: FileSystem is in the default gate, and the launcher comment states what stays on', () =>
-{
-    const { DEFAULT_EXCLUDE, copyRouteExclude } = require('../stack/mcp/desktop-launch.js');
-    assert.deepStrictEqual(DEFAULT_EXCLUDE.split(','), ['PowerShell', 'Registry', 'Process', 'FileSystem']);
-    assert.strictEqual(copyRouteExclude({ env: {} }), DEFAULT_EXCLUDE, 'the copy route resolves the same list');
-    const launcher = flat(read('stack/mcp/desktop-launch.js'));
-    assert.doesNotMatch(launcher, /shell, registry and process control stay off\./, 'the old comment left file writes and App out');
-    assert.match(launcher, /`App` stays on[^.]*launch_executable/);
-    const note = read('meta/stack-manifest.json');
-    assert.match(note, /PowerShell, Registry, Process and FileSystem off/);
-});
-
 test('I10: the skill and windows.md say what stays on and that a house guard denies App launch_executable unless DESKTOP-EXEC-ALLOW allows it', () =>
 {
     const skill = flat(read('stack/skills/desktop-automation/SKILL.md'));
@@ -172,16 +160,4 @@ test('SD08: the Observe step picks the look by the question and names the scale 
     assert.match(skill, /`Snapshot`, `Click`, `Type`, `WaitFor` and `Screenshot` on Windows-MCP/, 'the Windows load line takes Screenshot');
     const win = flat(read('stack/skills/desktop-automation/references/windows.md'));
     assert.match(win, /How far a 1080p and a 4K desktop can shrink and stay readable is not measured yet\./);
-});
-
-test('SD08: the windows-control entry seeds no screenshot scale on either route, and its note names the knob', () =>
-{
-    const manifest = JSON.parse(read('meta/stack-manifest.json'));
-    const row = manifest.mcps.find((m) => m.name === 'windows-control');
-    assert.doesNotMatch(row.args, /SCREENSHOT_SCALE/, 'observe-first: no seeded value until a readability measurement');
-    assert.match(row.note, /WINDOWS_MCP_SCREENSHOT_SCALE \(0\.1-1\.0\) is set in the shell that starts Claude Code - the stack seeds no value/);
-    const { DESKTOP_ENV } = require('../stack/mcp/desktop-launch.js');
-    assert.ok(!Object.keys(DESKTOP_ENV).some((k) => /SCALE/.test(k)), 'the plugin entry env seeds none either');
-    const html = read('docs/alfred-code.html').split('\n').find((l) => l.startsWith('  ["windows-control", "MCP server"'));
-    assert.match(html, /WINDOWS_MCP_SCREENSHOT_SCALE \(0\.1-1\.0\)[^.]*the stack seeds no value/);
 });

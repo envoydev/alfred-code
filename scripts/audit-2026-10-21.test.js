@@ -28,22 +28,6 @@ test('rules T1-1: repo-audit-claude-md names the AGENTS.md seed and the always-o
     assert.match(t, new RegExp(`at ${Number(cap).toLocaleString('en-US')} chars`), 'the principles quote the cap lint check 33 holds');
 });
 
-// mcps T2-1: windows-control runs on Python 3.14 since the 2026-10-14 ruling, yet its marketplace description, its
-// retired alias's and the HTML row said 'pins the Python (3.13)'. Every description that names the Python names the one
-// uv-python.js launches that server on.
-test('mcps T2-1: each server description names the Python its launcher runs it on', () => {
-    const { pythonFor } = require('../stack/mcp/uv-python.js');
-    const renamed = JSON.parse(read('meta/stack-manifest.json')).renamed.mcps;
-    const said = [];
-    for (const p of JSON.parse(read('.claude-plugin/marketplace.json')).plugins) {
-        const m = /pins the Python[^(]*\((\d+\.\d+)/.exec(p.description || '');
-        if (m) said.push([`marketplace ${p.name}`, renamed[p.name] || p.name, m[1]]);
-    }
-    for (const m of read('docs/alfred-code.html').matchAll(/^\s*\["([\w-]+)", "MCP server",[^\n]*?pins the Python \((\d+\.\d+)/gm)) said.push([`HTML ${m[1]}`, m[1], m[2]]);
-    assert.ok(said.some(([, n]) => n === 'windows-control'), 'the windows-control rows are read');
-    for (const [where, server, py] of said) assert.strictEqual(py, pythonFor(server), `${where} says Python ${py}`);
-});
-
 // agents T2-9: a forced user choice went 'to the report' (7 designers) or back as NEEDS_CONTEXT (data), while the report
 // carries a literal `user_decisions:` line the orchestrator puts to the user before the build.
 test('agents T2-9: every designer puts a user-level decision on the user_decisions: line', () => {

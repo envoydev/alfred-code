@@ -157,7 +157,7 @@ test('a backticked `browser` is no MCP edge - the word is too common to prove a 
     for (const kind of ['skills', 'agents', 'rules'])
         for (const [name, node] of Object.entries(graph[kind]))
             assert.ok(!(node.mcps || []).includes('browser'), `${kind} ${name} pulls the browser server by a mention`);
-    assert.ok(graph.catalog.mcps.includes('browser'), 'the browser server stays in the catalog');
+    assert.deepStrictEqual(graph.catalog.mcps, [], 'the catalog holds no server - the stack ships none (2026-10-24)');
     // Since 2026-10-24 no shipped rule names a server, the navigation rule included: it describes the job instead.
     assert.deepStrictEqual(graph.rules['alfred-navigation'].mcps || [], [], 'the navigation rule names no server');
 });

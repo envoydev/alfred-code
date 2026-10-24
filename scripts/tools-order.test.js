@@ -15,8 +15,8 @@ const tools = require(TOOLS);
 delete process.env.ALFRED_CODE_DATA_PATH;
 delete process.env.ALFRED_CODE_DOCS_PATH;
 
-const NAV = 'mcp__plugin_alfred-navigation_alfred-navigation__';
-const MEMORY_LINE = 'ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store,mcp__plugin_alfred-memory_alfred-memory__memory_search,mcp__plugin_alfred-memory_alfred-memory__memory_list';
+const NAV = 'mcp__plugin_alfred-navigation_alfred-navigation__'; // mcp-fixture
+const MEMORY_LINE = 'ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store,mcp__plugin_alfred-memory_alfred-memory__memory_search,mcp__plugin_alfred-memory_alfred-memory__memory_list'; // mcp-fixture
 const DOC_REL = '.alfred/docs/preferences/TOOLS-PREFERENCES.md';
 const STACK = { 'alfred-navigation@envoydev': true, 'alfred-documentation@envoydev': true, 'alfred-memory@envoydev': true };
 
@@ -51,7 +51,7 @@ test('no doc: the defaults, each with its load line', () =>
         const text = s.line();
         assert.match(text, /^Tool order - the stack's defaults \(no TOOLS-PREFERENCES\.md\)/);
         assert.ok(text.includes(`- navigation (locate symbols, callers and types before reading or editing code): serena find_symbol, find_referencing_symbols, get_symbols_overview > LSP > Grep. Load: ToolSearch select:${NAV}find_symbol,${NAV}find_referencing_symbols,${NAV}get_symbols_overview`), text);
-        assert.ok(text.includes('- documentation (check a library\'s API or version before using it): context7 resolve-library-id, query-docs > WebFetch. Load: ToolSearch select:mcp__plugin_alfred-documentation_alfred-documentation__resolve-library-id,'), text);
+        assert.ok(text.includes('- documentation (check a library\'s API or version before using it): context7 resolve-library-id, query-docs > WebFetch. Load: ToolSearch select:mcp__plugin_alfred-documentation_alfred-documentation__resolve-library-id,'), text); // mcp-fixture
         assert.ok(text.includes(MEMORY_LINE), text);
         assert.ok(!text.includes('Skipped here'), text);
         assert.ok(text.length <= 1200, `${text.length} chars`);
@@ -99,7 +99,7 @@ test('a doc that ranks every default job states no defaults', () =>
         const text = s.line();
         assert.match(text, /^Tool order - the user's, from \.alfred\/docs\/preferences\/TOOLS-PREFERENCES\.md: /);
         assert.ok(text.includes('- documentation (check a library\'s API or version before using it): WebFetch.\n'), text);
-        assert.ok(text.includes('- memory (store and search what this project learned): memory-service memory_search. Load: ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_search'), text);
+        assert.ok(text.includes('- memory (store and search what this project learned): memory-service memory_search. Load: ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_search'), text); // mcp-fixture
     }
     finally { s.done(); }
 });
@@ -124,7 +124,7 @@ test('a stack seat is told only what its tools grant, with no load clause', () =
     {
         s.doc(NAV_ENTRY);
         s.inventory(JETBRAINS);
-        const fm = '---\nname: x\ntools: mcp__plugin_alfred-navigation_alfred-navigation, LSP, Read, Grep\n---\n';
+        const fm = '---\nname: x\ntools: mcp__plugin_alfred-navigation_alfred-navigation, LSP, Read, Grep\n---\n'; // mcp-fixture
         const text = s.line({ seat: { frontmatter: fm }, suggest: true });
         assert.ok(!text.includes('ToolSearch'), text);
         assert.ok(!text.includes('/capture-preferences'), text);
@@ -155,10 +155,10 @@ test('disallowedTools narrows a rank; an emptied rank is skipped', () =>
     const s = sandbox();
     try
     {
-        let fm = `---\ntools: mcp__plugin_alfred-navigation_alfred-navigation, LSP, Grep\ndisallowedTools: ${NAV}find_referencing_symbols\n---\n`;
+        let fm = `---\ntools: mcp__plugin_alfred-navigation_alfred-navigation, LSP, Grep\ndisallowedTools: ${NAV}find_referencing_symbols\n---\n`; // mcp-fixture
         let text = s.line({ seat: { frontmatter: fm } });
         assert.ok(text.includes(': serena find_symbol, get_symbols_overview > LSP > Grep.'), text);
-        fm = `---\ntools: mcp__plugin_alfred-navigation_alfred-navigation, LSP, Grep\ndisallowedTools: ${NAV}find_symbol, ${NAV}find_referencing_symbols, ${NAV}get_symbols_overview, LSP\n---\n`;
+        fm = `---\ntools: mcp__plugin_alfred-navigation_alfred-navigation, LSP, Grep\ndisallowedTools: ${NAV}find_symbol, ${NAV}find_referencing_symbols, ${NAV}get_symbols_overview, LSP\n---\n`; // mcp-fixture
         text = s.line({ seat: { frontmatter: fm } });
         assert.ok(text.includes(': Grep.'), text);
         assert.ok(text.includes('Skipped here: serena (not in your tools), LSP (not in your tools).'), text);

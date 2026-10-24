@@ -310,7 +310,7 @@ test('read-only turn skips the diff', () => {
 });
 
 test('a seat dispatch and an unknown tool count as a non-read turn', () => {
-  for (const calls of [[['Agent', { prompt: 'x' }]], [['mcp__browser__click', { ref: 'e1' }]]]) {
+  for (const calls of [[['Agent', { prompt: 'x' }]], [['mcp__browser__click', { ref: 'e1' }]]]) { // mcp-fixture
     const w = watchRepo();
     assert.strictEqual(snap(w.dir).status, 0);
     w.mateCommit('seat'); w.mate('push', '-q', 'origin', 'main');

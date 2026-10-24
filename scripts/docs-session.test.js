@@ -432,10 +432,10 @@ test('the navigation server\'s two kept edit tools are held like an Edit, on bot
         assert.ok(denied(r.hook(pre(name, { name_path: 'Refund/Apply', relative_path: 'src/Api/Orders/Refund.cs', new_name: 'Run' }, sid()))), `${name} is held`);
       }
     }
-    assert.ok(!denied(r.hook(pre('mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', { name_path: 'Refund', relative_path: 'src/Api/Orders/Refund.cs' }, sid()))), 'a lookup is never held');
+    assert.ok(!denied(r.hook(pre('mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', { name_path: 'Refund', relative_path: 'src/Api/Orders/Refund.cs' }, sid()))), 'a lookup is never held'); // mcp-fixture
     const s = sid();
     r.hook(pre('Bash', { command: 'node .claude/hooks/docs.js show patterns#orders' }, s));
-    assert.ok(!denied(r.hook(pre('mcp__plugin_alfred-navigation_alfred-navigation__rename_symbol', { name_path: 'Refund', relative_path: 'src/Api/Orders/Refund.cs', new_name: 'Refund2' }, s))), 'a section read unlocks it');
+    assert.ok(!denied(r.hook(pre('mcp__plugin_alfred-navigation_alfred-navigation__rename_symbol', { name_path: 'Refund', relative_path: 'src/Api/Orders/Refund.cs', new_name: 'Refund2' }, s))), 'a section read unlocks it'); // mcp-fixture
   } finally { r.rm(); }
 });
 

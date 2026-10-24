@@ -250,15 +250,7 @@
    ]
   }
  },
- "mcps": {
-  "browser": {
-   "packages": [
-    "Microsoft.Playwright",
-    "Microsoft.Playwright.",
-    "@playwright/"
-   ]
-  }
- },
+ "mcps": {},
  "plugins": {
   "csharp-lsp": {
    "files": [

@@ -925,7 +925,7 @@ function exactStack(name, entry, { catalog = [], remotes = {}, projectRoot = '',
 // source - local, project, user, then plugins - and matches a PLUGIN server against those three by
 // ENDPOINT, not by name (code.claude.com/docs/en/mcp, scope precedence). Measured on 2.1.282 through the
 // session's init row: a user- or project-scope registration of the Context7 url, under `context7` or
-// any other name, left the documentation plugin out of the session, so every `mcp__plugin_alfred-documentation_alfred-documentation__`
+// any other name, left the documentation plugin out of the session, so every `mcp__plugin_alfred-documentation_alfred-documentation__` (mcp-fixture)
 // spelling the stack ships (its tool grants, alfred-quality-gates' ToolSearch line) resolved nothing.
 // A stdio server matches on command AND args, which a launcher-started plugin entry never shares, so a
 // same-NAMED stdio registration runs BESIDE the plugin's own server - a second one. One row per

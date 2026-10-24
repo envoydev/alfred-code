@@ -15,7 +15,7 @@ delete process.env.ALFRED_CODE_DATA_PATH;
 delete process.env.ALFRED_CODE_DOCS_PATH;
 
 const adapters = tools.readAdapters();
-const NAV = 'mcp__plugin_alfred-navigation_alfred-navigation__';
+const NAV = 'mcp__plugin_alfred-navigation_alfred-navigation__'; // mcp-fixture
 const JIRA = { command: 'npx', args: ['-y', 'jira-mcp@1.0.0'] };
 const jiraTools = (names) => ({ ok: true, tools: names.map((name) => ({ name, readOnly: true, destructive: null, target: 'query' })) });
 const TWELVE = Array.from({ length: 12 }, (_, i) => (i === 0 ? 'search' : `tool_${i}`));

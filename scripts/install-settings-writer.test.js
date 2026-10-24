@@ -1311,7 +1311,7 @@ test('PL8 settings-ledger: the add-only tool denies are written once, a user\'s 
     assert.strictEqual(plugin.length, 23, '28 tools at the pin minus the five the stack calls');
     assert.deepStrictEqual(MEMORY_TOOLS_USED.filter((t) => !tools.includes(t)), [], 'every tool the stack calls exists at the pin');
     assert.ok(plugin.every((e) => /^mcp__plugin_alfred-memory_alfred-memory__[a-z_]+$/.test(e)) && bare.every((e) => /^mcp__alfred-memory__[a-z_]+$/.test(e))); // mcp-fixture
-    assert.ok(plugin.includes('mcp__plugin_alfred-memory_alfred-memory__memory_cleanup') && !plugin.some((e) => /__memory_(store|search|list|delete|update)$/.test(e)));
+    assert.ok(plugin.includes('mcp__plugin_alfred-memory_alfred-memory__memory_cleanup') && !plugin.some((e) => /__memory_(store|search|list|delete|update)$/.test(e))); // mcp-fixture
     for (const e of [...plugin, ...bare]) assert.ok(SHIPPED_DENY.includes(e), `${e} is shipped, so the ledger may remove it`);
 
     const shippedDeny = SHIPPED_DENY;

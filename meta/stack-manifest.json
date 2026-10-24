@@ -1066,52 +1066,7 @@
       "marketplace": "jarrodwatts/claude-hud"
     }
   ],
-  "mcps": [
-    {
-      "name": "alfred-navigation",
-      "args": "-e SERENA_HOME=@SERENA_HOME@ -e SERENA_USAGE_REPORTING=false -- node -e @ROOT_BOOT@ -- checkout uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from serena-agent@SERENA_PIN@ serena start-mcp-server --context @SERENA_CONTEXT@ --enable-web-dashboard false @SERENA_PROJECT_FLAG@ @SERENA_PROJECT_DIR@ --agent-interface tools",
-      "note": "the navigation server (Serena): LSP symbol navigation; per-project SERENA_HOME (<data root>/serena/home - the data root ignores it, ~327MB LSP) isolates its registry/memories/logs/LSP, no pooling across projects/accounts; its home config points serena at <data root>/serena; --project-from-cwd self-activates the repo on launch (@SERENA_PROJECT_FLAG@ @SERENA_PROJECT_DIR@; a project with no .git whose serena folder moved under the data root registers --project . instead, which the cwd walk cannot find); PyPI (not git), dashboard off, its usage ping off (SERENA_USAGE_REPORTING=false); --context names the stack's own serena context (@SERENA_CONTEXT@ = .claude/navigation-context.yml, copied there from stack/mcp) - the upstream claude-code one minus five editing tools and onboarding"
-    },
-    {
-      "name": "browser",
-      "args": "-- node -e @ROOT_BOOT@ -- checkout npx -y @playwright/mcp@PW_PIN@ --user-data-dir @BROWSER_DIR@ --output-dir @BROWSER_DIR@/output --no-webmcp",
-      "note": "the browser server (Playwright MCP): drive a real browser for visual checks / web app verification - expanded after the selection into one <engine>-control server per kept browser; --no-webmcp, so a visited page never adds tools of its own"
-    },
-    {
-      "name": "alfred-memory",
-      "args": "-e MCP_MEMORY_STORAGE_BACKEND=@MEMORY_BACKEND@ -e MCP_MEMORY_SQLITE_PATH=@MEMORY_DB_PATH@ -e MCP_MEMORY_SQLITE_PRAGMAS=busy_timeout=15000 -- node -e @ROOT_BOOT@ -- project uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --with numpy --from mcp-memory-service[sqlite]@MEMORY_PIN@ memory server",
-      "note": "memory: required, like navigation and documentation (alfred-memory.md locks it in) - shared recall across sessions/projects; --memory-level picks where its db lives"
-    },
-    {
-      "name": "alfred-documentation",
-      "args": "@HTTP@",
-      "note": "the documentation server (Context7): up-to-date library/framework/SDK docs (beats recalled API knowledge) - the hosted server only since 2.0.0 (the local npx transport was cut, R32)"
-    },
-    {
-      "name": "windows-control",
-      "active": false,
-      "args": "-e WINDOWS_MCP_EXCLUDE_TOOLS=@WINDOWS_CONTROL_EXCLUDE@ -e WINDOWS_MCP_TOOLS= -e ANONYMIZED_TELEMETRY=false -- uvx --python @WINDOWS_CONTROL_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from windows-mcp@WINDOWS_CONTROL_PIN@ windows-mcp serve",
-      "skills": [
-        "desktop-automation"
-      ],
-      "note": "the Windows desktop server (Windows-MCP): drives native Windows apps through UI Automation; Windows only, seeded for wpf / winforms there; opt-in (active: false - never in a no-selection run); PowerShell, Registry, Process and FileSystem off unless ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE says otherwise (WINDOWS_MCP_TOOLS registered empty, so an inherited one never overrides the list); App's launch_executable mode is denied by a house guard unless DESKTOP-EXEC-ALLOW allows it; screenshots arrive at Windows-MCP's full size unless WINDOWS_MCP_SCREENSHOT_SCALE (0.1-1.0) is set in the shell that starts Claude Code - the stack seeds no value until a readability measurement (observe-first)"
-    },
-    {
-      "name": "macos-control",
-      "active": false,
-      "args": "-e ANONYMIZED_TELEMETRY=false -- uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from macos-mcp@MACOS_CONTROL_PIN@ macos-mcp serve",
-      "skills": [
-        "desktop-automation"
-      ],
-      "note": "the macOS desktop server (MacOS-MCP): drives native macOS apps through the Accessibility API; macOS only, addable, seeded by no stack; opt-in (active: false); needs Accessibility and Screen Recording for the terminal and the uv-managed Python"
-    },
-    {
-      "name": "mobile-control",
-      "active": false,
-      "args": "-e NO_UI=@MOBILE_NO_UI@ -e ALLOW_REMOTE_APP_URLS=@MOBILE_REMOTE_APPS@ -e REMOTE_SERVER_URL_ALLOW_REGEX=@MOBILE_REMOTE_ALLOW@ -e SCREENSHOTS_DIR=@MOBILE_SCREENSHOTS@ -e PAGE_SOURCES_DIR=@MOBILE_PAGE_SOURCES@ -e npm_config_before=@MOBILE_BEFORE@ -- node -e @ROOT_BOOT@ -- checkout npx -y appium-mcp@MOBILE_CONTROL_PIN@",
-      "note": "the mobile server (appium-mcp): drives Android and iOS apps on an emulator, a simulator or a device through Appium's embedded UiAutomator2 / XCUITest drivers; addable, seeded by no stack; opt-in (active: false); Node 22+; the Android SDK and a JDK come from ANDROID_HOME / JAVA_HOME where Claude Code starts (the plugin route's launcher, stack/mcp/mobile-launch.js, looks each up only when unset), iOS needs macOS with Xcode; app URLs refused and a local Appium server only unless the user sets ALLOW_REMOTE_APP_URLS / REMOTE_SERVER_URL_ALLOW_REGEX; screenshots and page sources under <data root>/mobile-control; its caret-ranged dependencies held to the pin's own day (npm_config_before=@MOBILE_BEFORE@, meta/mcp-pins.json's mobile-control refreshed)"
-    }
-  ],
+  "mcps": [],
   "retired": {
     "skills": [
       "frontend",
@@ -1251,7 +1206,18 @@
       "chrome-devtools",
       "appium-mcp",
       "sentry",
-      "context7-local"
+      "context7-local",
+      "alfred-navigation",
+      "browser",
+      "alfred-memory",
+      "alfred-documentation",
+      "windows-control",
+      "macos-control",
+      "mobile-control",
+      "chrome-control",
+      "msedge-control",
+      "firefox-control",
+      "webkit-control"
     ],
     "plugins": [
       "ponytail",

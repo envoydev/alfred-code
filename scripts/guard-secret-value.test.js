@@ -2546,7 +2546,7 @@ test('browser_file_upload: a credential file or the sensitive-data store is refu
   const png = path.join(dir, 'fixture.png');
   fs.writeFileSync(png, Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex'));
   const upload = (tool, paths) => run({ tool_name: tool, tool_input: { paths }, cwd: dir, session_id: 'up' });
-  const plugin = 'mcp__plugin_chrome-control_chrome-control__browser_file_upload';
+  const plugin = 'mcp__plugin_chrome-control_chrome-control__browser_file_upload'; // mcp-fixture
   const copyRoute = `mcp__${'webkit-control'}__browser_file_upload`; // mcp-fixture: the copy route's spelling
   for (const tool of [plugin, copyRoute]) {
     const r = upload(tool, [env]);
@@ -2558,7 +2558,7 @@ test('browser_file_upload: a credential file or the sensitive-data store is refu
   }
   assert.strictEqual(upload(plugin, []).status, 0, 'no paths cancels the chooser');
   assert.strictEqual(run({ tool_name: plugin, tool_input: {}, cwd: dir, session_id: 'up' }).status, 0, 'paths omitted');
-  assert.strictEqual(upload('mcp__plugin_chrome-control_chrome-control__browser_click', [env]).status, 0, 'another browser tool is not judged here');
+  assert.strictEqual(upload('mcp__plugin_chrome-control_chrome-control__browser_click', [env]).status, 0, 'another browser tool is not judged here'); // mcp-fixture
   // the manifest wires the guard on that tool, both spellings, every engine
   const row = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8')).hooks
     .find((h) => h.file === 'guard-secret-value.js' && /browser_file_upload/.test(h.matcher));
@@ -2568,7 +2568,7 @@ test('browser_file_upload: a credential file or the sensitive-data store is refu
     assert.ok(re.test(`mcp__plugin_${engine}-control_${engine}-control__browser_file_upload`), engine);
     assert.ok(re.test(`mcp__${engine}-control__browser_file_upload`), `${engine} (copy route)`); // mcp-fixture
   }
-  assert.ok(!re.test(`mcp__plugin_chrome-control_chrome-control__browser_file_upload${'_x'}`), 'anchored at the end');
+  assert.ok(!re.test(`mcp__plugin_chrome-control_chrome-control__browser_file_upload${'_x'}`), 'anchored at the end'); // mcp-fixture
   // mcps track T1-1: a retired 2.4.0 alias runs the same server under its old name, and the guard holds it there too.
   for (const engine of ['chrome', 'msedge', 'firefox', 'webkit']) {
     const alias = `browser-${engine}`;

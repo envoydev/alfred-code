@@ -167,11 +167,12 @@ test('a verifier seat satisfies the review step the same as the in-session skill
 
 // --- solve-task: the size line and the first stop -------------------------------------------------
 
-function solveRun({ sizeFirst = true, size = 'standard', resume = 'mcp__plugin_alfred-memory_alfred-memory__memory_list', approve = false } = {})
+function solveRun({ sizeFirst = true, size = 'standard', resume = 'Bash', approve = false } = {})
 {
     const sizeRow = say(`Size: ${size} - request validation is input parsing, on the floor whatever the file count.`);
     const rows = [user('<command-name>/task-solve</command-name>\n<command-args>Add request validation to the create-order handler</command-args>')];
-    if (resume) rows.push(tool(resume, {}));
+    // the cycle note comes off the handoff bus (2026-10-24: no memory server); any other tool is no resume
+    if (resume) rows.push(tool(resume, resume === 'Bash' ? { command: 'node .claude/hooks/handoff.js left order-validation' } : {}));
     if (sizeFirst) rows.push(sizeRow);
     rows.push(tool('Skill', { skill: 'task-design' }));
     if (!sizeFirst) rows.push(sizeRow);
@@ -209,11 +210,12 @@ test('skipping the resume check fails it; a self-written Approved stamp fails no
 
 test('an MCP tool counts in both spellings: the plugin route and the registration route', () =>
 {
-    assert.strictEqual(sc.canonical('mcp__plugin_alfred-memory_alfred-memory__memory_list'), BARE('alfred-memory', 'memory_list'));
-    assert.strictEqual(sc.canonical('mcp__plugin_chrome-control_chrome-control__browser_navigate'), BARE('chrome-control', 'browser_navigate'));
+    assert.strictEqual(sc.canonical('mcp__plugin_alfred-memory_alfred-memory__memory_list'), BARE('alfred-memory', 'memory_list')); // mcp-fixture
+    assert.strictEqual(sc.canonical('mcp__plugin_chrome-control_chrome-control__browser_navigate'), BARE('chrome-control', 'browser_navigate')); // mcp-fixture
     assert.strictEqual(sc.canonical('Read'), 'Read');
+    // the resume step reads the handoff bus, so a memory-server call no longer counts for it (2026-10-24)
     const r = sc.grade(expectOf('task-solve'), solveRun({ resume: BARE('alfred-memory', 'memory_list') }));
-    assert.strictEqual(verdicts(r)['resume-first'], 'PASS');
+    assert.strictEqual(verdicts(r)['resume-first'], 'FAIL');
 });
 
 // --- the convention skill -------------------------------------------------------------------------
@@ -643,7 +645,7 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
             assert.match(b, /--max-budget-usd 1\.5 --model=claude-sonnet-4-5 > /);
             assert.ok(b.includes(`CLAUDE_CONFIG_DIR=${path.join(out, 'config')}`));
         }
-        assert.ok(billed.some((b) => b.includes(BARE('alfred-memory', 'memory_list'))), 'the copy route allows the bare spelling');
+        assert.ok(billed.every((b) => !/mcp__/.test(b)), 'no fixture allows a stack server tool - the stack ships none');
         const installs = lines.filter((l) => l.includes('alfred-code.js install'));
         assert.strictEqual(installs.length, 24);
         for (const i of installs) assert.match(i, /env -i PATH="\$PATH" .* ALFRED_CODE_SKILLS_VIA_PLUGIN=false ALFRED_CODE_HOOKS_VIA_PLUGIN=false ALFRED_CODE_MCPS_VIA_PLUGIN=false node /);
@@ -661,10 +663,10 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
         const one = cli(['replay', '--dry-run', '--skill', 'csharp', '--level', 'plain', '--source', path.join(__dirname, '..'), '--out', out]);
         assert.strictEqual(one.code, 0, one.err);
         assert.doesNotMatch(one.out, /clean-export/);
-        // the project gets what an init walk installs: the locked always-on set and the stack's seeds too
+        // the project gets what an init walk installs: the locked always-on set and the stack's seeds too, and no server (2.10.1)
         const sel = JSON.parse(one.out.match(/^printf '%s\\n' '(\{.*\})' > /m)[1]);
         for (const r of ['alfred-interaction', 'alfred-navigation', 'csharp-conventions', 'dotnet-repair-agents']) assert.ok(sel.rules.includes(r), r);
-        for (const m of ['alfred-navigation', 'alfred-documentation', 'alfred-memory']) assert.ok(sel.mcps.includes(m), m);
+        assert.deepStrictEqual(sel.mcps || [], [], 'the stack seeds no MCP server');
         assert.ok(sel.skills.includes('csharp') && sel.skills.includes('dotnet-testing'));
         assert.strictEqual((one.out.match(/^# billed/mg) || []).length, 1);
         assert.strictEqual(cli(['replay', '--dry-run', '--level', 'loud']).code, 2);

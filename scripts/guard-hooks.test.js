@@ -1725,14 +1725,14 @@ test('instrument-tool-usage: off by default, one JSONL row per call when switche
   assert.equal(fs.existsSync(log), false, 'nothing is written while the switch is off');
   assert.equal(inst({ tool_name: 'Read', tool_input: { file_path: '/a/b/c.ts' }, session_id: 's1', cwd: '/x' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0);
   assert.equal(inst({ tool_name: 'Bash', tool_input: { command: 'cat secret', description: 'run tests' }, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0);
-  assert.equal(inst({ tool_name: 'mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', tool_input: {}, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0);
+  assert.equal(inst({ tool_name: 'mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', tool_input: {}, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0); // mcp-fixture
   // a dispatch row names the SEAT (65 of 65 Agent rows were detail-blind), and a Bash call whose
   // description the model omitted falls back to the VERB - never a path or an argument
   assert.equal(inst({ tool_name: 'Task', tool_input: { subagent_type: 'architecture-analyzer', prompt: 'characterize /secret/module' }, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0);
   assert.equal(inst({ tool_name: 'Bash', tool_input: { command: 'git commit -m "wip"' }, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0);
   assert.equal(inst({ tool_name: 'Bash', tool_input: { command: 'cat /home/me/.env' }, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0);
   const rows = fs.readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
-  assert.deepEqual(rows.map((r) => [r.tool, r.detail]), [['Read', 'c.ts'], ['Bash', 'run tests'], ['mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', 'alfred-navigation'],
+  assert.deepEqual(rows.map((r) => [r.tool, r.detail]), [['Read', 'c.ts'], ['Bash', 'run tests'], ['mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', 'alfred-navigation'], // mcp-fixture
     ['Task', 'architecture-analyzer'], ['Bash', 'git commit'], ['Bash', 'cat']]);
   assert.ok(!JSON.stringify(rows).includes('secret'), 'a command body is never logged');
   assert.ok(!JSON.stringify(rows).includes('.env'), '... and neither is a path the fallback saw');
@@ -4624,8 +4624,8 @@ test('every hook-blocks ledger file is named from a sanitised session id', () =>
 // executable with caller-given args (wheel windows_mcp/tools/app.py:90 at 0.8.5) - and MacOS-MCP's `Shell` runs a
 // shell command no shell guard sees. Both spellings: the plugin route's and the copy route's (built at run time -
 // lint check 54 bans the bare server spelling as literal text).
-const WIN_APP = ['mcp__plugin_windows-control_windows-control__App', `mcp__${'windows-control'}__App`];
-const MAC_SHELL = ['mcp__plugin_macos-control_macos-control__Shell', `mcp__${'macos-control'}__Shell`];
+const WIN_APP = ['mcp__plugin_windows-control_windows-control__App', `mcp__${'windows-control'}__App`]; // mcp-fixture
+const MAC_SHELL = ['mcp__plugin_macos-control_macos-control__Shell', `mcp__${'macos-control'}__Shell`]; // mcp-fixture
 function desktopRun(root, tool_name, tool_input, extra = {}) {
   return spawnSync(process.execPath, [path.join(HOOKS, 'guard-desktop-exec.js')], {
     input: JSON.stringify({ hook_event_name: 'PreToolUse', session_id: 'desk', tool_name, tool_input, ...extra }), encoding: 'utf8',
@@ -4648,7 +4648,7 @@ test('guard-desktop-exec: App launch_executable and every macOS Shell call are d
     assert.equal(r.status, 2, `${tool}`);
     assert.match(r.stderr, /Bash tool/, 'the command goes back to the shell route the guards see');
   }
-  for (const tool of ['mcp__plugin_windows-control_windows-control__Click', 'mcp__plugin_macos-control_macos-control__Snapshot', 'Bash'])
+  for (const tool of ['mcp__plugin_windows-control_windows-control__Click', 'mcp__plugin_macos-control_macos-control__Snapshot', 'Bash']) // mcp-fixture
     assert.equal(desktopRun(root, tool, { mode: 'launch_executable', command: 'ls' }).status, 0, `${tool} is not this guard's`);
   // A server TYPE's tool under any registration name (N6, 2026-10-24): an `App` launching an executable is held wherever it
   // is registered, and its ordinary modes pass.
@@ -4674,7 +4674,8 @@ test('mcps T1-1: the retired alias spellings are gated like their successors', (
   for (const tool of spell('windows-desktop', 'App'))
     assert.equal(desktopRun(root, tool, { mode: 'launch_executable', executable: 'C:\\Windows\\System32\\cmd.exe' }).status, 2, tool);
   for (const tool of spell('macos-desktop', 'Shell')) assert.equal(desktopRun(root, tool, { command: 'ls' }).status, 2, tool);
-  const { LISTED_ALIASES } = require('./build-marketplace.js');
+  // the six 2.4.0 aliases, retired with their successors on 2026-10-24 - a user may still run one under its old name
+  const LISTED_ALIASES = ['browser-chrome', 'browser-msedge', 'browser-firefox', 'browser-webkit', 'windows-desktop', 'macos-desktop'];
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8'));
   const gated = ['App', 'Shell', 'browser_file_upload'];
   let held = 0;

@@ -409,8 +409,8 @@ const validRule = (docsRoot = '.alfred/docs') => [
     'aspnet-implementer, aspnet-verifier',
     '',
     '## MCP routing',
-    '- `serena` - symbol navigator. first call: `ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`.',
-    '- `context7` - docs. first call: `ToolSearch select:mcp__plugin_alfred-documentation_alfred-documentation__query-docs`.',
+    '- `serena` - symbol navigator. first call: `ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`.', // mcp-fixture
+    '- `context7` - docs. first call: `ToolSearch select:mcp__plugin_alfred-documentation_alfred-documentation__query-docs`.', // mcp-fixture
     '',
     '## Plugins',
     'superpowers (enabled)',
@@ -445,7 +445,7 @@ test('--verify: an MCP row with no `first call:` exits non-zero and names the se
 {
     const root = project('verify-mcp');
     const rule = write(DOC(root),
-        validRule().replace('- `context7` - docs. first call: `ToolSearch select:mcp__plugin_alfred-documentation_alfred-documentation__query-docs`.', '- `playwright` - browser checks, only for that target.'));
+        validRule().replace('- `context7` - docs. first call: `ToolSearch select:mcp__plugin_alfred-documentation_alfred-documentation__query-docs`.', '- `playwright` - browser checks, only for that target.')); // mcp-fixture
     const { status, out } = run(['--verify', rule], { cwd: root });
     assert.match(out, /mcp rows:\s+FAIL - 1 of 2 carry no 'first call:' - playwright/);
     assert.match(out, /VERIFY:\s+FAIL \(1 check/);

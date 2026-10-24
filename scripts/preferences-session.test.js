@@ -951,11 +951,11 @@ test('a navigation lookup is a read: a designer\'s or verifier\'s first symbol l
     try
     {
         const lookups = [
-            ['mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', { name_path_pattern: 'x', include_body: true }],
+            ['mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', { name_path_pattern: 'x', include_body: true }], // mcp-fixture
             ['mcp__alfred-navigation__get_symbols_overview', { relative_path: 'src/app.ts' }], // mcp-fixture: the copy route spells the server bare
-            ['mcp__plugin_alfred-navigation_alfred-navigation__find_referencing_symbols', { name_path: 'x', relative_path: 'src/app.ts' }],
-            ['mcp__plugin_alfred-navigation_alfred-navigation__find_declaration', { name_path: 'x' }],
-            ['mcp__plugin_alfred-navigation_alfred-navigation__find_implementations', { name_path: 'x' }],
+            ['mcp__plugin_alfred-navigation_alfred-navigation__find_referencing_symbols', { name_path: 'x', relative_path: 'src/app.ts' }], // mcp-fixture
+            ['mcp__plugin_alfred-navigation_alfred-navigation__find_declaration', { name_path: 'x' }], // mcp-fixture
+            ['mcp__plugin_alfred-navigation_alfred-navigation__find_implementations', { name_path: 'x' }], // mcp-fixture
         ];
         for (const [tool, input] of lookups)
         {
@@ -1297,7 +1297,7 @@ test('a run ends at the user\'s next typed turn: the analyzer and a reviewing ma
 });
 
 // ---- tool preferences, phase 1: the tool-order start line ----------------------------------------------------------
-const NAV_LOAD = 'Load: ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__find_symbol,';
+const NAV_LOAD = 'Load: ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__find_symbol,'; // mcp-fixture
 const seatStart = (type, extra = {}) => ({ hook_event_name: 'SubagentStart', session_id: sid(), agent_id: 'agent-t1', agent_type: type, ...extra });
 const seatText = (r) => String(out(r).additionalContext || '');
 const suggested = (p) => p.exists('.alfred/state/tool-preferences/suggested');
@@ -1313,7 +1313,7 @@ test('the main session start carries the personal doc, then the tools line', () 
         const text = pushed(r);
         assert.ok(text.includes('\n\nTool order - the stack\'s defaults (no TOOLS-PREFERENCES.md)'), text);
         assert.ok(text.includes(NAV_LOAD), text);
-        assert.ok(text.includes('mcp__plugin_alfred-memory_alfred-memory__memory_store'), 'the memory load line rides here now');
+        assert.ok(text.includes('mcp__plugin_alfred-memory_alfred-memory__memory_store'), 'the memory load line rides here now'); // mcp-fixture
         assert.ok(text.indexOf('lead with the verdict') < text.indexOf('Tool order'), 'the personal doc comes first');
         assert.match(text, /lead with the verdict/);
     }

@@ -54,12 +54,10 @@ function oldNames(manifest)
     return { successor, retired: [...((m.retired && m.retired.mcps) || [])] };
 }
 
-// 54. Every MCP server the stack ships arrives through a PLUGIN, so its tools are addressed
-// `mcp__plugin_<plugin>_<server>__<tool>`. The bare `mcp__<server>__<tool>` spelling belonged to the registration
-// route and resolves to nothing now: a `tools:` allowlist written that way silently drops the tool, and a
-// `ToolSearch select:` line written that way silently finds none. The names are read from the generated entries
-// and the manifest, never typed here - today's servers, and (M31) every name the stack renamed or retired, whose
-// bare spelling resolves to nothing as surely.
+// 54. No server name the stack ever shipped is spelled bare, `mcp__<server>__<tool>`: since 2026-10-24 the stack ships
+// no server at all, and a body naming one of its old names names a tool that resolves to nothing (a `tools:`
+// allowlist silently drops it, a `ToolSearch select:` line silently finds none). The names are read from the
+// manifest, never typed here - every name the stack renamed or retired (M31), today's included.
 function lintMcpToolNames({ files, names } = {})
 {
     let bareNames = names;
@@ -68,9 +66,9 @@ function lintMcpToolNames({ files, names } = {})
         try
         {
             const { successor, retired } = oldNames();
-            bareNames = [...require('./build-marketplace.js').mcpPlugins().map((e) => e.name), ...Object.keys(successor), ...retired];
+            bareNames = [...Object.keys(successor), ...retired];
         }
-        catch (err) { return [`the MCP entries could not be generated, so the tool-name sweep did not run: ${err.message}`]; }
+        catch (err) { return [`the manifest could not be read, so the tool-name sweep did not run: ${err.message}`]; }
     }
     // a tool or wildcard (`mcp__<s>__...`), or a whole-server grant ending the word (`mcp__<s>`)
     const bare = new RegExp(`mcp__(${[...new Set(bareNames)].sort((a, b) => b.length - a.length).map(escape).join('|')})(?:__|(?![A-Za-z0-9_-]))`, 'g');
@@ -83,7 +81,8 @@ function lintMcpToolNames({ files, names } = {})
     return out;
 }
 
-// 59. Every PLUGIN tool spelling names a server the marketplace ships. Check 54 bans the bare form; this one
+// 59. Every PLUGIN tool spelling names a server the marketplace ships - none since 2026-10-24, so every plugin
+// spelling outside a fixture is stale. Check 54 bans the bare form; this one
 // catches the plugin form outliving its plugin - a renamed server (serena -> navigation) leaves
 // `mcp__plugin_<old>_<old>__` in every allowlist and ToolSearch line, and each resolves to nothing, silently.
 // Through 2.2.0 one window was deliberate (M35): the renamed ids were LISTED as aliases and the seats granted their
@@ -95,11 +94,12 @@ function lintStaleMcpToolNames({ files, entries, aliases } = {})
     let listed = aliases;
     try
     {
-        if (!shipped) shipped = require('./build-marketplace.js').mcpPlugins();
+        // The marketplace's own server entries: none since the stack stopped shipping servers (lint 53 holds it).
+        if (!shipped) shipped = (JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8')).plugins || []).filter((p) => p && p.mcpServers);
         // No RETIRED alias is listed since 2.2.1, so an old spelling is stale everywhere.
         if (!listed) listed = [];
     }
-    catch (err) { return [`the MCP entries could not be generated, so the stale tool-name sweep did not run: ${err.message}`]; }
+    catch (err) { return [`the marketplace could not be read, so the stale tool-name sweep did not run: ${err.message}`]; }
     const servers = new Map(shipped.map((e) => [e.name, new Set(Object.keys(e.mcpServers || {}))]));
     const aliased = new Map(listed.map((e) => [e.name, new Set(Object.keys(e.mcpServers || {}))]));
     const out = [];

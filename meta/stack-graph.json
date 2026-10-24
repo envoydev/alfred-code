@@ -1133,15 +1133,7 @@
     }
   },
   "catalog": {
-    "mcps": [
-      "alfred-documentation",
-      "alfred-memory",
-      "alfred-navigation",
-      "browser",
-      "macos-control",
-      "mobile-control",
-      "windows-control"
-    ],
+    "mcps": [],
     "plugins": [
       "claude-hud",
       "csharp-lsp",
@@ -1169,16 +1161,5 @@
       "preferences-session"
     ]
   },
-  "mcps": {
-    "windows-control": {
-      "skills": [
-        "desktop-automation"
-      ]
-    },
-    "macos-control": {
-      "skills": [
-        "desktop-automation"
-      ]
-    }
-  }
+  "mcps": {}
 }

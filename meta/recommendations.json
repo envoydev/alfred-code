@@ -20,11 +20,6 @@
    "alfred-security",
    "markdown-docs"
   ],
-  "mcps": [
-   "alfred-navigation",
-   "alfred-documentation",
-   "alfred-memory"
-  ],
   "plugins": [
    "claude-hud"
   ],
@@ -148,9 +143,6 @@
    "plugins": [
     "typescript-lsp"
    ],
-   "mcps": [
-    "browser"
-   ],
    "skills": [
     "angular-security",
     "angular-testing"
@@ -180,9 +172,6 @@
     "wpf-conventions",
     "dotnet-repair-agents"
    ],
-   "mcps": [
-    "windows-control"
-   ],
    "plugins": [
     "csharp-lsp"
    ]
@@ -210,9 +199,6 @@
     "csharp-conventions",
     "winforms-conventions",
     "dotnet-repair-agents"
-   ],
-   "mcps": [
-    "windows-control"
    ],
    "plugins": [
     "csharp-lsp"
@@ -295,9 +281,6 @@
    ],
    "plugins": [
     "typescript-lsp"
-   ],
-   "mcps": [
-    "browser"
    ]
   },
   "data": {
@@ -339,9 +322,6 @@
    ],
    "plugins": [
     "typescript-lsp"
-   ],
-   "mcps": [
-    "browser"
    ]
   },
   "typescript": {

@@ -264,7 +264,7 @@ test('down-convert: only the servers this run registered BARE are re-spelled', (
     // under scripts/, and the down-converter itself builds it the same way.
     const bareTool = (server, tool) => `mcp__${server}__${tool}`;
     assert.strictEqual(fs.readFileSync(path.join(root, 'a.md'), 'utf8'),
-        `use ${bareTool('sentry', 'find_issues')} and mcp__plugin_alfred-navigation_alfred-navigation__find_symbol\n`);
+        `use ${bareTool('sentry', 'find_issues')} and mcp__plugin_alfred-navigation_alfred-navigation__find_symbol\n`); // mcp-fixture
     assert.match(fs.readFileSync(path.join(root, 'sub', 'b.yml'), 'utf8'), /mcp__plugin_sentry_sentry__/, 'a .yml is not a target extension'); // mcp-fixture
     assert.ok(logs.some((m) => /re-spelled .* in 1 file/.test(m)), logs.join(' | '));
 });
@@ -1790,7 +1790,7 @@ test('identityOf / stackIdentities: a registration is the stack\'s by the packag
 // project, user, then plugins - and matches a plugin server against those by ENDPOINT. Measured on
 // 2.1.282 through the session's init row: a user- or project-scope registration of the context7 url,
 // under `documentation` or any other name, left the context7 plugin out of the session, so every
-// `mcp__plugin_alfred-documentation_alfred-documentation__` spelling the stack ships resolved nothing. A stdio server matches on
+// `mcp__plugin_alfred-documentation_alfred-documentation__` spelling the stack ships resolved nothing. A stdio server matches on (mcp-fixture)
 // command AND args, which a launcher-started plugin never shares - a same-NAMED one runs beside it.
 // Review 2.1.6 B1: the account file is whole only as an object - the CLI replaces a 0-byte one as corrupt and rewrites an
 // array in place (measured on 2.1.284), so either reads as unreadable there; .mcp.json keeps its old reading.
@@ -2082,7 +2082,7 @@ test('seed install (plugin route, project scope): a user- or local-scope registr
         },
     });
     const line = (re) => (out.match(re) || []).length;
-    assert.strictEqual(line(/!! mcp docs7 \(user scope\) calls the url of the alfred-documentation plugin, so Claude Code connects to it instead and the stack's mcp__plugin_alfred-documentation_alfred-documentation__ tools never load - if nothing else needs it: claude mcp remove docs7 -s user/g), 1, out);
+    assert.strictEqual(line(/!! mcp docs7 \(user scope\) calls the url of the alfred-documentation plugin, so Claude Code connects to it instead and the stack's mcp__plugin_alfred-documentation_alfred-documentation__ tools never load - if nothing else needs it: claude mcp remove docs7 -s user/g), 1, out); // mcp-fixture
     assert.strictEqual(line(/mcp alfred-navigation \(user scope\) starts beside the alfred-navigation plugin's own server - two alfred-navigation servers in every session here; if nothing else needs it: claude mcp remove alfred-navigation -s user/g), 1, out);
     assert.strictEqual(line(/mcp alfred-memory \(local scope\) starts beside the alfred-memory plugin's own server/g), 1, out);
     // R10: no stamp yet means the stack wrote nothing here, so this project's context7 entry is the user's -
@@ -2286,7 +2286,7 @@ test('seed install (plugin route): the skills are copied, no seat is, and every 
 });
 
 // F7 (F1 D, pre-existing since 1.3.0): every engine was re-spelled as `playwright`, a name no run
-// registers, so a copied seat kept `mcp__plugin_chrome-control_chrome-control__*` while the run
+// registers, so a copied seat kept `mcp__plugin_chrome-control_chrome-control__*` while the run (mcp-fixture)
 // registered `chrome-control` bare - the seat lost playwright on the copy route. Each engine the run
 // registers bare takes its own bare name; an engine it does not register (not kept, or left off at user
 // scope, where the registration is the enable) keeps the plugin spelling. The mixed-pair line names the

@@ -17,8 +17,8 @@ const PINS = {
     'alfred-memory': { tools: ['memory_store', 'memory_search', 'memory_list', 'memory_delete'] },
     browser: { tools: ['browser_navigate', 'browser_click', 'browser_run_code_unsafe'] },
 };
-const MEM = 'mcp__plugin_alfred-memory_alfred-memory';
-const CHROME = 'mcp__plugin_chrome-control_chrome-control';
+const MEM = 'mcp__plugin_alfred-memory_alfred-memory'; // mcp-fixture
+const CHROME = 'mcp__plugin_chrome-control_chrome-control'; // mcp-fixture
 
 test('a server named tool by tool is granted whole and every other pinned tool removed; built-ins keep their place', () =>
 {

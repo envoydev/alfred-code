@@ -939,7 +939,7 @@ test('preferences: a project-code-style.md the capture did not write is kept and
 const TABLE_ONLY = () =>
 {
     const t = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'stack', 'skills', 'capture-preferences', 'scripts', 'tool-adapters.json'), 'utf8')).types.serena;
-    const prefix = 'mcp__plugin_alfred-navigation_alfred-navigation__';
+    const prefix = 'mcp__plugin_alfred-navigation_alfred-navigation__'; // mcp-fixture
     const tools = Object.fromEntries(t.tools.map((n) => [n, { readOnly: null, destructive: t.edit.includes(n) ? true : null, target: null }]));
     return `${JSON.stringify({ version: 1, captured: '2026-10-24', servers: { [prefix]: { name: 'alfred-navigation', prefix, scope: 'plugin', plugin: 'alfred-navigation', type: 'serena', version: t.version, registration: 'x', listed: 'table', tools } } }, null, 2)}\n`;
 };

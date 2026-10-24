@@ -13,7 +13,7 @@ const tools = require(TOOLS);
 const mcp = require('./install/mcp.js');
 
 const adapters = tools.readAdapters();
-const NAV = 'mcp__plugin_alfred-navigation_alfred-navigation__';
+const NAV = 'mcp__plugin_alfred-navigation_alfred-navigation__'; // mcp-fixture
 
 function sandbox()
 {

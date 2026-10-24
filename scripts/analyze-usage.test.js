@@ -1234,7 +1234,7 @@ test('scorecard: a weak "it should" inside a wh-clause is no correction; standin
 test('scorecard: a correction is saved when a memory store follows within three replies, and unsaved otherwise', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
   const endTurn = (id, ts, text) => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'text', text }], { stop_reason: 'end_turn' });
-  const store = (id, ts, name = 'mcp__plugin_alfred-memory_alfred-memory__memory_store') => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'tool_use', id: `t${id}`, name, input: { content: 'a lesson' } }]) + toolRes(ts, `t${id}`, 'stored');
+  const store = (id, ts, name = 'mcp__plugin_alfred-memory_alfred-memory__memory_store') => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'tool_use', id: `t${id}`, name, input: { content: 'a lesson' } }]) + toolRes(ts, `t${id}`, 'stored'); // mcp-fixture
   const long = 'prose '.repeat(280);
   // Transcript A, hand-counted: correction 1 saved in the first reply; correction 2 saved in the
   // THIRD reply (still inside the window); correction 3 never saved over three replies.
@@ -1283,7 +1283,7 @@ test('scorecard: a correction is saved when a memory store follows within three 
 test('scorecard: a correction typed into an ask waits on a save like a typed prompt; an offered label never does (audit 2026-10-10 C15, 4f1c2ebb)', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
   const endTurn = (id, ts, text) => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'text', text }], { stop_reason: 'end_turn' });
-  const store = (id, ts) => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'tool_use', id: `t${id}`, name: 'mcp__plugin_alfred-memory_alfred-memory__memory_store', input: { content: 'a lesson' } }]) + toolRes(ts, `t${id}`, 'stored');
+  const store = (id, ts) => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'tool_use', id: `t${id}`, name: 'mcp__plugin_alfred-memory_alfred-memory__memory_store', input: { content: 'a lesson' } }]) + toolRes(ts, `t${id}`, 'stored'); // mcp-fixture
   const questions = [{ question: 'Ship it?', header: 'Ship', multiSelect: false, options: [{ label: 'Ship (Recommended)', description: 'a' }, { label: 'Hold', description: 'b' }] }];
   const ask = (id, ts, answer, structured) => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'tool_use', id: `q${id}`, name: 'AskUserQuestion', input: { questions } }])
     + line({ type: 'user', timestamp: ts, message: { content: [{ type: 'tool_result', tool_use_id: `q${id}`, content: `User has answered your questions: "Ship it?"="${answer}". You can now continue.` }] },
@@ -1423,7 +1423,7 @@ function writeInventoryTranscript(dir, root, name) {
     line({ type: 'attachment', timestamp: '2026-07-15T07:03:02.000Z', attachment: { type: 'nested_memory', path: `${root}/.claude/rules/demo-conventions.md`, displayPath: '.claude/rules/demo-conventions.md', content: { type: 'Project', content: 'body' } } }),
     // guard-read-whole-file's shell-route reminder names its rule, and nothing else does
     line({ type: 'attachment', timestamp: '2026-07-15T07:03:03.000Z', attachment: { type: 'hook_additional_context', hookName: 'guard-read-whole-file.js', content: ['This command touches files governed by `.claude/rules/shell-only-conventions.md`. Read the rule.'] } }),
-    line(invAsst('m4', '2026-07-15T07:04:00.000Z', [use('t4', 'mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', { name_path: 'Foo' })])),
+    line(invAsst('m4', '2026-07-15T07:04:00.000Z', [use('t4', 'mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', { name_path: 'Foo' })])), // mcp-fixture
     line({ type: 'user', timestamp: '2026-07-15T07:04:01.000Z', message: { content: [{ type: 'tool_result', tool_use_id: 't4', content: 'sym' }] } }),
     line(invAsst('m5', '2026-07-15T07:05:00.000Z', [use('t5', 'LSP', { method: 'definition' })])),
     line({ type: 'user', timestamp: '2026-07-15T07:05:01.000Z', message: { content: [{ type: 'tool_result', tool_use_id: 't5', content: 'def' }] } }),
@@ -1944,7 +1944,7 @@ test('a token past the label cut is still masked - the mask runs before the slic
 // opening a command segment) sits in the 3 tool calls before it, or in the same call. A symbol step
 // in that window wins over a grep. Whole-file denials come from the block ledger when it is passed,
 // else from the transcript's own hook bracket.
-const SERENA = (tool) => `mcp__plugin_alfred-navigation_alfred-navigation__${tool}`;
+const SERENA = (tool) => `mcp__plugin_alfred-navigation_alfred-navigation__${tool}`; // mcp-fixture
 const navCall = (id, name, input = {}) => ({ type: 'tool_use', id, name, input });
 function navTranscript(file, calls, results = {}) {
   let body = '';

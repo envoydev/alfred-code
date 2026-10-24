@@ -392,32 +392,23 @@ test('both walks ask the plugin-settings question in the plugins layer and apply
     }
 });
 
-test('the always MCP baseline is stack-neutral - the browser is seeded or proven, and no cut server comes back', () => {
+test('no MCP server is seeded, proven or addable - the stack ships none, and every one it shipped is retired', () => {
     const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
     const evidence = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'evidence.json'), 'utf8'));
     const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'stack-manifest.json'), 'utf8'));
-    // memory joined navigation and documentation as a locked server (alfred-memory.md names it, the same
-    // way alfred-navigation locks the navigation server in) - the shared-memory-mcp feature made it required.
-    assert.deepStrictEqual([...(recs.always.mcps || [])].sort(), ['alfred-documentation', 'alfred-memory', 'alfred-navigation'], 'only the three rules lock in');
-    assert.ok(!(recs.always.mcps || []).includes('browser'), 'the browser server must not install into every project');
-    assert.ok(!((recs.general || {}).mcps || []).includes('memory'), 'memory left the general (addable, never seeded) list once it locked in');
+    // 2.10.1 (N1): no rule, skill, seat or hook needs a server, so none is locked in, seeded or offered.
+    assert.deepStrictEqual(manifest.mcps, [], 'the catalog lists no server');
+    assert.ok(!Object.hasOwn(recs.always, 'mcps'), 'no server locks in');
+    const seededBy = Object.entries(recs.stacks).filter(([, sel]) => Object.hasOwn(sel, 'mcps')).map(([st]) => st);
+    assert.deepStrictEqual(seededBy, [], 'no stack seeds a server');
+    assert.ok(!Object.hasOwn(recs.general || {}, 'mcps'), 'no server is addable');
+    assert.deepStrictEqual(evidence.mcps, {}, 'no evidence proves a server');
 
-    // 2.0.0 cut five servers: no seed, no evidence row and no addable list may bring one back.
-    const cut = manifest.retired.mcps;
-    assert.deepStrictEqual([...cut].sort(), ['angular-cli', 'appium-mcp', 'chrome-devtools', 'context7-local', 'sentry']);
-    for (const server of cut)
-    {
-        const seededBy = Object.entries(recs.stacks).filter(([, sel]) => (sel.mcps || []).includes(server)).map(([st]) => st);
-        assert.deepStrictEqual(seededBy, [], `${server} left the stack in 2.0.0, yet a stack seeds it`);
-        assert.ok(!(evidence.mcps || {})[server], `${server} left the stack in 2.0.0, yet evidence proves it`);
-        assert.ok(!((recs.general || {}).mcps || []).includes(server), `${server} left the stack in 2.0.0, yet it is addable`);
-        assert.ok(!manifest.mcps.some((r) => r.name === server), `${server} is still in the catalog`);
-    }
-
-    // two proven routes into a project: a stack whose surface always has a browser, or the packages
-    const seeded = Object.entries(recs.stacks).filter(([, sel]) => (sel.mcps || []).includes('browser')).map(([st]) => st).sort();
-    assert.deepStrictEqual(seeded, ['browser-extension', 'ionic-angular', 'web-angular']);
-    assert.ok((evidence.mcps || {}).browser, 'and an evidence signal for any other stack that actually uses it');
+    // every name the stack ever shipped stays retired, so update prunes an install that still holds one
+    const cut = new Set(manifest.retired.mcps);
+    for (const server of ['angular-cli', 'appium-mcp', 'chrome-devtools', 'context7-local', 'sentry', 'alfred-navigation', 'alfred-documentation',
+        'alfred-memory', 'browser', 'windows-control', 'macos-control', 'mobile-control', 'chrome-control', 'msedge-control', 'firefox-control', 'webkit-control'])
+        assert.ok(cut.has(server), `${server} is not in retired.mcps`); // mcp-fixture
 });
 
 test('every shipped plugin is suggested somewhere - validate cannot flag what nothing suggests', () => {

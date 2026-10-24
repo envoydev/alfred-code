@@ -192,15 +192,6 @@ test('M34 no skill says serena-first or serena-navigate', () =>
     for (const f of each('stack/skills', /\.md$/)) assert.doesNotMatch(read(f), /serena-(first|navigat)/, f);
 });
 
-// M37: serena 1.7.0 has no call-hierarchy tool (serena tools list --all at the pin; meta/mcp-tools.json).
-test('M37 the inventory page claims no call-hierarchy tool for the navigation server', () =>
-{
-    const row = read('docs/alfred-code.html').split('\n').find((l) => l.startsWith('  ["alfred-navigation", "MCP server"'));
-    assert.ok(row);
-    assert.doesNotMatch(row, /call-hierarchy/);
-    assert.match(row, /find-references, implementations and declarations/);
-});
-
 // M40: the desktop ToolSearch lines load four tools each; the rest of the server's tools exist too, and the
 // browser row already says so.
 test('M40 both desktop ToolSearch lines say the session\'s listing names more tools', () =>
@@ -230,7 +221,7 @@ test('M42 the status example row shows the plugin route launcher at the release 
 // kept a fallback copy retired the same day (no stack feature depends on a memory server), so no hook spells it.
 test('M44 the memory ToolSearch line has one home, the tool order\'s start line', () =>
 {
-    const line = 'ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store,mcp__plugin_alfred-memory_alfred-memory__memory_search,mcp__plugin_alfred-memory_alfred-memory__memory_list';
+    const line = 'ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store,mcp__plugin_alfred-memory_alfred-memory__memory_search,mcp__plugin_alfred-memory_alfred-memory__memory_list'; // mcp-fixture
     assert.ok(!fs.existsSync(path.join(ROOT, 'stack', 'rules', 'alfred-memory.md')), 'no rule carries the line - the memory rule retired 2026-10-24');
     assert.strictEqual(JSON.parse(read('meta/shared-rules.json')).rules['memory-toolsearch-line'], undefined, 'no pin for a one-home line');
     assert.ok(!fs.existsSync(path.join(ROOT, 'stack', 'hooks', 'memory-session.js')), 'the memory hook retired 2026-10-24');
@@ -264,11 +255,9 @@ test('M45 the live probe says the browser tools are deferred and loaded through 
 // (macos_mcp/__main__.py: `for tool_name in cfg.tools.exclude: mcp.remove_tool(...)`; infrastructure/config.py).
 test('R3 no page says MacOS-MCP cannot switch a tool off; each names the config.toml exclude', () =>
 {
+    // 2.10.1: the stack ships no desktop server, so the skill's own macOS reference is the one page left to hold it
     const sites = {
-        'stack/mcp/desktop-launch.js': /no exclude flag; its own config\.toml `\[tools\] exclude` removes/,
         'stack/skills/desktop-automation/references/macos.md': /no exclude flag; its own `~\/\.macos-mcp\/config\.toml` `\[tools\] exclude` removes/,
-        'docs/alfred-code.html': /no exclude flag; its own config\.toml \[tools\] exclude removes/,
-        '.claude/rules/repo-mcp.md': /MacOS-MCP 0\.4\.6 has no exclude flag; its own config\.toml `\[tools\] exclude` removes/,
     };
     for (const [file, right] of Object.entries(sites))
     {

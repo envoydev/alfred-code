@@ -550,7 +550,7 @@ test('check 40: an agent tools: entry must be a real tool name or an mcp__ grant
     const { lintAgentTools, TOOL_NAMES } = require('./lint-skills.js');
     assert.ok(TOOL_NAMES.has('LSP'), 'LSP is in the tools reference - the audit left this unverified');
 
-    const clean = 'tools: Read, Grep, Glob, LSP, Skill, mcp__plugin_alfred-navigation_alfred-navigation__find_symbol, mcp__plugin_chrome-control_chrome-control__*, mcp__github\n';
+    const clean = 'tools: Read, Grep, Glob, LSP, Skill, mcp__plugin_alfred-navigation_alfred-navigation__find_symbol, mcp__plugin_chrome-control_chrome-control__*, mcp__github\n'; // mcp-fixture
     assert.deepStrictEqual(lintAgentTools('agents/x.md', clean), []);
     assert.deepStrictEqual(lintAgentTools('agents/x.md', 'no frontmatter tools line here\n'), []);
 
@@ -664,11 +664,11 @@ test('check 35: a trailing load verb with a back-reference is a directive too', 
 test('check 43: a seat names no MCP server, and one that runs the handoff bus holds Bash', () => {
     const { lintAgentServerFree } = require('./lint-skills.js');
 
-    const granted = 'tools: mcp__plugin_alfred-memory_alfred-memory, LSP, Read, Bash\n';
+    const granted = 'tools: mcp__plugin_alfred-memory_alfred-memory, LSP, Read, Bash\n'; // mcp-fixture
     const found = lintAgentServerFree('agents/fixture.md', granted);
     assert.strictEqual(found.length, 1, found.join('\n'));
     assert.match(found[0], /agents\/fixture\.md/);
-    assert.match(found[0], /mcp__plugin_alfred-memory_alfred-memory/);
+    assert.match(found[0], /mcp__plugin_alfred-memory_alfred-memory/); // mcp-fixture
 
     const removal = 'tools: Read, Bash\ndisallowedTools: mcp__other__thing\n';
     assert.strictEqual(lintAgentServerFree('agents/fixture.md', removal).length, 1, 'a removal names a server too');
@@ -1145,7 +1145,7 @@ test('M35 check 59 lets a seat\'s grant line name a listed alias, and nothing el
 test('M31 check 62 flags a plugin tool spelling whose tool the pinned server does not have', () => {
     const { lintMcpToolsAtPin } = require('./lint-mcp-tools.js');
     const tools = { servers: { 'alfred-memory': { version: '1', tools: ['memory_store', 'memory_search'] }, browser: { version: '1', tools: ['browser_navigate'] }, 'alfred-navigation': { version: '1', tools: ['find_symbol'] } } };
-    const ok = 'mcp__plugin_alfred-memory_alfred-memory__memory_store, mcp__plugin_webkit-control_webkit-control__browser_navigate, mcp__plugin_chrome-control_chrome-control__*\n';
+    const ok = 'mcp__plugin_alfred-memory_alfred-memory__memory_store, mcp__plugin_webkit-control_webkit-control__browser_navigate, mcp__plugin_chrome-control_chrome-control__*\n'; // mcp-fixture
     assert.deepStrictEqual(lintMcpToolsAtPin({ tools, files: [{ file: 'stack/a.md', text: ok }] }), []);
     const bad = lintMcpToolsAtPin({ tools, files: [{ file: 'stack/b.md', text: 'x\nmcp__plugin_alfred-memory_alfred-memory__retrieve_memory\n' }] }); // mcp-fixture
     assert.strictEqual(bad.length, 1);
@@ -1338,20 +1338,6 @@ test('check 19: the live HTML legend names the model-only state and the four fla
     const house = html.split('const house = {')[1].split('};')[0];
     const flagged = [...house.matchAll(/\["([a-z0-9-]+)",[^\n]*"model-only"\]/g)].map((m) => m[1]).sort();
     assert.deepStrictEqual(flagged, ['dotnet-winforms', 'dotnet-wpf', 'javascript', 'typescript']);
-});
-
-// Check 12a (audit 2026-10-14 PL12): mobile-control shipped opt-in while the README's MCP row described only the desktop
-// pair. Each opt-in server (manifest active: false) needs its word in that row; one with no word fails until it gets one.
-test('check 12a: the README MCP row describes every opt-in MCP server, and a new opt-in server fails until it does', () =>
-{
-    const { lintReadmeOptInMcps } = require('./lint-skills.js');
-    const readme = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8');
-    const row = (readme.match(/^\| \*\*MCP servers\*\* \|.*$/m) || [''])[0];
-    const optIn = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8')).mcps.filter((r) => r.active === false).map((r) => r.name);
-    assert.ok(optIn.includes('mobile-control') && optIn.length >= 3, optIn.join(','));
-    assert.deepStrictEqual(lintReadmeOptInMcps(row, optIn), [], 'the live README row');
-    assert.match(lintReadmeOptInMcps(row.replace(/mobile/gi, 'phone'), ['mobile-control'])[0], /does not describe the opt-in mobile-control/);
-    assert.match(lintReadmeOptInMcps(row, ['tv-control'])[0], /has no README word - add it to OPT_IN_README_WORDS/);
 });
 
 // 2.8.0 moved the hooks' state and ledgers into the data root and the flow docs under work/ and quality/

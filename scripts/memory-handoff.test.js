@@ -39,8 +39,8 @@ function buildDb(file, rows) {
 }
 
 const SERENA_MEMORY_TOOLS = ['write_memory', 'read_memory', 'list_memories', 'edit_memory', 'rename_memory', 'delete_memory'];
-const NAV = 'mcp__plugin_alfred-navigation_alfred-navigation__';
-const MEM = 'mcp__plugin_alfred-memory_alfred-memory__';
+const NAV = 'mcp__plugin_alfred-navigation_alfred-navigation__'; // mcp-fixture
+const MEM = 'mcp__plugin_alfred-memory_alfred-memory__'; // mcp-fixture
 
 function walk(dir, out = []) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {

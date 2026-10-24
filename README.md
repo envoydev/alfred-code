@@ -78,17 +78,6 @@ When a block needs your decision, it ends in one question to you.
 
 Each stack has three seats: a **designer** plans the change, an **implementer** builds it after you approve, a **verifier** reviews the result. Work that spans backend and frontend ends with a read-only integration review.
 
-### The right tools are wired in
-
-| Server | Claude uses it to |
-| --- | --- |
-| navigation (Serena) | find a symbol and its references without reading whole files |
-| documentation (Context7) | read current library docs instead of guessing from memory |
-| memory | keep your preferences and corrections across sessions |
-| browser (Playwright MCP) | open the app and check it, for web stacks |
-| windows-control, macos-control | drive desktop apps - opt-in, on their own OS only |
-| mobile-control (appium-mcp) | drive Android and iOS apps on an emulator, simulator or device - opt-in |
-
 ## Commands
 
 The first time: **init**, restart, **init** again. After that: **update** when a release lands.
@@ -146,7 +135,6 @@ More on the two task flows: [`docs/solve-skills-guide.md`](docs/solve-skills-gui
 | **Agents** | 44 | designers, implementers, verifiers, reviewers |
 | **Rules** | 18 | always-on basics and per-file conventions |
 | **Hooks** | 18 | the guards, plus the docs, preferences and history hooks |
-| **MCP servers** | 4 | alfred-navigation, alfred-documentation, alfred-memory (required) and the browser (optional), plus the opt-in desktop pair and mobile server |
 | **Plugins** | 3 | optional: claude-hud (recommended) and the C# and TypeScript language servers |
 
 The full inventory is [`docs/alfred-code.html`](docs/alfred-code.html) - open it in a browser.
