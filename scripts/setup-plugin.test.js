@@ -141,6 +141,13 @@ test('init bootstrap phase: the order - read, plan, one machine ask, memory and 
     // Spec P1 + P2: the step reads tools.js modes, asks the two templates, and applies a changed memory mode in one call.
     assert.match(init, /tools\.js" modes --project \. --lsp/);
     assert.match(init, /install\/alfred-code\.js" update --source "\$TMP\/repo" --installed-only --memory <mode>/);
+    // Final review C1: the fall-back check previews custom's lines, since the mode is written only by the call after it,
+    // and the ranking run asks the job's question even with one candidate.
+    for (const body of [init, cmdBody('configure')])
+    {
+        assert.match(body, /tools\.js" modes --project \. --memory custom/);
+        assert.match(flat(body), /even with one server candidate/);
+    }
     assert.match(init, /install\/alfred-code\.js" update --source "\$TMP\/repo" --installed-only --print-plan --plan-out "\$TMP\/installed\.json"/);
     assert.match(init, /scripts\/init-plan\.js" --installed "\$TMP\/installed\.json" --root \./);
     // C-T4-01: no pre-selection exists, so the one ask is a single-select and 'Pick which' opens the multi-select.

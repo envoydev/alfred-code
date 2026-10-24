@@ -797,11 +797,20 @@ function memoryOffIn({ projectRoot, env = process.env, home = os.homedir() })
     return [];
 }
 
-// What memory this project uses and where Claude's own memory stands, the lines modeLines leads with.
-function memoryLines({ projectRoot, env = process.env })
+// What memory this project uses and where Claude's own memory stands, the lines modeLines leads with. `preview: 'custom'`
+// says what custom would use while the mode on disk is still default - init and configure ask before the installer
+// writes it (final review C1).
+function memoryLines({ projectRoot, env = process.env, preview = null })
 {
     const off = memoryOffIn({ projectRoot, env });
-    if (memoryMode({ projectRoot, env }) !== 'custom')
+    const mode = memoryMode({ projectRoot, env });
+    if (preview === 'custom' && mode !== 'custom')
+    {
+        const ranks = jobOrder({ projectRoot, env, job: 'memory' }).ranks;
+        return [ranks.length ? `memory: custom (preview) - ${ranks.join(' > ')}; Claude's own memory goes off`
+            : 'memory: custom (preview) - no memory tool is reachable here, so nothing would be stored; rank one with /capture-preferences tools'];
+    }
+    if (mode !== 'custom')
         return ["memory: default - Claude Code's own memory, at its default place", ...off.map((f) => `memory: autoMemoryEnabled is false in ${f} - yours; native memory stays off until you remove it`)];
     const ranks = jobOrder({ projectRoot, env, job: 'memory' }).ranks;
     const own = off.length ? "Claude's own memory is off" : "Claude's own memory is still on (autoMemoryEnabled is not false here)";
@@ -814,7 +823,7 @@ function memoryLines({ projectRoot, env = process.env })
 const AGENT_PROBE = '---\ntools: LSP, Read, Grep, Glob, Bash\n---\n';
 // The memory mode, what navigation each actor gets and whether a language server answers here, one line each - the lines
 // init, configure and status paste verbatim.
-function modeLines({ projectRoot, env = process.env })
+function modeLines({ projectRoot, env = process.env, memory = null })
 {
     const ranks = (o) => o.ranks.join(' > ') || 'none';
     const main = jobOrder({ projectRoot, env, job: 'navigation' });
@@ -825,7 +834,7 @@ function modeLines({ projectRoot, env = process.env })
     else if (!main.own) nav = `navigation: the stack's order - ${ranks(main)}`;
     else if (main.fellBack) nav = `navigation: yours, from ${main.docRel}, reaches nothing here - the stack's order stands in: ${ranks(main)}`;
     else nav = `navigation: yours, from ${main.docRel} - main session: ${ranks(main)}; agents: ${ranks(agents)}${agents.fellBack ? " (the stack's order)" : ''}`;
-    return [...memoryLines({ projectRoot, env }), nav, lsp.coverageLine(lsp.readCoverage(projectRoot))];
+    return [...memoryLines({ projectRoot, env, preview: memory }), nav, lsp.coverageLine(lsp.readCoverage(projectRoot))];
 }
 
 // True once per project while it has no doc: the start line then suggests the capture. The marker is written first; one
@@ -945,7 +954,7 @@ function main(argv)
     {
         // --lsp: the check re-run first; status leaves it out, being read-only.
         if (rest.includes('--lsp')) lsp.writeCoverage(projectRoot, lsp.computeCoverage({ projectRoot, enabled: enabledPlugins(projectRoot) }));
-        for (const line of modeLines({ projectRoot })) console.log(line);
+        for (const line of modeLines({ projectRoot, memory: value('--memory') || null })) console.log(line);
         return 0;
     }
     if (cmd === 'lsp')
@@ -967,7 +976,7 @@ function main(argv)
         console.log(`Next: ${nextToolsId(doc ? doc.text : '')}`);
         return 0;
     }
-    console.error('usage: tools.js lint | next | inventory [--session-tools <file>] [--label <prefix>=own:<label>] | order [--seat <file>] | validate | refresh | lsp [--changed-only] | modes [--lsp]  [--project <dir>]');
+    console.error('usage: tools.js lint | next | inventory [--session-tools <file>] [--label <prefix>=own:<label>] | order [--seat <file>] | validate | refresh | lsp [--changed-only] | modes [--lsp] [--memory custom]  [--project <dir>]');
     return 2;
 }
 

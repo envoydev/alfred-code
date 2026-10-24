@@ -76,8 +76,8 @@ Navigation in files?
 - 'Custom, rank your own tools now' - your ranking leads the main session; a server you rank reaches the main session only, and the agents use your built-in ranks.
 ```
 
-- **Custom navigation:** read `$TMP/repo/stack/skills/capture-preferences/references/tools-area.md` (through Bash) and follow it inline for the navigation job alone - its step 4 asks navigation's question only - start to finish, its `lint` and `order` included.
-- **Custom memory:** follow the same file for the memory job alone, then run `modes` again. A `memory: custom - no memory tool is reachable` line means nothing would hold the lessons: apply `default` instead and say `No memory tool is ranked and reachable, so memory stays native (Claude's default place).`
+- **Custom navigation:** read `$TMP/repo/stack/skills/capture-preferences/references/tools-area.md` (through Bash) and follow it inline for the navigation job alone - its step 4 asks navigation's question only, even with one server candidate, since the user chose Custom - start to finish, its `lint` and `order` included.
+- **Custom memory:** follow the same file for the memory job alone, the same way, then run `node "$TMP/repo/stack/skills/capture-preferences/scripts/tools.js" modes --project . --memory custom` - the mode is written only by the call below, so this previews what custom would use. A memory line saying `no memory tool is reachable` means nothing would hold the lessons: apply `default` instead and say `No memory tool is ranked and reachable, so memory stays native (Claude's default place).`
 - **Apply:** a memory answer other than the `memory:` line's mode is ONE call - `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --installed-only --memory <mode>` (`default` or `custom`) - whose `ALFRED_CODE_MEMORY` and `autoMemoryEnabled` lines are reported verbatim; it applies from the next session. The same answer is no call, and so is 'Agent decides'.
 
 ## 5. Captures - each SKILL.md followed inline

@@ -20,7 +20,7 @@ The run that ranks which tools each job uses first and which servers stay with t
    - 'Change it' - I ask which tools move to which job next, in plain text
    ```
 
-4. **One ask per job with more than one server candidate**, up to four jobs in one AskUserQuestion call; a job with one server or none keeps the stack's order and gets no entry. A job the doc already ranks offers its current first rank first. The candidates past the first three are reached through Other. The purpose in the question is the table's for its jobs, a one-line proposal for the user's own:
+4. **One ask per job with more than one server candidate**, up to four jobs in one AskUserQuestion call; a job with one server or none keeps the stack's order and gets no entry - except the job a setup step opened this run for (init's or configure's 'Custom' answer), which is asked even with one server candidate and gets its entry. A job the doc already ranks offers its current first rank first. The candidates past the first three are reached through Other. The purpose in the question is the table's for its jobs, a one-line proposal for the user's own:
 
    ```ask
    Which tool should <job> (<purpose>) use first?

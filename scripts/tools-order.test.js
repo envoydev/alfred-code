@@ -746,3 +746,22 @@ test('validate names custom memory with no reachable rank, and a switch-off unde
     }
     finally { s.done(); }
 });
+
+// Final review C1: init and configure ask 'custom memory?' before the installer writes the mode, so the check that falls
+// back to native must preview custom's lines - the mode on disk still reads default then.
+test('modes: --memory custom previews the custom lines while the mode on disk is still default', () =>
+{
+    const s = sandbox();
+    try
+    {
+        assert.strictEqual(tools.modeLines({ projectRoot: s.root, env: s.env, memory: 'custom' })[0], `memory: custom (preview) - ${MEM_TOOLS}; Claude's own memory goes off`);
+        NO_PLUGINS(s);
+        assert.strictEqual(tools.modeLines({ projectRoot: s.root, env: s.env, memory: 'custom' })[0], 'memory: custom (preview) - no memory tool is reachable here, so nothing would be stored; rank one with /capture-preferences tools');
+        assert.strictEqual(tools.modeLines({ projectRoot: s.root, env: s.env })[0], MEM_DEFAULT, 'without the preview the mode on disk is said');
+        const r = spawnSync(process.execPath, [TOOLS, 'modes', '--memory', 'custom', '--project', s.root], { encoding: 'utf8', env: { ...s.env, ALFRED_CODE_DATA_PATH: '', ALFRED_CODE_DOCS_PATH: '' } });
+        assert.match(r.stdout, /^memory: custom \(preview\) - no memory tool is reachable here/, r.stdout + r.stderr);
+        settingsAt(s, { enabledPlugins: {}, env: { ALFRED_CODE_MEMORY: 'custom' }, autoMemoryEnabled: false });
+        assert.strictEqual(tools.modeLines({ projectRoot: s.root, env: s.env, memory: 'custom' })[0], 'memory: custom - no memory tool is reachable here, so nothing is stored; rank one with /capture-preferences tools', 'the mode already custom is no preview');
+    }
+    finally { s.done(); }
+});
