@@ -122,7 +122,7 @@ test('a declared server whose command is not on PATH covers nothing, and the lin
         assert.strictEqual(r.servers[0].onPath, false);
         assert.deepStrictEqual(r.covered, []);
         assert.deepStrictEqual(r.missing, [{ plugin: 'ts-lsp', command: 'tsls' }]);
-        assert.strictEqual(lsp.coverageLine(r), "lsp: none covers this project's files - navigation starts at the grep; ts-lsp's tsls is not on PATH");
+        assert.strictEqual(lsp.coverageLine(r), "lsp: none covers this project's files - navigation starts at the grep; ts-lsp's tsls is not on PATH; /alfred-code:update checks again");
     }
     finally { s.done(); }
 });
@@ -159,14 +159,16 @@ test('outside git the walk skips .git, node_modules, .claude and the data root, 
     finally { s.done(); }
 });
 
-test('in git the tracked files are read, up to the cap', () =>
+// Final review I2: git hands over its whole list at once, so a cap there only cut covered files off - a repo whose first
+// 20,000 paths are assets read as covering nothing.
+test('in git every file is read, past the walk cap', () =>
 {
     const s = sandbox();
     try
     {
         s.commit(['a.a', 'b.b', 'c.c', 'd.d']);
-        assert.deepStrictEqual([...lsp.projectExtensions({ projectRoot: s.root, walkCap: 3 })].sort(), ['.a', '.b', '.c']);
-        assert.deepStrictEqual([...lsp.projectExtensions({ projectRoot: s.root })].sort(), ['.a', '.b', '.c', '.d']);
+        assert.deepStrictEqual([...lsp.projectExtensions({ projectRoot: s.root, walkCap: 3 })].sort(), ['.a', '.b', '.c', '.d']);
+        assert.strictEqual(lsp.scanProject({ projectRoot: s.root, walkCap: 3 }).capped, false);
     }
     finally { s.done(); }
 });
@@ -183,17 +185,19 @@ test('writeCoverage writes the file, then nothing when only the date changed', (
         const before = fs.readFileSync(file, 'utf8');
         assert.strictEqual(lsp.writeCoverage(s.root, result, { today: '2026-10-25' }), false);
         assert.strictEqual(fs.readFileSync(file, 'utf8'), before);
-        assert.deepStrictEqual(lsp.readCoverage(s.root), { ...result, checked: '2026-10-24' });
+        assert.deepStrictEqual(lsp.readCoverage(s.root), { ...result, checked: '2026-10-24', settled: true });
         fs.writeFileSync(file, '{ not json');
         assert.strictEqual(lsp.readCoverage(s.root), null);
     }
     finally { s.done(); }
 });
 
-test('coverageLine: the three states', () =>
+test('coverageLine: the states', () =>
 {
     assert.strictEqual(lsp.coverageLine(null), 'lsp: not checked yet - the next update or /alfred-code:init checks it');
-    assert.strictEqual(lsp.coverageLine({ servers: [], covered: [], missing: [] }), "lsp: none covers this project's files - navigation starts at the grep");
+    assert.strictEqual(lsp.coverageLine({ servers: [], covered: [], missing: [] }), "lsp: none covers this project's files - navigation starts at the grep; /alfred-code:update checks again");
+    assert.strictEqual(lsp.coverageLine({ servers: [], covered: [], missing: [], settled: false, why: 'empty' }), 'lsp: not settled - the project holds no files yet, so LSP stays in the order; /alfred-code:update checks again');
+    assert.strictEqual(lsp.coverageLine({ servers: [], covered: [], missing: [], settled: false, why: 'capped' }), `lsp: not settled - the walk stopped at ${lsp.WALK_CAP} files before a covered one, so LSP stays in the order; /alfred-code:update checks again`);
     assert.strictEqual(lsp.coverageLine({ servers: [{ plugin: 'ts-lsp', command: 'tsls', onPath: true, exts: ['.ts', '.tsx'] }], covered: ['.ts', '.tsx'], missing: [] }), 'lsp: covers .ts, .tsx (ts-lsp)');
 });
 
@@ -207,6 +211,65 @@ test('in git, files not committed yet count, and ignored ones do not', () =>
         writeText(path.join(s.root, '.gitignore'), 'build/\n');
         writeText(path.join(s.root, 'build', 'out.js'), 'x\n');
         assert.deepStrictEqual([...lsp.projectExtensions({ projectRoot: s.root })].sort(), ['.ts'], 'a fresh repo with nothing committed still holds its .ts');
+    }
+    finally { s.done(); }
+});
+
+// Final review I3: a 'none' read off an empty project or a cut-short walk is no finding - it would drop LSP from every
+// session until the next update - so it is written as not settled, and the order keeps LSP.
+test('an empty project and a capped walk that found nothing are not settled', () =>
+{
+    const s = sandbox({ plugins: [{ ...TS, decl: 'manifest' }] });
+    try
+    {
+        s.stub('tsls');
+        const empty = lsp.computeCoverage({ projectRoot: s.root, env: s.env, enabled: s.enabled });
+        assert.deepStrictEqual([empty.settled, empty.why, empty.covered], [false, 'empty', []]);
+        for (const f of ['a.a', 'b.b', 'c.c', 'x.ts']) writeText(path.join(s.root, f), 'x');
+        const capped = lsp.computeCoverage({ projectRoot: s.root, env: s.env, enabled: s.enabled, walkCap: 3 });
+        assert.deepStrictEqual([capped.settled, capped.why, capped.covered], [false, 'capped', []]);
+        const whole = lsp.computeCoverage({ projectRoot: s.root, env: s.env, enabled: s.enabled });
+        assert.deepStrictEqual([whole.settled, whole.covered], [true, ['.ts']]);
+        writeText(path.join(s.root, 'd.d'), 'x');
+        const none = lsp.computeCoverage({ projectRoot: s.root, env: { ...s.env, PATH: '' }, enabled: s.enabled });
+        assert.deepStrictEqual([none.settled, none.covered], [true, []], 'a whole walk that found nothing is settled');
+        assert.strictEqual(lsp.writeCoverage(s.root, capped), true);
+        assert.strictEqual(lsp.readCoverage(s.root).settled, false);
+    }
+    finally { s.done(); }
+});
+
+// Final review M1: Claude Code expands ${CLAUDE_PLUGIN_ROOT} in a server's command, so a plugin shipping its own binary
+// read as not on PATH; a variable the check cannot resolve is taken as present, never as missing.
+test('a command under ${CLAUDE_PLUGIN_ROOT} resolves against the install path, and an unresolvable one is taken as present', () =>
+{
+    const s = sandbox({ plugins: [{ name: 'own-lsp', command: '${CLAUDE_PLUGIN_ROOT}/bin/srv', exts: ['.ts'], decl: 'file' }, { name: 'data-lsp', command: '${CLAUDE_PLUGIN_DATA}/srv', exts: ['.py'], decl: 'file' }] });
+    try
+    {
+        writeText(path.join(s.work, 'cache', 'own-lsp', 'bin', 'srv'), '#!/bin/sh\n');
+        for (const f of ['a.ts', 'b.py']) writeText(path.join(s.root, f), 'x');
+        const r = lsp.computeCoverage({ projectRoot: s.root, env: s.env, enabled: s.enabled });
+        assert.deepStrictEqual(r.covered, ['.py', '.ts'], JSON.stringify(r));
+        assert.deepStrictEqual(r.missing, []);
+        const inProject = path.join(s.root, 'tools', 'srv');
+        assert.strictEqual(lsp.onPath('${CLAUDE_PROJECT_DIR}/tools/srv', s.env, process.platform, { CLAUDE_PROJECT_DIR: s.root }), false, 'resolved, and absent');
+        writeText(inProject, '#!/bin/sh\n');
+        assert.strictEqual(lsp.onPath('${CLAUDE_PROJECT_DIR}/tools/srv', s.env, process.platform, { CLAUDE_PROJECT_DIR: s.root }), true);
+        assert.strictEqual(lsp.onPath('${HOME}/srv', { ...s.env, HOME: s.work }, process.platform), true, 'a variable Claude Code does not name is not guessed');
+        fs.rmSync(path.join(s.work, 'cache', 'own-lsp', 'bin', 'srv'));
+        assert.deepStrictEqual(lsp.computeCoverage({ projectRoot: s.root, env: s.env, enabled: s.enabled }).missing, [{ plugin: 'own-lsp', command: '${CLAUDE_PLUGIN_ROOT}/bin/srv' }]);
+    }
+    finally { s.done(); }
+});
+
+// Final review M2: two servers of one plugin may share a command (one binary, two languages) - both keep their file types.
+test('two servers sharing a command keep both servers\' extensions', () =>
+{
+    const s = sandbox({ plugins: [{ ...TS, decl: 'file' }] });
+    try
+    {
+        writeJson(path.join(s.work, 'cache', TS.name, '.lsp.json'), { ts: { command: 'tsls', extensionToLanguage: { '.ts': 'typescript' } }, js: { command: 'tsls', extensionToLanguage: { '.js': 'javascript' } } });
+        assert.deepStrictEqual(lsp.declaredServers(path.join(s.work, 'cache', TS.name), TS.name, null), [{ command: 'tsls', exts: ['.js', '.ts'] }]);
     }
     finally { s.done(); }
 });

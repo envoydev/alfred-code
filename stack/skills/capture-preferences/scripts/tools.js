@@ -558,7 +558,7 @@ function mainReach({ projectRoot, env = process.env, adapters = readAdapters(), 
     }
     // The install-time language-server check: no file yet keeps LSP, as before it existed.
     const coverage = lsp.readCoverage(projectRoot);
-    return { builtins: new Set(adapters.builtins || []), servers, load: true, lspNone: !!coverage && !coverage.covered.length };
+    return { builtins: new Set(adapters.builtins || []), servers, load: true, lspNone: !!coverage && coverage.settled !== false && !coverage.covered.length };
 }
 
 // A frontmatter list, as a comma line or a YAML list under the key; null when the key is absent.
@@ -870,7 +870,7 @@ function validateRows(projectRoot, env = process.env)
                 if (r.kind === 'builtin' && r.name === 'LSP' && main.lspNone && !named.has(`${e.id} LSP`))
                 {
                     named.add(`${e.id} LSP`);
-                    rows.push(`!! tools: ${e.id} ranks LSP, but no language server covers this project's files - install the language's *-lsp plugin and its server, or change the rank through /capture-preferences tools`);
+                    rows.push(`!! tools: ${e.id} ranks LSP, but no language server covers this project's files - install the language's *-lsp plugin and its server, then /alfred-code:update checks again, or change the rank through /capture-preferences tools`);
                 }
                 if (r.kind !== 'server' || named.has(`${e.id} ${r.type}`)) continue;
                 named.add(`${e.id} ${r.type}`);

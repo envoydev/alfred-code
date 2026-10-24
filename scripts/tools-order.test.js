@@ -565,7 +565,21 @@ test('a user\'s LSP rank no language server covers is named', () =>
         const main = s.line();
         assert.ok(main.includes('Skipped here: LSP (no language server covers this project)'), main);
         assert.ok(main.includes('): Grep.'), main);
-        assert.ok(tools.validateRows(s.root, s.env).includes("!! tools: T1 ranks LSP, but no language server covers this project's files - install the language's *-lsp plugin and its server, or change the rank through /capture-preferences tools"));
+        assert.ok(tools.validateRows(s.root, s.env).includes("!! tools: T1 ranks LSP, but no language server covers this project's files - install the language's *-lsp plugin and its server, then /alfred-code:update checks again, or change the rank through /capture-preferences tools"));
+    }
+    finally { s.done(); }
+});
+
+// Final review I3: a check that could not settle (an empty project, a capped walk) keeps LSP in the order.
+test('a coverage file that is not settled keeps LSP in the order', () =>
+{
+    const s = sandbox();
+    try
+    {
+        NO_PLUGINS(s);
+        s.write(path.join(s.root, '.alfred', 'state', 'lsp-coverage.json'), { version: 1, checked: '2026-10-24', servers: [], covered: [], missing: [], settled: false, why: 'empty' });
+        const main = s.line();
+        assert.ok(main.includes('LSP > Grep') && !main.includes('Skipped here'), main);
     }
     finally { s.done(); }
 });
@@ -648,7 +662,7 @@ test('the modes command prints the lines and --lsp refreshes the file', () =>
         r = run('modes', '--lsp');
         assert.strictEqual(r.status, 0, r.stderr);
         assert.ok(fs.existsSync(file), 'the check ran');
-        assert.match(r.stdout.split('\n')[2], /^lsp: (none covers|covers )/);
+        assert.match(r.stdout.split('\n')[2], /^lsp: (none covers|covers |not settled - the project holds no files yet)/);
     }
     finally { s.done(); }
 });
