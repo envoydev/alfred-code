@@ -723,3 +723,12 @@ test('legacySignature: a stack env key in a BOM\'d settings.json counts, and a B
     assert.strictEqual(stamp.legacySignature(legacyTree({ hooks: ['guard-catastrophic-rm.js'], raw: '\uFEFF{"env": {' })), false, 'BOM plus garbage is no hit');
     assert.strictEqual(stamp.legacySignature(legacyTree({ hooks: ['guard-catastrophic-rm.js'], raw: '' })), false, 'an empty file is no hit');
 });
+
+test('install-stamp: the ledger round-trips settings.local.json:autoMemoryEnabled', () =>
+{
+    const p = project();
+    const ledger = { ...LEDGER, settings: { ...LEDGER.settings, 'settings.local.json': { autoMemoryEnabled: valueHash('false') } } };
+    const { dest, text } = write(p, { ledger });
+    assert.match(text, /^managed-settings: .*settings\.local\.json:autoMemoryEnabled=[0-9a-f]{64}$/m);
+    assert.deepStrictEqual(readLedger(dest), ledger);
+});

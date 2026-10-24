@@ -567,3 +567,41 @@ test('uninstall lifts the memory switch-off a pre-2.10.1 stack wrote, and keeps 
         else assert.match(outs[1], /autoMemoryEnabled: false stays in settings\.json - yours/, outs[1]);
     }
 });
+
+// Custom memory (spec P2) wrote the switch-off ledgered, so uninstall takes it back and names nothing as the user's.
+test('uninstall takes a ledgered switch-off back and names none as yours', POSIX_ONLY, () =>
+{
+    const { outs, steps } = seedRun(['install', 'uninstall'], 'rule markdown-docs\n', {
+        args: [['--scope', 'project', '--memory', 'custom'], []],
+        each: (repo, i) =>
+        {
+            const settings = path.join(repo, '.claude', 'settings.json');
+            const data = fs.existsSync(settings) ? JSON.parse(fs.readFileSync(settings, 'utf8')) : null;
+            if (i === 0) fs.writeFileSync(settings, JSON.stringify({ ...data, mine: 1 }, null, 2));
+            return data;
+        },
+    });
+    assert.strictEqual(steps[0].autoMemoryEnabled, false, outs[0]);
+    assert.match(outs[0], /settings\.json: autoMemoryEnabled: false written - /, outs[0]);
+    assert.strictEqual(steps[1].autoMemoryEnabled, undefined, outs[1]);
+    assert.doesNotMatch(outs[1], /autoMemoryEnabled: false stays/, outs[1]);
+    assert.match(outs[1], /attribution \/ worktree \/ auto-compact \/ memory keys removed/, outs[1]);
+});
+
+// Review Focus 5: a settings file the run cannot read was not written, so its ledger row stands as recorded.
+test('an update over an unreadable settings file keeps the switch-off\'s ledger row', POSIX_ONLY, () =>
+{
+    const { outs, steps } = seedRun(['install', 'update', 'update'], 'rule markdown-docs\n', {
+        args: [['--scope', 'project', '--memory', 'custom'], ['--installed-only', '--scope', 'project'], ['--installed-only', '--scope', 'project']],
+        each: (repo, i) =>
+        {
+            const settings = path.join(repo, '.claude', 'settings.json');
+            const stamp = fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
+            if (i === 0) { const text = fs.readFileSync(settings, 'utf8'); fs.writeFileSync(settings, '{ not json'); fs.writeFileSync(`${settings}.good`, text); }
+            if (i === 1) fs.renameSync(`${settings}.good`, settings);
+            return { row: /^managed-settings: .*settings\.json:autoMemoryEnabled=/m.test(stamp), off: i === 2 ? JSON.parse(fs.readFileSync(settings, 'utf8')).autoMemoryEnabled : null };
+        },
+    });
+    assert.deepStrictEqual(steps.map((s) => s.row), [true, true, true], outs.join('\n---\n'));
+    assert.strictEqual(steps[2].off, false, 'the restored file still holds the stack\'s switch-off');
+});

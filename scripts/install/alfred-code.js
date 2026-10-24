@@ -1548,7 +1548,7 @@ function retiredApprovals(ctx)
 // block that says what went, how to add each back and where its data stayed.
 function retiredServersStep(ctx, mcpBefore)
 {
-    liftMemorySwitchOff({ sourceDir: ctx.source.dir, stampFile: ctx.stampFile, legacyUnstamped: ctx.legacyUnstamped, claudeDir: ctx.claudeDir, scope: ctx.args.scope, log: ctx.log, note: ctx.note });
+    liftMemorySwitchOff({ sourceDir: ctx.source.dir, stampFile: ctx.stampFile, legacyUnstamped: ctx.legacyUnstamped, claudeDir: ctx.claudeDir, scope: ctx.args.scope, ledger: ctx.ledger, log: ctx.log, note: ctx.note });
     liftMcpDenied(ctx);
     dropEmptiedMcpJson(ctx, mcpBefore);
     sayRetiredServers(ctx);
@@ -1558,13 +1558,15 @@ function retiredServersStep(ctx, mcpBefore)
 // run's own settings file (settingsTarget - never the account's). The server is gone, so the switch-off goes: on the first
 // update or uninstall past the memory server's retirement (the stamp's release before its row's `retiredIn`, or a pre-stamp
 // install whose installer wrote it too), from this run's file alone. A switch-off set after that is the user's and stays.
-function liftMemorySwitchOff({ sourceDir, stampFile, legacyUnstamped = false, claudeDir, scope, log, note })
+function liftMemorySwitchOff({ sourceDir, stampFile, legacyUnstamped = false, claudeDir, scope, ledger = null, log, note })
 {
     const row = readRetiredPlugins(sourceDir).find((r) => r.name === 'alfred-memory');
     const last = stampLayer.readVersion(stampFile);
     if (!row || !row.retiredIn || !((last && compareVersions(last, row.retiredIn) < 0) || legacyUnstamped)) return;
     const file = settings.settingsTarget(claudeDir, scope);
     if (!fs.existsSync(file)) return;
+    // Custom memory's switch-off (the writer's memory pass) is ledgered; the old server's never was.
+    if (Object.hasOwn(((ledger && ledger.settings) || {})[path.basename(file)] || {}, 'autoMemoryEnabled')) return;
     let data;
     try { ({ data } = settings.readSettings(file)); }
     catch (err) { note(`${err.message} - autoMemoryEnabled was not checked there`); return; }
@@ -1834,13 +1836,14 @@ function ledgerOf(ctx)
     const part = ctx.managedSettings || { env: {}, deny: prior.deny || [], hooks: prior.hooks || [], settings: {} };
     const env = { ...part.env };
     for (const [name, keys] of Object.entries(prior.env || {})) if (!env[name]) env[name] = still(name, keys);
-    const holderNow = (name, obj) => { const a = readJson(path.join(ctx.claudeDir, name))[obj]; return a && typeof a === 'object' && !Array.isArray(a) ? a : {}; };
     const settingsKeys = { ...(part.settings || {}) };
+    // A row's path is read as the writer wrote it: one key (autoMemoryEnabled), two (attribution.commit) or three
+    // (modelSettings.<id>.autoCompactWindow).
     for (const [name, keys] of Object.entries(prior.settings || {}))
         if (!settingsKeys[name]) settingsKeys[name] = unreadable(name) ? { ...keys } : Object.fromEntries(Object.entries(keys).filter(([at, h]) =>
         {
-            const [obj, key] = at.split('.');
-            return Object.hasOwn(holderNow(name, obj), key) && stampLayer.valueHash(JSON.stringify(holderNow(name, obj)[key])) === h;
+            const spot = settings.settingAt(readJson(path.join(ctx.claudeDir, name)), at);
+            return Boolean(spot) && Object.hasOwn(spot.holder, spot.key) && stampLayer.valueHash(JSON.stringify(spot.holder[spot.key])) === h;
         }));
     // No run registers a server since 2.10.1: the .mcp.json and account rows are what an earlier run recorded and is still
     // there unchanged (retireMcps removes them on the first update past each retirement) - so a later run, or uninstall,
@@ -2033,7 +2036,7 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
     }
     // M4: read before the settings pass removes ALFRED_CODE_DATA_PATH - the stamp's record first.
     const keptRoot = stampLayer.readDataLines(file).root || dataRoot.dataRootOf({ env: {}, projectDir: projectRoot }).root;
-    liftMemorySwitchOff({ sourceDir: path.join(__dirname, '..', '..'), stampFile: file, claudeDir, scope, log, note });
+    liftMemorySwitchOff({ sourceDir: path.join(__dirname, '..', '..'), stampFile: file, claudeDir, scope, ledger, log, note });
     settings.removeManagedSettings({ claudeDir, ledger, shippedDeny: SHIPPED_DENY, mcpRemoved: removed, scope, log, note });
     uninstallLayer.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), library: stampLayer.readLibrary(file) || {}, files: ledger.files || {}, instructionsKind: stampLayer.readInstructionsFile(file), seed: instructionsSeed, log });
     toolIgnoresLayer.removeToolIgnores({ projectRoot, record: stampLayer.readToolIgnores(file), log, note });

@@ -901,6 +901,35 @@ function writeSettings(opts)
         if (gone.length) log(`  ${label}: autoCompactWindow removed for ${gone.join(', ')} - the stack wrote it and no longer seeds it here`);
         if (seeded.length || moved.length || gone.length) changed = true;
     }
+    // CUSTOM MEMORY (ALFRED_CODE_MEMORY=custom, applyEnv 3e): Claude Code's own memory off in this project's own file at every
+    // scope, ledgered, so a switch back or an uninstall takes it back. A value the user set is theirs - kept, and named where it
+    // works against the mode. The env as this run leaves it, the way the window pass reads it.
+    let memOwned = false;
+    {
+        const memPrior = prior && prior.settings ? prior.settings[label] || {} : null;
+        const env = { ...(plain(inheritedEnv) ? inheritedEnv : {}), ...(plain(data.env) ? data.env : {}), ...(overlay || {}) };
+        const custom = env.ALFRED_CODE_MEMORY === 'custom';
+        const has = Object.hasOwn(data, 'autoMemoryEnabled');
+        const ours = has && Boolean(memPrior) && memPrior.autoMemoryEnabled === valueHash(JSON.stringify(data.autoMemoryEnabled));
+        // A value of the user's own is named on the run that answers the question or drops the stack's row, not on every run.
+        const say = Boolean(memory && memory.value) || Boolean(memPrior && Object.hasOwn(memPrior, 'autoMemoryEnabled'));
+        if (custom && !has)
+        {
+            data.autoMemoryEnabled = false;
+            memOwned = true;
+            changed = true;
+            log(`  ${label}: autoMemoryEnabled: false written - ALFRED_CODE_MEMORY is custom, so Claude's own memory is off and your ranked memory tool holds the lessons`);
+        }
+        else if (custom && ours) memOwned = true;
+        else if (custom && data.autoMemoryEnabled === true && say) log(`  ${label}: autoMemoryEnabled: true kept - yours; custom memory needs it off, so Claude's own memory stays on beside your memory tool`);
+        else if (!custom && ours)
+        {
+            delete data.autoMemoryEnabled;
+            changed = true;
+            log(`  ${label}: autoMemoryEnabled: false removed - ALFRED_CODE_MEMORY is no longer custom, so Claude's own memory is back on`);
+        }
+        else if (!custom && data.autoMemoryEnabled === false && say) log(`  ${label}: autoMemoryEnabled: false kept - yours; native memory needs it on, so Claude's own memory stays off until you remove it`);
+    }
     // R10: the ledger pass, over the env of each file this run writes, the deny lists and the wirings.
     const localName = localFile ? path.basename(localFile) : null;
     const reseeds = (key) => (migrations.reseed || []).filter(([k]) => k === key).flatMap(([, bad, to]) => [bad, to]);
@@ -976,6 +1005,7 @@ function writeSettings(opts)
     // The per-model windows this run seeded or still holds at the recorded value. No release before 2.5.0 seeded them,
     // so a stamp with no ledger adopts nothing here.
     for (const id of acwOwned) managedAttr[compactAt(id)] = valueHash(JSON.stringify(data.modelSettings[id].autoCompactWindow));
+    if (memOwned) managedAttr.autoMemoryEnabled = valueHash(JSON.stringify(data.autoMemoryEnabled));
     const managed = { env: managedEnv, deny: managedDeny, hooks: managedHooks, settings: Object.keys(managedAttr).length ? { [label]: managedAttr } : {} };
 
     // A personal skillOverrides switch-off follows a renamed skill the same way as a shared one.
@@ -1206,8 +1236,9 @@ function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs =
     // The settings seeds (attribution, worktree.baseRef) leave too: left here they would override a value the
     // team later sets in settings.json. The ledger's entries exactly; with no ledger, the seed value.
     const settingsGone = [];
-    // The per-model auto-compact windows go by the ledger alone: their value is derived, so there is no seed to compare.
-    const seededPaths = [...SEEDED_SETTINGS, ...Object.keys(ledgerSettings || {}).filter((at) => at.startsWith('modelSettings.')).map((at) => [at, undefined])];
+    // The per-model auto-compact windows and custom memory's switch-off go by the ledger alone: their value is derived, so
+    // there is no seed to compare.
+    const seededPaths = [...SEEDED_SETTINGS, ...Object.keys(ledgerSettings || {}).filter((at) => at.startsWith('modelSettings.') || at === 'autoMemoryEnabled').map((at) => [at, undefined])];
     for (const [at, seed] of seededPaths)
     {
         const spot = settingAt(local, at);
@@ -1365,10 +1396,10 @@ function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRe
             if (Object.hasOwn(data, key) && empty(data[key])) { delete data[key]; changed = true; }
         if (!changed) continue;
         if (named && !Object.keys(data).length) { fs.rmSync(file, { force: true }); log(`  ${name} removed - it held nothing but the stack's entries`); }
-        else { fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`); log(`  ${name}: the stack's env keys, deny entries, hook wirings and attribution / worktree / auto-compact keys removed`); }
+        else { fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`); log(`  ${name}: the stack's env keys, deny entries, hook wirings and attribution / worktree / auto-compact / memory keys removed`); }
     }
     if (keptOff.length)
         log(`  kept at user scope: ${keptOff.join(', ')} - the user-scope core stays loaded for this account, so these keep what you switched off here off; remove them once it is uninstalled`);
 }
 
-module.exports = { compactWindowSeeds, removeManagedSettings, isStackKey, writeSettings, applyMcpDeny, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, readBackSettings, sharedOnlyDeny, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor, asyncFor, onFailureFor };
+module.exports = { compactWindowSeeds, settingAt, removeManagedSettings, isStackKey, writeSettings, applyMcpDeny, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, readBackSettings, sharedOnlyDeny, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor, asyncFor, onFailureFor };

@@ -11,7 +11,7 @@ paths:
 The stores and what each holds, where the docs root and the data root live, and the durable-versus-ephemeral split. Moved here verbatim from the repo `CLAUDE.md` so it loads only when you edit these files.
 
 - **No memory server and no memory level** (2.10.1, the user's ruling of 2026-10-24: the stack depends on no MCP
-  server). Claude Code's own memory stays ON - the stack never switches it off. The first update or uninstall past
+  server). Claude Code's own memory stays ON - the stack switches it off only for a project on custom memory (`ALFRED_CODE_MEMORY=custom`, ledgered). The first update or uninstall past
   2.10.1 lifts the `autoMemoryEnabled: false` an earlier release's memory level wrote, from the run's own settings file
   alone and only for a stamp before 2.10.1 (`alfred-code.js liftMemorySwitchOff`); a switch-off set after that is the
   user's and stays. `--memory-level` is accepted and ignored with one line, `ALFRED_CODE_MEMORY_DB` leaves the settings,

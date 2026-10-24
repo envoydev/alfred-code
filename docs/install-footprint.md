@@ -19,13 +19,13 @@ Written at every scope:
 
 Written later, or only on one route:
 
-- **`/alfred-code:init`** dates the stamp's `initialised:` line at its close. It never touches `autoMemoryEnabled`: Claude Code's own memory stays as you set it. An update or uninstall over an earlier release takes back the `autoMemoryEnabled: false` that release's init wrote.
+- **`/alfred-code:init`** dates the stamp's `initialised:` line at its close. It never touches `autoMemoryEnabled` unless the project picks custom memory, which writes it ledgered into the project's own file: Claude Code's own memory otherwise stays as you set it. An update or uninstall over an earlier release takes back the `autoMemoryEnabled: false` that release's init wrote.
 - **`<repo>/.mcp.json`** is never written. An update over an earlier release takes the stack's own registrations out of it; a server of yours stays.
 - **`.claude/settings.local.json`** gets claude-hud's `statusLine` from `/alfred-code:init` when claude-hud is installed for this project alone - the command names this machine's `node`, so it stays out of the shared file - after a `settings.local.json.bak.<time>` copy of the file, when it already exists.
 
 ## In your account
 
-- **`~/.claude/settings.json`** - nothing the stack needs: it seeds no account key. `autoMemoryEnabled` never lands here, whatever the install scope. The CLI's own `claude plugin marketplace add` records each marketplace the run registers under `extraKnownMarketplaces` there (code.claude.com/docs/en/plugins/loading).
+- **`~/.claude/settings.json`** - nothing the stack needs: it seeds no account key. `autoMemoryEnabled` never lands here, whatever the install scope - custom memory writes it into the project's own settings file. The CLI's own `claude plugin marketplace add` records each marketplace the run registers under `extraKnownMarketplaces` there (code.claude.com/docs/en/plugins/loading).
 - **The plugin cache** - `claude plugin install`, at EVERY scope, writes `~/.claude/plugins/cache/...` and `installed_plugins.json`.
 - **claude-hud**, when you keep it - its marketplace, registered for the whole account; its install is a user-scope one only when you choose global for it (this project by default).
 - **User-scope installs** - every stack plugin row, at `--scope user`.

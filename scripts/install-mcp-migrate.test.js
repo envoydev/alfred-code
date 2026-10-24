@@ -467,3 +467,19 @@ test('the retire step never walks \'browser\' - a selection token, never a regis
     }
     assert.deepStrictEqual(calls.filter((c) => /^mcp remove browser /.test(c)), [], outs[1]);
 });
+
+// Custom memory (spec P2) writes the same key, ledgered: the pre-2.10.1 lift is for the old server's switch-off alone.
+test('the 2.10.1 lift leaves a switch-off this feature\'s ledger holds', POSIX_ONLY, () =>
+{
+    const { outs, steps } = seedRun(['install', 'update'], SELECTION, {
+        args: [['--scope', 'project', '--memory', 'custom'], ['--installed-only', '--scope', 'project']],
+        each: (repo, i) =>
+        {
+            if (i === 0) olderStamp(repo);
+            return settingsOf(repo);
+        },
+    });
+    assert.strictEqual(steps[0].autoMemoryEnabled, false, outs[0]);
+    assert.strictEqual(steps[1].autoMemoryEnabled, false, outs[1]);
+    assert.doesNotMatch(outs[1], /autoMemoryEnabled: false (removed|written)/, outs[1]);
+});

@@ -144,8 +144,9 @@ const FILE_KINDS = ['hooks', 'skills', 'agents'];
 // The copies that sit directly in .claude: the seeded AGENTS.md (a 2.1.6 ledger still names it CLAUDE.md - read, never written),
 // and the full copy route's serena context (I12).
 const ROOT_FILES = ['AGENTS.md', 'CLAUDE.md', 'navigation-context.yml'];
-// A model id holds no dot, so its window's dotted path (settings.js compactAt) splits back into three keys.
-const SETTINGS_PATH = /^(?:attribution\.(?:commit|pr|sessionUrl)|worktree\.baseRef|modelSettings\.[a-z0-9][a-z0-9-]{0,99}\.autoCompactWindow)$/;
+// A model id holds no dot, so its window's dotted path (settings.js compactAt) splits back into three keys; custom memory's
+// switch-off is a top-level key.
+const SETTINGS_PATH = /^(?:attribution\.(?:commit|pr|sessionUrl)|worktree\.baseRef|modelSettings\.[a-z0-9][a-z0-9-]{0,99}\.autoCompactWindow|autoMemoryEnabled)$/;
 const MCP_SCOPES = ['local', 'user'];
 const emptyLedger = () => ({ env: {}, deny: [], hooks: [], mcp: {}, mcpAt: {}, files: {}, settings: {} });
 
