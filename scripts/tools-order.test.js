@@ -585,14 +585,16 @@ test('no coverage file, or one with a covering server, keeps LSP as today', () =
     finally { s.done(); }
 });
 
-// What navigation each actor gets, said plainly for init, configure and status (spec N1-N3).
+// What navigation each actor gets, said plainly for init, configure and status (spec N1-N3); the memory lines lead.
+const navLine = (s) => tools.modeLines({ projectRoot: s.root, env: s.env }).find((l) => l.startsWith('navigation: '));
+const MEM_DEFAULT = "memory: default - Claude Code's own memory, at its default place";
 test('modes: the stack\'s order, then the lsp line', () =>
 {
     const s = sandbox();
     try
     {
         NO_PLUGINS(s);
-        assert.deepStrictEqual(tools.modeLines({ projectRoot: s.root, env: s.env }), ["navigation: the stack's order - LSP > Grep", 'lsp: not checked yet - the next update or /alfred-code:init checks it']);
+        assert.deepStrictEqual(tools.modeLines({ projectRoot: s.root, env: s.env }), [MEM_DEFAULT, "navigation: the stack's order - LSP > Grep", 'lsp: not checked yet - the next update or /alfred-code:init checks it']);
     }
     finally { s.done(); }
 });
@@ -603,7 +605,7 @@ test('modes: a user\'s server rank is the main session\'s alone', () =>
     try
     {
         s.doc(['## T1 - Code navigation', '<!-- id: t1 -->', '- Job: navigation', '- Order: serena find_symbol > Grep']);
-        assert.strictEqual(tools.modeLines({ projectRoot: s.root, env: s.env })[0], `navigation: yours, from ${DOC_REL} - main session: serena find_symbol > Grep; agents: Grep`);
+        assert.strictEqual(navLine(s), `navigation: yours, from ${DOC_REL} - main session: serena find_symbol > Grep; agents: Grep`);
     }
     finally { s.done(); }
 });
@@ -615,7 +617,7 @@ test('modes: a ranking that reaches nothing says the stack\'s order stands in', 
     {
         NO_PLUGINS(s);
         s.doc(SERENA_ONLY);
-        assert.strictEqual(tools.modeLines({ projectRoot: s.root, env: s.env })[0], `navigation: yours, from ${DOC_REL}, reaches nothing here - the stack's order stands in: LSP > Grep`);
+        assert.strictEqual(navLine(s), `navigation: yours, from ${DOC_REL}, reaches nothing here - the stack's order stands in: LSP > Grep`);
     }
     finally { s.done(); }
 });
@@ -626,7 +628,7 @@ test('modes: a server rank only the main session reaches leaves the agents on th
     try
     {
         s.doc(SERENA_ONLY);
-        assert.strictEqual(tools.modeLines({ projectRoot: s.root, env: s.env })[0], `navigation: yours, from ${DOC_REL} - main session: serena find_symbol; agents: LSP > Grep (the stack's order)`);
+        assert.strictEqual(navLine(s), `navigation: yours, from ${DOC_REL} - main session: serena find_symbol; agents: LSP > Grep (the stack's order)`);
     }
     finally { s.done(); }
 });
@@ -641,12 +643,12 @@ test('the modes command prints the lines and --lsp refreshes the file', () =>
         const file = path.join(s.root, '.alfred', 'state', 'lsp-coverage.json');
         let r = run('modes');
         assert.strictEqual(r.status, 0, r.stderr);
-        assert.strictEqual(r.stdout, "navigation: the stack's order - LSP > Grep\nlsp: not checked yet - the next update or /alfred-code:init checks it\n");
+        assert.strictEqual(r.stdout, `${MEM_DEFAULT}\nnavigation: the stack's order - LSP > Grep\nlsp: not checked yet - the next update or /alfred-code:init checks it\n`);
         assert.ok(!fs.existsSync(file), 'without --lsp nothing is written');
         r = run('modes', '--lsp');
         assert.strictEqual(r.status, 0, r.stderr);
         assert.ok(fs.existsSync(file), 'the check ran');
-        assert.match(r.stdout.split('\n')[1], /^lsp: (none covers|covers )/);
+        assert.match(r.stdout.split('\n')[2], /^lsp: (none covers|covers )/);
     }
     finally { s.done(); }
 });
@@ -658,9 +660,89 @@ test('modes: a doc with problems states no navigation order, and the line says w
     {
         NO_PLUGINS(s);
         s.write(path.join(s.root, DOC_REL), 'garbage\n');
-        assert.strictEqual(tools.modeLines({ projectRoot: s.root, env: s.env })[0], `navigation: none stated - ${DOC_REL} has problems the start line names; fix them with /capture-preferences tools`);
+        assert.strictEqual(navLine(s), `navigation: none stated - ${DOC_REL} has problems the start line names; fix them with /capture-preferences tools`);
         s.doc(['## T1 - Docs', '<!-- id: t1 -->', '- Job: documentation', '- Order: WebFetch']);
-        assert.strictEqual(tools.modeLines({ projectRoot: s.root, env: s.env })[0], "navigation: the stack's order - LSP > Grep", 'a valid doc that ranks no navigation keeps the defaults for it');
+        assert.strictEqual(navLine(s), "navigation: the stack's order - LSP > Grep", 'a valid doc that ranks no navigation keeps the defaults for it');
+    }
+    finally { s.done(); }
+});
+
+// The memory mode (spec P2): ALFRED_CODE_MEMORY default or custom, and Claude's own memory switch in effect here.
+const MEM_TOOLS = 'memory-service memory_store, memory_search, memory_list';
+const settingsAt = (s, value, name = 'settings.json') => s.write(path.join(s.root, '.claude', name), value);
+
+test('modes: memory default, custom with a rank, custom with none', () =>
+{
+    const s = sandbox();
+    try
+    {
+        assert.strictEqual(tools.modeLines({ projectRoot: s.root, env: s.env })[0], "memory: default - Claude Code's own memory, at its default place");
+        settingsAt(s, { enabledPlugins: STACK, env: { ALFRED_CODE_MEMORY: 'custom' }, autoMemoryEnabled: false });
+        assert.strictEqual(tools.modeLines({ projectRoot: s.root, env: s.env })[0], `memory: custom - ${MEM_TOOLS}; Claude's own memory is off`);
+        settingsAt(s, { enabledPlugins: STACK, env: { ALFRED_CODE_MEMORY: 'custom' } });
+        assert.strictEqual(tools.modeLines({ projectRoot: s.root, env: s.env })[0], `memory: custom - ${MEM_TOOLS}; Claude's own memory is still on (autoMemoryEnabled is not false here)`, 'before the update writes the switch-off');
+        settingsAt(s, { enabledPlugins: {}, env: { ALFRED_CODE_MEMORY: 'custom' }, autoMemoryEnabled: false });
+        const lines = tools.modeLines({ projectRoot: s.root, env: s.env });
+        assert.strictEqual(lines[0], 'memory: custom - no memory tool is reachable here, so nothing is stored; rank one with /capture-preferences tools');
+        assert.match(lines[1], /^navigation: /, 'then navigation, then lsp');
+        assert.match(lines[2], /^lsp: /);
+    }
+    finally { s.done(); }
+});
+
+test('modes: under default, the switch-off in effect is named, a shadowed one is not', () =>
+{
+    const s = sandbox();
+    try
+    {
+        settingsAt(s, { enabledPlugins: STACK, autoMemoryEnabled: false });
+        const lines = tools.modeLines({ projectRoot: s.root, env: s.env });
+        assert.deepStrictEqual(lines.slice(0, 2), ["memory: default - Claude Code's own memory, at its default place", 'memory: autoMemoryEnabled is false in .claude/settings.json - yours; native memory stays off until you remove it']);
+        settingsAt(s, { autoMemoryEnabled: true }, 'settings.local.json');
+        assert.deepStrictEqual(tools.memoryOffIn({ projectRoot: s.root, env: s.env }), [], 'settings.local.json outranks settings.json');
+        fs.rmSync(path.join(s.root, '.claude', 'settings.local.json'));
+        settingsAt(s, { enabledPlugins: STACK });
+        s.write(path.join(s.config, 'settings.json'), { autoMemoryEnabled: false });
+        assert.deepStrictEqual(tools.memoryOffIn({ projectRoot: s.root, env: s.env }), [path.join(s.config, 'settings.json')], 'the account file, shown in full outside the home folder');
+        assert.deepStrictEqual(tools.memoryOffIn({ projectRoot: s.root, env: { ...s.env, CLAUDE_CONFIG_DIR: '' }, home: s.work }), [], 'no account file under that home');
+    }
+    finally { s.done(); }
+});
+
+test('memoryMode reads Custom and bogus as default', () =>
+{
+    const s = sandbox();
+    try
+    {
+        const mode = () => tools.memoryMode({ projectRoot: s.root, env: s.env });
+        assert.strictEqual(mode(), 'default');
+        for (const v of ['Custom', 'bogus', '', 'docs']) { settingsAt(s, { enabledPlugins: STACK, env: { ALFRED_CODE_MEMORY: v } }); assert.strictEqual(mode(), 'default', v); }
+        settingsAt(s, { enabledPlugins: STACK, env: { ALFRED_CODE_MEMORY: 'custom' } });
+        assert.strictEqual(mode(), 'custom');
+        settingsAt(s, { env: { ALFRED_CODE_MEMORY: 'default' } }, 'settings.local.json');
+        assert.strictEqual(mode(), 'default', 'settings.local.json first');
+        fs.rmSync(path.join(s.root, '.claude', 'settings.local.json'));
+        settingsAt(s, { enabledPlugins: STACK });
+        assert.strictEqual(tools.memoryMode({ projectRoot: s.root, env: { ...s.env, ALFRED_CODE_MEMORY: 'custom' } }), 'custom', 'then the process env');
+        settingsAt(s, '{ not json');
+        assert.strictEqual(tools.memoryMode({ projectRoot: s.root, env: s.env }), 'default', 'a garbage file reads as unset');
+    }
+    finally { s.done(); }
+});
+
+test('validate names custom memory with no reachable rank, and a switch-off under native', () =>
+{
+    const s = sandbox();
+    try
+    {
+        settingsAt(s, { enabledPlugins: {}, env: { ALFRED_CODE_MEMORY: 'custom' }, autoMemoryEnabled: false });
+        assert.ok(tools.validateRows(s.root, s.env).includes('!! memory: ALFRED_CODE_MEMORY is custom, but the tool order ranks no memory tool this machine reaches - rank one with /capture-preferences tools, or switch to native in /alfred-code:configure'), tools.validateRows(s.root, s.env).join('\n'));
+        settingsAt(s, { enabledPlugins: {}, autoMemoryEnabled: false });
+        const rows = tools.validateRows(s.root, s.env);
+        assert.ok(rows.includes("!! memory: native memory is chosen, but autoMemoryEnabled is false in .claude/settings.json - Claude's own memory stays off until you remove it"), rows.join('\n'));
+        assert.ok(!rows.some((r) => r.includes('is custom')), rows.join('\n'));
+        settingsAt(s, { enabledPlugins: STACK, env: { ALFRED_CODE_MEMORY: 'custom' }, autoMemoryEnabled: false });
+        assert.deepStrictEqual(tools.validateRows(s.root, s.env).filter((r) => r.startsWith('!! memory')), [], 'custom with a reachable rank is fine');
     }
     finally { s.done(); }
 });

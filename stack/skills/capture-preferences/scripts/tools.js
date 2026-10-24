@@ -767,10 +767,53 @@ function jobOrder({ projectRoot, env = process.env, job, seat = null })
     return { ranks: found ? found.ranks.map((r) => r.label) : [], own: !!found && !found.isDefault, fellBack: !!found && found.fellBack, docRel: doc ? doc.rel : null };
 }
 
+// The memory mode (ALFRED_CODE_MEMORY): settings.local.json's env, then settings.json's, then the process env - the first that
+// sets it. Anything but exactly `custom` is the default, so a typo never leaves a project without Claude's own memory.
+function memoryMode({ projectRoot, env = process.env })
+{
+    for (const name of ['settings.local.json', 'settings.json'])
+    {
+        const data = readJsonFile(path.join(projectRoot, '.claude', name));
+        const own = data && typeof data === 'object' && data.env && typeof data.env === 'object' ? data.env : null;
+        if (own && Object.hasOwn(own, 'ALFRED_CODE_MEMORY')) return own.ALFRED_CODE_MEMORY === 'custom' ? 'custom' : 'default';
+    }
+    return env.ALFRED_CODE_MEMORY === 'custom' ? 'custom' : 'default';
+}
+
+// The file whose `autoMemoryEnabled: false` is in effect here, as a list of none or one: the narrowest that sets the key
+// (settings.local.json, settings.json, then the account's), Claude Code's precedence - a broader false a narrower value
+// outranks switches nothing off. Shown project-relative, `~/`-relative, or in full.
+function memoryOffIn({ projectRoot, env = process.env, home = os.homedir() })
+{
+    const account = path.join(env.CLAUDE_CONFIG_DIR || path.join(home, '.claude'), 'settings.json');
+    for (const file of [path.join(projectRoot, '.claude', 'settings.local.json'), path.join(projectRoot, '.claude', 'settings.json'), account])
+    {
+        const data = readJsonFile(file);
+        if (!data || typeof data !== 'object' || !Object.hasOwn(data, 'autoMemoryEnabled')) continue;
+        if (data.autoMemoryEnabled !== false) return [];
+        const under = (dir) => file.startsWith(dir + path.sep) && path.relative(dir, file).split(path.sep).join('/');
+        return [under(projectRoot) || (under(home) ? `~/${under(home)}` : file)];
+    }
+    return [];
+}
+
+// What memory this project uses and where Claude's own memory stands, the lines modeLines leads with.
+function memoryLines({ projectRoot, env = process.env })
+{
+    const off = memoryOffIn({ projectRoot, env });
+    if (memoryMode({ projectRoot, env }) !== 'custom')
+        return ["memory: default - Claude Code's own memory, at its default place", ...off.map((f) => `memory: autoMemoryEnabled is false in ${f} - yours; native memory stays off until you remove it`)];
+    const ranks = jobOrder({ projectRoot, env, job: 'memory' }).ranks;
+    const own = off.length ? "Claude's own memory is off" : "Claude's own memory is still on (autoMemoryEnabled is not false here)";
+    if (ranks.length) return [`memory: custom - ${ranks.join(' > ')}; ${own}`];
+    return [off.length ? 'memory: custom - no memory tool is reachable here, so nothing is stored; rank one with /capture-preferences tools'
+        : `memory: custom - no memory tool is reachable here; ${own}; rank one with /capture-preferences tools`];
+}
+
 // The seat 'agents' stands for in the mode lines: a stack seat holds built-ins only since 2.10.1 (seatReach).
 const AGENT_PROBE = '---\ntools: LSP, Read, Grep, Glob, Bash\n---\n';
-// What navigation each actor gets and whether a language server answers here, one line each - the lines init, configure
-// and status paste verbatim.
+// The memory mode, what navigation each actor gets and whether a language server answers here, one line each - the lines
+// init, configure and status paste verbatim.
 function modeLines({ projectRoot, env = process.env })
 {
     const ranks = (o) => o.ranks.join(' > ') || 'none';
@@ -782,7 +825,7 @@ function modeLines({ projectRoot, env = process.env })
     else if (!main.own) nav = `navigation: the stack's order - ${ranks(main)}`;
     else if (main.fellBack) nav = `navigation: yours, from ${main.docRel}, reaches nothing here - the stack's order stands in: ${ranks(main)}`;
     else nav = `navigation: yours, from ${main.docRel} - main session: ${ranks(main)}; agents: ${ranks(agents)}${agents.fellBack ? " (the stack's order)" : ''}`;
-    return [nav, lsp.coverageLine(lsp.readCoverage(projectRoot))];
+    return [...memoryLines({ projectRoot, env }), nav, lsp.coverageLine(lsp.readCoverage(projectRoot))];
 }
 
 // True once per project while it has no doc: the start line then suggests the capture. The marker is written first; one
@@ -836,6 +879,11 @@ function validateRows(projectRoot, env = process.env)
             if (registrationHash(regs[sv.scope].servers[sv.name]) !== sv.registration) rows.push(`!! tools: ${sv.prefix} changed since the inventory was taken - run /alfred-code:update or /capture-preferences tools`);
         }
     }
+    if (memoryMode({ projectRoot, env }) === 'custom')
+    {
+        if (!jobOrder({ projectRoot, env, job: 'memory' }).ranks.length) rows.push('!! memory: ALFRED_CODE_MEMORY is custom, but the tool order ranks no memory tool this machine reaches - rank one with /capture-preferences tools, or switch to native in /alfred-code:configure');
+    }
+    else for (const f of memoryOffIn({ projectRoot, env })) rows.push(`!! memory: native memory is chosen, but autoMemoryEnabled is false in ${f} - Claude's own memory stays off until you remove it`);
     return rows;
 }
 
@@ -927,7 +975,7 @@ module.exports = {
     TOOLS_DOC, TOOLS_CAP, TOOLS_LINE_CAP, TOOLS_FIELD, PREFS_DIR, LIST_TIMEOUT_MS,
     readAdapters, readToolsDoc, parseToolsDoc, lintToolsDoc, nextToolsId, inventoryPath, readInventory, writeInventory,
     accountFileOf, registrations, enabledPlugins, pluginRows, classify, registrationHash, prefixOf, takeInventory, refreshInventory,
-    mainReach, seatReach, resolveOrder, startLine, orderFor, toolsLine, jobOrder, AGENT_PROBE, modeLines, suggestOnce, validateRows,
+    mainReach, seatReach, resolveOrder, startLine, orderFor, toolsLine, jobOrder, AGENT_PROBE, modeLines, memoryMode, memoryOffIn, suggestOnce, validateRows,
 };
 
 if (require.main === module)

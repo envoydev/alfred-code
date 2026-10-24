@@ -1541,3 +1541,37 @@ test('RU13: a win32 host\'s session and seat starts end on the Windows line, wit
     }
     finally { p.rm(); }
 });
+
+// Custom memory with nothing to hold the lessons (spec section 3): the main start says so, once per start.
+const MEMORY_NONE = 'Memory: custom, but no memory tool is reachable here - nothing is stored this session; rank one with /capture-preferences tools, or /alfred-code:configure switches to native.';
+
+test('custom memory with no reachable memory rank: the main start says nothing is stored this session', () =>
+{
+    const p = project({ docs: {}, tools: true });
+    try
+    {
+        p.write('.claude/settings.json', JSON.stringify({ enabledPlugins: {}, env: { ALFRED_CODE_MEMORY: 'custom' } }));
+        const text = pushed(p.hook(start(sid(), 'startup')));
+        assert.ok(text.split('\n').includes(MEMORY_NONE), text);
+        const seat = p.hook({ hook_event_name: 'SubagentStart', session_id: sid(), agent_id: 'a1', agent_type: 'general-purpose' });
+        assert.ok(!String(out(seat).additionalContext || '').includes('Memory: custom'), 'a seat is not told');
+        const off = pushed(p.hook(start(sid(), 'startup'), { ALFRED_CODE_HOOKS_OFF: 'preferences-session:tools' }));
+        assert.ok(!off.includes('Memory: custom'), 'the tools part switched off silences it');
+    }
+    finally { p.rm(); }
+});
+
+test('custom memory with a rank, and default memory: no memory line', () =>
+{
+    for (const settings of [{ enabledPlugins: { 'alfred-memory@envoydev': true }, env: { ALFRED_CODE_MEMORY: 'custom' } }, { enabledPlugins: {} }])
+    {
+        const p = project({ docs: {}, tools: true });
+        try
+        {
+            p.write('.claude/settings.json', JSON.stringify(settings));
+            const text = pushed(p.hook(start(sid(), 'startup')));
+            assert.ok(!text.includes('Memory: custom'), `${JSON.stringify(settings)}\n${text}`);
+        }
+        finally { p.rm(); }
+    }
+});
