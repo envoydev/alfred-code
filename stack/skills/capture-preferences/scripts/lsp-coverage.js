@@ -90,13 +90,14 @@ function onPath(command, env = process.env, platform = process.platform)
     return dirs.some((d) => suffixes.some((x) => isFile(path.join(d, command + x)) || isFile(path.join(d, command + x.toLowerCase()))));
 }
 
-// The file types the project holds: its tracked files where git answers, else a breadth-first walk that skips git's,
-// the packages', Claude Code's and the stack's data folders - both stopping at `walkCap` files.
+// The file types the project holds: where git answers, its tracked files and the ones not committed yet that it does not
+// ignore (a fresh repo has nothing tracked), else a breadth-first walk that skips git's, the packages', Claude Code's and
+// the stack's data folders - both stopping at `walkCap` files.
 function projectExtensions({ projectRoot, spawn = spawnSync, walkCap = WALK_CAP })
 {
     const exts = new Set();
     const add = (name) => { const e = path.extname(name).toLowerCase(); if (e) exts.add(e); };
-    const git = spawn('git', ['ls-files', '-z'], { cwd: projectRoot, encoding: 'utf8', timeout: GIT_TIMEOUT_MS, maxBuffer: 512 * 1024 * 1024, windowsHide: true });
+    const git = spawn('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: projectRoot, encoding: 'utf8', timeout: GIT_TIMEOUT_MS, maxBuffer: 512 * 1024 * 1024, windowsHide: true });
     if (git && git.status === 0 && typeof git.stdout === 'string')
     {
         let n = 0;

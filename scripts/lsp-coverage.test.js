@@ -196,3 +196,17 @@ test('coverageLine: the three states', () =>
     assert.strictEqual(lsp.coverageLine({ servers: [], covered: [], missing: [] }), "lsp: none covers this project's files - navigation starts at the grep");
     assert.strictEqual(lsp.coverageLine({ servers: [{ plugin: 'ts-lsp', command: 'tsls', onPath: true, exts: ['.ts', '.tsx'] }], covered: ['.ts', '.tsx'], missing: [] }), 'lsp: covers .ts, .tsx (ts-lsp)');
 });
+
+test('in git, files not committed yet count, and ignored ones do not', () =>
+{
+    const s = sandbox();
+    try
+    {
+        spawnSync('git', ['init', '-q'], { cwd: s.root });
+        writeText(path.join(s.root, 'src', 'a.ts'), 'x\n');
+        writeText(path.join(s.root, '.gitignore'), 'build/\n');
+        writeText(path.join(s.root, 'build', 'out.js'), 'x\n');
+        assert.deepStrictEqual([...lsp.projectExtensions({ projectRoot: s.root })].sort(), ['.ts'], 'a fresh repo with nothing committed still holds its .ts');
+    }
+    finally { s.done(); }
+});
