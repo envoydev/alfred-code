@@ -584,3 +584,83 @@ test('no coverage file, or one with a covering server, keeps LSP as today', () =
     }
     finally { s.done(); }
 });
+
+// What navigation each actor gets, said plainly for init, configure and status (spec N1-N3).
+test('modes: the stack\'s order, then the lsp line', () =>
+{
+    const s = sandbox();
+    try
+    {
+        NO_PLUGINS(s);
+        assert.deepStrictEqual(tools.modeLines({ projectRoot: s.root, env: s.env }), ["navigation: the stack's order - LSP > Grep", 'lsp: not checked yet - the next update or /alfred-code:init checks it']);
+    }
+    finally { s.done(); }
+});
+
+test('modes: a user\'s server rank is the main session\'s alone', () =>
+{
+    const s = sandbox();
+    try
+    {
+        s.doc(['## T1 - Code navigation', '<!-- id: t1 -->', '- Job: navigation', '- Order: serena find_symbol > Grep']);
+        assert.strictEqual(tools.modeLines({ projectRoot: s.root, env: s.env })[0], `navigation: yours, from ${DOC_REL} - main session: serena find_symbol > Grep; agents: Grep`);
+    }
+    finally { s.done(); }
+});
+
+test('modes: a ranking that reaches nothing says the stack\'s order stands in', () =>
+{
+    const s = sandbox();
+    try
+    {
+        NO_PLUGINS(s);
+        s.doc(SERENA_ONLY);
+        assert.strictEqual(tools.modeLines({ projectRoot: s.root, env: s.env })[0], `navigation: yours, from ${DOC_REL}, reaches nothing here - the stack's order stands in: LSP > Grep`);
+    }
+    finally { s.done(); }
+});
+
+test('modes: a server rank only the main session reaches leaves the agents on the stack\'s order, said so', () =>
+{
+    const s = sandbox();
+    try
+    {
+        s.doc(SERENA_ONLY);
+        assert.strictEqual(tools.modeLines({ projectRoot: s.root, env: s.env })[0], `navigation: yours, from ${DOC_REL} - main session: serena find_symbol; agents: LSP > Grep (the stack's order)`);
+    }
+    finally { s.done(); }
+});
+
+test('the modes command prints the lines and --lsp refreshes the file', () =>
+{
+    const s = sandbox();
+    try
+    {
+        NO_PLUGINS(s);
+        const run = (...args) => spawnSync(process.execPath, [TOOLS, ...args, '--project', s.root], { encoding: 'utf8', env: { ...s.env, ALFRED_CODE_DATA_PATH: '', ALFRED_CODE_DOCS_PATH: '' } });
+        const file = path.join(s.root, '.alfred', 'state', 'lsp-coverage.json');
+        let r = run('modes');
+        assert.strictEqual(r.status, 0, r.stderr);
+        assert.strictEqual(r.stdout, "navigation: the stack's order - LSP > Grep\nlsp: not checked yet - the next update or /alfred-code:init checks it\n");
+        assert.ok(!fs.existsSync(file), 'without --lsp nothing is written');
+        r = run('modes', '--lsp');
+        assert.strictEqual(r.status, 0, r.stderr);
+        assert.ok(fs.existsSync(file), 'the check ran');
+        assert.match(r.stdout.split('\n')[1], /^lsp: (none covers|covers )/);
+    }
+    finally { s.done(); }
+});
+
+test('modes: a doc with problems states no navigation order, and the line says why', () =>
+{
+    const s = sandbox();
+    try
+    {
+        NO_PLUGINS(s);
+        s.write(path.join(s.root, DOC_REL), 'garbage\n');
+        assert.strictEqual(tools.modeLines({ projectRoot: s.root, env: s.env })[0], `navigation: none stated - ${DOC_REL} has problems the start line names; fix them with /capture-preferences tools`);
+        s.doc(['## T1 - Docs', '<!-- id: t1 -->', '- Job: documentation', '- Order: WebFetch']);
+        assert.strictEqual(tools.modeLines({ projectRoot: s.root, env: s.env })[0], "navigation: the stack's order - LSP > Grep", 'a valid doc that ranks no navigation keeps the defaults for it');
+    }
+    finally { s.done(); }
+});

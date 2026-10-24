@@ -767,6 +767,24 @@ function jobOrder({ projectRoot, env = process.env, job, seat = null })
     return { ranks: found ? found.ranks.map((r) => r.label) : [], own: !!found && !found.isDefault, fellBack: !!found && found.fellBack, docRel: doc ? doc.rel : null };
 }
 
+// The seat 'agents' stands for in the mode lines: a stack seat holds built-ins only since 2.10.1 (seatReach).
+const AGENT_PROBE = '---\ntools: LSP, Read, Grep, Glob, Bash\n---\n';
+// What navigation each actor gets and whether a language server answers here, one line each - the lines init, configure
+// and status paste verbatim.
+function modeLines({ projectRoot, env = process.env })
+{
+    const ranks = (o) => o.ranks.join(' > ') || 'none';
+    const main = jobOrder({ projectRoot, env, job: 'navigation' });
+    const agents = jobOrder({ projectRoot, env, job: 'navigation', seat: { frontmatter: AGENT_PROBE } });
+    let nav;
+    // A doc with problems states only its own entries, so a job it does not rank gets no order at all.
+    if (!main.own && main.docRel && orderFor({ projectRoot, env }).problems.length) nav = `navigation: none stated - ${main.docRel} has problems the start line names; fix them with /capture-preferences tools`;
+    else if (!main.own) nav = `navigation: the stack's order - ${ranks(main)}`;
+    else if (main.fellBack) nav = `navigation: yours, from ${main.docRel}, reaches nothing here - the stack's order stands in: ${ranks(main)}`;
+    else nav = `navigation: yours, from ${main.docRel} - main session: ${ranks(main)}; agents: ${ranks(agents)}${agents.fellBack ? " (the stack's order)" : ''}`;
+    return [nav, lsp.coverageLine(lsp.readCoverage(projectRoot))];
+}
+
 // True once per project while it has no doc: the start line then suggests the capture. The marker is written first; one
 // that cannot be written still says yes, so an unwritable state folder costs a repeat, never the line.
 function suggestOnce(projectRoot)
@@ -875,6 +893,13 @@ function main(argv)
         return 0;
     }
     if (cmd === 'refresh') return refreshCommand(projectRoot);
+    if (cmd === 'modes')
+    {
+        // --lsp: the check re-run first; status leaves it out, being read-only.
+        if (rest.includes('--lsp')) lsp.writeCoverage(projectRoot, lsp.computeCoverage({ projectRoot, enabled: enabledPlugins(projectRoot) }));
+        for (const line of modeLines({ projectRoot })) console.log(line);
+        return 0;
+    }
     if (cmd === 'lsp')
     {
         // --changed-only: the installer's call, quiet on a re-run that found what the last one did.
@@ -894,7 +919,7 @@ function main(argv)
         console.log(`Next: ${nextToolsId(doc ? doc.text : '')}`);
         return 0;
     }
-    console.error('usage: tools.js lint | next | inventory [--session-tools <file>] [--label <prefix>=own:<label>] | order [--seat <file>] | validate | refresh | lsp [--changed-only]  [--project <dir>]');
+    console.error('usage: tools.js lint | next | inventory [--session-tools <file>] [--label <prefix>=own:<label>] | order [--seat <file>] | validate | refresh | lsp [--changed-only] | modes [--lsp]  [--project <dir>]');
     return 2;
 }
 
@@ -902,7 +927,7 @@ module.exports = {
     TOOLS_DOC, TOOLS_CAP, TOOLS_LINE_CAP, TOOLS_FIELD, PREFS_DIR, LIST_TIMEOUT_MS,
     readAdapters, readToolsDoc, parseToolsDoc, lintToolsDoc, nextToolsId, inventoryPath, readInventory, writeInventory,
     accountFileOf, registrations, enabledPlugins, pluginRows, classify, registrationHash, prefixOf, takeInventory, refreshInventory,
-    mainReach, seatReach, resolveOrder, startLine, orderFor, toolsLine, jobOrder, suggestOnce, validateRows,
+    mainReach, seatReach, resolveOrder, startLine, orderFor, toolsLine, jobOrder, AGENT_PROBE, modeLines, suggestOnce, validateRows,
 };
 
 if (require.main === module)

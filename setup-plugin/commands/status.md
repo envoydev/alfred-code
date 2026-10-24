@@ -319,9 +319,11 @@ Under the table, the tool order the next session start is told:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/stack/skills/capture-preferences/scripts/tools.js" order --project .
+node "${CLAUDE_PLUGIN_ROOT}/stack/skills/capture-preferences/scripts/tools.js" modes --project .
 ```
 
-Paste its output as-is in a fenced block - the stack's defaults until `/capture-preferences tools` ranks the user's own.
+Paste both outputs as-is in one fenced block - the stack's defaults until `/capture-preferences tools` ranks the user's own,
+then what navigation each actor gets and whether a language server covers the project. No `--lsp`: status changes nothing.
 
 ## 5. Close
 
