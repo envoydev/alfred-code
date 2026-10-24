@@ -29,16 +29,14 @@ test('M23 the claude-md-management retirement row calls the skill always-on, not
     assert.match(text, /the always-on habits-adjust-agents-md skill/);
 });
 
-// M29: each kept MCP server's launcher downloads and runs its pinned package at every session start, and serena
-// fetches its language servers at run time - the Starts row said neither.
-test('M29 the install footprint says what each MCP plugin runs at session start', () =>
+// M29 named what each MCP plugin ran at session start; since 2.10.1 the stack launches nothing there, and the page says so.
+test('M29 the install footprint says the stack launches no package at session start', () =>
 {
     const doc = read('docs/install-footprint.md');
     const row = doc.slice(doc.indexOf('## What runs'), doc.indexOf('## What you install by hand'));
     assert.ok(row.length > 20, 'the What runs section');
-    assert.match(row, /downloads and runs its pinned package/);
-    for (const pkg of ['serena-agent', 'mcp-memory-service', '@playwright/mcp', 'windows-mcp', 'macos-mcp']) assert.ok(row.includes(pkg), pkg);
-    assert.match(row, /language servers/);
+    assert.match(row, /No package is downloaded or launched by the stack/);
+    for (const pkg of ['serena-agent', 'mcp-memory-service', '@playwright/mcp', 'windows-mcp', 'macos-mcp', 'uvx']) assert.ok(!row.includes(pkg), pkg);
 });
 
 // M24 named the uv cut-off escape in the post-install connect check; with no uvx server left (2.10.1) the page has

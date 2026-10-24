@@ -359,8 +359,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     name matches - a bounded walk from the find's start points (`NAMED_FIND_CAP`, 20,000 entries) sizes each match, and
     one over THRESHOLD lines (a gated extension) or BIG_BYTES (any other) blocks as `named-find-dump`; a name with a glob
     character stays the sweep rule's.
-    Every denial on a file the navigation server indexes carries the
-    `ToolSearch select:` line that loads the navigation server's tools (a size denial on another extension and a tree it
+    Every denial on a source file names the navigation line of the session-start tool order and the LSP
+    `documentSymbol` / `goToDefinition` / `findReferences` calls (a size denial on another extension and a tree it
     never indexes name grep instead - a file outside `CLAUDE_PROJECT_DIR` among them, and a range-cap denial states how many
     of the file's lines the cap still leaves; audit 2026-10-11 SD16, 5984019e). Its convention-rule announcement
     names only a rule in the project's own `.claude/rules` - a plugin-launched hook's sibling `rules/` is
@@ -533,11 +533,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     stderr, line-buffered - its EXACT text only: an encoded, split or reversed print is not caught, so it is leak protection
     against accidents, never a wall against a deliberate read (the session-start line says so and forbids the transform); the exit code is the command's. SessionStart (its own manifest row, silent with no store, an
     empty or an unparseable one) says the KEYS and that command line, plus a warning when `git check-ignore` exits 1 (not
-    ignored, or tracked). The browser launcher passes the file itself to Playwright MCP (`--secrets`: a KEY name typed in
-    `browser_type` / `browser_fill_form` is filled with its value, and each value prints as `<secret>KEY</secret>`), and
-    mobile-control reads only the keys appium-mcp documents through `data-root.js readSensitive` (a twin parser - the hooks
-    ship apart from `stack/mcp` on the copy route; `guard-sensitive-data.test.js` holds both to one fixture), where the
-    shell and a settings file's env win; no other server gets a value (audit 2026-10-14 PL2, repo-memory-data.md).
+    ignored, or tracked). No server gets a value: the stack ships none since 2.10.1 (the browser and mobile launchers that read the store
+    left with them); the installer reads the store through `data-root.js` (the old credentials' clash check) and the guard
+    through its own parser, `guard-sensitive-data.test.js` holding both to one fixture.
   - `guard-unapproved-dispatch.js` (PreToolUse `Task|Agent`) - blocks an `*-implementer` dispatch (bare or
     `alfred-code:`-prefixed; a foreign plugin's is not the flow's seat) without its plan's gate file (written on explicit approval or an AUTO waiver) -
     PER PLAN since 2.8.0 (spec Part 4, the user's ruling of 2026-10-20: two sessions on two plans shared one stamp): the brief
@@ -1059,10 +1057,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     the test the analyzer shares, `correction-turn-test`; the weak 'it should' inside a wh-clause - 'what type of a
     ticket it should be' - is a request, audit 2026-10-11 SD14, session 5f9fec85; so is 'why you' after an explain / tell me
     verb and a 'not working' inside a because-clause, audit 2026-10-20 C20) writes one `correction` probe row;
-    `ALFRED_CODE_CORRECTION_NUDGE` is seeded `log`, `inject` adds the memory-save line with the `ToolSearch select:`
-    line that loads the deferred `memory_store` (M11) - the line names a project fact the correction states as a
-    `reference` memory beside the `user_correction` (audit 2026-10-10, T5 cross-track), and a stated preference as
-    `preference_signal` (audit 2026-10-11 SD16, ce9d4811) - `0` is off. Its `PostToolUse` `AskUserQuestion` half reads an
+    `ALFRED_CODE_CORRECTION_NUDGE` is seeded `log`, `inject` adds the save line (`SAVE_LINE`) - a stated preference into the preferences docs
+    (`/capture-preferences`, audit 2026-10-11 SD16, ce9d4811), the lesson or a project fact the correction states into
+    Claude Code's own memory (audit 2026-10-10, T5 cross-track); no memory server since 2.10.1 - `0` is off. Its `PostToolUse` `AskUserQuestion` half reads an
     answer typed into an ask (matching no offered label): one `ask-answer-typed` probe row, the same correction test and
     row over a short one, and a note to open a path it names and restate what it changes (audit 2026-10-10 C15 / C07).
     An ask the idle timeout closed (ruling S3, `hook-prelude.js` `askTimedOut`) gets one `ask-timeout` probe row, the
@@ -1110,7 +1107,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     of 2026-10-22, the user's rulings 'Alfred's own, all judges' and 'drop the names') holds no edit tool (checked against `meta/seat-tools.json`), so no edit hold reaches it: `SubagentStart` hands it the code
     docs, every project-doc section the room fits, and marks them in its record; the entries one room could not hold come
     with its first reads (the user's ruling of 2026-10-22) - each Read, Grep (`path`) or LSP call (`filePath`) outside the preferences folder - a held Grep's denial adds
-    `GREP_STEER`, locate through the navigation server or LSP, Grep only for a literal already located (the user's
+    `GREP_STEER`, locate through the navigation tools (the LSP), Grep only for a literal already located (the user's
     ruling 'Hold both, steer off Grep'; Grep rides `file-guards.js`, LSP its own row) - and each
     navigation-server symbol lookup (`NAV_READ`: `find_symbol`, `find_referencing_symbols`, `get_symbols_overview`,
     `find_declaration`, `find_implementations` - a seat told to locate before it reads may never call Read), and each

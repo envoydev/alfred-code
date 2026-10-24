@@ -523,6 +523,9 @@ test('uninstall over a replaced account file refuses before any change and names
         assert.strictEqual(result, true, `${label}: the stamp was removed`);
         assert.match(err, /backups\/\.claude\.json\.corrupted\.\d+/, `${label}: the refusal names the backup:\n${err}`);
         assert.match(err, /\/alfred-code:update/, `${label}: the refusal names the update as a way out:\n${err}`);
+        // 2.10.1: no update registers a server, so the way out is the update forgetting what the file no longer holds.
+        assert.doesNotMatch(err, /registers them again/, `${label}: ${err}`);
+        assert.match(err, /\/alfred-code:update, which drops the record of the registrations it no longer holds/, `${label}: ${err}`);
         assert.ok(!after.some((c) => /^(mcp remove|plugin uninstall)/.test(c)), `${label}: ${after.join('\n')}`);
     }
 });

@@ -1,14 +1,13 @@
 'use strict';
-// THE MCP TOOL-NAME CHECKS - 54, 59 and 62 of the parity lint (scripts/lint-skills.js runs and re-exports them).
-// Each reads every text file under stack/, setup-plugin/, meta/ and scripts/, line by line. A line that spells a
-// name the stack does not ship ON PURPOSE (a test fixture, an old spelling a re-speller maps, a third-party plugin
-// in a usage sample) carries the whole word `mcp-fixture` in a comment and is skipped by all three.
+// THE MCP NAME CHECKS - 54, 59 and 67 of the parity lint (scripts/lint-skills.js runs and re-exports them).
+// 54 and 59 read every text file under stack/, setup-plugin/, meta/ and scripts/, 67 the shipped bodies, line by line. A
+// line that spells a name the stack does not ship ON PURPOSE (a test fixture, an old spelling a re-speller maps, a
+// third-party plugin in a usage sample) carries the whole word `mcp-fixture` in a comment and is skipped by all three.
 const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
 const ROOTS = ['stack', 'setup-plugin', 'meta', 'scripts'];
-const TOOLS_FILE = path.join(ROOT, 'meta', 'mcp-tools.json');
 const MCP_FIXTURE_MARKER = /(?:\/\/|#|<!--)[^\n]*?(?<![\w-])mcp-fixture(?![\w-])/;
 // A tool (`mcp__plugin_<p>_<s>__<tool>`), a wildcard (`__*`, no tool group) or a whole-server grant ending the word
 // (`mcp__plugin_<p>_<s>`, the seats' generated lines - scripts/seat-tools.js); a sentence's period is not the server's.
@@ -118,39 +117,44 @@ function lintStaleMcpToolNames({ files, entries, aliases } = {})
     return out;
 }
 
-// 62. Every plugin tool spelling names a TOOL its pinned server has (M31). Check 59 reads only the plugin and
-// server part, so a pin bump that renames or drops a tool shipped a silent drop. meta/mcp-tools.json holds each
-// pinned server's tool names, written by `refresh-mcp-pins.js --write` beside the pins; a browser engine is judged
-// by the one browser list, a renamed alias (still listed for installs not yet updated) by its successor's, and a
-// wildcard names no tool. A plugin the file does not list is check 59's business, not this one's.
-function lintMcpToolsAtPin({ files, tools } = {})
+// 67. No shipped skill, rule, seat or command body names an MCP tool or a server the stack retired with its servers
+// (spec N8, the user's ruling of 2026-10-24: the stack depends on no MCP server). 54 and 59 catch a spelling of a name
+// the stack once shipped; this one catches any CONCRETE spelling - `mcp__<name>` or `mcp__plugin_<name>` - since a body
+// that calls a server the user may not have registered depends on it, and the stack's own server ids in prose. A
+// placeholder (`<server>`, `*`, a pattern's `.`) names no server. The ids are read, never typed: the manifest's
+// retired.mcps rows whose retired-plugins row carries the newest retirement - the release that took every server out.
+// update-history.md is the release record and names what each release changed, so it is not read.
+const BODY_FILE = /^(?:stack\/(?:skills|rules|agents)|setup-plugin\/(?:commands|references|skills))\/.*\.md$/;
+const RELEASE_RECORD = 'setup-plugin/references/update-history.md';
+const CONCRETE_SPELLING = /mcp__(?!plugin_[^A-Za-z0-9])(?=[A-Za-z0-9])[A-Za-z0-9][A-Za-z0-9._-]*/g;
+function retiredServerIds()
 {
-    let table = tools;
-    if (!table)
+    const { retired } = oldNames();
+    const rows = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'retired-plugins.json'), 'utf8')).plugins || [];
+    const servers = rows.filter((r) => retired.includes(r.name) && r.retiredIn);
+    const cmp = (a, b) => a.split('.').map(Number).reduce((d, n, i) => d || n - (Number(b.split('.')[i]) || 0), 0);
+    const newest = servers.map((r) => r.retiredIn).sort(cmp).pop();
+    return servers.filter((r) => r.retiredIn === newest).map((r) => r.name);
+}
+function lintServerFreeBodies({ files, names } = {})
+{
+    let ids = names;
+    if (!ids)
     {
-        try { table = JSON.parse(fs.readFileSync(TOOLS_FILE, 'utf8')); }
-        catch (err) { return [`meta/mcp-tools.json is unreadable (${err.message}), so no spelled tool was checked against its pin - run node scripts/refresh-mcp-pins.js --write`]; }
+        try { ids = retiredServerIds(); }
+        catch (err) { return [`the manifest or meta/retired-plugins.json could not be read, so the server-free body sweep did not run: ${err.message}`]; }
     }
-    const listed = (table && table.servers) || {};
-    let successor = {};
-    try { ({ successor } = oldNames()); } catch { /* no manifest: judge only today's names */ }
-    const roleOf = (plugin) =>
-    {
-        const now = successor[plugin] || plugin;
-        return /^(?:chrome|msedge|firefox|webkit)-control$/.test(now) ? 'browser' : now;
-    };
+    const id = ids.length ? new RegExp(`(?<![\\w./<>-])(${[...ids].sort((a, b) => b.length - a.length).map(escape).join('|')})(?![\\w-]|\\.md)`) : null;
+    const bodies = (files || shippedTextFiles(['stack', 'setup-plugin'])).filter((f) => BODY_FILE.test(f.file) && f.file !== RELEASE_RECORD);
     const out = [];
-    each(files, (file, n, line) =>
+    each(bodies, (file, n, line) =>
     {
-        for (const [, plugin, , tool] of line.matchAll(PLUGIN_TOOL_SPELLING))
-        {
-            const role = roleOf(plugin);
-            if (!tool || !listed[role] || !Array.isArray(listed[role].tools)) continue;
-            if (!listed[role].tools.includes(tool))
-                out.push(`${file}:${n} names the tool \`${tool}\` on the ${role} server, which ${listed[role].version ? `${role} ${listed[role].version}` : 'the pinned server'} does not have (meta/mcp-tools.json) - re-spell it, or refresh the list with node scripts/refresh-mcp-pins.js --write.`);
-        }
+        const spelled = line.match(CONCRETE_SPELLING);
+        if (spelled) out.push(`${file}:${n} names the MCP tool \`${spelled[0]}\` - the stack depends on no MCP server, so a body names the job and the session-start tool order's tools for it. A deliberate example carries \`mcp-fixture\` in a comment.`);
+        const named = id && id.exec(line);
+        if (named) out.push(`${file}:${n} names \`${named[1]}\`, a server the stack retired - it ships none, so a body names the job, not a server. A deliberate example carries \`mcp-fixture\` in a comment.`);
     });
     return out;
 }
 
-module.exports = { lintMcpToolNames, lintStaleMcpToolNames, lintMcpToolsAtPin, shippedTextFiles, MCP_FIXTURE_MARKER, TOOLS_FILE };
+module.exports = { lintMcpToolNames, lintStaleMcpToolNames, lintServerFreeBodies, retiredServerIds, shippedTextFiles, MCP_FIXTURE_MARKER };

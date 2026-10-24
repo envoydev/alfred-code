@@ -71,7 +71,7 @@ const { spawnSync } = require('child_process');   // `node --check` only - node 
 const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 const yaml = require('js-yaml');
 const { SIGNAL_KINDS } = require('./scan-evidence.js');
-const { lintMcpToolNames, lintStaleMcpToolNames, lintMcpToolsAtPin } = require('./lint-mcp-tools.js');  // checks 54, 59, 62
+const { lintMcpToolNames, lintStaleMcpToolNames, lintServerFreeBodies } = require('./lint-mcp-tools.js');  // checks 54, 59, 67
 
 const ROOT = path.resolve(__dirname, '..');
 const SKILLS_DIR = path.join(ROOT, 'stack', 'skills');
@@ -2543,8 +2543,8 @@ function main()
     for (const finding of lintMcpToolNames()) flag(finding);
     // 59. No shipped file names a plugin tool whose plugin carries no server - a renamed server's old spelling.
     for (const finding of lintStaleMcpToolNames()) flag(finding);
-    // 62. No shipped file names a tool its pinned server does not have (meta/mcp-tools.json).
-    for (const finding of lintMcpToolsAtPin()) flag(finding);
+    // 67. No shipped skill, rule, seat or command body names an MCP tool or a server the stack retired (spec N8).
+    for (const finding of lintServerFreeBodies()) flag(finding);
     // 63. Every seat's tools: / disallowedTools: lines are what meta/seat-tools.json generates (scripts/seat-tools.js):
     // a server granted whole, the tools the seat must not hold removed - so a hand edit, a new seat with no row, or a
     // pin that adds a tool (which reaches no seat until the json names it) is a finding until --write runs.
@@ -3207,6 +3207,7 @@ module.exports = {
     lintMcpEntries,
     lintMcpToolNames,
     lintStaleMcpToolNames,
+    lintServerFreeBodies,
     lintPageScripts,
     lintRetiredNames,
     stackTextFiles,

@@ -30,9 +30,9 @@
 // through only when the new release's claude-code.yml hashes the same; otherwise the pin stays, the report says
 // REFUSED and the run exits 1 - re-diff the file against the new context, record its hash, and refresh again.
 //
-// THE TOOL LISTS (M31). --write also records each pinned server's tool names in meta/mcp-tools.json, which lint
-// check 62 holds every shipped `mcp__plugin_<p>_<p>__<tool>` spelling to: a pin bump that renames or drops a tool
-// is a lint finding, not a silent drop. A server this machine cannot list keeps its committed list (NOT CHECKED).
+// THE TOOL LISTS (M31). --write also records each pinned server's tool names in meta/mcp-tools.json, which the adapter
+// table folds in - the known server types' tools. The stack ships no server since 2026-10-24, so no check holds a
+// shipped spelling to a list any more. A server this machine cannot list keeps its committed list (NOT CHECKED).
 // A navigation tool absent from the committed list prints '!! navigation: new tool <name>': the claude-code.yml
 // hash proves the context file, not that serena added no editing tool.
 const fs = require('node:fs');
@@ -380,7 +380,7 @@ async function main(argv, deps = {})
     }
     fs.writeFileSync(d.toolsFile, JSON.stringify({
         generatedBy: 'refresh-mcp-pins',
-        note: 'Each pinned MCP server\'s tool names at its pin (the hosted documentation server has none), written by `node scripts/refresh-mcp-pins.js --write`. Lint check 62 fails a shipped mcp__plugin_<p>_<p>__<tool> spelling whose tool is not listed here.',
+        note: 'Each pinned MCP server\'s tool names at its pin (the hosted documentation server has none), written by `node scripts/refresh-mcp-pins.js --write`. The adapter table (meta/tool-adapters.json, npm run tool-adapters) folds each list in, so the hooks and the tool preferences capture know each known server type by its tools.',
         servers: Object.fromEntries(Object.entries(servers).sort(([a], [b]) => a.localeCompare(b))),
     }, null, 2) + '\n');
     d.log(`${lines.join('\n')}\ntools written: ${path.relative(REPO, d.toolsFile)}`);

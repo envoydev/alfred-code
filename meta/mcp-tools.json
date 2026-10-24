@@ -1,6 +1,6 @@
 {
   "generatedBy": "refresh-mcp-pins",
-  "note": "Each pinned MCP server's tool names at its pin (the hosted documentation server has none), written by `node scripts/refresh-mcp-pins.js --write`. Lint check 62 fails a shipped mcp__plugin_<p>_<p>__<tool> spelling whose tool is not listed here.",
+  "note": "Each pinned MCP server's tool names at its pin (the hosted documentation server has none), written by `node scripts/refresh-mcp-pins.js --write`. The adapter table (meta/tool-adapters.json, npm run tool-adapters) folds each list in, so the hooks and the tool preferences capture know each known server type by its tools.",
   "servers": {
     "alfred-documentation": {
       "version": null,

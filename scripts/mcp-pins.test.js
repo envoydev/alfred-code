@@ -43,14 +43,11 @@ test('refresh-mcp-pins: a PyPI pin never moves past what the pinned Python can i
         assert.strictEqual(admits(spec, '3.13'), ok, spec);
 });
 
-// M38: a by-hand `serena project index` in the shipped docs ran the newest serena-agent while the server ran the
-// pin - the next release would index with one version and serve with another. Every shipped spelling names the
-// release pin and its dependency cut-off (M24), the same the server starts on; this test goes red on a pin bump
-// until the docs follow.
-test('M38 every shipped serena index command names the release pin and the cut-off', () =>
+// M38: a by-hand `serena project index` in the shipped docs once ran the newest serena-agent while the server ran the
+// pin. Since 2.10.1 the stack ships no navigation server (the user's ruling of 2026-10-24), so no shipped body indexes
+// one at all - an index line that came back would run a server nobody registered.
+test('M38 no shipped body runs a serena index command - the stack ships no navigation server', () =>
 {
-    const file = JSON.parse(read('meta/mcp-pins.json'));
-    const want = `--exclude-newer ${file.refreshed}T23:59:59Z --from serena-agent@${file.pins["alfred-navigation"].version} serena project index`;
     const sites = [];
     const walk = (dir) =>
     {
@@ -62,17 +59,13 @@ test('M38 every shipped serena index command names the release pin and the cut-o
         }
     };
     for (const dir of ['setup-plugin', 'stack']) walk(dir);
-    assert.ok(sites.length >= 4, `the post-install and update index lines are found: ${sites.length}`);
-    for (const [rel, line] of sites) assert.ok(line.endsWith(want), `${rel}: ${line}`);
+    assert.deepStrictEqual(sites, []);
 });
 
-// The same drift outside the index line: post-install's pre-warm ran `uvx --from serena-agent serena --help`, which
-// cached the newest serena-agent while the server started on the pin (MCP track 2026-10-20b). Every shipped
-// `--from serena-agent` names the release pin and its cut-off.
-test('every shipped serena-agent launch names the release pin and the cut-off', () =>
+// The same outside the index line: post-install's pre-warm once ran `uvx --from serena-agent serena --help` (MCP track
+// 2026-10-20b). No shipped body launches serena-agent since 2.10.1.
+test('no shipped body launches serena-agent - the stack ships no navigation server', () =>
 {
-    const file = JSON.parse(read('meta/mcp-pins.json'));
-    const want = `--exclude-newer ${file.refreshed}T23:59:59Z --from serena-agent@${file.pins["alfred-navigation"].version}`;
     const bad = [];
     const walk = (dir) =>
     {
@@ -80,7 +73,7 @@ test('every shipped serena-agent launch names the release pin and the cut-off', 
         {
             const rel = path.join(dir, d.name);
             if (d.isDirectory()) walk(rel);
-            else if (/\.md$/.test(d.name)) for (const m of read(rel).matchAll(/(?:--exclude-newer\s+\S+\s+)?--from\s+serena-agent\S*/g)) if (m[0].replace(/\s+/g, ' ') !== want) bad.push(`${rel}: ${m[0]}`);
+            else if (/\.md$/.test(d.name)) for (const m of read(rel).matchAll(/--from\s+serena-agent\S*/g)) bad.push(`${rel}: ${m[0]}`);
         }
     };
     for (const dir of ['setup-plugin', 'stack']) walk(dir);
@@ -159,8 +152,8 @@ test('R7 refresh-mcp-pins: an unreadable pins file does not skip the serena gate
     assert.doesNotMatch(grown.text, /!! alfred-navigation: new tool find_symbol/);
 });
 
-// M31: the refresh records each pinned server's tool names beside the pins (meta/mcp-tools.json), which lint check 62
-// reads; a server it cannot list keeps its committed list and is said NOT CHECKED - a refresh on a plane changes nothing.
+// M31: the refresh records each pinned server's tool names beside the pins (meta/mcp-tools.json), which the adapter
+// table reads; a server it cannot list keeps its committed list and is said NOT CHECKED - a refresh on a plane changes nothing.
 test('M31 refresh-mcp-pins: --write records each server\'s tool names, and keeps a list it could not read', async () =>
 {
     const got = await refreshRun({ lists: { browser: ['browser_navigate', 'browser_click'] } });

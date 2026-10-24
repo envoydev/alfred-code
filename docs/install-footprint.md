@@ -7,7 +7,7 @@ Everything an Alfred Code run writes, starts and costs. The [README](../README.m
 Written at every scope:
 
 - **`.claude/skills/` and `.claude/rules/`** - a copy of each skill and rule the project picked.
-- **`.claude/hooks/`** - only the three engines (`docs.js`, `memory.js`, `history.js`) and the model-window table. The eighteen wired hooks come from the core `alfred-code` plugin.
+- **`.claude/hooks/`** - only the four engines (`docs.js`, `history.js`, `layout.js`, `handoff.js`) and the model-window table. The eighteen wired hooks come from the core `alfred-code` plugin.
 - **`.claude/agents/`** - nothing on the default route. The seats come from the core plugin.
 - **`.claude/settings.json`**
   - `permissions.deny` - one `Agent(alfred-code:<seat>)` for each seat the project did not pick.
@@ -15,26 +15,26 @@ Written at every scope:
   - the `attribution` keys - commit, PR and session-link attribution off, each only where the project set none.
 - **`.claude/settings.local.json`** - the same keys at local scope. At project or user scope too, for a stack key this file already holds, since it applies over `settings.json`.
 - **`.claude/alfred-code.stamp`** - the source revision, your picks and a ledger of every write.
-- **`.alfred/`** (the data root, `ALFRED_CODE_DATA_PATH`) - the docs, serena's `project.yml` and home config. Its own `.gitignore` keeps everything but the docs out of git, since the browser profiles there hold session cookies.
+- **`.alfred/`** (the data root, `ALFRED_CODE_DATA_PATH`) - the docs, the hooks' state, the seats' handoff notes and the sensitive-data file. Its own `.gitignore` keeps everything but the docs out of git.
 
 Written later, or only on one route:
 
-- **`/alfred-code:init`** imports Claude's old memory notes once. Only after that import succeeds does it write `autoMemoryEnabled: false` into the same project file - never the account file.
-- **`<repo>/.mcp.json`** is written only on the `ALFRED_CODE_MCPS_VIA_PLUGIN=false` route. The default run instead PRUNES every stack server from it.
+- **`/alfred-code:init`** dates the stamp's `initialised:` line at its close. It never touches `autoMemoryEnabled`: Claude Code's own memory stays as you set it. An update or uninstall over an earlier release takes back the `autoMemoryEnabled: false` that release's init wrote.
+- **`<repo>/.mcp.json`** is never written. An update over an earlier release takes the stack's own registrations out of it; a server of yours stays.
 - **`.claude/settings.local.json`** gets claude-hud's `statusLine` from `/alfred-code:init` when claude-hud is installed for this project alone - the command names this machine's `node`, so it stays out of the shared file - after a `settings.local.json.bak.<time>` copy of the file, when it already exists.
 
 ## In your account
 
-- **`~/.claude/settings.json`** - `env` keys only: `CONTEXT7_API_KEY`, when you give one. A secret is logged by length, never by value, and never asked for through the chat. `autoMemoryEnabled` never lands here, whatever the install scope. The CLI's own `claude plugin marketplace add` also records each marketplace the run registers under `extraKnownMarketplaces` there (code.claude.com/docs/en/plugins/loading).
+- **`~/.claude/settings.json`** - nothing the stack needs: it seeds no account key. `autoMemoryEnabled` never lands here, whatever the install scope. The CLI's own `claude plugin marketplace add` records each marketplace the run registers under `extraKnownMarketplaces` there (code.claude.com/docs/en/plugins/loading).
 - **The plugin cache** - `claude plugin install`, at EVERY scope, writes `~/.claude/plugins/cache/...` and `installed_plugins.json`.
 - **claude-hud**, when you keep it - its marketplace, registered for the whole account; its install is a user-scope one only when you choose global for it (this project by default).
 - **User-scope installs** - every stack plugin row, at `--scope user`.
-- **`~/.claude.json`** - only on the MCP copy route (`ALFRED_CODE_MCPS_VIA_PLUGIN=false`) at user or local scope, for its server registrations.
+- **`~/.claude.json`** - never written by the stack. An update over an earlier release removes the local- and user-scope registrations that release recorded, through the CLI.
 - **`/alfred-code:init`** additionally writes:
   - claude-hud's `statusLine`, for a claude-hud installed globally (one installed for this project alone gets it in the project, above);
   - claude-hud's own `plugins/claude-hud/config.json` (add-only keys);
   - a `settings.json.bak.<time>` backup, taken before that run's first account write.
-- **`~/.alfred-memory/`** - at the `global` memory level, `memory.db`. A 2.0.0 `~/.memory-mcp` is moved there by the memory server's launcher once idle, with a link left behind. The `project` level stays inside the project.
+- **No memory database.** The stack ships no MCP server since 2.10.1; a database an earlier release left (`~/.alfred-memory/`, `~/.memory-mcp`) stays where it is, and the update that took the server out names it.
 
 Nothing is written outside the project and the account-dir writes named above, and nothing is deleted that the run did not install.
 
@@ -42,18 +42,10 @@ Nothing is written outside the project and the account-dir writes named above, a
 
 At install:
 
-- One `claude plugin install` call per plugin: the optional third-party picks the project kept - `claude-hud` among them, marked recommended in every walk - the core `alfred-code`, and one plugin per MCP server the project keeps.
-- No `claude mcp add` registration at all - the servers ride their own plugins. The opt-out route still makes up to eight.
+- One `claude plugin install` call per plugin: the optional third-party picks the project kept - `claude-hud` among them, marked recommended in every walk - and the core `alfred-code`.
+- No `claude mcp add` registration at all - the stack ships no MCP server.
 
-At every session start:
-
-- Each kept MCP server's launcher downloads and runs its pinned package through uvx or npx: `serena-agent`, `mcp-memory-service`, `@playwright/mcp`, `windows-mcp` or `macos-mcp`. Each runs at the release pin and, for uvx, the pins file's dependency cut-off.
-- The navigation server fetches the language servers it needs at run time.
-
-Once:
-
-- In `/alfred-code:init`, to import old notes into the shared memory: a `uvx ... memory server` launch plus the `node scripts/memory-import.js` importer talking to it.
-- Once per machine, while the memory service's embedding model is not cached yet: the same server started against a scratch database to fetch it. Init's install phase or update runs it where uvx is present, else it is in the bootstrap phase's plan. `ALFRED_CODE_MEMORY_WARM=0` switches it off.
+At every session start: the enabled plugins load, an LSP plugin starts its language server, and the hooks run. No package is downloaded or launched by the stack.
 
 Nothing else executes from the package itself. The package itself is six command bodies, one skill (the `/alfred-code` router; none ships a script), forty-four agents, thirteen references and twenty hooks - the core's own two (`guard-layer-table.js`, the table-before-question gate on the walk's asks and on its next `node` call, and `library-stamp.js`, the startup line saying the library copies are older than the stack) and the eighteen stack hooks, ten of them run in-process by one dispatcher (`shell-guards.js`) on the shell tools, seven by another (`file-guards.js`) on the file tools and the turn build check (`check-turn-build.js`) inside `history-session.js`'s Stop - with no MCP server, no `bin/` and no dependencies of its own.
 
@@ -63,12 +55,12 @@ Nothing else executes from the package itself. The package itself is six command
 
 ## Cost per message
 
-The whole per-message floor - Claude Code's own prompt and tools, every plugin's and MCP server's share, and the stack's pathless rules plus every agent and skill description - was measured at 87k-134k tokens across nine installs. The stack's own always-on text was 12.6k-13.8k of it. `/alfred-code:status` reports your own install's number.
+The whole per-message floor - Claude Code's own prompt and tools, every plugin's share (and any MCP server you registered), and the stack's pathless rules plus every agent and skill description - was measured at 87k-134k tokens across nine installs. The stack's own always-on text was 12.6k-13.8k of it. `/alfred-code:status` reports your own install's number.
 
 ## Under managed settings
 
 - **`strictKnownMarketplaces`** - the allowlist registers nothing, and Claude Code refuses to register a managed marketplace whose source it does not admit (code.claude.com/docs/en/plugins/org). Allow each source the stack installs from - `{ "source": "github", "repo": "envoydev/alfred-code" }`, `{ "source": "github", "repo": "anthropics/claude-plugins-official" }` for the `*-lsp` pair, and `{ "source": "github", "repo": "jarrodwatts/claude-hud" }` if you keep claude-hud (optional, recommended) - and register the same marketplaces in `extraKnownMarketplaces`: `envoydev`, `claude-plugins-official` and `claude-hud`, each with its matching `source`.
-- **`enabledPlugins`** - one key for each plugin the project keeps; `alfred-code@envoydev` and the three locked servers `alfred-navigation@envoydev`, `alfred-documentation@envoydev` and `alfred-memory@envoydev` always, `claude-hud@claude-hud` when you keep it.
+- **`enabledPlugins`** - one key for each plugin the project keeps; `alfred-code@envoydev` always, `claude-hud@claude-hud` when you keep it.
 - **`allowManagedHooksOnly`** - silently disables all eighteen house hooks. The plugin still installs and enables, but no guard ever fires, and nothing reports it. Decide this one before rolling the stack out under a managed policy.
 
 `ALFRED_CODE_HOOKS_OFF` is the supported way to switch individual hooks off.

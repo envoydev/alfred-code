@@ -64,11 +64,11 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
 - `stack/agents/` - 44 subagents, all in the core plugin (2.1.0), each one the selection did not pick
   denied as `Agent(alfred-code:<seat>)` (a seat whose preloaded skills were not copied is never picked);
   each seat's `tools:` / `disallowedTools:` lines are GENERATED from its row in `meta/seat-tools.json` by
-  `node scripts/seat-tools.js --write` (lint check 63; 2026-10-14): one whole-server grant per MCP server, the tools the
-  seat must not hold removed, because the dispatcher lists the `tools:` value verbatim in every session's first call and
-  never lists `disallowedTools` (measured live on a plugin seat and plugin server) - 21,955 listed characters became
-  9,109, every seat's effective tool set unchanged. A server named tool by tool gets no tool a pin adds until the row
-  names it (`refresh-mcp-pins.js --write` regenerates the removals); `<server>:*` takes them;
+  `node scripts/seat-tools.js --write` (lint check 63; 2026-10-14), because the dispatcher lists the `tools:` value
+  verbatim in every session's first call. Since 2.10.1 no row grants an MCP server - the stack ships none - so every
+  seat holds built-in tools only (`LSP`, `Read`, `Grep`, `Glob`, `Bash`, `WebFetch` where it checks outside-world
+  claims); the generator's whole-server grant form (`<server>:*`, one `mcp__plugin_<n>_<n>` with the rest removed)
+  stays for a row that names one;
   their `skills:` preloads are BARE - the project copy (`npm run scope-preloads`, lint check 50;
   plugin-migration-evidence S6 measured a plugin seat's bare preload load the project copy). A plugin
   seat answers only to `alfred-code:<seat>` (spike S1: a bare name is 'Agent type not found'), so every
@@ -84,12 +84,12 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
     DevOps, browser extension);
   - six read-only support seats: `evidence-gatherer`, `test-coverage-analyzer`,
     `architecture-analyzer`, `code-quality-analyzer`, `code-style-analyzer`, `related-project-analyzer`.
-  Every seat that judges or writes code holds `mcp__plugin_alfred-documentation_alfred-documentation__*` (alfred-quality-gates
-  sends its outside-world claims there); the five read-only gatherers do not. A seat reports through
+  Every seat that judges or writes code holds `WebFetch` (alfred-quality-gates sends its outside-world claims to the
+  documentation tools the start line ranks, the vendor's own page when nothing else is registered); the five read-only
+  gatherers do not. A seat reports through
   SubagentHandback when its tools include it, else its last message (`verifier-memory-before-report`);
-  `scripts/seat-grants.test.js` holds the grants. A seat grants the CURRENT spelling only: the old spellings
-  (`serena`, `context7`, `playwright-<engine>`, the pre-2.2.0 `navigation` / `documentation` / `memory`) left every
-  grant in 2.2.1, when the RETIRED alias ids stopped being listed, and check 59 fails one anywhere.
+  `scripts/seat-grants.test.js` holds the grants. No seat names a server since 2.10.1; check 59 fails any plugin spelling, and check 67 a retired server id in a seat
+  body.
   Pins: resolvers `sonnet`/`high`, designers `opus`/`xhigh`, verifiers `sonnet`/`xhigh`, implementers
   `sonnet`/`medium`, support seats `sonnet`, and three read-only reasoners on `opus` - `issue-diagnoser-ci`
   `high`, `issue-diagnoser-runtime` and `security-auditor` `xhigh` (the reasons, and the A/B they still lack, in
@@ -117,14 +117,12 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   the same rename while its mirror is paused - a protocol change here usually needs the same edit
   there once it resumes (divergences only: `model: inherit`, no `tools:` allowlist, no auto-delegation
   hard-disable).
-- `stack/rules/` - nineteen single-job rules, each a library copy in `.claude/rules/`. Seven always-on `alfred-*.md`
+- `stack/rules/` - eighteen single-job rules, each a library copy in `.claude/rules/`. Six always-on `alfred-*.md`
   (no `paths:`): interaction, quality-gates, security, preferences (a pointer to the four preferences docs and
   when each is read - the git lines live in the seeded `GIT-PREFERENCES.md`, the commit checkpoint itself is the
   `habits-commit-checkpoint` skill; the installer stamps the root over its `__DOCS_ROOT__` too), navigation, docs-root (always `<data root>/docs` since 2.8.0 - `ALFRED_CODE_DOCS_PATH` is retired, a leftover
   read first for the 2.x line and moved and removed by update; the installer stamps the root over `__DOCS_ROOT__` on
-  every run),
-  memory (what belongs in the shared `memory` MCP, when to save it, and to search before asking or
-  reading - locks the server in the way `alfred-navigation` locks the navigation server).
+  every run). `alfred-memory.md` left in 2.10.1 with the memory server (`retired.rules`).
   Skill/agent usage policy + MCP routing live in the GENERATED
   `<docs-path>/awareness/AGENTS-AWARENESS.md`, which the generated `alfred-awareness.md` imports.
   Twelve path-scoped: `markdown-docs.md`, the repair routers

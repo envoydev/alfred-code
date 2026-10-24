@@ -50,15 +50,13 @@ test('M-F4-1: meta/environment.json describes ALFRED_CODE_INSTRUMENT=0 as a node
     assert.match(row.what, /node start per call/, row.what);
 });
 
-// F4 re-review M-F4-3: the preload clause is its own sentence, never folded into the MCP-route one. Since
-// 2.1.0 a seat's preloads are bare in the source, so CLAUDE.md says the full copy route's re-spell has
-// nothing left to do.
-test('M-F4-3: CLAUDE.md keeps the preload clause out of the MCP copy-route sentence', () => {
+// F4 re-review M-F4-3: the preload clause is its own sentence, never folded into the MCP-route one. The MCP copy route
+// left with the servers in 2.10.1, so the docs no longer describe it, and the preload spelling keeps its own sentence
+// in the catalog rule: a seat's preloads are bare in the source since 2.1.0.
+test('M-F4-3: the docs describe no MCP copy route, and the preload spelling keeps its own sentence', () => {
     const claudeMd = require('./claude-docs.js').readClaudeDocs();
-    const sentence = /`ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores the 0\.2\.x registration route[^]*?half-fixed\)\./.exec(claudeMd);
-    assert.ok(sentence, 'the MCP copy-route sentence must still exist');
-    assert.doesNotMatch(sentence[0], /preload/, 'the preload clause still rides the MCP-route sentence');
-    assert.match(claudeMd, /`skills:` preloads are bare in the source since 2\.1\.0/, 'the preload spelling names its own rule');
+    assert.doesNotMatch(claudeMd, /`ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores/, 'the MCP copy-route sentence came back');
+    assert.match(claudeMd, /`skills:` preloads are BARE - the project copy/, 'the preload spelling names its own rule');
 });
 
 test('requiring lint-skills does not run the linter and exposes parsers', () => {
@@ -1128,22 +1126,27 @@ test('M35 check 59 lets a seat\'s grant line name a listed alias, and nothing el
     assert.strictEqual(lintStaleMcpToolNames({ entries, aliases: [], files: [{ file: 'stack/agents/a.md', text: grant }] }).length, 1, 'an id no alias lists');
 });
 
-// M31 (check 62): a pin bump that renames or drops a tool ships a silent drop - check 59 reads only the plugin and
-// server part of a spelling. meta/mcp-tools.json records each pinned server's tool names (refresh-mcp-pins.js
-// --write), and a shipped plugin spelling whose TOOL is not listed there is a finding; an alias spelling is judged
-// by its successor's list, and a wildcard names no tool.
-test('M31 check 62 flags a plugin tool spelling whose tool the pinned server does not have', () => {
-    const { lintMcpToolsAtPin } = require('./lint-mcp-tools.js');
-    const tools = { servers: { 'alfred-memory': { version: '1', tools: ['memory_store', 'memory_search'] }, browser: { version: '1', tools: ['browser_navigate'] }, 'alfred-navigation': { version: '1', tools: ['find_symbol'] } } };
-    const ok = 'mcp__plugin_alfred-memory_alfred-memory__memory_store, mcp__plugin_webkit-control_webkit-control__browser_navigate, mcp__plugin_chrome-control_chrome-control__*\n'; // mcp-fixture
-    assert.deepStrictEqual(lintMcpToolsAtPin({ tools, files: [{ file: 'stack/a.md', text: ok }] }), []);
-    const bad = lintMcpToolsAtPin({ tools, files: [{ file: 'stack/b.md', text: 'x\nmcp__plugin_alfred-memory_alfred-memory__retrieve_memory\n' }] }); // mcp-fixture
-    assert.strictEqual(bad.length, 1);
-    assert.match(bad[0], /stack\/b\.md:2 .*retrieve_memory.*memory/);
-    const alias = lintMcpToolsAtPin({ tools, files: [{ file: 'stack/c.md', text: 'mcp__plugin_serena_serena__find_symbol mcp__plugin_serena_serena__nope\n' }] }); // mcp-fixture
-    assert.strictEqual(alias.length, 1, 'an alias spelling is judged by its successor\'s list');
-    assert.deepStrictEqual(lintMcpToolsAtPin({ tools, files: [{ file: 'scripts/t.js', text: 'mcp__plugin_alfred-memory_alfred-memory__nope // mcp-fixture\n' }] }), [], 'a marked fixture line passes');
-    assert.deepStrictEqual(lintMcpToolsAtPin(), [], 'every shipped spelling names a tool its pinned server has');
+// Check 67 (2026-10-24, spec N8): the stack ships no MCP server, so no shipped skill, rule, seat or command body names a
+// concrete MCP tool spelling or a server id the stack retired with its servers. A placeholder (`mcp__<server>__<tool>`,
+// `mcp__plugin_<server>_<server>__*`, a connector's own `mcp__*`) names none; the rule file `alfred-navigation.md` and a
+// data folder (`.alfred-memory/`) are no server; update-history.md is the release record, naming what each release
+// changed; a deliberate example carries `mcp-fixture` in a comment. Check 62 (a tool at its pin) is gone: with no
+// shipped server every concrete plugin spelling is already check 59's finding.
+test('check 67 flags an MCP tool spelling or a retired server id in a shipped body, and the live tree carries none', () => {
+    const { lintServerFreeBodies } = require('./lint-skills.js');
+    const names = ['alfred-memory', 'alfred-navigation', 'chrome-control'];
+    const hits = (file, text) => lintServerFreeBodies({ names, files: [{ file, text }] });
+    assert.strictEqual(hits('stack/skills/x/SKILL.md', 'Call `mcp__github__create_issue`.\n').length, 1, 'a concrete bare spelling'); // mcp-fixture
+    assert.strictEqual(hits('stack/agents/a.md', 'x\nuse mcp__plugin_foo_foo__bar\n').length, 1, 'a concrete plugin spelling'); // mcp-fixture
+    assert.match(hits('stack/rules/r.md', 'the alfred-memory server\n')[0], /stack\/rules\/r\.md:1 .*alfred-memory/, 'a retired server id');
+    assert.strictEqual(hits('setup-plugin/commands/c.md', 'chrome-control drives a browser\n').length, 1, 'a command body');
+    for (const text of ['per `.claude/rules/alfred-navigation.md`\n', 'the folders `.alfred-memory/` stay\n', 'a `<engine>-control/` folder\n',
+        'its `mcp__plugin_<server>_<server>__<tool>` spelling, or `mcp__<server>__<tool>`\n', 'that connector\'s own `mcp__*` tools\n',
+        'matched by `^mcp__.+__App$`\n', 'the alfred-memory server <!-- mcp-fixture -->\n'])
+        assert.deepStrictEqual(hits('stack/skills/x/SKILL.md', text), [], text.trim());
+    assert.deepStrictEqual(hits('stack/skills/x/scripts/t.json', 'mcp__plugin_foo_foo__bar alfred-memory\n'), [], 'only .md bodies are read'); // mcp-fixture
+    assert.deepStrictEqual(hits('setup-plugin/references/update-history.md', 'alfred-memory left\n'), [], 'the release record names what left');
+    assert.deepStrictEqual(lintServerFreeBodies(), [], 'no shipped body names one');
 });
 
 // Check 59. A renamed MCP server leaves its old plugin spelling behind in every `tools:` allowlist and

@@ -1958,7 +1958,7 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
     {
         const at = Number((/\.(\d+)$/.exec(backup) || [])[1]);
         const good = mcp.accountBackups(backupDirs, 'good').filter((b) => b.ms < at).pop();
-        err(`error: ${accountFile} ${made ? 'could not be read' : 'was replaced since the last run'} - the claude CLI kept the old one as ${backup}, and the stack's local- and user-scope registrations are in it; nothing was removed - put a whole copy back over ${accountFile} (that one fixed${good ? `, or the CLI's last good copy ${good.file}` : ''}), or run /alfred-code:update, which registers them again, then run uninstall again\n`);
+        err(`error: ${accountFile} ${made ? 'could not be read' : 'was replaced since the last run'} - the claude CLI kept the old one as ${backup}, and the stack's local- and user-scope registrations are in it; nothing was removed - put a whole copy back over ${accountFile} (that one fixed${good ? `, or the CLI's last good copy ${good.file}` : ''}), or run /alfred-code:update, which drops the record of the registrations it no longer holds, then run uninstall again\n`);
     };
     if (hasClaude && !listingRead(rawList))
     {
