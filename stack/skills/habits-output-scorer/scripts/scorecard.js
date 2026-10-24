@@ -181,23 +181,31 @@ function readRows(lines) {
 }
 
 const FIELDS = ['Failure', 'Trigger', 'Cost', 'Evidence', 'Fix'];
-const ITEM_RE = /^\s*[-*+]\s+\[(BLOCKER|MATERIAL|MINOR)\]\s*(.*)$/i;
+// An item opens on its tag after a bullet, a number or a heading mark, bold or not - `- **[BLOCKER]** B1`, `1. [BLOCKER]`,
+// `### [BLOCKER] B1` (final review 1: each of those once read as no finding, and the draft passed at 100).
+const ITEM_RE = /^\s*(?:[-*+]|\d+[.)]|#{1,6})\s+(?:\*\*|__)?\[(BLOCKER|MATERIAL|MINOR)\](?:\*\*|__)?\s*(.*)$/i;
+// A line that reads as a BLOCKER or MATERIAL finding no item took: the word leading the line, or its tag outside an item.
+const LEAD_RE = /^\s*(?:[-*+]|\d+[.)]|#{1,6})?\s*(?:\*\*|__)?\s*(?:BLOCKER|MATERIAL)\b/;
+const TAG_RE = /\[(?:BLOCKER|MATERIAL)\]/i;
 // A label in any case, bold or not, followed by `:` - `Failure mode` read as Failure (R33).
 const LABEL_RE = /(?<![A-Za-z])\*{0,2}(failure(?:\s+mode)?|trigger|cost|evidence|fix)\*{0,2}\s*:/gi;
 const NEEDS_RE = /\[needs:\s*([^\]]*?)\s*\]/gi;
 const fieldOf = (label) => (/^failure/i.test(label) ? 'Failure' : label[0].toUpperCase() + label.slice(1).toLowerCase());
 
 // The `## Findings` items: one runs from its `- [<SEVERITY>]` line to the next item or heading, so sub-bullets count.
+// `stray` holds the lines that read as a BLOCKER or MATERIAL no item took, so the grade can refuse them (exit 2).
 function readFindings(lines) {
   const items = [];
+  const stray = [];
   let current = null;
   for (const line of lines) {
     const m = ITEM_RE.exec(line);
     if (m) { current = { severity: m[1].toUpperCase(), head: m[2], text: m[2] }; items.push(current); continue; }
+    if (LEAD_RE.test(line) || (!current && TAG_RE.test(line))) stray.push(line.trim());
     if (/^#{1,6}\s/.test(line)) { current = null; continue; }
     if (current) current.text += `\n${line}`;
   }
-  return items.map((item, i) => {
+  return { stray, items: items.map((item, i) => {
     const labels = [...item.text.matchAll(LABEL_RE)];
     const have = new Set(labels.map((l) => fieldOf(l[1])));
     const idm = /^\**([A-Za-z]{1,3}\d+)\**[.:)]?\s*/.exec(item.head);
@@ -211,7 +219,7 @@ function readFindings(lines) {
       missing: FIELDS.filter((f) => !have.has(f)),
       needs: fix ? [...item.text.slice(fix.index).matchAll(NEEDS_RE)].map((n) => n[1]).filter(Boolean) : [],
     };
-  });
+  }) };
 }
 
 function grade({ scoreText, rubric, level = 80, self = false }) {
@@ -250,7 +258,8 @@ function grade({ scoreText, rubric, level = 80, self = false }) {
     for (const n of evidence.matchAll(NEEDS_RE)) if (n[1]) rowNeeds.push(n[1]);
   }
 
-  const findings = readFindings(findingLines);
+  const { items: findings, stray } = readFindings(findingLines);
+  if (stray.length) return bad(2, `a severity no finding item carries - write it as \`- [<SEVERITY>] <id> <title>. Failure: ...\`: ${stray[0].slice(0, 80)}`);
   const kept = findings.filter((f) => !f.missing.length);
   const blockers = kept.filter((f) => f.severity === 'BLOCKER');
   let total = Math.round(met);

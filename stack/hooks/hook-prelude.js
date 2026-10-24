@@ -767,8 +767,10 @@ function scorerState(root, sessionId, env = process.env)
     catch { return { ...state, usable: false, on: false }; }
 }
 
-// A typed stack names the skill as a word of the prose, slash or not; a `<command-args>` row counts (the `>` and `<`).
-const STACK_RE = /(?:^|[\s(>])\/?habits-output-scorer(?=[\s.,;:)!?<]|$)/i;
+// A typed stack names the skill as a word of the prose: the slash form anywhere, a `<command-args>` row counting (the `>`
+// and `<`), or the bare name right after a usage word - 'using', 'with', 'via', 'run', 'stack', 'through'. A bare name in
+// other prose ('why did habits-output-scorer not run?') is talk about the tool, never a stack (final review 4).
+const STACK_RE = /(?:^|[\s(>])(?:\/|(?:using|with|via|run|stack|through)\s+(?:the\s+)?)habits-output-scorer(?=[\s.,;:)!?<]|$)/i;
 const stackNamed = (text) => STACK_RE.test(proseOf(String(text || '')));
 
 // The skills that READ a plan rather than write one (the backstop's T2 exemption), and the names producerMarks looks for.

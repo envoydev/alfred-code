@@ -388,8 +388,9 @@ test('scorer: a typed stack with the switch off injects the stacked line; the na
         assert.doesNotMatch(prompt('c1', t), /scorer:/, t);
     assert.strictEqual(stateOf('c1'), null, 'a stack writes no state file');
 });
-test('scorer: the bare name in a question reads as a stack - the documented price of the bare-name route (Review Focus)', () => {
-    assert.match(prompt('c2', 'why did habits-output-scorer not run?'), /scorer: stacked for this request/);
+test('scorer: the bare name in a question is talk - only the slash form or a usage word stacks it (final review 4)', () => {
+    assert.doesNotMatch(prompt('c2', 'why did habits-output-scorer not run?'), /scorer: stacked for this request/);
+    assert.match(prompt('c2b', 'explain closures with habits-output-scorer'), /scorer: stacked for this request/);
 });
 test('scorer: --score-on and a stack in one message carry both lines, on first', () => {
     const ctx = prompt('c3', '--score-on /habits-explain-topic /habits-output-scorer explain x');

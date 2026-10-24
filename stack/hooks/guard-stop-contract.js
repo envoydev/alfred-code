@@ -997,7 +997,13 @@ function walkBack(start, fallback) {
 // cycle's key, and whether the receipt was there but unbacked.
 const SCORED_RE = /(?:^|\n)\s*\**Scored\**:\s*\d+\/100/;
 const DIAGNOSER_RE = /(?:^|:)issue-diagnoser-(?:ci|runtime)$/;
-const VERDICT_RE = /^\s*Cause:\s*(?!<pending>)\S/m;
+// a placeholder in bold or backticks (`Cause: **<pending>**`) is no verdict either (final review 2)
+const VERDICT_RE = /^\s*Cause:\s*[*_`]*(?!<pending>)[^\s*_`]/m;
+// The verdict lines an edit adds: a Cause line already in old_string is the stamp being kept, not a new verdict.
+const addsVerdict = (next, prev) => {
+  const kept = new Set(String(prev || '').split('\n').map((l) => l.trim()));
+  return String(next || '').split('\n').some((l) => VERDICT_RE.test(l) && !kept.has(l.trim()));
+};
 const SCORER_TRIGGERS = {
   T1: 'a scorer draft was written',
   T2: 'a plan file was written under work/plans/',
@@ -1035,8 +1041,8 @@ function scorerOwed(state, pre, root) {
           if (!state.on) continue;
           if (b.name === 'Write' && /\.md$/i.test(fwd(input.file_path)) && under(input.file_path, plans)) seen.t2.push({ n, file: path.resolve(root, fwd(input.file_path)) });
           if (seen.t3 === null && ['Write', 'Edit', 'MultiEdit'].includes(b.name) && under(input.file_path, diagnoses)) {
-            const texts = b.name === 'Write' ? [input.content] : b.name === 'Edit' ? [input.new_string] : (Array.isArray(input.edits) ? input.edits : []).map((e) => e && e.new_string);
-            if (texts.some((t) => VERDICT_RE.test(String(t || '')))) seen.t3 = n;
+            const pairs = b.name === 'Write' ? [[input.content, '']] : b.name === 'Edit' ? [[input.new_string, input.old_string]] : (Array.isArray(input.edits) ? input.edits : []).map((e) => [e && e.new_string, e && e.old_string]);
+            if (pairs.some(([next, prev]) => addsVerdict(next, prev))) seen.t3 = n;
           }
           if (seen.seat === null && (b.name === 'Agent' || b.name === 'Task') && DIAGNOSER_RE.test(String(input.subagent_type || ''))) seen.seat = n;
           if (b.name === 'Skill' && pre.producerMarks(JSON.stringify({ type: 'assistant', message: { content: [b] } }), pre.PLAN_READERS).length) seen.planRead = true;
@@ -1081,8 +1087,11 @@ function scorerOwed(state, pre, root) {
     const plan = found.t2.find((w) => !released.has(w.file));
     if (plan) triggers.push(['T2', plan.n]);
   }
+  // a root-cause this session already released (or kept withheld) is not owed again by a later stamp or close-out
+  // write to the findings file (final review 2); a diagnoser seat's new report still is
+  const causeSettled = ownLogs.some((f) => { const t = read(f); return /^output: root-cause$/m.test(t) && /^(?:released|final)\b/m.test(t); });
   if (found.t1 === null && state.on && state.outputs.includes('root-cause')) {
-    if (found.t3 !== null) triggers.push(['T3', found.t3]);
+    if (found.t3 !== null && !causeSettled) triggers.push(['T3', found.t3]);
     if (found.seat !== null && !seatLive(DIAGNOSER_RE)) triggers.push(['T3', found.seat]);
   }
   if (found.stacked) triggers.push(['T4', found.open]);
@@ -1094,7 +1103,8 @@ function scorerOwed(state, pre, root) {
   try { selfLogs = fs.readdirSync(base).filter((d) => /^self-/.test(d)).flatMap(logs); } catch { /* no scorer folder yet */ }
   const backed = [...ownLogs, ...selfLogs].some((f) => {
     try { if (Number.isFinite(found.at) && fs.statSync(f).mtimeMs < found.at - 2000) return false; } catch { return false; }
-    return /^(?:released|final)\b/m.test(read(f));
+    // `asked` is next's own line too: a withheld output waiting on the continue ask printed its Scored line (final review 3)
+    return /^(?:released|final|asked)\b/m.test(read(f));
   });
   return backed ? { owed: null, cycle: found.key } : { owed: SCORER_TRIGGERS[name], cycle: found.key, unbacked: true };
 }

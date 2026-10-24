@@ -1097,13 +1097,14 @@ test('skillCopyState and scorerState: no copy and off are unusable; user-invocab
     scorerWrite(path.join(scorerRoot, '.claude', 'skills', 'habits-output-scorer', 'SKILL.md'), '---\nname: habits-output-scorer\n---\n');
 });
 
-test('stackNamed: the slash form, the bare name, a command-args row; code and quotes are talk', () => {
+test('stackNamed: the slash form, the bare name after a usage word, a command-args row; code, quotes and talk are not (final review 4)', () => {
     for (const t of ['/task-version-upgrade /habits-output-scorer upgrade to .NET 10', '/habits-output-scorer explain closures',
-        'using habits-output-scorer, explain closures', 'why did habits-output-scorer not run?',
+        'using habits-output-scorer, explain closures', 'explain closures with the habits-output-scorer', 'run habits-output-scorer on this plan',
         '<command-name>/habits-explain-topic</command-name><command-args>/habits-output-scorer explain x</command-args>'])
         assert.ok(stackNamed(t), t);
     for (const t of ['what does `/habits-output-scorer` do', '```\n/habits-output-scorer\n```', '> /habits-output-scorer x',
-        'my-habits-output-scorer-notes', 'habits-output-scorers', '| habits-output-scorer | row |'])
+        'my-habits-output-scorer-notes', 'habits-output-scorers', '| habits-output-scorer | row |',
+        'why did habits-output-scorer not run?', 'habits-output-scorer graded my plan at 71 - why?', 'is the habits-output-scorer on'])
         assert.ok(!stackNamed(t), t);
 });
 

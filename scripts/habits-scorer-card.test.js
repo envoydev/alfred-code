@@ -99,6 +99,24 @@ test('grade: a BLOCKER with bold labels on sub-bullets, or "Failure mode:", stil
     const r = grade({ scoreText: card100(95, [drift]), rubric: R100, level: 80 });
     assert.deepStrictEqual([r.total, r.blockers, r.discarded], [60, 1, []]);
 });
+test('grade: a BLOCKER tag in bold, numbered or as a heading still caps at 60 (final review 1)', () => {
+    const fields = 'Failure: f Trigger: t Cost: c Evidence: e Fix: x';
+    for (const item of [`- **[BLOCKER]** B1 Drops rows. ${fields}`, `1. [BLOCKER] B1 Drops rows. ${fields}`,
+        `### [BLOCKER] B1 Drops rows.\n${fields}`, `- **[BLOCKER] B1 Drops rows.** ${fields}`]) {
+        const r = grade({ scoreText: card100(100, [item]), rubric: R100, level: 80 });
+        assert.deepStrictEqual([r.total, r.verdict, r.blockers], [60, 'fail', 1], item);
+    }
+});
+test('grade: a BLOCKER or MATERIAL tag no item accounts for exits 2, so the retry runs (final review 1)', () => {
+    for (const item of ['- BLOCKER B1 Drops rows. Failure: f Trigger: t Cost: c Evidence: e Fix: x',
+        'Finding: [MATERIAL] M1 Rollback unnamed. Failure: f Trigger: t Cost: c Evidence: e Fix: x']) {
+        const r = grade({ scoreText: card100(100, [item]), rubric: R100, level: 80 });
+        assert.strictEqual(r.exit, 2, item);
+        assert.match(r.why, /severity/, item);
+    }
+    // Prose that names a severity with no tag, and a None section, still grade.
+    assert.strictEqual(grade({ scoreText: card100(100, ['None - no blocker or material finding.']), rubric: R100, level: 80 }).exit, 0);
+});
 test('grade: --self caps 100 at 99 and needs a self: line', () => {
     assert.strictEqual(grade({ scoreText: selfCard(100), rubric: R100, level: 80, self: true }).total, 99);
     assert.strictEqual(grade({ scoreText: card100(100), rubric: R100, level: 80, self: true }).exit, 3);

@@ -53,7 +53,7 @@ The outputs, their producers, rubrics, runs and docs are the table in `reference
 
 ## Typed stack
 
-- The form: `/<producer> /habits-output-scorer <request>` at the start of a message, the producer first (a slash-only producer cannot be loaded later; this skill can) - `/habits-explain-topic /habits-output-scorer explain closures like for a 6-year-old`. `/habits-output-scorer <request>` alone, or the bare name in a sentence, works too.
+- The form: `/<producer> /habits-output-scorer <request>` at the start of a message, the producer first (a slash-only producer cannot be loaded later; this skill can) - `/habits-explain-topic /habits-output-scorer explain closures like for a 6-year-old`. `/habits-output-scorer <request>` alone works too, and so does the bare name right after 'using', 'with', 'via', 'run', 'stack' or 'through'; the bare name in other prose ('why did it not run?') is talk about the tool.
 - What is graded: every output the stacked producer releases in this request, under its own rubric, listed or not; with no producer stacked, the output of the producer skill that loads in the request; with none, the reply as `custom`.
 - A stack naming `habits-adjust-agents-md` grades nothing: say so in one line.
 

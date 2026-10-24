@@ -549,6 +549,25 @@ test('scorer backstop: a Cause: <pending> write and a diagnoser seat still runni
   const live = [{ id: 'd1', type: 'subagent', status: 'running', agent_type: 'alfred-code:issue-diagnoser-runtime' }];
   assert.strictEqual(scorer([typed('go'), T3S], 'Diagnosing - the seat is running', { session_id: 'P2', background_tasks: live }), 0);
 });
+test('scorer backstop: an Edit keeping the Cause line, a released root-cause, a bold <pending> - no T3 (final review 2)', () => {
+  const f = `${ROOT}/.alfred/docs/work/diagnoses/f.md`;
+  const cards = call('t8', 'Edit', { file_path: f, old_string: 'Cause: X disposes the scope\n', new_string: 'Cause: X disposes the scope\n\n### Task 1 - keep the scope\n' });
+  assert.strictEqual(scorer([typed('add the task cards'), cards], 'cards added', { session_id: 'V1' }), 0);
+  const stamp = call('t9', 'Edit', { file_path: f, old_string: 'Cause: X disposes the scope', new_string: 'Cause: X disposes the scope - signature ObjectDisposedException, fix: own scope per run' });
+  const d = path.join(ROOT, '.alfred', 'state', 'sessions', 'scorer', 'V2', 'cause');
+  fs.mkdirSync(d, { recursive: true });
+  fs.writeFileSync(path.join(d, 'rounds.log'), 'output: root-cause\n1 0 ab12cd34\nreleased ab12cd34\n');
+  fs.utimesSync(path.join(d, 'rounds.log'), (Date.now() - 600000) / 1000, (Date.now() - 600000) / 1000);   // an earlier cycle
+  assert.strictEqual(scorer([typed('close it out'), stamp], 'stamped', { session_id: 'V2' }), 0);
+  assert.strictEqual(scorer([typed('close it out'), stamp], 'stamped', { session_id: 'V3' }), 2, 'no released root-cause: held');
+  const bold = call('t10', 'Write', { file_path: `${ROOT}/.alfred/docs/work/diagnoses/h.md`, content: '  Cause: **<pending>**\n  Cause: `<pending>`\n' });
+  assert.strictEqual(scorer([typed('go'), bold], 'triaged', { session_id: 'V4' }), 0);
+});
+test('scorer backstop: a withheld output whose continue ask is open (rounds.log ends on asked) backs its Scored line (final review 3)', () => {
+  backed('W1', 'asked ab12cd34 ask-continue');
+  assert.strictEqual(scorer([typed('go'), T1('W1')], `withheld\nScored: 71/100 (level 80) - NOT PASSED`, { session_id: 'W1' }), 0);
+  assert.strictEqual(ledgerRows('scorer-receipt-unbacked').filter((r) => /W1/.test(JSON.stringify(r))).length, 0);
+});
 test('scorer backstop: a typed stack (T4) is held once with the switch off; the name in inline code is not (AC25)', () => {
   for (const [i, t] of [typed('/task-version-upgrade /habits-output-scorer upgrade to .NET 10'), typed('using habits-output-scorer, explain closures'),
     typed('<command-name>/habits-explain-topic</command-name><command-args>/habits-output-scorer explain x</command-args>')].entries()) {

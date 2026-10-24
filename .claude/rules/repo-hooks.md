@@ -1096,7 +1096,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `SCORER-<session>` file, which outranks `ALFRED_CODE_SCORER`; while on, every typed prompt - and a compaction's start,
     which drops injected text - carries one `scorer: on (level, rounds, source[, auto-mode]) ...` line naming the listed
     outputs in words, so an ordinary reply never reads as one; a message that turns it off carries `scorer: off for this
-    session`. A typed stack - the skill's name, slash or not, as a word of the prose, a `<command-args>` row included -
+    session`. A typed stack - the skill's slash name as a word of the prose, a `<command-args>` row included, or the bare name
+    right after a usage word (`using`, `with`, `via`, `run`, `stack`, `through`; final review 4) -
     adds `scorer: stacked for this request ...` with the switch off too, and on a `user-invocable-only` copy. All of it
     needs `scorerState` usable: either hook or its `scorer` part in `ALFRED_CODE_HOOKS_OFF`, or no loadable copy, and no
     line is injected, so nothing is graded and the backstop owes nothing (AC1-AC6, AC13, AC19, AC20, AC23-AC25;
