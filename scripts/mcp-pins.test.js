@@ -83,7 +83,7 @@ test('no shipped body launches serena-agent - the stack ships no navigation serv
 // R7: the stack's serena context copies serena-agent's own claude-code.yml at the pin, and a later serena could add
 // an editing tool that context would then serve unwatched. The shipped YAML records the upstream file's sha256; the
 // refresh keeps the navigation pin where it is until the new release's claude-code.yml hashes the same - i.e. until
-// someone re-diffs the stack's file against it and records the new hash.
+// someone re-checks the serena adapter row's `off` list against it and records the new hash on its `upstream` line.
 async function refreshRun({ navigation = '9.9.9', context = 'same', recorded = true, lists = {}, pinsRaw = null, committed = {}, argv = ['--write'], npm = {}, audit = () => null } = {})
 {
     const os = require('node:os');
@@ -91,18 +91,18 @@ async function refreshRun({ navigation = '9.9.9', context = 'same', recorded = t
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'refresh-pins-'));
     const pinsFile = path.join(dir, 'mcp-pins.json');
     const toolsFile = path.join(dir, 'mcp-tools.json');
-    const contextFile = path.join(dir, 'navigation-context.yml');
+    const adaptersFile = path.join(dir, 'tool-adapters.json');
     if (pinsRaw === null) fs.copyFileSync(path.join(ROOT, 'meta', 'mcp-pins.json'), pinsFile); else fs.writeFileSync(pinsFile, pinsRaw);
     fs.writeFileSync(toolsFile, JSON.stringify({ servers: { "alfred-memory": { version: 'old', tools: ['kept_tool'] }, ...committed } }));
     const upstream = 'name: claude-code\nexcluded_tools: []\n';
     const sha = require('node:crypto').createHash('sha256').update(upstream).digest('hex');
-    fs.writeFileSync(contextFile, `${recorded ? `# upstream: serena-agent 1.7.0 claude-code.yml sha256 ${sha}\n` : ''}name: alfred-code\n`);
+    fs.writeFileSync(adaptersFile, JSON.stringify({ types: { serena: { pin: 'alfred-navigation', ...(recorded ? { upstream: `serena-agent 1.7.0 claude-code.yml sha256 ${sha}` } : {}) } } }));
     const out = [];
     const current = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'mcp-pins.json'), 'utf8')).pins;
     const listed = [];
     const asked = [];
     const rc = await main(argv, {
-        pinsFile, toolsFile, contextFile, log: (l) => out.push(l), today: () => '2026-10-01',
+        pinsFile, toolsFile, adaptersFile, log: (l) => out.push(l), today: () => '2026-10-01',
         npmLatest: (pkg) => (Object.hasOwn(npm, pkg) ? npm[pkg] : Object.values(current).find((r) => r.package === pkg).version),
         pypiLatest: (pkg, python) => { asked.push([pkg, python]); return pkg === 'serena-agent' ? navigation : Object.values(current).find((r) => r.package === pkg).version; },
         upstreamContext: () => (context === 'same' ? upstream : context),
@@ -128,7 +128,7 @@ test('R7 refresh-mcp-pins: a serena bump whose claude-code context changed is re
     const was = JSON.parse(read('meta/mcp-pins.json')).pins["alfred-navigation"].version;
     const changed = await refreshRun({ context: 'name: claude-code\nexcluded_tools: []\nnew_tool: yes\n' });
     assert.strictEqual(changed.pins.pins["alfred-navigation"].version, was, 'the navigation pin stays');
-    assert.match(changed.text, /alfred-navigation: .* -> 9\.9\.9 REFUSED - serena-agent 9\.9\.9's claude-code\.yml is not the one stack\/mcp\/navigation-context\.yml was diffed against/);
+    assert.match(changed.text, /alfred-navigation: .* -> 9\.9\.9 REFUSED - serena-agent 9\.9\.9's claude-code\.yml is not the one meta\/tool-adapters\.json's serena row was checked against/);
     assert.strictEqual(changed.rc, 1, 'a refused bump is a failed refresh');
     const none = await refreshRun({ recorded: false });
     assert.strictEqual(none.pins.pins["alfred-navigation"].version, was, 'no recorded hash refuses too');

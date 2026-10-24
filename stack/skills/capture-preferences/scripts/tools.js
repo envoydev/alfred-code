@@ -426,9 +426,9 @@ async function takeInventory({ projectRoot, env = process.env, adapters = readAd
 
 // ---------------------------------------------------------------- the refresh on update
 
-// The inventory brought up to date without a capture: a stack plugin's server and every registration of a known type at its
-// pin are re-read from the table, a registration whose launch changed is listed again (all in parallel, each capped), one
-// that is gone leaves, and every other server is never started. A server that cannot be listed keeps its entry and its old
+// The inventory brought up to date without a capture: an older release's server plugin and every registration of a known
+// type at its pin are re-read from the table, a registration whose launch changed is listed again (all in parallel, each
+// capped), one that is gone leaves, and every other server is never started. A server that cannot be listed keeps its entry and its old
 // registration, so the next update tries again. Written only when something changed; a scope it cannot read keeps its own.
 async function refreshInventory({ projectRoot, env = process.env, adapters = readAdapters(), list = client.listServer, listPlugins = claudePluginList })
 {
@@ -619,7 +619,10 @@ function resolveOrder({ entries, adapters = readAdapters(), inventory = null, re
         if (!e.job || e.job === 'deny' || !e.hasOrder || seen.has(e.job)) continue;
         seen.add(e.job);
         const job = { job: e.job, purpose: e.purpose || ((adapters.jobs || {})[e.job] || {}).purpose || '', ranks: [], skipped: [], isDefault: !!e.isDefault };
-        const skip = (label, why) => job.skipped.push({ label, why });
+        // A default rank the actor cannot reach is the normal state since the stack ships no server (2.10.1), so it is left
+        // out silently; one the user's doc chose is named, and so is a default whose server is here but mismatched.
+        const quiet = (why) => e.isDefault && (why === 'not on this machine' || why === 'not in your tools');
+        const skip = (label, why) => { if (!quiet(why)) job.skipped.push({ label, why }); };
         for (const r of e.ranks)
         {
             if (r.kind === 'builtin')

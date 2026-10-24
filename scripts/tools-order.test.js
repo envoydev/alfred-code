@@ -150,7 +150,7 @@ test('a seat with no tools line reaches what the main session does and loads it'
     finally { s.done(); }
 });
 
-test('disallowedTools narrows a rank; an emptied rank is skipped', () =>
+test('disallowedTools narrows a rank; an emptied default rank is left out silently', () =>
 {
     const s = sandbox();
     try
@@ -161,7 +161,7 @@ test('disallowedTools narrows a rank; an emptied rank is skipped', () =>
         fm = `---\ntools: mcp__plugin_alfred-navigation_alfred-navigation, LSP, Grep\ndisallowedTools: ${NAV}find_symbol, ${NAV}find_referencing_symbols, ${NAV}get_symbols_overview, LSP\n---\n`; // mcp-fixture
         text = s.line({ seat: { frontmatter: fm } });
         assert.ok(text.includes(': Grep.'), text);
-        assert.ok(text.includes('Skipped here: serena (not in your tools), LSP (not in your tools).'), text);
+        assert.ok(!text.includes('Skipped here'), `a default rank the seat's tools do not grant is no news to it\n${text}`);
         fm = `---\ntools:\n  - ${NAV}find_symbol\n  - Grep\n---\n`;
         text = s.line({ seat: { frontmatter: fm } });
         assert.ok(text.includes(': serena find_symbol > Grep.'), `a YAML list grant: ${text}`);
@@ -225,7 +225,7 @@ test('a plugin server whose plugin was switched off is not reached; a project re
         assert.ok(!main.servers.has('own:idea'), 'a plugin server whose plugin is not enabled');
         const text = s.line();
         assert.ok(text.includes(': LSP > Grep.'), text);
-        assert.ok(text.includes('Skipped here: serena (not on this machine).'), text);
+        assert.ok(!text.includes('Skipped here'), `an absent default type is the normal state since 2.10.1\n${text}`);
         assert.ok(text.includes('Load: ToolSearch select:mcp__docs__resolve-library-id,mcp__docs__query-docs'), text); // mcp-fixture
     }
     finally { s.done(); }
@@ -396,4 +396,45 @@ test('a line still over the cap keeps its head and says where the rest is', () =
     assert.ok(text.length <= tools.TOOLS_LINE_CAP, `${text.length} chars`);
     assert.ok(text.startsWith('Tool order - the user\'s, from TOOLS-PREFERENCES.md: '), text.slice(0, 80));
     assert.ok(text.endsWith(`\n... cut at ${tools.TOOLS_LINE_CAP} chars - run tools.js order for the whole order`), text.slice(-120));
+});
+
+// Task 11 of the no-MCP plan (2026-10-24): the stack ships no server, so a known type absent from the machine is the
+// normal state. A DEFAULT rank the actor cannot reach is left out silently - the line named two or three servers the user
+// never had at every main and seat start; a rank the user's doc chose is still named when it cannot be served.
+test('no server registered: the defaults name no absent server, at the main start and a stack seat\'s', () =>
+{
+    const s = sandbox();
+    try
+    {
+        s.write(path.join(s.root, '.claude', 'settings.json'), { enabledPlugins: {} });
+        const seat = { frontmatter: fs.readFileSync(path.join(__dirname, '..', 'stack', 'agents', 'aspnet-verifier.md'), 'utf8') };
+        for (const text of [s.line(), s.line({ seat })])
+        {
+            assert.ok(text.includes(': LSP > Grep.'), text);
+            assert.ok(text.includes('- documentation (check a library\'s API or version before using it): WebFetch.'), text);
+            assert.ok(!text.includes('Skipped here'), text);
+            assert.ok(!/serena|context7|memory-service/.test(text), text);
+        }
+        s.doc([...NAV_ENTRY.slice(0, 3), '- Order: serena find_symbol > LSP > Grep']);
+        assert.ok(s.line().includes('Skipped here: serena (not on this machine).'), 'a rank the user chose is still named');
+    }
+    finally { s.done(); }
+});
+
+test('the record\'s servers under their original names: the main session ranks them by type, a built-ins-only seat is not told of them', () =>
+{
+    const s = sandbox();
+    try
+    {
+        const record = require('../stack/mcp/original-mcps.json').mcpServers;
+        s.write(path.join(s.root, '.claude', 'settings.json'), { enabledPlugins: {} });
+        s.write(path.join(s.root, '.mcp.json'), { mcpServers: { serena: record.serena, context7: record.context7 } });
+        const main = s.line();
+        assert.ok(main.includes(`: serena find_symbol, find_referencing_symbols, get_symbols_overview > LSP > Grep. Load: ToolSearch select:${'mcp__serena__'}find_symbol,`), main); // mcp-fixture
+        assert.ok(main.includes(`: context7 resolve-library-id, query-docs > WebFetch. Load: ToolSearch select:${'mcp__context7__'}resolve-library-id,`), main); // mcp-fixture
+        assert.ok(!main.includes('Skipped here'), main);
+        const seat = s.line({ seat: { frontmatter: fs.readFileSync(path.join(__dirname, '..', 'stack', 'agents', 'aspnet-verifier.md'), 'utf8') } });
+        assert.ok(seat.includes(': LSP > Grep.') && !/serena|context7|Skipped here/.test(seat), seat);
+    }
+    finally { s.done(); }
 });

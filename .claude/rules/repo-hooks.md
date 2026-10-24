@@ -1165,8 +1165,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     machine-local): after the personal doc, every main SessionStart pushes the capture-preferences script's `toolsLine`
     (`stack/skills/capture-preferences/scripts/tools.js`, required from `../skills/` beside the hook; absent, the line is
     absent and every other push stands) - one line per job, its ranks from `TOOLS-PREFERENCES.md` or, for a job the doc
-    leaves out, the adapter table's defaults (`tool-adapters.json`, built from `meta/tool-adapters.json`), each rank this
-    machine cannot reach named once and left out, each job with its `ToolSearch select:` load line (the memory tools' line
+    leaves out, the adapter table's defaults (`tool-adapters.json`, built from `meta/tool-adapters.json`), each rank the
+    doc chose that this machine cannot reach named once and left out - a DEFAULT rank the actor cannot reach is left out
+    unnamed, the normal state once the stack shipped no server (no-MCP plan Task 11, 2026-10-24: the line named two or three
+    servers the user never had at every start) - each job with its `ToolSearch select:` load line (the memory tools' line
     lives here alone since memory-session retired, 2026-10-24). A malformed doc - its shape, never a tool this machine or this pin lacks, which only skips that rank - states only the entries
     that resolve plus three of its problems, never a default; an over-cap one states nothing but its problem. The line has its own
     cap (`TOOLS_LINE_CAP`, 4,000 chars): past it the Load clauses go, then the tail, so the personal push before it and the
@@ -1177,9 +1179,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     finds - the core's `stack/agents/<seat>.md` for `alfred-code:<seat>`, else the project's `.claude/agents/<name>.md` -
     only the ranks its `tools:` / `disallowedTools:` grant, with no load line when it has a `tools:` line; any other seat
     the main session's, no suggestion; a seat's own compaction re-sends its order. `preferences-session:tools` in
-    `ALFRED_CODE_HOOKS_OFF` switches the line off and nothing else. Measured on a default install (no doc, the three stack
-    plugins): 1,104 chars at a main start, 603 at a verifier's or an implementer's, 450 at the evidence gatherer's - against
-    the 207 / 321 chars of the memory line it replaced.
+    `ALFRED_CODE_HOOKS_OFF` switches the line off and nothing else. Measured on a default install (no doc, no
+    server, 2026-10-24): 303 chars at a main start, a verifier's or an implementer's, 225 at the evidence gatherer's; 833 at
+    a main start with the record's serena, context7 and memory-service registered (1,104 / 603 / 450 with 2.10.0's three stack
+    plugins, against the 207 / 321 chars of the memory line it replaced).
     THE HOST'S SHELL TRAPS (audit 2026-10-14 RU13, the user's ruling; here since memory-session.js retired on 2026-10-24): every
     push it makes at a start - a main session's, every seat's (the guides' too) and a seat's own compaction - ends on THIS host's
     `hostLines`: the Windows Git Bash line on win32, the two zsh lines under a zsh `$SHELL`, nothing on bash, so a start with

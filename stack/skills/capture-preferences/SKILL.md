@@ -48,7 +48,7 @@ Each preference goes to one area:
 - **code** - how ONE unit is written: a class, a function, naming, error handling inside it.
 - **architecture** - how units relate: dependencies, boundaries, layers, packages, what may call what.
 - **git** - branches, commits, pull requests, history.
-- **tools** - which tool a job uses first, or which server agents never call ('use jetbrains for navigation'): it runs through `references/tools-area.md`, since a rank names a server this machine's inventory has to hold.
+- **tools** - which tool a job uses first, or which server stays with the main session ('use jetbrains for navigation'): it runs through `references/tools-area.md`, since a rank names a server this machine's inventory has to hold.
 
 One that genuinely reads as two areas is asked as one question naming both readings - never split silently:
 

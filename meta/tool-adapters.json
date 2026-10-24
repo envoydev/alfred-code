@@ -1,5 +1,5 @@
 {
-  "note": "Hand-edited. Each known MCP server type: how a registration is recognised (a stack server name, a launch package, a URL host), which of its tools serve each job, and which edit files or act outward. `node scripts/tool-adapters.js --write` builds stack/skills/capture-preferences/scripts/tool-adapters.json with each type's pinned version and tool list from meta/mcp-tools.json; lint check 66 fails a stale copy.",
+  "note": "Hand-edited. Each known MCP server type: how a registration is recognised (the server name an earlier release shipped it under, a launch package, a URL host), which of its tools serve each job, and which edit files or act outward. `node scripts/tool-adapters.js --write` builds stack/skills/capture-preferences/scripts/tool-adapters.json with each type's pinned version and tool list from meta/mcp-tools.json; lint check 66 fails a stale copy.",
   "builtins": ["LSP", "Grep", "Glob", "Read", "Bash", "WebFetch", "WebSearch"],
   "jobs": {
     "navigation": { "purpose": "locate symbols, callers and types before reading or editing code", "default": ["serena", "LSP", "Grep"] },
@@ -12,7 +12,8 @@
   "types": {
     "serena": { "pin": "alfred-navigation", "stack": ["alfred-navigation"], "packages": ["serena-agent"], "hosts": [],
       "jobs": { "navigation": ["find_symbol", "find_referencing_symbols", "get_symbols_overview"] },
-      "context": "stack/mcp/navigation-context.yml",
+      "off": ["create_text_file", "read_file", "execute_shell_command", "find_file", "list_dir", "search_for_pattern"],
+      "upstream": "serena-agent 2.1.0 claude-code.yml sha256 78403573e7c71fe70b82253cb12a19b99b5c48f9702ea671f64257ad0e59c492",
       "edit": ["delete_lines", "insert_at_line", "rename_symbol", "replace_lines", "safe_delete_symbol", "jet_brains_inline_symbol", "jet_brains_move", "jet_brains_rename", "jet_brains_safe_delete"] },
     "context7": { "pin": "alfred-documentation", "stack": ["alfred-documentation"], "packages": ["@upstash/context7-mcp"], "hosts": ["mcp.context7.com"],
       "jobs": { "documentation": ["resolve-library-id", "query-docs"] }, "edit": [] },

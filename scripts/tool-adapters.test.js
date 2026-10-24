@@ -32,22 +32,28 @@ test('build refuses a job or edit tool the pinned server does not have', () =>
     assert.throws(() => build({ meta: edit }), /playwright: browser_teleport is not a tool of browser at /);
 });
 
-// The stack's navigation server is started with its own context, which switches eighteen of the pin's tools off - the
-// writers no hook sees and every memory tool (the user's ruling of 2026-10-13: navigation only). The table holds what
-// that server serves, so a doc can never rank a tool it does not have, and the start line never names one.
-test('a type with a context serves its pin less the context\'s excluded_tools', () =>
+// Since 2.10.1 the stack starts no serena: the record's add-back line launches it with its own upstream `claude-code`
+// context (stack/mcp/original-mcps.json), which turns six tools off - file, shell and pattern search are the harness's
+// (serena-agent 2.1.0's claude-code.yml, read and hashed at the v2.1.0 tag on 2026-10-24). The adapter row carries those six
+// as `off`, so the table lists what that server serves - memory tools and the plain writers included - and no stack
+// context file is read.
+test('serena serves its pin less the six tools its upstream claude-code context turns off', () =>
 {
-    const t = build();
-    for (const tool of ['write_memory', 'read_memory', 'list_memories', 'edit_memory', 'rename_memory', 'delete_memory', 'replace_content', 'create_text_file'])
-        assert.ok(!t.types.serena.tools.includes(tool), tool);
-    assert.ok(t.types.serena.tools.includes('rename_symbol'));
-    assert.strictEqual(t.types.serena.context, undefined, 'the built copy carries the served list, not the context path');
+    const SIX = ['create_text_file', 'read_file', 'execute_shell_command', 'find_file', 'list_dir', 'search_for_pattern'];
     const meta = readMeta();
-    meta.types.serena.edit.push('write_memory');
-    assert.throws(() => build({ meta }), /serena: write_memory is not a tool of alfred-navigation at 2\.1\.0 as stack\/mcp\/navigation-context\.yml serves it/);
-    const gone = readMeta();
-    gone.types.serena.context = 'stack/mcp/absent.yml';
-    assert.throws(() => build({ meta: gone }), /serena: context 'stack\/mcp\/absent\.yml' cannot be read/);
+    assert.deepStrictEqual(meta.types.serena.off, SIX);
+    assert.strictEqual(meta.types.serena.context, undefined, 'no stack context file');
+    assert.ok(!fs.existsSync(path.join(__dirname, '..', 'stack', 'mcp', 'navigation-context.yml')), 'the stack ships no navigation context');
+    assert.ok(/--context","claude-code"/.test(JSON.stringify(require('../stack/mcp/original-mcps.json').mcpServers.serena.args)), 'the record launches the upstream context');
+    const t = build();
+    for (const tool of SIX) assert.ok(!t.types.serena.tools.includes(tool), tool);
+    for (const tool of ['write_memory', 'replace_symbol_body', 'onboarding', 'rename_symbol', 'find_symbol']) assert.ok(t.types.serena.tools.includes(tool), tool);
+    assert.strictEqual(t.types.serena.off, undefined, 'the built copy carries the served list, not the off list');
+    meta.types.serena.jobs.navigation.push('read_file');
+    assert.throws(() => build({ meta }), /serena: read_file is not a tool of alfred-navigation at 2\.1\.0 as its upstream context serves it/);
+    const odd = readMeta();
+    odd.types.serena.off.push('no_such_tool');
+    assert.throws(() => build({ meta: odd }), /serena: off tool no_such_tool is not a tool of alfred-navigation at 2\.1\.0/);
 });
 
 // Since 2.10.1 the install denies no server tool (it ships none): a type with no context file serves its whole pin.

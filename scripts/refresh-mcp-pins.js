@@ -24,11 +24,12 @@
 // which ones could not be checked. A row that never resolved carries `null`, which the generator
 // reads as 'ship unpinned' - the same fallback the installer had.
 //
-// THE SERENA GATE (R7). stack/mcp/navigation-context.yml copies serena-agent's own claude-code.yml minus the
-// editing tools no house hook sees, and records that upstream file's sha256 on its `# upstream:` line. A later
-// serena could add an editing tool the stack's context would then serve unwatched, so a navigation bump goes
-// through only when the new release's claude-code.yml hashes the same; otherwise the pin stays, the report says
-// REFUSED and the run exits 1 - re-diff the file against the new context, record its hash, and refresh again.
+// THE SERENA GATE (R7). The record's add-back line launches serena with its own upstream `claude-code` context, and
+// meta/tool-adapters.json's serena row lists the tools that context turns off (`off`) and records the upstream file's
+// sha256 (`upstream`), so the table lists what that server serves. A later serena could change the context, so a
+// navigation bump goes through only when the new release's claude-code.yml hashes the same; otherwise the pin stays, the
+// report says REFUSED and the run exits 1 - re-check the row's `off` list against the new context, record its hash,
+// and refresh again.
 //
 // THE TOOL LISTS (M31). --write also records each pinned server's tool names in meta/mcp-tools.json, which the adapter
 // table folds in - the known server types' tools. The stack ships no server since 2026-10-24, so no check holds a
@@ -53,9 +54,9 @@ const excludeNewerOf = (refreshed) => (/^\d{4}-\d{2}-\d{2}$/.test(String(refresh
 const REPO = path.join(__dirname, '..');
 const PINS = path.join(REPO, 'meta', 'mcp-pins.json');
 const TOOLS = path.join(REPO, 'meta', 'mcp-tools.json');
-const CONTEXT = path.join(REPO, 'stack', 'mcp', 'navigation-context.yml');
+const ADAPTERS = path.join(REPO, 'meta', 'tool-adapters.json');
 const CONTEXT_IN_WHEEL = 'serena/resources/config/contexts/claude-code.yml';
-const UPSTREAM_LINE = /^# upstream: serena-agent (\S+) claude-code\.yml sha256 ([0-9a-f]{64})\s*$/m;
+const UPSTREAM_LINE = /^serena-agent (\S+) claude-code\.yml sha256 ([0-9a-f]{64})$/;
 
 // registry: how to ask, and the spelling the pin takes inside the server's own command line.
 const PACKAGES = {
@@ -216,19 +217,19 @@ function upstreamContext(version)
 const sha256 = (text) => crypto.createHash('sha256').update(text).digest('hex');
 
 // R7: may the navigation pin move from `was` to `now`? Only when the new release's claude-code.yml is the file the
-// stack's context was diffed against (the `# upstream:` line's sha256).
-function serenaGate({ was, now, contextFile = CONTEXT, fetch = upstreamContext })
+// serena adapter row's `off` list was checked against (its `upstream` field's sha256).
+function serenaGate({ was, now, adaptersFile = ADAPTERS, fetch = upstreamContext })
 {
     if (!now || now === was) return { ok: true };
     let recorded = null;
-    try { recorded = UPSTREAM_LINE.exec(fs.readFileSync(contextFile, 'utf8')); } catch { /* unreadable: no record */ }
-    const rel = 'stack/mcp/navigation-context.yml';
-    if (!recorded) return { ok: false, why: `${rel} records no upstream sha256 (its '# upstream: serena-agent <v> claude-code.yml sha256 <hex>' line)` };
+    try { recorded = UPSTREAM_LINE.exec(String(((JSON.parse(fs.readFileSync(adaptersFile, 'utf8')).types || {}).serena || {}).upstream || '')); } catch { /* unreadable: no record */ }
+    const rel = "meta/tool-adapters.json's serena row";
+    if (!recorded) return { ok: false, why: `${rel} records no upstream sha256 (its 'upstream': 'serena-agent <v> claude-code.yml sha256 <hex>' field)` };
     const text = fetch(now);
     if (typeof text !== 'string') return { ok: false, why: `serena-agent ${now}'s claude-code.yml could not be read - nothing checked it against ${rel}` };
     const hash = sha256(text);
     if (hash === recorded[2]) return { ok: true, note: `its claude-code.yml is unchanged since ${recorded[1]}` };
-    return { ok: false, why: `serena-agent ${now}'s claude-code.yml is not the one ${rel} was diffed against (${recorded[1]}, sha256 ${recorded[2].slice(0, 12)}; now ${hash.slice(0, 12)}) - re-diff the file against it, record the new line, and refresh again` };
+    return { ok: false, why: `serena-agent ${now}'s claude-code.yml is not the one ${rel} was checked against (${recorded[1]}, sha256 ${recorded[2].slice(0, 12)}; now ${hash.slice(0, 12)}) - re-check its off list against it, record the new upstream field, and refresh again` };
 }
 
 // --- the tool lists ----------------------------------------------------------------------------------------
@@ -296,7 +297,7 @@ async function main(argv, deps = {})
 {
     const d = {
         npmLatest, pypiLatest, upstreamContext, listTools, npmAudit, log: (l) => console.log(l),
-        pinsFile: PINS, toolsFile: TOOLS, contextFile: CONTEXT, today: () => new Date().toISOString().slice(0, 10), ...deps,
+        pinsFile: PINS, toolsFile: TOOLS, adaptersFile: ADAPTERS, today: () => new Date().toISOString().slice(0, 10), ...deps,
     };
     const write = argv.includes('--write');
     const at = argv.indexOf('--only');
@@ -329,7 +330,7 @@ async function main(argv, deps = {})
         let version = now || was;
         if (name === 'alfred-navigation' && now && now !== was)
         {
-            const gate = serenaGate({ was, now, contextFile: d.contextFile, fetch: d.upstreamContext });
+            const gate = serenaGate({ was, now, adaptersFile: d.adaptersFile, fetch: d.upstreamContext });
             if (!gate.ok) { refused = true; version = was; report.push(`  ${name}: ${was || 'unpinned'} -> ${now} REFUSED - ${gate.why}`); }
             else report.push(`  ${name}: ${was || 'unpinned'} -> ${now} (${gate.note})`);
         }

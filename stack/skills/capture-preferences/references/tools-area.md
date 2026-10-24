@@ -43,7 +43,7 @@ The run that ranks which tools each job uses first and which servers stay with t
    ```ask
    May agents use <server>?
    - 'Agents too (Recommended)' - it only reads, inside the repo
-   - 'Main session only' - its type joins the `deny` entry; seats never call it
+   - 'Main session only' - its type joins the `deny` entry; every agent's tool order leaves it out
    ```
 
    Each 'Main session only' adds the server's type to the one `Job: deny` entry's `Deny:` line.

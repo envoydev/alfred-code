@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 'use strict';
 // THE ADAPTER TABLE IS BUILT (tool preferences, phase 1). meta/tool-adapters.json is the one hand-edited home of each
-// known MCP server type: how a registration is recognised (a stack server name, a launch package, a URL host), which of
-// its tools serve each job, and which edit files or act outward. meta/ is never installed, so the capture skill and the
-// hooks read a built copy beside the skill's scripts, with each type's pinned version and full tool list folded in from
-// meta/mcp-tools.json - a known type at its pin is then read from the table and never started. A type the stack starts
-// with its own context (serena's navigation-context.yml) serves its pin less that context's excluded_tools, so the table
-// lists what the stack's server serves; so does a server whose tools the install denies by name (the memory tools the
-// stack never calls, Playwright's browser_run_code_unsafe), since no session can call those. Lint check 66 fails a stale
-// copy, and a job or edit tool the server lacks.
+// known MCP server type: how a registration is recognised (the server name an earlier release shipped it under, a launch
+// package, a URL host), which of its tools serve each job, and which edit files or act outward. meta/ is never installed,
+// so the capture skill and the hooks read a built copy beside the skill's scripts, with each type's pinned version and
+// full tool list folded in from meta/mcp-tools.json - a known type at its pin is then read from the table and never
+// started. The stack ships no server since 2.10.1, so a type serves what the record's add-back launch serves: its whole
+// pin, less a row's `off` list - the tools its upstream context turns off (serena's `claude-code`, whose sha256 the row's
+// `upstream` field records for refresh-mcp-pins.js's gate). Lint check 66 fails a stale copy, and a job or edit tool the
+// server lacks.
 //   node scripts/tool-adapters.js            report drift (exit 1 on any)
 //   node scripts/tool-adapters.js --write    rewrite the built copy
 const fs = require('node:fs');
@@ -22,27 +22,10 @@ const SHIPPED_REL = 'stack/skills/capture-preferences/scripts/tool-adapters.json
 
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 const listOf = (value) => (Array.isArray(value) ? value.map(String) : []);
-// A context file's `excluded_tools:` list - the `  - <tool>` lines under the key, a comment line skipped.
-function excludedTools(text)
-{
-    const out = [];
-    let inList = false;
-    for (const line of String(text).split(/\r?\n/))
-    {
-        if (/^excluded_tools:\s*$/.test(line)) { inList = true; continue; }
-        if (!inList || /^\s*#/.test(line)) continue;
-        const m = /^\s+-\s+([\w.-]+)\s*$/.exec(line);
-        if (m) out.push(m[1]);
-        else if (line.trim()) break;
-    }
-    return out;
-}
-const readContext = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 // The table every reader takes: the jobs and built-ins as written, each type with its pin's version and tool list - the
-// whole pin, less what its context file turns off: the install denies no server tool since 2.10.1, when the stack stopped
-// shipping its servers. Throws on the first row that names a tool, a job or a pin the sources do not have.
-function build({ meta = readJson(META), tools = readJson(TOOLS), context = readContext } = {})
+// whole pin, less its row's `off` list. Throws on the first row that names a tool, a job or a pin the sources do not have.
+function build({ meta = readJson(META), tools = readJson(TOOLS) } = {})
 {
     const servers = (tools && tools.servers) || {};
     const builtins = listOf(meta.builtins);
@@ -54,17 +37,12 @@ function build({ meta = readJson(META), tools = readJson(TOOLS), context = readC
     {
         const pinned = servers[row.pin];
         if (!pinned || !Array.isArray(pinned.tools)) throw new Error(`${type}: pin '${row.pin}' has no row in meta/mcp-tools.json`);
-        let served = [...pinned.tools];
-        if (row.context)
-        {
-            let text;
-            try { text = context(String(row.context)); } catch { throw new Error(`${type}: context '${row.context}' cannot be read`); }
-            const off = new Set(excludedTools(text));
-            served = served.filter((t) => !off.has(t));
-        }
-        const have = new Set(served);
         const version = pinned.version === undefined ? null : pinned.version;
-        const where = row.context ? ` as ${row.context} serves it` : '';
+        const off = new Set(listOf(row.off));
+        for (const tool of off) if (!pinned.tools.includes(tool)) throw new Error(`${type}: off tool ${tool} is not a tool of ${row.pin} at ${version}`);
+        const served = pinned.tools.filter((t) => !off.has(t));
+        const have = new Set(served);
+        const where = off.size ? ' as its upstream context serves it' : '';
         const known = (tool) => { if (!have.has(tool)) throw new Error(`${type}: ${tool} is not a tool of ${row.pin} at ${version}${where}`); return tool; };
         const typeJobs = {};
         for (const [job, list] of Object.entries(row.jobs || {}))
@@ -97,7 +75,7 @@ function drift({ file = SHIPPED } = {})
     return have === want ? [] : [`${SHIPPED_REL} is not what meta/tool-adapters.json builds - run npm run tool-adapters`];
 }
 
-module.exports = { build, drift, render, excludedTools, META, SHIPPED };
+module.exports = { build, drift, render, META, SHIPPED };
 
 if (require.main === module)
 {

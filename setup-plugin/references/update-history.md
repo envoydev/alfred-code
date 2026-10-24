@@ -334,9 +334,12 @@ unedited seed only describes the tools the uninstall removes. Run without the co
 
 Every session and seat start carries a tool order now: for each job (navigation, library docs, memory, the browser) the
 tools to use first, from the stack's defaults or from `preferences/TOOLS-PREFERENCES.md` once `/capture-preferences tools`
-ranks them. An update from v2.10.0 writes no doc and takes no inventory, so the order is the stack's defaults until the capture runs.
-Every update after a capture refreshes its inventory (`<data root>/state/tools-inventory.json`): a stack server and a
-known type at its pin are re-read from the table and never started, a registration whose launch changed is listed again
+ranks them. The defaults are `LSP` and `Grep` for navigation and `WebFetch` for library docs, with a known server type
+ranked first where this machine registers one (serena, context7, memory-service - the record's add-back lines below
+register each); a type it does not register is left out unnamed. An update from v2.10.0 writes no doc and takes no
+inventory, so the order is the stack's defaults until the capture runs.
+Every update after a capture refreshes its inventory (`<data root>/state/tools-inventory.json`): a known type at its pin
+is re-read from the table and never started, a registration whose launch changed is listed again
 (at most a minute), and one that is gone leaves. Report every `tools:` and `!! tools:` line; a `!!` line names a server
 that could not be re-listed or a ranked tool that is gone, and `/capture-preferences tools` settles both.
 
