@@ -3,7 +3,7 @@
 //
 // The stamp is read by two things that matter: `/alfred-code:configure`, which diffs its SHA
 // against main to say what an update would bring, and `--installed-only`, which reads
-// `shipped-hooks` and the two `installed-always-*` lines to tell an item the user DROPPED from one
+// `shipped-hooks` and the `installed-always-rules` line to tell an item the user DROPPED from one
 // that did not exist when the install was made. On disk those two look identical, so a wrong line
 // here is a wrong adoption later.
 const test = require('node:test');
@@ -12,7 +12,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { writeStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, readHooksRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readBrowserLines, stampPath, stampFiles, readStampScope, validItemName, readLedger, valueHash, emptyLedger } = require('./install/stamp.js');
+const { writeStamp, shippedHooks, installedAlways, readPicked, readLibrary, readHooksRoute, markHooksRoute, stampPath, stampFiles, readStampScope, validItemName, readLedger, valueHash, emptyLedger } = require('./install/stamp.js');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'install-stamp-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
@@ -52,9 +52,6 @@ function write(p, opts = {})
         library: opts.library,
         ledger: opts.ledger,
         hooksRoute: opts.hooksRoute,
-        playwright: opts.playwright,
-        playwrightEnabled: opts.playwrightEnabled,
-        mcpHeld: opts.mcpHeld,
         version: opts.version || '1.0.0',
         now: new Date('2026-09-22T10:00:00.000Z'),
         log: (m) => logs.push(m), note: (m) => logs.push(m),
@@ -108,20 +105,18 @@ test('install-stamp: installed-ms records the write to the millisecond; an older
     assert.deepStrictEqual(readInstalledAt(path.join(p.base, 'absent.stamp')), { ms: NaN, precise: false });
 });
 
-// Re-verify 4 T7: the MCP picks the copy route held back because the user's own registration holds the name. Written only
-// when there is one, read back by scope and name, and a hand-edited entry of any other shape (an unknown scope, or a name
-// that is no item) never becomes a pick. Project scope is a scope since the matrix F-OWN fix (a user's own .mcp.json row).
-test('install-stamp: mcp-held records the held picks, and its reader drops what is not a project, local or user pick', () =>
+// The stack ships no MCP server since 2.10.1: the lines its server layer wrote - the held picks, the engines, the denied
+// servers, the always servers - are no part of a stamp this release writes, so an older stamp loses them on its next write.
+test('install-stamp: the server layer\'s lines leave an older stamp on its next write', () =>
 {
     const p = project();
-    assert.doesNotMatch(write(p).text, /^mcp-held:/m, 'no line with none held');
-    const { dest, text } = write(p, { mcpHeld: [{ scope: 'local', name: 'macos-control' }, { scope: 'user', name: 'chrome-control' }, { scope: 'project', name: 'macos-control' }] });
-    assert.match(text, /^mcp-held: local:macos-control,user:chrome-control,project:macos-control$/m);
-    const { readMcpHeld } = require('./install/stamp.js');
-    assert.deepStrictEqual(readMcpHeld(dest), [{ scope: 'local', name: 'macos-control' }, { scope: 'user', name: 'chrome-control' }, { scope: 'project', name: 'macos-control' }]);
-    fs.writeFileSync(dest, text.replace(/^mcp-held: .*$/m, 'mcp-held: local:macos-control, project:navigation,global:x,user:../x,local:,user:memory'));
-    assert.deepStrictEqual(readMcpHeld(dest), [{ scope: 'local', name: 'macos-control' }, { scope: 'project', name: 'navigation' }, { scope: 'user', name: 'memory' }]);
-    assert.deepStrictEqual(readMcpHeld(path.join(p.base, 'absent.stamp')), []);
+    const dest = path.join(p.base, '.claude', 'alfred-code.stamp');
+    fs.writeFileSync(dest, ['sha: abc', 'version: 2.10.0', 'mcp-held: local:macos-control', 'control-engines: chrome', 'control-enabled: chrome',
+        'browser-engines: chrome', 'playwright-browsers: chrome', 'mcp-denied: user:alfred-memory', 'installed-always-mcps: alfred-navigation', ''].join('\n'));
+    const { text } = write(p);
+    for (const key of ['mcp-held', 'control-engines', 'control-enabled', 'browser-engines', 'playwright-browsers', 'mcp-denied', 'installed-always-mcps'])
+        assert.doesNotMatch(text, new RegExp(`^${key}:`, 'm'), key);
+    assert.match(text, /^installed-always-rules: $/m);
 });
 
 test('install-stamp: every scope writes the stamp into the project - T16, R29', () =>
@@ -149,40 +144,15 @@ test('install-stamp: shipped-hooks is one entry per FILE, not per matcher', () =
     assert.match(text, /^shipped-hooks: guard-read-whole-file,docs-session$/m);
 });
 
-test('install-stamp: installed-always records what is CARRIED, not what shipped', () =>
+test('install-stamp: installed-always records what is CARRIED, not what shipped - and no server since 2.10.1', () =>
 {
     const p = project({
         rules: ['alfred-interaction'],                 // security shipped but is not on disk
-        servers: { 'alfred-navigation': {} },           // documentation and memory are not registered
+        servers: { 'alfred-navigation': {} },           // an older release's registration: no line of its own
     });
     const { text } = write(p);
     assert.match(text, /^installed-always-rules: alfred-interaction$/m);
-    assert.match(text, /^installed-always-mcps: alfred-navigation$/m);
-});
-
-test('install-stamp: a server riding its PLUGIN counts as carried - there is no .mcp.json to read', () =>
-{
-    // This is the Phase 6 shape: on the plugin route the installer registers nothing, so a stamp
-    // that only read the file would record an install with none of the locked three.
-    const p = project({
-        rules: ['alfred-interaction', 'alfred-security'],
-        servers: {},
-        plugins: { 'alfred-navigation@envoydev': true, 'alfred-documentation@envoydev': true, 'alfred-memory@envoydev': true },
-    });
-    const { text } = write(p);
-    assert.match(text, /^installed-always-mcps: alfred-navigation,alfred-documentation,alfred-memory$/m);
-});
-
-test('install-stamp: a browser ENGINE counts as its family', () =>
-{
-    assert.strictEqual(family('firefox-control'), 'browser');
-    assert.strictEqual(family('alfred-navigation'), 'alfred-navigation');
-    const p = project({
-        always: { rules: [], mcps: ['browser', 'alfred-documentation'] },
-        plugins: { 'firefox-control@envoydev': true, 'alfred-documentation@envoydev': true },
-    });
-    const { text } = write(p);
-    assert.match(text, /^installed-always-mcps: browser,alfred-documentation$/m);
+    assert.doesNotMatch(text, /^installed-always-mcps:/m);
 });
 
 test('install-stamp: a missing or malformed input is empty, never a crash', () =>
@@ -193,21 +163,17 @@ test('install-stamp: a missing or malformed input is empty, never a crash', () =
     fs.rmSync(path.join(p.src, 'meta', 'recommendations.json'));
     const { text } = write(p);
     assert.match(text, /^installed-always-rules: $/m);
-    assert.match(text, /^installed-always-mcps: $/m);
     assert.match(text, /^sha: f{40}$/m, 'the rest of the stamp was lost with the unreadable inputs');
 });
 
-test('install-stamp: installedAlways reads the two lists independently', () =>
+test('install-stamp: installedAlways reads the always rules on disk, and nothing of a server', () =>
 {
     const p = project({ rules: ['alfred-security'], servers: { 'alfred-memory': {} } });
     const got = installedAlways({
         recommendations: path.join(p.src, 'meta', 'recommendations.json'),
-        mcpFile: p.mcpFile,
-        settingsFile: path.join(p.base, '.claude', 'settings.json'),
         rulesDir: path.join(p.base, '.claude', 'rules'),
     });
-    assert.deepStrictEqual(got.rules, ['alfred-security']);
-    assert.deepStrictEqual(got.mcps, ['alfred-memory']);
+    assert.deepStrictEqual(got, { rules: ['alfred-security'] });
 });
 
 // T3: the skills and seats this run installed, so the next --installed-only can read back an item a
@@ -240,76 +206,6 @@ test('install-stamp: hooks-route records the route the hooks took, and a stamp w
     }
     assert.strictEqual(readHooksRoute(path.join(p.base, 'absent.stamp')), null);
     assert.doesNotMatch(write(project()).text, /^hooks-route:/m, 'no route given records none - never a guess');
-});
-
-// The stamp line is the record of the installed engines, never the listing: an engine the user left
-// disabled is still installed, and the listing's project-scope flag can read a stale false (S22).
-test('install-stamp: control-engines records the picked engines and reads back; a stamp without the line reads as null', () =>
-{
-    const { dest, text } = write(project(), { playwright: ['chrome', 'firefox'] });
-    assert.match(text, /^control-engines: chrome,firefox$/m);
-    assert.deepStrictEqual(readPlaywright(dest), ['chrome', 'firefox']);
-    const none = write(project());
-    assert.match(none.text, /^control-engines: $/m, 'no engine picked is an empty line - the record says none');
-    assert.deepStrictEqual(readPlaywright(none.dest), [], 'recorded empty is an answer');
-    const p = project();
-    const file = path.join(p.base, 'old.stamp');
-    fs.writeFileSync(file, 'sha: abc\nshipped-hooks: a,b\n');
-    assert.strictEqual(readPlaywright(file), null, 'an older stamp never recorded the picks');
-    assert.strictEqual(readPlaywright(path.join(p.base, 'absent.stamp')), null);
-    // Only the four engines, in the one canonical order, whatever a hand edit left there.
-    fs.writeFileSync(file, 'control-engines: webkit, safari,CHROME,webkit\n');
-    assert.deepStrictEqual(readPlaywright(file), ['chrome', 'webkit']);
-});
-
-// R67: which installed engines the user chose to ENABLE - their last explicit answer, read back so an
-// engine the run installs again (one uninstalled by hand) comes back the way the user left it.
-test('install-stamp: control-enabled records the enabled engines beside the installed ones; no line reads as null', () =>
-{
-    const { dest, text } = write(project(), { playwright: ['chrome', 'firefox'], playwrightEnabled: ['firefox'] });
-    assert.match(text, /^control-engines: chrome,firefox\ncontrol-enabled: firefox$/m);
-    assert.deepStrictEqual(readPlaywrightEnabled(dest), ['firefox']);
-    const none = write(project(), { playwright: ['chrome'], playwrightEnabled: [] });
-    assert.match(none.text, /^control-enabled: $/m, 'none enabled is an empty line - an answer, never a missing record');
-    assert.deepStrictEqual(readPlaywrightEnabled(none.dest), []);
-    const p = project();
-    const file = path.join(p.base, 'old.stamp');
-    fs.writeFileSync(file, 'sha: abc\ncontrol-engines: chrome\n');
-    assert.strictEqual(readPlaywrightEnabled(file), null, 'a stamp from before the line recorded no choice');
-    assert.strictEqual(readPlaywrightEnabled(path.join(p.base, 'absent.stamp')), null);
-    fs.writeFileSync(file, 'control-enabled: webkit,safari, Chrome\n');
-    assert.deepStrictEqual(readPlaywrightEnabled(file), ['chrome', 'webkit']);
-});
-
-// The 2.0.0 rename: a stamp written before it spells both lines `playwright-*`. They are read as the
-// fallback for one release - the new line wins where both exist - and `legacy` says the record came from
-// the old names, so a run that cannot read the listing never takes a browser-<engine> as installed on it.
-test('install-stamp: the old playwright-* lines read back as the fallback, and say so', () =>
-{
-    const p = project();
-    const file = path.join(p.base, 'pre-rename.stamp');
-    fs.writeFileSync(file, 'sha: abc\nplaywright-browsers: chrome,webkit\nplaywright-enabled: chrome\n');
-    assert.deepStrictEqual(readPlaywright(file), ['chrome', 'webkit']);
-    assert.deepStrictEqual(readPlaywrightEnabled(file), ['chrome']);
-    assert.deepStrictEqual(readBrowserLines(file), { browsers: ['chrome', 'webkit'], enabled: ['chrome'], legacy: true });
-    fs.writeFileSync(file, 'control-engines: firefox\ncontrol-enabled: \nplaywright-browsers: chrome\nplaywright-enabled: chrome\n');
-    assert.deepStrictEqual(readBrowserLines(file), { browsers: ['firefox'], enabled: [], legacy: false }, 'the new line wins');
-    assert.deepStrictEqual(readBrowserLines(path.join(p.base, 'absent.stamp')), { browsers: null, enabled: null, legacy: false });
-});
-
-// 2026-10-13: the engines are <engine>-control, and the lines `control-engines` / `control-enabled`. A stamp from 2.0.0 to
-// that rename spells them `browser-*` and its engines were installed as browser-<engine>: read as the fallback, `legacy`
-// set, so the rename swap (not an in-place update) owns those rows. The newest spelling wins over both older ones.
-test('install-stamp: the browser-* lines of 2.0.0 to 2.3.x read back as the fallback, and say so; the newest line wins', () =>
-{
-    const p = project();
-    const file = path.join(p.base, 'pre-control.stamp');
-    fs.writeFileSync(file, 'sha: abc\nbrowser-engines: chrome,firefox\nbrowser-enabled: firefox\nplaywright-browsers: webkit\n');
-    assert.deepStrictEqual(readBrowserLines(file), { browsers: ['chrome', 'firefox'], enabled: ['firefox'], legacy: true }, 'browser-* over playwright-*');
-    fs.writeFileSync(file, 'control-engines: msedge\ncontrol-enabled: msedge\nbrowser-engines: chrome\nbrowser-enabled: chrome\n');
-    assert.deepStrictEqual(readBrowserLines(file), { browsers: ['msedge'], enabled: ['msedge'], legacy: false }, 'control-* over browser-*');
-    fs.writeFileSync(file, 'browser-engines: \n');
-    assert.deepStrictEqual(readBrowserLines(file), { browsers: [], enabled: null, legacy: true }, 'recorded empty under the old spelling');
 });
 
 // NM1 (fix round 3): markHooksRoute patches ONLY the route line, in place, before the hooks layer
@@ -791,7 +687,7 @@ test('installState / installScope: an account-dir stamp is never read as this pr
     assert.strictEqual(stamp.installScope(root, env), 'local', 'the project\'s own stamp is the one read');
 });
 // Matrix FAIL F-BOM (2.1.6): ONE reader for every JSON file a person may have edited. A leading BOM is stripped; a BOM
-// plus garbage is still unreadable, and stamp.js's own read of .mcp.json (installedAlways) sees the servers under a BOM.
+// plus garbage is still unreadable.
 test('json-file: a leading BOM is stripped before the parse, and a BOM plus garbage is still unreadable (matrix F-BOM)', () =>
 {
     const { parseJson, readJson, stripBom } = require('./install/json-file.js');
@@ -805,11 +701,6 @@ test('json-file: a leading BOM is stripped before the parse, and a BOM plus garb
     assert.deepStrictEqual(readJson(write('ok.json', '\uFEFF{"mcpServers":{"a":{}}}')), { mcpServers: { a: {} } });
     assert.deepStrictEqual(readJson(write('bad.json', '\uFEFF{"mcpServers":')), {}, 'unreadable reads as empty, like before');
     assert.deepStrictEqual(readJson(path.join(dir, 'absent.json')), {});
-    const p = project({ servers: { 'alfred-memory': {} } });
-    fs.writeFileSync(p.mcpFile, `\uFEFF${fs.readFileSync(p.mcpFile, 'utf8')}`);
-    const got = installedAlways({ recommendations: path.join(p.src, 'meta', 'recommendations.json'), mcpFile: p.mcpFile,
-        settingsFile: path.join(p.base, '.claude', 'settings.json'), rulesDir: path.join(p.base, '.claude', 'rules') });
-    assert.deepStrictEqual(got.mcps, ['alfred-memory'], 'stamp.js read a BOM\'d .mcp.json as empty');
 });
 
 // Matrix F-BOM follow-up (2.1.6, V1): the legacy signature's settings read goes through the shared reader too - a BOM'd

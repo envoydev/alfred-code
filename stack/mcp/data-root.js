@@ -1,52 +1,66 @@
 'use strict';
-// THE PROJECT DATA ROOT - one folder, `.alfred` by default, for everything the stack and its servers
-// keep for a project: the docs, the navigation server's index and handoff notes, the browser profiles
-// and a project-level memory database. The ONE home of where each lives, read by the three launchers
-// (serena-launch.js, browser-launch.js, memory-launch.js) and by the installer, so none can disagree.
+// THE PROJECT DATA ROOT - one folder, `.alfred` by default, for what the stack keeps for a project: the docs, the hooks'
+// state and statistics (stack/hooks/layout.js) and the project's sensitive data. The ONE home of where each lives, read by
+// the installer, init's plan, the preflight and the hooks, so none can disagree.
 //
-//   ALFRED_CODE_DATA_PATH   the root, relative to the project, never under `.claude/` (Claude Code
-//                           prompts for every write there). Read like every launcher setting: the shell
-//                           env, then settings.local.json, settings.json and the account settings.json.
+//   ALFRED_CODE_DATA_PATH   the root, relative to the project, never under `.claude/` (Claude Code prompts for every
+//                           write there). Read like every stack setting outside a session: the shell env, then
+//                           settings.local.json, settings.json and the account settings.json (settingFrom).
 //
-// What moves, and who moves it. The docs are cold data and the installer moves them inline. A server's
-// own data is LIVE - the session running the installer holds it - so the installer only records the
-// move as a stamp line (`data-pending: <class> <from> -> <to>`) and the server's launcher performs it at
-// its next start, and only when nothing holds the data: a SQLite database with no -wal / -shm / -journal
-// beside it, a browser profile with no lock. Renaming an open database is undefined behaviour
-// (sqlite.org/howtocorrupt.html 2.5) and Windows refuses to rename an open file anyway. With no pending
-// line a launcher never moves anything: it serves the new place when it exists, else the old one.
-//
-// The memory folder is `.alfred-memory` wherever it sits (Task 7a): ~/.alfred-memory for the global and
-// scoped levels, <root>/.alfred-memory for the project level. The account folder ~/.memory-mcp is shared
-// by every Claude account and by Cursor, so it moves only when idle, and a link is left at the old path
-// (a junction on Windows) so an install not yet updated and Cursor still reach the one database.
+// What moves, and who moves it: the docs move inline with the installer (docs.docsMovePlan), and the sensitive-data file
+// with a root change, into a root whose .gitignore is written first. The stack ships no MCP server since 2.10.1, so no
+// server's data is moved: what an older release's navigation index, browser profiles or memory database left under the
+// root stays where it is, kept out of git by the root's own .gitignore.
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
-const { settingFrom } = require('./uv-python.js');
 
 const DATA_ROOT_DEFAULT = '.alfred';
-const MEMORY_FOLDER = '.alfred-memory';
-const LEGACY_MEMORY_FOLDER = '.memory-mcp';
+// The four browser engines an older release ran one server each for (`<engine>-control`) - read back from an old
+// install's stamp and registrations, never written.
 const ENGINES = ['chrome', 'msedge', 'firefox', 'webkit'];
-// Each browser engine's server, plugin and data class: `<engine>-control` (the user's rename of 2026-10-13;
-// `browser-<engine>` from 2.0.0, `playwright-<engine>` before) - the one spelling every reader takes from here.
 const engineServer = (engine) => `${engine}-control`;
 const ENGINE_SERVER = new RegExp(`^(${ENGINES.join('|')})-control$`);
 const engineOfServer = (name) => (ENGINE_SERVER.exec(String(name)) || [])[1];
-// Where 2.0.0 kept each server's data, relative to the project (the docs' old root is docs.js LEGACY_DOCS_ROOT).
-const LEGACY = { serena: '.serena', browser: '.playwright', memory: LEGACY_MEMORY_FOLDER };
-// Where 2.1.0 to 2.3.x kept every engine's profile under the root, one folder for all of them: <root>/browser/<engine>.
-// Each engine has its own <root>/<engine>-control now, and the shared folder goes once the last profile left it.
-const SHARED_BROWSER = 'browser';
-// mobile-control's screenshots, recordings and saved page sources (stack/mcp/mobile-launch.js).
-const MOBILE_FOLDER = 'mobile-control';
 // The project's own secret store, a dotenv the user fills by hand (the user's ruling of 2026-10-13): every value in it is
-// a credential to stack/hooks/guard-secret-value.js. The browser launcher hands Playwright MCP the FILE (--secrets), which
-// types a value by its KEY and masks it in each response; mobile-control takes only the keys appium-mcp documents
-// (withSensitive `only`); no other server gets any (audit 2026-10-14 PL2, the user's ruling of 2026-10-14).
+// a credential to stack/hooks/guard-secret-value.js.
 const SENSITIVE_FILE = '.sensitive-data';
 
 // ------------------------------------------------------------------ the setting
+
+// The stack's setting ALFRED_CODE_<suffix>, '' read as unset. This file is read where hook-prelude.js is not beside it
+// (the installer, a plugin-root script), so its own copy of envOf is inline - pinned with the hooks' copy as env-reader
+// (meta/shared-rules.json).
+function envOf(env, suffix)
+{
+    const value = env[`ALFRED_CODE_${suffix}`];
+    return value === '' ? undefined : value;
+}
+
+// One ALFRED_CODE_<suffix> setting as a script outside a session sees it: the shell env, then this machine's file before
+// the shared one, the way Claude Code layers them - the files are read here, since no session hands their env over. '' when none of them names it. `key` reads another tool's own variable
+// by its exact name instead (UV_EXCLUDE_NEWER), with no ALFRED_CODE_ or legacy spelling.
+function settingFrom({ env, projectDir, suffix, key })
+{
+    const read = key ? (e) => e[key] : (e) => envOf(e, suffix);
+    const own = String(read(env) || '').trim();
+    if (own || !projectDir) return own;
+    const account = env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+    for (const file of [
+        path.join(projectDir, '.claude', 'settings.local.json'),
+        path.join(projectDir, '.claude', 'settings.json'),
+        path.join(account, 'settings.json'),
+    ])
+    {
+        try
+        {
+            const value = String(read((JSON.parse(fs.readFileSync(file, 'utf8')) || {}).env || {}) || '').trim();
+            if (value) return value;
+        }
+        catch { /* absent, unreadable or malformed: the next file answers */ }
+    }
+    return '';
+}
 
 // { ok, value } for a usable root, { ok: false, why } otherwise. Forward slashes, no leading './', no
 // trailing '/'. No space: serena hands its home to cmd.exe unquoted on Windows, where a space cuts it.
@@ -74,69 +88,33 @@ function dataRootOf({ env = process.env, projectDir } = {})
     return checked.ok ? { root: checked.value, source: 'setting' } : { root: DATA_ROOT_DEFAULT, source: 'invalid', why: checked.why };
 }
 
-function layout(root = DATA_ROOT_DEFAULT)
-{
-    return {
-        root,
-        docs: `${root}/docs`,
-        serena: `${root}/serena`,
-        serenaHome: `${root}/serena/home`,
-        browser: (engine) => `${root}/${engineServer(engine)}`,
-        mobile: `${root}/${MOBILE_FOLDER}`,
-        sensitive: `${root}/${SENSITIVE_FILE}`,
-        memory: `${root}/${MEMORY_FOLDER}`,
-        memoryDb: `${root}/${MEMORY_FOLDER}/memory.db`,
-    };
-}
-
-// The server-data CLASSES a move carries: `serena`, `<engine>-control`, `memory` (the project level's
-// folder) and `sensitive` (the .sensitive-data FILE, which a root change takes along and nothing else moves). Each has
-// one place under the root and (but `sensitive`) one 2.0.0 place; an engine has the 2.1.0 shared folder too.
+// Where a class of the stack's data lives under a root: only `sensitive` (the .sensitive-data FILE, which a root change
+// takes along) since 2.10.1 - null for any other class.
 function targetOf(cls, root = DATA_ROOT_DEFAULT)
 {
-    if (cls === 'serena') return `${root}/serena`;
-    if (cls === 'memory') return `${root}/${MEMORY_FOLDER}`;
-    if (cls === 'sensitive') return `${root}/${SENSITIVE_FILE}`;
-    return engineOfServer(cls) ? `${root}/${cls}` : null;
+    return cls === 'sensitive' ? `${root}/${SENSITIVE_FILE}` : null;
 }
 // The data root a class's place sits under - the inverse of targetOf; null for a 2.0.0 place or a foreign one.
 function rootOfPlace(cls, rel)
 {
-    const suffix = targetOf(cls, '').slice(1);   // 'serena', '<engine>-control', '.alfred-memory', '.sensitive-data'
+    const place = targetOf(cls, '');
+    if (!place) return null;
+    const suffix = place.slice(1);   // '.sensitive-data'
     const root = String(rel || '').endsWith(`/${suffix}`) ? rel.slice(0, -(suffix.length + 1)) : '';
     return root && checkDataPath(root).ok ? root : null;
-}
-
-function legacyOf(cls)
-{
-    if (cls === 'serena') return LEGACY.serena;
-    if (cls === 'memory') return LEGACY.memory;
-    const engine = engineOfServer(cls);
-    return engine ? `${LEGACY.browser}/${engine}` : null;
-}
-
-// A move row out of the root's own 2.1.0 shared folder: a re-layout inside the root, which the installer never offers.
-const isRelayout = (row, root) => Boolean(row) && row.from === sharedBrowserOf(row.cls, root);
-
-// An engine's place in a root's 2.1.0 shared folder (`<root>/browser/<engine>`); null for any other class.
-function sharedBrowserOf(cls, root = DATA_ROOT_DEFAULT)
-{
-    const engine = engineOfServer(cls);
-    return engine ? `${root}/${SHARED_BROWSER}/${engine}` : null;
 }
 
 // ------------------------------------------------------------------ the root's own .gitignore
 
 // THE ONE .gitignore the stack writes (the user's ruling of 2026-10-13: one file, at the data root). Everything under
-// the root is this machine's - the navigation index and its ~327MB of language servers, browser profiles holding
-// session cookies, a project memory database, the sensitive data - EXCEPT the docs, which follow
+// the root is this machine's - the sensitive data, and whatever an older release's servers left there (a navigation
+// index, browser profiles holding session cookies, a memory database) - EXCEPT the docs, which follow
 // ALFRED_CODE_DOCS_VERSIONING. `local` keeps them out too; `git` (and a mode nobody has set yet) re-includes the docs
 // folder and keeps out only the two machine-local files under it - the hooks' state and ledgers sit beside the docs
 // since 2.8.0 (`state/`, `statistics/`, stack/hooks/layout.js), which `/*` keeps out. A bare `*` would hide the docs from git under `git`,
 // `git check-ignore` would then answer yes for them, and the versioning seed would read every fresh project as
-// `local`. The file re-includes ITSELF, so it is committed and a teammate's clone has it before any server writes
-// there. The header line marks it as the stack's: any other text is the project's own and is left alone. One home,
-// read by the installer (docs.ensureDataIgnore) and by every launcher that writes under the root (ensureRootIgnore).
+// `local`. The file re-includes ITSELF, so it is committed and a teammate's clone has it. The header line marks it as the stack's: any other text is the project's own and is left alone. One home,
+// read by the installer (docs.ensureDataIgnore) and by the sensitive-data move (ensureRootIgnore).
 // A docs root OUTSIDE this root keeps its own file (docs.ensureDocsIgnore) - no file of the stack's reaches it.
 const DATA_IGNORE_HEAD = '# alfred-code: the data root (ALFRED_CODE_DATA_PATH) is machine-local';
 // What stays machine-local under the docs root, relative to it: never committed, whatever the versioning. The hooks' state
@@ -172,9 +150,9 @@ function dataIgnoreText({ root, docsPath, mode })
         + `/*\n!/.gitignore\n!/${rel.split('/')[0]}/\n${state.join('\n')}\n`;
 }
 
-// A launcher's half, before it hands out a path under the root: the file is written only when absent (the
-// installer keeps it current), with the docs root and versioning the settings name - else `<root>/docs`, what every
-// install writes, and the committed shape. A project on 2.0.0 whose servers are already 2.1 has none yet.
+// Before the sensitive-data file lands in a root: the file is written only when absent (the installer keeps it current),
+// with the docs root and versioning the settings name - else `<root>/docs`, what every install writes, and the committed
+// shape.
 // 'written' | 'present'.
 function ensureRootIgnore({ projectDir, root, env = process.env })
 {
@@ -184,185 +162,15 @@ function ensureRootIgnore({ projectDir, root, env = process.env })
     const docsPath = settingFrom({ env, projectDir, suffix: 'DOCS_PATH' }) || `${root}/docs`;
     const mode = String(settingFrom({ env, projectDir, suffix: 'DOCS_VERSIONING' }) || '').trim().toLowerCase();
     fs.mkdirSync(base, { recursive: true });
-    // `wx`: another server starting at the same moment may have written it - its file stands.
+    // `wx`: another run at the same moment may have written it - its file stands.
     try { fs.writeFileSync(file, dataIgnoreText({ root, docsPath, mode }), { flag: 'wx' }); }
     catch (err) { if (err.code === 'EEXIST') return 'present'; throw err; }
     return 'written';
 }
 
-// ------------------------------------------------------------------ the memory database
-
-function memoryDbFor(level, { home, projectRoot, root = DATA_ROOT_DEFAULT } = {})
-{
-    if (level === 'global') return path.join(home, MEMORY_FOLDER, 'memory.db');
-    if (level === 'project') return projectRoot ? path.join(projectRoot, ...String(root).split('/'), MEMORY_FOLDER, 'memory.db') : '';
-    return '';
-}
-
-const inside = (child, parent) => { const rel = path.relative(parent, child); return Boolean(rel) && !rel.startsWith('..') && !path.isAbsolute(rel); };
-// A path in its real spelling, for comparing two: the nearest part that exists is resolved (macOS routes
-// the temp dir through /var -> /private/var, and git answers the real form), the rest appended as written.
-function realish(p)
-{
-    const abs = path.resolve(String(p));
-    let head = abs;
-    const tail = [];
-    for (;;)
-    {
-        try { return path.join(fs.realpathSync.native(head), ...tail.reverse()); }
-        catch { /* not there yet: one level up */ }
-        const up = path.dirname(head);
-        if (up === head) return abs;
-        tail.push(path.basename(head));
-        head = up;
-    }
-}
-
-// The level a path belongs to - the new folder and the 2.0.0 one alike, and nothing else: never a prefix
-// or substring match, so a foreign path is never mistaken for one of ours. '' when it is none of them.
-function memoryLevelOf(p, { home, projectRoot } = {})
-{
-    if (!p) return '';
-    const norm = realish(path.normalize(String(p)));
-    const dir = path.dirname(norm);
-    const file = path.basename(norm);
-    if (projectRoot && file === 'memory.db')
-    {
-        const root = realish(projectRoot);
-        if (dir === path.join(root, LEGACY_MEMORY_FOLDER)) return 'project';
-        if (path.basename(dir) === MEMORY_FOLDER && inside(dir, root)) return 'project';
-    }
-    if (home && file === 'memory.db' && [MEMORY_FOLDER, LEGACY_MEMORY_FOLDER].some((f) => dir === path.join(realish(home), f))) return 'global';
-    return '';
-}
-
-// The 2.0.0 spelling of a new memory path: the home folder by name, the project database at
-// <project>/.memory-mcp. null for a path that has no old spelling.
-function legacyTwinOf(p, { home, projectRoot } = {})
-{
-    if (!p) return null;
-    const norm = realish(path.normalize(String(p)));
-    const dir = path.dirname(norm);
-    if (home && dir === path.join(realish(home), MEMORY_FOLDER)) return path.join(home, LEGACY_MEMORY_FOLDER, path.basename(norm));
-    if (projectRoot && path.basename(norm) === 'memory.db' && path.basename(dir) === MEMORY_FOLDER && inside(dir, realish(projectRoot)))
-        return path.join(projectRoot, LEGACY_MEMORY_FOLDER, 'memory.db');
-    return null;
-}
-
-const exists = (p) => { try { fs.statSync(p); return true; } catch { return false; } };
-
-// The new spelling of a 2.0.0 HOME memory path (~/.memory-mcp/<file> -> ~/.alfred-memory/<file>); null for
-// any other path. The project database has no fixed new place - it follows the data root.
-function homeTwinOf(p, { home } = {})
-{
-    if (!p || !home) return null;
-    const norm = realish(path.normalize(String(p)));
-    return path.dirname(norm) === path.join(realish(home), LEGACY_MEMORY_FOLDER) ? path.join(home, MEMORY_FOLDER, path.basename(norm)) : null;
-}
-
-// The database a reader should open for a configured path: the path itself once it exists, else its old
-// twin while that one has not moved yet - so a server and the session-start hook read the same memories
-// in the window between an update and the move. An old HOME path that is gone names its new spelling
-// (I2): the folder moved, and a link back could not be made - never the old folder, which a server would
-// then re-create as a second, empty database.
-function liveMemoryDb(p, { home, projectRoot } = {})
-{
-    if (!p || exists(p)) return p;
-    const moved = homeTwinOf(p, { home });
-    if (moved) return moved;
-    const twin = legacyTwinOf(p, { home, projectRoot });
-    return twin && exists(twin) ? twin : p;
-}
-
-// ------------------------------------------------------------------ what holds data open
-
-// The databases in `dir` a connection has open: SQLite keeps -wal and -shm beside a WAL database while
-// any connection is open and deletes them with the last clean close; -journal is a rollback write in
-// flight. An unclean exit leaves them behind, which reads as busy - the safe side.
-function busyDbs(dir)
-{
-    let names;
-    try { names = fs.readdirSync(dir); } catch { return []; }
-    return names.filter((n) => n.endsWith('.db') && ['-wal', '-shm', '-journal'].some((s) => names.includes(`${n}${s}`))).sort();
-}
-
-// A browser profile a running browser holds: Chromium's Singleton* entries (dangling links, removed on a
-// clean exit) and Firefox's `lock` link. WebKit's own lock is not known; a rename of a folder a process
-// holds open fails on Windows, which is the fallback there.
-const PROFILE_LOCKS = ['SingletonLock', 'SingletonSocket', 'SingletonCookie', 'lock'];
-function profileLocks(dir)
-{
-    return PROFILE_LOCKS.filter((name) => { try { fs.lstatSync(path.join(dir, name)); return true; } catch { return false; } });
-}
-
-// A serena serving this folder (M2): serena 1.7.0 names each start's log after its own pid -
-// `<folder>/home/logs/<date>/mcp_<stamp>_<pid>.txt` (measured) - so a log whose pid is a live process is a
-// server holding the folder: on the copy route the very session running the installer, else a second
-// session's. A live pid counts only when its command line names serena, so an old log's REUSED pid keeps no
-// move pending: `ps` on macOS and Linux, one CIM query on Windows (measured on a Windows ARM64 machine:
-// dozens of September logs named pids Windows had handed to DefenderSessionHelper.exe and the like, and
-// the move stayed busy for good while every live pid counted). A process whose command line cannot be
-// read (another user's, an elevated one) is judged by its image - a python, uv or serena process is
-// busy. No answer at all reads as busy, the safe side. This process's own pid is never one.
-//   run(cmd, args) - spawnSync's result; injected by the tests, like `platform`.
-const SERENA_IMAGE = /^(python|pythonw|py|uv|uvx|serena)(\.exe)?$/i;
-function serenaPids(pids, { platform = process.platform, run } = {})
-{
-    if (!pids.length) return new Set();
-    const spawn = run || ((cmd, args) => require('node:child_process').spawnSync(cmd, args, { encoding: 'utf8', windowsHide: true, timeout: 15000 }));
-    const all = () => new Set(pids);
-    if (platform !== 'win32')
-    {
-        const r = spawn('ps', ['-o', 'pid=,command=', '-p', pids.join(',')]);
-        if (r.error || r.status === null || (r.status !== 0 && r.status !== 1)) return all();
-        const named = new Set();
-        for (const line of String(r.stdout || '').split('\n'))
-        {
-            const m = /^\s*(\d+)\s+(.*)$/.exec(line);
-            if (m && /serena/i.test(m[2])) named.add(Number(m[1]));
-        }
-        return named;
-    }
-    // Windows: one query for every pid - `<pid>\t<image>\t<command line>` per process still running.
-    const filter = pids.map((p) => `ProcessId=${p}`).join(' OR ');
-    const script = `Get-CimInstance Win32_Process -Filter '${filter}' | ForEach-Object { [string]$_.ProcessId + [char]9 + $_.Name + [char]9 + $_.CommandLine }`;
-    const r = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script]);
-    if (r.error || r.status !== 0) return all();
-    const named = new Set();
-    for (const line of String(r.stdout || '').split(/\r?\n/))
-    {
-        const [pid, image = '', command = ''] = line.split('\t');
-        if (!/^\d+$/.test(pid || '')) continue;
-        if (command.trim() ? /serena/i.test(command) : SERENA_IMAGE.test(image.trim())) named.add(Number(pid));
-    }
-    return named;
-}
-function serenaBusy(dir, { platform, run } = {})
-{
-    const logs = path.join(dir, 'home', 'logs');
-    let days;
-    try { days = fs.readdirSync(logs, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name); } catch { return []; }
-    const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (err) { return err.code === 'EPERM'; } };
-    const live = new Set();
-    for (const day of days)
-    {
-        let names;
-        try { names = fs.readdirSync(path.join(logs, day)); } catch { continue; }
-        for (const name of names)
-        {
-            const m = /^mcp_.*_(\d+)\.txt$/.exec(name);
-            const pid = m ? Number(m[1]) : 0;
-            if (pid > 0 && pid !== process.pid && !live.has(pid) && alive(pid)) live.add(pid);
-        }
-    }
-    const held = serenaPids([...live], { platform, run });
-    return [...held].sort((a, b) => a - b).map((pid) => `serena pid ${pid}`);
-}
-
 // A text write that survives a Windows Hidden or System attribute. Node opens a file for 'w' with
 // CREATE_ALWAYS, which Windows refuses (EPERM) on a hidden file unless the open asks for the attribute
-// too - measured: serena_config.yml and .serena/.gitignore carried 'H', and both the launcher's and the
-// installer's writes failed after the move. An existing file is then opened in place, truncated and
+// too - measured on a file carrying 'H', whose write failed. An existing file is then opened in place, truncated and
 // rewritten, which keeps its attributes. Any other error is the caller's.
 function writeText(file, text)
 {
@@ -409,87 +217,22 @@ function moveEntry(from, to, { file = false } = {})
     catch (err) { return { state: 'failed', why: err.code || err.message }; }
 }
 
-// ~/.memory-mcp -> ~/.alfred-memory, when no database in it is open, with the old path left as a link.
-// { state: 'moved' | 'linked' (done before) | 'absent' | 'busy' | 'exists' (both hold data) | 'failed' }.
-function moveHomeMemory({ home, platform = process.platform, symlink = fs.symlinkSync } = {})
+// The sensitive-data file from `from` to `to` (both project-relative), into a root whose .gitignore is written first - it
+// never lands in a root its .gitignore does not cover yet, not even for one moment. { state (moveEntry's), why? }.
+function movePlace({ projectDir, cls, from, to })
 {
-    if (!home) return { state: 'absent' };
-    const from = path.join(home, LEGACY_MEMORY_FOLDER);
-    const to = path.join(home, MEMORY_FOLDER);
-    let st;
-    try { st = fs.lstatSync(from); } catch { return { state: 'absent', from, to }; }
-    if (st.isSymbolicLink()) return { state: 'linked', from, to };
-    if (!st.isDirectory()) return { state: 'absent', from, to };
-    const busy = busyDbs(from);
-    if (busy.length) return { state: 'busy', from, to, busy };
-    const moved = moveEntry(from, to);
-    if (moved.state === 'conflict') return { state: 'exists', from, to };
-    if (moved.state !== 'moved') return { state: 'failed', from, to, why: moved.why || moved.state };
-    // A junction needs an absolute target and no privilege on Windows; elsewhere a relative link keeps
-    // working if the home folder itself is ever moved.
-    try
-    {
-        if (platform === 'win32') symlink(to, from, 'junction');
-        else symlink(MEMORY_FOLDER, from, 'dir');
-        return { state: 'moved', from, to, linked: true };
-    }
-    catch (err) { return { state: 'moved', from, to, linked: false, why: err.code || err.message }; }
-}
-
-// M5: one server's data from `from` to `to` (both project-relative), and for the project memory folder
-// leaving its 2.0.0 place, the link back the home folder gets - Cursor, and an install not yet updated,
-// still open <project>/.memory-mcp/memory.db, and without the link would create a second, empty database
-// there. Only that place: a server's other data and a move between two of the stack's own roots leave none
-// (a link would keep the old root from ever being pruned). The link is no data to every reader (hasData
-// reads the entry itself), so it never reads as a clash or an offer. An engine's profile leaving the 2.1.0 shared
-// folder (`<root>/browser/<engine>`) takes that folder with it once it is empty - the last engine to move clears it. The
-// sensitive-data file moves as one file, into a root whose .gitignore is written first.
-// { state (moveEntry's), linked?, why? }.
-function movePlace({ projectDir, cls, from, to, platform = process.platform, symlink = fs.symlinkSync })
-{
+    if (cls !== 'sensitive') return { state: 'absent' };
     const abs = (rel) => path.join(projectDir, ...rel.split('/'));
-    // The sensitive-data file never lands in a root its .gitignore does not cover yet - not even for one moment.
-    if (cls === 'sensitive')
-    {
-        const root = rootOfPlace(cls, to);
-        try { if (root) ensureRootIgnore({ projectDir, root }); }
-        catch (err) { return { state: 'failed', why: `${to} has no .gitignore yet (${err.code || err.message})` }; }
-    }
-    const moved = moveEntry(abs(from), abs(to), { file: cls === 'sensitive' });
-    if (moved.state === 'moved' && engineOfServer(cls) && path.posix.basename(path.posix.dirname(from)) === SHARED_BROWSER)
-    {
-        try { fs.rmdirSync(abs(path.posix.dirname(from))); }
-        catch { /* another engine's profile is still there - its own move clears the folder */ }
-    }
-    if (moved.state !== 'moved' || cls !== 'memory' || from !== LEGACY.memory) return moved;
-    try
-    {
-        if (platform === 'win32') symlink(abs(to), abs(from), 'junction');
-        else symlink(path.relative(path.dirname(abs(from)), abs(to)), abs(from), 'dir');
-        return { ...moved, linked: true };
-    }
-    catch (err) { return { ...moved, linked: false, why: err.code || err.message }; }
+    const root = rootOfPlace(cls, to);
+    try { if (root) ensureRootIgnore({ projectDir, root }); }
+    catch (err) { return { state: 'failed', why: `${to} has no .gitignore yet (${err.code || err.message})` }; }
+    return moveEntry(abs(from), abs(to), { file: true });
 }
 
 // ------------------------------------------------------------------ the project's sensitive data
 
-// The project's .sensitive-data: <root>/.sensitive-data in the checkout `projectDir` belongs to, else in its main worktree
-// (a gitignored file a new worktree does not have) - where guard-secret-value.js sensitiveFile() looks. null with none.
-function sensitivePlaceOf({ projectDir, root = DATA_ROOT_DEFAULT })
-{
-    let places = [projectDir];
-    try
-    {
-        const r = require('../hooks/memory.js').projectRootOf(projectDir);
-        places = [...new Set([r.checkout, r.project])];
-    }
-    catch { /* no engine beside this folder: the project directory alone */ }
-    return places.map((p) => path.join(p, ...root.split('/'), SENSITIVE_FILE)).find(isFile) || null;
-}
-
-// The values of the project's .sensitive-data, {} when there is none. The dotenv reading is the twin of
-// guard-secret-value.js (DOTENV_LINE, unquote - the hooks ship apart from this folder on the copy route); a test holds
-// the two to the same fixture.
+// The dotenv reading is the twin of guard-secret-value.js (DOTENV_LINE, unquote - the hooks ship apart from this folder on
+// the copy route); a test holds the two to the same fixture.
 const SENSITIVE_LINE = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/;
 // Notepad's 'Unicode' is UTF-16 LE with a BOM; anything else reads as UTF-8, its BOM dropped.
 const isUtf16 = (buf) => buf[0] === 0xff && buf[1] === 0xfe;
@@ -506,25 +249,8 @@ function dotenvPairs(text)
     }
     return out;
 }
-function readSensitive({ projectDir, root = DATA_ROOT_DEFAULT })
-{
-    const file = sensitivePlaceOf({ projectDir, root });
-    let buf;
-    try { buf = fs.readFileSync(file); }
-    catch { return {}; }
-    return Object.fromEntries(dotenvPairs(dotenvText(buf)).map((p) => [p.key, p.value]));
-}
-
-// A launcher's child environment with the project's sensitive data in it: a variable already set (the shell, a settings
-// file's env) keeps its value - a launch takes the store only where nothing else answers, the dotenv convention. `only`
-// names the keys the server documents (null: every key); any other key in the store stays out of its environment.
-// { env, count } - the count is for the launcher's one stderr line; no value is ever logged.
-function withSensitive(env, { projectDir, root, only = null } = {})
-{
-    const values = readSensitive({ projectDir, root: root || dataRootOf({ env, projectDir }).root });
-    const added = Object.keys(values).filter((k) => !Object.hasOwn(env, k) && (!only || only.includes(k)));
-    return { env: { ...env, ...Object.fromEntries(added.map((k) => [k, values[k]])) }, count: added.length };
-}
+// A store's bytes as { KEY: value } - the clash check below, and the tests that hold this reader to the guard's.
+const storeValues = (buf) => Object.fromEntries(dotenvPairs(dotenvText(buf)).map((p) => [p.key, p.value]));
 
 // The project's sensitive data exists from the first install on (the user's ruling of 2026-10-13), so a person finds
 // it where every rule points before anything needs a value. One comment line, no key: the secret guard's start line
@@ -570,7 +296,7 @@ function adoptCredentials({ projectDir, root = DATA_ROOT_DEFAULT, docsPath = `${
     let buf = null;
     try { buf = isFile(toAbs) ? fs.readFileSync(toAbs) : null; }
     catch (err) { return { state: 'failed', ...at, why: err.code || err.message }; }
-    const have = buf ? Object.fromEntries(dotenvPairs(dotenvText(buf)).map((p) => [p.key, p.value])) : {};
+    const have = buf ? storeValues(buf) : {};
     const keys = [...last.keys()];
     const clash = keys.filter((k) => Object.hasOwn(have, k) && have[k] !== last.get(k).value);
     if (clash.length) return { state: 'clash', ...at, keys: clash };
@@ -624,136 +350,36 @@ function gitIgnores(projectDir, rel)
 
 // ------------------------------------------------------------------ the move plan and the pending record
 
-const hasData = (p) => isDir(p) && !isEmptyDir(p);
-// A class's place holds something to move: a folder with data, or for `sensitive` the file itself.
-const holds = (cls, p) => (cls === 'sensitive' ? isFile(p) : hasData(p));
-
-// One row per class whose data sits somewhere other than its place under `root`: the prior root's place
-// first (a root change), then an engine's 2.1.0 shared-folder place (the prior root's, then this one's), then the
-// 2.0.0 place. `conflict` when the target already holds data too. The
-// classes are the kept engines' profiles, serena, the memory folder only at the project level, and the sensitive-data
-// file - which has no 2.0.0 place, so only a root change moves it.
-function dataMovePlan({ projectRoot, root, prior = null, engines = [], memory = false })
+// One row when the sensitive-data file sits under the PRIOR root (a root change) and not under this one - the one thing
+// a root change moves. `conflict` when the target already holds a file too.
+function dataMovePlan({ projectRoot, root, prior = null })
 {
     const abs = (rel) => path.join(projectRoot, ...rel.split('/'));
-    const classes = ['serena', ...engines.map(engineServer), ...(memory ? ['memory'] : []), 'sensitive'];
-    const rows = [];
-    for (const cls of classes)
-    {
-        const to = targetOf(cls, root);
-        const moved = prior && prior !== root;
-        const from = [moved ? targetOf(cls, prior) : null, moved ? sharedBrowserOf(cls, prior) : null, sharedBrowserOf(cls, root), legacyOf(cls)]
-            .filter((c) => c && c !== to).find((c) => holds(cls, abs(c)));
-        if (from) rows.push({ cls, from, to, conflict: holds(cls, abs(to)) });
-    }
-    return rows;
+    if (!prior || prior === root) return [];
+    const from = targetOf('sensitive', prior);
+    const to = targetOf('sensitive', root);
+    return isFile(abs(from)) ? [{ cls: 'sensitive', from, to, conflict: isFile(abs(to)) }] : [];
 }
 
-// `data-pending: <class> <from> -> <to>` - the move the installer recorded for a launcher to make. Read
-// back strictly: a class the stack knows, and two relative paths that stay inside the project.
-const CLASS = new RegExp(`^(serena|memory|sensitive|(?:${ENGINES.join('|')})-control)$`);
+// `data-pending: sensitive <from> -> <to>` - a sensitive-data move an earlier run could not make, retried by the next. Read
+// back strictly: two relative paths that stay inside the project. A line an older release recorded for a server's data
+// (serena, memory, an engine) is no move any more and is not read.
 const renderPending = (rows) => rows.map((r) => `data-pending: ${r.cls} ${r.from} -> ${r.to}`);
-// A line an install before the 2026-10-13 rename recorded (`browser-<engine>`, to `<root>/browser/<engine>`) reads as
-// the engine's move to its own folder: the user's answer carried, the place renamed.
-const OLD_ENGINE_CLASS = /^browser-(chrome|msedge|firefox|webkit)$/;
 function readPending(text)
 {
     const out = [];
     for (const m of String(text || '').matchAll(/^data-pending: *(\S+) +(\S+) +-> +(\S+) *$/gm))
     {
-        let [, cls, from, to] = m;
-        const old = OLD_ENGINE_CLASS.exec(cls);
-        if (old)
-        {
-            cls = engineServer(old[1]);
-            const shared = `/${SHARED_BROWSER}/${old[1]}`;
-            if (to.endsWith(shared)) to = `${to.slice(0, -shared.length)}/${cls}`;
-        }
-        if (!CLASS.test(cls) || !checkDataPath(from).ok || !checkDataPath(to).ok) continue;
+        const [, cls, from, to] = m;
+        if (cls !== 'sensitive' || !checkDataPath(from).ok || !checkDataPath(to).ok) continue;
         out.push({ cls, from, to });
     }
     return out;
 }
 
-// The pending rows of a project's own stamp - [] with none.
-function pendingOf(projectDir)
-{
-    for (const name of ['alfred-code.stamp'])
-    {
-        try { return readPending(fs.readFileSync(path.join(projectDir, '.claude', name), 'utf8')); }
-        catch { /* no stamp: nothing pending */ }
-    }
-    return [];
-}
-
-// Where a launcher finds a class's data this start: { dir (relative), state }. 'current' - already under
-// the root; 'moved' - a pending move ran now; 'busy' / 'failed' - a pending move could not run, so the old
-// place serves this start; 'legacy' - no move was agreed, an older place serves (an engine's 2.1.0 shared folder,
-// then the 2.0.0 place); 'fresh' - nothing yet.
-function liveDir({ projectDir, cls, root = DATA_ROOT_DEFAULT, pending = [], busy = () => [], move = true })
-{
-    const abs = (rel) => path.join(projectDir, ...rel.split('/'));
-    const want = targetOf(cls, root);
-    if (hasData(abs(want))) return { dir: want, state: 'current' };
-    const line = pending.find((r) => r.cls === cls && r.to === want);
-    if (line && hasData(abs(line.from)))
-    {
-        if (!move) return { dir: line.from, state: 'pending' };
-        const held = busy(abs(line.from));
-        if (held.length) return { dir: line.from, state: 'busy', why: held.join(', ') };
-        const moved = movePlace({ projectDir, cls, from: line.from, to: want });
-        if (moved.state === 'moved') return { dir: want, state: 'moved', from: line.from, ...('linked' in moved ? { linked: moved.linked, why: moved.why } : {}) };
-        // Another server's start may have made the same move a moment ago: its result is the answer.
-        if (hasData(abs(want)) && !hasData(abs(line.from))) return { dir: want, state: 'current' };
-        return { dir: line.from, state: 'failed', why: moved.why || moved.state };
-    }
-    const legacy = [sharedBrowserOf(cls, root), legacyOf(cls)].find((p) => p && p !== want && hasData(abs(p)));
-    if (legacy) return { dir: legacy, state: 'legacy' };
-    return { dir: want, state: 'fresh' };
-}
-
-// ------------------------------------------------------------------ the navigation server's own config
-
-// serena reads its per-project folder from `project_serena_folder_location` in <SERENA_HOME>/serena_config.yml
-// (serena 1.7.0; no CLI flag exists). The key is the stack's to set when absent, serena's own default
-// ($projectDir/.serena) or an earlier root of the stack's; any other value is the user's central path.
-// A file that does not exist yet gets the one key serena requires (`projects`) - every other field
-// defaults on load. `folder` is the project-relative folder serena's data lives in this start.
-// 'written' | 'appended' | 'rewritten' | 'current' | 'kept'.
-const FOLDER_KEY = 'project_serena_folder_location';
-function ensureSerenaConfig(homeAbs, folder = `${DATA_ROOT_DEFAULT}/serena`)
-{
-    const file = path.join(homeAbs, 'serena_config.yml');
-    const want = `"$projectDir/${folder}"`;
-    const line = `${FOLDER_KEY}: ${want}`;
-    let text = null;
-    try { text = fs.readFileSync(file, 'utf8'); } catch { text = null; }
-    if (text === null)
-    {
-        fs.mkdirSync(homeAbs, { recursive: true });
-        fs.writeFileSync(file, `# Written by alfred-code: the per-project folder under the data root (ALFRED_CODE_DATA_PATH).\n${line}\nprojects: []\n`);
-        return 'written';
-    }
-    const at = new RegExp(`^${FOLDER_KEY}[ \\t]*:[ \\t]*(.*?)[ \\t]*$`, 'm');
-    const m = at.exec(text);
-    if (!m)
-    {
-        writeText(file, `${text.replace(/\n*$/, '\n')}# Added by alfred-code: the per-project folder under the data root.\n${line}\n`);
-        return 'appended';
-    }
-    const value = m[1].replace(/^(["'])(.*)\1$/, '$2');
-    if (value === `$projectDir/${folder}`) return 'current';
-    const stacks = value === '$projectDir/.serena' || /^\$projectDir\/[^\s$]+\/serena$/.test(value);
-    if (!stacks) return 'kept';
-    writeText(file, text.replace(at, line));
-    return 'rewritten';
-}
-
 module.exports = {
-    DATA_ROOT_DEFAULT, MEMORY_FOLDER, LEGACY_MEMORY_FOLDER, MOBILE_FOLDER, SENSITIVE_FILE, sensitivePlaceOf, readSensitive, withSensitive, adoptCredentials, ENGINES, LEGACY, SHARED_BROWSER, engineServer, engineOfServer, ENGINE_SERVER, sharedBrowserOf, isRelayout,
-    checkDataPath, dataRootOf, layout, targetOf, rootOfPlace, legacyOf,
-    DATA_IGNORE_HEAD, DOCS_STATE_IGNORE, docsInsideRoot, dataIgnoreText, ensureRootIgnore, SENSITIVE_DEFAULT, ensureSensitiveFile,
-    memoryDbFor, memoryLevelOf, legacyTwinOf, homeTwinOf, liveMemoryDb,
-    busyDbs, profileLocks, serenaBusy, serenaPids, writeText, moveEntry, movePlace, moveHomeMemory,
-    dataMovePlan, renderPending, readPending, pendingOf, liveDir, ensureSerenaConfig,
+    DATA_ROOT_DEFAULT, SENSITIVE_FILE, adoptCredentials, ENGINES, engineServer, engineOfServer, ENGINE_SERVER, settingFrom,
+    checkDataPath, dataRootOf, targetOf, rootOfPlace,
+    DATA_IGNORE_HEAD, DOCS_STATE_IGNORE, docsInsideRoot, dataIgnoreText, ensureRootIgnore, SENSITIVE_DEFAULT, ensureSensitiveFile, storeValues,
+    writeText, moveEntry, movePlace, dataMovePlan, renderPending, readPending,
 };

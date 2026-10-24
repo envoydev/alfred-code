@@ -50,16 +50,6 @@ test('M-F4-1: meta/environment.json describes ALFRED_CODE_INSTRUMENT=0 as a node
     assert.match(row.what, /node start per call/, row.what);
 });
 
-// F4 re-review M-F4-2: since C8 every scope writes ALFRED_CODE_MEMORY_DB into settings.local.json, and the
-// hook engine reads that file first - its comments still said the key lands in settings.json (the account
-// file for a global install), and that only a local-scope install writes the local file.
-test('M-F4-2: stack/hooks/memory.js describes the memory path as settings.local.json\'s at every scope', () => {
-    const src = fs.readFileSync(path.join(__dirname, '..', 'stack', 'hooks', 'memory.js'), 'utf8');
-    const block = src.slice(src.indexOf('function memoryEnvPath'), src.indexOf('for (const file of files)', src.indexOf('function settingsDbState')));
-    assert.doesNotMatch(block, /in the project's\s*\/\/\s*settings\.json|the only file a local-scope/, 'a pre-C8 layout is still described');
-    assert.match(block, /settings\.local\.json at every(\s*\/\/)?\s+scope/, 'the header names the file every scope writes');
-});
-
 // F4 re-review M-F4-3: the preload clause is its own sentence, never folded into the MCP-route one. Since
 // 2.1.0 a seat's preloads are bare in the source, so CLAUDE.md says the full copy route's re-spell has
 // nothing left to do.

@@ -31,23 +31,14 @@
 // release moved into an entry this project has not enabled would drop out; these two lines carry it
 // across (derive-state's `stampCarried`, which honours a parked entry and a denied seat).
 //
-// `control-engines` is the browser engines this run INSTALLED, and `control-enabled` the ones the user
-// chose to enable (R67) - `browser-engines` / `browser-enabled` before the 2026-10-13 rename, and
-// `playwright-browsers` / `playwright-enabled` before the 2.0.0 one, read as the fallback. An engine left disabled is still installed, and the listing's
-// project-scope flag can read a stale false anyway (S22), so these lines, never the flag, are what the
-// next run reads: the installed set to keep (and to uninstall from, when a run keeps fewer), and the
-// last choice an engine installed again is switched back to.
+// The browser-engine lines (`control-engines` / `control-enabled`, and their `browser-` / `playwright-` spellings),
+// `mcp-held` and `installed-always-mcps` are no longer written (2.10.1: the stack ships no MCP server); a stamp an
+// earlier release wrote still carries them, and the next write drops them.
 //
 // `stood-down` is what the full copy route switched off in THIS project (M9, R132) - `<scope>:<spec>`
 // each, the scope the disable was written at (a user-scope row is switched off at project scope, I2).
 // The settings file cannot tell that off from the user's own /plugin disable, so this line is the only
 // reason a switch back enables the core: it lists what is still owed and is gone once it is enabled.
-//
-// `mcp-held` is each MCP pick the copy route did not register because the user's own local-, project- or user-scope
-// registration holds its name (`<scope>:<name>`, re-verify 4 T7; project scope - a row of the user's own in .mcp.json - since
-// the matrix F-OWN fix). The ledger lists only what the stack wrote, so
-// without this line the next update would read the pick back as gone; with it the pick stays, and the first update
-// after the user removes theirs registers the stack's own. A run writes it afresh from what it held.
 //
 // `tool-ignores` is each project tool ignore file the run keeps the data root's line in (tool-ignores.js,
 // `<file>=created|appended`): what tells a block the user took out from one never written, and a file the stack made.
@@ -59,13 +50,12 @@
 // the server is picked again, and what uninstall lifts.
 //
 // `data-root` is the project's data root this run left in effect (ALFRED_CODE_DATA_PATH, stack/mcp/data-root.js):
-// the next run's baseline for a root change, even one made by hand in settings. `data-pending` is each move of
-// a server's own data the run recorded for that server's launcher to make at its next start
-// (`<class> <from> -> <to>`), kept until the data has left `from`. `data-move: kept` is the user's answer to
-// keep the old layout - no later update offers the move again (configure still can).
+// the next run's baseline for a root change, even one made by hand in settings. `data-pending` is each move of the
+// sensitive-data file a run could not make inline (`sensitive <from> -> <to>`), kept until the file has left `from`;
+// an earlier release's server-data line is no longer read. `data-move: kept` is the user's answer to keep the old
+// layout - no later update offers the move again (configure still can).
 //
-// `initialised` is the one line only /alfred-code:init writes (its memory step, `memory.js init`, once
-// the notes are in and Claude's own memory is off): a date. A fresh install writes `pending`, every
+// `initialised` is the one line only /alfred-code:init writes (its bootstrap phase): a date. A fresh install writes `pending`, every
 // later run carries the value forward, and nothing but init turns `pending` into a date - so an update
 // between setup and init can neither import the notes nor flip the router past init (Task 18a I1). A
 // stamp from before the line counts as initialised only when Claude's own memory is already off, which
@@ -79,17 +69,15 @@
 // of event, matcher and command>`; `managed-mcp` the .mcp.json entries, `<name>=<sha256 of the entry>`,
 // and the copy route's local- and user-scope registrations as `<scope>:<name>=<sha256 of the entry the
 // account file holds>` (`mcpAt` - uninstall removes the local ones and prints the user-scope ones);
-// `managed-files` every copy outside the library (the engines, the copy route's hooks, skills and seats,
+// `managed-files` every copy outside the library (the hook engines, the copy route's hooks, skills and seats,
 // and a seeded `.claude/AGENTS.md` until it is filled in), `<kind>/<name>=<sha256>`; `managed-settings`
 // the other settings keys it seeded, `<file>:attribution.<key>=<sha256 of the JSON value>`. A value whose
 // hash no longer matches was changed by hand since: it is the user's from then on, kept and logged. A
 // stamp with none of the lines (an older release) is the one case the old heuristics still answer; a
 // project with no stamp at all has managed nothing yet (emptyLedger), so nothing already there is adopted.
 //
-// `installed-always-rules` / `installed-always-mcps` record what the locked baseline actually
-// CARRIES as the run ends, never what shipped. A server counts either way - registered in the file,
-// or riding the plugin named for it - because on the plugin route there is no `.mcp.json` at all,
-// and a stamp that only read the file would record an install with none of the locked three.
+// `installed-always-rules` records what the locked baseline actually CARRIES as the run ends, never what
+// shipped.
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
@@ -101,10 +89,6 @@ const { stampFile } = require('./brand.js');
 // Kept identical to derive-state.js's own copy (scripts/derive-state.js:200) - a drift there is a
 // drift here.
 const splitPick = (entry) => { const [name, home = ''] = String(entry).split('@'); return { name, home: home || null }; };
-
-// A browser engine server belongs to its FAMILY: the always-list names `browser`, and an
-// install carrying `firefox-control` is carrying it.
-const family = (name) => String(name).replace(/^(?:chrome|msedge|firefox|webkit)-control$/, 'browser');
 
 const { readJson, parseJson } = require('./json-file.js');
 
@@ -140,17 +124,11 @@ function shippedHooks(hooksCatalog)
     return seen;
 }
 
-function installedAlways({ recommendations, mcpFile, settingsFile, rulesDir })
+function installedAlways({ recommendations, rulesDir })
 {
     const always = (readJson(recommendations).always) || {};
-    const servers = readJson(mcpFile).mcpServers || {};
-    const plugins = new Set(Object.keys(readJson(settingsFile).enabledPlugins || {})
-        .map((k) => family(k.split('@')[0])));
     const list = (x) => (Array.isArray(x) ? x : []);
-    return {
-        rules: list(always.rules).filter((r) => rulesDir && fs.existsSync(path.join(rulesDir, `${r}.md`))),
-        mcps: list(always.mcps).filter((m) => Object.hasOwn(servers, m) || plugins.has(m)),
-    };
+    return { rules: list(always.rules).filter((r) => rulesDir && fs.existsSync(path.join(rulesDir, `${r}.md`))) };
 }
 
 // --- the ledger (R10) ----------------------------------------------------------------------------
@@ -246,7 +224,7 @@ function readLedger(file)
 
 function renderStamp(fields)
 {
-    const { repoUrl, ref, sha, version, installed, installedMs, action, scope, initialised, hooks, hooksRoute, seatsRoute, alwaysRules, alwaysMcps, picked = {}, playwright = [], playwrightEnabled, stoodDown = [], mcpHeld = [], mcpDenied = [], toolIgnores = {}, library = {}, ledger = null, data = null, instructionsFile = '' } = fields;
+    const { repoUrl, ref, sha, version, installed, installedMs, action, scope, initialised, hooks, hooksRoute, seatsRoute, alwaysRules, picked = {}, stoodDown = [], mcpDenied = [], toolIgnores = {}, library = {}, ledger = null, data = null, instructionsFile = '' } = fields;
     const hashes = (map) => Object.entries(map || {}).map(([n, h]) => `${n}=${h}`).join(',');
     return [
         '# alfred-code install stamp - machine-local, written by the alfred-code installer.',
@@ -267,13 +245,9 @@ function renderStamp(fields)
         ...(hooksRoute ? [`hooks-route: ${hooksRoute}`] : []),
         ...(seatsRoute ? [`seats-route: ${seatsRoute}`] : []),
         `installed-always-rules: ${alwaysRules.join(',')}`,
-        `installed-always-mcps: ${alwaysMcps.join(',')}`,
         `picked-skills: ${(picked.skills || []).join(',')}`,
         `picked-agents: ${(picked.agents || []).join(',')}`,
-        `control-engines: ${(playwright || []).join(',')}`,
-        ...(Array.isArray(playwrightEnabled) ? [`control-enabled: ${playwrightEnabled.join(',')}`] : []),
         ...(stoodDown.length ? [`stood-down: ${stoodDown.map((e) => `${e.scope}:${e.spec}`).join(',')}`] : []),
-        ...(mcpHeld.length ? [`mcp-held: ${mcpHeld.map((e) => `${e.scope}:${e.name}`).join(',')}`] : []),
         ...(Object.keys(toolIgnores || {}).length ? [`tool-ignores: ${Object.entries(toolIgnores).map(([f, how]) => `${f}=${how}`).join(',')}`] : []),
         ...(mcpDenied.length ? [`mcp-denied: ${mcpDenied.map((e) => `${e.scope}:${e.name}`).join(',')}`] : []),
         ...(data && data.root ? [`data-root: ${data.root}`] : []),
@@ -304,7 +278,7 @@ function stampFiles(at)
 function writeStamp(opts)
 {
     const {
-        source, action, scope, configDir, projectRoot, mcpFile, hooksCatalog, hooksRoute, seatsRoute, picked, playwright, playwrightEnabled, stoodDown, mcpHeld, mcpDenied, toolIgnores, library, ledger, data,
+        source, action, scope, configDir, projectRoot, hooksCatalog, hooksRoute, seatsRoute, picked, stoodDown, mcpDenied, toolIgnores, library, ledger, data,
         instructionsFile = '', version = '', now = new Date(), log = () => {}, note = () => {},
     } = opts;
     const initialised = opts.initialised || initialisedValue({ claudeDir: stampDir({ projectRoot }), now });
@@ -320,8 +294,6 @@ function writeStamp(opts)
 
     const always = installedAlways({
         recommendations: path.join(source.dir, 'meta', 'recommendations.json'),
-        mcpFile,
-        settingsFile: path.join(projectRoot, '.claude', 'settings.json'),
         rulesDir: path.join(projectRoot, '.claude', 'rules'),
     });
 
@@ -333,7 +305,7 @@ function writeStamp(opts)
             installed: now.toISOString().replace(/\.\d{3}Z$/, 'Z'), installedMs: now.getTime(),
             action, scope, initialised,
             hooks: shippedHooks(hooksCatalog), hooksRoute, seatsRoute,
-            alwaysRules: always.rules, alwaysMcps: always.mcps, picked, playwright, playwrightEnabled, stoodDown, mcpHeld, mcpDenied, toolIgnores, library, ledger, data,
+            alwaysRules: always.rules, picked, stoodDown, mcpDenied, toolIgnores, library, ledger, data,
             instructionsFile,
         }));
     }
@@ -428,40 +400,6 @@ function readSeatsRoute(file)
     return route === 'copy' || route === 'plugin' ? route : null;
 }
 
-// The browser engines the last install installed (or, with `control-enabled`, enabled), in the
-// one canonical order - [] when it recorded none, null when the stamp has no such line (no stamp, or
-// one from before the line): nothing recorded. A stamp written before a rename spells the lines the old way -
-// `browser-engines` / `browser-enabled` (2.0.0 to the 2026-10-13 rename, its engines installed as browser-<engine>),
-// `playwright-browsers` / `playwright-enabled` before: read as the fallback, the newest line winning.
-const { ENGINES: PW_ORDER } = require('../../stack/mcp/data-root.js');
-const BROWSER_LINES = { engines: ['control-engines', 'browser-engines', 'playwright-browsers'], enabled: ['control-enabled', 'browser-enabled', 'playwright-enabled'] };
-function readEngineLine(text, line)
-{
-    const m = new RegExp(`^${line}:(.*)$`, 'm').exec(text);
-    if (!m) return null;
-    const named = m[1].split(',').map((s) => s.trim().toLowerCase());
-    return PW_ORDER.filter((e) => named.includes(e));
-}
-// Both lines at once, and whether they came from the OLD spelling - a run that cannot read the plugin
-// listing takes an engine the stamp names as installed, which only holds under the name it was installed as.
-function readBrowserLines(file)
-{
-    let text = '';
-    try { text = fs.readFileSync(file, 'utf8'); } catch { return { browsers: null, enabled: null, legacy: false }; }
-    const read = ([now, ...olds]) =>
-    {
-        const v = readEngineLine(text, now);
-        if (v !== null) return { v, old: false };
-        for (const old of olds) { const w = readEngineLine(text, old); if (w !== null) return { v: w, old: true }; }
-        return { v: null, old: true };
-    };
-    const engines = read(BROWSER_LINES.engines);
-    const enabled = read(BROWSER_LINES.enabled);
-    return { browsers: engines.v, enabled: enabled.v, legacy: engines.v !== null && engines.old };
-}
-const readPlaywright = (file) => readBrowserLines(file).browsers;
-const readPlaywrightEnabled = (file) => readBrowserLines(file).enabled;
-
 // The `stood-down` record - [] with no stamp or no line. An entry of any other shape is not ours and is
 // dropped, so a hand-edited line can never make a run enable something at a scope it did not name.
 const STOOD_DOWN = /^(project|local):([\w.-]+@[\w.-]+)$/;
@@ -472,15 +410,6 @@ function readStoodDown(file)
     const m = /^stood-down:(.*)$/m.exec(text);
     if (!m) return [];
     return m[1].split(',').map((s) => STOOD_DOWN.exec(s.trim())).filter(Boolean).map(([, scope, spec]) => ({ scope, spec }));
-}
-// The `mcp-held` record (re-verify 4 T7) - [] with no stamp or no line; an entry of any other shape is dropped.
-function readMcpHeld(file)
-{
-    let text = '';
-    try { text = fs.readFileSync(file, 'utf8'); } catch { return []; }
-    const m = /^mcp-held:(.*)$/m.exec(text);
-    if (!m) return [];
-    return m[1].split(',').map((s) => /^(project|local|user):(.+)$/.exec(s.trim())).filter((e) => e && validItemName(e[2])).map(([, scope, name]) => ({ scope, name }));
 }
 // The `tool-ignores` record - {} with no stamp or no line; only the files tool-ignores.js knows, so a hand-edited line
 // never names a path the run would write or delete.
@@ -716,8 +645,8 @@ function markInitialised(claudeDir, now = new Date())
 }
 
 module.exports = {
-    writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways, family,
-    readPicked, readLibrary, readLedger, renderLedger, emptyLedger, readToolIgnores, valueHash, entryHash, LEDGER_FILES, readStampScope, readHooksRoute, readSeatsRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readBrowserLines, readStoodDown, readMcpHeld, readMcpDenied, readVersion, readInstalledAt, readInstructionsFile, readInstructionsAnswer, validItemName,
+    writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways,
+    readPicked, readLibrary, readLedger, renderLedger, emptyLedger, readToolIgnores, valueHash, entryHash, LEDGER_FILES, readStampScope, readHooksRoute, readSeatsRoute, markHooksRoute, readStoodDown, readMcpDenied, readVersion, readInstalledAt, readInstructionsFile, readInstructionsAnswer, validItemName,
     readInitialised, initialisedValue, isInitialised, installState, markInitialised, legacySignature, legacyUnstamped, worktreeMain, installScope, readDataLines,
     accountDir,
 };

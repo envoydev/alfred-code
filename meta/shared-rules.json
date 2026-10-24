@@ -6357,10 +6357,6 @@
           "marker": "const SECRET_SHAPE = /\\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,})/;"
         },
         {
-          "file": "stack/hooks/memory.js",
-          "marker": "const SECRET_SHAPE = /\\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,})/;"
-        },
-        {
           "file": "stack/hooks/guard-stop-contract.js",
           "marker": "const SECRET_SHAPE = /\\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,})/;"
         },
@@ -6388,7 +6384,7 @@
       ]
     },
     "env-reader": {
-      "_note": "hook-prelude.js's envOf(env, suffix) reads the stack's ALFRED_CODE_* setting and is the ONE implementation every ordinary hook requires; the three engines (docs.js, memory.js, history.js) and the uv-python.js launcher ship without the prelude beside them on at least one route, so each carries its own byte-identical inline copy instead of a require (the memory launcher reads its key through memory.js settingsDbState, the one reader it shares with the installer - review 2.1.6 R5). A change to the reader is five edits, not one.",
+      "_note": "hook-prelude.js's envOf(env, suffix) reads the stack's ALFRED_CODE_* setting and is the ONE implementation every ordinary hook requires; the three engines (docs.js, memory.js, history.js) and data-root.js (read by the installer and plugin-root scripts) ship without the prelude beside them on at least one route, so each carries its own byte-identical inline copy instead of a require. A change to the reader is five edits, not one.",
       "owner": {
         "file": "stack/hooks/hook-prelude.js",
         "marker": "function envOf(env, suffix)\n{\n    const value = env[`ALFRED_CODE_${suffix}`];\n    return value === '' ? undefined : value;\n}"
@@ -6399,15 +6395,11 @@
           "marker": "function envOf(env, suffix)\n{\n    const value = env[`ALFRED_CODE_${suffix}`];\n    return value === '' ? undefined : value;\n}"
         },
         {
-          "file": "stack/hooks/memory.js",
-          "marker": "function envOf(env, suffix)\n{\n    const value = env[`ALFRED_CODE_${suffix}`];\n    return value === '' ? undefined : value;\n}"
-        },
-        {
           "file": "stack/hooks/history.js",
           "marker": "function envOf(env, suffix)\n{\n    const value = env[`ALFRED_CODE_${suffix}`];\n    return value === '' ? undefined : value;\n}"
         },
         {
-          "file": "stack/mcp/uv-python.js",
+          "file": "stack/mcp/data-root.js",
           "marker": "function envOf(env, suffix)\n{\n    const value = env[`ALFRED_CODE_${suffix}`];\n    return value === '' ? undefined : value;\n}"
         },
         {
@@ -6429,14 +6421,14 @@
       ]
     },
     "install-records": {
-      "_note": "What marks a folder as set up (review 2.1.6 re-verify 3 S3): hook-prelude's 'set up' gate and memory.js projectRootOf - the one project-root resolver the launchers, memory-session.js and the engine's CLI verbs read - look for the same install records, inside the same bound (re-verify 4 T1): the folder up to its git top level and a linked worktree's main checkout, never an ancestor above that top level. The engine is copied into .claude/hooks on every route without the prelude beside it, so it carries its own copy of the list; a record added to one is added to both.",
+      "_note": "What marks a folder as set up (review 2.1.6 re-verify 3 S3): hook-prelude's 'set up' gate and layout.js projectRootOf - the one project-root resolver the secret guard and the handoff bus read (memory.js held it until 2.10.1 retired it) - look for the same install records, inside the same bound (re-verify 4 T1): the folder up to its git top level and a linked worktree's main checkout, never an ancestor above that top level. layout.js is copied into .claude/hooks on every route without the prelude beside it, so it carries its own copy of the list; a record added to one is added to both.",
       "owner": {
         "file": "stack/hooks/hook-prelude.js",
         "marker": "const INSTALL_RECORDS = [['alfred-code.stamp'], ['hooks', 'docs.js']];"
       },
       "sites": [
         {
-          "file": "stack/hooks/memory.js",
+          "file": "stack/hooks/layout.js",
           "marker": "const INSTALL_RECORDS = [['alfred-code.stamp'], ['hooks', 'docs.js']];"
         }
       ]
@@ -6926,10 +6918,6 @@
       "sites": [
         {
           "file": "stack/hooks/docs.js",
-          "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
-        },
-        {
-          "file": "stack/hooks/memory.js",
           "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
         },
         {

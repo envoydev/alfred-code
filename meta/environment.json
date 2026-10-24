@@ -6,7 +6,7 @@
       "key": "ALFRED_CODE_DATA_PATH",
       "default": ".alfred",
       "ask": true,
-      "what": "the ONE folder, relative to the project, where Alfred Code keeps this project's data: the docs (`<root>/docs`), the navigation server's index, handoff notes and language servers (`<root>/serena`), the browser profiles (`<root>/<engine>-control`) and a project-level memory database (`<root>/.alfred-memory`). Default `.alfred` at the project root - outside `.claude/`, where Claude Code prompts for every write. Its own `.gitignore` keeps everything but the docs out of git. Changing it (configure) MOVES the data: the docs at once, each server's data at that server's next start, once nothing holds it. No space, no `..`, never under `.claude/`.",
+      "what": "the ONE folder, relative to the project, where Alfred Code keeps this project's data: the docs (`<root>/docs`), the hooks' machine state (`<root>/state`, the seats' handoff notes among it), the ledgers (`<root>/statistics`) and the sensitive-data store (`<root>/.sensitive-data`). Default `.alfred` at the project root - outside `.claude/`, where Claude Code prompts for every write. Its own `.gitignore` keeps everything but the docs out of git. Changing it (configure) MOVES the data inline: the docs and the sensitive-data store. No space, no `..`, never under `.claude/`.",
       "validate": {
         "type": "relative-path"
       }
@@ -193,16 +193,6 @@
       "what": "a csv of hook names this project switches off, e.g. `guard-answer,instrument-tool-usage`. It is where the guided walk's hooks LAYER lands: every hook now arrives together inside the core alfred-code plugin, so there is no file to leave out of an install, and the rows an init or configure run does NOT pick are written here (that answer overwrites this value; every other run seeds it only when absent). Matching is exact on the base name, `.js` optional; a prefix never matches. A hook's PART is switched off the same way, as `<hook>:<part>`: `docs-session:block` (the session-start orientation), `docs-session:gate` (the first-change hold), `docs-session:ask` (the end-of-session doc ask), `guard-ungated-commit:push` (the publish half of the commit gate), `guard-stop-contract:rotate` (the credential rotate ask), `guard-stop-contract:done` (the done-gate probe) and `guard-fresh-session-start:builtin-review` (the deny of the model's call to Claude Code's bundled /code-review and /security-review, 2026-10-22) - each but the last was its own `=0` key before the env audit of 2026-10-21, and an update folds a stored `0` in here.",
       "validate": {
         "type": "csv"
-      }
-    },
-    {
-      "key": "ALFRED_CODE_MEMORY_DB",
-      "default": "~/.alfred-memory/memory.db",
-      "ask": false,
-      "written": true,
-      "what": "the shared `memory` MCP database this install points at - the path the `--memory-level` choice resolved to (`global` ~/.alfred-memory/memory.db, `project` <project>/<data root>/.alfred-memory/memory.db). The plugin route's launcher (`stack/mcp/memory-launch.js`) reads it from this file because a plugin MCP entry cannot expand a project env key; with the key absent it falls back to the global default. A 2.0.0 `~/.memory-mcp` is moved to `~/.alfred-memory` by that launcher once no server holds it, with a link left at the old path. Written every run from the resolved level, never seeded - change it with `--memory-level` / `-MemoryLevel`, never by hand, and note that re-pointing the registration never moves or touches the old database file.",
-      "validate": {
-        "type": "absolute-path"
       }
     }
   ]

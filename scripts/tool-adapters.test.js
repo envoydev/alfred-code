@@ -50,18 +50,17 @@ test('a type with a context serves its pin less the context\'s excluded_tools', 
     assert.throws(() => build({ meta: gone }), /serena: context 'stack\/mcp\/absent\.yml' cannot be read/);
 });
 
-// The install removes the memory tools the stack never calls and Playwright's browser_run_code_unsafe from every
-// session's context (MEMORY_TOOLS_USED, BROWSER_TOOLS_OFF), so the table never offers a rank no session can call.
-test('a type serves its pin less the tools the install denies', () =>
+// Since 2.10.1 the install denies no server tool (it ships none): a type with no context file serves its whole pin.
+test('a type with no context file serves its whole pin', () =>
 {
-    const { MEMORY_TOOLS_USED } = require('./install/alfred-code.js');
+    const pins = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'mcp-tools.json'), 'utf8')).servers;
     const t = build();
-    assert.deepStrictEqual(t.types['memory-service'].tools, [...MEMORY_TOOLS_USED].sort());
-    assert.ok(!t.types.playwright.tools.includes('browser_run_code_unsafe'));
+    assert.deepStrictEqual(t.types['memory-service'].tools, [...pins['alfred-memory'].tools].sort());
+    assert.ok(t.types.playwright.tools.includes('browser_run_code_unsafe'));
     assert.ok(t.types.playwright.tools.includes('browser_navigate'));
     const meta = readMeta();
-    meta.types['memory-service'].jobs.memory.push('memory_health');
-    assert.throws(() => build({ meta }), /memory-service: memory_health is not a tool of alfred-memory at 12\.1\.1 as the install serves it/);
+    meta.types['memory-service'].jobs.memory.push('memory_nonexistent');
+    assert.throws(() => build({ meta }), /memory-service: memory_nonexistent is not a tool of alfred-memory at 12\.1\.1$/);
 });
 
 test('build refuses a default naming neither a type nor a built-in', () =>

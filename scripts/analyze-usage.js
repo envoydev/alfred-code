@@ -4716,11 +4716,10 @@ function printCheckReport(res) {
 // so every ledger-joined session printed '0% of tool calls are inside the ledger window') and
 // stayed broken because nothing could reach the function to pin it.
 // Review finding 10: the project's own transcripts folder, `<config>/projects/<name>`. Claude Code names it
-// from the NATIVE path, every non-alphanumeric character a '-' (memory-import.js slugify, the documented
-// rule), so on Windows 'C:\\Users\\me\\repo' is 'C--Users-me-repo'. Derived here from the analyzer's own
+// from the NATIVE path, every non-alphanumeric character a '-' (the documented rule), so on Windows 'C:\\Users\\me\\repo' is 'C--Users-me-repo'. Derived here from the analyzer's own
 // cwd, never in a command body: a shell's `pwd | sed` gets '-c-Users-me-repo' under Git Bash.
 function sessionsDirOf(cwd, configDir) {
-  return path.join(configDir, 'projects', require('./memory-import.js').slugify(cwd));
+  return path.join(configDir, 'projects', String(cwd).replace(/[^a-zA-Z0-9]/g, '-'));
 }
 
 module.exports = { classifyChecks, commandHeads, maskQuotedShell, houseBare, loadPluginLayers, hookJoinStats, readBlockLedger, docRelPath, joinUnattributedDenials, windowSource, interruptLine, globToRe, parseFrontmatter, checkReport, forkParents, rmVerifyTail, maskSecrets, hookCommandKey, samePath, sessionsDirOf };

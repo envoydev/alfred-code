@@ -18,13 +18,16 @@ const MANIFEST = path.join(ROOT, 'meta', 'stack-manifest.json');
 const { loadManifest } = require('./install/manifest.js');
 
 const SIX_LISTS = ['skills', 'agents', 'rules', 'hooks', 'plugins', 'mcps'];
+// The stack ships no MCP server since 2.10.1: the list is kept, and empty (lint check 53 holds it there).
+const mayBeEmpty = (key) => key === 'mcps';
 
 test('stack-manifest: the file exists and carries the six lists', () =>
 {
     assert.ok(fs.existsSync(MANIFEST), 'meta/stack-manifest.json is missing');
     const parsed = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));
     for (const key of SIX_LISTS)
-        assert.ok(Array.isArray(parsed[key]) && parsed[key].length > 0, `stack-manifest: the '${key}' list is missing or empty`);
+        assert.ok(Array.isArray(parsed[key]) && (parsed[key].length > 0 || mayBeEmpty(key)), `stack-manifest: the '${key}' list is missing or empty`);
+    assert.deepStrictEqual(parsed.mcps, [], 'no shipped server');
     assert.ok(parsed.retired && typeof parsed.retired === 'object', 'stack-manifest: no `retired` block');
     for (const key of SIX_LISTS)
         assert.ok(Array.isArray(parsed.retired[key]), `stack-manifest: retired.${key} is missing`);
@@ -92,7 +95,7 @@ test('stack-manifest: a plugin from a third-party marketplace names the source i
 test('stack-manifest: the seed (install/manifest.js) reads every list off this file', () =>
 {
     const m = loadManifest(ROOT);
-    for (const key of SIX_LISTS) assert.ok(Array.isArray(m[key]) && m[key].length > 0, `install/manifest.js loaded no '${key}'`);
+    for (const key of SIX_LISTS) assert.ok(Array.isArray(m[key]) && (m[key].length > 0 || mayBeEmpty(key)), `install/manifest.js loaded no '${key}'`);
     for (const key of SIX_LISTS) assert.ok(Array.isArray(m.retired[key]), `install/manifest.js loaded no retired.${key}`);
     assert.ok(m.hooks.every((h) => h.includes('::')), 'hooks render as file::matcher::args');
     assert.ok(m.skills.every((s) => s.includes('|')), 'skills render as repo|name');

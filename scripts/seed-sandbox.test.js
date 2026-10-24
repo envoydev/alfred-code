@@ -2,7 +2,7 @@
 // The sandbox is hermetic by default. Until 2.0.0 the seed's pin lookups asked npm (`npm view <pkg>
 // version`) and PyPI (curl) for a version on every run, and a sandbox that left those two to the
 // machine's own tools sent every installer test to registry.npmjs.org and pypi.org; since R35 the seed
-// asks neither, and its one outward package call is the browser download (npx, at the release pin).
+// asks neither, and since 2.10.1 it makes no outward package call at all - the browser download left with the server.
 // The proof is a PATH-level sentinel: recording stubs placed on the PATH the sandbox inherits, BEHIND
 // its own bin - a call that gets past the sandbox's stubs lands in the sentinel's record instead of
 // on the network.
@@ -47,34 +47,33 @@ test('sandbox: a run with no stubs of its own reaches neither npm nor curl on th
     }
 });
 
-// A picked firefox makes the seed download its build through npx - the positive control that the
-// sentinel does see what the run calls once the sandbox's own stubs are gone.
+// An old selection naming the browser and the old engine flag: until 2.10.1 the seed downloaded the engine through npx.
+// Now nothing reaches a package tool - and a call the test itself makes does reach the sentinel, so an empty record is
+// the seed's silence, not a sentinel that sees nothing.
 const PW_SELECTION = `${SELECTION}mcp browser\n`;
 const PW_ARGS = ['--playwright-browsers', 'firefox'];
-const PW_PIN = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'mcp-pins.json'), 'utf8')).pins.browser.version;
 
-test('sandbox: with the sandbox stubs removed, the seed still asks no registry - its one outward call is the pinned browser download', POSIX_ONLY, () =>
+test('sandbox: with the sandbox stubs removed, the seed reaches no package tool - not even for an old browser pick', POSIX_ONLY, () =>
 {
-    // R35: no npm view and no PyPI fetch, while the download in the same run does reach the sentinel -
-    // so an empty npm/curl record is the seed's silence, not a sentinel that sees nothing.
     const prepare = (repo) => { for (const t of ['npm', 'curl', 'npx']) fs.rmSync(path.join(path.dirname(repo), 'bin', t), { force: true }); };
-    const { reached } = withSentinel(() => seedRun('install', PW_SELECTION, { args: PW_ARGS, prepare }));
-    assert.deepStrictEqual(reached.filter((l) => /^(npm|curl) /.test(l)), [], `the seed asked a registry: ${JSON.stringify(reached)}`);
-    assert.deepStrictEqual(reached.filter((l) => l.startsWith('npx ')), [`npx -y -p @playwright/mcp@${PW_PIN} playwright install firefox`],
-        'the download ran at another version than the release pin, or not at all');
+    const { reached } = withSentinel(() =>
+    {
+        seedRun('install', PW_SELECTION, { args: PW_ARGS, prepare });
+        require('node:child_process').spawnSync('npx', ['sentinel-check'], { env: process.env, stdio: 'ignore' });
+    });
+    assert.deepStrictEqual(reached, ['npx sentinel-check'], `the seed called a package tool: ${JSON.stringify(reached)}`);
 });
 
 test('sandbox: a test that needs a working tool still passes its own stub over the default', POSIX_ONLY, () =>
 {
-    const { result, reached } = withSentinel(() => seedRun('install', PW_SELECTION, {
-        args: PW_ARGS,
-        tools: { npx: 'printf \'%s\\n\' "$*" >> "$HOME/own-npx.log"; exit 0' },
+    const { result, reached } = withSentinel(() => seedRun('install', SELECTION, {
+        tools: { claude: 'printf \'%s\\n\' "$*" >> "$HOME/own-claude.log"; if [ "$1" = plugin ] && [ "$2" = list ]; then echo "[]"; fi; exit 0' },
         inspect: (repo) =>
         {
-            const log = path.join(path.dirname(repo), 'own-npx.log');
+            const log = path.join(path.dirname(repo), 'own-claude.log');
             return fs.existsSync(log) ? fs.readFileSync(log, 'utf8').split('\n').filter(Boolean) : [];
         },
     }));
-    assert.deepStrictEqual(result.result, [`-y -p @playwright/mcp@${PW_PIN} playwright install firefox`], 'the test\'s own npx stub answered the download');
+    assert.ok(result.result.some((l) => l.startsWith('plugin list')), `the test's own claude stub answered the listing: ${JSON.stringify(result.result)}`);
     assert.deepStrictEqual(reached, [], 'nothing got past the sandbox');
 });

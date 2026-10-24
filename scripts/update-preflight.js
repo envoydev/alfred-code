@@ -28,12 +28,10 @@
 //                                           classified by derive-state's classifyNew against THIS
 //                                           install: arrives | renamed | offer | off | unknown;
 //                                           'new: none' if none)
-//   data-move: offer <root>\tfrom=<places>\tserena=yes|no browser=<engines|none> memory=yes|no[\tconflicts=<n>]
-//            | none (<why>)
-//                                           (the project's server data outside its data root - the 2.0.0
-//                                           layout or an earlier root: serena's folder, the browser
-//                                           profiles, a project memory database; a project install only.
-//                                           The docs move unasked since 2.8.0, so they are no part of it)
+//   data-move: offer <root>\tfrom=<places>[\tconflicts=<n>] | none (<why>)
+//                                           (the project's sensitive-data file under an earlier data root;
+//                                           a project install only. The docs move unasked since 2.8.0, and
+//                                           the stack ships no server whose data could move since 2.10.1)
 //   docs-move: offer <from> -> <to>\tmoves=<names>\tstack=<n>\town=<names|none> | none (<why>)
 //                                           (a leftover ALFRED_CODE_DOCS_PATH the user set by hand - no release seeded
 //                                           it and the ledger does not record it - holding the stack's docs: it moves
@@ -395,8 +393,8 @@ function policyRevLine(root, snapshot)
 //
 // A session holds what it loaded at its start, so a restart is owed only for what this run CHANGED under it (audit
 // 2026-10-10, session 229e2715). The summary's `mcps=<n>` is the selection's size, printed on every run, so it said
-// restart on every update; a line that changed a registration or a plugin is the signal - the plugin route carries the
-// servers. `--running "${CLAUDE_PLUGIN_ROOT}"` names the release the session loaded: another release than this
+// restart on every update; a line that changed a registration or a plugin is the signal - a retired server's
+// registration the update removed included. `--running "${CLAUDE_PLUGIN_ROOT}"` names the release the session loaded: another release than this
 // snapshot's means its hooks, commands and server plugins are all older, and the same release means the hooks a
 // plugin-route stamp names are already live, so step 2's `--hooks` delta owes nothing.
 const SESSION_CHANGED = [
@@ -448,14 +446,13 @@ function runLogMode(logFile)
     const root = arg('--root', '.');
     const stamp = arg('--stamp', stampIn(path.join(root, '.claude')).read || stampIn(root).read);
     const hooksLive = Boolean(running) && running === snapshot && require('./install/stamp.js').readHooksRoute(stamp) === 'plugin';
-    // A moved docs root: the session's loaded alfred-docs-root rule still names the old one. A data move
-    // a server's launcher makes at its next start waits for that start.
-    const docsMoved = /docs root: moved /.test(text) || /^==> data root: .* (moved now|waiting for a server's next start)/m.test(text);
+    // A moved docs root: the session's loaded alfred-docs-root rule still names the old one.
+    const docsMoved = /docs root: moved /.test(text) || /^==> data root: .* moved now/m.test(text);
     console.log(`restart: ${(changed || otherRelease || (hooks > 0 && !hooksLive) || docsMoved) ? 'yes' : 'no'}`);
 }
 
-// The data move, from the rules the installer applies (docs.dataOffer): every server's data outside the root - the kept
-// engines the stamp names, the memory folder at the project level.
+// The data move, from the rules the installer applies (docs.dataOffer): the sensitive-data file a root change left under
+// the earlier root.
 function dataMoveLine({ root, claudeDir, stampFile })
 {
     const settingsLib = require('./install/settings.js');
@@ -469,13 +466,10 @@ function dataMoveLine({ root, claudeDir, stampFile })
     const checked = dataRoot.checkDataPath(env.ALFRED_CODE_DATA_PATH || '');
     const recorded = (/^data-root: *(\S+) *$/m.exec(stampText) || [])[1];
     const dataRootNow = checked.ok ? checked.value : recorded || dataRoot.DATA_ROOT_DEFAULT;
-    const db = env.ALFRED_CODE_MEMORY_DB || '';
     return docs.dataOfferLine(docs.dataOffer({
         projectRoot, stampText, root: dataRootNow,
         // An unstamped legacy install (stamp.js legacy-unstamped) is update's to take.
         stamped: fs.existsSync(stampFile) || stampLib.legacyUnstamped(root),
-        engines: stampLib.readBrowserLines(stampFile).browsers || [],
-        memoryProject: dataRoot.memoryLevelOf(db, { home: require('node:os').homedir(), projectRoot }) === 'project',
     }));
 }
 
@@ -511,9 +505,8 @@ function runRespellMode()
     const root = path.resolve(arg('--root', '.'));
     const snapshot = path.join(__dirname, '..');
     const renamed = (readJson(path.join(snapshot, 'meta', 'stack-manifest.json')) || {}).renamed || {};
-    const engines = require('./install/stamp.js').readPlaywright(stampIn(path.join(root, '.claude')).read || '') || [];
     const selection = require('./install/selection.js');
-    const plan = selection.respellOwnPlan({ projectRoot: root, renamed, engines });
+    const plan = selection.respellOwnPlan({ projectRoot: root, renamed });
     if (!plan.length) { console.log('respell: none'); return; }
     for (const row of plan)
     {

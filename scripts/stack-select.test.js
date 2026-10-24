@@ -148,17 +148,19 @@ test('a non-array raw field does not char-split into bogus items', () => {
 const { findUnknownNames, dropUnknownNames } = require('./stack-select.js');
 
 test('unknown selection names are detected per category and dropped', () => {
+    // A retired server (alfred-navigation since 2.10.1) is no catalog name either: unknown, and dropped.
     const raw = { skills: ['csharp', 'totally-retired-skill'], agents: ['no-such-agent'], rules: [], mcps: ['alfred-navigation', 'no-such-mcp'], plugins: [] };
     const unknown = findUnknownNames(graph, raw);
     assert.deepStrictEqual(unknown, [
         { category: 'skill', name: 'totally-retired-skill' },
         { category: 'agent', name: 'no-such-agent' },
+        { category: 'mcp', name: 'alfred-navigation' },
         { category: 'mcp', name: 'no-such-mcp' },
     ]);
     const filtered = dropUnknownNames(raw, unknown);
     assert.deepStrictEqual(filtered.skills, ['csharp']);
     assert.deepStrictEqual(filtered.agents, []);
-    assert.deepStrictEqual(filtered.mcps, ['alfred-navigation']);
+    assert.deepStrictEqual(filtered.mcps, []);
     assert.ok(!computeClosure(graph, filtered).skills.includes('totally-retired-skill'));
 });
 
@@ -192,31 +194,13 @@ const emptyEnv = { bins: {}, envs: {} };
 test('phase-1 hard prereqs are blockers when the binary is absent', () => {
     const r = evaluatePrereqs({ skills: [], mcps: [], plugins: [] }, emptyEnv, {});
     const needs = r.blockers.map(b => b.need).join(' ');
-    for (const label of ['Node.js', 'git', 'Claude Code CLI', 'uv (uvx)'])
+    for (const label of ['Node.js', 'git', 'Claude Code CLI'])
     {
         assert.ok(needs.includes(label), `expected hard blocker ${label}`);
     }
+    // uv left with the servers it launched (2.10.1): nothing the stack installs runs on uvx.
+    assert.ok(!/uv/.test(needs), needs);
     assert.strictEqual(r.ok, false);
-});
-
-test('the browser server keeping msedge warns when Edge is not installed; the other engines never ask for it', () => {
-    // msedge is the one kept engine that uses a browser the machine must already carry and that
-    // no default install has everywhere; firefox/webkit are downloaded by the installer itself.
-    const sel = { skills: [], mcps: ['browser'], plugins: [] };
-    const bins = { node: true, npx: true, git: true, claude: true, uvx: true };
-    const edge = r => r.warnings.some(w => /Microsoft Edge/.test(w.need));
-    assert.ok(edge(evaluatePrereqs(sel, { bins, envs: {} }, { playwrightBrowsers: ['chrome', 'msedge'] })), 'msedge kept without Edge warns');
-    assert.ok(!evaluatePrereqs(sel, { bins, envs: {} }, { playwrightBrowsers: ['msedge'] }).blockers.length, '... and never blocks');
-    assert.ok(!edge(evaluatePrereqs(sel, { bins: { ...bins, msedge: true }, envs: {} }, { playwrightBrowsers: ['msedge'] })), 'Edge present is clean');
-    for (const other of [undefined, [], ['chrome'], ['firefox', 'webkit']])
-        assert.ok(!edge(evaluatePrereqs(sel, { bins, envs: {} }, { playwrightBrowsers: other })), `${JSON.stringify(other)} never asks for Edge`);
-    assert.ok(!edge(evaluatePrereqs({ skills: [], mcps: [], plugins: [] }, { bins, envs: {} }, { playwrightBrowsers: ['msedge'] })), 'no browser selected, no Edge warning');
-});
-
-test('installed <engine>-control servers (browser-<engine> before 2026-10-13) read back as the one manifest entry', () => {
-    const { normalizeInventory } = require('./stack-select.js');
-    const inv = normalizeInventory({ mcps: ['navigation', 'chrome-control', { name: 'firefox-control' }, 'browser-webkit', 'playwright', 'playwright-extra'] });
-    assert.deepStrictEqual(inv.mcps, ['navigation', 'browser', 'playwright', 'playwright-extra'], 'engine servers collapse to browser; a non-engine name is left alone');
 });
 
 test('a .NET skill without the dotnet SDK is a blocker', () => {
@@ -668,7 +652,7 @@ test('CLI: a --selection built from that inventory keeps its {name,scope} plugin
         const sel = path.join(dir, 'final.json');
         const emit = path.join(dir, 'selection.txt');
         const dropped = path.join(dir, 'dropped.json');
-        fs.writeFileSync(sel, JSON.stringify({ rules: [], agents: [], skills: [], mcps: [{ name: 'alfred-navigation' }, 'alfred-documentation'], hooks: [],
+        fs.writeFileSync(sel, JSON.stringify({ rules: [], agents: [], skills: [], mcps: [{ name: 'own-server' }, 'alfred-documentation'], hooks: [],
             plugins: [{ name: 'typescript-lsp', scope: 'project' }, { name: 'csharp-lsp', scope: 'user' }] }));
         fs.writeFileSync(dropped, JSON.stringify({}));
         const out = execFileSync('node', [path.join(__dirname, 'stack-select.js'), '--selection', sel, '--emit', emit, '--dropped', dropped,
@@ -677,7 +661,8 @@ test('CLI: a --selection built from that inventory keeps its {name,scope} plugin
         const txt = fs.readFileSync(emit, 'utf8');
         assert.match(txt, /^plugin typescript-lsp$/m, 'a scoped plugin stays selected');
         assert.match(txt, /^plugin csharp-lsp$/m, 'every scoped plugin stays selected');
-        assert.match(txt, /^mcp alfred-navigation$/m, 'an object mcp entry stays selected');
+        assert.ok(!/^mcp /m.test(txt), 'no server is a catalog name since 2.10.1, an object entry included');
+        assert.match(out, /^unknown: mcp 'own-server'/m, 'an object mcp entry is read by its name');
     }
     finally
     {
@@ -772,7 +757,9 @@ test('every layer table renders its full catalog with a matching total footer, i
                 const footer = out.match(new RegExp(`^total: (\\d+) ${layer}`, 'm'));
                 assert.ok(footer, `${shapeName} ${layer}: total footer present`);
                 const n = Number(footer[1]);
-                assert.ok(n > 0, `${shapeName} ${layer}: catalog is not empty`);
+                // The MCP catalog is empty since 2.10.1 (the stack ships no server): its table renders, with no row.
+                if (layer === 'mcps') assert.strictEqual(n, 0, `${shapeName} mcps: the stack ships no server`);
+                else assert.ok(n > 0, `${shapeName} ${layer}: catalog is not empty`);
                 const rows = out.split('\n').filter(l => /^\s*\d+ \|/.test(l)).length;
                 assert.strictEqual(rows, n, `${shapeName} ${layer}: visible rows match the footer count`);
             }
@@ -809,56 +796,6 @@ test('a table still renders when --found and --dropped name missing files (advis
     }
     finally
     {
-        fs.rmSync(dir, { recursive: true, force: true });
-    }
-});
-
-// The remote context7 registration sends `${CONTEXT7_API_KEY:-}` - an unset key is the keyless
-// free tier, not an error, and `claude mcp list` stops warning for the `:-` form - so the
-// prerequisite check is the one place a missing key still shows.
-test('the documentation server selected without a key warns, never blocks; with the key, clean', () => {
-    const bins = { node: true, npx: true, git: true, claude: true, uvx: true };
-    const sel = { skills: [], mcps: ['alfred-documentation'], plugins: [] };
-    const r = evaluatePrereqs(sel, { bins, envs: {} }, {});
-    assert.ok(r.warnings.some(w => /documentation server API key \(Context7\)/.test(w.need)), 'warns without a key');
-    assert.ok(!r.blockers.some(b => /context7/i.test(b.need)), 'never a blocker - unset is the keyless free tier');
-    const keyed = evaluatePrereqs(sel, { bins, envs: { CONTEXT7_API_KEY: true } }, {});
-    assert.ok(!keyed.warnings.some(w => /context7/i.test(w.need)), 'a set key satisfies it');
-    const none = evaluatePrereqs({ skills: [], mcps: [], plugins: [] }, { bins, envs: {} }, {});
-    assert.ok(!none.warnings.some(w => /context7/i.test(w.need)), 'context7 not selected - no warning');
-});
-
-// A second account keeps its own dir (CLAUDE_CONFIG_DIR), so the check can be told which account file to read.
-// Measured 2026-09-15: macOS installs a browser as an app, never on PATH, so a machine WITH one was
-// told to install it. Edge and Chrome are the browsers a kept playwright engine needs from the machine.
-test('browserCandidates: Edge is probed at its app install locations on every platform', () => {
-    const { browserCandidates } = require('./stack-select.js');
-    const env = { ProgramFiles: 'C:\\PF', 'ProgramFiles(x86)': 'C:\\PF86', LOCALAPPDATA: 'C:\\LA' };
-    assert.ok(browserCandidates('msedge', 'darwin', env).includes('/Applications/Microsoft Edge.app'), 'macOS Edge app');
-    assert.ok(browserCandidates('msedge', 'win32', env).some((c) => /msedge\.exe$/.test(c)), 'Windows Edge exe');
-    assert.deepStrictEqual(browserCandidates('msedge', 'linux', env), [], 'Linux relies on PATH');
-    // Task 18a M2: init-plan reads chrome the same way, since a picked chrome runs the machine's own.
-    assert.ok(browserCandidates('chrome', 'darwin', env).includes('/Applications/Google Chrome.app'), 'macOS Chrome app');
-    assert.ok(browserCandidates('chrome', 'win32', env).some((c) => /Google\\Chrome\\Application\\chrome\.exe$/.test(c)), 'Windows Chrome exe');
-    assert.deepStrictEqual(browserCandidates('firefox', 'darwin', env), [], 'a Playwright-built engine is never probed as a machine app');
-});
-
-test('detectEnvironment reads the account settings.json env from --config-dir (a second account)', () => {
-    const fs = require('node:fs');
-    const os = require('node:os');
-    const { detectEnvironment } = require('./stack-select.js');
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'stacksel-acct-'));
-    const saved = process.env.CONTEXT7_API_KEY;
-    delete process.env.CONTEXT7_API_KEY;
-    try
-    {
-        fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ env: { CONTEXT7_API_KEY: 'ctx7-test' } }));
-        assert.strictEqual(detectEnvironment({ configDir: dir }).envs.CONTEXT7_API_KEY, true, 'read from the given account dir');
-        assert.strictEqual(detectEnvironment({ configDir: path.join(dir, 'no-such-account') }).envs.CONTEXT7_API_KEY, false, 'a missing account file reads as unset');
-    }
-    finally
-    {
-        if (saved !== undefined) process.env.CONTEXT7_API_KEY = saved;
         fs.rmSync(dir, { recursive: true, force: true });
     }
 });
@@ -1085,13 +1022,13 @@ test('typescript-lsp needs typescript-language-server, and init installs it with
 // prerequisite check must not refuse the install over them - it names them as init's instead.
 // Every other caller (configure, validate) keeps them as blockers.
 test('--defer-init moves what init installs out of the blockers, and names it', () => {
-    const selection = { skills: [], mcps: ['navigation'], plugins: ['csharp-lsp'] };
-    const bins = { node: true, git: true, claude: true, uvx: false, 'csharp-ls': false };
-    const plain = evaluatePrereqs(selection, { bins, envs: { CONTEXT7_API_KEY: true } }, {});
-    assert.deepStrictEqual(plain.blockers.map(b => b.need).sort(), ['csharp-ls tool', 'uv (uvx)'], 'without the flag both still block');
-    const deferred = evaluatePrereqs(selection, { bins, envs: { CONTEXT7_API_KEY: true } }, { deferInit: true });
+    const selection = { skills: [], mcps: [], plugins: ['csharp-lsp', 'typescript-lsp'] };
+    const bins = { node: true, git: true, claude: true, 'csharp-ls': false, 'typescript-language-server': false };
+    const plain = evaluatePrereqs(selection, { bins, envs: {} }, {});
+    assert.deepStrictEqual(plain.blockers.map(b => b.need).sort(), ['csharp-ls tool', 'typescript-language-server'], 'without the flag both still block');
+    const deferred = evaluatePrereqs(selection, { bins, envs: {} }, { deferInit: true });
     assert.deepStrictEqual(deferred.blockers, [], 'with it neither blocks');
-    assert.deepStrictEqual(deferred.deferred.map(b => b.need).sort(), ['csharp-ls tool', 'uv (uvx)']);
+    assert.deepStrictEqual(deferred.deferred.map(b => b.need).sort(), ['csharp-ls tool', 'typescript-language-server']);
     assert.strictEqual(deferred.ok, true);
     const hard = evaluatePrereqs(selection, { bins: { ...bins, git: false }, envs: {} }, { deferInit: true });
     assert.deepStrictEqual(hard.blockers.map(b => b.need), ['git'], 'what init does NOT install still blocks');
@@ -1100,97 +1037,18 @@ test('--defer-init moves what init installs out of the blockers, and names it', 
     try
     {
         const sel = path.join(dir, 'raw.json');
-        fs.writeFileSync(sel, JSON.stringify({ skills: [], rules: [], agents: [], mcps: ['navigation'], plugins: [], hooks: [] }));
-        // An empty PATH: every binary reads as absent, so uvx is deferred and node/git/claude block.
+        fs.writeFileSync(sel, JSON.stringify({ skills: [], rules: [], agents: [], mcps: [], plugins: ['csharp-lsp'], hooks: [] }));
+        // An empty PATH: every binary reads as absent, so csharp-ls is deferred and node/git/claude block.
         const r = require('node:child_process').spawnSync(process.execPath, [path.join(__dirname, 'stack-select.js'), '--selection', sel, '--check', '--defer-init'],
             { encoding: 'utf8', env: { PATH: dir, HOME: dir } });
-        assert.match(r.stdout, /^init: uv \(uvx\) -> \/alfred-code:init installs it in the next session$/m);
-        assert.ok(!/BLOCKER: uv/.test(r.stdout), 'uv is not a blocker here');
+        assert.match(r.stdout, /^init: csharp-ls tool -> \/alfred-code:init installs it in the next session$/m);
+        assert.ok(!/BLOCKER: csharp-ls/.test(r.stdout), 'csharp-ls is not a blocker here');
         assert.match(r.stdout, /^prereqs: BLOCKED - \d+ blocker\(s\), \d+ warning\(s\), 1 left to \/alfred-code:init$/m);
     }
     finally
     {
         fs.rmSync(dir, { recursive: true, force: true });
     }
-});
-
-// The 2.0.0 rename: the walks pass --browsers; a command body from before it passes --playwright-browsers,
-// read as the same option for one release - the new spelling wins where both are given.
-test('the --browsers option, with --playwright-browsers read as its alias', () => {
-    const { browsersOption } = require('./stack-select.js');
-    const from = (flags) => browsersOption((name) => flags[name]);
-    assert.deepStrictEqual(from({ '--browsers': 'Chrome, msedge' }), ['chrome', 'msedge']);
-    assert.deepStrictEqual(from({ '--playwright-browsers': 'webkit' }), ['webkit']);
-    assert.deepStrictEqual(from({ '--browsers': 'firefox', '--playwright-browsers': 'webkit' }), ['firefox'], 'the new spelling wins');
-    assert.deepStrictEqual(from({}), []);
-});
-
-// THE DESKTOP SERVERS BY OS. windows-control drives Windows apps and macos-control macOS ones, so the walk
-// offers each on its own OS only and neither on Linux; the wpf and winforms stacks seed windows-control,
-// which on another OS is named once on stderr instead of pre-selected. --platform forces the OS.
-test('the MCP table offers each desktop server on its own OS only, seeded for wpf / winforms on Windows', () => {
-    const fs = require('node:fs');
-    const os = require('node:os');
-    const { spawnSync } = require('node:child_process');
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-desktop-'));
-    const rawFile = path.join(dir, 'raw.json');
-    fs.writeFileSync(rawFile, '{}');
-    const recs = path.join(__dirname, '..', 'meta', 'recommendations.json');
-    const table = (platform, stacks) => spawnSync('node', [path.join(__dirname, 'stack-select.js'), '--selection', rawFile, '--table', 'mcps', '--recs', recs, '--stacks', stacks, '--platform', platform], { encoding: 'utf8' });
-    const row = (out, name) => (out.split('\n').find((l) => new RegExp(`\\| ${name}\\s+\\|`).test(l)) || '').replace(/\s+/g, ' ');
-    try
-    {
-        for (const stack of ['wpf', 'winforms'])
-        {
-            const win = table('win32', stack);
-            assert.match(row(win.stdout, 'windows-control'), new RegExp(`\\| stack:${stack} \\|`), `${stack} seeds windows-control on Windows`);
-            assert.strictEqual(row(win.stdout, 'macos-control'), '', 'macos-control is never offered on Windows');
-            assert.ok(!/skipped/.test(win.stderr), win.stderr);
-            const mac = table('darwin', stack);
-            assert.strictEqual(row(mac.stdout, 'windows-control'), '', 'windows-control is never offered on macOS');
-            assert.match(row(mac.stdout, 'macos-control'), /\| - \|/, 'macos-control is addable on macOS, pre-selected by nothing');
-            assert.match(mac.stderr, new RegExp(`skipped: mcp windows-control - stack:${stack} seeds it on Windows; this machine runs macOS`));
-            const footer = Number((mac.stdout.match(/^total: (\d+) mcps/m) || [])[1]);
-            assert.strictEqual(mac.stdout.split('\n').filter((l) => /^\s*\d+ \|/.test(l)).length, footer, 'the footer counts the rows offered here');
-        }
-        const linux = table('linux', 'wpf');
-        assert.strictEqual(row(linux.stdout, 'windows-control') + row(linux.stdout, 'macos-control'), '', 'no desktop server is offered on Linux');
-        assert.match(linux.stderr, /skipped: mcp windows-control - stack:wpf seeds it on Windows; this machine runs Linux/);
-        const web = table('win32', 'web-angular');
-        assert.match(row(web.stdout, 'windows-control'), /\| - \|/, 'only wpf and winforms seed it');
-    }
-    finally { fs.rmSync(dir, { recursive: true, force: true }); }
-});
-
-test('the desktop gate reaches --missing and a selection: a wrong-OS server is never missing, never emitted', () => {
-    const fs = require('node:fs');
-    const os = require('node:os');
-    const { spawnSync } = require('node:child_process');
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-desktop-sel-'));
-    const recs = path.join(__dirname, '..', 'meta', 'recommendations.json');
-    const script = path.join(__dirname, 'stack-select.js');
-    try
-    {
-        const missing = (platform) => spawnSync('node', [script, '--missing', '--recs', recs, '--stacks', 'wpf', '--platform', platform], { encoding: 'utf8' }).stdout;
-        assert.match(missing('win32'), /^missing: mcp windows-control - needed by wpf, not installed$/m);
-        assert.ok(!/windows-control/.test(missing('darwin')), missing('darwin'));
-        assert.ok(!/windows-control/.test(missing('linux')), missing('linux'));
-
-        const rawFile = path.join(dir, 'raw.json');
-        fs.writeFileSync(rawFile, JSON.stringify({ skills: [], mcps: ['windows-control', 'macos-control'] }));
-        const emit = (platform) =>
-        {
-            const out = path.join(dir, `${platform}.sel`);
-            const r = spawnSync('node', [script, '--selection', rawFile, '--emit', out, '--platform', platform], { encoding: 'utf8' });
-            return { lines: fs.readFileSync(out, 'utf8').split('\n').filter((l) => l.startsWith('mcp ')), out: r.stdout };
-        };
-        const mac = emit('darwin');
-        assert.deepStrictEqual(mac.lines, ['mcp macos-control']);
-        assert.match(mac.out, /^skipped: mcp windows-control - it drives Windows apps; this machine runs macOS$/m);
-        assert.deepStrictEqual(emit('win32').lines, ['mcp windows-control']);
-        assert.deepStrictEqual(emit('linux').lines, []);
-    }
-    finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 // A SERVER CAN BRING THE SKILL THAT TEACHES IT (meta/stack-manifest.json mcps[].skills, read into the
@@ -1215,14 +1073,6 @@ test('a server pulls the skill it brings; dropping the server orphans it, and th
     assert.deepStrictEqual(orphans.map((o) => `${o.category} ${o.name}`), ['skill desktop-automation']);
 });
 
-test('the generated graph: each desktop server brings desktop-automation, and the skill\'s own server mentions pull nothing', () => {
-    for (const name of ['windows-control', 'macos-control'])
-        assert.deepStrictEqual((graph.mcps || {})[name], { skills: ['desktop-automation'] }, name);
-    const c = computeClosure(graph, { skills: ['desktop-automation'] });
-    assert.deepStrictEqual(c.mcps, [], 'naming both servers in the skill must never install both');
-    assert.ok(computeClosure(graph, { rules: ['wpf-conventions'], mcps: ['windows-control'] }).skills.includes('desktop-automation'));
-});
-
 // Re-verify 4 T4: the installer loads this module for its closure, and it replaced the process-wide fs.readFileSync with
 // one that turned every utf8 read's CRLF into LF - so the installer's snapshot of a CRLF .mcp.json lost its line ends. The
 // module reads only JSON, which parses either way; loading it changes nothing another module reads.
@@ -1232,76 +1082,6 @@ test('loading stack-select.js leaves the process-wide fs.readFileSync as it was'
     const code = `const fs = require('fs'); const read = fs.readFileSync; require(${JSON.stringify(path.join(__dirname, 'stack-select.js'))}); process.exit(fs.readFileSync === read ? 0 : 3);`;
     const r = spawnSync(process.execPath, ['-e', code], { encoding: 'utf8' });
     assert.strictEqual(r.status, 0, `fs.readFileSync was replaced (exit ${r.status}) ${r.stderr}`);
-});
-
-// Matrix F-BOM follow-up (2.1.6, V1): the account settings' env read goes through the shared BOM-stripping reader.
-test('detectEnvironment: a BOM\'d account settings.json still answers for a variable in its env; a BOM plus garbage or a missing file answers none (V1)', () => {
-    const fs = require('node:fs');
-    const os = require('node:os');
-    const { detectEnvironment } = require('./stack-select.js');
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'stack-select-bom-'));
-    const saved = process.env.CONTEXT7_API_KEY;
-    delete process.env.CONTEXT7_API_KEY;
-    try {
-        const at = (text) => { const d = fs.mkdtempSync(path.join(dir, 'a-')); if (text !== null) fs.writeFileSync(path.join(d, 'settings.json'), text); return d; };
-        assert.strictEqual(detectEnvironment({ configDir: at('\uFEFF{"env": {"CONTEXT7_API_KEY": "placeholder"}}') }).envs.CONTEXT7_API_KEY, true);
-        assert.strictEqual(detectEnvironment({ configDir: at('{"env": {"CONTEXT7_API_KEY": "placeholder"}}') }).envs.CONTEXT7_API_KEY, true, 'no BOM, as before');
-        assert.strictEqual(detectEnvironment({ configDir: at('\uFEFF{"env": {"CONTEXT7_API_KEY": ') }).envs.CONTEXT7_API_KEY, false);
-        assert.strictEqual(detectEnvironment({ configDir: at('') }).envs.CONTEXT7_API_KEY, false);
-        assert.strictEqual(detectEnvironment({ configDir: at(null) }).envs.CONTEXT7_API_KEY, false);
-    } finally {
-        if (saved !== undefined) process.env.CONTEXT7_API_KEY = saved;
-        fs.rmSync(dir, { recursive: true, force: true });
-    }
-});
-
-// The user's ruling of 2026-10-15: the MCP table showed one `browser` row, hiding which browsers exist. Each engine is
-// its own row - FRESH, what `browser` earned lands on chrome unless the selection picks engines; installed, each row
-// reads plan-out's `browser` block - and the emit says the picked engines as one `browsers:` line for `--browsers`.
-test('the MCP table lists each browser engine as its own row, and the emit names the picked ones', () => {
-    const fs = require('node:fs');
-    const os = require('node:os');
-    const { spawnSync } = require('node:child_process');
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-engines-'));
-    const recs = path.join(__dirname, '..', 'meta', 'recommendations.json');
-    const file = (name, json) => { const p = path.join(dir, name); fs.writeFileSync(p, JSON.stringify(json)); return p; };
-    const run = (...args) => spawnSync(process.execPath, [path.join(__dirname, 'stack-select.js'), ...args, '--platform', 'darwin'], { encoding: 'utf8' });
-    const row = (out, name) => (out.split('\n').find((l) => new RegExp(`\\| ${name}\\s+\\|`).test(l)) || '').replace(/\s+/g, ' ');
-    const ENGINES = ['chrome-control', 'firefox-control', 'msedge-control', 'webkit-control'];
-    try
-    {
-        const none = file('none.json', { mcps: [] });
-        const seeded = run('--selection', none, '--table', 'mcps', '--recs', recs, '--stacks', 'web-angular').stdout;
-        assert.strictEqual(row(seeded, 'browser'), '', 'no single browser row is left');
-        for (const e of ENGINES) assert.notStrictEqual(row(seeded, e), '', `${e} has a row`);
-        assert.match(row(seeded, 'chrome-control'), /\| stack:web-angular \|/, 'a seed lands on chrome');
-        for (const e of ENGINES.slice(1)) assert.match(row(seeded, e), /\| - \|/, `${e} is not pre-selected`);
-        assert.match(row(seeded, 'webkit-control'), /downloads Playwright's WebKit build/);
-        const footer = Number((seeded.match(/^total: (\d+) mcps/m) || [])[1]);
-        assert.strictEqual(seeded.split('\n').filter((l) => /^\s*\d+ \|/.test(l)).length, footer, 'the footer counts the engine rows');
-
-        const picked = file('picked.json', { mcps: ['firefox-control', 'chrome-control'] });
-        const fresh = run('--selection', picked, '--table', 'mcps', '--recs', recs, '--stacks', 'aspnet').stdout;
-        assert.match(row(fresh, 'chrome-control'), /\| added \|/);
-        assert.match(row(fresh, 'firefox-control'), /\| added \|/);
-        assert.match(row(fresh, 'msedge-control'), /\| - \|/);
-
-        const sel = path.join(dir, 'sel.txt');
-        const emitted = run('--selection', picked, '--emit', sel);
-        assert.match(emitted.stdout, /^browsers: chrome,firefox$/m, 'the picked engines, in the installer\'s order');
-        assert.match(fs.readFileSync(sel, 'utf8'), /^mcp browser$/m, 'the selection keeps the one catalog entry');
-        assert.ok(!/control/.test(fs.readFileSync(sel, 'utf8')), 'no engine name reaches a selection line');
-        assert.doesNotMatch(run('--selection', none, '--emit', sel).stdout, /^browsers:/m, 'no browser, no line');
-
-        const inv = file('inv.json', { mcps: ['browser'], browser: { installed: ['chrome', 'webkit'], enabled: ['chrome'] } });
-        const live = run('--selection', file('raw.json', { mcps: ['browser'] }), '--table', 'mcps', '--installed', inv).stdout;
-        assert.match(row(live, 'chrome-control'), /\| yes \|/);
-        assert.match(row(live, 'webkit-control'), /\| yes \(off\) \|/, 'installed and switched off');
-        assert.match(row(live, 'firefox-control'), /\| - \|/);
-        const blind = run('--selection', file('raw2.json', {}), '--table', 'mcps', '--installed', file('inv2.json', { mcps: ['browser'] })).stdout;
-        assert.match(row(blind, 'chrome-control'), /\| \? \| the read-back names no engine/, 'no engine record is said, never guessed');
-    }
-    finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 // --forge-cli: the CLI the origin's forge needs, named by the prerequisite check when the installer cannot install it.

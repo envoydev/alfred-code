@@ -20,7 +20,7 @@
 //     configure and stays removed.
 //   - THE ALWAYS-ON BASELINE IS ADOPTED THE SAME WAY, with NO drop exception: the always set is
 //     locked, so an always item absent from disk is adopted whatever the stamp says. A stamp naming
-//     the shipped list once read as a drop of everything, and the memory rule never arrived. From
+//     the shipped list once read as a drop of everything, and an always rule never arrived. From
 //     2.1.0 the always SKILLS are copies too, adopted the same way; an always SEAT rides the core and
 //     is adopted unless the user denied it.
 const fs = require('node:fs');
@@ -29,7 +29,6 @@ const { readInstalled, stampCarried, splitPick, homeOf, stackSeat } = require('.
 const { hookDisabled, envOf } = require('../../stack/hooks/hook-prelude.js');
 const { BRAND, rowOn } = require('./brand.js');
 const { USER_OFF_WINS, corePluginOn, rowsOn } = require('./plugins.js');
-const { currentMcp } = require('./mcp.js');
 const { stackNames } = require('./manifest.js');
 
 // The rules a capture GENERATES into a project, by name - a list, never a prefix: the 2026-10-13 rename (the user's
@@ -52,7 +51,7 @@ const AWARENESS_SUCCEEDS = { 'alfred-agent-awareness': AWARENESS_RULE, 'alfred-p
 // docs.js migratePreferences moves), but a copy the update kept as the project's own stays out of the read-back's picks.
 const GENERATED_FILES = new Set([...Object.values(GENERATED_RULES), AWARENESS_RULE, 'project-code-style', ...LEGACY_GENERATED.filter(([old]) => old.startsWith('alfred-project-')).map(([old]) => old)]);
 // The awareness docs an update re-spells beside the generated rules: the capture writes them, so they name the stack's
-// own skills, servers and docs root too. `agentsOnly`: the inventory alone, which names the seats and the MCP rows.
+// own skills and docs root too. `agentsOnly`: the inventory alone, which names the seats.
 function awarenessDocs(projectRoot, docsPath, { agentsOnly = false } = {})
 {
     if (!docsPath) return [];
@@ -62,12 +61,9 @@ function awarenessDocs(projectRoot, docsPath, { agentsOnly = false } = {})
 }
 // A generated, project-owned file is not a stack item: the captures rewrite those.
 const RULE_EXCLUDE = { test: (name) => GENERATED_FILES.has(name) };
-// docs.js / memory.js / history.js / fresh-session.js / shell-writes.js / hidden-chars.js / forge.js are ENGINES, hook-prelude.js the shared gate
+// docs.js / memory.js (retired) / handoff.js / layout.js / history.js / fresh-session.js / shell-writes.js / hidden-chars.js / forge.js are ENGINES, hook-prelude.js the shared gate
 // module and shell-guards.js / file-guards.js the dispatchers that run the picked shell and file guards - none is a hook item.
-const HOOK_EXCLUDE = /^(inject-code-style|docs|memory|history|hook-prelude|fresh-session|shell-writes|hidden-chars|forge|shell-guards|file-guards)$/;
-const { ENGINE_SERVER: PW_ENGINE, engineServer } = require('../../stack/mcp/data-root.js');
-const { ENGINES: PW_ORDER } = require('../../stack/mcp/data-root.js');
-const engineOf = (name) => (PW_ENGINE.exec(String(name)) || [])[1];
+const HOOK_EXCLUDE = /^(inject-code-style|docs|memory|handoff|layout|history|hook-prelude|fresh-session|shell-writes|hidden-chars|forge|shell-guards|file-guards)$/;
 
 const nameOfSkill = (entry) => String(entry).split('|').pop();
 const nameOfMcp = (entry) => String(entry).split('|')[0];
@@ -133,14 +129,14 @@ const listDir = (dir, test) =>
 };
 
 // What the TARGET carries, read off disk. Generated project-owned files and the engine modules are
-// excluded; a browser engine server collapses back to the one manifest entry it expands from.
+// excluded. No MCP server is read: the stack ships none (2.10.1), so every registration is the user's.
 // `shippedHooks` (R56): the stack's hook names - `.claude/hooks/` is the user's folder too, and a file
 // of their own there is no hook item; null (no catalog to go by) reads every non-engine file.
 // `known` (manifest.js stackNames): the same for skills, seats and rules - only a name the stack ever
 // shipped (the catalog, a renamed item's old name, a retired one) is an item, so a project's own skill is
 // neither a pick nor install evidence; null reads every folder.
 // `foreignSkill(name)` (M3): a folder under a catalog skill name that is the project's own, never a pick.
-function deriveFromDisk({ claudeDir, skillsDir = path.join(claudeDir, 'skills'), mcpServers = [], plugins = [], knownPlugins = [], shippedHooks = null, known = null, foreignSkill = () => false })
+function deriveFromDisk({ claudeDir, skillsDir = path.join(claudeDir, 'skills'), plugins = [], knownPlugins = [], shippedHooks = null, known = null, foreignSkill = () => false })
 {
     const lines = [];
     const ours = (kind, name) => !known || known[kind].has(name);
@@ -158,12 +154,6 @@ function deriveFromDisk({ claudeDir, skillsDir = path.join(claudeDir, 'skills'),
         const name = f.replace(/\.js$/, '');
         if (!HOOK_EXCLUDE.test(name) && (!shippedHooks || shippedHooks.includes(name))) lines.push(`hook ${name}`);
     }
-    const seenMcp = new Set();
-    for (const server of mcpServers)
-    {
-        const name = String(server).replace(PW_ENGINE, 'browser');
-        if (!seenMcp.has(name)) { seenMcp.add(name); lines.push(`mcp ${name}`); }
-    }
     // Plugins are machine-level, so they come from the CLI listing rather than a project directory -
     // without this the fast path filtered PLUGINS to empty and `update` ran on nothing.
     const listedKnown = new Set(knownPlugins.map(nameOfPlugin));
@@ -179,8 +169,7 @@ function deriveFromDisk({ claudeDir, skillsDir = path.join(claudeDir, 'skills'),
     return lines;
 }
 
-// The FILE layers only. Plugins are machine-level and servers come from a shared file; neither is
-// evidence that THIS target has an install.
+// The FILE layers only. Plugins are machine-level, so they are no evidence that THIS target has an install.
 const hasInstall = (lines) => lines.some((l) => /^(skill|agent|rule|hook) /.test(l));
 
 // Hooks: adopt every shipped one, except a name the PREVIOUS stamp shipped and disk no longer has.
@@ -203,8 +192,8 @@ function adoptHooks({ lines, catalog = [], shippedBefore = [], log = () => {} })
     return out;
 }
 
-// The always-on baseline, with NO drop exception - the set is locked, like serena. A layer this
-// install does not carry AT ALL (no rule line, or no mcp line) stays absent. The always skills are
+// The always-on baseline, with NO drop exception - the set is locked. An install that carries no rule
+// line AT ALL stays without one. The always skills are
 // adopted into any install that carries skills or rules (2.1.0: no plugin carries them, so a copy is
 // the only way an install has them). An always SEAT rides the core and its off-switch is the deny,
 // so it is adopted only while the core loads it (`coreOn`) and only when `deny` does not name it -
@@ -219,11 +208,7 @@ function adoptAlways({ lines, always = {}, log = () => {}, deny = [], coreOn = f
         out.push(`${category} ${name}`);
         log(`installed-only: adopting ${category} ${name} - always shipped by this release and absent here`);
     };
-    for (const [category, key] of [['rule', 'rules'], ['mcp', 'mcps']])
-    {
-        if (!out.some((l) => l.startsWith(`${category} `))) continue;
-        for (const name of always[key] || []) adopt(category, name);
-    }
+    if (out.some((l) => l.startsWith('rule '))) for (const name of always.rules || []) adopt('rule', name);
     if (out.some((l) => /^(skill|rule) /.test(l))) for (const name of always.skills || []) adopt('skill', name);
     if (coreOn) for (const name of always.agents || []) if (!denied.has(name)) adopt('agent', name);
     return out;
@@ -233,13 +218,13 @@ function adoptAlways({ lines, always = {}, log = () => {}, deny = [], coreOn = f
 // then the state each PLUGIN route writes - on those routes `.claude/` holds only the extras, and a
 // disk-only read derived every seat and hook as dropped. The plugin state is read from the ENABLED
 // entries of this stack's marketplace only: a parked entry stays parked, and another marketplace's
-// `serena` or `sentry` is not ours. `answered` names the surfaces the read found EVIDENCE of; the
+// `sentry` is not ours. `answered` names the surfaces the read found EVIDENCE of; the
 // caller writes nothing back for the others, so a listing that could not be read (no CLI, a failed
 // call) switches nothing off instead of switching everything off for good.
 // `seatsRoute`: the stamp's `seats-route:` (null on a stamp from before 2.1.0) - what the enabled core
 // carried when the last install ran (derive-state readInstalled's `core`). `ledgerSeats`: the seats
 // whose deny the last run's ledger records as the stack's own (`managed-deny`).
-function readBack({ claudeDir, skillsDir, foreignSkill = () => false, mcpServers = [], listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], lastHooksRoute = null, stampPicked, stampEngines, always = {}, marketplace = BRAND.marketplace, said = new Set(), sharedOnlyDeny = [], committedEnv = null, scope, isOn = () => undefined, seatsRoute = null, ledgerSeats = [], log = () => {} })
+function readBack({ claudeDir, skillsDir, foreignSkill = () => false, listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], lastHooksRoute = null, stampPicked, always = {}, marketplace = BRAND.marketplace, said = new Set(), sharedOnlyDeny = [], committedEnv = null, scope, isOn = () => undefined, seatsRoute = null, ledgerSeats = [], log = () => {} })
 {
     const shipped = [...new Set(manifest.catalogs.hooks.map(nameOfFile))];
     // A copy an older release wrote under a name this one renamed is the renamed item (`renamed` below).
@@ -253,11 +238,8 @@ function readBack({ claudeDir, skillsDir, foreignSkill = () => false, mcpServers
         ? { ...e, ALFRED_CODE_HOOKS_OFF: String(envOf(e, 'HOOKS_OFF')).split(',').map((h) => (h.trim() ? hookNow(h) : h)).join(',') } : e);
     stampHooks = [...new Set((stampHooks || []).map(hookNow))];
     committedEnv = offNow(committedEnv);
-    // An MCP name from before the 2.0.0 rename - a listing row, a .mcp.json server - is read under its
-    // new one: the same server the user picked (manifest `renamed.mcps`).
-    const cur = (name) => currentMcp(name, (manifest.renamed && manifest.renamed.mcps) || {});
-    let lines = renameLines(deriveFromDisk({ claudeDir, skillsDir, mcpServers: mcpServers.map(cur), plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins, shippedHooks: shipped.concat(Object.keys(hookRenames)), known: stackNames(manifest), foreignSkill }), renaming);
-    const none = { lines, closeFrom: [], parked: [], deny: [], installed: false, answered: { hooks: false, agents: false }, engines: [] };
+    let lines = renameLines(deriveFromDisk({ claudeDir, skillsDir, plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins, shippedHooks: shipped.concat(Object.keys(hookRenames)), known: stackNames(manifest), foreignSkill }), renaming);
+    const none = { lines, closeFrom: [], parked: [], deny: [], installed: false, answered: { hooks: false, agents: false } };
     const ours = (stackListing || listing).filter((r) => r.marketplace === marketplace);
     // On the plugin routes an install whose every pick an entry carries, with no rule copied, leaves
     // nothing on disk - its own enabled entries are the evidence then. Only this PROJECT's: an account
@@ -269,24 +251,11 @@ function readBack({ claudeDir, skillsDir, foreignSkill = () => false, mcpServers
     // What the user PICKED - the disk and the stamp - is what the closure runs over; an item an
     // enabled entry merely carries is not a pick.
     const closeFrom = [...lines];
-    // With the stamp's record of the installed engines, an engine it does not name is not kept: a drop
-    // whose uninstall failed, was refused, or sits at another scope is still listed, and read back here
-    // it was written into the stamp again. It is left as it is and named with its command.
-    const recordedEngines = routes.mcps && Array.isArray(stampEngines) ? stampEngines : null;
-    const unrecorded = (r) => recordedEngines !== null && engineOf(cur(r.name)) && !recordedEngines.includes(engineOf(cur(r.name)));
-    for (const r of ours.filter((x) => rowOn(x) && unrecorded(x)))
-        log(`installed-only: ${r.name}@${r.marketplace} is installed but not among the browsers the last install kept - left as it is, not kept; remove it: claude plugin uninstall ${r.name}@${r.marketplace} --scope ${r.scope || 'project'}, or pick it again in /alfred-code:configure`);
-    const names = ours.filter((r) => rowOn(r) && !unrecorded(r)).map((r) => cur(r.name));
+    const names = ours.filter(rowOn).map((r) => r.name);
     const stored = renameDeny(settings && typeof settings === 'object' ? settings : {}, { ...renaming, sharedOnly: sharedOnlyDeny });
     const env = offNow(stored.env && typeof stored.env === 'object' ? stored.env : {});
     const deny = stored.permissions && Array.isArray(stored.permissions.deny) ? stored.permissions.deny : [];
-    // The browser engines the last install INSTALLED (the stamp's `control-engines:`): a
-    // disabled row of one is the user's choice to leave it off (R67), still installed and kept, never
-    // a parked entry - and the listing's flag is no evidence either way (S22). On every route (R116):
-    // a switch onto the copy route has no registration yet, and read from .mcp.json alone it dropped
-    // the engines and wrote the stamp's two lines blank.
-    const pickedEngines = Array.isArray(stampEngines) ? stampEngines : [];
-    const parked = ours.filter((r) => !rowOn(r) && !pickedEngines.includes(engineOf(cur(r.name)))).map((r) => cur(r.name));
+    const parked = ours.filter((r) => !rowOn(r)).map((r) => r.name);
     // A switch onto the FULL copy route disables the core (plugins.copyRouteStandDown), and that route
     // reads skills and seats from the disk - where a plugin-route install holds no seat (2.1.0) or, before
     // 2.1.0, none of the core's items, so they were never copied and loaded nowhere after the switch.
@@ -418,13 +387,6 @@ function readBack({ claudeDir, skillsDir, foreignSkill = () => false, mcpServers
     // listing that could not be read) denies the rest in the same run. A 2.1 plugin-route install read
     // blind answers nothing - its seats are on no disk.
     const answered = { hooks: lines.some((l) => l.startsWith('hook ')), agents: names.includes(BRAND.core) || (corePluginOn(routes) && seatsRoute !== 'plugin') };
-    const listedEngines = routes.mcps ? names.map(engineOf).filter(Boolean) : [];
-    const engines = PW_ORDER.filter((e) => listedEngines.includes(e) || pickedEngines.includes(e));
-    if (pickedEngines.length && !lines.includes('mcp browser'))
-    {
-        lines.push('mcp browser');
-        log(`installed-only: keeping mcp browser - the last install installed ${pickedEngines.join(',')} (on or off, still installed)`);
-    }
     // Adoption is for hooks read off DISK. Read from the core that carries them, ALFRED_CODE_HOOKS_OFF
     // is the whole answer already - a hook it does not name is on, a new release's included - and
     // adopting against an older stamp would switch back on the very hooks the user named there.
@@ -436,7 +398,7 @@ function readBack({ claudeDir, skillsDir, foreignSkill = () => false, mcpServers
         if ((/^(rule|mcp|plugin|hook) /.test(line) || (/^(skill|agent) /.test(line) && !before.has(line))) && !closeFrom.includes(line)) closeFrom.push(line);
     // No stack row at all: the listing could not be read (or nothing of ours is installed), so this
     // run cannot tell a pick the user dropped from one it merely cannot see.
-    return { lines, closeFrom, parked, deny, installed: true, answered, engines, blind: !ours.length };
+    return { lines, closeFrom, parked, deny, installed: true, answered, blind: !ours.length };
 }
 
 // R109: plugins the stack once offered and no longer does, each with the release that dropped it. NOT a
@@ -529,28 +491,6 @@ function renameDeny(settings, opts = {})
 // one (`alfred-related-context.md`) stays. Only the stack's own files are rewritten - the generated rules and
 // a seed the ledger still holds; the user's own AGENTS.md / CLAUDE.md is named, never touched. The per-file line
 // says how many, and a second run finds nothing.
-// The 2.0.0 MCP rename in the same files: a tool spelling (the plugin form, or the bare one a copy-route
-// registration answers) and a backticked server name, each as written by the capture that saw it.
-// M46: the browser before one server per engine was ONE registration under the renamed name itself (1.x
-// `playwright`), so its bare spelling follows to the first engine this project keeps - chrome when it keeps none,
-// the default engine.
-function mcpRespellPairs(renamedMcps = {}, engines = [])
-{
-    const { renamedFrom, currentMcp, PW_ENGINES } = require('./mcp.js');
-    const out = {};
-    for (const old of renamedFrom(renamedMcps))
-    {
-        const now = currentMcp(old, renamedMcps);
-        out[`mcp__plugin_${old}_${old}__`] = `mcp__plugin_${now}_${now}__`;
-        out[`mcp__${old}__`] = `mcp__${now}__`;
-        out[`\`${old}\``] = `\`${now}\``;
-    }
-    const first = engines.find((e) => PW_ENGINES.includes(e)) || 'chrome';
-    for (const [from, to] of Object.entries(renamedMcps || {}))
-        if (to === 'browser') out[`mcp__${from}__`] = `mcp__${engineServer(first)}__`;
-    return out;
-}
-
 // The instruction files a project may hold - a seed of the stack's only while its ledger row still matches, else the
 // project's own.
 const instructionFiles = (projectRoot) => ['AGENTS.md', '.claude/AGENTS.md', 'CLAUDE.md', '.claude/CLAUDE.md'].map((r) => path.join(projectRoot, ...r.split('/')));
@@ -626,9 +566,10 @@ function respellDocsRoot({ projectRoot, from, to, log = () => {}, note = () => {
 // `owned(rel)` says an instruction file is the stack's own seed (the ledger still holds it at its hash); every
 // other AGENTS.md / CLAUDE.md is the project's, so an old name in it is only named, never rewritten. `onWrite(rel)`
 // hears each owned instruction file this run rewrote, so the ledger keeps it.
-// The old -> new pairs and the patterns both re-spellings read: `re` / `mcpRe` for a file the stack wrote, and the
-// narrower `nameRe` / `toolRe` for the project's own instruction file. Null when no rename applies.
-function respellPatterns(renamed, engines = [])
+// The old -> new pairs and the patterns both re-spellings read: `re` for a file the stack wrote, and the narrower
+// `nameRe` for the project's own instruction file. Null when no rename applies. A retired MCP server's old names are
+// no pair: no successor ships (2.10.1), and an old tool name in a file may be a server the user added back.
+function respellPatterns(renamed)
 {
     // A rule is named in a seeded AGENTS.md by its path (`.claude/rules/baseline-git.md`), so its pairs are the
     // file names without the extension; the four generated pointers moved by moveGeneratedRules follow the same way.
@@ -638,16 +579,11 @@ function respellPatterns(renamed, engines = [])
     const pairs = { ...((renamed && renamed.skills) || {}), ...((renamed && renamed.agents) || {}), ...rules, ...generated };
     const olds = Object.keys(pairs).sort((a, b) => b.length - a.length);
     const escape = (o) => o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const mcpPairs = mcpRespellPairs((renamed && renamed.mcps) || {}, engines);
-    const mcpOlds = Object.keys(mcpPairs).sort((a, b) => b.length - a.length);
-    if (!olds.length && !mcpOlds.length) return null;
-    const re = olds.length ? new RegExp(`(?<![A-Za-z0-9_-])(${olds.map(escape).join('|')})(?![A-Za-z0-9_-])`, 'g') : null;
-    const mcpRe = mcpOlds.length ? new RegExp(mcpOlds.map(escape).join('|'), 'g') : null;
+    if (!olds.length) return null;
+    const re = new RegExp(`(?<![A-Za-z0-9_-])(${olds.map(escape).join('|')})(?![A-Za-z0-9_-])`, 'g');
     // The project's own file: a name inside a path (`scripts/<name>.sh`) or a backticked word is no hit.
-    const nameRe = olds.length ? new RegExp(`(?<![A-Za-z0-9_.-])(?<![A-Za-z0-9_.-]/)(${olds.map(escape).join('|')})(?![A-Za-z0-9_-]|\\.[A-Za-z0-9])`, 'g') : null;
-    const toolOlds = mcpOlds.filter((o) => o.startsWith('mcp__'));
-    const toolRe = toolOlds.length ? new RegExp(toolOlds.map(escape).join('|'), 'g') : null;
-    return { pairs, mcpPairs, re, mcpRe, nameRe, toolRe };
+    const nameRe = new RegExp(`(?<![A-Za-z0-9_.-])(?<![A-Za-z0-9_.-]/)(${olds.map(escape).join('|')})(?![A-Za-z0-9_-]|\\.[A-Za-z0-9])`, 'g');
+    return { pairs, re, nameRe };
 }
 
 // audit 2026-10-11, session b3f8193f: the installer only NAMES an old stack name in the project's own instruction file
@@ -655,11 +591,11 @@ function respellPatterns(renamed, engines = [])
 // plan: every line the narrow patterns hit, before and after, so the ask quotes it as its diff and `apply` writes
 // exactly those lines - the same hits the `!!` line counted, nothing else. A line ending (`\r`) and every other
 // line are kept byte for byte.
-function respellOwnPlan({ projectRoot, renamed, engines = [], files = null })
+function respellOwnPlan({ projectRoot, renamed, files = null })
 {
-    const p = respellPatterns(renamed, engines);
+    const p = respellPatterns(renamed);
     const plan = [];
-    if (!p || (!p.nameRe && !p.toolRe)) return plan;
+    if (!p) return plan;
     for (const file of files || instructionFiles(projectRoot))
     {
         let text;
@@ -669,8 +605,7 @@ function respellOwnPlan({ projectRoot, renamed, engines = [], files = null })
         lines.forEach((before, i) =>
         {
             const names = [];
-            let after = p.nameRe ? before.replace(p.nameRe, (old) => { names.push([old, p.pairs[old]]); return p.pairs[old]; }) : before;
-            if (p.toolRe) after = after.replace(p.toolRe, (old) => { names.push([old, p.mcpPairs[old]]); return p.mcpPairs[old]; });
+            const after = before.replace(p.nameRe, (old) => { names.push([old, p.pairs[old]]); return p.pairs[old]; });
             if (after !== before) plan.push({ file: rel, line: i + 1, before, after, names });
         });
     }
@@ -695,11 +630,11 @@ function respellOwnApply({ projectRoot, plan })
     return done;
 }
 
-function respellRenamed({ projectRoot, renamed, engines = [], docsPath = '', owned = () => false, onWrite = () => {}, log = () => {}, note = () => {} })
+function respellRenamed({ projectRoot, renamed, docsPath = '', owned = () => false, onWrite = () => {}, log = () => {}, note = () => {} })
 {
-    const patterns = respellPatterns(renamed, engines);
+    const patterns = respellPatterns(renamed);
     if (!patterns) return 0;
-    const { pairs, mcpPairs, re, mcpRe, nameRe, toolRe } = patterns;
+    const { pairs, re, nameRe } = patterns;
     const rel = (file) => path.relative(projectRoot, file).split(path.sep).join('/');
     const instructions = instructionFiles(projectRoot);
     let total = 0;
@@ -710,21 +645,18 @@ function respellRenamed({ projectRoot, renamed, engines = [], docsPath = '', own
         const name = rel(file);
         if (instructions.includes(file) && !owned(name))
         {
-            const hits = [...new Set([...(nameRe ? text.matchAll(nameRe) : []), ...(toolRe ? text.matchAll(toolRe) : [])].map((m) => m[0]))];
+            const hits = [...new Set([...text.matchAll(nameRe)].map((m) => m[0]))];
             if (hits.length) log(`  !! ${name} is yours and names ${hits.length} old stack name(s) (${hits.slice(0, 5).join(', ')}${hits.length > 5 ? ', ...' : ''}) - /alfred-code:update shows each line and re-spells it on your yes (update-preflight.js --respell)`);
             continue;
         }
         let n = 0;
-        let m = 0;
-        let out = re ? text.replace(re, (old) => { n += 1; return pairs[old]; }) : text;
-        if (mcpRe) out = out.replace(mcpRe, (old) => { m += 1; return mcpPairs[old]; });
-        if (!n && !m) continue;
+        const out = text.replace(re, (old) => { n += 1; return pairs[old]; });
+        if (!n) continue;
         try { fs.writeFileSync(file, out); }
-        catch (err) { note(`${name} names ${n + m} old skill, seat or MCP name(s) and could not be re-spelled (${err.message})`); continue; }
+        catch (err) { note(`${name} names ${n} old skill or seat name(s) and could not be re-spelled (${err.message})`); continue; }
         if (instructions.includes(file)) onWrite(name);
-        total += n + m;
-        if (n) log(`  renamed: ${name} - ${n} old skill or seat name(s) re-spelled to the new names`);
-        if (m) log(`  renamed: ${name} - ${m} old MCP tool or server name(s) re-spelled to the new names`);
+        total += n;
+        log(`  renamed: ${name} - ${n} old skill or seat name(s) re-spelled to the new names`);
     }
     return total;
 }
@@ -771,45 +703,6 @@ function respellRosterSeats({ projectRoot, core, seats = [], docsPath = '', log 
     catch (err) { note(`${shown} names ${changed} seat(s) the core answers under ${core}:<seat> and could not be re-spelled (${err.message}) - re-run /capture-awareness`); return 0; }
     log(`  roster: ${shown} - ${changed} seat name(s) re-spelled to how they resolve (${core}:<seat> on the core, bare for a kept project copy)`);
     return changed;
-}
-
-// THE ROUTE'S TOOL SPELLING AND THE BROWSER'S OUTPUT DIR. A capture never re-runs by itself, so a rule written
-// before 2.1.0 still names what the project had then: the copy route's bare `mcp__<server>__` and the browser's
-// single `.playwright/output/` (2026-10-10: a project's screenshots landed in `.playwright/output/` at its root,
-// because its rule told the model to prefix a filename with it). Two things in the generated rules follow this run:
-// - a server in `plugin` (one this run serves as a plugin, with no `.mcp.json` registration of its name) takes the
-//   plugin spelling `mcp__plugin_<server>_<server>__` - the bare one names no tool, so the row's first call loads
-//   nothing. The reverse, plugin to bare for a registration, is the copy route's downconvert.
-// - in an `<engine>-control` row, each backticked `.../output/` dir takes `outputs[engine]`, the dir a capture names now.
-function respellMcpRows({ projectRoot, plugin = [], outputs = {}, docsPath = '', log = () => {}, note = () => {} })
-{
-    const escape = (o) => o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const toolRe = plugin.length ? new RegExp(`(?<![A-Za-z0-9_])mcp__(${plugin.map(escape).join('|')})__`, 'g') : null;
-    const rowRe = /^\s*[-*]\s+`(chrome|msedge|firefox|webkit)-control`/;
-    const dirRe = /`(?:[A-Za-z0-9_.-]+\/)+output\/`/g;
-    let total = 0;
-    for (const file of [...generatedRules(projectRoot), ...awarenessDocs(projectRoot, docsPath, { agentsOnly: true })])
-    {
-        let text;
-        try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
-        let tools = 0;
-        let dirs = 0;
-        const out = (toolRe ? text.replace(toolRe, (full, server) => { tools += 1; return `mcp__plugin_${server}_${server}__`; }) : text)
-            .split('\n').map((line) =>
-            {
-                const want = outputs[(rowRe.exec(line) || [])[1]];
-                return want ? line.replace(dirRe, (dir) => (dir === `\`${want}\`` ? dir : (dirs += 1, `\`${want}\``))) : line;
-            }).join('\n');
-        if (out === text) continue;
-        const name = path.basename(file);
-        const shown = path.relative(projectRoot, file).split(path.sep).join('/');
-        try { fs.writeFileSync(file, out); }
-        catch (err) { note(`${shown} names ${tools + dirs} stale MCP tool name(s) or browser output dir(s) and could not be re-spelled (${err.message}) - re-run /capture-awareness`); continue; }
-        total += tools + dirs;
-        if (tools) log(`  route: ${name} - ${tools} MCP tool name(s) re-spelled to the plugin spelling (mcp__plugin_<server>_<server>__) their servers answer to`);
-        if (dirs) log(`  browser: ${name} - ${dirs} output dir(s) re-stamped to the engine's dir under the data root`);
-    }
-    return total;
 }
 
 // `--add`: the items the user said yes to (update's new-item ask, configure's add), on top of the
@@ -896,7 +789,6 @@ function dropLines(lines, drop = [], log = () => {})
 // hand inventory unioned what the entries CARRY without the denied seats, so every configure run
 // switched them back on. A plugin the listing shows disabled is the third state validate keeps
 // apart - parked, neither installed nor absent.
-const foldMcp = (name) => (PW_ENGINE.test(name) ? 'browser' : name);
 //
 // `pluginCatalog` is every plugin the catalog names, the core's companions included: an
 // enabled one is installed whatever the selection says (a companion every run adds, or an optional
@@ -909,17 +801,15 @@ function planInventory({ lists, listing = [], answered, pluginCatalog = [], left
 {
     const uniq = (xs) => [...new Set(xs)];
     const rowOf = new Map(listing.map((r) => [r.name, r]));
-    const pickedMcps = new Set((lists.mcps || []).map(nameOfMcp));
     const picked = uniq([...(lists.plugins || []).map(nameOfPlugin), ...pluginCatalog.filter((n) => rowOf.has(n) && rowOf.get(n).enabled)]);
     return {
         skills: uniq((lists.skills || []).map(nameOfSkill)),
         agents: uniq((lists.agents || []).map(nameOfFile)),
         rules: uniq((lists.rules || []).map(nameOfFile)),
         hooks: uniq((lists.hooks || []).map(nameOfFile)),
-        mcps: uniq((lists.mcps || []).map((e) => foldMcp(nameOfMcp(e)))),
+        mcps: uniq((lists.mcps || []).map(nameOfMcp)),
         plugins: picked.filter((n) => rowOf.has(n) && rowOf.get(n).enabled).map((n) => ({ name: n, scope: rowOf.get(n).scope })),
-        // A kept engine the user left off (R67) is their choice, not a parked entry to switch back on.
-        plugins_disabled: listing.filter((r) => !rowOn(r) && !USER_OFF_WINS.includes(r.name) && !(engineOf(r.name) && pickedMcps.has(r.name))).map((r) => r.name),
+        plugins_disabled: listing.filter((r) => !rowOn(r) && !USER_OFF_WINS.includes(r.name)).map((r) => r.name),
         parked_plugins: pluginCatalog.filter((n) => rowOf.has(n) && !rowOf.get(n).enabled),
         left_out: leftOut,
         scopes: itemScopes(listing),
@@ -966,17 +856,16 @@ function leftOut({ parked = [], deny = [] })
 }
 
 // The stack entries a --drop took out of the plugin set (`before` / `after` are selection-plugins
-// sets, MCP rows by catalog name), matched to the ENABLED listing rows, in the order the CLI accepts
-// a disable: an entry goes only once nothing still queued depends on it.
+// sets), matched to the ENABLED listing rows, in the order the CLI accepts a disable: an entry goes only
+// once nothing still queued depends on it.
 //
-// The core (the hooks ride it) and the three locked servers are never queued: a drop of them is
-// refused before it gets here anyway.
-const NEVER_DISABLED = new Set([BRAND.core, 'alfred-navigation', 'alfred-documentation', 'alfred-memory']);
+// The core (the hooks ride it) is never queued: a drop of it is refused before it gets here anyway.
+const NEVER_DISABLED = new Set([BRAND.core]);
 function droppedEntries({ before, after, listing = [], deps = {}, marketplace })
 {
     const gone = new Set(before.filter((n) => !after.includes(n)));
     const queue = listing
-        .filter((r) => r.marketplace === marketplace && r.enabled && !NEVER_DISABLED.has(r.name) && gone.has(foldMcp(r.name)))
+        .filter((r) => r.marketplace === marketplace && r.enabled && !NEVER_DISABLED.has(r.name) && gone.has(r.name))
         .sort((a, b) => a.name.localeCompare(b.name));
     const out = [];
     while (queue.length)
@@ -988,6 +877,6 @@ function droppedEntries({ before, after, listing = [], deps = {}, marketplace })
 }
 
 module.exports = {
-    addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, moveGeneratedRules, awarenessDocs, respellRenamed, respellOwnPlan, respellOwnApply, respellRosterSeats, respellMcpRows, respellDocsRoot, generatedRules, instructionFiles, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
+    addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, moveGeneratedRules, awarenessDocs, respellRenamed, respellOwnPlan, respellOwnApply, respellRosterSeats, respellDocsRoot, generatedRules, instructionFiles, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
     adoptHooks, adoptAlways, readBack, planInventory, itemScopes, leftOut, droppedEntries, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE, GENERATED_RULES, FORMER_PLUGINS,
 };

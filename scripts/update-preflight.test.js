@@ -679,10 +679,10 @@ test('env-keys: the before-state is the file the run writes - settings.local.jso
 });
 
 // Task 3 (2.1.0): an unstamped legacy copy-route install (`stamp.js state` reads `legacy-unstamped`) takes
-// update's normal path, so its servers' data at the old places is OFFERED the move like any older install's -
-// 'no install record' let the default change under them silently. A tree with no stack signature stays a
-// fresh project with nothing to offer. Since 2.8.0 the docs are no part of the offer: they move unasked.
-test('data-move: an unstamped legacy install is offered the move; a tree with no stack signature is not', () => {
+// update's normal path. A tree with no stack signature stays a fresh project with nothing to offer. Since 2.8.0 the docs
+// are no part of the offer (they move unasked), and since 2.10.1 an old server's data is none either: the stack ships no
+// server, so its `.serena` stays where it is.
+test('data-move: an unstamped legacy install takes update\'s path, and its old server data is no offer; a tree with no stack signature is no install', () => {
     const legacyKey = { ALFRED_CODE_DOCS_PATH: '.claude/docs' };
     const { snap, install, fixtureFile } = scaffold({ stamp: null, settings: { env: legacyKey } });
     fs.mkdirSync(path.join(install, '.claude', 'docs', 'architecture'), { recursive: true });
@@ -695,8 +695,8 @@ test('data-move: an unstamped legacy install is offered the move; a tree with no
     fs.writeFileSync(path.join(install, '.claude', 'hooks', 'guard-catastrophic-rm.js'), '// old\n');
     const legacy = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]);
     assert.strictEqual(legacy.code, 2, 'still no stamp to compare');
-    assert.match(legacy.out, /^data-move: offer \.alfred\tfrom=\.serena\tserena=yes browser=none memory=no$/m, legacy.out);
-    assert.doesNotMatch(legacy.out, /docs=/, 'the docs are no part of the offer');
+    assert.match(legacy.out, /^data-move: none \(nothing to move\)$/m, legacy.out);
+    assert.ok(fs.existsSync(path.join(install, '.serena', 'project.yml')), 'the old server data is left where it is');
 });
 
 // audit 2026-10-11, session 5b9ce9c5: the close named the release delta ('changed: skills=10 agents=44') as this

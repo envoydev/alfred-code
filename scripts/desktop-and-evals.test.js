@@ -1,7 +1,7 @@
 'use strict';
 // The 2.1.4 audit's plugin package (merged.md I9, I10, I11, I12, I45): the prose and structure facts its
 // fixes rest on, held as content assertions - the wrong claim absent, the right one present. The
-// behaviour itself is pinned where it runs (build-marketplace, mcp-launchers, install-mcp, install-desktop).
+// behaviour itself is pinned where it runs (build-marketplace, install-mcp).
 const test = require('node:test');
 const assert = require('node:assert');
 const { readClaudeDocs } = require('./claude-docs.js');
@@ -34,14 +34,6 @@ test('I45: macos.md says a missing grant stops the start, and the skip switch is
     assert.match(ref, /`MACOS_MCP_SKIP_PERMISSION_CHECK=1`[^.]* makes it start ungranted/);
     assert.match(ref, /Only then does an \*\*empty snapshot\*\*/);
     assert.doesNotMatch(ref, /stops that\./, 'the skip switch does more than stop the Settings pop-up');
-});
-
-test('I45: the installer\'s macOS prerequisite line names the failed start first', () =>
-{
-    const { prereqNotes } = require('../stack/mcp/desktop-launch.js');
-    const lines = prereqNotes('macos-control').join('\n');
-    assert.match(lines, /a server that fails to connect at start while System Settings opens is missing a grant - its log names which; a black vision snapshot means Screen Recording is missing/);
-    assert.doesNotMatch(lines, /an empty snapshot means Accessibility is missing/);
 });
 
 // ---------------------------------------------------------------- I10 - the desktop tool gate

@@ -96,7 +96,7 @@ test('the shipped seats match their rows, and every seat holds built-in tools on
     }
 });
 
-test('the lint checks and the copy route read a whole-server grant', () =>
+test('the lint checks read a whole-server grant', () =>
 {
     const lint = require('./lint-mcp-tools.js');
     const file = (text) => [{ file: 'stack/agents/x.md', text }];
@@ -107,11 +107,6 @@ test('the lint checks and the copy route read a whole-server grant', () =>
     const bare = ['mcp', 'alfred-memory'].join('__');
     assert.strictEqual(lint.lintMcpToolNames({ files: file(`tools: ${bare}, Read`), names: ['alfred-memory'] }).length, 1, 'check 54: the bare grant resolves to nothing');
     assert.deepStrictEqual(lint.lintMcpToolNames({ files: file(`${bare}-other`), names: ['alfred-memory'] }), [], 'a longer name is not the grant');
-    const mcp = require('./install/mcp.js');
-    const copied = mcp.respellToolNames(`tools: ${MEM}, ${CHROME}, Read\ndisallowedTools: ${CHROME}__browser_run_code_unsafe\n`, ['chrome-control']);
-    const chromeBare = ['mcp', 'chrome-control'].join('__');
-    assert.strictEqual(copied, `tools: ${MEM}, ${chromeBare}, Read\ndisallowedTools: ${chromeBare}__browser_run_code_unsafe\n`, 'only the registered server takes the bare spelling, grant and removal alike');
-    assert.deepStrictEqual(mcp.bareServersIn(copied), ['chrome-control']);
 });
 
 // audit 2026-10-14 AG06: a server a seat names tool by tool is granted WHOLE minus the pinned list's other tools, so on

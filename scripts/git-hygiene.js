@@ -28,7 +28,6 @@ const posix = (p) => p.split(path.sep).join('/');
 function dataRootOffer({ projectRoot })
 {
     const dataRoot = require('../stack/mcp/data-root.js');
-    const { settingFrom } = require('../stack/mcp/uv-python.js');
     // Settings only, never a shell export: a settings value applies over one, and the installer reads it so.
     const root = dataRoot.dataRootOf({ env: {}, projectDir: projectRoot }).root;
     const none = (why) => ({ state: 'none', root, why });
@@ -42,7 +41,7 @@ function dataRootOffer({ projectRoot })
     let tracked = '';
     try { tracked = git(['ls-files', '--', root], projectRoot); } catch { tracked = ''; }
     if (tracked) return none(`git tracks files under ${root}/ - committed docs stay committed`);
-    const docsPath = settingFrom({ env: {}, projectDir: projectRoot, suffix: 'DOCS_PATH' }) || `${root}/docs`;
+    const docsPath = dataRoot.settingFrom({ env: {}, projectDir: projectRoot, suffix: 'DOCS_PATH' }) || `${root}/docs`;
     const rel = path.posix.relative(root, docsPath.replace(/\\/g, '/').replace(/^\.\//, ''));
     const docsInside = rel && !rel.startsWith('..') && !path.posix.isAbsolute(rel);
     let versioning = null;

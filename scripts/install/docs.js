@@ -1248,7 +1248,7 @@ function ensureDocsIgnore({ projectRoot, docsPath, mode, covered = false, log = 
 // places) moves nothing and keeps the key, so the hooks keep reading where the docs are until one side is cleared. With
 // no key the root to drain is the earlier data root's docs (a data-root change), or on a stamped install the old default
 // LEGACY_DOCS_ROOT, which a release before 2.0.0 read with no key at all. Never a part of the data-move offer: the docs
-// move unasked, the servers' data stays asked - except a HAND-SET root (`handSet`: one no release seeded and no ledger
+// move unasked - except a HAND-SET root (`handSet`: one no release seeded and no ledger
 // row records), which may be the team's own `docs/`: since the stack's entries are picked by name, it moves only on the
 // answer to update's ask (`--docs-root-move`), which names the entries that are the team's own (`leave`, kept in place).
 // There is no keep - every docs file of the stack's belongs under the data root (the user's answers of 2026-10-20).
@@ -1452,7 +1452,7 @@ function moveDocsRoot({ projectRoot, plan })
 // older text is written, any other text is the project's own and is left alone. `mode` is the docs versioning; a
 // `local` root over docs git already tracks keeps them visible (a `*` would hide every NEW doc while the old ones
 // stay committed - `docs.js status` reports the disagreement), the hooks' state still kept out.
-const { DATA_IGNORE_HEAD, dataIgnoreText, docsInsideRoot, engineOfServer } = require('../../stack/mcp/data-root.js');
+const { DATA_IGNORE_HEAD, dataIgnoreText, docsInsideRoot } = require('../../stack/mcp/data-root.js');
 
 // 'written' | 'replaced' | 'current' | 'kept' (the project's own file).
 function ensureDataIgnore({ projectRoot, root, docsPath, mode, log = () => {} })
@@ -1483,7 +1483,7 @@ function ensureDataIgnore({ projectRoot, root, docsPath, mode, log = () => {} })
     }
     fs.mkdirSync(base, { recursive: true });
     fs.writeFileSync(file, want);
-    log(`  data root: ${normRoot(root)}/.gitignore ${have === null ? 'written' : 'rewritten'} - the servers' data stays out of git${want.split('\n').some((l) => l.startsWith('!/') && l !== '!/.gitignore') ? ', the docs under it do not' : ''}`);
+    log(`  data root: ${normRoot(root)}/.gitignore ${have === null ? 'written' : 'rewritten'} - the machine-local data stays out of git${want.split('\n').some((l) => l.startsWith('!/') && l !== '!/.gitignore') ? ', the docs under it do not' : ''}`);
     return have === null ? 'written' : 'replaced';
 }
 
@@ -1542,10 +1542,10 @@ function pruneNestedIgnores({ projectRoot, root, docsPath, docsCovered = false, 
     return out;
 }
 
-// THE WHOLE DATA MOVE AN UPDATE OFFERS - every server class whose data sits somewhere other than its place under the root
-// (the 2.0.0 place, or an earlier root the stamp names), minus the moves already recorded as pending. The docs are no part
-// of it since 2.8.0: they move unasked (docsMovePlan). { state: 'offer' | 'none', why, rows, root }.
-function dataOffer({ projectRoot, stamped, stampText = '', root, engines = [], memoryProject = false })
+// THE WHOLE DATA MOVE AN UPDATE OFFERS - the sensitive-data file an earlier root the stamp names still holds, minus a move
+// already recorded as pending. The docs are no part of it since 2.8.0: they move unasked (docsMovePlan); no server's data
+// is since 2.10.1, when the stack stopped shipping MCP servers. { state: 'offer' | 'none', why, rows, root }.
+function dataOffer({ projectRoot, stamped, stampText = '', root })
 {
     const dr = require('../../stack/mcp/data-root.js');
     const none = (why) => ({ state: 'none', why, rows: [], root });
@@ -1554,23 +1554,18 @@ function dataOffer({ projectRoot, stamped, stampText = '', root, engines = [], m
     const priorLine = (/^data-root: *(\S+) *$/m.exec(stampText) || [])[1];
     const prior = priorLine && dr.checkDataPath(priorLine).ok && priorLine !== root ? priorLine : null;
     const pending = dr.readPending(stampText);
-    // An engine's profile leaving the root's own shared folder is no offer: the installer moves it unasked (isRelayout).
-    const rows = dr.dataMovePlan({ projectRoot, root, prior, engines, memory: memoryProject })
-        .filter((r) => !dr.isRelayout(r, root) && !pending.some((p) => p.cls === r.cls && p.from === r.from && p.to === r.to));
+    const rows = dr.dataMovePlan({ projectRoot, root, prior })
+        .filter((r) => !pending.some((p) => p.cls === r.cls && p.from === r.from && p.to === r.to));
     if (!rows.length) return none('nothing to move');
     return { state: 'offer', why: 'data outside the root', rows, root };
 }
 
-// The preflight's line: `data-move: offer <root>\tfrom=<places>\tserena=yes|no browser=<engines|none> memory=yes|no
-// [\tconflicts=<n>]`, or `data-move: none (<why>)`.
+// The preflight's line: `data-move: offer <root>\tfrom=<places>[\tconflicts=<n>]`, or `data-move: none (<why>)`.
 function dataOfferLine(offer)
 {
     if (offer.state !== 'offer') return `data-move: none (${offer.why})`;
-    const has = (cls) => (offer.rows.some((r) => r.cls === cls) ? 'yes' : 'no');
-    const engines = offer.rows.map((r) => engineOfServer(r.cls)).filter(Boolean);
     const conflicts = offer.rows.filter((r) => r.conflict).length;
-    return `data-move: offer ${offer.root}\tfrom=${offer.rows.map((r) => r.from).join(',')}\tserena=${has('serena')} browser=${engines.join(',') || 'none'} memory=${has('memory')}`
-        + (conflicts ? `\tconflicts=${conflicts}` : '');
+    return `data-move: offer ${offer.root}\tfrom=${offer.rows.map((r) => r.from).join(',')}` + (conflicts ? `\tconflicts=${conflicts}` : '');
 }
 
 module.exports = {

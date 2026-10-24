@@ -645,13 +645,12 @@ test('status: read-only from the running plugin - stamp state, health columns, u
     assert.match(status, /stack\/hooks\/guard-secret-value\.js" --presence /);
     for (const row of ['stack version \\(stamp\\)', 'running plugin', 'scope', 'docs root', 'initialised'])
         assert.match(status, new RegExp(`^\\| ${row} \\|`, 'm'), `the general table has its ${row} row`);
-    // Review finding 10: the transcript folder is derived by the analyzer from its own cwd, named the way
-    // the memory import names it - one encoding, two readers - and no body builds it with `pwd | sed`
-    // (Git Bash's `pwd` is not the native path Claude Code names the folder from).
-    const { slugify } = require('./memory-import.js');
+    // Review finding 10: the transcript folder is derived by the analyzer from its own cwd, by Claude Code's rule - every
+    // non-alphanumeric character a dash - and no body builds it with `pwd | sed` (Git Bash's `pwd` is not the native path
+    // Claude Code names the folder from).
     const { sessionsDirOf } = require('./analyze-usage.js');
-    for (const sample of ['/Users/x/My Repo', 'C:\\work\\app.v2', '/tmp/a_b-c'])
-        assert.strictEqual(path.basename(sessionsDirOf(sample, '/acct')), slugify(sample), `the analyzer and the memory import name ${sample}'s transcript folder alike`);
+    for (const [sample, slug] of [['/Users/x/My Repo', '-Users-x-My-Repo'], ['C:\\work\\app.v2', 'C--work-app-v2'], ['/tmp/a_b-c', '-tmp-a-b-c']])
+        assert.strictEqual(path.basename(sessionsDirOf(sample, '/acct')), slug, `the analyzer names ${sample}'s transcript folder by the rule`);
     for (const body of [status, cmdBody('validate')]) assert.ok(!/pwd \| sed/.test(body), 'no body derives the transcript folder in the shell');
     // validate reports the same invalid line.
     assert.match(flat(cmdBody('validate')), /An `invalid: N stamp name\(s\) \.\.\.` line is a finding too/);
@@ -985,53 +984,52 @@ function assertSurfaced(report, text, { firstRun = true, start = text } = {})
     assert.ok(report.first.warn.includes(line.trim()), `update-preflight --log does not forward: ${line}\nwarn: ${report.first.warn.join('\nwarn: ')}`);
 }
 
-// N1 (re-review): C10's stale user-scope registration (the line carrying the command to run), A-M2's kept
-// and unreadable lines and C11's here-only switch-off reach neither body without a marker. C12's move
+// N1 (re-review): A-M2's kept and unreadable lines reached neither body without a marker (C10's stale-registration
+// and C11's here-only lines left with the registrations in 2.10.1). C12's move
 // off local scope cannot meet the 1.x body: 1.x wrote no local scope (its --scope took project or
 // global), and the move fires only on a stamp that says local - so the current grep alone carries it.
-test('update: the stale-registration, kept, unreadable and here-only lines reach both update bodies; the local move reaches the current one (N1)', { skip: process.platform === 'win32' && 'the seed sandbox is POSIX only' }, () =>
+test('update: the kept and unreadable lines reach both update bodies; the local move reaches the current one (N1)', { skip: process.platform === 'win32' && 'the seed sandbox is POSIX only' }, () =>
 {
     const { seedRun } = require('./seed-sandbox.js');
     const P = require('./install/plugins.js');
     const account = (work, text) => { fs.mkdirSync(path.join(work, 'acct'), { recursive: true }); fs.writeFileSync(path.join(work, 'acct', '.claude.json'), text); };
-    const serena = { type: 'stdio', command: 'uvx', args: ['--python', '3.13', '--from', 'serena-agent@1.6.0', 'serena', 'start-mcp-server', '--project-from-cwd'], env: {} };
     const stale = seedRun('install', 'skill markdown-style\nrule markdown-docs\n', {
-        env: COPY_ENV, args: ['--scope', 'user', '--memory-level', 'project'],
-        prepare: (repo, work) => account(work, JSON.stringify({ mcpServers: { navigation: serena, 'alfred-memory': { type: 'stdio', command: 'node', args: ['my-memory.js'], env: {} } } })),
+        env: COPY_ENV, args: ['--scope', 'user'],
+        // `navigation`, a name the 2.2.0 rename left behind, is judged on every run: this one is the user's own server.
+        prepare: (repo, work) => account(work, JSON.stringify({ mcpServers: { navigation: { type: 'stdio', command: 'node', args: ['my-nav.js'], env: {} } } })),
     }).out;
     const unreadable = seedRun('install', 'skill markdown-style\nrule markdown-docs\n', {
-        env: COPY_ENV, args: ['--scope', 'user', '--memory-level', 'project'],
+        env: COPY_ENV, args: ['--scope', 'user'],
         prepare: (repo, work) => account(work, '{not json'),
     }).out;
     const logs = [];
-    const row = (scope, enabled = true) => ({ name: 'chrome-control', marketplace: 'envoydev', version: '2.0.0', scope, enabled });
-    P.engineStandDown({ rows: [row('user')], market: 'envoydev', scope: 'user', engines: ['chrome'], hereOnly: true, isOn: () => undefined, cli: () => true, log: (m) => logs.push(m) });
-    P.moveLocalRows({ plugins: ['alfred-navigation@envoydev'], rows: [{ ...row('local'), name: 'alfred-navigation' }], scope: 'project', cli: () => true, log: (m) => logs.push(m) });
+    const row = (scope, enabled = true) => ({ name: 'alfred-code', marketplace: 'envoydev', version: '2.0.0', scope, enabled });
+    P.moveLocalRows({ plugins: ['alfred-code@envoydev'], rows: [row('local')], scope: 'project', cli: () => true, log: (m) => logs.push(m) });
     const report = reportOf([stale, unreadable, ...logs.map((m) => `==> ${m}`)].join('\n'));
-    assertSurfaced(report, 'mcp: navigation still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run /alfred-code:update: claude mcp remove navigation -s user');
-    assertSurfaced(report, 'mcp alfred-memory: the user-scope registration is not the stack\'s (another server under the same name) - kept; if it should go: claude mcp remove alfred-memory -s user');
+    // M-F5-1: no name is live since 2.10.1 - the stack wants no server - so the kept line is plain, for update.md's grep alone.
+    assertSurfaced(report, 'mcp navigation: the user-scope registration is not the stack\'s (another server under the same name) - kept; if it should go: claude mcp remove navigation -s user', { firstRun: false });
     assertSurfaced(report, '.claude.json could not be read - no user-scope registration was removed; fix the file and re-run', { start: 'mcp: /' });
-    assertSurfaced(report, 'plugin disabled [project]: chrome-control@envoydev (the copy route registers it in .mcp.json; this project only - the user-scope install stays on for every other project)');
-    assertSurfaced(report, 'plugin moved [local -> project]: alfred-navigation@envoydev', { firstRun: false });
+    assertSurfaced(report, 'plugin moved [local -> project]: alfred-code@envoydev', { firstRun: false });
 });
 
 // F7 (observation 1): C8's line naming a settings.local.json this run created and git would commit - a
 // machine path in the repo unless the user acts - matched neither the 1.x body's grep (`settings\.json
-// env:` only) nor its `warn:` lines, so the advice never showed there.
-test('update: a project install\'s update shows the settings.local.json gitignore advice through both update bodies (F7)', { skip: process.platform === 'win32' && 'the seed sandbox is POSIX only' }, () =>
+// env:` only) nor its `warn:` lines, so the advice never showed there. Since 2.10.1 no memory database path
+// makes a project install write the file, so a local-scope update - whose own file it is - carries the case.
+test('update: a local install\'s update shows the settings.local.json gitignore advice through both update bodies (F7)', { skip: process.platform === 'win32' && 'the seed sandbox is POSIX only' }, () =>
 {
     const { seedRun } = require('./seed-sandbox.js');
     const { out } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', {
-        args: ['--scope', 'project'],
-        plugins: JSON.stringify([{ id: 'alfred-code@envoydev', version: '1.3.0', scope: 'project', enabled: true }]),
+        args: ['--scope', 'local'],
+        plugins: JSON.stringify([{ id: 'alfred-code@envoydev', version: '1.3.0', scope: 'local', enabled: true }]),
         prepare: (repo) =>
         {
             fs.mkdirSync(path.join(repo, '.claude', 'hooks'), { recursive: true });
-            fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'sha: abc\nversion: 1.3.0\nscope: project\n');
+            fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'sha: abc\nversion: 1.3.0\nscope: local\n');
             fs.writeFileSync(path.join(repo, '.claude', 'hooks', 'docs.js'), '');
         },
     });
-    assertSurfaced(reportOf(out), 'settings.local.json: created for this machine\'s own values (the memory database path) - git does not ignore it here; add .claude/settings.local.json to .gitignore');
+    assertSurfaced(reportOf(out), 'settings.local.json: created for this machine\'s own values - git does not ignore it here; add .claude/settings.local.json to .gitignore');
 });
 
 // The way back from the 2.0.0 cut is printed text the user runs as-is, at whatever scope the install

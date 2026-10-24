@@ -77,7 +77,7 @@ for (const action of ['update', 'install'])
         assert.ok(r.has('.claude/agents/my-own-seat.md') && r.has('.claude/hooks/my-own-hook.js'), "the user's own seat or hook was pruned");
         assert.ok(r.wired.includes('my-own-hook.js'), "the user's own hook was unwired");
         assert.ok(r.has('.claude/skills/my-own-skill/SKILL.md') && r.has('.claude/rules/my-own-rule.md'), "the user's own skill or rule was pruned");
-        assert.ok(r.hooks.includes('docs.js') && r.hooks.includes('memory.js'), `the engines must stay: ${r.hooks.join(' ')}`);
+        assert.ok(['docs.js', 'handoff.js', 'history.js', 'layout.js'].every((f) => r.hooks.includes(f)), `the engines must stay: ${r.hooks.join(' ')}`);
     });
 
     test(`seed ${action}: a retired name the stack's record holds is pruned and unwired, on either route`, POSIX_ONLY, () =>

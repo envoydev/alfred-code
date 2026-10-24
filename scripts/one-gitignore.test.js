@@ -226,7 +226,7 @@ test('the default sensitive data: written once with its one comment line, never 
     assert.strictEqual(fs.readFileSync(file, 'utf8'), dataRoot.SENSITIVE_DEFAULT);
     assert.match(dataRoot.SENSITIVE_DEFAULT, /^# [^\n]*\n$/, 'one comment line');
     if (process.platform !== 'win32') assert.strictEqual(fs.statSync(file).mode & 0o777, 0o600, 'owner-only');
-    assert.deepStrictEqual(dataRoot.readSensitive({ projectDir: root, root: '.alfred' }), {}, 'no key: the guard\'s start line stays silent');
+    assert.deepStrictEqual(dataRoot.storeValues(fs.readFileSync(file)), {}, 'no key: the guard\'s start line stays silent');
     assert.deepStrictEqual(status(root), ['?? .alfred/.gitignore']);
     fs.writeFileSync(file, 'API_KEY=secret\n');
     assert.strictEqual(dataRoot.ensureSensitiveFile({ projectDir: root, root: '.alfred' }), 'present');

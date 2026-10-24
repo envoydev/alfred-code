@@ -255,32 +255,17 @@ test('settings-writer: the write is IDEMPOTENT - a second run changes nothing', 
     assert.strictEqual(fs.readFileSync(file, 'utf8'), first);
 });
 
-test('settings-writer: enabledMcpjsonServers gains what we register and loses what we unregistered', () =>
+// The stack registers no MCP server since 2.10.1: the names an earlier release pre-approved leave, the user's own stay, and
+// a list this run empties goes - no list is ever created.
+test('settings-writer: enabledMcpjsonServers loses the names an earlier release registered and keeps the user\'s own', () =>
 {
     const file = settingsFile({ enabledMcpjsonServers: ['serena', 'context7', 'theirs'] });
-    const { data } = write(file, { mcpNames: ['playwright-chrome'], mcpOff: ['serena', 'context7'] });
-    assert.deepStrictEqual(data.enabledMcpjsonServers, ['theirs', 'playwright-chrome'],
+    const { data } = write(file, { mcpOff: ['serena', 'context7'] });
+    assert.deepStrictEqual(data.enabledMcpjsonServers, ['theirs'],
         'a leftover entry names a .mcp.json server that no longer exists - dead config that reads like a knob');
-});
-
-// R116 (j): disabledMcpjsonServers holds a playwright engine left off on the copy route. The writer
-// adds and drops only the names it is handed, keeps the user's own, creates no empty list, removes a
-// list only when it emptied it itself, and never rewrites a value that is not a list.
-test('settings-writer: disabledMcpjsonServers gains and loses only the names handed in, and a non-list is left alone', () =>
-{
-    const fresh = write(settingsFile({}), { mcpjsonDisable: ['playwright-webkit'] });
-    assert.deepStrictEqual(fresh.data.disabledMcpjsonServers, ['playwright-webkit']);
-    const none = write(settingsFile({}), { mcpjsonEnable: ['playwright-webkit'] });
-    assert.strictEqual(none.data.disabledMcpjsonServers, undefined, 'an empty list was created');
-    const theirs = write(settingsFile({ disabledMcpjsonServers: ['theirs', 'playwright-webkit'] }), { mcpjsonEnable: ['playwright-webkit'] });
-    assert.deepStrictEqual(theirs.data.disabledMcpjsonServers, ['theirs']);
-    const emptied = write(settingsFile({ disabledMcpjsonServers: ['playwright-webkit'] }), { mcpjsonEnable: ['playwright-webkit'] });
-    assert.strictEqual(emptied.data.disabledMcpjsonServers, undefined, 'a list this run emptied stays behind');
-    const leftEmpty = write(settingsFile({ disabledMcpjsonServers: [] }), { mcpjsonEnable: ['playwright-webkit'] });
-    assert.deepStrictEqual(leftEmpty.data.disabledMcpjsonServers, [], 'the user\'s own empty list was removed');
-    const garbage = write(settingsFile({ disabledMcpjsonServers: 'playwright-webkit' }), { mcpjsonDisable: ['playwright-firefox'] });
-    assert.strictEqual(garbage.data.disabledMcpjsonServers, 'playwright-webkit');
-    assert.ok(garbage.notes.some((n) => /disabledMcpjsonServers is not a list - left as it is/.test(n)), garbage.notes.join('\n'));
+    assert.strictEqual(write(settingsFile({ enabledMcpjsonServers: ['serena'] }), { mcpOff: ['serena'] }).data.enabledMcpjsonServers, undefined, 'a list this run emptied stays behind');
+    assert.strictEqual(write(settingsFile({}), { mcpOff: ['serena'] }).data.enabledMcpjsonServers, undefined, 'a list was created');
+    assert.deepStrictEqual(write(settingsFile({ enabledMcpjsonServers: [] }), { mcpOff: ['serena'] }).data.enabledMcpjsonServers, [], 'the user\'s own empty list was removed');
 });
 
 test('settings-writer: a retired deny entry goes, and only that exact string', () =>
@@ -359,12 +344,6 @@ test('settings-env: the SEEDS come from the catalog, absent-only, and never touc
     for (const row of CATALOG)
         if (!row.written && row.key !== 'ALFRED_CODE_DOCS_VERSIONING')
             assert.ok(row.key in env, `the catalog key ${row.key} was not seeded`);
-});
-
-test('settings-env: the WRITTEN key overwrites, because it tracks this run\'s choice', () =>
-{
-    const { env } = envPass({ ALFRED_CODE_MEMORY_DB: '/old/memory.db' }, { memoryDb: '/new/memory.db' });
-    assert.strictEqual(env.ALFRED_CODE_MEMORY_DB, '/new/memory.db', 'a level change did not land - the launcher keeps the old db');
 });
 
 test('settings-env: the retired sentry auth key goes, and the SENTRY_* keys stay', () =>
@@ -603,7 +582,7 @@ test('settings-writer: at project scope a write to a stack key settings.local.js
 // N6 (Task 16b): at local scope settings.json still applies beneath the file this run writes, so a key
 // it holds is PRESENT for every absent-only seed - the catalog seeds, the docs-versioning seed and the
 // unanswered ALFRED_CODE_HOOKS_OFF seed. A local default would hide it. What the run DECIDES (an
-// answered hooks layer, --docs-versioning, the memory db) still lands in the local file.
+// answered hooks layer, --docs-versioning) still lands in the local file.
 test('settings-env: an inherited key counts as present for every absent-only seed, never for a decision (N6)', () =>
 {
     const inherited = {
@@ -619,10 +598,9 @@ test('settings-env: an inherited key counts as present for every absent-only see
     assert.ok(!('ALFRED_CODE_PUSH_GATE' in renamed) && !('ALFRED_CODE_DOCS_PATH' in renamed), JSON.stringify(renamed));
 
     // Decisions still write the local file.
-    const decided = envPass({}, { inherited, hooksOff: ['check-turn-build'], hooksAnswered: true, docsVersioning: { value: 'git' }, memoryDb: '/db' }).env;
+    const decided = envPass({}, { inherited, hooksOff: ['check-turn-build'], hooksAnswered: true, docsVersioning: { value: 'git' } }).env;
     assert.strictEqual(decided.ALFRED_CODE_HOOKS_OFF, 'check-turn-build');
     assert.strictEqual(decided.ALFRED_CODE_DOCS_VERSIONING, 'git');
-    assert.strictEqual(decided.ALFRED_CODE_MEMORY_DB, '/db');
 
     // A malformed inherited view (not an object) is no view: every seed lands, as before.
     for (const bad of [null, 'x', ['a']])
@@ -829,58 +807,6 @@ test('settings-writer: at project scope a key settings.local.json holds is still
     assert.deepStrictEqual([fs.readFileSync(p.sharedFile, 'utf8'), fs.readFileSync(p.localFile, 'utf8')], before);
 });
 
-// C8 (R100, R101): ALFRED_CODE_MEMORY_DB is this machine's database path, so it goes to
-// settings.local.json at EVERY scope - never into the committed settings.json. An older install's copy
-// there leaves it, with one line; a local file that does not exist yet is created for it.
-test('settings-writer: ALFRED_CODE_MEMORY_DB goes to settings.local.json at project scope and leaves settings.json (C8)', () =>
-{
-    const p = pair({ env: { ALFRED_CODE_MEMORY_DB: '/old/machine/memory.db', TEAM: 'y' } });
-    const logs = [];
-    const opts = { file: p.sharedFile, localFile: p.localFile, catalog: CATALOG, migrations: MIGRATIONS, memoryDb: '/home/me/.memory-mcp/memory.db' };
-    writeSettings({ ...opts, log: (m) => logs.push(m) });
-    assert.ok(!('ALFRED_CODE_MEMORY_DB' in p.shared().env), `a machine path stayed in the committed file: ${JSON.stringify(p.shared().env)}`);
-    assert.strictEqual(p.shared().env.TEAM, 'y');
-    assert.deepStrictEqual(p.local(), { env: { ALFRED_CODE_MEMORY_DB: '/home/me/.memory-mcp/memory.db' } }, 'the local file is created holding the key');
-    const text = logs.join('\n');
-    assert.match(text, /settings\.local\.json env: ALFRED_CODE_MEMORY_DB -> \/home\/me\/\.memory-mcp\/memory\.db/);
-    assert.match(text, /settings\.json env: ALFRED_CODE_MEMORY_DB removed - this machine's database path, kept in settings\.local\.json from here on/);
-    // Idempotent: nothing to write the second time.
-    const before = [fs.readFileSync(p.sharedFile, 'utf8'), fs.readFileSync(p.localFile, 'utf8')];
-    assert.strictEqual(writeSettings(opts).written, false);
-    assert.deepStrictEqual([fs.readFileSync(p.sharedFile, 'utf8'), fs.readFileSync(p.localFile, 'utf8')], before);
-    // A local file holding the user's own keys keeps them.
-    const q = pair({}, { env: { MY_OWN: 'x' }, permissions: { allow: ['Bash(ls)'] } });
-    writeSettings({ ...opts, file: q.sharedFile, localFile: q.localFile });
-    assert.deepStrictEqual(q.local(), { env: { MY_OWN: 'x', ALFRED_CODE_MEMORY_DB: '/home/me/.memory-mcp/memory.db' }, permissions: { allow: ['Bash(ls)'] } });
-    assert.ok(!('ALFRED_CODE_MEMORY_DB' in q.shared().env));
-    // No memoryDb this run: an existing shared copy is left alone (nothing to put in its place).
-    const r = pair({ env: { ALFRED_CODE_MEMORY_DB: '/x.db' } });
-    writeSettings({ ...opts, file: r.sharedFile, localFile: r.localFile, memoryDb: undefined });
-    assert.strictEqual(r.shared().env.ALFRED_CODE_MEMORY_DB, '/x.db');
-    assert.strictEqual(r.local(), undefined, 'no local file is created for nothing');
-});
-
-// N7 (re-review): a settings.local.json that cannot be read is no overlay, so the memory path - the one key
-// with no other home - went back into the committed settings.json (project and user scope alike: both
-// write settings.json with settings.local.json over it). It is left unwritten with one line, the way
-// `memory.js init` refuses: settings.json keeps what it held, and the malformed file is not touched.
-test('settings-writer: a malformed settings.local.json never sends ALFRED_CODE_MEMORY_DB into settings.json (N7)', () =>
-{
-    for (const [label, shared] of [['no copy in settings.json', { env: { TEAM: 'y' } }], ['an older copy in settings.json', { env: { TEAM: 'y', ALFRED_CODE_MEMORY_DB: '/old.db' } }]])
-    {
-        const p = pair(shared);
-        fs.writeFileSync(p.localFile, '{not json');
-        const logs = [];
-        writeSettings({ file: p.sharedFile, localFile: p.localFile, catalog: CATALOG, migrations: MIGRATIONS, memoryDb: '/home/me/.memory-mcp/memory.db', log: (m) => logs.push(m), note: () => {} });
-        assert.strictEqual(p.shared().env.ALFRED_CODE_MEMORY_DB, shared.env.ALFRED_CODE_MEMORY_DB, `${label}: ${JSON.stringify(p.shared().env)}`);
-        assert.strictEqual(p.shared().env.TEAM, 'y');
-        assert.strictEqual(fs.readFileSync(p.localFile, 'utf8'), '{not json', 'the malformed file is left as it is');
-        const said = logs.filter((m) => /the memory level was not written/.test(m));
-        assert.strictEqual(said.length, 1, `${label}: ${logs.join(' | ')}`);
-        assert.match(said[0], /^ {2}!! settings\.local\.json could not be read - the memory level was not written \(ALFRED_CODE_MEMORY_DB stays out of settings\.json\); fix it and re-run$/);
-    }
-});
-
 // C4 (R133 N1): at project or user scope `--add agent X` for a seat denied ONLY in settings.local.json
 // took nothing and said nothing - the local deny applies over the shared file. The allow drops it there.
 test('settings-writer: an allowed seat leaves settings.local.json\'s deny list too, with a line (C4)', () =>
@@ -1045,19 +971,18 @@ test('settings-ledger: a stamp with no ledger adopts what the stack itself shipp
 {
     const cmd = hookCommand('guard-a.js').command;
     const file = settingsFile({
-        env: { ALFRED_CODE_INSTRUMENT: '0', ALFRED_CODE_PUSH_GATE: '0', ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '150000', ALFRED_CODE_MEMORY_DB: '/m.db', MY_KEY: 'x' },
+        env: { ALFRED_CODE_INSTRUMENT: '0', ALFRED_CODE_PUSH_GATE: '0', ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '150000', MY_KEY: 'x' },
         permissions: { deny: ['Read(.env)', 'Agent(alfred-code:angular-verifier)', 'Bash(rm:*)'] },
         hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: cmd, timeout: 10 }] }, { matcher: 'Bash', hooks: [{ type: 'command', command: 'node mine.js' }] }] },
     });
     const { result } = write(file, {
-        hookSpecs: [HOOK('guard-a.js', 'Bash')], denySpecs: ['Read(.env)'], memoryDb: '/m.db',
+        hookSpecs: [HOOK('guard-a.js', 'Bash')], denySpecs: ['Read(.env)'],
         ledger: { prior: null, releaseHooks: ['guard-a.js::Bash::'] },
     });
     const env = result.managed.env['settings.json'];
     assert.strictEqual(env.ALFRED_CODE_INSTRUMENT, valueHash('0'), 'at the catalog seed: the stack\'s');
     assert.ok(!('ALFRED_CODE_PUSH_GATE' in env), 'a value the stack never shipped is the user\'s');
     assert.strictEqual(env.ALFRED_CODE_CONTEXT_WINDOW_FOR_200K, valueHash('180000'), 'reseeded this run: written by the stack');
-    assert.strictEqual(env.ALFRED_CODE_MEMORY_DB, valueHash('/m.db'), 'the written key is the stack\'s by contract');
     assert.ok(!('MY_KEY' in env));
     // Review finding 6: with no ledger a secret-file deny already there may be the team's, so it is never
     // claimed - a leftover after uninstall is harmless, a removed one is not. A stack seat still is.
@@ -1108,10 +1033,11 @@ test('settings-ledger: at project scope a key the run writes into settings.local
 {
     const file = settingsFile({});
     const localFile = path.join(path.dirname(file), 'settings.local.json');
-    fs.writeFileSync(localFile, JSON.stringify({ env: { ALFRED_CODE_HOOKS_OFF: 'guard-x' } }));
-    const { result } = write(file, { localFile, memoryDb: '/m.db', ledger: { prior: noLedger, releaseHooks: [] } });
-    assert.deepStrictEqual(result.managed.env['settings.local.json'], { ALFRED_CODE_MEMORY_DB: valueHash('/m.db') });
-    assert.strictEqual(JSON.parse(fs.readFileSync(localFile, 'utf8')).env.ALFRED_CODE_HOOKS_OFF, 'guard-x', 'R99: the local value still applies');
+    fs.writeFileSync(localFile, JSON.stringify({ env: { ALFRED_CODE_HOOKS_OFF: 'guard-x', ALFRED_CODE_PUSH_GATE: '0' } }));
+    const { result } = write(file, { localFile, hooksOff: ['guard-y'], hooksAnswered: true, ledger: { prior: noLedger, releaseHooks: [] } });
+    assert.deepStrictEqual(result.managed.env['settings.local.json'], { ALFRED_CODE_HOOKS_OFF: valueHash('guard-y') }, 'the answered hooks layer goes back to the local file that held it');
+    const local = JSON.parse(fs.readFileSync(localFile, 'utf8')).env;
+    assert.deepStrictEqual([local.ALFRED_CODE_HOOKS_OFF, local.ALFRED_CODE_PUSH_GATE], ['guard-y', '0'], 'R99: the user\'s own local value still applies, unmanaged');
 });
 
 test('leaveLocalScope: with a ledger, the ledger decides - a local key at a seed the stack never wrote stays, one it wrote goes (R96 over R10)', () =>
@@ -1296,84 +1222,3 @@ function hookCommandEntry(file)
 {
     return { type: 'command', command: hookCommand(file, '').command, timeout: HOOK_TIMEOUT };
 }
-
-// PL8 (audit 2026-10-14, the user's ruling of 2026-10-14): the memory tools the stack never calls are denied by bare
-// name, ADD-ONLY - written once, ledgered like the seat denies, and an entry the user takes out stays out on every
-// later run; a route switch re-spells them through the ledger (the other spelling is shipped, so it goes).
-test('PL8 settings-ledger: the add-only tool denies are written once, a user\'s removal is kept run after run, and a route switch re-spells them', () =>
-{
-    const { memoryToolDeny, SHIPPED_DENY, MEMORY_TOOLS_USED } = require('./install/alfred-code.js');
-    const ROOT = path.join(__dirname, '..');
-    const plugin = memoryToolDeny(ROOT);
-    const bare = memoryToolDeny(ROOT, { bare: true });
-    const tools = require('../meta/mcp-tools.json').servers['alfred-memory'].tools;
-    assert.strictEqual(tools.length, 28);
-    assert.strictEqual(plugin.length, 23, '28 tools at the pin minus the five the stack calls');
-    assert.deepStrictEqual(MEMORY_TOOLS_USED.filter((t) => !tools.includes(t)), [], 'every tool the stack calls exists at the pin');
-    assert.ok(plugin.every((e) => /^mcp__plugin_alfred-memory_alfred-memory__[a-z_]+$/.test(e)) && bare.every((e) => /^mcp__alfred-memory__[a-z_]+$/.test(e))); // mcp-fixture
-    assert.ok(plugin.includes('mcp__plugin_alfred-memory_alfred-memory__memory_cleanup') && !plugin.some((e) => /__memory_(store|search|list|delete|update)$/.test(e))); // mcp-fixture
-    for (const e of [...plugin, ...bare]) assert.ok(SHIPPED_DENY.includes(e), `${e} is shipped, so the ledger may remove it`);
-
-    const shippedDeny = SHIPPED_DENY;
-    const file = settingsFile({ permissions: { deny: ['Bash(rm:*)'] } });
-    // A fresh install (no ledger): every one written, each in the managed ledger, one log line.
-    const first = write(file, { denySpecs: ['Read(.env)'], toolDeny: plugin, ledger: { prior: null, releaseHooks: [], shippedDeny } });
-    assert.deepStrictEqual(first.data.permissions.deny, ['Bash(rm:*)', 'Read(.env)', ...plugin]);
-    assert.match(first.logs.join('\n'), /settings\.json: denied 23 memory server tool\(s\) the stack never calls \(commit_session_legacy, .*unquarantine_memory\) - out of every session's context/);
-    const ledger1 = first.result.managed.deny;
-    assert.deepStrictEqual(ledger1.filter((d) => plugin.includes(d.entry)).map((d) => d.entry), plugin);
-    assert.ok(!ledger1.some((d) => d.entry === 'Bash(rm:*)'), 'the user\'s own entry is never managed');
-    // A re-run changes nothing and says nothing.
-    const again = write(file, { denySpecs: ['Read(.env)'], toolDeny: plugin, ledger: { prior: { deny: ledger1 }, releaseHooks: [], shippedDeny } });
-    assert.deepStrictEqual(again.data.permissions.deny, first.data.permissions.deny);
-    assert.doesNotMatch(again.logs.join('\n'), /memory server tool/);
-    // The user takes two out: the next run keeps them out, and the run after it too (the record is carried).
-    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-    const taken = [plugin[0], plugin[5]];
-    data.permissions.deny = data.permissions.deny.filter((e) => !taken.includes(e));
-    fs.writeFileSync(file, JSON.stringify(data, null, 2));
-    const second = write(file, { denySpecs: ['Read(.env)'], toolDeny: plugin, ledger: { prior: { deny: again.result.managed.deny }, releaseHooks: [], shippedDeny } });
-    assert.ok(taken.every((e) => !second.data.permissions.deny.includes(e)), 'a removal is kept');
-    assert.ok(taken.every((e) => second.result.managed.deny.some((d) => d.entry === e)), 'and its record is carried');
-    const third = write(file, { denySpecs: ['Read(.env)'], toolDeny: plugin, ledger: { prior: { deny: second.result.managed.deny }, releaseHooks: [], shippedDeny } });
-    assert.ok(taken.every((e) => !third.data.permissions.deny.includes(e)), 'still kept a run later');
-    assert.strictEqual(third.data.permissions.deny.length, 2 + 21);
-    // A route switch: the plugin spelling goes and the bare one arrives - the two the user took out stay out in it too.
-    const switched = write(file, { denySpecs: ['Read(.env)'], toolDeny: bare, ledger: { prior: { deny: third.result.managed.deny }, releaseHooks: [], shippedDeny } });
-    assert.ok(!switched.data.permissions.deny.some((e) => plugin.includes(e)), 'the old spelling goes');
-    const takenBare = taken.map((e) => e.replace('mcp__plugin_alfred-memory_alfred-memory__', 'mcp__alfred-memory__')); // mcp-fixture
-    assert.deepStrictEqual(switched.data.permissions.deny.filter((e) => bare.includes(e)), bare.filter((e) => !takenBare.includes(e)));
-    assert.ok(takenBare.every((e) => switched.result.managed.deny.some((d) => d.entry === e)), 'the removal is carried in the new spelling');
-    assert.ok(switched.data.permissions.deny.includes('Bash(rm:*)'), 'the user\'s own entry stays');
-    const back = write(file, { denySpecs: ['Read(.env)'], toolDeny: plugin, ledger: { prior: { deny: switched.result.managed.deny }, releaseHooks: [], shippedDeny } });
-    assert.deepStrictEqual(back.data.permissions.deny.filter((e) => plugin.includes(e)), plugin.filter((e) => !taken.includes(e)), 'and back again');
-    assert.ok(!back.data.permissions.deny.some((e) => bare.includes(e)));
-    // An entry the user already wrote in the same spelling is the stack's from here on (a later removal is kept).
-    const ownFile = settingsFile({ permissions: { deny: [bare[3]] } });
-    const own = write(ownFile, { toolDeny: bare, ledger: { prior: { deny: [] }, releaseHooks: [], shippedDeny } });
-    assert.deepStrictEqual(own.data.permissions.deny.filter((e) => e === bare[3]).length, 1, 'never doubled');
-    assert.ok(own.result.managed.deny.some((d) => d.entry === bare[3]));
-});
-
-test('PL8: no shipped skill, rule, seat, command or hook names a memory tool the install denies', () =>
-{
-    const { MEMORY_TOOLS_USED } = require('./install/alfred-code.js');
-    const ROOT = path.join(__dirname, '..');
-    const tools = require('../meta/mcp-tools.json').servers['alfred-memory'].tools;
-    const denied = tools.filter((t) => !MEMORY_TOOLS_USED.includes(t));
-    const hits = [];
-    const walk = (dir) =>
-    {
-        for (const e of fs.readdirSync(dir, { withFileTypes: true }))
-        {
-            const p = path.join(dir, e.name);
-            if (e.isDirectory()) { if (e.name !== 'node_modules') walk(p); continue; }
-            if (!/\.(md|js|json|ya?ml)$/.test(e.name)) continue;
-            const text = fs.readFileSync(p, 'utf8');
-            // memory_graph is also the service's SQLite table, which the notes import reads by that name.
-            for (const t of denied) if (new RegExp(`\\b${t}\\b`).test(text) && !(t === 'memory_graph' && /FROM memory_graph|name = 'memory_graph'|memory_graph edges/.test(text))) hits.push(`${path.relative(ROOT, p)}: ${t}`);
-        }
-    };
-    for (const d of ['stack', 'setup-plugin']) walk(path.join(ROOT, d));
-    assert.deepStrictEqual(hits, [], 'a shipped file uses a tool the install removes from context - add it to MEMORY_TOOLS_USED');
-});

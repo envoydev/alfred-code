@@ -38,19 +38,11 @@ function excludedTools(text)
     return out;
 }
 const readContext = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
-// The tools the install removes from context for a pin: every alfred-memory tool but MEMORY_TOOLS_USED, and on the
-// browser pin the ones BROWSER_TOOLS_OFF names.
-function installDenied(pin, tools)
-{
-    const install = require('./install/alfred-code.js');
-    if (pin === 'alfred-memory') return tools.filter((t) => !install.MEMORY_TOOLS_USED.includes(t));
-    if (pin === 'browser') return tools.filter((t) => install.BROWSER_TOOLS_OFF.includes(t));
-    return [];
-}
 
-// The table every reader takes: the jobs and built-ins as written, each type with its pin's version and tool list.
-// Throws on the first row that names a tool, a job or a pin the sources do not have.
-function build({ meta = readJson(META), tools = readJson(TOOLS), context = readContext, denied = installDenied } = {})
+// The table every reader takes: the jobs and built-ins as written, each type with its pin's version and tool list - the
+// whole pin, less what its context file turns off: the install denies no server tool since 2.10.1, when the stack stopped
+// shipping its servers. Throws on the first row that names a tool, a job or a pin the sources do not have.
+function build({ meta = readJson(META), tools = readJson(TOOLS), context = readContext } = {})
 {
     const servers = (tools && tools.servers) || {};
     const builtins = listOf(meta.builtins);
@@ -70,11 +62,9 @@ function build({ meta = readJson(META), tools = readJson(TOOLS), context = readC
             const off = new Set(excludedTools(text));
             served = served.filter((t) => !off.has(t));
         }
-        const off = new Set(denied(String(row.pin), served));
-        served = served.filter((t) => !off.has(t));
         const have = new Set(served);
         const version = pinned.version === undefined ? null : pinned.version;
-        const where = row.context ? ` as ${row.context} serves it` : off.size ? ' as the install serves it' : '';
+        const where = row.context ? ` as ${row.context} serves it` : '';
         const known = (tool) => { if (!have.has(tool)) throw new Error(`${type}: ${tool} is not a tool of ${row.pin} at ${version}${where}`); return tool; };
         const typeJobs = {};
         for (const [job, list] of Object.entries(row.jobs || {}))

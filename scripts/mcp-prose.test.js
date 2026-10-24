@@ -27,13 +27,6 @@ test('R4 status and validate name an unreadable settings file and the memory ser
     }
 });
 
-test('M20 the memory launcher no longer says the service leaves numpy undeclared', () =>
-{
-    const text = read('stack/mcp/memory-launch.js');
-    assert.doesNotMatch(text, /does not declare it/);
-    assert.match(text, /declare it themselves \(numpy>=1\.24\.0/);
-});
-
 // M23: since 2.1.0 no skill rides the core; the skill is an always-on library copy.
 test('M23 the claude-md-management retirement row calls the skill always-on, not the core\'s', () =>
 {
@@ -270,7 +263,7 @@ test('R3 no page says MacOS-MCP cannot switch a tool off; each names the config.
 // R13: MacOS-MCP 0.4.6 has no Screenshot tool - the image is Snapshot with use_vision (its __main__.py tool list).
 test('R13 the macOS lines name a black vision snapshot, never a screenshot the server does not have', () =>
 {
-    for (const file of ['stack/mcp/desktop-launch.js', 'stack/skills/capture-awareness/references/agents.md'])
+    for (const file of ['stack/skills/capture-awareness/references/agents.md'])
     {
         const text = read(file);
         assert.doesNotMatch(text, /black screenshots/, file);

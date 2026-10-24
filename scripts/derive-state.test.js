@@ -232,7 +232,7 @@ test('derive-state: the CLI reads the routes the installer\'s way - a personal s
 // refreshed only the hooks and core entries while every stack and MCP plugin stayed a release
 // behind. Each surface is read from the state its own route writes instead.
 const { readInstalled } = require('./derive-state.js');
-const ALL_ROUTES = { skills: true, hooks: true, mcps: true };
+const ALL_ROUTES = { skills: true, hooks: true };
 const fromText = (lines) => deriveState({ selectionText: lines.join('\n'), sourceDir: ROOT });
 
 function narrowed({ dropAgent, dropHook })
@@ -289,13 +289,13 @@ test('readInstalled: each surface reads back only while its own route is on', ()
     assert.ok(skillsOnly.every((l) => /^(skill|agent) /.test(l)) && skillsOnly.length > 0);
 });
 
-test('readInstalled: MCP entries fold back onto the catalog, once each - a cut server is no catalog line', () =>
+test('readInstalled: an MCP entry an older release shipped folds back onto nothing - the stack ships no server since 2.10.1', () =>
 {
     const lines = readInstalled({
         plugins: ['alfred-navigation', 'alfred-documentation', 'context7-local', 'firefox-control', 'webkit-control', 'claude-hud'],
         routes: { mcps: true }, sourceDir: ROOT,
     });
-    assert.deepStrictEqual(lines.sort(), ['mcp alfred-documentation', 'mcp alfred-navigation', 'mcp browser']);
+    assert.deepStrictEqual(lines, []);
 });
 
 test('readInstalled: a denied seat is not read back, whatever plugin carries it', () =>
@@ -346,11 +346,9 @@ test('writable: the hooks copy route with the core on still names the unpicked h
     const { writable } = require('./derive-state.js');
     const state = narrowed({ dropAgent: 'security-auditor', dropHook: 'guard-answer' });
     assert.ok(state.hooks.off.includes('guard-answer'), 'fixture: a hook left unpicked');
-    const hooksCopied = writable(state, { routes: { hooks: false, skills: true, mcps: true }, answered: { hooks: true, agents: true } });
+    const hooksCopied = writable(state, { routes: { hooks: false, skills: true }, answered: { hooks: true, agents: true } });
     assert.deepStrictEqual(hooksCopied.hooksOff, state.hooks.off, 'the core carries the unpicked hook - HOOKS_OFF is its only off-switch');
-    const hooksOnlyCopy = writable(state, { routes: { hooks: false, skills: false, mcps: true }, answered: { hooks: true, agents: true } });
-    assert.deepStrictEqual(hooksOnlyCopy.hooksOff, state.hooks.off, 'the MCP route alone turns the core on too');
-    const fullCopy = writable(state, { routes: { hooks: false, skills: false, mcps: false }, answered: { hooks: true, agents: true } });
+    const fullCopy = writable(state, { routes: { hooks: false, skills: false }, answered: { hooks: true, agents: true } });
     assert.deepStrictEqual(fullCopy.hooksOff, [], 'no core on the full copy route - absence is off');
 });
 
@@ -447,17 +445,18 @@ test('derive-state CLI: `written` is what THIS route writes - the full copy rout
     const { execFileSync } = require('node:child_process');
     const sel = selectionFile(fs.readFileSync(realSelection(), 'utf8').split('\n').filter((l) => l.trim() !== 'agent security-auditor' && l.trim() !== 'hook guard-answer'));
     const run = (env) => JSON.parse(execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'derive-state.js'), '--selection', sel], { encoding: 'utf8', env: { ...process.env, ...env } }));
-    const plugin = run({ ALFRED_CODE_SKILLS_VIA_PLUGIN: '', ALFRED_CODE_HOOKS_VIA_PLUGIN: '', ALFRED_CODE_MCPS_VIA_PLUGIN: '' });
-    assert.deepStrictEqual(plugin.routes, { hooks: true, skills: true, mcps: true });
+    const plugin = run({ ALFRED_CODE_SKILLS_VIA_PLUGIN: '', ALFRED_CODE_HOOKS_VIA_PLUGIN: '' });
+    assert.deepStrictEqual(plugin.routes, { hooks: true, skills: true });
     assert.deepStrictEqual(plugin.written.agentDeny, plugin.agents.deny);
     assert.ok(plugin.written.agentDeny.includes('Agent(alfred-code:security-auditor)') && plugin.written.agentDeny.includes('Agent(alfred-code:web-angular-implementer)'),
         'the seat the walk dropped, and every seat it never picked');
     assert.deepStrictEqual(plugin.written.hooksOff, ['guard-answer']);
-    // The MCP route alone keeps the core on, and the core carries every hook (2.0.0) and every seat
+    // The skills route alone keeps the core on, and the core carries every hook (2.0.0) and every seat
     // (2.1.0): the unpicked hook is still named off, and the seats it lists beside the copies are denied.
-    const copy = run({ ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' });
+    const copy = run({ ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' });
     assert.deepStrictEqual([copy.written.agentDeny, copy.written.hooksOff], [plugin.agents.deny, ['guard-answer']]);
-    const full = run({ ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' });
+    // A leftover ALFRED_CODE_MCPS_VIA_PLUGIN names no route since 2.10.1: both copy switches make the full copy route.
+    const full = run({ ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'true' });
     assert.deepStrictEqual([full.written.agentDeny, full.written.hooksOff], [[], []]);
 });
 
@@ -728,12 +727,13 @@ test('a picked library seat clears its deny, so a seat switched off in 1.2.0 com
     assert.ok(!state.agents.deny.includes('Agent(alfred-code:angular-test-resolver)'));
 });
 
-// A skill a server brings (the graph's `mcps` block) arrives with that server and is no pick of its own:
-// update never offers it alone - on a project without a desktop server it would be dead weight.
-test('classifyNew: a skill that arrives with its server is never offered alone', () =>
+// A skill a server brought (the graph's `mcps` block) arrived with that server and was no pick of its own. The stack
+// ships no server since 2.10.1, so the block is empty and desktop-automation - for a desktop server the user registered -
+// is offered like any other skill.
+test('classifyNew: no server brings a skill since 2.10.1 - desktop-automation is offered like any other', () =>
 {
     const rows = classifyNew({ added: [{ category: 'skill', name: 'desktop-automation' }, { category: 'skill', name: 'angular-material' }], plugins: ['alfred-code'], routes: ALL_ROUTES, sourceDir: ROOT });
-    assert.deepStrictEqual(rows.map((r) => r.name), ['angular-material']);
+    assert.deepStrictEqual(rows.map((r) => r.name), ['desktop-automation', 'angular-material']);
 });
 
 // ---------------------------------------------------------------------------------------------

@@ -23,18 +23,10 @@ const { createSource, compareVersions } = require('./source.js');
 const { loadManifest, stackNames, stackOwnName } = require('./manifest.js');
 const selection = require('./selection.js');
 const plugins = require('./plugins.js');
-const { pythonRequest, userExcludeNewer, settingFrom } = require('../../stack/mcp/uv-python.js');
-const { serenaHomeFor, copyRouteProject } = require('../../stack/mcp/serena-launch.js');
 const dataRoot = require('../../stack/mcp/data-root.js');
-const { copyRouteExclude, platformOf, prereqNotes, DESKTOP_OS } = require('../../stack/mcp/desktop-launch.js');
-const { copyRouteEnv: mobileCopyEnv, prereqNotes: mobileNotes } = require('../../stack/mcp/mobile-launch.js');
-// The optional servers whose prerequisites a run says once, on the run that brings one in (prereqNotes).
-const NOTED = (name) => Boolean(DESKTOP_OS[name]) || name === 'mobile-control';
 const mcp = require('./mcp.js');
 const copy = require('./copy.js');
 const settings = require('./settings.js');
-const serena = require('./serena.js');
-const memory = require('./memory.js');
 const docs = require('./docs.js');
 const { deriveState, writable, homeOf, splitPick, stackSeat } = require('../derive-state.js');
 const { placement, readRetiredPlugins, CORE } = require('../plugin-placement.js');
@@ -59,7 +51,7 @@ Usage: node ${path.basename(__filename)} <install|update|uninstall> [flags]
 
 Action (one is REQUIRED, positional):
   install   first-time provision; wires .claude/settings.json
-  update    refresh hooks/agents/rules and the runtimes at the release pins; idempotent
+  update    refresh the skills, seats, rules and hooks to the release; idempotent
   uninstall remove what the stamp's ledger says the stack manages here, and nothing else
 
 Named flags (any order, each optional): ${FLAG_LIST}
@@ -78,38 +70,25 @@ const SHELL_SEED_RETIRED = 'the shell installers were removed in 2.0.0 - unset A
 // store under the data root (stack/mcp/data-root.js). RETIRED_DENY are the four ACCOUNT-settings entries releases up to
 // 0.2.62 wrote; they are dropped on every run, by exact string.
 const SECRET_DENY = ['Read(.env)', 'Read(.env.*)', 'Read(*.pem)', 'Read(*.pfx)', 'Read(*.p12)', 'Read(*.key)', 'Read(.sensitive-data)'];
-// PL8 (audit 2026-10-14, the user's ruling of 2026-10-14): the memory server lists 28 tools (meta/mcp-tools.json) and the
-// stack calls five - the alfred-memory rule's store / search / list, a skill's cursor delete and the notes import's
-// update (stack/hooks/memory.js). The other 23 rode every session's deferred list, destructive ones over a database that
-// can be account-wide among them. A bare tool name in permissions.deny 'removes the tool from Claude's context entirely'
-// (code.claude.com/docs/en/permissions, 'Deny rules', re-read 2026-10-14), so each is denied in the spelling of the route
-// that serves the server, written ONCE (settings.js toolDeny): an entry the user removes stays removed.
+// The tool denies 2.5.0 to 2.10.0 wrote: the memory server's unused tools (audit 2026-10-14 PL8) and Playwright MCP's
+// browser_run_code_unsafe (audit 2026-10-21 mcps T1-2), in both route spellings. The stack ships no MCP server since 2.10.1,
+// so no run writes one; each stays a SHIPPED deny, so the ledger pass lifts a row an earlier run wrote (settings.js).
 const MEMORY_SERVER = 'alfred-memory';
-const MEMORY_TOOLS_USED = ['memory_store', 'memory_search', 'memory_list', 'memory_delete', 'memory_update'];
 function memoryToolsAtPin(dir)
 {
     const row = ((readJson(path.join(dir, 'meta', 'mcp-tools.json')) || {}).servers || {})[MEMORY_SERVER];
     return row && Array.isArray(row.tools) ? row.tools.filter((t) => typeof t === 'string' && /^[a-z0-9_]+$/.test(t)) : [];
 }
-const memorySpelling = (bare) => (bare ? `mcp__${MEMORY_SERVER}__` : `mcp__plugin_${MEMORY_SERVER}_${MEMORY_SERVER}__`);
-const memoryToolDeny = (dir, { bare = false } = {}) => memoryToolsAtPin(dir).filter((t) => !MEMORY_TOOLS_USED.includes(t)).map((t) => `${memorySpelling(bare)}${t}`);
-// Both spellings of every memory tool at the pin: a route switch drops the other spelling, and uninstall removes either.
-const memoryDenyShipped = (dir) => memoryToolsAtPin(dir).flatMap((t) => [`${memorySpelling(false)}${t}`, `${memorySpelling(true)}${t}`]);
-// Audit 2026-10-21 mcps T1-2 (ruling M-A1): Playwright MCP's `browser_run_code_unsafe` runs any code the model writes
-// inside the browser process, and it is on by default. It is denied the memory tools' way - bare name, add-only,
-// ledgered - once per kept engine in the spelling of the route that serves it, and once in that engine's retired
-// `browser-<engine>` alias spelling, which a hand-installed alias plugin still serves.
+const toolSpelling = (server, bare) => (bare ? `mcp__${server}__` : `mcp__plugin_${server}_${server}__`); // mcp-fixture
+const memoryDenyShipped = (dir) => memoryToolsAtPin(dir).flatMap((t) => [`${toolSpelling(MEMORY_SERVER, false)}${t}`, `${toolSpelling(MEMORY_SERVER, true)}${t}`]);
 const BROWSER_TOOLS_OFF = ['browser_run_code_unsafe'];
 function browserToolsAtPin(dir)
 {
     const row = ((readJson(path.join(dir, 'meta', 'mcp-tools.json')) || {}).servers || {}).browser;
     return row && Array.isArray(row.tools) ? BROWSER_TOOLS_OFF.filter((t) => row.tools.includes(t)) : [];
 }
-const toolSpelling = (server, bare) => (bare ? `mcp__${server}__` : `mcp__plugin_${server}_${server}__`);
-const engineSpellings = (e) => [dataRoot.engineServer(e), `browser-${e}`];
-const browserToolDeny = (dir, engines, { bare = () => false } = {}) => engines.flatMap((e) =>
-    engineSpellings(e).flatMap((server) => browserToolsAtPin(dir).map((t) => `${toolSpelling(server, bare(dataRoot.engineServer(e)))}${t}`)));
-const browserDenyShipped = (dir) => dataRoot.ENGINES.flatMap(engineSpellings)
+// Each engine's server under its 2.4.0 name and its retired `browser-<engine>` alias.
+const browserDenyShipped = (dir) => ['chrome', 'msedge', 'firefox', 'webkit'].flatMap((e) => [`${e}-control`, `browser-${e}`])
     .flatMap((server) => browserToolsAtPin(dir).flatMap((t) => [`${toolSpelling(server, false)}${t}`, `${toolSpelling(server, true)}${t}`]));
 // R10: every deny entry a release has written into a project's settings besides the seat denies - the
 // ledger removes no other, since a stamp is project text. A release that stops writing one keeps it here.
@@ -118,12 +97,12 @@ const RETIRED_DENY = [
     'Read(~/.claude/settings.json)', 'Read(~/.claude/settings.local.json)',
     'Read(~/.claude-*/settings.json)', 'Read(~/.claude-*/settings.local.json)',
 ];
-// The three hook ENGINES, the layout module they share and the window table are copied beside the hooks rather than wired: 22
+// The hook ENGINES, the layout module they share and the window table are copied beside the hooks rather than wired: 22
 // bodies shared with cursor-stack run `node .claude/hooks/docs.js`, and the history start block
 // points at `node .claude/hooks/history.js rulings`.
-const HOOK_ENGINES = ['docs.js', 'memory.js', 'history.js', 'layout.js', 'handoff.js', 'model-windows.json'];
-// I12: the stack's serena context (stack/mcp). The plugin route's launcher hands serena the file beside
-// it; the full copy route, which runs no launcher, copies it into the project's .claude and registers it.
+const HOOK_ENGINES = ['docs.js', 'history.js', 'layout.js', 'handoff.js', 'model-windows.json'];
+// I12: the serena context the full copy route copied into the project's .claude up to 2.10.0 - no run copies it now,
+// so the ledger prunes an unchanged copy (pruneDroppedCopies).
 const NAV_CONTEXT = 'navigation-context.yml';
 // What only a COPIED hook loads - the engines inline their own helpers and a plugin hook loads these
 // from its own root - so the copy route ships them and the plugin route removes them with the hooks.
@@ -151,6 +130,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     let args;
     try { args = parseArgs(argv); }
     catch (e) { err(`${USAGE}\nerror: ${e.message}\n`); return 1; }
+    // A flag 2.10.1 retired with its server, passed by a command body an older session still runs.
+    for (const line of args.ignored) log(line);
 
     const home = env.HOME || env.USERPROFILE || '';
     // With no home and no CLAUDE_CONFIG_DIR the account dir would be a RELATIVE `.claude` - the
@@ -199,42 +180,21 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     }
     const skillsDir = path.join(projectRoot, '.claude', 'skills');
     const mcpFile = path.join(projectRoot, '.mcp.json');
-    // The memory database this install points at: the flag's level, else the path already registered,
-    // else global. C9 (R136 r): CLAUDE_CONFIG_DIR alone names the account, but the global
-    // database lives under the HOME - with none they would be a RELATIVE path, written into settings and
-    // resolved against whatever cwd reads it. Refused like the no-home case above, before anything runs.
-    // THE DATA ROOT (stack/mcp/data-root.js): the one folder this run lays the project's data under - the
-    // docs, serena's folder and home, the browser profiles, a project-level memory database. Resolved before
-    // the memory level, whose project database sits under it.
+    // THE DATA ROOT (stack/mcp/data-root.js): the one folder this run lays the project's data under - the docs, the hooks'
+    // state and statistics, the project's sensitive data.
     const dataInfo = resolveDataRoot({ args, claudeDir, projectRoot, log });
     // F1 (matrix 2.1.5 7e): the claude CLI replaces an account file it cannot parse (a 0-byte one too) at its first plugin
     // or mcp call and keeps the old one under backups/ in its config folder (measured on 2.1.284; `--version` leaves it
-    // alone). Read here, before this run's own first call; whether the stack's registrations left it is decided from the
-    // stamp further down (accountLoss), since a command's source step makes a call before the installer runs (B1).
+    // alone). Read here, before this run's own first call - uninstall reads it for the registrations an earlier release's
+    // ledger recorded there.
     let accountUnread = mcp.registrationsAt({ scope: 'user', accountFile, projectRoot }).state === 'unreadable';
     const backupDirs = [path.join(path.dirname(accountFile), 'backups'), path.join(configDir, 'backups')];
-    // F2 (matrix 2.1.5 7c): the level as the install records it, read before any claude call too (the local
-    // registration it may fall back on is in the account file); a record it could not read keeps the level.
-    const recorded = memory.recordedPath({ mcpFile, claudeDir, accountFile, projectRoot, configDir, home: home || undefined });
-    // The project's stamp, before this run writes one: `kept` needs an install to keep (review 2.1.6 M1), and the F1 line
-    // below says what a first install takes in the stamp's place.
-    const stampedBefore = Boolean(stampLayer.stampFiles({ projectRoot }).read);
-    let level = memory.resolveLevel({
-        flag: args.memoryLevel,
-        registeredPath: recorded.path, unread: recorded.unread, stamped: stampedBefore,
-        home, projectRoot, root: dataInfo.root,
-    });
-    if (!home && level.dbPath && !path.isAbsolute(level.dbPath))
-    {
-        err(`error: no home directory - HOME and USERPROFILE are unset, so the ${level.level} memory database would be the relative path ${level.dbPath}; set HOME, or pass --memory-level project\n`);
-        return 1;
-    }
     // R105: a `claude` found on PATH that cannot be STARTED (a batch file spawned without cmd.exe, a
     // missing interpreter) is said once, here, and the run goes on as without one - never a failure
     // line per plugin, and never a call that fails with no line at all.
     const claudeBroken = rt.which('claude', { env: cliEnv }) ? rt.unrunnable('claude', { cwd: projectRoot, env: cliEnv }) : null;
     const hasClaude = claudeBroken === '';
-    if (claudeBroken) note(`${claudeBroken} - the plugin and MCP layers were skipped`);
+    if (claudeBroken) note(`${claudeBroken} - the plugin layer was skipped`);
     // Uninstall makes no such call: its own listing read meets the file and refuses (m3, runUninstall).
     if (accountUnread && hasClaude && args.action !== 'uninstall')
     {
@@ -246,11 +206,9 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // m4: no new backup - the CLI replaced nothing (a torn read of a file another session was writing, or a shape it
         // rewrites in place), so the file is read again and the run goes on as it finds it.
         if (!made) accountUnread = mcp.registrationsAt({ scope: 'user', accountFile, projectRoot }).state === 'unreadable';
-        const takes = stampedBefore ? 'this run takes the stack\'s local- and user-scope registrations as its stamp records them'
-            : 'no stamp here records this project\'s registrations, so this run registers only what it installs';
         const good = made ? mcp.accountBackups(backupDirs, 'good').filter((b) => b.ms < made.ms).pop() : null;
-        if (made) log(`  !! mcp: ${accountFile} could not be read - the claude CLI replaced it with a fresh file and kept the old one as ${made.file}${good ? ` (its last good copy: ${good.file})` : ''}; ${takes}, and anything else the old file held is in that backup`);
-        else if (accountUnread) log(`  !! mcp: ${accountFile} could not be read, and the claude CLI did not replace it - ${takes}; fix the file and re-run`);
+        if (made) log(`  !! ${accountFile} could not be read - the claude CLI replaced it with a fresh file and kept the old one as ${made.file}${good ? ` (its last good copy: ${good.file})` : ''}; anything the old file held is in that backup`);
+        else if (accountUnread) log(`  !! ${accountFile} could not be read, and the claude CLI did not replace it - fix the file and re-run`);
     }
 
     const repoUrl = env.ALFRED_CODE_REPO_URL || 'https://github.com/envoydev/alfred-code';
@@ -322,32 +280,6 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // evidence. No stamp at all is otherwise a project the stack has managed nothing in yet, so whatever
         // is already there is the user's.
         const priorLedger = stampFile ? stampLayer.readLedger(stampFile) : legacyUnstamped ? null : stampLayer.emptyLedger();
-        // Review 2.1.6 (the every-issue ruling): a project folder moved or copied here carries its settings and .mcp.json, so
-        // the level they record names the OLD folder's project database and read as `custom`. Where the stamp's ledger shows
-        // the stack wrote that very value (the settings key's hash, or the .mcp.json entry's), it is this project's own
-        // project level - this folder's database, which moved or was copied with it, so each copy keeps its own. A path
-        // the user set or edited stays theirs, byte for byte.
-        const movedFrom = level.level === 'custom' && !args.memoryLevel && priorLedger ? memory.movedProjectRoot(recorded.path, { projectRoot, root: dataInfo.root }) : '';
-        const vouched = Boolean(movedFrom) && (recorded.from === 'settings'
-            ? (((priorLedger.env || {})[recorded.file]) || {})[recorded.key] === stampLayer.valueHash(recorded.value)
-            : recorded.from === 'registration' && memory.MEMORY_SERVERS.some((n) => (priorLedger.mcp || {})[n] === stampLayer.entryHash(recorded.entry)));
-        if (vouched)
-        {
-            level = { level: 'project', dbPath: memory.pathForLevel('project', { home, projectRoot, root: dataInfo.root }), from: 'moved' };
-            log(`  memory: the project-level database this install recorded, ${recorded.path}, is in another folder (${movedFrom}) - this project moved or was copied here, so its level is this folder's own: ${level.dbPath}${fs.existsSync(level.dbPath) ? '' : ' (none came with the folder - a new, empty one)'}`);
-        }
-        // Said first, before any registration: which settings file hid the level, and what stands in its place.
-        const unreadSettings = recorded.unread.filter((n) => /settings(\.local)?\.json$/.test(n));
-        const recordedFrom = { registration: 'the memory server\'s .mcp.json registration', 'local registration': 'the memory server\'s local registration' };
-        if (args.memoryLevel && unreadSettings.includes('settings.local.json') && args.action !== 'uninstall')
-            log(`  !! settings.local.json could not be read - --memory-level ${args.memoryLevel} re-points the memory server, but ALFRED_CODE_MEMORY_DB is not written there, and a fixed file brings back the level it holds; fix it and re-run with the flag`);
-        else if (!args.memoryLevel && unreadSettings.length && args.action !== 'uninstall')
-            log(level.level === 'kept'
-                ? `  !! ${unreadSettings.join(', ')} could not be read and no registration names the memory database - the memory level is left as it is: no memory registration is re-pointed and ALFRED_CODE_MEMORY_DB is not written; fix the file and re-run`
-                : level.from === 'default'
-                    ? `  !! ${unreadSettings.join(', ')} could not be read and no install is recorded here - the memory level is the default (${level.level}: ${level.dbPath}); fix the file, and re-run with --memory-level for another`
-                    : `  !! ${unreadSettings.join(', ')} could not be read - the memory level is the one ${recorded.from === 'settings' ? `${recorded.file}'s ${recorded.key}` : recordedFrom[recorded.from]} records (${level.level}: ${recorded.path})${recorded.from === 'settings' ? ', the database the memory server\'s launcher opens too' : ''}, so nothing re-points it; fix the file and re-run`);
-
         // I3 (R47): args.js left '' when --scope was not given. `update` takes the
         // scope the LAST install actually used, from the stamp's own `scope:` line (a 1.x `global`
         // line maps to `user`, same as the CLI flag does); `install`, or an update with no stamp at
@@ -372,31 +304,6 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // C5: at project and user scope a route switch only settings.local.json holds is personal, and
         // never decides what this run commits (plugins.js committedRoutes).
         const routes = plugins.committedRoutesAt({ env, claudeDir, scope: args.scope, log });
-        // F1 (review 2.1.6 B1): the copy route's local- or user-scope registrations the ledger records are taken as it
-        // records them when the account file lost them since the last run (mcp.accountLoss) - unreadable at the top of
-        // this run, replaced after the stamp was written (a command's source step does it before the installer runs), or
-        // holding none of them. Said here, before the first registration, unless the top of the run already said it.
-        const regScope = mcp.registrationScope(routes, cliScope);
-        const recordedRegs = !routes.mcps && regScope !== 'project' ? ((priorLedger && priorLedger.mcpAt) || {})[regScope] || {} : {};
-        const heldRegs = () => mcp.registrationsAt({ scope: regScope, accountFile, projectRoot }).servers;
-        const account = mcp.registrationsAt({ scope: regScope, accountFile, projectRoot });
-        const loss = Object.keys(recordedRegs).length
-            ? mcp.accountLoss({ unreadable: accountUnread, backups: mcp.accountBackups(backupDirs), stamped: stampLayer.readInstalledAt(stampFile),
-                recorded: recordedRegs, held: account.servers, entry: account.state !== 'absent' && account.entry !== false, started: account.state === 'read' ? account.started : null })
-            : { lost: accountUnread, why: accountUnread ? 'unreadable' : '' };
-        const accountLost = loss.lost;
-        const lostNames = Object.keys(recordedRegs).join(', ');
-        if (loss.why === 'replaced')
-            log(`  !! mcp: ${accountFile} was replaced since the last run - the claude CLI kept the old one as ${loss.backup}; the stack's ${regScope}-scope registrations are taken as the stamp records them (${lostNames})`);
-        else if (loss.why === 'emptied')
-            log(`  !! mcp: ${accountFile} ${account.state === 'absent' ? 'does not exist, so it' : account.entry === false ? 'holds no entry for this project - a file the claude CLI recovered or rewrote, or a folder moved since the last run -' : 'is a fresh one, first started after the last install (or never), and'} holds none of the stack's ${regScope}-scope registrations its stamp records (${lostNames})${loss.backup ? `; the claude CLI kept the old one as ${loss.backup}` : ''} - they are taken as the stamp records them`);
-        // Review 2.1.6 m5: a kept memory level registers nothing, and the lost account file took its registration with it -
-        // the summary says so rather than 'kept'.
-        const memoryGone = accountLost && level.level === 'kept' && ['alfred-memory', 'memory'].some((n) => Object.hasOwn(recordedRegs, n)) && !['alfred-memory', 'memory'].some((n) => heldRegs()[n]);
-        // C10: the project memory level needs no refusal at user scope any more - on the full copy route,
-        // the one route that registers memory itself, the registration lands in this project's .mcp.json
-        // (mcp.registrationScope), so its path is this project's alone.
-
         // R78: an install moved off `local` scope carries the stack's own entries out of
         // settings.local.json first, so the read-back below and every write after it find them in
         // the file this run writes. A --print-plan moves nothing and reads the local overlay instead.
@@ -415,7 +322,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             const move = settings.leaveLocalScope({
                 claudeDir,
                 hookFiles: [...new Set(manifest.catalogs.hooks.map((e) => e.split('::')[0]))].concat('shell-guards.js', 'file-guards.js'),
-                mcpNames: manifest.catalogs.mcps.map((e) => e.split('|')[0]).concat(mcp.PW_SERVERS, mcp.renamedFrom(manifest.renamed.mcps)),
+                mcpNames: [...manifest.retired.mcps, ...mcp.PW_SERVERS, ...mcp.renamedFrom(manifest.renamed.mcps)],
                 denySpecs: SECRET_DENY, seeds, written: rows.filter((r) => r.written).map((r) => r.key), log, note,
                 // R10: the ledger says exactly which local keys the stack wrote; the seeds are the fallback.
                 ledgerEnv: priorLedger && priorLedger.env ? priorLedger.env['settings.local.json'] || {} : null,
@@ -432,53 +339,12 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             skills: manifest.skills, agents: manifest.agents, rules: manifest.rules,
             hooks: manifest.hooks, plugins: manifest.plugins, mcps: manifest.mcps,
         };
-        // The browser engines the last install INSTALLED, and the ones the user chose to enable (R67) -
-        // the stamp's word, never the listing's flag: an engine left off is still installed, and a
-        // project-scope flag can read a stale false (S22). On EVERY route (R116): a switch onto the copy
-        // route finds no registration yet, and read from .mcp.json alone it wrote both lines blank - the
-        // record a later switch back installs the engines from.
-        // A stamp from before the 2.0.0 rename spells both lines `playwright-*` (`legacy`): the same record.
-        const priorPw = stampLayer.readBrowserLines(stampFile);
-        // null when the stamp has no such line (1.x, no stamp): nothing recorded, and the listing speaks.
-        const stampEngines = priorPw.browsers;
-        // The copy route's own switch (R116 j): the engines .mcp.json registers before this run, and on
-        // each the settings files' disabledMcpjsonServers - an entry in any of them rejects the server.
-        const mcpjsonOff = [path.join(claudeDir, 'settings.json'), path.join(claudeDir, 'settings.local.json'), path.join(configDir, 'settings.json')]
-            .flatMap((f) => { const v = readJson(f).disabledMcpjsonServers; return Array.isArray(v) ? v : []; });
-        // X1: an engine is read from .mcp.json only when the prior stamp's managed-mcp ledger records its <e>-control, browser-<e>
-        // or playwright-<e> name - a user's own server under that name was otherwise adopted, overwritten and ledgered.
-        // A stamp with no ledger, or no stamp, keeps every engine, as mcpjsonPicks does; the stamp's line stays the record.
-        const engineLedger = stampFile && priorLedger && priorLedger.mcp;
-        const mcpjsonEngines = registeredEngines(mcpFile)
-            .filter((e) => !engineLedger || [dataRoot.engineServer(e), `browser-${e}`, `playwright-${e}`].some((n) => Object.hasOwn(engineLedger, n)));
-        // Registered under the CURRENT name: one .mcp.json still holds as `playwright-<engine>` registers
-        // anew as `<engine>-control`, so its off-state is listed anew too (mcp.mcpjsonSwitch).
-        const mcpjsonCurrent = registeredEngines(mcpFile, { legacy: false });
-        // An engine .mcp.json registers under its pre-rename name is switched off under that name.
-        const liveCopy = (e) => (mcpjsonEngines.includes(e) ? ![dataRoot.engineServer(e), `browser-${e}`, `playwright-${e}`].some((n) => mcpjsonOff.includes(n)) : undefined);
-
         let picked = null;
-        // The desktop servers drive THIS machine's own apps (stack/mcp/desktop-launch.js): each is kept on its
-        // own OS only, and one left out is said in one line - never installed to fail at launch. `io.platform`
-        // (the tests) or ALFRED_CODE_PLATFORM stands in for the OS. Gated BEFORE a closure too, so a server this
-        // OS refuses brings no skill in either.
-        const platform = io.platform || platformOf(env);
-        const desktopSaid = new Set();
-        const desktopLines = (lines) => lines.filter((l) =>
-        {
-            const m = /^mcp (\S+)$/.exec(String(l).trim());
-            const gate = m ? mcp.desktopGate({ mcps: [m[1]], platform, market }) : null;
-            if (!gate || gate.kept.length) return true;
-            if (!desktopSaid.has(m[1])) log(gate.lines[0]);
-            desktopSaid.add(m[1]);
-            return false;
-        });
         // On --installed-only, what the user PICKED (disk, the stamp's picks, --add, what those
         // require) - the stamp records that, never everything the enabled entries carry, or the next
         // closure would run over items no one picked.
         let stampPicks = null;
         let carriedPicks = null;
-        let listedEngines = [];
         // The whole listing, read once: the read-back, --plan-out and a --drop's disable all use it.
         let listing = null;
         // The stack entries a --drop took out of the plugin set - disabled by the plugins layer, or
@@ -492,9 +358,6 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         let answered = { hooks: true, agents: true };
         // R109: a former stack pick is dropped here, once per run, and never touched on the machine.
         const formerSaid = new Set();
-        // Re-verify 3 S4 / S7: the registrations the take-back below adopts - the stack's by its exact shape and marks, so
-        // installMcps' vouchedAt takes them as the stack's though the ledger lost their rows.
-        const takenBackMcps = new Set();
         // Task 22: a skill or seat a release renamed is read under its new name wherever an older
         // install or a caller names it the old way - the stamp's picks, a disk copy, a seat deny (in
         // readBack) and these selection lines - with one line per rename per run.
@@ -511,82 +374,9 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             selection.dropFormerPicks({ listing, lastVersion: stampLayer.readVersion(stampFile), compare: compareVersions, log, said: formerSaid });
             const stackListing = effective(plugins.parsePluginList(raw, projectRoot, { marketplace: market }));
             const lastPicked = selection.renamePicked(stampLayer.readPicked(stampFile), renaming);
-            const ledgeredRegistrations = () =>
-            {
-                const regScope = mcp.registrationScope(routes, cliScope);
-                if (routes.mcps || regScope === 'project') return [];
-                const ours = (priorLedger && priorLedger.mcpAt && priorLedger.mcpAt[regScope]) || {};
-                const servers = mcp.registrationsAt({ scope: regScope, mcpFile, accountFile, projectRoot }).servers;
-                // F1: an account file that lost the stack's registrations (accountLost, above) - the record stands.
-                const recordedNames = accountLost ? Object.keys(ours) : Object.keys(servers).filter((name) => Object.hasOwn(ours, name));
-                // The user's ruling (review 2.1.6, B2's second option): an install an EARLIER release broke - its run read a
-                // replaced account file and dropped a registration from the ledger, while the registration itself is still
-                // there - is taken back, but only once the CLI is known to have replaced the file (a corrupted backup, or this
-                // run's own loss signal), only a registration carrying the stack's own marks (mcp.stackAuthored - never the
-                // package name alone, which the user's own server with the same upstream shares), and only a server whose skill
-                // or engine this stamp records. Anything else under a stack name stays the user's (X1).
-                const recordedSkills = new Set([...Object.keys((stampLayer.readLibrary(stampFile) || {}).skills || {}), ...((lastPicked && lastPicked.skills) || []).map((e) => splitPick(e).name)]);
-                const rowOf = (name) => ((manifest.rows && manifest.rows.mcps) || []).find((r) => r.name === name) || {};
-                // Re-verify 3 S1 (after 2's R1): the release template's EXACT shape (mcp.exactStack - its words and env keys,
-                // free only in the pin, the cut-off date and the paths) as well as its marks. A lost row has exactly that shape;
-                // the user's own server with the stack's package and marks usually adds a flag or an env key.
-                const stackOwn = Object.keys(servers).filter((name) => !Object.hasOwn(ours, name) && !mcp.isLocked(name)
-                    && mcp.exactStack(name, servers[name], { catalog: manifest.catalogs.mcps, remotes: { 'alfred-documentation': mcp.CONTEXT7_REMOTE }, projectRoot })
-                    && mcp.stackAuthored(name, servers[name], { engines: stampEngines || [] })
-                    && (Boolean(dataRoot.engineOfServer(name)) || (rowOf(name).skills || []).some((sk) => recordedSkills.has(sk))));
-                if (!stackOwn.length) return recordedNames;
-                // ... and only a loss an EARLIER release could have made: its stamp carries no installed-ms: line (this release
-                // writes one, so a configure drop made since is never undone), and the CLI replaced the account file after this
-                // project was set up (a corrupted backup newer than its initialised: time - the CLI keeps every copy, measured on
-                // 2.1.284, so an older one from any folder would otherwise arm this for good). The last run's installed: is no
-                // reference: the lossy run itself wrote it, just after the backup its own first call made.
-                // A stamp init never dated (`pending`, as a v2.1.5 install's often is) is dated by its own file's birth: the stamp is
-                // rewritten in place, so its file was born with the first install.
-                const born = (() => { try { const st = fs.statSync(stampFile); return st.birthtimeMs > 0 ? st.birthtimeMs : NaN; } catch { return NaN; } })();
-                const dated = Date.parse(String(stampLayer.readInitialised(stampFile) || '').split(' ')[0]);
-                const setUp = Number.isFinite(dated) ? dated : born;
-                const why = stampLayer.readInstalledAt(stampFile).precise ? 'this install\'s stamp is from a release that loses no row'
-                    : !Number.isFinite(setUp) ? 'this install records no set-up time to date a replacement by, and its stamp file carries no birth time'
-                        : !mcp.accountBackups(backupDirs).some((b) => b.ms > setUp) ? 'no sign the claude CLI replaced the account file since this project was set up' : '';
-                if (why)
-                {
-                    for (const name of stackOwn) log(`  mcp ${name}: a ${regScope}-scope registration of the stack's own package and marks that the stamp does not record - left as it is and not a pick (${why}); if it is this install's, /alfred-code:configure adds it back`);
-                    return recordedNames;
-                }
-                for (const name of stackOwn) takenBackMcps.add(name);
-                for (const name of stackOwn) log(`installed-only: taking back mcp ${name} - the stack's own ${regScope}-scope registration (the release template's exact shape, pinned with the release's cut-off, or the stamped engine's profile), which an earlier release's ledger lost when the claude CLI replaced the account file`);
-                return [...recordedNames, ...stackOwn];
-            };
-            // Re-verify 4 T7: a pick the last run held back because the user's own registration held its name (the stamp's
-            // mcp-held: line) stays a pick - the ledger never lists it, so without this the pick left the install unsaid.
-            const heldPicks = () => stampLayer.readMcpHeld(stampFile).map((e) => e.name);
-            // X1: a .mcp.json name is a pick only when the prior stamp's managed-mcp ledger says the stack wrote it
-            // there - a server of the user's own under a stack name was otherwise adopted, overwritten with the
-            // stack's entry and ledgered (matrix 2.1.4 re-run, observation 1). A stamp with no ledger (a pre-ledger
-            // install), or no stamp, keeps every name, as before.
-            const mcpjsonPicks = () =>
-            {
-                const file = mcp.registrationsAt({ scope: 'project', mcpFile, projectRoot });
-                const ours = stampFile && priorLedger && priorLedger.mcp;
-                // Delta F-UNREAD: a file that cannot be read (garbage, EACCES) is no empty selection - the picks and approvals the
-                // stamp recorded stay as recorded, so restoring the file restores the install. A MISSING file is still empty.
-                if (file.state === 'unreadable')
-                {
-                    log(`  mcp: ${mcpFile} could not be read - its picks and approvals stay as the stamp recorded them; fix the file and re-run`);
-                    return Object.keys(ours || {});
-                }
-                const names = Object.keys(file.servers);
-                return ours ? names.filter((name) => Object.hasOwn(ours, name)) : names;
-            };
             const back = selection.readBack({
                 claudeDir, skillsDir,
                 foreignSkill: skillTest({ skillsDir, stampFile, manifest, sourceDir: resolved.dir }).foreign,
-                // The MCP copy route registers where mcp.registrationScope says - at local scope the account's
-                // projects[<root>].mcpServers, not .mcp.json (matrix 3d, 2.1.4: a local desktop server read
-                // as absent, so the update re-spelled its skill and seat to plugin tools nothing served). Only
-                // the names the ledger says the stack registered there: a server of the user's own under a
-                // stack name is theirs, never a pick (the matrix re-run saw one adopted and rewritten).
-                mcpServers: [...new Set([...mcpjsonPicks(), ...ledgeredRegistrations(), ...heldPicks()])],
                 listing, stackListing,
                 // I2 / N5: the file this run writes, or at local scope settings.local.json laid over
                 // settings.json for `env` and `permissions.deny` (settings.js readBackSettings).
@@ -594,7 +384,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 routes, manifest, sourceDir: resolved.dir,
                 stampHooks: readStampHooks(stampFile),
                 lastHooksRoute: stampLayer.readHooksRoute(stampFile),
-                stampPicked: lastPicked, stampEngines,
+                stampPicked: lastPicked,
                 // 2.1.0: how the last run delivered the seats (null before 2.1.0 - its core carried the
                 // always closure), and the seats whose deny the stack itself wrote (a deny gone from
                 // one of those since is the user's hand-allow).
@@ -611,12 +401,12 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 return 1;
             }
             leftOut = selection.leftOut({ parked: back.parked, deny: back.deny });
-            const withAdds = desktopLines(selection.addLines(back.lines, args.add, log));
+            const withAdds = selection.addLines(back.lines, args.add, log);
             const graph = readJson(path.join(resolved.dir, 'meta', 'stack-graph.json'));
-            // The always-on rules, skills and servers are locked: the read-back adopts them whatever the
+            // The always-on rules and skills are locked: the read-back adopts them whatever the
             // disk says, so a drop of one would come straight back on the next update. (A skill's own
             // per-project lever is `skillOverrides`, which leaves the copy in place.)
-            const locked = new Set([...(always.rules || []).map((n) => `rule ${n}`), ...(always.skills || []).map((n) => `skill ${n}`), ...(always.mcps || []).map((n) => `mcp ${n}`)]);
+            const locked = new Set([...(always.rules || []).map((n) => `rule ${n}`), ...(always.skills || []).map((n) => `skill ${n}`)]);
             for (const l of args.drop.filter((d) => locked.has(d)))
                 log(`installed-only: --drop ${l} not applied - locked, every install carries it`);
             const drops = args.drop.filter((d) => !locked.has(d));
@@ -633,10 +423,9 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             }).agents : []);
             const closeDeny = back.deny.filter((d) => !addSeats.has(stackSeat(d)));
             const close = (lines, from, say) => selection.closeLines(lines, { from, graph: graph.catalog ? graph : null, parked: back.parked, deny: closeDeny, log: say });
-            const from = desktopLines([...back.closeFrom, ...args.add]).filter((l) => !drops.includes(l));
+            const from = [...back.closeFrom, ...args.add].filter((l) => !drops.includes(l));
             let closed = close(withDrops, from, log);
-            // A layer the closure brought in (a skill requiring context7 in an install that carried
-            // no server) is carried now, so the locked set joins it in THIS run - adopted only by the
+            // A layer the closure brought in is carried now, so the locked set joins it in THIS run - adopted only by the
             // next update, one update was not the fixed point.
             // An always seat this run's --drop switched off is not adopted back (its deny lands only now).
             const adopted = selection.adoptAlways({ lines: closed, always, log, deny: back.deny, coreOn: plugins.corePluginOn(routes) })
@@ -658,7 +447,6 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             }
             picked = selection.parseSelection(closed.join('\n'));
             answered = back.answered;
-            listedEngines = back.engines;
         }
         else if (args.selection)
         {
@@ -668,71 +456,25 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             picked = selection.parseSelection(selection.renameLines(selection.dropFormerPicks({ lines: text.split('\n'), log, said: formerSaid }), renaming).join('\n'));
             answered = { hooks: [...picked].some((l) => l.startsWith('hook ')), agents: true };
         }
-        // A selection picks from every SHIPPED server - the opt-in rows (the desktop servers, `active: false`)
-        // included; with none, the run takes the default list, which leaves them out.
-        if (picked) lists = selection.applySelection({ ...lists, mcps: manifest.catalogs.mcps }, picked);
-        // R83 a: the locked three are every install's. A plugin route adds their plugins in `pluginSet`;
-        // the FULL copy route registers only what this list names, so they are put back here, before
-        // the plan is printed, so the plan, the registrations and the stamp agree.
-        if (!plugins.corePluginOn(routes)) lists.mcps = mcp.withLocked({ mcps: lists.mcps, catalog: manifest.catalogs.mcps, log });
+        if (picked) lists = selection.applySelection(lists, picked);
         for (const line of args.add)
         {
             const [category, name] = line.split(' ');
             const key = Object.keys(selection.CATEGORY).find((k) => selection.CATEGORY[k].line === category);
-            if (key === 'mcps' && desktopSaid.has(name)) continue;   // shipped, and left out by the OS gate above
             if (!(lists[key] || []).some((e) => selection.CATEGORY[key].name(e) === name))
                 note(`--add ${line} names nothing this release ships - ignored`);
-        }
-        // A selection file is already closed, so the gate reads its server lines here (said once per name).
-        const desktop = mcp.desktopGate({ mcps: lists.mcps, platform, market });
-        lists.mcps = desktop.kept;
-        for (const line of desktop.lines) if (!desktopSaid.has(line.split(' ')[1])) log(line);
-
-        // --- the two entries assembled at install time -----------------------------
-        const pins = args.printPlan
-            ? { PW_PIN: '', SERENA_PIN: '', MEMORY_PIN: '', WINDOWS_CONTROL_PIN: '', MACOS_CONTROL_PIN: '', MOBILE_CONTROL_PIN: '', MOBILE_BEFORE: '', MEMORY_BACKEND: 'sqlite_vec', UV_EXCLUDE_FLAG: '', UV_EXCLUDE_NEWER: '' }
-            : (() =>
-            {
-                const file = readJson(path.join(resolved.dir, 'meta', 'mcp-pins.json'));
-                return mcp.resolvePins({ pins: file.pins, refreshed: file.refreshed, own: userExcludeNewer({ env: cliEnv, projectDir: projectRoot }),
-                    seatsFile: path.join(resolved.dir, 'meta', 'seat-tools.json'), log });
-            })();
-
-        const pw = mcp.expandPlaywright({
-            mcps: lists.mcps,
-            browsers: args.playwrightBrowsers,
-            registered: [...new Set([...mcpjsonEngines, ...listedEngines, ...(stampEngines || [])])],
-        });
-        lists.mcps = pw.mcps;
-        // Which of them are ENABLED: the user's answer when given, else each keeps its last recorded
-        // choice and a new one is on. An answer naming an engine this run does not install is refused
-        // here, before anything is written.
-        const pwOn = mcp.playwrightEnabled({ kept: pw.browsers, flag: args.playwrightEnabled, prior: priorPw, live: liveCopy });
-        if (pwOn.outside.length)
-        {
-            err(`error: --browser-enabled names ${pwOn.outside.join(',')}, which this run does not install (installs: ${pw.browsers.join(',') || 'none'}) - enable only an engine being installed\n`);
-            return 1;
         }
 
         if (args.printPlan)
         {
             for (const line of selection.renderPlan(lists)) plain(line);
             plain(`plan answered: hooks=${answered.hooks ? 'yes' : 'no'} agents=${answered.agents ? 'yes' : 'no'}`);
-            plain(`plan routes: skills=${routes.skills ? 'plugin' : 'copy'} hooks=${routes.hooks ? 'plugin' : 'copy'} mcps=${routes.mcps ? 'plugin' : 'copy'}`);
+            plain(`plan routes: skills=${routes.skills ? 'plugin' : 'copy'} hooks=${routes.hooks ? 'plugin' : 'copy'}`);
             if (args.planOut)
             {
                 if (!listing) listing = hasClaude ? plugins.parsePluginList(rt.capture('claude', ['plugin', 'list', '--json'], { cwd: projectRoot, env: cliEnv }), projectRoot) : [];
                 const inv = selection.planInventory({
                     lists, listing, answered, leftOut, pluginCatalog: manifest.catalogs.plugins.map((id) => id.split('@')[0]),
-                });
-                // What configure's walk pre-selects for the browser: the kept engines, and of them the ones
-                // ON NOW - the settings file where each is installed, which a /plugin toggle writes; the
-                // stamp's last answer only where that file names nothing. Plugin route only.
-                const isOn = engineOn({ configDir, claudeDir });
-                const specOf = (e) => `${dataRoot.engineServer(e)}@${market}`;
-                inv.browser = mcp.playwrightLive({
-                    kept: pw.browsers, prior: priorPw,
-                    live: (e) => (routes.mcps ? isOn(specOf(e), plugins.scopeFor(specOf(e), cliScope, listing)) : liveCopy(e)),
                 });
                 fs.writeFileSync(args.planOut, JSON.stringify(inv, null, 2) + '\n');
             }
@@ -740,65 +482,11 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         }
 
         // --- the run ---------------------------------------------------------------
-        // The data move: what is owed, what this run moves itself (a server no launcher starts on this
-        // route), what it leaves to a launcher's next start - then where each class lives now, which is what
-        // the copy route registers and the settings name.
-        const lockedPlugin = Boolean(routes.mcps) || plugins.corePluginOn(routes);
-        // The sensitive-data file has no server of its own: every route moves it here, with the root change.
-        const launched = (cls) => (cls === 'sensitive' ? false : cls === 'serena' || cls === 'memory' ? lockedPlugin : Boolean(routes.mcps));
+        // The data move: the project's sensitive data, carried inline with a root change (planDataMove).
         const dataPlan = planDataMove({
-            projectRoot, info: dataInfo, engines: pw.browsers, memoryProject: level.level === 'project', launched,
+            projectRoot, info: dataInfo,
             answer: args.dataMove, stamped: (Boolean(stampFile) && fs.existsSync(stampFile)) || Boolean(legacyUnstamped), log, note,
         });
-        const liveOf = (cls) => dataRoot.liveDir({ projectDir: projectRoot, cls, root: dataInfo.root, pending: dataPlan.pending, move: false }).dir;
-        // The level this project already has (memory.recordedPath, read at the top): without it an update with no
-        // --memory-level reset a level init had set to the global default. A kept level has no path to place.
-        if (level.level !== 'kept')
-            level.dbPath = liveMemoryPath({ level, projectRoot, home, liveOf, owed: dataPlan.pending.some((r) => r.cls === 'memory' && launched('memory')), registered: recorded.path });
-        const tokens = {
-            // The copy route's serena context: installMcps copies the stack's file and names it (I12).
-            // Re-verify 3 S2: the three project-anchored rows start through the engine's ROOT_BOOT (the SEED's own engine, like
-            // @UV_PYTHON@ below), which runs the server at the project the launch directory belongs to - so a project-level
-            // database is registered in the committed .mcp.json by its project-relative path: every checkout resolves its own
-            // (re-verify 2 R3) and no parse-time variable is left - `${CLAUDE_PROJECT_DIR:-.}` expanded to '.' in Claude Code's
-            // own environment, the launch directory (code.claude.com/docs/en/mcp: the variable is set in the server's
-            // environment, not Claude Code's). A local- or user-scope registration is machine-local and keeps the absolute path.
-            ROOT_BOOT: require('../../stack/hooks/memory.js').ROOT_BOOT,
-            // The committed .mcp.json names an account-level database from the home, always `~/.alfred-memory/<file>` -
-            // never this machine's own folder, which may be a 2.0.0 ~/.memory-mcp the copy route never moves (re-verify 4
-            // T6) - and ROOT_BOOT's runAtRoot resolves it on the machine that starts it: its new place, else its unmoved
-            // one. A teammate's server never opens this machine's folder, nor a second, empty database (re-verify 3 S2).
-            SERENA_CONTEXT: 'claude-code', MEMORY_DB_PATH: regScope !== 'project' ? level.dbPath
-                : level.level === 'project' && inProject(projectRoot, level.dbPath) ? inProject(projectRoot, level.dbPath)
-                    : level.level !== 'project' && [dataRoot.MEMORY_FOLDER, dataRoot.LEGACY_MEMORY_FOLDER].some((f) => path.dirname(path.resolve(level.dbPath)) === path.join(home, f))
-                        ? `~/${dataRoot.MEMORY_FOLDER}/${path.basename(level.dbPath)}` : level.dbPath,
-            // The copy route's `uvx --python`: the same machine-level answer the plugin launchers use.
-            // Read from the SEED's own tree, never the snapshot's: a snapshot older than the seed has no
-            // such file, and its manifest then carries no @UV_PYTHON@ to resolve anyway.
-            UV_PYTHON: pythonRequest({ env: cliEnv, projectDir: projectRoot }),
-            // windows-control's own: windows-mcp 0.8.6+ needs 3.14 (uv-python.js SERVER_PYTHON, the user's ruling of 2026-10-14).
-            WINDOWS_CONTROL_PYTHON: pythonRequest({ env: cliEnv, projectDir: projectRoot, server: 'windows-control' }),
-            // serena's home in the platform's own separator: a '/' reaches cmd.exe on Windows - under the data
-            // root, or in a 2.0.0 .serena not moved yet.
-            SERENA_HOME: serenaHomeFor(process.platform, dataInfo.root, liveOf('serena')),
-            // M26: how serena finds this project - the cwd walk, or `--project .` where the walk cannot.
-            ...copyRouteProject({ projectDir: projectRoot, serenaDir: liveOf('serena') }),
-            // Each browser engine's profile folder (mcp.pwArgsFor spells the manifest's @BROWSER_DIR@ per engine).
-            ...Object.fromEntries(dataRoot.ENGINES.map((e) => [`BROWSER_DIR_${e.toUpperCase()}`, liveOf(dataRoot.engineServer(e))])),
-            SERENA_PIN: pins.SERENA_PIN, PW_PIN: pins.PW_PIN, UV_EXCLUDE_FLAG: pins.UV_EXCLUDE_FLAG, UV_EXCLUDE_NEWER: pins.UV_EXCLUDE_NEWER,
-            MEMORY_PIN: pins.MEMORY_PIN, MEMORY_BACKEND: pins.MEMORY_BACKEND,
-            WINDOWS_CONTROL_PIN: pins.WINDOWS_CONTROL_PIN, MACOS_CONTROL_PIN: pins.MACOS_CONTROL_PIN, MOBILE_CONTROL_PIN: pins.MOBILE_CONTROL_PIN,
-            // mobile-control's safe defaults (the user's own value where set) and output dirs under the data root, which the
-            // plugin route's launcher sets at each start - the copy route registers no launcher (stack/mcp/mobile-launch.js).
-            ...mobileCopyEnv({ env: cliEnv, projectDir: projectRoot, root: dataInfo.root, before: pins.MOBILE_BEFORE,
-                log: lists.mcps.some((e) => String(e).split('|')[0] === 'mobile-control') ? (line) => log(`  mobile: ${line}`) : () => {} }),
-            // windows-control's tool gate on the copy route, which registers no launcher: the list the
-            // launcher would pass, as Windows-MCP's own WINDOWS_MCP_EXCLUDE_TOOLS.
-            WINDOWS_CONTROL_EXCLUDE: copyRouteExclude({ env: cliEnv, projectDir: projectRoot,
-                log: lists.mcps.some((e) => String(e).split('|')[0] === 'windows-control') ? (line) => log(`  desktop: ${line}`) : () => {} }),
-        };
-        // The one remote server the copy route registers: documentation (Context7), the hosted transport only (2.0.0).
-        const remotes = { 'alfred-documentation': mcp.CONTEXT7_REMOTE };
         // What a release retired from the MCP catalog and this run still prunes: the first update past
         // a retirement only (mcp.dueRetired) - after it, the name is the user's add-back registration.
         const versionDue = mcp.dueRetired({
@@ -815,38 +503,26 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const ctx = {
             args, env, cliEnv, log, note, plain, cli, rt, source: resolved, manifest, lists, routes,
             projectRoot, claudeDir, skillsDir, configDir, mcpFile, home, stampFile,
-            pins, tokens, remotes, level, hasClaude, claudeBroken, picked, answered, dropEntries, cliScope, refreshed,
+            hasClaude, claudeBroken, picked, answered, dropEntries, cliScope, refreshed,
             market, marketSeen, readMarkets, retiredMcpsDue, leavingLocal, ledger: priorLedger, legacyUnstamped,
-            dataInfo, dataPlan, liveOf,
+            dataInfo, dataPlan,
             // The MCP plugin and server names the 2.0.0 rename left behind (manifest `renamed.mcps`).
             legacyMcps: mcp.renamedFrom(manifest.renamed.mcps),
             // A-M2/M3: the account file a user- or local-scope registration lives in, the registrations
             // read from each scope (once per run), and the names kept as another server's.
-            accountFile, accountLost, memoryGone,
-            mcpRegs: {}, mcpForeign: new Map(), mcpSaid: new Set(), mcpTakenBack: takenBackMcps, mcpHeld: [],
-            // The deniedMcpServers entries the stack wrote (the stamp's mcp-denied: line), and this run's record of them.
+            accountFile,
+            mcpRegs: {}, mcpForeign: new Map(), mcpSaid: new Set(),
+            // The deniedMcpServers entries an earlier release wrote (the stamp's mcp-denied: line).
             mcpDenied: { prior: stampLayer.readMcpDenied(stampFile), now: null },
-            pw: { prior: priorPw, ...pwOn, mcpjson: mcp.mcpjsonSwitch({ routes, scope: mcp.registrationScope(routes, cliScope), kept: pw.browsers, enabled: pwOn.enabled, apply: pwOn.apply, registered: mcpjsonCurrent }) },
             // M9 (R132): what the full copy route switched off here - the stamp's record, this run's
             // own stand-down, and what a switch back could not enable yet.
             standDown: { prior: stampLayer.readStoodDown(stampFile), now: [], owed: null },
-            // The desktop servers this project held before the run (its plugin rows, or on the copy route its
-            // registrations) - set by the layer that reads them, so the prerequisites are said once.
-            desktopHeld: null,
             // M3: the skills a same-named project folder kept from this run - never recorded as the stack's picks.
             foreignSkills: new Set(),
             // The instruction file's name: this run's answer (--instructions-file), else the stamp's, else AGENTS.md.
             instructionsAnswer: args.instructionsFile || stampLayer.readInstructionsAnswer(stampFile),
             instructionsKind: args.instructionsFile || stampLayer.readInstructionsFile(stampFile),
         };
-        // R116 (j): an engine left off does not load. At project scope the copy route lists it in
-        // disabledMcpjsonServers; at local and user scope no settings key reaches a registration, so
-        // there the registration is the enable and an engine left off is not registered (R124 l).
-        if (ctx.pw.mcpjson.unregistered.length)
-            log(`browser: ${ctx.pw.mcpjson.off.join(',')} left off - not registered at ${cliScope} scope, where the registration is the enable (the stamp keeps it installed; /alfred-code:configure turns it on)`);
-        else if (ctx.pw.mcpjson.off.length)
-            log(`browser: ${ctx.pw.mcpjson.off.join(',')} left off - disabledMcpjsonServers keeps it from loading (taking it out of that list, or /alfred-code:configure, turns it on)`);
-
         const pinSnapshot = args.keepPins
             ? pinsLayer.snapshotPins({ files: pinFiles(ctx), log })
             : null;
@@ -874,24 +550,19 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
 
         pruneDroppedCopies(ctx);
         stampLayer.writeStamp({
-            source: resolved, action: args.action, scope: args.scope, configDir, projectRoot, mcpFile,
+            source: resolved, action: args.action, scope: args.scope, configDir, projectRoot,
             hooksCatalog: manifest.catalogs.hooks, hooksRoute: ctx.routes.hooks ? 'plugin' : 'copy', seatsRoute: ctx.routes.skills ? 'plugin' : 'copy',
             version: releaseVersion(resolved.dir), log, note,
-            picked: withoutForeign(stampPickLists(lists, stampPicks, carriedPicks), ctx.foreignSkills), playwright: pwEngines(ctx), playwrightEnabled: ctx.pw.enabled,
+            picked: withoutForeign(stampPickLists(lists, stampPicks, carriedPicks), ctx.foreignSkills),
             stoodDown: stoodDownRecord(ctx),
             mcpDenied: ctx.mcpDenied.now || ctx.mcpDenied.prior,
             toolIgnores: ctx.toolIgnores || stampLayer.readToolIgnores(stampFile),
-            // Delta F-UNREAD: a .mcp.json this run could not read was judged for no hold, so the holds the stamp recorded stay.
-            mcpHeld: registrationsAt(ctx, 'project').state === 'unreadable'
-                ? [...ctx.mcpHeld, ...stampLayer.readMcpHeld(stampFile).filter((e) => e.scope === 'project' && !ctx.mcpHeld.some((h) => h.scope === 'project' && h.name === e.name))]
-                : ctx.mcpHeld,
             library: ctx.library || { skills: {}, agents: {}, rules: {} },
             ledger: ledgerOf(ctx),
             data: { root: dataInfo.root, pending: dataPlan.pending, kept: dataPlan.kept },
             instructionsFile: ctx.instructionsAnswer,
         });
 
-        warmMemoryModel(ctx);
         summarise(ctx, failures);
         return failures ? 0 : 0;   // fail-soft by design: a step that failed is REPORTED, never fatal
     }
@@ -918,24 +589,20 @@ function excludeFileOf(ctx)
 function runLayers(ctx)
 {
     const { args } = ctx;
-    // The tracked .mcp.json as the run found it: every write below (a re-register appends the name) is put back in its order.
+    // The tracked .mcp.json as the run found it: a retired registration's removal below keeps the rest in its order.
     const mcpBefore = mcp.snapshotMcp(ctx.mcpFile);
     bootstrapSource(ctx);
     installSkillsAndAgents(ctx);
     installPlugins(ctx);
-    installMcps(ctx);
-    desktopNotes(ctx);
+    retireMcps(ctx);
     forgeCliStep(ctx);
-    seeds.seedAccountKeys({ configDir: ctx.configDir, env: ctx.env, log: ctx.log, note: ctx.note });
     // The generated rules moved off the `baseline-` prefix in 2.1.6: before anything re-stamps or reads them.
     selection.moveGeneratedRules({ projectRoot: ctx.projectRoot, log: ctx.log, note: ctx.note });
     docsRootStep(ctx);
     installHooksAndRules(ctx);
     const docsPath = copy.resolveDocsRoot(ctx.projectRoot, ctx.args.scope);
-    // After the settings pass, so the versioning is the decision this run just wrote; before the memory import, so a
-    // project database lands under a root whose .gitignore already keeps it out.
+    // After the settings pass, so the versioning is the decision this run just wrote.
     ignoreStep(ctx, docsPath);
-    importMemory(ctx);
     // A hand-set root still waiting on update's ask moves nothing yet - its folders are re-laid out only once it is
     // the data root's (final review 2026-10-20b: the layout pass moved a team's flow/ and history/ by name).
     if (!ctx.docsRootPending)
@@ -1019,7 +686,8 @@ function runLayers(ctx)
     };
     ctx.respelledSeeds = new Set();
     selection.respellRenamed({
-        projectRoot: ctx.projectRoot, renamed: ctx.manifest.renamed, engines: pwEngines(ctx), docsPath,
+        // No MCP server ships since 2.10.1, so an old server spelling has no current one to take: skills and seats only.
+        projectRoot: ctx.projectRoot, renamed: { ...ctx.manifest.renamed, mcps: {} }, docsPath,
         owned: (rel) =>
         {
             const row = seedRow(rel);
@@ -1033,23 +701,7 @@ function runLayers(ctx)
     });
     if (plugins.corePluginOn(ctx.routes))
         selection.respellRosterSeats({ projectRoot: ctx.projectRoot, core: CORE, seats: placement().plugins[CORE].agents, docsPath, log: ctx.log, note: ctx.note });
-    // A registration of the name answers the bare spelling, the stack's own (bareNames) or the project's in .mcp.json.
-    const servers = (readJson(ctx.mcpFile) || {}).mcpServers;
-    const registered = new Set([...bareNames(ctx), ...(servers && typeof servers === 'object' && !Array.isArray(servers) ? Object.keys(servers) : [])]);
-    selection.respellMcpRows({
-        projectRoot: ctx.projectRoot,
-        plugin: ctx.lists.mcps.map((e) => String(e).split('|')[0]).filter((name) => !registered.has(name)),
-        outputs: Object.fromEntries(pwEngines(ctx).map((e) => [e, `${dataRoot.targetOf(dataRoot.engineServer(e), ctx.dataInfo.root)}/output/`])),
-        docsPath, log: ctx.log, note: ctx.note,
-    });
     dataRootLayer(ctx, docsPath);
-    seeds.playwrightDownloads({
-        browsers: pwEngines(ctx),
-        pin: ctx.pins.PW_PIN,
-        run: (engine) => ctx.rt.runNode !== undefined && npxInstall(ctx, engine),
-        log: ctx.log,
-    });
-    downconvert(ctx);
     mcp.keepMcpOrder({ mcpFile: ctx.mcpFile, before: mcpBefore });
 }
 
@@ -1060,7 +712,7 @@ function runLayers(ctx)
 function adoptCredentials(ctx, root, docsPath)
 {
     const norm = (p) => String(p || '').trim().replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
-    const session = settingFrom({ env: process.env, projectDir: ctx.projectRoot, suffix: 'DOCS_PATH' });
+    const session = dataRoot.settingFrom({ env: process.env, projectDir: ctx.projectRoot, suffix: 'DOCS_PATH' });
     for (const at of [...new Set([docsPath, session].map(norm).filter(Boolean))]) adoptCredentialsAt(ctx, root, at);
 }
 function adoptCredentialsAt(ctx, root, docsPath)
@@ -1132,42 +784,9 @@ function dataRootLayer(ctx, docsPath)
     }
     // The project's own tree-walking tools skip the data root (tool-ignores.js): one marked line per ignore file.
     ctx.toolIgnores = toolIgnoresLayer.ensureToolIgnores({ projectRoot, root, prior: stampLayer.readToolIgnores(ctx.stampFile), log, note });
-    const navigation = ctx.lists.mcps.some((e) => e.startsWith('alfred-navigation|'));
-    const serenaDir = ctx.liveOf('serena');
-    serena.seedProject({ projectRoot, selected: navigation, dir: serenaDir, root, log });
-    if (navigation && serenaDir !== dataRoot.LEGACY.serena)
-    {
-        try
-        {
-            const said = dataRoot.ensureSerenaConfig(path.join(projectRoot, ...`${serenaDir}/home`.split('/')), serenaDir);
-            if (said !== 'current') log(`  serena: ${serenaDir}/home/serena_config.yml ${said === 'kept' ? 'names its own project folder - left as it is' : `${said} - the per-project folder is ${serenaDir}`}`);
-        }
-        catch (err) { note(`${serenaDir}/home/serena_config.yml could not be written (${err.message}) - serena falls back to .serena`); }
-    }
-    // A 2.0.0 place in use, or one holding data again after its move (a reader still on the old place wrote
-    // there, and its own .gitignore left with the folder): kept out of git either way.
-    const holdsAt = (rel) => { try { return fs.readdirSync(path.join(projectRoot, ...rel.split('/'))).some((n) => n !== '.gitignore'); } catch { return false; } };
-    if (serenaDir === dataRoot.LEGACY.serena || holdsAt(dataRoot.LEGACY.serena))
-    {
-        try { serena.ensureSerenaIgnore({ projectRoot, selected: navigation || holdsAt(dataRoot.LEGACY.serena), log }); }
-        catch (err) { note(`.serena/.gitignore could not be written (${err.message}) - add .serena/ to the repo's own .gitignore`); }
-    }
-    const legacyEngines = pwEngines(ctx).map(dataRoot.engineServer).filter((cls) => ctx.liveOf(cls) === dataRoot.legacyOf(cls) || holdsAt(dataRoot.legacyOf(cls))).map(dataRoot.engineOfServer);
-    try { mcp.ensurePlaywrightIgnore({ projectRoot, engines: legacyEngines, log }); }
-    catch (err) { note(`.playwright/.gitignore could not be written (${err.message}) - add .playwright/ to the repo's own .gitignore`); }
     for (const old of new Set([ctx.dataInfo.prior, ...ctx.dataPlan.left].filter((r) => r && r !== root)))
         docs.pruneDataRoot({ projectRoot, root: old, log });
-    // The 2.0.0 browser folder once every profile left it: only the stack's own `.gitignore` remains.
-    const pw = path.join(projectRoot, dataRoot.LEGACY.browser);
-    try
-    {
-        const names = fs.readdirSync(pw);
-        if (names.length === 1 && names[0] === '.gitignore' && fs.readFileSync(path.join(pw, '.gitignore'), 'utf8') === '*\n')
-        { fs.rmSync(pw, { recursive: true }); log(`  data root: ${dataRoot.LEGACY.browser}/ removed - every profile moved`); }
-    }
-    catch { /* absent, or not the stack's to remove */ }
-    if (ctx.dataPlan.moved.length || ctx.dataPlan.pending.length)
-        log(`data root: ${root} - ${ctx.dataPlan.moved.length} moved now, ${ctx.dataPlan.pending.length} waiting for a server's next start; restart the session`);
+    if (ctx.dataPlan.moved.length) log(`data root: ${root} - ${ctx.dataPlan.moved.length} moved now`);
 }
 
 // THE DATA ROOT this run lays the project's data under (stack/mcp/data-root.js): the settings value this
@@ -1204,87 +823,39 @@ function resolveDataRoot({ args, claudeDir, projectRoot, log })
     return { root, current, prior, recorded, invalid };
 }
 
-// What the data move owes and does this run. A pending line carried from the last run stays while its data
-// still sits at `from` and its target is this root's; one whose server no launcher starts on this route is
-// retried inline. `--data-move move` moves every class whose data is elsewhere: inline where no launcher
-// runs (the copy route - a browser profile a browser holds, or a database a server has open, waits), else
-// recorded for the launcher, which moves it at the server's next start. `keep` cancels what is owed and
-// marks the layout kept. No answer moves nothing and names the offer.
-function planDataMove({ projectRoot, info, engines, memoryProject, launched, answer, stamped, log, note })
+// What the data move does this run: the project's sensitive-data file (data-root.js SENSITIVE_FILE) is the one class the
+// stack still moves, inline, when the root changes. `--data-move move` moves it, `keep` marks the layout kept, and no
+// answer moves nothing and names the offer. A `data-pending:` line an earlier release recorded for a server's launcher
+// names data that is no longer the stack's (2.10.1: no server ships) - it is dropped, the data left where it is.
+function planDataMove({ projectRoot, info, answer, stamped, log, note })
 {
     const abs = (rel) => path.join(projectRoot, ...rel.split('/'));
-    // A folder holding nothing but its `.gitignore` holds no data (data-root.js reads it the same way).
-    // A link is no data (M5: the project memory folder's 2.0.0 place, linked to its moved folder). The sensitive-data
-    // class is one file, which is its data.
-    const holds = (rel, cls) =>
-    {
-        try
-        {
-            const st = fs.lstatSync(abs(rel));
-            if (cls === 'sensitive') return st.isFile();
-            return !st.isSymbolicLink() && fs.readdirSync(abs(rel)).some((n) => n !== '.gitignore');
-        }
-        catch { return false; }
-    };
-    const same = (a, b) => a.cls === b.cls && a.from === b.from && a.to === b.to;
-    const server = (cls) => (cls === 'serena' ? 'alfred-navigation' : cls === 'memory' ? 'alfred-memory' : cls);
-    const inline = (row) =>
-    {
-        // M2: serena's own check too - on the copy route the session running this installer has its serena open there.
-        const busy = dataRoot.engineOfServer(row.cls) ? dataRoot.profileLocks : row.cls === 'memory' ? dataRoot.busyDbs : row.cls === 'serena' ? dataRoot.serenaBusy : () => [];
-        const held = busy(abs(row.from));
-        if (held.length) return { ok: false, why: `held open: ${held.join(', ')}` };
-        const r = dataRoot.movePlace({ projectDir: projectRoot, cls: row.cls, from: row.from, to: row.to });
-        if (r.state !== 'moved') return { ok: false, why: r.why || r.state };
-        // M5: the project memory folder's 2.0.0 place is linked back, as the home folder is.
-        return { ok: true, said: r.linked ? ', the old path linked to it (git lists the link: ignore it in the project\'s .gitignore or .git/info/exclude)'
-            : r.linked === false ? ` - the old path could not be linked (${r.why}); Cursor and any install still naming ${row.from} do not see it until pointed at ${row.to}` : '' };
-    };
+    const isFile = (rel) => { try { return fs.lstatSync(abs(rel)).isFile(); } catch { return false; } };
     const moved = [];
-    // A root a recorded move has now emptied (its launcher ran) is pruned by the data-root layer.
-    const left = info.recorded.pending.filter((p) => !holds(p.from, p.cls)).map((p) => dataRoot.rootOfPlace(p.cls, p.from)).filter(Boolean);
-    let pending = info.recorded.pending.filter((p) => holds(p.from, p.cls) && p.to === dataRoot.targetOf(p.cls, info.root));
-    // A target that already holds the data was filled by its launcher's move; what sits at `from` now was
-    // written after it, by a reader still on the old place (a second session's server, or Cursor's). The line
-    // clears - kept, every later run would wait for a move that already ran and ask for a restart forever -
-    // and the leftover is named once here; later runs see it as a plain clash (below).
-    pending = pending.filter((p) =>
-    {
-        if (!holds(p.to, p.cls)) return true;
-        log(`  !! data root: ${p.from} still holds data after the move to ${p.to} - remove or merge it`);   // a warning, not a failed step
-        return false;
-    });
+    const left = [];
+    // A sensitive-data move an earlier run could not make (a clash, a failed rename) is retried; any other class is dropped.
+    let pending = info.recorded.pending.filter((p) => p.cls === 'sensitive' && isFile(p.from) && p.to === dataRoot.targetOf(p.cls, info.root));
     let kept = info.recorded.kept && answer !== 'move';
     if (answer === 'keep') { kept = true; pending = []; }
-    pending = pending.filter((p) =>
+    const inline = (row) =>
     {
-        if (launched(p.cls)) return true;
-        const r = inline(p);
-        if (r.ok) { moved.push(p); left.push(dataRoot.rootOfPlace(p.cls, p.from)); log(`data root: moved ${p.from} -> ${p.to}${r.said}`); }
-        else log(`data root: ${p.from} not moved yet (${r.why}) - the next run tries again`);
-        return !r.ok;
-    });
-    const rows = stamped ? dataRoot.dataMovePlan({ projectRoot, root: info.root, prior: info.prior, engines, memory: memoryProject }) : [];
-    const place = (row) =>
-    {
-        if (row.conflict) { note(`data root: ${row.from} not moved - ${row.to} already holds data; move or remove one of them, then run /alfred-code:update --data-move move`); return; }
-        if (launched(row.cls))
-        {
-            pending.push({ cls: row.cls, from: row.from, to: row.to });
-            log(`data root: ${row.from} -> ${row.to} moves at the ${server(row.cls)} server's next start, once nothing holds it - restart the session`);
-            return;
-        }
-        const r = inline(row);
-        if (r.ok) { moved.push(row); log(`data root: moved ${row.from} -> ${row.to}${r.said}`); }
-        else { pending.push({ cls: row.cls, from: row.from, to: row.to }); log(`data root: ${row.from} not moved yet (${r.why}) - the next run tries again`); }
+        const r = dataRoot.movePlace({ projectDir: projectRoot, cls: row.cls, from: row.from, to: row.to });
+        if (r.state === 'moved') { moved.push(row); left.push(dataRoot.rootOfPlace(row.cls, row.from)); log(`data root: moved ${row.from} -> ${row.to}`); return true; }
+        log(`data root: ${row.from} not moved yet (${r.why || r.state}) - the next run tries again`);
+        return false;
     };
-    // An engine's profile in the root's 2.1.0 shared folder (<root>/browser/<engine>) is the stack's own layout inside the
-    // root, never an offer (the user's ruling of 2026-10-13: no shared browser folder): it moves to <root>/<engine>-control
-    // whatever the data-move answer, and a clash still stops it.
-    const relayout = rows.filter((r) => dataRoot.isRelayout(r, info.root) && !pending.some((p) => same(p, r)));
-    for (const row of relayout) place(row);
-    const open = rows.filter((r) => !dataRoot.isRelayout(r, info.root) && !pending.some((p) => same(p, r)));
-    if (answer === 'move') for (const row of open) place(row);
+    pending = pending.filter((p) => !inline(p));
+    const rows = stamped ? dataRoot.dataMovePlan({ projectRoot, root: info.root, prior: info.prior }) : [];
+    const same = (a, b) => a.cls === b.cls && a.from === b.from && a.to === b.to;
+    const open = rows.filter((r) => !pending.some((p) => same(p, r)));
+    if (answer === 'move')
+    {
+        for (const row of open)
+        {
+            if (row.conflict) { note(`data root: ${row.from} not moved - ${row.to} already holds data; move or remove one of them, then run /alfred-code:update --data-move move`); continue; }
+            if (!inline(row)) pending.push({ cls: row.cls, from: row.from, to: row.to });
+        }
+    }
     else if (open.length && !kept)
     {
         // A clash is no offer: a move would overwrite nothing, so it never runs until one side is cleared.
@@ -1294,27 +865,6 @@ function planDataMove({ projectRoot, info, engines, memoryProject, launched, ans
         if (offered.length) log(`data root: ${offered.map((r) => r.from).join(', ')} sit outside ${info.root} - /alfred-code:update offers the move to ${info.root} (--data-move move|keep); nothing moved`);
     }
     return { pending, kept, moved, rows, left: [...new Set(left.filter((r) => r && r !== info.root))] };
-}
-
-// The memory database the settings (and a copy-route registration) name: where the file LIVES now. A
-// project database the memory launcher still owes a move names its new place - the launcher moves it there
-// and every reader falls back until then (data-root.js liveMemoryDb); otherwise the place it sits, so a
-// server with no launcher never opens a second, empty database beside it. The registered spelling is kept
-// when it names that same file.
-function liveMemoryPath({ level, projectRoot, home, liveOf, owed, registered })
-{
-    let live = level.dbPath;
-    if (level.level === 'project' && !owed)
-    {
-        const found = path.join(projectRoot, ...liveOf('memory').split('/'), 'memory.db');
-        if (fs.existsSync(found)) live = found;
-    }
-    else if (level.level === 'global') live = dataRoot.liveMemoryDb(level.dbPath, { home, projectRoot });
-    // The same file under another spelling of its directory (macOS /var -> /private/var) keeps the registered
-    // one - never a 2.0.0 folder name reaching the moved database through its link, which is re-spelled.
-    const real = (p) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
-    const sameFolder = registered && path.basename(path.dirname(registered)) === path.basename(path.dirname(live));
-    return sameFolder && fs.existsSync(registered) && real(registered) === real(live) ? registered : live;
 }
 
 // THE DOCS ROOT this run leaves in effect: <data root>/docs (2.8.0, the user's ruling of 2026-10-20 - docs.docsMovePlan).
@@ -1658,25 +1208,17 @@ function installSkillsAndAgents(ctx)
     });
 }
 
-// C17 / B seam: what a copy-route copy holds - the shipped text with the MCP tool names this run
-// registers bare re-spelled to them (the rules render the same way), and on the FULL copy route a
-// seat's `alfred-code:<skill>` preloads bare, since no core plugin serves that spelling there. Null
-// when nothing changes - every plugin route.
+// C17 / B seam: what a copy-route copy holds - the shipped text, with a seat's `alfred-code:<skill>` preloads bare on the
+// FULL copy route, since no core plugin serves that spelling there. Null when nothing changes - every plugin route.
 function copyRender(ctx, kind)
 {
-    const bare = ctx.routes.skills ? [] : bareNames(ctx);
-    const preloads = kind === 'agent' && !mcp.corePluginOn(ctx.routes);
-    if (!bare.length && !preloads) return null;
-    return (text) =>
-    {
-        const out = mcp.respellToolNames(text, bare);
-        return preloads ? copy.respellPreloads(out, CORE) : out;
-    };
+    if (kind !== 'agent' || mcp.corePluginOn(ctx.routes)) return null;
+    return (text) => copy.respellPreloads(text, CORE);
 }
 
 function installPlugins(ctx)
 {
-    if (!ctx.hasClaude) { if (!ctx.claudeBroken) ctx.note('the claude CLI is not on PATH - the plugin and MCP layers were skipped'); return; }
+    if (!ctx.hasClaude) { if (!ctx.claudeBroken) ctx.note('the claude CLI is not on PATH - the plugin layer was skipped'); return; }
     // One row per name@marketplace: the set mixes official picks with stack entries, and the official
     // catalog ships names the stack uses too.
     const readRaw = () => ctx.rt.capture('claude', ['plugin', 'list', '--json'], { cwd: ctx.projectRoot, env: ctx.cliEnv });
@@ -1685,34 +1227,17 @@ function installPlugins(ctx)
     const listing = plugins.parsePluginList(raw, ctx.projectRoot, { byMarketplace: true });
     const rows = plugins.parsePluginList(raw, ctx.projectRoot, { everyScope: true });
     const blind = !listingRead(raw);
-    // Under an old name too (windows-desktop): a rename brings no server into the project, so its notes stay unsaid.
-    const nowName = (n) => mcp.currentMcp(n, ctx.manifest.renamed.mcps);
-    if (ctx.routes.mcps) ctx.desktopHeld = new Set(rows.filter((r) => r.marketplace === ctx.market && NOTED(nowName(r.name))).map((r) => nowName(r.name)));
-    const engines = playwrightMoves(ctx, { blind, rows });
-    // R107 / R111: what the copy route registers in .mcp.json after this layer must never also load as
-    // a plugin. On the full copy route the stack's own rows go off (the core and the locked three) -
-    // before the MCP layer registers anything; wherever the copy route registers a playwright engine, that engine's
-    // row goes. Which rows are on is the settings file's word at each scope before the listing's (S22,
-    // S28). M4 (R132): a listing that could not be read is no list of rows - one loud line names what
-    // could not be switched off, and nothing is acted on.
+    // The full copy route copies the core's hooks and seats into the project, so the core's own row goes off (R107) -
+    // which rows are on is the settings file's word at each scope before the listing's (S22, S28). M4 (R132): a listing
+    // that could not be read is no list of rows - one loud line names what could not be switched off.
     const isOn = engineOn(ctx);
     const copyRoute = !plugins.corePluginOn(ctx.routes);
     const stand = { rows, market: ctx.market, scope: ctx.cliScope, isOn, cli: ctx.cli, log: ctx.log, note: ctx.note };
-    if (blind && (copyRoute || !ctx.routes.mcps)) ctx.note(blindStandDown(ctx, copyRoute));
-    // C11: at user scope on the full copy route an engine's user-scope row is switched off here only, and
-    // joins the core's in the stamp's stood-down record.
-    // The 2.0.0 rename: on the full copy route an old id is stood down with its successor's name - the
-    // core is off there, so no swap runs (plugins.migrateRenamed); on a plugin route it is swapped below. An old
-    // engine or desktop id goes the engine way, an old locked one the core's.
-    const lockedSuccessor = (n) => mcp.isLocked(mcp.currentMcp(n, ctx.manifest.renamed.mcps));
-    const legacyEngines = copyRoute ? ctx.legacyMcps.filter((n) => !lockedSuccessor(n)) : [];
-    const legacyLocked = copyRoute ? ctx.legacyMcps.filter(lockedSuccessor) : [];
-    // I8: a desktop server (and mobile-control) the copy route registers loses its plugin row the engine way.
-    const engineOff = !ctx.routes.mcps && !blind ? plugins.engineStandDown({ ...stand, engines: pwEngines(ctx), desktop: soloKept(ctx), hereOnly: copyRoute, legacy: legacyEngines }).off : [];
-    const standDown = () => { if (copyRoute && !blind) ctx.standDown.now = [...engineOff, ...plugins.copyRouteStandDown({ ...stand, locked: [...mcp.LOCKED, ...legacyLocked] })]; };
+    if (blind && copyRoute) ctx.note(blindStandDown(ctx));
+    const standDown = () => { if (copyRoute && !blind) ctx.standDown.now = plugins.copyRouteStandDown(stand); };
     let set = plugins.pluginSet({
         routes: ctx.routes, thirdParty: ctx.lists.plugins,
-        stackEntries: ctx.stackEntries || [], coreDeps: CORE_DEP_PLUGINS, locked: mcp.LOCKED, market: ctx.market,
+        stackEntries: ctx.stackEntries || [], coreDeps: CORE_DEP_PLUGINS, market: ctx.market,
     });
     const marketplaces = plugins.extraMarketplaces(ctx.manifest.rows.plugins, set);
     // 2.2.0: each optional item at the scope the user chose for it (`--scope-of`); a required one follows the run.
@@ -1722,7 +1247,7 @@ function installPlugins(ctx)
     // new scope from here on.
     const relocated = ctx.leavingLocal && !blind
         ? plugins.moveLocalRows({
-            plugins: set, rows, scope: ctx.cliScope, scopes, engines: pwEngines(ctx).map((e) => `${dataRoot.engineServer(e)}@${ctx.market}`),
+            plugins: set, rows, scope: ctx.cliScope, scopes,
             isOn, cli: ctx.cli, log: ctx.log, note: ctx.note,
         })
         : { moved: [], dropped: [] };
@@ -1736,7 +1261,6 @@ function installPlugins(ctx)
     const rescoped = !blind
         ? plugins.moveScoped({
             plugins: set, rows, scope: ctx.cliScope, scopes, isOn, cli: ctx.cli, log: ctx.log, note: ctx.note,
-            engines: [...pwEngines(ctx).map((e) => `${dataRoot.engineServer(e)}@${ctx.market}`), ...soloKept(ctx).map((n) => `${n}@${ctx.market}`)],
         })
         : [];
     for (const row of listing)
@@ -1751,26 +1275,14 @@ function installPlugins(ctx)
             ctx.log('  !! claude-hud has no status line yet - run /alfred-code:init to set it up');
     };
     // The plugins a release cut (meta/retired-plugins.json) go the same way, each by its full spec and
-    // with its add-back line - 2.0.0's five MCP entries among them.
+    // with its add-back line - 2.0.0's five MCP entries and 2.10.1's server plugins among them.
     const retiredRows = readRetiredPlugins(ctx.source.dir);
     // A retired third-party pick goes on the first update past its retirement only (plugins.retirementDue):
     // after it, a row under that spec is the user's own, put back with the add-back line.
     const lastVersion = stampLayer.readVersion(ctx.stampFile);
     const retired = [...new Set([...ctx.manifest.retired.plugins, ...retiredRows.map((r) => r.name)])]
         .filter((name) => plugins.retirementDue({ name, rows: retiredRows, lastVersion, compare: compareVersions }));
-    // The 2.0.0 rename (plugins.migrateRenamed): each old MCP id at this run's scope swapped for its
-    // successor, one at another scope stood down here only, on either action - a setup over an older
-    // install would otherwise run both. A
-    // listing the run could not read shows no old row: the ids a pre-rename stamp implies are named.
-    const renamedMove = plugins.corePluginOn(ctx.routes) && !blind
-        ? plugins.migrateRenamed({ rows, renamed: ctx.manifest.renamed.mcps, set, market: ctx.market, scope: ctx.cliScope, engines, isOn, cli: ctx.cli, log: ctx.log, note: ctx.note,
-            keep: (name) => Boolean(ctx.routes.mcps) && Object.hasOwn(DESKTOP_OS, name) })
-        : { fresh: [], gone: [] };
-    if (blind && predatesRename(ctx))
-        ctx.log(`  !! the plugin listing could not be read, and this install predates the 2.0.0 rename - an old id still installed loads beside its successor; check /plugin, or: ${ctx.legacyMcps.map((n) => `claude plugin uninstall ${n}@${ctx.market} --scope ${ctx.cliScope}`).join('; ')}`);
-    const fresh = [...relocated.moved, ...renamedMove.fresh, ...rescoped.map((m) => m.spec)];
-    // The three alfred- servers install at the core's scope - user scope when the core's only row is the admin's.
-    const pinned = !blind && plugins.corePluginOn(ctx.routes) ? plugins.requiredScopes({ rows, market: ctx.market, locked: mcp.LOCKED, log: ctx.log }) : {};
+    const fresh = [...relocated.moved, ...rescoped.map((m) => m.spec)];
     // The switch back (R116, M9): what the full copy route switched off comes back on - the record only.
     const back = copyRoute ? { restored: [], owed: null }
         : plugins.restoreStoodDown({ record: ctx.standDown.prior, plugins: set, isOn, cli: ctx.cli, log: ctx.log, note: ctx.note });
@@ -1783,18 +1295,13 @@ function installPlugins(ctx)
         plugins.prunedRetired({ rows, retired, retiredRows, market: ctx.market, scope: ctx.cliScope, cli: ctx.cli, log: ctx.log, note: ctx.note });
         standDown();
         plugins.updatePlugins({
-            plugins: set, scope: ctx.cliScope, scopes, pinned, marketplaces, before: listing, rows, fresh, restored: back.restored, refreshed: ctx.refreshed, engines, release, cli: ctx.cli, log: ctx.log, note: ctx.note,
+            plugins: set, scope: ctx.cliScope, scopes, marketplaces, before: listing, rows, fresh, restored: back.restored, refreshed: ctx.refreshed, release, cli: ctx.cli, log: ctx.log, note: ctx.note,
             after: readListing,
         });
         hudLine();
-        // PL5 (b): a renamed id the project's own settings still switch on with no record reaching it - the swap above
-        // reads records only - is removed there once this run carries its successor (plugins.dropStaleRenamed).
-        if (plugins.corePluginOn(ctx.routes) && !blind)
-            plugins.dropStaleRenamed({ raw, projectRoot: ctx.projectRoot, renamed: ctx.manifest.renamed.mcps, set, market: ctx.market, log: ctx.log, note: ctx.note });
         for (const row of ctx.dropEntries || [])
         {
             const spec = `${row.name}@${row.marketplace}`;
-            if (engines.uninstalled.includes(spec)) continue;
             // A drop switches the entry off where this run reaches it: at its own scope when that is the run's, and
             // over a BROADER row (user under a project run, project or user under a local one) as an override at the
             // run's scope - this project alone, every other project keeping it (plugins.overrideScope). A narrower
@@ -1815,14 +1322,11 @@ function installPlugins(ctx)
     }
     standDown();
     plugins.installPlugins({
-        plugins: set, scope: ctx.cliScope, scopes, pinned, marketplaces, before: listing, rows, fresh, refreshed: ctx.refreshed, engines, release, cli: ctx.cli, log: ctx.log, note: ctx.note,
+        plugins: set, scope: ctx.cliScope, scopes, marketplaces, before: listing, rows, fresh, refreshed: ctx.refreshed, release, cli: ctx.cli, log: ctx.log, note: ctx.note,
     });
     hudLine();
 }
 
-// The desktop servers' and mobile-control's prerequisites (each launcher's prereqNotes), said ONCE: on the run
-// that brings a server into this project - its plugin row, or on the copy route its registration, was not
-// there before - never on every update after it. No claude CLI installs nothing, so nothing is said.
 // --forge-cli (init's forge ask, answered 'Install'): the CLI the origin's forge needs (forge-session.js cliPlan). Homebrew
 // installs it on macOS - az then gains its devops extension, which its repos and pipelines groups live in; anywhere else,
 // or with no Homebrew, the run names what to install by hand. Without the flag nothing is installed.
@@ -1848,34 +1352,12 @@ function forgeCliStep(ctx)
     catch (err) { ctx.note(`forge CLI: brew install ${plan.formula} failed (${String(err.message).split('\n')[0]}) - ${plan.how}`); }
 }
 
-function desktopNotes(ctx)
-{
-    if (!ctx.desktopHeld) return;
-    const uvx = Boolean(ctx.rt.which('uvx'));
-    for (const entry of ctx.lists.mcps)
-    {
-        const name = String(entry).split('|')[0];
-        if (!NOTED(name) || ctx.desktopHeld.has(name)) continue;
-        const lines = name === 'mobile-control'
-            ? mobileNotes({ env: ctx.env, projectDir: ctx.projectRoot, route: ctx.routes.mcps ? 'plugin' : 'copy',
-                pin: ((readJson(path.join(ctx.source.dir, 'meta', 'mcp-pins.json')) || {}).pins || {})['mobile-control'] })
-            : prereqNotes(name, { uvx, exclude: ctx.tokens.WINDOWS_CONTROL_EXCLUDE });
-        for (const line of lines) ctx.log(line);
-    }
-}
-
-// M4 (R132): the one line for a listing the run could not read on a copy route - what would have been
-// switched off, each with its command, so nothing runs beside its .mcp.json registration unsaid.
-function blindStandDown(ctx, copyRoute)
+// M4 (R132): the one line for a listing the run could not read on the full copy route - the core row that would have been
+// switched off, with its command, so its hooks never run beside the copies unsaid.
+function blindStandDown(ctx)
 {
     const at = plugins.standDownScope(ctx.cliScope);
-    const cmds = [
-        ...(copyRoute ? [BRAND.core, ...mcp.LOCKED].map((n) => `claude plugin disable ${n}@${ctx.market} --scope ${at}`) : []),
-        ...[...pwEngines(ctx).map(dataRoot.engineServer), ...soloKept(ctx)].map((name) => (copyRoute && at !== ctx.cliScope
-            ? `claude plugin disable ${name}@${ctx.market} --scope ${at}`
-            : `claude plugin uninstall ${name}@${ctx.market} --scope ${ctx.cliScope}`)),
-    ];
-    return `the plugin listing could not be read, so no stack plugin was switched off before the copy route registers its servers - any still enabled runs beside its registration; check /plugin, or: ${cmds.join('; ')}`;
+    return `the plugin listing could not be read, so the core was not switched off before the copies land - if it is still enabled its hooks run beside them; check /plugin, or: claude plugin disable ${BRAND.core}@${ctx.market} --scope ${at}`;
 }
 
 // M9 (R132): the stamp's `stood-down` record after this run. On the full copy route: the earlier record,
@@ -1890,60 +1372,6 @@ function stoodDownRecord(ctx)
     const kept = prior.filter((e) => isOn(e.spec, e.scope) !== true);
     const key = (e) => `${e.scope}:${e.spec}`;
     return [...kept, ...now.filter((e) => !kept.some((k) => key(k) === key(e)))];
-}
-
-// THE PLAYWRIGHT ENGINES for the plugin pass (R67): installed and enabled as the user picked. First an
-// engine the last install installed and this run no longer keeps is UNINSTALLED - left installed it
-// reads back as listed and the next update keeps it again. Then the moves for the kept ones
-// (plugins.js `engines`). A listing the run could not read shows every engine as absent, so the STAMP
-// says which are installed already: only a new engine is installed, and switched off only when the
-// user chose it off - a 1.x stamp names none, so each is installed, as before the line.
-function playwrightMoves(ctx, { blind, rows })
-{
-    const none = { specs: [], present: [], presentScope: {}, off: [], on: null, isOn: () => undefined, uninstalled: [] };
-    if (!ctx.routes.mcps) return none;
-    const kept = pwEngines(ctx);
-    const specOf = (e) => `${dataRoot.engineServer(e)}@${ctx.market}`;
-    // A pre-rename stamp's engines were installed as playwright-<engine> or browser-<engine>: none of them is an <engine>-control
-    // to update in place or to uninstall - the rename swap (plugins.migrateRenamed) owns those rows.
-    const prior = ctx.pw.prior.legacy ? [] : (ctx.pw.prior.browsers || []);
-    const uninstalled = plugins.uninstallEngines({
-        specs: prior.filter((e) => !kept.includes(e)).map(specOf), rows, blind, scope: ctx.cliScope, cli: ctx.cli, log: ctx.log, note: ctx.note,
-    });
-    if (!kept.length) return { ...none, uninstalled };
-    // Blind, an engine is present when the stamp names it, or when a settings file carries its key -
-    // install writes the key and uninstall removes it (S28) - at the scope whose file names it.
-    const isOn = engineOn(ctx);
-    const presentScope = {};
-    const known = !blind ? [] : kept.filter((e) =>
-    {
-        const at = [ctx.cliScope, 'user'].find((s) => isOn(specOf(e), s) !== undefined);
-        if (at && at !== ctx.cliScope) presentScope[specOf(e)] = at;
-        return Boolean(at) || prior.includes(e);
-    });
-    if (blind)
-        ctx.log(known.length
-            ? `browser: the plugin listing could not be read - the stamp or the settings name ${known.join(',')} as installed (updated in place); the rest install as new`
-            : 'browser: the plugin listing could not be read and neither the stamp nor the settings name an installed engine - each installs as new');
-    const { enabled, off, apply } = ctx.pw;
-    ctx.log(apply
-        ? `browser: installs ${kept.join(',')}; enabled as picked: ${enabled.join(',') || 'none'} (/plugin toggles them)`
-        : `browser: installs ${kept.join(',')}; no enable answer given - one already installed keeps its on/off, one installed now arrives on${off.length ? `, except ${off.join(',')} (last left off)` : ''} (/plugin toggles them)`);
-    return {
-        specs: kept.map(specOf), present: known.map(specOf), presentScope, off: off.map(specOf),
-        on: apply ? enabled.map(specOf) : null, isOn, uninstalled,
-    };
-}
-
-// An install made before the 2.0.0 rename: its stamp spells the browser lines the old way, or names an
-// old locked server among what it carried.
-function predatesRename(ctx)
-{
-    if (ctx.pw.prior.legacy) return true;
-    let text = '';
-    try { text = fs.readFileSync(ctx.stampFile, 'utf8'); } catch { return false; }
-    const carried = ((/^installed-always-mcps:(.*)$/m.exec(text) || [])[1] || '').split(',').map((n) => n.trim());
-    return ctx.legacyMcps.some((n) => carried.includes(n));
 }
 
 // The settings file's word on a plugin at one scope - true, false, or undefined when it says nothing.
@@ -1975,13 +1403,11 @@ function registrationsAt(ctx, scope)
     return ctx.mcpRegs[scope];
 }
 
-// Whether `entry` registered under `name` launches the stack's own package or calls its url (mcp.identityOf) - read
-// without a word; registrationOf below names a mismatch.
+// Whether `entry` registered under `name` launches the package a retired stack server ran or calls its url (mcp.identityOf,
+// against meta/retired-plugins.json's `registration` rows) - read without a word; registrationOf below names a mismatch.
 function stackIdentitiesOf(ctx)
 {
-    ctx.mcpIdentities ||= mcp.stackIdentities({
-        catalog: ctx.manifest.catalogs.mcps, remotes: ctx.remotes, tokens: ctx.tokens, retiredRows: readRetiredPlugins(ctx.source.dir), renamed: ctx.manifest.renamed.mcps,
-    });
+    ctx.mcpIdentities ||= mcp.stackIdentities({ retiredRows: readRetiredPlugins(ctx.source.dir), renamed: ctx.manifest.renamed.mcps });
     return ctx.mcpIdentities;
 }
 function stackIdentity(ctx, name, entry)
@@ -1993,11 +1419,7 @@ function stackIdentity(ctx, name, entry)
 // launches, or the url it calls - mcp.identityOf), 'absent' when the scope holds none under the name (no
 // call to make), 'foreign' when it is another server the user registered under the same name - kept and
 // named once per run - and 'unreadable' when the file cannot be read, which removes nothing, said once.
-// M-F5-1: `live` says whether THIS run currently wants `name` active - a locked server, or a playwright
-// engine this project keeps. Only then is a foreign collision under it something the user must act on, so
-// only then does the kept line carry `!!`; a name nothing collides with in practice (a dropped engine, a
-// name this version never registers) still logs the kept line, but plain.
-function registrationOf(ctx, name, scope, live)
+function registrationOf(ctx, name, scope)
 {
     const regs = registrationsAt(ctx, scope);
     const once = (key, line) => { if (!ctx.mcpSaid.has(key)) ctx.log(line); ctx.mcpSaid.add(key); };
@@ -2009,114 +1431,30 @@ function registrationOf(ctx, name, scope, live)
     const entry = regs.servers[name];
     if (!entry) return 'absent';
     if (stackIdentity(ctx, name, entry)) return 'stack';
-    once(`${scope}:${name}`, `  ${live ? '!! ' : ''}mcp ${name}: the ${scope}-scope registration is not the stack's (another server under the same name) - kept; if it should go: claude mcp remove ${name} -s ${scope}`);
+    once(`${scope}:${name}`, `  mcp ${name}: the ${scope}-scope registration is not the stack's (another server under the same name) - kept; if it should go: claude mcp remove ${name} -s ${scope}`);
     ctx.mcpForeign.set(name, scope);
     return 'foreign';
 }
 
-// Re-verify 3 S4 / S7: at local and user scope the run removes or re-registers only a registration the stack can vouch
-// for - the one the ledger records at that scope at its hash, or, where the ledger records nothing at that scope (a fresh
-// install, a stamp from before the ledger), one in the release template's exact shape (mcp.exactStack). The package alone
-// (registrationOf) is shared by the user's own server under a stack name, which a left-off engine's removal and a fresh
-// install's re-register used to delete. Anything else is kept and named once with its remove command, like registrationOf's.
-// `pick` (re-verify 4 T7): the name is one this run would register - its line says the pick stays in the install's record
-// (installMcps writes it to the stamp's mcp-held: line), so removing theirs is all it takes for the next update.
-function vouchedAt(ctx, name, scope, live, { pick = false } = {})
-{
-    const regs = registrationsAt(ctx, scope);
-    if (regs.state === 'unreadable') return registrationOf(ctx, name, scope, live);
-    const entry = regs.servers[name];
-    if (!entry) return 'absent';
-    // Matrix F-OWN: at project scope (.mcp.json) the ledger is `ledger.mcp`, and a name it lists is the stack's whatever the
-    // row holds now - an edit to a ledgered row is the documented drift repair (verifyProject), never the user's own.
-    const project = scope === 'project';
-    const recorded = ctx.ledger && (project ? ctx.ledger.mcp : ctx.ledger.mcpAt && ctx.ledger.mcpAt[scope]);
-    const ledgered = Boolean(recorded) && Object.keys(recorded).length > 0;
-    if (ctx.mcpTakenBack && ctx.mcpTakenBack.has(name)) return 'stack';
-    if (ledgered ? (project ? Object.hasOwn(recorded, name) : recorded[name] === stampLayer.entryHash(entry)) : mcp.exactStack(name, entry, { catalog: ctx.manifest.catalogs.mcps, remotes: ctx.remotes, projectRoot: ctx.projectRoot }))
-        return 'stack';
-    const why = !ledgered ? 'not the stack\'s exact shape' : Object.hasOwn(recorded, name) ? 'changed since the stack registered it' : 'the ledger does not list it';
-    if (!ctx.mcpSaid.has(`${scope}:${name}`))
-        ctx.log(`  ${live ? '!! ' : ''}mcp ${name}: the ${scope}-scope registration is not the one the stack wrote (${why}), so it is yours - kept; `
-            + (pick ? `${name} stays a pick in this install's record: once you remove yours (claude mcp remove ${name} -s ${scope}), /alfred-code:update registers the stack's`
-                : `if it should go: claude mcp remove ${name} -s ${scope}`));
-    ctx.mcpSaid.add(`${scope}:${name}`);
-    ctx.mcpForeign.set(name, scope);
-    return 'foreign';
-}
-
-// A registration at local, project or user scope outranks every plugin server (mcp.shadowingRegistrations):
-// one calling a carried plugin's url takes its place, so the stack's plugin-spelled tool names resolve
-// nothing, and one under a carried plugin's name, or under another name launching its package (PL11), starts a
-// second server. The run prunes only its own scope, so what is left is the user's own or serves other projects - each
-// named once with its remove command, removed never. One registrationOf already named as foreign is not said twice.
-function warnShadowed(ctx, carried)
-{
-    const scopes = {};
-    for (const scope of ['local', 'project', 'user'])
-        scopes[scope] = mcp.registrationsAt({ scope, mcpFile: ctx.mcpFile, accountFile: ctx.accountFile, projectRoot: ctx.projectRoot }).servers;
-    const identities = mcp.pluginIdentities({ plugins: carried, identities: stackIdentitiesOf(ctx), renamed: ctx.manifest.renamed.mcps });
-    for (const row of mcp.shadowingRegistrations({ plugins: carried, scopes, identities }))
-    {
-        if (row.kind !== 'replaces' && ctx.mcpForeign.get(row.name) === row.scope) continue;
-        const remove = `claude mcp remove ${row.name} -s ${row.scope}`;
-        ctx.log(row.kind === 'replaces'
-            ? `  !! mcp ${row.name} (${row.scope} scope) calls the url of the ${row.plugin} plugin, so Claude Code connects to it instead and the stack's mcp__plugin_${row.plugin}_${row.plugin}__ tools never load - if nothing else needs it: ${remove}`
-            : row.kind === 'same-package'
-                ? `  mcp ${row.name} (${row.scope} scope) runs ${row.package}, the package the ${row.plugin} plugin starts - two ${row.plugin} servers in every session here; if nothing else needs it: ${remove}`
-                : `  mcp ${row.name} (${row.scope} scope) starts beside the ${row.plugin} plugin's own server - two ${row.plugin} servers in every session here; if nothing else needs it: ${remove}`);
-    }
-}
-
-// I12: the full copy route's serena context - the shipped file copied into the project's .claude (beside
-// the .mcp.json that names it, so a teammate's clone carries both). R6: serena raises FileNotFoundError on a
-// context path that does not resolve; the row starts through ROOT_BOOT at the checkout (re-verify 3 S3), so the path
-// is the project-relative one - never `${CLAUDE_PROJECT_DIR:-.}/`, which expanded to the launch directory, or to an
-// inherited folder's file. A snapshot that ships no such file (older than 2.1.4) keeps serena's own claude-code context.
-function navigationContext(ctx)
-{
-    const { copied, skipped } = copy.installFromSource({
-        sourceDir: ctx.source.dir, subdir: path.join('stack', 'mcp'), label: 'navigation context', destDir: ctx.claudeDir,
-        files: [NAV_CONTEXT], log: ctx.log, note: ctx.note,
-    });
-    if (!copied.length && !skipped.length) return 'claude-code';
-    ctx.navContextCopied = true;
-    return path.relative(ctx.projectRoot, path.join(ctx.claudeDir, NAV_CONTEXT)).split(path.sep).join('/');
-}
-
-function installMcps(ctx)
+// THE RETIRED SERVERS. The stack ships no MCP server since 2.10.1 and registers none; this step only takes out what an
+// earlier release registered - a copy route's .mcp.json row, or its local- or user-scope one - at the run's own scope, on
+// the first update past each retirement (mcp.dueRetired), and a name the 2.0.0 rename left behind on every run. Only the
+// stack's own: at project scope the row the ledger recorded, unchanged; with no ledger, and at local and user scope, a
+// registration launching the retired server's package or calling its url (A-M2). Anything else under the name is the
+// user's - kept, named once with its remove command. The plugin rows go with the retired plugins (installPlugins).
+function retireMcps(ctx)
 {
     if (!ctx.hasClaude) return;
-    // The servers registered before this run removes anything, read under today's names: a desktop server registered
-    // under its old one (windows-desktop) is no server this run brings in, so desktopNotes stays quiet for it.
-    const registeredBefore = Object.keys(mcp.registrationsAt({ scope: mcp.registrationScope(ctx.routes, ctx.cliScope), mcpFile: ctx.mcpFile, accountFile: ctx.accountFile, projectRoot: ctx.projectRoot }).servers)
-        .map((n) => mcp.currentMcp(n, ctx.manifest.renamed.mcps));
-    // The admin's MCP config is read-only to this run (mcp.adminMcp): a server it provides is never registered over,
-    // removed or denied, and a managed-mcp.json leaves nothing else loading - the stack's plugin servers included.
-    ctx.admin = mcp.adminMcp({ env: ctx.env });
-    if (ctx.admin.exclusive)
-        ctx.log(`  !! mcp: ${path.join(ctx.admin.dir, 'managed-mcp.json')} is deployed - Claude Code loads only the servers it and the managed settings list, so the stack's ${[...mcp.LOCKED].join(', ')} and every other plugin or registered server stay off until an admin lists them; claude mcp add is refused`);
-    const retired = mcp.retiredMcps({ routes: ctx.routes, catalog: ctx.manifest.catalogs.mcps, authored: ctx.retiredMcpsDue, legacy: ctx.legacyMcps });
+    const retired = mcp.retiredMcps({ authored: ctx.retiredMcpsDue, legacy: ctx.legacyMcps });
     const addBack = (name) => (readRetiredPlugins(ctx.source.dir).find((r) => r.name === name) || {}).addBack;
-    // M-F5-1: the names this run currently wants active - the locked three (always) and a playwright
-    // engine this project keeps - shared by every registrationOf call below so the `!!` marker lands only
-    // where a collision is actionable.
-    const liveMcpNames = new Set([...mcp.LOCKED, ...pwEngines(ctx).map(dataRoot.engineServer)]);
-    // A-M2 / A-M3: a user-scope removal of a stack name, and a retired name's at any scope, takes only a
-    // registration of the stack's own shape - another under the name is the user's (a server added back
-    // with the add-back line included). An absent one costs no call.
-    // A name the 2.0.0 rename left behind is no name this release registers, so it goes only in the
-    // stack's own shape at every scope - the user's own server under an old name is theirs.
-    const mayRemove = (name, scope) => (scope !== 'user' && !ctx.retiredMcpsDue.includes(name) && !ctx.legacyMcps.includes(name)) || registrationOf(ctx, name, scope, liveMcpNames.has(name)) === 'stack';
-    // R10: a .mcp.json entry this release no longer writes goes only when the ledger recorded it and
-    // nobody changed it since - one it does not list, or an edited one, is the user's, kept and said
-    // once. No ledger (an older stamp) or no entry: the rule above. Never applied to a server this run
-    // registers again - its shape is the stack's to keep (the verify pass).
+    const mayRemove = (name, scope) => registrationOf(ctx, name, scope) === 'stack';
+    // R10: a .mcp.json entry goes only when the ledger recorded it and nobody changed it since - one it does not list, or
+    // an edited one, is the user's, kept and said once. No ledger (an older stamp) or no entry: the rule above.
     const ledgerMcp = ctx.ledger && ctx.ledger.mcp;
-    const mayPrune = (name, scope, fallback = mayRemove) =>
+    const mayPrune = (name, scope) =>
     {
         const entry = scope === 'project' && ledgerMcp ? registrationsAt(ctx, 'project').servers[name] : null;
-        if (!entry) return fallback(name, scope);
+        if (!entry) return mayRemove(name, scope);
         if (ledgerMcp[name] === stampLayer.entryHash(entry)) return true;
         if (!ctx.mcpSaid.has(`ledger:${name}`))
             ctx.log(`  mcp ${name}: kept - the .mcp.json entry is not the one the stack wrote (${Object.hasOwn(ledgerMcp, name) ? 'changed since' : 'the ledger does not list it'}), so it is yours; if it should go: claude mcp remove ${name} -s project`);
@@ -2133,226 +1471,20 @@ function installMcps(ctx)
     };
     for (const name of retired)
         if (mayPrune(name, ctx.cliScope)) prune(name, ctx.cliScope);
-    // F7 (R22g): the user-scope FULL copy route registers in THIS project's .mcp.json (C10), which the
-    // loop above never reaches at user scope - so a user-scope run registering anywhere else (the plugin
-    // route, or the MCP copy route with the core on) prunes the stack's own registrations there. Only a
-    // name the file holds costs a call, and only the stack's own shape goes (A-M2's rule, not the project
-    // scope's by-name one): the user's own server under a stack name is kept, named once with its remove
-    // command, and keeps its approval.
-    if (ctx.cliScope === 'user' && mcp.registrationScope(ctx.routes, ctx.cliScope) !== 'project')
+    // F7 (R22g): a user-scope FULL copy route registered in THIS project's .mcp.json (C10), which the loop above never
+    // reaches from a user-scope run - so the stack's own rows there go too. I-F7-1: never a bare `playwright` - its
+    // identity is the package name only, so one in the file is the user's own (often a committed team file), and it keeps
+    // its approval.
+    if (ctx.cliScope === 'user')
     {
-        // I-F7-1: never a bare `playwright` - no user-scope run writes one there, and its identity is the
-        // package name only, so one in the file is the user's own (often a committed team file).
         const held = registrationsAt(ctx, 'project');
-        const names = [...new Set([...ctx.retiredMcpsDue, ...ctx.manifest.catalogs.mcps.map((e) => e.split('|')[0]), ...mcp.PW_SERVERS, ...ctx.legacyMcps])]
-            .filter((name) => name !== 'playwright');
-        // ... and it keeps its approval, like any server kept as the user's own.
         if (held.servers.playwright) ctx.mcpForeign.set('playwright', 'project');
+        const names = [...new Set([...retired, ...mcp.PW_SERVERS])].filter((name) => name !== 'playwright');
         // An unreadable file is said once (registrationOf's line) and nothing in it is removed.
-        if (held.state === 'unreadable') registrationOf(ctx, names[0], 'project', false);
+        if (held.state === 'unreadable') registrationOf(ctx, names[0], 'project');
         for (const name of names)
-            if (held.servers[name] && mayPrune(name, 'project', () => registrationOf(ctx, name, 'project', liveMcpNames.has(name)) === 'stack')) prune(name, 'project');
+            if (held.servers[name] && mayPrune(name, 'project')) prune(name, 'project');
     }
-
-    // Whatever still sits ABOVE a plugin this run carries once the prunes are done (read fresh - they
-    // changed the files): named, never removed here.
-    if (mcp.corePluginOn(ctx.routes))
-        warnShadowed(ctx, ctx.routes.mcps ? [...mcp.LOCKED, ...pwEngines(ctx).map(dataRoot.engineServer), ...soloKept(ctx)] : mcp.LOCKED);
-
-    if (ctx.routes.mcps)
-    {
-        ctx.log('mcp: carried by the plugins (alfred-navigation, alfred-documentation, alfred-memory, and the picks) - nothing registered here');
-        mcpDenyPass(ctx, { scope: mcp.registrationScope(ctx.routes, ctx.cliScope), drop: [] });
-        return;
-    }
-    const scope = mcp.registrationScope(ctx.routes, ctx.cliScope);
-    // R124 (l): at local and user scope an engine left off is not registered - one an earlier run
-    // registered goes with the dropped engines.
-    const unregistered = ctx.pw.mcpjson.unregistered;
-    // C10's user-scope full copy route registers in this project's .mcp.json, where the retired pass above
-    // (at user scope) never reaches: an old name an earlier run put there goes with the drops.
-    const dropped = [...new Set(mcp.playwrightDrop({ routes: ctx.routes, browsers: pwEngines(ctx) }).concat(unregistered, scope !== ctx.cliScope ? ctx.legacyMcps : []))];
-    for (const name of dropped)
-    {
-        // An old name the retired pass above already pruned at this very scope costs no second call.
-        if (scope === ctx.cliScope && ctx.legacyMcps.includes(name)) continue;
-        // S4: at local and user scope an engine this release names goes only as vouchedAt vouches for it; an absent one
-        // costs no call. An old name keeps the rule above (its shape is an older release's, judged by its package).
-        const ours = scope !== 'project' && dataRoot.engineOfServer(name) ? vouchedAt(ctx, name, scope, false) === 'stack' : mayPrune(name, scope);
-        if (ours && ctx.cli(['mcp', 'remove', name, '-s', scope], { quiet: true, expect: MCP_ABSENT })) ctx.log(`  mcp removed: ${name}`);
-    }
-    // M2 (review 2.1.6): a configure drop of a non-browser server (the engines go with `dropped` above) removes the stack's
-    // own registration where it is registered - left there, the next update read it back as a pick and switched it on again.
-    // At project scope (C10's .mcp.json too) the entry the ledger recorded, unchanged (mayPrune); at local and user scope the
-    // one vouchedAt vouches for - the ledger's row at its hash, or with no row at that scope the release template's exact
-    // shape. Another server under the name is the user's, kept and named. The ledger row goes with the registration
-    // (ledgerOf reads what is left).
-    ctx.mcpDropped = (ctx.args.dropApplied || []).filter((l) => l.startsWith('mcp ')).map((l) => l.slice(4))
-        .filter((name) => name !== 'browser' && !/^(browser|playwright)(-|$)/.test(name) && !mcp.isLocked(name));
-    const droppedOurs = (name) => (scope === 'project'
-        ? mayPrune(name, 'project', () => registrationOf(ctx, name, 'project', false) === 'stack')
-        : vouchedAt(ctx, name, scope, false) === 'stack');
-    for (const name of ctx.mcpDropped)
-    {
-        const entry = registrationsAt(ctx, scope).servers[name];
-        if (entry && droppedOurs(name) && ctx.cli(['mcp', 'remove', name, '-s', scope], { quiet: true, expect: MCP_ABSENT }))
-            ctx.log(`  mcp removed: ${name} (dropped)`);
-    }
-    // ... and one the stack still has registered at a BROADER scope is switched off for this scope alone.
-    mcpDenyPass(ctx, { scope, drop: ctx.mcpDropped });
-
-    // A local- or user-scope registration of the user's own under a stack name stays theirs (S7: at local scope too, where a
-    // fresh install used to re-register it): not re-registered, not verified (the verify's re-register would remove it). The
-    // pick stays in the record (the stamp's mcp-held: line, re-verify 4 T7), so the update after the user removes theirs
-    // registers the stack's own.
-    // Delta F-LOCAL: at local (and user, on the MCP copy route) scope the stack registers in the account file, but a project
-    // .mcp.json row of the user's own under the name outranks it - it is held as the project row it is, so no registration lands
-    // over it and the pick stays in the record.
-    const held = (name) => (vouchedAt(ctx, name, scope, true, { pick: true }) === 'foreign' && Boolean(ctx.mcpHeld.push({ scope, name })))
-        || (scope !== 'project' && vouchedAt(ctx, name, 'project', true, { pick: true }) === 'foreign' && Boolean(ctx.mcpHeld.push({ scope: 'project', name })));
-    const adminHeld = (name) =>
-    {
-        if (!ctx.admin.exclusive && !ctx.admin.names.has(name)) return false;
-        ctx.log(`  mcp ${name}: ${ctx.admin.names.has(name) ? 'provided by your organization\'s managed MCP config' : 'not in the managed-mcp.json your organization deployed'} - not registered here`);
-        return true;
-    };
-    const live = ctx.lists.mcps.filter((e) => !(mcp.isLocked(e.split('|')[0]) && mcp.corePluginOn(ctx.routes)))
-        .filter((e) => !unregistered.includes(e.split('|')[0]))
-        .filter((e) => !adminHeld(e.split('|')[0]))
-        .filter((e) => !held(e.split('|')[0]))
-        // F2: a memory level no readable record answers is kept - its registration stays exactly as it is (said first).
-        .filter((e) => !(ctx.level.level === 'kept' && e.split('|')[0] === 'alfred-memory'));
-    // C10: a user-scope run on the full copy route registers in .mcp.json; what an earlier one registered
-    // at user scope still reaches every project on the account, and another user-scope install there
-    // still loads it until its own update - so it is named with its command, never removed here. N5: so is
-    // an engine this run drops (or a 1.x single `playwright`) - the drop above removed it from .mcp.json.
-    // M-F5-2: `playwright`'s identity is the package name only (mcp.identityOf) - it cannot tell the
-    // stack's 1.x registration apart from the user's own `npx @playwright/mcp` under the same bare name,
-    // so authorship is never claimed there; every other name (an engine suffix, or serena/context7/memory)
-    // is the stack's own naming, so the authored wording stays.
-    if (scope !== ctx.cliScope && ctx.cliScope === 'user')
-        for (const name of [...new Set([...live.map((e) => e.split('|')[0]), ...dropped])])
-            if (registrationOf(ctx, name, 'user', liveMcpNames.has(name)) === 'stack')
-                ctx.log(name === 'playwright'
-                    ? '  playwright is registered at user scope - if an earlier stack run added it and no other project uses it: claude mcp remove playwright -s user; if you added it yourself, keep it'
-                    : `  !! mcp: ${name} still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run /alfred-code:update: claude mcp remove ${name} -s user`);
-    ctx.desktopHeld = new Set([...registeredBefore, ...Object.keys(mcp.registrationsAt({ scope, mcpFile: ctx.mcpFile, accountFile: ctx.accountFile, projectRoot: ctx.projectRoot }).servers)]
-        .filter(NOTED));
-    // I12: the navigation registration names the stack's serena context, copied first - the registration
-    // and the verify pass below both read the token.
-    if (live.some((e) => e.split('|')[0] === 'alfred-navigation')) ctx.tokens.SERENA_CONTEXT = navigationContext(ctx);
-    const registered = [];
-    for (const entry of live)
-    {
-        const name = entry.split('|')[0];
-        const args = entry.slice(entry.indexOf('|') + 1);
-        if (ctx.args.action === 'update') { if (mayRemove(name, scope)) ctx.cli(['mcp', 'remove', name, '-s', scope], { quiet: true, expect: MCP_ABSENT }); }
-        // `claude mcp get` answers from every scope, so the scope's own file is the answer - .mcp.json at project
-        // scope, the account file's own scope at local and user (a user-scope server of the same name is no
-        // local registration: skipped as 'configured', the pick was never ledgered and the next update dropped it).
-        // Only an account file that cannot be read falls back to asking the CLI.
-        else if (scope === 'project'
-            ? Boolean(mcp.registrationsAt({ scope, mcpFile: ctx.mcpFile, projectRoot: ctx.projectRoot }).servers[name])
-            : registrationsAt(ctx, scope).state === 'unreadable'
-                ? ctx.cli(['mcp', 'get', name], { quiet: true, expect: 'answer' })
-                : Boolean(mcp.registrationsAt({ scope, accountFile: ctx.accountFile, projectRoot: ctx.projectRoot }).servers[name]))
-        {
-            ctx.plain(`  mcp ${name} already configured - skipping`);
-            // A local- or user-scope registration vouchedAt took as the stack's (its exact shape, no ledger row) is
-            // ledgered as written, so the next update's ledger vouches for it rather than naming it the user's.
-            if (scope !== 'project' && vouchedAt(ctx, name, scope, true) === 'stack') registered.push(name);
-            continue;
-        }
-        ctx.log(`mcp [${scope}]: ${name}`);
-        if (!ctx.cli(mcp.registerSpec({ name, args, scope, remotes: ctx.remotes, tokens: ctx.tokens }), { expect: 'reported' }))
-            ctx.note(`mcp ${name} failed`);
-        else registered.push(name);
-    }
-
-    // R10: what this run registers in .mcp.json is the stack's, whatever the file held before. Review
-    // finding 7: at local and user scope, what it actually registered (a name it skipped as already
-    // configured may be the user's) - read back from the account file by the ledger.
-    if (scope === 'project') ctx.mcpWritten = live.map((e) => e.split('|')[0]);
-    else ctx.mcpWrittenAt = { [scope]: registered };
-    // Read the RESULT back: `claude mcp add` over an existing name exits 0 without writing.
-    const expects = live.map((e) => mcp.expectShape({
-        name: e.split('|')[0], args: e.slice(e.indexOf('|') + 1), remotes: ctx.remotes, tokens: ctx.tokens,
-    }));
-    if (scope === 'project') mcp.verifyProject({ mcpFile: ctx.mcpFile, expects, log: ctx.log });
-    else ctx.mcpWrittenAt[scope].push(...mcp.verifyUser({
-        expects, scope,
-        // N4 / S7: at local and user scope only a registration vouchedAt vouched for before the run is re-registered - the
-        // re-register removes first, and anything else may be the user's (an `mcp add` over a name the CLI already holds
-        // exits 0 without writing, so this run's own add vouches for nothing).
-        owned: (name) => vouchedAt(ctx, name, scope, liveMcpNames.has(name)) === 'stack',
-        getShape: (name) => ctx.rt.capture('claude', ['mcp', 'get', name], { cwd: ctx.projectRoot, env: ctx.cliEnv }),
-        reregister: (name) =>
-        {
-            const entry = live.find((e) => e.split('|')[0] === name);
-            ctx.cli(['mcp', 'remove', name, '-s', scope], { quiet: true, expect: MCP_ABSENT });
-            ctx.cli(mcp.registerSpec({ name, args: entry.slice(entry.indexOf('|') + 1), scope, remotes: ctx.remotes, tokens: ctx.tokens }), { quiet: true });
-        },
-        log: ctx.log, note: ctx.note,
-    }).repaired);
-    refreshElsewhere(ctx, { scope, live });
-}
-
-// Rule: an update refreshes the stack's registrations at EVERY scope that holds one, not only the run's - one an
-// earlier run left at user scope (C10) or at the other account-file scope is re-registered there in this release's
-// shape, through the CLI with its scope named. Only the stack's own (registrationOf - its name and package), never one
-// already in the release's exact shape (mcp.exactStack), and never .mcp.json from another scope's run: that shared
-// file is the project-scope install's, and a row of it under a picked name is held and named already. A user-scope
-// run on the full copy route (C10) refreshes none at user scope: its own release moved them to .mcp.json and names
-// each one left there with its remove command.
-function refreshElsewhere(ctx, { scope, live })
-{
-    if (ctx.args.action !== 'update') return;
-    const leftovers = ctx.cliScope === 'user' && scope !== 'user';
-    for (const entry of live)
-    {
-        const name = entry.split('|')[0];
-        const args = entry.slice(entry.indexOf('|') + 1);
-        for (const at of ['local', 'user'].filter((s) => s !== scope && !(leftovers && s === 'user')))
-        {
-            const current = registrationsAt(ctx, at).servers[name];
-            if (!current || !stackIdentity(ctx, name, current)) continue;
-            if (mcp.exactStack(name, current, { catalog: ctx.manifest.catalogs.mcps, remotes: ctx.remotes, projectRoot: ctx.projectRoot })) continue;
-            ctx.cli(['mcp', 'remove', name, '-s', at], { quiet: true, expect: MCP_ABSENT });
-            if (!ctx.cli(mcp.registerSpec({ name, args, scope: at, remotes: ctx.remotes, tokens: ctx.tokens }), { expect: 'reported' }))
-            { ctx.note(`mcp ${name} failed at ${at} scope - re-add it: /alfred-code:update again, or claude mcp remove ${name} -s ${at}`); continue; }
-            ctx.log(`mcp refreshed [${at}]: ${name} (this release's shape - the stack's registration there, beside this run's ${scope}-scope one)`);
-            ((ctx.mcpWrittenAt ||= {})[at] ||= []).push(name);
-        }
-    }
-}
-
-// Rule: a narrower scope switches a BROADER scope's MCP server off for itself alone - MCP has no per-scope disable, so it
-// is a deniedMcpServers entry in this install's own settings file (settings.applyMcpDeny: settings.local.json at local
-// scope, settings.json otherwise). A configure drop of a server the stack still has registered at a scope broader than
-// this run's registration scope (user under a local or project one, .mcp.json under a local one) gets one; the broader
-// registration stays for every other project and teammate. Only the stack's own registration (registrationOf), never
-// the admin's or the user's own server under the name. A name the stamp records as denied that this run picks again
-// is lifted. The record is the stamp's mcp-denied: line; a file that cannot be read keeps its rows as recorded.
-function mcpDenyPass(ctx, { scope, drop = [] })
-{
-    const fileScope = ctx.args.scope === 'local' ? 'local' : 'project';
-    const picked = new Set(ctx.lists.mcps.map((e) => String(e).split('|')[0]));
-    const prior = ctx.mcpDenied.prior;
-    const add = drop.filter((name) => !(ctx.admin && ctx.admin.names.has(name))
-        && mcp.broaderMcpScopes(scope).some((s) => { const e = registrationsAt(ctx, s).servers[name]; return Boolean(e) && stackIdentity(ctx, name, e); }));
-    const lift = prior.filter((e) => picked.has(e.name) && !drop.includes(e.name));
-    let record = [...prior];
-    for (const at of ['local', 'project'])
-    {
-        const adds = at === fileScope ? add : [];
-        const lifts = lift.filter((e) => e.scope === at).map((e) => e.name);
-        if (!adds.length && !lifts.length) continue;
-        const done = settings.applyMcpDeny({ file: path.join(ctx.claudeDir, at === 'local' ? 'settings.local.json' : 'settings.json'), add: adds, lift: lifts, log: ctx.log, note: ctx.note });
-        if (!done) continue;
-        record = record.filter((e) => !(e.scope === at && lifts.includes(e.name)));
-        for (const name of done.added) if (!record.some((e) => e.scope === at && e.name === name)) record.push({ scope: at, name });
-    }
-    ctx.mcpDenied.now = record;
 }
 
 function installHooksAndRules(ctx)
@@ -2391,14 +1523,9 @@ function installHooksAndRules(ctx)
     ctx.library = ctx.library || { skills: {}, agents: {} };
     // The docs-root rule is compared and written with its root already substituted, so an update
     // that changes nothing about it neither rewrites it nor says it did (Task 8a concern 7).
-    // On the copy route the tool-name re-spelling is rendered the same way, for every rule, so a rule
-    // the re-spelling touches is not rewritten and logged on every run (R111).
     const docsRoot = ctx.docsRoot || copy.resolveDocsRoot(ctx.projectRoot, ctx.args.scope);
-    const bare = ctx.routes.skills ? [] : bareNames(ctx);
-    const respell = (text) => mcp.respellToolNames(text, bare);
     const ruleNames = ctx.lists.rules.map((f) => f.replace(/\.md$/, ''));
-    const render = Object.fromEntries(ROOTED_RULES.map((name) => [`rules/${name}`, (text) => respell(text.split('__DOCS_ROOT__').join(docsRoot))]));
-    if (bare.length) for (const name of ruleNames) if (!ROOTED_RULES.includes(name)) render[`rules/${name}`] = respell;
+    const render = Object.fromEntries(ROOTED_RULES.map((name) => [`rules/${name}`, (text) => text.split('__DOCS_ROOT__').join(docsRoot)]));
     const rulesLibrary = library.copyLibrary({
         sourceDir: ctx.source.dir, rulesDir: path.join(ctx.claudeDir, 'rules'),
         rules: ruleNames,
@@ -2426,8 +1553,6 @@ function installHooksAndRules(ctx)
     // the core on, ALFRED_CODE_HOOKS_OFF is the complement of what the run wires and is written EVERY
     // run - a bare install wires every hook, so it writes an empty list over whatever was stored.
     const state = ctx.picked ? deriveState({ selectionText: [...ctx.picked].join('\n'), sourceDir: ctx.source.dir }) : null;
-    // Matrix F-OWN: a row the user's own holds under a picked name is theirs - this run registered nothing there, so it claims no approval.
-    const trusted = mcp.mcpjsonTrusted({ routes: ctx.routes, scope: mcp.registrationScope(ctx.routes, ctx.cliScope), mcps: ctx.lists.mcps, off: ctx.pw.mcpjson.off }).filter((n) => !ctx.mcpHeld.some((h) => h.scope === 'project' && h.name === n));
     const hookName = (e) => e.split('::')[0].replace(/\.js$/, '');
     const { hooksOff, hooksAnswered, agentDeny, agentAllow } = writable(state, {
         routes: ctx.routes, answered: ctx.answered,
@@ -2436,8 +1561,7 @@ function installHooksAndRules(ctx)
     });
     // T16/R47 (I1): at `local` scope the stack's own settings writes are machine-personal - they go
     // to settings.local.json, never the shared settings.json; every other scope keeps the shared
-    // file. settingsTarget is the one helper every write site names, so this and importMemory's own
-    // target cannot drift apart.
+    // file. settingsTarget is the one helper every write site names.
     const localSettings = path.join(ctx.claudeDir, 'settings.local.json');
     const hadLocal = fs.existsSync(localSettings);
     const written = settings.writeSettings({
@@ -2449,8 +1573,6 @@ function installHooksAndRules(ctx)
         sharedFile: ctx.args.scope === 'local' ? path.join(ctx.claudeDir, 'settings.json') : null,
         catalog, migrations, hookSpecs: wired,
         denySpecs: SECRET_DENY, retiredDeny: RETIRED_DENY, agentDeny, agentAllow,
-        toolDeny: [...memoryToolDeny(ctx.source.dir, { bare: bareNames(ctx).includes(MEMORY_SERVER) }),
-            ...browserToolDeny(ctx.source.dir, pwEngines(ctx), { bare: (server) => bareNames(ctx).includes(server) })],
         // On the copy route a --drop'd hook is unwired like a retired one - the writer keeps a merely
         // unselected hook's entries on purpose, so the drop has to name it.
         retiredHooks: ctx.manifest.retired.hooks.concat(ctx.routes.hooks
@@ -2468,18 +1590,9 @@ function installHooksAndRules(ctx)
         // root a move carried the data to, or a first install's chosen one - never over a value the run
         // refused (resolveDataRoot says so), which stays the user's to fix.
         dataPath: ctx.dataInfo.invalid ? null : { value: ctx.dataInfo.root, why: ctx.dataInfo.root !== ctx.dataInfo.current ? '--data-path' : 'the data root' },
-        // R124 (m): trust exactly the .mcp.json servers this run registered and lets load; every other
-        // stack name leaves the list (a plugin-carried locked server, an engine left off, anything at
-        // local or user scope). A name the user added is not a stack name and stays.
-        mcpNames: trusted,
-        // A-M3: a .mcp.json server kept as the user's own under a retired name keeps its approval too.
-        mcpOff: ctx.manifest.catalogs.mcps.map((e) => e.split('|')[0]).concat(mcp.PW_SERVERS, ctx.legacyMcps)
-            .filter((n) => !trusted.includes(n)).concat(ctx.retiredMcpsDue)
-            .filter((n) => ctx.mcpForeign.get(n) !== 'project'),
-        mcpjsonDisable: ctx.pw.mcpjson.disable, mcpjsonEnable: ctx.pw.mcpjson.enable,
-        // Re-verify 3 S1: settings.local.json is machine-local (C8), so the path stays ABSOLUTE there - a project-relative one
-        // bought nothing, and an older release read it as no level and re-pointed the project to the global database.
-        memoryDb: ctx.level.dbPath,
+        // No server is trusted: every name the stack ever registered leaves enabledMcpjsonServers - except one kept as the
+        // user's own under that name, which keeps its approval (A-M3).
+        mcpOff: [...ctx.manifest.retired.mcps, ...mcp.PW_SERVERS, ...ctx.legacyMcps].filter((n) => ctx.mcpForeign.get(n) !== 'project'),
         hooksOff, hooksAnswered,
         // N6: at local scope settings.json still applies beneath the local file, so what it holds is no
         // gap for a seed to fill - a local default would hide it.
@@ -2514,112 +1627,7 @@ function installHooksAndRules(ctx)
     // update body's grep and every `warn:` pass read.
     if (!hadLocal && fs.existsSync(localSettings)
         && ctx.rt.spawnCommand('git', ['check-ignore', '-q', '--', path.relative(ctx.projectRoot, localSettings)], { cwd: ctx.projectRoot, stdio: 'ignore' }).status === 1)
-        ctx.log(`  !! settings.local.json: created for this machine's own values (the memory database path) - git does not ignore it here; add ${path.relative(ctx.projectRoot, localSettings).split(path.sep).join('/')} to .gitignore`);
-    // M1 (R132): the account file rejects a .mcp.json server as well, and the installer never edits it -
-    // an engine this run enabled that it still lists is named with its file, never left to look on.
-    const accountFile = path.join(ctx.configDir, 'settings.json');
-    const accountOff = readJson(accountFile).disabledMcpjsonServers;
-    const enabledNow = ctx.routes.mcps ? [] : (ctx.pw.enabled || []).map(dataRoot.engineServer).filter((n) => ctx.pw.mcpjson.enable.includes(n));
-    for (const name of (Array.isArray(accountOff) ? accountOff : []).filter((n) => enabledNow.includes(n)))
-        ctx.log(`browser: ${name} is still rejected by ${accountFile}'s disabledMcpjsonServers - the installer never edits the account file; take it out there to load it`);
-}
-
-function importMemory(ctx)
-{
-    // A project database its launcher still owes a move keeps its old folder's own .gitignore, and moves with
-    // it - a file written at the new place first would make that place look taken. Under the data root no file is
-    // written at all (memory.ensureProjectIgnore): the root's own .gitignore keeps the folder out.
-    if (ctx.level.level === 'project' && !ctx.dataPlan.pending.some((p) => p.cls === 'memory'))
-    {
-        try { memory.ensureProjectIgnore(ctx.projectRoot, ctx.log, ctx.level.dbPath); }
-        catch (err) { ctx.note(`${memory.MEMORY_DIR}/.gitignore could not be written (${err.message}) - add the folder to the repo's own .gitignore`); }
-    }
-    // Task 18a I1: the notes import and the switch-off belong to /alfred-code:init (`memory.js init`),
-    // which asks the level first and marks the stamp `initialised:`. Until that line holds a date, no
-    // run imports - not setup's install, an update, or configure's apply with a level named - or the
-    // notes land in a database the user never chose and the router skips init.
-    // I1 (R47): the switch-off is one of THIS run's own settings writes, so it follows the same
-    // scope target as installHooksAndRules' own write - a local-scope install's `autoMemoryEnabled`
-    // now lands in settings.local.json, never the shared file every teammate reads.
-    const settingsFile = settings.settingsTarget(ctx.claudeDir, ctx.args.scope);
-    if (!stampLayer.isInitialised(stampLayer.initialisedValue({ claudeDir: ctx.claudeDir })))
-    {
-        // Pilot 2 (2026-09-27): init's own switch-off hit EPERM inside the sandbox, so auto-memory stayed
-        // on in every cell. With NO notes there is nothing to import and nothing the level choice could
-        // change, so this run - outside the session - switches it off now, behind the same replacement
-        // gate; init only reports it. Any note, or folders it cannot read, keeps the old path. uvx is part of
-        // the gate like at the other two switch-off sites: the memory server launches through it and init is
-        // what installs uv, so without it the replacement cannot start yet (review A, I1).
-        const early = memory.importGate({ projectRoot: ctx.projectRoot, settingsFile, mcps: ctx.lists.mcps, rules: ctx.lists.rules,
-            tools: { node: true, uvx: ctx.rt.which('uvx') } });
-        if (!early.go && !early.already && early.reason) ctx.log(early.reason);
-        if (early.already)
-        {
-            ctx.log("memory: Claude's own memory is already off - /alfred-code:init still asks the level");
-            return;
-        }
-        // Review 2.1.6 M1: only where the memory server is there to take its place - a kept level on the copy route
-        // registers none (installMcps), and on the plugin route the launcher serves one only where a settings key it can
-        // read names the database (memory-launch.js resolveDbState - it refuses to start otherwise, N2); asked here with
-        // the account this run installs for. Claude's own memory stays on until a run can hand over to the server.
-        const launcherServes = () => Boolean(require('../../stack/mcp/memory-launch.js')
-            .resolveDbState(ctx.projectRoot, { env: { CLAUDE_CONFIG_DIR: ctx.configDir }, home: ctx.home || require('node:os').homedir() }).db);
-        // Re-verify 2 R2: at EVERY level on the plugin route - a fresh install over an unreadable settings.local.json takes the
-        // default, and the launcher it hands over to still refuses.
-        const unserved = ctx.routes.mcps ? !launcherServes() : ctx.level.level === 'kept';
-        if (early.go && !unserved && memory.countNotes({ projectRoot: ctx.projectRoot, configDir: ctx.configDir, home: ctx.home }) === 0)
-        {
-            ctx.log("memory: no Claude memory notes for this project - nothing to import, so Claude's own memory is off from this install; /alfred-code:init still asks the level");
-            memory.writeSwitchOff(settingsFile, { log: ctx.log });
-            return;
-        }
-        ctx.log("memory: the notes import waits for /alfred-code:init, which asks the level first - Claude's own memory stays on until then");
-        return;
-    }
-    const gate = memory.importGate({
-        projectRoot: ctx.projectRoot, settingsFile,
-        mcps: ctx.lists.mcps, rules: ctx.lists.rules,
-        tools: { node: true, uvx: ctx.rt.which('uvx') },
-    });
-    const importer = path.join(ctx.source.dir, 'scripts', 'memory-import.js');
-    const acct = ctx.cliEnv.CLAUDE_CONFIG_DIR ? ['--config-dir', ctx.configDir] : [];
-    memory.importNotes({
-        gate, importer, settingsFile,
-        runImport: () =>
-        {
-            const r = ctx.rt.runNode(importer, ['--project-root', ctx.projectRoot, ...acct], { cwd: ctx.projectRoot, env: ctx.env });
-            return { ok: r.ok, output: `${r.stdout}\n${r.stderr}` };
-        },
-        log: ctx.log,
-    });
-}
-
-// The servers this run registers under their bare names - each engine under its own
-// (`playwright-<engine>`), the name its tools answer to. An engine left off at user or local scope is not
-// registered (the registration is the enable there), so it keeps the plugin spelling. Empty on the plugin
-// route. F7: every engine used to map to `playwright`, a name no run registers, so a copied seat kept
-// the plugin spelling of the engine the run had registered bare.
-const bareNames = (ctx) => mcp.bareNamedMcps({ routes: ctx.routes, mcps: ctx.lists.mcps })
-    .filter((n) => !ctx.pw.mcpjson.unregistered.includes(n));
-
-// COPY ROUTE ONLY: a registered server answers `mcp__<server>__<tool>`, never the plugin spelling
-// the shipped files carry.
-function downconvert(ctx)
-{
-    const bare = bareNames(ctx);
-    if (!bare.length) return;
-    if (ctx.routes.skills)
-    {
-        ctx.log(`  !! these servers are registered under their bare names but the skills and agents come from the plugins, which name the plugin spelling: ${bare.join(' ')} - set ALFRED_CODE_SKILLS_VIA_PLUGIN=false too, or leave them on the plugin route`);
-        return;
-    }
-    const changed = mcp.downconvertToolNames({
-        roots: [ctx.skillsDir, path.join(ctx.claudeDir, 'agents'), path.join(ctx.claudeDir, 'rules'), path.join(ctx.claudeDir, 'hooks')],
-        bare, log: ctx.log,
-    });
-    // The re-spelling can rewrite any rule's content in place, after copyLibrary already hashed it -
-    // re-hash every tracked rule (a dozen files at most) rather than tracking which ones changed.
-    if (changed) rehashKind(ctx.library && ctx.library.rules, path.join(ctx.claudeDir, 'rules'));
+        ctx.log(`  !! settings.local.json: created for this machine's own values - git does not ignore it here; add ${path.relative(ctx.projectRoot, localSettings).split(path.sep).join('/')} to .gitignore`);
 }
 
 // --- R10 THE LEDGER ------------------------------------------------------------------------------
@@ -2648,46 +1656,34 @@ function ledgerOf(ctx)
             const [obj, key] = at.split('.');
             return Object.hasOwn(holderNow(name, obj), key) && stampLayer.valueHash(JSON.stringify(holderNow(name, obj)[key])) === h;
         }));
+    // No run registers a server since 2.10.1: the .mcp.json and account rows are what an earlier run recorded and is still
+    // there unchanged (retireMcps removes them on the first update past each retirement) - so a later run, or uninstall,
+    // still knows them for the stack's.
     const servers = mcp.registrationsAt({ scope: 'project', mcpFile: ctx.mcpFile, projectRoot: ctx.projectRoot }).servers;
-    // Review finding 7: the copy route's local- and user-scope registrations, read back from the account
-    // file - what this run registered there, or what the last run recorded, still unchanged. Nothing is
-    // adopted with no record, and an account file that cannot be read keeps the record as it was.
     const mcpAt = {};
     for (const scope of ['local', 'user'])
     {
         const regs = mcp.registrationsAt({ scope, accountFile: ctx.accountFile, projectRoot: ctx.projectRoot });
         const was = (prior.mcpAt || {})[scope] || {};
-        const written = (ctx.mcpWrittenAt || {})[scope] || [];
-        // A server this run's drop took out (M2) leaves the record with its registration - one a lost account file had
-        // already taken leaves it too.
-        const kept = Object.fromEntries(Object.entries(was).filter(([name]) => !(ctx.mcpDropped || []).includes(name)));
-        // F1: an account file that lost the stack's registrations since the last run (accountLoss) - the record stands, and
-        // what this run registered into the fresh file is read back over it.
-        const now = regs.state === 'unreadable' ? { ...was }
-            : ctx.accountLost ? { ...kept, ...mcp.managedMcp({ servers: regs.servers, prior: {}, written }) }
-                : mcp.managedMcp({ servers: regs.servers, prior: was, written });
+        const now = regs.state === 'unreadable' ? { ...was } : mcp.managedMcp({ servers: regs.servers, prior: was, written: [] });
         if (Object.keys(now).length) mcpAt[scope] = now;
     }
     return {
         env, deny: part.deny, hooks: part.hooks,
         // Delta F-UNREAD: a .mcp.json that cannot be read holds no evidence, so its ledger rows stand as the last run recorded them.
-        mcp: registrationsAt(ctx, 'project').state === 'unreadable' && prior.mcp ? { ...prior.mcp } : mcp.managedMcp({ servers, prior: prior.mcp || null, written: ctx.mcpWritten || [], adopt: (name, entry) => !ctx.mcpHeld.some((h) => h.scope === 'project' && h.name === name) && stackShaped(ctx, name, entry) }),
+        mcp: registrationsAt(ctx, 'project').state === 'unreadable' && prior.mcp ? { ...prior.mcp } : mcp.managedMcp({ servers, prior: prior.mcp || null, written: [], adopt: (name, entry) => stackShaped(ctx, name, entry) }),
         mcpAt,
         files: managedFiles(ctx),
         settings: settingsKeys,
     };
 }
 
-// The fallback's evidence for a .mcp.json entry with no ledger to read: a name the stack registers (or
-// retired) in the stack's own shape - the package it launches or the url it calls (mcp.identityOf).
+// The fallback's evidence for a .mcp.json entry with no ledger to read: a name the stack registered (every one is retired
+// now) in the stack's own shape - the package it launches or the url it calls (mcp.identityOf).
 function stackShaped(ctx, name, entry)
 {
-    const names = new Set([...ctx.manifest.catalogs.mcps.map((e) => e.split('|')[0]), ...mcp.PW_SERVERS, ...ctx.manifest.retired.mcps, ...ctx.legacyMcps]);
-    if (!names.has(name)) return false;
-    ctx.mcpIdentities ||= mcp.stackIdentities({
-        catalog: ctx.manifest.catalogs.mcps, remotes: ctx.remotes, tokens: ctx.tokens, retiredRows: readRetiredPlugins(ctx.source.dir), renamed: ctx.manifest.renamed.mcps,
-    });
-    return (ctx.mcpIdentities[name] || new Set()).has(mcp.identityOf(entry));
+    const names = new Set([...mcp.PW_SERVERS, ...ctx.manifest.retired.mcps, ...ctx.legacyMcps]);
+    return names.has(name) && stackIdentity(ctx, name, entry);
 }
 
 // Every copy outside the library this run made - the engines, and on the copy routes the hooks, their
@@ -2704,8 +1700,6 @@ function managedFiles(ctx)
         for (const n of ctx.lists.skills.map((e) => e.split('|').pop())) put(`skills/${n}`, path.join(ctx.skillsDir, n));
         for (const a of ctx.lists.agents) put(`agents/${a}`, path.join(ctx.claudeDir, 'agents', a));
     }
-    // I12: the serena context the full copy route's navigation registration names.
-    if (ctx.navContextCopied) put(NAV_CONTEXT, path.join(ctx.claudeDir, NAV_CONTEXT));
     // An AGENTS.md this run seeded (or moved from its 2.1.6 CLAUDE.md name) is the template's until init fills it in - from then on it is the project's.
     if (ctx.stackAgentsMd) put('AGENTS.md', ledgerPath(ctx, 'AGENTS.md'));
     // No ledger to read (an older stamp): an AGENTS.md still byte for byte the seed is the stack's.
@@ -2746,8 +1740,6 @@ function pruneDroppedCopies(ctx)
         ...[...new Set(ctx.manifest.catalogs.hooks.map((e) => e.split('::')[0]))].concat(HOOK_ENGINES, HOOK_MODULES).map((f) => `hooks/${f}`),
         ...ctx.manifest.catalogs.skills.map((e) => `skills/${e.split('|').pop()}`),
         ...ctx.manifest.agents.map((a) => `agents/${a}`), 'AGENTS.md',
-        // I12: the serena context stays while this run's navigation registration names it.
-        ...(ctx.navContextCopied ? [NAV_CONTEXT] : []),
     ]);
     for (const [rel, h] of Object.entries(files))
     {
@@ -2759,9 +1751,9 @@ function pruneDroppedCopies(ctx)
         if (!now) continue;
         if (rel === NAV_CONTEXT)
         {
-            // No registration names it any more (a plugin route carries the context in its own tree).
-            if (now !== h) ctx.log(`  ${rel}: kept - the stack copied it for the navigation registration this run no longer writes, but it was changed since, so it is yours`);
-            else { fs.rmSync(at, { force: true }); ctx.log(`  ${rel} removed - no navigation registration names it now (the plugin carries its own)`); }
+            // No registration names it any more: the stack ships no navigation server since 2.10.1.
+            if (now !== h) ctx.log(`  ${rel}: kept - the stack copied it for a navigation registration no release writes now, but it was changed since, so it is yours`);
+            else { fs.rmSync(at, { force: true }); ctx.log(`  ${rel} removed - no navigation registration names it now`); }
             continue;
         }
         if (now !== h) { ctx.log(`  ${rel}: kept - the stack copied it and this release no longer ships it, but it was changed since, so it is yours`); continue; }
@@ -2850,47 +1842,12 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
     return 0;
 }
 
-// THE MEMORY MODEL, FETCHED AHEAD (live check F2). The memory service downloads its embedding model (~166MB)
-// on its first start - 33s cold against Claude Code's 30s MCP connect budget, and a server that misses it is
-// cached as failed, so the next session does not start it either. This run is outside any session, so on a
-// machine with uvx it fetches the model once through the snapshot's own launcher (stack/hooks/memory.js warm,
-// a scratch database, bounded); without uvx init installs it and its plan lists the same command.
-// ALFRED_CODE_MEMORY_WARM=0 in the run's environment switches it off.
-function warmMemoryModel(ctx)
-{
-    if (!['install', 'update'].includes(ctx.args.action)) return;
-    if (!ctx.lists.mcps.some((e) => e.split('|')[0] === 'alfred-memory')) return;
-    if (String((ctx.env || {}).ALFRED_CODE_MEMORY_WARM || '') === '0') return;
-    const engine = path.join(ctx.source.dir, 'stack', 'hooks', 'memory.js');
-    let cached = false;
-    try { cached = require(engine).modelCached(ctx.home || require('node:os').homedir()); } catch { cached = false; }
-    if (cached) return;
-    if (!ctx.rt.which('uvx'))
-    {
-        ctx.log('memory: the embedding model (~166MB) is fetched at the memory server\'s first start - uvx is not here yet; /alfred-code:init installs it and fetches the model');
-        return;
-    }
-    const WARM_MS = 240000;
-    const r = ctx.rt.runNode(engine, ['warm', '--root', ctx.projectRoot, '--plugin-root', ctx.source.dir, '--timeout', String(WARM_MS)],
-        { cwd: ctx.projectRoot, env: ctx.env, timeout: WARM_MS + 20000 });
-    const said = (/^memory warm: (.*)$/m.exec(r.stdout) || [])[1] || (r.stderr.trim().split('\n').pop() || 'no answer');
-    const ready = /^ready \((\d+)s\)$/.exec(said);
-    if (r.ok && (ready || said === 'cached'))
-        ctx.log(`memory: the embedding model is cached now${ready ? ` (${ready[1]}s)` : ''} - the memory server's first start fits Claude Code's 30s connect budget`);
-    else
-        ctx.log(`  !! memory: the embedding model (~166MB) could not be fetched ahead (${said.replace(/^failed - /, '')}) - the memory server's first start fetches it and can miss Claude Code's 30s connect budget; run node .claude/hooks/memory.js warm before the next session`);
-}
-
 function summarise(ctx, failures)
 {
     const hookFiles = new Set(ctx.lists.hooks.map((e) => e.split('::')[0]));
     let line = `  installed/refreshed this run - skills=${ctx.lists.skills.length}, plugins=${ctx.lists.plugins.length}`
-        + `, mcps=${ctx.lists.mcps.length}, hooks=${hookFiles.size}, agents=${ctx.lists.agents.length}, rules=${ctx.lists.rules.length}`
-        + (ctx.memoryGone ? '; memory=unregistered (the account file lost its registration, and a settings file that could not be read hides its level - fix the file and re-run)'
-            : `; memory=${ctx.level.level} (${ctx.level.level === 'kept' ? 'a settings file could not be read - nothing re-pointed' : ctx.level.dbPath})`);
+        + `, hooks=${hookFiles.size}, agents=${ctx.lists.agents.length}, rules=${ctx.lists.rules.length}`;
     line += ctx.args.keepPins ? '; keep-pins=on' : '; keep-pins=off (agent model/effort pins reset to catalog defaults)';
-    const engines = pwEngines(ctx);
-    if (engines.length) line += `; browser=${engines.join(',')}`;
     ctx.log(line);
     if (failures) ctx.log(`  ${failures} step(s) reported a failure above - the rest of the run completed`);
 }
@@ -2930,8 +1887,8 @@ function droppedByDrop({ kept, closed, stackListing, sourceDir, drop, routes, ma
 {
     const place = placement();
     // Only the entries a PLUGIN route put there: on the skills copy route no stack entry carries this
-    // project's items, and on the MCP copy route no server entry does - another install's are not ours.
-    const ours = (name) => (place.plugins[name] ? routes.skills : routes.mcps);
+    // project's items - another install's are not ours.
+    const ours = (name) => Boolean(place.plugins[name]) && routes.skills;
     const setOf = (lines) => deriveState({ selectionText: lines.join('\n'), sourceDir }).plugins.map((p) => p.split('@')[0]).filter(ours);
     const deps = Object.fromEntries(Object.entries(place.plugins).map(([name, p]) => [name, p.dependencies || []]));
     const after = deriveState({ selectionText: closed.join('\n'), sourceDir });
@@ -2947,32 +1904,6 @@ function droppedByDrop({ kept, closed, stackListing, sourceDir, drop, routes, ma
 // A path inside the project as the project-relative path it is (forward slashes), '' for one outside it. Compared by real
 // path through the nearest folder that exists - a database not created yet under a symlinked root (macOS /var -> /private/var)
 // still reads as inside, never as a '../..' climb (re-verify 2 R3).
-function inProject(projectRoot, p)
-{
-    const realish = (x) =>
-    {
-        let cur = path.resolve(x);
-        const rest = [];
-        while (!fs.existsSync(cur) && path.dirname(cur) !== cur) { rest.unshift(path.basename(cur)); cur = path.dirname(cur); }
-        try { cur = fs.realpathSync(cur); } catch { /* the path as given */ }
-        return path.join(cur, ...rest);
-    };
-    const rel = path.relative(realish(projectRoot), realish(p));
-    return rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? rel.split(path.sep).join('/') : '';
-}
-
-// Under its pre-rename names too (`browser-<engine>`, 2.0.0; `playwright-<engine>` before) - an older copy-route
-// install's engines - unless `legacy` is false.
-const registeredEngines = (mcpFile, { legacy = true } = {}) => [...new Set(Object.keys(readJson(mcpFile).mcpServers || {})
-    .map((n) => dataRoot.engineOfServer(n) || (legacy ? (/^(?:browser|playwright)-(chrome|msedge|firefox|webkit)$/.exec(n) || [])[1] : undefined))
-    .filter(Boolean))];
-
-const pwEngines = (ctx) => ctx.lists.mcps.map((e) => dataRoot.engineOfServer(String(e).split('|')[0])).filter(Boolean);
-// The optional one-plugin servers this run keeps beside the engines - the desktop servers (the OS gate has already left
-// out one this machine cannot run) and mobile-control. Each goes the engine way on the copy route (engineStandDown) and
-// moves to the scope the user gave it (moveScoped).
-const soloKept = (ctx) => ctx.lists.mcps.map((e) => String(e).split('|')[0]).filter(NOTED);
-
 const pinFiles = (ctx) => pinsLayer.pinFiles({
     projectRoot: ctx.projectRoot, skillsDir: ctx.skillsDir,
     agents: ctx.lists.agents, skills: ctx.lists.skills,
@@ -2984,7 +1915,6 @@ function runSelectionPlugins(ctx)
     if (!fs.existsSync(script)) throw new Error('selection-plugins.js is not in this source');
     const lines = plugins.selectionLines({
         routes: ctx.routes, skills: ctx.lists.skills, agents: ctx.lists.agents,
-        mcps: ctx.lists.mcps,
     });
     const file = path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'stack-sel-')), 'selection.txt');
     fs.writeFileSync(file, `${lines.join('\n')}\n`);
@@ -2995,8 +1925,6 @@ function runSelectionPlugins(ctx)
     return { entries: ctx.rt.lines(entries.stdout), copy: ctx.rt.lines(copyList.stdout) };
 }
 
-const npxInstall = (ctx, engine) => ctx.rt.capture('npx', ['-y', '-p', `@playwright/mcp${ctx.pins.PW_PIN}`, 'playwright', 'install', engine], { cwd: ctx.projectRoot, env: ctx.env }) !== '';
-
 if (require.main === module)
 {
     require('../../stack/hooks/hook-prelude.js').blockingStdio();
@@ -3006,4 +1934,4 @@ if (require.main === module)
     });
 }
 
-module.exports = { main, USAGE, CORE_DEP_PLUGINS, HOOK_ENGINES, HOOK_MODULES, forgeCliStep, SECRET_DENY, RETIRED_DENY, SHIPPED_DENY, MEMORY_TOOLS_USED, BROWSER_TOOLS_OFF, memoryToolDeny, browserToolDeny };
+module.exports = { main, USAGE, CORE_DEP_PLUGINS, HOOK_ENGINES, HOOK_MODULES, forgeCliStep, SECRET_DENY, RETIRED_DENY, SHIPPED_DENY, BROWSER_TOOLS_OFF };

@@ -101,9 +101,6 @@ test('M84: stack-usage finds the transcript folder under the config dir, by list
     assert.match(text, /`\$\{CLAUDE_CONFIG_DIR:-\$HOME\/\.claude\}\/projects\/<encoded-project-path>\/`/);
     assert.match(text, /every non-alphanumeric character replaced by a dash/);
     assert.match(text, /List `\$\{CLAUDE_CONFIG_DIR:-\$HOME\/\.claude\}\/projects\/`/);
-    // The rule the prose states is the one the stack's own importer computes.
-    const { slugify } = require('./memory-import.js');
-    assert.strictEqual(slugify('/Users/x/my.repo/.claude/worktrees/a_b'), '-Users-x-my-repo--claude-worktrees-a-b');
 });
 
 // ---- M86: the coverage loop keeps a declined set like its two siblings ----------------------------------------

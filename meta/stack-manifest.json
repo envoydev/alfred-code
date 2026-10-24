@@ -399,7 +399,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "desktop-automation",
-      "note": "driving a native desktop app through windows-control / macos-control: observe, one action, verify; app-type quality; dialogs never driven; the OS setup failures - arrives with either desktop server"
+      "note": "driving a native desktop app through a desktop server the user registered (Windows-MCP, MacOS-MCP): observe, one action, verify; app-type quality; dialogs never driven; the OS setup failures"
     },
     {
       "repo": "envoydev/alfred-code",

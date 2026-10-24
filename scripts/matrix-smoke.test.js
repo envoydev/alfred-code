@@ -13,13 +13,13 @@ const path = require('node:path');
 const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 
 const ROOT = path.join(__dirname, '..');
+// The three `mcp` lines are an older release's selection: since 2.10.1 the stack ships no server, so they register nothing.
 const SELECTION = 'skill markdown-style\nrule markdown-docs\nhook guard-secret-value\nmcp serena\nmcp context7\nmcp memory\n';
 const ROUTES = {
     plugin: {},
-    copy: { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' },
+    copy: { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' },
 };
 const STAMP = path.join('repo', '.claude', 'alfred-code.stamp');
-const LOCKED = ['alfred-navigation', 'alfred-documentation', 'alfred-memory'];
 
 // Every file the sandbox holds after a run - the project (its .git aside) AND the HOME around it, where
 // the account dir lives - so a write that lands outside the project is counted too. The stub's own call
@@ -53,7 +53,7 @@ for (const route of Object.keys(ROUTES))
             inspect: (repo) => ({
                 rule: fs.readFileSync(path.join(repo, '.claude', 'rules', 'markdown-docs.md'), 'utf8'),
                 agentsMd: fs.existsSync(path.join(repo, '.claude', 'AGENTS.md')),
-                engines: ['docs.js', 'memory.js', 'model-windows.json'].filter((f) => fs.existsSync(path.join(repo, '.claude', 'hooks', f))),
+                engines: ['docs.js', 'handoff.js', 'history.js', 'layout.js', 'memory.js', 'model-windows.json'].filter((f) => fs.existsSync(path.join(repo, '.claude', 'hooks', f))),
                 stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
                 settings: json(repo, path.join('.claude', 'settings.json')),
                 skill: fs.existsSync(path.join(repo, '.claude', 'skills', 'markdown-style', 'SKILL.md')),
@@ -62,7 +62,9 @@ for (const route of Object.keys(ROUTES))
         });
         assert.strictEqual(result.rule, fs.readFileSync(path.join(ROOT, 'stack', 'rules', 'markdown-docs.md'), 'utf8'), 'the picked rule landed byte for byte');
         assert.ok(result.agentsMd, 'the AGENTS.md seed landed');
-        assert.deepStrictEqual(result.engines, ['docs.js', 'memory.js', 'model-windows.json'], 'both hook engines and the window table are copied on every route');
+        assert.deepStrictEqual(result.engines, ['docs.js', 'handoff.js', 'history.js', 'layout.js', 'model-windows.json'], 'the hook engines and the window table are copied on every route - no memory engine since 2.10.1');
+        assert.strictEqual(result.mcp, null, 'nothing is registered in .mcp.json on either route - an old selection naming a server included');
+        assert.ok(!calls.some((c) => /^mcp add /.test(c)), 'no claude mcp add');
         assert.match(result.stamp, /^action: install$/m, 'the stamp names the action');
         assert.match(result.stamp, /^picked-skills: markdown-style$/m, 'the stamp records the pick - a copy, no plugin home (2.1.0)');
         assert.match(result.stamp, route === 'plugin' ? /^seats-route: plugin$/m : /^seats-route: copy$/m, 'how the seats came');
@@ -73,12 +75,10 @@ for (const route of Object.keys(ROUTES))
             assert.ok(calls.includes('plugin install alfred-code@envoydev --scope project -y'), 'the core entry is installed');
             assert.ok(!calls.some((c) => /-hooks@/.test(c)), 'no hooks entry is installed - the hooks ride the core');
             assert.ok(result.skill, 'every skill is a copy on the plugin route too (2.1.0)');
-            assert.strictEqual(result.mcp, null, 'nothing is registered in .mcp.json on the plugin route');
         }
         else
         {
             assert.ok(result.skill, 'the skill is copied');
-            assert.deepStrictEqual(LOCKED.filter((n) => !(n in result.mcp.mcpServers)), [], 'the three locked servers are in .mcp.json');
             const wired = JSON.stringify(result.settings.hooks || {});
             // the secret guard rides both dispatchers (the shell tools, and since 2.1.5 M3 the file tools), named in their args
             assert.match(wired, /file-guards\.js\\" guard-secret-value/, 'the picked hook is wired on the file tools');

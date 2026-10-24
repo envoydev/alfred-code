@@ -31,7 +31,6 @@ const { stampFile } = require('./install/brand.js');
 const { hashItem, hashBuffer } = require('./install/library.js');
 const { parseJson } = require('./install/json-file.js');
 const { resolveDocsRoot } = require('./install/copy.js');
-const { respellToolNames, bareServersIn } = require('./install/mcp.js');
 
 // alfred-docs-root.md is never byte-identical between the pristine SOURCE (which ships the
 // `__DOCS_ROOT__` placeholder) and the PROJECT copy (which the installer substitutes the resolved
@@ -66,17 +65,15 @@ function check({ project, source, configDir })
     const docsRoot = resolveDocsRoot(project);
     // The pristine SOURCE hash for one item - normalised for alfred-docs-root.md, whose source
     // content never matches an up-to-date project copy byte for byte (see the constant's comment).
-    // A single-file item is compared as the installer wrote it: the docs root substituted, and on the full copy
-    // route (no plugin serves the tool names) each server the copy names bare re-spelled in the source too.
+    // A single-file item is compared as the installer wrote it: the docs root substituted.
     const upHash = (kind, name) =>
     {
         const srcFile = kind === 'skills' ? path.join(source, 'stack', 'skills', name) : path.join(source, 'stack', kind, `${name}.md`);
         if (kind === 'skills') return hashItem(srcFile);
+        if (!(kind === 'rules' && ROOTED_RULES.has(name))) return hashItem(srcFile);
         let body;
-        let copy;
-        try { body = fs.readFileSync(srcFile, 'utf8'); copy = fs.readFileSync(path.join(dirs[kind], `${name}.md`), 'utf8'); } catch { return hashItem(srcFile); }
-        if (kind === 'rules' && ROOTED_RULES.has(name)) body = body.split('__DOCS_ROOT__').join(docsRoot);
-        return hashBuffer(`${name}.md`, Buffer.from(respellToolNames(body, bareServersIn(copy))));
+        try { body = fs.readFileSync(srcFile, 'utf8'); } catch { return hashItem(srcFile); }
+        return hashBuffer(`${name}.md`, Buffer.from(body.split('__DOCS_ROOT__').join(docsRoot)));
     };
     // A stamp is a project file a clone can fill with any text: a name is validated BEFORE it is joined,
     // hashed or printed (the N1 rule, stamp.js validItemName) - an invalid one is only counted, readLibrary's

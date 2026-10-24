@@ -319,8 +319,9 @@ function renameEnv(env, migrations, log, label = 'settings.json')
 // The env keys the stack owns - what R99 reads from and writes to settings.local.json.
 const isStackKey = (key) => key.startsWith('ALFRED_CODE_');
 
-// C8 (R100, R101): keys that hold a value of THIS machine - the memory database's absolute path. At
-// every scope they live in settings.local.json, never in the committed settings.json.
+// C8 (R100, R101): keys that hold a value of THIS machine - the retired memory server's database path, which no run
+// writes since 2.10.1 (an update's ledger pass takes back the one an earlier release wrote). At every scope they live in
+// settings.local.json, never in the committed settings.json, so a scope move leaves one where it is.
 const PERSONAL_KEYS = ['ALFRED_CODE_MEMORY_DB'];
 
 // Steps 2 and 3 of the env pass, in place, over the keys `only` admits. `stackWrote(label, key, value)` answers from the
@@ -414,7 +415,7 @@ function foldEnv(env, migrations, log, label, { baseCsv = null, alsoInto = null,
 // C8: a PERSONAL_KEYS value always goes to the overlay when there is one, and leaves this file.
 // `sharedKeys` (C5): a decision that shapes committed state lands in THIS file even when the overlay
 // holds the key - the hooks copy route's HOOKS_OFF complement, which is the committed wiring's mirror.
-function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath, autoCompact = null, memoryDb, hooksOff, hooksAnswered, renamedHooks = {}, inherited, overlay, overlayUnreadable = false, sharedKeys = [], log, label = 'settings.json', overlayLabel = 'settings.local.json', stackWrote = null })
+function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath, autoCompact = null, hooksOff, hooksAnswered, renamedHooks = {}, inherited, overlay, overlayUnreadable = false, sharedKeys = [], log, label = 'settings.json', overlayLabel = 'settings.local.json', stackWrote = null })
 {
     let changed = renameEnv(env, migrations, log, label);
     const beneath = inherited && typeof inherited === 'object' && !Array.isArray(inherited) ? { ...inherited } : {};
@@ -502,23 +503,6 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
         env.ALFRED_CODE_DOCS_VERSIONING = docsVersioning.seed;
         changed = true;
         log(`  ${label} env: ALFRED_CODE_DOCS_VERSIONING seeded (${docsVersioning.seed})`);
-    }
-
-    // 5. WRITTEN keys - they track a choice this run just made, so they overwrite.
-    for (const [key, value, shown] of [['ALFRED_CODE_MEMORY_DB', memoryDb, memoryDb]])
-    {
-        // N7: an overlay that could not be read is no home for it, and this file never is - the value is
-        // left unwritten and said once, the way `memory.js init` refuses; what this file held stays.
-        if (!held && overlayUnreadable && PERSONAL_KEYS.includes(key))
-        {
-            if (value) log(`  !! ${overlayLabel} could not be read - the memory level was not written (${key} stays out of ${label}); fix it and re-run`);
-            continue;
-        }
-        const personal = Boolean(held) && PERSONAL_KEYS.includes(key);
-        const { into, lab, mine } = personal ? { into: held, lab: overlayLabel, mine: false } : at(key);
-        if (value && into[key] !== value) { into[key] = value; if (mine) changed = true; log(`  ${lab} env: ${key} -> ${shown}`); }
-        if (personal && value && key in env)
-        { delete env[key]; changed = true; log(`  ${label} env: ${key} removed - this machine's database path, kept in ${overlayLabel} from here on`); }
     }
 
     // ALFRED_CODE_HOOKS_OFF: a walk that answered the hooks layer THIS run wins over the stored
@@ -675,9 +659,9 @@ function writeSettings(opts)
 {
     const {
         file, hookSpecs = [], retiredHooks = [], denySpecs = [], retiredDeny = [],
-        agentDeny = [], agentAllow = [], toolDeny = [],
-        mcpNames = [], mcpOff = [], mcpjsonDisable = [], mcpjsonEnable = [], catalog = [], migrations = {},
-        docsVersioning, docsPath = null, dataPath = null, autoCompact = null, memoryDb, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null, renamed = null,
+        agentDeny = [], agentAllow = [],
+        mcpOff = [], catalog = [], migrations = {},
+        docsVersioning, docsPath = null, dataPath = null, autoCompact = null, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null, renamed = null,
         inheritedOverrides = null, sharedFile = null, sharedKeys = [], attribution = null, worktreeBase = null, compactWindows = null, ledger = {},
         log = () => {}, note = () => {},
     } = opts;
@@ -713,35 +697,6 @@ function writeSettings(opts)
     // clears what an older install seeded. A project's own entry is never touched.
     for (const rule of [...deny]) if (retiredDeny.includes(rule))
     { deny.splice(deny.indexOf(rule), 1); changed = true; log(`  ${label}: dropped retired deny entry ${rule}`); }
-    // PL8: the ADD-ONLY rows (the memory tools the stack never calls): each written once. One the last run's ledger
-    // records for this file - in either route's spelling of the tool - that the file holds in neither was taken out by
-    // the user: it stays out, and its record is carried (the managed list below), so no later run writes it back. With
-    // no ledger, or none naming it, it is written. A route switch adds the new spelling while the old one is still there;
-    // the ledger pass below then drops the old one.
-    const toolKey = (entry) => String(entry).replace(/^mcp__plugin_(.+?)_\1__/, 'mcp__$1__');
-    const heldTools = new Set(deny.map(toolKey));
-    const declinedDeny = [];
-    const addedTools = [];
-    for (const rule of toolDeny)
-    {
-        if (deny.includes(rule)) continue;
-        const recorded = Boolean(prior && Array.isArray(prior.deny) && prior.deny.some((d) => d.file === label && toolKey(d.entry) === toolKey(rule)));
-        if (recorded && !heldTools.has(toolKey(rule))) { declinedDeny.push(rule); continue; }
-        deny.push(rule); changed = true; addedTools.push(rule);
-    }
-    // A browser engine's row (`<engine>-control` or its `browser-<engine>` alias) is named per tool and engine; the rest
-    // are the memory server's.
-    const engineRow = (rule) => /^mcp__(?:([a-z]+)-control|browser-([a-z]+))__(browser_\w+)$/.exec(toolKey(rule));
-    const memoryAdded = addedTools.filter((r) => !engineRow(r));
-    if (memoryAdded.length) log(`  ${label}: denied ${memoryAdded.length} memory server tool(s) the stack never calls (${memoryAdded.map((r) => r.replace(/^.*__/, '')).join(', ')}) - out of every session's context; take one out of permissions.deny to use it, and it stays out`);
-    const browserAdded = new Map();
-    for (const m of addedTools.map(engineRow).filter(Boolean))
-    {
-        const engines = browserAdded.get(m[3]) || new Set();
-        browserAdded.set(m[3], engines.add(m[1] || m[2]));
-    }
-    for (const [tool, engines] of browserAdded)
-        log(`  ${label}: denied ${tool} on ${[...engines].join(', ')} - it runs any code in the browser process; take it out of permissions.deny to use it, and it stays out`);
     // I1 (fix round 1): the pass below also runs over settings.local.json's deny list - a seat the
     // user switched off for themselves is re-spelled THERE, never moved into the shared file.
     const respellSeats = (list, lab) =>
@@ -766,17 +721,13 @@ function writeSettings(opts)
     // file, so the env pass writes a key it holds back into it (`applyEnv` `overlay`). A malformed one
     // is no overlay: Claude Code cannot read it either, so it is named and left as it is.
     let local = null;
-    let createdLocal = false;
     let localUnreadable = false;
     if (localFile && fs.existsSync(localFile))
     {
         try { ({ data: local } = readSettings(localFile)); }
         catch (err) { note(`${err.message} - its stack keys are not read or written this run`); local = null; localUnreadable = true; }
     }
-    // C8: the memory database path has no other home, so a local file that is not there yet is made.
-    else if (localFile && memoryDb) { local = {}; createdLocal = true; }
     const localEnvBefore = local && plain(local.env) ? { ...local.env } : {};
-    if (local && memoryDb && !(local.env && typeof local.env === 'object' && !Array.isArray(local.env))) local.env = {};
     const localDeny = local && local.permissions && Array.isArray(local.permissions.deny) ? local.permissions.deny : null;
     const localDenyBefore = localDeny ? [...localDeny] : [];
     const localRespelled = Boolean(localDeny) && respellSeats(localDeny, path.basename(localFile));
@@ -813,35 +764,17 @@ function writeSettings(opts)
         if (localAllowed && !Object.keys(local.permissions).length) delete local.permissions;
     }
 
-    // enabledMcpjsonServers: pre-approve exactly the .mcp.json servers we register, so there is no
-    // per-launch trust prompt - never blanket enableAllProjectMcpServers.
-    const enabled = (data.enabledMcpjsonServers ??= []);
-    for (const name of mcpNames) if (!enabled.includes(name)) { enabled.push(name); changed = true; }
-    // ... and DROP the names this run unregistered. A server carried by a plugin is trusted through
-    // the plugin, so a leftover entry names a `.mcp.json` server that no longer exists - dead config
-    // that reads like a working knob.
-    for (const name of mcpOff) if (enabled.includes(name))
-    { enabled.splice(enabled.indexOf(name), 1); changed = true; log(`  ${label}: dropped enabledMcpjsonServers entry ${name} (no longer registered here)`); }
-
-    // R116 (j): disabledMcpjsonServers - a playwright engine left off is registered AND named here, which
-    // rejects a .mcp.json server in every permission mode. The caller passes only what the user's enable
-    // choice moved (and what no longer has a registration), so an entry the user took out by hand stays
-    // out. A list this run empties goes; one the user left empty stays.
-    if (mcpjsonDisable.length || mcpjsonEnable.length)
+    // enabledMcpjsonServers: an earlier release pre-approved the .mcp.json servers it registered. The stack registers
+    // none since 2.10.1, so the names it wrote leave (`mcpOff` - a name the user's own .mcp.json row holds is not
+    // passed): a leftover entry names a server that no longer exists - dead config that reads like a working knob.
+    // A list this run empties goes; the user's own entries stay.
+    if (Array.isArray(data.enabledMcpjsonServers))
     {
-        const had = data.disabledMcpjsonServers;
-        if (had !== undefined && !Array.isArray(had)) note(`${label}: disabledMcpjsonServers is not a list - left as it is, and no browser engine is switched off through it`);
-        else
-        {
-            const off = had || [];
-            let dropped = false;
-            for (const name of mcpjsonDisable) if (!off.includes(name))
-            { off.push(name); changed = true; log(`  ${label}: disabledMcpjsonServers + ${name} (left off - registered, not loaded)`); }
-            for (const name of mcpjsonEnable) if (off.includes(name))
-            { off.splice(off.indexOf(name), 1); changed = true; dropped = true; log(`  ${label}: disabledMcpjsonServers - ${name}`); }
-            if (!had && off.length) data.disabledMcpjsonServers = off;
-            if (had && dropped && !off.length) delete data.disabledMcpjsonServers;
-        }
+        const enabled = data.enabledMcpjsonServers;
+        let dropped = false;
+        for (const name of mcpOff) if (enabled.includes(name))
+        { enabled.splice(enabled.indexOf(name), 1); changed = true; dropped = true; log(`  ${label}: dropped enabledMcpjsonServers entry ${name} (no longer registered here)`); }
+        if (dropped && !enabled.length) delete data.enabledMcpjsonServers;
     }
 
     // The git preferences forbid AI attribution; the `attribution` setting enforces it. Key by key and add-only:
@@ -875,7 +808,7 @@ function writeSettings(opts)
         }
     }
     const overlay = local && local.env && typeof local.env === 'object' && !Array.isArray(local.env) ? local.env : null;
-    const overlayBefore = overlay && !createdLocal ? JSON.stringify(overlay) : null;
+    const overlayBefore = overlay ? JSON.stringify(overlay) : null;
     // The ledger row of a key in a file - under the name it had before this run's renames, when it was renamed. A file the
     // ledger holds no env for (no stamp, or one from before the ledger) leaves the reseed to the value match, as it was.
     const stackWrote = (fileLabel, key, value) =>
@@ -885,7 +818,7 @@ function writeSettings(opts)
         const names = [key, ...(migrations.renames || []).filter(([, to]) => to === key).map(([from]) => from)];
         return names.some((n) => rows[n] === valueHash(value));
     };
-    if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, docsPath, dataPath, autoCompact, memoryDb, hooksOff, hooksAnswered, renamedHooks: (renamed && renamed.hooks) || {}, inherited: inheritedEnv, overlay, overlayUnreadable: localUnreadable, sharedKeys, log, label,
+    if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, docsPath, dataPath, autoCompact, hooksOff, hooksAnswered, renamedHooks: (renamed && renamed.hooks) || {}, inherited: inheritedEnv, overlay, overlayUnreadable: localUnreadable, sharedKeys, log, label,
         overlayLabel: localFile ? path.basename(localFile) : undefined, stackWrote })) changed = true;
     // The auto-compact window per model (compactWindowSeeds). Claude Code reads it at session START only - measured
     // 2026-10-14: written mid-session it changed nothing in print or interactive mode, set before the start it compacted
@@ -954,7 +887,7 @@ function writeSettings(opts)
     const seedsOf = (key) => [...catalog.filter((r) => r.key === key && !r.written).flatMap((r) => [String(r.default), ...(r.former_defaults || []).map(String)]), ...reseeds(key),
         ...(key === 'ALFRED_CODE_DOCS_VERSIONING' && docsVersioning && docsVersioning.seed ? [docsVersioning.seed] : [])];
     const releaseEnv = new Set(catalog.map((r) => r.key));
-    const writtenNow = memoryDb ? { ALFRED_CODE_MEMORY_DB: memoryDb } : {};
+    const writtenNow = {};
     const priorEnv = (name) => (prior && prior.env ? prior.env[name] || {} : null);
     const managedEnv = {};
     const kept = docsPath && docsPath.keep ? ['ALFRED_CODE_DOCS_PATH'] : [];
@@ -967,7 +900,7 @@ function writeSettings(opts)
         managedEnv[localName] = envLocal.managed;
     }
     const priorDeny = prior && prior.deny ? prior.deny : null;
-    const ownDeny = (entry) => denySpecs.includes(entry) || toolDeny.includes(entry) || Boolean(stackSeat(entry));
+    const ownDeny = (entry) => denySpecs.includes(entry) || Boolean(stackSeat(entry));
     for (const [list, name] of [[deny, label], [localDeny, localName]])
     {
         if (!list || !priorDeny) continue;
@@ -983,11 +916,8 @@ function writeSettings(opts)
     // recorded for the other file (a local-scope install's own, before a move) never claims the team's
     // copy (review finding 1). With no ledger a secret-file deny is never claimed - it may be the team's,
     // and a leftover after uninstall is harmless where a removed one is not (finding 6); a stack seat is.
-    // An add-only row the file holds is the stack's whoever wrote it (the same string), so a later removal is the user's
-    // and is kept; one the user took out is carried as recorded (declinedDeny), never written back.
-    const managedDeny = deny.filter((entry) => !denyBefore.includes(entry) || toolDeny.includes(entry)
+    const managedDeny = deny.filter((entry) => !denyBefore.includes(entry)
         || (priorDeny ? priorDeny.some((d) => d.file === label && d.entry === entry) : Boolean(stackSeat(entry)))).map((entry) => ({ file: label, entry }));
-    for (const entry of declinedDeny) managedDeny.push({ file: label, entry });
     if (localDeny)
         for (const entry of localDeny)
             if (!localDenyBefore.includes(entry) || (priorDeny ? priorDeny.some((d) => d.file === localName && d.entry === entry) : Boolean(stackSeat(entry))))
@@ -1043,26 +973,12 @@ function writeSettings(opts)
             changed = true;
             log(`  ${label}: settings.json still names skillOverrides ${from} - set as ${to} in ${label}; a local-scope run never writes settings.json, a project-scope update re-keys it`);
         }
-    // M1 (R132): an entry in ANY settings file rejects a .mcp.json server, and Claude Code's approval
-    // dialog writes its rejection to settings.local.json - so an engine this run enables leaves that
-    // list too. Only the names the answer moved: another entry, or a key of the user's own, stays.
-    let localListChanged = false;
-    if (local && mcpjsonEnable.length && Array.isArray(local.disabledMcpjsonServers))
-    {
-        const moved = local.disabledMcpjsonServers.filter((n) => mcpjsonEnable.includes(n));
-        for (const name of moved) log(`  ${path.basename(localFile)}: disabledMcpjsonServers - ${name}`);
-        const kept = local.disabledMcpjsonServers.filter((n) => !mcpjsonEnable.includes(n));
-        if (moved.length && kept.length) local.disabledMcpjsonServers = kept;
-        else if (moved.length) delete local.disabledMcpjsonServers;
-        localListChanged = moved.length > 0;
-    }
-    const localChanged = (Boolean(overlay) && JSON.stringify(overlay) !== overlayBefore) || localRekeyed || localRespelled || localListChanged || localAllowed;
+    const localChanged = (Boolean(overlay) && JSON.stringify(overlay) !== overlayBefore) || localRekeyed || localRespelled || localAllowed;
     if (localChanged)
     {
         fs.mkdirSync(path.dirname(localFile), { recursive: true });
         fs.writeFileSync(localFile, `${JSON.stringify(local, null, 2)}\n`);
     }
-    const createdLocalFile = createdLocal && localChanged;
 
     // A local-scope run writes settings.local.json, but the stack's OWN stale rows may sit in the shared
     // settings.json a legacy copy-route install wrote: its hook wiring (a hook file this route no longer
@@ -1095,10 +1011,10 @@ function writeSettings(opts)
         }
     }
 
-    if (!changed) return { written: localChanged, refused: false, createdLocal: createdLocalFile, managed };
+    if (!changed) return { written: localChanged, refused: false, managed };
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
-    return { written: true, refused: false, createdLocal: createdLocalFile, managed };
+    return { written: true, refused: false, managed };
 }
 
 // Rule: a narrower scope switches off an MCP server registered at a BROADER one for itself alone. MCP has no
@@ -1204,9 +1120,9 @@ function sharedOnlyDeny(claudeDir)
 // Code lays settings.local.json over settings.json, so every stack entry the local install wrote there
 // would keep overriding the file the install now lives in - and no later run clears them, since only a
 // local-scope read-back reads the local file. A stack seat deny and a secret-file deny join
-// settings.json's list. The stack's copied-hook wiring (`hookFiles`) and its `.mcp.json` approvals
-// (`mcpNames`) are dropped from the local file - this run writes them to settings.json on the routes
-// that use them.
+// settings.json's list. The stack's copied-hook wiring (`hookFiles`) is dropped from the local file - this run
+// writes it to settings.json on the route that uses it - and so are the `.mcp.json` approvals an earlier release
+// wrote (`mcpNames`), since no release registers a server now.
 // R96 (Task 18b fix round 1): an `ALFRED_CODE_*` env key NEVER moves - settings.json is the
 // committed file, and a value set locally is personal (a hooks-off list, a second writable tree). A
 // local key still holding the stack's own seed (`seeds`, what this run would seed) or one the stack
@@ -1312,7 +1228,7 @@ function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs =
         {
             local.enabledMcpjsonServers.splice(local.enabledMcpjsonServers.indexOf(name), 1);
             localChanged = true;
-            say(`enabledMcpjsonServers entry ${name} dropped - approved in settings.json from here on`);
+            say(`enabledMcpjsonServers entry ${name} dropped - the stack registers no MCP server since 2.10.1`);
         }
         if (!local.enabledMcpjsonServers.length) delete local.enabledMcpjsonServers;
     }

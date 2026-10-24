@@ -2,8 +2,7 @@
 // THE SMALL SEEDS AND THE PINS - Phase 7, T4b.
 //
 // Both layers write into files the project or the user owns, so every test here is about what is
-// NOT written: an instruction file (AGENTS.md or CLAUDE.md) that already exists, a key the run was not handed, a credential value in
-// a log line, a pin the refresh did not change.
+// NOT written: an instruction file (AGENTS.md or CLAUDE.md) that already exists, or a pin the refresh did not change.
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -29,58 +28,6 @@ const dir = (files = {}) =>
     return base;
 };
 const FM = (model, effort) => `---\nname: x\n${model ? `model: ${model}\n` : ''}${effort ? `effort: ${effort}\n` : ''}---\n\nBody with model: prose that is not a pin.\n`;
-
-// --- the account env keys -------------------------------------------------
-
-test('account keys: a credential is logged BY LENGTH, a plain value by value', () =>
-{
-    const configDir = dir();
-    const logs = [];
-    seeds.seedAccountKeys({ configDir, env: { CONTEXT7_API_KEY: 'ctx7-xyz' }, log: (m) => logs.push(m), note: () => {} });
-    seeds.seedAccountEnv({ configDir, key: 'PLAIN_SLUG', value: 'acme/web', log: (m) => logs.push(m), note: () => {} });
-    const all = logs.join('\n');
-    assert.match(all, /CONTEXT7_API_KEY=set \(8 chars\)/);
-    assert.match(all, /PLAIN_SLUG=acme\/web written/);
-    assert.ok(!all.includes('ctx7-xyz'), 'an api key value reached a log line');
-});
-
-test('account keys: 2.0.0 writes no sentry key, and leaves the ones an older run wrote', () =>
-{
-    const configDir = dir({ 'settings.json': JSON.stringify({ env: { SENTRY_SLUG: 'acme', SENTRY_ACCESS_TOKEN: 'kept' } }) });
-    const written = seeds.seedAccountKeys({ configDir, env: { SENTRY_ACCESS_TOKEN: 'handed', SENTRY_SLUG: 'other' }, log: () => {}, note: () => {} });
-    assert.deepStrictEqual(written, []);
-    const env = JSON.parse(fs.readFileSync(path.join(configDir, 'settings.json'), 'utf8')).env;
-    assert.deepStrictEqual(env, { SENTRY_SLUG: 'acme', SENTRY_ACCESS_TOKEN: 'kept' });
-});
-
-test('account keys: a key the run was NOT handed is never written, let alone cleared', () =>
-{
-    const configDir = dir({ 'settings.json': JSON.stringify({ env: { CONTEXT7_API_KEY: 'kept', OTHER: '1' } }) });
-    const written = seeds.seedAccountKeys({ configDir, env: {}, log: () => {}, note: () => {} });
-    assert.deepStrictEqual(written, []);
-    const env = JSON.parse(fs.readFileSync(path.join(configDir, 'settings.json'), 'utf8')).env;
-    assert.deepStrictEqual(env, { CONTEXT7_API_KEY: 'kept', OTHER: '1' });
-});
-
-test('account keys: an unchanged value does not rewrite the file', () =>
-{
-    const configDir = dir({ 'settings.json': `${JSON.stringify({ env: { CONTEXT7_API_KEY: 'ctx7-same' } }, null, 4)}\n` });
-    const before = fs.readFileSync(path.join(configDir, 'settings.json'));
-    const logs = [];
-    const written = seeds.seedAccountKeys({ configDir, env: { CONTEXT7_API_KEY: 'ctx7-same' }, log: (m) => logs.push(m), note: () => {} });
-    assert.deepStrictEqual(written, []);
-    assert.ok(fs.readFileSync(path.join(configDir, 'settings.json')).equals(before), 'an unchanged run reformatted the account file');
-    assert.ok(logs.some((m) => /CONTEXT7_API_KEY already set \(9 chars\)/.test(m)), logs.join(' | '));
-});
-
-test('account keys: a malformed account file is REFUSED, not overwritten', () =>
-{
-    const configDir = dir({ 'settings.json': '{ not json' });
-    const notes = [];
-    seeds.seedAccountKeys({ configDir, env: { CONTEXT7_API_KEY: 'ctx7-xyz' }, log: () => {}, note: (m) => notes.push(m) });
-    assert.strictEqual(fs.readFileSync(path.join(configDir, 'settings.json'), 'utf8'), '{ not json');
-    assert.ok(notes.some((m) => /could not write CONTEXT7_API_KEY/.test(m)), notes.join(' | '));
-});
 
 // --- AGENTS.md ------------------------------------------------------------
 
@@ -382,21 +329,6 @@ test('place: the instructions line says where the files are - none, claude, root
     assert.strictEqual(seeds.instructionsLine(dir({ '.claude/AGENTS.md': 'x' })), 'instructions: claude .claude/AGENTS.md');
     assert.strictEqual(seeds.instructionsLine(dir({ 'AGENTS.md': 'x', 'CLAUDE.md': 'y' })), 'instructions: root AGENTS.md CLAUDE.md');
     assert.strictEqual(seeds.instructionsLine(dir({ 'AGENTS.md': 'x', '.claude/CLAUDE.md': 'y' })), 'instructions: split AGENTS.md .claude/CLAUDE.md');
-});
-
-// --- the playwright downloads --------------------------------------------
-
-test('playwright: only firefox and webkit are downloaded, and a failure is a HINT not a stop', () =>
-{
-    const asked = [];
-    const logs = [];
-    const done = seeds.playwrightDownloads({
-        browsers: ['chrome', 'firefox', 'msedge', 'webkit'], pin: '@1.0',
-        run: (e) => { asked.push(e); return e !== 'webkit'; }, log: (m) => logs.push(m),
-    });
-    assert.deepStrictEqual(asked, ['firefox', 'webkit'], 'an installed-browser engine was downloaded');
-    assert.deepStrictEqual(done, ['firefox']);
-    assert.ok(logs.some((m) => /could not download webkit - run by hand: npx -y -p @playwright\/mcp@1\.0/.test(m)), logs.join(' | '));
 });
 
 // --- the pins -------------------------------------------------------------

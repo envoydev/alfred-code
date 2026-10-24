@@ -149,16 +149,45 @@
         ]
       },
       "edit": [
+        "memory_cleanup",
+        "memory_consolidate",
         "memory_delete",
-        "memory_update"
+        "memory_resolve",
+        "memory_update",
+        "mistake_note_delete",
+        "mistake_note_update",
+        "unquarantine_memory"
       ],
       "version": "12.1.1",
       "tools": [
+        "commit_session_legacy",
+        "get_bootstrap_profile",
+        "get_onboarding_guide",
+        "get_quarantined_memories",
+        "memory_cleanup",
+        "memory_conflicts",
+        "memory_consolidate",
         "memory_delete",
+        "memory_detail",
+        "memory_distill",
+        "memory_explore",
+        "memory_graph",
+        "memory_harvest",
+        "memory_health",
+        "memory_ingest",
         "memory_list",
+        "memory_quality",
+        "memory_resolve",
         "memory_search",
+        "memory_stats",
         "memory_store",
-        "memory_update"
+        "memory_store_session",
+        "memory_update",
+        "mistake_note_add",
+        "mistake_note_delete",
+        "mistake_note_search",
+        "mistake_note_update",
+        "unquarantine_memory"
       ]
     },
     "playwright": {
@@ -184,7 +213,8 @@
       },
       "edit": [
         "browser_evaluate",
-        "browser_file_upload"
+        "browser_file_upload",
+        "browser_run_code_unsafe"
       ],
       "version": "0.0.83",
       "tools": [
@@ -217,6 +247,7 @@
         "browser_press_key",
         "browser_resize",
         "browser_resume",
+        "browser_run_code_unsafe",
         "browser_select_option",
         "browser_snapshot",
         "browser_start_recording",

@@ -42,7 +42,13 @@ const crypto = require('node:crypto');
 const zlib = require('node:zlib');
 const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 const client = require('../stack/skills/capture-preferences/scripts/mcp-client.js');
-const { PYTHON, pythonFor, excludeNewerOf } = require('../stack/mcp/uv-python.js');
+// The Python a server's pin is resolved against (the launchers' own until 2.10.1 retired them): 3.13, and a server whose
+// pinned release needs a newer one its own minor. The dependency cut-off is the pins file's own `refreshed` day, spelled
+// as that day's last second in RFC 3339 (docs.astral.sh/uv/concepts/resolution); '' for a missing or malformed day.
+const PYTHON = '3.13';
+const SERVER_PYTHON = { 'windows-control': '3.14' };
+const pythonFor = (server) => SERVER_PYTHON[server] || PYTHON;
+const excludeNewerOf = (refreshed) => (/^\d{4}-\d{2}-\d{2}$/.test(String(refreshed || '')) ? `${refreshed}T23:59:59Z` : '');
 
 const REPO = path.join(__dirname, '..');
 const PINS = path.join(REPO, 'meta', 'mcp-pins.json');
@@ -76,8 +82,8 @@ function npmLatest(pkg)
 
 // Audit 2026-10-21 mcps T1-3 (ruling M-A2): an npm row's whole tree, audited at its pin and the cut-off it launches
 // with - report only, never a refusal (appium-mcp 1.97.1 resolves 20 critical advisories its upstream pins, and no newer
-// release exists to move to). --write records the count on the row as `advisories`, which mobile-launch.js prereqNotes
-// names. Null when npm cannot resolve or audit the tree.
+// release exists to move to). --write records the count on the row as `advisories`, which the
+// mobile launcher named until 2.10.1. Null when npm cannot resolve or audit the tree.
 function npmAudit(pkg, version, before)
 {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pin-audit-'));
@@ -122,7 +128,7 @@ function admits(spec, python)
 }
 
 // The newest FINAL release, not yanked, that the server's pinned Python can install - each uvx server
-// starts on the interpreter stack/mcp/uv-python.js names for it (3.14 for windows-control, 3.13 for the rest),
+// starts on the interpreter pythonFor names for it (3.14 for windows-control, 3.13 for the rest),
 // so a pin past its floor fails at launch. null when no release qualifies: the row keeps its committed pin.
 function newestFor(json, python)
 {
