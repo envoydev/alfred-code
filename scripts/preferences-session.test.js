@@ -27,8 +27,10 @@ let n = 0;
 const sid = () => `prefs-test-${process.pid}-${++n}`;
 
 // `tools` keeps the tool-order start line on: off, the hook's every other push is tested as it was before the line came.
+// `host` keeps the host's shell lines on: off, a push does not depend on the $SHELL or the OS the suite runs on, even where a
+// case names its own off-list.
 // The account config is a folder of the test's own, so this machine's enabled plugins never reach the line.
-function project({ docs = { 'PERSONAL-CODE-PREFERENCES.md': PERSONAL, 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE, 'PROJECT-CODE-PREFERENCES.md': PROJECT, 'GIT-PREFERENCES.md': GIT }, watch = true, tools = false } = {})
+function project({ docs = { 'PERSONAL-CODE-PREFERENCES.md': PERSONAL, 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE, 'PROJECT-CODE-PREFERENCES.md': PROJECT, 'GIT-PREFERENCES.md': GIT }, watch = true, tools = false, host = false } = {})
 {
     const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'prefs-hook-')));
     const config = fs.mkdtempSync(path.join(os.tmpdir(), 'prefs-config-'));
@@ -40,7 +42,11 @@ function project({ docs = { 'PERSONAL-CODE-PREFERENCES.md': PERSONAL, 'ARCHITECT
     write('.claude/settings.json', JSON.stringify({ enabledPlugins: { 'alfred-navigation@envoydev': true, 'alfred-documentation@envoydev': true, 'alfred-memory@envoydev': true } }));
     for (const [name, text] of Object.entries(docs)) write(path.join(PREFS, name), text);
     if (watch && Object.keys(docs).length) write(path.join(PREFS, 'watch.json'), '{}\n');
-    const env = (extra) => ({ ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: config, ...(tools ? {} : { ALFRED_CODE_HOOKS_OFF: 'preferences-session:tools' }), ...extra });
+    const env = (extra = {}) =>
+    {
+        const off = ['ALFRED_CODE_HOOKS_OFF' in extra ? extra.ALFRED_CODE_HOOKS_OFF : (tools ? '' : 'preferences-session:tools'), host ? '' : 'preferences-session:host'].filter(Boolean).join(',');
+        return { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: config, ...extra, ...(off ? { ALFRED_CODE_HOOKS_OFF: off } : {}) };
+    };
     const hook = (payload, extra = {}, file = HOOK) => spawnSync(process.execPath, [file], { cwd: root, input: typeof payload === 'string' ? payload : JSON.stringify({ cwd: root, ...payload }), encoding: 'utf8', env: env(extra) });
     return {
         root, write, hook,
@@ -980,7 +986,7 @@ test('a Grep or an LSP call is a read: a judge\'s first one is held like its fir
 {
     const long = (i) => entry(`c${i}`, `Entry ${i}`, `- Rule: rule number ${i} ${'stays put. '.repeat(70)}\n- Scope: every language`);
     const p = project({ docs: { 'PERSONAL-CODE-PREFERENCES.md': codeDoc(...Array.from({ length: 14 }, (_, i) => long(i + 1))), 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE } });
-    const STEER = /^Locate a symbol through the navigation server or LSP - Grep is for a literal you already located\.$/m;
+    const STEER = /^Locate a symbol through the navigation tools your start line orders \(LSP first\) - Grep is for a literal you already located\.$/m;
     try
     {
         const calls = [
@@ -1050,7 +1056,7 @@ test('a judge\'s first shell read of code is held like its first Read; the docs,
 {
     const long = (i) => entry(`c${i}`, `Entry ${i}`, `- Rule: rule number ${i} ${'stays put. '.repeat(70)}\n- Scope: every language`);
     const p = project({ docs: { 'PERSONAL-CODE-PREFERENCES.md': codeDoc(...Array.from({ length: 14 }, (_, i) => long(i + 1))), 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE } });
-    const STEER = /^Locate a symbol through the navigation server or LSP - Grep is for a literal you already located\.$/m;
+    const STEER = /^Locate a symbol through the navigation tools your start line orders \(LSP first\) - Grep is for a literal you already located\.$/m;
     try
     {
         const who = { agent_id: 's1', agent_type: 'alfred-code:aspnet-verifier' };
@@ -1202,7 +1208,7 @@ test('a typed review is handed the code docs at its expansion; past one room the
         assert.match(texts[0], /Not pasted yet/);
         let r = big.hook(pre('Grep', { pattern: 'Order', path: path.join(big.root, 'src') }, s));
         assert.ok(denied(r), 'its first read brings the next part');
-        assert.match(reason(r), /^Locate a symbol through the navigation server or LSP/m, 'a Grep earns the steer');
+        assert.match(reason(r), /^Locate a symbol through the navigation tools your start line orders/m, 'a Grep earns the steer');
         for (; denied(r); r = big.hook(pre('Read', { file_path: path.join(big.root, 'src/app.ts') }, s))) { texts.push(reason(r)); assert.ok(texts.length < 7, 'the holds end'); }
         const seen = texts.flatMap((t) => [...t.matchAll(/rule number (\d+) /g)].map((m) => Number(m[1])));
         assert.deepStrictEqual(seen.sort((a, b) => a - b), Array.from({ length: 14 }, (_, i) => i + 1), 'every entry once');
@@ -1442,4 +1448,96 @@ test('a missing tools.js leaves every other push as it was', () =>
         assert.match(seatText(p.hook(seatStart('alfred-code:aspnet-verifier'), {}, file)), /^The user's code preferences/);
     }
     finally { p.rm(); fs.rmSync(lone, { recursive: true, force: true }); }
+});
+
+// ---- the host's shell traps (audit 2026-10-14 RU13; from the retired memory-session.js, 2026-10-24) -----------------
+// The always-on navigation rule carried the Windows Git Bash line into every macOS / Linux session and the zsh lines into
+// every bash one. The hook appends only this host's own, keyed on process.platform and $SHELL, at every session and seat
+// start. Each case below mocks one host.
+const { hostLines } = require(HOOK);
+const WIN_LINE = /^- On Windows \(Git Bash\): pass a `\/tmp\/x` path to native `node` through `cygpath -w`/m;
+const ZSH_LINE = /^- zsh aborts the WHOLE command on an unmatched bare path glob/m;
+const SPLIT_LINE = /^- zsh never word-splits `\$VAR`/m;
+
+test('RU13: win32 gets the Windows line, a zsh $SHELL the zsh lines, bash neither', () =>
+{
+    const text = (platform, shell) => hostLines(platform, shell).join('\n');
+    assert.deepStrictEqual(hostLines('linux', '/bin/bash'), [], 'bash on Linux: nothing');
+    assert.deepStrictEqual(hostLines('darwin', '/usr/local/bin/bash'), [], 'bash on macOS: nothing');
+    assert.deepStrictEqual(hostLines('darwin', ''), [], 'no $SHELL: nothing');
+    for (const zsh of ['/bin/zsh', '/usr/local/bin/zsh', 'zsh'])
+    {
+        const t = text('darwin', zsh);
+        assert.match(t, /^Shell commands on this host:$/m, zsh);
+        assert.match(t, ZSH_LINE, zsh);
+        assert.match(t, SPLIT_LINE, zsh);
+        assert.doesNotMatch(t, WIN_LINE, `${zsh}: no Windows line off win32`);
+    }
+    for (const bash of ['C:\\Program Files\\Git\\usr\\bin\\bash.exe', '/usr/bin/bash', ''])
+    {
+        const t = text('win32', bash);
+        assert.match(t, WIN_LINE, `win32 ${bash}`);
+        assert.doesNotMatch(t, ZSH_LINE, `win32 ${bash}: no zsh line`);
+    }
+    assert.match(text('win32', '/usr/bin/zsh'), ZSH_LINE, 'a zsh on win32 gets both');
+    assert.strictEqual(hostLines('win32', 'C:\\msys64\\usr\\bin\\zsh.exe').length, 4, 'the header, the Windows line, the two zsh lines');
+});
+
+// Each host drives the real entry: $SHELL through the env, process.platform through a preload that sets it before the hook runs.
+function driveHost(p, payload, { shell, platform, off = 'preferences-session:tools' })
+{
+    const pre = fs.mkdtempSync(path.join(os.tmpdir(), 'prefs-platform-'));
+    const config = fs.mkdtempSync(path.join(os.tmpdir(), 'prefs-host-config-'));
+    try
+    {
+        fs.writeFileSync(path.join(pre, 'platform.js'), `Object.defineProperty(process, 'platform', { value: ${JSON.stringify(platform)} });\n`);
+        const r = spawnSync(process.execPath, ['-r', path.join(pre, 'platform.js'), HOOK], {
+            cwd: p.root, encoding: 'utf8', input: JSON.stringify({ cwd: p.root, ...payload }),
+            env: { ...process.env, SHELL: shell, CLAUDE_PROJECT_DIR: p.root, CLAUDE_CONFIG_DIR: config, ALFRED_CODE_HOOKS_OFF: off },
+        });
+        assert.strictEqual(r.status, 0, r.stderr);
+        return r.stdout ? String(JSON.parse(r.stdout).hookSpecificOutput.additionalContext || '') : '';
+    }
+    finally { fs.rmSync(pre, { recursive: true, force: true }); fs.rmSync(config, { recursive: true, force: true }); }
+}
+
+test('RU13: a zsh host\'s session and seat starts end on the zsh lines, a bash host\'s on none', () =>
+{
+    const p = project({ docs: { 'PERSONAL-PREFERENCES.md': PERSONAL_PREFS, 'PERSONAL-CODE-PREFERENCES.md': PERSONAL } });
+    try
+    {
+        const cases = [['a main start', start(sid(), 'startup'), /^The user's personal preferences/],
+            ['a judge\'s start', seatStart('alfred-code:aspnet-verifier'), /^The user's code preferences/],
+            ['a seat\'s own compaction', { ...start(sid(), 'compact'), agent_id: 'agent-h1', agent_type: 'alfred-code:evidence-gatherer' }, /^Shell commands/]];
+        for (const [label, payload, opens] of cases)
+        {
+            const zsh = driveHost(p, payload, { shell: '/bin/zsh', platform: 'darwin' });
+            assert.match(zsh, opens, `${label}: the push it had comes first`);
+            assert.match(zsh, /(^|\n\n)Shell commands on this host:\n- zsh aborts/, `${label}: the host block closes the push`);
+            assert.match(zsh, /word-splits .*array\.$/, `${label}: and ends it`);
+            assert.doesNotMatch(zsh, WIN_LINE, `${label}: no Windows line on macOS`);
+            const bash = driveHost(p, payload, { shell: '/bin/bash', platform: 'linux' });
+            assert.doesNotMatch(bash, /Shell commands on this host|zsh|cygpath/, `${label}: a bash host gets neither`);
+        }
+        const off = driveHost(p, start(sid(), 'startup'), { shell: '/bin/zsh', platform: 'darwin', off: 'preferences-session:tools,preferences-session:host' });
+        assert.match(off, /^The user's personal preferences/, 'preferences-session:host drops the lines');
+        assert.doesNotMatch(off, /Shell commands on this host/, 'and nothing else');
+    }
+    finally { p.rm(); }
+});
+
+test('RU13: a win32 host\'s session and seat starts end on the Windows line, with no zsh line under Git Bash', () =>
+{
+    const p = project({ docs: {} });
+    try
+    {
+        for (const payload of [start(sid(), 'startup'), seatStart('alfred-code:evidence-gatherer'), seatStart('claude-code-guide')])
+        {
+            const win = driveHost(p, payload, { shell: 'C:\\Program Files\\Git\\usr\\bin\\bash.exe', platform: 'win32' });
+            assert.match(win, /^Shell commands on this host:\n- On Windows \(Git Bash\)/, payload.agent_type || payload.hook_event_name);
+            assert.match(win, /`MSYS2_ARG_CONV_EXCL='\*'`/, payload.hook_event_name);
+            assert.doesNotMatch(win, ZSH_LINE, `${payload.hook_event_name}: Git Bash is no zsh`);
+        }
+    }
+    finally { p.rm(); }
 });

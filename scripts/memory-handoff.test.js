@@ -4,8 +4,8 @@
 // memory calls (137 write, 50 read, 60 list) - two memory stores, the seats using the one the rule ranked second.
 // Pins: no seat grant or stack instruction names a navigation-server memory tool, the server's context switches all
 // six off, every seat's handoff line stores and lists through alfred-memory with the protocol alfred-memory.md states,
-// the session-start push never re-sends a handoff row, `memory.js handoff` counts what a purge left, and SubagentStart
-// hands every seat its project tag. Every database here is a fixture under os.tmpdir(), removed after its test.
+// the engine never re-sends a handoff row and `memory.js handoff` counts what a purge left (the memory hook that pushed
+// them retired 2026-10-24). Every database here is a fixture under os.tmpdir(), removed after its test.
 'use strict';
 const test = require('node:test');
 require('./hook-test-env').isolateHookSuite();
@@ -20,8 +20,6 @@ const ROOT = path.join(__dirname, '..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const m = require('../stack/hooks/memory.js');
 const ENGINE = path.join(ROOT, 'stack', 'hooks', 'memory.js');
-const HOOK = path.join(ROOT, 'stack', 'hooks', 'memory-session.js');
-const host = require(HOOK).hostLines(process.platform, '/bin/bash'); // the lines a bash host gets: none, or win32's own
 
 let DatabaseSync = null;
 try { process.removeAllListeners('warning'); ({ DatabaseSync } = require('node:sqlite')); } catch {}
@@ -94,9 +92,13 @@ test('the rules: no memory rule ships, the trio protocol holds the bus calls, al
   assert.ok(!/memory tools are off/.test(nav), 'stack audit 2026-10-20 rules row 6: alfred-memory.md is the one home of the line');
 });
 
-test('the manifest wires memory-session.js on SubagentStart beside SessionStart', () => {
-  const hooks = JSON.parse(read('meta/stack-manifest.json')).hooks.filter((h) => h.file === 'memory-session.js').map((h) => h.matcher);
-  assert.deepStrictEqual(hooks.sort(), ['@SessionStart', '@SubagentStart']);
+// 2026-10-24: the memory hook retired with the memory server (no stack feature depends on one); its host lines moved to
+// preferences-session.js and the seats' tag line went with the file bus.
+test('the manifest wires no memory-session.js and retires it', () => {
+  const manifest = JSON.parse(read('meta/stack-manifest.json'));
+  assert.deepStrictEqual(manifest.hooks.filter((h) => h.file === 'memory-session.js'), []);
+  assert.ok(manifest.retired.hooks.includes('memory-session.js'));
+  assert.ok(!fs.existsSync(path.join(ROOT, 'stack', 'hooks', 'memory-session.js')));
 });
 
 // ------------------------------------------------------------------ the engine
@@ -178,43 +180,4 @@ test('legacyHandoffNotes reads a Windows-shaped data root and a 2.0.0 .serena fo
     assert.strictEqual(found.length, 2, found.join('\n'));
     assert.deepStrictEqual(m.legacyHandoffNotes(path.join(root, 'absent'), 'feat', {}), [], 'a missing folder is none left');
   } finally { rmDir(root); }
-});
-
-// ------------------------------------------------------------------ the hook
-
-function hookProject(registered = true) {
-  const root = tmpDir('handoff-hook-');
-  const config = tmpDir('handoff-hook-config-');
-  const dbPath = path.join(root, '.memory-mcp', 'memory.db');
-  fs.writeFileSync(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: registered ? { memory: { type: 'stdio', command: 'uvx', args: [], env: { MCP_MEMORY_SQLITE_PATH: dbPath } } } : {} }));
-  // a bash $SHELL: no zsh trap line rides the push (memory-session.js hostLines, audit 2026-10-14 RU13); win32 adds its own
-  const run = (payload) => spawnSync(process.execPath, [HOOK], { cwd: root, input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, SHELL: '/bin/bash', CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: config } });
-  return { root, dbPath, run, rm: () => { rmDir(root); rmDir(config); } };
-}
-
-test('SubagentStart hands the seat its project tag line, never the rows', { skip: skipNoSqlite }, () => {
-  const p = hookProject();
-  try {
-    buildDb(p.dbPath, [{ content: 'a project fact', tags: `project:${path.basename(p.root)}`, memory_type: 'reference' }]);
-    const r = p.run({ hook_event_name: 'SubagentStart', agent_id: 'a1', agent_type: 'aspnet-implementer', cwd: p.root });
-    assert.strictEqual(r.status, 0, r.stderr);
-    const out = JSON.parse(r.stdout).hookSpecificOutput;
-    assert.strictEqual(out.hookEventName, 'SubagentStart');
-    assert.strictEqual(out.additionalContext.split('\n')[0], `This project's memory tag: project:${path.basename(p.root)}`);
-    assert.strictEqual(out.additionalContext.split('\n').length, 1 + (host.length ? host.length + 1 : 0), 'the tag line, then the host\'s shell lines (RU13) - the tool line (RU10) is the tool order\'s now');
-    assert.ok(!out.additionalContext.includes('a project fact'), 'no row reaches a seat');
-    const start = JSON.parse(p.run({ hook_event_name: 'SessionStart', cwd: p.root }).stdout).hookSpecificOutput;
-    assert.ok(start.additionalContext.includes('a project fact'), 'SessionStart still pushes the rows');
-  } finally { p.rm(); }
-});
-
-test('SubagentStart with no memory registration, or another event, stays silent', () => {
-  const p = hookProject(false);
-  try {
-    assert.strictEqual(p.run({ hook_event_name: 'SubagentStart', cwd: p.root }).stdout, '');
-  } finally { p.rm(); }
-  const q = hookProject();
-  try {
-    assert.strictEqual(q.run({ hook_event_name: 'SubagentStop', cwd: q.root }).stdout, '');
-  } finally { q.rm(); }
 });

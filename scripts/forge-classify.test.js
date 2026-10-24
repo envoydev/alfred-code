@@ -56,11 +56,17 @@ test('no forge noun is not a forge call', () => {
   assert.strictEqual(forge.classify({ tool_name: 'Read', tool_input: { file_path: '/a' } }), null);
 });
 
-test('the stack\'s own servers are never classified', () => {
-  assert.strictEqual(forge.classify({ tool_name: 'mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', tool_input: {} }), null);
-  assert.strictEqual(forge.classify({ tool_name: 'mcp__alfred-memory__create_pull_request', tool_input: {} }), null); // mcp-fixture
-  assert.ok(forge.isStackServer('mcp__alfred-documentation__get')); // mcp-fixture
-  assert.ok(!forge.isStackServer('mcp__github__merge_pull_request'));
+// The stack ships no server (2026-10-24): a navigation, documentation or memory type's tool (the adapter table) is never a
+// forge call under any registration, and every other server is judged by its tool - no name is exempt.
+test('a local type\'s tool is never classified, under any registration; every other server is judged', () => {
+  for (const name of ['mcp__plugin_serena_serena__find_symbol', 'mcp__nav__rename_symbol', 'mcp__docs__query-docs', 'mcp__mem__memory_store']) { // mcp-fixture
+    assert.strictEqual(forge.classify({ tool_name: name, tool_input: {} }), null, name);
+    assert.ok(forge.localTool(name), name);
+  }
+  assert.ok(!forge.localTool('mcp__github__merge_pull_request'));
+  assert.ok(!forge.localTool('mcp__chrome__browser_click'), 'a browser can act outward'); // mcp-fixture
+  assert.ok(!forge.localTool('find_symbol'), 'no MCP tool');
+  assert.ok(forge.classify({ tool_name: 'mcp__alfred-memory__create_pull_request', tool_input: {} }), 'a server named like the old stack one is judged by its tool'); // mcp-fixture
 });
 
 test('api inference - body flags mean a write, GraphQL mutations are tokenised', () => {

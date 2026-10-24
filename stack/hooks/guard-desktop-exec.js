@@ -11,8 +11,9 @@
 //     the PowerShell tool excluded.
 //   - MacOS-MCP's `Shell` - a shell command the Bash-route guards (rm, secret, force-push, cross-project
 //     write) never see. MacOS-MCP 0.4.6 has no exclude flag, so the tool itself is the gate's unit.
-// Both are denied; App's `launch`, `switch` and `resize` pass. Both spellings: the plugin route's
-// `mcp__plugin_<n>_<n>__<tool>` and the MCP copy route's bare server spelling, one pattern each below.
+// Both are denied; App's `launch`, `switch` and `resize` pass. The stack ships no desktop server (2026-10-24), so each
+// tool is matched by its NAME under whatever server the user registered (a plugin's, a .mcp.json row, any name) - a user
+// server with a tool of the same name meets the same gate, the accepted cost.
 // 'Allow' is honoured through <data root>/state/approvals/DESKTOP-EXEC-ALLOW, the pre-2.8.0 <docs-path>/flow/ one still
 // read (this session's own, under 8h): a line `App` opens every launch_executable, `Shell` every macOS shell call, an executable's FULL path that one executable
 // (a bare name only a call naming it bare - audit 2026-10-20, the hooks track's minor list: a file-name line opened that
@@ -40,11 +41,9 @@ if (require.main === module) {
 }
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`;
 
-// The two tools, on both routes, under the server's name and its retired 2.4.0 alias's (`windows-desktop`, `macos-desktop`
-// - build-marketplace.js LISTED_ALIASES runs the same server under the old name; mcps track T1-1, 2026-10-21). Built as
-// patterns so the copy route's bare spelling is never literal text (lint check 54 fails on it anywhere under stack/).
-const WIN_APP = /^mcp__(?:plugin_windows-(?:control|desktop)_)?windows-(?:control|desktop)__App$/;
-const MAC_SHELL = /^mcp__(?:plugin_macos-(?:control|desktop)_)?macos-(?:control|desktop)__Shell$/;
+// The two tools under any registration (the tool-type match, no-MCP spec N6).
+const WIN_APP = /^mcp__.+__App$/;
+const MAC_SHELL = /^mcp__.+__Shell$/;
 
 let payload;
 try { payload = JSON.parse(fs.readFileSync(0, 'utf8')); } catch { process.exit(0); }

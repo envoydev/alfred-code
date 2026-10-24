@@ -102,14 +102,14 @@ const INLINE_CAP = 7000;
 const CODE_MIN_ROOM = 1000;
 const DOC_READ_BYTES = 512 * 1024;
 const EDIT_TOOLS = /^(Write|Edit|MultiEdit|NotebookEdit)$/;
-// The navigation server's two edit tools the stack keeps on - both routes' spellings (docs-session.js NAV_EDIT).
-const NAV_EDIT = /^mcp__(?:plugin_(?:alfred-)?navigation_)?(?:alfred-)?navigation__(?:rename_symbol|safe_delete_symbol)$/;
+// A navigation server's two edit tools, by name under any registration (docs-session.js NAV_EDIT).
+const NAV_EDIT = /^mcp__.+__(?:rename_symbol|safe_delete_symbol)$/;
 // Its symbol lookups, which read code as a Read does - a seat told to locate before it reads may never call Read.
-const NAV_READ = /^mcp__(?:plugin_(?:alfred-)?navigation_)?(?:alfred-)?navigation__(?:find_symbol|find_referencing_symbols|get_symbols_overview|find_declaration|find_implementations)$/;
+const NAV_READ = /^mcp__.+__(?:find_symbol|find_referencing_symbols|get_symbols_overview|find_declaration|find_implementations)$/;
 // The harness's own readers and the input key naming what each reads: a Grep and an LSP call read code as a Read does, so
 // a judge that greps instead of locating skips no part (the user's ruling of 2026-10-22, 'Hold both, steer off Grep').
 const READ_PATH = new Map([['Read', 'file_path'], ['Grep', 'path'], ['LSP', 'filePath']]);
-const GREP_STEER = 'Locate a symbol through the navigation server or LSP - Grep is for a literal you already located.';
+const GREP_STEER = 'Locate a symbol through the navigation tools your start line orders (LSP first) - Grep is for a literal you already located.';
 // The shell's grep words, which earn the same line.
 const SHELL_GREP = /^(?:grep|egrep|fgrep|rg|select-string|sls)$/i;
 // The main session's RUN - the last orchestration skill it started, typed (UserPromptExpansion) or called (Skill), bare
@@ -767,6 +767,30 @@ function seatPush(ctx, files, seat, extra = {}) {
 
 // The seats that never touch the project's code - Claude Code's guides - are told no tool order.
 const NO_ORDER_SEAT = /^(?:claude-code-guide|statusline-setup)$/;
+
+// THE HOST'S SHELL TRAPS (audit 2026-10-14 RU13, the user's ruling; moved here from the retired memory-session.js on
+// 2026-10-24, the one other hook that spoke at every start). The always-on navigation rule carried the Windows Git Bash line
+// into every macOS / Linux session and the zsh lines into every bash one; each host now gets only its own, at the
+// session's and every seat's start. Keyed on this process's platform and $SHELL - the shell the Bash tool runs
+// (shell-guards.js reads the same variable for its zsh rewrite). A per-host line is no per-OS rule copy (rule-prose.test.js
+// M68), and the rule keeps a one-line pointer here.
+const ZSH_LINES = [
+  "- zsh aborts the WHOLE command on an unmatched bare path glob, status 1 like a genuine no-match, so an aborted scan reads as 'nothing there': list a path glob that may match nothing with `find <dir> -name '<pat>'`.",
+  '- zsh never word-splits `$VAR`, so a command plus flags held in one variable runs as one word - use a function or an array.',
+];
+const WINDOWS_LINES = [
+  "- On Windows (Git Bash): pass a `/tmp/x` path to native `node` through `cygpath -w` (or write under `$TEMP`); prefix a `git show <rev>:<path>` with `MSYS2_ARG_CONV_EXCL='*'`, or path conversion rewrites it; run PowerShell as a quoted-heredoc (`<<'EOF'`) `.ps1` via `-File \"$(cygpath -w <file>)\"`, never a double-quoted `-Command` (Bash expands its `$_`).",
+];
+function hostLines(platform = process.platform, shell = process.env.SHELL) {
+  const name = String(shell || '').split(/[\\/]/).pop().replace(/\.exe$/i, '').toLowerCase();
+  const lines = [...(platform === 'win32' ? WINDOWS_LINES : []), ...(name === 'zsh' ? ZSH_LINES : [])];
+  return lines.length ? ['Shell commands on this host:', ...lines] : [];
+}
+// `preferences-session:host` in the off-list drops them and nothing else.
+function hostText() {
+  try { if (prelude().partOff('preferences-session', 'host')) return ''; } catch { /* no prelude: on */ }
+  return hostLines().join('\n');
+}
 // What the tool order resolves a seat against: its definition's frontmatter where the file is found - the core's own seat
 // beside this hook (`alfred-code:<seat>`), else the project's copy - and 'other' (the main session's reach) where not.
 function seatOf(ctx, type) {
@@ -847,11 +871,12 @@ function main() {
     if (input.agent_id) {
       // a seat's own compaction: the personal doc is the main session's, the seat's tool order is its own
       const tools = input.agent_type && !NO_ORDER_SEAT.test(String(input.agent_type)) ? toolsText(ctx, seatOf(ctx, input.agent_type)) : '';
-      if (tools) emit('SessionStart', { additionalContext: tools });
+      const text = [tools, hostText()].filter(Boolean).join('\n\n');
+      if (text) emit('SessionStart', { additionalContext: text });
       return;
     }
-    // The personal doc leads: in an output Claude Code caps, the tools line is the part to lose.
-    const text = [personalPush(ctx), toolsText(ctx, null)].filter(Boolean).join('\n\n');
+    // The personal doc leads: in an output Claude Code caps, the tools line is the part to lose; the host lines are short.
+    const text = [personalPush(ctx), toolsText(ctx, null), hostText()].filter(Boolean).join('\n\n');
     if (text) emit('SessionStart', { additionalContext: text });
     return;
   }
@@ -860,7 +885,7 @@ function main() {
     const main = loadMarks(recordFiles(ctx, input.session_id, 'main'));
     const seat = seatDocs(ctx, input.agent_type, ARCH_RUN.test(String(main.run || '')) && runLive(main));
     const docs = seat ? seatPush(ctx, input.agent_id ? files : null, seat, seat.kind === 'architecture' ? { arch: true } : {}) : '';
-    const text = [docs, tools].filter(Boolean).join('\n\n');
+    const text = [docs, tools, hostText()].filter(Boolean).join('\n\n');
     if (text) emit('SubagentStart', { additionalContext: text });
     return;
   }
@@ -939,7 +964,7 @@ function main() {
     if (reads && seatHold(ctx, input, files, marks, seat, reads.grep)) return;
     editTargets = targets;
     gitWrite = gitWrites(command, cwd);
-  } else if (/^mcp__/.test(name) && forgeLib && !forgeLib.isStackServer(name)) {
+  } else if (/^mcp__/.test(name) && forgeLib) {
     gitWrite = mcpGitWrite(input);
     if (!gitWrite) return;
   } else return;
@@ -977,7 +1002,7 @@ function main() {
   emit('PreToolUse', { permissionDecision: 'deny', permissionDecisionReason: reasons.join('\n\n') });
 }
 
-module.exports = { parseDoc, scopeOf, clean, codeNeeds, codeReason, gitReason, gitWrites, exempt, contextOf, relOf, personalPush, seatPush, seatDocs, shellMarks, shellReads, CODE_DOCS, GIT_DOC, PERSONAL_DOC, INLINE_CAP, PUSH_CAP };
+module.exports = { hostLines, parseDoc, scopeOf, clean, codeNeeds, codeReason, gitReason, gitWrites, exempt, contextOf, relOf, personalPush, seatPush, seatDocs, shellMarks, shellReads, CODE_DOCS, GIT_DOC, PERSONAL_DOC, INLINE_CAP, PUSH_CAP };
 if (require.main === module) {
   try { main(); } catch { /* fail open: a hand-over hook never blocks on its own error */ }
 }

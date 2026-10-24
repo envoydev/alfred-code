@@ -226,16 +226,16 @@ test('M42 the status example row shows the plugin route launcher at the release 
 
 // M44: the memory ToolSearch line had two homes no pin tied together. Audit 2026-10-14 RU10 left it ONE, the memory hook's
 // session and seat pushes; the tool preferences (phase 1, 2026-10-24) moved that home into the tool order's start line,
-// built from the adapter table's memory job and resolved per actor, so the rule never repeats it and the memory hook
-// says it only while the order is switched off (memory-session.test.js holds both sides).
+// built from the adapter table's memory job and resolved per actor, so the rule never repeats it. The memory hook that
+// kept a fallback copy retired the same day (no stack feature depends on a memory server), so no hook spells it.
 test('M44 the memory ToolSearch line has one home, the tool order\'s start line', () =>
 {
     const line = 'ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store,mcp__plugin_alfred-memory_alfred-memory__memory_search,mcp__plugin_alfred-memory_alfred-memory__memory_list';
     assert.ok(!fs.existsSync(path.join(ROOT, 'stack', 'rules', 'alfred-memory.md')), 'no rule carries the line - the memory rule retired 2026-10-24');
     assert.strictEqual(JSON.parse(read('meta/shared-rules.json')).rules['memory-toolsearch-line'], undefined, 'no pin for a one-home line');
-    const hook = read('stack/hooks/memory-session.js');
-    assert.strictEqual(hook.split('ToolSearch select:').length, 2, 'the memory hook spells the line once, its fallback');
-    assert.strictEqual(hook.split('TOOL_SEARCH_LINE}').length - 1, hook.split('orderOff() ?').length - 1, 'every use of it sits behind the order-off check');
+    assert.ok(!fs.existsSync(path.join(ROOT, 'stack', 'hooks', 'memory-session.js')), 'the memory hook retired 2026-10-24');
+    for (const file of fs.readdirSync(path.join(ROOT, 'stack', 'hooks')).filter((n) => n.endsWith('.js')))
+        assert.doesNotMatch(read(`stack/hooks/${file}`), /select:mcp__\S*memory_(store|search|list)/, `${file} spells no memory load line`);
     const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'm44-')));
     const config = path.join(root, 'config');
     try

@@ -51,22 +51,23 @@ const ROUTES = [
   { hook: 'guard-secret-value.js', event: 'PreToolUse', tools: ['Read', 'Bash', 'PowerShell', 'Monitor', 'Grep'], deny: true },
   { hook: 'guard-unapproved-dispatch.js', event: 'PreToolUse', tools: ['Task', 'Agent'], deny: true },
   { hook: 'guard-ungated-commit.js', event: 'PreToolUse', tools: ['Bash', 'PowerShell', 'Monitor'], deny: true },
-  // Every MCP server outside the stack (a forge merge under any server key or plugin), replayed on forge tool names.
-  { hook: 'guard-ungated-commit.js', event: 'PreToolUse', deny: true, pattern: '^mcp__(?!(plugin_alfred-[a-z-]+_)?alfred-).*',
+  // Every MCP server (a forge merge under any server key or plugin), replayed on forge tool names.
+  { hook: 'guard-ungated-commit.js', event: 'PreToolUse', deny: true, pattern: '^mcp__.*',
     tools: ['mcp__github__merge_pull_request', 'mcp__work_forge__accept_merge_request', 'mcp__plugin_acme_ado__repo_pull_request_write'] }, // mcp-fixture
   { hook: 'guard-stop-contract.js', event: 'PreToolUse', tools: ['AskUserQuestion'], deny: false, needsTranscript: true },
   { hook: 'guard-fresh-session-start.js', event: 'PreToolUse', tools: ['Skill'], deny: true, needsTranscript: true },
   { hook: 'guard-cross-project-write.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Monitor'], deny: true },
   { hook: 'guard-config-protection.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Monitor'], deny: true },
-  // Wired on a regular-expression matcher (`pattern`, the manifest's own), replayed on the four tool names it
-  // matches: both desktop servers' launchers on both routes. The copy route's bare server spelling is built here,
-  // never written - lint check 54 fails on it as literal text.
+  // Wired on a regular-expression matcher (`pattern`, the manifest's own), replayed on tool names it matches: the desktop
+  // server types' two launchers under any registration (N6, 2026-10-24 - the stack ships no server, so the name is the
+  // user's). A bare server spelling is built here, never written - lint check 54 fails on it as literal text.
   { hook: 'guard-desktop-exec.js', event: 'PreToolUse', deny: true,
-    pattern: '^mcp__(plugin_windows-(control|desktop)_)?windows-(control|desktop)__App$|^mcp__(plugin_macos-(control|desktop)_)?macos-(control|desktop)__Shell$',
+    pattern: '^mcp__.+__App$|^mcp__.+__Shell$',
     tools: ['control', 'desktop'].flatMap((k) => [`mcp__plugin_windows-${k}_windows-${k}__App`, `mcp__windows-${k}__App`, `mcp__plugin_macos-${k}_macos-${k}__Shell`, `mcp__macos-${k}__Shell`]) },
-  // The browser's file upload, the secret guard's fourth read route (audit 2026-10-14 PL3): every engine, both routes.
+  // The browser's file upload, the secret guard's fourth read route (audit 2026-10-14 PL3): a Playwright server under any
+  // registration name (N6), replayed on the names the stack once shipped.
   { hook: 'guard-secret-value.js', event: 'PreToolUse', deny: true,
-    pattern: '^mcp__(plugin_((chrome|msedge|firefox|webkit)-control|browser-(chrome|msedge|firefox|webkit))_)?((chrome|msedge|firefox|webkit)-control|browser-(chrome|msedge|firefox|webkit))__browser_file_upload$',
+    pattern: '^mcp__.+__browser_file_upload$',
     tools: ['chrome', 'msedge', 'firefox', 'webkit'].flatMap((e) => [`${e}-control`, `browser-${e}`]).flatMap((s) => [`mcp__plugin_${s}_${s}__browser_file_upload`, `mcp__${s}__browser_file_upload`]) },
   { hook: 'guard-stop-contract.js', event: 'Stop', deny: true },
   // One stop per recorded SUBAGENT transcript (<session>/subagents/agent-*.jsonl): its final text, the

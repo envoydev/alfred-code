@@ -24,7 +24,7 @@ change (see the invariants below).
 The mechanism notes for each part live in a path-scoped rule in `.claude/rules/` and load when you edit its files. Read the named rule before you change that part; it holds the why, the measurements and the edge cases this file leaves out.
 
 - `stack/skills/` (library skills, each copied per pick), `stack/agents/` (44 seats in the core plugin), `stack/rules/` (nineteen shipped rules) and `stack/AGENTS.template.md` (the per-project instruction skeleton): `repo-catalog.md`.
-- `stack/hooks/` - nineteen hooks folded into the core `alfred-code` plugin, generated from the manifest's `hooks[]`: `repo-hooks.md`.
+- `stack/hooks/` - eighteen hooks folded into the core `alfred-code` plugin, generated from the manifest's `hooks[]`: `repo-hooks.md`.
 - `scripts/install/` - THE INSTALLER, the ONLY route, one `node` command on every OS - and `setup-plugin/`, the six commands and the router skill. The delivery-surfaces table, the install stamp and the snapshot gotchas are there too: `repo-installer.md`.
 - `stack/mcp/` and the generated MCP plugin entries (one plugin, one server, same name): `repo-mcp.md`.
 - Memory levels, the docs root, the data root and the two stores: `repo-memory-data.md`.

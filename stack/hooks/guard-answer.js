@@ -14,7 +14,7 @@
 //   deliverable -> ONE format AskUserQuestion' - injection only, never a denial. Measured lost as
 //   prose: nine corrections and nine redrafts of one report, 1.64M cache-read, no ask. And it writes
 //   the CORRECTION probe: one ledger row per correction turn (ALFRED_CODE_CORRECTION_NUDGE, seeded
-//   `log`; `inject` adds the memory-save line).
+//   `log`; `inject` adds the save line).
 // No Stop wiring since 2026-10-20 (the user's ruling): the length cap and the em-dash block at Stop are gone - the
 //   answer budget is the interaction rule's, injected here, never enforced by a block.
 // SessionStart:compact wiring: re-emits the budget as additionalContext after a compaction, which drops the
@@ -293,14 +293,13 @@ function repeatsLastPrompt(currentPrompt) {
 // path gets a note to open it and restate what it changes before acting. Log and inject only - it never blocks.
 const PATH_IN_ANSWER_RE = /(?:^|[\s'"(`])((?:~|\.{1,2})?\/?(?:[\w.@-]+\/){2,}[\w.@-]*)/;
 // The save line both correction routes inject. A correction often carries a PROJECT FACT (audit 2026-10-10, T5
-// cross-track, 84eedb4b: 'api from develop is for current version' - a branch pairing acted on, never stored, 0
-// memory_store calls), so it names the reference type beside user_correction (alfred-memory.md's three save triggers).
-// A stated preference rides the same line (audit 2026-10-11 SD16, session ce9d4811: 'I do not want it global but per
-// project scope' was never stored and restated 3 minutes later): its type is preference_signal.
-const SAVE_LINE = 'store it with memory_store (user_correction, project tag) before continuing - a preference it states '
-  + '(\'per project, never global\') as preference_signal, and a project fact it states '
-  + '(a branch, an environment, a version pairing) as a reference memory; the tool is deferred, so load it first: '
-  + 'ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store';
+// cross-track, 84eedb4b: 'api from develop is for current version' - a branch pairing acted on, never stored) or a stated
+// preference (audit 2026-10-11 SD16, session ce9d4811: 'I do not want it global but per project scope' was never stored and
+// restated 3 minutes later). The stack depends on no memory server since 2026-10-24, so the line names the two homes that
+// outlast the session: the preferences docs for how the user wants the work done, Claude Code's own memory for the rest.
+const SAVE_LINE = 'keep what it teaches before continuing - a preference it states (\'per project, never global\') as an entry '
+  + 'in the preferences docs (/capture-preferences), and the lesson or a project fact it states (a branch, an environment, a '
+  + 'version pairing) in Claude Code\'s own memory';
 function typedAnswers(p) {
   const questions = Array.isArray(p.tool_input && p.tool_input.questions) ? p.tool_input.questions : [];
   let answers = p.tool_response && typeof p.tool_response === 'object' && p.tool_response.answers && typeof p.tool_response.answers === 'object'
@@ -386,7 +385,7 @@ if (payload.hook_event_name === 'UserPromptSubmit') {
       '(measured: nine corrections and nine redrafts of one report with no ask, 1.64M cache-read).'
     : '';
   // The correction nudge, LOG-ONLY by default (the user's 'count first' ruling): 38 of 38 and then
-  // 35 of 35 measured corrections were never saved to the shared memory. ALFRED_CODE_CORRECTION_NUDGE:
+  // 35 of 35 measured corrections were never saved anywhere. ALFRED_CODE_CORRECTION_NUDGE:
   // `log` (the seed, and the value when absent) writes one row per correction turn and injects
   // nothing; `inject` also hands the save line back; `0` (or `off`) is off.
   const nudgeMode = String(envOf(process.env, 'CORRECTION_NUDGE') || 'log').trim().toLowerCase();

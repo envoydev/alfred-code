@@ -100,12 +100,13 @@ test('M68: the browser-only screenshot line leaves the always-on navigation rule
     const row = read('stack/skills/capture-awareness/references/agents.md').split('\n').find((l) => l.startsWith('- `playwright` - '));
     assert.ok(row && row.includes('never the iteration loop'), 'the browser row carries the mid-loop rule');
     // The M68 ruling stands - one rule text for every teammate, never a per-OS rule COPY. Audit 2026-10-14 RU13 (the
-    // user's ruling): a per-host hook line is no copy, so the Windows line rides memory-session.js on win32 only, and the
-    // rule kept one pointer at it (the hook's own cases: memory-session.test.js, RU13) - until stack audit 2026-10-20 rules
+    // user's ruling): a per-host hook line is no copy, so the Windows line rides preferences-session.js (memory-session.js until
+    // 2026-10-24) on win32 only, and the
+    // rule kept one pointer at it (the hook's own cases: preferences-session.test.js, RU13) - until stack audit 2026-10-20 rules
     // row 6 dropped the pointer as a no-op: the hook line arrives on its own, where it applies.
     assert.ok(!nav.includes('The traps of this host\'s own shell'), 'the no-op pointer is gone');
     assert.ok(!nav.includes('cygpath'), 'the Windows line left the always-on rule');
-    const { hostLines } = require('../stack/hooks/memory-session.js');
+    const { hostLines } = require('../stack/hooks/preferences-session.js');
     assert.ok(hostLines('win32', 'C:\\Program Files\\Git\\usr\\bin\\bash.exe').some((l) => l.startsWith('- On Windows (Git Bash): pass a `/tmp/x` path')), 'the hook carries it on win32');
 });
 
@@ -308,9 +309,9 @@ test('C14: no shipped instruction prescribes the bash-only PIPESTATUS read; the 
     assert.match(nav, /Read `\$\?` on the very next line, with `set -o pipefail` before a pipe/);
     // audit 2026-10-14 RU05: shell-guards.js quotes a tool-owned glob and a bare `=word` under zsh (shell-guards.test.js C14), so the rule drops both
     assert.ok(!/opening with `=`|a glob the TOOL owns/.test(nav), 'a hook-held clause left the rule');
-    // audit 2026-10-14 RU13: the two zsh traps ride memory-session.js on a zsh host only; the rule points at them
+    // audit 2026-10-14 RU13: the two zsh traps ride preferences-session.js on a zsh host only
     assert.ok(!/word-splits|bare path glob/.test(nav), 'the zsh lines left the always-on rule');
-    const zsh = require('../stack/hooks/memory-session.js').hostLines('darwin', '/bin/zsh').join('\n');
+    const zsh = require('../stack/hooks/preferences-session.js').hostLines('darwin', '/bin/zsh').join('\n');
     assert.match(zsh, /never word-splits `\$VAR`/);
     assert.match(zsh, /a path glob that may match nothing with `find <dir> -name '<pat>'`/);
 });

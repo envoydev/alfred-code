@@ -61,13 +61,15 @@ test('I10: the desktop gate is one wired hook, counted everywhere the hooks are 
   const rows = manifestRows().filter((r) => r.file === 'guard-desktop-exec.js');
   assert.strictEqual(rows.length, 1);
   const re = new RegExp(rows[0].matcher);
-  for (const name of ['mcp__plugin_windows-control_windows-control__App', `mcp__${'windows-control'}__App`, 'mcp__plugin_macos-control_macos-control__Shell', `mcp__${'macos-control'}__Shell`])
+  // A desktop server TYPE's tool name under any registration (N6, 2026-10-24): the stack ships no server, so the user's own
+  // registration name is unknown - an `App` the macOS server holds is wired too, and the guard judges its mode.
+  for (const name of ['mcp__plugin_windows-control_windows-control__App', `mcp__${'windows-control'}__App`, 'mcp__plugin_macos-control_macos-control__Shell', `mcp__${'macos-control'}__Shell`, 'mcp__windows-mcp__App', 'mcp__plugin_macos-control_macos-control__App']) // mcp-fixture
     assert.ok(re.test(name), name);
-  for (const name of ['mcp__plugin_windows-control_windows-control__Click', 'mcp__plugin_macos-control_macos-control__App', `mcp__${'windows-control'}__AppX`])
+  for (const name of ['mcp__plugin_windows-control_windows-control__Click', `mcp__${'windows-control'}__AppX`, 'App', 'mcp__x__ShellX']) // mcp-fixture
     assert.ok(!re.test(name), `${name} is not matched`);
-  assert.match(claude(), /`stack\/hooks\/` - nineteen hooks/);
-  assert.match(claude(), /all nineteen, generated from the manifest's `hooks\[\]`/);
-  assert.match(claude(), /`guard-desktop-exec\.js` \(PreToolUse on the desktop servers' two process launchers/);
+  assert.match(claude(), /`stack\/hooks\/` - eighteen hooks/);
+  assert.match(claude(), /all eighteen, generated from the manifest's `hooks\[\]`/);
+  assert.match(claude(), /`guard-desktop-exec\.js` \(PreToolUse on the desktop server types' two process launchers, `App` and `Shell`, under any\s+registration name/);
   assert.doesNotMatch(read('README.md'), /seventeen/);
   assert.doesNotMatch(read('docs/install-footprint.md'), /seventeen/);
   // The walk's own count follows the manifest's hook files (hooks track H6, 2026-10-21: the pin forbade 'all eighteen'
@@ -81,9 +83,10 @@ test('I10: the desktop gate is one wired hook, counted everywhere the hooks are 
   assert.doesNotMatch(walk, /monitor-session/);
 });
 
-test('I12: CLAUDE.md names the two kept navigation edit tools on docs-session and check-turn-build', () => {
+test('I12: CLAUDE.md names the two navigation edit tools on docs-session and check-turn-build', () => {
   const text = claude();
-  assert.match(text, /the navigation server's two kept edit tools `rename_symbol` \/ `safe_delete_symbol` - held like an Edit/);
+  // N6 (2026-10-24): a navigation server's tools under any registration name, since the stack ships none.
+  assert.match(text, /a navigation server's two edit tools `rename_symbol` \/ `safe_delete_symbol` under any registration name \(N6\) - held like an Edit/);
   assert.match(text, /`check-turn-build\.js` \(`Stop` only\)[\s\S]{0,400}The turn's files come from git/, 'the build check reads git at Stop, so the navigation server\'s edits need no wiring of their own');
 });
 

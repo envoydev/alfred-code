@@ -389,8 +389,27 @@ function classifyShell(c, raw, cwd, pre) {
 }
 
 // ---- the MCP route -------------------------------------------------------------------------------------------------
-const STACK_SERVER = /^mcp__(?:plugin_alfred-[a-z0-9-]+_)?alfred-[a-z0-9-]+__/;
-const isStackServer = (toolName) => STACK_SERVER.test(String(toolName || ''));
+// A tool of a known LOCAL type - a navigation, documentation or memory server's, the adapter table's types (built by
+// scripts/tool-adapters.js, read from the capture skill beside the hooks) - can move no remote ref, under any registration
+// (no-MCP spec N6, 2026-10-24: the stack ships no server, so this replaces the old exemption of the stack's own names). A
+// browser, desktop or mobile tool can act outward and is judged. No table beside the hooks: no tool is exempt.
+const LOCAL_JOBS = new Set(['navigation', 'documentation', 'memory']);
+let localTools = null;
+function localTool(toolName) {
+  const m = /^mcp__.+__(.+)$/.exec(String(toolName || ''));
+  if (!m) return false;
+  if (!localTools) {
+    localTools = new Set();
+    try {
+      const table = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'skills', 'capture-preferences', 'scripts', 'tool-adapters.json'), 'utf8'));
+      for (const type of Object.values(table.types || {})) {
+        const jobs = Object.keys((type && type.jobs) || {});
+        if (jobs.length && jobs.every((j) => LOCAL_JOBS.has(j))) for (const t of type.tools || []) localTools.add(String(t));
+      }
+    } catch { /* no table: nothing is exempt */ }
+  }
+  return localTools.has(m[1]);
+}
 const keyValue = (input, keys) => { for (const k of keys) { const v = input[k]; if (typeof v === 'string' || typeof v === 'number') return String(v); } return null; };
 // FORGE-SHAPED: a branch, tag, file or release word means a git ref only on a forge server - Supabase and Neon branch a
 // database, Sentry releases a build, AWS tags a resource, a local git server commits to disk. Shaped: the input names a
@@ -484,7 +503,7 @@ function classify(payload, opts = {}) {
   const input = payload.tool_input || {};
   const lex = opts.lexicon || loadLexicon(payload.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd());
   const c = compile(lex);
-  if (/^mcp__/.test(toolName)) return isStackServer(toolName) ? null : classifyMcp(c, toolName, input, payload.mcp_server, { forgeServers: opts.forgeServers, cwd: payload.cwd });
+  if (/^mcp__/.test(toolName)) return localTool(toolName) ? null : classifyMcp(c, toolName, input, payload.mcp_server, { forgeServers: opts.forgeServers, cwd: payload.cwd });
   if (/^(?:Bash|PowerShell|Monitor)$/.test(toolName)) {
     const all = classifyShell(c, input.command, payload.cwd);
     return all.reduce((best, r) => (rankOf(r) > rankOf(best) ? r : best), null);
@@ -569,7 +588,7 @@ function forgeServersOf(root, env = process.env, marks = null) {
   for (const servers of sources) {
     if (!servers || typeof servers !== 'object') continue;
     for (const [name, entry] of Object.entries(servers)) {
-      if (!entry || typeof entry !== 'object' || isStackServer(`mcp__${name}__x`)) continue;
+      if (!entry || typeof entry !== 'object') continue;
       const args = Array.isArray(entry.args) ? entry.args : [];
       const launch = [entry.command, ...args, entry.url].filter((v) => typeof v === 'string').join(' ').toLowerCase();
       if (wanted.some((m) => launch.includes(m))) found.add(name);
@@ -692,4 +711,4 @@ function pushTargets(argv, cwd) {
   return out;
 }
 
-module.exports = { classify, classifyCommand, loadLexicon, isStackServer, tokens, recordAct, readActs, confirmAct, actsPath, ledgerRoot, forgeServersOf, remoteOf, lsRemote, changeHead, unseenHead, pushTargets, gitOut, LS_REMOTE_MS, CONCEPTS, PUBLISH, PREF_HOLD };
+module.exports = { classify, classifyCommand, loadLexicon, localTool, tokens, recordAct, readActs, confirmAct, actsPath, ledgerRoot, forgeServersOf, remoteOf, lsRemote, changeHead, unseenHead, pushTargets, gitOut, LS_REMOTE_MS, CONCEPTS, PUBLISH, PREF_HOLD };

@@ -1166,7 +1166,6 @@
       "guard-ungated-commit",
       "history-session",
       "instrument-tool-usage",
-      "memory-session",
       "preferences-session"
     ]
   },

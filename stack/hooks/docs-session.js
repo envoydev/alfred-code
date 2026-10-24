@@ -268,11 +268,10 @@ const emit = (event, text) => {
 let isShellTool = () => false;
 let shellReader = null;
 try { shellReader = require(path.join(__dirname, 'shell-writes.js')); ({ isShellTool } = shellReader); } catch { /* see above */ }
-// The navigation server's two edit tools the stack keeps on (the user's ruling of 2026-09-29, I12 - the other five
-// are off at its launch): each changes a source file, named in `tool_input.relative_path` (toolPaths reads it), so
-// its first change is held like an Edit's. Both routes' spellings: the plugin's scoped server and the copy route's
-// bare one, written as a pattern.
-const NAV_EDIT = /^mcp__(?:plugin_(?:alfred-)?navigation_)?(?:alfred-)?navigation__(?:rename_symbol|safe_delete_symbol)$/;
+// A navigation server's two edit tools (Serena's, I12): each changes a source file, named in `tool_input.relative_path`
+// (toolPaths reads it), so its first change is held like an Edit's. The stack ships no server (2026-10-24): the tools are
+// matched by name under whatever server the user registered.
+const NAV_EDIT = /^mcp__.+__(?:rename_symbol|safe_delete_symbol)$/;
 // One log file holds every session's rows, and two sessions interleave in it, so each row carries the id that
 // tells them apart. It lives beside hook-blocks/ and tools-usage/ in the data root's statistics/ (2.8.0, layout.js) -
 // every ledger in this stack does, never committed; before 2.8.0, under the docs root, which is still read.

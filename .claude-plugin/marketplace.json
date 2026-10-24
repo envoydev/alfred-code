@@ -556,7 +556,7 @@
             ]
           },
           {
-            "matcher": "^mcp__(plugin_((chrome|msedge|firefox|webkit)-control|browser-(chrome|msedge|firefox|webkit))_)?((chrome|msedge|firefox|webkit)-control|browser-(chrome|msedge|firefox|webkit))__browser_file_upload$",
+            "matcher": "^mcp__.+__browser_file_upload$",
             "hooks": [
               {
                 "type": "command",
@@ -576,7 +576,7 @@
             ]
           },
           {
-            "matcher": "^mcp__(?!(plugin_alfred-[a-z-]+_)?alfred-).*",
+            "matcher": "^mcp__.*",
             "hooks": [
               {
                 "type": "command",
@@ -616,7 +616,7 @@
             ]
           },
           {
-            "matcher": "^mcp__(plugin_windows-(control|desktop)_)?windows-(control|desktop)__App$|^mcp__(plugin_macos-(control|desktop)_)?macos-(control|desktop)__Shell$",
+            "matcher": "^mcp__.+__App$|^mcp__.+__Shell$",
             "hooks": [
               {
                 "type": "command",
@@ -636,26 +636,11 @@
             ]
           },
           {
-            "matcher": "^mcp__(plugin_(alfred-)?navigation_)?(alfred-)?navigation__(rename_symbol|safe_delete_symbol)$",
+            "matcher": "^mcp__.+__(rename_symbol|safe_delete_symbol)$",
             "hooks": [
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
-                "timeout": 10
-              },
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js\"",
-                "timeout": 10
-              }
-            ]
-          },
-          {
-            "matcher": "^mcp__(plugin_(alfred-)?navigation_)?(alfred-)?navigation__(find_symbol|find_referencing_symbols|get_symbols_overview|find_declaration|find_implementations)$",
-            "hooks": [
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js\"",
                 "timeout": 10
               }
             ]
@@ -713,11 +698,6 @@
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js\"",
-                "timeout": 10
-              },
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/memory-session.js\"",
                 "timeout": 10
               },
               {
@@ -867,7 +847,7 @@
             ]
           },
           {
-            "matcher": "^mcp__(?!(plugin_alfred-[a-z-]+_)?alfred-).*",
+            "matcher": "^mcp__.*",
             "hooks": [
               {
                 "type": "command",
@@ -888,11 +868,6 @@
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js\"",
-                "timeout": 10
-              },
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/memory-session.js\"",
                 "timeout": 10
               },
               {

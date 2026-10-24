@@ -44,7 +44,6 @@
    "instrument-tool-usage",
    "docs-session",
    "preferences-session",
-   "memory-session",
    "check-turn-build",
    "history-session",
    "forge-session"

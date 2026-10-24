@@ -752,9 +752,9 @@
     },
     {
       "file": "guard-secret-value.js",
-      "matcher": "^mcp__(plugin_((chrome|msedge|firefox|webkit)-control|browser-(chrome|msedge|firefox|webkit))_)?((chrome|msedge|firefox|webkit)-control|browser-(chrome|msedge|firefox|webkit))__browser_file_upload$",
+      "matcher": "^mcp__.+__browser_file_upload$",
       "event": "",
-      "note": "the fourth read route: Playwright MCP's browser_file_upload hands a workspace file to whatever page asks - the Read judgement over tool_input.paths, both routes' spellings of the four engine servers (audit 2026-10-14 PL3)"
+      "note": "the fourth read route: Playwright MCP's browser_file_upload hands a workspace file to whatever page asks - the Read judgement over tool_input.paths, matched by the tool's name under whatever server the user registered (audit 2026-10-14 PL3; the stack ships no browser server since 2026-10-24)"
     },
     {
       "file": "guard-secret-value.js",
@@ -776,9 +776,9 @@
     },
     {
       "file": "guard-ungated-commit.js",
-      "matcher": "^mcp__(?!(plugin_alfred-[a-z-]+_)?alfred-).*",
+      "matcher": "^mcp__.*",
       "event": "",
-      "note": "the publish half on every MCP server outside the stack: forge.js reads the tool by its words (accept_merge_request, repo_pull_request_write with autoComplete, push_files), so a merge or a branch write through any forge server needs the PUSH-GATE receipt git push and a CLI merge do; a forge call with no known verb is an ask (a deny when nobody is at the terminal); the stack's own servers are skipped by the lookahead"
+      "note": "the publish half on every MCP server: forge.js reads the tool by its words (accept_merge_request, repo_pull_request_write with autoComplete, push_files), so a merge or a branch write through any forge server needs the PUSH-GATE receipt git push and a CLI merge do; a forge call with no known verb is an ask (a deny when nobody is at the terminal); every MCP server is judged (the stack ships none since 2026-10-24), a navigation, documentation or memory type's tool never a forge call (forge.js localTool)"
     },
     {
       "file": "guard-stop-contract.js",
@@ -878,15 +878,15 @@
     },
     {
       "file": "guard-desktop-exec.js",
-      "matcher": "^mcp__(plugin_windows-(control|desktop)_)?windows-(control|desktop)__App$|^mcp__(plugin_macos-(control|desktop)_)?macos-(control|desktop)__Shell$",
+      "matcher": "^mcp__.+__App$|^mcp__.+__Shell$",
       "event": "",
-      "note": "the desktop servers' process launchers, both routes' spellings: deny Windows-MCP App with mode launch_executable (any executable, caller-given args - the server excludes by tool name, never by mode) and every MacOS-MCP Shell call (a shell command no shell guard sees); App's launch / switch / resize pass; the DESKTOP-EXEC-ALLOW receipt (App, Shell, an executable, or *) honours a wanted launch"
+      "note": "the desktop servers' process launchers, matched by tool name under whatever server the user registered (the stack ships none since 2026-10-24): deny Windows-MCP App with mode launch_executable (any executable, caller-given args - the server excludes by tool name, never by mode) and every MacOS-MCP Shell call (a shell command no shell guard sees); App's launch / switch / resize pass; the DESKTOP-EXEC-ALLOW receipt (App, Shell, an executable, or *) honours a wanted launch"
     },
     {
       "file": "guard-answer.js",
       "matcher": "@UserPromptSubmit",
       "event": "",
-      "note": "inject the answer budget (~3 sentences plus points) at the end of the turn's context - the short-answer rule mechanized; a correction turn writes one log-only probe row (ALFRED_CODE_CORRECTION_NUDGE=inject adds the memory-save line)"
+      "note": "inject the answer budget (~3 sentences plus points) at the end of the turn's context - the short-answer rule mechanized; a correction turn writes one log-only probe row (ALFRED_CODE_CORRECTION_NUDGE=inject adds the save line - the preferences docs or Claude Code's own memory)"
     },
     {
       "file": "guard-answer.js",
@@ -932,9 +932,9 @@
     },
     {
       "file": "docs-session.js",
-      "matcher": "^mcp__(plugin_(alfred-)?navigation_)?(alfred-)?navigation__(rename_symbol|safe_delete_symbol)$",
+      "matcher": "^mcp__.+__(rename_symbol|safe_delete_symbol)$",
       "event": "",
-      "note": "the same hold on the navigation server's two edit tools the stack keeps on (the other five are off at its launch) - the file is tool_input.relative_path; both routes' spellings"
+      "note": "the same hold on a navigation server's two edit tools (Serena's rename_symbol / safe_delete_symbol), matched by name under whatever server the user registered - the file is tool_input.relative_path"
     },
     {
       "file": "docs-session.js",
@@ -956,18 +956,6 @@
     },
     {
       "file": "preferences-session.js",
-      "matcher": "^mcp__(plugin_(alfred-)?navigation_)?(alfred-)?navigation__(rename_symbol|safe_delete_symbol)$",
-      "event": "",
-      "note": "the same first-edit hold on the navigation server's two edit tools the stack keeps on - the file is tool_input.relative_path; both routes' spellings"
-    },
-    {
-      "file": "preferences-session.js",
-      "matcher": "^mcp__(plugin_(alfred-)?navigation_)?(alfred-)?navigation__(find_symbol|find_referencing_symbols|get_symbols_overview|find_declaration|find_implementations)$",
-      "event": "",
-      "note": "a judge's first symbol lookups held like its first Reads while its start left entries unhanded, each handing over the next part - a seat that locates before it reads may never call Read; both routes' spellings"
-    },
-    {
-      "file": "preferences-session.js",
       "matcher": "LSP",
       "event": "",
       "note": "a judge's first LSP calls held like its first Reads while its start left entries unhanded, each handing over the next part - the filePath under the preferences folder never held"
@@ -980,21 +968,21 @@
     },
     {
       "file": "preferences-session.js",
-      "matcher": "^mcp__(?!(plugin_alfred-[a-z-]+_)?alfred-).*",
+      "matcher": "^mcp__.*",
       "event": "",
-      "note": "the same first-git-write hold on every MCP server outside the stack: a tool forge.js reads as opening or merging a change request, a branch write or a release (create_merge_request, push_files, repo_pull_request_write with autoComplete) waits until GIT-PREFERENCES.md was read, as the shell route does"
+      "note": "every MCP call, read by its tool name (the stack ships no server since 2026-10-24): a navigation server's two edit tools take the first-edit hold (the file is tool_input.relative_path), its five symbol lookups a judge's read hold (a seat that locates before it reads may never call Read), and a tool forge.js reads as opening or merging a change request, a branch write or a release (create_merge_request, push_files, repo_pull_request_write with autoComplete) the first-git-write hold, as the shell route does"
     },
     {
       "file": "preferences-session.js",
       "matcher": "@SessionStart",
       "event": "",
-      "note": "PERSONAL-PREFERENCES.md pushed at every MAIN session start - startup, resume, clear, compact and fork, so it is back after each compaction; a compaction or a clear also deletes that actor's read record, so the held docs are handed over again - a compaction keeps the record's run and architecture hand-over, a clear ends them; a seat's own compaction (the payload carries its agent_id) deletes only its record and pushes only that seat's tool order. After the personal doc: the tool order (tools.js toolsLine) - each job's ranks from TOOLS-PREFERENCES.md, or the adapter table's defaults for a job it leaves out, resolved against what this machine reaches, each with its ToolSearch select: load line (the memory tools' line folded in from memory-session), and once per project with no doc the /capture-preferences tools suggestion; preferences-session:tools in ALFRED_CODE_HOOKS_OFF off"
+      "note": "PERSONAL-PREFERENCES.md pushed at every MAIN session start - startup, resume, clear, compact and fork, so it is back after each compaction; a compaction or a clear also deletes that actor's read record, so the held docs are handed over again - a compaction keeps the record's run and architecture hand-over, a clear ends them; a seat's own compaction (the payload carries its agent_id) deletes only its record and pushes only that seat's tool order. After the personal doc: the tool order (tools.js toolsLine) - each job's ranks from TOOLS-PREFERENCES.md, or the adapter table's defaults for a job it leaves out, resolved against what this machine reaches, each with its ToolSearch select: load line, and once per project with no doc the /capture-preferences tools suggestion; preferences-session:tools in ALFRED_CODE_HOOKS_OFF off; then this host's shell traps (win32: the Git Bash line; a zsh $SHELL: the two zsh lines - audit 2026-10-14 RU13, moved here from the retired memory-session.js), at a seat's own compaction too; preferences-session:host in ALFRED_CODE_HOOKS_OFF drops them alone"
     },
     {
       "file": "preferences-session.js",
       "matcher": "@SubagentStart",
       "event": "",
-      "note": "a judge - a solution designer or a verifier (agent_type ending solution-designer or -verifier), or a finding seat (code-quality-analyzer, security-auditor, integration-reviewer) - has no edit tool, so no edit hold reaches it: the code docs are handed over at its start, every project-doc section as far as the one room fits, and marked in its record; the entries the room could not hold come with its first reads (a Read, a Grep, an LSP call or a symbol lookup). The architecture analyzer is handed ARCHITECTURE-PREFERENCES.md alone, and told to report a departure as a smell naming its id, only inside an architecture quality run (the main session's run, below) - the map capture dispatches the same seat to describe the code as it is. alfred-code:<seat> always; a bare name only where the install stamp's library-agents: line records its copy, so a project's own agent or another plugin's seat of the same name gets no docs. Every seat but Claude Code's two guides is told its tool order after any doc push: a seat whose definition the hook finds (the core's own, a project copy) only the ranks its tools: and disallowedTools: grant, with no load line, any other the main session's"
+      "note": "a judge - a solution designer or a verifier (agent_type ending solution-designer or -verifier), or a finding seat (code-quality-analyzer, security-auditor, integration-reviewer) - has no edit tool, so no edit hold reaches it: the code docs are handed over at its start, every project-doc section as far as the one room fits, and marked in its record; the entries the room could not hold come with its first reads (a Read, a Grep, an LSP call or a symbol lookup). The architecture analyzer is handed ARCHITECTURE-PREFERENCES.md alone, and told to report a departure as a smell naming its id, only inside an architecture quality run (the main session's run, below) - the map capture dispatches the same seat to describe the code as it is. alfred-code:<seat> always; a bare name only where the install stamp's library-agents: line records its copy, so a project's own agent or another plugin's seat of the same name gets no docs. Every seat but Claude Code's two guides is told its tool order after any doc push: a seat whose definition the hook finds (the core's own, a project copy) only the ranks its tools: and disallowedTools: grant, with no load line, any other the main session's; then, for every seat, this host's shell traps (preferences-session:host off)"
     },
     {
       "file": "preferences-session.js",
@@ -1007,18 +995,6 @@
       "matcher": "@UserPromptExpansion:^((alfred-)?(capture|loop|task|issue)-[a-z][a-z0-9-]*|review-code|review-security|code-review|security-review)$",
       "event": "",
       "note": "a typed run emits no Skill call (code.claude.com/docs/en/hooks: typing /name bypasses PreToolUse) - its expansion records the run, and a typed review is handed the code docs as a judge's start is, the rest with the main session's first reads; the matcher keeps every other prompt from spawning the hook"
-    },
-    {
-      "file": "memory-session.js",
-      "matcher": "@SessionStart",
-      "event": "",
-      "note": "push a compact slice of shared memory (own project, cross-project preferences/corrections, related projects) into the session's starting context - engine memory.js copied beside it, not itself wired; it ends on this host's shell traps (win32: the Git Bash line; a zsh $SHELL: the two zsh lines - audit 2026-10-14 RU13)"
-    },
-    {
-      "file": "memory-session.js",
-      "matcher": "@SubagentStart",
-      "event": "",
-      "note": "the project's memory tag line for a dispatched subagent - SessionStart context never reaches one at dispatch (a seat's own compaction runs SessionStart inside it), and a seat stores and reads its handoff note under that tag (how the memory tools load is the tool order's line, preferences-session.js); then this host's shell traps (win32: the Git Bash line; a zsh $SHELL: the two zsh lines)"
     },
     {
       "file": "check-turn-build.js",
@@ -1058,9 +1034,9 @@
     },
     {
       "file": "forge-session.js",
-      "matcher": "@PostToolUse:^mcp__(?!(plugin_alfred-[a-z-]+_)?alfred-).*",
+      "matcher": "@PostToolUse:^mcp__.*",
       "event": "",
-      "note": "the same strong window after a call on any MCP server outside the stack - an unknown tool that merged is caught right after it ran"
+      "note": "the same strong window after a call on any MCP server - an unknown tool that merged is caught right after it ran"
     },
     {
       "file": "forge-session.js",
@@ -1267,7 +1243,8 @@
       "require-convention-skill.js",
       "inject-code-style.js",
       "monitor-session.js",
-      "guard-answer-length.js"
+      "guard-answer-length.js",
+      "memory-session.js"
     ],
     "mcps": [
       "angular-cli",

@@ -26,7 +26,7 @@
 // Symbol-search rule: a SYMBOL question - who calls this, where is it declared, what
 // type resolves here - is never delegated to a grep-shaped seat (Explore/general-purpose/
 // claude). Those answer by name-match, and the built-in Explore does not even load the
-// project's rules, so alfred-navigation's 'locate with the navigation server, inline' never reaches it
+// project's rules, so alfred-navigation's 'locate with the navigation tools, inline' never reaches it
 // (measured: a consuming session handed a C# symbol hunt to Explore and got grep hits).
 // Blocked here regardless of any stamp; a broad multi-file sweep with no symbol question
 // in it still passes.
@@ -120,7 +120,7 @@ const seat = String(input.subagent_type || 'general-purpose');
 // no gate looked at (measured: a fork taken for a read-only grep job cost 869,483 cache-read over
 // 6 messages and 4 Bash calls, while a named or read-only seat would have started from its own
 // floor). The gates stay what they are for every generic seat - a symbol question goes back to
-// the navigation server, and a generic dispatch is refused only while a flow is actively stamped.
+// the navigation tools, and a generic dispatch is refused only while a flow is actively stamped.
 const GENERIC_SEATS = new Set(['general-purpose', 'claude', 'fork']);
 const SEARCH_SEATS = new Set(['Explore', 'general-purpose', 'claude', 'fork']);
 // A plugin agent is addressable ONLY as `<plugin>:<agent>` (measured, spike S1 run 4: the bare
@@ -153,13 +153,13 @@ if (/^(?:alfred-)?issue-diagnoser-(?:ci|runtime)$/.test(callerSeat) && houseSeat
   process.exit(2);
 }
 
-// A symbol question routed at a grep-shaped seat: block and send it back to the navigation server.
+// A symbol question routed at a grep-shaped seat: block and send it back to the navigation tools.
 // The patterns are the QUESTION shapes alfred-navigation names, not tool words - a
 // sweep brief ('map the auth module', 'which files configure logging') carries none.
 // 'reference to' / 'usages of' describe a TEXT sweep as often as a symbol hunt (the 2026-09-28 block was
 // 'every reference to plugin-authoring' over the manifest, the graph and the docs), so they count only when a
 // CODE IDENTIFIER follows: backticked, CamelCase or camelCase, a call `name(`, or a member `A.B` / `A::B` -
-// never a kebab-case, path or file-shaped token, which the navigation server cannot resolve anyway.
+// never a kebab-case, path or file-shaped token, which no symbol lookup can resolve anyway.
 const FILE_EXT = '(?:json[c5]?|md|mdx|mdc|ya?ml|toml|ini|html?|txt|xml|csv|lock|[cm]?[jt]sx?|cs|csproj|sln|props|targets|py|sh|ps1|css|scss|env)';
 const IDENT = [
   `\`(?![^\`\\n]*\\.${FILE_EXT}\`)[A-Za-z_$][\\w$]*(?:(?:\\.|::|#)[A-Za-z_$][\\w$]*)*(?:\\(\\))?\``,
@@ -207,12 +207,11 @@ if (SEARCH_SEATS.has(seat)) {
     process.stderr.write(
       `Blocked: dispatch of ${seat} for a SYMBOL question ('${asked[0].trim()}').\n` +
         `A grep-shaped seat answers that by name-match, and name-matches lie; the built-in\n` +
-        `Explore does not load this project's rules at all, so it cannot know to use the navigation server.\n` +
-        `Answer it INLINE instead: mcp__plugin_alfred-navigation_alfred-navigation__find_symbol for a declaration or signature,\n` +
-        `mcp__plugin_alfred-navigation_alfred-navigation__find_referencing_symbols for callers, mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview\n` +
-        `(ONE file, depth 2 on C#) to enumerate - falling back to the LSP plugin when the navigation server's\n` +
-        `language server cannot resolve it. The navigation tools are DEFERRED - load them first with\n` +
-        `ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__find_symbol,mcp__plugin_alfred-navigation_alfred-navigation__find_referencing_symbols,mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview\n` +
+        `Explore does not load this project's rules at all, so it cannot know to use the navigation tools.\n` +
+        `Answer it INLINE instead, with the navigation tools your session-start tool order ranks: LSP goToDefinition\n` +
+        `for a declaration or signature, findReferences for callers, documentSymbol (ONE file) to enumerate - or the\n` +
+        `navigation server the order names first. Where they are deferred, load them with that order's navigation\n` +
+        `line (its ToolSearch select:). With none of them, a name-matched grep -n, each hit checked by reading it.\n` +
         `Dispatch a search seat only for a genuinely broad\n` +
         `multi-file sweep that asks no symbol question.`,
     );

@@ -1775,10 +1775,14 @@ test('guard-unapproved-dispatch: a symbol question never goes to a grep-shaped s
   assert.equal(disp('Explore', 'find the class SocketConnection'), 2, 'named-symbol hunt');
   assert.equal(disp('general-purpose', 'list all usages of AddSocketServices'), 2, 'the generic seat too');
 
-  // the denial names the deferred tools AND the one line that loads them - naming a tool is not having it
+  // the denial names the tools by job and where their load line is - the session-start tool order, since the stack ships
+  // no navigation server (2026-10-24) - plus the fallback when no navigation tool serves
   const denied = runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', tool_input: { subagent_type: 'Explore', prompt: 'Find who calls SocketConnection.Send' } },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
-  assert.match(denied.stderr, /ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__find_symbol,mcp__plugin_alfred-navigation_alfred-navigation__find_referencing_symbols,mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview/, 'the loading line');
+  assert.match(denied.stderr, /LSP goToDefinition[\s\S]*findReferences[\s\S]*documentSymbol/, 'the LSP operations first');
+  assert.match(denied.stderr, /order's navigation\s+line \(its ToolSearch select:\)/, 'the loading line, by where it is');
+  assert.match(denied.stderr, /a name-matched grep -n/, 'and the fallback');
+  assert.doesNotMatch(denied.stderr, /mcp__/, 'no server is named');
 
   // a real sweep still passes - no stamp involved, so this is the no-flow path
   assert.equal(disp('Explore', 'Map the auth module and report which files configure logging'), 0, 'a broad sweep');
@@ -3522,10 +3526,11 @@ test('guard-read-whole-file: a whole Read of an oversized file is blocked whatev
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test('guard-read-whole-file: the denial names the call that LOADS the serena tools', () => {
+test('guard-read-whole-file: the denial names where the navigation tools LOAD from', () => {
   // The tools are deferred behind tool search in this harness, so naming them is not having them:
   // two sessions carried the rule text saying exactly that and still made 100 Bash calls and 0
-  // serena calls. The remedy belongs in the denial the model is already reading.
+  // navigation calls. The remedy belongs in the denial the model is already reading - and since the stack ships no
+  // server (2026-10-24), it points at the session-start tool order, the one place naming this session's loader.
   // 2.1.6 K4: a fixture outside the repo - a checkout under a `.claude/` directory (every .claude/worktrees/<x>) puts
   // BIG in a tree the navigation server ignores, where the denial rightly names grep instead of the load call.
   // audit 2026-10-11 SD16: and inside the project - a file outside it is in no index either, and takes the grep route
@@ -3533,17 +3538,20 @@ test('guard-read-whole-file: the denial names the call that LOADS the serena too
   fs.writeFileSync(big, Array.from({ length: 600 }, (_, i) => `export const v${i} = ${i};`).join('\n'));
   const r = runIn('guard-read-whole-file.js', { tool_name: 'Read', tool_input: { file_path: big } }, {});
   assert.equal(r.status, 2);
-  assert.match(r.stderr, /ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview,mcp__plugin_alfred-navigation_alfred-navigation__find_symbol/);
-  // agents F03 + audit 2026-10-14 AG01 (live probes 2026-10-09 and 2026-10-14): a seat granted an MCP tool - by name or
-  // as the whole server, the shape every seat has since ec2f0027 - has it loaded, so the denial says so
-  assert.match(r.stderr, /a seat whose tools grant them - by name or as the whole server - has them loaded already; call them directly/);
+  assert.match(r.stderr, /LSP documentSymbol on '[^']+navigable\.ts'/);
+  assert.match(r.stderr, /navigation line of your session-start tool order - its ToolSearch select: loads them/);
+  assert.match(r.stderr, /With none of them: grep -n '<symbol>'/, 'and the fallback where no navigation tool serves');
+  assert.doesNotMatch(r.stderr, /mcp__/, 'no server is named');
+  // agents F03 + audit 2026-10-14 AG01 (live probes 2026-10-09 and 2026-10-14): a seat granted an MCP tool has it loaded,
+  // so the denial says so
+  assert.match(r.stderr, /a seat whose tools grant them calls them directly; the LSP tool needs no server/);
   // ... and the same file under a `.claude/` tree takes the grep route, so the fixture's place is what decides
   const hidden = path.join(TMP, '.claude', 'worktrees', 'x', 'navigable.ts');
   fs.mkdirSync(path.dirname(hidden), { recursive: true });
   fs.copyFileSync(big, hidden);
   const h = runIn('guard-read-whole-file.js', { tool_name: 'Read', tool_input: { file_path: hidden } }, {});
   assert.equal(h.status, 2);
-  assert.match(h.stderr, /cannot locate anything here/);
+  assert.match(h.stderr, /No symbol lookup indexes this tree/);
 });
 
 test('guard-read-whole-file: a file is as long as its lines - the trailing newline is not one more', () => {
@@ -3575,7 +3583,7 @@ test('guard-read-whole-file: the PowerShell reads and anchors are judged like th
   assert.equal(pwsh('guard-read-whole-file.js', `$x = (Get-Content ${BIG})`), 2, 'a parenthesised read is still the command');
 });
 
-test('guard-read-whole-file: every source-read denial carries the call that loads serena', () => {
+test('guard-read-whole-file: every source-read denial says where the navigation tools load from', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loadline-'));
   const big = path.join(dir, 'big.ts');
   fs.writeFileSync(big, Array.from({ length: 600 }, (_, i) => `const a${i} = ${i};`).join('\n') + '\n');
@@ -3583,7 +3591,7 @@ test('guard-read-whole-file: every source-read denial carries the call that load
   for (const c of [`for f in ${dir}/*.ts; do cat $f; done`, `node -e "console.log(require('fs').readFileSync('${big}','utf8'))"`, `head -n 99999 ${big}`]) {
     const r = deny(c);
     assert.equal(r.status, 2, c);
-    assert.match(r.stderr, /ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__/, `the loading line: ${c}`);
+    assert.match(r.stderr, /navigation line of your session-start tool order - its ToolSearch select: loads them/, `the loading line: ${c}`);
   }
 });
 
@@ -4640,10 +4648,18 @@ test('guard-desktop-exec: App launch_executable and every macOS Shell call are d
     assert.equal(r.status, 2, `${tool}`);
     assert.match(r.stderr, /Bash tool/, 'the command goes back to the shell route the guards see');
   }
-  for (const tool of ['mcp__plugin_windows-control_windows-control__Click', 'mcp__plugin_macos-control_macos-control__App', 'Bash'])
+  for (const tool of ['mcp__plugin_windows-control_windows-control__Click', 'mcp__plugin_macos-control_macos-control__Snapshot', 'Bash'])
     assert.equal(desktopRun(root, tool, { mode: 'launch_executable', command: 'ls' }).status, 0, `${tool} is not this guard's`);
+  // A server TYPE's tool under any registration name (N6, 2026-10-24): an `App` launching an executable is held wherever it
+  // is registered, and its ordinary modes pass.
+  for (const tool of ['mcp__windows-mcp__App', 'mcp__plugin_my-desk_my-desk__App']) // mcp-fixture
+  {
+    assert.equal(desktopRun(root, tool, { mode: 'launch_executable', executable: 'C:\\x.exe' }).status, 2, tool);
+    assert.equal(desktopRun(root, tool, { mode: 'switch', name: 'Notepad' }).status, 0, `${tool} switch`);
+  }
+  assert.equal(desktopRun(root, 'mcp__mac__Shell', { command: 'ls' }).status, 2, 'a Shell under any name'); // mcp-fixture
   const rows = fs.readFileSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', 'desk.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
-  assert.equal(rows.length, WIN_APP.length + MAC_SHELL.length, 'one ledger row per block');
+  assert.equal(rows.length, WIN_APP.length + MAC_SHELL.length + 3, 'one ledger row per block');
   assert.ok(rows.every((row) => row.hook === 'guard-desktop-exec.js'));
 });
 

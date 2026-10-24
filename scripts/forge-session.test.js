@@ -75,14 +75,14 @@ test('mcp found by launch', () => {
     work: { command: 'npx', args: ['@zereight/mcp-gitlab'] },
     'My Odd.Server-1': { command: '/opt/homebrew/bin/glab', args: ['mcp', 'serve'] }, // glab's own stdio server (1.124.0)
     github: { command: 'npx', args: ['some-unrelated-server'] }, // the key alone never makes a forge server
-    'alfred-navigation': { command: 'npx', args: ['github-mcp-server'] }, // the stack's own servers are never listed
+    'alfred-navigation': { command: 'npx', args: ['github-mcp-server'] }, // a name is no exemption: the stack ships no server (2026-10-24)
   } }));
   const env = envFor(dir);
   fs.writeFileSync(path.join(env.CLAUDE_CONFIG_DIR, '.claude.json'), JSON.stringify({
     mcpServers: { hub: { type: 'http', url: 'https://api.githubcopilot.com/mcp/' } },
     projects: { [dir]: { mcpServers: { ado: { command: 'npx', args: ['-y', '@azure-devops/mcp', 'org'] } } } },
   }));
-  assert.deepStrictEqual(profile(dir, env).mcp.sort(), ['My Odd.Server-1', 'ado', 'hub', 'work']);
+  assert.deepStrictEqual(profile(dir, env).mcp.sort(), ['My Odd.Server-1', 'ado', 'alfred-navigation', 'hub', 'work']);
 });
 
 test('a CLI on PATH is listed', () => {
@@ -622,6 +622,9 @@ test('only known read tools are reads', () => {
   const { callIsRead } = require(HOOK);
   for (const name of ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'NotebookEdit', 'TodoWrite', 'WebFetch', 'WebSearch', 'ToolSearch', 'Skill', 'AskUserQuestion', 'LSP']) assert.strictEqual(callIsRead({ name, input: {} }, TMP), true, name);
   for (const name of ['SendMessage', 'Workflow', 'RemoteTrigger', 'BrandNewTool']) assert.strictEqual(callIsRead({ name, input: {} }, TMP), false, name);
+  // A local type's tool is a read under any registration; a browser's, which can act outward, is not.
+  for (const name of ['mcp__nav__find_symbol', 'mcp__plugin_serena_serena__rename_symbol', 'mcp__docs__query-docs']) assert.strictEqual(callIsRead({ name, input: {} }, TMP), true, name); // mcp-fixture
+  assert.strictEqual(callIsRead({ name: 'mcp__chrome__browser_click', input: {} }, TMP), false); // mcp-fixture
 });
 
 // --- an armed auto-merge lands later; an act PostToolUse never confirmed did not run ---------------------------------

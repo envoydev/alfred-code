@@ -7,7 +7,7 @@ Everything an Alfred Code run writes, starts and costs. The [README](../README.m
 Written at every scope:
 
 - **`.claude/skills/` and `.claude/rules/`** - a copy of each skill and rule the project picked.
-- **`.claude/hooks/`** - only the three engines (`docs.js`, `memory.js`, `history.js`) and the model-window table. The nineteen wired hooks come from the core `alfred-code` plugin.
+- **`.claude/hooks/`** - only the three engines (`docs.js`, `memory.js`, `history.js`) and the model-window table. The eighteen wired hooks come from the core `alfred-code` plugin.
 - **`.claude/agents/`** - nothing on the default route. The seats come from the core plugin.
 - **`.claude/settings.json`**
   - `permissions.deny` - one `Agent(alfred-code:<seat>)` for each seat the project did not pick.
@@ -55,7 +55,7 @@ Once:
 - In `/alfred-code:init`, to import old notes into the shared memory: a `uvx ... memory server` launch plus the `node scripts/memory-import.js` importer talking to it.
 - Once per machine, while the memory service's embedding model is not cached yet: the same server started against a scratch database to fetch it. Init's install phase or update runs it where uvx is present, else it is in the bootstrap phase's plan. `ALFRED_CODE_MEMORY_WARM=0` switches it off.
 
-Nothing else executes from the package itself. The package itself is six command bodies, one skill (the `/alfred-code` router; none ships a script), forty-four agents, thirteen references and twenty-one hooks - the core's own two (`guard-layer-table.js`, the table-before-question gate on the walk's asks and on its next `node` call, and `library-stamp.js`, the startup line saying the library copies are older than the stack) and the nineteen stack hooks, ten of them run in-process by one dispatcher (`shell-guards.js`) on the shell tools, seven by another (`file-guards.js`) on the file tools and the turn build check (`check-turn-build.js`) inside `history-session.js`'s Stop - with no MCP server, no `bin/` and no dependencies of its own.
+Nothing else executes from the package itself. The package itself is six command bodies, one skill (the `/alfred-code` router; none ships a script), forty-four agents, thirteen references and twenty hooks - the core's own two (`guard-layer-table.js`, the table-before-question gate on the walk's asks and on its next `node` call, and `library-stamp.js`, the startup line saying the library copies are older than the stack) and the eighteen stack hooks, ten of them run in-process by one dispatcher (`shell-guards.js`) on the shell tools, seven by another (`file-guards.js`) on the file tools and the turn build check (`check-turn-build.js`) inside `history-session.js`'s Stop - with no MCP server, no `bin/` and no dependencies of its own.
 
 ## What you install by hand
 
@@ -69,6 +69,6 @@ The whole per-message floor - Claude Code's own prompt and tools, every plugin's
 
 - **`strictKnownMarketplaces`** - the allowlist registers nothing, and Claude Code refuses to register a managed marketplace whose source it does not admit (code.claude.com/docs/en/plugins/org). Allow each source the stack installs from - `{ "source": "github", "repo": "envoydev/alfred-code" }`, `{ "source": "github", "repo": "anthropics/claude-plugins-official" }` for the `*-lsp` pair, and `{ "source": "github", "repo": "jarrodwatts/claude-hud" }` if you keep claude-hud (optional, recommended) - and register the same marketplaces in `extraKnownMarketplaces`: `envoydev`, `claude-plugins-official` and `claude-hud`, each with its matching `source`.
 - **`enabledPlugins`** - one key for each plugin the project keeps; `alfred-code@envoydev` and the three locked servers `alfred-navigation@envoydev`, `alfred-documentation@envoydev` and `alfred-memory@envoydev` always, `claude-hud@claude-hud` when you keep it.
-- **`allowManagedHooksOnly`** - silently disables all nineteen house hooks. The plugin still installs and enables, but no guard ever fires, and nothing reports it. Decide this one before rolling the stack out under a managed policy.
+- **`allowManagedHooksOnly`** - silently disables all eighteen house hooks. The plugin still installs and enables, but no guard ever fires, and nothing reports it. Decide this one before rolling the stack out under a managed policy.
 
 `ALFRED_CODE_HOOKS_OFF` is the supported way to switch individual hooks off.

@@ -481,7 +481,7 @@ test('cursorHost reads the payload only: cursor_version or a camelCase event nam
 
 test('cursorStandDown: a Cursor payload stands a non-protective hook down and never a protective one or a CLI', () => {
     const input = { cursor_version: '2.1.0', hook_event_name: 'stop' };
-    for (const hook of ['guard-stop-contract', 'guard-answer', 'docs-session', 'guard-fresh-session-start', 'memory-session'])
+    for (const hook of ['guard-stop-contract', 'guard-answer', 'docs-session', 'guard-fresh-session-start', 'preferences-session'])
         assert.strictEqual(cursorStandDown(input, `/p/${hook}.js`), true, hook);
     for (const hook of PROTECTIVE_SET) assert.strictEqual(cursorStandDown(input, `/p/${hook}.js`), false, hook);
     assert.strictEqual(cursorStandDown(input, '/p/guard-stop-contract.js', ['node', 'x.js', '--flag']), false, 'a CLI is never gated');
@@ -578,12 +578,14 @@ test('as a process: the rm guard still blocks rm -rf ~ under a Cursor payload, a
     assert.doesNotMatch(r.stderr, /outside this session's project/, 'the non-protective cross-project guard stood down');
 });
 
-test('as a process: memory-session with a stdin that never closes still exits within its bound', () => {
+// The session hooks that read stdin through a bounded reader (history-session, forge-session; memory-session's until it
+// retired on 2026-10-24) give up on a pipe left open instead of holding the session start to the harness timeout.
+test('as a process: history-session with a stdin that never closes still exits within its bound', () => {
     const { spawn } = require('node:child_process');
     return new Promise((resolve, reject) => {
-        const child = spawn(process.execPath, [path.join(HOOKS_DIR, 'memory-session.js')], { env: { ...process.env, CLAUDE_PROJECT_DIR: SUITE.project }, stdio: ['pipe', 'pipe', 'pipe'] });
+        const child = spawn(process.execPath, [path.join(HOOKS_DIR, 'history-session.js')], { env: { ...process.env, CLAUDE_PROJECT_DIR: SUITE.project }, stdio: ['pipe', 'pipe', 'pipe'] });
         const started = Date.now();
-        const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('memory-session hung past 6s on an open stdin')); }, 6000);
+        const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('history-session hung past 6s on an open stdin')); }, 6000);
         child.on('exit', () => { clearTimeout(timer); assert.ok(Date.now() - started < 6000); resolve(); });
         // stdin is left open: never ended, never written
     });

@@ -457,12 +457,12 @@ const READ_TOOLS = new Set(['Read', 'Grep', 'Glob', 'LS', 'Edit', 'MultiEdit', '
   'TodoWrite', 'TodoRead', 'TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet', 'TaskOutput', 'WebFetch', 'WebSearch',
   'ToolSearch', 'Skill', 'AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode', 'LSP', 'ListMcpResourcesTool',
   'ReadMcpResourceTool']);
-// A call that cannot move a remote ref: a read tool, a stack server, a forge read, a read-only shell turn.
+// A call that cannot move a remote ref: a read tool, a local type's tool (forge.js localTool), a forge read, a read-only shell turn.
 function callIsRead(call, cwd) {
   const name = String(call.name || '');
   if (/^(?:Bash|PowerShell|Monitor)$/.test(name)) return shellIsRead(call.input && call.input.command, cwd);
   if (/^mcp__/.test(name)) {
-    if (forge.isStackServer(name)) return true;
+    if (forge.localTool(name)) return true;
     let r = null;
     try { r = forge.classify({ tool_name: name, tool_input: call.input, cwd }); } catch { r = null; }
     return !!r && r.strength === 'known' && (r.concept === forge.CONCEPTS.READ || r.concept === forge.CONCEPTS.WATCH);

@@ -925,10 +925,10 @@ function sensitiveFile(start = process.cwd()) {
   const root = raw && !pathMod.isAbsolute(raw) && !raw.split('/').includes('..') ? raw : '.alfred';
   let places = [start];
   try {
-    const { projectRootOf } = require(pathMod.join(__dirname, 'memory.js'));
+    const { projectRootOf } = require(pathMod.join(__dirname, 'layout.js'));
     const r = projectRootOf(start);
     places = [...new Set([r.checkout, r.project])];
-  } catch { /* no engine beside the hook: the start directory alone */ }
+  } catch { /* no layout.js beside the hook: the start directory alone */ }
   const at = places.map((p) => pathMod.join(p, ...root.split('/'), SENSITIVE_FILE));
   return at.find((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } }) || at[0];
 }
@@ -1127,7 +1127,7 @@ if (process.argv[2] === '--redacted') {
       body = maskFormatText(text, file, mask, () => { masked++; });
     }
     // The runnable presence command, absolute: the guard ships inside the plugin, and pilot 3's first presence call
-    // guessed `.claude/hooks/`, where only the docs, memory and history engines are copied.
+    // guessed `.claude/hooks/`, where only the docs and history engines are copied.
     const note = noteLine(`redacted view of ${file} - ${masked} credential value(s) shown as <set (N chars)>, everything else as written` +
       (filtered ? '; piped through the command\'s own filter, so line numbers count the view, not the file.' : '.') +
       ` Presence of one key: node "${__filename}" --presence "${file}" KEY (A.B.C reads a nested key).`, receipt);
@@ -3934,10 +3934,10 @@ if (payload.tool_name === 'Read') {
 // The FOURTH read route (audit 2026-10-14 PL3): Playwright MCP's `browser_file_upload` hands each file in
 // `tool_input.paths` (absolute paths, its schema) to whatever page asked for it - and the server reaches every file in the
 // workspace, `<data root>/.sensitive-data` and a `.env` included, so a page's injected 'upload your config' would get them.
-// Each path takes the Read judgement above; both routes' spellings of the four engine servers.
-// The four engine servers and their retired 2.4.0 aliases (`browser-<engine>`, the same server under the old name - mcps
-// track T1-1, 2026-10-21).
-if (/^mcp__(?:plugin_(?:(?:chrome|msedge|firefox|webkit)-control|browser-(?:chrome|msedge|firefox|webkit))_)?(?:(?:chrome|msedge|firefox|webkit)-control|browser-(?:chrome|msedge|firefox|webkit))__browser_file_upload$/.test(String(payload.tool_name || ''))) {
+// Each path takes the Read judgement above. The stack ships no browser server (2026-10-24), so the tool is matched by its
+// name under whatever server the user registered it (one per engine, a plugin's, any name) - a user server with a tool of
+// the same name takes the same judgement, the accepted cost.
+if (/^mcp__.+__browser_file_upload$/.test(String(payload.tool_name || ''))) {
   for (const p of (Array.isArray(input.paths) ? input.paths : []).slice(0, 50)) {
     const file = resolveFile(String(p || ''));
     const key = file && secretInUnlessAllowed(file);

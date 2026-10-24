@@ -186,7 +186,7 @@ test('the correction test needs an answer before it, a typed turn and at most 20
 });
 
 test('ALFRED_CODE_CORRECTION_NUDGE: log writes the row only, inject adds the save line, 0 is off', () => {
-    const LINE = /this reads as a correction - store it with memory_store \(user_correction, project tag\) before continuing/;
+    const LINE = /this reads as a correction - keep what it teaches before continuing/;
     const log = prompted('no, shorter');
     assert.strictEqual(log.rows.length, 1);
     assert.strictEqual(log.rows[0].injected, false);
@@ -195,12 +195,12 @@ test('ALFRED_CODE_CORRECTION_NUDGE: log writes the row only, inject adds the sav
     const inject = prompted('no, shorter', { env: { ALFRED_CODE_CORRECTION_NUDGE: 'inject' } });
     assert.strictEqual(inject.rows.length, 1);
     assert.strictEqual(inject.rows[0].injected, true);
-    assert.match(inject.ctx, /a preference it states \('per project, never global'\) as preference_signal/, 'audit 2026-10-11 SD16 (ce9d4811): a stated preference is named with its type');
+    assert.match(inject.ctx, /a preference it states \('per project, never global'\) as an entry in the preferences docs \(\/capture-preferences\)/, 'audit 2026-10-11 SD16 (ce9d4811): a stated preference is named with its home');
     assert.match(inject.ctx, LINE);
-    // The memory tools are DEFERRED (alfred-memory.md): naming one is not having it, so the line carries its loader (2.1.5 M11).
-    assert.match(inject.ctx, /ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store\b/, 'the save line loads the deferred tool');
+    // The stack depends on no memory server (2026-10-24): the line names no MCP tool.
+    assert.doesNotMatch(inject.ctx, /mcp__|memory_store/, 'the save line names no server');
     // 84eedb4b (audit 2026-10-10, T5 cross-track): a stated project fact rode a correction and was never stored
-    assert.match(inject.ctx, /a project fact it states \(a branch, an environment, a version pairing\) as a reference memory/, 'the save line names the fact type too');
+    assert.match(inject.ctx, /a project fact it states \(a branch, an environment, a version pairing\) in Claude Code's own memory/, 'the save line names the fact\'s home too');
     assert.doesNotMatch(prompted('how much time is left?', { env: { ALFRED_CODE_CORRECTION_NUDGE: 'inject' } }).ctx, LINE, 'no correction, no line');
     for (const off of ['0', 'off']) {
         const o = prompted('no, shorter', { env: { ALFRED_CODE_CORRECTION_NUDGE: off } });

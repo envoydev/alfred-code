@@ -160,7 +160,7 @@ seeded).
 
 ## 7. Hooks
 
-walk.md's Hooks layer - recommended = all nineteen, the answer written as `ALFRED_CODE_HOOKS_OFF`
+walk.md's Hooks layer - recommended = all eighteen, the answer written as `ALFRED_CODE_HOOKS_OFF`
 in the scope's settings file env.
 
 ## 8. MCPs

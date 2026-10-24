@@ -268,7 +268,7 @@ test('readInstalled: a hook HOOKS_OFF does not name is on - a new release hook i
     const lines = readInstalled({ plugins: ['alfred-code'], hooksOff: 'guard-answer', routes: ALL_ROUTES, sourceDir: ROOT });
     const hooks = lines.filter((l) => l.startsWith('hook ')).map((l) => l.slice(5));
     assert.ok(!hooks.includes('guard-answer'));
-    assert.ok(hooks.includes('docs-session') && hooks.includes('memory-session'));
+    assert.ok(hooks.includes('docs-session') && hooks.includes('preferences-session'));
     const shipped = new Set(require('../meta/stack-manifest.json').hooks.map((h) => h.file.replace(/\.js$/, '')));
     assert.strictEqual(hooks.length, shipped.size - 1, 'every shipped hook but the one HOOKS_OFF names');
 });
