@@ -334,10 +334,21 @@ unedited seed only describes the tools the uninstall removes. Run without the co
 
 Every session and seat start carries a tool order now: for each job (navigation, library docs, memory, the browser) the
 tools to use first, from the stack's defaults or from `preferences/TOOLS-PREFERENCES.md` once `/capture-preferences tools`
-ranks them. It replaces the memory hook's `ToolSearch select:` line - the order's own load clause carries those tools; with
-`preferences-session` or its `tools` part in `ALFRED_CODE_HOOKS_OFF` the memory hook says it again. An
-update from v2.10.0 writes no doc and takes no inventory, so the order is the stack's defaults until the capture runs.
+ranks them. An update from v2.10.0 writes no doc and takes no inventory, so the order is the stack's defaults until the capture runs.
 Every update after a capture refreshes its inventory (`<data root>/state/tools-inventory.json`): a stack server and a
 known type at its pin are re-read from the table and never started, a registration whose launch changed is listed again
 (at most a minute), and one that is gone leaves. Report every `tools:` and `!! tools:` line; a `!!` line names a server
 that could not be re-listed or a ranked tool that is gone, and `/capture-preferences tools` settles both.
+
+## after 2.10.0 - the stack ships no MCP server
+
+No skill, seat, rule or hook depends on an MCP server now. The session-start tool order's defaults are the `LSP` tool
+and a scoped grep for navigation and the vendor's own page (`WebFetch`) for library docs; the seats' handoff notes
+are files under `<data root>/state/handoff/`, and lessons go into Claude Code's own memory.
+The first update onto 2.10.1 or later takes out what an earlier release's servers left - their plugins at this run's scope, the stack's registrations, the memory tool denies, `alfred-memory.md` and the memory
+hook - and prints ONE `mcp servers:` block: what it removed, where each server is recorded as it shipped
+(`stack/mcp/original-mcps.json`), and one `add it back:` line per server, which registers the upstream server under its
+original name. A registration changed since the stack wrote it is the user's and stays (`mcp <name>: kept`). The
+servers' data stays where it was (the `mcp data:` line) - nothing reads it now. Where the stack had switched Claude
+Code's own memory off, the update switches it back on; a switch-off the user set stays. Report the block verbatim, and
+put the add-back lines on the card as the user's to run - only when they want that server again.

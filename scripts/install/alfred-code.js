@@ -1540,7 +1540,7 @@ function retiredApprovals(ctx)
 // block that says what went, how to add each back and where its data stayed.
 function retiredServersStep(ctx)
 {
-    liftMemorySwitchOff(ctx);
+    liftMemorySwitchOff({ sourceDir: ctx.source.dir, stampFile: ctx.stampFile, legacyUnstamped: ctx.legacyUnstamped, claudeDir: ctx.claudeDir, scope: ctx.args.scope, log: ctx.log, note: ctx.note });
     liftMcpDenied(ctx);
     dropEmptiedMcpJson(ctx);
     sayRetiredServers(ctx);
@@ -1548,21 +1548,22 @@ function retiredServersStep(ctx)
 
 // 2.0.0 to 2.10.0 switched Claude's own memory off (`autoMemoryEnabled: false`) once its memory server held the notes, in the
 // run's own settings file (settingsTarget - never the account's). The server is gone, so the switch-off goes: on the first
-// update past the memory server's retirement (the stamp's release before its row's `retiredIn`, or a pre-stamp install whose
-// installer wrote it too), from this run's file alone. A switch-off set after that is the user's and stays.
-function liftMemorySwitchOff(ctx)
+// update or uninstall past the memory server's retirement (the stamp's release before its row's `retiredIn`, or a pre-stamp
+// install whose installer wrote it too), from this run's file alone. A switch-off set after that is the user's and stays.
+function liftMemorySwitchOff({ sourceDir, stampFile, legacyUnstamped = false, claudeDir, scope, log, note })
 {
-    const row = readRetiredPlugins(ctx.source.dir).find((r) => r.name === 'alfred-memory');
-    const last = stampLayer.readVersion(ctx.stampFile);
-    if (!row || !row.retiredIn || !((last && compareVersions(last, row.retiredIn) < 0) || ctx.legacyUnstamped)) return;
-    const file = settings.settingsTarget(ctx.claudeDir, ctx.args.scope);
+    const row = readRetiredPlugins(sourceDir).find((r) => r.name === 'alfred-memory');
+    const last = stampLayer.readVersion(stampFile);
+    if (!row || !row.retiredIn || !((last && compareVersions(last, row.retiredIn) < 0) || legacyUnstamped)) return;
+    const file = settings.settingsTarget(claudeDir, scope);
+    if (!fs.existsSync(file)) return;
     let data;
     try { ({ data } = settings.readSettings(file)); }
-    catch (err) { ctx.note(`${err.message} - autoMemoryEnabled was not checked there`); return; }
+    catch (err) { note(`${err.message} - autoMemoryEnabled was not checked there`); return; }
     if (data.autoMemoryEnabled !== false) return;
     delete data.autoMemoryEnabled;
     fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
-    ctx.log(`  ${path.basename(file)}: autoMemoryEnabled: false removed - the stack switched Claude's own memory off for its memory server, which it ships no more; set it back to keep it off`);
+    log(`  ${path.basename(file)}: autoMemoryEnabled: false removed - the stack switched Claude's own memory off for its memory server, which it ships no more; set it back to keep it off`);
 }
 
 // The deniedMcpServers rows an earlier release wrote (the stamp's mcp-denied line) switched a broader-scope stack server off
@@ -1993,11 +1994,12 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
     }
     // M4: read before the settings pass removes ALFRED_CODE_DATA_PATH - the stamp's record first.
     const keptRoot = stampLayer.readDataLines(file).root || dataRoot.dataRootOf({ env: {}, projectDir: projectRoot }).root;
+    liftMemorySwitchOff({ sourceDir: path.join(__dirname, '..', '..'), stampFile: file, claudeDir, scope, log, note });
     settings.removeManagedSettings({ claudeDir, ledger, shippedDeny: SHIPPED_DENY, mcpRemoved: removed, scope, log, note });
     uninstallLayer.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), library: stampLayer.readLibrary(file) || {}, files: ledger.files || {}, instructionsKind: stampLayer.readInstructionsFile(file), seed: instructionsSeed, log });
     toolIgnoresLayer.removeToolIgnores({ projectRoot, record: stampLayer.readToolIgnores(file), log, note });
-    const memoryOff = ['settings.json', 'settings.local.json'].some((n) => readJson(path.join(claudeDir, n)).autoMemoryEnabled === false);
-    log(`  kept, yours or your data: the instruction file (AGENTS.md or CLAUDE.md) if you filled it in or kept it, the data root (the docs, the navigation index, the browser profiles - ${keptRoot}/, or a 2.0.0 .serena/ / .playwright/), the memory database${memoryOff ? '; autoMemoryEnabled: false stays - Claude\'s own memory is off until you remove that key' : ''}`);
+    const stillOff = ['settings.json', 'settings.local.json'].filter((n) => readJson(path.join(claudeDir, n)).autoMemoryEnabled === false);
+    log(`  kept, yours or your data: the instruction file (AGENTS.md or CLAUDE.md) if you filled it in or kept it, and the data root ${keptRoot}/ - the docs, and whatever an earlier release's servers left there${stillOff.length ? `; autoMemoryEnabled: false stays in ${stillOff.join(' and ')} - yours, so Claude's own memory stays off until you remove it` : ''}`);
     if (failures()) { log(`  stamp kept - ${path.basename(file)} still lists what is left; run uninstall again to finish`); return 0; }
     fs.rmSync(file, { force: true });
     log(`  stamp removed: ${path.basename(file)} - every item the ledger listed is gone, or named above as kept`);

@@ -13,18 +13,12 @@ const ROOT = path.join(__dirname, '..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const each = (dir, re) => fs.readdirSync(path.join(ROOT, dir), { recursive: true }).filter((f) => re.test(f)).map((f) => path.join(dir, f).split(path.sep).join('/'));
 
-// M20: mcp-memory-service 11.13.0 and later list numpy>=1.24.0 among their core requires_dist (PyPI JSON).
-// Re-verify 2 R4: a memory launcher that refuses to start (a settings file it cannot read, no other key) showed only in the CLI's
-// MCP log. status and validate render the level CLI's 'refused' and 'unreadable' answers, naming the file and the fix.
-test('R4 status and validate name an unreadable settings file and the memory server\'s refusal', () =>
+// Re-verify 2 R4 rendered the memory launcher's refusal in status and validate; the memory server left the stack in
+// 2.10.1, so neither renders a server's answer any more.
+test('R4 status and validate render no memory server answer', () =>
 {
     for (const file of ['setup-plugin/commands/status.md', 'setup-plugin/commands/validate.md'])
-    {
-        const body = read(file);
-        assert.match(body, /`refused <file>`/, `${file}: renders the refusal`);
-        assert.match(body, /launcher refuses to start/, file);
-        assert.match(body, /`unreadable <file>`/, `${file}: renders a skipped settings file`);
-    }
+        assert.doesNotMatch(read(file), /`refused <file>`|launcher refuses to start|memory\.js level/, file);
 });
 
 // M23: since 2.1.0 no skill rides the core; the skill is an always-on library copy.
@@ -47,17 +41,13 @@ test('M29 the install footprint says what each MCP plugin runs at session start'
     assert.match(row, /language servers/);
 });
 
-// M24 behind a mirror: uv treats a file with no PEP 700 upload time as unavailable under a cut-off, and its error never
-// names the cut-off (docs.astral.sh/uv/concepts/resolution, 'Reproducible resolutions'); `UV_EXCLUDE_NEWER=false` lifts
-// it (docs.astral.sh/uv/reference/environment). The post-install connect check is where a server that will not start
-// is read about, so the escape is named there.
-test('M24 the post-install connect check names the escape for an index with no upload times', () =>
+// M24 named the uv cut-off escape in the post-install connect check; with no uvx server left (2.10.1) the page has
+// no connect check and names no uv escape.
+test('M24 the post-install page carries no MCP connect check', () =>
 {
     const text = read('setup-plugin/references/post-install.md');
-    const connect = text.slice(text.indexOf('**Then check they actually CONNECTED.**'), text.indexOf('**And check the plugins are ENABLED'));
-    assert.match(connect, /publishes no upload times/);
-    assert.match(connect, /`UV_EXCLUDE_NEWER=false`/);
-    assert.match(connect, /`exclude-newer = false` in its `\[\[index\]\]` entry of the user-level\s+`uv\.toml`/);
+    assert.doesNotMatch(text, /claude mcp list|CONNECTED|UV_EXCLUDE_NEWER|uvx/);
+    assert.match(text, /\*\*Then check the plugins are ENABLED/);
 });
 
 // M32: a short tool name inside a call-shaped backtick is called as written and fails 'No such tool' (the pin
@@ -200,12 +190,11 @@ test('M40 both desktop ToolSearch lines say the session\'s listing names more to
     }
 });
 
-// M42: the status example row is the default plugin route's target, at the pin.
-test('M42 the status example row shows the plugin route launcher at the release pin', () =>
+// M42 pinned the status example row's browser launcher; since 2.10.1 status lists no server, so no row names one.
+test('M42 the status page names no server launcher', () =>
 {
     const text = read('setup-plugin/commands/status.md');
-    assert.doesNotMatch(text, /npx -y @playwright\/mcp@0\.0\.80/);
-    assert.ok(text.includes('node .../browser-launch.js --package @playwright/mcp@<pin> --browser firefox'), 'the plugin-route shape, at the pin');
+    assert.doesNotMatch(text, /npx -y @playwright\/mcp|browser-launch\.js/);
 });
 
 // M44: the memory ToolSearch line had two homes no pin tied together. Audit 2026-10-14 RU10 left it ONE, the memory hook's

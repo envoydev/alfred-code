@@ -5194,28 +5194,12 @@
       ]
     },
     "credential-presence-line": {
-      "_note": "The sanctioned presence read of the account settings.json - guard-secret-value.js --presence, pasted as-is, KEY=set (N chars) / KEY=empty (present, no value) / KEY=absent - carried by every command that touches the file. The hook owns the mode; the commands restate the call because none of them co-load.",
+      "_note": "The sanctioned presence read of a settings file - guard-secret-value.js --presence, pasted as-is, KEY=set (N chars) / KEY=empty (present, no value) / KEY=absent - carried by the command that reports env rows by presence (status). The hook owns the mode; the command restates the call because the two never co-load. The four other commands carried it for the documentation server's key, which left with the server (2026-10-24).",
       "owner": {
         "file": "stack/hooks/guard-secret-value.js",
         "marker": "--presence <file> [KEY ...]"
       },
       "sites": [
-        {
-          "file": "setup-plugin/references/init-install.md",
-          "marker": "Presence, never the value"
-        },
-        {
-          "file": "setup-plugin/commands/configure.md",
-          "marker": "Presence, never the value"
-        },
-        {
-          "file": "setup-plugin/references/update-walk.md",
-          "marker": "Presence, never the value"
-        },
-        {
-          "file": "setup-plugin/commands/validate.md",
-          "marker": "Presence, never the value"
-        },
         {
           "file": "setup-plugin/commands/status.md",
           "marker": "Presence, never the value"

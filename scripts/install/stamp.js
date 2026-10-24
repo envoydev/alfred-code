@@ -57,9 +57,8 @@
 //
 // `initialised` is the one line only /alfred-code:init writes (its bootstrap phase): a date. A fresh install writes `pending`, every
 // later run carries the value forward, and nothing but init turns `pending` into a date - so an update
-// between setup and init can neither import the notes nor flip the router past init (Task 18a I1). A
-// stamp from before the line counts as initialised only when Claude's own memory is already off, which
-// the pre-2.0 installer did only after importing; the first run over it records that, dated.
+// between setup and init cannot flip the router past init (Task 18a I1). A stamp from before the line reads `pending`:
+// Claude's own memory switch was its sign while the stack shipped a memory server, and says nothing since 2.10.1.
 //
 // The `managed-*` lines are THE LEDGER (R10): what the run MANAGES beyond the library copies, so an
 // update removes exactly what the last run wrote and this release no longer writes, and uninstall
@@ -281,7 +280,7 @@ function writeStamp(opts)
         source, action, scope, configDir, projectRoot, hooksCatalog, hooksRoute, seatsRoute, picked, stoodDown, mcpDenied, toolIgnores, library, ledger, data,
         instructionsFile = '', version = '', now = new Date(), log = () => {}, note = () => {},
     } = opts;
-    const initialised = opts.initialised || initialisedValue({ claudeDir: stampDir({ projectRoot }), now });
+    const initialised = opts.initialised || initialisedValue({ claudeDir: stampDir({ projectRoot }) });
 
     if (!source || !source.sha)
     {
@@ -494,22 +493,13 @@ function readInitialised(file)
     return m ? m[1].trim() || null : null;
 }
 
-// Claude's own memory switched off in either project settings file.
-function memoryOff(claudeDir)
-{
-    return ['settings.local.json', 'settings.json'].some((name) => readJson(path.join(claudeDir, name)).autoMemoryEnabled === false);
-}
-
 const isInitialised = (value) => Boolean(value) && value !== 'pending';
 
-// What this run's stamp records: the line carried; a stamp from before it dated when memory is off.
-function initialisedValue({ claudeDir, now = new Date() })
+// What this run's stamp records: the line carried, else `pending`.
+function initialisedValue({ claudeDir })
 {
     const { read } = stampFile(claudeDir);
-    if (!read) return 'pending';
-    const prev = readInitialised(read);
-    if (prev) return prev;
-    return memoryOff(claudeDir) ? `${isoSeconds(now)} (memory already off before this release)` : 'pending';
+    return (read && readInitialised(read)) || 'pending';
 }
 
 // The account dir - the installer's own rule (alfred-code.js): CLAUDE_CONFIG_DIR, else ~/.claude.
@@ -653,14 +643,22 @@ module.exports = {
 
 // `node scripts/install/stamp.js state [projectRoot]` - the router's read: one word on stdout, and for
 // `worktree-of-installed` the main checkout's path after it. `scope [projectRoot]` - the scope the last
-// install used, one word.
+// install used, one word. `mark [projectRoot]` - init's close: the `initialised:` line dated in the checkout that holds
+// the record, said as one line; exit 1 with no stamp there.
 if (require.main === module)
 {
     require('../../stack/hooks/hook-prelude.js').blockingStdio();
     const [cmd, root] = process.argv.slice(2);
     const at = path.resolve(root || '.');
     if (cmd === 'scope') { console.log(installScope(at)); process.exit(0); }
-    if (cmd !== 'state') { console.error('usage: stamp.js state|scope [projectRoot]'); process.exit(2); }
+    if (cmd === 'mark')
+    {
+        const claudeDir = path.join(recordCheckout(at).at || at, '.claude');
+        if (!markInitialised(claudeDir)) { console.log('initialised: not written - no stamp here; run /alfred-code:init where the project is installed'); process.exit(1); }
+        console.log(`initialised: ${readInitialised(stampFile(claudeDir).read)}`);
+        process.exit(0);
+    }
+    if (cmd !== 'state') { console.error('usage: stamp.js state|scope|mark [projectRoot]'); process.exit(2); }
     const state = installState(at);
     console.log(state === 'worktree-of-installed' ? `${state} ${worktreeMain(at)}` : state);
 }

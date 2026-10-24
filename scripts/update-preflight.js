@@ -84,7 +84,7 @@
 //
 //   | category | count | items |
 //   |---|---|---|
-//   | rules | <n> | <name>, ... |        (rules, agents, skills, hooks, mcps, plugins - always these six, in order)
+//   | rules | <n> | <name>, ... |        (rules, agents, skills, hooks, plugins - always these five, in order)
 //   total: <n> installed[, <n> switched off][, <n> plugin(s) parked]
 const fs = require('node:fs');
 const path = require('node:path');
@@ -525,7 +525,7 @@ function runInventoryMode(file)
     const inv = readJson(file);
     if (!inv || typeof inv !== 'object' || Array.isArray(inv)) { console.log(`inventory: ${file} could not be read - re-run the step-1 read-back`); process.exitCode = 1; return; }
     const list = (v) => (Array.isArray(v) ? v : []).map((x) => (x && typeof x === 'object' ? `${x.name}${x.scope ? ` [${x.scope}]` : ''}` : String(x)));
-    const rows = ['rules', 'agents', 'skills', 'hooks', 'mcps', 'plugins'].map((c) => [c, list(inv[c])]);
+    const rows = ['rules', 'agents', 'skills', 'hooks', 'plugins'].map((c) => [c, list(inv[c])]);
     console.log('| category | count | items |');
     console.log('|---|---|---|');
     for (const [c, items] of rows) console.log(`| ${c} | ${items.length} | ${items.join(', ') || '-'} |`);

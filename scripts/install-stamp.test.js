@@ -423,9 +423,9 @@ test('validItemName: rejects an empty name, .., ../.., ../plugins, an absolute p
 
 // I1 (Task 18a review): 'initialised' is a line only /alfred-code:init writes (its memory step,
 // `memory.js init`, on success). Every other run carries it forward. A fresh install writes
-// `pending`; a stamp from before the line counts as initialised only when Claude's own memory is
-// already off - the pre-2.0 installer switched it off only after importing the notes.
-test('initialised: fresh is pending, the line is carried, a pre-line stamp reads its memory switch, init marks it (I1)', () => {
+// `pending`, and so does a stamp from before the line: Claude's own memory switch says nothing since the stack ships no
+// memory server (2.10.1), and every stamp since 2.0.0 carries the line.
+test('initialised: fresh is pending, the line is carried, a pre-line stamp is pending whatever the memory switch, init marks it (I1)', () => {
     const stamp = require('./install/stamp.js');
     const root = path.join(TMP, `init-${seq++}`);
     const claude = path.join(root, '.claude');
@@ -443,14 +443,12 @@ test('initialised: fresh is pending, the line is carried, a pre-line stamp reads
     assert.strictEqual(stamp.initialisedValue({ claudeDir: claude, now }), 'pending', 'carried');
 
     fs.writeFileSync(file, 'version: 1.3.0\nscope: project\n');   // a stamp from before the line
-    assert.strictEqual(stamp.installState(root), 'initialised', 'a pre-line install whose memory is off');
-    assert.strictEqual(stamp.initialisedValue({ claudeDir: claude, now }), '2026-09-25T10:00:00Z (memory already off before this release)');
+    assert.strictEqual(stamp.installState(root), 'installed', 'a pre-line install whose memory is off still owes init');
+    assert.strictEqual(stamp.initialisedValue({ claudeDir: claude, now }), 'pending');
     setMemory(undefined);
     setMemory(false, 'settings.local.json');
-    assert.strictEqual(stamp.installState(root), 'initialised', 'the local file counts too');
+    assert.strictEqual(stamp.installState(root), 'installed', 'the local file says nothing either');
     fs.rmSync(path.join(claude, 'settings.local.json'));
-    assert.strictEqual(stamp.installState(root), 'installed', 'a pre-line install whose memory is on still owes init');
-    assert.strictEqual(stamp.initialisedValue({ claudeDir: claude, now }), 'pending');
 
     assert.strictEqual(stamp.markInitialised(claude, now), true);
     assert.match(fs.readFileSync(file, 'utf8'), /^initialised: 2026-09-25T10:00:00Z$/m);
@@ -472,6 +470,18 @@ test('initialised: fresh is pending, the line is carried, a pre-line stamp reads
     const cli = spawnSync(process.execPath, [path.join(__dirname, 'install', 'stamp.js'), 'state', root], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(root, 'no-account') } });
     assert.strictEqual(cli.status, 0, cli.stderr);
     assert.strictEqual(cli.stdout, 'installed\n');
+
+    // init's close: `mark` dates the line in the checkout that holds the record, and says so; no stamp, nothing written.
+    fs.writeFileSync(file, 'version: 2.10.1\ninitialised: pending\n');
+    const mark = spawnSync(process.execPath, [path.join(__dirname, 'install', 'stamp.js'), 'mark', root], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(root, 'no-account') } });
+    assert.strictEqual(mark.status, 0, mark.stderr);
+    assert.match(mark.stdout, /^initialised: \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ\n$/);
+    assert.strictEqual(stamp.installState(root), 'initialised');
+    fs.rmSync(file);
+    const none = spawnSync(process.execPath, [path.join(__dirname, 'install', 'stamp.js'), 'mark', root], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(root, 'no-account') } });
+    assert.strictEqual(none.status, 1);
+    assert.match(none.stdout, /^initialised: not written - no stamp here/);
+    assert.ok(!fs.existsSync(file));
 });
 
 // A legacy COPY-route install that never wrote a stamp, and copied no `hooks/docs.js`, holds no install

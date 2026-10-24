@@ -532,5 +532,35 @@ test('uninstall over a replaced account file refuses before any change and names
 test('uninstall: the kept data root is the one in effect - a custom root named, never the default', POSIX_ONLY, () =>
 {
     const { outs } = seedRun(['install', 'uninstall'], 'rule markdown-docs\n', { args: [['--scope', 'project', '--data-path', '.data'], []] });
-    assert.match(outs[1], /kept, yours or your data: .* - \.data\/, or a 2\.0\.0/, outs[1]);
+    assert.match(outs[1], /kept, yours or your data: .*the data root \.data\/ - /, outs[1]);
+    assert.doesNotMatch(outs[1], /navigation index|browser profiles|memory database/, 'the kept line names no server data');
+});
+
+// The stack switched Claude's own memory off for its memory server until 2.10.1 (init's import). An uninstall over an
+// install that never updated past it takes that switch-off back - the run's own settings file only - and one set since
+// is the user's: kept, and said.
+test('uninstall lifts the memory switch-off a pre-2.10.1 stack wrote, and keeps one set after it', POSIX_ONLY, () =>
+{
+    for (const [version, after] of [['2.10.0', undefined], ['2.10.1', false]])
+    {
+        const { outs, steps } = seedRun(['install', 'uninstall'], 'rule markdown-docs\n', {
+            args: [['--scope', 'project'], []],
+            each: (repo, i) =>
+            {
+                const settings = path.join(repo, '.claude', 'settings.json');
+                if (i === 0)
+                {
+                    const stampFile = path.join(repo, '.claude', 'alfred-code.stamp');
+                    fs.writeFileSync(stampFile, fs.readFileSync(stampFile, 'utf8').replace(/^version: .*$/m, `version: ${version}`));
+                    const data = JSON.parse(fs.readFileSync(settings, 'utf8'));
+                    fs.writeFileSync(settings, JSON.stringify({ ...data, autoMemoryEnabled: false, mine: 1 }, null, 2));
+                }
+                return fs.existsSync(settings) ? JSON.parse(fs.readFileSync(settings, 'utf8')) : null;
+            },
+        });
+        assert.strictEqual(steps[1].autoMemoryEnabled, after, `${version}\n${outs[1]}`);
+        assert.strictEqual(steps[1].mine, 1, `${version}: the user's own key went`);
+        if (after === undefined) assert.match(outs[1], /settings\.json: autoMemoryEnabled: false removed - /, outs[1]);
+        else assert.match(outs[1], /autoMemoryEnabled: false stays in settings\.json - yours/, outs[1]);
+    }
 });

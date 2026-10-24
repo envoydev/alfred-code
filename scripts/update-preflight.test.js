@@ -819,7 +819,7 @@ test('--respell: the project\'s own instruction file gets a per-line plan, and -
 
 // audit 2026-10-11, session a9e06780: configure step 1's inventory, rendered from the read-back so its shape is fixed and
 // the layer-table gate can prove the paste by its last line.
-test('--inventory: the six rows in order with counts, plugins with their scope, and the total line last', () => {
+test('--inventory: the five rows in order with counts, plugins with their scope, and the total line last - an mcps key is no row', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'preflight-inv-'));
     try {
         const file = path.join(dir, 'installed.json');
@@ -828,9 +828,9 @@ test('--inventory: the six rows in order with counts, plugins with their scope, 
         const lines = run(['--inventory', file]).out.trim().split('\n');
         assert.deepStrictEqual(lines, [
             '| category | count | items |', '|---|---|---|',
-            '| rules | 1 | r1 |', '| agents | 0 | - |', '| skills | 2 | b, a |', '| hooks | 2 | h1, h2 |', '| mcps | 1 | browser |',
+            '| rules | 1 | r1 |', '| agents | 0 | - |', '| skills | 2 | b, a |', '| hooks | 2 | h1, h2 |',
             '| plugins | 1 | claude-hud [user] |',
-            'total: 7 installed, 1 switched off, 1 plugin(s) parked',
+            'total: 6 installed, 1 switched off, 1 plugin(s) parked',
         ]);
         fs.writeFileSync(file, 'garbage');
         const bad = run(['--inventory', file]);

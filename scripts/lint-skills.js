@@ -1215,7 +1215,8 @@ const ASK_FLOW_SKILLS = Object.keys(ASK_FLOW_TEMPLATES);
 const SETUP_ASK_TEMPLATES = {
     // +1: the mobile-control ask (2026-10-13).
     // +1: the plugin settings ask (audit 2026-10-21 commands T2-12).
-    'setup-plugin/references/walk.md': 14,
+    // -4: the MCPs layer's browser, engine, desktop and mobile-control asks, with the layer (the no-MCP stack, 2026-10-24).
+    'setup-plugin/references/walk.md': 10,
     // +1: screen B's compact-or-fresh-session ask (2026-10-14). The install phase of /alfred-code:init since setup merged
     // into it (2026-10-17).
     // +7: screen A's scope, root, profile and forge CLI asks (the GitHub CLI ask until 2026-10-23), step 2's permission mode, step 10's blockers and the
@@ -1232,7 +1233,8 @@ const SETUP_ASK_TEMPLATES = {
     // its table inline (audit 2026-10-21 commands T2-04: it pointed at init's table, which configure never loads).
     // +3: step 2's areas, step 10's permission mode and step 11's pins (audit 2026-10-21 commands T2-12).
     // -1: step 12's old-seed rename ask, folded into instructions-place.md's name ask (2026-10-22).
-    'setup-plugin/commands/configure.md': 9,
+    // -1: the memory level ask, with the memory server (the no-MCP stack, 2026-10-24).
+    'setup-plugin/commands/configure.md': 8,
     // audit 2026-10-11: update's three asks plus step 6's re-spell of the project's own AGENTS.md (session b3f8193f).
     // Audit 2026-10-20 C15: update.md is a router, so a gate-refused run carries none of them - the data-root and
     // instruction-file asks ride the walk (steps 1-3), the re-spell and git-hygiene asks the close (steps 6-8).

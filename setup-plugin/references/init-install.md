@@ -2,8 +2,8 @@
 
 `/alfred-code:init` reads this file when the install records read `not-installed` (or `legacy-unstamped` and the
 user chose a fresh install). Its preamble - the fresh-session measurement, the snapshot protocol, the AskUserQuestion
-rule and the house voice - holds for every line below. This phase selects and installs; the machine-level services,
-the memory level, the captures and the AGENTS.md fill are the bootstrap phase's - `/alfred-code:init` typed again in
+rule and the house voice - holds for every line below. This phase selects and installs; the machine-level tools, the
+captures and the AGENTS.md fill are the bootstrap phase's - `/alfred-code:init` typed again in
 the session after the restart this phase ends on. Work the ladder in order and drive it interactively; the
 deterministic work is done by `stack-select.js`, you orchestrate. Every install has a project root - the git repo's
 top level, else the current directory (the installer's own rule) - so there is no account-only install. Two modes,
@@ -15,17 +15,17 @@ confirmed first).
 
 ## The ladder - announce every step
 
-Eleven user-facing steps; the machinery between them runs silently. Before EVERY question, one banner line so the user always knows where they are, what is being decided, and what comes next:
+Ten user-facing steps; the machinery between them runs silently. Before EVERY question, one banner line so the user always knows where they are, what is being decided, and what comes next:
 
 ```
-[step 4/11 - rules] choose the rule set · next: agents
+[step 4/10 - rules] choose the rule set · next: agents
 ```
 
-1 install choices · 2 permission mode · 3 project analysis · 4 rules · 5 agents · 6 skills · 7 hooks · 8 MCPs · 9 plugins · 10 prerequisite check · 11 install
+1 install choices · 2 permission mode · 3 project analysis · 4 rules · 5 agents · 6 skills · 7 hooks · 8 plugins · 9 prerequisite check · 10 install
 
-**The skeleton is INVARIANT - the stability contract.** Every run prints all 11 banners, in this
+**The skeleton is INVARIANT - the stability contract.** Every run prints all 10 banners, in this
 order, exactly once each. A step that does not apply THIS run still prints its banner followed by
-ONE line naming why it is a no-op (`[step 3/11 - project analysis] skipped - greenfield, stacks
+ONE line naming why it is a no-op (`[step 3/10 - project analysis] skipped - greenfield, stacks
 chosen by hand`),
 then moves on - a step never silently vanishes, and steps are never merged, reordered,
 renumbered, or invented. Two runs must be comparable banner by banner; the content varies, the
@@ -65,7 +65,7 @@ Reach <host> for the CI and change-request flows? <cli> is not on PATH and no fo
 ```
 
 ```ask
-Where should Alfred Code keep this project's data - its docs, the navigation index and handoff notes, browser profiles and a project memory database? Recommended: .alfred at the project root - one folder outside .claude/, where Claude Code prompts for every write.
+Where should Alfred Code keep this project's data - its docs, the hooks' state and the seats' handoff notes, and its sensitive-data file? Recommended: .alfred at the project root - one folder outside .claude/, where Claude Code prompts for every write.
 - '.alfred (Recommended)' - everything under one folder at the project root; its one .gitignore keeps all but the docs out of git
 - 'Another folder' - the path is asked next: relative, inside the project, never under .claude/, no space
 ```
@@ -90,7 +90,7 @@ Permission mode for this project? It is <the value reported | unset> today.
 - 'Keep it as it is (Recommended)' - nothing is written here
 - 'Set the default for this project' - writes permissions.defaultMode into this project's .claude/settings.json only; the next ask offers the value reported first, then default / plan / acceptEdits / bypassPermissions / auto / dontAsk
 ```
- No-project mode: skip - there is no project to scope a default to. Applied at step 11 (Install), the same merge-only-this-key discipline as screen B's environment choices - every other key in `permissions` (`allow` / `deny` / `ask` / `additionalDirectories`) and the rest of the file stay exactly as the installer left them.
+ No-project mode: skip - there is no project to scope a default to. Applied at step 10 (Install), the same merge-only-this-key discipline as screen B's environment choices - every other key in `permissions` (`allow` / `deny` / `ask` / `additionalDirectories`) and the rest of the file stay exactly as the installer left them.
 
 ## 3. Project analysis - the stacks
 
@@ -104,7 +104,7 @@ Alongside the stack scan, run the EVIDENCE scan quietly - one call, one narratio
 A project can match several. Report the detected stacks and put the confirmation through AskUserQuestion (the stacks template below - an add or a remove is picked from options, never typed) - the walk starts IMMEDIATELY after this answer, no other question in between:
 
 ```
-[step 3/11 - project analysis] confirm the detected stacks · next: rules
+[step 3/10 - project analysis] confirm the detected stacks · next: rules
 Detected: aspnet (src/Api/Api.csproj - Microsoft.NET.Sdk.Web), web-angular (angular.json), devops (Dockerfile + .github/workflows/)
 ```
 
@@ -135,13 +135,13 @@ alone. The walk pre-selects every row printed here (`stack:<name>`, `evidence`, 
 miss - name it once in the narration line. Never add a suggestion of your own beyond what the tools
 print.
 
-## The walk - steps 4-9, one layer at a time
+## The walk - steps 4-8, one layer at a time
 
 Read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/walk.md` before step 4 and run it in **FRESH**
 mode - the one walk text this phase shares with `/alfred-code:configure`, so the two cannot drift.
-The layers run in dependency order, rules -> agents -> skills -> hooks -> MCPs -> plugins, over one
+The layers run in dependency order, rules -> agents -> skills -> hooks -> plugins, over one
 `raw.json` of direct picks, and every layer has the same three beats: recompute quietly, paste the
-tool's full-catalog table in a fenced block after the `[step n/11 - <layer>]` banner, then one
+tool's full-catalog table in a fenced block after the `[step n/10 - <layer>]` banner, then one
 selection ask (Keep the marked rows / Pick ... / Add every ... / Only the locked rows, then one grouped multi-select call on 'Pick'; typing is only through Other). The file owns the table rules, the
 selection round and each layer's notes; the steps below add only what is this phase's own.
 
@@ -163,21 +163,13 @@ seeded).
 walk.md's Hooks layer - recommended = all eighteen, the answer written as `ALFRED_CODE_HOOKS_OFF`
 in the scope's settings file env.
 
-## 8. MCPs
+## 8. Plugins
 
-walk.md's MCPs layer, the browser engines picked as rows of their own (step 11 passes them).
+walk.md's Plugins layer, the plugin-settings ask included - applied at step 10a.
 
-The memory LEVEL is not asked here: `/alfred-code:init` asks it (global or project) in the
-session after the restart, and imports this project's old notes into the database it names. Until
-then the install points the memory server at the global database and leaves Claude's own memory on.
+## 9. Prerequisite check
 
-## 9. Plugins
-
-walk.md's Plugins layer, the plugin-settings ask included - applied at step 11a.
-
-## 10. Prerequisite check
-
-Run: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --emit "$TMP/selection.txt" --hooks-answered --check --defer-init [--forge-cli]` (no `--browsers` here: the engines picked at step 8 sit in `raw.json` as `<engine>-control`, and the run prints them as one `browsers: <csv>` line - a picked `msedge` warns when Edge is not installed; `--forge-cli` only when they answered the forge CLI ask with Install at step 1). Redirect its output to `$TMP/select.out` like every recompute. It writes `selection.txt` - the closed installer selection. **Fixed shape, three blocks:** (1) one verdict line - `blockers: N · warnings: N`; (2) the closed selection grouped by category, closure adds marked with their reasons; (3) the lists:
+Run: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --emit "$TMP/selection.txt" --hooks-answered --check --defer-init [--forge-cli]` (`--forge-cli` only when they answered the forge CLI ask with Install at step 1). Redirect its output to `$TMP/select.out` like every recompute. It writes `selection.txt` - the closed installer selection. **Fixed shape, three blocks:** (1) one verdict line - `blockers: N · warnings: N`; (2) the closed selection grouped by category, closure adds marked with their reasons; (3) the lists:
 
 - Blockers: list each with its fix, then AskUserQuestion. Never install past a blocker.
 
@@ -188,10 +180,10 @@ Run: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --emi
   ```
 
 - Warnings: list them and proceed.
-- `init:` lines (uv, csharp-ls, typescript-language-server) are what `/alfred-code:init` installs in the next session, each through its one ask - `--defer-init` keeps them out of the blockers. List them as the close card's first reason to run init, never as a blocker.
+- `init:` lines (csharp-ls, typescript-language-server) are what `/alfred-code:init` installs in the next session, each through its one ask - `--defer-init` keeps them out of the blockers. List them as the close card's first reason to run init, never as a blocker.
 - **Convention-conflict warnings (brownfield only).** When the project already carries stated conventions - a root or `.claude/` AGENTS.md or CLAUDE.md, `<docs-path>/architecture/` docs - check the user's TYPED ADDS from the walk (never the closure-locked rows, never the stack/evidence seeds - those are signal-backed) against them: an add whose PURPOSE conflicts with a stated convention gets ONE warning line quoting the rule verbatim (`warning: skill dotnet-architecture conflicts with AGENTS.md: 'NOT Clean Architecture / DDD / VSA'`) and one keep-or-drop consent. No citable conflict, no warning - unused-looking is not a conflict; no project docs, skip silently. A conflict warning never blocks the install - the user's keep is final.
 
-## 11. Install
+## 10. Install
 
 **First, report what the selection means - from the derivation, never in your own words.** Run
 `node "$TMP/repo/scripts/derive-state.js" --selection "$TMP/selection.txt" --source "$TMP/repo" --scope <scope> >
@@ -213,27 +205,17 @@ the install writes.
 
 Then run the installer **from the snapshot**, and pass it back with `--source` so it installs from what you already downloaded instead of fetching again:
 
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" install --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [--browsers <csv>] [--scope-of <item>=global ...] [--docs-versioning git|local] [--data-path <folder>] [--auto-compact on|off] [--instructions-file agents|claude] [--instructions-at root|claude] [--forge-cli]`
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" install --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [--scope-of <item>=global ...] [--docs-versioning git|local] [--data-path <folder>] [--auto-compact on|off] [--instructions-file agents|claude] [--instructions-at root|claude] [--forge-cli]`
 - **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED` set to `shell`). The frozen OS twin is gone, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
 
 `--scope-of` carries the walk's last answer (`references/walk.md`, 'Where each optional item installs'): one `--scope-of <item>=global` per optional pick the user made global; every other one installs in this project, so a 'This project, all of them' answer passes none.
 
 `--docs-versioning` carries screen B's docs-versioning answer whenever screen B asked it: the installer then WRITES that decision instead of seeding a detected value, prints one `ALFRED_CODE_DOCS_VERSIONING <old> -> '<new>'` line instead of a seed line, and so leaves nothing for the re-probe below to touch.
 
-No `--memory-level`: the level is init's question. The installer says so in one line (the notes
-import waits for `/alfred-code:init`) and leaves Claude's own memory on - report that line, never a
-switch-off.
-
 Over docs an earlier install left (the stamp gone, the folders kept), the run moves them onto the current layout as
 an update does: report each `layout:` line it printed, verbatim; `layout: current` needs no line.
 
 `--source` is what makes the guided run take ONE download. The installer owns nothing here: it copies out of `$TMP/repo` and leaves it for you to remove at cleanup. It writes `.claude/alfred-code.stamp` recording the revision it installed (an archive's `RELEASE-SOURCE` commit, or the `v<version>` tag of a plugin-cache copy, which carries no `RELEASE-SOURCE`) - that is what a later `/alfred-code:configure` diffs against.
-
-The documentation server key is ACCOUNT-level, not project-level: when `CONTEXT7_API_KEY` is exported in the shell the installer runs in, the run writes it into the account `settings.json` env (at every scope - never through the chat). The key is optional - the hosted server answers without one at a lower rate limit.
-
-Presence, never the value - run this and paste its lines as-is:
-`node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" CONTEXT7_API_KEY`
-(the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable). Output is `KEY=set (N chars)`, `KEY=empty (present, no value)` or `KEY=absent` - nothing else is ever printed; a shell dump of that file is rewritten by the same hook into its redacted view (every credential value shown as `<set (N chars)>`), and the Read tool on it is blocked.
 
 Then apply the step-1 environment choices where they differ from what the installer left: a merge on the scope's settings file touching ONLY the chosen keys - every key screen B asked about (the catalog's rows, `env.` prefixed - but `ALFRED_CODE_DATA_PATH` and `ALFRED_CODE_AUTO_COMPACT`, which the installer already wrote from `--data-path` and `--auto-compact`) - everything else in the file preserved. The installer seeds these only when absent, so the values written here are the user's and survive every later update untouched. An accepted default needs no write only where the FILE already holds that value, so read the block back after the install and compare: one row's seed is DETECTED from the repo rather than constant (its `what` says so), and there the catalog default and the seeded value can differ.
 
@@ -241,7 +223,7 @@ The docs root is always `<data root>/docs`, which the installer stamped into `.c
 
 On a step-2 'set the default for this project' answer, merge `permissions.defaultMode: <value>` into the scope's project settings file (`.claude/settings.local.json` at `local` scope, else `.claude/settings.json`) - never the account file - touching ONLY that key inside `permissions` (`allow` / `deny` / `ask` / `additionalDirectories` and everything else in the file untouched). A 'keep it as it is' answer writes nothing.
 
-### 11a. Plugin settings - apply the step-9 answer
+### 10a. Plugin settings - apply the step-8 answer
 
 The plugin is on disk only now, so this is where the answer lands: re-run the tool with `--apply`
 (plus `--replace` when they chose to overwrite differing values) and paste the closing `applied:`
@@ -259,8 +241,8 @@ mid-run, omitted from the close, and re-asked twice over four extra messages).
 **The run closes on a suggestion card, never on a question.** The steps below that are the
 USER's to run - the restart, the account-file credential line, `/alfred-code:init` - are listed
 as suggestions, the one everything depends on first and each with
-the one reason it matters, SCOPED to what actually needs it ('Reload the session - the MCP servers
-connect at launch, and skills, agents and the always-on rules are inventoried then'). Do not say
+the one reason it matters, SCOPED to what actually needs it ('Reload the session - skills, agents
+and the always-on rules are inventoried at launch'). Do not say
 nothing is live until the reload: hooks and the `settings.json` env are read per invocation and are
 live on the next tool call, which `meta/environment.json`'s own comment states and a measured run
 proved twice in one session (a hook installed at 08:12:53 fired at 08:21:15; an env flip produced
@@ -281,9 +263,9 @@ token in Sentry's dashboard' and this line in the same message).
 
 Report, read-only, whether the default branch is protected when a forge tool this session has can read it (GitHub `gh api repos/{owner}/{repo}/branches/<branch> --jq .protected`, GitLab `glab api projects/:fullpath/protected_branches/<branch>`, an MCP branch read) - one card line, 'not read' when nothing can; never change a forge setting. The publish gate is what holds the branch either way.
 
-Report what still needs a hand: `/plugin` switches a picked browser off or on (on the MCP copy route every picked browser is a live `.mcp.json` server and `/mcp` switches it), and that the first `claude plugin install` may prompt to trust. The statusline itself needs no hand step - `/alfred-code:init` (item 2 below) sets it through `hud-statusline.js` and only names `/claude-hud:setup` when it finds a status line that is not claude-hud's and keeps it. Then, AFTER the summary, print the next-steps card - built from what THIS run actually installed, never naming a command whose skill is absent. The card ENDS on the restart and `/alfred-code:init` again (item 2) - its bootstrap phase, the one step everything else depends on. Name `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/post-install.md` as the durable copy the user can re-read later (it adds the gitignore semantics):
+Report what still needs a hand: the first `claude plugin install` may prompt to trust. The statusline itself needs no hand step - `/alfred-code:init` (item 2 below) sets it through `hud-statusline.js` and only names `/claude-hud:setup` when it finds a status line that is not claude-hud's and keeps it. Then, AFTER the summary, print the next-steps card - built from what THIS run actually installed, never naming a command whose skill is absent. The card ENDS on the restart and `/alfred-code:init` again (item 2) - its bootstrap phase, the one step everything else depends on. Name `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/post-install.md` as the durable copy the user can re-read later (it adds the gitignore semantics):
 
-1. **Git hygiene (project mode - a no-repo directory skips it).** Suggest ignoring the machine-local artifacts this install creates - only entries that apply to the selection and are not already covered by the project's ignore rules: the lines `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/post-install.md` section 2 gives (`.claude/*` with `!.claude/AGENTS.md`, so the seeded instruction file stays committed - the re-include only while it lives in `.claude/`; `.mcp.json` only on the MCP copy route), plus runtime dirs when present in the tree (`.slopwatch/`, or a 2.0.0 `.serena/` / `.playwright/` not moved yet). The data root (`.alfred/` by default - the docs, the navigation index, browser profiles, a project memory database) carries its own `.gitignore`, which keeps everything but the docs out of git; run `node "$TMP/repo/scripts/git-hygiene.js" --root .` before `$TMP` is removed - a `git-hygiene: offer <root>/` line (nothing under it is committed: local docs, or the docs root elsewhere, so git still lists it as untracked) adds `/<root>/` to the lines, a `none (...)` line adds nothing. Show the exact lines first, then one AskUserQuestion with BOTH homes as options (template below); write only on consent - the data root's line through `node "$TMP/repo/scripts/git-hygiene.js" --root . --apply gitignore|exclude` (it anchors the line and, in the exclude file, spells it from the repository's top level).
+1. **Git hygiene (project mode - a no-repo directory skips it).** Suggest ignoring the machine-local artifacts this install creates - only entries that apply to the selection and are not already covered by the project's ignore rules: the lines `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/post-install.md` section 2 gives (`.claude/*` with `!.claude/AGENTS.md`, so the seeded instruction file stays committed - the re-include only while it lives in `.claude/`), plus runtime dirs when present in the tree (`.slopwatch/`, or a `.serena/` / `.playwright/` an older install left). The data root (`.alfred/` by default - the docs, the hooks' state, the sensitive-data file) carries its own `.gitignore`, which keeps everything but the docs out of git; run `node "$TMP/repo/scripts/git-hygiene.js" --root .` before `$TMP` is removed - a `git-hygiene: offer <root>/` line (nothing under it is committed: local docs, or the docs root elsewhere, so git still lists it as untracked) adds `/<root>/` to the lines, a `none (...)` line adds nothing. Show the exact lines first, then one AskUserQuestion with BOTH homes as options (template below); write only on consent - the data root's line through `node "$TMP/repo/scripts/git-hygiene.js" --root . --apply gitignore|exclude` (it anchors the line and, in the exclude file, spells it from the repository's top level).
 
    ```ask
    Ignore these machine-local paths in git? <the exact lines>.
@@ -292,11 +274,11 @@ Report what still needs a hand: `/plugin` switches a picked browser off or on (o
    - 'Skip' - nothing is written
    ```
 
-2. **Restart, then `/alfred-code:init` again** - restart Claude Code from the project root (MCP servers connect and skills, agents and rules are inventoried at launch; hooks and the settings.json env need no restart - they are live on the next tool call), then type `/alfred-code:init` in the NEW session: it finds the install and runs its bootstrap phase - it installs what the kept MCPs need to start (uv, the pinned Python, csharp-ls, the picked browsers, the navigation-server index - one ask first; step 10's `init:` lines are the first reason when there are any), asks the memory level and imports the old notes, runs the captures this install carries, and offers the AGENTS.md fill. `claude mcp list` after the restart confirms the servers connected - one that timed out usually lacks what init installs.
+2. **Restart, then `/alfred-code:init` again** - restart Claude Code from the project root (skills, agents and rules are inventoried at launch; hooks and the settings.json env need no restart - they are live on the next tool call), then type `/alfred-code:init` in the NEW session: it finds the install and runs its bootstrap phase - it installs what the kept plugins need (csharp-ls, typescript-language-server - one ask first; step 9's `init:` lines are the first reason when there are any), sets claude-hud's status line, runs the captures this install carries, and offers the AGENTS.md fill.
 
 ## Do not
 
-- Do not install the full set - always go through the walk, and never present a layer question without its `[step n/11 - <name>] ... · next: <name>` banner or without the full-catalog table (a partial table hides choices; a later 'want these too?' question is the failure this shape exists to prevent).
+- Do not install the full set - always go through the walk, and never present a layer question without its `[step n/10 - <name>] ... · next: <name>` banner or without the full-catalog table (a partial table hides choices; a later 'want these too?' question is the failure this shape exists to prevent).
 - Do not deselect a locked row on the user's behalf, and never drop one silently - the reason column is the answer, the reopen offer is the remedy.
 - Do not paste tool output other than the decision tables, or run chatty per-file commands - the 'Narrate, don't trace' contract holds for the whole run.
 - Do not call a skill this run just installed. Skills are inventoried at session start, so one written to disk seconds ago is not in the running registry and the call returns `Unknown skill: <name>` (measured) - a wasted round trip the reload item in the closing card already accounts for. The captures are the bootstrap phase's, `/alfred-code:init` after the restart - name init in the card, never a capture.

@@ -40,7 +40,7 @@ to the user.
 **THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing** - the shared contract lives at
 `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`; read it first, in ONE Bash `cat`, and hold the whole run to
 it: resolve the snapshot once into `$TMP/repo` - copied from the newest valid plugin-cache entry, downloaded only when there is none (the reference owns the fallback), use every tool
-from that snapshot, hand it back with `--source` in step 12, and remove `$TMP` per the 'Clean up'
+from that snapshot, hand it back with `--source` in step 11, and remove `$TMP` per the 'Clean up'
 section on every exit path. The protocol's 'Narrate, don't trace' section governs every tool
 call: one quiet call per recompute, no pasted tool output except the decision tables, one narration line between steps.
 This command's extra stake in the snapshot: its revision is what step 1 compares the stamp against
@@ -62,19 +62,19 @@ surface where the rule forbidding it cannot yet exist).
 
 ## The ladder - announce every step
 
-Thirteen user-facing steps; the machinery between them runs silently. Before EVERY question, one
+Twelve user-facing steps; the machinery between them runs silently. Before EVERY question, one
 banner line so the user always knows where they are, what is being decided, and what comes next:
 
 ```
-[step 3/13 - rules] adjust the installed rules · next: agents
+[step 3/12 - rules] adjust the installed rules · next: agents
 ```
 
-1 install status · 2 areas · 3 rules · 4 agents · 5 skills · 6 hooks · 7 MCPs · 8 plugins · 9 environment · 10 permission mode · 11 prerequisite check · 12 update · 13 AGENTS.md (optional)
+1 install status · 2 areas · 3 rules · 4 agents · 5 skills · 6 hooks · 7 plugins · 8 environment · 9 permission mode · 10 prerequisite check · 11 update · 12 AGENTS.md (optional)
 
 **The skeleton is INVARIANT - the stability contract.** Every run prints all 13 banners, in this
 order, exactly once each. A step that does not apply THIS run still prints its banner followed by
-ONE line naming why it is a no-op (`[step 7/13 - MCPs] skipped - area not selected`,
-`[step 13/13 - AGENTS.md] skipped - the user declined`), then moves on - a step never silently
+ONE line naming why it is a no-op (`[step 7/12 - plugins] skipped - area not selected`,
+`[step 12/12 - AGENTS.md] skipped - the user declined`), then moves on - a step never silently
 vanishes, and steps are never merged, reordered, renumbered, or invented. Two runs must be
 comparable banner by banner; the content varies, the skeleton never does.
 
@@ -99,20 +99,19 @@ comparable banner by banner; the content varies, the skeleton never does.
   ```
 
   Then read the two offers this run may ask about, with no compare: `node "$TMP/repo/scripts/update-preflight.js"
-  --offers --root .` prints a `data-move:` line (step 9's data question) - `offer ...` or `none (<why>)` - then an
-  `instructions:` line and an `instructions-file:` line (step 12's place and name asks). It prints no
+  --offers --root .` prints a `data-move:` line (step 8's data question) - `offer ...` or `none (<why>)` - then an
+  `instructions:` line and an `instructions-file:` line (step 11's place and name asks). It prints no
   `docs-move:` line: a docs root set by hand is moved by `/alfred-code:update` alone, never here (audit 2026-10-21 C-Q1).
 
   `$TMP/installed.json` is the walk's inventory (`--installed`): `{rules, agents, skills, hooks,
-  mcps, plugins, plugins_disabled, parked_plugins, left_out, answered}` in catalog names (the
-  browser engines folded onto `browser`). Each plugin carries the SCOPE the listing printed,
+  plugins, plugins_disabled, parked_plugins, left_out, answered}` in catalog names. Each plugin carries the SCOPE the listing printed,
   because an uninstall is scope-addressed. A plugin the listing marks disabled sits in
   `plugins_disabled` (`parked_plugins` is its catalog part): parked, never proposed for install or
   removal. `left_out` lists what the user switched off - a denied seat, an item of a parked retired entry -
   as selection lines; the walk leaves it off unless the user picks it. Three signals in
   `$TMP/plan.out`, none printed to the user: `error: --installed-only found nothing installed` means
   there is nothing to configure - route to `/alfred-code:init`; `plan routes: skills=<plugin|copy>
-  hooks=<plugin|copy> mcps=<plugin|copy>` names the routes; `plan answered: hooks=<yes|no>
+  hooks=<plugin|copy>` names the routes; `plan answered: hooks=<yes|no>
   agents=<yes|no>` says which off-states the read found evidence of. `agents=no` with
   `skills=plugin` means the plugin listing could not be read or the core entry is parked - stop and
   report which, since every carried seat would read as dropped. `hooks=no` means the hooks layer is
@@ -123,7 +122,7 @@ comparable banner by banner; the content varies, the skeleton never does.
   node "$TMP/repo/scripts/update-preflight.js" --inventory "$TMP/installed.json"
   ```
 
-  It prints the fixed `| category | count | items |` table, the six rows in order, and a `total: <n> installed` line -
+  It prints the fixed `| category | count | items |` table, the five rows in order, and a `total: <n> installed` line -
   block (1) below, pasted byte-for-byte in a fenced block. The plugin's `guard-layer-table.js` denies the step-1 ask
   until this call ran and its `total:` line is in your message (audit 2026-10-11, session a9e06780: the inventory
   sat in a collapsed tool result and the ask said 'Installed set is shown above'). Also run the evidence scan quietly -
@@ -157,7 +156,7 @@ so never diff against or mention `develop`. Two signal lines to handle, neither 
 
 A `TRUNCATED` line (the third, after the version and base lines) means the preview may be missing files - say so alongside the summary.
 
-**This step's output has ONE fixed shape** - the `[step 1/13 - install status]` banner, then three blocks, nothing
+**This step's output has ONE fixed shape** - the `[step 1/12 - install status]` banner, then three blocks, nothing
 else: (1) the `--inventory` output in a fenced block (note excluded generated files in one trailing line under it,
 not per-row prose); (2) the update-preview verdict - one line leading with the version delta or 'no
 upstream changes', then the category summary only when there IS a diff; (3) the closing question.
@@ -169,7 +168,7 @@ Close the step with ONE AskUserQuestion, the template for the case. Upstream cha
 ```ask
 Adjust the installed selection? <the update-preview line>
 - 'Adjust the selection (Recommended)' - continue to the area pick at step 2
-- 'Refresh as-is' - nothing to change; skip to step 11 and take the release in step 12
+- 'Refresh as-is' - nothing to change; skip to step 10 and take the release in step 11
 ```
 
 Upstream changed nothing (`no upstream changes`, or `no-stamp` / `compare-unreachable` with nothing to name) - a
@@ -186,29 +185,29 @@ a9e06780: an improvised step-1 ask listed the marked stop last of three, and the
 
 ## 2. Choose the areas
 
-One multi-pick: which areas to adjust this run - rules, agents, skills, hooks, MCPs, plugins, environment (default: all). The AskUserQuestion tool caps a question at 4 options, so present exactly this fixed grouping rather than improvising one per run (measured: an ad hoc 5-option split errored once before self-healing): AskUserQuestion has no pre-selection, so the question says what an empty pick means (audit 2026-10-21 C-T4-01):
+One multi-pick: which areas to adjust this run - rules, agents, skills, hooks, plugins, environment (default: all). The AskUserQuestion tool caps a question at 4 options, so present exactly this fixed grouping rather than improvising one per run (measured: an ad hoc 5-option split errored once before self-healing): AskUserQuestion has no pre-selection, so the question says what an empty pick means (audit 2026-10-21 C-T4-01):
 
 ```ask
 Which areas to adjust this run? None ticked walks all four.
 - 'Rules + Agents + Skills (Recommended)' - the three catalog layers, walked first
 - 'Hooks' - the hook layer
-- 'MCPs + Plugins' - the servers, the browser engines and the plugin picks
+- 'Plugins' - the status line and the LSP picks
 - 'Environment' - the stack's env values
 ```
- Only the chosen areas are walked, in the fixed dependency order rules -> agents -> skills -> hooks -> MCPs -> plugins -> environment; every skipped layer keeps its installed SET untouched - its files are still refreshed by the
-installer run at step 12, which works from the whole selection - and gets one narration line naming it. Cascades still cross area lines - the closure owns consistency, the picker only decides which tables you page through: a consent-drop's dependents are handled wherever they land, and orphans that fall in a SKIPPED layer are collected and presented in one combined drop round after the last walked layer, never silently kept or removed.
+ Only the chosen areas are walked, in the fixed dependency order rules -> agents -> skills -> hooks -> plugins -> environment; every skipped layer keeps its installed SET untouched - its files are still refreshed by the
+installer run at step 11, which works from the whole selection - and gets one narration line naming it. Cascades still cross area lines - the closure owns consistency, the picker only decides which tables you page through: a consent-drop's dependents are handled wherever they land, and orphans that fall in a SKIPPED layer are collected and presented in one combined drop round after the last walked layer, never silently kept or removed.
 
-## The walk - steps 3-8, one layer at a time
+## The walk - steps 3-7, one layer at a time
 
 Read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/walk.md` AT step 3, never earlier - a run that stops at step 1 or
-skips to step 11 never needs it (audit 2026-10-11, session a9e06780: read at the start, ~7.6k re-sent on 5 requests
+skips to step 10 never needs it (audit 2026-10-11, session a9e06780: read at the start, ~7.6k re-sent on 5 requests
 of a run that stopped at step 1) - and run it in **DELTA**
 mode - the install phase's own walk, over the installer's read-back instead of the recommendations, so the two
-cannot drift. The layers run in dependency order, rules -> agents -> skills -> hooks -> MCPs ->
-plugins (only the areas picked at step 2), over `raw.json` and `dropped.json` seeded from step 1's
+cannot drift. The layers run in dependency order, rules -> agents -> skills -> hooks -> plugins
+(only the areas picked at step 2), over `raw.json` and `dropped.json` seeded from step 1's
 `$TMP/installed.json`, and every layer has the same three beats: recompute quietly (`stack-select.js
 --selection "$TMP/raw.json" --dropped "$TMP/dropped.json"`, reading its `required:` and `orphan:` lines), paste the
-tool's full-catalog table in a fenced block after the `[step n/13 - <layer>]` banner, then ONE call
+tool's full-catalog table in a fenced block after the `[step n/12 - <layer>]` banner, then ONE call
 of two option questions (ADD and DROP - walk.md's DELTA templates, 'Pick' opening a grouped multi-select call), a locked drop running the consent cascade. The file owns the table rules,
 the asks and each layer's notes; the steps below add only what is this command's own.
 
@@ -226,58 +225,14 @@ walk.md's Skills layer.
 
 ## 6. Hooks
 
-walk.md's Hooks layer - a drop is named in `ALFRED_CODE_HOOKS_OFF`, re-adding removes it; step 9
+walk.md's Hooks layer - a drop is named in `ALFRED_CODE_HOOKS_OFF`, re-adding removes it; step 8
 is where the same value can also be edited by hand.
 
-## 7. MCPs
+## 7. Plugins
 
-walk.md's MCPs layer, the browser engines picked as rows of their own, pre-selected from step 1's plan (step 12
-passes a changed pick).
+walk.md's Plugins layer, the plugin-settings ask included - applied at step 11a.
 
-Whenever `alfred-memory` is PRESENT after this round - kept from before, or newly pulled in by adding
-`alfred-memory` at step 3 - ask the shared memory level. Read what is registered today first:
-`node "$TMP/repo/stack/hooks/memory.js" level` prints `<level> <dbPath>` or `none` (no prior
-registration - a fresh add, default to `global`). Paste this table - both levels offered at every
-scope, `--scope user` on the FULL copy route (all three `ALFRED_CODE_*_VIA_PLUGIN=false`) included:
-that route registers memory in THIS project's own `.mcp.json`, never one path baked into an
-account-wide registration, so `project` is safe there too:
-
-```
-| level | database | who shares it |
-|---|---|---|
-| global | ~/.alfred-memory/memory.db | every Claude account and Cursor on this machine |
-| project | <project>/.alfred/.alfred-memory/memory.db (under the data root), gitignored | this project only, from any account |
-```
-
-Then ONE AskUserQuestion, the level read back (or `global` on a fresh add) first and marked:
-
-```ask
-Shared memory level for this project? It is <level read back> today (<its database>) - or none yet, a fresh add.
-- 'Keep <level read back> (Recommended)' - on a fresh add 'global (Recommended)'; the registration already matches, nothing is re-pointed
-- '<each other level>' - one option per other row of the table, its database and who shares it
-```
- Picking or keeping `project` while this project's awareness docs
-already name sibling repos (`<docs-path>/awareness/RELATED-PROJECTS-AWARENESS.md` holds an entry) means those projects' memories are not visible from this
-one - name that in the post-check, not here. Changing level never copies or deletes a database -
-it re-points the registration, and the installer prints
-`memory: level <old> -> <new>: <newPath> (old memories stay in <oldPath>)`; read that line verbatim
-and report it, never assert it. The post-check then offers the move as two copy-ready commands the
-user runs - `node .claude/hooks/memory.js export --db <oldPath> > memories.jsonl`, then `node
-.claude/hooks/memory.js import memories.jsonl` (stored through the new level's server; a re-run
-stores nothing) - and runs neither itself. Pass the answer to the installer as
-`--memory-level <value>` at step 12; 'keep' passes nothing - the registration already matches.
-`alfred-memory` dropped this round entirely (its holding rule dropped too): ask nothing, the MCP layer's
-own drop handling applies like any other server.
-
-Presence, never the value - run this and paste its lines as-is:
-`node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" CONTEXT7_API_KEY`
-(the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable). Output is `KEY=set (N chars)`, `KEY=empty (present, no value)` or `KEY=absent` - nothing else is ever printed; a shell dump of that file is rewritten by the same hook into its redacted view (every credential value shown as `<set (N chars)>`), and the Read tool on it is blocked.
-
-## 8. Plugins
-
-walk.md's Plugins layer, the plugin-settings ask included - applied at step 12a.
-
-## 9. Environment - the stack env values (when picked)
+## 8. Environment - the stack env values (when picked)
 
 The values come from the snapshot's `$TMP/repo/meta/environment.json` - the ONE list of what this
 release owns in the scope's settings file `env` (`.claude/settings.local.json` at local scope, else
@@ -297,38 +252,35 @@ git - ...)` line names it and why) as the recommended answer, never the catalog 
 
 Two behaviours live here rather than in the catalog, because they are about what this step DOES. The
 DATA ROOT (`ALFRED_CODE_DATA_PATH`) is where Alfred Code keeps this project's data - the docs, the
-navigation server's folder and home, the browser profiles, a project-level memory database - so changing
-it MOVES that data, and it goes through the installer, never the merge below. It is ONE question about
+hooks' state and the sensitive-data file - so changing it MOVES that data, and it goes through the installer, never the merge below. It is ONE question about
 plugin data storage as a whole, the current value shown with what it holds. Step 1's `data-move:` line
 says whether any of it still sits outside the root (the same line update reads). On `data-move: offer <root> ...` the
 MOVE is the recommendation, whatever the current value: every Alfred Code file belongs under the data
-root, and the data at `from=` (a 2.0.0 `.serena` / `.playwright` / `.memory-mcp`, or an earlier root's) is
-outside it. The docs are no part of it: they always sit at `<data root>/docs`, and every run moves them unasked. It is asked even when step 2 left the
+root, and the data at `from=` (an earlier root's sensitive-data file) is outside it. The docs are no part of it: they always sit at `<data root>/docs`, and every run moves them unasked. It is asked even when step 2 left the
 Environment area out (the data question alone, no other row). Ask this form then, and pass
-`--data-move move` on step 12's installer call (a yes is a change on its own, so the installer runs):
+`--data-move move` on step 11's installer call (a yes is a change on its own, so the installer runs):
 
 ```ask
-Move this project's Alfred Code data into <root>? From <from places>: the navigation index, browser profiles and project memory at each server's next start, after a restart.
+Move this project's Alfred Code data into <root>? From <from places>: the sensitive-data file, moved by this run.
 - '<root> - move everything (Recommended)' - one folder outside .claude/, nothing overwritten
-- 'Keep the current layout' - nothing moves; the servers keep reading where their data is
+- 'Keep the current layout' - nothing moves; the hooks keep reading the file where it is
 ```
 
 A `conflicts=<n>` field means data already sits at the new place: name it and do not ask. With
 `data-move: none (...)` the question is the keep-or-change one below:
 
 ```ask
-Where should Alfred Code keep this project's data - its docs, the navigation index and handoff notes, browser profiles and a project memory database? Recommended: keep <current> - the folder it uses now, so nothing moves; its own .gitignore keeps everything but the docs out of git.
-- 'Keep <current> (Recommended)' - nothing moves; data still at a 2.0.0 place keeps serving from there
-- 'Move everything into .alfred' - one folder at the project root, outside .claude/; when <current> is already .alfred it moves only the data still at a 2.0.0 place (.serena, .playwright, .memory-mcp) - leave this option out when there is none
+Where should Alfred Code keep this project's data - its docs, the hooks' state and the seats' handoff notes, and its sensitive-data file? Recommended: keep <current> - the folder it uses now, so nothing moves; its own .gitignore keeps everything but the docs out of git.
+- 'Keep <current> (Recommended)' - nothing moves
+- 'Move everything into .alfred' - one folder at the project root, outside .claude/ - leave this option out when <current> is already .alfred
 ```
 
 A typed folder (Other) is a custom root - relative, inside the project, never under `.claude/`, no space.
 The current state is always the recommended answer (the walk's own rule): a custom root the user chose is
-kept, never moved back to `.alfred`. Keeping it is no change. A change - to `.alfred` from a 2.0.0
-layout, or to another folder - rides step 12's ONE installer call as `--data-path <folder> --data-move move` (a
+kept, never moved back to `.alfred`. Keeping it is no change. A change - to `.alfred` or to another
+folder - rides step 11's ONE installer call as `--data-path <folder> --data-move move` (a
 change on its own, so that call runs); report its
-`docs root:` and `data root:` lines verbatim - the docs move at once, each server's data at that
-server's next start once nothing holds it - and name the restart. The docs root is always `<data root>/docs`, so a
+`docs root:` and `data root:` lines verbatim - the docs and the sensitive-data file move at once. The docs root is always `<data root>/docs`, so a
 data-root change carries the docs with it and re-stamps the rule. Claude Code's own
 `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` is NOT one of these rows - the stack does not own that key and
 this step neither offers nor touches it.
@@ -344,7 +296,7 @@ carrying `group_off` gets an off answer; never invent one for a row without it, 
 sitting at that value is reported as off, with turning it back on as the change. The fresh-session group also
 carries `ALFRED_CODE_AUTO_COMPACT`, so its question gains one answer: switch between offering a fresh session at
 the triggers (`0`) and compacting there instead (`1`) - the value on disk is the kept one. A change is an env change,
-so step 12's installer runs and sets or removes each model's compaction window from the value just written; it
+so step 11's installer runs and sets or removes each model's compaction window from the value just written; it
 applies from the next session. Nothing else
 needs editing. Apply on consent with a
 merge touching ONLY the chosen keys - everything else in settings.json is preserved, EXCEPT a
@@ -355,10 +307,10 @@ few turns stale, and report its printed line. A typed override (Other) for that 
 deliberate decision like any other row's and goes through the generic merge as-is. Area
 skipped, or nothing changed: one narration line, nothing written.
 
-## 10. Permission mode
+## 9. Permission mode
 
 Runs regardless of which areas were chosen at step 2 - it is not part of that picker (the tool caps a
-question there at 4 options, already spent on rules+agents+skills / hooks / MCPs+plugins /
+question there at 4 options, already spent on rules+agents+skills / hooks / plugins /
 environment). Read the account settings.json (`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json`)
 `permissions.defaultMode` and whether the project's own scope file (`.claude/settings.local.json` at
 local scope, else `.claude/settings.json`) already sets one - report both in one line (`account:
@@ -372,15 +324,14 @@ Permission mode for this project? <account: <mode> · project: <mode | unset>>.
 - 'Keep it as it is (Recommended)' - the project's permissions block stays untouched, whatever it holds
 - 'Set the default for this project' - writes permissions.defaultMode in that scope file only; the next ask offers the account's value first, then default / plan / acceptEdits / bypassPermissions / auto / dontAsk
 ```
- Applied at step 12 (Update + removals), the same merge-only-this-key discipline as the
+ Applied at step 11 (Update + removals), the same merge-only-this-key discipline as the
 Environment step - every other key in `permissions` (`allow` / `deny` / `ask` /
 `additionalDirectories`) and the rest of the file stay untouched.
 
-## 11. Prerequisite check
+## 10. Prerequisite check
 
 Run: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --emit "$TMP/selection.txt" --check [--hooks-answered]`
-(`--hooks-answered` whenever the Hooks area was walked this run, so a walk that switched every hook off emits `hook none` rather than no hook line - which reads as 'every hook'; no `--browsers` here: the engines picked at step 7 sit in `raw.json` as `<engine>-control`, and the run prints them as one `browsers: <csv>` line - a picked `msedge` warns
-when Edge is not installed), output redirected to `$TMP/select.out` like every recompute. **Fixed shape, three blocks:** (1) one
+(`--hooks-answered` whenever the Hooks area was walked this run, so a walk that switched every hook off emits `hook none` rather than no hook line - which reads as 'every hook'), output redirected to `$TMP/select.out` like every recompute. **Fixed shape, three blocks:** (1) one
 verdict line - `blockers: N · warnings: N`; (2) the closed selection grouped by category - closure
 adds marked with their reasons, the final drop list (incl. accepted orphans) named; (3) each
 blocker with its fix, each warning listed. Never run past a blocker
@@ -398,7 +349,7 @@ Keep this install's own model and effort pins? An existing install often carries
 ```
 
 
-## 12. Update + removals
+## 11. Update + removals
 
 **The instruction file's name and place - on step 1's `instructions-file:` and `instructions:` lines unless they read
 `files=none` / `none`, asked before the delta:** read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/instructions-place.md`
@@ -414,7 +365,7 @@ the user never picked - report it as 'stays switched off; pick it in the walk to
 as added; `keep-parked plugin <name>` is a parked plugin the read-back would otherwise enable -
 pass it as a `--drop` whenever the installer runs, but it is no reason to run it. When it prints `none` AND no removals were accepted AND no env,
 permission-mode, or plugin-settings change was chosen, print ONE line - `unchanged - nothing to
-install, nothing to remove` - and skip to step 13 (a rename, place or data-move answer is a change: the installer runs). Do not run the installer to prove it (measured: a run whose
+install, nothing to remove` - and skip to step 12 (a rename, place or data-move answer is a change: the installer runs). Do not run the installer to prove it (measured: a run whose
 selection it had itself proved identical spent 2 API messages and 351,777 re-sent tokens on an
 installer pass whose only real effect was resetting the agent model/effort pins).
 
@@ -429,21 +380,17 @@ kept, or the plugins layer not walked); the narration line before the call names
 `placement: not asked - <why>`). That answer is where the `--scope-of` flags come from, so an installer run
 before it owes a second run when the answer moves an item (audit 2026-10-20 C46, 878f253d).
 
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--keep-pins] [--browsers <csv>] [--scope-of <item>=<global|project|local>]... [--docs-versioning git|local] [--data-path <folder> --data-move move] [--memory-level global|project] [--instructions-file agents|claude] [--instructions-at root|claude] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. One `--scope-of` per optional item the walk's last ask moved (`references/walk.md`, 'Where each optional item installs'), plus one per newly added item made global - none for 'Keep each where it is': an update keeps every item where it lives, and this flag is the one way one moves. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--keep-pins] [--scope-of <item>=<global|project|local>]... [--docs-versioning git|local] [--data-path <folder> --data-move move] [--instructions-file agents|claude] [--instructions-at root|claude] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. One `--scope-of` per optional item the walk's last ask moved (`references/walk.md`, 'Where each optional item installs'), plus one per newly added item made global - none for 'Keep each where it is': an update keeps every item where it lives, and this flag is the one way one moves. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
 - **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED` set to `shell`). The frozen OS twin is gone, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
 - `--docs-versioning` only when the user's own invocation names a value (`/alfred-code:configure
   --docs-versioning local`): the installer writes it over the current value and prints the old and new
-  value in one line. A value changed at step 9 is already in the file, and the installer never re-seeds a
+  value in one line. A value changed at step 8 is already in the file, and the installer never re-seeds a
   key that is present - so it needs no flag.
-- `--memory-level` carries step 7's answer whenever memory is present and the user changed the
-  level: the installer re-points the registration to that level's database (nothing copied or
-  deleted) and prints `memory: level <old> -> <new>: <newPath> (old memories stay in <oldPath>)`.
-  Nothing changed at step 7 - the level already matches, or memory was dropped - needs no flag.
 - `--scope` is the stamp's own `scope:` line (`project`, `user` or `local`) - pass it unchanged unless
   the user asked to MOVE the install.
   Moving a `local` install to `project` or `user` clears the stack's own entries out of
   `settings.local.json` first, or they would keep overriding the shared file: the seat denies move
-  into settings.json, the copied-hook wiring and `.mcp.json` approvals go, and so does every
+  into settings.json, the copied-hook wiring goes, and so does every
   `ALFRED_CODE_*` key still holding the stack's seed (`<key> removed - the stack's own seed ...`). No
   env key ever moves into the committed settings.json: a value the user set locally stays in
   `settings.local.json` and keeps applying (`<key> stays here (your value, <n> chars) - it applies
@@ -460,66 +407,60 @@ items had just been refreshed). On the Node seed a `--drop` is applied BY the in
   since 2.1.0); a hook on the plugin route is named in `ALFRED_CODE_HOOKS_OFF`; a COPIED skill, agent,
   rule or hook (every skill is a copy, a seat or hook only on its copy route) has its file deleted, a
   copied hook its wiring too;
-- an MCP entry nothing kept needs any more - a dropped server's own entry - is disabled:
-  `plugin disabled [<scope>]: <entry>`;
 - a drop of an always-on skill logs `not applied - locked`, like a locked rule: every install
   carries it (its own per-project lever is `skillOverrides`, which leaves the copy in place);
 - a drop something kept REQUIRES logs `--drop <line> not applied - something kept requires it`,
-  after the `required:` line naming what needs it, and a drop of an always-on rule, skill or server
+  after the `required:` line naming what needs it, and a drop of an always-on rule or skill
   logs `not applied - locked` - report both as kept, with that reason;
 - a stack entry enabled at a BROADER scope than this run's (user under a project or local run, project
   under a local one) is switched off for this scope alone - `plugin disabled [<run scope>]: <entry> (... this
   project only ...)`, an override every other project and teammate does not see; the broader row stays. A
   NARROWER row (local under a project run) outranks anything this run writes, and a `managed` row is the
   admin's - each is named, never switched;
-- on the MCP copy route, a dropped server the stack still has registered at a BROADER scope is denied for
-  this scope alone: `deniedMcpServers + <name>` in this scope's settings file (`settings.local.json` at local
-  scope, else `settings.json`), recorded in the stamp's `mcp-denied:` line and lifted when it is picked again;
 - nothing is ever installed to, removed from or switched at `managed` scope - an update is the one call
   that scope takes.
 
-It does NOT uninstall a plugin, and on the copy MCP route it does not unregister a server.
+It does NOT uninstall a plugin.
 **Fixed order, three blocks:** (1) the installer run, summarized in ONE line (what landed, the
 stamp action) - never paste its output, and take the counts from the line that states them:
 `grep -E 'installed/refreshed this run' "$TMP/install.log"` (a `tail -20` of a 243-line log misses
 it, which is how the wrong post-check above was written); (2) removals - what the drops did, from
-`grep -E 'installed-only: (dropping|--drop|skill .* stays loaded)|plugin disabled|plugin disable failed|plugin moved|plugin move failed|scope, not this run|narrower than this run|managed scope|deniedMcpServers|removed \(dropped\)|overwriting a hand-edited copy' "$TMP/install.log"` (a `plugin moved` line is a scope move the walk asked for, reported as one: `<item>: <old> -> <new>`, the `!!` one with the line it names) - for each `--drop <line> not applied - something kept requires it` among them, its reason is `grep -F 'installed-only: required: <line> ' "$TMP/install.log"`; a `dropping plugin <name>` for a `keep-parked` name is no removal, leave it out,
+`grep -E 'installed-only: (dropping|--drop|skill .* stays loaded)|plugin disabled|plugin disable failed|plugin moved|plugin move failed|scope, not this run|narrower than this run|managed scope|removed \(dropped\)|overwriting a hand-edited copy' "$TMP/install.log"` (a `plugin moved` line is a scope move the walk asked for, reported as one: `<item>: <old> -> <new>`, the `!!` one with the line it names) - for each `--drop <line> not applied - something kept requires it` among them, its reason is `grep -F 'installed-only: required: <line> ' "$TMP/install.log"`; a `dropping plugin <name>` for a `keep-parked` name is no removal, leave it out,
 one line per item, never deleted a second time by hand; then each removal the installer does not
-make, with its command shown before running it: `claude mcp remove <name> -s <the scope it is registered at>` for an MCP on the copy
-route (browser = every `<engine>-control` server) - always with its scope, since the CLI's default (`local`) differs from the plugin one (`user`);
+make, with its command shown before running it:
 `claude plugin uninstall <name> --scope <the scope step 1's inventory carries for it>` for a plugin -
 and the removal ask that proposed it NAMES that scope ('enabled at USER scope - removing it removes
 it for every project'), since account-wide and project-local are different consents and the wrong
 `--scope` fails with `not installed in project scope`. 'removals: none' when nothing was dropped;
 (3) the follow-through line - telling the USER to re-run `/capture-awareness` (when
-installed, and ONLY when this run added or removed a skill, agent, MCP server or plugin - the
+installed, and ONLY when this run added or removed a skill, agent or plugin - the
 inventory that rule lists; a run that changed only env or settings names none) so the generated inventory reflects the new install (the skill is manual-only,
 `disable-model-invocation` - a Skill call from this run is blocked; the line is addressed to the
-user, never acted on), and any environment writes from step 9. On a step-10 'set the default for
-this project' answer, merge `permissions.defaultMode: <value>` into the scope file step 10 named
+user, never acted on), and any environment writes from step 8. On a step-9 'set the default for
+this project' answer, merge `permissions.defaultMode: <value>` into the scope file step 9 named
 here too - never the account file, touching ONLY that key inside `permissions`; 'keep it as it is'
 writes nothing.
 
-### 12a. Plugin settings - apply the step-8 answer
+### 11a. Plugin settings - apply the step-7 answer
 
 walk.md's Plugins layer, run after the installer block and before the follow-through line: re-run
 `node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir> --installed <kept plugins csv> --apply` (plus `--replace` for the
 overwrite answer) and paste the closing `applied:` line, plus the `backup:` line right after it when
 one is printed (the account `settings.json` was copied to `settings.json.bak.<time>` before this
 run's first write to it). A run that dropped the plugin asked
-nothing at step 8 and applies nothing here.
+nothing at step 7 and applies nothing here.
 
-## 13. AGENTS.md - the user's call
+## 12. AGENTS.md - the user's call
 
 Not required - open with WHERE it lives and WHAT a yes changes, then AskUserQuestion (reconcile -
 recommended / skip); a 'no' ends the run cleanly. The location: the project's own AGENTS.md - `.claude/AGENTS.md` where the installer
-seeded it, or the root `AGENTS.md` where the project already had one or step 12's place answer put it; name which one you found.
+seeded it, or the root `AGENTS.md` where the project already had one or step 11's place answer put it; name which one you found.
 On a yes, read `$TMP/repo/stack/skills/habits-adjust-agents-md/SKILL.md` and follow it inline
 with `<stack>` = the `$TMP/repo` path, pasted as a literal - the one home of the fill: its improve mode adds the sections the template
 gained, offers a fix for what its check reports (applied only when the user picks it) and shows every
 change before writing, never overwriting the
 project's own prose. This run's own part is the selection-tied lines - any capability mentions - for
-what it added or dropped. Never offer skill/agent/MCP additions here -
+what it added or dropped. Never offer skill/agent/plugin additions here -
 the walk owned the selection.
 
 ## Post-check
@@ -534,10 +475,8 @@ long answer). One row per category this run touched, names in the cells, `-` for
 | skills | 3 | `sql-conventions` | `devops` | - |
 ```
 
-Then only the labelled lines that apply, one each: `AGENTS.md:` the decision and the reconcile result; `Memory:`
-when step 7 touched `alfred-memory` - the level (unchanged, or the old -> new file) and, when `project` was chosen
-while sibling repos are named, that those projects' memories are not visible from this one; `Deferred by you:` what
-an answer put off; `Warnings:` the installer's `!!` lines; `Restart:` when an MCP registration changed. The run
+Then only the labelled lines that apply, one each: `AGENTS.md:` the decision and the reconcile result; `Deferred by you:` what
+an answer put off; `Warnings:` the installer's `!!` lines; `Restart:` when a plugin was added, dropped or moved. The run
 rewrites `alfred-code.stamp` to the revision it installed, so the next configure diffs from here.
 
 **Git hygiene - before `$TMP` goes.** Run `node "$TMP/repo/scripts/git-hygiene.js" --root .`. A
@@ -555,13 +494,13 @@ and apply it with `--apply gitignore` or `--apply exclude`, reporting the `appli
 `none (...)` line is not reported.
 
 **The run closes on a suggestion card, never on a question.** After the report, list the
-follow-ups that are the USER's to run - restart for an MCP change, `/capture-awareness`
+follow-ups that are the USER's to run - restart for a plugin change, `/capture-awareness`
 (when installed and this run changed the inventory it lists), a manual-only capture whose output this
-run made stale, the navigation-server re-index, a credential to rotate or set by
+run made stale, a credential to rotate or set by
 hand - as `Suggested next steps`, the recommended one first and each with the one reason it
 matters ('`/capture-awareness` - the selection changed, so the generated inventory still
 names what this project dropped'). No AskUserQuestion over them: the walk's asks end with the
-installer (a write still gets its consent ask where it happens - step 13's AGENTS.md reconcile),
+installer (a write still gets its consent ask where it happens - step 12's AGENTS.md reconcile),
 and the closing ask over follow-ups was dropped as friction - the user's call, made knowing a
 prose next step was ignored 3 of 3 in one audited session, which is why the reason rides beside
 every step. Close with this line, verbatim:
@@ -581,7 +520,7 @@ THIS command: after a successful update, after an abort, after a blocker, and af
 
 - Do not fall back to a full re-install - this is the update path; a from-scratch install is the
   sibling `init` command's install phase. Never present a layer question without its
-  `[step n/13 - <name>] ... · next: <name>` banner or without the full-catalog table.
+  `[step n/12 - <name>] ... · next: <name>` banner or without the full-catalog table.
 - Never drop a locked row on the user's behalf, never remove an orphan silently, and never
   re-offer an orphan the user chose to keep - the reason column is the answer, the dependent's
   layer is the remedy.

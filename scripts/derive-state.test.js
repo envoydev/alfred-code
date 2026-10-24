@@ -464,7 +464,7 @@ test('init\'s install phase reports only keys the derivation prints', () =>
 {
     // A renamed key would leave the walk quoting a field that no longer exists.
     const init = fs.readFileSync(path.join(ROOT, 'setup-plugin', 'references', 'init-install.md'), 'utf8');
-    const step = init.slice(init.indexOf('## 11. Install'));
+    const step = init.slice(init.indexOf('## 10. Install'));
     const cited = [...step.slice(0, step.indexOf('Then run the installer')).matchAll(/`((?:routes|written|plugins|skills|agents|hooks)(?:\.[A-Za-z]+)*)`/g)].map((m) => m[1]);
     assert.ok(cited.length >= 4, `the install phase names the fields it reports, found ${cited.join(',')}`);
     const { execFileSync } = require('node:child_process');

@@ -69,7 +69,7 @@ const STATE_READ = /node "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/install\/stamp\.js"
 test('init is one command with two phases: the router reads the state and loads ONE phase file - manual-only', () => {
     const init = cmdBody('init');
     assert.match(init, /^---\n[\s\S]*?^disable-model-invocation: true$[\s\S]*?^---$/m, 'init stays manual-only');
-    assert.match(installBody(), /^## 11\. Install$/m, 'the walk lives in the install phase');
+    assert.match(installBody(), /^## 10\. Install$/m, 'the walk lives in the install phase');
     assert.ok(!/^## \d+\. Install$/m.test(bootstrapBody()), 'the bootstrap never installs');
     assert.ok(!/^## \d+\. /m.test(init), 'the router holds no step of its own');
     // The phase is the install state, read the way the hooks read it - the stamp state.
@@ -106,55 +106,47 @@ test('init install phase: the suggestions are validate\'s checks in fresh-instal
 
 test('init install phase: no memory level, the bootstrap prerequisites deferred, and a close that ends on the restart and init again', () => {
     const setup = installBody();
-    const install = setup.slice(setup.indexOf('## 11. Install'), setup.indexOf('## Post-check'));
+    const install = setup.slice(setup.indexOf('## 10. Install'), setup.indexOf('## Post-check'));
     assert.match(install, /install\/alfred-code\.js" install --source "\$TMP\/repo" --scope <scope>/);
     assert.ok(!/--memory-level/.test(install.split('\n').find((l) => l.includes('- **Any OS:**'))), 'the level is init\'s question');
-    assert.match(setup, /--check --defer-init/, 'uv and csharp-ls are init\'s to install, never setup\'s blockers');
+    assert.match(setup, /--check --defer-init/, 'the language servers are init\'s to install, never setup\'s blockers');
     const close = setup.slice(setup.indexOf('## Post-check'));
     assert.match(flat(close), /\*\*Restart, then `\/alfred-code:init` again\*\*/);
     assert.match(flat(close), /Nothing is pending on this run - these are yours to run when you choose\./);
-    assert.ok(!/## \d+\. AGENTS\.md/.test(setup) && /## 6\. AGENTS\.md/.test(bootstrapBody()), 'the AGENTS.md fill is the bootstrap phase\'s');
+    assert.ok(!/## \d+\. AGENTS\.md/.test(setup) && /## 5\. AGENTS\.md/.test(bootstrapBody()), 'the AGENTS.md fill is the bootstrap phase\'s');
 });
 
-// R77: the engine pick pre-selects the LIVE state over an install - the table's own rows, which stack-select reads from
-// plan-out's `browser` block (stack-select.test.js) - never the stamp's line. Since 2026-10-15 the engines are rows of
-// their own and no enable question is asked: the run passes no --browser-enabled, so an installed engine keeps its on/off.
-test('the walk: the browser engine pick reads the live install in DELTA and asks no enable question (R77)', () => {
+// 2.10.1 (spec N5): the stack ships no MCP server, so no walk carries a server layer or a server ask, and no
+// command passes a server flag; the FRESH / DELTA modes are unchanged.
+test('the walk: no MCP layer, no server ask, no server flag', () => {
     const walk = walkBody();
-    const mcps = flat(walk.slice(walk.indexOf('## MCPs'), walk.indexOf('## Plugins')));
-    // AskUserQuestion has no pre-selection (audit 2026-10-21 C-T4-01): the question names the default and marks it.
-    assert.match(mcps, /the question names the default - FRESH `chrome-control` when it was earned, DELTA every engine the table reads `yes` or `yes \(off\)` - and the mark sits on it/);
-    assert.match(mcps, /No enable question is asked and no `--browser-enabled` is passed: an engine installed now arrives on, one already installed keeps its on\/off/);
-    assert.match(mcps, /The `--emit` run prints a `browsers: <csv>` line - pass it to the installer as `--browsers <csv>`/);
-    assert.match(mcps, /18\.7k characters of schema/, 'the per-session cost stays named (R67)');
-    // M2: picking a Playwright-built engine installs it in THIS run - the ask says so; init only reports.
-    assert.match(mcps, /Picking one IS installing it: a picked `firefox` \/ `webkit` is downloaded/);
-    for (const [cmd, body] of [['init install phase', installBody()], ['configure', cmdBody('configure')], ['validate', cmdBody('validate')]]) assert.ok(!/--browser-enabled/.test(body), `${cmd} passes no enable answer`);
-    assert.match(mcps, /`\/alfred-code:init` reports one that is not there/);
+    assert.ok(!walk.includes('\n## MCPs\n'), 'no MCPs section');
+    for (const b of askBlocks(walk)) assert.doesNotMatch(b[0], /browser|Playwright|mobile-control|windows-control|macos-control|memory level/i, b[0]);
+    for (const [cmd, body] of [['init install phase', installBody()], ['configure', cmdBody('configure')], ['validate', cmdBody('validate')]])
+        assert.doesNotMatch(body, /--browser-enabled|--browsers |--memory-level|--table mcps/, `${cmd} passes no server flag`);
     assert.match(flat(installBody()), /references\/walk\.md` before step 4 and run it in \*\*FRESH\*\*/);
     assert.match(flat(cmdBody('configure')), /references\/walk\.md` AT step 3, never earlier - [^*]*and run it in \*\*DELTA\*\*/);
     assert.match(cmdBody('configure'), /--installed-only --print-plan --plan-out "\$TMP\/installed\.json"/, 'the DELTA walk reads the plan configure wrote');
 });
 
-test('init bootstrap phase: the order - read, plan, one machine ask, memory, captures inline, AGENTS.md; no sentry', () => {
+test('init bootstrap phase: the order - read, plan, one machine ask, captures inline, AGENTS.md; no sentry', () => {
     const init = bootstrapBody();
-    // M6: a fresh uv lands off the shell's PATH - step 4's import needs uvx, so it gets the prefix too.
-    assert.match(flat(init), /EVERY later command of this run carries that directory first - `PATH="<dir>:\$PATH" <command>` - step 3's `after uv` commands and step 4's `memory\.js init` alike/);
+    // 2.10.1: no server runtime to install and no memory import - the stack ships no MCP server.
+    assert.doesNotMatch(init, /\buvx?\b|memory\.js|--level/, 'no uv, no memory step');
     // The hook count, stated once per table: the manifest ships eighteen (forge-session joined 2026-10-23, memory-session
     // retired 2026-10-24).
     assert.match(flat(walkBody()), /Recommended \(FRESH\) = all eighteen:.*\*\*None\*\* names all eighteen/);
-    const order = ['## 1. Read the install', '## 2. The plan', '## 3. Machine installs - ONE ask', '## 4. Memory', '## 5. Captures', '## 6. AGENTS.md'].map((h) => init.indexOf(h));
-    assert.ok(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), `the six steps in order: ${order}`);
+    const order = ['## 1. Read the install', '## 2. The plan', '## 3. Machine installs - ONE ask', '## 4. Captures', '## 5. AGENTS.md'].map((h) => init.indexOf(h));
+    assert.ok(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), `the five steps in order: ${order}`);
     assert.match(init, /install\/alfred-code\.js" update --source "\$TMP\/repo" --installed-only --print-plan --plan-out "\$TMP\/installed\.json"/);
     assert.match(init, /scripts\/init-plan\.js" --installed "\$TMP\/installed\.json" --root \./);
-    assert.match(init, /scripts\/install\/memory\.js" init --project-root \. --level <answer>/);
     // C-T4-01: no pre-selection exists, so the one ask is a single-select and 'Pick which' opens the multi-select.
     assert.match(flat(init), /Otherwise ONE AskUserQuestion - .*'Install all of them \(Recommended\)' - each line's exact command runs, in plan order - 'Pick which' - the next call is a multi-select/);
     // Task 24: claude-hud's status line + compact layout rides that same ask - no ask of its own.
     assert.match(flat(init), /`claude-hud status line \+ compact layout` is one of those lines: its command \(`hud-statusline\.js`\)/);
     assert.match(flat(init), /A `skip` line is not an option either/);
     // Fix round 1 (I-3, M-3): a stale line is a `refresh` option, backed up first; the keys the row adds are named.
-    assert.match(flat(init), /one option per `missing` \/ `missing after uv` \/ `refresh` line/);
+    assert.match(flat(init), /one option per `missing` \/ `refresh` line/);
     assert.match(flat(init), /`# adds <n> claude-hud keys: <names>`/);
     assert.match(flat(init), /settings\.json\.bak\.<time>/);
     assert.match(flat(init), /follow it inline, start to finish - never a Skill call/);
@@ -177,7 +169,8 @@ test('the router: nothing installed -> init (install phase), installed but never
     assert.match(router, /node "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/install\/stamp\.js" state \./);
     assert.match(router, /\*\*Initialised\*\* = the stamp's `initialised:` line holds a date/);
     assert.match(router, /`initialised: pending`/);
-    assert.match(router, /a stamp from before that line counts as initialised when `autoMemoryEnabled: false`/);
+    assert.match(router, /a stamp from\s+before that line reads as never initialised/);
+    assert.doesNotMatch(router, /autoMemoryEnabled/, 'the memory switch is no sign of a bootstrap since 2.10.1');
     assert.match(router, /Not installed -> `\/alfred-code:init` \(its install phase/);
     assert.match(router, /Installed, never initialised -> `\/alfred-code:init`/);
     assert.match(router, /Initialised -> no bootstrap/);
@@ -640,7 +633,7 @@ test('status: read-only from the running plugin - stamp state, health columns, u
     assert.match(status, /"\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/library-check\.js" --project \. --source "\$\{CLAUDE_PLUGIN_ROOT\}" --json/);
     assert.match(f, /When `invalid` is above 0, one more line: `invalid: <n> stamp name\(s\) are not valid item names/);
     assert.match(f, /`health` is `ok` when the row's `errors` list is empty or absent, else the `type` of each `errorDetails` entry/);
-    assert.match(f, /The `health` column is ONE `claude mcp list` call/);
+    assert.doesNotMatch(status, /claude mcp list/, 'status lists no MCP server since 2.10.1');
     assert.match(status, /scripts\/analyze-usage\.js" --inventory \.claude/);
     assert.match(status, /stack\/hooks\/guard-secret-value\.js" --presence /);
     for (const row of ['stack version \\(stamp\\)', 'running plugin', 'scope', 'docs root', 'initialised'])
@@ -659,7 +652,7 @@ test('status: read-only from the running plugin - stamp state, health columns, u
 test('the guided walks hold the layer order, the step banners, and the cascade machinery', () => {
     for (const [name, body] of [['init install phase', installBody()], ['configure', cmdBody('configure')], ['validate', cmdBody('validate')]])
     {
-        assert.match(body, /rules -> agents -> skills -> hooks -> MCPs -> plugins/, `${name} walks the layers in dependency order`);
+        assert.match(flat(body), /rules -> agents -> skills -> hooks -> plugins/, `${name} walks the layers in dependency order`);
         assert.match(body, /\[step \d+\/\d+ - /, `${name} announces every step with the n/total banner`);
     }
     const configure = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'configure.md'), 'utf8');
@@ -667,7 +660,7 @@ test('the guided walks hold the layer order, the step banners, and the cascade m
     assert.match(configure, /orphan:/, 'configure consumes the orphan: lines');
     // The shared walk text carries the same machinery for both modes.
     const walk = flat(walkBody());
-    assert.match(walk, /rules -> agents -> skills -> hooks -> MCPs -> plugins/, 'the walk holds the layer order');
+    assert.match(walk, /rules -> agents -> skills -> hooks -> plugins/, 'the walk holds the layer order');
     assert.match(walk, /DELTA: `node "\$TMP\/repo\/scripts\/stack-select\.js" --selection "\$TMP\/raw\.json" --dropped "\$TMP\/dropped\.json"`/, 'the DELTA walk drives the drop cascade');
     assert.match(walk, /An `orphan: <category> <name> - <why> \(dropped\); nothing kept still needs it` line/, 'the DELTA walk consumes the orphan: lines');
     assert.match(walk, /a layer turn missing the fenced table is invalid/, 'the table-before-question rule rides the walk');
@@ -1070,15 +1063,9 @@ test('superpowers is on no stack selection surface', () => {
     assert.doesNotMatch(html, /\["superpowers:/, 'the HTML skill rows');
 });
 
-// F4 re-review N2: C10 (registrationScope, mcp.js) removed the --scope user full-copy-route refusal
-// on `--memory-level project` - configure.md must not tell the model to hide that row any more, and
-// the HTML catalog must not repeat the same stale claim.
-test('N2: configure.md and the HTML catalog no longer claim --memory-level project is refused at --scope user', () => {
-    const configure = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'configure.md'), 'utf8');
-    assert.doesNotMatch(configure, /drop the `project` row/, 'configure.md must not tell the walk to hide the project level');
-    assert.doesNotMatch(configure, /the installer\s*\nrefuses it there/, 'configure.md must not claim a user-scope refusal');
-    assert.match(configure, /project.*is safe there too/s, 'configure.md must say the project level is safe at every scope');
-
+// 2.10.1: the memory level left configure with the memory server, and the HTML catalog keeps no stale refusal claim.
+test('N2: configure carries no memory level, and the HTML catalog no user-scope refusal claim', () => {
+    assert.doesNotMatch(cmdBody('configure'), /--memory-level|memory level/i, 'configure asks no memory level');
     const html = fs.readFileSync(path.join(ROOT, 'docs', 'alfred-code.html'), 'utf8');
     assert.doesNotMatch(html, /only the full copy route refuses it at user scope/, 'the HTML memory row must not repeat the stale refusal claim');
 });
@@ -1133,7 +1120,7 @@ test('every layer ask in walk.md offers 2-4 options with the recommended one fir
         assert.match(opts[0], /\(Recommended\)'/, `'${b[0].slice(0, 50)}' lists the recommended option first`);
         assert.strictEqual(opts.filter((l) => /\(Recommended\)'/.test(l)).length, 1);
     }
-    for (const layer of ['Rules', 'Agents', 'Skills', 'Hooks', 'MCPs', 'Plugins'])
+    for (const layer of ['Rules', 'Agents', 'Skills', 'Hooks', 'Plugins'])
         assert.ok(askBlocks(sectionOf(walk, layer)).length >= 1, `the ${layer} layer carries its own ask template`);
     assert.match(walk, /one AskUserQuestion call of up to 4 multi-select questions/i, 'the Pick follow-up is one call of up to 4 questions');
 });
@@ -1152,23 +1139,6 @@ test('the data-root question is one ask template in init\'s install phase and co
         const opts = data[0].filter((l) => /^- '/.test(l));
         assert.match(opts[0], first, `${rel}: the recommended first option`);
     }
-});
-
-// M13: each enabled browser puts about 25 tools into every session, so a browser is recommended only where the walk
-// seeded it (a web stack) or the evidence proved it; with neither, a gate leading with leaving them out comes first.
-// Since 2026-10-15 the engines are picked as rows of their own: the gate, then ONE engine pick, chrome first.
-test('M13 the browser ask recommends a browser only when a stack seeded it or the evidence proved it', () =>
-{
-    const walk = walkBody();
-    const gate = askBlocks(walk).filter((b) => /Add a browser server \(Playwright\)\?/.test(b[0]));
-    const pick = askBlocks(walk).filter((b) => /^Which browser servers\?/.test(b[0]));
-    assert.strictEqual(gate.length, 1, 'one gate for a row nothing earned');
-    assert.strictEqual(pick.length, 1, 'one engine pick');
-    assert.match(gate[0].filter((l) => /^- '/.test(l))[0], /^- 'Leave the browsers out \(Recommended\)'/);
-    const engines = pick[0].filter((l) => /^- '/.test(l)).map((l) => /^- '([^ ']+)/.exec(l)[1]);
-    assert.deepStrictEqual(engines, ['chrome-control', 'firefox-control', 'msedge-control', 'webkit-control']);
-    assert.match(pick[0].filter((l) => /^- '/.test(l))[0], /^- 'chrome-control \(Recommended\)'/);
-    assert.match(flat(walk), /When the `chrome-control` row reads `stack:<name>`, `recommended` or `evidence`[^.]*ask the engine pick straight away; otherwise[^.]*ask the gate first/);
 });
 
 test('init\'s install phase and configure name option asks, not typed numbers, for stacks and the add/drop rounds', () =>
@@ -1431,7 +1401,7 @@ test('C21: configure reports in a fixed shape - one table, then labelled lines',
     const c = cmdBody('configure');
     const post = c.slice(c.indexOf('## Post-check'), c.indexOf('**Git hygiene'));
     assert.match(post, /\| category \| refreshed \| added \| dropped \| kept \(orphan or required\) \|/);
-    for (const label of ['AGENTS.md:', 'Memory:', 'Deferred by you:', 'Warnings:', 'Restart:']) assert.ok(post.includes(`\`${label}\``), label);
+    for (const label of ['AGENTS.md:', 'Deferred by you:', 'Warnings:', 'Restart:']) assert.ok(post.includes(`\`${label}\``), label);
 });
 
 // Review 2026-10-23: an unattended update never writes over the user's AGENTS.md answer - ask-local's Recommended option
