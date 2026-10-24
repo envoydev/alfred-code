@@ -903,35 +903,51 @@ function writeSettings(opts)
     }
     // CUSTOM MEMORY (ALFRED_CODE_MEMORY=custom, applyEnv 3e): Claude Code's own memory off in this project's own file at every
     // scope, ledgered, so a switch back or an uninstall takes it back. A value the user set is theirs - kept, and named where it
-    // works against the mode. The env as this run leaves it, the way the window pass reads it.
+    // works against the mode. The env as this run leaves it, the way the window pass reads it. The switch-off sits beside the
+    // choice (final review I1): in settings.local.json when its env holds ALFRED_CODE_MEMORY - a personal choice never switches
+    // the team's memory off in the committed settings.json - else in this run's own file; the other file keeps none of the stack's.
+    const localName = localFile ? path.basename(localFile) : null;
     let memOwned = false;
+    let memLocal = false;
+    let localMem = false;
     {
-        const memPrior = prior && prior.settings ? prior.settings[label] || {} : null;
+        const memPrior = (name) => (prior && prior.settings ? prior.settings[name] || {} : null);
+        const oursIn = (obj, name) => Object.hasOwn(obj, 'autoMemoryEnabled') && Boolean(memPrior(name)) && memPrior(name).autoMemoryEnabled === valueHash(JSON.stringify(obj.autoMemoryEnabled));
         const env = { ...(plain(inheritedEnv) ? inheritedEnv : {}), ...(plain(data.env) ? data.env : {}), ...(overlay || {}) };
         const custom = env.ALFRED_CODE_MEMORY === 'custom';
-        const has = Object.hasOwn(data, 'autoMemoryEnabled');
-        const ours = has && Boolean(memPrior) && memPrior.autoMemoryEnabled === valueHash(JSON.stringify(data.autoMemoryEnabled));
+        const inLocal = Boolean(overlay) && Object.hasOwn(overlay, 'ALFRED_CODE_MEMORY');
+        const [at, name, other, otherName] = inLocal ? [local, localName, data, label] : [data, label, local, localName];
+        const touch = () => { if (at === data) changed = true; else localMem = true; };
+        const own = () => { if (at === data) memOwned = true; else memLocal = true; };
+        const has = Object.hasOwn(at, 'autoMemoryEnabled');
+        const ours = oursIn(at, name);
         // A value of the user's own is named on the run that answers the question or drops the stack's row, not on every run.
-        const say = Boolean(memory && memory.value) || Boolean(memPrior && Object.hasOwn(memPrior, 'autoMemoryEnabled'));
+        const say = Boolean(memory && memory.value) || Boolean(memPrior(name) && Object.hasOwn(memPrior(name), 'autoMemoryEnabled'));
         if (custom && !has)
         {
-            data.autoMemoryEnabled = false;
-            memOwned = true;
-            changed = true;
-            log(`  ${label}: autoMemoryEnabled: false written - ALFRED_CODE_MEMORY is custom, so Claude's own memory is off and your ranked memory tool holds the lessons`);
+            at.autoMemoryEnabled = false;
+            own();
+            touch();
+            log(`  ${name}: autoMemoryEnabled: false written - ALFRED_CODE_MEMORY is custom, so Claude's own memory is off and your ranked memory tool holds the lessons`);
         }
-        else if (custom && ours) memOwned = true;
-        else if (custom && data.autoMemoryEnabled === true && say) log(`  ${label}: autoMemoryEnabled: true kept - yours; custom memory needs it off, so Claude's own memory stays on beside your memory tool`);
+        else if (custom && ours) own();
+        else if (custom && at.autoMemoryEnabled === true && say) log(`  ${name}: autoMemoryEnabled: true kept - yours; custom memory needs it off, so Claude's own memory stays on beside your memory tool`);
         else if (!custom && ours)
         {
-            delete data.autoMemoryEnabled;
-            changed = true;
-            log(`  ${label}: autoMemoryEnabled: false removed - ALFRED_CODE_MEMORY is no longer custom, so Claude's own memory is back on`);
+            delete at.autoMemoryEnabled;
+            touch();
+            log(`  ${name}: autoMemoryEnabled: false removed - ALFRED_CODE_MEMORY is no longer custom, so Claude's own memory is back on`);
         }
-        else if (!custom && data.autoMemoryEnabled === false && say) log(`  ${label}: autoMemoryEnabled: false kept - yours; native memory needs it on, so Claude's own memory stays off until you remove it`);
+        else if (!custom && at.autoMemoryEnabled === false && say) log(`  ${name}: autoMemoryEnabled: false kept - yours; native memory needs it on, so Claude's own memory stays off until you remove it`);
+        if (other && oursIn(other, otherName))
+        {
+            delete other.autoMemoryEnabled;
+            if (other === data) changed = true; else localMem = true;
+            log(custom ? `  ${otherName}: autoMemoryEnabled: false removed - ${name} holds the custom choice, so the switch-off sits there beside it`
+                : `  ${otherName}: autoMemoryEnabled: false removed - ALFRED_CODE_MEMORY is no longer custom, so Claude's own memory is back on`);
+        }
     }
     // R10: the ledger pass, over the env of each file this run writes, the deny lists and the wirings.
-    const localName = localFile ? path.basename(localFile) : null;
     const reseeds = (key) => (migrations.reseed || []).filter(([k]) => k === key).flatMap(([, bad, to]) => [bad, to]);
     const seedsOf = (key) => [...catalog.filter((r) => r.key === key && !r.written).flatMap((r) => [String(r.default), ...(r.former_defaults || []).map(String)]), ...reseeds(key),
         ...(key === 'ALFRED_CODE_DOCS_VERSIONING' && docsVersioning && docsVersioning.seed ? [docsVersioning.seed] : [])];
@@ -1007,6 +1023,16 @@ function writeSettings(opts)
     for (const id of acwOwned) managedAttr[compactAt(id)] = valueHash(JSON.stringify(data.modelSettings[id].autoCompactWindow));
     if (memOwned) managedAttr.autoMemoryEnabled = valueHash(JSON.stringify(data.autoMemoryEnabled));
     const managed = { env: managedEnv, deny: managedDeny, hooks: managedHooks, settings: Object.keys(managedAttr).length ? { [label]: managedAttr } : {} };
+    // The switch-off held in settings.local.json: its row there, beside the file's other rows still at their recorded value.
+    if (memLocal)
+    {
+        const rows = Object.entries((prior && prior.settings && prior.settings[localName]) || {}).filter(([at, h]) =>
+        {
+            const spot = at !== 'autoMemoryEnabled' && settingAt(local, at);
+            return Boolean(spot) && Object.hasOwn(spot.holder, spot.key) && valueHash(JSON.stringify(spot.holder[spot.key])) === h;
+        });
+        managed.settings[localName] = { ...Object.fromEntries(rows), autoMemoryEnabled: valueHash(JSON.stringify(local.autoMemoryEnabled)) };
+    }
 
     // A personal skillOverrides switch-off follows a renamed skill the same way as a shared one.
     const localRekeyed = Boolean(local) && rekeyOverrides(local, renamed, log, path.basename(localFile));
@@ -1023,12 +1049,12 @@ function writeSettings(opts)
             changed = true;
             log(`  ${label}: settings.json still names skillOverrides ${from} - set as ${to} in ${label}; a local-scope run never writes settings.json, a project-scope update re-keys it`);
         }
-    const localChanged = (Boolean(overlay) && JSON.stringify(overlay) !== overlayBefore) || localRekeyed || localRespelled || localAllowed;
+    const localChanged = (Boolean(overlay) && JSON.stringify(overlay) !== overlayBefore) || localRekeyed || localRespelled || localAllowed || localMem;
     // An env this run emptied sets nothing, and a file left with nothing at all goes: 2.10.0 made settings.local.json
     // for the memory database path alone (the memory-db-retired migration).
     const localEmptied = Boolean(overlay) && overlayBefore !== '{}' && !Object.keys(overlay).length;
     if (localEmptied) delete local.env;
-    if (localChanged && localEmptied && !Object.keys(local).length)
+    if (localChanged && (localEmptied || localMem) && !Object.keys(local).length)
     {
         fs.rmSync(localFile, { force: true });
         log(`  ${localName} removed - it held nothing but the stack's entries`);
@@ -1238,7 +1264,10 @@ function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs =
     const settingsGone = [];
     // The per-model auto-compact windows and custom memory's switch-off go by the ledger alone: their value is derived, so
     // there is no seed to compare.
-    const seededPaths = [...SEEDED_SETTINGS, ...Object.keys(ledgerSettings || {}).filter((at) => at.startsWith('modelSettings.') || at === 'autoMemoryEnabled').map((at) => [at, undefined])];
+    // A custom choice that stays here keeps its switch-off beside it (final review I1): the writer holds it in this file.
+    const customStays = isObj(local.env) && local.env.ALFRED_CODE_MEMORY === 'custom';
+    if (customStays && Object.hasOwn(local, 'autoMemoryEnabled')) say('autoMemoryEnabled stays here - ALFRED_CODE_MEMORY=custom stays in this file, and the switch-off sits beside it');
+    const seededPaths = [...SEEDED_SETTINGS, ...Object.keys(ledgerSettings || {}).filter((at) => at.startsWith('modelSettings.') || (at === 'autoMemoryEnabled' && !customStays)).map((at) => [at, undefined])];
     for (const [at, seed] of seededPaths)
     {
         const spot = settingAt(local, at);

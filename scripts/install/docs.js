@@ -1504,10 +1504,13 @@ function ensureDataIgnore({ projectRoot, root, docsPath, mode, log = () => {} })
 }
 
 // A root the data just left: its emptied folders go, and the root itself when all it still holds is the
-// stack's own .gitignore. A folder holding anything at all stays.
+// stack's own .gitignore. A folder holding anything at all stays. What every run derives again at the root in effect
+// (the language-server check's result, lsp-coverage.js) is no data: it goes first, or no move would ever empty a root.
+const DERIVED_STATE = ['state/lsp-coverage.json'];
 function pruneDataRoot({ projectRoot, root, log = () => {} })
 {
     const base = path.join(projectRoot, ...normRoot(root).split('/'));
+    for (const rel of DERIVED_STATE) try { fs.rmSync(path.join(base, ...rel.split('/')), { force: true }); } catch { /* a folder of that name is not ours */ }
     const prune = (dir) =>
     {
         let entries;

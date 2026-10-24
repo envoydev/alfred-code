@@ -605,3 +605,25 @@ test('an update over an unreadable settings file keeps the switch-off\'s ledger 
     assert.deepStrictEqual(steps.map((s) => s.row), [true, true, true], outs.join('\n---\n'));
     assert.strictEqual(steps[2].off, false, 'the restored file still holds the stack\'s switch-off');
 });
+
+// Final review I1, end to end: a local-scope custom install moved to project scope keeps the choice and its switch-off
+// in settings.local.json; the committed settings.json never switches the team's memory off.
+test('a local custom install moved to project scope keeps memory off in settings.local.json alone', POSIX_ONLY, () =>
+{
+    const { outs, steps } = seedRun(['install', 'update', 'update'], 'rule markdown-docs\n', {
+        args: [['--scope', 'local', '--memory', 'custom'], ['--installed-only', '--scope', 'project'], ['--installed-only', '--scope', 'project']],
+        each: (repo) =>
+        {
+            const read = (n) => { try { return JSON.parse(fs.readFileSync(path.join(repo, '.claude', n), 'utf8')); } catch { return null; } };
+            return { shared: read('settings.json'), local: read('settings.local.json'), stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8') };
+        },
+    });
+    for (const i of [1, 2])
+    {
+        assert.ok(!steps[i].shared || !Object.hasOwn(steps[i].shared, 'autoMemoryEnabled'), `step ${i}: ${JSON.stringify(steps[i].shared)}\n${outs[i]}`);
+        assert.strictEqual(steps[i].local && steps[i].local.autoMemoryEnabled, false, `step ${i}: ${JSON.stringify(steps[i].local)}\n${outs[i]}`);
+        assert.strictEqual(steps[i].local.env.ALFRED_CODE_MEMORY, 'custom');
+        assert.match(steps[i].stamp, /settings\.local\.json:autoMemoryEnabled=/, steps[i].stamp);
+    }
+    assert.ok(!/autoMemoryEnabled/.test(outs[2]), `the second update said: ${outs[2]}`);
+});
