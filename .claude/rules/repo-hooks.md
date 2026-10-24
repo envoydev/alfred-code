@@ -1180,9 +1180,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     only the ranks its `tools:` / `disallowedTools:` grant, with no load line when it has a `tools:` line; any other seat
     the main session's, no suggestion; a seat's own compaction re-sends its order. `preferences-session:tools` in
     `ALFRED_CODE_HOOKS_OFF` switches the line off and nothing else. Measured on a default install (no doc, no
-    server, 2026-10-24): 303 chars at a main start, a verifier's or an implementer's, 225 at the evidence gatherer's; 833 at
-    a main start with the record's serena, context7 and memory-service registered (1,104 / 603 / 450 with 2.10.0's three stack
-    plugins, against the 207 / 321 chars of the memory line it replaced).
+    server, 2026-10-24): 364 chars at a main start - LSP and WebFetch are deferred built-ins (`deferred` in
+    meta/tool-adapters.json), so each carries its own `Load: ToolSearch select:` clause, the one the navigation rule and
+    LOAD_NAV point at (final review B2; 303 before it) - 303 at a verifier's or an implementer's, which load none, 225 at
+    the evidence gatherer's; 846 at a main start with the record's serena, context7 and memory-service registered (1,104 /
+    603 / 450 with 2.10.0's three stack plugins, against the 207 / 321 chars of the memory line it replaced).
     THE HOST'S SHELL TRAPS (audit 2026-10-14 RU13, the user's ruling; here since memory-session.js retired on 2026-10-24): every
     push it makes at a start - a main session's, every seat's (the guides' too) and a seat's own compaction - ends on THIS host's
     `hostLines`: the Windows Git Bash line on win32, the two zsh lines under a zsh `$SHELL`, nothing on bash, so a start with

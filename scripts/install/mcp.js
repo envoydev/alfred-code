@@ -26,6 +26,10 @@ const { ENGINES: PW_ENGINES, engineServer, engineOfServer } = require('../../sta
 // Every name the browser server was registered under: the 1.x single `playwright`, the `playwright-<engine>`
 // servers 2.0.0 renamed, the `browser-<engine>` ones 2026-10-13 renamed, and one `<engine>-control` per engine.
 const PW_SERVERS = ['playwright', ...PW_ENGINES.map((e) => `playwright-${e}`), ...PW_ENGINES.map((e) => `browser-${e}`), ...PW_ENGINES.map(engineServer)];
+// `browser` sits in the manifest's retired.mcps for the readers that lift approvals and denies, but it was the walk's
+// selection token for the browser engines - each registered as `<engine>-control` - never a registration name, and it has
+// no retirement row to close it: the retire step never walks it, so a user's own server under it is never pruned or named.
+const SELECTION_TOKENS = ['browser'];
 // An engine's server under its name or its 2.0.0 one (`<engine>-control`, `browser-<engine>`) as its engine - the two a
 // stack registration's shape is read for; undefined for any other name.
 const anyEngineOf = (name) => engineOfServer(name) || (/^browser-(chrome|msedge|firefox|webkit)$/.exec(String(name)) || [])[1];
@@ -488,7 +492,7 @@ function exactStack(name, entry, { catalog = SHIPPED_CATALOG, remotes = SHIPPED.
 }
 
 module.exports = {
-    PW_ENGINES, PW_SERVERS, ADD_BACK_NAMES, corePluginOn, currentMcp, renamedFrom, retiredMcps, dueRetired, dueLegacy, mcpArgv, expectShape, wantFor, shapeNorm, pwArgsFor,
+    PW_ENGINES, PW_SERVERS, SELECTION_TOKENS, ADD_BACK_NAMES, corePluginOn, currentMcp, renamedFrom, retiredMcps, dueRetired, dueLegacy, mcpArgv, expectShape, wantFor, shapeNorm, pwArgsFor,
     snapshotMcp, keepMcpOrder, identityOf, exactStack, hasShippedTemplate, packageName, stackIdentities, registrationsAt, accountBackups, accountLoss,
     managedMcp, removeManagedMcp,
 };

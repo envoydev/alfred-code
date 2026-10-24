@@ -9,6 +9,11 @@
     "WebFetch",
     "WebSearch"
   ],
+  "deferred": [
+    "LSP",
+    "WebFetch",
+    "WebSearch"
+  ],
   "jobs": {
     "navigation": {
       "purpose": "locate symbols, callers and types before reading or editing code",

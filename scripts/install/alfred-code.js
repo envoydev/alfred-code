@@ -503,10 +503,17 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // when the last run recorded it and nobody changed it since; the version gate is the fallback
         // for a stamp with no ledger, and for a name the file does not hold. An edited entry stays due on
         // the version gate, so retireMcps names it once with its remove command instead of keeping it silently.
+        // At local and user scope the account file answers the same way (final review A2): a name the ledger records there stays
+        // due while the file holds it at that hash, or cannot be read - so a remove that failed, an unreadable file or a missing
+        // CLI on the first update past the retirement is retried by the next, as its '!!' line says.
         const heldMcp = mcp.registrationsAt({ scope: 'project', mcpFile, projectRoot }).servers;
+        const recordedAt = cliScope !== 'project' && priorLedger && priorLedger.mcpAt ? priorLedger.mcpAt[cliScope] || {} : {};
+        const atScope = Object.keys(recordedAt).length ? mcp.registrationsAt({ scope: cliScope, mcpFile, accountFile, projectRoot }) : null;
+        const stillHeld = (n) => Boolean(recordedAt[n]) && (atScope.state === 'unreadable' || (Boolean(atScope.servers[n]) && recordedAt[n] === stampLayer.entryHash(atScope.servers[n])));
+        const walked = manifest.retired.mcps.filter((n) => !mcp.SELECTION_TOKENS.includes(n));
         const retiredMcpsDue = priorLedger && priorLedger.mcp && cliScope === 'project'
-            ? manifest.retired.mcps.filter((n) => (heldMcp[n] && priorLedger.mcp[n] === stampLayer.entryHash(heldMcp[n])) || versionDue.includes(n))
-            : versionDue;
+            ? walked.filter((n) => (heldMcp[n] && priorLedger.mcp[n] === stampLayer.entryHash(heldMcp[n])) || versionDue.includes(n))
+            : walked.filter((n) => versionDue.includes(n) || stillHeld(n));
         const ctx = {
             args, env, cliEnv, log, note, plain, cli, rt, source: resolved, manifest, lists, routes,
             projectRoot, claudeDir, skillsDir, configDir, mcpFile, home, stampFile,
@@ -604,7 +611,7 @@ function runLayers(ctx)
     installSkillsAndAgents(ctx);
     installPlugins(ctx);
     retireMcps(ctx);
-    retiredServersStep(ctx);
+    retiredServersStep(ctx, mcpBefore);
     forgeCliStep(ctx);
     // The generated rules moved off the `baseline-` prefix in 2.1.6: before anything re-stamps or reads them.
     selection.moveGeneratedRules({ projectRoot: ctx.projectRoot, log: ctx.log, note: ctx.note });
@@ -1539,11 +1546,11 @@ function retiredApprovals(ctx)
 // THE RETIRED SERVERS' REST (spec N4): what an earlier release wrote beside its servers, taken back on the first update past
 // the retirement - Claude's own memory switch-off, the deniedMcpServers rows, a .mcp.json the prune left empty - then the one
 // block that says what went, how to add each back and where its data stayed.
-function retiredServersStep(ctx)
+function retiredServersStep(ctx, mcpBefore)
 {
     liftMemorySwitchOff({ sourceDir: ctx.source.dir, stampFile: ctx.stampFile, legacyUnstamped: ctx.legacyUnstamped, claudeDir: ctx.claudeDir, scope: ctx.args.scope, log: ctx.log, note: ctx.note });
     liftMcpDenied(ctx);
-    dropEmptiedMcpJson(ctx);
+    dropEmptiedMcpJson(ctx, mcpBefore);
     sayRetiredServers(ctx);
 }
 
@@ -1614,10 +1621,12 @@ function serversRetireDue(ctx)
 }
 
 // A .mcp.json the prune just emptied held nothing but the stack's registrations - an earlier release made it: it goes, the
-// way uninstall takes it. Another top-level key, or a server left in it, keeps the file.
-function dropEmptiedMcpJson(ctx)
+// way uninstall takes it. Another top-level key, or a server left in it, keeps the file - judged by the file as the run found
+// it, since `claude mcp remove` writes back mcpServers alone and keepMcpOrder puts the rest back last (final review A1).
+function dropEmptiedMcpJson(ctx, before)
 {
     if (!ctx.retiredServers.projectPruned) return;
+    if (!before || !before.data || typeof before.data !== 'object' || Object.keys(before.data).some((k) => k !== 'mcpServers')) return;
     const now = mcp.snapshotMcp(ctx.mcpFile);
     if (!now || !isDeepStrictEqual(now.data, { mcpServers: {} })) return;
     fs.rmSync(ctx.mcpFile, { force: true });
@@ -1658,7 +1667,7 @@ function sayRetiredServers(ctx)
     for (const [line, { scope, server }] of block.backs)
         if (!(server && Object.hasOwn(registrationsAt(ctx, scope).servers, server))) ctx.log(`    add it back: ${line}`);
     const data = serverDataLeft(ctx);
-    if (data.length) ctx.log(`  mcp data: kept where it was - ${data.join(', ')}; nothing reads it now, so delete it when you no longer want it`);
+    if (data.length) ctx.log(`  mcp data: kept where it was - ${data.join(', ')}; the stack no longer reads it, but a server added back with its line above does, and so may another project still on an older release - delete it only once neither needs it`);
 }
 
 function installHooksAndRules(ctx)
@@ -1926,8 +1935,11 @@ function pruneDroppedCopies(ctx)
         if (!now) continue;
         if (rel === NAV_CONTEXT)
         {
-            // No registration names it any more: the stack ships no navigation server since 2.10.1.
+            // The stack ships no navigation server since 2.10.1, but a registration the retire step kept as the user's still
+            // launches with the file (final review A3): read fresh, since the step's own reads predate its removals.
+            const user = navContextUser(ctx);
             if (now !== h) ctx.log(`  ${rel}: kept - the stack copied it for a navigation registration no release writes now, but it was changed since, so it is yours`);
+            else if (user) ctx.log(`  ${rel}: kept - ${user} still launches with it; it goes on the first update after that registration does`);
             else { fs.rmSync(at, { force: true }); ctx.log(`  ${rel} removed - no navigation registration names it now`); }
             continue;
         }
@@ -1936,6 +1948,20 @@ function pruneDroppedCopies(ctx)
         fs.rmSync(at, { recursive: true, force: true });
         ctx.log(`  ${rel} removed - the stack copied it and this release no longer ships it`);
     }
+}
+
+// The registration that still names the navigation context file, as '<scope>-scope registration <name>' - or one at a scope
+// that cannot be read, which may - else null.
+function navContextUser(ctx)
+{
+    for (const scope of ['project', 'local', 'user'])
+    {
+        const regs = mcp.registrationsAt({ scope, mcpFile: ctx.mcpFile, accountFile: ctx.accountFile, projectRoot: ctx.projectRoot });
+        if (regs.state === 'unreadable') return `a ${scope}-scope registration in ${regs.file}, which could not be read,`;
+        const name = Object.keys(regs.servers).find((n) => JSON.stringify(regs.servers[n]).includes(NAV_CONTEXT));
+        if (name) return `the ${scope}-scope registration ${name}`;
+    }
+    return null;
 }
 
 // THE UNINSTALL ORDER (uninstall.js holds the decisions): plugin rows, then .mcp.json and the local- and

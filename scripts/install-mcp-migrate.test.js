@@ -119,6 +119,9 @@ test('update over a 2.10.0 plugin-route install: every server plugin goes at its
         assert.deepStrictEqual(JSON.parse(json), RECORD[name], `${name}: the line is the record's entry`);
     }
     assert.match(outs[1], /mcp data: kept where it was - .*\.alfred\/serena\/.*\.alfred\/chrome-control\/.*~\/\.alfred-memory\/memory\.db/, blockLines(outs[1]).join('\n'));
+    // The memory add-back line above reads that database, and another project still on an older release may share it (final review A5).
+    assert.doesNotMatch(outs[1], /nothing reads it now/, blockLines(outs[1]).join('\n'));
+    assert.match(outs[1], /mcp data: .*; the stack no longer reads it, but a server added back with its line above does, and so may another project still on an older release - delete it only once neither needs it/, blockLines(outs[1]).join('\n'));
     assert.strictEqual((steps[1].local.env || {}).ALFRED_CODE_MEMORY_DB, undefined, 'the database path stayed in settings.local.json');
     // The re-run: nothing left to take out, so no uninstall and no block.
     const again = callsSince(calls, steps[1].calls);
@@ -342,4 +345,125 @@ test('update drops a retired server plugin\'s enabledPlugins key from the projec
         assert.strictEqual(steps[1]['alfred-memory@envoydev'], true, 'a user-scope install still reaches this project - the update at that scope takes it');
         assert.strictEqual(steps[1]['theirs@x'], true);
     }
+});
+
+// The final review of 2026-10-24 (A1-A4): what the retire step must keep, and what it must retry.
+// A CLI stub whose `mcp remove -s project` writes back mcpServers alone, as the real CLI does (mcp.keepMcpOrder's record).
+const DROP_OTHER_KEYS = 'const fs=require("fs");const n=process.argv[1];let d={};try{d=JSON.parse(fs.readFileSync(".mcp.json","utf8"))}catch{}'
+    + 'if(!d.mcpServers||!d.mcpServers[n]){console.error("No MCP server named "+n+" found");process.exit(1)}'
+    + 'delete d.mcpServers[n];fs.writeFileSync(".mcp.json",JSON.stringify({mcpServers:d.mcpServers},null,2)+"\\n")';
+const CLI_DROPS_KEYS = ['printf \'%s\\n\' "$*" >> "$CLAUDE_STUB_LOG"',
+    'if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then cat "$CLAUDE_STUB_PLUGINS"; exit 0; fi',
+    `if [ "$1" = "mcp" ] && [ "$2" = "remove" ] && [ "$4" = "-s" ] && [ "$5" = "project" ]; then exec "${process.execPath}" -e '${DROP_OTHER_KEYS}' "$3"; fi`,
+    'exit 0'].join('\n');
+
+test('update at project scope keeps a .mcp.json the prune emptied while it held another top-level key - the CLI drops the key, the file gets it back', POSIX_ONLY, () =>
+{
+    const { outs, steps } = seedRun(['install', 'update'], SELECTION, {
+        tools: { claude: CLI_DROPS_KEYS },
+        args: [[], ['--installed-only']],
+        each: (repo, i) =>
+        {
+            const mcpJson = path.join(repo, '.mcp.json');
+            if (i === 0)
+            {
+                putJson(mcpJson, { $schema: 'https://example.invalid/mcp.schema.json', mcpServers: { 'alfred-navigation': shippedRow('alfred-navigation') } });
+                olderStamp(repo, { lines: { 'managed-mcp': `alfred-navigation=${entryHash(shippedRow('alfred-navigation'))}` } });
+            }
+            return jsonAt(mcpJson);
+        },
+    });
+    assert.match(outs[1], /mcp pruned: alfred-navigation/, outs[1]);
+    assert.deepStrictEqual(steps[1], { $schema: 'https://example.invalid/mcp.schema.json', mcpServers: {} }, outs[1]);
+    assert.doesNotMatch(outs[1], /\.mcp\.json removed/, outs[1]);
+});
+
+// A `claude` that fails the first `mcp remove` it is asked for, then keeps the account file as the real CLI does.
+const FAILS_ONCE = ['printf \'%s\\n\' "$*" >> "$CLAUDE_STUB_LOG"',
+    'if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then cat "$CLAUDE_STUB_PLUGINS"; exit 0; fi',
+    'if [ "$1" = "mcp" ] && [ "$2" = "remove" ] && [ ! -e "$CLAUDE_STUB_LOG.failed" ]; then : > "$CLAUDE_STUB_LOG.failed"; echo "transient failure" >&2; exit 1; fi',
+    `if [ "$1" = "mcp" ]; then exec "${process.execPath}" "$(dirname "$0")/account-stub.js" "$@"; fi`,
+    'exit 0'].join('\n');
+
+test('update at local scope retries a retired registration the first update could not remove - the ledger still holds it at its hash - and is quiet once it is gone', POSIX_ONLY, () =>
+{
+    const { calls, outs, steps } = seedRun(['install', 'update', 'update', 'update'], SELECTION, {
+        account: true, tools: { claude: FAILS_ONCE },
+        args: [['--scope', 'local'], ...Array(3).fill(['--installed-only', '--scope', 'local'])],
+        each: (repo, i) =>
+        {
+            if (i === 0)
+            {
+                register(repo, 'local', { 'alfred-navigation': shippedRow('alfred-navigation') });
+                olderStamp(repo, { lines: { 'managed-mcp': `local:alfred-navigation=${entryHash(shippedRow('alfred-navigation'))}` } });
+            }
+            // The first update ran past the retirement: its stamp says so whatever the tree's own version.
+            if (i >= 1) olderStamp(repo, { version: '2.10.1' });
+            return { calls: callCount(repo), servers: registered(repo, 'local') };
+        },
+    });
+    const removesIn = (step) => callsSince(calls, steps[step - 1].calls).slice(0, steps[step].calls - steps[step - 1].calls).filter((c) => /^mcp remove /.test(c));
+    assert.deepStrictEqual(removesIn(1), ['mcp remove alfred-navigation -s local'], outs[1]);
+    assert.deepStrictEqual(steps[1].servers, ['alfred-navigation'], 'the failed remove left it');
+    assert.deepStrictEqual(removesIn(2), ['mcp remove alfred-navigation -s local'], `the next update never retried it\n${outs[2]}`);
+    assert.deepStrictEqual(steps[2].servers, [], outs[2]);
+    assert.match(outs[2], /add it back: claude mcp add-json --scope local serena /, outs[2]);
+    assert.deepStrictEqual(removesIn(3), [], outs[3]);
+    assert.deepStrictEqual(blockLines(outs[3]), [], outs[3]);
+});
+
+test('update keeps the navigation context file while a kept registration still launches with it, and takes it once none does', POSIX_ONLY, () =>
+{
+    const edited = { ...shippedRow('alfred-navigation'), env: { ...(shippedRow('alfred-navigation').env || {}), MY_FLAG: '1' } };
+    const { outs, steps } = seedRun(['install', 'update', 'update'], SELECTION, {
+        account: true,
+        args: [[], ['--installed-only'], ['--installed-only']],
+        each: (repo, i) =>
+        {
+            const mcpJson = path.join(repo, '.mcp.json');
+            const context = path.join(repo, '.claude', 'navigation-context.yml');
+            if (i === 0)
+            {
+                putJson(mcpJson, { mcpServers: { 'alfred-navigation': edited } });
+                fs.writeFileSync(context, SHIPPED.navigationContext);
+                const { hashItem } = require('./install/library.js');
+                olderStamp(repo, { lines: { 'managed-mcp': `alfred-navigation=${entryHash(shippedRow('alfred-navigation'))}`, 'managed-files': `navigation-context.yml=${hashItem(context)}` } });
+            }
+            const state = { context: fs.existsSync(context), kept: Object.keys((jsonAt(mcpJson) || {}).mcpServers || {}) };
+            // The user takes their kept row out; the next update finds nothing launching with the file.
+            if (i === 1) putJson(mcpJson, { mcpServers: {} });
+            return state;
+        },
+    });
+    assert.deepStrictEqual(steps[1], { context: true, kept: ['alfred-navigation'] }, outs[1]);
+    assert.match(outs[1], /navigation-context\.yml: kept - the project-scope registration alfred-navigation still launches with it/, outs[1]);
+    assert.doesNotMatch(outs[1], /navigation-context\.yml removed/, outs[1]);
+    assert.strictEqual(steps[2].context, false, outs[2]);
+    assert.match(outs[2], /navigation-context\.yml removed - no navigation registration names it now/, outs[2]);
+});
+
+test('the retire step never walks \'browser\' - a selection token, never a registration name: a user\'s own server under it is never pruned or named', POSIX_ONLY, () =>
+{
+    const theirs = { type: 'stdio', command: 'npx', args: ['-y', '@playwright/mcp@latest'], env: {} };
+    const { calls, outs, steps } = seedRun(['install', 'update', 'update'], SELECTION, {
+        account: true,
+        args: [[], ['--installed-only'], ['--installed-only']],
+        each: (repo, i) =>
+        {
+            const mcpJson = path.join(repo, '.mcp.json');
+            if (i === 0)
+            {
+                putJson(mcpJson, { mcpServers: { browser: theirs } });
+                olderStamp(repo, { lines: { 'managed-mcp': '' } });
+            }
+            if (i === 1) olderStamp(repo, { version: '2.10.1' });
+            return { calls: callCount(repo), mcp: (jsonAt(mcpJson) || {}).mcpServers };
+        },
+    });
+    for (const step of [1, 2])
+    {
+        assert.deepStrictEqual(steps[step].mcp, { browser: theirs }, outs[step]);
+        assert.doesNotMatch(outs[step], /mcp browser:/, outs[step]);
+    }
+    assert.deepStrictEqual(calls.filter((c) => /^mcp remove browser /.test(c)), [], outs[1]);
 });

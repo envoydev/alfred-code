@@ -627,7 +627,8 @@ function resolveOrder({ entries, adapters = readAdapters(), inventory = null, re
         {
             if (r.kind === 'builtin')
             {
-                if (reach.builtins.has(r.name)) job.ranks.push({ label: r.name, names: [] });
+                // A deferred built-in is loaded through ToolSearch like a server's tools (final review B2), so its rank names it.
+                if (reach.builtins.has(r.name)) job.ranks.push({ label: r.name, names: (adapters.deferred || []).includes(r.name) ? [r.name] : [], builtin: true });
                 else skip(r.name, machine.builtins.has(r.name) ? 'not in your tools' : 'not on this machine');
                 continue;
             }
@@ -674,7 +675,7 @@ function startLine({ jobs, docRel = null, defaults = false, problems = [], sugge
         if (skipped.length) lines.push(`Skipped here: ${skipped.map((x) => `${x.label} (${x.why})`).join(', ')}.`);
         for (const p of problems.slice(0, PROBLEM_LINES)) lines.push(`Doc problem: ${p}`);
         if (problems.length > PROBLEM_LINES) lines.push(`... and ${problems.length - PROBLEM_LINES} more - run tools.js lint`);
-        if (!load && stated.some((j) => j.ranks.some((r) => r.names.length))) lines.push('Call them directly - your tools grant them.');
+        if (!load && stated.some((j) => j.ranks.some((r) => r.names.length && !r.builtin))) lines.push('Call them directly - your tools grant them.');
         if (load && !withLoad) lines.push('Load clauses cut for size: load a rank\'s tools with ToolSearch by name before its first call.');
         if (suggest) lines.push('The user can rank their own with /capture-preferences tools.');
         return lines;

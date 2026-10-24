@@ -1,6 +1,8 @@
 {
   "note": "Hand-edited. Each known MCP server type: how a registration is recognised (the server name an earlier release shipped it under, a launch package, a URL host), which of its tools serve each job, and which edit files or act outward. `node scripts/tool-adapters.js --write` builds stack/skills/capture-preferences/scripts/tool-adapters.json with each type's pinned version and tool list from meta/mcp-tools.json; lint check 66 fails a stale copy.",
   "builtins": ["LSP", "Grep", "Glob", "Read", "Bash", "WebFetch", "WebSearch"],
+  "deferredNote": "The built-ins Claude Code loads only through ToolSearch while tool search is on (2.1.310 lists these three as deferred): a rank of one carries its own Load clause at the main start, as a server rank does.",
+  "deferred": ["LSP", "WebFetch", "WebSearch"],
   "jobs": {
     "navigation": { "purpose": "locate symbols, callers and types before reading or editing code", "default": ["serena", "LSP", "Grep"] },
     "documentation": { "purpose": "check a library's API or version before using it", "default": ["context7", "WebFetch"] },

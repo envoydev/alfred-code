@@ -352,6 +352,7 @@ The first update onto 2.10.1 or later takes out what an earlier release's server
 hook - and prints ONE `mcp servers:` block: what it removed, where each server is recorded as it shipped
 (`stack/mcp/original-mcps.json`), and one `add it back:` line per server, which registers the upstream server under its
 original name. A registration changed since the stack wrote it is the user's and stays (`mcp <name>: kept`). The
-servers' data stays where it was (the `mcp data:` line) - nothing reads it now. Where the stack had switched Claude
-Code's own memory off, the update switches it back on; a switch-off the user set stays. Report the block verbatim, and
-put the add-back lines on the card as the user's to run - only when they want that server again.
+servers' data stays where it was (the `mcp data:` line) - the stack no longer reads it, but a server added back does,
+and so may another project still on an older release. Where the stack had switched Claude Code's own memory off, the
+update switches it back on; a switch-off the user set stays. Report the block verbatim, and put the add-back lines on
+the card as the user's to run - only when they want that server again.

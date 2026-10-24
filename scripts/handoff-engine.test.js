@@ -153,3 +153,13 @@ test('the data root setting places the store', () =>
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+// The final review of 2026-10-24 (B1): where .claude is git-ignored a worktree seat's checkout holds no hooks copy, so the
+// brief names the bus by the main checkout's path, as it names docs.js.
+test('every worktree brief names the bus by the main checkout\'s path', () =>
+{
+    const skills = path.join(__dirname, '..', 'stack', 'skills');
+    const files = fs.readdirSync(skills).map((d) => path.join(skills, d, 'references', 'domain-trio-protocol.md')).filter((f) => fs.existsSync(f));
+    assert.ok(files.length >= 5, files.join('\n'));
+    for (const f of files) assert.match(fs.readFileSync(f, 'utf8'), /A worktree brief carries its own step zero\.[^\n]*`node <main root>\/\.claude\/hooks\/handoff\.js`/, f);
+});

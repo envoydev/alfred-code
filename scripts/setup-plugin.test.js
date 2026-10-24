@@ -997,9 +997,16 @@ test('update: the kept and unreadable lines reach both update bodies; the local 
             fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'sha: abc\nversion: 2.10.0\n');
         },
     }).out;
+    // An install a 2.10.0 release stamped, so the retired servers are due - the only run that reads the account file for them
+    // (a fresh one has nothing to take out, and since the final review's A4 never reaches the line through `browser`).
     const unreadable = seedRun('install', 'skill markdown-style\nrule markdown-docs\n', {
         env: COPY_ENV, args: ['--scope', 'user'],
-        prepare: (repo, work) => account(work, '{not json'),
+        prepare: (repo, work) =>
+        {
+            account(work, '{not json');
+            fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+            fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'sha: abc\nversion: 2.10.0\n');
+        },
     }).out;
     const logs = [];
     const row = (scope, enabled = true) => ({ name: 'alfred-code', marketplace: 'envoydev', version: '2.0.0', scope, enabled });

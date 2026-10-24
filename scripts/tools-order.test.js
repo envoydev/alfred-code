@@ -82,7 +82,7 @@ test('a ranked own server comes first with its own names; the jobs the doc leave
         s.inventory(JETBRAINS);
         const text = s.line();
         assert.match(text, /^Tool order - the user's, from \.alfred\/docs\/preferences\/TOOLS-PREFERENCES\.md \(the stack's defaults for the jobs it leaves out\): /);
-        assert.ok(text.includes(`- navigation (locate symbols, callers and types before reading or editing code): own:jetbrains find_usages > serena find_symbol > LSP > Grep. Load: ToolSearch select:mcp__jetbrains__find_usages,${NAV}find_symbol\n`), text);
+        assert.ok(text.includes(`- navigation (locate symbols, callers and types before reading or editing code): own:jetbrains find_usages > serena find_symbol > LSP > Grep. Load: ToolSearch select:mcp__jetbrains__find_usages,${NAV}find_symbol,LSP\n`), text);
         assert.ok(text.includes(MEMORY_LINE), 'the memory default stays');
         assert.ok(text.includes('- documentation ('), 'the documentation default stays');
     }
@@ -98,7 +98,7 @@ test('a doc that ranks every default job states no defaults', () =>
         s.inventory(JETBRAINS);
         const text = s.line();
         assert.match(text, /^Tool order - the user's, from \.alfred\/docs\/preferences\/TOOLS-PREFERENCES\.md: /);
-        assert.ok(text.includes('- documentation (check a library\'s API or version before using it): WebFetch.\n'), text);
+        assert.ok(text.includes('- documentation (check a library\'s API or version before using it): WebFetch. Load: ToolSearch select:WebFetch\n'), text);
         assert.ok(text.includes('- memory (store and search what this project learned): memory-service memory_search. Load: ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_search'), text); // mcp-fixture
     }
     finally { s.done(); }
@@ -417,6 +417,25 @@ test('no server registered: the defaults name no absent server, at the main star
         }
         s.doc([...NAV_ENTRY.slice(0, 3), '- Order: serena find_symbol > LSP > Grep']);
         assert.ok(s.line().includes('Skipped here: serena (not on this machine).'), 'a rank the user chose is still named');
+    }
+    finally { s.done(); }
+});
+
+// The final review of 2026-10-24 (B2): LSP and WebFetch are deferred tools in Claude Code (2.1.310 lists both behind
+// ToolSearch), and the navigation rule points at the order's select line - a default line without one left the rule text
+// and no way to load the tool.
+test('a deferred built-in rank carries its own load clause at the main start; a seat whose tools grant it is not told to load it', () =>
+{
+    const s = sandbox();
+    try
+    {
+        s.write(path.join(s.root, '.claude', 'settings.json'), { enabledPlugins: {} });
+        const main = s.line();
+        assert.ok(main.includes(': LSP > Grep. Load: ToolSearch select:LSP\n'), main);
+        assert.ok(main.includes(': WebFetch. Load: ToolSearch select:WebFetch'), main);
+        const seat = s.line({ seat: { frontmatter: fs.readFileSync(path.join(__dirname, '..', 'stack', 'agents', 'aspnet-verifier.md'), 'utf8') } });
+        assert.ok(seat.includes(': LSP > Grep.'), seat);
+        assert.ok(!seat.includes('Load:') && !seat.includes('Call them directly'), seat);
     }
     finally { s.done(); }
 });

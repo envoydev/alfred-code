@@ -23,12 +23,14 @@ const SHIPPED_REL = 'stack/skills/capture-preferences/scripts/tool-adapters.json
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 const listOf = (value) => (Array.isArray(value) ? value.map(String) : []);
 
-// The table every reader takes: the jobs and built-ins as written, each type with its pin's version and tool list - the
+// The table every reader takes: the jobs, built-ins and deferred built-ins as written, each type with its pin's version and tool list - the
 // whole pin, less its row's `off` list. Throws on the first row that names a tool, a job or a pin the sources do not have.
 function build({ meta = readJson(META), tools = readJson(TOOLS) } = {})
 {
     const servers = (tools && tools.servers) || {};
     const builtins = listOf(meta.builtins);
+    const deferred = listOf(meta.deferred);
+    for (const name of deferred) if (!builtins.includes(name)) throw new Error(`deferred: '${name}' is not a built-in`);
     const jobs = {};
     for (const [job, row] of Object.entries(meta.jobs || {}))
         jobs[job] = { purpose: String(row.purpose || ''), ...(row.default ? { default: listOf(row.default) } : {}) };
@@ -58,7 +60,7 @@ function build({ meta = readJson(META), tools = readJson(TOOLS) } = {})
     for (const [job, row] of Object.entries(jobs))
         for (const rank of row.default || [])
             if (!types[rank] && !builtins.includes(rank)) throw new Error(`${job}: default '${rank}' is neither a type nor a built-in`);
-    return { generatedBy: 'tool-adapters', builtins, jobs, types };
+    return { generatedBy: 'tool-adapters', builtins, deferred, jobs, types };
 }
 
 const render = (table) => `${JSON.stringify(table, null, 2)}\n`;
