@@ -202,13 +202,13 @@ Step 2: 'Add which?' (multi-select, one option per unmarked row, at most 4) and 
 Locked = agents the kept rules require (the repair-loop rules pin their resolvers, e.g. `required by
 rule dotnet-repair-agents`). DELTA orphans here trace back to rule drops.
 
-FRESH ask (44 rows: the marked ones are the support seats, the resolvers and the confirmed stacks' trios):
+FRESH ask (45 rows: the marked ones are the support seats, the resolvers and the confirmed stacks' trios):
 
 ```ask
 Agents: install the marked rows? The unmarked ones are other stacks' trios and related-project-analyzer.
 - 'Keep the marked rows (Recommended)' - the support seats, the resolvers and the confirmed stacks' trios
 - 'Pick stack trios to add' - next call lists the unmarked designer-implementer-verifier trios
-- 'Add every agent' - all 44 (each description rides every session's first call)
+- 'Add every agent' - all 45 (each description rides every session's first call)
 - 'Only the locked rows' - what the kept rules require
 ```
 

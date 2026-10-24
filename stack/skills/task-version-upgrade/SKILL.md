@@ -40,6 +40,8 @@ Green baseline first - build + tests green, zero pending EF migrations, before a
 Cross the surface against located usage: a breaking change nothing uses is not a task. Split engine-applied vs hand edits. Sequence foundation-first per the playbooks (SDK pin -> TFM -> framework packages in lockstep -> code edits on .NET; one major at a time with `ng update` + the peer matrix on Angular). Each stage carries: its edits, its verification command, its rollback point. Genuinely user-level calls (accept a new major's baseline, drop a deprecated dependency) go to the gate as questions, never guessed. **Hard cap: 2 planning passes.**
 
 ### 4. APPROVAL GATE
+Where a `scorer: stacked` line is in context, the FIRST action before releasing the staged plan - before it is printed - is the `habits-output-scorer` Skill call with output `upgrade-plan`.
+
 PRINT the staged plan in the chat first - the `playbooks:` line, then every stage with its edits, its verification command and its rollback point - in the same turn as the gate: an approval over a plan the chat never showed approves nothing. Load `habits-execution-strategy` (the Skill tool); its `Execution:` line is the mode reason, and stages that share files read `serial`. Then put the gate through AskUserQuestion as ONE call - free text stays available via Other, and the PLAN step's user-level calls join the same call as their own questions (plain-text options where the harness lacks the tool). With no user-level call open:
 
 ```ask

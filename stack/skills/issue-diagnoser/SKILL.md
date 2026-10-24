@@ -101,7 +101,11 @@ cycle in the same chat, even when an earlier cycle already loaded it.
 
 1. **TRIAGE** - read the evidence in whatever form it arrived (`Read` opens a screenshot as
    readily as a log), restate the failure as an OBSERVABLE - what happened, where, what should
-   have happened instead - and name the tier, per `references/evidence-tiers.md`. Then load the signature
+   have happened instead - and name the tier, per `references/evidence-tiers.md`. Read the project's
+   docs for the area too, scoped, never whole: `<docs-path>/architecture/ARCHITECTURE.md` for the area,
+   `PERSONAL-CODE-PREFERENCES.md`, `ARCHITECTURE-PREFERENCES.md` and `PROJECT-CODE-PREFERENCES.md` under
+   `<docs-path>/preferences/`, and both assessments, `<docs-path>/quality/CODE-ASSESSMENT.md` and
+   `<docs-path>/quality/ARCHITECTURE-ASSESSMENT.md` - an assessment entry is a lead, never proof. Then load the signature
    catalogue that matches the failure's origin, matched from YOUR skill list by what each skill
    says it covers, never by a remembered name: the one covering local-runtime crash signatures
    (null-reference, DI resolution, async deadlock, race, disposed lifecycle, config drift) for a
@@ -135,8 +139,12 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    symptom, never a plausible guess. Match the evidence to the catalogue's signature and isolate
    where the signature points, which is almost never the line that threw. **Hard cap: 2
    investigation passes.** If the cause stays ambiguous after 2, stop guessing and record the
-   surviving hypotheses RANKED with what would decide between each. Stamp `Cause:` with the
-   file + symbol and the evidence that proves it, or `Cause: unproven - <n> hypotheses ranked`.
+   surviving hypotheses RANKED with what would decide between each. Where a `scorer: on` line
+   naming the root-cause verdict or a `scorer: stacked` line is in context, the FIRST action before
+   releasing the verdict - stamping it, or putting the fork below - is the `habits-output-scorer`
+   Skill call with output `root-cause`. Stamp `Cause:` with the file + symbol and the evidence that
+   proves it, or `Cause: unproven - <n> hypotheses ranked`, once the scorer released it where one
+   runs (`Cause: <pending>` until then).
    Report a severity and an explicit P0-P3 priority when the ask was to level it rather than fix
    it. **This step ends at the fork below - it never continues into planning on its own.**
 4. **THE FORK** - the step-3 stop asks ONE question whose options are the three real outcomes,
@@ -153,7 +161,9 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    - **4a. REPORT** ('Write a report on the issue') - finish the findings file as a standalone
      document: the observable, the evidence tier, the proven cause with its located symbol, the
      blast radius and who it affects, severity + priority, and what a fix would have to change.
-     No task cards. This is the outcome when the fix is someone else's, or not now.
+     Where a `scorer: on` line naming the root-cause verdict or a `scorer: stacked` line is in
+     context, the FIRST action before releasing the report is the `habits-output-scorer`
+     Skill call with output `root-cause`. No task cards. This is the outcome when the fix is someone else's, or not now.
    - **4b. PLAN TASKS** ('Plan the fix as tasks') - first load `habits-execution-strategy` (the Skill
      tool) over the minimal change: how the fix runs, not only what it changes. Its `Execution:` line sets the cards' split -
      units it found parallel-safe become separate cards, units that share a file or need another's

@@ -9,7 +9,7 @@ paths:
 
 # Catalog items - skills, agents, rules, the AGENTS template
 
-How the skills, the 44 agents, the shipped rules and the per-project AGENTS template are delivered and held to each other. Moved here verbatim from the repo `CLAUDE.md` so it loads only when you edit these files.
+How the skills, the 45 agents, the shipped rules and the per-project AGENTS template are delivered and held to each other. Moved here verbatim from the repo `CLAUDE.md` so it loads only when you edit these files.
 
 - `stack/skills/` - the house-style skills (`SKILL.md` each), auto-activating on their keywords /
   file types. Every one is LIBRARY (2.1.0) - listed by no marketplace entry, copied into
@@ -61,7 +61,7 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   target the run confirmed on disk is a verified fix, not a check row, and joins the recommended option (usage audit
   2026-10-10).
 
-- `stack/agents/` - 44 subagents, all in the core plugin (2.1.0), each one the selection did not pick
+- `stack/agents/` - 45 subagents, all in the core plugin (2.1.0), each one the selection did not pick
   denied as `Agent(alfred-code:<seat>)` (a seat whose preloaded skills were not copied is never picked);
   each seat's `tools:` / `disallowedTools:` lines are GENERATED from its row in `meta/seat-tools.json` by
   `node scripts/seat-tools.js --write` (lint check 63; 2026-10-14), because the dispatcher lists the `tools:` value
@@ -82,8 +82,9 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   - 30 per-domain seats - `<stack>-solution-designer` -> `<stack>-implementer` -> `<stack>-verifier`
     across 10 stacks (ASP.NET, web Angular, WPF, WinForms, console, Windows Service, Ionic Angular, data,
     DevOps, browser extension);
-  - six read-only support seats: `evidence-gatherer`, `test-coverage-analyzer`,
-    `architecture-analyzer`, `code-quality-analyzer`, `code-style-analyzer`, `related-project-analyzer`.
+  - seven read-only support seats: `evidence-gatherer`, `test-coverage-analyzer`,
+    `architecture-analyzer`, `code-quality-analyzer`, `code-style-analyzer`, `related-project-analyzer`,
+    `output-scorer` (habits-output-scorer's grader).
   Every seat that judges or writes code holds `WebFetch` (alfred-quality-gates sends its outside-world claims to the
   documentation tools the start line ranks, the vendor's own page when nothing else is registered); the five read-only
   gatherers do not. A seat reports through
@@ -113,8 +114,8 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   `references/domain-trio-protocol.md`; cross-domain runs freeze the contract and end at
   `integration-reviewer`; two tasks sharing a directory run as `isolation: "worktree"` seats, which
   branch from HEAD because the installer seeds `worktree.baseRef: "head"` add-only, and fan in as an
-  uncommitted `git apply`). cursor-stack shipped twins of all 44 before this rebrand and is PENDING
-  the same rename while its mirror is paused - a protocol change here usually needs the same edit
+  uncommitted `git apply`). cursor-stack holds twins of all 45 but `output-scorer` (added 2026-10-25,
+  while its mirror is paused), shipped before this rebrand, and is PENDING the same rename - a protocol change here usually needs the same edit
   there once it resumes (divergences only: `model: inherit`, no `tools:` allowlist, no auto-delegation
   hard-disable).
 - `stack/rules/` - eighteen single-job rules, each a library copy in `.claude/rules/`. Six always-on `alfred-*.md`

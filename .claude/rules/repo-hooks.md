@@ -30,7 +30,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   worktree - its main checkout, so a worktree of an
   installed checkout counts as set up; under a user-scope core such a repo is written nothing and only
   the rm, secret, force-push and desktop exec guards stay live, writing no row - R54, R86 - plus the dispatch guard's
-  implementer gate, M9. Known ceiling: such a repo still lists all 44 core seats, 12,532 characters of
+  implementer gate, M9. Known ceiling: such a repo still lists all 45 core seats, 13,008 characters of
   descriptions in every session's first call where 2.0.0 listed 9, since no deny is written into a repo the
   stack never touched - revisit when a plugin's agents can be scoped per project); and a Cursor host, judged from the PAYLOAD alone (`cursor_version`, or a camelCase event name - never Cursor's environment variables, which a `claude` session in its terminal inherits): Cursor loads Claude hooks by default and turns a Stop block into an unbounded follow-up, so only the rm, secret, force-push and desktop exec guards run there and every other hook stands down silently, no ledger row. Each non-protective hook makes the call itself, `cursorStandDown(payload, __filename)`, right after parsing its own payload (no stdin is read or patched by the prelude; a test fails a hook file that lacks it). All fail open. Beside the gates,
   The csv opt-out reads a hook's OLD name too (`HOOK_RENAMED`, the manifest's `renamed.hooks` copied inline and held equal
@@ -353,7 +353,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     file minus its matches and is judged like `cat`; a loop whose `cat` reads its variable over literal paths or a
     one-folder glob is sized per file (no sweep while all of them print at most THRESHOLD lines and BIG_BYTES); a
     relative target with no file at any anchor prints nothing unless a `cd` the guard cannot follow came first; a
-    `.md` under the docs root's `work/plans/` (or the pre-2.8.0 `plans/`) reads whole; a markup template's denial names `grep -n`, never the symbol
+    `.md` under the docs root's `work/plans/` (or the pre-2.8.0 `plans/`) reads whole, and so does one under `<data root>/state/sessions/scorer/` - the output scorer's draft, the grader's mandated input (`guard-read-write.test.js`); a markup template's denial names `grep -n`, never the symbol
     overview; and the convention-rule notice reads no `>` inside quotes and no write target outside the project. Audit
     2026-10-20 H7: a `find <dirs> -name <one literal name> -exec cat` (or `| xargs cat`) is a sweep of whatever files that
     name matches - a bounded walk from the find's start points (`NAMED_FIND_CAP`, 20,000 entries) sizes each match, and
@@ -723,7 +723,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     merge: 'merge it once CI is green' consents), the user keeping the act ('I'll push it myself') or a
     statement about the verb refuses it, and only its own gate. Opening a pull request ('open the PR') is
     consent; a question, a negation or the PR's description / template / page is not (H3).
-  - `guard-stop-contract.js` (`Stop` + `SubagentStop`; PreToolUse `AskUserQuestion` - its notes INJECTED, and a
+  - `guard-stop-contract.js` (`Stop` + `SubagentStop`; PreToolUse `SubagentHandback` - the output-scorer seal, below; PreToolUse `AskUserQuestion` - its notes INJECTED, and a
     PreToolUse note lands beside the tool result, which for an ask is the user's ANSWER, so each is worded for that
     moment ('the ask just answered ... verify, re-ask if it moved'); the ask's own SHAPE is FIXED IN PLACE when every reason is
     mechanical (the 2026-10-17 usage audit: a deny for missing numbers cost a red block and a re-sent ask) - the corrected
@@ -898,6 +898,28 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     ask's carry (`fresh-session.js` `freshAskAnsweredCtx`; audit 2026-10-11 SD11, 7f8803eb) - and never mid-response. A long-idle or long-span session takes the same
     offer under the window (`ALFRED_CODE_FRESH_SESSION_AFTER_HOURS`, default 2, unseeded, `0` off). The offer waits
     while work this session launched is still out (it said 'the work in this turn is finished' 3s after a verifier left).
+    THE SCORER BACKSTOP (habits-output-scorer, spec 2026-10-24 5.9): while `scorerState` is usable (a loadable skill copy,
+    neither hook nor its `scorer` part off), a close that owes a `Scored:` line and lacks it is held ONCE per typed prompt.
+    One `walkBack` pass reads back to the cycle's opening row - the newest typed row that is no harness prompt, compaction
+    summary or `Stop hook feedback:` row - so a grader's notification turn stays in the cycle. The evidence: T1 a Write of a
+    `.draft.md` in this session's scorer folder (on, or the cycle stacked); T2 a plan Write under the docs root's
+    `work/plans/` (on, `designer-plan` listed; not where a draft was written, a plan reader - `task-implement`,
+    `task-verify-plan`, `task-verify-code` - ran, or the loop released that `target:`); T3 a findings write whose `Cause:`
+    is set, or a diagnoser seat that settled (on, `root-cause` listed); T4 a typed stack naming `habits-output-scorer` (on
+    or off). A `Scored:` line clears the newest trigger only when a `rounds.log` of this session's folder or a `self-*` one
+    holds a `released` / `final` line written since the cycle opened (2s slack); a typed one is no receipt and writes one
+    `scorer-receipt-unbacked` row. The `SCORER-HELD-<session>` marker holds the cycle's key (the row's uuid, else its
+    timestamp, else its hash), and the check sits BEFORE the `stopHeld` exit, so a rewrite after this hook's own hold for
+    another reason is still judged while the marker keeps it to one hold. A live `output-scorer` seat in
+    `background_tasks` is the loop's own wait, never held; a seat's Stop and a transcript-less Stop judge nothing; no
+    opening row writes one `scorer-cycle-unread` row. The hold's block row names `branch: scorer` (AC11, AC14, AC16, AC17,
+    AC19, AC24, AC25; `guard-stop-closes.test.js`, 'scorer backstop'). THE SEAL (5.10): an `output-scorer` seat's report
+    names its score file on its first line (`*` and backticks dropped); PreToolUse `SubagentHandback` - or SubagentStop's
+    `last_assistant_message` for a run with no hand-back, before that route's `stop_hook_active` exit - writes it as
+    `seal: sha256 <hex>` then the report as delivered, only into this session's scorer folder (both sides realpathed, so
+    macOS's `/var` is `/private/var` and a symlinked parent leads nowhere), only a `.score.md` that does not exist yet
+    (`wx` - a second delivery never rewrites it), one `scorer-seal` probe row either way; the hand-back is never delayed
+    or denied, and `scorecard.js grade` fails a card whose seal is missing or broken with exit 3 (AC18, AC22).
   - `guard-fresh-session-start.js` - denies the MODEL's own PreToolUse `Skill` call on a
     `disable-model-invocation` skill (read from its frontmatter - the personal copy first, then the project's, then the
     running plugin's own root, then the plugin caches newest version first, the order Claude Code resolves a name in, M10; the user's slash turn is untouched;
@@ -1069,6 +1091,16 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     An ask the idle timeout closed (ruling S3, `hook-prelude.js` `askTimedOut`) gets one `ask-timeout` probe row, the
     session's timeout marker and a note that it is no answer - no approval, consent or pick, re-ask when the user is
     back; the next answered ask or typed prompt clears the marker.
+    THE SCORER'S LINES (habits-output-scorer, spec 2026-10-24 5.2 / 5.12): `--score-on` / `--score-off` in a typed prompt's
+    prose (never inside inline code, a fence or a `>` quote; off wins when both are typed) write the session's
+    `SCORER-<session>` file, which outranks `ALFRED_CODE_SCORER`; while on, every typed prompt - and a compaction's start,
+    which drops injected text - carries one `scorer: on (level, rounds, source[, auto-mode]) ...` line naming the listed
+    outputs in words, so an ordinary reply never reads as one; a message that turns it off carries `scorer: off for this
+    session`. A typed stack - the skill's name, slash or not, as a word of the prose, a `<command-args>` row included -
+    adds `scorer: stacked for this request ...` with the switch off too, and on a `user-invocable-only` copy. All of it
+    needs `scorerState` usable: either hook or its `scorer` part in `ALFRED_CODE_HOOKS_OFF`, or no loadable copy, and no
+    line is injected, so nothing is graded and the backstop owes nothing (AC1-AC6, AC13, AC19, AC20, AC23-AC25;
+    `guard-answer.test.js`). A seat's prompt carries none: the session that receives its report grades what it acts on.
   - `instrument-tool-usage.js` - wired env-gated: skipped unless `ALFRED_CODE_INSTRUMENT` (seeded "0")
     is exactly "1". It runs `async: true` on both routes (`settings.js asyncFor`, the one async hook since the stop contract's shell-result halves went in the deep hooks review 2026-10-16 - a log never
     blocks or decides, so no call waits on its spawn; code.claude.com/docs/en/hooks, 'Run hooks in the background').
@@ -1105,7 +1137,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `preferences/watch.json` are there, else a Read line). Only a WHOLE read marks a doc read (audit 2026-10-21 H-Q1): a Read
     with no range or one reaching its last line, a whole-file shell reader naming it (no `head`, `grep` or pipe into one), a
     `docs.js show` of each of its sections. A judge (`JUDGE`: an `agent_type` ending `solution-designer` or `-verifier`, or
-    one of the three finding seats `code-quality-analyzer`, `security-auditor`, `integration-reviewer` - `alfred-code:<seat>`
+    one of the four finding seats `code-quality-analyzer`, `security-auditor`, `integration-reviewer`, `output-scorer` (the grader is handed the code docs it grades a plan against, AC27) - `alfred-code:<seat>`
     always, a BARE name only where the install stamp's `library-agents:` line records its copy (`copiedSeats`: the copy
     route; none on the plugin route), so another plugin's or the project's own `security-auditor` is no judge: side notes
     of 2026-10-22, the user's rulings 'Alfred's own, all judges' and 'drop the names') holds no edit tool (checked against `meta/seat-tools.json`), so no edit hold reaches it: `SubagentStart` hands it the code

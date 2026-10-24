@@ -1484,3 +1484,18 @@ test('leaveLocalScope: a custom choice beside the user\'s own autoMemoryEnabled 
         assert.strictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'settings.local.json'), 'utf8')).autoMemoryEnabled, value, 'and leaves it');
     }
 });
+
+// The scorer's four rows are seeded by the absent-only loop like every catalog row: off, level 80, every automatic
+// output (an empty list), 3 runs per attempt - and a value the user already set is never written over.
+const SCORER_KEYS = ['', '_LEVEL', '_OUTPUTS', '_ROUNDS'].map((s) => `ALFRED_CODE_SCORER${s}`);
+test('settings-writer: the scorer rows are seeded off, level 80, all outputs, 3 runs; a user value is kept', () =>
+{
+    const { data, logs } = write(settingsFile({}));
+    assert.deepStrictEqual(SCORER_KEYS.map((k) => data.env[k]), ['0', '80', '', '3']);
+    assert.ok(logs.includes('  settings.json env: ALFRED_CODE_SCORER seeded (0)'), logs.join('\n'));
+    assert.ok(logs.includes('  settings.json env: ALFRED_CODE_SCORER_OUTPUTS seeded (empty)'), logs.join('\n'));
+    const mine = { ALFRED_CODE_SCORER: '1', ALFRED_CODE_SCORER_LEVEL: '95', ALFRED_CODE_SCORER_OUTPUTS: 'root-cause', ALFRED_CODE_SCORER_ROUNDS: '5' };
+    assert.deepStrictEqual(SCORER_KEYS.map((k) => write(settingsFile({ env: mine })).data.env[k]), ['1', '95', 'root-cause', '5']);
+});
+// The scope picks the FILE (settingsTarget), never the writer, so the per-scope result - project and user in
+// settings.json, local in settings.local.json - is read in the temp-project matrix.

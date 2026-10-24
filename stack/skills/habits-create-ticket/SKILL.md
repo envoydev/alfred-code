@@ -17,7 +17,7 @@ Transforms a raw description into a clean, professional ticket written in Englis
 1. Detect the type from the request (table below). Ambiguous: pick the closest type and note the assumption.
 2. Read the matching reference file **before writing** - it carries the Description template, the type-specific rules, and a worked example.
 3. Write the ticket to the reference's template and the rules below.
-4. Pre-flight the draft before presenting it - strike anything the three checks catch, then re-read once: (a) a file, class, method, DTO or other name that does not exist in the codebase yet; (b) a path or document the reader cannot open from the tracker (a plan file, a working-tree doc, a session path); (c) a criterion nobody can trigger and observe. Each is a rule below written as a check, because as prose alone they were skipped in a live run.
+4. Pre-flight the draft before presenting it - strike anything the three checks catch, then re-read once: (a) a file, class, method, DTO or other name that does not exist in the codebase yet; (b) a path or document the reader cannot open from the tracker (a plan file, a working-tree doc, a session path); (c) a criterion nobody can trigger and observe. Each is a rule below written as a check, because as prose alone they were skipped in a live run. Where a `scorer: stacked` line is in context, the FIRST action before releasing the ticket - after this pre-flight - is the `habits-output-scorer` Skill call with output `ticket`.
 
 | Type | Use when | Reference |
 |---|---|---|

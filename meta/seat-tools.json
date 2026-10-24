@@ -275,6 +275,13 @@
       "Glob",
       "WebFetch"
     ],
+    "output-scorer": [
+      "LSP",
+      "Read",
+      "Grep",
+      "Glob",
+      "WebFetch"
+    ],
     "related-project-analyzer": [
       "Read",
       "Grep",

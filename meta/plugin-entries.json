@@ -70,6 +70,7 @@
         "./stack/agents/issue-diagnoser-ci.md",
         "./stack/agents/issue-diagnoser-runtime.md",
         "./stack/agents/ng-build-error-resolver.md",
+        "./stack/agents/output-scorer.md",
         "./stack/agents/related-project-analyzer.md",
         "./stack/agents/security-auditor.md",
         "./stack/agents/test-coverage-analyzer.md",
@@ -171,6 +172,21 @@
             ]
           },
           {
+            "matcher": "SubagentHandback",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
             "matcher": "Skill",
             "hooks": [
               {
@@ -201,16 +217,6 @@
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-desktop-exec.js\"",
-                "timeout": 10
-              }
-            ]
-          },
-          {
-            "matcher": "SubagentHandback",
-            "hooks": [
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
                 "timeout": 10
               }
             ]

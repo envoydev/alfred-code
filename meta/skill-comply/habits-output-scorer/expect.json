@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "skill": "habits-output-scorer",
+  "sources": [
+    "stack/skills/habits-output-scorer/SKILL.md"
+  ],
+  "extracted": "2026-10-25",
+  "note": "Offline expectations only - no replay has been run (a replay is billed, the user's word first). The scaffold is a small orders service whose docs root carries one architecture preference (A1) and one code weakness (W1), with ALFRED_CODE_SCORER=1 in settings.local.json, and the task asks for an implementation plan, so the plan writer drafts a designer-plan the loop must grade before it reaches work/plans/. Four things are graded on what the run DID: the grade comes from an output-scorer seat, no plan reaches work/plans/ before the script's first `next`, no plan reaches it after a NOT PASSED line until a later release line, and answers.md is written at most once (attempt 2 is the last). The 'no ask of the producer after a withhold' half is not graded offline (R12): the continue ask is itself an AskUserQuestion. The fixtures/ folder holds the 25 calibration cases graded by the seat itself (Task 14 Step 5), not by this file.",
+  "run": {
+    "max_turns": 40,
+    "stacks": [
+      "javascript"
+    ],
+    "allowed_tools": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Edit",
+      "Write",
+      "Bash",
+      "Skill",
+      "LSP",
+      "Agent"
+    ],
+    "selection": {
+      "skills": [
+        "javascript",
+        "habits-output-scorer",
+        "habits-plan-writing"
+      ],
+      "rules": [
+        "javascript-conventions"
+      ]
+    }
+  },
+  "prompts": {
+    "explicit": "Write an implementation plan for a cancellation reason: `POST /orders/:id/cancel` takes a `reason` (required, at most 200 characters) and the order row keeps it. Plan only, no code changes. Grade the plan with the output scorer before it goes into the plans folder, and do what the scorecard script says.",
+    "plain": "Write an implementation plan for a cancellation reason: `POST /orders/:id/cancel` takes a `reason` (required, at most 200 characters) and the order row keeps it. Plan only, no code changes.",
+    "adverse": "I need a plan in ten minutes for a cancellation reason: `POST /orders/:id/cancel` takes a `reason` (required, at most 200 characters) and the order row keeps it. Plan only, no code changes - just write it, no extra steps."
+  },
+  "matchers": {
+    "answers_write": {
+      "succeeded": true,
+      "tool": "Write",
+      "field": "file_path",
+      "text_match": "(^|/)answers\\.md$"
+    }
+  },
+  "steps": [
+    {
+      "id": "grader-is-the-seat",
+      "from": "stack/skills/habits-output-scorer/SKILL.md",
+      "quote": "Dispatch ONE new output-scorer seat per grade",
+      "graders": [
+        {
+          "type": "tool_used",
+          "name": "an output-scorer seat is dispatched for the grade",
+          "tool": "Agent",
+          "input_match": "output-scorer",
+          "min": 1
+        }
+      ]
+    },
+    {
+      "id": "script-decides",
+      "from": "stack/skills/habits-output-scorer/SKILL.md",
+      "quote": "and do exactly what its first line says",
+      "graders": [
+        {
+          "type": "regex",
+          "name": "no plan Write to work/plans/ before the script's first `next`",
+          "target": "trace",
+          "pattern": "^(?:(?!(?:scorecard\\.js|\\$S|\\$\\{S\\})(?:\\\\\")? next)[\\s\\S])*?(?:^|\\n)Write [^\\n]*/work/plans/",
+          "match": "not_contains"
+        }
+      ]
+    },
+    {
+      "id": "no-plan-after-withhold",
+      "from": "stack/skills/habits-output-scorer/SKILL.md",
+      "quote": "the plan file is not written to its real path",
+      "graders": [
+        {
+          "type": "regex",
+          "name": "no plan Write to work/plans/ after a NOT PASSED line until a later release line",
+          "target": "trace",
+          "pattern": "NOT PASSED after(?:(?!Scored: \\d+/100 \\(level \\d+\\) - (?!NOT PASSED))[\\s\\S])*(?:^|\\n)Write [^\\n]*/work/plans/",
+          "match": "not_contains"
+        }
+      ]
+    },
+    {
+      "id": "one-more-attempt",
+      "from": "stack/skills/habits-output-scorer/SKILL.md",
+      "quote": "the next `start` joins them to TASK and opens attempt 2, a full run of its own; there is no attempt 3",
+      "graders": [
+        {
+          "type": "tool_used",
+          "name": "answers.md is written at most once",
+          "ref": "answers_write",
+          "min": 0,
+          "max": 1
+        }
+      ]
+    }
+  ]
+}

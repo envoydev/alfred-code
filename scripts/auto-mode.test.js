@@ -765,6 +765,21 @@ test('auto-mode window: install seeds it per model in the project file, ledgers 
     assert.deepStrictEqual(read(dir).modelSettings, { 'claude-opus-5-5': { effortLevel: 'high' }, 'claude-haiku-4-5': { autoCompactWindow: 120000 } });
 });
 
+test('settings-writer: uninstall takes the seeded scorer rows back and keeps one the user changed', () =>
+{
+    const dir = fs.mkdtempSync(path.join(TMP, 'scorer-'));
+    fs.mkdirSync(path.join(dir, '.claude'));
+    const first = writer(dir);
+    const data = read(dir);
+    assert.deepStrictEqual([data.env.ALFRED_CODE_SCORER, data.env.ALFRED_CODE_SCORER_LEVEL], ['0', '80'], 'the install seeded them');
+    data.env.ALFRED_CODE_SCORER_ROUNDS = '6';
+    fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify(data));
+    settings.removeManagedSettings({ claudeDir: path.join(dir, '.claude'), ledger: throughStamp(first.managed) });
+    const env = read(dir).env || {};
+    assert.deepStrictEqual([env.ALFRED_CODE_SCORER, env.ALFRED_CODE_SCORER_LEVEL], [undefined, undefined], 'the seeded rows go');
+    assert.strictEqual(env.ALFRED_CODE_SCORER_ROUNDS, '6', "the user's value stays");
+});
+
 test('auto-mode window: a window the user set for every model, or for this one elsewhere, is left alone', () =>
 {
     const fresh = () => { const d = fs.mkdtempSync(path.join(TMP, 'own-')); fs.mkdirSync(path.join(d, '.claude')); return d; };
@@ -888,4 +903,21 @@ test('compact instead: an ask still carrying a fresh-session option goes out wit
         session_id: 'k3', cwd: p.root, transcript_path: transcript() }, { CLAUDE_PROJECT_DIR: p.root, ALFRED_CODE_HOOK_LOG_DIR: log, ALFRED_CODE_AUTO_COMPACT: '1' });
     assert.strictEqual(lone.status, 2, 'a question the drop leaves with one option is still handed back');
     assert.match(lone.stderr, /A question left with one option is no question/);
+});
+
+test('scorer asks: each option of the continue and withhold-final asks is auto-answered when it is the recommended one (R19)', () =>
+{
+    const p = project();
+    autoStamp(p, 'sc1');
+    const options = [['Answer the open decisions', 'your answers join the task and one more attempt runs'],
+        ['Accept it at 70, marked', 'it goes out now, its score and open findings named'],
+        ['Revise once more', 'one more revision and grade, about one seat run'], ['Keep it withheld', 'the best draft stays where it is']];
+    const question = 'The designer-plan scored 70/100 (level 80); the next revision can reach at most 78 - 1 open decision(s). How should it go on?';
+    for (const [pick] of options)
+    {
+        const ordered = [options.find(([l]) => l === pick), ...options.filter(([l]) => l !== pick)]
+            .map(([label, description], i) => ({ label: i ? label : `${label} (Recommended)`, description }));
+        const r = ask(p, 'sc1', [{ question, header: 'Scorer', multiSelect: false, options: ordered }]);
+        assert.deepStrictEqual(answered(r), { [question]: ordered[0].label }, pick);
+    }
 });

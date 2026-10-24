@@ -241,6 +241,10 @@
       "mcps": [],
       "plugins": []
     },
+    "habits-output-scorer": {
+      "mcps": [],
+      "plugins": []
+    },
     "habits-plan-writing": {
       "mcps": [],
       "plugins": []
@@ -681,6 +685,13 @@
         "habits-root-cause"
       ],
       "skillsSource": "frontmatter",
+      "agents": [],
+      "mcps": [],
+      "plugins": []
+    },
+    "output-scorer": {
+      "skills": [],
+      "skillsSource": "none",
       "agents": [],
       "mcps": [],
       "plugins": []

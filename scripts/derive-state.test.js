@@ -181,7 +181,7 @@ test('derive-state: an empty selection installs the core and denies every seat i
     assert.deepStrictEqual(got.plugins, ['alfred-code@envoydev'], 'the core is always enabled');
     const core = itemsOf(['alfred-code']);
     assert.deepStrictEqual(got.agents.off, core.agents, 'the core seats ride in either way, so each is denied');
-    assert.strictEqual(core.agents.length, 44, 'every seat rides the core');
+    assert.strictEqual(core.agents.length, 45, 'every seat rides the core');
     assert.deepStrictEqual(got.agents.on, []);
     assert.deepStrictEqual([core.skills, got.skills.library], [[], []], 'no skill rides the core, and none was picked to copy');
 });
@@ -780,7 +780,7 @@ test('readInstalled (2.1.0): the seats the core carries are read back only as th
     assert.ok(!lines.includes('agent dotnet-console-implementer'), 'neither picked nor denied by the last install - a seat this release added, offered, never on by itself');
     assert.ok(!lines.some((l) => l.startsWith('skill ')), 'the core carries no skill');
     const ungated = readInstalled({ plugins: ['alfred-code'], deny: [], routes: { skills: true }, core: 'current', sourceDir: ROOT });
-    assert.strictEqual(ungated.filter((l) => l.startsWith('agent ')).length, 44, 'with no picks to go by, every seat the core carries and nothing denies');
+    assert.strictEqual(ungated.filter((l) => l.startsWith('agent ')).length, 45, 'with no picks to go by, every seat the core carries and nothing denies');
 });
 
 test('readInstalled (2.1.0): a last run that copied the seats reads no item off the core', () =>
@@ -828,10 +828,10 @@ test('floor (2.1.0): the project\'s skill copies count - a manual-only, overridd
     fs.writeFileSync(path.join(dir, 'my-own-skill', 'SKILL.md'), '---\nname: my-own-skill\ndescription: mine\n---\n');
     const got = floor({ plugins: ['alfred-code'], skillsDir: dir, overrides: { csharp: 'off', 'markdown-style': 'name-only' } });
     assert.deepStrictEqual([got.skills.count, got.skills.chars], [1, descriptionChars('skill', 'habits-done-gate')], 'task-solve is manual-only');
-    assert.strictEqual(got.agents.count, 44);
+    assert.strictEqual(got.agents.count, 45);
     const settingsFile = path.join(TMP, 'floor-overrides.json');
     fs.writeFileSync(settingsFile, JSON.stringify({ skillOverrides: { csharp: 'off', 'markdown-style': 'name-only' }, permissions: { deny: ['Agent(alfred-code:aspnet-implementer)'] } }));
     const { execFileSync } = require('node:child_process');
     const cli = JSON.parse(execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'derive-state.js'), '--floor', '--plugins', 'alfred-code', '--skills-dir', dir, '--settings', settingsFile], { encoding: 'utf8' }));
-    assert.deepStrictEqual([cli.skills.count, cli.agents.count, cli.agents.denied], [1, 43, ['aspnet-implementer']]);
+    assert.deepStrictEqual([cli.skills.count, cli.agents.count, cli.agents.denied], [1, 44, ['aspnet-implementer']]);
 });

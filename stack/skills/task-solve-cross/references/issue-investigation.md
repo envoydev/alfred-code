@@ -23,6 +23,8 @@ Issue / failure report
   -> fix decision gate: stop | resolver loop | single-domain fix | cross-domain fix
 ```
 
+Where a `scorer: on` line naming the root-cause verdict or a `scorer: stacked` line is in context, the FIRST action before releasing a diagnoser seat's report - routing on it, or embedding it in a task card - is the `habits-output-scorer` Skill call with output `root-cause`.
+
 The strict rule:
 
 ```text

@@ -3745,47 +3745,47 @@
       ]
     },
     "designer-oriented-report-line": {
-      "_note": "The `Oriented:` header the plan gate requires, carried as the first line of the read-only designer report because the seat has no Write tool and the orchestrator writes the plan file from the report. The preferences docs read (or `none present`) ride it as the forcing shape for the START read, since the hook hands them over only at a first edit or git write and a designer seat makes neither (agents audit 2026-10-21 T2-5).",
+      "_note": "The `Oriented:` header the plan gate requires, carried as the first line of the read-only designer report because the seat has no Write tool and the orchestrator writes the plan file from the report. The preference docs and both assessments read (or `none present`) ride it as the forcing shape for the START read - the output scorer's designer-plan check P2 reads the same field -, since the hook hands them over only at a first edit or git write and a designer seat makes neither (agents audit 2026-10-21 T2-5).",
       "owner": {
         "file": "stack/agents/aspnet-solution-designer.md",
-        "marker": "the house skills loaded, the preferences docs read (or `none present`)"
+        "marker": "the house skills loaded, the preference and assessment docs read (or `none present`)"
       },
       "sites": [
         {
           "file": "stack/agents/browser-extension-solution-designer.md",
-          "marker": "the house skills loaded, the preferences docs read (or `none present`)"
+          "marker": "the house skills loaded, the preference and assessment docs read (or `none present`)"
         },
         {
           "file": "stack/agents/console-solution-designer.md",
-          "marker": "the house skills loaded, the preferences docs read (or `none present`)"
+          "marker": "the house skills loaded, the preference and assessment docs read (or `none present`)"
         },
         {
           "file": "stack/agents/data-solution-designer.md",
-          "marker": "the house skills loaded, the preferences docs read (or `none present`)"
+          "marker": "the house skills loaded, the preference and assessment docs read (or `none present`)"
         },
         {
           "file": "stack/agents/devops-solution-designer.md",
-          "marker": "the house skills loaded, the preferences docs read (or `none present`)"
+          "marker": "the house skills loaded, the preference and assessment docs read (or `none present`)"
         },
         {
           "file": "stack/agents/ionic-angular-solution-designer.md",
-          "marker": "the house skills loaded, the preferences docs read (or `none present`)"
+          "marker": "the house skills loaded, the preference and assessment docs read (or `none present`)"
         },
         {
           "file": "stack/agents/web-angular-solution-designer.md",
-          "marker": "the house skills loaded, the preferences docs read (or `none present`)"
+          "marker": "the house skills loaded, the preference and assessment docs read (or `none present`)"
         },
         {
           "file": "stack/agents/windows-service-solution-designer.md",
-          "marker": "the house skills loaded, the preferences docs read (or `none present`)"
+          "marker": "the house skills loaded, the preference and assessment docs read (or `none present`)"
         },
         {
           "file": "stack/agents/winforms-solution-designer.md",
-          "marker": "the house skills loaded, the preferences docs read (or `none present`)"
+          "marker": "the house skills loaded, the preference and assessment docs read (or `none present`)"
         },
         {
           "file": "stack/agents/wpf-solution-designer.md",
-          "marker": "the house skills loaded, the preferences docs read (or `none present`)"
+          "marker": "the house skills loaded, the preference and assessment docs read (or `none present`)"
         }
       ]
     },
@@ -6401,6 +6401,10 @@
         {
           "file": "stack/skills/task-solve-cross/scripts/spec-check.js",
           "marker": "function envOf(env, suffix)\n{\n    const value = env[`ALFRED_CODE_${suffix}`];\n    return value === '' ? undefined : value;\n}"
+        },
+        {
+          "file": "stack/skills/habits-output-scorer/scripts/scorecard.js",
+          "marker": "function envOf(env, suffix)\n{\n    const value = env[`ALFRED_CODE_${suffix}`];\n    return value === '' ? undefined : value;\n}"
         }
       ]
     },
@@ -6889,6 +6893,10 @@
         },
         {
           "file": "stack/skills/review-security/SKILL.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/skills/habits-output-scorer/SKILL.md",
           "marker": "exactly as the roster spells it"
         }
       ]
@@ -7690,6 +7698,10 @@
         {
           "file": "setup-plugin/hooks/guard-layer-table.js",
           "marker": "const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\\\/g, '/').replace(/^\\.\\//, '').replace(/\\/+$/, '') || '.alfred';"
+        },
+        {
+          "file": "stack/skills/habits-output-scorer/scripts/scorecard.js",
+          "marker": "const dataRoot = (env = process.env) => String(envOf(env, 'DATA_PATH') || '.alfred').replace(/\\\\/g, '/').replace(/^\\.\\//, '').replace(/\\/+$/, '') || '.alfred';"
         }
       ]
     },
@@ -8086,6 +8098,60 @@
         {
           "file": "stack/hooks/preferences-session.js",
           "marker": "ask the user which wins, the entry\\'s side marked (Recommended)"
+        }
+      ]
+    },
+    "prose-of": {
+      "_note": "proseOf - the prose of a message with its code blocks, tables, quotes, inline spans and link targets dropped. The prelude's copy serves the scorer (the stack reader and the flags); guard-answer.js keeps its own because it runs fail-open without the prelude and its answer budget calls it (R32 of the habits-output-scorer plan). The marker is the whole body, so a change to either copy fails lint until the other matches.",
+      "owner": {
+        "file": "stack/hooks/hook-prelude.js",
+        "marker": ".replace(/```[\\s\\S]*?```/g, '')\n.replace(/^\\s*\\|.*$/gm, '')\n.replace(/^\\s*>.*$/gm, '')\n.replace(/`[^`\\n]*`/g, '')\n.replace(/\\]\\([^)\\s]*\\)/g, ']')\n.replace(/\\s+/g, ' ')\n.trim();"
+      },
+      "sites": [
+        {
+          "file": "stack/hooks/guard-answer.js",
+          "marker": ".replace(/```[\\s\\S]*?```/g, '')\n.replace(/^\\s*\\|.*$/gm, '')\n.replace(/^\\s*>.*$/gm, '')\n.replace(/`[^`\\n]*`/g, '')\n.replace(/\\]\\([^)\\s]*\\)/g, ']')\n.replace(/\\s+/g, ' ')\n.trim();"
+        }
+      ]
+    },
+    "scorer-hook": {
+      "_note": "The producers' one line that sends an output through habits-output-scorer before it is released (spec section 6, R6): an automatic output's line names the `scorer: on` line and the stacked one, a typed-only output's only the stacked one; the skill's When to use states both shapes. issue-diagnoser's two lines (step 3 and 4a) share one site. habits-output-scorer sits in always.skills, so every producer that names it has it beside it.",
+      "owner": {
+        "file": "stack/skills/habits-output-scorer/SKILL.md",
+        "marker": "line is in context, the FIRST action before releasing"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/habits-plan-writing/SKILL.md",
+          "marker": "line is in context, the FIRST action before releasing"
+        },
+        {
+          "file": "stack/skills/habits-execution-strategy/SKILL.md",
+          "marker": "line is in context, the FIRST action before releasing"
+        },
+        {
+          "file": "stack/skills/habits-explain-topic/SKILL.md",
+          "marker": "line is in context, the FIRST action before releasing"
+        },
+        {
+          "file": "stack/skills/habits-create-ticket/SKILL.md",
+          "marker": "line is in context, the FIRST action before releasing"
+        },
+        {
+          "file": "stack/skills/task-version-upgrade/SKILL.md",
+          "marker": "line is in context, the FIRST action before releasing"
+        },
+        {
+          "file": "stack/skills/issue-diagnoser/SKILL.md",
+          "marker": "line is in context, the FIRST action before releasing"
+        },
+        {
+          "file": "stack/skills/task-build-from-scratch/SKILL.md",
+          "marker": "line is in context, the FIRST action before releasing"
+        },
+        {
+          "file": "stack/skills/task-solve-cross/references/issue-investigation.md",
+          "marker": "line is in context, the FIRST action before releasing"
         }
       ]
     }

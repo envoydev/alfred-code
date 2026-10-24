@@ -66,6 +66,55 @@
       }
     },
     {
+      "key": "ALFRED_CODE_SCORER",
+      "default": "0",
+      "ask": false,
+      "what": "habits-output-scorer: `1` grades each automatic output (a designer's plan file, a diagnoser's root-cause verdict, an inline plan) with a fresh `output-scorer` seat before it is released, and holds it until it meets the level or the user accepts it; `0` (the seed) is off. `--score-on` / `--score-off` in a message override it for the session (off wins when both are typed), and a typed `/<producer> /habits-output-scorer <request>` stack grades that one request even while it is off.",
+      "validate": {
+        "type": "enum",
+        "values": [
+          "0",
+          "1"
+        ]
+      }
+    },
+    {
+      "key": "ALFRED_CODE_SCORER_LEVEL",
+      "default": "80",
+      "ask": false,
+      "what": "habits-output-scorer: the score out of 100 an output must reach to be released, a whole number from 60 to 100 (anything else reads as 80). A target, not a strict bar: when the grade shows the level cannot be reached with what is in hand, the user is asked whether to go on or accept the output below it.",
+      "validate": {
+        "type": "percent",
+        "min": 60,
+        "max": 100
+      }
+    },
+    {
+      "key": "ALFRED_CODE_SCORER_OUTPUTS",
+      "default": "",
+      "ask": false,
+      "what": "habits-output-scorer: a csv of the automatic outputs to grade - `designer-plan`, `root-cause`, `inline-plan`. Empty (the seed) means all three; a name outside them is ignored with one ledger row. The outputs graded only through a typed stack (an explainer answer, a ticket, an upgrade plan, a pick, a custom output) take no part in this list.",
+      "validate": {
+        "type": "csv",
+        "values": [
+          "designer-plan",
+          "root-cause",
+          "inline-plan"
+        ]
+      }
+    },
+    {
+      "key": "ALFRED_CODE_SCORER_ROUNDS",
+      "default": "3",
+      "ask": false,
+      "what": "habits-output-scorer: the most grading runs one attempt may spend, a whole number from 1 to 10 (anything else reads as 3). Every run counts - a regrade and a retry of a malformed grade included; an inline plan always gets one, and each extra run the user buys at the continue ask adds one.",
+      "validate": {
+        "type": "int",
+        "min": 1,
+        "max": 10
+      }
+    },
+    {
       "key": "ALFRED_CODE_HISTORY",
       "default": "3",
       "former_defaults": [
@@ -204,7 +253,7 @@
       "key": "ALFRED_CODE_HOOKS_OFF",
       "default": "",
       "ask": false,
-      "what": "a csv of hook names this project switches off, e.g. `guard-answer,instrument-tool-usage`. It is where the guided walk's hooks LAYER lands: every hook now arrives together inside the core alfred-code plugin, so there is no file to leave out of an install, and the rows an init or configure run does NOT pick are written here (that answer overwrites this value; every other run seeds it only when absent). Matching is exact on the base name, `.js` optional; a prefix never matches. A hook's PART is switched off the same way, as `<hook>:<part>`: `docs-session:block` (the session-start orientation), `docs-session:gate` (the first-change hold), `docs-session:ask` (the end-of-session doc ask), `guard-ungated-commit:push` (the publish half of the commit gate), `guard-stop-contract:rotate` (the credential rotate ask), `guard-stop-contract:done` (the done-gate probe) and `guard-fresh-session-start:builtin-review` (the deny of the model's call to Claude Code's bundled /code-review and /security-review, 2026-10-22) - each but the last was its own `=0` key before the env audit of 2026-10-21, and an update folds a stored `0` in here.",
+      "what": "a csv of hook names this project switches off, e.g. `guard-answer,instrument-tool-usage`. It is where the guided walk's hooks LAYER lands: every hook now arrives together inside the core alfred-code plugin, so there is no file to leave out of an install, and the rows an init or configure run does NOT pick are written here (that answer overwrites this value; every other run seeds it only when absent). Matching is exact on the base name, `.js` optional; a prefix never matches. A hook's PART is switched off the same way, as `<hook>:<part>`: `docs-session:block` (the session-start orientation), `docs-session:gate` (the first-change hold), `docs-session:ask` (the end-of-session doc ask), `guard-ungated-commit:push` (the publish half of the commit gate), `guard-stop-contract:rotate` (the credential rotate ask), `guard-stop-contract:done` (the done-gate probe) and `guard-fresh-session-start:builtin-review` (the deny of the model's call to Claude Code's bundled /code-review and /security-review, 2026-10-22) - each but the last was its own `=0` key before the env audit of 2026-10-21, and an update folds a stored `0` in here. `guard-answer:scorer` (the scorer lines and flags) and `guard-stop-contract:scorer` (the scorer backstop and the sealed scorecard) - either one turns the whole scorer off, stacks included.",
       "validate": {
         "type": "csv"
       }

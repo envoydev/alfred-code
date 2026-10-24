@@ -594,6 +594,17 @@ test('2.8.0: a plan under the docs root\'s work/plans/ reads whole, as one under
   assert.equal(rd('work/plans/other.md'), 2, 'a work/plans/ folder outside the docs root is no plan');
 });
 
+test('a 61KB draft under state/sessions/scorer/ reads whole; a 61KB .md elsewhere under state/ still blocks', () => {
+  const dir = capDir();
+  const slug = path.join(dir, '.alfred', 'state', 'sessions', 'scorer', 's1', 'x'); fs.mkdirSync(slug, { recursive: true });
+  fs.writeFileSync(path.join(slug, 'ab12cd34.draft.md'), '# draft\n' + 'x'.repeat(61 * 1024) + '\n');
+  fs.writeFileSync(path.join(dir, '.alfred', 'state', 'sessions', 'other.md'), '# other\n' + 'x'.repeat(61 * 1024) + '\n');
+  const envd = { ...process.env, CLAUDE_PROJECT_DIR: dir };
+  const rd = (p) => run(READ, { tool_name: 'Read', tool_input: { file_path: p }, session_id: sid() }, { cwd: dir, env: envd }).status;
+  assert.equal(rd('.alfred/state/sessions/scorer/s1/x/ab12cd34.draft.md'), 0, 'the draft is the grader\'s mandated input');
+  assert.equal(rd('.alfred/state/sessions/other.md'), 2, 'any other 61KB file under state/ still blocks');
+});
+
 test('audit 2026-10-10 C11/C13: the rule notice reads no redirect inside quotes and no target outside the project', () => {
   const s = sid();
   assert.equal(announce(`perl -0pi -e 's/see > <name>.spec.ts/x/' notes.md`, s), '', 'a > inside the perl script is text (f10cb06a)');

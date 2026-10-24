@@ -356,3 +356,16 @@ servers' data stays where it was (the `mcp data:` line) - the stack no longer re
 and so may another project still on an older release. Where the stack had switched Claude Code's own memory off, the
 update switches it back on; a switch-off the user set stays. Report the block verbatim, and put the add-back lines on
 the card as the user's to run - only when they want that server again.
+
+## after 2.10.1 - grade before release: the output scorer
+
+A designer's plan file, a diagnoser's root-cause verdict and an inline plan can be graded by a fresh, read-only
+`output-scorer` seat before they are released (the `habits-output-scorer` skill, always installed). It is OFF by
+default: `ALFRED_CODE_SCORER=1` turns it on, `ALFRED_CODE_SCORER_LEVEL` sets the pass mark (60-100, default 80),
+`ALFRED_CODE_SCORER_ROUNDS` the grades per attempt (1-10, default 3) and `ALFRED_CODE_SCORER_OUTPUTS` narrows the three
+outputs (a csv; empty means all three). `--score-on` / `--score-off` in a message switch it for the session. A typed
+stack - `/habits-explain-topic /habits-output-scorer <request>` - grades that one request's output even while it is off,
+an explainer answer, a ticket, an upgrade plan or a pick included. An output that cannot reach the level is withheld and
+the user decides: answer the open decisions, accept it marked, one more revision, or keep it withheld.
+`guard-answer:scorer` or `guard-stop-contract:scorer` in `ALFRED_CODE_HOOKS_OFF` switches the whole scorer off. Update
+seeds the four keys absent-only, so a value the project set stays; report the seeded lines.

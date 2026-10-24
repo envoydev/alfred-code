@@ -173,6 +173,11 @@
     },
     {
       "repo": "envoydev/alfred-code",
+      "name": "habits-output-scorer",
+      "note": "grades a producer's draft with the output-scorer seat and releases it only on a pass (ALFRED_CODE_SCORER / --score-on, or a typed stack)"
+    },
+    {
+      "repo": "envoydev/alfred-code",
       "name": "issue-signatures-runtime",
       "note": "single-chat diagnoser twin: local-runtime crash signatures (null-ref/DI/deadlock/disposed/config-drift/boundary/HTTP-status) -> where to isolate each; pairs with habits-root-cause"
     },
@@ -515,6 +520,10 @@
       "note": "final gate (opus/xhigh): read-only cross-domain integration review - contract consistency, assembled build/test/migration, the commit gate no single-stack verifier is"
     },
     {
+      "file": "output-scorer.md",
+      "note": "habits-output-scorer's grader (sonnet/xhigh): read-only, one draft against one rubric and its producer's docs, a quote per yes"
+    },
+    {
       "file": "aspnet-solution-designer.md",
       "note": "design phase (opus/xhigh): ASP.NET Core architecture + plan + test strategy, decomposes into parallel tasks"
     },
@@ -797,6 +806,12 @@
       "matcher": "AskUserQuestion",
       "event": "",
       "note": "PreToolUse AskUserQuestion: FIX IN PLACE an ask whose own shape is mechanically wrong - its house voice (an em- or en-dash, a double quote), a fresh-session option quoting no number near the measured carry, a fresh option pointing at a resume block above that no fence shows - the corrected questions sent through updatedInput with no decision; DENY once per ask text, carrying any such fix, an option telling the user to type into Other, a single-select question without exactly one (Recommended), a new cycle's first ask with no fresh option; INJECT the judgement notes, which land beside the user's answer and are worded for it - stale scope (an option naming repo/remote/job state with no fresh read this turn: verify before acting, re-ask if it moved), a recommendation contradicting an un-actioned earlier prompt, the fresh-session offer for the next ask, a live credential. Presence only. Under a live AUTO stamp it ANSWERS an ask whose every question marks one (Recommended) option - allow plus an answers map in updatedInput - except a recommended push, merge, deploy or publish, and takes the next option over a recommended fresh-session hand-off; anything else waits for the user."
+    },
+    {
+      "file": "guard-stop-contract.js",
+      "matcher": "SubagentHandback",
+      "event": "",
+      "note": "PreToolUse SubagentHandback: seal an output-scorer seat's report into its score file (habits-output-scorer); never decides"
     },
     {
       "file": "guard-fresh-session-start.js",

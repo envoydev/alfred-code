@@ -55,6 +55,8 @@ const ROUTES = [
   { hook: 'guard-ungated-commit.js', event: 'PreToolUse', deny: true, pattern: '^mcp__.*',
     tools: ['mcp__github__merge_pull_request', 'mcp__work_forge__accept_merge_request', 'mcp__plugin_acme_ado__repo_pull_request_write'] }, // mcp-fixture
   { hook: 'guard-stop-contract.js', event: 'PreToolUse', tools: ['AskUserQuestion'], deny: false, needsTranscript: true },
+  // The output-scorer's seal (habits-output-scorer): a seat's hand-back is written to its score file, logged, never decided.
+  { hook: 'guard-stop-contract.js', event: 'PreToolUse', tools: ['SubagentHandback'], deny: false, probe: 'scorer-seal' },
   { hook: 'guard-fresh-session-start.js', event: 'PreToolUse', tools: ['Skill'], deny: true, needsTranscript: true },
   { hook: 'guard-cross-project-write.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Monitor'], deny: true },
   { hook: 'guard-config-protection.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Monitor'], deny: true },
@@ -96,6 +98,10 @@ const ROUTES = [
 // the point - it costs one line and a reason, and it keeps every UNDECLARED silence loud.
 // The evidence a declared route needs is proof the gate CAN fire: its own unit coverage.
 const UNEXERCISED = {
+  // Wired 2026-10-25 (habits-output-scorer). The seal acts only on an output-scorer seat's hand-back, a seat the corpus
+  // predates; what it writes is pinned in guard-stop-closes.test.js ('scorer seal').
+  'guard-stop-contract.js::PreToolUse:SubagentHandback':
+    'the corpus predates the output-scorer seat; the seal is pinned in guard-stop-closes.test.js',
   // Replayed 2026-09-23 over 820 transcripts: 29,058 Bash and 1,523 Write payloads, none aimed at a
   // check config that already existed - the sessions never shell-edited or overwrote one. The gate
   // fires on both routes in guard-hooks.test.js.

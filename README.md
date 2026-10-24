@@ -131,8 +131,8 @@ More on the two task flows: [`docs/solve-skills-guide.md`](docs/solve-skills-gui
 
 | | Count | What it is |
 | --- | --- | --- |
-| **Skills** | 91 | house conventions and workflows |
-| **Agents** | 44 | designers, implementers, verifiers, reviewers |
+| **Skills** | 92 | house conventions and workflows |
+| **Agents** | 45 | designers, implementers, verifiers, reviewers |
 | **Rules** | 18 | always-on basics and per-file conventions |
 | **Hooks** | 18 | the guards, plus the docs, preferences and history hooks |
 | **Plugins** | 3 | optional: claude-hud (recommended) and the C# and TypeScript language servers |

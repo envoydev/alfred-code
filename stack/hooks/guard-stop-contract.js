@@ -485,6 +485,13 @@ function registeredWork() {
     return /^(?:subagent|workflow|teammate|cloud session|mcp task|monitor)$/.test(type);
   });
 }
+// Is a seat of the type `re` names still out - a `subagent` entry of the Stop registry not yet settled? The scorer
+// backstop reads it: a grader still running is the loop's own wait, a diagnoser still running has no verdict yet.
+function seatLive(re) {
+  if (payload.hook_event_name !== 'Stop' || !Array.isArray(payload.background_tasks)) return false;
+  return payload.background_tasks.some((t) => !!t && typeof t === 'object' && String(t.type || '').toLowerCase() === 'subagent'
+    && !SETTLED_STATUS.test(String(t.status || '')) && re.test(String(t.agent_type || '')));
+}
 function liveBackgroundWork() {
   const reg = registeredWork();
   if (reg !== null) return reg;
@@ -978,6 +985,120 @@ function walkBack(start, fallback) {
   }
   return fallback;
 }
+
+// --- the scorer backstop (habits-output-scorer, spec 5.9) ----------------------------------------------
+// What the cycle owes a grade for, read in ONE walk back to the row that opened it: the newest row the user typed (no
+// harness prompt, compaction summary or sibling hook's `Stop hook feedback:` row). The evidence triggers: T1 a draft the
+// loop wrote in this session's scorer folder (on, or the cycle stacked); T2 a plan file under the docs root's
+// work/plans/ (on, designer-plan listed); T3 a findings-file verdict or a diagnoser seat that settled (on, root-cause
+// listed) - neither where a draft was written, T2 not where a plan reader ran or the loop released that target; T4 the
+// cycle stacked /habits-output-scorer. A `Scored:` line after the newest trigger clears it only when a rounds.log the
+// script wrote holds a release or a final since the cycle opened (R34). Returns the owed trigger's words or null, the
+// cycle's key, and whether the receipt was there but unbacked.
+const SCORED_RE = /(?:^|\n)\s*\**Scored\**:\s*\d+\/100/;
+const DIAGNOSER_RE = /(?:^|:)issue-diagnoser-(?:ci|runtime)$/;
+const VERDICT_RE = /^\s*Cause:\s*(?!<pending>)\S/m;
+const SCORER_TRIGGERS = {
+  T1: 'a scorer draft was written',
+  T2: 'a plan file was written under work/plans/',
+  T3: 'a root-cause verdict was written or a diagnoser seat reported',
+  T4: 'the request stacked /habits-output-scorer',
+};
+function scorerOwed(state, pre, root) {
+  const path = require('path');
+  const crypto = require('crypto');
+  const layout = require('./layout.js');
+  const fwd = (p) => String(p || '').replace(/\\/g, '/');
+  const own = `/state/sessions/scorer/${pre.safeSession(payload.session_id)}/`;
+  const plans = path.resolve(root, layout.docsRoot(), 'work', 'plans') + path.sep;
+  const diagnoses = path.resolve(root, layout.docsRoot(), 'work', 'diagnoses') + path.sep;
+  const under = (p, dir) => path.resolve(root, fwd(p)).startsWith(dir);
+  const found = walkBack(() => {
+    // n counts content blocks newest first, so a smaller n is later; the close itself is n = 0
+    const seen = { t1: null, t2: [], t3: null, seat: null, receipt: null, planRead: false, stacked: false };
+    let n = 0;
+    let next = null;
+    return (o) => {
+      const row = next;
+      next = o;
+      if (!o || !o.message) return undefined;
+      const c = o.message.content;
+      if (o.type === 'assistant' && Array.isArray(c)) {
+        for (let i = c.length - 1; i >= 0; i -= 1) {
+          const b = c[i];
+          n += 1;
+          if (!b) continue;
+          if (b.type === 'text' && seen.receipt === null && SCORED_RE.test(String(b.text || ''))) seen.receipt = n;
+          if (b.type !== 'tool_use') continue;
+          const input = b.input || {};
+          if (b.name === 'Write' && seen.t1 === null && fwd(input.file_path).includes(own) && fwd(input.file_path).endsWith('.draft.md')) seen.t1 = n;
+          if (!state.on) continue;
+          if (b.name === 'Write' && /\.md$/i.test(fwd(input.file_path)) && under(input.file_path, plans)) seen.t2.push({ n, file: path.resolve(root, fwd(input.file_path)) });
+          if (seen.t3 === null && ['Write', 'Edit', 'MultiEdit'].includes(b.name) && under(input.file_path, diagnoses)) {
+            const texts = b.name === 'Write' ? [input.content] : b.name === 'Edit' ? [input.new_string] : (Array.isArray(input.edits) ? input.edits : []).map((e) => e && e.new_string);
+            if (texts.some((t) => VERDICT_RE.test(String(t || '')))) seen.t3 = n;
+          }
+          if (seen.seat === null && (b.name === 'Agent' || b.name === 'Task') && DIAGNOSER_RE.test(String(input.subagent_type || ''))) seen.seat = n;
+          if (b.name === 'Skill' && pre.producerMarks(JSON.stringify({ type: 'assistant', message: { content: [b] } }), pre.PLAN_READERS).length) seen.planRead = true;
+        }
+        return undefined;
+      }
+      if (o.type !== 'user') return undefined;
+      n += 1;
+      const text = rowText(o);
+      if (text.includes('<command-name>')) {
+        const marks = pre.producerMarks(JSON.stringify(o));
+        if (marks.includes('habits-output-scorer')) seen.stacked = true;
+        if (marks.some((m) => pre.PLAN_READERS.includes(m))) seen.planRead = true;
+      }
+      if (o.isCompactSummary || !typedMessage(o, row) || /^\s*Stop hook feedback:/.test(text)) return undefined;
+      // the opening row: its uuid, else its timestamp, else the row's own hash keys the cycle
+      const key = o.uuid || o.timestamp || `${payload.transcript_path}#${crypto.createHash('sha256').update(JSON.stringify(o)).digest('hex')}`;
+      return { ...seen, open: n, at: Date.parse(o.timestamp || ''), key: String(key), stacked: seen.stacked || pre.stackNamed(text) };
+    };
+  }, null);
+  if (!found) {
+    ledgerRow({ tool: '', mode: 'probe', kind: 'scorer-cycle-unread', reason: 'probe: no typed prompt in the transcript - the scorer backstop judged nothing' });
+    return { owed: null, cycle: null };
+  }
+  // the scorer's own folders: this session's, and the SELF route's (R29); a log written before the cycle opened is
+  // another cycle's (2s slack for a coarse mtime)
+  const base = layout.statePath(root, 'sessions', 'scorer');
+  const logs = (folder) => {
+    try { return fs.readdirSync(path.join(base, folder)).map((slug) => path.join(base, folder, slug, 'rounds.log')).filter((f) => fs.existsSync(f)); } catch { return []; }
+  };
+  const read = (f) => { try { return fs.readFileSync(f, 'utf8'); } catch { return ''; } };
+  const ownLogs = logs(pre.safeSession(payload.session_id));
+  const triggers = [];
+  if (found.t1 !== null && (state.on || found.stacked)) triggers.push(['T1', found.t1]);
+  if (found.t1 === null && state.on && state.outputs.includes('designer-plan') && !found.planRead && found.t2.length) {
+    const released = new Set();
+    for (const f of ownLogs) {
+      const t = read(f);
+      const target = /^target:\s*(.+)$/m.exec(t);
+      if (target && /^released\b/m.test(t)) released.add(path.resolve(root, fwd(target[1].trim())));
+    }
+    const plan = found.t2.find((w) => !released.has(w.file));
+    if (plan) triggers.push(['T2', plan.n]);
+  }
+  if (found.t1 === null && state.on && state.outputs.includes('root-cause')) {
+    if (found.t3 !== null) triggers.push(['T3', found.t3]);
+    if (found.seat !== null && !seatLive(DIAGNOSER_RE)) triggers.push(['T3', found.seat]);
+  }
+  if (found.stacked) triggers.push(['T4', found.open]);
+  if (!triggers.length) return { owed: null, cycle: found.key };
+  const [name, at] = triggers.reduce((a, b) => (b[1] < a[1] ? b : a));
+  const receipt = SCORED_RE.test(typeof payload.last_assistant_message === 'string' ? payload.last_assistant_message : '') ? 0 : found.receipt;
+  if (receipt === null || receipt >= at) return { owed: SCORER_TRIGGERS[name], cycle: found.key };
+  let selfLogs = [];
+  try { selfLogs = fs.readdirSync(base).filter((d) => /^self-/.test(d)).flatMap(logs); } catch { /* no scorer folder yet */ }
+  const backed = [...ownLogs, ...selfLogs].some((f) => {
+    try { if (Number.isFinite(found.at) && fs.statSync(f).mtimeMs < found.at - 2000) return false; } catch { return false; }
+    return /^(?:released|final)\b/m.test(read(f));
+  });
+  return backed ? { owed: null, cycle: found.key } : { owed: SCORER_TRIGGERS[name], cycle: found.key, unbacked: true };
+}
+
 function askJustAnswered() {
   try {
     return walkBack(() => {
@@ -1351,7 +1472,42 @@ function subagentOwnTools(file) {
   }
   return tools;
 }
+// --- the output-scorer's seal (habits-output-scorer, spec 5.10) ------------------------------------------
+// The grader's report names its score file on its first line, and this hook writes it, sealed: `seal: sha256 <hex of the
+// report>` then the report as delivered, so a card the author typed or edited never grades (scorecard.js sealOf, the
+// same hash). Only into this session's scorer folder - both sides realpathed, so macOS's /var reads as /private/var and
+// a symlinked parent leads nowhere - only a `.score.md`, and only one that does not exist yet (`wx`: a second delivery,
+// the hand-back then SubagentStop, never rewrites the first). Never decides; one probe row either way.
+function sealScorecard(message) {
+  if (!/(?:^|:)output-scorer$/.test(String(payload.agent_type || '')) || partOff('guard-stop-contract', 'scorer')) return;
+  const path = require('path');
+  let file = null;
+  let written = false;
+  try {
+    const pre = require('./hook-prelude.js');
+    const text = String(message == null ? '' : message);
+    const head = /^score-file:\s*(\S.*?)\s*$/.exec((text.split('\n').find((l) => l.trim()) || '').replace(/[*`]/g, '').trim());
+    if (head) {
+      const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+      file = path.resolve(root, head[1].replace(/\\/g, '/'));
+      const folder = fs.realpathSync.native(path.join(require('./layout.js').statePath(root, 'sessions', 'scorer'), pre.safeSession(payload.session_id)));
+      const parent = fs.realpathSync.native(path.dirname(file));
+      if ((parent + path.sep).startsWith(folder + path.sep) && file.endsWith('.score.md')) {
+        const hash = require('crypto').createHash('sha256').update(text, 'utf8').digest('hex');
+        fs.writeFileSync(path.join(parent, path.basename(file)), `seal: sha256 ${hash}\n${text}`, { flag: 'wx' });
+        written = true;
+      }
+    }
+  } catch { /* a folder that is not there, a file that already is: nothing written */ }
+  ledgerRow({ tool: payload.tool_name || '', mode: 'probe', kind: 'scorer-seal', reason: `probe: the output-scorer's report ${written ? 'sealed' : 'not sealed'}`, detail: { file, written } });
+}
+if (payload.hook_event_name === 'PreToolUse' && payload.tool_name === 'SubagentHandback') {
+  sealScorecard(payload.tool_input && payload.tool_input.message);
+  process.exit(0);
+}
 if (payload.hook_event_name === 'SubagentStop') {
+  // a run with no hand-back tool reports through its last message; sealed before any exit, a continuation's included
+  sealScorecard(payload.last_assistant_message);
   if (payload.stop_hook_active) process.exit(0); // a continuation this hook caused - the once-marker's twin, never a loop
   const text = (typeof payload.last_assistant_message === 'string' ? payload.last_assistant_message : '').replace(/```[\s\S]*?```/g, ' ');
   const tools = subagentOwnTools(payload.agent_transcript_path);
@@ -1809,6 +1965,34 @@ if (payload.hook_event_name === 'Stop') {
     if (typeof pre.sweepStale === 'function') { pre.sweepStale(logDir, 'guard-stop-'); pre.sweepStale(logDir, 'alfred-stop-held-'); pre.capLog(require('path').join(logDir, 'guard-stop-contract.log')); }
   } catch { /* no prelude: nothing swept */ }
   try { settleAskFixed(); } catch { /* the ask-fixed rows wait (below); never decides */ }
+  // The scorer backstop (scorerOwed, above): a close that owes a Scored: line and lacks it is held ONCE per typed prompt
+  // - the SCORER-HELD marker names the cycle - so a grader's notification turn is never held again. It runs before the
+  // stopHeld exit (R17): a rewrite after this hook's own hold for another reason is still judged. A grader seat still
+  // running is the loop's own wait; a seat's own Stop never owes it. Fail-open: a throw reads as not owed.
+  if (!payload.agent_id && payload.transcript_path) {
+    try {
+      const pre = require('./hook-prelude.js');
+      const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+      const state = typeof pre.scorerState === 'function' ? pre.scorerState(root, payload.session_id) : { usable: false };
+      if (state.usable && !seatLive(/(?:^|:)output-scorer$/)) {
+        const { owed, cycle, unbacked } = scorerOwed(state, pre, root);
+        const marker = owed ? pre.scorerHeldFile(root, payload.session_id) : null;
+        let held = '';
+        try { if (marker) held = fs.readFileSync(marker, 'utf8').trim(); } catch { /* no marker: this session never held */ }
+        if (marker && held !== cycle) {
+          fs.mkdirSync(require('path').dirname(marker), { recursive: true });
+          fs.writeFileSync(marker, `${cycle}\n`);
+          if (unbacked) ledgerRow({ tool: '', mode: 'probe', kind: 'scorer-receipt-unbacked', reason: 'probe: a Scored: line with no rounds.log release or final behind it - held' });
+          blockDetail('scorer', owed);
+          process.stderr.write(`Stop: this request owes a grade - ${owed} - and the close carries no Scored: line the loop wrote. `
+            + `${unbacked ? 'The Scored: line here has no rounds.log release behind it; only the line scorecard.js next prints after the loop counts. ' : ''}`
+            + 'Run the habits-output-scorer loop on that output now and close with the Scored: line `next` prints; '
+            + 'where no seat can grade, its Fallback (a SELF grade) applies. Held once for this request.\n');
+          process.exit(2);
+        }
+      }
+    } catch { /* fail-open: the backstop never breaks a Stop */ }
+  }
   // Only a continuation THIS hook caused stands down; one a sibling Stop hook caused is judged once more, and this
   // hook still blocks at most once per cycle (hook-prelude.js, the Stop chain - audit 2026-10-08 S1).
   if (stopHeld(payload)) process.exit(0);

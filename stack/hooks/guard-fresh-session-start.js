@@ -847,17 +847,8 @@ if (IS_SKILL_CALL && skill) {
 // copy - personal or project - never the core's own stack/skills source in the plugin cache.
 // `guard-fresh-session-start:builtin-review` in ALFRED_CODE_HOOKS_OFF switches this part off.
 const BUILTIN_REVIEW = { 'code-review': '/review-code', 'security-review': '/review-security' };
-function oursLoadable(root, ours) {
-  const cfg = process.env.CLAUDE_CONFIG_DIR || nodePath.join(process.env.HOME || process.env.USERPROFILE || '', '.claude');
-  if (![nodePath.join(cfg, 'skills', ours, 'SKILL.md'), nodePath.join(root, '.claude', 'skills', ours, 'SKILL.md')].some((f) => fs.existsSync(f))) return false;
-  // skillOverrides, the most local file first: `off` hides the skill, `user-invocable-only` keeps it from the model
-  for (const f of [nodePath.join(root, '.claude', 'settings.local.json'), nodePath.join(root, '.claude', 'settings.json'), nodePath.join(cfg, 'settings.json')]) {
-    let o;
-    try { o = JSON.parse(fs.readFileSync(f, 'utf8')).skillOverrides; } catch { continue; }
-    if (o && typeof o === 'object' && Object.prototype.hasOwnProperty.call(o, ours)) return !/^(?:off|user-invocable-only)$/.test(String(o[ours]));
-  }
-  return true;
-}
+// The copy and skillOverrides read live in the prelude (skillCopyState, shared with the scorer); no prelude skips the deny.
+const oursLoadable = (root, ours) => { try { return require('./hook-prelude.js').oursLoadable(root, ours); } catch { return false; } };
 if (IS_SKILL_CALL && Object.prototype.hasOwnProperty.call(BUILTIN_REVIEW, skill.trim().replace(/^\//, ''))) {
   const name = skill.trim().replace(/^\//, '');
   let off = false;

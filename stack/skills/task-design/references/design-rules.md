@@ -2,7 +2,7 @@
 
 Read at method step 4, before the plan is decomposed. `SKILL.md` carries the three questions and
 the one-line form of each rule; this file is the long form - each rule with the failure shape it
-prevents - plus the `log_points` spec every task card is stamped from.
+prevents - the SOLID review stance, and the `log_points` spec every task card is stamped from.
 
 ## The seven
 
@@ -30,6 +30,10 @@ prevents - plus the `log_points` spec every task card is stamped from.
    system), name the established pattern rather than inventing a bespoke shape - and absent a
    trigger, the simpler structure wins. A pattern the language absorbed (first-class functions,
    generics, pattern matching) is a keyword now, not a structure to build.
+
+SOLID stays review VOCABULARY - 'this violates Liskov' is a precise, fast comment - never the
+justification on a task card: a design decision whose only support is a letter of the acronym, with
+no breakage named, has not been argued.
 
 ## Observability
 

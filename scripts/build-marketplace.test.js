@@ -53,7 +53,7 @@ test('the core is the only generated entry, listing skill FOLDERS and agent FILE
     assert.deepStrictEqual(entries.map(e => e.name), ['alfred-code'], 'every skill is library, listed by no entry');
     const core = byName['alfred-code'];
     assert.deepStrictEqual(core.skills, ['./setup-plugin/skills/alfred-code'], '2.1.0: the router is the one skill the core carries - every stack skill is a project copy');
-    assert.strictEqual(core.agents.length, 44, 'every seat rides the core');
+    assert.strictEqual(core.agents.length, 45, 'every seat rides the core');
     assert.ok(core.agents.includes('./stack/agents/integration-reviewer.md') && core.agents.includes('./stack/agents/aspnet-implementer.md'));
     for (const p of [...core.skills, ...core.agents])
         assert.ok(fs.existsSync(path.join(__dirname, '..', p)), `${p} must exist in the tree`);

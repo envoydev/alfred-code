@@ -15,9 +15,11 @@
 //   prose: nine corrections and nine redrafts of one report, 1.64M cache-read, no ask. And it writes
 //   the CORRECTION probe: one ledger row per correction turn (ALFRED_CODE_CORRECTION_NUDGE, seeded
 //   `log`; `inject` adds the save line).
+//   And the scorer's lines (habits-output-scorer): `--score-on` / `--score-off` switch it for the session, an on line
+//   names what to grade, a typed stack gets the stacked line - the state is the prelude's, shared with the stop contract.
 // No Stop wiring since 2026-10-20 (the user's ruling): the length cap and the em-dash block at Stop are gone - the
 //   answer budget is the interaction rule's, injected here, never enforced by a block.
-// SessionStart:compact wiring: re-emits the budget as additionalContext after a compaction, which drops the
+// SessionStart:compact wiring: re-emits the budget (and the scorer's on line) as additionalContext after a compaction, which drops the
 //   UserPromptSubmit injection; startup, resume and clear get it from the first prompt (deep hooks review 2026-10-16).
 // PostToolUse AskUserQuestion wiring: an answer typed into an ask's Other field is the user speaking through a tool
 //   result - one probe row, the correction test over it, and a note to open a path it names (audit 2026-10-10 C15).
@@ -30,11 +32,13 @@ const fs = require('fs');
 // way.
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 let harnessPrompt = (prompt) => /^\s*<task-notification>/.test(String(prompt || ''));   // hook-prelude.js harnessPrompt
+let scorer = null;   // the prelude, for the scorer's state and lines - no prelude, no scorer (R32)
 if (require.main === module) {
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
     harnessPrompt = prelude.harnessPrompt || harnessPrompt;
+    if (prelude.scorerState) scorer = prelude;
     if (prelude.standDown('guard-answer')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
@@ -366,6 +370,77 @@ if (payload.hook_event_name === 'PostToolUse' && payload.tool_name === 'AskUserQ
   process.exit(0);
 }
 
+// --- the scorer (habits-output-scorer): the session's flags and the lines that name it -------
+// `--score-on` / `--score-off` in the prose of a typed prompt switch the scorer for this session (off wins when both are
+// typed), kept in the session's SCORER- file; a typed stack names the skill beside a producer and grades that one
+// request. The state is the prelude's (scorerState), the one the stop contract's backstop reads too; a seat's prompt and
+// a missing prelude carry no scorer line. Each line rides after the budget with one leading space.
+const SCORER_FLAG_RE = /(?:^|\s)--score-(on|off)(?=\s|$)/gi;
+function scorerPhrases(outputs) {
+  const p = outputs.map((o) => scorer.SCORER_PHRASES[o]);
+  return p.length > 1 ? `${p.slice(0, -1).join(', ')} or ${p[p.length - 1]}` : p[0];
+}
+function scorerOnLine(s) {
+  const auto = scorer.autoStampLive(payload, process.env) ? ', auto-mode' : '';
+  return `scorer: on (level ${s.level}, rounds ${s.rounds}, ${s.source}${auto}) - load habits-output-scorer before releasing a ${scorerPhrases(s.outputs)}; --score-off stops it`;
+}
+// An ignored ALFRED_CODE_SCORER_OUTPUTS name is ledgered once per session and name: the names already reported sit in
+// the session's SCORER-NOTED- file, and a name that file cannot take is not ledgered, so no prompt repeats it (R25).
+function noteIgnored(root, sid, ignored) {
+  if (!ignored.length) return;
+  const file = scorer.scorerNotedFile(root, sid, process.env);
+  if (!file) return;
+  let seen = [];
+  try { seen = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean); } catch { /* none noted yet */ }
+  const fresh = ignored.filter((n) => !seen.includes(n));
+  if (!fresh.length) return;
+  try {
+    fs.mkdirSync(require('path').dirname(file), { recursive: true });
+    fs.appendFileSync(file, fresh.map((n) => `${n}\n`).join(''));
+  } catch { return; }
+  for (const name of fresh) {
+    ledgerRow({ mode: 'probe', kind: 'scorer-outputs-ignored', reason: `probe: ALFRED_CODE_SCORER_OUTPUTS names '${name}', which is no automatic output - ignored`, detail: { name } });
+  }
+}
+// The scorer's lines for this payload: `prompt` is the typed text (null on the compaction route - no flags, no stack).
+function scorerText(prompt) {
+  try {
+    if (!scorer || payload.agent_id) return '';
+    const nodePath = require('path');
+    const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+    const sid = payload.session_id;
+    let flag = null;
+    if (prompt !== null) {
+      const flags = [...proseOf(String(prompt || '')).matchAll(SCORER_FLAG_RE)].map((m) => m[1].toLowerCase());
+      flag = flags.includes('off') ? 'off' : flags.length ? 'on' : null;
+      const file = flag && sid ? scorer.scorerFile(root, sid, process.env) : null;
+      if (file) {
+        const before = scorer.readScorerFile(root, sid, process.env);
+        fs.mkdirSync(nodePath.dirname(file), { recursive: true });
+        fs.writeFileSync(file, `${flag}\nat: ${new Date().toISOString()}\n`);
+        if (before !== flag) ledgerRow({ mode: 'probe', kind: 'scorer-flag', reason: `probe: the scorer switched ${flag} for this session`, detail: { state: flag } });
+      }
+    }
+    // State hygiene (R11): the SCORER- files and the draft folders, each at most once a day per dir.
+    try {
+      const sessions = nodePath.dirname(scorer.scorerFile(root, 'x', process.env));
+      scorer.sweepStale(sessions, 'SCORER-');
+      scorer.sweepScorerFolders(nodePath.join(sessions, 'scorer'));
+    } catch { /* no layout - nothing of ours to sweep */ }
+    const s = scorer.scorerState(root, sid, process.env);
+    if (s.file === 'garbage') ledgerRow({ mode: 'probe', kind: 'scorer-file-garbage', reason: 'probe: the session\'s scorer file holds neither on nor off - read as absent' });
+    noteIgnored(root, sid, s.ignored);
+    if (!s.usable) return '';
+    const lines = [];
+    if (flag === 'off' && s.source === 'flag' && !s.on) lines.push('scorer: off for this session');
+    else if (s.on) lines.push(scorerOnLine(s));
+    if (prompt !== null && scorer.stackNamed(prompt)) {
+      lines.push(`scorer: stacked for this request (level ${s.level}, rounds ${s.rounds}) - grade this request's output with habits-output-scorer before releasing it`);
+    }
+    return lines.map((l) => ` ${l}`).join('');
+  } catch { return ''; }
+}
+
 if (payload.hook_event_name === 'UserPromptSubmit') {
   // A harness prompt is no user turn: no budget, no correction test (audit 2026-10-10 C25, 758ce661: the 780-char
   // budget rode a background gate's completion notice, ~195 tokens carried on every later message; 2026-10-14 HK14: and
@@ -398,7 +473,7 @@ if (payload.hook_event_name === 'UserPromptSubmit') {
   }
   const nudge = inject ? ` CORRECTION: this reads as a correction - ${SAVE_LINE}` : '';
   process.stdout.write(JSON.stringify({
-    hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: BUDGET_TEXT + extra + repeat + nudge },
+    hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: BUDGET_TEXT + extra + repeat + nudge + scorerText(payload.prompt) },
   }));
   process.exit(0);
 }
@@ -413,7 +488,7 @@ if (payload.hook_event_name === 'UserPromptSubmit') {
 // seat's report has its own shape, so no budget goes there.
 if (payload.hook_event_name === 'SessionStart' && !payload.agent_id) {
   process.stdout.write(JSON.stringify({
-    hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: BUDGET_TEXT },
+    hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: BUDGET_TEXT + scorerText(null) },
   }));
   process.exit(0);
 }

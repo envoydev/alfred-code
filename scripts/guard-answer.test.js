@@ -29,8 +29,8 @@ function transcript(name, userText, assistantBlocks) {
     return p;
 }
 
-function run(payload) {
-    const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify(payload), encoding: 'utf8' });
+function run(payload, env = {}) {
+    const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, ...env } });
     return { status: r.status, stdout: r.stdout, stderr: r.stderr };
 }
 
@@ -304,4 +304,135 @@ test('a seat\'s own compaction start carries no budget; the budget names the per
     assert.strictEqual(run({ hook_event_name: 'SessionStart', source: 'compact', session_id: 's', agent_id: 'agent-1', agent_type: 'alfred-code:web-angular-implementer' }).stdout, '');
     const text = JSON.parse(run({ hook_event_name: 'SessionStart', source: 'compact', session_id: 's' }).stdout).hookSpecificOutput.additionalContext;
     assert.match(text, /an entry of the user's personal preferences doc sets it/);
+});
+
+// ---------------------------------------------------------------------------------------------
+// the scorer (habits-output-scorer): --score-on / --score-off, the on line, the stacked line, compaction
+// ---------------------------------------------------------------------------------------------
+const { scorerFile } = require('../stack/hooks/hook-prelude.js');
+const ROOT = process.env.CLAUDE_PROJECT_DIR;
+const SKILL_COPY = path.join(ROOT, '.claude', 'skills', 'habits-output-scorer');
+const seedSkillCopy = () => { fs.mkdirSync(SKILL_COPY, { recursive: true }); fs.writeFileSync(path.join(SKILL_COPY, 'SKILL.md'), '---\nname: habits-output-scorer\n---\n'); };
+seedSkillCopy();
+const SCORER_CFG = { CLAUDE_CONFIG_DIR: fs.mkdtempSync(path.join(TMP, 'cfg-')) };   // no account copy or override reaches in
+const ON = { ALFRED_CODE_SCORER: '1' };
+const ON_LINE = ' - load habits-output-scorer before releasing a designer plan file, root-cause verdict or inline plan; --score-off stops it';
+const ctxOf = (result) => JSON.parse(result.stdout).hookSpecificOutput.additionalContext;
+const prompt = (sid, text, env = {}) => ctxOf(run({ hook_event_name: 'UserPromptSubmit', prompt: text, session_id: sid }, { ...SCORER_CFG, ...env }));
+const said = (payload, env = {}) => run(payload, { ...SCORER_CFG, ...env }).stdout;
+const stateOf = (sid) => { try { return fs.readFileSync(scorerFile(ROOT, sid), 'utf8'); } catch { return null; } };
+const scorerRows = (kind) => {
+    const dir = path.join(ROOT, '.alfred', 'statistics', 'hook-blocks');
+    let names = [];
+    try { names = fs.readdirSync(dir); } catch { return []; }
+    return names.flatMap((n) => fs.readFileSync(path.join(dir, n), 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l))).filter((r) => r.kind === kind);
+};
+const settingsLocal = path.join(ROOT, '.claude', 'settings.local.json');
+const writeOverride = (name, value) => fs.writeFileSync(settingsLocal, JSON.stringify({ skillOverrides: { [name]: value } }));
+const clearOverride = () => fs.rmSync(settingsLocal, { force: true });
+// the AUTO stamp a typed --auto-mode run writes, naming its session (auto-mode.test.js autoStamp)
+const APPROVAL = path.join(ROOT, '.alfred', 'state', 'approvals', 'APPROVAL');
+const autoStamp = (sid) => { fs.mkdirSync(path.dirname(APPROVAL), { recursive: true }); fs.writeFileSync(APPROVAL, `AUTO - "/loop-code-quality --auto-mode"\nsession: ${sid}\nskill: loop-code-quality\n`); };
+
+test('scorer: env on injects the on line with the level, the run cap and every listed output (AC2)', () => {
+    assert.ok(prompt('a1', 'plan it', ON).endsWith(` scorer: on (level 80, rounds 3, env)${ON_LINE}`));
+});
+test('scorer: --score-on holds for later prompts of the same session only (AC3)', () => {
+    assert.match(prompt('a2', 'go --score-on'), /scorer: on \(level 80, rounds 3, flag\)/);
+    assert.match(stateOf('a2'), /^on\nat: /);
+    assert.match(prompt('a2', 'next'), /scorer: on \(level 80, rounds 3, flag\)/);
+    assert.doesNotMatch(prompt('a3', 'next'), /scorer:/);
+});
+test('scorer: --score-off beats env on, and says so once (AC4)', () => {
+    assert.match(prompt('a4', '--score-off', ON), / scorer: off for this session$/);
+    assert.doesNotMatch(prompt('a4', 'next', ON), /scorer:/);
+});
+test('scorer: a flag in inline code, a fence or a > quote changes nothing (AC5)', () => {
+    for (const text of ['what does `--score-on` do', '```\n--score-on\n```', '> --score-on'])
+        assert.doesNotMatch(prompt('a5', text), /scorer:/, text);
+    assert.strictEqual(stateOf('a5'), null);
+});
+test('scorer: both flags in one message - off wins', () => {
+    assert.match(prompt('a6', '--score-on --score-off', ON), /off for this session/);
+    assert.match(stateOf('a6'), /^off\n/);
+});
+test('scorer: the level and the run cap read their defaults for bad values and as given in range (AC6, AC23)', () => {
+    for (const [v, want] of [['59', 80], ['101', 80], ['abc', 80], ['', 80], ['60', 60], ['100', 100]])
+        assert.match(prompt('a7', 'x', { ...ON, ALFRED_CODE_SCORER_LEVEL: v }), new RegExp(`level ${want}, rounds 3, env`), `level ${v}`);
+    for (const [v, want] of [['0', 3], ['11', 3], ['abc', 3], ['', 3], ['1', 1], ['10', 10]])
+        assert.match(prompt('a7', 'x', { ...ON, ALFRED_CODE_SCORER_ROUNDS: v }), new RegExp(`level 80, rounds ${want}, env`), `rounds ${v}`);
+});
+test('scorer: the outputs list narrows the phrases; a bad name is ignored with one row per session (AC24, R25)', () => {
+    assert.match(prompt('a8', 'x', { ...ON, ALFRED_CODE_SCORER_OUTPUTS: 'designer-plan,root-cause' }), /releasing a designer plan file or root-cause verdict;/);
+    assert.match(prompt('a8', 'x', { ...ON, ALFRED_CODE_SCORER_OUTPUTS: ' Root-Cause ' }), /releasing a root-cause verdict;/);
+    for (const bad of ['topic-explainer', 'foo']) {
+        const env = { ...ON, ALFRED_CODE_SCORER_OUTPUTS: bad };
+        assert.ok(prompt(`a9${bad}`, 'x', env).endsWith(ON_LINE), bad);
+        prompt(`a9${bad}`, 'y', env);
+        assert.strictEqual(scorerRows('scorer-outputs-ignored').filter((r) => r.detail.name === bad).length, 1, bad);
+    }
+});
+test('scorer: the auto-mode word while the session holds a live AUTO stamp, and the longest line stays under 200 chars', () => {
+    autoStamp('b5');
+    const ctx = prompt('b5', 'x --score-on', { ALFRED_CODE_SCORER_LEVEL: '100', ALFRED_CODE_SCORER_ROUNDS: '10' });
+    fs.rmSync(APPROVAL, { force: true });
+    const line = ctx.slice(ctx.indexOf('scorer: on'));
+    assert.match(line, /^scorer: on \(level 100, rounds 10, flag, auto-mode\) - /);
+    assert.ok(line.length <= 200, `${line.length}`);
+});
+test('scorer: a typed stack with the switch off injects the stacked line; the name in code or a quote does not (AC25)', () => {
+    const STACKED = 'scorer: stacked for this request (level 80, rounds 3) - grade this request\'s output with habits-output-scorer before releasing it';
+    for (const t of ['/task-version-upgrade /habits-output-scorer upgrade to .NET 10', 'using habits-output-scorer, explain closures'])
+        assert.ok(prompt('c1', t).endsWith(` ${STACKED}`), t);
+    for (const t of ['what does `/habits-output-scorer` do', '> /habits-output-scorer x'])
+        assert.doesNotMatch(prompt('c1', t), /scorer:/, t);
+    assert.strictEqual(stateOf('c1'), null, 'a stack writes no state file');
+});
+test('scorer: the bare name in a question reads as a stack - the documented price of the bare-name route (Review Focus)', () => {
+    assert.match(prompt('c2', 'why did habits-output-scorer not run?'), /scorer: stacked for this request/);
+});
+test('scorer: --score-on and a stack in one message carry both lines, on first', () => {
+    const ctx = prompt('c3', '--score-on /habits-explain-topic /habits-output-scorer explain x');
+    assert.ok(ctx.indexOf('scorer: on (') >= 0 && ctx.indexOf('scorer: on (') < ctx.indexOf('scorer: stacked'), ctx);
+});
+test('scorer: user-invocable-only - no on line with the switch on, a stack still gets its line (AC19)', () => {
+    writeOverride('habits-output-scorer', 'user-invocable-only');
+    assert.doesNotMatch(prompt('c4', 'x', ON), /scorer: on/);
+    assert.match(prompt('c4', '/habits-output-scorer explain x', ON), /scorer: stacked/);
+    clearOverride();
+});
+test('scorer: no skill copy, or skillOverrides off - no line, a stack included (AC19)', () => {
+    writeOverride('habits-output-scorer', 'off');
+    assert.doesNotMatch(prompt('c5', '/habits-output-scorer x', ON), /scorer:/);
+    clearOverride(); fs.rmSync(SKILL_COPY, { recursive: true });
+    assert.doesNotMatch(prompt('c5', '/habits-output-scorer x', ON), /scorer:/);
+    seedSkillCopy();
+});
+test('scorer: guard-answer, guard-stop-contract, or either scorer part off - no line, a stack included (AC13, AC20)', () => {
+    for (const off of ['guard-answer', 'guard-answer:scorer', 'guard-stop-contract', 'guard-stop-contract:scorer'])
+        assert.ok(!said({ hook_event_name: 'UserPromptSubmit', prompt: '/habits-output-scorer x', session_id: 'c6' }, { ...ON, ALFRED_CODE_HOOKS_OFF: off }).includes('scorer:'), off);
+});
+test('scorer: a payload with agent_id, a harness prompt, and all four keys unset - no line, no file (AC1)', () => {
+    assert.ok(!said({ hook_event_name: 'UserPromptSubmit', prompt: '--score-on', session_id: 'd1', agent_id: 'g1' }).includes('scorer:'));
+    assert.ok(!said({ hook_event_name: 'UserPromptSubmit', prompt: '<task-notification>done</task-notification> --score-on', session_id: 'd1' }).includes('scorer:'));
+    assert.doesNotMatch(prompt('d1', 'plain'), /scorer:/);
+    assert.strictEqual(stateOf('d1'), null);
+});
+test('scorer: a garbage session file reads as absent and leaves one scorer-file-garbage row', () => {
+    fs.mkdirSync(path.dirname(scorerFile(ROOT, 'd2')), { recursive: true }); fs.writeFileSync(scorerFile(ROOT, 'd2'), 'garbage');
+    assert.match(prompt('d2', 'x', ON), /level 80, rounds 3, env/);
+    assert.strictEqual(scorerRows('scorer-file-garbage').length, 1);
+});
+test('scorer: a plain prompt sweeps an 8-day-old scorer folder (R11)', () => {
+    const dir = path.join(ROOT, '.alfred', 'state', 'sessions', 'scorer');
+    const old = path.join(dir, 'gone', 'x', 'ab12cd34.draft.md'); fs.mkdirSync(path.dirname(old), { recursive: true }); fs.writeFileSync(old, 'd');
+    const s = (Date.now() - 8 * 86400000) / 1000; fs.utimesSync(old, s, s);
+    fs.rmSync(path.join(dir, '.alfred-sweep-scorer'), { force: true });     // an earlier prompt may have swept today
+    prompt('d3', 'plain', ON);
+    assert.ok(!fs.existsSync(path.join(dir, 'gone')));
+});
+test('scorer: the compaction route carries the on line while on, and nothing while off', () => {
+    const compact = (env) => ctxOf(run({ hook_event_name: 'SessionStart', source: 'compact', session_id: 'd4' }, { ...SCORER_CFG, ...env }));
+    assert.match(compact(ON), /scorer: on \(level 80, rounds 3, env\)/);
+    assert.doesNotMatch(compact({}), /scorer:/);
 });
