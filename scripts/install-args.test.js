@@ -409,3 +409,17 @@ test('install-args: --instructions-seed is uninstall\'s answer for the seed - ke
     fails(['uninstall', '--instructions-seed'], /--instructions-seed.*needs a value/);
     fails(['update', '--instructions-seed', 'remove'], /--instructions-seed is uninstall's answer/);
 });
+
+test('install-args: --memory takes default or custom, lower-cased', () =>
+{
+    assert.strictEqual(ok(['install']).memory, '');
+    assert.strictEqual(ok(['install', '--memory', 'CUSTOM']).memory, 'custom');
+    assert.strictEqual(ok(['update', '--memory=default']).memory, 'default');
+    fails(['install', '--memory'], /--memory.*needs a value/);
+    assert.deepStrictEqual(ok(['install', '--memory-level', 'project']).ignored, ['--memory-level ignored - the memory server left the stack in 2.10.1'], '--memory-level stays the retired flag');
+});
+
+test('install-args: --memory docs is refused until docs mode ships', () =>
+{
+    fails(['install', '--memory', 'docs'], /^--memory must be 'default' or 'custom'/);
+});

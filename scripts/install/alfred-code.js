@@ -1763,6 +1763,8 @@ function installHooksAndRules(ctx)
             : (ctx.args.dropApplied || []).filter((l) => l.startsWith('hook ')).map((l) => `${l.slice(5)}.js`)),
         // `--auto-compact on|off`: setup's answer to 'offer a fresh session, or compact and go on?' (settings.js applyEnv 3d).
         autoCompact: ctx.args.autoCompact ? { value: ctx.args.autoCompact === 'on' ? '1' : '0' } : null,
+        // `--memory default|custom`: init's and configure's answer to 'which memory?' (settings.js applyEnv 3e).
+        memory: ctx.args.memory ? { value: ctx.args.memory } : null,
         docsVersioning: {
             value: ctx.args.docsVersioning || ctx.docsVersioningCarry || '',
             why: ctx.args.docsVersioning ? '--docs-versioning' : ctx.docsVersioningCarry ? 'the old root was kept out of git' : '',

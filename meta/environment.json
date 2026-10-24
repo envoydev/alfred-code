@@ -163,6 +163,20 @@
       }
     },
     {
+      "key": "ALFRED_CODE_MEMORY",
+      "default": "default",
+      "ask": false,
+      "what": "which memory this project uses. `default` (the seed) is Claude Code's own memory at its default place. `custom` switches Claude's own memory off (the installer writes a ledgered `autoMemoryEnabled: false` into this project's own settings file) and the memory tool TOOLS-PREFERENCES.md ranks holds the lessons. Asked in init's bootstrap and configure's Environment area, passed as `--memory default|custom`; read at session start, so it applies from the next session.",
+      "validate": {
+        "type": "enum",
+        "values": [
+          "default",
+          "custom"
+        ],
+        "off": "default"
+      }
+    },
+    {
       "key": "ALFRED_CODE_FRESH_SESSION_AFTER_HOURS",
       "default": "2",
       "ask": false,

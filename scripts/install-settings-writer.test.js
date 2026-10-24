@@ -1246,3 +1246,31 @@ function hookCommandEntry(file)
 {
     return { type: 'command', command: hookCommand(file, '').command, timeout: HOOK_TIMEOUT };
 }
+
+test('settings-writer: --memory custom writes ALFRED_CODE_MEMORY over the value there, logged', () =>
+{
+    const file = settingsFile({ env: { ALFRED_CODE_MEMORY: 'default' } });
+    const { data, logs } = write(file, { memory: { value: 'custom' } });
+    assert.strictEqual(data.env.ALFRED_CODE_MEMORY, 'custom');
+    assert.ok(logs.some((m) => m.includes("env: ALFRED_CODE_MEMORY 'default' -> 'custom' (--memory)")), logs.join('\n'));
+    const again = write(file, { memory: { value: 'custom' } });
+    assert.ok(again.logs.some((m) => m.includes("env: ALFRED_CODE_MEMORY 'custom' -> 'custom' (--memory, unchanged)")), again.logs.join('\n'));
+});
+
+test('settings-writer: with no --memory the absent-only seed writes default, and a value there is kept', () =>
+{
+    const { data, logs } = write(settingsFile({}));
+    assert.strictEqual(data.env.ALFRED_CODE_MEMORY, 'default');
+    assert.ok(logs.includes('  settings.json env: ALFRED_CODE_MEMORY seeded (default)'), logs.join('\n'));
+    assert.strictEqual(write(settingsFile({ env: { ALFRED_CODE_MEMORY: 'custom' } })).data.env.ALFRED_CODE_MEMORY, 'custom');
+});
+
+test('settings-writer: --memory lands in settings.local.json when that file holds the key', () =>
+{
+    const file = settingsFile({ env: {} });
+    const localFile = path.join(path.dirname(file), 'settings.local.json');
+    fs.writeFileSync(localFile, JSON.stringify({ env: { ALFRED_CODE_MEMORY: 'default' } }));
+    const { data } = write(file, { localFile, memory: { value: 'custom' } });
+    assert.strictEqual(JSON.parse(fs.readFileSync(localFile, 'utf8')).env.ALFRED_CODE_MEMORY, 'custom', 'the overlay wins the merge, so the answer goes there');
+    assert.strictEqual(data.env.ALFRED_CODE_MEMORY, 'default', 'settings.json keeps the seed beneath it, as every stack key');
+});

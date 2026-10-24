@@ -28,6 +28,8 @@ const ENUMS = {
     // Compact instead of offering a fresh session (ALFRED_CODE_AUTO_COMPACT, settings.js applyEnv): setup's screen-B
     // answer, written over the value already there. Not given, the absent-only seed (`0`) stands.
     autoCompact: { values: ['', 'on', 'off'], text: "--auto-compact must be 'on' or 'off'" },
+    // 'docs' joins once the docs memory mode ships (spec P3).
+    memory: { values: ['', 'default', 'custom'], text: "--memory must be 'default' or 'custom'" },
     // Where the project's instruction files (AGENTS.md, CLAUDE.md) live - init's and configure's answer: a seed is written
     // there and a file at the other place moves (seeds.placeInstructionFiles). Not given, nothing moves and a seed goes to
     // .claude/.
@@ -44,7 +46,7 @@ const ENUMS = {
 const VALUED = new Map([
     ['--scope', 'scope'],
     ['--docs-versioning', 'docsVersioning'],
-    ['--data-move', 'dataMove'], ['--docs-move', 'dataMove'], ['--data-path', 'dataPath'], ['--docs-root-move', 'docsRootMove'], ['--docs-root-leave', 'docsRootLeaveRaw'], ['--auto-compact', 'autoCompact'],
+    ['--data-move', 'dataMove'], ['--docs-move', 'dataMove'], ['--data-path', 'dataPath'], ['--docs-root-move', 'docsRootMove'], ['--docs-root-leave', 'docsRootLeaveRaw'], ['--auto-compact', 'autoCompact'], ['--memory', 'memory'],
     ['--instructions-at', 'instructionsAt'], ['--instructions-file', 'instructionsFile'], ['--instructions-seed', 'instructionsSeed'],
     ['--selection', 'selection'], ['--source', 'source'], ['--plan-out', 'planOut'],
 ]);
@@ -86,7 +88,7 @@ const SCOPE_OF = /^([a-z0-9-]+)=(global|user|project|local)$/;
 
 const ALIASES = new Map([['--docs-move', '--data-move']]);
 
-const FLAG_LIST = '--scope, --docs-versioning, --data-path, --data-move, --docs-root-move, --docs-root-leave, --auto-compact, --instructions-at, --instructions-file, --instructions-seed, --forge-cli, --keep-pins, --selection, --installed-only, --add, --drop, --scope-of, --print-plan, --plan-out, --skills-only, --source';
+const FLAG_LIST = '--scope, --docs-versioning, --data-path, --data-move, --docs-root-move, --docs-root-leave, --auto-compact, --memory, --instructions-at, --instructions-file, --instructions-seed, --forge-cli, --keep-pins, --selection, --installed-only, --add, --drop, --scope-of, --print-plan, --plan-out, --skills-only, --source';
 
 // One selection line, the shape the walks write: `<category> <name>`.
 const ADD_LINE = /^(skill|agent|rule|hook|mcp|plugin) [A-Za-z0-9._-]+$/;
@@ -104,7 +106,7 @@ function parseArgs(argv)
 {
     const out = {
         action: '', scope: '',
-        docsVersioning: '', dataMove: '', dataPath: '', docsRootMove: '', docsRootLeaveRaw: '', autoCompact: '', instructionsAt: '', instructionsFile: '', instructionsSeed: '',
+        docsVersioning: '', dataMove: '', dataPath: '', docsRootMove: '', docsRootLeaveRaw: '', autoCompact: '', memory: '', instructionsAt: '', instructionsFile: '', instructionsSeed: '',
         selection: '', source: '', planOut: '',
         forgeCli: false, keepPins: false, installedOnly: false, printPlan: false, skillsOnly: false,
         add: [], drop: [], scopeOf: {}, ignored: [],
@@ -191,6 +193,7 @@ function parseArgs(argv)
     out.dataMove = lower(out.dataMove);
     out.docsRootMove = lower(out.docsRootMove);
     out.autoCompact = lower(out.autoCompact);
+    out.memory = lower(out.memory);
     out.instructionsAt = lower(out.instructionsAt);
     out.instructionsFile = lower(out.instructionsFile);
     out.instructionsSeed = lower(out.instructionsSeed);

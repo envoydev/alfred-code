@@ -416,7 +416,7 @@ function foldEnv(env, migrations, log, label, { baseCsv = null, alsoInto = null,
 // C8: a PERSONAL_KEYS value always goes to the overlay when there is one, and leaves this file.
 // `sharedKeys` (C5): a decision that shapes committed state lands in THIS file even when the overlay
 // holds the key - the hooks copy route's HOOKS_OFF complement, which is the committed wiring's mirror.
-function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath, autoCompact = null, hooksOff, hooksAnswered, renamedHooks = {}, inherited, overlay, overlayUnreadable = false, sharedKeys = [], log, label = 'settings.json', overlayLabel = 'settings.local.json', stackWrote = null })
+function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath, autoCompact = null, memory = null, hooksOff, hooksAnswered, renamedHooks = {}, inherited, overlay, overlayUnreadable = false, sharedKeys = [], log, label = 'settings.json', overlayLabel = 'settings.local.json', stackWrote = null })
 {
     let changed = renameEnv(env, migrations, log, label);
     const beneath = inherited && typeof inherited === 'object' && !Array.isArray(inherited) ? { ...inherited } : {};
@@ -476,11 +476,23 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
             + ` (--auto-compact${old === autoCompact.value ? ', unchanged' : ''})`);
     }
 
+    // 3e. WHICH MEMORY (`--memory default|custom`, init's and configure's answer), written over a value already there like
+    // 3d; without the flag the absent-only seed below writes `default`. writeSettings' memory pass reads the value this leaves.
+    if (memory && memory.value)
+    {
+        const { into, lab, mine } = at('ALFRED_CODE_MEMORY');
+        const old = into.ALFRED_CODE_MEMORY;
+        if (old !== memory.value) { into.ALFRED_CODE_MEMORY = memory.value; if (mine) changed = true; }
+        log(`  ${lab} env: ALFRED_CODE_MEMORY ${old === undefined ? 'absent' : `'${old}'`} -> '${memory.value}'`
+            + ` (--memory${old === memory.value ? ', unchanged' : ''})`);
+    }
+
     // 4. SEEDS - absent-only, from the catalog, which is the one list.
     for (const row of catalog)
     {
         if (row.written) continue;                       // step 5 owns these
         if (row.key === 'ALFRED_CODE_AUTO_COMPACT' && autoCompact && autoCompact.value && !heldHere(row.key)) continue;   // decided above
+        if (row.key === 'ALFRED_CODE_MEMORY' && memory && memory.value && !heldHere(row.key)) continue;                  // decided above
         if (row.key === 'ALFRED_CODE_DOCS_VERSIONING') continue;   // a decision, below
         if (row.key === 'ALFRED_CODE_HOOKS_OFF') continue;         // answered-wins, below
         if (present(row.key)) continue;
@@ -662,7 +674,7 @@ function writeSettings(opts)
         file, hookSpecs = [], retiredHooks = [], denySpecs = [], retiredDeny = [],
         agentDeny = [], agentAllow = [],
         mcpOff = [], dropEmptyApprovals = false, catalog = [], migrations = {},
-        docsVersioning, docsPath = null, dataPath = null, autoCompact = null, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null, renamed = null,
+        docsVersioning, docsPath = null, dataPath = null, autoCompact = null, memory = null, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null, renamed = null,
         inheritedOverrides = null, sharedFile = null, sharedKeys = [], attribution = null, worktreeBase = null, compactWindows = null, ledger = {},
         log = () => {}, note = () => {},
     } = opts;
@@ -826,7 +838,7 @@ function writeSettings(opts)
         const names = [key, ...(migrations.renames || []).filter(([, to]) => to === key).map(([from]) => from)];
         return names.some((n) => rows[n] === valueHash(value));
     };
-    if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, docsPath, dataPath, autoCompact, hooksOff, hooksAnswered, renamedHooks: (renamed && renamed.hooks) || {}, inherited: inheritedEnv, overlay, overlayUnreadable: localUnreadable, sharedKeys, log, label,
+    if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, docsPath, dataPath, autoCompact, memory, hooksOff, hooksAnswered, renamedHooks: (renamed && renamed.hooks) || {}, inherited: inheritedEnv, overlay, overlayUnreadable: localUnreadable, sharedKeys, log, label,
         overlayLabel: localFile ? path.basename(localFile) : undefined, stackWrote })) changed = true;
     // The auto-compact window per model (compactWindowSeeds). Claude Code reads it at session START only - measured
     // 2026-10-14: written mid-session it changed nothing in print or interactive mode, set before the start it compacted
