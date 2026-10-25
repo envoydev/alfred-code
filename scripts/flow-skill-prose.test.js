@@ -410,3 +410,24 @@ test('capture-architecture names where ORIENTATION.md and watch.json go, lints i
     assert.match(engine, /const BLOCK_FILE = path\.join\(DOCS, 'ORIENTATION\.md'\);/);
     assert.match(engine, /path\.join\(domainDir\(domain\), 'watch\.json'\)/);
 });
+
+// ---- item 4 (2026-10-25): the card carries recorded weaknesses, task-design orients on awareness ------------------
+test('item 4: the card names recorded weaknesses by title and path:line; task-design orients on awareness; M94 holds', () => {
+    assert.match(flat(skill('habits-plan-writing')), /each recorded weakness in the files this slice touches - the assessment entry's title and its path:line/);
+    const b = body(skill('task-design'));
+    assert.match(flat(b), /related-projects awareness doc/);
+    assert.match(flat(section(b, 'Output')), /`Oriented:`[^.]*awareness/);
+    assert.match(flat(b), /A bug seen only on the customer's side - read `references\/design-rules\.md`/);
+    assert.match(read('stack/skills/task-design/references/design-rules.md'), /A bug seen only on the customer's side/);
+    assert.ok(b.length < 12000, `${b.length}`);
+});
+
+test('item 4: designers orient per task-design step 1; the greenfield design reads the two preference docs first', () => {
+    const seats = fs.readdirSync(path.join(ROOT, 'stack', 'agents')).filter((n) => n.endsWith('-solution-designer.md'));
+    assert.strictEqual(seats.length, 10);
+    for (const f of seats) assert.match(flat(read(`stack/agents/${f}`)), /orient per task-design step 1 - architecture, preferences, assessments, awareness/, f);
+    const b = body(skill('task-build-from-scratch'));
+    const design = b.slice(b.indexOf('### 1. DESIGN'), b.indexOf('### 2.'));
+    assert.ok(design.length > 0, 'the DESIGN step is found');
+    assert.match(flat(design), /`PERSONAL-CODE-PREFERENCES\.md` and `ARCHITECTURE-PREFERENCES\.md`[^.]*before/);
+});

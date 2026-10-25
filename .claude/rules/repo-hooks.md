@@ -1165,7 +1165,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     A review run (`REVIEW_RUN`: `review-code`, `review-security`, the two built-in reviews and the code and architecture quality captures and loops) is the
     main session reviewing without an edit, which no edit hold reached (the user's ruling 'Hold its first review skill'):
     its first Skill call is denied with the code docs in parts, a typed one is handed them at its expansion, and the main
-    session's reads then hold like a judge's until every entry has come. The architecture analyzer is handed
+    session's reads then hold like a judge's until every entry has come. A design run (`DESIGN_RUN`: `task-design`, `issue-diagnoser`,
+    `task-build-from-scratch`; item 4, 2026-10-25) ends in a plan and may never make a scoped edit, so its chat load - the
+    Skill call or the typed expansion - is handed the code docs as `additionalContext` beside the skill's text and never
+    denied: one room (`INLINE_CAP`), the rest named one `read <doc> '<entry>'` line each (capped at `NAMED_CAP`), only what
+    was pasted whole marked, so the actor's first scoped edit still hands the rest; a seat's load gets nothing new. The architecture analyzer is handed
     `ARCHITECTURE-PREFERENCES.md` alone at its start, told to report a departure as a smell by id, only inside an
     architecture quality run (`ARCH_RUN`; the user's ruling 'Hook pushes the arch doc', which replaced the brief's
     hand-listed entries) - the map capture, the solve flow's scoping pass and the version upgrade dispatch the same seat

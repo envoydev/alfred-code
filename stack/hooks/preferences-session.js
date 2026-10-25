@@ -119,6 +119,9 @@ const SHELL_GREP = /^(?:grep|egrep|fgrep|rg|select-string|sls)$/i;
 const RUN_NAME = /^(?:(?:alfred-)?(?:capture|loop|task|issue)-[\w-]+|review-code|review-security|code-review|security-review)$/;
 const REVIEW_RUN = /^(?:review-code|review-security|code-review|security-review|capture-code-quality|capture-architecture-quality|loop-code-quality|loop-architecture-quality)$/;
 const ARCH_RUN = /^(?:capture-architecture-quality|loop-architecture-quality)$/;
+// A design run in the chat ends in a plan and may never edit a scoped file, so no edit hold hands it the code docs: its
+// load is handed them beside the skill's own text and never denied (item 4 gap D, 2026-10-25). A seat has its start's.
+const DESIGN_RUN = /^(?:task-design|issue-diagnoser|task-build-from-scratch)$/;
 // A reader that prints the whole file, and the words that cut what a reader prints (a pipe into head reads a peek).
 const WHOLE_READER = /^(?:cat|bat|less|more|nl|type|get-content|gc)$/i;
 const PARTIAL_WORD = /^(?:head|tail|grep|egrep|fgrep|rg|sed|awk|wc|cut|select-string|sls|select-object)$/i;
@@ -404,11 +407,24 @@ function codeParts(ctx, needs, room, fullRoom, label, chunked = true) {
   return { parts, named, later, laterRel, marks, used: parts.reduce((k, p) => k + p.length + 1, 0) };
 }
 
-// The edit hold's text (`change`), a seat's or a reviewing session's read hold (`read`), or a review skill's hold
-// (`review`): the same parts, worded for the work it does; `kind` names the docs a seat was handed.
+// The edit hold's text (`change`), a seat's or a reviewing session's read hold (`read`), a review skill's hold
+// (`review`), or a design load's hand-over (`design`): the same parts, worded for the work it does; `kind` names the docs a
+// seat was handed. A design load is no hold, so nothing comes with a retry: it marks only what it pasted whole and names
+// the rest, which the first scoped edit still hands over.
 function codeReason(ctx, needs, targets, room, fullRoom, mode = 'change', kind = 'code') {
   const target = targets[0] || '';
-  const c = codeParts(ctx, needs, room, fullRoom, target ? `the sections for ${target}` : '');
+  const design = mode === 'design';
+  const c = codeParts(ctx, needs, room, design ? false : fullRoom, target ? `the sections for ${target}` : '');
+  if (design) {
+    const rest = restLines(needs, c.marks);
+    const text = [
+      `Before this design, read the user's ${kind} preferences - ${PRECEDENCE}:`,
+      ...c.parts,
+      ...(rest.length ? ['', 'Not pasted here - read each before a decision it bears on:', ...rest] : []),
+      '', 'Follow them in every decision of this design.',
+    ].join('\n');
+    return { text, marks: c.marks, used: c.used };
+  }
   const sectioned = needs.find((n) => n.doc.sectioned);
   const change = mode === 'change';
   const again = mode === 'review' ? 'start the review' : `make the ${mode}`;
@@ -423,6 +439,29 @@ function codeReason(ctx, needs, targets, room, fullRoom, mode = 'change', kind =
         : mode === 'review' ? 'Follow them in every finding; now start the review again.' : 'Follow them in every decision and finding; now make the read again.',
   ].join('\n');
   return { text, marks: c.marks, used: c.used };
+}
+
+// What a design load did not paste whole, one `read <doc> '<entry>'` line each (a doc with no entries, `read <doc>`),
+// the lines capped as the named list is: past NAMED_CAP the rest is one line naming each doc to read whole.
+function restLines(needs, marks) {
+  const handed = new Set(marks);
+  const rest = [];
+  for (const n of needs) {
+    if (!n.want) { if (!handed.has(n.doc.key)) rest.push({ rel: n.doc.rel, line: `read ${n.doc.rel}` }); continue; }
+    for (const s of n.want) if (!handed.has(`${n.doc.key}#${s.mark}`)) rest.push({ rel: n.doc.rel, line: `read ${n.doc.rel} '${s.heading}'` });
+  }
+  const lines = [];
+  let size = 0;
+  for (let i = 0; i < rest.length; i += 1) {
+    if (lines.length && size + rest[i].line.length + 1 > NAMED_CAP) {
+      const left = rest.slice(i);
+      lines.push(`read ${[...new Set(left.map((r) => r.rel))].join(' and ')} whole for the other ${left.length}`);
+      break;
+    }
+    lines.push(rest[i].line);
+    size += rest[i].line.length + 1;
+  }
+  return lines;
 }
 
 // The git doc, its locked entries as the SEED states them (an edited copy named, never trusted), then the rest.
@@ -766,6 +805,17 @@ function seatPush(ctx, files, seat, extra = {}) {
   ].join('\n');
 }
 
+// A chat design load's hand-over (DESIGN_RUN): the code docs in one room as additionalContext, no permission decision, the
+// marks only what was pasted whole, so the actor's first scoped edit still hands the rest.
+function designPush(ctx, files, marks, event) {
+  const needs = codeNeeds(CODE_DOCS.map((d) => readDoc(ctx, d)).filter(Boolean), marks, [], true);
+  if (!needs.length) return;
+  const c = codeReason(ctx, needs, [], INLINE_CAP, true, 'design');
+  for (const k of c.marks) marks[k] = true;
+  saveMarks(files, marks);
+  emit(event, { additionalContext: c.text });
+}
+
 // The seats that never touch the project's code - Claude Code's guides - are told no tool order.
 const NO_ORDER_SEAT = /^(?:claude-code-guide|statusline-setup)$/;
 
@@ -902,6 +952,7 @@ function main() {
     const was = loadMarks(files);
     recordRun(was, run, input);
     saveMarks(files, was);
+    if (DESIGN_RUN.test(run)) { designPush(ctx, files, was, 'UserPromptExpansion'); return; }
     if (!REVIEW_RUN.test(run)) return;
     const text = seatPush(ctx, files, { defs: CODE_DOCS, kind: 'code' });
     if (text) emit('UserPromptExpansion', { additionalContext: text });
@@ -922,6 +973,7 @@ function main() {
     if (!run) return;
     recordRun(marks, run, input);
     saveMarks(files, marks);
+    if (DESIGN_RUN.test(run)) { designPush(ctx, files, marks, 'PreToolUse'); return; }
     if (!REVIEW_RUN.test(run)) return;
     const needs = codeNeeds(CODE_DOCS.map((d) => readDoc(ctx, d)).filter(Boolean), marks, [], true);
     if (!needs.length) return;

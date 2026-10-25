@@ -40,7 +40,7 @@ Resume: next task 1
 - status: TODO
 - files: <path> (create | modify) - one line per file; a shared file has ONE owning task
 - anchors: <file:symbol> located this session
-- traps: <the stack skill's trap this slice must handle>
+- traps: <the stack skill's trap this slice must handle>, and each recorded weakness in the files this slice touches - the assessment entry's title and its path:line - fixed in this slice, or left with no new case added
 - test: <the test written first, and the assertion that fails before the slice lands>
 - acceptance: `<command>` - <the green it must show>
 - log_points: <where, level, identifiers> | none - <reason>

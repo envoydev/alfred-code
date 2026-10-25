@@ -436,7 +436,9 @@ test('SKF-09 + SKF-15: the design and plan-audit descriptions each exclude the o
 // The 2026-10-17 usage audit: a customer-side bug was fixed before its symptom was ever reproduced; task-design opens such a
 // plan with a reproduce task, and step 3's background runs get one start line (task-solve's step mechanics).
 test('2026-10-17: a customer-side bug opens with its symptom reproduced; a background run gets one start line', () => {
-    assert.match(skill('task-design'), /A bug seen only on the customer's side .* opens with a task whose acceptance is the reported symptom reproduced, its exact error text or log row quoted, before any fix task/);
+    // Item 4 (2026-10-25) moved the rule into design-rules.md, which step 4 reads; SKILL.md keeps the pointer.
+    assert.match(read('stack/skills/task-design/references/design-rules.md'), /A bug seen only on the customer's side .* opens with a task whose acceptance is the reported symptom reproduced, its exact error text or log row quoted, before any fix task/);
+    assert.match(skill('task-design'), /A bug seen only on the customer's side - read `references\/design-rules\.md`/);
     const mech = read('stack/skills/task-solve/references/step-mechanics.md');
     assert.match(mech, /^## Background runs - the one start line$/m);
     assert.match(mech, /ONE wait whose\ncommand ends on the result or a crash/);

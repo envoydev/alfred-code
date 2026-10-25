@@ -409,3 +409,13 @@ everyday name before every technical word). Every run saves two files under `<do
 steps, the diagram when the topic has a shape and Check yourself as questions to click - no script, nothing loaded.
 Update moves an older `<docs root>/tutorial/` there (a `layout:` line); a file already at its path under
 `explanations/` stays where it was and is named. Report the layout line.
+
+## after 2.10.1 - designers read the recorded weaknesses, and a design load is handed the preferences
+
+A plan card's `traps:` names each recorded weakness in the files its slice touches (the assessment entry's title and
+`path:line`), so the implementer meets it without reading the assessments. `task-design` orients on the related-projects
+awareness doc for a sibling-repo seam, the ten designer seats name all four doc families, and a greenfield design
+reads `PERSONAL-CODE-PREFERENCES.md` and `ARCHITECTURE-PREFERENCES.md` before drawing its options. A design run loaded
+in the chat (`task-design`, `issue-diagnoser`, `task-build-from-scratch`) is handed the code preferences beside the
+skill's text - nothing is held or asked. Update refreshes the skill copies; the core brings the seats and the hook.
+Nothing to report.

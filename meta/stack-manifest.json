@@ -998,13 +998,13 @@
       "file": "preferences-session.js",
       "matcher": "Skill",
       "event": "",
-      "note": "the main session's run: a Skill call naming a capture-, loop-, task- or issue- skill, review-code or review-security (or the built-in code-review / security-review a user types; bare) is recorded as the run, with where the transcript stood - the run ends at the user's next typed turn other than a go-on reply (continue, go on, yes, ok ...), read only at an analyzer's start and a reviewing main session's held read; a review run's (review-code, review-security, the built-in two, the code and architecture quality captures and loops) first call waits until the code docs were handed over, in parts past one room - the main session reviewing without an edit never meets the edit hold; a seat's Skill call passes"
+      "note": "the main session's run: a Skill call naming a capture-, loop-, task- or issue- skill, review-code or review-security (or the built-in code-review / security-review a user types; bare) is recorded as the run, with where the transcript stood - the run ends at the user's next typed turn other than a go-on reply (continue, go on, yes, ok ...), read only at an analyzer's start and a reviewing main session's held read; a review run's (review-code, review-security, the built-in two, the code and architecture quality captures and loops) first call waits until the code docs were handed over, in parts past one room - the main session reviewing without an edit never meets the edit hold; a seat's Skill call passes A design run's (task-design, issue-diagnoser, task-build-from-scratch) chat load is handed the code docs as additionalContext and never denied: one room, the rest named one read line each, only what was pasted whole marked, so the first scoped edit still hands the rest."
     },
     {
       "file": "preferences-session.js",
       "matcher": "@UserPromptExpansion:^((alfred-)?(capture|loop|task|issue)-[a-z][a-z0-9-]*|review-code|review-security|code-review|security-review)$",
       "event": "",
-      "note": "a typed run emits no Skill call (code.claude.com/docs/en/hooks: typing /name bypasses PreToolUse) - its expansion records the run, and a typed review is handed the code docs as a judge's start is, the rest with the main session's first reads; the matcher keeps every other prompt from spawning the hook"
+      "note": "a typed run emits no Skill call (code.claude.com/docs/en/hooks: typing /name bypasses PreToolUse) - its expansion records the run, and a typed review is handed the code docs as a judge's start is, the rest with the main session's first reads; the matcher keeps every other prompt from spawning the hook; a typed design run (task-design, issue-diagnoser, task-build-from-scratch) is handed them the same way, never held"
     },
     {
       "file": "check-turn-build.js",

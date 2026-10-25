@@ -19,7 +19,7 @@ Use this skill to build a new application or a major new module from scratch, be
 ## Steps
 
 ### 1. DESIGN - in-session
-Load `habits-clarify` first (the Skill tool): a spec gap that blocks the design is its question to the user, never a guess. Then turn the spec into 2-3 reasoned architecture options - stack, architecture style, folder/module shape, state and persistence approach - each with its tradeoffs, drawn from the stack's architecture skills (the per-stack table below names them). Ground every option in the house skills, not recall. Multi-stack designs name the seam and its producer/consumer direction up front - the build step runs it producer-first.
+Load `habits-clarify` first (the Skill tool): a spec gap that blocks the design is its question to the user, never a guess. Read `PERSONAL-CODE-PREFERENCES.md` and `ARCHITECTURE-PREFERENCES.md` under `<docs-path>/preferences/` (those that exist) before drawing any option - a new project has no code doc or assessment, so they are the whole orientation. Then turn the spec into 2-3 reasoned architecture options - stack, architecture style, folder/module shape, state and persistence approach - each with its tradeoffs, drawn from the stack's architecture skills (the per-stack table below names them). Ground every option in the house skills, not recall. Multi-stack designs name the seam and its producer/consumer direction up front - the build step runs it producer-first.
 
 ### 2. THE PICK - hard gate
 Where a `scorer: stacked` line is in context, the FIRST action before releasing THE PICK - before its ask is put - is the `habits-output-scorer` Skill call with output `pick`.

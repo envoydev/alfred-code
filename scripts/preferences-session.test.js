@@ -1588,3 +1588,49 @@ test('custom memory with a rank, and default memory: no memory line', () =>
         finally { p.rm(); }
     }
 });
+
+// Item 4 gap D (2026-10-25): a design that ends in a plan never edits a scoped file, so no edit hold handed the main
+// session the preference docs. A chat design load is handed them beside the skill's text - never denied, nothing retried.
+test('DESIGN_RUN: a chat design load is handed the preference docs and never denied (item 4 gap D)', () =>
+{
+    const p = project();
+    try
+    {
+        const s = sid();
+        const r = p.hook(pre('Skill', { skill: 'task-design' }, s));
+        const ctx = String(out(r).additionalContext || '');
+        assert.ok(!denied(r));
+        assert.strictEqual(out(r).permissionDecision, undefined);
+        assert.match(ctx, /^Before this design, read the user's code preferences/);
+        assert.match(ctx, /never in a static helper class/);
+        assert.match(ctx, /Follow them in every decision of this design\.$/);
+        assert.doesNotMatch(ctx, /again|retry/i);
+        assert.strictEqual(out(p.hook(typed('task-solve', sid()))).additionalContext, undefined, 'task-solve is no design run');
+        assert.match(String(out(p.hook(typed('issue-diagnoser', sid()))).additionalContext || ''), /^Before this design, read/);
+        const seat = p.hook(pre('Skill', { skill: 'task-design' }, sid(), { agent_id: 'a1', agent_type: 'alfred-code:aspnet-solution-designer' }));
+        assert.doesNotMatch(String(out(seat).additionalContext || ''), /Before this design/, 'a seat is handed the docs at its start');
+    }
+    finally { p.rm(); }
+});
+
+test('DESIGN_RUN: past one room the rest is named, never held, and the first scoped edit hands it (Review Focus 5)', () =>
+{
+    const long = (i) => entry(`c${i}`, `Entry ${i}`, `- Rule: rule number ${i} ${'stays put. '.repeat(70)}\n- Scope: every language`);
+    const p = project({ docs: { 'PERSONAL-CODE-PREFERENCES.md': codeDoc(...Array.from({ length: 14 }, (_, i) => long(i + 1))), 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE } });
+    try
+    {
+        const s = sid();
+        const r = p.hook(pre('Skill', { skill: 'task-design' }, s));
+        const ctx = String(out(r).additionalContext || '');
+        assert.ok(!denied(r));
+        assert.ok(ctx.length <= 10000, `${ctx.length} chars - Claude Code's hook-output cap`);
+        assert.match(ctx, /^read \S+PREFERENCES\.md /m, 'the rest is named');
+        const handed = new Set([...ctx.matchAll(/rule number (\d+) /g)].map((m) => Number(m[1])));
+        const held = p.hook(edit('src/app.ts', s));
+        assert.ok(denied(held), 'the first scoped edit still hands the rest');
+        const rest = new Set([...reason(held).matchAll(/rule number (\d+) /g)].map((m) => Number(m[1])));
+        assert.ok([...rest].some((n) => !handed.has(n)), 'the hold carries entries the design load did not');
+        assert.ok(![...rest].some((n) => handed.has(n)), 'and none it already handed');
+    }
+    finally { p.rm(); }
+});

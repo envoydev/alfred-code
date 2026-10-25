@@ -35,6 +35,10 @@ SOLID stays review VOCABULARY - 'this violates Liskov' is a precise, fast commen
 justification on a task card: a design decision whose only support is a letter of the acronym, with
 no breakage named, has not been argued.
 
+## A customer-side bug
+
+A bug seen only on the customer's side - a report, a production log, never reproduced here - opens with a task whose acceptance is the reported symptom reproduced, its exact error text or log row quoted, before any fix task: a fix to a symptom nobody reproduced is a guess.
+
 ## Observability
 
 **Observability is designed at the seams, never sprinkled by the implementer.** Stamp each task
