@@ -563,3 +563,167 @@ test('workspaceOn reads the launch env first, then settings.local.json over sett
     fs.writeFileSync(path.join(claude, 'settings.local.json'), '{ not json');
     assert.strictEqual(ws.workspaceOn({ env: {}, projectRoot: root }), true, 'an unreadable local file is read as holding nothing');
 });
+
+// ------------------------------------------------------------------ D5, the account instruction key (Task 10)
+
+// A joined child under a stamped root inside a folder that stands for HOME, with the account folder there.
+const d5 = ({ md = 'ws/CLAUDE.md', joined = true } = {}) =>
+{
+    const at = tree({ 'home': {}, 'home/ws': { stamp: true, file: joined ? 'child api\n' : '' }, 'home/ws/api': { stamp: true, file: joined ? 'parent ..\n' : '' } });
+    if (md)
+    {
+        const file = path.join(at('home'), ...md.split('/'));
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, '# team\n');
+    }
+    const configDir = path.join(at('home'), '.claude');
+    return { at, configDir, accountFile: path.join(configDir, '.claude.json'), env: { CLAUDE_CONFIG_DIR: configDir } };
+};
+const stateOf = (f, root = f.at('home/ws/api')) => ws.instructionsBothState({ projectRoot: root, env: f.env, configDir: f.configDir, accountFile: f.accountFile });
+const accountSettings = (f, data) => { fs.mkdirSync(f.configDir, { recursive: true }); fs.writeFileSync(path.join(f.configDir, 'settings.json'), typeof data === 'string' ? data : JSON.stringify(data)); };
+const listProjects = (file, roots) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify({ projects: Object.fromEntries(roots.map((r) => [r, {}])) })); };
+const markStamp = (root, line) => fs.appendFileSync(path.join(root, '.claude', 'alfred-code.stamp'), `${line}\n`);
+
+test('the state is ask only in a child with a CLAUDE.md on its path (its own included, so a claude-named joined child is asked), no decline on the account and no key under either id', () =>
+{
+    for (const md of ['ws/CLAUDE.md', 'ws/.claude/CLAUDE.md', 'ws/CLAUDE.local.md', 'ws/api/CLAUDE.md', 'CLAUDE.md'])
+        assert.strictEqual(stateOf(d5({ md })), 'ask', md);
+    assert.strictEqual(stateOf(d5({ md: null })), 'not-needed');
+    assert.strictEqual(stateOf(d5({ md: '.claude/CLAUDE.md' })), 'not-needed', 'the account dir\'s CLAUDE.md is no project file');
+    const own = d5();
+    markStamp(own.at('home/ws/api'), 'instructions-both: declined');
+    assert.strictEqual(stateOf(own), 'declined');
+    for (const id of ['cc-plugin-agents-md@builtin', 'agents-md@builtin'])
+    {
+        const f = d5();
+        accountSettings(f, { pluginConfigs: { [id]: { options: { instructionFiles: 'claude-md-and-agents-md' } } } });
+        assert.strictEqual(stateOf(f), 'set', id);
+    }
+    const other = d5();
+    accountSettings(other, { pluginConfigs: { 'cc-plugin-agents-md@builtin': { options: { instructionFiles: 'agents-md' } } } });
+    assert.strictEqual(stateOf(other), 'ask', 'another value is no answer to D5');
+    assert.strictEqual(stateOf(d5({ joined: false })), 'standalone');
+    const garbled = d5();
+    fs.mkdirSync(garbled.configDir, { recursive: true });
+    fs.writeFileSync(garbled.accountFile, '{ not json');
+    assert.strictEqual(stateOf(garbled), 'unreadable');
+    assert.strictEqual(ws.instructionsBothLine('ask'), 'instructions-both: ask');
+    assert.match(ws.instructionsBothLine('unreadable'), /^instructions-both: not asked - .*could not be read/);
+    for (const s of ['set', 'declined', 'not-needed', 'standalone']) assert.strictEqual(ws.instructionsBothLine(s), null, s);
+});
+
+test('apply keeps every other key value-equal and keeps the indent, CRLF and BOM', () =>
+{
+    const other = { model: 'opus', pluginConfigs: { other: { options: { a: 1 } } }, env: { X: '1' } };
+    for (const [indent, eol, bom] of [['\t', '\r\n', '\uFEFF'], ['    ', '\n', ''], ['  ', '\r\n', '']])
+    {
+        const f = d5();
+        accountSettings(f, bom + JSON.stringify(other, null, indent).replace(/\n/g, eol) + eol);
+        const got = ws.applyAccountInstructions({ configDir: f.configDir });
+        assert.deepStrictEqual(got, { written: true, hash: valueHash(JSON.stringify('claude-md-and-agents-md')) });
+        const text = fs.readFileSync(path.join(f.configDir, 'settings.json'), 'utf8');
+        assert.strictEqual(text.startsWith('\uFEFF'), Boolean(bom), JSON.stringify(indent));
+        assert.strictEqual(text.includes('\r\n'), eol === '\r\n');
+        assert.strictEqual(text.replace(/^\uFEFF/, '').split(/\r?\n/)[1].match(/^\s*/)[0], indent);
+        const data = JSON.parse(text.replace(/^\uFEFF/, ''));
+        assert.strictEqual(data.pluginConfigs['cc-plugin-agents-md@builtin'].options.instructionFiles, 'claude-md-and-agents-md');
+        delete data.pluginConfigs['cc-plugin-agents-md@builtin'];
+        assert.deepStrictEqual(data, other);
+        assert.deepStrictEqual(fs.readdirSync(f.configDir).filter((n) => n.includes('.tmp')), [], 'a temp file was left');
+    }
+    const fresh = d5();
+    assert.strictEqual(ws.applyAccountInstructions({ configDir: fresh.configDir }).written, true);
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(fresh.configDir, 'settings.json'), 'utf8')), { pluginConfigs: { 'cc-plugin-agents-md@builtin': { options: { instructionFiles: 'claude-md-and-agents-md' } } } });
+});
+
+test('a value the user set is never replaced; garbage JSON is refused and named', () =>
+{
+    for (const id of ['cc-plugin-agents-md@builtin', 'agents-md@builtin'])
+    {
+        const f = d5();
+        const text = JSON.stringify({ pluginConfigs: { [id]: { options: { instructionFiles: 'agents-md' } } } });
+        accountSettings(f, text);
+        const got = ws.applyAccountInstructions({ configDir: f.configDir });
+        assert.strictEqual(got.written, false);
+        assert.match(got.why, /agents-md/);
+        assert.strictEqual(fs.readFileSync(path.join(f.configDir, 'settings.json'), 'utf8'), text);
+    }
+    const f = d5();
+    accountSettings(f, '{ garbage');
+    const got = ws.applyAccountInstructions({ configDir: f.configDir });
+    assert.strictEqual(got.written, false);
+    assert.match(got.why, /settings\.json/);
+    assert.strictEqual(fs.readFileSync(path.join(f.configDir, 'settings.json'), 'utf8'), '{ garbage');
+});
+
+test('remove takes the key away only at its hash', () =>
+{
+    const f = d5();
+    accountSettings(f, { model: 'opus' });
+    const { hash } = ws.applyAccountInstructions({ configDir: f.configDir });
+    assert.deepStrictEqual(ws.removeAccountInstructions({ configDir: f.configDir, hash: 'b'.repeat(64) }).removed, false);
+    assert.deepStrictEqual(ws.removeAccountInstructions({ configDir: f.configDir, hash }), { removed: true });
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(f.configDir, 'settings.json'), 'utf8')), { model: 'opus' }, 'the containers the apply made stay behind');
+    const changed = d5();
+    accountSettings(changed, { pluginConfigs: { 'cc-plugin-agents-md@builtin': { options: { instructionFiles: 'agents-md' } } } });
+    const kept = ws.removeAccountInstructions({ configDir: changed.configDir, hash });
+    assert.strictEqual(kept.removed, false);
+    assert.match(kept.why, /changed/);
+    assert.strictEqual(JSON.parse(fs.readFileSync(path.join(changed.configDir, 'settings.json'), 'utf8')).pluginConfigs['cc-plugin-agents-md@builtin'].options.instructionFiles, 'agents-md');
+});
+
+test('a decline in one tree\'s stamp stops the ask in a second tree on the same account', () =>
+{
+    const one = d5();
+    const two = d5();
+    const shared = { ...two, configDir: one.configDir, accountFile: one.accountFile, env: one.env };
+    listProjects(one.accountFile, [one.at('home/ws/api'), two.at('home/ws/api')]);
+    assert.strictEqual(stateOf(shared, two.at('home/ws/api')), 'ask');
+    markStamp(one.at('home/ws/api'), 'instructions-both: declined');
+    assert.strictEqual(stateOf(shared, two.at('home/ws/api')), 'declined');
+    assert.deepStrictEqual(ws.accountStamps({ accountFile: one.accountFile, except: two.at('home/ws/api') }), { state: 'ok', stamps: [path.join(one.at('home/ws/api'), '.claude', 'alfred-code.stamp')] });
+    assert.deepStrictEqual(ws.accountStamps({ accountFile: path.join(TMP, 'absent.json') }), { state: 'ok', stamps: [] });
+});
+
+test('lastHolder is false while another listed project\'s stamp records managed-account, and the state is unreadable with garbage .claude.json', () =>
+{
+    const one = d5();
+    const two = d5();
+    listProjects(one.accountFile, [one.at('home/ws/api'), two.at('home/ws/api')]);
+    assert.deepStrictEqual(ws.lastHolder({ accountFile: one.accountFile, projectRoot: one.at('home/ws/api') }), { last: true, others: [], state: 'ok' });
+    markStamp(two.at('home/ws/api'), `managed-account: settings.json:${ws.INSTRUCTION_KEY}=${'a'.repeat(64)}`);
+    assert.deepStrictEqual(ws.lastHolder({ accountFile: one.accountFile, projectRoot: one.at('home/ws/api') }), { last: false, others: [path.join(two.at('home/ws/api'), '.claude', 'alfred-code.stamp')], state: 'ok' });
+    fs.writeFileSync(one.accountFile, '{ not json');
+    assert.deepStrictEqual(ws.lastHolder({ accountFile: one.accountFile, projectRoot: one.at('home/ws/api') }), { last: false, others: [], state: 'unreadable' });
+    assert.strictEqual(stateOf(one), 'unreadable');
+});
+
+test('with CLAUDE_CONFIG_DIR unset, the projects list is read from <HOME>/.claude.json and the key is written to <HOME>/.claude/settings.json', () =>
+{
+    const one = d5();
+    const two = d5();
+    const home = one.at('home');
+    const saved = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    try
+    {
+        const paths = ws.accountPaths({});
+        assert.deepStrictEqual(paths, { configDir: path.join(home, '.claude'), accountFile: path.join(home, '.claude.json') });
+        assert.deepStrictEqual(ws.accountPaths({ CLAUDE_CONFIG_DIR: '/x/acct' }), { configDir: '/x/acct', accountFile: path.join('/x/acct', '.claude.json') });
+        listProjects(paths.accountFile, [one.at('home/ws/api'), two.at('home/ws/api')]);
+        const state = (root) => ws.instructionsBothState({ projectRoot: root, env: {}, ...paths });
+        assert.strictEqual(state(two.at('home/ws/api')), 'ask');
+        markStamp(one.at('home/ws/api'), 'instructions-both: declined');
+        assert.strictEqual(state(two.at('home/ws/api')), 'declined');
+        markStamp(two.at('home/ws/api'), `managed-account: settings.json:${ws.INSTRUCTION_KEY}=${'a'.repeat(64)}`);
+        assert.strictEqual(ws.lastHolder({ accountFile: paths.accountFile, projectRoot: one.at('home/ws/api') }).last, false);
+        assert.strictEqual(ws.applyAccountInstructions({ configDir: paths.configDir }).written, true);
+        assert.ok(fs.existsSync(path.join(home, '.claude', 'settings.json')));
+        assert.ok(!fs.existsSync(path.join(home, '.claude', '.claude.json')), 'the two paths are not derived from each other');
+    }
+    finally
+    {
+        for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    }
+});

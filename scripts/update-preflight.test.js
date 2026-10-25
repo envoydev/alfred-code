@@ -865,3 +865,25 @@ test('the name line: the full read and --offers both print it from the stamp\'s 
     assert.match(offers, /^instructions-file: claude files=agents answer=claude local=no update=ask$/m, offers);
     assert.doesNotMatch(offers, /^agents-md:/m);
 });
+
+// D5 (workspace layering): an update in a joined child with a CLAUDE.md above it asks the account question.
+test('update-preflight prints instructions-both: ask in a child', () =>
+{
+    const { snap, install, fixtureFile } = scaffold();
+    const parent = path.dirname(install);
+    fs.mkdirSync(path.join(parent, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(parent, '.claude', 'alfred-code.stamp'), 'sha: aaa111\nversion: 0.2.60\n');
+    for (const [dir, line] of [[parent, 'child project\n'], [install, 'parent ..\n']])
+    {
+        fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
+        fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), line);
+    }
+    fs.writeFileSync(path.join(parent, 'CLAUDE.md'), '# team\n');
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(parent, 'acct') };
+    delete env.ALFRED_CODE_UNATTENDED;
+    const { out } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile], env);
+    assert.match(out, /^instructions-both: ask$/m, out);
+    fs.rmSync(path.join(parent, '.alfred'), { recursive: true });
+    assert.doesNotMatch(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile], env).out, /instructions-both/, 'a standalone project is never asked');
+});
+

@@ -17,7 +17,7 @@ const os = require('node:os');
 const path = require('node:path');
 const dataRootMod = require('../../stack/mcp/data-root.js');
 const brand = require('./brand.js');
-const { readJson } = require('./json-file.js');
+const { readJson, parseJson } = require('./json-file.js');
 const runtime = require('./runtime.js');
 const stamp = require('./stamp.js');
 
@@ -795,6 +795,167 @@ function workspaceStep(ctx)
     return { created: Boolean(r.created) };
 }
 
+// ------------------------------------------------------------------ D5, the account instruction key (spec 3)
+
+// A CLAUDE.md on a child's path silences every AGENTS.md below it; Claude Code loads both only where the account says
+// so. The key lives in the ACCOUNT settings.json (configDir), the project list in the account file (accountFile) - two
+// paths that differ while CLAUDE_CONFIG_DIR is unset, so every function takes the pair.
+const INSTRUCTION_KEY = 'pluginConfigs.cc-plugin-agents-md@builtin.options.instructionFiles';
+const INSTRUCTION_IDS = ['cc-plugin-agents-md@builtin', 'agents-md@builtin'];   // the second is the id before 2.1.285, read only
+const INSTRUCTION_VALUE = 'claude-md-and-agents-md';
+
+function accountPaths(env = process.env)
+{
+    const home = os.homedir();
+    return { configDir: env.CLAUDE_CONFIG_DIR || path.join(home, '.claude'), accountFile: path.join(env.CLAUDE_CONFIG_DIR || home, '.claude.json') };
+}
+
+// The first CLAUDE.md, .claude/CLAUDE.md or CLAUDE.local.md in the project or a folder above it - the account dir's
+// own CLAUDE.md is the user's memory, not a project file.
+function claudeMdAbove(projectRoot, { env = process.env } = {})
+{
+    const account = realKey(accountPaths(env).configDir);
+    let dir = realOf(projectRoot);
+    for (;;)
+    {
+        for (const rel of ['CLAUDE.md', path.join('.claude', 'CLAUDE.md'), 'CLAUDE.local.md'])
+        {
+            const file = path.join(dir, rel);
+            if (rel.startsWith('.claude') && realKey(path.join(dir, '.claude')) === account) continue;
+            if (fs.existsSync(file)) return file;
+        }
+        const up = path.dirname(dir);
+        if (up === dir) return null;
+        dir = up;
+    }
+}
+
+// The stamps of the projects the account file lists under `projects`, `except` left out - never a disk scan.
+function accountStamps({ accountFile, except } = {})
+{
+    let text;
+    try { text = fs.readFileSync(accountFile, 'utf8'); }
+    catch (e) { return e.code === 'ENOENT' ? { state: 'ok', stamps: [] } : { state: 'unreadable', stamps: [] }; }
+    let data;
+    try { data = parseJson(text); }
+    catch { return { state: 'unreadable', stamps: [] }; }
+    const projects = data && typeof data.projects === 'object' && data.projects && !Array.isArray(data.projects) ? Object.keys(data.projects) : [];
+    const skip = except ? realKey(except) : null;
+    const stamps = [];
+    for (const root of projects)
+    {
+        if (skip && realKey(root) === skip) continue;
+        const read = stamp.stampFiles({ projectRoot: root }).read;
+        if (read && fs.existsSync(read) && !stamps.includes(read)) stamps.push(read);
+    }
+    return { state: 'ok', stamps };
+}
+
+const declinedIn = (file) => stamp.readInstructionsBoth(file) === 'declined';
+
+// What the account settings hold under either id: { state: 'ok', value } or { state: 'unreadable' }.
+function accountValue(configDir)
+{
+    let text;
+    try { text = fs.readFileSync(path.join(configDir, 'settings.json'), 'utf8'); }
+    catch (e) { return e.code === 'ENOENT' ? { state: 'ok', values: [] } : { state: 'unreadable' }; }
+    let data;
+    try { data = parseJson(text); }
+    catch { return { state: 'unreadable' }; }
+    const values = INSTRUCTION_IDS.map((id) => ((((data || {}).pluginConfigs || {})[id] || {}).options || {}).instructionFiles).filter((v) => v !== undefined);
+    return { state: 'ok', values, data, text };
+}
+
+// ask | set | declined | not-needed | standalone | unreadable - asked only in a joined child with a CLAUDE.md on its
+// path, while neither the account's key nor any decline on the account answers it.
+function instructionsBothState({ projectRoot, env = process.env, configDir, accountFile })
+{
+    if (!chain(projectRoot, { env }).members.length) return 'standalone';
+    if (!claudeMdAbove(projectRoot, { env })) return 'not-needed';
+    const held = accountValue(configDir);
+    if (held.state === 'unreadable') return 'unreadable';
+    if (held.values.includes(INSTRUCTION_VALUE)) return 'set';
+    const own = stamp.stampFiles({ projectRoot }).read;
+    if (own && declinedIn(own)) return 'declined';
+    const listed = accountStamps({ accountFile, except: projectRoot });
+    if (listed.state === 'unreadable') return 'unreadable';
+    return listed.stamps.some(declinedIn) ? 'declined' : 'ask';
+}
+
+// The line init-plan and update-preflight print for a state, or null when it asks nothing and has nothing to say.
+function instructionsBothLine(state)
+{
+    if (state === 'ask') return 'instructions-both: ask';
+    if (state === 'unreadable') return "instructions-both: not asked - the account's settings.json or .claude.json could not be read";
+    return null;
+}
+
+// The file written back in its own shape: the indent of its first indented line, its line ending, its BOM - through a
+// temp file beside it and a rename.
+function writeLike(file, text, data)
+{
+    const indentLine = text.replace(/^\uFEFF/, '').split(/\r?\n/).find((l) => /^[ \t]+\S/.test(l));
+    const indent = indentLine ? indentLine.match(/^[ \t]+/)[0] : '  ';
+    const eol = text.includes('\r\n') ? '\r\n' : '\n';
+    const body = `${text.startsWith('\uFEFF') ? '\uFEFF' : ''}${JSON.stringify(data, null, indent).split('\n').join(eol)}${eol}`;
+    const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
+    try { fs.writeFileSync(tmp, body); fs.renameSync(tmp, file); }
+    catch (e) { try { fs.rmSync(tmp, { force: true }); } catch { /* nothing to clean */ } throw e; }
+}
+
+const isObj = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
+
+// D5's yes: the key under the current id. A value the user set under either id is kept, a file that does not parse
+// is refused - each named in `why`.
+function applyAccountInstructions({ configDir })
+{
+    const file = path.join(configDir, 'settings.json');
+    const held = accountValue(configDir);
+    if (held.state === 'unreadable') return { written: false, why: `${file} is not valid JSON - left as it is` };
+    const hash = stamp.valueHash(JSON.stringify(INSTRUCTION_VALUE));
+    if (held.values.includes(INSTRUCTION_VALUE)) return { written: false, why: 'already set' };
+    if (held.values.length) return { written: false, why: `the account holds instructionFiles: ${held.values[0]} - the user's value is kept` };
+    const data = held.data === undefined ? {} : held.data;
+    if (!isObj(data) || (data.pluginConfigs !== undefined && !isObj(data.pluginConfigs))) return { written: false, why: `${file}: pluginConfigs is not an object - left as it is` };
+    const configs = (data.pluginConfigs ??= {});
+    const entry = (configs[INSTRUCTION_IDS[0]] ??= {});
+    if (!isObj(entry) || (entry.options !== undefined && !isObj(entry.options))) return { written: false, why: `${file}: ${INSTRUCTION_IDS[0]} is not an object - left as it is` };
+    (entry.options ??= {}).instructionFiles = INSTRUCTION_VALUE;
+    try { fs.mkdirSync(configDir, { recursive: true }); writeLike(file, held.text === undefined ? '{}' : held.text, data); }
+    catch (e) { return { written: false, why: `${file} could not be written (${e.code || e.message})` }; }
+    return { written: true, hash };
+}
+
+// Uninstall's half: the key goes only while it still hashes to what the apply wrote; the containers it emptied go too.
+function removeAccountInstructions({ configDir, hash })
+{
+    const file = path.join(configDir, 'settings.json');
+    const held = accountValue(configDir);
+    if (held.state === 'unreadable') return { removed: false, why: `${file} is not valid JSON - left as it is` };
+    const entry = held.data && isObj(held.data.pluginConfigs) ? held.data.pluginConfigs[INSTRUCTION_IDS[0]] : null;
+    const options = isObj(entry) && isObj(entry.options) ? entry.options : null;
+    if (!options || !Object.hasOwn(options, 'instructionFiles')) return { removed: false, why: 'absent' };
+    if (stamp.valueHash(JSON.stringify(options.instructionFiles)) !== hash) return { removed: false, why: 'changed since it was written - kept as the user\'s' };
+    delete options.instructionFiles;
+    if (!Object.keys(options).length) delete entry.options;
+    if (!Object.keys(entry).length) delete held.data.pluginConfigs[INSTRUCTION_IDS[0]];
+    if (!Object.keys(held.data.pluginConfigs).length) delete held.data.pluginConfigs;
+    try { writeLike(file, held.text, held.data); }
+    catch (e) { return { removed: false, why: `${file} could not be written (${e.code || e.message})` }; }
+    return { removed: true };
+}
+
+// Whether this project's uninstall is the last on the account to record the key: `others` are the listed stamps that
+// still carry a managed-account row. An unreadable account file is never 'last'.
+function lastHolder({ accountFile, projectRoot })
+{
+    const listed = accountStamps({ accountFile, except: projectRoot });
+    if (listed.state === 'unreadable') return { last: false, others: [], state: 'unreadable' };
+    const others = listed.stamps.filter((f) => /^managed-account:[ \t]*\S/m.test(readOr(f)));
+    return { last: !others.length, others, state: 'ok' };
+}
+const readOr = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch { return ''; } };
+
 module.exports = {
     CATEGORIES, workspaceOn, parseWorkspace, renderWorkspace, viewOf,
     setParent, addChild, removeChild, addIgnore, removeIgnore,
@@ -802,4 +963,5 @@ module.exports = {
     realKey, findParent, sameRepo, isCheckout, joinVerdict, chain, subtree, rescan,
     planLines, effectiveLists, delta, ownPicksAfter, childEnv, stampedAncestors, ancestorExcludes, excludeGlobs,
     readPlan, prepare, listLines, envStep, workspaceStep,
+    INSTRUCTION_KEY, accountPaths, claudeMdAbove, accountStamps, instructionsBothState, instructionsBothLine, applyAccountInstructions, removeAccountInstructions, lastHolder,
 };

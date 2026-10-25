@@ -104,13 +104,18 @@ function plan({ inv, root, platform = process.platform, env = process.env, probe
             path.join(REPO, 'stack', 'skills', skill, 'SKILL.md')].find((f) => fs.existsSync(f));
         return file ? { skill, state: 'run', detail: `read ${rel(file)}` } : { skill, state: 'skip', detail: 'its SKILL.md is in neither the project nor the plugin' };
     });
-    return { machine, captures };
+    // D5 (workspace layering): a joined child with a CLAUDE.md on its path, asked once per account.
+    const ws = require('./install/workspace.js');
+    const instructionsBoth = ws.instructionsBothState({ projectRoot: root, env, ...ws.accountPaths(env) });
+    return { machine, captures, instructionsBoth };
 }
 
-function render({ machine, captures })
+function render({ machine, captures, instructionsBoth })
 {
     const lines = machine.map(({ what, state, detail }) => (state === 'present' ? `machine: ${what} - present` : `machine: ${what} - ${state}: ${detail}`));
     for (const { skill, state, detail } of captures) lines.push(`capture: ${skill} - ${state}: ${detail}`);
+    const both = require('./install/workspace.js').instructionsBothLine(instructionsBoth);
+    if (both) lines.push(both);
     const count = (s) => machine.filter((m) => m.state.startsWith(s)).length;
     lines.push(`init-plan: ${count('missing') + count('refresh')} to install, ${count('blocked')} blocked, ${captures.filter((c) => c.state === 'run').length} captures to run`);
     return lines;
@@ -132,7 +137,7 @@ function modesOf(root)
     catch { return { memory: 'default', ownNavigation: false }; }
 }
 
-function unattended({ machine, captures, memory = 'default', ownNavigation = false })
+function unattended({ machine, captures, instructionsBoth, memory = 'default', ownNavigation = false })
 {
     const lines = [];
     const take = machine.filter((m) => m.state === 'missing').map((m) => m.what);
@@ -143,6 +148,7 @@ function unattended({ machine, captures, memory = 'default', ownNavigation = fal
     if (memory !== 'custom') lines.push("unattended: Memory for this project? -> Native, Claude's default place (Recommended)");
     if (!ownNavigation) lines.push("unattended: Navigation in files? -> Agent decides, the stack's order (Recommended)");
     lines.push('unattended: AGENTS.md -> fill it in (Recommended)');
+    if (instructionsBoth === 'ask') lines.push('unattended: instructions-both -> load');
     return lines;
 }
 

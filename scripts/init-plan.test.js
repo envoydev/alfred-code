@@ -393,3 +393,30 @@ test('unattended: a mode already chosen gets no line - step 4 asks only while it
     assert.ok(!/unattended: (Memory|Navigation)/.test(out), out);
     assert.match(out, /unattended: AGENTS\.md -> fill it in \(Recommended\)/);
 });
+
+// D5 (workspace layering): a joined child with a CLAUDE.md above it is asked once to load both instruction files.
+test('init-plan prints instructions-both: ask before its last line, and unattended prints unattended: instructions-both -> load', () =>
+{
+    const { unattended } = require('./init-plan.js');
+    const top = fs.mkdtempSync(path.join(TMP, 'd5-'));
+    const ws = path.join(top, 'ws');
+    const api = path.join(ws, 'api');
+    for (const [dir, file] of [[ws, 'child api\n'], [api, 'parent ..\n']])
+    {
+        fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
+        fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'sha: x\n');
+        fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
+        fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), file);
+    }
+    fs.writeFileSync(path.join(ws, 'CLAUDE.md'), '# team\n');
+    const env = E({ CLAUDE_CONFIG_DIR: path.join(top, 'acct') });
+    const planned = plan({ inv: INV(), root: fs.realpathSync(api), env, probe: NONE });
+    const lines = render(planned);
+    assert.strictEqual(lines[lines.length - 2], 'instructions-both: ask', lines.join('\n'));
+    assert.match(lines[lines.length - 1], /^init-plan: /);
+    assert.ok(unattended(planned).includes('unattended: instructions-both -> load'));
+    const standalone = render(plan({ inv: INV(), root: project(), env, probe: NONE }));
+    assert.ok(!standalone.some((l) => l.startsWith('instructions-both')), 'a standalone project is never asked');
+    assert.ok(!unattended(plan({ inv: INV(), root: project(), env, probe: NONE })).some((l) => l.includes('instructions-both')));
+});
+

@@ -627,6 +627,10 @@ function main()
         console.log(dataMoveLine({ root, claudeDir, stampFile, stampScope }));
         console.log(docsMoveLine({ root, claudeDir, stampFile }));
         console.log(require('./install/seeds.js').instructionsFileLine(path.resolve(root), require('./install/stamp.js').readInstructionsAnswer(stampFile)));
+        // D5 (workspace layering): a joined child with a CLAUDE.md on its path, asked once per account.
+        const ws = require('./install/workspace.js');
+        const both = ws.instructionsBothLine(ws.instructionsBothState({ projectRoot: path.resolve(root), env: process.env, ...ws.accountPaths(process.env) }));
+        if (both) console.log(both);
     }
 
     const keys = settings && settings.env ? Object.keys(settings.env).sort() : [];
