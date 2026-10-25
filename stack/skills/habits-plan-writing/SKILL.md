@@ -66,7 +66,8 @@ Resume: next task 1
   with no test of its own says why (`test: covered by task 2`, `test: none - config only`).
 - `acceptance:` is a command someone can run and a result they can read; 'works' is not a result.
 - Work `Asked:` does not name never becomes a card: it is one `## Optional` line, marked Recommended or Not worth it
-  with the reason, unless the request cannot be met safely without it - then it is a card, and a Decision says why.
+  with the reason, unless the user asked for it (a Decision carries `asked: <the answer>`) or the request cannot be
+  met safely without it - then it is a card, and a Decision says why.
   No extras, no section.
 
 A documentation plan - pages, sections or docs files, no product code - takes the documentation card:

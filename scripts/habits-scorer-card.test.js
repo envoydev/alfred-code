@@ -508,6 +508,13 @@ test('rubric P11 and the plan template carry the optional list', () => {
     assert.ok(squash(plan).includes('No extras, no section.'));
 });
 
+test('an extra the user asked for is a card, and the plan audit reads the optional list as no scope (final review)', () => {
+    const plan = squash(read('stack/skills/habits-plan-writing/SKILL.md'));
+    assert.ok(plan.includes('unless the user asked for it (a Decision carries `asked: <the answer>`) or the request cannot be met safely without it'));
+    const audit = squash(read('stack/skills/task-verify-plan/SKILL.md'));
+    assert.ok(audit.includes('A `## Optional` line is no scope: it builds nothing'), 'the scope pass names the optional list');
+});
+
 test('the output-scorer seat reads in two batched turns', () => {
     const { front, body } = split(read('stack/agents/output-scorer.md'));
     assert.strictEqual((squash(body).match(/in ONE (?:more )?turn/g) || []).length, 2);
