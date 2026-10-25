@@ -921,3 +921,105 @@ test('scorer asks: each option of the continue and withhold-final asks is auto-a
         assert.deepStrictEqual(answered(r), { [question]: ordered[0].label }, pick);
     }
 });
+
+// ---------------------------------------------------------------------------------------------
+// /task-auto <request> (the user's ask, 2026-10-25): the typed request IS the waiver, no flag; a code change follows the
+// installed solve flow by reading it, since Claude Code refuses the model's own call of a disable-model-invocation skill
+// ---------------------------------------------------------------------------------------------
+test('task-auto: a typed request starts auto-mode with no flag, names the solve flow to read, and an empty one starts nothing', () =>
+{
+    const t = transcript();
+    const cfg = () => ({ CLAUDE_CONFIG_DIR: fs.mkdtempSync(path.join(TMP, 'acct-ta-')) });
+    const p = project();
+    const on = typedRun(p, 'ta1', '/task-auto add a status route', t, cfg());
+    assert.strictEqual(on.status, 0, on.stderr);
+    const said = context(on);
+    assert.match(said, /^auto-mode is ON for this \/task-auto run/);
+    assert.match(fs.readFileSync(p.gate, 'utf8'), /^AUTO - "\/task-auto add a status route"\nsession: ta1\nskill: task-auto\nat: \d{4}-/);
+    assert.match(bannerOf(on)[0], /^\*\*Auto-mode: ON\*\* for \/task-auto /);
+    assert.match(said, /Solve flow: not installed here - a code change goes under Left for you\./, 'no copy on disk');
+    assert.ok(rows(p, 'ta1').some((r) => r.kind === 'auto-start' && r.detail && r.detail.skill === 'task-auto'));
+    // the project's library copy is the one named, with its folder
+    const solve = (root) => { const d = path.join(root, '.claude', 'skills', 'task-solve'); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, 'SKILL.md'), '---\nname: task-solve\ndisable-model-invocation: true\n---\n'); return d; };
+    const p2 = project(); const d2 = solve(p2.root);
+    assert.ok(context(typedRun(p2, 'ta2', '/task-auto add a status route', t, cfg())).includes(`Solve flow: ${path.join(d2, 'SKILL.md')} - on the code route Read it whole and follow it as this run's flow; its references/ and scripts/ paths are under ${d2}.`));
+    // switched off, or only the plugin cache's own source: not installed; user-invocable-only still runs from its copy
+    const p3 = project(); solve(p3.root);
+    fs.writeFileSync(path.join(p3.root, '.claude', 'settings.json'), JSON.stringify({ skillOverrides: { 'task-solve': 'off' } }));
+    assert.match(context(typedRun(p3, 'ta3', '/task-auto x', t, cfg())), /Solve flow: not installed here/);
+    const p4 = project(); const d4 = solve(p4.root);
+    fs.writeFileSync(path.join(p4.root, '.claude', 'settings.json'), JSON.stringify({ skillOverrides: { 'task-solve': 'user-invocable-only' } }));
+    assert.ok(context(typedRun(p4, 'ta4', '/task-auto x', t, cfg())).includes(`Solve flow: ${path.join(d4, 'SKILL.md')}`));
+    const p5 = project(); const c5 = cfg();
+    const cache = path.join(c5.CLAUDE_CONFIG_DIR, 'plugins', 'cache', 'm', 'alfred-code', '9.9.9', 'stack', 'skills', 'task-solve');
+    fs.mkdirSync(cache, { recursive: true }); fs.writeFileSync(path.join(cache, 'SKILL.md'), '---\nname: task-solve\n---\n');
+    assert.match(context(typedRun(p5, 'ta5', '/task-auto x', t, c5)), /Solve flow: not installed here/, 'the cache source is no copy');
+    // no request, spaces only, or the flag alone: no stamp, the banner says OFF and why
+    for (const prompt of ['/task-auto', '/task-auto   ', '/task-auto --auto-mode'])
+    {
+        const q0 = project();
+        const off = typedRun(q0, 'ta6', prompt, t, cfg());
+        assert.strictEqual(off.status, 0, off.stderr);
+        assert.ok(!fs.existsSync(q0.gate), `no stamp: '${prompt}'`);
+        assert.strictEqual(bannerOf(off)[0], '**Auto-mode: OFF** for /task-auto - each question waits for your answer. (auto-mode did NOT start: type the request after /task-auto.)');
+    }
+    // past the context trigger an OFF /task-auto gets the fresh-session offer any OFF orchestration run gets
+    const big = transcript([], 'claude-opus-5-5', 450000);
+    assert.match(context(typedRun(project(), 'ta7', '/task-auto', big, cfg())), /Do NOT start the run yet/);
+    // another session's running stamp: the existing refusal and its banner line
+    const p8 = project();
+    fs.writeFileSync(p8.gate, `AUTO - "/task-solve --auto-mode x"\nsession: oth1\nskill: task-solve\nat: ${new Date().toISOString()}\n`);
+    const live = path.join(path.dirname(t), 'oth1.jsonl'); fs.writeFileSync(live, '{}\n');
+    assert.match(context(typedRun(p8, 'ta8', '/task-auto y', t, cfg())), /auto-mode did NOT start: another session \(oth1\) is running a stamped run/);
+    assert.match(fs.readFileSync(p8.gate, 'utf8'), /\nsession: oth1\n/);
+    fs.rmSync(live, { force: true });
+});
+
+test('task-auto: the model never calls it, the flow\'s step calls ride its stamp, and a typed /task-auto mid-run keeps or ends the run', () =>
+{
+    const typed = (text) => ({ type: 'user', entrypoint: 'cli', timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'text', text }] } });
+    const cmdRow = (name, args) => typed(`<command-message>${name}</command-message>\n<command-name>/${name}</command-name>\n<command-args>${args}</command-args>`);
+    // the model's own Skill(task-auto) is denied by its disable-model-invocation flag and writes no stamp
+    const p = project();
+    fs.cpSync(path.join(__dirname, '..', 'stack', 'skills', 'task-auto'), path.join(p.root, '.claude', 'skills', 'task-auto'), { recursive: true });
+    const self = run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'task-auto', args: 'add x' },
+        session_id: 'tb1', cwd: p.root, transcript_path: transcript([typed('go on')]) }, { CLAUDE_PROJECT_DIR: p.root });
+    assert.strictEqual(self.status, 2);
+    assert.match(self.stderr, /task-auto is marked disable-model-invocation/);
+    assert.ok(!fs.existsSync(p.gate));
+    // a step skill the flow calls with --auto-mode behind a typed /task-auto keeps the run's stamp, and is refused behind an empty one
+    const step = (tp) => { const pr = project(); fs.writeFileSync(pr.gate, `AUTO - "/task-auto x"\nsession: tb2\nskill: task-auto\nat: ${new Date().toISOString()}\n`);
+        const r = run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'task-design', args: '--auto-mode x' },
+            session_id: 'tb2', cwd: pr.root, transcript_path: tp }, { CLAUDE_PROJECT_DIR: pr.root }); return { pr, r }; };
+    const { pr: kept, r: rk } = step(transcript([cmdRow('task-auto', 'x')]));
+    assert.match(context(rk), /auto-mode is ON for this \/task-design run/);
+    assert.ok(rows(kept, 'tb2').some((x) => x.kind === 'auto-start' && x.detail && x.detail.kept === true), 'a kept auto-start row');
+    assert.ok(!rows(kept, 'tb2').some((x) => x.kind === 'auto-start-refused'), 'and no refused row');
+    const { pr: bare } = step(transcript([cmdRow('task-auto', '')]));
+    assert.ok(rows(bare, 'tb2').some((x) => x.kind === 'auto-start-refused'), 'an empty /task-auto backs nothing');
+    // mid-run: a typed /task-auto with a request keeps the run; one with only the flag ends it
+    const q = project();
+    const t = transcript();
+    const submit = (prompt) => run('guard-fresh-session-start.js', { hook_event_name: 'UserPromptSubmit', session_id: 'tb3', cwd: q.root, transcript_path: t, prompt },
+        { CLAUDE_PROJECT_DIR: q.root });
+    autoStamp(q, 'tb3');
+    const z = submit('/task-auto z');
+    assert.strictEqual(z.status, 0, z.stderr);
+    assert.ok(fs.existsSync(q.gate), 'kept: a new request');
+    assert.ok(!rows(q, 'tb3').some((x) => x.kind === 'auto-end'), 'no auto-end row');
+    const off = submit('/task-auto --auto-mode');
+    assert.ok(!fs.existsSync(q.gate), 'ended: the flag alone');
+    assert.match(context(off), /^auto-mode is OFF: the user typed \/task-auto with no request/);
+    assert.ok(rows(q, 'tb3').some((x) => x.kind === 'auto-end'), 'an auto-end row');
+});
+
+test('task-auto names every other user-typed flow, so a new one fails until its route line is added', () =>
+{
+    const SKILLS = path.join(__dirname, '..', 'stack', 'skills');
+    const body = fs.readFileSync(path.join(SKILLS, 'task-auto', 'SKILL.md'), 'utf8');
+    const flagged = fs.readdirSync(SKILLS).filter((n) => !['task-auto', 'task-solve'].includes(n)).filter((n) => {
+        try { return /^disable-model-invocation:\s*true\s*$/m.test(fs.readFileSync(path.join(SKILLS, n, 'SKILL.md'), 'utf8').split(/^---\s*$/m)[1] || ''); } catch { return false; }
+    });
+    assert.strictEqual(flagged.length, 11);
+    for (const n of flagged) assert.ok(body.includes(`/${n}`), n);
+});

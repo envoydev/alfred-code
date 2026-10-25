@@ -107,7 +107,7 @@
       "key": "ALFRED_CODE_SCORER_ROUNDS",
       "default": "3",
       "ask": false,
-      "what": "habits-output-scorer: the most grading runs one attempt may spend, a whole number from 1 to 10 (anything else reads as 3). Every run counts - a regrade and a retry of a malformed grade included; an inline plan always gets one, and each extra run the user buys at the continue ask adds one.",
+      "what": "habits-output-scorer: the most grading runs one attempt may spend, a whole number from 1 to 10 (anything else reads as 3). Every run counts - a retry of a malformed grade included; an inline plan always gets one, and each extra run the user buys at the continue ask adds one.",
       "validate": {
         "type": "int",
         "min": 1,

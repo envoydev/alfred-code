@@ -316,7 +316,7 @@ const seedSkillCopy = () => { fs.mkdirSync(SKILL_COPY, { recursive: true }); fs.
 seedSkillCopy();
 const SCORER_CFG = { CLAUDE_CONFIG_DIR: fs.mkdtempSync(path.join(TMP, 'cfg-')) };   // no account copy or override reaches in
 const ON = { ALFRED_CODE_SCORER: '1' };
-const ON_LINE = ' - load habits-output-scorer before releasing a designer plan file, root-cause verdict or inline plan; --score-off stops it';
+const ON_LINE = ' - load habits-output-scorer before releasing a designer plan file, root-cause verdict or inline plan for work started now; --score-off stops it';
 const ctxOf = (result) => JSON.parse(result.stdout).hookSpecificOutput.additionalContext;
 const prompt = (sid, text, env = {}) => ctxOf(run({ hook_event_name: 'UserPromptSubmit', prompt: text, session_id: sid }, { ...SCORER_CFG, ...env }));
 const said = (payload, env = {}) => run(payload, { ...SCORER_CFG, ...env }).stdout;

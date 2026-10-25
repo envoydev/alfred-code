@@ -1110,3 +1110,29 @@ test('guard-stop-contract (C45): a referent approval is judged on what was shown
   assert.equal(askIn(tp, agree).status, 0, 'mark and question agree');
   assert.equal(askIn(tp, [{ ...mis[0], question: 'Where do we verify? Recommended: a quick look first.' }]).status, 0, 'a question naming no option decides nothing');
 });
+
+test('guard-stop-contract: a /task-auto run that reads the installed solve flow owes its receipts; nothing else marks one (2026-10-25)', () => {
+  const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+  const auto = typed('<command-message>task-auto</command-message>\n<command-name>/task-auto</command-name>\n<command-args>add a status route</command-args>');
+  let k = 0;
+  const readOf = (file) => ({ type: 'assistant', message: { id: `rd${++k}`, content: [{ type: 'tool_use', id: `rd${k}t`, name: 'Read', input: { file_path: file } }] } });
+  const SOLVE = '/p/.claude/skills/task-solve/SKILL.md';
+  const fields = 'Result: spec at docs/plans/x.md. Progress: 1 of 6 steps. Leftovers: none.';
+  const note = (name, rows, q) => {
+    const r = askIn(transcript(name, rows), q);
+    assert.equal(r.status, 0, `${name}: a receipt is a note, never a deny`);
+    try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch { return ''; }
+  };
+  const goOn = [{ question: 'Next?', options: [{ label: 'Go on (Recommended)', description: 'x' }, { label: 'Stop', description: 'y' }] }];
+  const answered = (id) => [{ type: 'assistant', message: { id: `q-${id}`, content: [{ type: 'tool_use', id, name: 'AskUserQuestion', input: { questions: goOn } }] } },
+    { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: 'Your questions have been answered: "Next?"="Go on (Recommended)". You can now continue.' }] } }];
+  assert.match(note('ta-first', [auto, readOf(SOLVE), assistantRow('a', fields)], goOn), /`Size: /, 'the code route owes the first stop\'s Size line');
+  assert.match(note('ta-win', [auto, readOf('C:\\p\\.claude\\skills\\task-solve\\SKILL.md'), assistantRow('a', fields)], goOn), /`Size: /, 'a Windows path, as the JSON escapes it');
+  assert.equal(note('ta-noauto', [readOf(SOLVE), assistantRow('a', fields)], goOn), '', 'a read of the source with no /task-auto row');
+  const quoted = { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'z', content: '<command-name>/task-auto</command-name>' }] } };
+  assert.equal(note('ta-quoted', [quoted, readOf(SOLVE), assistantRow('a', fields)], goOn), '', 'a /task-auto quoted in a tool result');
+  assert.equal(note('ta-other', [auto, readOf('/p/stack/skills/task-design/SKILL.md'), assistantRow('a', fields)], goOn), '', 'another skill read');
+  // the re-read after a compaction keeps the cycle's start: a later turn's stop owes no Size again
+  assert.doesNotMatch(note('ta-reread', [auto, readOf(SOLVE), assistantRow('a', `Size: standard - two modules. ${fields}`), ...answered('u1'),
+    typed('use the v2 endpoint'), readOf(SOLVE), assistantRow('b', fields)], goOn), /Size/);
+});

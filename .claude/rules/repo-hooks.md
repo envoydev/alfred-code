@@ -70,7 +70,15 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   the last 10 minutes) - that run starts without auto-mode, its mode banner says why and how to take over (delete the
   stamp), and it writes an `auto-start-refused` row (audit 2026-10-20, the hooks track's minor list: a second session on
   one checkout took the first's approval; narrowed the same day from 'under 8h', which silently cost a fresh-session
-  hand-off, or any start after a run that left its stamp, its auto-mode). `guard-stop-contract.js`
+  hand-off, or any start after a run that left its stamp, its auto-mode). `/task-auto <request>` (2026-10-25) is its own
+  waiver: no flag, an empty request (or the flag alone) starts nothing and the banner says to type it, and its ON
+  contract carries a `Solve flow:` line naming the library copy of `task-solve/SKILL.md` (`skillCopyState`: personal,
+  then project, `on` or `user-invocable-only`, never the plugin cache's source). A code change READS that body and
+  follows it, because Claude Code refuses the model's own `Skill` call of a `disable-model-invocation` flow whatever a
+  hook says (code.claude.com/docs/en/skills); `flowLine` in the stop contract marks the solve run on the first Read of a
+  `task-solve/SKILL.md` after each typed `/task-auto` row, so the solve receipts hold and a re-read after a compaction
+  keeps the cycle's start. A typed `/task-auto <request>` mid-run keeps the run; the flag alone ends it.
+  `guard-stop-contract.js`
   then answers - under a stamp naming THIS session only, never a hand-written one (audit HK02: it answered a second
   session's asks) - each `AskUserQuestion` whose every question marks ONE `(Recommended)` option - `allow` with the questions
   echoed and an `answers` map in `updatedInput` (code.claude.com/docs/en/hooks, 'Tools that require user interaction'), a

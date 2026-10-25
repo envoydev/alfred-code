@@ -245,6 +245,10 @@ function graded(slug, { total, ceiling = 100, blocker, material, regradeOf, retr
 const next = (slug, extra = []) => cli(['next', ...at(slug), '--level', '80', '--rounds', '3', '--rubric', R100_FILE, ...extra]).stdout.split('\n').filter(Boolean);
 const decide = (slug, choice) => cli(['decide', ...at(slug), '--choice', choice]);
 
+test('start: inline-plan prints the kind line; a designer-plan start prints none', () => {
+    assert.strictEqual(start('kind1', [], 'inline-plan').kind, "inline-plan is the execution strategy's plan for work this session builds now - a request to write a plan is designer-plan, its plan file under <docs-path>/work/plans/");
+    assert.strictEqual(start('kind2').kind, undefined);
+});
 test('next: a pass releases the best passing round, appends released, and a re-run prints the same, writing nothing (AC15, R28)', () => {
     graded('p1', { total: 70 }); const b = graded('p1', { total: 96, material: 'Rollback unnamed' });
     const out = next('p1');
@@ -256,25 +260,29 @@ test('next: a release names a finding its grade discarded (R33)', () => {
     graded('x1', { total: 92, findings: ['- [BLOCKER] B1 Drops rows. Failure: f Trigger: t Evidence: e Fix: x'] });
     assert.ok(next('x1').includes('Discarded: B1 BLOCKER (no Cost)'));
 });
-test('next: a round-0 fail outside the band revises; 1-15 under the level regrades once, and the mean decides (AC15, AC8)', () => {
-    // 15 is the spread measured over the strong fixtures, each graded three times (docs/habits-scorer-evidence.md)
+test('next: a fail under the level revises at once; no re-grade, whatever the band (AC15)', () => {
+    // 10 of 10 re-grades in the A/B left the mean under 80 and were followed by the revision anyway (docs/habits-scorer-evidence.md)
     graded('r1', { total: 64 }); assert.strictEqual(next('r1')[0], 'revise');
-    const id = graded('r2', { total: 65 }); assert.strictEqual(next('r2')[0], `regrade ${id}`);
-    graded('r2', { total: 95, regradeOf: id }); assert.strictEqual(next('r2')[0], `release ${id}`);   // mean 80
-    const top = graded('r3', { total: 79 }); assert.strictEqual(next('r3')[0], `regrade ${top}`);
+    graded('r2', { total: 65 }); assert.strictEqual(next('r2')[0], 'revise');
+    graded('r3', { total: 79 }); assert.strictEqual(next('r3')[0], 'revise');
+});
+test('next: an old log holding a regrade-of line is read and never answered with regrade', () => {
+    const a = graded('rg1', { total: 75 }); graded('rg1', { total: 75, regradeOf: a });
+    assert.match(fs.readFileSync(log('rg1'), 'utf8'), new RegExp(`^1 0 [0-9a-f]+ regrade-of ${a}$`, 'm'));
+    assert.strictEqual(next('rg1')[0], 'revise');
 });
 test('next: an inline-plan fail never regrades and asks after its one run, whatever --rounds says (AC15, R18)', () => {
     const id = graded('i1', { total: 78, output: 'inline-plan' });
     assert.strictEqual(next('i1', ['--rounds', '10'])[0], `ask-continue ${id} recommend accept`);
 });
-test('next: a 4-point gain stalls; the cap counts the regrade; --rounds 4 lifts it (AC15, R18)', () => {
+test('next: a 4-point gain stalls; rising grades stop at the cap; --rounds 4 lifts it (AC15, R18)', () => {
     graded('s1', { total: 60 }); const b = graded('s1', { total: 64 });
     assert.strictEqual(next('s1')[0], `ask-continue ${b} recommend accept`);                      // a stall names the best round
+    graded('c1', { total: 50 }); assert.strictEqual(next('c1')[0], 'revise');
     graded('c1', { total: 60 }); assert.strictEqual(next('c1')[0], 'revise');
-    const r1 = graded('c1', { total: 78 }); assert.strictEqual(next('c1')[0], `regrade ${r1}`);
-    graded('c1', { total: 78, regradeOf: r1 });                                                    // three grade lines in attempt 1
-    assert.strictEqual(next('c1')[0], `ask-continue ${r1} recommend accept`);
-    graded('c2', { total: 60 }); next('c2'); const q = graded('c2', { total: 78 }); next('c2'); graded('c2', { total: 78, regradeOf: q });
+    const top = graded('c1', { total: 70 });                                                       // three runs, each a 10-point gain
+    assert.strictEqual(next('c1')[0], `ask-continue ${top} recommend accept`);
+    graded('c2', { total: 50 }); next('c2'); graded('c2', { total: 60 }); next('c2'); graded('c2', { total: 70 });
     assert.strictEqual(next('c2', ['--rounds', '4'])[0], 'revise');
 });
 test('next: attempt 2 ends in withhold-final, never compares with attempt 1, and an unlogged or unsealed grade counts as R9 says', () => {
@@ -485,4 +493,24 @@ test('the designer method, the diagnoser and both diagnoser seats name the six c
     const seats = fs.readdirSync(path.join(REPO, 'stack/agents')).filter((f) => f.endsWith('-solution-designer.md'));
     assert.strictEqual(seats.length, 10);
     for (const f of seats) assert.ok(read(`stack/agents/${f}`).includes('the preference and assessment docs read (or `none present`)'), `${f} Oriented line`);
+});
+
+test('rubric P11 and the plan template carry the optional list', () => {
+    const rubric = read('stack/skills/habits-output-scorer/references/rubric-designer-plan.md');
+    const p11 = (rubric.match(/^- \*\*P11\*\*.*$/m) || [''])[0];
+    for (const s of ['`## Optional`', 'Recommended - ', 'Not worth it - ']) assert.ok(p11.includes(s), s);
+    assert.match(rubric, /"P11": \{ "points": 5, "na": null \}/);
+    assert.ok(squash(rubric).includes('A finding whose fix adds work `Asked:` does not name is neither BLOCKER nor MATERIAL'));
+    const plan = read('stack/skills/habits-plan-writing/SKILL.md');
+    const template = (/```text\n# <Feature> - plan[\s\S]*?```/.exec(plan) || [''])[0];
+    assert.ok(template.indexOf('## Optional') > template.indexOf('## Decisions'), 'the Optional block follows Decisions');
+    assert.ok(template.includes('- <work Asked: does not name> - Recommended - <reason> | Not worth it - <reason>'));
+    assert.ok(squash(plan).includes('No extras, no section.'));
+});
+
+test('the output-scorer seat reads in two batched turns', () => {
+    const { front, body } = split(read('stack/agents/output-scorer.md'));
+    assert.strictEqual((squash(body).match(/in ONE (?:more )?turn/g) || []).length, 2);
+    assert.ok(squash(body).includes('a later turn only for a lookup an earlier read made necessary'));
+    assert.match(front, /^tools: LSP, Read, Grep, Glob, WebFetch$/m);
 });

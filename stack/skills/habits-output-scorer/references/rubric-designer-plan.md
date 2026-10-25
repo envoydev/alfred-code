@@ -38,7 +38,7 @@ Grades a plan file in the `habits-plan-writing` shape, either card shape that sk
 - **P8** (5) - each Decision carries `precedent:` or `no precedent - <reason>`, and a choice the precedent does not force names the alternative it beat (C1.3).
 - **P9** (10) - each card's `test:` names the test written first and the assertion that fails before the slice, or says why it has none in the skill's own form (`covered by task <n>`, `none - <reason>`) (C3.2). n/a: a documentation plan.
 - **P10** (10) - each card's `acceptance:` is a command and the green it must show; on a documentation card `verification:` names the read-back or link check (C3.1, C3.3).
-- **P11** (5) - scope: no card adds work `Asked:` does not name unless a Decision records the user's answer, and no new framework or abstraction where a local change suffices (C4.2, C4.4).
+- **P11** (5) - scope: no card adds work `Asked:` does not name, unless a Decision records the user's answer or that the request cannot be met safely without it; every other extra sits in `## Optional`, each line marked `Recommended - <reason>` or `Not worth it - <reason>`; no new framework or abstraction where a local change suffices (C4.2, C4.4).
 - **P12** (5) - order and slices: a card depends only on the cards above it, each card is one slice (no 'and then' in its title), and a shared file has one owning card (C5.4, C7.4).
 - **P13** (5) - no `TBD`, `maybe` or `should` in a load-bearing field (C7.3).
 - **P14** (5) - a change to stored data, a public contract, auth, secrets or a migration names its gate or rollback in a card or a Decision (C2.4, C6.1, C6.2). n/a: the plan touches none of them.
@@ -50,6 +50,7 @@ Grades a plan file in the `habits-plan-writing` shape, either card shape that sk
 - BLOCKER: as written, the plan fails its goal, corrupts or loses data, breaks a contract, opens a security hole, or cannot be executed.
 - MATERIAL: the plan works but at a real cost (rework, outage risk, performance, maintenance burden), or it depends on a decision the author cannot make alone.
 - MINOR: polish. List only when there is no BLOCKER or MATERIAL, at most 3.
+- A finding whose fix adds work `Asked:` does not name is neither BLOCKER nor MATERIAL unless the request cannot be met safely without it; its fix is an `## Optional` line.
 - Every finding states failure mode, trigger condition, cost, evidence, and a one-line fix. A finding missing any of these is discarded.
 
 ## Caps

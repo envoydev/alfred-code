@@ -3121,6 +3121,18 @@ function flowLine(line, at, state) {
     state.flowAt = at;
     state.cross = /task-solve-cross/.test(m[0]);
   }
+  // A /task-auto code change follows the installed solve flow by reading it (Claude Code refuses the model's own call of
+  // a disable-model-invocation skill): the first Read of a task-solve SKILL.md after each typed /task-auto row opens a
+  // run. Only the first - the re-read after a compaction keeps the cycle's start - and never without that row, so a
+  // session editing the skill's source marks nothing.
+  if (isUser && !line.includes('"tool_result"') && /<command-name>\s*\/?(?:[a-z0-9-]+:)?(?:alfred-)?task-auto\s*<\/command-name>/.test(line)) state.autoCmd = true;
+  else if (state.autoCmd && isAssistant && line.includes('"tool_use"') && /"name"\s*:\s*"Read"/.test(line)
+    && /[\\/]+skills[\\/]+(?:alfred-)?task-solve[\\/]+SKILL\.md"/.test(line)) {
+    state.flow = true;
+    state.flowAt = at;
+    state.cross = false;
+    state.autoCmd = false;
+  }
   // The no-strategy probe's facts (audit 2026-10-11, session 7f8803eb): where the session first edited, the first two
   // files it edited, and where it first loaded habits-execution-strategy - read across the whole transcript once, like
   // the rest of this state (its 17.7MB of screenshots put the edits far past any tail).
@@ -3294,17 +3306,19 @@ function flowState() {
   const none = { flow: false, completed: null, typedAfter: false, typedAfterAt: -1, flowAt: -1, cross: false, askAt: -1,
     completedPlan: null, planAfter: false, editAfterAt: -1, editAfterFile: null, postCloseLogged: null,
     firstEditAt: -1, editFiles: [], strategyAt: -1, noStrategyLogged: false, approvedReadAt: -1, verifyPlanAt: -1,
-    sizeSaid: null, sizeFloor: null, sizeRaisedAt: -1, bugSaid: null, reproPlanAt: -1, standardAt: -1, planAt: -1, editAt: -1 };
+    sizeSaid: null, sizeFloor: null, sizeRaisedAt: -1, bugSaid: null, reproPlanAt: -1, standardAt: -1, planAt: -1, editAt: -1,
+    autoCmd: false };
   try {
     const p = payload.transcript_path;
     if (!p) return none;
     const size = fs.statSync(p).size;
-    let state = { v: 6, upTo: 0, ...none, editFiles: [] };
+    let state = { v: 7, upTo: 0, ...none, editFiles: [] };
     try {
       const kept = JSON.parse(fs.readFileSync(flowStateFile(), 'utf8'));
       // a shorter file is another transcript under the same name - read it whole; v4 added the no-strategy facts, v5 counts
-      // only source edits and the approved plan read (audit 2026-10-20 C08), v6 the cycle's size and bug facts (C37)
-      if (kept && kept.v === 6 && kept.upTo > 0 && kept.upTo <= size) state = kept;
+      // only source edits and the approved plan read (audit 2026-10-20 C08), v6 the cycle's size and bug facts (C37), v7
+      // the /task-auto read mark
+      if (kept && kept.v === 7 && kept.upTo > 0 && kept.upTo <= size) state = kept;
     } catch { /* no state yet, or the old one-word format - read it all */ }
     const fd = fs.openSync(p, 'r');
     try {

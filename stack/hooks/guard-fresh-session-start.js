@@ -455,13 +455,34 @@ const AUTO_OFF_RE = new RegExp([
 const BARE_STOP_RE = /^\s*(?:please\s+)?(?:stop|halt|pause|cancel|abort|enough)(?:\s+(?:it|now|the run|here|everything|please))?\s*(?:[.!,;:]|-\s|$)/i;
 const FLOW_CMD_RE = /^\s*\/(?:alfred-code:)?(?:alfred-)?(?:task|capture|loop|issue)-[a-z][a-z0-9-]*(?=\s|$)/i;
 const AUTO_RUN_CMD_RE = /^\s*\/(?:alfred-code:)?(?:alfred-)?(?:task|capture|loop|issue)-[a-z][a-z0-9-]*\s+--auto-mode(?=\s|$)/i;
+// `/task-auto <request>` (the user's ask, 2026-10-25): the typed request IS the waiver, so it needs no flag and an empty
+// one starts nothing. Declared here, not beside AUTO_SKILL_RE, because autoModeEnd runs below before that line is reached.
+const AUTO_SELF_RE = /^(?:alfred-code:)?(?:alfred-)?task-auto$/;
+const TASK_AUTO_CMD_RE = /^\s*\/(?:alfred-code:)?(?:alfred-)?task-auto(?=\s|$)/i;
+const taskAutoRequest = (args) => String(args || '').replace(/^\s*--auto-mode(?=\s|$)/i, '').trim();
+// A typed prompt's command: a slash command's transcript row (`<command-name>/x</command-name>` and its `<command-args>`)
+// or a raw `/x args` line.
+function typedCommand(text) {
+  const tagged = /<command-name>\/?([^<\s]+)<\/command-name>/.exec(text);
+  const raw = tagged ? null : /^\s*\/([A-Za-z0-9:_-]+)(?:\s([\s\S]*))?$/.exec(text);
+  const name = tagged ? tagged[1] : raw ? raw[1] : '';
+  const args = tagged ? ((/<command-args>([\s\S]*?)(?:<\/command-args>|$)/.exec(text) || [])[1] || '') : raw ? raw[2] || '' : '';
+  return { name, args };
+}
+function typedTaskAuto(text) {
+  const { name, args } = typedCommand(text);
+  return AUTO_SELF_RE.test(name) && taskAutoRequest(args) !== '';
+}
 function autoModeEnd() {
   const sid = String(payload.session_id || '');
   const prompt = String(payload.prompt || '');
   if (!sid || payload.agent_id || harnessPrompt(prompt)) return false;
   const slash = /^\s*\//.test(prompt);
+  // /task-auto is judged alone: a request rides the run, the flag alone is no request and ends it.
+  const selfCmd = TASK_AUTO_CMD_RE.test(prompt);
+  if (selfCmd && taskAutoRequest(prompt.replace(TASK_AUTO_CMD_RE, '')) !== '') return false;
   // A slash command other than a flow command (`/compact`, a project's own) is no word about the run.
-  if (slash && (!FLOW_CMD_RE.test(prompt) || AUTO_RUN_CMD_RE.test(prompt))) return false;
+  if (slash && !selfCmd && (!FLOW_CMD_RE.test(prompt) || AUTO_RUN_CMD_RE.test(prompt))) return false;
   const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
   let stamp = null;
   try { stamp = require('./hook-prelude.js').approvalStamp({ ...payload, cwd: root }); } catch { return false; }
@@ -477,7 +498,7 @@ function autoModeEnd() {
     return true;
   }
   try { fs.rmSync(stamp.file); } catch { return false; }
-  const why = slash ? 'the user typed a new flow command without --auto-mode' : 'the user asked to stop it';
+  const why = selfCmd ? 'the user typed /task-auto with no request' : slash ? 'the user typed a new flow command without --auto-mode' : 'the user asked to stop it';
   ledgerRow({ mode: 'auto', kind: 'auto-end', reason: `auto-mode ended: ${why}` });
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext:
     `auto-mode is OFF: ${why}, so each decision goes to them again and a turn is no longer sent back at its Stop. `
@@ -586,7 +607,7 @@ function sessionWrites() {
 // after that spend. `capture-awareness` is here because the stack's own next-steps card
 // tells the user to run it after every update (its 2026-10-16 parts keep their old names here for an old copy). The guided plugin commands are here because
 // they are multi-phase walks too, and the slash route is what finally reaches them.
-const ORCHESTRATION = /^((alfred-)?(loop-(quality|code-quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|awareness|code-quality|code-style|project-code-style|preferences|test-coverage|usage-report|related-projects|agent-awareness|project-awareness|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser|review-code|review-security)|security-review|alfred-code:(init|update|configure|validate))$/;
+const ORCHESTRATION = /^((alfred-)?(loop-(quality|code-quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|awareness|code-quality|code-style|project-code-style|preferences|test-coverage|usage-report|related-projects|agent-awareness|project-awareness|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code|auto)|issue-diagnoser|review-code|review-security)|security-review|alfred-code:(init|update|configure|validate))$/;
 // a plugin-namespaced Skill call arrives as `<plugin>:<skill>`; the guided commands are
 // matched on their FULL name, so a bare `/setup` from some other plugin is not read as one of them - and only this
 // stack's own namespace is stripped, so another plugin's `other:task-solve` is not this stack's run (audit 2026-10-08)
@@ -1007,13 +1028,11 @@ function lastTypedPrompt() {
   } catch { /* no transcript - no typed word */ }
   return '';
 }
-// A typed prompt as an auto-mode command: a slash command's transcript row (`<command-name>/x</command-name>` and its
-// `<command-args>`) or a raw `/x args` line, naming a task, capture, loop or issue skill with `--auto-mode` as its first argument.
+// A typed prompt as an auto-mode command: a task, capture, loop or issue skill with `--auto-mode` as its first argument,
+// or a /task-auto with a request (judged alone, so its flag alone backs nothing).
 function typedAutoCommand(text) {
-  const tagged = /<command-name>\/?([^<\s]+)<\/command-name>/.exec(text);
-  const raw = tagged ? null : /^\s*\/([A-Za-z0-9:_-]+)(?:\s([\s\S]*))?$/.exec(text);
-  const name = tagged ? tagged[1] : raw ? raw[1] : '';
-  const args = tagged ? ((/<command-args>([\s\S]*?)(?:<\/command-args>|$)/.exec(text) || [])[1] || '') : raw ? raw[2] || '' : '';
+  const { name, args } = typedCommand(text);
+  if (AUTO_SELF_RE.test(name)) return typedTaskAuto(text);
   return AUTO_SKILL_RE.test(name) && AUTO_FIRST_RE.test(args);
 }
 // Why this command's auto-mode did not start, for the banner: a refusal the user cannot see is a run they think is
@@ -1035,7 +1054,11 @@ function autoModeStart() {
   // The typed command must open its arguments with the flag; the model's own Skill args may carry it anywhere, since
   // the typed prompt behind the call is held to the first-word rule below.
   const word = IS_SKILL_CALL ? AUTO_WORD_RE : AUTO_FIRST_RE;
-  if (!sid || payload.agent_id || !AUTO_SKILL_RE.test(skill) || !word.test(autoArgs())) return null;
+  if (!sid || payload.agent_id || !AUTO_SKILL_RE.test(skill)) return null;
+  if (AUTO_SELF_RE.test(skill)) {
+    // the model's own call is refused by the disable-model-invocation deny above, or by the typed-prompt rule below
+    if (taskAutoRequest(autoArgs()) === '') { autoRefused = 'type the request after /task-auto'; return null; }
+  } else if (!word.test(autoArgs())) return null;
   if (IS_SKILL_CALL && !typedAutoCommand(lastTypedPrompt())) {
     ledgerRow({ mode: 'auto', kind: 'auto-start-refused', reason: `auto-mode: ${skill} called with --auto-mode, but the user's newest typed prompt is no task, capture, loop or issue command opening with it` });
     return null;
@@ -1157,6 +1180,21 @@ function leave() {
   if (EVENT === 'UserPromptExpansion') expansionOut('');
   process.exit(0);
 }
+// The solve flow a /task-auto code change follows by reading it: the library copy the model could load - personal, then
+// project, the prelude's order - while skillOverrides leaves it on or user-invocable-only; never the plugin cache's own
+// stack/skills source, which is no copy.
+function solveFlowLine() {
+  const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+  let state = 'absent';
+  try { state = require('./hook-prelude.js').skillCopyState(root, 'task-solve'); } catch { /* no prelude: none named */ }
+  const cfg = process.env.CLAUDE_CONFIG_DIR || nodePath.join(process.env.HOME || process.env.USERPROFILE || '', '.claude');
+  const file = state === 'on' || state === 'user-invocable-only'
+    ? [nodePath.join(cfg, 'skills', 'task-solve', 'SKILL.md'), nodePath.join(root, '.claude', 'skills', 'task-solve', 'SKILL.md')].find((f) => fs.existsSync(f))
+    : null;
+  return file
+    ? `Solve flow: ${file} - on the code route Read it whole and follow it as this run's flow; its references/ and scripts/ paths are under ${nodePath.dirname(file)}.`
+    : 'Solve flow: not installed here - a code change goes under Left for you.';
+}
 if (auto) {
   const contract = `auto-mode is ON for this /${skill} run: the user typed it on the call, and ${auto.file} holds their words for this session. `
     + 'Nobody answers until the run ends. '
@@ -1168,7 +1206,8 @@ if (auto) {
     + "(5) '--auto-mode' is a mode flag, not a target - leave it out of the run's arguments. "
     + `(6) The stamp is the run's approval too: never write an APPROVED or AUTO line over it and never delete it before the close, unless the user asks to stop auto-mode. An answered ask is the go - carry on in the same turn. `
     + `(7) When the whole run is finished, print its close and delete ${auto.file}: that ends auto-mode. `
-    + '(8) A message the user types mid-run is input to the run, never a stop: take it in and carry on.';
+    + '(8) A message the user types mid-run is input to the run, never a stop: take it in and carry on.'
+    + (AUTO_SELF_RE.test(skill) ? ` ${solveFlowLine()}` : '');
   if (EVENT === 'UserPromptExpansion') expansionOut(contract);
   else process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: contract } }));
   process.exit(0);

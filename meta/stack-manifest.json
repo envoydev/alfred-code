@@ -128,6 +128,11 @@
     },
     {
       "repo": "envoydev/alfred-code",
+      "name": "task-auto",
+      "note": "/task-auto <request> - any request run start to finish in auto-mode: a code change follows the installed task-solve body read whole (a model Skill call on a flagged flow is refused by Claude Code), a question or doc is done directly, another user-typed flow is named under Left for you; no flag, an empty request starts nothing"
+    },
+    {
+      "repo": "envoydev/alfred-code",
       "name": "issue-diagnoser",
       "note": "gated single-chat investigation: triage evidence to a tier -> gather (evidence-gatherer seats or inline) -> prove root cause -> user fork (report / contracted fix tasks / log-points card); read-only, any evidence source incl. none but a client report"
     },

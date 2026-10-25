@@ -49,6 +49,10 @@ Resume: next task 1
 
 - <the choice> - precedent: <file:symbol or named rule> | no precedent - <reason>
 - <a change to what the user sees that Asked: does not name> - asked: <the user's answer>
+
+## Optional
+
+- <work Asked: does not name> - Recommended - <reason> | Not worth it - <reason>
 ```
 
 ## The task card
@@ -61,6 +65,9 @@ Resume: next task 1
 - `test:` is written first and fails for the reason the card names before the slice lands. A card
   with no test of its own says why (`test: covered by task 2`, `test: none - config only`).
 - `acceptance:` is a command someone can run and a result they can read; 'works' is not a result.
+- Work `Asked:` does not name never becomes a card: it is one `## Optional` line, marked Recommended or Not worth it
+  with the reason, unless the request cannot be met safely without it - then it is a card, and a Decision says why.
+  No extras, no section.
 
 A documentation plan - pages, sections or docs files, no product code - takes the documentation card:
 four fields in place of `files`, `anchors`, `traps`, `test`, `acceptance` and `log_points`, the status

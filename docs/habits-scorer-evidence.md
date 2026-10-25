@@ -56,11 +56,36 @@ Each strong fixture graded three times on its final draft. 'Passes' is at level 
 
 ## The noise band
 
-`NOISE_BAND` is 15, the widest spread above (pick and upgrade, 85 to 100). At level 80 a fail from 65 to 79 with no
-BLOCKER is graded once more by a fresh seat and the round decided on the mean; 64 and under revises. Proven on an
-install from this tree: the real 70 grade of `upgrade-plan-no-rollback` printed `regrade`, where the 5-point band of
-the earlier install printed `revise`; a second `next` wrote nothing; the regrade by a real 100 grade released at a
-mean of 85.
+`NOISE_BAND` is 15, the widest spread above (pick and upgrade, 85 to 100). It sets the fix-on-pass zone: a pass from
+80 to 94 at level 80 holding a closable MATERIAL is offered one revision. Until the change below, a fail from 65 to 79
+with no BLOCKER was also graded once more by a fresh seat and the round decided on the mean; since then every fail
+revises at once.
+
+## Re-grades dropped (2026-10-25)
+
+Every re-grade of an unchanged draft in the A/B (above), each card graded with `scorecard.js grade` at level 80:
+
+| Run | First grade | Re-grade | Mean | Revised after |
+|---|---|---|---|---|
+| t1-on | 75 | 75 | 75 | yes |
+| t1-on-r2 | 75 | 80 | 77.5 | yes |
+| t3-on | 75 | 80 | 77.5 | yes |
+| t3-on-r2 | 85 | unreadable | - | yes |
+| t4-on | 70 | 75 | 72.5 | yes |
+| t4-on-r2 | 75 | 80 | 77.5 | yes |
+| t5-on-r2 | 70 | 70 | 70 | yes |
+| t5-on-r3 | 70 | 55 | 62.5 | yes |
+| t6-on | 65 | 60 | 62.5 | yes |
+| t6-on-r2 | 75 | 75 | 75 | yes |
+| t6-on-r3 | 70 | 60 | 65 | yes |
+
+- The mean stayed under 80 in 10 of 10 readable pairs, so each re-grade was followed by the revision it was meant to
+  spare. In 3 the re-grade alone reached 80 and the mean of the two still failed.
+- The re-grades took 33.6 of the 207.1 scored minutes (16%), 11 of 52 grades, and each spent one of the run cap.
+- So `next` no longer prints `regrade`: a fail revises at once. `start --regrade-of` and the log parser stay, so a
+  folder holding an old `regrade-of` line still reads.
+- Made by `docs/superpowers/sdd/2026-10-25-scorer-improvements/regrades.js` and `timing.js` (machine-local), over
+  `docs/superpowers/sdd/2026-10-25-seven-items/ab/runs/`.
 
 ## Planted fixtures (AC8)
 

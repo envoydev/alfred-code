@@ -321,6 +321,10 @@
       "mcps": [],
       "plugins": []
     },
+    "task-auto": {
+      "mcps": [],
+      "plugins": []
+    },
     "task-build-from-scratch": {
       "mcps": [],
       "plugins": []

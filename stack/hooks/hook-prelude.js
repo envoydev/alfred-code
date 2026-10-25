@@ -702,7 +702,7 @@ const oursLoadable = (root, ours, env = process.env) => skillCopyState(root, our
 
 // The automatic outputs, in the order every list of them is printed, and the phrase the injected line names each by.
 const SCORER_AUTOMATIC = Object.freeze(['designer-plan', 'root-cause', 'inline-plan']);
-const SCORER_PHRASES = Object.freeze({ 'designer-plan': 'designer plan file', 'root-cause': 'root-cause verdict', 'inline-plan': 'inline plan' });
+const SCORER_PHRASES = Object.freeze({ 'designer-plan': 'designer plan file', 'root-cause': 'root-cause verdict', 'inline-plan': 'inline plan for work started now' });
 function wholeIn(value, min, max, otherwise)
 {
     const s = String(value === undefined || value === null ? '' : value).trim();

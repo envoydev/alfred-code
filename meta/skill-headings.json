@@ -88,10 +88,6 @@
       "e61b0aaa81effc31",
       "e699336f3c7949a6"
     ],
-    "capture-first-look": [
-      "5aa554d8235c9b6f",
-      "ad339279f5b1d78e"
-    ],
     "capture-preferences": [
       "7dfb81e0ad2f3481",
       "9975e5d09845df4b",
@@ -621,6 +617,9 @@
       "708494b6c949b65d",
       "a7ea1fdf86dcb895",
       "cb7d567064508539"
+    ],
+    "task-auto": [
+      "2318070454adfd1b"
     ],
     "task-build-from-scratch": [
       "8ee42e435754aa8f"

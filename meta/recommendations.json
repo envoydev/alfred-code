@@ -67,6 +67,7 @@
    "task-design",
    "task-solve-cross",
    "task-solve",
+   "task-auto",
    "capture-test-coverage",
    "loop-test-coverage",
    "task-verify-code",

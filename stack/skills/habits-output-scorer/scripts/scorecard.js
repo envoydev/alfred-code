@@ -29,8 +29,9 @@ const { execFileSync } = require('node:child_process');
 
 const BLOCKER_CAP = 60;
 const SELF_CAP = 99;
-// A fail this close under the level is graded once more by a fresh seat before the round is decided on the mean - the
+// A pass this close over the level is inside grader noise, so a closable MATERIAL earns the fix-on-pass offer - the
 // widest spread three Sonnet grades of one strong draft gave (one 15-point check flipping), docs/habits-scorer-evidence.md.
+// A fail is revised at once: re-grading it first was followed by the revision anyway in 10 of 10 A/B runs.
 const NOISE_BAND = 15;
 // A revise has to gain this much over the round before it, or the loop asks instead.
 const STALL = 5;
@@ -447,6 +448,8 @@ function runStart(args) {
   out.push(`id: ${id}`, `draft: ${path.join(ctx.folder, `${draftId}.draft.md`)}`, `score-file: ${path.join(ctx.folder, `${id}.score.md`)}`,
     `task: ${taskFile}`, `inputs: ${path.join(ctx.folder, 'inputs.md')}`, `rubric: ${path.join(__dirname, '..', 'references', OUTPUTS[output].rubric)}`,
     `attempt: ${attempt}`, `round: ${round}`);
+  // a plan the user asked to have written is designer-plan; three of 18 A/B runs graded it as an inline plan and wrote no file
+  if (output === 'inline-plan') out.push("kind: inline-plan is the execution strategy's plan for work this session builds now - a request to write a plan is designer-plan, its plan file under <docs-path>/work/plans/");
   process.stdout.write(`${out.join('\n')}\n`);
   return 0;
 }
@@ -475,7 +478,6 @@ function roundsIn(ctx, log, attempt, rubric, level) {
     const first = grades[0];
     return {
       round, id: first.id, grades, valid, self,
-      regraded: grades.some((g) => g.kind === 'regrade-of'),
       draft: path.join(ctx.folder, `${draftOf(log, first.id)}.draft.md`),
       value: valid.length ? mean(valid.map((r) => r.total)) : null,
       ceiling: valid.length ? mean(valid.map((r) => r.ceiling)) : null,
@@ -585,9 +587,7 @@ function runNext(args) {
       named = last;
       const before = graded.filter((r) => r.round < last.round).pop();
       const gained = !before || last.value - before.value >= STALL;
-      if (!last.regraded && OUTPUTS[log.output].runs !== 1 && !last.blocker && last.value >= level - NOISE_BAND && last.value < level && used < cap) {
-        out.push(`regrade ${last.id}`);
-      } else if (used < cap && gained && last.ceiling >= level && last.ceiling >= last.value + STALL) {
+      if (used < cap && gained && last.ceiling >= level && last.ceiling >= last.value + STALL) {
         out.push('revise');
       } else {
         const best = bestOf(graded);

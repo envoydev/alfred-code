@@ -9,6 +9,7 @@ A drafted output is graded by a fresh, read-only output-scorer seat that never s
 
 ## When to use
 
+- The scorer grades what a producer made and never stands in for one: a request to write, draft or produce a plan loads the plan-writing skill first, and its plan file is graded as `designer-plan`; `inline-plan` is only the execution strategy's plan for work this session builds now.
 - A `scorer: on (level <n>, rounds <r>, ...)` line is in context and a producer is about to release an output it names - a designer plan file, a root-cause verdict, an inline plan.
 - A `scorer: stacked for this request (...)` line is in context: whatever this request releases is graded, under its own rubric, or as `custom` when no producer ran.
 - No such line in context: do nothing; the producer releases as today.
@@ -29,15 +30,14 @@ node "$S" start --root "${CLAUDE_PROJECT_DIR}" --session "${CLAUDE_SESSION_ID}" 
 
 Every later call passes the same `--root`, `--session` and `--slug`.
 
-1. The output must be an automatic output a producer marked this cycle, or the cycle carries a `scorer: stacked` line. An ordinary reply is never graded and gets no line.
-2. `start`: `<slug>` from the output's subject, lower-case `[a-z0-9-]`, at most 40 characters, one slug per output. `--output` is the producer line's name. For `designer-plan` add `--target <docs-path>/work/plans/<feature>.md`, the path the plan will be written to; for `inline-plan` add `--target` the plan file the draft names, when it names one. It prints `id:`, `draft:`, `score-file:`, `task:`, `inputs:`, `rubric:`, `attempt:` and `round:`, and on the slug's first start writes `inputs.md`, the docs the grader is handed.
+1. The output must be an automatic output a producer marked this cycle, or the cycle carries a `scorer: stacked` line. An ordinary reply is never graded and gets no line. Pick the output by what the request asked for before `start`; a `kind:` line that does not fit the request means a new slug under the right output.
+2. `start`: `<slug>` from the output's subject, lower-case `[a-z0-9-]`, at most 40 characters, one slug per output. `--output` is the producer line's name. For `designer-plan` add `--target <docs-path>/work/plans/<feature>.md`, the path the plan will be written to; for `inline-plan` add `--target` the plan file the draft names, when it names one. It prints `id:`, `draft:`, `score-file:`, `task:`, `inputs:`, `rubric:`, `attempt:` and `round:` (and `kind:` for `inline-plan`), and on the slug's first start writes `inputs.md`, the docs the grader is handed.
 3. Write TASK to the printed `task:` path before the first dispatch: the user's request and hard constraints verbatim (typos kept) and their answers to any question, never the author's reasoning, the alternatives weighed or a self-assessment. For a typed stack TASK is the text after the stacked skills, plus any constraint the user stated earlier for this request.
 4. Write the draft with the Write tool to the printed `draft:` path - round 0 the original, each later round the revision.
 5. Dispatch ONE new output-scorer seat per grade, exactly as the roster spells it (`alfred-code:output-scorer` on the plugin route) - never a fork, never resumed, never told an earlier score, a finding or that this is a revision. The brief names the `task.md` path, the `inputs.md` path, the rubric path, the draft path, the seat's return format, and as its last line `score-file: <the printed score-file path>`. The hand-back hook writes the score file with its seal; never write or edit one. The seat runs in the background: the turn that dispatches it ends with the one line `Scoring <output> - the grader is running` and releases nothing; the loop resumes at the completion notification, and a message the user types meanwhile is answered without releasing the output.
 6. `node "$S" grade <score file> --output <output> --level <n>`, the level from the injected line. Exit 2 (malformed) or 3 (no seal, or a broken one) is a failed grade: the Fallback's retry.
 7. `node "$S" next --root ... --session ... --slug <slug> --level <n> --rounds <r>`, plus `--auto` when the injected line says `auto-mode`, and do exactly what its first line says:
    - `release <id>` - the pass below;
-   - `regrade <id>` - `start --regrade-of <id>`, then step 5 over the same draft;
    - `revise` - step 8, then `start` again (a new round), step 4 and step 5;
    - `offer-fix <id> recommend <choice>` - Fix on a pass below; nothing is released yet;
    - `fix <id>` - step 8 over the findings its `Fixable:` line names, then `start` (a new round), step 4 and step 5;
@@ -51,7 +51,7 @@ The files, under `<data root>/state/sessions/scorer/<session id>/<slug>/`: `task
 
 ## Outputs
 
-The outputs, their producers, rubrics, runs and docs are the table in `references/outputs.md`. Each output runs up to the `rounds` of the injected line per attempt, `inline-plan` once and never regraded; every grade counts as a run, a regrade and a retry included. The rubric files sit beside it in `references/`; the seat reads them, the script reads their json block.
+The outputs, their producers, rubrics, runs and docs are the table in `references/outputs.md`. Each output runs up to the `rounds` of the injected line per attempt, `inline-plan` once; every grade counts as a run, a retry included. The rubric files sit beside it in `references/`; the seat reads them, the script reads their json block.
 
 ## Typed stack
 
