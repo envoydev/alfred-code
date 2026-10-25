@@ -138,10 +138,27 @@ left out of the band.
 - Against AS6 (Opus, one grade of a 250-300-line design, 159,572-279,972 tokens): the Sonnet seat graded the
   60-80-line designer plans in 131k-392k tokens.
 
+## The loop replay (2026-10-25)
+
+One billed `skill-comply replay` of the plain prompt (the task in the user's words, the skill unnamed) on a fresh
+copy-route install of b2e689e2, with `ALFRED_CODE_SCORER_ROUNDS=1` in the project's `settings.local.json`: one
+`claude -p` session, Sonnet 5.5 for the session and the seat, 23 turns, $0.69 by the CLI's `total_cost_usd` (the
+seat included), about 70 seconds.
+
+- The `scorer: on` line fired the loop with no prompt naming it: `start`, TASK, the draft, ONE background
+  `output-scorer` seat, and the turn closed on `Scoring designer-plan - the grader is running`. The completion
+  notification resumed the loop in print mode.
+- The grade passed at 80 with five MATERIALs tagged `[closable]`, so `next` printed `offer-fix <id> recommend
+  release`: at rounds 1 no run is left. The model put 'Use it as it is (Recommended)' first and 'Fix them first'
+  second. Print mode disables AskUserQuestion, so it fell back to plain-text options. No plan file was written, and
+  `rounds.log` ends on `asked <id> offer-fix`.
+- The first plain-text close left out the `Scored:` line. The backstop held it once (`branch: scorer`), and the
+  rewrite carried it.
+- `expect.json`: 5 of 5 graded steps followed - the seat graded, `next` came before any plan write, no plan after a
+  withhold or while the fix is offered, and `answers.md` written at most once.
+
 ## Not run
 
-- The loop's offline expectations (`meta/skill-comply/habits-output-scorer/expect.json`: no Write under
-  `<docs-path>/work/plans/` after a `withhold-*` action, and one more attempt after `answers.md`). They grade a
-  transcript of the skill's loop running end to end. These batches dispatched the seats directly, so no such
-  transcript exists. It takes one billed replay of a near-miss draft through the loop.
-- An interactive (non-`-p`) session and the default permission mode: every batch ran under `claude -p` in auto mode.
+- The revise, withhold and fix-after-decide paths through the loop: the replayed draft passed on its first grade,
+  and print mode has nobody to answer the offer. They are covered offline only (`scripts/habits-scorer-card.test.js`).
+- An interactive (non-`-p`) session and the default permission mode: every batch and the replay ran under `claude -p`.
