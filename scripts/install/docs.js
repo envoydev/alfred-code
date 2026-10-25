@@ -1585,8 +1585,10 @@ function dataOffer({ projectRoot, stamped, stampText = '', root })
     const priorLine = (/^data-root: *(\S+) *$/m.exec(stampText) || [])[1];
     const prior = priorLine && dr.checkDataPath(priorLine).ok && priorLine !== root ? priorLine : null;
     const pending = dr.readPending(stampText);
+    // A row recorded under `.sensitive-data` is the same move once the store is `.secrets` (item 3's rename, M10).
+    const fold = (p) => String(p).replace(new RegExp(`(^|/)${dr.LEGACY_SECRETS_FILE.replace('.', '\\.')}$`), `$1${dr.SECRETS_FILE}`);
     const rows = dr.dataMovePlan({ projectRoot, root, prior })
-        .filter((r) => !pending.some((p) => p.cls === r.cls && p.from === r.from && p.to === r.to));
+        .filter((r) => !pending.some((p) => p.cls === r.cls && fold(p.from) === fold(r.from) && fold(p.to) === fold(r.to)));
     if (!rows.length) return none('nothing to move');
     return { state: 'offer', why: 'data outside the root', rows, root };
 }

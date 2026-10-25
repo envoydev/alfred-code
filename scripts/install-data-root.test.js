@@ -515,11 +515,16 @@ const setStamper = (repo, by) =>
 };
 const denyRows = (repo) => (json(path.join(repo, '.claude', 'settings.json')).permissions || {}).deny || [];
 const NO_SESSION = { CLAUDE_CODE_SESSION_ID: '' };   // the suite may run inside a session: each run here is its own
+// M9: on the plugin route the dual line waits for the core read back at this release, so the listing carries it.
+const RELEASE = json(path.join(__dirname, '..', 'setup-plugin', '.claude-plugin', 'plugin.json')).version;
+const coreAt = (version) => JSON.stringify([{ id: 'alfred-code@envoydev', scope: 'user', enabled: true, ...(version ? { version } : {}) }]);
+const CORE_HERE = coreAt(RELEASE);
 
 test('the rename waits one update: dual first, renamed second, nothing third (item 3, Review Focus 2)', POSIX_ONLY, () =>
 {
     const { outs, steps } = seedRun(['install', 'update', 'update', 'update'], SELECTION, {
         env: NO_SESSION,
+        plugins: CORE_HERE,
         args: [['--scope', 'project'], UPDATE, UPDATE, UPDATE],
         each: (repo, i) => { if (i === 0) oldSecrets(repo); const l = look(repo); return { stamp: l.stamp, oldText: l.text('.alfred/.sensitive-data'), newText: l.text('.alfred/.secrets'), deny: denyRows(repo) }; },
         inspect: look,
@@ -540,6 +545,7 @@ test('a second run in the session that wrote the dual stamp renames nothing; ano
 {
     const { outs, steps } = seedRun(['install', 'update', 'update', 'update'], SELECTION, {
         env: { CLAUDE_CODE_SESSION_ID: 'S1' },
+        plugins: CORE_HERE,
         args: [['--scope', 'project'], UPDATE, UPDATE, UPDATE],
         each: (repo, i) => { if (i === 0) oldSecrets(repo); if (i === 2) setStamper(repo, 'S0'); return { has: look(repo).has }; },
         inspect: look,
@@ -554,12 +560,63 @@ test('a root change moves the store under the name it has; after the dual stamp 
 {
     const { steps } = seedRun(['install', 'update', 'update'], SELECTION, {
         env: NO_SESSION,
+        plugins: CORE_HERE,
         args: [['--scope', 'project'], [...UPDATE, '--data-path', '.data', '--data-move', 'move'], [...UPDATE, '--data-path', '.store', '--data-move', 'move']],
         each: (repo, i) => { if (i === 0) oldSecrets(repo, 'K=v\n'); return { has: look(repo).has }; },
         inspect: look,
     });
     assert.ok(steps[1].has('.data/.sensitive-data') && !steps[1].has('.data/.secrets') && !steps[1].has('.alfred/.sensitive-data'));
     assert.ok(steps[2].has('.store/.secrets') && !steps[2].has('.data/.sensitive-data') && !steps[2].has('.data/.secrets'));
+});
+
+// M9 (final review): a first dual line on the plugin route needs the core read back at this release or later - an update
+// that left the core behind (a managed row, a failed update, no CLI) must not let the next run rename under an old guard.
+test('M9: the dual stamp waits until the core plugin reads back at this release, then the rename runs as before', POSIX_ONLY, () =>
+{
+    const { outs, steps } = seedRun(['install', 'update', 'update', 'update'], SELECTION, {
+        env: NO_SESSION,
+        plugins: coreAt('2.10.0'),
+        args: [['--scope', 'project'], UPDATE, UPDATE, UPDATE],
+        each: (repo, i) =>
+        {
+            if (i === 0) oldSecrets(repo);
+            const l = look(repo);
+            if (i === 1) fs.writeFileSync(path.join(path.dirname(repo), 'plugins.json'), CORE_HERE);
+            return { stamp: l.stamp, has: l.has };
+        },
+        inspect: look,
+    });
+    assert.doesNotMatch(steps[1].stamp, /^secrets:/m, 'a core at 2.10.0 records no dual line');
+    assert.ok(steps[1].has('.alfred/.sensitive-data') && !steps[1].has('.alfred/.secrets'));
+    assert.match(outs[1], /sensitive: \.sensitive-data stays - the core plugin reads back at 2\.10\.0, not [\d.]+ or later; the rename waits for an update that finds it there/, outs[1]);
+    assert.doesNotMatch(outs[1], /becomes \.secrets at the next update/);
+    assert.match(steps[2].stamp, /^secrets: dual run-\d+$/m, 'the core at this release records it');
+    assert.ok(steps[2].has('.alfred/.sensitive-data') && !steps[2].has('.alfred/.secrets'), 'and still renames nothing that run');
+    assert.match(outs[2], /\.sensitive-data becomes \.secrets at the next update/);
+    assert.ok(steps[3].has('.alfred/.secrets') && !steps[3].has('.alfred/.sensitive-data'));
+});
+
+test('M9: no core row, or one with no version, records no dual line; the copy route needs no read-back', POSIX_ONLY, () =>
+{
+    for (const [label, plugins] of [['no core row', '[]'], ['no version', coreAt('')]])
+    {
+        const { outs, result } = seedRun(['install', 'update'], SELECTION, {
+            env: NO_SESSION, plugins,
+            args: [['--scope', 'project'], UPDATE],
+            each: (repo, i) => { if (i === 0) oldSecrets(repo); return null; },
+            inspect: look,
+        });
+        assert.doesNotMatch(result.stamp, /^secrets:/m, label);
+        assert.match(outs[1], /\.sensitive-data stays - the core plugin reads back at (nothing|\?), not/, `${label}: ${outs[1]}`);
+    }
+    const copy = seedRun(['install', 'update'], SELECTION, {
+        env: { ...COPY_ENV, ...NO_SESSION },
+        args: [['--scope', 'project'], UPDATE],
+        each: (repo, i) => { if (i === 0) oldSecrets(repo); return null; },
+        inspect: look,
+    });
+    assert.match(copy.result.stamp, /^secrets: dual run-\d+$/m, 'hooks copied from this snapshot are this release');
+    assert.match(copy.outs[1], /\.sensitive-data becomes \.secrets at the next update/);
 });
 
 test('a pending move recorded under the old name lands under whichever name the prior root holds (item 3)', POSIX_ONLY, () =>

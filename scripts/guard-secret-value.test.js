@@ -664,6 +664,37 @@ test('guard-secret-value: a bare file name a dump verb reads is judged where the
   }
 });
 
+test('guard-secret-value: a credential file behind $(pwd), `pwd` or $(git rev-parse --show-toplevel) is the file it names (final review)', () => {
+  // The gap the 2026-10-25 final review left out of model: the dump half resolved no `$(...)`, so `cat "$(pwd)/.env"` printed it.
+  const top = fs.mkdtempSync(path.join(TMP, 'pwd-top-'));
+  fs.mkdirSync(path.join(top, '.git'));
+  fs.mkdirSync(path.join(top, 'src', 'deep'), { recursive: true });
+  fs.writeFileSync(path.join(top, '.env'), 'DB_HOST=localhost\nAPI_KEY=abc123\n');
+  fs.writeFileSync(path.join(top, 'notes.txt'), 'nothing secret here\n');
+  const at = (command, cwd) => verdict(run({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite', cwd }, { CLAUDE_PROJECT_DIR: top }));
+  try {
+    const dumps = [
+      ['$(pwd) quoted', 'cat "$(pwd)/.env"', top],
+      ['$(pwd) bare', 'cat $(pwd)/.env', top],
+      ['backtick pwd', 'cat "`pwd`/.env"', top],
+      ['$(pwd -P)', 'cat "$(pwd -P)/.env"', top],
+      ['$(pwd) after a cd', 'cd src && cat "$(pwd)/../.env"', top],
+      ['$(git rev-parse --show-toplevel) from a subfolder', 'cat "$(git rev-parse --show-toplevel)/.env"', path.join(top, 'src', 'deep')],
+      ['the same with stderr dropped', 'cat "$(git rev-parse --show-toplevel 2>/dev/null)/.env"', path.join(top, 'src', 'deep')],
+      ['head behind $(pwd)', 'head -n 5 "$(pwd)/.env"', top],
+    ];
+    for (const [what, command, cwd] of dumps) assert.equal(at(command, cwd), REWRITE, `dump: ${what}`);
+    const pass = [
+      ['a clean file behind $(pwd)', 'cat "$(pwd)/notes.txt"', top],
+      ['pwd printed', 'echo "$(pwd)"', top],
+      ['a substitution it cannot know', 'cat "$(whoami)/.env"', top],
+    ];
+    for (const [what, command, cwd] of pass) assert.equal(at(command, cwd), 0, `pass: ${what}`);
+  } finally {
+    fs.rmSync(top, { recursive: true, force: true });
+  }
+});
+
 test('guard-secret-value: the routes that print a file without a dump verb\'s name are judged too (2.1.6)', () => {
   // Review item 5 of 2.1.6: each of these printed ~/.aws/credentials or a dotenv whole on base and on the first 2.1.6 tree.
   const home = fs.mkdtempSync(path.join(TMP, 'home-routes-'));

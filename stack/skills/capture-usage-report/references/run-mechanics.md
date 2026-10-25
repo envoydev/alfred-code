@@ -15,7 +15,7 @@ for f in <the session files>; do
     l="<data root>/statistics/$d/$sid.jsonl"; [ -f "$l" ] || l="<docs-path>/$d/$sid.jsonl"
     [ -f "$l" ] && { [ "$d" = tools-usage ] && FLAGS+=(--hook-log "$l") || FLAGS+=(--hook-blocks "$l"); }
   done
-  b="<out>/$sid/data"                        # this session's state, copied - the scorer folder is swept after 7 days
+  b="<state>/$sid/data"                      # this session's state, copied - the scorer folder is swept after 7 days
   for p in "state/history/$sid.json" "state/sessions/scorer/$sid" "statistics/hook-blocks/$sid.jsonl"; do
     [ -e "<data root>/$p" ] && { mkdir -p "$b/$(dirname "$p")"; cp -R "<data root>/$p" "$b/$(dirname "$p")/"; }
   done
@@ -26,7 +26,7 @@ EOF
 bash "<tmp>/run.sh"
 ```
 
-The `data/` copy is the session's state the Conformance section's state claims read, kept in the bundle because the bundle is its only lasting record; a session with none of the three prints its state claims `not visible`, never held.
+The `data/` copy is the session's state the Conformance section's state claims read. `<state>` is `<out>` - kept in the bundle, its only lasting record - when the raw-transcript test in the body copies (git ignores the folder, or the answer was 'Copy the raw transcripts too'); on 'Report and --json dumps only' it is `<tmp>`, so the analyzer still grades the claims and the bundle keeps no copy, since the history row and the scorer drafts quote the session's own text. A session with none of the three prints its state claims `not visible`, never held.
 
 `<tmp>` is the path step 2's resolve block printed (a shell variable does not outlive its Bash call). `<snapshot>` = `<tmp>/repo` when the plugin cache or the clone fallback supplied it, `<tmp>` when the archive extracted in place.
 

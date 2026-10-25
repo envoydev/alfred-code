@@ -425,7 +425,7 @@ test('item 4: the card names recorded weaknesses by title and path:line; task-de
 test('item 4: designers orient per task-design step 1; the greenfield design reads the two preference docs first', () => {
     const seats = fs.readdirSync(path.join(ROOT, 'stack', 'agents')).filter((n) => n.endsWith('-solution-designer.md'));
     assert.strictEqual(seats.length, 10);
-    for (const f of seats) assert.match(flat(read(`stack/agents/${f}`)), /orient per task-design step 1 - architecture, preferences, assessments, awareness/, f);
+    for (const f of seats) assert.match(flat(read(`stack/agents/${f}`)), /orient per task-design step 1 \(architecture, preferences, assessments, awareness\), then judge the fit/, f);
     const b = body(skill('task-build-from-scratch'));
     const design = b.slice(b.indexOf('### 1. DESIGN'), b.indexOf('### 2.'));
     assert.ok(design.length > 0, 'the DESIGN step is found');

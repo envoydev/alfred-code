@@ -1626,6 +1626,7 @@ test('DESIGN_RUN: past one room the rest is named, never held, and the first sco
         assert.ok(ctx.length <= 10000, `${ctx.length} chars - Claude Code's hook-output cap`);
         assert.match(ctx, /^read \S+PREFERENCES\.md /m, 'the rest is named');
         const handed = new Set([...ctx.matchAll(/rule number (\d+) /g)].map((m) => Number(m[1])));
+        assert.ok(handed.size > 0, 'the design load hands the first entries itself - an empty set would pass both checks below');
         const held = p.hook(edit('src/app.ts', s));
         assert.ok(denied(held), 'the first scoped edit still hands the rest');
         const rest = new Set([...reason(held).matchAll(/rule number (\d+) /g)].map((m) => Number(m[1])));

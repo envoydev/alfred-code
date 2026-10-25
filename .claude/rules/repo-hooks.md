@@ -535,8 +535,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     no resolver follows) or bare in a pipe whose stages name the data root (`ls -a .alfred | grep .secrets | xargs ...`) -
     and a `find` handing what it finds to a reader (an `-exec` / `-ok` action, a pipe on, a `$(...)` around it) is refused
     when its walk reaches the store and a `-name` / `-path` test matches the store's name, or, from the data root itself,
-    no name test narrows it; a `-maxdepth` short of the store passes. Out of model: a computed prefix in front of any OTHER
-    credential file (`cat "$(pwd)/.env"`) - the dump half resolves no `$(...)`.
+    no name test narrows it; a `-maxdepth` short of the store passes. The same day the dump half took `$(pwd)` / a backtick
+    `pwd` as `$PWD` and `$(git rev-parse --show-toplevel)` as the work tree above it (a walk up to `.git`, no git spawned), so
+    `cat "$(pwd)/.env"` is the file it names and a print of the store through either prefix is masked like the literal
+    path's; any other substitution (`$(whoami)/.env`) still leaves the token unjudged.
     The run that USES the values:
     `node <guard> --with-sensitive -- "<command line>"` puts them in that command's environment (the file wins over an
     inherited value - the run asked for the project's) and prints each value of 4+ characters as `<KEY>` in its stdout and

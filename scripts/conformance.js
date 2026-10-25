@@ -285,6 +285,13 @@ function normalizeStep(s, matchers, bad) {
     if (!s.match || typeof s.match !== 'object' || !Object.keys(s.match).length) bad(`step ${s.id}: x_state needs a match`);
     for (const [f, re] of Object.entries(s.match)) compilesOr(re, '', bad, `step ${s.id} match.${f}`);
     if (s.before !== undefined && s.perEvent !== undefined) bad(`step ${s.id}: x_state takes before or perEvent, not both`);
+    if (s.keeps !== undefined && (s.perEvent === undefined || !Number.isInteger(s.keeps) || s.keeps < 1)) bad(`step ${s.id}: keeps is a positive count beside a perEvent`);
+    if (s.tie !== undefined) {
+      const t = s.tie;
+      if (!t || typeof t !== 'object' || typeof t.row !== 'string' || typeof t.open !== 'string' || typeof t.capture !== 'string') bad(`step ${s.id}: tie is { row, open, capture }`);
+      compilesOr(t.capture, '', bad, `step ${s.id} tie.capture`);
+      if (!/\((?!\?)/.test(t.capture)) bad(`step ${s.id}: tie.capture needs a group to tie by`);
+    }
     return s;
   }
   if (!sc.EVAL_TYPES.has(s.type) && !sc.X_TYPES.has(s.type) && !sc.SKIP_TYPES[s.type]) bad(`step ${s.id}: unknown step type '${s.type}'`);
@@ -309,6 +316,7 @@ function loadClaims(file = CLAIMS_FILE) {
     if (!Array.isArray(c.steps) || !c.steps.length) bad('steps must be a non-empty list');
     const matchers = { ...shared };
     const steps = c.steps.map((s) => normalizeStep(s, matchers, bad));
+    if (steps.some((s) => s.tie !== undefined) && formOf(c.window.opens) !== 'event') bad('a tie reads the opening event, so the window opens on an event');
     return { ...c, matchers, steps };
   });
 }
@@ -320,21 +328,31 @@ function evidenceOf(claim) {
 }
 
 // An x_state step in one window, in this order: N/A when it names an event the window lacks; NOT VISIBLE when the source
-// is absent, no row qualifies, or a `before` has no time to order by; then the order or the count; else PASS.
-function gradeState(step, slice, state, refs, need) {
+// is absent, no row qualifies, a `tie` finds nothing to tie to, or a `before` has no time to order by; then the order or
+// the count; else PASS. `tie` keeps the rows whose `row` field is group 1 of `capture` over the opening event's `open`
+// input field (S1: a scorer run's own slug, final review M8); `keeps` is how many rows the writer keeps at most, so a
+// perEvent count past it asks only that many (D2: the history keeps the last 60 rulings).
+function gradeState(step, slice, state, refs, need, opening) {
   const anchor = step.before !== undefined ? step.before : step.perEvent;
   const events = anchor !== undefined ? slice.events.filter((e) => sc.matches(e, anchor, refs)) : null;
   if (events && !events.length) return 'N/A';
   const rows = state[step.source];
   if (!Array.isArray(rows)) { need.add(step.source); return 'NOT VISIBLE'; }
-  const q = rows.filter((r) => Object.entries(step.match).every(([f, re]) => new RegExp(re).test(String(r[f] ?? ''))));
+  let tied = null;
+  if (step.tie) {
+    const m = opening ? new RegExp(step.tie.capture).exec(String((opening.input || {})[step.tie.open] ?? '')) : null;
+    if (!m || !m[1]) return 'NOT VISIBLE';
+    tied = m[1];
+  }
+  const q = rows.filter((r) => (tied === null || String(r[step.tie.row] ?? '') === tied)
+    && Object.entries(step.match).every(([f, re]) => new RegExp(re).test(String(r[f] ?? ''))));
   if (!q.length) return 'NOT VISIBLE';
   if (step.before !== undefined) {
     const timed = q.filter((r) => Number.isFinite(r.ts));
     if (!timed.length || !Number.isFinite(events[0].ts)) return 'NOT VISIBLE';
     return Math.min(...timed.map((r) => r.ts)) < events[0].ts ? 'PASS' : 'FAIL';
   }
-  if (step.perEvent !== undefined) return q.length >= events.length ? 'PASS' : 'FAIL';
+  if (step.perEvent !== undefined) return q.length >= Math.min(events.length, step.keeps || Infinity) ? 'PASS' : 'FAIL';
   return 'PASS';
 }
 
@@ -357,7 +375,8 @@ function gradeClaims(bundle, claims) {
       const live = plain.filter((s) => !sessionSkip(s, slice));
       const verdicts = live.length ? sc.gradeRun({ skill: c.id, matchers: c.matchers, steps: live }, slice).steps.map((s) => s.verdict) : [];
       const wanted = new Set();
-      for (const s of c.steps) if (s.type === 'x_state') verdicts.push(gradeState(s, slice, state, c.matchers, wanted));
+      const opening = Number.isInteger(w.at) ? run.events[w.at] : null;
+      for (const s of c.steps) if (s.type === 'x_state') verdicts.push(gradeState(s, slice, state, c.matchers, wanted, opening));
       if (!verdicts.some((v) => v === 'PASS' || v === 'FAIL' || v === 'NOT VISIBLE')) continue;
       out.applied++;
       if (w.partial) out.partial++;

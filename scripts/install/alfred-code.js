@@ -568,6 +568,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         }
 
         pruneDroppedCopies(ctx);
+        const secretsAt = secretsRecord(ctx, secrets);
         stampLayer.writeStamp({
             source: resolved, action: args.action, scope: args.scope, configDir, projectRoot,
             hooksCatalog: manifest.catalogs.hooks, hooksRoute: ctx.routes.hooks ? 'plugin' : 'copy', seatsRoute: ctx.routes.skills ? 'plugin' : 'copy',
@@ -578,7 +579,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             toolIgnores: ctx.toolIgnores || stampLayer.readToolIgnores(stampFile),
             library: ctx.library || { skills: {}, agents: {}, rules: {} },
             ledger: ledgerOf(ctx),
-            data: { root: dataInfo.root, pending: dataPlan.pending, kept: dataPlan.kept, secrets },
+            data: { root: dataInfo.root, pending: dataPlan.pending, kept: dataPlan.kept, secrets: secretsAt },
             instructionsFile: ctx.instructionsAnswer,
         });
 
@@ -794,7 +795,7 @@ function sensitiveFile(ctx, root)
 // release only records `secrets: dual <by>` and says the rename is next; the rename runs once the stamp holds that line
 // AND this run is another session's than the one that wrote it (an unset or empty session id differs from every `by`) - a
 // session opened before the update may still run a guard that knows only the old name, so the session that updated never
-// renames under it. Returns the stamp's { by }: as recorded, else null (this run).
+// renames under it. Returns the stamp's { by }: as recorded, else this run's, marked `fresh` for secretsRecord.
 function secretsStep({ projectRoot, info, log })
 {
     const sid = process.env.CLAUDE_CODE_SESSION_ID || '';
@@ -812,9 +813,36 @@ function secretsStep({ projectRoot, info, log })
             else if (r.state === 'failed') log(`  !! sensitive: ${at('.sensitive-data')} not renamed (${r.why}) - the next update tries again`);
         }
     }
-    else if (roots.some((root) => { try { return fs.lstatSync(path.join(projectRoot, ...root.split('/'), dataRoot.LEGACY_SECRETS_FILE)).isFile(); } catch { return false; } }))
-        log('  sensitive: .sensitive-data becomes .secrets at the next update');
-    return { by: rec ? rec.by : (sid || null) };
+    else if (rec && legacyStoreAt(projectRoot, roots)) log('  sensitive: .sensitive-data becomes .secrets at the next update');
+    return rec ? { by: rec.by } : { by: sid || null, fresh: true };
+}
+
+const legacyStoreAt = (projectRoot, roots) => roots.some((root) =>
+{
+    try { return fs.lstatSync(path.join(projectRoot, ...root.split('/'), dataRoot.LEGACY_SECRETS_FILE)).isFile(); }
+    catch { return false; }
+});
+
+// M9 (final review): a FIRST `secrets: dual` line is written only where the guard this project runs knows both names -
+// hooks copied from this snapshot, or the core plugin read back after the plugin step at the snapshot's release or later.
+// An update that left the core behind (a managed row, a failed update, no CLI) records nothing, or the next run would
+// rename the store under a guard that knows only `.sensitive-data`. Returns the stamp's secrets value, or null.
+function secretsRecord(ctx, secrets)
+{
+    if (!secrets.fresh) return secrets;
+    const want = releaseVersion(ctx.source.dir);
+    const semver = (v) => /^\d+\.\d+\.\d+/.test(String(v || ''));
+    let at = '';
+    if (ctx.routes.hooks)
+    {
+        const listing = ctx.pluginsAfter || (ctx.readPlugins ? ctx.readPlugins() : []);
+        at = plugins.fieldOf(listing, `${CORE}@${ctx.market}`, 'version') || '';
+    }
+    const ok = !ctx.routes.hooks || (semver(at) && semver(want) && compareVersions(at, want) >= 0);
+    if (legacyStoreAt(ctx.projectRoot, [...new Set([ctx.dataInfo.prior, ctx.dataInfo.root].filter(Boolean))]))
+        ctx.log(ok ? '  sensitive: .sensitive-data becomes .secrets at the next update'
+            : `  sensitive: .sensitive-data stays - the core plugin reads back at ${at || 'nothing'}, not ${want || 'this release'} or later; the rename waits for an update that finds it there`);
+    return ok ? { by: secrets.by } : null;
 }
 
 // The data root's own files, once the docs root is settled: its `.gitignore` (written by ignoreStep - the
@@ -1288,6 +1316,7 @@ function installPlugins(ctx)
     // catalog ships names the stack uses too.
     const readRaw = () => ctx.rt.capture('claude', ['plugin', 'list', '--json'], { cwd: ctx.projectRoot, env: ctx.cliEnv });
     const readListing = () => plugins.parsePluginList(readRaw(), ctx.projectRoot, { byMarketplace: true });
+    ctx.readPlugins = readListing;   // secretsRecord's read-back after the install branch, which reads none (M9)
     const raw = readRaw();
     const listing = plugins.parsePluginList(raw, ctx.projectRoot, { byMarketplace: true });
     const rows = plugins.parsePluginList(raw, ctx.projectRoot, { everyScope: true });
@@ -1362,7 +1391,7 @@ function installPlugins(ctx)
         standDown();
         plugins.updatePlugins({
             plugins: set, scope: ctx.cliScope, scopes, marketplaces, before: listing, rows, fresh, restored: back.restored, refreshed: ctx.refreshed, release, cli: ctx.cli, log: ctx.log, note: ctx.note,
-            after: readListing,
+            after: () => (ctx.pluginsAfter = readListing()),
         });
         hudLine();
         for (const row of ctx.dropEntries || [])

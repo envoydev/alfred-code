@@ -509,6 +509,24 @@ test(`installer (${scope} scope): an update moves every folder under superpowers
     assert.deepStrictEqual(steps[2], steps[1]);
 });
 
+// M10 (final review): a `data-pending:` row an earlier run recorded under `.sensitive-data` is the same move once the store
+// is renamed `.secrets` - the offer leaves it out under either name, or update offers a move the run already retries.
+test('dataOffer: a pending move recorded under either store name matches the store under the other', () =>
+{
+    for (const [onDisk, recorded] of [['.secrets', '.sensitive-data'], ['.sensitive-data', '.secrets'], ['.secrets', '.secrets']])
+    {
+        const root = fs.mkdtempSync(path.join(TMP, 'offer-'));
+        put(root, `.alfred/${onDisk}`, 'K=v\n');
+        const stampText = `data-root: .alfred\ndata-pending: sensitive .alfred/${recorded} -> .data/${recorded}\n`;
+        const offer = docs.dataOffer({ projectRoot: root, stamped: true, stampText, root: '.data' });
+        assert.deepStrictEqual([offer.state, offer.why], ['none', 'nothing to move'], `${recorded} recorded, ${onDisk} on disk`);
+    }
+    const root = fs.mkdtempSync(path.join(TMP, 'offer-'));
+    put(root, '.alfred/.secrets', 'K=v\n');
+    const other = docs.dataOffer({ projectRoot: root, stamped: true, stampText: 'data-root: .alfred\ndata-pending: sensitive .alfred/.secrets -> .store/.secrets\n', root: '.data' });
+    assert.strictEqual(other.state, 'offer', 'a pending move to another root is no match');
+});
+
 test('preflight: the docs are no part of the data-move offer; only a hand-set root gets a docs-move offer', POSIX_ONLY, () =>
 {
     const root = repo(EXT);

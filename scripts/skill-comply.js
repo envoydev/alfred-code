@@ -38,7 +38,8 @@
 //             a call that FAILED - a rejected Edit, a hook or permission deny, a blocked or invalid
 //             call changed nothing and ran nothing. A shell command that ran and exited non-zero did
 //             not fail: Claude Code marks it is_error ('Exit code 1'), but a red test run is a run.
-//             Left out, a failed call still counts, so a denied commit is still an attempt in order. An MCP tool matches in both spellings - the
+//             Left out, a failed call still counts, so a denied commit is still an attempt in order. `answered: true` skips
+//             an AskUserQuestion Claude Code closed on its idle timeout ('No response after <N>s ...') - nobody answered it. An MCP tool matches in both spellings - the
 //             plugin route's `mcp__plugin_<n>_<n>__<tool>` and the registration route's bare one.
 //   session   a STEP field read by conformance.js alone (never by a replay's grade): `false` - the step cannot hold in a
 //             real session (it is bound to the replay fixture); `{ said: '<regex>' }` - graded only in a session window
@@ -90,6 +91,8 @@ const SECRETS = ['SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY'];
 // A shell tool's non-zero exit comes back is_error with this head - the command RAN.
 const SHELL_TOOLS = new Set(['Bash', 'PowerShell']);
 const EXIT_STATUS = /^Exit code \d+/;
+// An AskUserQuestion Claude Code closed on its idle timeout - nobody answered (the hook prelude's own pattern, one home).
+const ASK_TIMEOUT_RE = (() => { try { return require(path.join(ROOT, 'stack', 'hooks', 'hook-prelude.js')).ASK_TIMEOUT_RE; } catch { return /\bNo response after \d+\s*s\b/i; } })();
 // A user row the harness wrote with no isMeta - a task notice, a command's output, a peer session's message, an
 // interrupt marker (hook-prelude.js harnessPrompt's list) - is no typed turn: it marks as an attachment.
 const HARNESS_ROW = /^\s*(?:<(?:local-command-stdout|local-command-caveat|task-notification|agent-message|bash-input|bash-stdout|bash-stderr|system-reminder)\b|Another Claude session sent a message:|\[Request interrupted by user)/;
@@ -197,6 +200,7 @@ function parseTranscript(text, { sidechain = false } = {})
                     ev.isError = c.is_error === true;
                     const body = typeof c.content === 'string' ? c.content : strings(c.content).join('\n');
                     ev.failed = ev.isError && !(SHELL_TOOLS.has(canonical(ev.tool)) && EXIT_STATUS.test(body));
+                    if (canonical(ev.tool) === 'AskUserQuestion' && ASK_TIMEOUT_RE.test(body)) ev.timedOut = true;
                 }
             }
         }
@@ -242,6 +246,7 @@ function matches(ev, raw, refs)
 {
     const m = resolve(raw, refs);
     if (m.succeeded === true && ev.failed) return false;
+    if (m.answered === true && ev.timedOut) return false;
     if (Array.isArray(m.any)) return m.any.some((x) => matches(ev, x, refs));
     if (Array.isArray(m.all)) return m.all.every((x) => matches(ev, x, refs));
     if (m.tool !== undefined && canonical(ev.tool) !== canonical(m.tool)) return false;
@@ -275,7 +280,7 @@ function inlineMatcher(g)
 {
     if (g.match !== undefined) return g.match;
     const m = {};
-    for (const k of ['tool', 'input_match', 'field', 'text_match', 'text_not_match', 'any', 'all', 'ref', 'succeeded']) if (g[k] !== undefined) m[k] = g[k];
+    for (const k of ['tool', 'input_match', 'field', 'text_match', 'text_not_match', 'any', 'all', 'ref', 'succeeded', 'answered']) if (g[k] !== undefined) m[k] = g[k];
     return m;
 }
 
@@ -526,6 +531,7 @@ function checkMatcher(m, refs, where, problems, depth = 0)
             else m[k].forEach((x, i) => checkMatcher(x, refs, `${where}.${k}[${i}]`, problems, depth + 1));
         }
     if (m.succeeded !== undefined && typeof m.succeeded !== 'boolean') problems.push(`${where}: 'succeeded' must be true or false`);
+    if (m.answered !== undefined && m.answered !== true) problems.push(`${where}: 'answered' takes only true`);
     if (m.input_match !== undefined) compiles(m.input_match, '', where, problems);
     for (const p of [...list(m.text_match), ...list(m.text_not_match)]) compiles(p, 'm', where, problems);
     const keys = ['tool', 'input_match', 'field', 'text_match', 'text_not_match', 'any', 'all'];

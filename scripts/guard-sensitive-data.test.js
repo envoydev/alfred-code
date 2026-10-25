@@ -22,6 +22,7 @@ process.env.ALFRED_CODE_DOCS_PATH = path.join(TMP, 'ledger');
 // Fake by construction: long enough to be masked, and not a run of one character (a placeholder by content).
 const TOKEN = 'tok-' + 'a1b2'.repeat(6);
 const STORE = `# the project's own\nexport API_TOKEN="${TOKEN}"\nDB_HOST=db.internal\nPORT=80\n`;
+const STORE_VALUES = [TOKEN, 'db.internal'];   // every value is the store's: none may print
 
 // A project with a store under its data root; `root` is the data root's folder, `file` the store's name - `.secrets`
 // from item 3 (2026-10-25), `.sensitive-data` until every install has moved - so each case runs once per name.
@@ -249,8 +250,21 @@ test(`final review C1: the store behind a computed prefix, or found and fed to a
     const { dir } = project('c1', { file: FILE });
     fs.mkdirSync(path.join(dir, '.alfred', 'docs'), { recursive: true });
     fs.writeFileSync(path.join(dir, '.alfred', 'docs', 'x.md'), '# x\n');
-    for (const command of [`cat "$(pwd)/.alfred/${FILE}"`, `cat "$(git rev-parse --show-toplevel)/.alfred/${FILE}"`, `R=$(pwd); cat "$R/.alfred/${FILE}"`,
-        `source "$(pwd)/.alfred/${FILE}"`, `awk -F= '{print $2}' "$(pwd)/.alfred/${FILE}"`, `grep -h . "$(pwd)/.alfred/${FILE}"`,
+    // A `$(pwd)` / `$(git rev-parse --show-toplevel)` prefix resolves (the dump half's own gap, closed the same day), so a
+    // print through one is the literal path's print: rewritten to the masked view, which prints no value of the store.
+    fs.mkdirSync(path.join(dir, '.git'), { recursive: true });
+    for (const command of [`cat "$(pwd)/.alfred/${FILE}"`, `cat "$(git rev-parse --show-toplevel)/.alfred/${FILE}"`,
+        `awk -F= '{print $2}' "$(pwd)/.alfred/${FILE}"`, `grep -h . "$(pwd)/.alfred/${FILE}"`])
+    {
+        const r = run({ tool_name: 'Bash', tool_input: { command }, cwd: dir, session_id: 'suite' });
+        assert.notStrictEqual(verdict(r), 0, `${command}: rewritten or refused, never run as written`);
+        if (verdict(r) === 'rewrite')
+        {
+            const out = spawnSync('bash', ['-c', updated(r)], { cwd: dir, encoding: 'utf8' });
+            for (const v of STORE_VALUES) assert.ok(!(out.stdout + out.stderr).includes(v), `${command}: the masked view printed a value`);
+        }
+    }
+    for (const command of [`R=$(pwd); cat "$R/.alfred/${FILE}"`, `source "$(pwd)/.alfred/${FILE}"`,
         `python3 -c "import os; print(open(os.getcwd()+'/.alfred/${FILE}', 'r').read())"`,
         `find .alfred -name ${FILE} -exec cat {} +`, `find . -name '${FILE}' -exec cat {} \\;`, `find . -iname '${FILE.toUpperCase()}' -execdir cat {} +`,
         `find .alfred -name ${FILE} | xargs cat`, `cat $(find . -name ${FILE})`, `ls -a .alfred | grep ${FILE} | xargs -I{} cat .alfred/{}`,

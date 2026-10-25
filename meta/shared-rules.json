@@ -1510,44 +1510,44 @@
       "_note": "The design-method orient line - task-design step 1's four doc families - across all 10 designers (item 4, 2026-10-25).",
       "owner": {
         "file": "stack/agents/aspnet-solution-designer.md",
-        "marker": "orient per task-design step 1 - architecture, preferences, assessments, awareness"
+        "marker": "orient per task-design step 1 (architecture, preferences, assessments, awareness), then judge the fit"
       },
       "sites": [
         {
           "file": "stack/agents/web-angular-solution-designer.md",
-          "marker": "orient per task-design step 1 - architecture, preferences, assessments, awareness"
+          "marker": "orient per task-design step 1 (architecture, preferences, assessments, awareness), then judge the fit"
         },
         {
           "file": "stack/agents/wpf-solution-designer.md",
-          "marker": "orient per task-design step 1 - architecture, preferences, assessments, awareness"
+          "marker": "orient per task-design step 1 (architecture, preferences, assessments, awareness), then judge the fit"
         },
         {
           "file": "stack/agents/winforms-solution-designer.md",
-          "marker": "orient per task-design step 1 - architecture, preferences, assessments, awareness"
+          "marker": "orient per task-design step 1 (architecture, preferences, assessments, awareness), then judge the fit"
         },
         {
           "file": "stack/agents/console-solution-designer.md",
-          "marker": "orient per task-design step 1 - architecture, preferences, assessments, awareness"
+          "marker": "orient per task-design step 1 (architecture, preferences, assessments, awareness), then judge the fit"
         },
         {
           "file": "stack/agents/windows-service-solution-designer.md",
-          "marker": "orient per task-design step 1 - architecture, preferences, assessments, awareness"
+          "marker": "orient per task-design step 1 (architecture, preferences, assessments, awareness), then judge the fit"
         },
         {
           "file": "stack/agents/ionic-angular-solution-designer.md",
-          "marker": "orient per task-design step 1 - architecture, preferences, assessments, awareness"
+          "marker": "orient per task-design step 1 (architecture, preferences, assessments, awareness), then judge the fit"
         },
         {
           "file": "stack/agents/data-solution-designer.md",
-          "marker": "orient per task-design step 1 - architecture, preferences, assessments, awareness"
+          "marker": "orient per task-design step 1 (architecture, preferences, assessments, awareness), then judge the fit"
         },
         {
           "file": "stack/agents/devops-solution-designer.md",
-          "marker": "orient per task-design step 1 - architecture, preferences, assessments, awareness"
+          "marker": "orient per task-design step 1 (architecture, preferences, assessments, awareness), then judge the fit"
         },
         {
           "file": "stack/agents/browser-extension-solution-designer.md",
-          "marker": "orient per task-design step 1 - architecture, preferences, assessments, awareness"
+          "marker": "orient per task-design step 1 (architecture, preferences, assessments, awareness), then judge the fit"
         }
       ]
     },

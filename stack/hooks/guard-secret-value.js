@@ -589,10 +589,22 @@ function assignedValue(word) {
 // (`const D = process.env.CLAUDE_CONFIG_DIR` then `${D}` spelled with that name); null everywhere else.
 let verbatimVars = null;
 const expands = (name) => !verbatimVars || verbatimVars.has(name);
+// `$(pwd)` / a backtick `pwd` is where the shell stands, and `$(git rev-parse --show-toplevel)` the work tree holding it
+// (final review 2026-10-25: `cat "$(pwd)/.env"` printed the file - no `$(...)` resolved). Any other substitution keeps its
+// `$` and the token is skipped, as before. The work tree is found by walking up to a `.git` - no git spawned per call.
+const PWD_SUBST = /\$\(\s*pwd(?:\s+-[LP])?\s*\)|`\s*pwd(?:\s+-[LP])?\s*`/g;
+const GIT_TOP_SUBST = /\$\(\s*git\s+rev-parse\s+--show-toplevel(?:\s+2>\s*\/dev\/null)?\s*\)/g;
+function gitTop(dir) {
+  for (let d = pathMod.resolve(String(dir)); ; d = pathMod.dirname(d)) {
+    try { fs.statSync(pathMod.join(d, '.git')); return d; } catch { /* up one */ }
+    if (pathMod.dirname(d) === d) return null;
+  }
+}
 function expandPath(token) {
   const known = KNOWN_VARS();
   if (known.PWD == null) known.PWD = cwdAnchor || (payload && payload.cwd) || process.cwd(); // where the shell stands
   let p = String(token).replace(/^["'`]|["'`]$/g, '').replace(/^~(?=\/|$)/, HOME);
+  p = p.replace(PWD_SUBST, () => known.PWD).replace(GIT_TOP_SUBST, (m) => gitTop(known.PWD) || m);
   p = p.replace(/\$\{(\w+)(?::-[^}]*)?\}|\$(\w+)/g, (m, a, b) => (expands(a || b) && known[a || b] != null ? known[a || b] : m));
   // `my\ dir/settings.json` is one token the shell hands over with the space intact.
   return /\$/.test(p) ? null : nativePath(p.replace(/\\ /g, ' '));

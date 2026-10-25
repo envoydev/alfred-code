@@ -116,7 +116,8 @@ test('every claim: held 1 on its holding bundle, violated 1 on its violating one
 });
 test('x_state before: a ledger row orders against the first matching event; no row, no time or no source is not visible; no event is N/A', () => {
     const P1 = cf.loadClaims().find((c) => c.id === 'P1');
-    const edit = sc.parseTranscript(jsonl([stamped(user('go'), '2026-10-25T10:00:00Z'),
+    const handed = { type: 'attachment', attachment: { type: 'hook_additional_context', content: ["The user's personal preferences - PERSONAL-PREFERENCES.md, pushed at every session start"], hookName: 'SessionStart' } };
+    const edit = sc.parseTranscript(jsonl([handed, stamped(user('go'), '2026-10-25T10:00:00Z'),
         stamped(tool('Edit', { file_path: 'a.js', old_string: 'a', new_string: 'b' }), '2026-10-25T10:00:05Z')]));
     const bundle = (ledger, main = edit) => ({ sid: 's', session: { main, seats: [] },
         state: { history: null, scorer: null, ledger, missing: ledger ? {} : { ledger: 'statistics/hook-blocks/s.jsonl' } } });
@@ -190,4 +191,55 @@ test('event windows: the lookback counts tool calls, a from anchor starts the wi
     const g = cf.gradeClaims(b, [claim])[0];
     assert.deepStrictEqual([g.applied, g.held, g.violated], [2, 1, 1], 'the two verifiers graded, the main session and the implementer not');
     assert.match(g.locators.join(' '), /aspnet-verifier/);
+});
+
+// --- final review M8: the claims say exactly what they grade ------------------------------------------------------------
+const resultOf = (text) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: `t${seq}`, content: text }] } });
+const hookContext = (text) => ({ type: 'attachment', attachment: { type: 'hook_additional_context', content: [text], hookName: 'SessionStart', toolUseID: 'SessionStart', hookEvent: 'SessionStart' } });
+const claimOf = (id) => cf.loadClaims().find((c) => c.id === id);
+const withState = (main, state) => ({ sid: 's', session: { main, seats: [] }, state: { history: null, scorer: null, ledger: null, missing: {}, ...state } });
+
+test('M8 S1: the outcome row is the window\'s own slug - a release or a kept final holds, another run\'s release does not', () => {
+    const S1 = claimOf('S1');
+    const run = (slug) => sc.parseTranscript(jsonl([user('plan it'), tool('Skill', { skill: 'alfred-code:habits-output-scorer' }),
+        tool('Agent', { subagent_type: 'alfred-code:output-scorer', prompt: 'grade' }), tool('Bash', { command: `node "$S" next --slug ${slug} --level 80` })]));
+    const one = (slug, rows) => cf.gradeClaims(withState(run(slug), { scorer: rows }), [S1])[0];
+    assert.strictEqual(one('csv-plan', [{ slug: 'csv-plan', line: 'released d1' }]).held, 1, 'its own release');
+    assert.strictEqual(one('csv-plan', [{ slug: 'csv-plan', line: 'final d1' }]).held, 1, 'withheld and kept is an outcome the script recorded');
+    assert.strictEqual(one('csv-plan', [{ slug: 'other-plan', line: 'released d1' }]).notVisible, 1, 'another run\'s release says nothing of this one');
+    assert.strictEqual(one('"$SLUG"', [{ slug: 'csv-plan', line: 'released d1' }]).notVisible, 1, 'a slug the command never spells cannot be tied');
+});
+
+test('M8 N2: a Grep for literal text is no symbol lookup; one for an identifier or a declaration is', () => {
+    const N2 = claimOf('N2');
+    const order = hookContext("Tool order - the stack's defaults (no TOOLS-PREFERENCES.md): in each job use the first rank that serves the target before the next.\n- navigation (locate symbols, callers and types before reading or editing code): LSP > Grep.");
+    const one = (...calls) => cf.gradeClaims(withState(sc.parseTranscript(jsonl([order, user('where is it'), ...calls])), {}), [N2])[0];
+    const lsp = () => tool('LSP', { operation: 'workspaceSymbol', query: 'cartTotal' });
+    assert.strictEqual(one(tool('Grep', { pattern: 'Cannot read property', path: 'src' }), lsp()).held, 1, 'an error message is text, then the symbol by LSP');
+    assert.strictEqual(one(tool('Bash', { command: 'grep -rn "no such file" .' }), lsp()).held, 1, 'a phrase through the shell is text too');
+    for (const first of [tool('Grep', { pattern: 'cartTotal' }), tool('Grep', { pattern: '\\bcartTotal\\b', path: 'src' }), tool('Grep', { pattern: 'function cartTotal' }),
+        tool('Bash', { command: 'grep -rn "fetchOrders" src' }), tool('Bash', { command: 'rg -w cartTotal' })])
+        assert.strictEqual(one(first, lsp()).violated, 1, JSON.stringify(first.message.content[0].input));
+});
+
+test('M8 P1: with no personal doc handed over the claim does not apply; with one it orders the push before the first Edit', () => {
+    const P1 = claimOf('P1');
+    const push = hookContext("The user's personal preferences - .alfred/docs/preferences/PERSONAL-PREFERENCES.md, pushed at every session start and after each compaction. They bind this session as alfred-preferences.md ranks them:\n\n- short answers");
+    const rows = (lead) => [...lead, stamped(user('go'), '2026-10-25T10:00:00Z'), stamped(tool('Edit', { file_path: 'a.js', old_string: 'a', new_string: 'b' }), '2026-10-25T10:00:05Z')];
+    const ledger = [{ kind: 'preferences-push', ts: Date.parse('2026-10-25T10:00:01Z') }];
+    const none = cf.gradeClaims(withState(sc.parseTranscript(jsonl(rows([]))), { ledger: [] }), [P1])[0];
+    assert.deepStrictEqual([none.applied, none.notVisible], [0, 0], 'no doc, no hand-over: nothing to grade');
+    assert.strictEqual(cf.gradeClaims(withState(sc.parseTranscript(jsonl(rows([push]))), { ledger }), [P1])[0].held, 1);
+});
+
+test('M8 D2: an ask the idle timeout closed is no answered ask, and past the history\'s 60 rulings only the last 60 count', () => {
+    const D2 = claimOf('D2');
+    const ask = () => tool('AskUserQuestion', { questions: [{ question: 'Which?', options: [{ label: 'A (Recommended)' }, { label: 'B' }] }] });
+    const ruling = (i) => ({ ts: i, question: 'Which?', answer: 'A' });
+    const one = (calls, n) => cf.gradeClaims(withState(sc.parseTranscript(jsonl([user('go'), ...calls])), { history: Array.from({ length: n }, (_, i) => ruling(i)) }), [D2])[0];
+    assert.strictEqual(one([ask(), resultOf('User has answered your questions: "Which?"="A".'), ask(), resultOf('No response after 60s — the user may be away from keyboard. Proceed with your best judgment.')], 1).held, 1,
+        'the timed-out ask recorded nothing and owed nothing');
+    const many = (k) => Array.from({ length: k }, () => [ask(), resultOf('User has answered your questions: "Which?"="A".')]).flat();
+    assert.strictEqual(one(many(61), 60).held, 1, 'the history keeps the last 60');
+    assert.strictEqual(one(many(61), 59).violated, 1, 'one short of the cap is still a lost answer');
 });

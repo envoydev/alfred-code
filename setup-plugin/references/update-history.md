@@ -376,7 +376,9 @@ The project's secrets file is `<data root>/.secrets` now (`.alfred/.secrets` by 
 name. Every 2.x release reads both, `.secrets` first, and the shipped deny carries `Read(.secrets)` beside
 `Read(.sensitive-data)`. The rename takes two updates, so a session opened before it never loses the file mid-run: the
 first update beside an old file records `secrets: dual` in the stamp, writes no `.secrets` and prints
-`sensitive: .sensitive-data becomes .secrets at the next update`; the next update, from another session, renames the
+`sensitive: .sensitive-data becomes .secrets at the next update` - only once the core plugin reads back at this release
+or later (or the hooks are copies), else it prints `sensitive: .sensitive-data stays - the core plugin reads back at
+<version>, ...` and records nothing, since an older guard knows only the old name; the next update, from another session, renames the
 file (its bytes unchanged), re-points the run book's path and prints `sensitive: renamed .sensitive-data -> .secrets -
 restart any session opened before this update`. Report that line and tell the user to restart those sessions. An `!!`
 line - both files present, `.secrets` not a file, or a `.secrets` git would not ignore - keeps the old file: report it,
@@ -384,9 +386,10 @@ since the next update tries again only once the user has merged the two and dele
 ignored it. A project's own `.secrets` outside the data root is not touched. There is no way back by downgrading: an
 older release reads only `.sensitive-data`, so a renamed file would sit unguarded under it - the way back is a forward
 fix in a later release.
-The guard refuses the store behind a computed prefix too (`"$(pwd)/.alfred/.secrets"`), a `find` that hands it to a
-reader, and its name or the data root in any letter case; a refusal there is the guard working - the command that needs
-the values runs through `--with-sensitive`.
+The guard judges the store behind a computed prefix too - a print through `"$(pwd)/..."` or `"$(git rev-parse
+--show-toplevel)/..."` is masked like the literal path's, `$R/...` and a script's own string are refused - and a `find`
+that hands it to a reader, and its name or the data root in any letter case; a refusal there is the guard working - the
+command that needs the values runs through `--with-sensitive`. `cat "$(pwd)/.env"` is the dotenv it names, masked too.
 
 ## after 2.10.1 - capture-first-look leaves the stack
 

@@ -8,6 +8,12 @@
       { "tool": "Bash", "field": "command", "text_match": "(?:^|&&|\\|\\||;)\\s*(?:\\w+=\\S*\\s+)*(?:grep|egrep|fgrep|rg|ag|ack|git\\s+grep)\\b" },
       { "tool": "PowerShell", "field": "command", "text_match": "(?:^|&&|\\|\\||;)\\s*(?:\\w+=\\S*\\s+)*(?:grep|egrep|fgrep|rg|ag|ack|git\\s+grep)\\b" }
     ] },
+    "locate_symbol": { "any": [
+      { "tool": "LSP" },
+      { "tool": "Grep", "field": "pattern", "text_match": "^(?:\\\\b)?[A-Za-z_$][\\w$]*(?:\\\\b)?$|^(?:(?:export|public|private|protected|static|async|abstract)\\s+)*(?:class|interface|struct|enum|record|type|function|def|func|fn|const|let|var)\\s+[A-Za-z_$][\\w$]*" },
+      { "tool": "Bash", "field": "command", "text_match": "(?:^|&&|\\|\\||;)\\s*(?:\\w+=\\S*\\s+)*(?:grep|egrep|fgrep|rg|ag|ack|git\\s+grep)\\b(?:\\s+-{1,2}[\\w-]+(?:=\\S+)?)*\\s+([\"']?)(?:\\\\b)?[A-Za-z_$][\\w$]*(?:\\\\b)?\\1(?=\\s|$)" },
+      { "tool": "PowerShell", "field": "command", "text_match": "(?:^|&&|\\|\\||;)\\s*(?:\\w+=\\S*\\s+)*(?:grep|egrep|fgrep|rg|ag|ack|git\\s+grep)\\b(?:\\s+-{1,2}[\\w-]+(?:=\\S+)?)*\\s+([\"']?)(?:\\\\b)?[A-Za-z_$][\\w$]*(?:\\\\b)?\\1(?=\\s|$)" }
+    ] },
     "source_read": { "tool": "Read", "field": "file_path",
       "text_match": "\\.(?:cs|fs|vb|ts|tsx|mts|cts|js|jsx|mjs|cjs|py|go|rs|java|kt|kts|scala|rb|php|swift|dart|c|h|cc|cpp|cxx|hpp|hh|m|mm|lua)$",
       "text_not_match": "(?:^|[\\\\/])(?:node_modules|bin|obj|dist|coverage|TestResults|target|__pycache__|\\.venv|venv|vendor|\\.git|\\.angular|\\.nuget|\\.next|\\.nuxt|\\.gradle|\\.idea|\\.vs)[\\\\/]" },
@@ -32,20 +38,21 @@
     },
     {
       "id": "N2", "area": "navigation",
-      "claim": "Where the session-start tool order ranks the LSP tool first for navigation, the session's first navigation call is an LSP call.",
+      "claim": "Where the session-start tool order ranks the LSP tool first for navigation, the session's first symbol lookup is an LSP call - a Grep or shell grep counts only for an identifier or a declaration, never a phrase, an error message or other literal text, which no LSP serves.",
       "source": { "file": "stack/skills/capture-preferences/scripts/tools.js", "marker": "in each job use the first rank that serves the target before the next." },
-      "window": { "opens": { "event": { "ref": "locate" }, "first": true, "lookback": "session", "when": { "context": "^- navigation \\([^)]*\\): LSP\\b" } } },
+      "window": { "opens": { "event": { "ref": "locate_symbol" }, "first": true, "lookback": "session", "when": { "context": "^- navigation \\([^)]*\\): LSP\\b" } } },
       "steps": [ { "id": "top-rank", "type": "tool_used", "tool": "LSP", "min": 1 } ]
     },
     {
       "id": "S1", "area": "scoring",
-      "claim": "A scorer run's first verdict follows an output-scorer dispatch, and the script recorded the release (rounds.log `released`).",
+      "claim": "A scorer run's first verdict follows an output-scorer dispatch, and the script recorded that run's outcome - rounds.log `released` (passed, or accepted below the level) or `final` (withheld and kept) in the folder of the slug its `next` call names.",
       "source": { "file": "stack/skills/habits-output-scorer/SKILL.md", "marker": "A drafted output is graded by a fresh, read-only output-scorer seat that never saw the conversation" },
       "window": { "opens": { "event": { "tool": "Bash", "field": "command", "text_match": "(?:scorecard\\.js|\\$S|\\$\\{S\\})\"? next\\b" },
         "from": { "tool": "Skill", "field": "skill", "text_match": "^(?:[^:]*:)?habits-output-scorer$" } } },
       "steps": [
         { "id": "seat-graded", "type": "tool_used", "tool": "Agent", "field": "subagent_type", "text_match": "output-scorer$", "min": 1 },
-        { "id": "released", "type": "x_state", "source": "scorer", "match": { "line": "^released " } }
+        { "id": "released", "type": "x_state", "source": "scorer", "match": { "line": "^(?:released|final) " },
+          "tie": { "row": "slug", "open": "command", "capture": "--slug[= ][\"']?([\\w.-]+)[\"']?(?:\\s|$)" } }
       ]
     },
     {
@@ -57,9 +64,9 @@
     },
     {
       "id": "P1", "area": "preferences",
-      "claim": "The session-start hand-over of the personal preferences doc lands before the session's first Edit.",
+      "claim": "Where the session start hands over the personal preferences doc, the hand-over lands before the session's first Edit; a project with no personal doc has nothing to hand over, so the claim does not apply.",
       "source": { "file": "scripts/preferences-session.test.js", "marker": "the session-start push writes one preferences-push probe row" },
-      "window": { "opens": "session" },
+      "window": { "opens": { "session": true, "when": { "context": "^The user's personal preferences - " } } },
       "steps": [ { "id": "push-first", "type": "x_state", "source": "ledger", "match": { "kind": "^preferences-push$" }, "before": { "tool": "Edit" } } ]
     },
     {
@@ -91,7 +98,7 @@
     },
     {
       "id": "Q1", "area": "questions",
-      "claim": "An AskUserQuestion marks its recommended option first: no option after the first carries '(Recommended)'.",
+      "claim": "An AskUserQuestion that marks an option '(Recommended)' marks the first: no option after the first carries the mark. An ask with no mark holds - the rule asks a plain question where a recommendation would contradict the user.",
       "source": { "file": "stack/rules/alfred-interaction.md", "marker": "the recommended one marked (Recommended) and listed first" },
       "window": { "opens": { "event": { "tool": "AskUserQuestion" } } },
       "steps": [ { "id": "first-marked", "type": "tool_used", "tool": "AskUserQuestion", "min": 0, "max": 0,
@@ -153,10 +160,10 @@
     },
     {
       "id": "D2", "area": "decisions",
-      "claim": "Every answered AskUserQuestion is in the session's history (state/history/<sid>.json rulings).",
+      "claim": "Every answered AskUserQuestion is in the session's history (state/history/<sid>.json rulings) - one the idle timeout closed was answered by nobody, and past the history's 60 rulings only the last 60 are owed.",
       "source": { "file": "scripts/history.test.js", "marker": "upsert records rulings, the live plan, commits and dirty files" },
       "window": { "opens": "session" },
-      "steps": [ { "id": "answers-kept", "type": "x_state", "source": "history", "match": { "answer": "." }, "perEvent": { "tool": "AskUserQuestion", "succeeded": true } } ]
+      "steps": [ { "id": "answers-kept", "type": "x_state", "source": "history", "match": { "answer": "." }, "perEvent": { "tool": "AskUserQuestion", "succeeded": true, "answered": true }, "keeps": 60 } ]
     }
   ]
 }

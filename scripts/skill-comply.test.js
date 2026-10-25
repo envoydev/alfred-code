@@ -757,7 +757,10 @@ test('replay --live against a stub claude installs, scaffolds, records and grade
 
 // --- item 7 (2026-10-25): the grading half split out, and the positions a session is cut at --------------------
 
-test('gradeRun on a parsed run equals grade on its text, for every expectation (item 7, A7.3)', () => {
+// grade is gradeRun over parseTranscript by construction, so this pins the wiring, not the verdicts (final review M2: as an
+// equality of the two it compared a function with itself). The split itself was checked once against the pre-split
+// grader (24b0105a) on these traces for every expectation: 0 differences (ledgered 2026-10-25).
+test('grade is gradeRun over parseTranscript, and a level\'s prompt joins a copy of the run\'s users (item 7, A7.3)', () => {
     for (const name of sc.listSkills()) {
         const exp = expectOf(name);
         const traces = [
@@ -765,7 +768,13 @@ test('gradeRun on a parsed run equals grade on its text, for every expectation (
             jsonl([user('go'), tool('Edit', { file_path: 'src/app.js', old_string: 'a', new_string: 'b' }), say('Changed it.')]),
             jsonl([user('go'), say('Nothing to do.')]),
         ];
-        for (const text of traces) assert.deepStrictEqual(sc.gradeRun(exp, sc.parseTranscript(text)), sc.grade(exp, text), name);
+        for (const text of traces) {
+            assert.deepStrictEqual(sc.gradeRun(exp, sc.parseTranscript(text)), sc.grade(exp, text), name);
+            const run = sc.parseTranscript(text);
+            const before = JSON.stringify(run);
+            for (const level of Object.keys(exp.prompts || {})) sc.gradeRun(exp, run, { level });
+            assert.strictEqual(JSON.stringify(run), before, `${name}: grading at a level left the run it was handed as it was`);
+        }
     }
 });
 test('parseTranscript marks typed prompts, command rows and meta rows at their event position', () => {
