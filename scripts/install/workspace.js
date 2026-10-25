@@ -13,8 +13,12 @@
 // changes, writes a temp file and renames it into place - so two sibling inits cannot overwrite each other's `child`
 // line.
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const dataRootMod = require('../../stack/mcp/data-root.js');
+const brand = require('./brand.js');
+const runtime = require('./runtime.js');
+const stamp = require('./stamp.js');
 
 const CATEGORIES = Object.freeze(['skill', 'agent', 'rule', 'hook', 'plugin', 'env', 'mcp', 'secret', 'doc', 'instructions']);
 const FILE = 'workspace';
@@ -310,8 +314,164 @@ function moveWorkspace({ projectRoot, from, to, log = () => {} })
     return 'moved';
 }
 
+// ------------------------------------------------------------------ the tree
+
+const realOf = (p) =>
+{
+    try { return fs.realpathSync.native(p); }
+    catch { try { return fs.realpathSync(p); } catch { return path.resolve(p); } }
+};
+// One spelling per folder: the real path (macOS /tmp is /private/tmp, a Windows 8.3 name is expanded), `/`
+// separated, case-folded where the filesystem folds case by default.
+const realKey = (p) =>
+{
+    const key = realOf(p).split(path.sep).join('/');
+    return process.platform === 'win32' || process.platform === 'darwin' ? key.toLowerCase() : key;
+};
+const relPosix = (from, to) => path.relative(from, to).split(path.sep).join('/');
+const isStamped = (dir) => fs.existsSync(path.join(dir, '.claude', brand.BRAND.stamp));
+const isDir = (dir) => { try { return fs.statSync(dir).isDirectory(); } catch { return false; } };
+
+// The nearest stamped folder above the project, as { root, rel } - never the account dir, whose `.claude/` may hold
+// a stamp of its own. Walked from the real path, so a link's spelling never picks another tree.
+function findParent(projectRoot, { env = process.env } = {})
+{
+    const start = realOf(projectRoot);
+    const accounts = new Set([realKey(stamp.accountDir(env)), realKey(path.join(os.homedir(), '.claude'))]);
+    for (let dir = path.dirname(start); ; dir = path.dirname(dir))
+    {
+        if (dir === start) return null;
+        if (!accounts.has(realKey(path.join(dir, '.claude'))) && isStamped(dir)) return { root: dir, rel: relPosix(start, dir) };
+        if (path.dirname(dir) === dir) return null;
+    }
+}
+
+// The real top level of the checkout holding `dir`, or null outside one.
+function topOf(dir, exec)
+{
+    try { return realKey(String(exec('git', ['rev-parse', '--show-toplevel'], { cwd: dir, encoding: 'utf8', stdio: 'pipe' })).trim()); }
+    catch { return null; }
+}
+
+function sameRepo(childRoot, parentRoot, { exec = runtime.execCommand } = {})
+{
+    const child = topOf(childRoot, exec);
+    return child !== null && child === topOf(parentRoot, exec);
+}
+
+const isCheckout = (projectRoot, { exec = runtime.execCommand } = {}) => topOf(projectRoot, exec) === realKey(projectRoot);
+
+// Whether this project may join the stamped folder above it: a project inside the parent's own repo is that repo's
+// folder, not a child, and a plain folder has no install record of its own to keep apart.
+function joinVerdict(projectRoot, { env = process.env, exec = runtime.execCommand } = {})
+{
+    const parent = findParent(projectRoot, { env });
+    if (!parent) return { parent: null, ok: false };
+    if (sameRepo(projectRoot, parent.root, { exec })) return { parent, ok: false, why: 'same-repo' };
+    if (!isCheckout(projectRoot, { exec })) return { parent, ok: false, why: 'not-a-checkout' };
+    return { parent, ok: true };
+}
+
+// The project's ancestors through its `parent` lines, nearest first. A hop counts only to a real strict ancestor that
+// holds a stamp and whose own file lists this folder as `child` (the N1 rule): project text alone can never pull an
+// unrelated folder - or its secrets - into the chain. The first refused hop ends it with one `!!` note, returned for
+// the caller to log (never through the installer's `note`, which counts a failure).
+function chain(projectRoot, { env = process.env, maxDepth = 8, ownDataRoot } = {})
+{
+    const start = realOf(projectRoot);
+    const members = [];
+    const notes = [];
+    const seen = new Set([realKey(start)]);
+    let current = start;
+    let read = readWorkspace(start, { env, dataRoot: ownDataRoot });
+    while (members.length < maxDepth && read.view.parent)
+    {
+        const value = read.view.parent;
+        const where = read.file ? relPosix(start, read.file) : 'the workspace file';
+        const refuse = (why) => notes.push(`!! workspace: parent ${value} in ${where} ignored - ${why}`);
+        const parent = path.resolve(current, ...value.split('/'));
+        const label = relPosix(start, parent) || '.';
+        if (!isDir(parent)) { refuse(`${label} is missing`); break; }
+        const up = path.relative(realKey(parent), realKey(current));
+        if (!up || up.startsWith('..') || path.isAbsolute(up)) { refuse(`${label} is not a folder above this one`); break; }
+        if (!isStamped(parent)) { refuse(`${label} holds no Alfred install`); break; }
+        const parentRead = readWorkspace(parent, { env: ancestorEnv(env) });
+        if (!parentRead.view.children.some((c) => realKey(path.join(parent, ...c.split('/'))) === realKey(current)))
+        {
+            refuse(`${label} does not list this folder as a child`);
+            break;
+        }
+        const key = realKey(parent);
+        if (seen.has(key)) { refuse(`${label} is already in the chain`); break; }
+        seen.add(key);
+        const dataRoot = dataRootMod.dataRootOf({ env: ancestorEnv(env), projectDir: parent }).root;
+        members.push({ root: realOf(parent), rel: label, dataRoot, view: parentRead.view });
+        current = parent;
+        read = parentRead;
+    }
+    return { members, notes };
+}
+
+// The project and every descendant its `child` lines reach, pre-order. A child folder that is missing or holds no
+// stamp is `gone`, and nothing below it is read.
+function subtree(projectRoot, { env = process.env, maxDepth = 8 } = {})
+{
+    const top = realOf(projectRoot);
+    const rows = [{ root: top, rel: '.', depth: 0, parentRel: null, state: 'ok' }];
+    const seen = new Set([realKey(top)]);
+    const walk = (dir, rel, depth, view) =>
+    {
+        if (depth >= maxDepth) return;
+        for (const c of view.children)
+        {
+            const child = path.join(dir, ...c.split('/'));
+            const key = realKey(child);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            const childRel = rel === '.' ? c : `${rel}/${c}`;
+            const ok = isDir(child) && isStamped(child);
+            rows.push({ root: ok ? realOf(child) : child, rel: childRel, depth: depth + 1, parentRel: rel, state: ok ? 'ok' : 'gone' });
+            if (ok) walk(child, childRel, depth + 1, readWorkspace(child, { env: ancestorEnv(env) }).view);
+        }
+    };
+    walk(top, '.', 0, readWorkspace(top, { env }).view);
+    return rows;
+}
+
+const RESCAN_SKIP = new Set(['.git', 'node_modules', '.claude']);
+
+// Stamped folders under the project with no `parent` or `parent none` line - projects installed before their root,
+// offered as children. A stamped folder ends the walk down that branch: what is below it is that project's.
+function rescan(projectRoot, { maxDepth = 5, env = process.env } = {})
+{
+    const top = realOf(projectRoot);
+    const dataRoot = dataRootMod.dataRootOf({ env, projectDir: top }).root.split('/')[0];
+    const found = [];
+    const walk = (dir, depth) =>
+    {
+        let entries;
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
+        catch { return; }
+        for (const d of entries)
+        {
+            if (!d.isDirectory() || d.isSymbolicLink() || RESCAN_SKIP.has(d.name) || (dir === top && d.name === dataRoot)) continue;
+            const child = path.join(dir, d.name);
+            if (isStamped(child))
+            {
+                const view = readWorkspace(child, { env: ancestorEnv(env) }).view;
+                if (!view.parent && !view.parentNone) found.push(relPosix(top, child));
+                continue;
+            }
+            if (depth + 1 < maxDepth) walk(child, depth + 1);
+        }
+    };
+    walk(top, 0);
+    return found.sort();
+}
+
 module.exports = {
     CATEGORIES, parseWorkspace, renderWorkspace, viewOf,
     setParent, addChild, removeChild, addIgnore, removeIgnore,
     ancestorEnv, workspacePath, readWorkspace, writeWorkspace, moveWorkspace,
+    realKey, findParent, sameRepo, isCheckout, joinVerdict, chain, subtree, rescan,
 };

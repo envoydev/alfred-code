@@ -205,3 +205,180 @@ test('ancestorEnv keeps only the account', () =>
 {
     assert.deepStrictEqual(ws.ancestorEnv({ CLAUDE_CONFIG_DIR: '/acct', ALFRED_CODE_DATA_PATH: '.x' }), { CLAUDE_CONFIG_DIR: '/acct' });
 });
+
+// ------------------------------------------------------------------ the tree (Task 3)
+
+const { execFileSync } = require('node:child_process');
+const STAMP = 'sha: x\n';
+// A tree under TMP: `spec` maps a relative folder to { stamp, git, file } - `file` is its workspace file's text.
+const tree = (spec) =>
+{
+    const top = fs.mkdtempSync(path.join(TMP, 't-'));
+    for (const [rel, o] of Object.entries(spec))
+    {
+        const dir = path.join(top, ...rel.split('/'));
+        fs.mkdirSync(dir, { recursive: true });
+        if (o.git) execFileSync('git', ['init', '-q'], { cwd: dir });
+        if (o.stamp) { fs.mkdirSync(path.join(dir, '.claude'), { recursive: true }); fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), STAMP); }
+        if (o.file !== undefined) { fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true }); fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), o.file); }
+    }
+    return (rel = '.') => fs.realpathSync.native(path.join(top, ...rel.split('/')));
+};
+const runtime = require('./install/runtime.js');
+const exec = runtime.execCommand;
+const env0 = { CLAUDE_CONFIG_DIR: path.join(TMP, 'no-account') };
+
+test('findParent finds the nearest stamped ancestor and skips the account dir', () =>
+{
+    const at = tree({ 'home': {}, 'home/.claude': {}, 'home/ws': { stamp: true }, 'home/ws/api': { stamp: true } });
+    fs.writeFileSync(path.join(at('home'), '.claude', 'alfred-code.stamp'), STAMP);
+    const env = { CLAUDE_CONFIG_DIR: path.join(at('home'), '.claude') };
+    assert.deepStrictEqual(ws.findParent(at('home/ws/api'), { env }), { root: at('home/ws'), rel: '..' });
+    fs.rmSync(path.join(at('home/ws'), '.claude'), { recursive: true });
+    assert.strictEqual(ws.findParent(at('home/ws/api'), { env }), null, 'the account dir is never a parent');
+});
+
+test('findParent returns null at the filesystem root', () =>
+{
+    assert.strictEqual(ws.findParent(path.parse(TMP).root, { env: env0 }), null);
+});
+
+test('sameRepo is true for a sub-folder of the parent\'s repo; isCheckout is false for a plain folder', () =>
+{
+    const at = tree({ 'ws': { git: true }, 'ws/sub': {}, 'ws/api': { git: true }, 'plain': {} });
+    assert.strictEqual(ws.sameRepo(at('ws/sub'), at('ws'), { exec }), true);
+    assert.strictEqual(ws.sameRepo(at('ws/api'), at('ws'), { exec }), false);
+    assert.strictEqual(ws.isCheckout(at('plain'), { exec }), false);
+    assert.strictEqual(ws.isCheckout(at('ws/sub'), { exec }), false, 'a sub-folder is not its own checkout');
+    assert.strictEqual(ws.isCheckout(at('ws/api'), { exec }), true);
+});
+
+test('joinVerdict names same-repo and not-a-checkout, and is ok for a nested checkout', () =>
+{
+    const at = tree({ 'ws': { git: true, stamp: true }, 'ws/sub': { stamp: true }, 'ws/api': { git: true, stamp: true } });
+    assert.deepStrictEqual(ws.joinVerdict(at('ws/sub'), { env: env0, exec }), { parent: { root: at('ws'), rel: '..' }, ok: false, why: 'same-repo' });
+    assert.deepStrictEqual(ws.joinVerdict(at('ws/api'), { env: env0, exec }), { parent: { root: at('ws'), rel: '..' }, ok: true });
+    const lone = tree({ 'p': { git: true, stamp: true } });
+    assert.deepStrictEqual(ws.joinVerdict(lone('p'), { env: env0, exec }), { parent: null, ok: false });
+    const plain = tree({ 'ws': { stamp: true }, 'ws/kid': { stamp: true } });
+    assert.deepStrictEqual(ws.joinVerdict(plain('ws/kid'), { env: env0, exec }).why, 'not-a-checkout');
+});
+
+test('chain follows parent lines nearest first and needs the back-reference', () =>
+{
+    const at = tree({
+        'ws': { stamp: true, file: 'child api\n' },
+        'ws/api': { stamp: true, file: 'parent ..\nchild tool\n' },
+        'ws/api/tool': { stamp: true, file: 'parent ..\n' },
+    });
+    const got = ws.chain(at('ws/api/tool'), { env: env0 });
+    assert.deepStrictEqual(got.members.map((m) => [m.root, m.rel, m.dataRoot]), [[at('ws/api'), '..', '.alfred'], [at('ws'), '../..', '.alfred']]);
+    assert.deepStrictEqual(got.notes, []);
+    fs.writeFileSync(path.join(at('ws'), '.alfred', 'workspace'), '# no children\n');
+    const cut = ws.chain(at('ws/api/tool'), { env: env0 });
+    assert.deepStrictEqual(cut.members.map((m) => m.rel), ['..']);
+    assert.deepStrictEqual(cut.notes, ['!! workspace: parent .. in ../.alfred/workspace ignored - ../.. does not list this folder as a child']);
+});
+
+test('chain reads the project\'s own file from ownDataRoot', () =>
+{
+    const at = tree({ 'ws': { stamp: true, file: 'child api\n' }, 'ws/api': { stamp: true } });
+    fs.mkdirSync(path.join(at('ws/api'), '.kid-data'));
+    fs.writeFileSync(path.join(at('ws/api'), '.kid-data', 'workspace'), 'parent ..\n');
+    assert.strictEqual(ws.chain(at('ws/api'), { env: env0 }).members.length, 0, 'the default root holds no parent line');
+    assert.strictEqual(ws.chain(at('ws/api'), { env: env0, ownDataRoot: '.kid-data' }).members.length, 1);
+});
+
+test('chain refuses a parent line that is not a strict ancestor, has no stamp, or loops', () =>
+{
+    const unstamped = tree({ 'ws': { file: 'child api\n' }, 'ws/api': { stamp: true, file: 'parent ..\n' } });
+    const one = ws.chain(unstamped('ws/api'), { env: env0 });
+    assert.deepStrictEqual(one.members, []);
+    assert.deepStrictEqual(one.notes, ['!! workspace: parent .. in .alfred/workspace ignored - .. holds no Alfred install']);
+    // A link makes `..` of the child resolve to a folder that is not its real ancestor.
+    if (process.platform !== 'win32')
+    {
+        const at = tree({ 'ws': { stamp: true, file: 'child api\n' }, 'other': { stamp: true, file: 'child api\n' }, 'other/api': { stamp: true, file: 'parent ..\n' } });
+        fs.symlinkSync(at('other/api'), path.join(at('ws'), 'api'));
+        const linked = ws.chain(path.join(at('ws'), 'api'), { env: env0 });
+        assert.deepStrictEqual(linked.members.map((m) => m.root), [at('other')], 'the real path decides the parent');
+    }
+    const loop = tree({ 'ws': { stamp: true, file: 'parent ..\nchild ws\n' } });
+    const top = path.dirname(loop('ws'));
+    fs.mkdirSync(path.join(top, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(top, '.claude', 'alfred-code.stamp'), STAMP);
+    fs.mkdirSync(path.join(top, '.alfred'), { recursive: true });
+    fs.writeFileSync(path.join(top, '.alfred', 'workspace'), 'child ws\n');
+    assert.strictEqual(ws.chain(loop('ws'), { env: env0 }).members.length, 1);
+});
+
+test('chain depth 7, 8 and 9', () =>
+{
+    for (const [depth, want] of [[7, 7], [8, 8], [9, 8]])
+    {
+        const spec = {};
+        const names = Array.from({ length: depth + 1 }, (_, i) => `d${i}`);
+        for (let i = 0; i <= depth; i++)
+        {
+            const rel = names.slice(0, i + 1).join('/');
+            const lines = [];
+            if (i > 0) lines.push('parent ..');
+            if (i < depth) lines.push(`child ${names[i + 1]}`);
+            spec[rel] = { stamp: true, file: lines.join('\n') + '\n' };
+        }
+        const at = tree(spec);
+        const got = ws.chain(at(names.join('/')), { env: env0 });
+        assert.strictEqual(got.members.length, want, `depth ${depth}`);
+    }
+});
+
+test('subtree is pre-order and marks a missing or unstamped child gone', () =>
+{
+    const at = tree({
+        'ws': { stamp: true, file: 'child api\nchild web\nchild gone\nchild bare\n' },
+        'ws/api': { stamp: true, file: 'parent ..\nchild tool\n' },
+        'ws/api/tool': { stamp: true, file: 'parent ..\n' },
+        'ws/web': { stamp: true, file: 'parent ..\n' },
+        'ws/bare': {},
+    });
+    const got = ws.subtree(at('ws'), { env: env0 });
+    assert.deepStrictEqual(got.map((r) => [r.rel, r.depth, r.parentRel, r.state]), [
+        ['.', 0, null, 'ok'],
+        ['api', 1, '.', 'ok'],
+        ['api/tool', 2, 'api', 'ok'],
+        ['web', 1, '.', 'ok'],
+        ['gone', 1, '.', 'gone'],
+        ['bare', 1, '.', 'gone'],
+    ]);
+});
+
+test('rescan depth 4, 5 and 6', () =>
+{
+    const at = tree({
+        'ws': { stamp: true },
+        'ws/a/b/c/d4': { stamp: true },
+        'ws/e/f/g/h/d5': { stamp: true },
+        'ws/i/j/k/l/m/d6': { stamp: true },
+        'ws/joined': { stamp: true, file: 'parent ..\n' },
+        'ws/declined': { stamp: true, file: 'parent none\n' },
+        'ws/node_modules/x': { stamp: true },
+        'ws/.claude/y': { stamp: true },
+        'ws/.alfred/z': { stamp: true },
+        'ws/d4/inner': { stamp: true },
+    });
+    fs.mkdirSync(path.join(at('ws/d4'), '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(at('ws/d4'), '.claude', 'alfred-code.stamp'), STAMP);
+    if (process.platform !== 'win32') fs.symlinkSync(at('ws/a'), path.join(at('ws'), 'link'));
+    assert.deepStrictEqual(ws.rescan(at('ws')), ['a/b/c/d4', 'd4', 'e/f/g/h/d5']);
+});
+
+test('the /tmp spelling and the real spelling are one member', { skip: process.platform === 'win32' && 'links need privileges on Windows' }, () =>
+{
+    const at = tree({ 'ws': { stamp: true, file: 'child api\n' }, 'ws/api': { stamp: true, file: 'parent ..\nchild tool\n' }, 'ws/api/tool': { stamp: true, file: 'parent ..\n' } });
+    const link = path.join(TMP, `link-${process.pid}`);
+    fs.symlinkSync(path.dirname(at('ws')), link);
+    const viaLink = ws.chain(path.join(link, 'ws', 'api', 'tool'), { env: env0 });
+    const viaReal = ws.chain(at('ws/api/tool'), { env: env0 });
+    assert.deepStrictEqual(viaLink.members.map((m) => m.root), viaReal.members.map((m) => m.root));
+    assert.strictEqual(ws.realKey(path.join(link, 'ws')), ws.realKey(at('ws')));
+});
