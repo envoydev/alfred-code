@@ -214,6 +214,58 @@ wins 4 or more tasks and off at most 1.
 - **Following the spec:** `ALFRED_CODE_SCORER` stays seeded `0`. Turning it on by default is the user's separate
   ruling.
 
+## The A/B, phase 2: three runs per task (2026-10-25)
+
+Phase 1 could not tell an arm effect from run-to-run spread, so the user asked for three runs per task. The setup
+was the same: tasks, flags, caps, resume rule, judge, rubric and blinding. The changes:
+
+- Two more runs per arm per task, on a fresh install at 5c208912 (its `stack/` and `scripts/` equal 113ab6f3's).
+  Phase 1's second off run of the cancel task served as that task's second off run.
+- 18 pairs, each pairing off run r with on run r, plus 6 same-arm pairs (off run 2 vs off run 3), all judged anew.
+  Phase 1's judgments stay as its record and are not counted.
+- The judge folder now carries a mirror of a fresh install's `.claude/` under `house/`, read-only. It has no
+  settings, no CLAUDE.md, none of the scorer's 14 files and no line naming the scorer or the loop. The tell grep was
+  run over the mirror and every hit was read; the hits left are the review skills' own scores and severity scale,
+  and the docs engine's ranking code. A ninth fact tells the judge where the mirror is.
+- The rule was set before any phase 2 call: scoring helps when on wins 14 or more of the 18 pairs, a pair counting
+  only when both orders agree. That comes up 1.5% of the time under a coin-flip null.
+
+The result:
+
+- **Verdict: scoring helps - on 14, off 3, 1 split.** That is exactly at the bar.
+- **The null is the coin flip.** 5 of the 6 same-arm pairs also got a winner in both orders, and 1 split. So the
+  judge picks a side on nearly every pair, and 14 of 18 is about 1.5% by chance.
+- **Effect size.** Summed over the five criteria (5-25), on scored 2.19 more than off on average. Two off runs of one
+  task differed by 1.00. Per criterion, on minus off:
+
+  | Safe to apply | Buildable | Correct about the code | Meets the task | In scope |
+  |---|---|---|---|---|
+  | +1.03 | +1.06 | +0.19 | +0.19 | -0.28 |
+
+  So the scored plans add a little more than asked.
+- **Every off win was an inline plan.** In 3 of 18 runs with scoring on, the session went to an inline plan with no
+  plan file: the cancel task's run 3, and the order lookup's runs 1 and 3. Those three lost, by -1.33 on average.
+  Where the scored session wrote a plan file, it won 14 of 15 pairs (the 15th split), by +2.90 on average.
+- **By task (run 1 / 2 / 3):**
+
+  | Cancel reason | Order lookup | Refunds | List by status | Column rename | Order history |
+  |---|---|---|---|---|---|
+  | on / on / off | off / on / off | split / on / on | on / on / on | on / on / on | on / on / on |
+- **False claims, with the mirror in place.** Scored plans made 4 false claims across 2 pairs; unscored plans made 15
+  across 6. The phase 1 claims about `.claude/hooks/docs.js` did not come back.
+- **Cost.** Over all 18 runs per arm, a scored plan cost $1.67 on average and took 11.7 minutes (3-24). An unscored
+  plan cost $0.18 and took under a minute. Phase 2 billed $35.24: $22.04 for 23 plan runs and $13.20 for 48 judge
+  runs. Both phases came to $50.13 at list price, charged to the subscription through the setup-token.
+- **Two cut runs, both inline.** The cancel task's run 3 used all four resumes. The order lookup's run 3 was released
+  'accepted below the level' and then had nothing on disk to move. Each was judged on its newest released draft.
+- **Judge.** In both phases the Opus judge stayed read-only. Claude Code ran one read-only `find` / `cat` under
+  `dontAsk` and refused a looping command, and every judge folder was unchanged.
+- **What follows:**
+  - The scorer makes plan files safer to apply and easier to build, at about 9 times the cost.
+  - The inline-plan route is the weak spot. A plain 'write an implementation plan' request with scoring on should
+    reach the plan skill and its plan file every time, not 15 times in 18.
+  - `ALFRED_CODE_SCORER` stays seeded `0`. Turning it on by default is the user's ruling.
+
 ## Not run
 
 - The withhold path: every A/B run released its draft. Revise, re-grade, the fix after an offer and an answered
