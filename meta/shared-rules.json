@@ -7010,10 +7010,6 @@
           "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
         },
         {
-          "file": "stack/skills/capture-first-look/SKILL.md",
-          "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
-        },
-        {
           "file": "stack/skills/capture-test-coverage/SKILL.md",
           "marker": "**auto-mode.** `--auto-mode` as the first word of the arguments is a mode flag, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<data root>/state/approvals/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close of the run its `skill:` line names deletes it."
         },
@@ -7032,10 +7028,6 @@
       "sites": [
         {
           "file": "stack/skills/capture-awareness/SKILL.md",
-          "marker": "[ ! -e \"$d/.orphaned_at\" ]"
-        },
-        {
-          "file": "stack/skills/capture-first-look/SKILL.md",
           "marker": "[ ! -e \"$d/.orphaned_at\" ]"
         },
         {

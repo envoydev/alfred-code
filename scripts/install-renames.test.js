@@ -55,7 +55,7 @@ test('the renamed map: every old name is retired, every new name ships, and no n
     const m = loadManifest(ROOT);
     const skills = new Set(m.catalogs.skills.map((e) => e.split('|').pop()));
     const agents = new Set(m.agents.map((f) => f.replace(/\.md$/, '')));
-    assert.strictEqual(Object.keys(RENAMED.skills).length, 71, 'the 23 project-* skills, the three 2.1.0 renames, the 2.1.6 AGENTS.md one, the 2.1.7 usage-report one, the 36 alfred- prefixes 2.2.0 dropped (one of them the skill-writing habit, which left the stack on 2026-10-22), the two awareness captures (2026-10-13), the code-quality loop, the three awareness captures capture-awareness merged (2026-10-16) the project code-style capture (2026-10-21) and the code explainer that explains any topic now (2026-10-22)');
+    assert.strictEqual(Object.keys(RENAMED.skills).length, 69, 'the 23 project-* skills, the three 2.1.0 renames, the 2.1.6 AGENTS.md one, the 2.1.7 usage-report one, the 36 alfred- prefixes 2.2.0 dropped (one of them the skill-writing habit, which left the stack on 2026-10-22), the two awareness captures (2026-10-13), the code-quality loop, the three awareness captures capture-awareness merged (2026-10-16) the project code-style capture (2026-10-21) and the code explainer that explains any topic now (2026-10-22), less the two into capture-first-look, which left the stack (2026-10-25)');
     assert.strictEqual(Object.keys(RENAMED.agents).length, 4, 'the two failure diagnosers, then their alfred- prefix (2.2.0)');
     for (const [from, to] of Object.entries(RENAMED.skills))
     {
@@ -337,9 +337,9 @@ test('settings writer: a skillOverrides value already set under the new name win
     try
     {
         const file = path.join(dir, 'settings.json');
-        fs.writeFileSync(file, JSON.stringify({ skillOverrides: { 'project-first-look': 'off', 'capture-first-look': 'on' } }));
+        fs.writeFileSync(file, JSON.stringify({ skillOverrides: { 'project-quality-loop': 'off', 'loop-code-quality': 'on' } }));
         writeSettings({ file, renamed: RENAMED, log: () => {}, note: (m) => assert.fail(m) });
-        assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf8')).skillOverrides, { 'capture-first-look': 'on' });
+        assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf8')).skillOverrides, { 'loop-code-quality': 'on' });
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
@@ -1034,17 +1034,17 @@ test('settings writer: at local scope an old skillOverrides key in settings.json
     {
         const sharedFile = path.join(dir, 'settings.json');
         const localFile = path.join(dir, 'settings.local.json');
-        const shared = { skillOverrides: { 'project-quality-loop': 'off', 'project-first-look': 'off', 'my-own-skill': 'off' } };
+        const shared = { skillOverrides: { 'project-quality-loop': 'off', 'project-architecture-quality-loop': 'off', 'my-own-skill': 'off' } };
         fs.writeFileSync(sharedFile, JSON.stringify(shared));
-        fs.writeFileSync(localFile, JSON.stringify({ skillOverrides: { 'capture-first-look': 'on' } }));
+        fs.writeFileSync(localFile, JSON.stringify({ skillOverrides: { 'loop-architecture-quality': 'on' } }));
         const logs = [];
         const opts = { file: localFile, renamed: RENAMED, inheritedOverrides: shared.skillOverrides, note: (m) => assert.fail(m) };
         writeSettings({ ...opts, log: (m) => logs.push(m) });
-        assert.deepStrictEqual(JSON.parse(fs.readFileSync(localFile, 'utf8')).skillOverrides, { 'capture-first-look': 'on', 'loop-code-quality': 'off' }, 'the user\'s switch-off stopped applying');
+        assert.deepStrictEqual(JSON.parse(fs.readFileSync(localFile, 'utf8')).skillOverrides, { 'loop-architecture-quality': 'on', 'loop-code-quality': 'off' }, 'the user\'s switch-off stopped applying');
         assert.deepStrictEqual(JSON.parse(fs.readFileSync(sharedFile, 'utf8')), shared, 'settings.json is never written at local scope');
         const text = logs.join('\n');
         assert.match(text, /settings\.local\.json: settings\.json still names skillOverrides project-quality-loop - set as loop-code-quality in settings\.local\.json; a local-scope run never writes settings\.json, a project-scope update re-keys it/);
-        assert.doesNotMatch(text, /project-first-look/, 'a new name the local file already sets wins, silently');
+        assert.doesNotMatch(text, /project-architecture-quality-loop/, 'a new name the local file already sets wins, silently');
         const before = fs.readFileSync(localFile, 'utf8');
         const again = [];
         writeSettings({ ...opts, log: (m) => again.push(m) });

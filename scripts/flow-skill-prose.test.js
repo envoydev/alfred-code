@@ -62,7 +62,7 @@ test('M79: a generated rule survives update because no ledger records it, not be
 
 // ---- M80: the plugin cache can be newer than the library copy -------------------------------------------------
 test('M80: the newest cache entry is not claimed to be the release these copies came from', () => {
-    for (const name of ['capture-first-look', 'habits-adjust-agents-md', 'capture-awareness']) {
+    for (const name of ['habits-adjust-agents-md', 'capture-awareness']) {
         const text = flat(skill(name));
         assert.doesNotMatch(text, /(NEWEST|newest plugin-cache entry) is the one this skill came from/i, `${name}: the skew window makes it false`);
         assert.match(text, /after a core update it can be newer/, `${name}: says when it differs`);

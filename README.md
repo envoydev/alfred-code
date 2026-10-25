@@ -103,7 +103,6 @@ Skills you start by name. Every install has these.
 | `/task-solve-cross` | A feature across backend and frontend |
 | `/issue-diagnoser` | Find the cause of a failure |
 | `/task-version-upgrade` | A breaking upgrade, like .NET 10 |
-| `/capture-first-look` | A quick map of an unfamiliar project |
 | `/capture-architecture` | Write or refresh the architecture docs |
 | `/capture-awareness` | What is installed, the run book, sibling repos |
 | `/loop-code-quality` | Find and fix code-quality issues in rounds |
@@ -131,7 +130,7 @@ More on the two task flows: [`docs/solve-skills-guide.md`](docs/solve-skills-gui
 
 | | Count | What it is |
 | --- | --- | --- |
-| **Skills** | 92 | house conventions and workflows |
+| **Skills** | 91 | house conventions and workflows |
 | **Agents** | 45 | designers, implementers, verifiers, reviewers |
 | **Rules** | 18 | always-on basics and per-file conventions |
 | **Hooks** | 18 | the guards, plus the docs, preferences and history hooks |

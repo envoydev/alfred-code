@@ -38,11 +38,6 @@
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "capture-first-look",
-      "note": "provisional ORIENTATION.md from one manifest scan (scripts/scan-evidence.js --orientation) - stack, modules, build/test/run commands, entry points; never over a capture, replaced by the architecture capture"
-    },
-    {
-      "repo": "envoydev/alfred-code",
       "name": "habits-adjust-agents-md",
       "note": "create or improve a project's AGENTS.md - the template's outline (Setup and Key files among it), the project's own root AGENTS.md improved in place and never overwritten, a part's own <part>/AGENTS.md, changes shown before an improve writes, and scripts/agents-md-check.js last; the one home of the AGENTS.md fill /alfred-code:init runs (renamed: the seeded file is .claude/AGENTS.md now, not CLAUDE.md)"
     },
@@ -1131,6 +1126,7 @@
       "alfred-capture-code-style",
       "capture-code-style",
       "alfred-capture-first-look",
+      "capture-first-look",
       "alfred-capture-project-capabilities",
       "capture-project-capabilities",
       "alfred-capture-related-projects",
@@ -1260,7 +1256,6 @@
       "project-related-context": "capture-awareness",
       "project-agent-capabilities": "capture-awareness",
       "project-stack-usage-analyzer": "capture-usage-report",
-      "project-first-look": "capture-first-look",
       "project-quality-loop": "loop-code-quality",
       "project-architecture-quality-loop": "loop-architecture-quality",
       "project-test-coverage-loop": "loop-test-coverage",
@@ -1277,7 +1272,6 @@
       "alfred-capture-code-quality": "capture-code-quality",
       "alfred-capture-code-style": "capture-project-code-style",
       "capture-code-style": "capture-project-code-style",
-      "alfred-capture-first-look": "capture-first-look",
       "alfred-capture-project-capabilities": "capture-awareness",
       "capture-project-capabilities": "capture-awareness",
       "alfred-capture-related-projects": "capture-awareness",

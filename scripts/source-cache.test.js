@@ -600,13 +600,12 @@ test('the aligned lookups (run book, AGENTS.md check, both spec checks) read a c
         finally { fs.rmSync(home, { recursive: true, force: true }); }
     }
     const entry = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'shared-rules.json'), 'utf8')).rules['plugin-cache-newest-entry'];
-    assert.strictEqual(entry.sites.length, 7, 'seven skill sites beside the source protocol');
+    assert.strictEqual(entry.sites.length, 6, 'six skill sites beside the source protocol');
 });
 
 test('the three body snippets read a core cached under any key, and never an orphaned one', () => {
     const snippets = {
         capabilities: [bodySnippet('stack/skills/capture-awareness/SKILL.md', /```bash\n(CAPS=[\s\S]*?)echo "caps: \$\{CAPS:-absent\}"\n```/) + 'printf %s "$CAPS"', '/stack/skills/capture-awareness/scripts/capabilities-inventory.js'],
-        firstLook: [bodySnippet('stack/skills/capture-first-look/SKILL.md', /```bash\n(SCAN=[\s\S]*?cut -f2\))\n/) + '\nprintf %s "$SCAN"', '/scripts/scan-evidence.js'],
         usage: [bodySnippet('stack/skills/capture-usage-report/SKILL.md', /```bash\n(TMP=\$\(mktemp -d "\$\{TMPDIR:-\/tmp\}\/alfred-code\.XXXXXX"\)[^\n]*\nCFG=[\s\S]*?cut -f2\))\n/) + '\nrm -rf "$TMP"; printf %s "$SRC"', ''],
     };
     for (const [plant, want] of [

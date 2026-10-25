@@ -631,14 +631,24 @@ test('read-back: a switch onto the full copy route reads back what the core stil
     assert.ok(!on.lines.includes(`agent ${seat}`), 'a denied seat stays off');
     // The settings file's word before the listing's flag (S22): a stale false flag is still a core that runs.
     const stale = back({ listing: [row('alfred-code@envoydev', { enabled: false })], isOn: () => true });
-    assert.ok(stale.lines.includes('skill capture-first-look'), items(stale).join(', '));
+    assert.ok(stale.lines.includes('skill capture-awareness'), items(stale).join(', '));
     const off = back({ listing: [row('alfred-code@envoydev')], isOn: () => false });
     assert.deepStrictEqual(items(off), [], 'a core already off (a switched install re-run) adds nothing');
     const elsewhere = back({ listing: [row('alfred-code@envoydev', { scope: 'user' })] });
     assert.deepStrictEqual(items(elsewhere), [], 'a core at another scope keeps running there - nothing to carry across');
     const plugin = sel.readBack({ claudeDir: target({ rules: ['alfred-security'] }), mcpServers: [], listing: [row('alfred-code@envoydev')], settings: {},
         routes: { skills: false, hooks: true, mcps: false }, manifest: MANIFEST, sourceDir: ROOT_DIR, always: {}, stampPicked: { skills: [], agents: [] }, marketplace: 'envoydev', scope: 'project' });
-    assert.ok(!plugin.lines.includes('skill capture-first-look'), 'a partial copy route keeps the core on - it carries its own items');
+    assert.ok(!plugin.lines.includes('skill capture-awareness'), 'a partial copy route keeps the core on - it carries its own items');
+});
+
+test('capture-first-look is retired: no stack row, in retired.skills, no rename points at it (item 1)', () =>
+{
+    const raw = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'meta', 'stack-manifest.json'), 'utf8'));
+    assert.ok(!raw.skills.some((s) => s.name === 'capture-first-look'));
+    assert.ok(raw.retired.skills.includes('capture-first-look'));
+    assert.ok(!Object.values(raw.renamed.skills).includes('capture-first-look'));
+    const rec = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'meta', 'recommendations.json'), 'utf8'));
+    assert.ok(!rec.always.skills.includes('capture-first-look'));
 });
 
 test('closeLines: what a LEFT-OUT item requires is not pulled in either', () =>

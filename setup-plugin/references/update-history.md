@@ -369,3 +369,11 @@ an explainer answer, a ticket, an upgrade plan or a pick included. An output tha
 the user decides: answer the open decisions, accept it marked, one more revision, or keep it withheld.
 `guard-answer:scorer` or `guard-stop-contract:scorer` in `ALFRED_CODE_HOOKS_OFF` switches the whole scorer off. Update
 seeds the four keys absent-only, so a value the project set stays; report the seeded lines.
+
+## after 2.10.1 - capture-first-look leaves the stack
+
+The provisional-map skill no longer ships: `/alfred-code:init` runs the architecture capture, which writes the real
+map, and the scan behind the old skill stays - `node <stack>/scripts/scan-evidence.js --orientation --root .` prints
+the same provisional `ORIENTATION.md` for a project with no capture yet. Update prunes an unchanged copy as retired
+upstream; a copy edited since the stack wrote it stays and is named with `!!`, to merge what you need and remove by
+hand. Report those lines.

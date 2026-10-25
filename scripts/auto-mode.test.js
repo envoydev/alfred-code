@@ -222,7 +222,7 @@ test('auto-mode start: a task, capture, loop or issue, only the exact `--auto-mo
     const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8'));
     const row = manifest.hooks.find((h) => String(h.matcher || '').startsWith('@UserPromptExpansion:'));
     const matcher = new RegExp(row.matcher.slice('@UserPromptExpansion:'.length));
-    for (const name of ['task-migrate-v2', 'alfred-code:task-solve', 'loop-perf', 'task-solve-cross', 'capture-architecture', 'issue-diagnoser', 'capture-first-look', 'issue-signatures-ci'])
+    for (const name of ['task-migrate-v2', 'alfred-code:task-solve', 'loop-perf', 'task-solve-cross', 'capture-architecture', 'issue-diagnoser', 'issue-signatures-ci'])
         assert.ok(matcher.test(name), `expansion spawns for ${name}`);
     for (const name of ['review', 'commit', 'tasks', 'my-task-x'])
         assert.ok(!matcher.test(name), `and not for ${name}`);

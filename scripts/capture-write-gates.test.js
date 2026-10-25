@@ -114,9 +114,6 @@ test('audit 2026-10-08: each capture close is a literal template with its post-w
     assert.ok(squash(style).includes('`node .claude/hooks/docs.js lint preferences`'), 'code-style lints its domain');
     const aq = read('stack/skills/capture-architecture-quality/SKILL.md');
     assert.ok(aq.includes('| `Ceilings:` |'), 'the Known-ceilings flag has a receipt field');
-    const look = read('stack/skills/capture-first-look/SKILL.md');
-    for (const field of ['File:', 'Stack:', 'Modules:', 'Not declared:', 'Lint:', 'Replaced by:'])
-        assert.match(look, new RegExp(`^${field} +`, 'm'), `first-look close carries ${field}`);
     assert.ok(read('stack/skills/capture-awareness/references/project.md').includes('node .claude/hooks/docs.js watch <one file DISCOVER cited>') && /^Watch: +</m.test(aware), 'the run book checks its watch globs');
 });
 
