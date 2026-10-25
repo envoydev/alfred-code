@@ -324,6 +324,14 @@ test('args: --plan-out takes a file and belongs to --print-plan', () =>
     assert.throws(() => parseArgs(['update', '--plan-out', 'inv.json'], {}), /--plan-out needs --print-plan/);
 });
 
+test('args: --parent-plan takes a file - the root\'s plan-out a cascade or a walk hands a child', () =>
+{
+    assert.strictEqual(parseArgs(['update', '--installed-only', '--parent-plan', 'root.json'], {}).parentPlan, 'root.json');
+    assert.strictEqual(parseArgs(['install'], {}).parentPlan, '');
+    assert.throws(() => parseArgs(['update', '--parent-plan'], {}), /--parent-plan/);
+    assert.match(require('./install/args.js').FLAG_LIST, /--parent-plan/);
+});
+
 // The answer to update's hand-set docs-root ask (the user's answers of 2026-10-20): a move, naming the team's own entries
 // to leave where they are - no keep, since every docs file of the stack's belongs under the data root.
 test('install-args: --docs-root-leave names top-level entries and belongs to --docs-root-move move; keep is gone', () =>

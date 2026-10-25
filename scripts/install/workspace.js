@@ -661,10 +661,145 @@ function excludeGlobs(paths, platform = process.platform)
     return [...new Set(out)];
 }
 
+// ------------------------------------------------------------------ the installer's steps (spec 2.1-2.5)
+
+// The parent's plan-out as JSON, or { why } - absent, unparseable, or one whose run could not see the parent's set.
+function readPlan(file)
+{
+    let plan;
+    try { plan = JSON.parse(fs.readFileSync(file, 'utf8')); }
+    catch (e) { return { why: e.code === 'ENOENT' ? 'no plan was written' : 'the plan does not parse' }; }
+    if (!plan || typeof plan !== 'object' || Array.isArray(plan)) return { why: 'the plan does not parse' };
+    if (Number(plan.failures) > 0) return { why: `the plan's run reported ${plan.failures} failure(s)` };
+    if (Array.isArray(plan.unreadable) && plan.unreadable.length) return { why: `the plan's run could not read ${plan.unreadable.join(' and ')}` };
+    if (plan.blind) return { why: 'the plan is blind - its plugin listing could not be read' };
+    return { plan };
+}
+
+// The env a project's settings apply: settings.local.json over settings.json.
+function settingsEnv(root)
+{
+    const envIn = (name) => { const data = readJson(path.join(root, '.claude', name)); return data && data.env && typeof data.env === 'object' && !Array.isArray(data.env) ? data.env : {}; };
+    return { ...envIn('settings.json'), ...envIn('settings.local.json') };
+}
+
+// What a run needs from the workspace before it reads its own set: whether the workspace is on, the chain, this
+// project's ignores and own lines, and the parent's lines - read from `--parent-plan`, or from the parent's own
+// `update --installed-only --print-plan` (never inside a plan run, which reads nothing it would not print).
+// `parentLines` stays null whenever the parent's set cannot be trusted, so nothing inherited is added or dropped.
+function prepare({ projectRoot, env = process.env, args, sourceDir, rt = runtime, log = () => {}, note = () => {}, tmpDir = os.tmpdir() })
+{
+    const read = stamp.stampFiles({ projectRoot }).read;
+    const base = { on: true, parent: null, members: [], ignores: [], parentLines: null, ownPrior: read ? stamp.readOwnPicks(read) : null, ownEnvPrior: read ? stamp.readOwnEnv(read) : null, parentEnv: {} };
+    if (args.action === 'uninstall' || !workspaceOn({ env, projectRoot })) return { ...base, on: false };
+    const checked = args.dataPath ? dataRootMod.checkDataPath(args.dataPath) : null;
+    const ownDataRoot = checked && checked.ok ? checked.value : undefined;
+    const own = readWorkspace(projectRoot, { env, dataRoot: ownDataRoot });
+    const where = own.file ? relPosix(realOf(projectRoot), own.file) : 'the workspace file';
+    for (const raw of own.view.unknown) log(`  !! workspace: ${where} line '${raw}' is not understood - left as it is`);
+    const { members, notes } = chain(projectRoot, { env, ownDataRoot });
+    for (const n of notes) log(`  ${n}`);
+    const at = { ...base, members, ignores: own.view.ignores };
+    if (!members.length)
+    {
+        if (args.parentPlan) log('  !! workspace: --parent-plan ignored - this project is not a joined child');
+        return at;
+    }
+    const parent = members[0];
+    at.parent = parent;
+    const failed = (why) => { note(`workspace: the read-back of ${parent.rel} failed (${why}) - nothing inherited is added or dropped this run`); return at; };
+    let got;
+    if (args.parentPlan)
+    {
+        got = readPlan(args.parentPlan);
+        if (got.plan && got.plan.root !== realKey(parent.root)) return failed(`the plan is from ${got.plan.root}`);
+    }
+    else if (args.printPlan) return at;
+    else
+    {
+        const dir = fs.mkdtempSync(path.join(tmpDir, 'alfred-code-parent-'));
+        const out = path.join(dir, 'plan.json');
+        try
+        {
+            const r = rt.spawnCommand(process.execPath, [path.join(sourceDir, 'scripts', 'install', 'alfred-code.js'), 'update', '--source', sourceDir,
+                '--scope', stamp.installScope(parent.root), '--installed-only', '--print-plan', '--plan-out', out],
+            { cwd: parent.root, env, timeout: 120000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+            if (r.error) return failed(r.error.message);
+            if (r.status !== 0) return failed(`the parent's run exited ${r.status}`);
+            got = readPlan(out);
+        }
+        finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    }
+    if (!got.plan) return failed(got.why);
+    at.parentLines = planLines(got.plan);
+    at.parentEnv = settingsEnv(parent.root);
+    return at;
+}
+
+// The run's set as `<category> <name>` lines, from the lists it installs.
+function listLines(lists)
+{
+    const { CATEGORY } = require('./selection.js');
+    return uniqSorted(Object.entries(CATEGORY).flatMap(([key, c]) => (lists[key] || []).map((e) => `${c.line} ${c.name(e)}`)));
+}
+
+// Before the settings pass: a joined child whose parent was read gets the parent's env as seeds and forces
+// (childEnv); any other run leaves `workspaceEnv` null, so the env layer runs as a standalone one would - a force
+// against an unread parent would reset every inherited value to its catalog default.
+function envStep(ctx)
+{
+    const w = ctx.workspace;
+    ctx.workspaceEnv = null;
+    ctx.workspaceOwnEnv = null;
+    if (!w || !w.on || !w.parentLines) return;
+    const local = ctx.args.scope === 'local';
+    const target = local ? 'settings.local.json' : 'settings.json';
+    const envIn = (name) => { const data = readJson(path.join(ctx.claudeDir, name)); return data && data.env && typeof data.env === 'object' && !Array.isArray(data.env) ? data.env : {}; };
+    const catalog = (readJson(path.join(ctx.source.dir, 'meta', 'environment.json')).env) || [];
+    const flagKeys = [ctx.args.memory && 'ALFRED_CODE_MEMORY', ctx.args.docsVersioning && 'ALFRED_CODE_DOCS_VERSIONING', ctx.args.autoCompact && 'ALFRED_CODE_AUTO_COMPACT'].filter(Boolean);
+    const r = childEnv({
+        catalog, parentEnv: w.parentEnv, childEnv: envIn(target), beneath: local ? envIn('settings.json') : {},
+        ownPrior: w.ownEnvPrior, ledgerRows: ((ctx.ledger && ctx.ledger.env) || {})[target] || {}, flagKeys, ignores: w.ignores,
+    });
+    ctx.workspaceEnv = { seeds: r.seeds, force: r.force };
+    ctx.workspaceOwnEnv = r.own;
+}
+
+// After the settings pass: the excludes for every stamped folder above (joined or not), then the own lines. It never
+// writes a `child` line into a parent - the back-reference is the consent record. Frozen, it touches nothing: the
+// member rows still present are carried by the ledger, and so are the own lines. Returns { created } - true when the
+// excludes made settings.local.json, which the caller names when git does not ignore it.
+function workspaceStep(ctx)
+{
+    const w = ctx.workspace || { on: false, members: [], ownPrior: null, ownEnvPrior: null };
+    ctx.ownPicks = w.ownPrior;
+    ctx.ownEnv = w.ownEnvPrior;
+    if (!w.on) return { created: false };
+    const want = excludeGlobs(stampedAncestors(ctx.projectRoot, { env: ctx.env }).flatMap((root) => ancestorExcludes(root, { childIgnores: w.ignores })), process.platform);
+    const prior = ((ctx.ledger && ctx.ledger.settings) || {})['settings.local.json'] || {};
+    const { syncMembers, MEMBER_PATH } = require('./settings.js');
+    // A standalone project - nothing stamped above, no excludes recorded - leaves settings.local.json alone.
+    const recorded = Object.keys(prior).some((row) => { const m = MEMBER_PATH.exec(row); return m && m[1] === 'claudeMdExcludes'; });
+    const r = want.length || recorded
+        ? syncMembers({ file: path.join(ctx.claudeDir, 'settings.local.json'), arrayPath: 'claudeMdExcludes', want: uniqSorted(want), prior, log: ctx.log, note: ctx.note })
+        : { rows: {}, created: false };
+    ctx.workspaceRows = r.rows;
+    if (w.members.length)
+    {
+        const final = listLines(ctx.lists);
+        ctx.ownPicks = w.parentLines || w.ownPrior !== null
+            ? ownPicksAfter({ prior: w.ownPrior, final, parentLines: w.parentLines, added: ctx.userAdds || [], blind: Boolean(ctx.workspaceBlind) })
+            : null;
+        if (ctx.workspaceOwnEnv) ctx.ownEnv = ctx.workspaceOwnEnv;
+    }
+    return { created: Boolean(r.created) };
+}
+
 module.exports = {
     CATEGORIES, workspaceOn, parseWorkspace, renderWorkspace, viewOf,
     setParent, addChild, removeChild, addIgnore, removeIgnore,
     ancestorEnv, workspacePath, readWorkspace, writeWorkspace, moveWorkspace,
     realKey, findParent, sameRepo, isCheckout, joinVerdict, chain, subtree, rescan,
     planLines, effectiveLists, delta, ownPicksAfter, childEnv, stampedAncestors, ancestorExcludes, excludeGlobs,
+    readPlan, prepare, listLines, envStep, workspaceStep,
 };

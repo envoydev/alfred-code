@@ -60,12 +60,22 @@ function blockOf(lines)
 const wantedLines = (outside, root) => [root, '.claude'].filter((r) => !covers(outside, r)).map(lineFor);
 
 // Writes or re-points the block in each tool's file. `prior` is the stamp's record; returns the record to stamp.
-function ensureToolIgnores({ projectRoot, root, prior = {}, log = () => {}, note = () => {} })
+// `skipTracked` (a workspace child at local scope): a file git tracks gets no block - its edit would reach every teammate
+// for this machine's own install - and a block an earlier run added there is left as it is. `tracked(file)` answers.
+function ensureToolIgnores({ projectRoot, root, prior = {}, skipTracked = false, tracked = () => false, log = () => {}, note = () => {} })
 {
     const record = {};
     for (const tool of TOOLS)
     {
         const file = path.join(projectRoot, tool.file);
+        if (skipTracked && fs.existsSync(file) && tracked(file))
+        {
+            let held = false;
+            try { held = Boolean(blockOf(fs.readFileSync(file, 'utf8').split(/\r?\n/))); } catch { held = false; }
+            if (held) { if (prior[tool.file]) record[tool.file] = prior[tool.file]; log(`  tool ignores: ${tool.file} is tracked here - the block an earlier run added is left as it is`); }
+            else log(`  tool ignores: ${tool.file} is tracked here - the block is not added, so teammates get no Alfred edit; add /${root}/ and /.claude/ yourself if ${tool.file.replace(/^\./, '').replace(/ignore$/, '')} walks them`);
+            continue;
+        }
         let text = null;
         try { text = fs.readFileSync(file, 'utf8'); }
         catch (err)

@@ -48,7 +48,7 @@ const VALUED = new Map([
     ['--docs-versioning', 'docsVersioning'],
     ['--data-move', 'dataMove'], ['--docs-move', 'dataMove'], ['--data-path', 'dataPath'], ['--docs-root-move', 'docsRootMove'], ['--docs-root-leave', 'docsRootLeaveRaw'], ['--auto-compact', 'autoCompact'], ['--memory', 'memory'],
     ['--instructions-at', 'instructionsAt'], ['--instructions-file', 'instructionsFile'], ['--instructions-seed', 'instructionsSeed'],
-    ['--selection', 'selection'], ['--source', 'source'], ['--plan-out', 'planOut'],
+    ['--selection', 'selection'], ['--source', 'source'], ['--plan-out', 'planOut'], ['--parent-plan', 'parentPlan'],
 ]);
 
 const BOOLEAN = new Map([
@@ -88,7 +88,7 @@ const SCOPE_OF = /^([a-z0-9-]+)=(global|user|project|local)$/;
 
 const ALIASES = new Map([['--docs-move', '--data-move']]);
 
-const FLAG_LIST = '--scope, --docs-versioning, --data-path, --data-move, --docs-root-move, --docs-root-leave, --auto-compact, --memory, --instructions-at, --instructions-file, --instructions-seed, --forge-cli, --keep-pins, --selection, --installed-only, --add, --drop, --scope-of, --print-plan, --plan-out, --skills-only, --source';
+const FLAG_LIST = '--scope, --docs-versioning, --data-path, --data-move, --docs-root-move, --docs-root-leave, --auto-compact, --memory, --instructions-at, --instructions-file, --instructions-seed, --forge-cli, --keep-pins, --selection, --installed-only, --add, --drop, --scope-of, --print-plan, --plan-out, --parent-plan, --skills-only, --source';
 
 // One selection line, the shape the walks write: `<category> <name>`.
 const ADD_LINE = /^(skill|agent|rule|hook|mcp|plugin) [A-Za-z0-9._-]+$/;
@@ -107,7 +107,7 @@ function parseArgs(argv)
     const out = {
         action: '', scope: '',
         docsVersioning: '', dataMove: '', dataPath: '', docsRootMove: '', docsRootLeaveRaw: '', autoCompact: '', memory: '', instructionsAt: '', instructionsFile: '', instructionsSeed: '',
-        selection: '', source: '', planOut: '',
+        selection: '', source: '', planOut: '', parentPlan: '',
         forgeCli: false, keepPins: false, installedOnly: false, printPlan: false, skillsOnly: false,
         add: [], drop: [], scopeOf: {}, ignored: [],
     };

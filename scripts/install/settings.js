@@ -1293,6 +1293,18 @@ const settingsTarget = (claudeDir, scope) => path.join(claudeDir, scope === 'loc
 // where it has one - `permissions.allow` / `ask` / `additionalDirectories`, `enabledPlugins`, `hooks`
 // included - so this is NOT the view Claude Code resolves, which combines every list across files: a
 // caller that reads more than `env` and `deny` needs its own merge.
+// The settings files here that exist but do not parse - readBackSettings reads each as {} without a word, so a plan-out
+// built on it would look like a set with nothing in it.
+function unreadableSettings(claudeDir)
+{
+    return ['settings.json', 'settings.local.json'].filter((name) =>
+    {
+        let text;
+        try { text = fs.readFileSync(path.join(claudeDir, name), 'utf8'); } catch { return false; }
+        try { parseJson(text); return false; } catch { return true; }
+    });
+}
+
 function readBackSettings(claudeDir, scope, { sharedOnly = false } = {})
 {
     const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
@@ -1570,4 +1582,4 @@ function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRe
         log(`  kept at user scope: ${keptOff.join(', ')} - the user-scope core stays loaded for this account, so these keep what you switched off here off; remove them once it is uninstalled`);
 }
 
-module.exports = { compactWindowSeeds, settingAt, MEMBER_PATH, memberRow, syncMembers, carryMemberRows, removeManagedSettings, isStackKey, writeSettings, applyMcpDeny, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, readBackSettings, sharedOnlyDeny, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor, asyncFor, onFailureFor };
+module.exports = { compactWindowSeeds, settingAt, MEMBER_PATH, memberRow, syncMembers, carryMemberRows, removeManagedSettings, isStackKey, writeSettings, applyMcpDeny, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, readBackSettings, unreadableSettings, sharedOnlyDeny, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor, asyncFor, onFailureFor };

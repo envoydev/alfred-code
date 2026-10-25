@@ -40,6 +40,7 @@ const ruleOpenings = require('./rule-openings.js');
 const { shippedText } = require('./retired-rules.js');
 const uninstallLayer = require('./uninstall.js');
 const toolIgnoresLayer = require('./tool-ignores.js');
+const workspace = require('./workspace.js');
 const runtime = require('./runtime.js');
 const { readJson } = require('./json-file.js');
 const { envMigrations } = require('./env-migrations.js');
@@ -366,6 +367,11 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const renaming = { renamed: manifest.renamed, log, said: new Set() };
         args.add = selection.renameLines(selection.dropFormerPicks({ lines: args.add, log, said: formerSaid }), renaming);
         args.drop = selection.renameLines(args.drop, renaming);
+        // Workspace layering (workspace.js prepare): the chain, this project's ignores and own lines, and the parent's set.
+        const wsPrep = workspace.prepare({ projectRoot, env, args, sourceDir: resolved.dir, rt, log, note });
+        const userAdds = [...args.add];
+        // This run's own read-back could not see the stack's plugin rows (selection.readBack `blind`).
+        let readBlind = false;
         if (args.installedOnly)
         {
             const raw = rawListing ?? readRaw();
@@ -403,6 +409,18 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 return 1;
             }
             leftOut = selection.leftOut({ parked: back.parked, deny: back.deny });
+            readBlind = Boolean(back.blind);
+            // A joined child follows its parent: what the parent holds minus what this project ignores, plus its own picks.
+            if (wsPrep.parentLines && back.blind)
+                log("  !! workspace: this project's plugin listing could not be read - nothing inherited is added or dropped this run");
+            else if (wsPrep.parentLines)
+            {
+                const own = wsPrep.ownPrior ?? back.lines.filter((l) => !wsPrep.parentLines.includes(l));
+                const d = workspace.delta({ effective: workspace.effectiveLists({ parentLines: wsPrep.parentLines, ignores: wsPrep.ignores, own }), installed: back.lines });
+                for (const l of d.add) if (!args.add.includes(l)) args.add.push(l);
+                for (const l of d.drop) if (!args.drop.includes(l) && !userAdds.includes(l)) args.drop.push(l);
+                log(`  workspace: from ${wsPrep.parent.rel} - ${d.add.length} added, ${d.drop.length} dropped`);
+            }
             const withAdds = selection.addLines(back.lines, args.add, log);
             const graph = readJson(path.join(resolved.dir, 'meta', 'stack-graph.json'));
             // The always-on rules and skills are locked: the read-back adopts them whatever the
@@ -478,6 +496,9 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 const inv = selection.planInventory({
                     lists, listing, answered, leftOut, pluginCatalog: manifest.catalogs.plugins.map((id) => id.split('@')[0]),
                 });
+                // What a child's read-back checks before it trusts this set (workspace.js readPlan): which folder it is
+                // from, whether its listing was seen, the failures so far, and a settings file read as {} without a word.
+                Object.assign(inv, { root: workspace.realKey(projectRoot), blind: !hasClaude || readBlind, failures, unreadable: settings.unreadableSettings(claudeDir) });
                 fs.writeFileSync(args.planOut, JSON.stringify(inv, null, 2) + '\n');
             }
             return 0;
@@ -541,6 +562,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             // The instruction file's name: this run's answer (--instructions-file), else the stamp's, else AGENTS.md.
             instructionsAnswer: args.instructionsFile || stampLayer.readInstructionsAnswer(stampFile),
             instructionsKind: args.instructionsFile || stampLayer.readInstructionsFile(stampFile),
+            // Workspace layering: prepare's answer, this run's own --add lines, and whether its read-back was blind.
+            workspace: wsPrep, userAdds, workspaceBlind: readBlind,
         };
         const pinSnapshot = args.keepPins
             ? pinsLayer.snapshotPins({ files: pinFiles(ctx), log })
@@ -581,6 +604,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             ledger: ledgerOf(ctx),
             data: { root: dataInfo.root, pending: dataPlan.pending, kept: dataPlan.kept, secrets: secretsAt },
             instructionsFile: ctx.instructionsAnswer,
+            ownPicks: ctx.ownPicks, ownEnv: ctx.ownEnv, instructionsBoth: stampLayer.readInstructionsBoth(stampFile),
         });
 
         summarise(ctx, failures);
@@ -620,7 +644,9 @@ function runLayers(ctx)
     // The generated rules moved off the `baseline-` prefix in 2.1.6: before anything re-stamps or reads them.
     selection.moveGeneratedRules({ projectRoot: ctx.projectRoot, log: ctx.log, note: ctx.note });
     docsRootStep(ctx);
+    workspace.envStep(ctx);
     installHooksAndRules(ctx);
+    if (workspace.workspaceStep(ctx).created) warnUnignoredLocal(ctx, path.join(ctx.claudeDir, 'settings.local.json'));
     const docsPath = copy.resolveDocsRoot(ctx.projectRoot, ctx.args.scope);
     // After the settings pass, so the versioning is the decision this run just wrote.
     ignoreStep(ctx, docsPath);
@@ -865,8 +891,13 @@ function dataRootLayer(ctx, docsPath)
         catch (err) { note(`the run book could not be re-pointed at ${root}/${dataRoot.SECRETS_FILE} (${err.code || err.message}) - edit its credentials line by hand`); }
         if (n) log(`  sensitive: run book re-pointed at ${root}/${dataRoot.SECRETS_FILE} (${n})`);
     }
-    // The project's own tree-walking tools skip the data root (tool-ignores.js): one marked line per ignore file.
-    ctx.toolIgnores = toolIgnoresLayer.ensureToolIgnores({ projectRoot, root, prior: stampLayer.readToolIgnores(ctx.stampFile), log, note });
+    // The workspace file follows a root change (planDataMove carries only the sensitive store), on or off.
+    if (ctx.dataInfo.prior && ctx.dataInfo.prior !== root) workspace.moveWorkspace({ projectRoot, from: ctx.dataInfo.prior, to: root, log });
+    // The project's own tree-walking tools skip the data root (tool-ignores.js): one marked line per ignore file. A joined
+    // child at local scope never edits a file its team tracks.
+    const tracked = (file) => ctx.rt.spawnCommand('git', ['ls-files', '--error-unmatch', '--', path.relative(projectRoot, file)], { cwd: projectRoot, stdio: 'ignore' }).status === 0;
+    ctx.toolIgnores = toolIgnoresLayer.ensureToolIgnores({ projectRoot, root, prior: stampLayer.readToolIgnores(ctx.stampFile), log, note,
+        skipTracked: ctx.args.scope === 'local' && Boolean(ctx.workspace && ctx.workspace.members.length), tracked });
     for (const old of new Set([ctx.dataInfo.prior, ...ctx.dataPlan.left].filter((r) => r && r !== root)))
         docs.pruneDataRoot({ projectRoot, root: old, log });
     if (ctx.dataPlan.moved.length) log(`data root: ${root} - ${ctx.dataPlan.moved.length} moved now`);
@@ -1893,6 +1924,8 @@ function installHooksAndRules(ctx)
             account: readJson(path.join(ctx.configDir, 'settings.json')),
         },
         renamed: ctx.manifest.renamed,
+        // A joined child's env follows its parent (workspace.js envStep; null on any other run).
+        workspaceEnv: ctx.workspaceEnv || null,
         log: ctx.log, note: ctx.note,
     });
     ctx.managedSettings = written.managed || null;
@@ -1900,9 +1933,15 @@ function installHooksAndRules(ctx)
     // (code.claude.com/docs/en/settings) - one this run created, and git does not ignore, is named. F7: it
     // is the user's to act on (a machine path would be committed), so it carries the `!!` marker the 1.x
     // update body's grep and every `warn:` pass read.
-    if (!hadLocal && fs.existsSync(localSettings)
-        && ctx.rt.spawnCommand('git', ['check-ignore', '-q', '--', path.relative(ctx.projectRoot, localSettings)], { cwd: ctx.projectRoot, stdio: 'ignore' }).status === 1)
-        ctx.log(`  !! settings.local.json: created for this machine's own values - git does not ignore it here; add ${path.relative(ctx.projectRoot, localSettings).split(path.sep).join('/')} to .gitignore`);
+    if (!hadLocal && fs.existsSync(localSettings)) warnUnignoredLocal(ctx, localSettings);
+}
+
+// C8's line, for a settings.local.json this run created that git does not ignore - the settings pass and the workspace
+// excludes (which hold this machine's absolute paths) both call it, each only for a file it made.
+function warnUnignoredLocal(ctx, file)
+{
+    if (ctx.rt.spawnCommand('git', ['check-ignore', '-q', '--', path.relative(ctx.projectRoot, file)], { cwd: ctx.projectRoot, stdio: 'ignore' }).status === 1)
+        ctx.log(`  !! settings.local.json: created for this machine's own values - git does not ignore it here; add ${path.relative(ctx.projectRoot, file).split(path.sep).join('/')} to .gitignore`);
 }
 
 // --- R10 THE LEDGER ------------------------------------------------------------------------------
