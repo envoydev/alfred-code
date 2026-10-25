@@ -1,0 +1,174 @@
+'use strict';
+// The workspace CLI (plan Task 11): one verb per test over throwaway trees, each read back from the files it wrote.
+const test = require('node:test');
+const assert = require('node:assert');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { execFileSync, spawnSync } = require('node:child_process');
+const ws = require('./install/workspace.js');
+const { valueHash } = require('./install/stamp.js');
+
+const CLI = path.join(__dirname, 'workspace.js');
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'workspace-cli-'));
+test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
+const ENV = { ...process.env, CLAUDE_CONFIG_DIR: path.join(TMP, 'acct') };
+delete ENV.ALFRED_CODE_WORKSPACE;
+
+// { rel: { stamp, git, file } } under a fresh folder; returns rel -> real path.
+const tree = (spec) =>
+{
+    const top = fs.mkdtempSync(path.join(TMP, 't-'));
+    for (const [rel, o] of Object.entries(spec))
+    {
+        const dir = path.join(top, ...rel.split('/'));
+        fs.mkdirSync(dir, { recursive: true });
+        if (o.git) execFileSync('git', ['init', '-q'], { cwd: dir });
+        if (o.stamp) { fs.mkdirSync(path.join(dir, '.claude'), { recursive: true }); fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'sha: x\n'); }
+        if (o.file !== undefined) { fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true }); fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), o.file); }
+    }
+    return (rel = '.') => fs.realpathSync.native(path.join(top, ...rel.split('/')));
+};
+const cli = (...argv) => { const r = spawnSync(process.execPath, [CLI, ...argv], { encoding: 'utf8', env: ENV }); return { out: r.stdout, err: r.stderr, code: r.status }; };
+const wsFile = (root, dataRoot = '.alfred') => { try { return fs.readFileSync(path.join(root, ...dataRoot.split('/'), 'workspace'), 'utf8'); } catch { return null; } };
+const stampText = (root) => fs.readFileSync(path.join(root, '.claude', 'alfred-code.stamp'), 'utf8');
+const joined = () => tree({ ws: { stamp: true, file: 'child api\n' }, 'ws/api': { stamp: true, git: true, file: 'parent ..\n' } });
+
+test('parent prints none, a joinable parent, or the reason a folder cannot be a child', () =>
+{
+    const at = tree({ alone: { git: true }, ws: { stamp: true }, 'ws/api': { git: true }, 'ws/plain': {}, repo: { stamp: true, git: true }, 'repo/sub': {} });
+    assert.deepStrictEqual(cli('parent', '--root', at('alone')), { out: 'parent: none\n', err: '', code: 0 });
+    assert.strictEqual(cli('parent', '--root', at('ws/api')).out, 'parent: ..\tchild=yes\n');
+    assert.strictEqual(cli('parent', '--root', at('ws/plain')).out, 'parent: ..\tchild=no\twhy=not-a-checkout\n');
+    assert.strictEqual(cli('parent', '--root', at('repo/sub')).out, 'parent: ..\tchild=no\twhy=same-repo\n');
+});
+
+test('register writes the parent line here and the child line in the parent, the parent\'s first', () =>
+{
+    const at = tree({ ws: { stamp: true }, 'ws/apps/api': { git: true } });
+    const r = cli('register', '--root', at('ws/apps/api'));
+    assert.strictEqual(r.code, 0, r.out + r.err);
+    assert.strictEqual(r.out, 'workspace: parent ../.. written\nworkspace: child apps/api written in ../..\n');
+    assert.strictEqual(wsFile(at('ws/apps/api')), 'parent ../..\n');
+    assert.strictEqual(wsFile(at('ws')), 'child apps/api\n');
+    const again = cli('register', '--root', at('ws/apps/api'));
+    assert.strictEqual(again.code, 0);
+    assert.strictEqual(wsFile(at('ws')), 'child apps/api\n', 'a second register writes no second line');
+    const none = tree({ alone: { git: true } });
+    const refused = cli('register', '--root', none('alone'));
+    assert.strictEqual(refused.code, 2);
+    assert.match(refused.out, /^!! workspace: /m);
+});
+
+test('register --data-path writes this project\'s line under that folder; the parent\'s by its own setting', () =>
+{
+    const at = tree({ ws: { stamp: true }, 'ws/api': { git: true } });
+    assert.strictEqual(cli('register', '--root', at('ws/api'), '--data-path', '.kid-data').code, 0);
+    assert.strictEqual(wsFile(at('ws/api'), '.kid-data'), 'parent ..\n');
+    assert.strictEqual(wsFile(at('ws/api')), null, 'the default root was written too');
+    assert.strictEqual(wsFile(at('ws')), 'child api\n');
+    assert.strictEqual(cli('register', '--root', at('ws/api'), '--data-path', '../out').code, 2, 'a refused data root is bad input');
+});
+
+test('a held parent lock exits 3 and leaves neither file written', () =>
+{
+    const at = tree({ ws: { stamp: true, file: '' }, 'ws/api': { git: true } });
+    fs.writeFileSync(path.join(at('ws'), '.alfred', 'workspace.lock'), String(process.pid));
+    const r = cli('register', '--root', at('ws/api'));
+    assert.strictEqual(r.code, 3, r.out);
+    assert.match(r.out, /^!! workspace: .*locked.*the join is offered again at the next update/m);
+    assert.strictEqual(wsFile(at('ws')), '');
+    assert.strictEqual(wsFile(at('ws/api')), null);
+});
+
+test('unregister removes the parent\'s child line and this project\'s parent line', () =>
+{
+    const at = tree({ ws: { stamp: true, file: 'child api\nchild web\n' }, 'ws/api': { stamp: true, git: true, file: 'parent ..\nignore skill x\n' } });
+    const r = cli('unregister', '--root', at('ws/api'));
+    assert.strictEqual(r.code, 0, r.out);
+    assert.strictEqual(wsFile(at('ws')), 'child web\n');
+    assert.strictEqual(wsFile(at('ws/api')), 'ignore skill x\n');
+});
+
+test('join --answer none writes parent none, join registers, and any other answer is bad input', () =>
+{
+    const at = tree({ ws: { stamp: true }, 'ws/api': { git: true }, 'ws/web': { git: true } });
+    assert.strictEqual(cli('join', '--root', at('ws/web'), '--answer', 'none').out, 'join: none\n');
+    assert.strictEqual(wsFile(at('ws/web')), 'parent none\n');
+    const r = cli('join', '--root', at('ws/api'), '--answer', 'join');
+    assert.strictEqual(r.code, 0);
+    assert.match(r.out, /join: join\n$/);
+    assert.strictEqual(wsFile(at('ws/api')), 'parent ..\n');
+    assert.strictEqual(wsFile(at('ws')), 'child api\n');
+    const bad = cli('join', '--root', at('ws/api'), '--answer', 'maybe');
+    assert.strictEqual(bad.code, 2);
+    assert.match(bad.out, /^!! workspace: --answer takes join or none/m);
+});
+
+test('ignore --add and --remove edit this project\'s ignore lines', () =>
+{
+    const at = joined();
+    assert.strictEqual(cli('ignore', '--root', at('ws/api'), '--add', 'skill sqlite').code, 0);
+    assert.strictEqual(cli('ignore', '--root', at('ws/api'), '--add', 'env ALFRED_CODE_SCORER').code, 0);
+    assert.strictEqual(wsFile(at('ws/api')), 'parent ..\nignore skill sqlite\nignore env ALFRED_CODE_SCORER\n');
+    assert.strictEqual(cli('ignore', '--root', at('ws/api'), '--remove', 'skill sqlite').code, 0);
+    assert.strictEqual(wsFile(at('ws/api')), 'parent ..\nignore env ALFRED_CODE_SCORER\n');
+    assert.strictEqual(cli('ignore', '--root', at('ws/api'), '--add', 'colour blue').code, 2);
+    assert.strictEqual(cli('ignore', '--root', at('ws/api'), '--data-path', '.kid-data', '--add', 'skill x').code, 0);
+    assert.strictEqual(wsFile(at('ws/api'), '.kid-data'), 'ignore skill x\n');
+});
+
+test('children prints each direct child as ok or gone', () =>
+{
+    const at = tree({ ws: { stamp: true, file: 'child api\nchild gone\nchild deep/web\n' }, 'ws/api': { stamp: true, git: true, file: 'parent ..\nchild tool\n' }, 'ws/api/tool': { stamp: true }, 'ws/deep/web': { stamp: true } });
+    assert.strictEqual(cli('children', '--root', at('ws')).out, 'child: api\tok\nchild: gone\tgone\nchild: deep/web\tok\n');
+});
+
+test('status names the parent, the own, ignored and inherited lines, and the last load check', () =>
+{
+    const at = joined();
+    fs.appendFileSync(path.join(at('ws/api'), '.claude', 'alfred-code.stamp'), 'own-picks: skill/npm\n');
+    fs.appendFileSync(path.join(at('ws/api'), '.alfred', 'workspace'), 'ignore skill sqlite\n');
+    const plan = path.join(TMP, 'installed.json');
+    fs.writeFileSync(plan, JSON.stringify({ skills: ['javascript', 'npm'], rules: ['alfred-security'], plugins: [{ name: 'alfred-code' }] }));
+    const r = cli('status', '--root', at('ws/api'), '--installed', plan);
+    assert.strictEqual(r.out, 'workspace: parent ..\nown: skill npm\nignored: skill sqlite\nfrom-root: plugin alfred-code, rule alfred-security, skill javascript\ncheck: never\n');
+    fs.mkdirSync(path.join(at('ws/api'), '.alfred', 'state'), { recursive: true });
+    fs.writeFileSync(path.join(at('ws/api'), '.alfred', 'state', 'workspace-check.json'), JSON.stringify({ at: '2026-10-26T10:00:00Z', state: 'clean', misses: [] }));
+    assert.match(cli('status', '--root', at('ws/api')).out, /^from-root: unknown - pass --installed <plan json>\ncheck: clean 2026-10-26T10:00:00Z\n$/m);
+    const alone = tree({ alone: { git: true } });
+    assert.strictEqual(cli('status', '--root', alone('alone')).out, 'workspace: parent none\nown: -\nignored: -\nfrom-root: unknown - pass --installed <plan json>\ncheck: never\n');
+});
+
+test('account-instructions: --check, --apply records the row in each named stamp, --decline over two roots writes both, --remove takes the key at its hash', () =>
+{
+    const one = joined();
+    const two = joined();
+    fs.writeFileSync(path.join(one('ws'), 'CLAUDE.md'), '# team\n');
+    const acct = ENV.CLAUDE_CONFIG_DIR;
+    fs.rmSync(acct, { recursive: true, force: true });
+    assert.strictEqual(cli('account-instructions', '--root', one('ws/api'), '--check').out, 'instructions-both: ask\n');
+    const applied = cli('account-instructions', '--root', one('ws/api'), '--root', two('ws/api'), '--apply');
+    assert.strictEqual(applied.code, 0, applied.out);
+    const row = `settings.json:${ws.INSTRUCTION_KEY}=${valueHash(JSON.stringify('claude-md-and-agents-md'))}`;
+    for (const root of [one('ws/api'), two('ws/api')]) assert.match(stampText(root), new RegExp(`^managed-account: ${row.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm'));
+    assert.strictEqual(JSON.parse(fs.readFileSync(path.join(acct, 'settings.json'), 'utf8')).pluginConfigs['cc-plugin-agents-md@builtin'].options.instructionFiles, 'claude-md-and-agents-md');
+    assert.strictEqual(cli('account-instructions', '--root', one('ws/api'), '--check').out, 'instructions-both: set\n');
+    const removed = cli('account-instructions', '--root', one('ws/api'), '--root', two('ws/api'), '--remove');
+    assert.strictEqual(removed.code, 0, removed.out);
+    assert.ok(!fs.readFileSync(path.join(acct, 'settings.json'), 'utf8').includes('instructionFiles'));
+    for (const root of [one('ws/api'), two('ws/api')]) assert.doesNotMatch(stampText(root), /^managed-account:/m);
+    const declined = cli('account-instructions', '--root', one('ws/api'), '--root', two('ws/api'), '--decline');
+    assert.strictEqual(declined.code, 0);
+    for (const root of [one('ws/api'), two('ws/api')]) assert.match(stampText(root), /^instructions-both: declined$/m);
+    assert.strictEqual(cli('account-instructions', '--root', one('ws/api'), '--check').out, 'instructions-both: declined\n');
+    assert.strictEqual(cli('account-instructions', '--root', one('ws/api')).code, 2, 'no mode is bad input');
+    fs.rmSync(acct, { recursive: true, force: true });
+});
+
+test('an unknown verb is bad input', () =>
+{
+    const r = cli('frobnicate');
+    assert.strictEqual(r.code, 2);
+    assert.match(r.out, /^!! workspace: /m);
+});
