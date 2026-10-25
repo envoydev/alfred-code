@@ -2355,6 +2355,36 @@ test('analyze-usage prints a machine-written Conformance section outside JUDGMEN
   fs.writeFileSync(dest, `${md.slice(0, md.indexOf('## Waste analysis - FILL IN'))}## Verdict\n\nThe flow claim F1 was violated 1 time (Conformance row F1).\n`);
   assert.strictEqual(cli(['--check-report', dest]).status, 0);
 });
+// Final review 2026-10-25 (M4, re-graded Important): a --from / --to report graded its claims over the whole session, so a
+// verdict citing the rows cited runs outside the window it reports.
+test('a --from / --to report grades its Conformance rows over the same window, and says so', () => {
+  const dir = tmp();
+  let n = 0;
+  const at = (iso, row) => ({ ...row, timestamp: iso, uuid: `u${++n}` });
+  const call = (iso, name, input) => at(iso, { type: 'assistant', message: { id: `m${n}`, role: 'assistant', model: 'claude-sonnet-5-5', content: [{ type: 'tool_use', id: `t${n}`, name, input }], usage: { input_tokens: 1, output_tokens: 1 } } });
+  const say = (iso, text) => at(iso, { type: 'assistant', message: { id: `m${n}`, role: 'assistant', model: 'claude-sonnet-5-5', content: [{ type: 'text', text }], usage: { input_tokens: 1, output_tokens: 1 } } });
+  const cmd = (iso) => at(iso, { type: 'user', message: { role: 'user', content: '<command-name>/task-solve</command-name>\n<command-message>task-solve</command-message>\n<command-args></command-args>' } });
+  const ask = { questions: [{ question: 'Which way?', header: 'Way', multiSelect: false, options: [{ label: 'A (Recommended)', description: 'a' }, { label: 'B', description: 'b' }] }] };
+  const rows = [
+    // 10:00 - the design before the size line: F1 violated
+    cmd('2026-10-25T10:00:00Z'), call('2026-10-25T10:00:05Z', 'Skill', { skill: 'task-design' }), say('2026-10-25T10:00:10Z', 'Size: standard - input parsing.'),
+    call('2026-10-25T10:00:15Z', 'AskUserQuestion', ask),
+    // 12:00 - in order: F1 held
+    cmd('2026-10-25T12:00:00Z'), say('2026-10-25T12:00:05Z', 'Size: standard - input parsing.'), call('2026-10-25T12:00:10Z', 'Skill', { skill: 'task-design' }),
+    call('2026-10-25T12:00:15Z', 'AskUserQuestion', ask)];
+  fs.writeFileSync(path.join(dir, 's.jsonl'), rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+  const md = (...args) => {
+    const dest = path.join(dir, 'report.md');
+    assert.strictEqual(cli([path.join(dir, 's.jsonl'), '--report-md', ...args, '--out', dest]).status, 0);
+    return fs.readFileSync(dest, 'utf8');
+  };
+  assert.deepStrictEqual(cells(md(), 'F1').slice(0, 3), ['2', '1', '1'], 'the whole session: two runs, one held, one violated');
+  const windowed = md('--from', '2026-10-25T11:00:00Z');
+  assert.deepStrictEqual(cells(windowed, 'F1').slice(0, 3), ['1', '1', '0'], 'the window holds the second run alone');
+  assert.match(windowed, /^\| task-solve \| size-first \| 1 \| 1 \| 0 \| 0 \|$/m, 'the steps graded over the window too');
+  assert.match(windowed, /_Graded in \d+ ms; .*windowed: 2026-10-25T11:00:00Z → end/);
+  assert.deepStrictEqual(cells(md('--to', '2026-10-25T11:00:00Z'), 'F1').slice(0, 3), ['1', '0', '1'], 'and the first alone before it');
+});
 test('a state claim reads data/ beside the transcript or --data-root; with neither it is not visible, naming the file (item 7 design 4)', () => {
   const dir = tmp();
   fs.cpSync(path.join(__dirname, 'fixtures', 'conformance', 'D2', 'held'), dir, { recursive: true });

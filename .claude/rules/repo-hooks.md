@@ -508,7 +508,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     THE PROJECT'S SENSITIVE DATA (the user's ruling of 2026-10-13: per project, model-blind): `<data root>/.secrets`
     (`.sensitive-data` before item 3, 2026-10-25: both names read for 2.x, `.secrets` first; a `.secrets` is the store only
     where its path, as written or real, ends in `<data root>/.secrets`, so a project's own one elsewhere - nektos/act's
-    default `--secret-file` - is neither masked by name nor refused by mention, `isDataRootSecrets`), a dotenv the user fills by hand, in the checkout the call runs in, else its main worktree (`sensitiveFile`, memory.js
+    default `--secret-file` - is neither masked by name nor refused by mention, `isDataRootSecrets`; both names and the data root
+    in any letter case, since a case-insensitive disk opens `.ALFRED/.SECRETS` too - final review 2026-10-25 C2), a dotenv the user fills by hand, in the checkout the call runs in, else its main worktree (`sensitiveFile`, memory.js
     `projectRootOf`; the root from `ALFRED_CODE_DATA_PATH`, relative and `..`-free, else `.alfred`). Its kind is `sensitive` by
     NAME: every value is a credential whatever its key (`DB_HOST` too), so a Read and a Grep of its content block and a dump
     becomes the redacted view with every value masked; the stream masker reads a line out of it - a walk's `<path>/.secrets:N:` (either name)
@@ -529,6 +530,13 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     (not its destination), a forced `git add` - is refused on any folder above the store too, unless the command excludes
     the store or a folder on its way (`--exclude`, zip's `-x`, matched as globs); a tar or 7z extract and a copy into the
     project pass (deep hooks review 2026-10-16, the user's ruling: `cp -R . x` and `rsync -a ./ x` copied it and passed).
+    Final review 2026-10-25 C1: the name also counts as TEXT, between any two non-name characters - `.sensitive-data`
+    anywhere, `.secrets` behind its data root (`"$(pwd)/.alfred/.secrets"`, `$R/...`, a script's `open('<path>', 'r')`, which
+    no resolver follows) or bare in a pipe whose stages name the data root (`ls -a .alfred | grep .secrets | xargs ...`) -
+    and a `find` handing what it finds to a reader (an `-exec` / `-ok` action, a pipe on, a `$(...)` around it) is refused
+    when its walk reaches the store and a `-name` / `-path` test matches the store's name, or, from the data root itself,
+    no name test narrows it; a `-maxdepth` short of the store passes. Out of model: a computed prefix in front of any OTHER
+    credential file (`cat "$(pwd)/.env"`) - the dump half resolves no `$(...)`.
     The run that USES the values:
     `node <guard> --with-sensitive -- "<command line>"` puts them in that command's environment (the file wins over an
     inherited value - the run asked for the project's) and prints each value of 4+ characters as `<KEY>` in its stdout and

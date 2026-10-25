@@ -129,20 +129,48 @@ function sliceRun(run, w) {
   };
 }
 
-// Every window the expectation opens, graded: [{ window, result }], a `session: false` step listed SKIP, never graded.
+// Why a step is not graded in this window, or null: `session: false` never is; `session: { said }` only where the model's
+// own text in the window matches (final review 2026-10-25 I1: task-solve's design steps hold for a standard run alone, so
+// every correct trivial or small run read as a violation).
+function sessionSkip(step, slice) {
+  if (step.session === false) return 'SKIPPED - session: false';
+  if (!step.session || step.session.said === undefined) return null;
+  const said = slice.events.filter((e) => e.tool === TEXT).map((e) => String((e.input && e.input.text) || '')).join('\n');
+  return new RegExp(step.session.said, 'm').test(said) ? null : `SKIPPED - session: the window never says /${step.session.said}/`;
+}
+
+// Every window the expectation opens, graded: [{ window, result }], a step sessionSkip names listed SKIP, never graded.
 function gradeSession(run, expect) {
   const windows = expect.window === 'turn' ? turnWindows(run) : windowsOf(run, expect.skill);
-  const off = new Set(expect.steps.filter((s) => s.session === false).map((s) => s.id));
-  const live = { ...expect, steps: expect.steps.filter((s) => !off.has(s.id)) };
   return windows.map((window) => {
-    const result = sc.gradeRun(live, sliceRun(run, window));
+    const slice = sliceRun(run, window);
+    const off = new Map(expect.steps.map((s) => [s.id, sessionSkip(s, slice)]).filter(([, why]) => why));
+    const result = sc.gradeRun({ ...expect, steps: expect.steps.filter((s) => !off.has(s.id)) }, slice);
     if (off.size) {
       const graded = new Map(result.steps.map((s) => [s.id, s]));
-      result.steps = expect.steps.map((s) => graded.get(s.id) || { id: s.id, verdict: 'SKIP', results: [{ name: 'session', type: 'session', skipped: true, explanation: 'SKIPPED - session: false' }] });
+      result.steps = expect.steps.map((s) => graded.get(s.id) || { id: s.id, verdict: 'SKIP', results: [{ name: 'session', type: 'session', skipped: true, explanation: off.get(s.id) }] });
       result.skipped += off.size;
     }
     return { window, result };
   });
+}
+
+// A bundle cut to a --from / --to span (ms, either null), so a windowed report grades the span it reports (final review
+// 2026-10-25): the main run from its first event stamped inside to its last, the marks between them rebased, and each seat
+// that made a call inside it - the analyzer's own rule for the subagents a window keeps.
+function windowBundle(bundle, from, to) {
+  if (from == null && to == null) return bundle;
+  const inside = (e) => Number.isFinite(e.ts) && (from == null || e.ts >= from) && (to == null || e.ts <= to);
+  const cut = (run) => {
+    const lo = run.events.findIndex(inside);
+    if (lo < 0) return { events: [], marks: [], bad: run.bad };
+    let hi = lo;
+    run.events.forEach((e, i) => { if (inside(e)) hi = i; });
+    const { users, lastMessage, ...slice } = sliceRun(run, { from: lo, to: hi + 1 });
+    return slice;
+  };
+  const { main, seats = [] } = bundle.session;
+  return { ...bundle, session: { ...bundle.session, main: cut(main), seats: seats.filter((st) => st.run.events.some(inside)).map((st) => ({ ...st, run: cut(st.run) })) } };
 }
 
 // --- the session bundle: the transcript, its seats and the state the claims read ------------------------------------
@@ -250,7 +278,7 @@ function normalizeStep(s, matchers, bad) {
       if (matchers[k] !== undefined && JSON.stringify(matchers[k]) !== JSON.stringify(m)) bad(`step ${s.id}: matcher '${k}' of ${s.from_expect} clashes with another of the same name`);
       matchers[k] = m;
     }
-    return { id: s.id, graders: st.graders, ...(st.session === false ? { session: false } : {}) };
+    return { id: s.id, graders: st.graders, ...(st.session !== undefined ? { session: st.session } : {}) };
   }
   if (s.type === 'x_state') {
     if (!Object.hasOwn(STATE_SOURCES, s.source)) bad(`step ${s.id}: unknown x_state source '${s.source}' (${Object.keys(STATE_SOURCES).join(' | ')})`);
@@ -322,11 +350,11 @@ function gradeClaims(bundle, claims) {
       : [{ label: 'main', run: main }];
     // a claim built by hand (not through loadClaims) may carry its graders as bare steps
     const plain = c.steps.filter((s) => s.type !== 'x_state').map((s) => (Array.isArray(s.graders) ? s : (({ id, ...g }) => ({ id, graders: [g] }))(s)));
-    const live = plain.filter((s) => s.session !== false);
     const out = { id: c.id, area: c.area, applied: 0, held: 0, violated: 0, notVisible: 0, partial: 0, missing: '', locators: [] };
     const need = new Set();
     for (const { label, run } of runs) for (const w of windowsFor(run, c.window, c.matchers)) {
       const slice = sliceRun(run, w);
+      const live = plain.filter((s) => !sessionSkip(s, slice));
       const verdicts = live.length ? sc.gradeRun({ skill: c.id, matchers: c.matchers, steps: live }, slice).steps.map((s) => s.verdict) : [];
       const wanted = new Set();
       for (const s of c.steps) if (s.type === 'x_state') verdicts.push(gradeState(s, slice, state, c.matchers, wanted));
@@ -371,4 +399,4 @@ function lintConformance(claims) {
   });
 }
 
-module.exports = { windowsOf, turnWindows, windowsFor, sliceRun, gradeSession, loadBundle, loadClaims, evidenceOf, gradeClaims, claimFixtures, lintConformance, AREAS, STATE_SOURCES };
+module.exports = { windowsOf, turnWindows, windowsFor, sliceRun, windowBundle, gradeSession, loadBundle, loadClaims, evidenceOf, gradeClaims, claimFixtures, lintConformance, AREAS, STATE_SOURCES };

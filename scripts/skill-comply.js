@@ -40,6 +40,9 @@
 //             not fail: Claude Code marks it is_error ('Exit code 1'), but a red test run is a run.
 //             Left out, a failed call still counts, so a denied commit is still an attempt in order. An MCP tool matches in both spellings - the
 //             plugin route's `mcp__plugin_<n>_<n>__<tool>` and the registration route's bare one.
+//   session   a STEP field read by conformance.js alone (never by a replay's grade): `false` - the step cannot hold in a
+//             real session (it is bound to the replay fixture); `{ said: '<regex>' }` - graded only in a session window
+//             whose own assistant text matches (task-solve's design steps on `Size: standard`); SKIP elsewhere.
 //   @text     each assistant text block is an event named `@text` in the same ordered trace, so a
 //             line the skill says must come first ('Size: ...') is ordered like a tool call.
 //   x_between some `tool` call lies after the LAST `after` call and before the FIRST `before` call
@@ -580,7 +583,15 @@ function checkExpectation(exp)
         const at = `${where} step ${s.id || '?'}`;
         if (!s.id || ids.has(s.id)) problems.push(`${at}: every step needs a unique id`);
         ids.add(s.id);
-        if (s.session !== undefined && s.session !== false) problems.push(`${at}: session takes only false (a step that cannot hold in a real session)`);
+        // false: a step that cannot hold in a real session; { said }: one that holds only where the model's own text in the
+        // window matches (a size line), each SKIP elsewhere - read by conformance.js alone, never by a replay's grade
+        if (s.session !== undefined && s.session !== false)
+        {
+            const said = s.session && typeof s.session === 'object' && Object.keys(s.session).join() === 'said' ? s.session.said : undefined;
+            let compiles = typeof said === 'string' && said !== '';
+            if (compiles) try { new RegExp(said, 'm'); } catch { compiles = false; }
+            if (!compiles) problems.push(`${at}: session takes false or { said: <regex> } (a step that cannot hold in a real session, or holds only where the window says it)`);
+        }
         if (!sources.includes(s.from)) problems.push(`${at}: from must be one of sources`);
         else if (text[s.from] !== undefined && (!s.quote || !text[s.from].includes(norm(s.quote))))
             problems.push(`${at}: its quote is no longer in ${s.from} - the skill changed, re-extract this step`);

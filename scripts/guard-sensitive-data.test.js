@@ -241,6 +241,47 @@ test(`sensitive data: the guard and data-root.js read one store the same way - B
     assert.strictEqual(wrapped(utf16.dir, node('hex', 'K_ONE')).stdout.trim(), `K_ONE=${Buffer.from('wide value').toString('hex')}`);
 });
 
+// Final review 2026-10-25 C1: a path to the store the resolver cannot follow - a `$(pwd)` or `$(git rev-parse ...)` prefix,
+// a variable bound to one, a script's own string - and a find that hands the store to a reader passed and printed every
+// value. The data-root path is a mention by its text now, and a find feeding a reader is judged by what it walks.
+test(`final review C1: the store behind a computed prefix, or found and fed to a reader, is refused [${FILE}]`, () =>
+{
+    const { dir } = project('c1', { file: FILE });
+    fs.mkdirSync(path.join(dir, '.alfred', 'docs'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.alfred', 'docs', 'x.md'), '# x\n');
+    for (const command of [`cat "$(pwd)/.alfred/${FILE}"`, `cat "$(git rev-parse --show-toplevel)/.alfred/${FILE}"`, `R=$(pwd); cat "$R/.alfred/${FILE}"`,
+        `source "$(pwd)/.alfred/${FILE}"`, `awk -F= '{print $2}' "$(pwd)/.alfred/${FILE}"`, `grep -h . "$(pwd)/.alfred/${FILE}"`,
+        `python3 -c "import os; print(open(os.getcwd()+'/.alfred/${FILE}', 'r').read())"`,
+        `find .alfred -name ${FILE} -exec cat {} +`, `find . -name '${FILE}' -exec cat {} \\;`, `find . -iname '${FILE.toUpperCase()}' -execdir cat {} +`,
+        `find .alfred -name ${FILE} | xargs cat`, `cat $(find . -name ${FILE})`, `ls -a .alfred | grep ${FILE} | xargs -I{} cat .alfred/{}`,
+        'find .alfred -type f -exec cat {} +', 'find .alfred -type f | xargs cat', 'find .alfred -type f -print0 | xargs -0 cat'])
+        assert.strictEqual(bash(dir, command), 2, command);
+    for (const command of [`test -f "$(pwd)/.alfred/${FILE}" && echo y`, `git check-ignore -q "$(git rev-parse --show-toplevel)/.alfred/${FILE}"`,
+        `echo "$(pwd)/.alfred/${FILE}.example"`, "find . -name '*.md' -exec grep -l x {} +", "find .alfred -name '*.md' | xargs wc -l",
+        'find . -type f | xargs wc -l', `find . -name ${FILE}.example -exec cat {} +`])
+        assert.strictEqual(bash(dir, command), 0, command);
+    // a walk stopped short of the data root - `.secrets` only: any mention of the legacy name but a look is refused
+    if (FILE === '.secrets') assert.strictEqual(bash(dir, 'find . -maxdepth 1 -name .secrets -exec cat {} +'), 0, 'a -maxdepth short of the store');
+});
+
+// Final review 2026-10-25 C2: on a case-insensitive disk (macOS, Windows) `.alfred/.SECRETS` and `.ALFRED/.secrets` open
+// the store, and the name compare was case-sensitive, so a Read, a Grep and a shell print of either passed.
+const caseBlind = (() => { const d = fs.mkdtempSync(path.join(TMP, 'case-')); fs.writeFileSync(path.join(d, 'a'), ''); return fs.existsSync(path.join(d, 'A')); })();
+test(`final review C2: a case variant of the store's name or its data root is the store on a case-insensitive disk [${FILE}]`, { skip: !caseBlind && 'a case-sensitive disk holds no such variant' }, () =>
+{
+    // no credential-shaped key, so only the name rule can catch it
+    const { dir } = project('c2', { text: 'DB_HOST=db.internal\n', file: FILE });
+    for (const rel of [`.alfred/${FILE.toUpperCase()}`, `.ALFRED/${FILE}`, `.Alfred/${FILE[0]}${FILE[1].toUpperCase()}${FILE.slice(2)}`])
+    {
+        const file = path.join(dir, rel);
+        assert.strictEqual(run({ tool_name: 'Read', tool_input: { file_path: file }, cwd: dir, session_id: 'suite' }).status, 2, `Read ${rel}`);
+        assert.strictEqual(run({ tool_name: 'Grep', tool_input: { pattern: 'DB_HOST', path: file, output_mode: 'content' }, cwd: dir, session_id: 'suite' }).status, 2, `Grep ${rel}`);
+        assert.notStrictEqual(bash(dir, `cat ${rel}`), 0, `cat ${rel}: rewritten or refused, never run as written`);
+        assert.strictEqual(bash(dir, `source ${rel}`), 2, `source ${rel}`);
+        assert.strictEqual(bash(dir, `cp ${rel} /tmp/x`), 2, `cp ${rel}`);
+    }
+});
+
 // audit 2026-10-20 C17 (fabea019): after a refusal the model built the store's name in pieces; the dump and the copy then
 // passed unjudged. A name assembled from literals the same command assigned resolves before either check.
 test(`audit 2026-10-20 C17: a store name built by concatenation is masked when printed and refused when carried [${FILE}]`, () => {

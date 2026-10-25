@@ -52,6 +52,46 @@ test('gradeSession: a session: false step is listed SKIPPED, never graded', () =
     assert.match(step.results[0].explanation, /^SKIPPED - session: false$/);
 });
 
+// Final review 2026-10-25 I1: the task-solve steps were bound to the replay fixture (a standard, input-parsing task), so
+// every correct trivial or small run read as a violation. A step's `session: { said }` grades it only in a window whose
+// own text matches - the design steps on `Size: standard`, the stop fields on a size that stops.
+test('final review I1: a correct trivial or small task-solve run fails no step and leaves F1 unviolated; a standard one is still graded', () => {
+    const say = (text) => ({ type: 'assistant', message: { id: `m${++seq}`, role: 'assistant', content: [{ type: 'text', text }] } });
+    const exp = sc.loadExpectation('task-solve').data;
+    const F1 = cf.loadClaims().find((c) => c.id === 'F1');
+    const fails = (run) => cf.gradeSession(run, exp).flatMap(({ result }) => result.steps.filter((s) => s.verdict === 'FAIL').map((s) => s.id));
+    const trivial = sc.parseTranscript(jsonl([cmdRow('task-solve'), tool('Bash', { command: 'node .claude/hooks/handoff.js left typo' }),
+        say('Size: trivial - a typo in one comment'), tool('Edit', { file_path: '/p/src/app.js', old_string: 'teh', new_string: 'the' }),
+        tool('Bash', { command: 'npm run lint' }), say('Fixed the typo in src/app.js; lint clean.'), user('thanks')]));
+    const small = sc.parseTranscript(jsonl([cmdRow('task-solve'), tool('Bash', { command: 'node .claude/hooks/handoff.js left order-total' }),
+        say('Size: small - two files in one domain, no contract touched'), tool('Edit', { file_path: '/p/src/total.js', old_string: 'a', new_string: 'b' }),
+        tool('Bash', { command: 'npm test' }), tool('Skill', { skill: 'task-verify-code' }),
+        say('Result: total rounds once - src/total.js\nProgress: 4 of 4 steps\nLeftovers: none'), tool('AskUserQuestion', { questions: [] })]));
+    for (const [name, run] of [['trivial', trivial], ['small', small]]) {
+        assert.deepStrictEqual(fails(run), [], `${name}: a correct run fails no step`);
+        assert.strictEqual(cf.gradeClaims({ session: { main: run } }, [F1])[0].violated, 0, `${name}: F1 not violated`);
+    }
+    const [{ result }] = cf.gradeSession(small, exp);
+    assert.match(stepOf(result, 'design-invoked').results[0].explanation, /^SKIPPED - session: the window never says/);
+    assert.strictEqual(stepOf(result, 'stop-fields').verdict, 'PASS', 'a small run stops once, the close, and its fields are graded');
+    assert.strictEqual(stepOf(result, 'size-floor').verdict, 'SKIP', 'the floor is the fixture task\'s, never a session\'s');
+    // a standard run that skips its design is still a violation, of the step and of F1
+    const standard = sc.parseTranscript(jsonl([cmdRow('task-solve'), say('Size: standard - input parsing'),
+        tool('Edit', { file_path: '/p/src/order.js', old_string: 'a', new_string: 'b' }), tool('AskUserQuestion', { questions: [] })]));
+    assert.ok(fails(standard).includes('design-invoked') && fails(standard).includes('nothing-builds'), fails(standard).join(','));
+    assert.strictEqual(cf.gradeClaims({ session: { main: standard } }, [F1])[0].violated, 1);
+});
+test('skill-comply check: a step\'s session is false or { said: <regex> }, nothing else', () => {
+    const loaded = sc.loadExpectation('task-solve');
+    const problems = (v) => {
+        const data = JSON.parse(JSON.stringify(loaded.data));
+        data.steps[0].session = v;
+        return sc.checkExpectation({ ...loaded, data }).filter((p) => /session/.test(p));
+    };
+    assert.deepStrictEqual([problems(false), problems({ said: 'Size:\\s*standard' })], [[], []]);
+    for (const v of [true, {}, { said: '(' }, { said: 3 }, { typed: 'x' }]) assert.strictEqual(problems(v).length, 1, JSON.stringify(v));
+});
+
 // --- the claims file, the state grader and the marker lint (Task 13) ---------------------------------
 const fs = require('node:fs');
 const os = require('node:os');

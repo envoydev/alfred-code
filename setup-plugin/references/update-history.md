@@ -384,6 +384,9 @@ since the next update tries again only once the user has merged the two and dele
 ignored it. A project's own `.secrets` outside the data root is not touched. There is no way back by downgrading: an
 older release reads only `.sensitive-data`, so a renamed file would sit unguarded under it - the way back is a forward
 fix in a later release.
+The guard refuses the store behind a computed prefix too (`"$(pwd)/.alfred/.secrets"`), a `find` that hands it to a
+reader, and its name or the data root in any letter case; a refusal there is the guard working - the command that needs
+the values runs through `--with-sensitive`.
 
 ## after 2.10.1 - capture-first-look leaves the stack
 
@@ -428,4 +431,6 @@ decisions) and every graded skill step, counted applied, held, violated or not v
 transcript locators of each violation. The batch copies each session's history record, scorer folder and block ledger
 into its bundle's `data/` and points the analyzer at the copy (`--data-root`), so a state claim still reads after the
 scorer folder is swept; a session with none of the three prints those claims `not visible`, never held. The verdict
-cites the rows and never recounts them. Update refreshes the skill copy; nothing else to report.
+cites the rows and never recounts them. A `--from` / `--to` report grades the same window and says so in the section's
+note, and task-solve's design steps are graded only for a run that stated `Size: standard`. Update refreshes the skill
+copy; nothing else to report.

@@ -932,10 +932,11 @@ function dataRootRel() {
 }
 // A `.secrets` is the store when it sits directly in a folder whose path ends in the data root (`.alfred/.secrets`, a
 // custom root's `var/data/.secrets`) - by the path as written, a diff header's or a walk's line included, or by its real
-// path. A project's own `.secrets` beside its sources is not.
+// path. A project's own `.secrets` beside its sources is not. In any letter case (final review 2026-10-25 C2): a
+// case-insensitive disk - macOS, Windows - opens the store as `.alfred/.SECRETS` or `.ALFRED/.secrets` too.
 function isDataRootSecrets(file) {
-  const tail = `${dataRootRel()}/${SECRETS_FILE}`;
-  const ends = (p) => { const s = String(p).replace(/\\/g, '/'); return s === tail || s.endsWith(`/${tail}`); };
+  const tail = `${dataRootRel()}/${SECRETS_FILE}`.toLowerCase();
+  const ends = (p) => { const s = String(p).replace(/\\/g, '/').toLowerCase(); return s === tail || s.endsWith(`/${tail}`); };
   if (ends(file)) return true;
   try { return ends(fs.realpathSync(file)); } catch { return false; }
 }
@@ -3074,7 +3075,14 @@ if (isShellTool(payload.tool_name)) {
 // Its tables live inside the function: the shell branch above runs at load, before a module-level const below it exists.
 function refuseSensitiveMention(text, steps = text) {
   if (allowAll) return;
-  const MENTION = /(?:^|[\s"'=/\\])\.sensitive-data(?=$|[\s"';&|)<>])/;
+  // The name as text, in any case and between any two non-name characters (final review 2026-10-25 C1: `open('<path>',
+  // 'r')` ended on a comma): `.sensitive-data` anywhere; `.secrets` behind its data root, which no resolver need follow
+  // (`"$(pwd)/.alfred/.secrets"`, `$R/...`, a script's own string), or bare in a pipe whose stages name the data root
+  // (`ls -a .alfred | grep .secrets | xargs ...`) - a project's own `.secrets` elsewhere is no store.
+  const ROOT = dataRootRel().split('/').map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[\\\\/]');
+  const MENTION = new RegExp(`(?:^|[^\\w.-])(?:\\.sensitive-data|${ROOT}[\\\\/]\\.secrets)(?![\\w.-])`, 'i');
+  const BARE = /(?:^|[^\w.-])\.secrets(?![\w.-])/i;
+  const ROOT_WORD = new RegExp(`(?:^|[^\\w.-])${ROOT}(?![\\w.-])`, 'i');
   const SENSITIVE_LOOKS = new Set(['test', '[', '[[', 'ls', 'stat', 'wc', 'Test-Path', 'Get-Item', 'Get-ChildItem']);
   // The 2026-10-17 usage audit's false refusals, each reading no value: git's own looks at a path (is it ignored, tracked,
   // which attributes - `git check-ignore -q` is the check the session-start warning itself runs), a count-only or quiet
@@ -3092,7 +3100,7 @@ function refuseSensitiveMention(text, steps = text) {
       return GIT_LOOKS.test(words[i] || '');
     }
     if (/^(?:grep|rg|egrep|fgrep|cut|awk|sed|jq)$/.test(v)) return isReducer(String(stage).trim());
-    if (/^(?:echo|printf)$/.test(v)) return !/\$\(|`|<\(/.test(stage) && !/>\s*\S*(?:\.sensitive-data|\.secrets)\b/.test(stage);
+    if (/^(?:echo|printf)$/.test(v)) return !/\$\(|`|<\(/.test(stage) && !/>\s*\S*(?:\.sensitive-data|\.secrets)\b/i.test(stage);
     return false;
   };
   const SENSITIVE_ARCHIVE = /^(?:tar|gtar|bsdtar|zip|7z|7za|7zz|rar|cpio|pax|rsync|scp|compress-archive)$/i;
@@ -3112,12 +3120,21 @@ function refuseSensitiveMention(text, steps = text) {
   // is no mention and no path.
   const EXCLUDE_FLAG = /^--exclude(?:-from|-dir)?$/;
   const EXCLUDED = /(^|\s)--exclude(?:-from|-dir)?(?:=|\s+)("[^"]*"|'[^']*'|\S+)/g;
-  // the literal name, quoted spans joined
+  // the literal name, quoted spans joined; a pipe is the stages `|` joins, and one naming the data root lets a bare
+  // `.secrets` in any of them count
   const parts = String(text).split(/(\|\||&&|[;&|\n])/);
+  const joinedOf = (seg) => joinQuoted(seg.replace(EXCLUDED, '$1'));
+  const pipeOf = [];
+  const pipeAtRoot = [];
+  for (let i = 0, p = -1; i < parts.length; i += 2) {
+    if (i === 0 || parts[i - 1] !== '|') pipeAtRoot[++p] = false;
+    pipeOf[i] = p;
+    if (ROOT_WORD.test(joinedOf(parts[i]))) pipeAtRoot[p] = true;
+  }
   for (let i = 0; i < parts.length; i += 2) {
     const seg = parts[i];
-    const joined = joinQuoted(seg.replace(EXCLUDED, '$1'));
-    if (!MENTION.test(joined) || /guard-secret-value\.js/.test(seg)) continue;
+    const joined = joinedOf(seg);
+    if (!(MENTION.test(joined) || (pipeAtRoot[pipeOf[i]] && BARE.test(joined))) || /guard-secret-value\.js/.test(seg)) continue;
     const words = joined.trim().split(/\s+/).filter(plain);
     if (looks(words, joined, parts[i + 1] === '|')) continue;
     refuse(words[0]);
@@ -3125,7 +3142,36 @@ function refuseSensitiveMention(text, steps = text) {
   // the spelled name: each operand resolved the way the dump half resolves it
   let budget = 64;
   // `.sensitive-data` by its name, `.secrets` only under the data root (a project's own `.secrets` is no store)
-  const isStore = (p) => baseOf(p) === LEGACY_SECRETS_FILE || baseOf(realOf(p)) === LEGACY_SECRETS_FILE || isDataRootSecrets(p) || isDataRootSecrets(realOf(p));
+  const legacy = (p) => baseOf(p).toLowerCase() === LEGACY_SECRETS_FILE;
+  const isStore = (p) => legacy(p) || legacy(realOf(p)) || isDataRootSecrets(p) || isDataRootSecrets(realOf(p));
+  // A find that hands what it finds to a reader - an -exec / -ok action, a pipe on (`| xargs cat`), a `$(...)` around it
+  // (final review 2026-10-25 C1) - is refused when its walk reaches the store (a -maxdepth short of it does not) and a
+  // -name / -path test of it matches the store's name, or, from the folder holding the store, no name test narrows it.
+  const FIND_ACT = /^-(?:exec|execdir|ok|okdir)$/;
+  const globOf = (g, flags) => new RegExp(`^${String(g).split('').map((ch) => (ch === '*' ? '.*' : ch === '?' ? '.' : ch.replace(/[.+^${}()|[\]\\]/g, '\\$&'))).join('')}$`, flags);
+  const judgeFind = (args, fed) => {
+    if (!fed && !args.some((w) => FIND_ACT.test(w))) return;
+    const store = sensitiveStore();
+    if (!store) return;
+    let k = 0;
+    while (k < args.length && /^-[HLPEXdsx]$/.test(args[k])) k++;
+    const first = args.findIndex((w, j) => j >= k && /^[-(!]/.test(w));
+    const starts = args.slice(k, first < 0 ? args.length : first);
+    const tests = [];
+    let depth = Infinity;
+    for (let j = 0; j < args.length; j++) {
+      if (/^-i?(?:name|path|wholename)$/.test(args[j])) tests.push({ re: globOf(args[j + 1] || '', /^-i/.test(args[j]) ? 'i' : ''), path: !/name$/.test(args[j]) || /wholename$/.test(args[j]) });
+      else if (args[j] === '-maxdepth' && /^\d+$/.test(args[j + 1] || '')) depth = Number(args[j + 1]);
+    }
+    for (const s of starts.length ? starts : ['.']) for (const p of candidatePaths(s)) for (const hit of statAll(p)) {
+      const rel = hit.dir ? pathMod.relative(realOf(hit.at), store) : '';
+      if (!rel || rel.startsWith('..') || pathMod.isAbsolute(rel)) continue;
+      const segs = rel.split(pathMod.sep);
+      if (segs.length > depth) continue;
+      const shown = `${s.replace(/[\\/]+$/, '')}/${segs.join('/')}`;
+      if (tests.length ? tests.some((t) => t.re.test(t.path ? shown : segs[segs.length - 1])) : segs.length === 1) refuse('find');
+    }
+  };
   // Every anchor the operand exists at, never the first alone: the project dir's own data root (no store) listed before the
   // cwd's hid the cwd's store from a tree-taking verb.
   const statAll = (p) => {
@@ -3160,6 +3206,7 @@ function refuseSensitiveMention(text, steps = text) {
     const c = words.indexOf('-c');
     if (/^(?:ba|z|da|k)?sh$/.test(verb) && c > 0 && words[c + 1] && depth < 2) { judgeAll(words[c + 1], depth + 1); return; }
     const args = words.slice(1);
+    if (verb === 'find') judgeFind(args, pipedOn || depth > 0);
     const sub = args.find((w) => !w.startsWith('-'));
     const recursive = args.some((w) => /^-[A-Za-z]*[rRa][A-Za-z]*$|^--(?:recursive|archive)$|^-recurse$/i.test(w));
     const copies = /^(?:cp|copy-item|cpi|copy|xcopy|robocopy|ditto|rsync|scp)$/i.test(verb);

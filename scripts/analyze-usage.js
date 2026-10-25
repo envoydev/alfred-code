@@ -4271,12 +4271,14 @@ function inventoryMarkdown(invUse, out) {
 // The verdict cites these rows; it never recounts them. One parse of the session, its seats and the state the claims
 // read (data/ beside the transcript, else --data-root), graded against meta/conformance.json and every expect.json.
 const cell = (s) => maskSecrets(String(s)).replace(/\r?\n/g, ' ').replace(/\|/g, '\\|');
-function conformanceOf(transcript, { dataRoot, hookBlocks } = {}) {
+function conformanceOf(transcript, { dataRoot, hookBlocks, window } = {}) {
   const started = Date.now();
   try {
     const cf = require('./conformance.js');
     const sc = require('./skill-comply.js');
-    const bundle = cf.loadBundle(transcript, { ...(dataRoot ? { dataRoot } : {}), hookBlocks: hookBlocks || undefined });
+    const whole = cf.loadBundle(transcript, { ...(dataRoot ? { dataRoot } : {}), hookBlocks: hookBlocks || undefined });
+    // a windowed report grades the span it reports, never the whole session around it
+    const bundle = window ? cf.windowBundle(whole, window.from, window.to) : whole;
     const claims = cf.loadClaims();
     const rows = cf.gradeClaims(bundle, claims).map((g, i) => ({ ...g, claim: claims[i].claim, source: claims[i].source.file, evidence: cf.evidenceOf(claims[i]) }));
     const steps = [];
@@ -4291,7 +4293,7 @@ function conformanceOf(transcript, { dataRoot, hookBlocks } = {}) {
         steps.push({ skill, step: s.id, windows: graded.length, pass, fail, skip: vs.length - pass - fail });
       }
     }
-    return { rows, steps, dataRoot: bundle.dataRoot, hookBlocks: hookBlocks ? path.resolve(hookBlocks) : null, ms: Date.now() - started };
+    return { rows, steps, dataRoot: bundle.dataRoot, hookBlocks: hookBlocks ? path.resolve(hookBlocks) : null, ...(window ? { window: { from: window.fromStr || null, to: window.toStr || null } } : {}), ms: Date.now() - started };
   } catch (err) {
     return { error: err.message, ms: Date.now() - started };
   }
@@ -4312,7 +4314,8 @@ function conformanceSection(c) {
     out.push('');
   } else out.push('_No skill with a `meta/skill-comply/` expectation opened a window in this session._', '');
   const root = c.dataRoot ? `data root \`${c.dataRoot}\`` : 'no data root (no `--data-root`, no `data/` beside the transcript) - every state claim reads not visible';
-  out.push(`_Graded in ${c.ms} ms; ${root}${c.hookBlocks ? `; hook-blocks \`${c.hookBlocks}\`` : ''}._`, '');
+  const span = c.window ? `; windowed: ${c.window.from || 'start'} → ${c.window.to || 'end'}` : '';
+  out.push(`_Graded in ${c.ms} ms; ${root}${c.hookBlocks ? `; hook-blocks \`${c.hookBlocks}\`` : ''}${span}._`, '');
   return out;
 }
 
@@ -4967,7 +4970,7 @@ async function runAnalysis() {
   const invAcc = newInventoryUse(loadPlugins(pluginsFile));
   addSessionUse(invAcc, mainStats, agents, inventoryDir);
   const invUse = finishInventoryUse(invAcc);
-  const conformance = (asJson || asMd) && !args.includes('--no-conformance') ? conformanceOf(target, { dataRoot: flagVal('--data-root'), hookBlocks: blockDir }) : null;
+  const conformance = (asJson || asMd) && !args.includes('--no-conformance') ? conformanceOf(target, { dataRoot: flagVal('--data-root'), hookBlocks: blockDir, window }) : null;
   if (asJson) {
     // The join's own numbers were computed only at RENDER time, so `--json` could not see them and
     // nothing could test them - which is how the NaN cross-check above shipped and stayed shipped.
