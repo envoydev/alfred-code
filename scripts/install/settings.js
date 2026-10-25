@@ -589,6 +589,7 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
     for (const row of catalog)
     {
         if (row.written) continue;                       // step 5 owns these
+        if (row.seed === false) continue;                // never written: the launch env or a hand-set value only
         if (row.key === 'ALFRED_CODE_AUTO_COMPACT' && autoCompact && autoCompact.value && !heldHere(row.key)) continue;   // decided above
         if (row.key === 'ALFRED_CODE_MEMORY' && memory && memory.value && !heldHere(row.key)) continue;                  // decided above
         if (row.key === 'ALFRED_CODE_DOCS_VERSIONING') continue;   // a decision, below
@@ -1055,7 +1056,7 @@ function writeSettings(opts)
     }
     // R10: the ledger pass, over the env of each file this run writes, the deny lists and the wirings.
     const reseeds = (key) => (migrations.reseed || []).filter(([k]) => k === key).flatMap(([, bad, to]) => [bad, to]);
-    const seedsOf = (key) => [...catalog.filter((r) => r.key === key && !r.written).flatMap((r) => [String(r.default), ...(r.former_defaults || []).map(String)]), ...reseeds(key),
+    const seedsOf = (key) => [...catalog.filter((r) => r.key === key && !r.written && r.seed !== false).flatMap((r) => [String(r.default), ...(r.former_defaults || []).map(String)]), ...reseeds(key),
         ...(key === 'ALFRED_CODE_DOCS_VERSIONING' && docsVersioning && docsVersioning.seed ? [docsVersioning.seed] : [])];
     const releaseEnv = new Set(catalog.map((r) => r.key));
     const writtenNow = {};

@@ -17,6 +17,7 @@ const os = require('node:os');
 const path = require('node:path');
 const dataRootMod = require('../../stack/mcp/data-root.js');
 const brand = require('./brand.js');
+const { readJson } = require('./json-file.js');
 const runtime = require('./runtime.js');
 const stamp = require('./stamp.js');
 
@@ -161,6 +162,24 @@ function removeIgnore(model, category, name)
 {
     model.entries = model.entries.filter((e) => !(e.kind === 'ignore' && e.category === category && e.name === name));
     return model;
+}
+
+// ------------------------------------------------------------------ the switch
+
+// ALFRED_CODE_WORKSPACE, a catalog row the installers never write. A `0` in the launch env, or in the settings env
+// that applies here (settings.local.json over settings.json), freezes the workspace: a session applies a settings
+// `env` over its launch env, so a launch `1` cannot thaw a settings `0`. An unreadable settings file holds nothing.
+function workspaceOn({ env = {}, projectRoot })
+{
+    if (String(env.ALFRED_CODE_WORKSPACE) === '0') return false;
+    const valueIn = (name) =>
+    {
+        const data = readJson(path.join(projectRoot, '.claude', name));
+        return data && data.env && typeof data.env === 'object' ? data.env.ALFRED_CODE_WORKSPACE : undefined;
+    };
+    const local = valueIn('settings.local.json');
+    const value = local !== undefined ? local : valueIn('settings.json');
+    return String(value) !== '0';
 }
 
 // ------------------------------------------------------------------ the file
@@ -643,7 +662,7 @@ function excludeGlobs(paths, platform = process.platform)
 }
 
 module.exports = {
-    CATEGORIES, parseWorkspace, renderWorkspace, viewOf,
+    CATEGORIES, workspaceOn, parseWorkspace, renderWorkspace, viewOf,
     setParent, addChild, removeChild, addIgnore, removeIgnore,
     ancestorEnv, workspacePath, readWorkspace, writeWorkspace, moveWorkspace,
     realKey, findParent, sameRepo, isCheckout, joinVerdict, chain, subtree, rescan,

@@ -543,3 +543,23 @@ test('excludeGlobs on darwin and win32 writes a class per cased letter and each 
     const glob = ws.excludeGlobs([TMP], 'linux')[0];
     assert.strictEqual(glob, real.split(path.sep).join('/').replace(/[*?[{}()]/g, (c) => `[${c}]`), 'an existing path is written by its real spelling');
 });
+
+test('workspaceOn reads the launch env first, then settings.local.json over settings.json', () =>
+{
+    const root = project();
+    const claude = path.join(root, '.claude');
+    fs.mkdirSync(claude, { recursive: true });
+    const put = (name, value) => fs.writeFileSync(path.join(claude, name), value === undefined ? '{}' : JSON.stringify({ env: { ALFRED_CODE_WORKSPACE: value } }));
+    assert.strictEqual(ws.workspaceOn({ env: {}, projectRoot: root }), true, 'no value anywhere: on');
+    assert.strictEqual(ws.workspaceOn({ env: { ALFRED_CODE_WORKSPACE: '0' }, projectRoot: root }), false, 'the launch env 0 freezes it');
+    put('settings.json', '0');
+    assert.strictEqual(ws.workspaceOn({ env: {}, projectRoot: root }), false, 'settings.json 0 freezes it');
+    assert.strictEqual(ws.workspaceOn({ env: { ALFRED_CODE_WORKSPACE: '1' }, projectRoot: root }), false, 'a 0 in a settings env freezes it whatever the launch env says');
+    put('settings.local.json', '1');
+    assert.strictEqual(ws.workspaceOn({ env: {}, projectRoot: root }), true, 'settings.local.json 1 over settings.json 0');
+    put('settings.local.json', '0');
+    put('settings.json', '1');
+    assert.strictEqual(ws.workspaceOn({ env: {}, projectRoot: root }), false, 'settings.local.json 0 over settings.json 1');
+    fs.writeFileSync(path.join(claude, 'settings.local.json'), '{ not json');
+    assert.strictEqual(ws.workspaceOn({ env: {}, projectRoot: root }), true, 'an unreadable local file is read as holding nothing');
+});

@@ -366,8 +366,29 @@ test('settings-env: the SEEDS come from the catalog, absent-only, and never touc
     const { env } = envPass({ ALFRED_CODE_INSTRUMENT: '1' });
     assert.strictEqual(env.ALFRED_CODE_INSTRUMENT, '1', 'an absent-only seed overwrote a deliberate value');
     for (const row of CATALOG)
-        if (!row.written && row.key !== 'ALFRED_CODE_DOCS_VERSIONING')
+        if (!row.written && row.seed !== false && row.key !== 'ALFRED_CODE_DOCS_VERSIONING')
             assert.ok(row.key in env, `the catalog key ${row.key} was not seeded`);
+});
+
+test('settings-env: a seed:false row is never written', () =>
+{
+    const rows = CATALOG.filter((r) => r.seed === false);
+    assert.ok(rows.some((r) => r.key === 'ALFRED_CODE_WORKSPACE'), 'the catalog carries the never-written row');
+    const dir = path.join(TMP, `seedless-${seq++}`, '.claude');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ env: {} }));
+    writeSettings({ file: path.join(dir, 'settings.json'), catalog: CATALOG, migrations: MIGRATIONS, docsVersioning: { seed: 'git' } });
+    writeSettings({ file: path.join(dir, 'settings.local.json'), catalog: CATALOG, migrations: MIGRATIONS, inheritedEnv: {}, docsVersioning: { seed: 'git' } });
+    for (const name of fs.readdirSync(dir))
+        for (const row of rows)
+            assert.ok(!fs.readFileSync(path.join(dir, name), 'utf8').includes(row.key), `${row.key} was written into ${name}`);
+    // A value the user set at the catalog default is theirs: with no ledger, the default is no evidence the stack wrote it.
+    const own = path.join(TMP, `seedless-${seq++}`, '.claude');
+    fs.mkdirSync(own, { recursive: true });
+    fs.writeFileSync(path.join(own, 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_WORKSPACE: '1' } }));
+    const { result } = write(path.join(own, 'settings.json'), { docsVersioning: { seed: 'git' } });
+    assert.ok(!Object.hasOwn(result.managed.env['settings.json'] || {}, 'ALFRED_CODE_WORKSPACE'), 'the ledger claimed a value the user set');
+    assert.strictEqual(JSON.parse(fs.readFileSync(path.join(own, 'settings.json'), 'utf8')).env.ALFRED_CODE_WORKSPACE, '1', 'the user\'s value stays');
 });
 
 test('settings-env: the retired sentry auth key goes, and the SENTRY_* keys stay', () =>

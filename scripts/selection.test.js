@@ -39,6 +39,8 @@ test('environment catalog: every row is askable, seeded and shaped', () =>
         // it is never asked on the environment screen - the question that owns it is elsewhere
         // (--memory-level), and asking twice would let the two answers disagree.
         if (row.written) { assert.strictEqual(row.ask, false, `${row.key} is written by the install, so it is not asked`); }
+        // A seed:false row is never written into a project, so an answer to it would land nowhere.
+        if (row.seed === false) { assert.strictEqual(row.ask, false, `${row.key} is never written, so it is not asked`); }
         if (row.validate.type === 'enum') { assert.ok(row.validate.values.includes(row.default), `${row.key} default is one of its own values`); }
         if (row.validate.type === 'percent')
         {

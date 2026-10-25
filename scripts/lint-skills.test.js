@@ -1096,6 +1096,24 @@ test('check 58: lintEnvironmentCatalog catches catalog/seed/command/migration dr
         .some((f) => /ALFRED_CODE_FOO does not record renamed_from 'OLD_FOO'/.test(f)));
 });
 
+test('lint 58 accepts a boolean seed and rejects any other value', () => {
+    const { lintEnvironmentCatalog } = require('./lint-skills.js');
+    const commandSrc = { init: 'meta/environment.json', configure: 'meta/environment.json', validate: 'meta/environment.json' };
+    const rows = (seed) => ([
+        { key: 'ALFRED_CODE_DOCS_VERSIONING', default: 'git', what: 'docs versioning' },
+        { key: 'ALFRED_CODE_HOOKS_OFF', default: '', what: 'hooks off csv' },
+        { key: 'ALFRED_CODE_SWITCH', default: '1', what: 'a switch', ask: false, seed },
+    ]);
+    const seedSrc = 'ALFRED_CODE_DOCS_VERSIONING ALFRED_CODE_HOOKS_OFF';
+    for (const ok of [false, true]) assert.deepStrictEqual(lintEnvironmentCatalog({ env: rows(ok) }, seedSrc, { migrations: [] }, commandSrc), []);
+    for (const bad of ['false', 0, null])
+        assert.ok(lintEnvironmentCatalog({ env: rows(bad) }, seedSrc, { migrations: [] }, commandSrc)
+            .some((f) => /ALFRED_CODE_SWITCH has a `seed` that is not true or false/.test(f)), `seed ${JSON.stringify(bad)} passed`);
+    const asked = rows(false).map((r) => (r.key === 'ALFRED_CODE_SWITCH' ? { ...r, ask: true } : r));
+    assert.ok(lintEnvironmentCatalog({ env: asked }, seedSrc, { migrations: [] }, commandSrc)
+        .some((f) => /ALFRED_CODE_SWITCH is never written \(seed: false\), so it cannot be asked/.test(f)));
+});
+
 // M31 (check 54): the bare registration spelling of a server the stack RENAMED or RETIRED resolves to nothing too,
 // and the check built its pattern from today's names only - the old serena spelling passed it. The fixture lines below
 // carry the marker the check skips, which is what a deliberate old spelling in a test does.

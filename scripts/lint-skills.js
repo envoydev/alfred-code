@@ -3184,6 +3184,8 @@ function lintEnvironmentCatalog(catalog, seedSrc, migrations, commandSrc)
         keys.add(row.key);
         if (typeof row.default !== 'string') { out.push(`environment.json ${row.key} has no string \`default\` - the seed value and the walk's shown default come from it`); }
         if (!row.what) { out.push(`environment.json ${row.key} has no \`what\` - the walks print it, so a row without one cannot be asked about`); }
+        if (Object.hasOwn(row, 'seed') && typeof row.seed !== 'boolean') { out.push(`environment.json ${row.key} has a \`seed\` that is not true or false - the installers skip a row only on \`seed: false\``); }
+        if (row.seed === false && row.ask) { out.push(`environment.json ${row.key} is never written (seed: false), so it cannot be asked - init would write the answer nowhere`); }
         if (row.written && !namedInSeed.has(row.key)) { out.push(`environment.json ${row.key} is marked written, but scripts/install/settings.js never names it literally - the Node seed would never set it`); }
     }
     // The two DECISIONS are special-cased by literal key name, never fed through the generic loop -

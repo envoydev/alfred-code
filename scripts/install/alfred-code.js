@@ -317,7 +317,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         if (leavingLocal && !args.printPlan)
         {
             const rows = readJson(path.join(resolved.dir, 'meta', 'environment.json')).env || [];
-            const seeds = Object.fromEntries(rows.filter((r) => !r.written).map((r) => [r.key, [r.default, ...(r.former_defaults || [])]]));
+            const seeds = Object.fromEntries(rows.filter((r) => !r.written && r.seed !== false).map((r) => [r.key, [r.default, ...(r.former_defaults || [])]]));
             seeds.ALFRED_CODE_DOCS_VERSIONING = [docs.docsVersioningSeed({ projectRoot, docsPath: copy.resolveDocsRoot(projectRoot, args.scope) })];
             for (const [key, shippedSeed] of envMigrations(readJson(path.join(resolved.dir, 'meta', 'migrations.json'))).reseed)
                 (seeds[key] ??= []).push(shippedSeed);
