@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "note": "The stack's claims, graded over a real session by scripts/conformance.js (item 7, 2026-10-25) and printed as the usage report's machine-written Conformance section. Each claim cites the line that states its behaviour (source.marker, held to its file by lint check 68) and ships a holding and a violating fixture under scripts/fixtures/conformance/<id>/. A step is one skill-comply grader with an id, a step of an expect.json by reference (from_expect), or an x_state step over the session's state (history, scorer, ledger). A claim whose evidence the session does not carry reads not visible, never held.",
+  "matchers": {
+    "locate": { "any": [
+      { "tool": "LSP" },
+      { "tool": "Grep" },
+      { "tool": "Bash", "field": "command", "text_match": "(?:^|&&|\\|\\||;)\\s*(?:\\w+=\\S*\\s+)*(?:grep|egrep|fgrep|rg|ag|ack|git\\s+grep)\\b" },
+      { "tool": "PowerShell", "field": "command", "text_match": "(?:^|&&|\\|\\||;)\\s*(?:\\w+=\\S*\\s+)*(?:grep|egrep|fgrep|rg|ag|ack|git\\s+grep)\\b" }
+    ] },
+    "source_read": { "tool": "Read", "field": "file_path",
+      "text_match": "\\.(?:cs|fs|vb|ts|tsx|mts|cts|js|jsx|mjs|cjs|py|go|rs|java|kt|kts|scala|rb|php|swift|dart|c|h|cc|cpp|cxx|hpp|hh|m|mm|lua)$",
+      "text_not_match": "(?:^|[\\\\/])(?:node_modules|bin|obj|dist|coverage|TestResults|target|__pycache__|\\.venv|venv|vendor|\\.git|\\.angular|\\.nuget|\\.next|\\.nuxt|\\.gradle|\\.idea|\\.vs)[\\\\/]" },
+    "implementer": { "any": [
+      { "tool": "Agent", "field": "subagent_type", "text_match": "implementer$" },
+      { "tool": "Task", "field": "subagent_type", "text_match": "implementer$" }
+    ] },
+    "review_load": { "succeeded": true, "tool": "Skill", "field": "skill",
+      "text_match": "^(?:[^:]*:)?(?:review-code|review-security|code-review|security-review|capture-code-quality|capture-architecture-quality|loop-code-quality|loop-architecture-quality)$" },
+    "app_start": { "any": [
+      { "tool": "Bash", "field": "command", "text_match": "\\b(?:dotnet (?:run|watch)|npm (?:run )?(?:start|dev|serve)|ng serve|ionic serve|docker(?:-compose| compose) up|npx (?:vite|next dev))\\b" },
+      { "tool": "PowerShell", "field": "command", "text_match": "\\b(?:dotnet (?:run|watch)|npm (?:run )?(?:start|dev|serve)|ng serve|ionic serve|docker(?:-compose| compose) up|npx (?:vite|next dev))\\b" }
+    ] }
+  },
+  "claims": [
+    {
+      "id": "N1", "area": "navigation",
+      "claim": "A source-file Read outside a build folder is located first: an LSP, Grep or shell-grep call sits in the three tool calls before it (the analyzer's NAV_WINDOW and BUILD_DIR_RE).",
+      "source": { "file": "stack/rules/alfred-navigation.md", "marker": "`Read` is for code already located, never a whole file to find a symbol" },
+      "window": { "opens": { "event": { "ref": "source_read" }, "lookback": 3 } },
+      "steps": [ { "id": "located", "type": "tool_used", "ref": "locate", "min": 1 } ]
+    },
+    {
+      "id": "N2", "area": "navigation",
+      "claim": "Where the session-start tool order ranks the LSP tool first for navigation, the session's first navigation call is an LSP call.",
+      "source": { "file": "stack/skills/capture-preferences/scripts/tools.js", "marker": "in each job use the first rank that serves the target before the next." },
+      "window": { "opens": { "event": { "ref": "locate" }, "first": true, "lookback": "session", "when": { "context": "^- navigation \\([^)]*\\): LSP\\b" } } },
+      "steps": [ { "id": "top-rank", "type": "tool_used", "tool": "LSP", "min": 1 } ]
+    },
+    {
+      "id": "S1", "area": "scoring",
+      "claim": "A scorer run's first verdict follows an output-scorer dispatch, and the script recorded the release (rounds.log `released`).",
+      "source": { "file": "stack/skills/habits-output-scorer/SKILL.md", "marker": "A drafted output is graded by a fresh, read-only output-scorer seat that never saw the conversation" },
+      "window": { "opens": { "event": { "tool": "Bash", "field": "command", "text_match": "(?:scorecard\\.js|\\$S|\\$\\{S\\})\"? next\\b" },
+        "from": { "tool": "Skill", "field": "skill", "text_match": "^(?:[^:]*:)?habits-output-scorer$" } } },
+      "steps": [
+        { "id": "seat-graded", "type": "tool_used", "tool": "Agent", "field": "subagent_type", "text_match": "output-scorer$", "min": 1 },
+        { "id": "released", "type": "x_state", "source": "scorer", "match": { "line": "^released " } }
+      ]
+    },
+    {
+      "id": "S2", "area": "scoring",
+      "claim": "No plan file is written after the scorer's NOT PASSED line, up to the run's stop.",
+      "source": { "file": "meta/skill-comply/habits-output-scorer/expect.json", "marker": "the plan file is not written to its real path" },
+      "window": { "opens": { "skill": "habits-output-scorer" } },
+      "steps": [ { "id": "no-plan-after-withhold", "from_expect": "habits-output-scorer" } ]
+    },
+    {
+      "id": "P1", "area": "preferences",
+      "claim": "The session-start hand-over of the personal preferences doc lands before the session's first Edit.",
+      "source": { "file": "scripts/preferences-session.test.js", "marker": "the session-start push writes one preferences-push probe row" },
+      "window": { "opens": "session" },
+      "steps": [ { "id": "push-first", "type": "x_state", "source": "ledger", "match": { "kind": "^preferences-push$" }, "before": { "tool": "Edit" } } ]
+    },
+    {
+      "id": "P2", "area": "preferences",
+      "claim": "A review run is handed the code docs at its load: the hook's review refusal is on record before the review's first successful Skill call.",
+      "source": { "file": "scripts/preferences-session.test.js", "marker": "first review skill waits for the code docs, in parts" },
+      "window": { "opens": "session" },
+      "steps": [ { "id": "handed-at-load", "type": "x_state", "source": "ledger", "match": { "kind": "^review$" }, "before": { "ref": "review_load" } } ]
+    },
+    {
+      "id": "A1", "area": "awareness",
+      "claim": "Where the awareness rule loads at session start, its inventory and run book imports load with it.",
+      "source": { "file": "stack/skills/capture-awareness/SKILL.md", "marker": "one `@` import per doc" },
+      "window": { "opens": { "session": true, "when": { "context": "(?:^|/)\\.claude/rules/alfred-awareness\\.md$" } } },
+      "steps": [
+        { "id": "inventory", "type": "regex", "target": "context", "pattern": "(?:^|/)awareness/AGENTS-AWARENESS\\.md$", "flags": "m" },
+        { "id": "run-book", "type": "regex", "target": "context", "pattern": "(?:^|/)awareness/PROJECT-AWARENESS\\.md$", "flags": "m" }
+      ]
+    },
+    {
+      "id": "A2", "area": "awareness",
+      "claim": "A verifier whose context lacks the run book reads it before it first starts the app.",
+      "source": { "file": "stack/agents/aspnet-verifier.md", "marker": "follow it before you start, log into or hand-check the app" },
+      "window": { "opens": { "seat": "verifier$", "event": { "ref": "app_start" }, "first": true, "lookback": "session", "unless": { "context": "(?:^|/)awareness/PROJECT-AWARENESS\\.md$" } } },
+      "steps": [ { "id": "run-book-read", "type": "tool_used", "min": 1, "any": [
+        { "tool": "Read", "field": "file_path", "text_match": "(?:^|[\\\\/])awareness[\\\\/]PROJECT-AWARENESS\\.md$" },
+        { "tool": "Bash", "field": "command", "text_match": "awareness[\\\\/]PROJECT-AWARENESS\\.md" }
+      ] } ]
+    },
+    {
+      "id": "Q1", "area": "questions",
+      "claim": "An AskUserQuestion marks its recommended option first: no option after the first carries '(Recommended)'.",
+      "source": { "file": "stack/rules/alfred-interaction.md", "marker": "the recommended one marked (Recommended) and listed first" },
+      "window": { "opens": { "event": { "tool": "AskUserQuestion" } } },
+      "steps": [ { "id": "first-marked", "type": "tool_used", "tool": "AskUserQuestion", "min": 0, "max": 0,
+        "input_match": "\"options\":\\[\\{(?:[^\"{}]|\"(?:[^\"\\\\]|\\\\.)*\")*\\}(?:,\\{(?:[^\"{}]|\"(?:[^\"\\\\]|\\\\.)*\")*\\})*,\\{(?:[^\"{}]|\"(?:[^\"\\\\]|\\\\.)*\")*?\"label\":\"(?:[^\"\\\\]|\\\\.)*?\\([Rr]ecommended\\)" } ]
+    },
+    {
+      "id": "Q2", "area": "questions",
+      "claim": "No turn closes on a question to the user in prose ('want me to ...?', 'shall I ...?', 'let me know if') - that stop goes through AskUserQuestion.",
+      "source": { "file": "stack/rules/alfred-interaction.md", "marker": "the stop guard blocks a prose 'want me to ...?' close" },
+      "window": { "opens": "turn" },
+      "steps": [ { "id": "no-prose-ask", "type": "regex", "target": "last_message", "match": "not_contains", "flags": "i",
+        "pattern": "\\b(?:want me to|shall i|should i)\\b[^.?!\\n]{0,80}\\?|\\blet me know (?:when|if|whether)\\b|\\bsay the word\\b|\\bif you(?:'d)? (?:want|like|prefer)\\b[^.\\n]{0,100}, i (?:can|could)\\b" } ]
+    },
+    {
+      "id": "R1", "area": "answers",
+      "claim": "A turn's closing answer keeps its prose near the budget - 1,200 characters, code blocks, inline code, tables and quotes exempt - unless the turn's prompt asks for depth.",
+      "source": { "file": "stack/hooks/guard-answer.js", "marker": "Code, tables and command output are exempt." },
+      "window": { "opens": { "turn": true, "unless": { "typed": "\\b(?:in detail|walk me through|step by step|teach me|ELI5|write a plan)\\b" } } },
+      "steps": [ { "id": "near-budget", "type": "regex", "target": "last_message", "flags": "m",
+        "pattern": "(?<![\\s\\S])(?:(?=(```[\\s\\S]*?```|`[^`\\n]+`|^[ \\t]*[|>][^\\n]*|[\\s\\S]))\\1){0,1200}(?![\\s\\S])" } ]
+    },
+    {
+      "id": "R2", "area": "answers",
+      "claim": "A turn the hook handed the FORMAT ASK (a correction streak) answers it with an AskUserQuestion, not another redraft.",
+      "source": { "file": "stack/hooks/guard-answer.js", "marker": "carries the FORMAT ASK on a correction streak" },
+      "window": { "opens": { "turn": true, "when": { "context": "FORMAT ASK: \\d+ consecutive short turns" } } },
+      "steps": [ { "id": "format-asked", "type": "tool_used", "tool": "AskUserQuestion", "min": 1 } ]
+    },
+    {
+      "id": "F1", "area": "flow",
+      "claim": "task-solve keeps its step order up to its first stop: the size line first, the design before the stop's AskUserQuestion.",
+      "source": { "file": "meta/skill-comply/task-solve/expect.json", "marker": "State the size in ONE line before anything else" },
+      "window": { "opens": { "skill": "task-solve" } },
+      "steps": [
+        { "id": "size-first", "from_expect": "task-solve" },
+        { "id": "stop-after-design", "from_expect": "task-solve" }
+      ]
+    },
+    {
+      "id": "F2", "area": "flow",
+      "claim": "The plan gate's stop follows its stamp: after task-verify-plan, the plan file's Gated: block is written before the stop's AskUserQuestion.",
+      "source": { "file": "stack/skills/task-verify-plan/SKILL.md", "marker": "stamp the verdict into it - the whole eight-field block above, under the header" },
+      "window": { "opens": { "event": { "tool": "AskUserQuestion" }, "from": { "tool": "Skill", "field": "skill", "text_match": "^(?:[^:]*:)?task-verify-plan$" } } },
+      "steps": [ { "id": "gated-stamped", "type": "tool_used", "min": 1, "any": [
+        { "tool": "Write", "field": "content", "text_match": "^\\W*Gated: " },
+        { "tool": "Edit", "field": "new_string", "text_match": "^\\W*Gated: " },
+        { "tool": "MultiEdit", "field": "edits", "text_match": "^\\W*Gated: " }
+      ] } ]
+    },
+    {
+      "id": "D1", "area": "decisions",
+      "claim": "A plan executed has its APPROVAL receipt - an APPROVED or AUTO stamp written to state/approvals/ - before the first implementer dispatch; an --auto-mode run, whose stamp the hook writes, opens no window.",
+      "source": { "file": "stack/hooks/guard-unapproved-dispatch.js", "marker": "it runs only after the user's explicit approval" },
+      "window": { "opens": { "event": { "ref": "implementer" }, "first": true, "lookback": "session", "unless": { "typed": "--auto-mode" } } },
+      "steps": [ { "id": "stamp-first", "type": "tool_order", "after": { "ref": "implementer" }, "before": { "any": [
+        { "all": [ { "tool": "Write", "field": "file_path", "text_match": "approvals[\\\\/](?:[^\\\\/]+[\\\\/])?APPROVAL$" }, { "tool": "Write", "field": "content", "text_match": "^(?:APPROVED|AUTO)\\b" } ] },
+        { "all": [ { "tool": "Bash", "field": "command", "text_match": "approvals[\\\\/](?:[^\\\\/\\s]+[\\\\/])?APPROVAL" }, { "tool": "Bash", "field": "command", "text_match": "\\b(?:APPROVED|AUTO)\\b" } ] }
+      ] } } ]
+    },
+    {
+      "id": "D2", "area": "decisions",
+      "claim": "Every answered AskUserQuestion is in the session's history (state/history/<sid>.json rulings).",
+      "source": { "file": "scripts/history.test.js", "marker": "upsert records rulings, the live plan, commits and dirty files" },
+      "window": { "opens": "session" },
+      "steps": [ { "id": "answers-kept", "type": "x_state", "source": "history", "match": { "answer": "." }, "perEvent": { "tool": "AskUserQuestion", "succeeded": true } } ]
+    }
+  ]
+}

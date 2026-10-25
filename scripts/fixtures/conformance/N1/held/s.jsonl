@@ -1,0 +1,3 @@
+{"type":"user","timestamp":"2026-10-25T10:00:01.000Z","message":{"role":"user","content":"fix the cart total"}}
+{"type":"assistant","timestamp":"2026-10-25T10:00:02.000Z","message":{"id":"m1","role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"LSP","input":{"operation":"workspaceSymbol","query":"cartTotal"}}]}}
+{"type":"assistant","timestamp":"2026-10-25T10:00:03.000Z","message":{"id":"m2","role":"assistant","content":[{"type":"tool_use","id":"toolu_2","name":"Read","input":{"file_path":"src/cart.js","offset":10,"limit":30}}]}}

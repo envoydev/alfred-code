@@ -1,0 +1,2 @@
+{"type":"user","timestamp":"2026-10-25T10:00:23.000Z","message":{"role":"user","content":"ship it?"}}
+{"type":"assistant","timestamp":"2026-10-25T10:00:24.000Z","message":{"id":"m43","role":"assistant","content":[{"type":"tool_use","id":"toolu_43","name":"AskUserQuestion","input":{"questions":[{"question":"Which way?","header":"Way","multiSelect":false,"options":[{"label":"Hold","description":"the Hold way"},{"label":"Ship now (Recommended)","description":"the Ship now (Recommended) way"}]}]}}]}}

@@ -2336,3 +2336,51 @@ test('houseBare: a session recorded before a rename joins the item under its new
   assert.strictEqual(houseBare('alfred-code:task-solve'), 'task-solve');
   assert.strictEqual(houseBare('superpowers:brainstorming'), 'superpowers:brainstorming', 'a foreign namespace stays whole');
 });
+
+// --- item 7: the Conformance section (2026-10-25) ------------------------------------------------------------------
+const cells = (md, id) => md.split('\n').find((l) => l.startsWith(`| ${id} |`)).split(/(?<!\\)\|/).slice(5, 10).map((c) => c.trim());
+
+test('analyze-usage prints a machine-written Conformance section outside JUDGMENT_HEAD_RE; --check-report accepts a verdict citing it (A7.2)', () => {
+  const dir = tmp();
+  fs.cpSync(path.join(__dirname, 'fixtures', 'conformance', 'F1', 'violated'), dir, { recursive: true });
+  const dest = path.join(dir, 'report.md');
+  assert.strictEqual(cli([path.join(dir, 's.jsonl'), '--report-md', '--out', dest]).status, 0);
+  const md = fs.readFileSync(dest, 'utf8');
+  assert.match(md, /^## Conformance - expected vs observed \(machine-written\)$/m);
+  assert.doesNotMatch('Conformance - expected vs observed (machine-written)', require('./analyze-usage.js').JUDGMENT_HEAD_RE);
+  for (const area of ['navigation', 'scoring', 'preferences', 'awareness', 'questions', 'answers', 'flow', 'decisions']) assert.match(md, new RegExp(`\\| ${area} \\|`), area);
+  assert.deepStrictEqual(cells(md, 'F1').slice(2, 3), ['1'], 'F1 violated once');
+  assert.match(md, /^\| task-solve \| size-first \| 1 \| 0 \| 1 \| 0 \|$/m, 'the expect.json steps graded in the window task-solve opened');
+  // an author replaces the FILL IN skeleton (whose TOKEN VERDICT template check-report rejects unfilled) with the verdict
+  fs.writeFileSync(dest, `${md.slice(0, md.indexOf('## Waste analysis - FILL IN'))}## Verdict\n\nThe flow claim F1 was violated 1 time (Conformance row F1).\n`);
+  assert.strictEqual(cli(['--check-report', dest]).status, 0);
+});
+test('a state claim reads data/ beside the transcript or --data-root; with neither it is not visible, naming the file (item 7 design 4)', () => {
+  const dir = tmp();
+  fs.cpSync(path.join(__dirname, 'fixtures', 'conformance', 'D2', 'held'), dir, { recursive: true });
+  const d2 = (...args) => {
+    const dest = path.join(dir, 'report.md');
+    assert.strictEqual(cli([path.join(dir, 's.jsonl'), '--report-md', ...args, '--out', dest]).status, 0);
+    return cells(fs.readFileSync(dest, 'utf8'), 'D2');
+  };
+  assert.deepStrictEqual(d2(), ['1', '1', '0', '0', '']);
+  fs.renameSync(path.join(dir, 'data'), path.join(dir, 'elsewhere'));
+  assert.deepStrictEqual(d2(), ['1', '0', '0', '1', '<data root>/state/history/s.json']);
+  assert.deepStrictEqual(d2('--data-root', path.join(dir, 'elsewhere')), ['1', '1', '0', '0', '']);
+});
+test('--no-conformance leaves the section out; the probe kinds the shell guards write get a table each; the navigation row names no retired server', () => {
+  const dir = tmp();
+  fs.cpSync(path.join(__dirname, 'fixtures', 'conformance', 'N1', 'violated'), dir, { recursive: true });
+  const row = (kind, extra = {}) => JSON.stringify({ ts: '2026-10-25T10:00:03.000Z', hook: 'shell-guards.js', event: 'PreToolUse', tool: 'Bash', mode: 'probe', kind, reason: `probe: ${kind}`, detail: { branch: kind, ...extra } });
+  fs.writeFileSync(path.join(dir, 'hook-blocks-s.jsonl'), [row('symbol-grep', { pattern: 'cartTotal' }), row('symbol-grep', { pattern: 'cartTotal' }), row('bg-note'), row('sed-multi-match')].join('\n') + '\n');
+  const dest = path.join(dir, 'report.md');
+  assert.strictEqual(cli([path.join(dir, 's.jsonl'), '--report-md', '--hook-blocks', dir, '--out', dest]).status, 0);
+  const md = fs.readFileSync(dest, 'utf8');
+  assert.match(md, /^\| symbol-grep \| 2 \| .*cartTotal x2/m);
+  assert.match(md, /^\| bg-note \| 1 \|/m);
+  assert.match(md, /^\| sed-multi-match \| 1 \|/m);
+  assert.doesNotMatch(md, /^\| monitor-note \|/m, 'a kind with no row prints no table');
+  assert.doesNotMatch(md, /locate with serena/);
+  assert.strictEqual(cli([path.join(dir, 's.jsonl'), '--report-md', '--no-conformance', '--out', dest]).status, 0);
+  assert.doesNotMatch(fs.readFileSync(dest, 'utf8'), /^## Conformance/m);
+});

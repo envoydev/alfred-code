@@ -743,6 +743,7 @@ test('audit 2026-10-14 RU04: the first background Bash call of each actor carrie
   assert.ok(fs.readdirSync(marks).some((f) => f === 'alfred-bg-note-bg1-main') && fs.readdirSync(marks).some((f) => f === 'alfred-bg-note-bg1-a1'), 'one marker per actor, in the hook temp dir');
   const rows = ledgerRows(dir, 'bg1').filter((x) => x.detail && x.detail.branch === 'bg-note');
   assert.deepEqual(rows.map((x) => x.mode), ['probe', 'probe'], 'one probe row per note');
+  assert.strictEqual(rows[0].kind, 'bg-note', 'the probe row names its kind (item 7)');
   // a marker dir that cannot be written: silent, never a note on every call
   const gone = { ...env, ALFRED_CODE_HOOK_LOG_DIR: path.join(marks, 'missing', 'deeper') };
   const r = run(DISPATCH, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: bg, session_id: 'bg3', cwd: dir }, { cwd: dir, env: gone });
@@ -783,6 +784,7 @@ test('audit 2026-10-20 C32: the first Monitor call of each actor carries the per
   assert.ok(fs.readdirSync(marks).includes('alfred-bg-note-mon-m1-main'), 'its own marker, under the swept prefix');
   const rows = ledgerRows(dir, 'm1').filter((x) => x.detail && x.detail.branch === 'monitor-note');
   assert.deepEqual(rows.map((x) => x.mode), ['probe', 'probe'], 'one probe row per note (main, a1)');
+  assert.strictEqual(rows[0].kind, 'monitor-note', 'the probe row names its kind (item 7)');
 });
 
 test('audit 2026-10-10: an unaddressed sed -i s/// over several lines of its file gets a note naming them', () => {
@@ -793,6 +795,8 @@ test('audit 2026-10-10: an unaddressed sed -i s/// over several lines of its fil
   assert.equal(own(dir, "sed -i '' '2s/^- status: TODO$/- status: IN_PROGRESS/' plan.md").context, '', 'an addressed command');
   assert.equal(own(dir, "sed -i '' 's/^# plan$/# Plan/' plan.md").context, '', 'one line matches');
   assert.equal(own(dir, "sed -i '' 's/(/[/' plan.md").context, '', 'a pattern that is not a regex in JS is skipped, never thrown');
+  const sedRow = rowsIn(dir).find((x) => x.detail && x.detail.branch === 'sed-multi-match');
+  assert.strictEqual(sedRow.kind, 'sed-multi-match', 'the probe row names its kind (item 7)');
 });
 
 test('audit 2026-10-10: a recursive grep for a code identifier in the main session writes one probe row; a seat writes none', () => {
@@ -802,6 +806,7 @@ test('audit 2026-10-10: a recursive grep for a code identifier in the main sessi
   run(DISPATCH, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'grep -rn OrderService .' }, session_id: 'own', cwd: dir, agent_id: 'seat-1' }, { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir } });
   const probes = rowsIn(dir).filter((x) => x.mode === 'probe' && x.detail.branch === 'symbol-grep');
   assert.deepStrictEqual(probes.map((x) => x.detail.pattern), ['SearchTermNormalizer'], 'bc2fa83e');
+  assert.strictEqual(probes[0].kind, 'symbol-grep', 'the probe row names its kind (item 7)');
 });
 
 test('audit 2026-10-10: the dispatcher\'s own checks stand down where the stack does - a repo never set up, hook_profile minimal', () => {

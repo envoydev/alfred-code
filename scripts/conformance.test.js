@@ -1,0 +1,153 @@
+'use strict';
+// conformance: the stack's claims graded over a real session - each window a skill or a turn opens, cut from one parse
+// (item 7, 2026-10-25). The windows first, then the claims file, the state grader and the marker lint.
+const test = require('node:test');
+const assert = require('node:assert');
+const sc = require('./skill-comply.js');
+const cf = require('./conformance.js');
+
+let seq = 0;
+const tool = (name, input = {}) => ({ type: 'assistant', message: { id: `m${++seq}`, role: 'assistant', content: [{ type: 'tool_use', id: `t${seq}`, name, input }] } });
+const user = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+const cmdRow = (name) => user(`<command-name>/${name}</command-name>\n<command-message>${name}</command-message>\n<command-args></command-args>`);
+const jsonl = (rows) => rows.map((r) => JSON.stringify(r)).join('\n') + '\n';
+const stepOf = (result, id) => result.steps.find((s) => s.id === id);
+
+test('windowsOf: a Skill call and a typed command row both open it; the first ask closes it (A7.6, Review Focus 3)', () => {
+    const run = sc.parseTranscript(jsonl([cmdRow('task-solve'), tool('Read', { file_path: 'a.md' }), tool('AskUserQuestion', { questions: [] }),
+        tool('Edit', { file_path: 'src/app.js', old_string: 'a', new_string: 'b' }), user('next')]));
+    assert.deepStrictEqual(cf.windowsOf(run, 'task-solve').map((w) => [w.from, w.to]), [[0, 2]]);
+    const [{ result }] = cf.gradeSession(run, sc.loadExpectation('task-solve').data);
+    assert.notStrictEqual(stepOf(result, 'nothing-builds').verdict, 'FAIL', 'the Edit after the gate is outside the window');
+    const viaSkill = sc.parseTranscript(jsonl([user('fix it'), tool('Skill', { skill: 'alfred-code:task-solve' }), tool('Read', { file_path: 'a.md' }), user('more')]));
+    assert.deepStrictEqual(cf.windowsOf(viaSkill, 'task-solve').map((w) => [w.from, w.to]), [[0, 2]]);
+});
+test('gradeSession: no window gives []; a per-turn expectation opens at each prompt', () => {
+    assert.deepStrictEqual(cf.gradeSession(sc.parseTranscript(jsonl([user('hi')])), sc.loadExpectation('task-solve').data), []);
+    const turns = sc.parseTranscript(jsonl([user('a'), tool('Read', { file_path: 'a.md' }), user('b'), tool('Read', { file_path: 'b.md' })]));
+    assert.strictEqual(cf.gradeSession(turns, sc.loadExpectation('answer-budget').data).length, 2);
+});
+test('a harness row inside a window - a task notice, a compaction summary - neither closes it nor opens a turn', () => {
+    const notice = user('<task-notification>\n<task-id>x</task-id>\n<status>completed</status>\n</task-notification>');
+    const summary = { ...user('This session is being continued from a previous conversation.'), isCompactSummary: true };
+    const run = sc.parseTranscript(jsonl([cmdRow('task-solve'), tool('Read', { file_path: 'a.md' }), notice, summary, tool('Write', { file_path: 'p.md', content: 'x' }), user('next')]));
+    assert.deepStrictEqual(cf.windowsOf(run, 'task-solve').map((w) => [w.from, w.to]), [[0, 2]]);
+    assert.deepStrictEqual(run.marks.map((m) => m.kind), ['command', 'attachment', 'attachment', 'prompt']);
+    assert.strictEqual(cf.gradeSession(run, sc.loadExpectation('answer-budget').data).length, 1, 'one typed prompt, one turn');
+});
+test('sliceRun: events and marks cut and rebased, users from the typed marks inside, lastMessage the last text inside', () => {
+    const say = (text) => ({ type: 'assistant', message: { id: `m${++seq}`, role: 'assistant', content: [{ type: 'text', text }] } });
+    const run = sc.parseTranscript(jsonl([user('a'), say('one'), user('b'), tool('Read', { file_path: 'x' }), say('two'), user('c'), say('three')]));
+    const s = cf.sliceRun(run, { from: 1, to: 3 });
+    assert.deepStrictEqual(s.events.map((e) => e.tool), ['Read', '@text']);
+    assert.deepStrictEqual(s.marks.map((m) => [m.at, m.text]), [[0, 'b']]);
+    assert.deepStrictEqual([s.users, s.lastMessage], [['b'], 'two']);
+});
+test('gradeSession: a session: false step is listed SKIPPED, never graded', () => {
+    const exp = JSON.parse(JSON.stringify(sc.loadExpectation('task-solve').data));
+    exp.steps.find((s) => s.id === 'nothing-builds').session = false;
+    const run = sc.parseTranscript(jsonl([cmdRow('task-solve'), tool('Edit', { file_path: 'src/app.js', old_string: 'a', new_string: 'b' })]));
+    const step = stepOf(cf.gradeSession(run, exp)[0].result, 'nothing-builds');
+    assert.strictEqual(step.verdict, 'SKIP');
+    assert.match(step.results[0].explanation, /^SKIPPED - session: false$/);
+});
+
+// --- the claims file, the state grader and the marker lint (Task 13) ---------------------------------
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const stamped = (row, iso) => ({ ...row, timestamp: iso });
+
+test('every claim: held 1 on its holding bundle, violated 1 on its violating one; a state claim without data/ is not visible, naming the path (A7.1)', () => {
+    const claims = cf.loadClaims();
+    assert.strictEqual(new Set(claims.map((c) => c.area)).size, 8);
+    assert.ok(claims.length >= 16);
+    assert.deepStrictEqual(claims.filter((c) => cf.evidenceOf(c) !== 'trace').map((c) => c.id).sort(), ['D2', 'P1', 'P2', 'S1']);
+    for (const c of claims) {
+        const fx = cf.claimFixtures(c.id);
+        assert.strictEqual(cf.gradeClaims(fx.held, [c])[0].held, 1, c.id);
+        assert.strictEqual(cf.gradeClaims(fx.violated, [c])[0].violated, 1, c.id);
+        const ev = cf.evidenceOf(c);
+        if (ev === 'trace') { assert.strictEqual(fx.unseen, undefined, `${c.id}: a trace claim has no unseen case`); continue; }
+        const unseen = cf.gradeClaims(fx.unseen, [c])[0];
+        assert.deepStrictEqual([unseen.notVisible, unseen.held, unseen.violated], [1, 0, 0], c.id);
+        for (const p of ev) assert.ok(unseen.missing.includes(`<data root>/${p.replace('<sid>', 's')}`), `${c.id}: ${p}`);
+    }
+});
+test('x_state before: a ledger row orders against the first matching event; no row, no time or no source is not visible; no event is N/A', () => {
+    const P1 = cf.loadClaims().find((c) => c.id === 'P1');
+    const edit = sc.parseTranscript(jsonl([stamped(user('go'), '2026-10-25T10:00:00Z'),
+        stamped(tool('Edit', { file_path: 'a.js', old_string: 'a', new_string: 'b' }), '2026-10-25T10:00:05Z')]));
+    const bundle = (ledger, main = edit) => ({ sid: 's', session: { main, seats: [] },
+        state: { history: null, scorer: null, ledger, missing: ledger ? {} : { ledger: 'statistics/hook-blocks/s.jsonl' } } });
+    const push = (iso) => ({ kind: 'preferences-push', ts: iso && Date.parse(iso) });
+    const one = (b) => cf.gradeClaims(b, [P1])[0];
+    assert.strictEqual(one(bundle([push('2026-10-25T10:00:01Z')])).held, 1, 'the push before the edit holds');
+    assert.strictEqual(one(bundle([push('2026-10-25T10:00:09Z')])).violated, 1, 'a push after the edit is a violation');
+    assert.strictEqual(one(bundle([{ kind: 'other', ts: Date.parse('2026-10-25T10:00:01Z') }])).notVisible, 1, 'no push row: the writer left none');
+    assert.strictEqual(one(bundle([push(null)])).notVisible, 1, 'a row with no time cannot order');
+    const none = one(bundle(null));
+    assert.deepStrictEqual([none.notVisible, none.missing], [1, '<data root>/statistics/hook-blocks/s.jsonl']);
+    assert.strictEqual(one(bundle([push('2026-10-25T10:00:01Z')], sc.parseTranscript(jsonl([user('go')])))).applied, 0, 'no edit: the claim did not apply');
+});
+test('loadBundle: data/ beside the transcript is the default; a garbage history file is not visible and marked unreadable', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cf-'));
+    try {
+        fs.writeFileSync(path.join(dir, 's.jsonl'), jsonl([user('go')]));
+        fs.mkdirSync(path.join(dir, 'data', 'state', 'history'), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'data', 'state', 'history', 's.json'), '{ not json');
+        const b = cf.loadBundle(path.join(dir, 's.jsonl'));
+        assert.deepStrictEqual([b.sid, b.state.history, b.state.scorer, b.state.ledger], ['s', null, null, null]);
+        assert.strictEqual(b.state.missing.history, 'state/history/s.json (unreadable)');
+        assert.strictEqual(cf.loadBundle(path.join(dir, 's.jsonl'), { dataRoot: path.join(dir, 'nowhere') }).state.missing.history, 'state/history/s.json');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+test("background-wait in a session: a turn that ran no suite fails nothing - the replay fixture's steps (its suite, its Monitor, its failing test) are skipped", () => {
+    const run = sc.parseTranscript(jsonl([user('what does this file do?'), tool('Read', { file_path: 'src/app.js' }), { type: 'assistant', message: { id: 'mx', role: 'assistant', content: [{ type: 'text', text: 'It wires the routes.' }] } }]));
+    const [{ result }] = cf.gradeSession(run, sc.loadExpectation('background-wait').data);
+    assert.deepStrictEqual(result.steps.map((s) => [s.id, s.verdict]), [['background', 'SKIP'], ['monitor', 'SKIP'], ['no-whole-log', 'PASS'], ['no-name-grep', 'PASS'], ['answer', 'SKIP']]);
+});
+test('loadBundle: a --hook-blocks folder reads hook-blocks-<sid>.jsonl or <sid>.jsonl, never the transcript itself, as readBlockLedger does', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cf-'));
+    try {
+        const t = path.join(dir, 's.jsonl');
+        fs.writeFileSync(t, jsonl([user('go')]));
+        const only = cf.loadBundle(t, { hookBlocks: dir }).state;
+        assert.strictEqual(only.ledger, null, 'the bundle folder holds only the transcript');
+        assert.strictEqual(only.missing.ledger, dir);
+        fs.writeFileSync(path.join(dir, 'hook-blocks-s.jsonl'), jsonl([{ ts: '2026-10-25T10:00:00.000Z', hook: 'shell-guards.js', mode: 'probe', kind: 'bg-note' }]));
+        assert.deepStrictEqual(cf.loadBundle(t, { hookBlocks: dir }).state.ledger.map((r) => r.kind), ['bg-note']);
+        const docs = fs.mkdtempSync(path.join(os.tmpdir(), 'cf-'));
+        fs.writeFileSync(path.join(docs, 's.jsonl'), jsonl([{ ts: '2026-10-25T10:00:00.000Z', hook: 'preferences-session.js', mode: 'probe', kind: 'preferences-push' }]));
+        assert.deepStrictEqual(cf.loadBundle(t, { hookBlocks: docs }).state.ledger.map((r) => r.kind), ['preferences-push'], "the docs root's own <sid>.jsonl");
+        fs.rmSync(docs, { recursive: true, force: true });
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+test('lint: a claim whose marker left its file fails, naming the claim id (A7.5)', () => {
+    assert.match(cf.lintConformance([{ id: 'N1', source: { file: 'scripts/skill-comply.js', marker: 'no such line' } }]).join('\n'), /N1/);
+    assert.deepStrictEqual(cf.lintConformance(cf.loadClaims()), []);
+});
+test('event windows: the lookback counts tool calls, a from anchor starts the window, unless reads the typed turns inside, a seat is graded on its own run', () => {
+    const say = (text) => ({ type: 'assistant', message: { id: `m${++seq}`, role: 'assistant', content: [{ type: 'text', text }] } });
+    const run = sc.parseTranscript(jsonl([user('go'), tool('Grep', { pattern: 'x' }), say('found it'), tool('Glob', { pattern: '*' }), tool('Bash', { command: 'ls' }), tool('Read', { file_path: 'src/a.js' })]));
+    const read = { tool: 'Read', field: 'file_path', text_match: '\\.js$' };
+    assert.deepStrictEqual(cf.windowsFor(run, { opens: { event: read, lookback: 3 } }).map((w) => [w.from, w.to]), [[0, 5]], 'three tool calls back, the text block not counted');
+    assert.deepStrictEqual(cf.windowsFor(run, { opens: { event: read, lookback: 2 } }).map((w) => [w.from, w.to]), [[2, 5]]);
+    assert.deepStrictEqual(cf.windowsFor(run, { opens: { event: read, from: 'Glob' } }).map((w) => [w.from, w.to]), [[2, 5]]);
+    assert.deepStrictEqual(cf.windowsFor(run, { opens: { event: 'Edit', from: 'Glob' } }), [], 'no event after the anchor, no window');
+    const auto = sc.parseTranscript(jsonl([user('<command-name>/task-solve</command-name>\n<command-args>--auto-mode fix it</command-args>'), tool('Agent', { subagent_type: 'alfred-code:aspnet-implementer' })]));
+    const dispatch = { opens: { event: { tool: 'Agent', field: 'subagent_type', text_match: 'implementer$' }, first: true, lookback: 'session', unless: { typed: '--auto-mode' } } };
+    assert.deepStrictEqual(cf.windowsFor(auto, dispatch), [], 'an auto-mode run opens no window');
+    assert.strictEqual(cf.windowsFor(sc.parseTranscript(jsonl([user('go'), tool('Agent', { subagent_type: 'x-implementer' })])), dispatch).length, 1);
+    const claim = { id: 'T', area: 'awareness', window: { opens: { seat: 'verifier$', event: { tool: 'Bash', field: 'command', text_match: 'npm start' }, first: true, lookback: 'session' } },
+        steps: [{ id: 'read', type: 'tool_used', tool: 'Read' }] };
+    const seatRun = (rows) => sc.parseTranscript(jsonl(rows), { sidechain: true });
+    const b = { sid: 's', session: { main: sc.parseTranscript(jsonl([user('go'), tool('Bash', { command: 'npm start' })])), seats: [
+        { agentType: 'alfred-code:aspnet-verifier', run: seatRun([user('brief'), tool('Read', { file_path: 'r.md' }), tool('Bash', { command: 'npm start' })]) },
+        { agentType: 'alfred-code:aspnet-verifier', run: seatRun([user('brief'), tool('Bash', { command: 'npm start' })]) },
+        { agentType: 'alfred-code:aspnet-implementer', run: seatRun([user('brief'), tool('Bash', { command: 'npm start' })]) }] },
+        state: { history: null, scorer: null, ledger: null, missing: {} } };
+    const g = cf.gradeClaims(b, [claim])[0];
+    assert.deepStrictEqual([g.applied, g.held, g.violated], [2, 1, 1], 'the two verifiers graded, the main session and the implementer not');
+    assert.match(g.locators.join(' '), /aspnet-verifier/);
+});

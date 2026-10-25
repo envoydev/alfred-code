@@ -23,6 +23,8 @@ const user = (text) => ({ type: 'user', message: { role: 'user', content: text }
 const exited = (row, code = 1, out = '') => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: row.message.content[0].id, is_error: true, content: `Exit code ${code}\n${out}` }] } });
 const denied = (row) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: row.message.content[0].id, is_error: true, content: 'blocked' }] } });
 const jsonl = (rows) => rows.map((r) => JSON.stringify(r)).join('\n') + '\n';
+const cmdRow = (name) => user(`<command-name>/${name}</command-name>\n<command-message>${name}</command-message>\n<command-args></command-args>`);
+const meta = (text) => ({ type: 'user', isMeta: true, message: { role: 'user', content: text } });
 
 const expectOf = (skill) => sc.loadExpectation(skill).data;
 const verdicts = (r) => Object.fromEntries(r.steps.map((s) => [s.id, s.verdict]));
@@ -751,4 +753,42 @@ test('replay --live against a stub claude installs, scaffolds, records and grade
         assert.strictEqual(fs.readFileSync(path.join(out, 'csharp', 'plain', 'transcript.jsonl'), 'utf8'), fs.readFileSync(canned, 'utf8'));
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// --- item 7 (2026-10-25): the grading half split out, and the positions a session is cut at --------------------
+
+test('gradeRun on a parsed run equals grade on its text, for every expectation (item 7, A7.3)', () => {
+    for (const name of sc.listSkills()) {
+        const exp = expectOf(name);
+        const traces = [
+            jsonl([user('go'), tool('Skill', { skill: name }), tool('Read', { file_path: 'a.md' }), say('Done.')]),
+            jsonl([user('go'), tool('Edit', { file_path: 'src/app.js', old_string: 'a', new_string: 'b' }), say('Changed it.')]),
+            jsonl([user('go'), say('Nothing to do.')]),
+        ];
+        for (const text of traces) assert.deepStrictEqual(sc.gradeRun(exp, sc.parseTranscript(text)), sc.grade(exp, text), name);
+    }
+});
+test('parseTranscript marks typed prompts, command rows and meta rows at their event position', () => {
+    const run = sc.parseTranscript(jsonl([user('go'), tool('Read', { file_path: 'a.md' }), cmdRow('task-solve'), meta('hook text'), tool('Edit', { file_path: 'a.md' })]));
+    assert.deepStrictEqual(run.marks.map((m) => [m.at, m.kind]), [[0, 'prompt'], [1, 'command'], [1, 'attachment']]);
+    assert.strictEqual(run.events.length, 2);
+    assert.deepStrictEqual(run.users, ['go', run.marks[1].text], 'the command row is still a user turn; the meta row is not');
+    const blocks = sc.parseTranscript(jsonl([{ type: 'user', isMeta: true, message: { role: 'user', content: [{ type: 'text', text: 'skill body' }, { type: 'text', text: 'more' }] } }]));
+    assert.strictEqual(blocks.marks[0].text, 'skill body\nmore', 'a block meta row\'s text is its text blocks alone');
+});
+test('parseTranscript marks a session file\'s attachment rows - hook context, instruction loads, a queued prompt - and reads a seat\'s own sidechain rows on request', () => {
+    const att = (a) => ({ type: 'attachment', attachment: a });
+    const rows = [att({ type: 'instructions', files: [{ path: 'C:\\p\\.claude\\rules\\alfred-awareness.md', content: 'x' }, { path: '/p/.alfred/docs/awareness/PROJECT-AWARENESS.md', content: 'y' }] }),
+        user('go'), att({ type: 'hook_additional_context', content: ['Answer budget (alfred-interaction.md): 3 sentences'], hookEvent: 'UserPromptSubmit' }),
+        tool('Read', { file_path: 'a.md' }), att({ type: 'queued_command', prompt: 'and the tests too', humanTurn: true }),
+        att({ type: 'nested_memory', path: '/p/.claude/rules/markdown-docs.md' }), att({ type: 'skill_listing', content: 'ignored' })];
+    const run = sc.parseTranscript(jsonl(rows));
+    assert.deepStrictEqual(run.marks.map((m) => [m.at, m.kind]), [[0, 'attachment'], [0, 'prompt'], [0, 'attachment'], [1, 'prompt'], [1, 'attachment']]);
+    assert.strictEqual(run.marks[0].text, 'C:/p/.claude/rules/alfred-awareness.md\n/p/.alfred/docs/awareness/PROJECT-AWARENESS.md');
+    assert.deepStrictEqual(run.users, ['go', 'and the tests too'], 'a queued prompt is the user\'s turn');
+    const ctx = (pattern) => sc.gradeRun({ steps: [{ id: 'c', graders: [{ type: 'regex', target: 'context', pattern, flags: 'm' }] }] }, run).steps[0].verdict;
+    assert.deepStrictEqual([ctx('^Answer budget'), ctx('awareness/PROJECT-AWARENESS\\.md$'), ctx('and the tests too')], ['PASS', 'PASS', 'FAIL'], 'context is the attachment marks\' text, never a typed turn');
+    const seat = jsonl([{ ...user('the brief'), isSidechain: true }, { ...tool('Read', { file_path: 'b.md' }), isSidechain: true }]);
+    assert.strictEqual(sc.parseTranscript(seat).events.length, 0, 'a main-session parse skips a seat\'s rows');
+    assert.deepStrictEqual(sc.parseTranscript(seat, { sidechain: true }).events.map((e) => e.tool), ['Read']);
 });

@@ -1634,3 +1634,21 @@ test('DESIGN_RUN: past one room the rest is named, never held, and the first sco
     }
     finally { p.rm(); }
 });
+
+// Item 7 (2026-10-25): the usage analyzer's preferences claim needs a record that the session-start push happened.
+test('the session-start push writes one preferences-push probe row (item 7)', () =>
+{
+    const p = project({ docs: { 'PERSONAL-PREFERENCES.md': PERSONAL_PREFS } });
+    try
+    {
+        const s = sid();
+        p.hook({ hook_event_name: 'SessionStart', source: 'startup', session_id: s });
+        const rows = p.read(`.alfred/statistics/hook-blocks/${s}.jsonl`).trim().split('\n').map(JSON.parse);
+        assert.deepStrictEqual(rows.filter((r) => r.kind === 'preferences-push').length, 1);
+        assert.strictEqual(rows.find((r) => r.kind === 'preferences-push').mode, 'probe', 'a measurement, never counted as a block');
+        const none = project({ docs: {} });
+        try { none.hook({ hook_event_name: 'SessionStart', source: 'startup', session_id: s }); assert.ok(!none.exists(`.alfred/statistics/hook-blocks/${s}.jsonl`), 'nothing pushed, no row'); }
+        finally { none.rm(); }
+    }
+    finally { p.rm(); }
+});

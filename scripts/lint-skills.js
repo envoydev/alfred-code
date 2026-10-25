@@ -2567,6 +2567,12 @@ function main()
     try { adapterDrift = require('./tool-adapters.js').drift(); }
     catch (err) { adapterDrift = [`meta/tool-adapters.json or meta/mcp-tools.json could not be read (${err.message}), so the adapter table was not checked`]; }
     for (const finding of adapterDrift) flag(finding);
+    // 68. Every claim of meta/conformance.json cites the line that states its behaviour (scripts/conformance.js): a marker
+    // that left its file sends the claim to review with the change that moved it.
+    let conformanceDrift;
+    try { const cf = require('./conformance.js'); conformanceDrift = cf.lintConformance(cf.loadClaims()); }
+    catch (err) { conformanceDrift = [`meta/conformance.json could not be read (${err.message}), so no claim's marker was checked (check 68)`]; }
+    for (const finding of conformanceDrift) flag(finding);
     // 64. meta/skill-headings.json holds every stack skill's CURRENT heading, so the next description change still knows
     // this one (the installer's M3 claim of an older copy the stamp does not record, scripts/install/skill-headings.js).
     for (const finding of lintSkillHeadings()) flag(finding);

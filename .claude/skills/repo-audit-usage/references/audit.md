@@ -145,6 +145,10 @@ already has one is skipped on re-invocation.
   `node scripts/analyze-usage.js --check-report <report-usage.md>` prints every judgment number that
   cites no machine row of that same report; a wrong number is itself a finding, and your value is the
   one that enters the ledger.
+- **Conformance.** The skeleton's `## Conformance - expected vs observed (machine-written)` section grades
+  each claim in `meta/conformance.json` and every `meta/skill-comply/` step over the session: a
+  conformed / violated count in the audit file cites those rows; it never recounts them. A row
+  `not visible` in three audits running names a writer that is missing - say so in the summary.
 - **The audit file** `<AUDIT_DIR>/<session-id>.md`: header (id, date, stacks, task, headline
   numbers), one-line verdict, the TOKEN VERDICT and EFFECTIVENESS lines (delivered / cost / avoidable share; landed / corrections / unchecked claims / unheld stops), the scorecard rows quoted, the
   stack-surface scorecard (generated docs used or bypassed; skills fired, missed and misused; each

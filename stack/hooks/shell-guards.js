@@ -543,7 +543,7 @@ function ownChecks(stdin)
         catch { first = false; }
         if (first)
         {
-            row({ mode: 'probe', reason: `probe: ${watch.branch}`, detail: { branch: watch.branch } });
+            row({ mode: 'probe', kind: watch.branch, reason: `probe: ${watch.branch}`, detail: { branch: watch.branch } });
             out.results.push({ guard: `${SELF}.js`, code: 0, stderr: '', stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: watch.note } }) });
         }
     }
@@ -659,7 +659,7 @@ function ownChecks(stdin)
     }
     if (notes.length)
     {
-        row({ mode: 'probe', reason: 'probe: sed-multi-match', detail: { branch: 'sed-multi-match' } });
+        row({ mode: 'probe', kind: 'sed-multi-match', reason: 'probe: sed-multi-match', detail: { branch: 'sed-multi-match' } });
         out.results.push({ guard: `${SELF}.js`, code: 0, stderr: '', stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: notes.join('\n') } }) });
     }
 
@@ -675,7 +675,7 @@ function ownChecks(stdin)
             const ident = pattern.replace(/\\[b<>]/g, '');
             if (/^[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]*)+$/.test(ident) || /^[A-Za-z_]\w{2,}\\?\($/.test(ident))
             {
-                row({ mode: 'probe', reason: 'probe: symbol-grep', detail: { branch: 'symbol-grep', pattern: pattern.slice(0, 40) } });
+                row({ mode: 'probe', kind: 'symbol-grep', reason: 'probe: symbol-grep', detail: { branch: 'symbol-grep', pattern: pattern.slice(0, 40) } });
                 break;
             }
         }

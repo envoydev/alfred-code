@@ -529,11 +529,11 @@ function saveMarks(files, marks) {
   return false;
 }
 const dropRecord = (files) => { for (const f of files) { try { fs.rmSync(f, { force: true }); } catch {} } };
-function blockRow(ctx, input, kind, reason) {
+function blockRow(ctx, input, kind, reason, extra = {}) {
   try {
     const dir = layout ? layout.statsPath(ctx.home, ['hook-blocks']) : path.resolve(ctx.home, dataRootRel(), 'statistics', 'hook-blocks');
     fs.mkdirSync(dir, { recursive: true });
-    fs.appendFileSync(path.join(dir, `${safe(input.session_id)}.jsonl`), `${JSON.stringify({ ts: new Date().toISOString(), hook: 'preferences-session.js', event: input.hook_event_name || '', tool: input.tool_name || '', kind, reason: String(reason).split('\n')[0].slice(0, 200) })}\n`);
+    fs.appendFileSync(path.join(dir, `${safe(input.session_id)}.jsonl`), `${JSON.stringify({ ts: new Date().toISOString(), hook: 'preferences-session.js', event: input.hook_event_name || '', tool: input.tool_name || '', ...extra, kind, reason: String(reason).split('\n')[0].slice(0, 200) })}\n`);
   } catch {}
 }
 
@@ -932,7 +932,10 @@ function main() {
       return;
     }
     // The personal doc leads: in an output Claude Code caps, the tools line is the part to lose; the host lines are short.
-    const text = [personalPush(ctx), toolsText(ctx, null), hostText()].filter(Boolean).join('\n\n');
+    const personal = personalPush(ctx);
+    const text = [personal, toolsText(ctx, null), hostText()].filter(Boolean).join('\n\n');
+    // A measurement, never a block (`mode`): the usage analyzer's preferences claim reads it (item 7, 2026-10-25).
+    if (personal) blockRow(ctx, input, 'preferences-push', `probe: preferences-push - ${PERSONAL_DOC.file}, ${personal.length} chars`, { mode: 'probe' });
     if (text) emit('SessionStart', { additionalContext: text });
     return;
   }

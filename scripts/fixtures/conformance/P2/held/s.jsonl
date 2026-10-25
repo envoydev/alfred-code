@@ -1,0 +1,5 @@
+{"type":"user","timestamp":"2026-10-25T10:00:01.000Z","message":{"role":"user","content":"review my diff"}}
+{"type":"assistant","timestamp":"2026-10-25T10:00:02.000Z","message":{"id":"m32","role":"assistant","content":[{"type":"tool_use","id":"toolu_32","name":"Skill","input":{"skill":"review-code"}}]}}
+{"type":"user","timestamp":"2026-10-25T10:00:03.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_32","is_error":true,"content":"Before this review, read the user's code preferences ..."}]}}
+{"type":"assistant","timestamp":"2026-10-25T10:00:04.000Z","message":{"id":"m33","role":"assistant","content":[{"type":"tool_use","id":"toolu_33","name":"Skill","input":{"skill":"review-code"}}]}}
+{"type":"user","timestamp":"2026-10-25T10:00:05.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_33","is_error":false,"content":"Launching skill: review-code"}]}}

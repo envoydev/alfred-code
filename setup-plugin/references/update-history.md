@@ -419,3 +419,13 @@ reads `PERSONAL-CODE-PREFERENCES.md` and `ARCHITECTURE-PREFERENCES.md` before dr
 in the chat (`task-design`, `issue-diagnoser`, `task-build-from-scratch`) is handed the code preferences beside the
 skill's text - nothing is held or asked. Update refreshes the skill copies; the core brings the seats and the hook.
 Nothing to report.
+
+## after 2.10.1 - the usage report grades the stack's claims
+
+`capture-usage-report`'s skeleton gains a machine-written `## Conformance - expected vs observed` section: each claim
+the stack makes (`meta/conformance.json` - navigation, scoring, preferences, awareness, questions, answers, flow,
+decisions) and every graded skill step, counted applied, held, violated or not visible over the session, with the
+transcript locators of each violation. The batch copies each session's history record, scorer folder and block ledger
+into its bundle's `data/` and points the analyzer at the copy (`--data-root`), so a state claim still reads after the
+scorer folder is swept; a session with none of the three prints those claims `not visible`, never held. The verdict
+cites the rows and never recounts them. Update refreshes the skill copy; nothing else to report.

@@ -1378,3 +1378,13 @@ test('check 65: a sentence may end on an old home; an extension is another name'
     assert.strictEqual(of('the receipts live in <docs-path>/flow.\n').length, 1, 'a full stop is punctuation');
     assert.deepStrictEqual(of('a <docs-path>/plans.md file\n'), [], 'plans.md is not the plans/ folder');
 });
+
+// Item 7 (2026-10-25): each claim of meta/conformance.json cites the line that states its behaviour; check 68 sends a
+// claim to review when that line leaves its file.
+test('check 68: lint-skills.js runs the conformance marker check, and the live claims are clean', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'lint-skills.js'), 'utf8');
+    assert.match(src, /\/\/ 68\. [^\n]*meta\/conformance\.json/);
+    assert.match(src, /lintConformance\(/);
+    const cf = require('./conformance.js');
+    assert.deepStrictEqual(cf.lintConformance(cf.loadClaims()), []);
+});

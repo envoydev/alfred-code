@@ -1,9 +1,10 @@
 {
   "schema_version": 1,
   "skill": "background-wait",
+  "window": "turn",
   "sources": ["stack/rules/alfred-quality-gates.md", "stack/hooks/shell-guards.js"],
   "extracted": "2026-10-14",
-  "note": "Not a skill: the background-wait mechanics the always-on quality-gates rule carried until audit 2026-10-14 RU04 moved them to the shell dispatcher's note on the first background call. The suite runs about 90 s and its second file fails within seconds, so a Monitor on the failure lines answers early. Every step quotes the sentence it grades, in the rule or the note.",
+  "note": "Not a skill: the background-wait mechanics the always-on quality-gates rule carried until audit 2026-10-14 RU04 moved them to the shell dispatcher's note on the first background call. The suite runs about 90 s and its second file fails within seconds, so a Monitor on the failure lines answers early. Every step quotes the sentence it grades, in the rule or the note. In a real session (conformance.js, per turn) the three steps tied to the replay's suite and its failing test are session: false, so a turn that ran no suite fails nothing; the two others grade every turn.",
   "run": {
     "max_turns": 30,
     "stacks": ["javascript"],
@@ -29,6 +30,7 @@
   "steps": [
     {
       "id": "background",
+      "session": false,
       "from": "stack/rules/alfred-quality-gates.md",
       "quote": "A wait measured in MINUTES (a CI run, a container build, a full suite, an emulator boot) runs in the background",
       "graders": [
@@ -37,6 +39,7 @@
     },
     {
       "id": "monitor",
+      "session": false,
       "from": "stack/hooks/shell-guards.js",
       "quote": "A suite of unknown length (failures show long before its end), a condition inside a run or across several ",
       "graders": [
@@ -61,6 +64,7 @@
     },
     {
       "id": "answer",
+      "session": false,
       "from": "stack/rules/alfred-quality-gates.md",
       "quote": "runs in the background while you do work that does not depend on it",
       "graders": [

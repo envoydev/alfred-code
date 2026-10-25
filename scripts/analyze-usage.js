@@ -27,6 +27,8 @@
 //   node scripts/analyze-usage.js <s.jsonl> --report-md --out <file>  # write it, no shell redirect (the classifier denies those)
 //   node scripts/analyze-usage.js --check-report <report-usage.md>  # every judgment number against this report's own machine tables
 //   node scripts/analyze-usage.js <s.jsonl> --prices <file>        # price the cost row from another table than meta/model-prices.json
+//   node scripts/analyze-usage.js <s.jsonl> --report-md --data-root <d>  # the state the Conformance claims read, when not data/ beside it
+//   node scripts/analyze-usage.js <s.jsonl> --report-md --no-conformance  # leave the Conformance section out
 //
 // INVENTORY vs USE answers the complement of every consumption table: which installed skill,
 // agent, rule, plugin and MCP server the session (or, in directory mode, the corpus) never
@@ -3310,6 +3312,14 @@ function computeAggregates(main, agents) {
 // carried a sibling session's denial). The session being analyzed names its own file, so a
 // directory is narrowed to `<session-id>.jsonl` and, when that is absent, to nothing at all: an
 // empty tally is the truth, a neighbour's rows are not. Pass the file directly to bypass this.
+// The log-only rows shell-guards.js writes, each a table of its own in the Probes section: what the row marks.
+const SHELL_PROBES = {
+  'symbol-grep': 'a recursive grep for a code identifier in the main session - a symbol question the navigation tools answer',
+  'bg-note': "an actor's first background shell call - the note on how to watch it was sent",
+  'monitor-note': "an actor's first Monitor call - the one-start-line note was sent",
+  'sed-multi-match': 'an unaddressed sed -i whose pattern matched more than one line - the lines were named',
+};
+
 function readBlockLedger(target, sessionId, transcript) {
   // `given` separates 'no ledger passed' from 'a ledger with no row for this session' - the second
   // is a measured zero, the first is no measurement at all.
@@ -3349,6 +3359,14 @@ function readBlockLedger(target, sessionId, transcript) {
         if (o.mode === 'probe' && o.kind === 'root-cause' && o.detail) (out.rootCauseRows || (out.rootCauseRows = [])).push(o.detail);
         if (o.mode === 'probe' && o.kind === 'correction') { const c = out.correction || (out.correction = newCorrection()); c.turns += 1; if (o.injected === true) c.injected += 1; }
         if (o.mode === 'probe' && o.kind === 'rationalization') tallyRationalization(out.rationalization || (out.rationalization = newRationalization()), o.detail || {});
+        // The shell guards' notes and the symbol-grep row; a row from before `kind` names its kind in `detail.branch`.
+        const sk = o.mode === 'probe' ? o.kind || (o.detail && o.detail.branch) : null;
+        if (sk && Object.hasOwn(SHELL_PROBES, sk)) {
+          const sp = out.shellProbes || (out.shellProbes = {});
+          const t = sp[sk] || (sp[sk] = { rows: 0, patterns: new Map() });
+          t.rows += 1;
+          if (o.detail && o.detail.pattern) { const p = String(o.detail.pattern); t.patterns.set(p, (t.patterns.get(p) || 0) + 1); }
+        }
         continue;
       }
       out.rows += 1;
@@ -3913,7 +3931,7 @@ function efficiencyRows(main, agg, blockLedger) {
     const denials = blockLedger && blockLedger.given
       ? `${(blockLedger.byHook[WHOLE_FILE_HOOK] || { blocks: 0 }).blocks} whole-file denial(s) (hook-block ledger)`
       : `${agg.wholeFileBracket || 0} whole-file denial(s) (transcript bracket - ${blockLedger && blockLedger.missing ? `${blockLedger.missing}` : 'pass --hook-blocks for the ledger'})`;
-    rows.push({ practice: 'navigation', measured: `${n.located} of ${n.reads} source-file read(s) had a locate step in the ${NAV_WINDOW} calls before${n.reads ? ` (${Math.round((100 * n.located) / n.reads)}%)` : ''}; symbol tools ${n.symbolCalls} call(s) against ${n.grepLocated} grep-then-read sequence(s); ${denials}`, tests: 'alfred-navigation, main and seats: locate with serena or the LSP, then read the range - a read with no locate step before it reads to FIND something, a grep-then-read answers a symbol question by name-match, and every whole-file denial is a round trip lost' });
+    rows.push({ practice: 'navigation', measured: `${n.located} of ${n.reads} source-file read(s) had a locate step in the ${NAV_WINDOW} calls before${n.reads ? ` (${Math.round((100 * n.located) / n.reads)}%)` : ''}; symbol tools ${n.symbolCalls} call(s) against ${n.grepLocated} grep-then-read sequence(s); ${denials}`, tests: 'alfred-navigation, main and seats: locate through the navigation tools (the LSP first, then a scoped grep), then read the range - a read with no locate step before it reads to FIND something, a grep-then-read answers a symbol question by name-match, and every whole-file denial is a round trip lost' });
   }
   {
     const servers = Object.entries(agg.mcpServers || {});
@@ -4249,7 +4267,56 @@ function inventoryMarkdown(invUse, out) {
   }
 }
 
-function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
+// ---------- the Conformance section: each claim the stack makes, graded by conformance.js ----------
+// The verdict cites these rows; it never recounts them. One parse of the session, its seats and the state the claims
+// read (data/ beside the transcript, else --data-root), graded against meta/conformance.json and every expect.json.
+const cell = (s) => maskSecrets(String(s)).replace(/\r?\n/g, ' ').replace(/\|/g, '\\|');
+function conformanceOf(transcript, { dataRoot, hookBlocks } = {}) {
+  const started = Date.now();
+  try {
+    const cf = require('./conformance.js');
+    const sc = require('./skill-comply.js');
+    const bundle = cf.loadBundle(transcript, { ...(dataRoot ? { dataRoot } : {}), hookBlocks: hookBlocks || undefined });
+    const claims = cf.loadClaims();
+    const rows = cf.gradeClaims(bundle, claims).map((g, i) => ({ ...g, claim: claims[i].claim, source: claims[i].source.file, evidence: cf.evidenceOf(claims[i]) }));
+    const steps = [];
+    for (const skill of sc.listSkills()) {
+      let expect;
+      try { expect = sc.loadExpectation(skill).data; } catch { continue; }   // check 52 reports a broken file; the report skips it
+      const graded = cf.gradeSession(bundle.session.main, expect);
+      if (!graded.length) continue;
+      for (const s of expect.steps) {
+        const vs = graded.map((w) => (w.result.steps.find((x) => x.id === s.id) || {}).verdict);
+        const pass = vs.filter((v) => v === 'PASS').length, fail = vs.filter((v) => v === 'FAIL').length;
+        steps.push({ skill, step: s.id, windows: graded.length, pass, fail, skip: vs.length - pass - fail });
+      }
+    }
+    return { rows, steps, dataRoot: bundle.dataRoot, hookBlocks: hookBlocks ? path.resolve(hookBlocks) : null, ms: Date.now() - started };
+  } catch (err) {
+    return { error: err.message, ms: Date.now() - started };
+  }
+}
+function conformanceSection(c) {
+  const out = ['## Conformance - expected vs observed (machine-written)', ''];
+  if (c.error) return [...out, `_Not computed: ${cell(c.error)} - no claim is graded, so none may be cited as held._`, ''];
+  out.push('_Each claim the stack makes, graded over this session by `scripts/conformance.js`: `applied` counts the windows it opened, each `held`, `violated` or `not visible` (its evidence absent - never read as held). The verdict cites these rows; it never recounts them._', '');
+  out.push('| id | area | claim | source | applied | held | violated | not visible | missing | locators |', '|---|---|---|---|---|---|---|---|---|---|');
+  for (const r of c.rows) {
+    const src = `\`${r.source}\`${Array.isArray(r.evidence) ? ` (state: ${r.evidence.join(', ')})` : ''}`;
+    out.push(`| ${r.id} | ${r.area} | ${cell(r.claim)} | ${cell(src)} | ${r.applied}${r.partial ? ` (${r.partial} across a compaction)` : ''} | ${r.held} | ${r.violated} | ${r.notVisible} | ${cell(r.missing)} | ${cell(r.locators.join('; '))} |`);
+  }
+  out.push('');
+  if (c.steps.length) {
+    out.push('| skill | step | windows | pass | fail | skip |', '|---|---|---|---|---|---|');
+    for (const s of c.steps) out.push(`| ${s.skill} | ${s.step} | ${s.windows} | ${s.pass} | ${s.fail} | ${s.skip} |`);
+    out.push('');
+  } else out.push('_No skill with a `meta/skill-comply/` expectation opened a window in this session._', '');
+  const root = c.dataRoot ? `data root \`${c.dataRoot}\`` : 'no data root (no `--data-root`, no `data/` beside the transcript) - every state claim reads not visible';
+  out.push(`_Graded in ${c.ms} ms; ${root}${c.hookBlocks ? `; hook-blocks \`${c.hookBlocks}\`` : ''}._`, '');
+  return out;
+}
+
+function printMarkdown(main, agents, hookLog, window, blockLedger, invUse, conformance) {
   const extraFacts = [];
   if (main.peakCtx) extraFacts.push(`- **Peak context** ${fmt(main.peakCtx)} tokens per message${main.peakCtxAt ? ` (at ${main.peakCtxAt})` : ''} - every fresh-session threshold is measured against this, not the average.`);
   if (main.thinkingTokens) extraFacts.push(`- **Thinking** ${fmt(main.thinkingTokens)} tokens (\`cost-state.modelUsage\`) - billed, attributable to no single message.`);
@@ -4501,7 +4568,7 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
     out.push('_No ledger rows. That means EITHER no guard fired OR the ledger was never written - say which, do not infer. The transcript alone records which TOOL was denied, never which hook._', '');
     out.push('_This is a QUESTION to answer here, in one line, from the ledger test you ran: `no guard fired` (the ledger path was absent AND the Tools table shows no `hook-blk`), or `ledger absent` (there ARE hook-blk denials and the hook that fired is unavailable). Shipped unanswered, verbatim, in audited bundles._', '');
   }
-  if (blockLedger && (blockLedger.doneGate || blockLedger.rootCause || blockLedger.correction || blockLedger.rationalization)) {
+  if (blockLedger && (blockLedger.doneGate || blockLedger.rootCause || blockLedger.correction || blockLedger.rationalization || blockLedger.shellProbes)) {
     out.push('## Probes - log-only (where a method skill or a habit was needed, and what the session did)', '');
     const dg = blockLedger.doneGate;
     if (dg) out.push('| probe | claims over an edit | ran after it | excused by a rule | no tests found | skill loaded, unrun | loaded earlier, unrun | MISSED |', '|---|---|---|---|---|---|---|---|',
@@ -4515,7 +4582,16 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
     const ra = blockLedger.rationalization;
     if (ra) out.push('| probe | dismissing closes | after a red run | after a skipped test | after a skip marker | pre-existing | unrelated | flaky or transient | deferred |', '|---|---|---|---|---|---|---|---|---|',
       `| rationalization | ${ra.closes} | ${ra.red} | ${ra.skipped} | ${ra.skipEdit} | ${ra.preExisting} | ${ra.unrelated} | ${ra.flaky} | ${ra.deferred} |`, '');
+    for (const [kind, marks] of Object.entries(SHELL_PROBES)) {
+      const sp = blockLedger.shellProbes && blockLedger.shellProbes[kind];
+      if (!sp) continue;
+      if (kind === 'symbol-grep') {
+        const top = [...sp.patterns.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([p, n]) => `${p} x${n}`).join(', ');
+        out.push('| probe | rows | patterns (top 5) | what it marks |', '|---|---|---|---|', `| ${kind} | ${sp.rows} | ${cell(top || '-')} | ${marks} |`, '');
+      } else out.push('| probe | rows | what it marks |', '|---|---|---|', `| ${kind} | ${sp.rows} | ${marks} |`, '');
+    }
   }
+  if (conformance) out.push(...conformanceSection(conformance));
   out.push('## Waste analysis - FILL IN', '', '_Ranked by tokens wasted. Every claim cites a table row above, or a transcript measurement labeled as such._', '');
   out.push('## Protocol check - FILL IN', '', "_One verdict per skill run, judged against that skill's own SKILL.md steps, citing the transcript turn that proves it. Mark unavailable rather than inferring._", '');
   out.push('## Efficiency verdict - FILL IN', '');
@@ -4722,7 +4798,7 @@ function sessionsDirOf(cwd, configDir) {
   return path.join(configDir, 'projects', String(cwd).replace(/[^a-zA-Z0-9]/g, '-'));
 }
 
-module.exports = { classifyChecks, commandHeads, maskQuotedShell, houseBare, loadPluginLayers, hookJoinStats, readBlockLedger, docRelPath, joinUnattributedDenials, windowSource, interruptLine, globToRe, parseFrontmatter, checkReport, forkParents, rmVerifyTail, maskSecrets, hookCommandKey, samePath, sessionsDirOf };
+module.exports = { classifyChecks, commandHeads, maskQuotedShell, houseBare, loadPluginLayers, hookJoinStats, readBlockLedger, docRelPath, joinUnattributedDenials, windowSource, interruptLine, globToRe, parseFrontmatter, checkReport, forkParents, rmVerifyTail, maskSecrets, hookCommandKey, samePath, sessionsDirOf, JUDGMENT_HEAD_RE };
 
 // ---------- entry ----------
 
@@ -4753,7 +4829,7 @@ async function runAnalysis() {
   const args = process.argv.slice(2);
   const flagVal = (flag) => { const i = args.indexOf(flag); return i >= 0 ? args[i + 1] : null; };
   // Every occurrence of a value flag, so a repeated `--exclude-session <id>` is never read as the target.
-  const VALUE_FLAGS = new Set(['--hook-log', '--hook-blocks', '--from', '--to', '--docs-root', '--inventory', '--plugins', '--out', '--check-report', '--prices', '--exclude-session', '--turn-check-advice']);
+  const VALUE_FLAGS = new Set(['--hook-log', '--hook-blocks', '--from', '--to', '--docs-root', '--inventory', '--plugins', '--out', '--check-report', '--prices', '--exclude-session', '--turn-check-advice', '--data-root']);
   const flagValIdx = new Set(args.map((a, i) => (VALUE_FLAGS.has(a) ? i + 1 : -1)).filter((i) => i > 0));
   // No folder or transcript named: the transcripts of the project this runs in (sessionsDirOf).
   const target = args.find((a, i) => !a.startsWith('--') && !flagValIdx.has(i))
@@ -4783,7 +4859,7 @@ async function runAnalysis() {
     ? { from: fromStr ? Date.parse(fromStr) : null, to: toStr ? Date.parse(toStr) : null, fromStr, toStr }
     : null;
   if (!target || (window && (Number.isNaN(window.from) || Number.isNaN(window.to)))) {
-    console.error('usage: analyze-usage.js [<session.jsonl | sessions-dir>] [--from <ISO ts>] [--to <ISO ts>] [--hook-log <tool-usage.jsonl>] [--hook-blocks <dir|file>] [--docs-root <path>] [--inventory <.claude dir>] [--plugins <installed_plugins.json>] [--prices <model-prices.json>] [--exclude-session <id>] [--turn-check-advice <project-root>] [--json] [--report-md] [--out <file>]\n       analyze-usage.js --check-report <report-usage.md>');
+    console.error('usage: analyze-usage.js [<session.jsonl | sessions-dir>] [--from <ISO ts>] [--to <ISO ts>] [--hook-log <tool-usage.jsonl>] [--hook-blocks <dir|file>] [--docs-root <path>] [--inventory <.claude dir>] [--plugins <installed_plugins.json>] [--prices <model-prices.json>] [--exclude-session <id>] [--turn-check-advice <project-root>] [--data-root <dir>] [--no-conformance] [--json] [--report-md] [--out <file>]\n       analyze-usage.js --check-report <report-usage.md>');
     process.exit(1);
   }
 
@@ -4891,6 +4967,7 @@ async function runAnalysis() {
   const invAcc = newInventoryUse(loadPlugins(pluginsFile));
   addSessionUse(invAcc, mainStats, agents, inventoryDir);
   const invUse = finishInventoryUse(invAcc);
+  const conformance = (asJson || asMd) && !args.includes('--no-conformance') ? conformanceOf(target, { dataRoot: flagVal('--data-root'), hookBlocks: blockDir }) : null;
   if (asJson) {
     // The join's own numbers were computed only at RENDER time, so `--json` could not see them and
     // nothing could test them - which is how the NaN cross-check above shipped and stayed shipped.
@@ -4898,12 +4975,12 @@ async function runAnalysis() {
     const agg = computeAggregates(mainStats, agents);
     const join = hookLog ? hookJoinStats(mainStats, agents, hookLog, agg.tools) : null;
     const hl = hookLog ? (({ rowsIdx, ...rest }) => rest)(hookLog) : hookLog;   // the row index is the join's input, not a report field
-    const body = { main: mainStats, agents, hookLog: hl && join ? { ...hl, ...join.coverage ? { coverage: join.coverage } : {} } : hl, hookBlocks: blockLedger, dispatchOverhead: agg.dispatchOverhead, cost: agg.cost, inventory: invUse };
+    const body = { main: mainStats, agents, hookLog: hl && join ? { ...hl, ...join.coverage ? { coverage: join.coverage } : {} } : hl, hookBlocks: blockLedger, dispatchOverhead: agg.dispatchOverhead, cost: agg.cost, inventory: invUse, ...(conformance ? { conformance } : {}) };
     console.log(JSON.stringify(window ? { window: { from: fromStr, to: toStr }, ...body } : body, null, 2));
     return;
   }
   if (asMd) {
-    printMarkdown(mainStats, agents, hookLog, window, blockLedger, invUse);
+    printMarkdown(mainStats, agents, hookLog, window, blockLedger, invUse, conformance);
     return;
   }
   printReport(mainStats, agents, hookLog, window, blockLedger, invUse);

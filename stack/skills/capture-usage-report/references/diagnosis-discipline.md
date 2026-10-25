@@ -78,6 +78,7 @@ The scorecard is machine-written and every row is a measurement; a row becomes a
 
 ## Every claim - citation and counting
 - Diagnose an error cluster only from the quoted error text, never from counts - hook blocks carry a deterministic `Blocked:` message, a wrong-parameter error names the parameter; grep it before assigning a cause - and attribute COUNTS only after grepping every distinct signature in the cluster, never by generalizing one sampled seat.
+- A claim the stack makes - a rule held or broken, a step followed or skipped - cites its row of the skeleton's machine-written `## Conformance` section (the claim id, or the skill and step): the verdict cites the Conformance rows; it never recounts them. A `not visible` row is evidence absent, never a hold, and its `missing` cell names what to collect.
 - Prose restatements must agree with the report's own tables in the same document; derive protocol verdicts and uncosted-seat lists from the tables (set-difference), never by eyeballing; cite the value at the actual event's timestamp, not a nearby spike.
 - Quote file, command, and label names VERBATIM from the tool_use input - a paraphrased label is a fabricated citation; enumerate countable events (commits, mutation probes, verbose runs) from the transcript's own output lines, never from summary memory.
 - A call is credited with its EFFECT only after its own `tool_result` is read - a heredoc that errored, a write that wrote nothing, a command that exited non-zero produced no artifact, whatever the next message says.

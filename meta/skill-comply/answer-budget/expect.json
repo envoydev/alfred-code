@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "skill": "answer-budget",
+  "window": "turn",
   "sources": ["stack/rules/alfred-interaction.md"],
   "extracted": "2026-10-14",
   "note": "Not a skill: the answer budget and house voice the always-on interaction rule states and guard-answer.js injects each turn (audit 2026-10-14 RU06). A replay runs unattended, where the hook's Stop block stands down, so the arms differ only in the injected text and the rule. The fixture question needs no code in the answer; 1,200 chars is the ~900 prose budget with a third of slack.",
