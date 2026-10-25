@@ -1923,15 +1923,19 @@ function ledgerOf(ctx)
     const part = ctx.managedSettings || { env: {}, deny: prior.deny || [], hooks: prior.hooks || [], settings: {} };
     const env = { ...part.env };
     for (const [name, keys] of Object.entries(prior.env || {})) if (!env[name]) env[name] = still(name, keys);
-    const settingsKeys = { ...(part.settings || {}) };
+    // A workspace array member (claudeMdExcludes[<hash>]) is carried apart from the keyed rows, below.
+    const keyed = (keys) => Object.fromEntries(Object.entries(keys || {}).filter(([at]) => !settings.MEMBER_PATH.test(at)));
+    const settingsKeys = Object.fromEntries(Object.entries(part.settings || {}).map(([name, keys]) => [name, keyed(keys)]));
     // A row's path is read as the writer wrote it: one key (autoMemoryEnabled), two (attribution.commit) or three
     // (modelSettings.<id>.autoCompactWindow).
     for (const [name, keys] of Object.entries(prior.settings || {}))
-        if (!settingsKeys[name]) settingsKeys[name] = unreadable(name) ? { ...keys } : Object.fromEntries(Object.entries(keys).filter(([at, h]) =>
+        if (!settingsKeys[name]) settingsKeys[name] = unreadable(name) ? keyed(keys) : Object.fromEntries(Object.entries(keyed(keys)).filter(([at, h]) =>
         {
             const spot = settings.settingAt(readJson(path.join(ctx.claudeDir, name)), at);
             return Boolean(spot) && Object.hasOwn(spot.holder, spot.key) && stampLayer.valueHash(JSON.stringify(spot.holder[spot.key])) === h;
         }));
+    for (const [name, rows] of Object.entries(settings.carryMemberRows({ claudeDir: ctx.claudeDir, priorSettings: prior.settings, workspaceRows: ctx.workspaceRows })))
+        settingsKeys[name] = { ...(settingsKeys[name] || {}), ...rows };
     // No run registers a server since 2.10.1: the .mcp.json and account rows are what an earlier run recorded and is still
     // there unchanged (retireMcps removes them on the first update past each retirement) - so a later run, or uninstall,
     // still knows them for the stack's.
@@ -1951,6 +1955,11 @@ function ledgerOf(ctx)
         mcpAt,
         files: managedFiles(ctx),
         settings: settingsKeys,
+        // Workspace layering: the CLI records the D5 key (and release 2 the copied servers and wraps) between runs, and
+        // the stamp is rebuilt from these fields, so each is carried as recorded.
+        ...(prior.account ? { account: prior.account } : {}),
+        ...(prior.workspaceMcp ? { workspaceMcp: prior.workspaceMcp } : {}),
+        ...(prior.workspaceWrap ? { workspaceWrap: prior.workspaceWrap } : {}),
     };
 }
 

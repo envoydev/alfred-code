@@ -132,6 +132,104 @@ function dropSetting(data, at)
     for (let i = parts.length - 2; i >= 0 && !Object.keys(chain[i + 1]).length; i--) delete chain[i][parts[i]];
 }
 
+// Workspace layering (spec 2.3): the stack's rows in a settings ARRAY - `claudeMdExcludes`, and in later releases
+// `permissions.additionalDirectories` and `disabledMcpjsonServers` - one ledger row per MEMBER, keyed by the member's
+// own hash, so each is taken back alone and a member the user put there (no row) is never claimed or removed.
+const MEMBER_PATH = /^(claudeMdExcludes|permissions\.additionalDirectories|disabledMcpjsonServers)\[([0-9a-f]{64})\]$/;
+const memberRow = (arrayPath, value) => `${arrayPath}[${valueHash(value)}]`;
+const isPlainObj = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
+
+// The array at a dotted path, the object holding it, and its last key; the holder is null when a step on the way
+// is not an object.
+function arrayAt(data, arrayPath, { make = false } = {})
+{
+    const parts = arrayPath.split('.');
+    let holder = data;
+    for (const part of parts.slice(0, -1))
+    {
+        if (!isPlainObj(holder[part])) { if (!make || Object.hasOwn(holder, part)) return { holder: null }; holder[part] = {}; }
+        holder = holder[part];
+    }
+    const key = parts[parts.length - 1];
+    return { holder, key, list: Array.isArray(holder[key]) ? holder[key] : null };
+}
+
+function dropEmptyArray(data, arrayPath)
+{
+    const parts = arrayPath.split('.');
+    const at = arrayAt(data, arrayPath);
+    if (!at.holder || !at.list || at.list.length) return;
+    delete at.holder[at.key];
+    if (parts.length === 2 && isPlainObj(data[parts[0]]) && !Object.keys(data[parts[0]]).length) delete data[parts[0]];
+}
+
+// Brings the stack's members of one array to `want`: a member it wants and does not see is added and ledgered; a prior
+// row it no longer wants takes its member out (by hash); a row whose member is gone just leaves. The file is written
+// only when something changed, in the shape every settings write here uses.
+function syncMembers({ file, arrayPath, want, prior = {}, log = () => {}, note = () => {} })
+{
+    const mine = Object.fromEntries(Object.entries(prior || {}).filter(([row]) => { const m = MEMBER_PATH.exec(row); return m && m[1] === arrayPath; }));
+    let data;
+    let existed;
+    try { ({ data, existed } = readSettings(file)); }
+    catch (err) { note(`${err.message} - its ${arrayPath} rows are kept as recorded`); return { rows: mine, changed: false, created: false, refused: true }; }
+    const at = arrayAt(data, arrayPath, { make: true });
+    if (!at.holder) { note(`${path.basename(file)}: ${arrayPath} is not under an object - left as it is`); return { rows: mine, changed: false, created: false, refused: true }; }
+    const list = at.list ? [...at.list] : [];
+    const wantHash = new Map(want.map((v) => [valueHash(v), v]));
+    const rows = {};
+    let changed = false;
+    for (const [row, hash] of Object.entries(mine))
+    {
+        if (wantHash.has(hash)) continue;
+        const i = list.findIndex((m) => typeof m === 'string' && valueHash(m) === hash);
+        if (i >= 0) { list.splice(i, 1); changed = true; }
+    }
+    for (const [hash, value] of wantHash)
+    {
+        const row = `${arrayPath}[${hash}]`;
+        if (list.includes(value))
+        {
+            if (Object.hasOwn(mine, row)) rows[row] = hash;      // ours from an earlier run; a member with no row is the user's
+            continue;
+        }
+        list.push(value);
+        rows[row] = hash;
+        changed = true;
+    }
+    if (!changed) return { rows, changed: false, created: false };
+    at.holder[at.key] = list;
+    dropEmptyArray(data, arrayPath);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+    log(`  ${path.basename(file)}: ${arrayPath} - ${Object.keys(rows).length} of the stack's members`);
+    return { rows, changed: true, created: !existed };
+}
+
+// The member rows a run's ledger keeps: the workspace step's own rows for settings.local.json when it ran, and
+// otherwise each prior row whose member is still in its file - every one, in a file that cannot be read.
+function carryMemberRows({ claudeDir, priorSettings = {}, workspaceRows })
+{
+    const out = {};
+    for (const [name, keys] of Object.entries(priorSettings || {}))
+    {
+        if (name === 'settings.local.json' && workspaceRows) continue;
+        const members = Object.entries(keys || {}).filter(([row]) => MEMBER_PATH.test(row));
+        if (!members.length) continue;
+        let data;
+        try { ({ data } = readSettings(path.join(claudeDir, name))); }
+        catch { out[name] = Object.fromEntries(members); continue; }
+        const kept = members.filter(([row, hash]) =>
+        {
+            const at = arrayAt(data, MEMBER_PATH.exec(row)[1]);
+            return Boolean(at.list) && at.list.some((m) => typeof m === 'string' && valueHash(m) === hash);
+        });
+        if (kept.length) out[name] = Object.fromEntries(kept);
+    }
+    if (workspaceRows && Object.keys(workspaceRows).length) out['settings.local.json'] = { ...workspaceRows };
+    return out;
+}
+
 const HOOKS_DIR_MARK = '/.claude/hooks/';
 
 function readSettings(file)
@@ -1413,6 +1511,17 @@ function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRe
         if (unwireIds(data, ids).length) changed = true;
         for (const [at, hash] of Object.entries(attr))
         {
+            const member = MEMBER_PATH.exec(at);
+            if (member)
+            {
+                const arr = arrayAt(data, member[1]);
+                const i = arr.list ? arr.list.findIndex((m) => typeof m === 'string' && valueHash(m) === hash) : -1;
+                if (i < 0) continue;
+                arr.list.splice(i, 1);
+                dropEmptyArray(data, member[1]);
+                changed = true;
+                continue;
+            }
             const spot = settingAt(data, at);
             if (!spot || !Object.hasOwn(spot.holder, spot.key)) continue;
             if (valueHash(JSON.stringify(spot.holder[spot.key])) !== hash) { log(`  ${name}: ${at} kept - changed since the stack wrote it, so it is yours`); continue; }
@@ -1439,4 +1548,4 @@ function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRe
         log(`  kept at user scope: ${keptOff.join(', ')} - the user-scope core stays loaded for this account, so these keep what you switched off here off; remove them once it is uninstalled`);
 }
 
-module.exports = { compactWindowSeeds, settingAt, removeManagedSettings, isStackKey, writeSettings, applyMcpDeny, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, readBackSettings, sharedOnlyDeny, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor, asyncFor, onFailureFor };
+module.exports = { compactWindowSeeds, settingAt, MEMBER_PATH, memberRow, syncMembers, carryMemberRows, removeManagedSettings, isStackKey, writeSettings, applyMcpDeny, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, readBackSettings, sharedOnlyDeny, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor, asyncFor, onFailureFor };

@@ -1499,3 +1499,107 @@ test('settings-writer: the scorer rows are seeded off, level 80, all outputs, 3 
 });
 // The scope picks the FILE (settingsTarget), never the writer, so the per-scope result - project and user in
 // settings.json, local in settings.local.json - is read in the temp-project matrix.
+
+// ------------------------------------------------------------------ workspace layering: array members (spec 2.3)
+
+const settingsMod = require('./install/settings.js');
+const { valueHash: vh } = require('./install/stamp.js');
+const memberDir = () => fs.mkdtempSync(path.join(TMP, 'members-'));
+const readFile = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
+const sync = (file, want, prior = {}, arrayPath = 'claudeMdExcludes') =>
+{
+    const notes = [];
+    const got = settingsMod.syncMembers({ file, arrayPath, want, prior, log: () => {}, note: (m) => notes.push(m) });
+    return { ...got, notes };
+};
+
+test('syncMembers adds the wanted members and ledgers each by its own hash', () =>
+{
+    const file = path.join(memberDir(), 'settings.local.json');
+    const got = sync(file, ['/ws/.claude/rules/a.md', '/ws/.claude/AGENTS.md']);
+    assert.strictEqual(got.created, true);
+    assert.strictEqual(got.changed, true);
+    assert.deepStrictEqual(readFile(file), { claudeMdExcludes: ['/ws/.claude/rules/a.md', '/ws/.claude/AGENTS.md'] });
+    assert.deepStrictEqual(got.rows, {
+        [`claudeMdExcludes[${vh('/ws/.claude/rules/a.md')}]`]: vh('/ws/.claude/rules/a.md'),
+        [`claudeMdExcludes[${vh('/ws/.claude/AGENTS.md')}]`]: vh('/ws/.claude/AGENTS.md'),
+    });
+    assert.ok(settingsMod.MEMBER_PATH.test(settingsMod.memberRow('claudeMdExcludes', 'x')));
+    const again = sync(file, ['/ws/.claude/rules/a.md', '/ws/.claude/AGENTS.md'], got.rows);
+    assert.deepStrictEqual([again.changed, again.created], [false, false], 'a second run changes nothing');
+});
+
+test('a member already there with no row is the user\'s: not claimed, not doubled, never removed', () =>
+{
+    const file = path.join(memberDir(), 'settings.local.json');
+    fs.writeFileSync(file, JSON.stringify({ claudeMdExcludes: ['/mine/**'], model: 'x' }, null, 2) + '\n');
+    const got = sync(file, ['/mine/**', '/ws/r.md']);
+    assert.deepStrictEqual(readFile(file), { claudeMdExcludes: ['/mine/**', '/ws/r.md'], model: 'x' });
+    assert.deepStrictEqual(Object.keys(got.rows), [`claudeMdExcludes[${vh('/ws/r.md')}]`]);
+    const dropped = sync(file, [], got.rows);
+    assert.deepStrictEqual(readFile(file), { claudeMdExcludes: ['/mine/**'], model: 'x' }, 'the user\'s member stays');
+    assert.deepStrictEqual(dropped.rows, {});
+});
+
+test('a prior row no longer wanted removes its member; a row whose member is gone just leaves', () =>
+{
+    const file = path.join(memberDir(), 'settings.local.json');
+    const first = sync(file, ['/ws/a.md', '/ws/b.md']);
+    const data = readFile(file);
+    data.claudeMdExcludes = data.claudeMdExcludes.filter((m) => m !== '/ws/b.md');
+    fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n');
+    const got = sync(file, ['/ws/c.md'], first.rows);
+    assert.deepStrictEqual(readFile(file), { claudeMdExcludes: ['/ws/c.md'] });
+    assert.deepStrictEqual(Object.keys(got.rows), [`claudeMdExcludes[${vh('/ws/c.md')}]`]);
+});
+
+test('an unreadable file keeps the prior rows and writes nothing', () =>
+{
+    const file = path.join(memberDir(), 'settings.local.json');
+    fs.writeFileSync(file, '{ not json');
+    const prior = { [`claudeMdExcludes[${vh('/ws/a.md')}]`]: vh('/ws/a.md') };
+    const got = sync(file, ['/ws/b.md'], prior);
+    assert.deepStrictEqual([got.refused, got.changed], [true, false]);
+    assert.deepStrictEqual(got.rows, prior);
+    assert.strictEqual(fs.readFileSync(file, 'utf8'), '{ not json');
+    assert.strictEqual(got.notes.length, 1);
+});
+
+test('the last member removed takes the empty array key with it; permissions keeps its other keys', () =>
+{
+    const file = path.join(memberDir(), 'settings.json');
+    fs.writeFileSync(file, JSON.stringify({ permissions: { deny: ['Read(.env)'] } }, null, 2) + '\n');
+    const got = sync(file, ['/ws/docs'], {}, 'permissions.additionalDirectories');
+    assert.deepStrictEqual(readFile(file), { permissions: { deny: ['Read(.env)'], additionalDirectories: ['/ws/docs'] } });
+    sync(file, [], got.rows, 'permissions.additionalDirectories');
+    assert.deepStrictEqual(readFile(file), { permissions: { deny: ['Read(.env)'] } });
+    const only = path.join(memberDir(), 'settings.local.json');
+    const rows = sync(only, ['/ws/a.md']).rows;
+    sync(only, [], rows);
+    assert.deepStrictEqual(readFile(only), {});
+});
+
+test('removeManagedSettings removes a ledgered member by hash wherever it sits and keeps the user\'s', () =>
+{
+    const dir = memberDir();
+    const file = path.join(dir, 'settings.local.json');
+    fs.writeFileSync(file, JSON.stringify({ claudeMdExcludes: ['/mine/**', '/ws/a.md'], model: 'x' }, null, 2) + '\n');
+    const ledger = { settings: { 'settings.local.json': { [`claudeMdExcludes[${vh('/ws/a.md')}]`]: vh('/ws/a.md') } } };
+    settingsMod.removeManagedSettings({ claudeDir: dir, ledger });
+    assert.deepStrictEqual(readFile(file), { claudeMdExcludes: ['/mine/**'], model: 'x' });
+});
+
+test('carryMemberRows: the step\'s rows win for settings.local.json; without them a prior row is carried while its member is there', () =>
+{
+    const dir = memberDir();
+    const file = path.join(dir, 'settings.local.json');
+    fs.writeFileSync(file, JSON.stringify({ claudeMdExcludes: ['/ws/a.md'] }, null, 2) + '\n');
+    const rowA = `claudeMdExcludes[${vh('/ws/a.md')}]`;
+    const rowB = `claudeMdExcludes[${vh('/ws/b.md')}]`;
+    const prior = { 'settings.local.json': { [rowA]: vh('/ws/a.md'), [rowB]: vh('/ws/b.md'), 'attribution.commit': vh('"x"') } };
+    assert.deepStrictEqual(settingsMod.carryMemberRows({ claudeDir: dir, priorSettings: prior }), { 'settings.local.json': { [rowA]: vh('/ws/a.md') } });
+    const fresh = { [rowB]: vh('/ws/b.md') };
+    assert.deepStrictEqual(settingsMod.carryMemberRows({ claudeDir: dir, priorSettings: prior, workspaceRows: fresh }), { 'settings.local.json': fresh });
+    fs.writeFileSync(file, '{ broken');
+    assert.deepStrictEqual(settingsMod.carryMemberRows({ claudeDir: dir, priorSettings: prior }), { 'settings.local.json': { [rowA]: vh('/ws/a.md'), [rowB]: vh('/ws/b.md') } }, 'an unreadable file keeps every recorded member row');
+});
