@@ -157,8 +157,66 @@ seat included), about 70 seconds.
 - `expect.json`: 5 of 5 graded steps followed - the seat graded, `next` came before any plan write, no plan after a
   withhold or while the fix is offered, and `answers.md` written at most once.
 
+## The A/B (2026-10-25)
+
+The question: does scoring make better plans? Six plain-prompt plan tasks on the scaffold's orders service (a cancel
+reason, an order lookup, refunds, a list by status, a column rename with no downtime, an order history table). Each
+task ran once with `ALFRED_CODE_SCORER` `0` and once with `1`, set in `settings.local.json` of a fresh copy-route
+install of 113ab6f3. Sonnet 5.5 ran the session and the seat, under `claude -p`, with a $6 cap per run. A run that
+stopped on a question was resumed with 'Take the recommended option on every question.', at most four times. The
+judge was Opus 5.5, blind:
+
+- It worked in a bare copy of the scaffold, with no stack install.
+- It saw both plans with the `Scored:` / `Open:` / `Fix:` lines, the scorer's name and the `Captured:` line removed.
+- It ran twice per task, A and B swapped, and scored five criteria from 1 to 5: correct about the code, meets the task,
+  safe to apply, buildable, in scope.
+
+A task is won only when both orders prefer the same arm. The rule was fixed before the run: scoring helps when on
+wins 4 or more tasks and off at most 1.
+
+| Task | On: first grade -> released | Winner | Where it was decided |
+|---|---|---|---|
+| cancel reason | 75 -> 90 | on | safe 5 vs 3: off breaks the cancel path between tasks, no deploy order |
+| order lookup | 0 -> 80, inline | off | both 5 on every criterion; off's null-to-404 needs no new error class |
+| refunds | 75 -> 95 | on | safe and buildable, despite one false claim in on |
+| list by status | 70 -> 80 | on | buildable 4 vs 2.5, safe 4 vs 3.5 |
+| column rename | 60 -> 85 | on | safe 5 vs 2.5, off makes two false claims |
+| order history | 65 -> 90 | on | safe 4 vs 3 |
+
+- **Verdict: scoring helps, 5 to 1.** Every task was decided in both orders. No judge reply failed to parse.
+- **How strong it is.** A calibration pair - two scoring-off runs of the cancel task, judged the same way - also got
+  a winner in both orders. So the judge separates any two runs, not only two arms. Under that null, where every task
+  gets a winner at even odds, a 5-1 or 6-0 for on comes up 7 times in 64 (about 11%). That makes this suggestive
+  evidence from one run per task, not proof.
+- **What scoring changed.** On won on safe to apply and buildable: task orders that keep the real path working, a
+  deploy order and rollback, and tests that fail first. These are the rubric's own checks. Every on draft started
+  under the level 80 (0-75) and was released at 80-95. Four runs re-graded, two answered a question into a second
+  attempt, four were offered a fix, and one took it. None was withheld.
+- **False claims.** The judge found false claims in 3 on tasks and 1 off task. Four of the on arm's six, and the
+  calibration copy's two, name stack files that exist in the planning project but not in the judge's bare folder
+  (`.claude/hooks/docs.js`, `alfred-quality-gates.md`). That is an artifact of the judge folder, and it cut against
+  the arm that won. Refunds' on claim is real: an integration test outside `test/` that `node --test` still picks
+  up. So are the rename off plan's two.
+- **The lost task.** With scoring on, the order-lookup session loaded the scorer, never the plan skill, and treated
+  the task as an inline plan, so no plan file was written. The inline rubric scored its first draft 0 (I1-I5 all
+  no). The answered question lifted it to 80, and it was released in chat. The judge preferred the off plan file by
+  a narrow margin. The resumes then had nothing on disk to move, so the driver cut the run, and the judge read the
+  released draft.
+- **Cost.** With scoring on, a plan cost $1.67 on average ($0.92-2.15) and took 6-15 minutes. With it off, a plan
+  cost $0.18 and took under a minute. That is about 9 times the spend. The whole A/B billed $14.89 at list price:
+  $11.31 for 13 plan runs and $3.58 for 14 judge runs. It was charged to the subscription through the setup-token.
+- **Assumptions:**
+  - A resume moved the loop on.
+  - A resumed call's `total_cost_usd` holds the earlier spend (the same Haiku $0.0014 on both rows).
+  - The off arm wrote a plan file.
+  - The judge logged in under its own config, read the project files, and was refused Bash by `dontAsk`.
+  - The plain prompt fired the plan skill in 11 of 12 runs; the order-lookup on run is the miss.
+- **Following the spec:** `ALFRED_CODE_SCORER` stays seeded `0`. Turning it on by default is the user's separate
+  ruling.
+
 ## Not run
 
-- The revise, withhold and fix-after-decide paths through the loop: the replayed draft passed on its first grade,
-  and print mode has nobody to answer the offer. They are covered offline only (`scripts/habits-scorer-card.test.js`).
-- An interactive (non-`-p`) session and the default permission mode: every batch and the replay ran under `claude -p`.
+- The withhold path: every A/B run released its draft. Revise, re-grade, the fix after an offer and an answered
+  question opening a second attempt ran in the A/B (above), through resumed `claude -p` calls.
+- An interactive (non-`-p`) session and the default permission mode: every batch, the replay and the A/B ran under
+  `claude -p`.
