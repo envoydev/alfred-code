@@ -1028,3 +1028,5 @@ test('the tools.js children read the data root this run resolved, over an export
         else process.env.ALFRED_CODE_DATA_PATH = was;
     }
 });
+
+test('tickets/ is a stack docs folder (item 5)', () => { assert.ok(docs.STACK_DOCS.has('tickets')); });

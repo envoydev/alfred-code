@@ -1301,7 +1301,7 @@ function filesUnder(dir)
 // migration below still moves on (DOCS_MIGRATIONS, the usage report, layout.js LAYOUT_MOVES), the first-look map, and
 // any folder holding a watch.json (a domain by definition). Everything else under the root is the project's.
 const STACK_DOCS = new Set([
-    'architecture', 'code-style', 'preferences', 'decisions', 'awareness', 'work', 'quality', 'ORIENTATION.md', '.branches',
+    'architecture', 'code-style', 'preferences', 'decisions', 'tickets', 'awareness', 'work', 'quality', 'ORIENTATION.md', '.branches',
     ...DOCS_MIGRATIONS.map(([from]) => from.split('/')[0]), USAGE_REPORT_OLD, ...LAYOUT.LAYOUT_MOVES.map((m) => m.from),
 ]);
 function stackEntry(base, e)
@@ -1595,5 +1595,5 @@ function dataOfferLine(offer)
 module.exports = {
     domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, lspCoverageLines, migrateAwareness, inventoryToDoc, ensureDocsIgnore, migrateUsageReport, migratePlans, docsMovePlan, docsMoveViews, moveDocsRoot,
     ensureDataIgnore, dataIgnoreText, pruneDataRoot, pruneNestedIgnores, dataOffer, dataOfferLine, migrateLayout,
-    DOCS_IGNORE, DOCS_IGNORE_FORMER, DOCS_MIGRATIONS, DOCS_SWITCH_ON, RESERVED, LEGACY_DOCS_ROOT, DATA_IGNORE_HEAD, OS_LITTER,
+    DOCS_IGNORE, DOCS_IGNORE_FORMER, DOCS_MIGRATIONS, DOCS_SWITCH_ON, RESERVED, LEGACY_DOCS_ROOT, DATA_IGNORE_HEAD, OS_LITTER, STACK_DOCS,
 };

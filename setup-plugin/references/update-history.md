@@ -392,3 +392,11 @@ map, and the scan behind the old skill stays - `node <stack>/scripts/scan-eviden
 the same provisional `ORIENTATION.md` for a project with no capture yet. Update prunes an unchanged copy as retired
 upstream; a copy edited since the stack wrote it stays and is named with `!!`, to merge what you need and remove by
 hand. Report those lines.
+
+## after 2.10.1 - a drafted ticket is also a file
+
+`habits-create-ticket` also writes each ticket to `<docs root>/tickets/<slug>.md` (`.alfred/docs/tickets/` by default) -
+the title, `Type:`, `Created:`, `Status: draft` (`filed <ID or URL>` once filed through the connector) and the
+Description - and names the file on a `Saved:` line below the chat block. `tickets/` is a stack docs folder: it moves
+with the data root, and in a hand-set docs root a team's own `tickets/` is named among the moves and stays only with
+`--docs-root-leave tickets`. Update refreshes the skill copy; nothing else to report.

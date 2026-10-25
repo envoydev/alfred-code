@@ -112,6 +112,19 @@ test('plan: with no key the earlier data root\'s docs move with the root, and an
     assert.strictEqual(plan(root, { shared: {}, stamped: false }).state, 'none', 'a fresh install has no earlier root');
 });
 
+test('plan: an earlier data root\'s tickets/ moves with its docs; in a hand-set root it is named among the moves (item 5)', () =>
+{
+    const root = repo({ '.data/docs/tickets/fix-api-retry.md': '# Fix API retry\n', '.data/docs/architecture/ARCHITECTURE.md': '# a\n' });
+    const p = plan(root, { shared: {}, prior: '.data' });
+    assert.deepStrictEqual([p.state, p.from], ['move', '.data/docs']);
+    assert.ok(p.untracked.includes('tickets/fix-api-retry.md'), JSON.stringify(p.untracked));
+    const ext = repo({ ...EXT, 'docs-ext/tickets/team-board.md': '# the team\'s own\n' });
+    const q = plan(ext);
+    assert.ok(q.untracked.includes('tickets/team-board.md'), 'a hand-set root\'s tickets/ is a stack entry, so the ask names it');
+    assert.ok(q.moves.includes('tickets/'), 'the ask\'s moves name it: ' + JSON.stringify(q.moves));
+    assert.ok(plan(ext, { leave: ['tickets'] }).left.includes('tickets'), '--docs-root-leave tickets keeps the team\'s own');
+});
+
 // The boundary: an EMPTY key names no root - every reader takes the default, as Claude Code's merge hands it on - so it is a
 // key to drop, with the no-key drain behind it; and an empty settings.local.json key over a set settings.json one leaves
 // that one shadowed, not in effect.
