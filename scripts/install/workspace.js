@@ -469,9 +469,183 @@ function rescan(projectRoot, { maxDepth = 5, env = process.env } = {})
     return found.sort();
 }
 
+// ------------------------------------------------------------------ the merged lists
+
+// A child's set is its parent's minus what it ignores plus its own picks, as `<category> <name>` lines - the
+// spelling `--add` / `--drop` take, so a delta feeds the installer's own add and drop flow unchanged.
+const PLAN_KEYS = { skills: 'skill', agents: 'agent', rules: 'rule', hooks: 'hook', mcps: 'mcp' };
+const uniqSorted = (xs) => [...new Set(xs)].sort();
+
+function planLines(plan)
+{
+    const lines = [];
+    for (const [key, line] of Object.entries(PLAN_KEYS))
+        for (const name of (plan && Array.isArray(plan[key]) ? plan[key] : [])) lines.push(`${line} ${name}`);
+    for (const p of (plan && Array.isArray(plan.plugins) ? plan.plugins : [])) if (p && p.name) lines.push(`plugin ${p.name}`);
+    return uniqSorted(lines);
+}
+
+function effectiveLists({ parentLines, ignores = [], own = [] })
+{
+    const ignored = new Set(ignores.map((i) => `${i.category} ${i.name}`));
+    return uniqSorted([...parentLines.filter((l) => !ignored.has(l)), ...own]);
+}
+
+function delta({ effective, installed })
+{
+    const want = new Set(effective);
+    const have = new Set(installed);
+    return { add: uniqSorted(effective.filter((l) => !have.has(l))), drop: uniqSorted(installed.filter((l) => !want.has(l))) };
+}
+
+// The picks that are this child's own after a run - the stamp's `own-picks:` line, which tells an inherited item from
+// one the child chose. `null` means no line. A blind read-back (the plugin listing could not be read) sees only part
+// of the set, so the prior line is carried as it was.
+function ownPicksAfter({ prior, final, parentLines, added = [], blind = false })
+{
+    if (blind) return prior;
+    const kept = new Set(final);
+    const parent = new Set(parentLines || []);
+    if (prior === null || prior === undefined) return uniqSorted(parentLines ? final.filter((l) => !parent.has(l)) : final);
+    const grown = parentLines ? final.filter((l) => !parent.has(l)) : added;
+    return uniqSorted([...prior, ...grown].filter((l) => kept.has(l)));
+}
+
+// ------------------------------------------------------------------ the env
+
+// Never passed down: the data root and the docs mode are this project's own layout, and a `seed: false` row is set
+// only in the launch environment or by hand.
+const ENV_NEVER = new Set(['ALFRED_CODE_DATA_PATH', 'ALFRED_CODE_DOCS_VERSIONING']);
+const HOOKS_OFF = 'ALFRED_CODE_HOOKS_OFF';
+const csv = (v) => String(v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+
+// What a child's env takes from its parent: `seeds` (the value each not-own key should hold), `force` (the present keys
+// whose value differs from its seed) and `own` (the keys the child set itself - sticky once own). `childEnv` is the
+// env of the file this run writes, `beneath` the env of the file Claude Code lays it over (a local-scope child's
+// settings.json, the team's): a key only there is own, so no parent value is written over it for this machine alone.
+function childEnv({ catalog, parentEnv = {}, childEnv: here = {}, beneath = {}, ownPrior, ledgerRows = {}, flagKeys = [], ignores = [] })
+{
+    const first = ownPrior === null || ownPrior === undefined;
+    const own = new Set(first ? [] : ownPrior);
+    const ignored = new Set(ignores.filter((i) => i.category === 'env').map((i) => i.name));
+    const seeds = {};
+    const force = [];
+    for (const row of catalog)
+    {
+        const key = row.key;
+        if (ENV_NEVER.has(key) || row.seed === false) continue;
+        const present = Object.hasOwn(here, key);
+        const value = present ? String(here[key]) : undefined;
+        const parentValue = Object.hasOwn(parentEnv, key) ? String(parentEnv[key]) : String(row.default);
+        if (flagKeys.includes(key)) own.add(key);
+        else if (!present && Object.hasOwn(beneath, key)) own.add(key);
+        else if (present && !own.has(key))
+        {
+            const row0 = ledgerRows[key];
+            if (first) { if (value !== parentValue) own.add(key); }
+            else if (row0) { if (valueHashOf(value) !== row0) own.add(key); }
+            else if (value !== String(row.default) && value !== parentValue) own.add(key);
+        }
+        if (own.has(key)) continue;
+        let target = ignored.has(key) ? String(row.default) : parentValue;
+        if (key === HOOKS_OFF && !ignored.has(key))
+        {
+            const whole = csv(here[key] ?? beneath[key]).filter((e) => !e.includes(':'));
+            const parts = csv(parentEnv[key]).filter((e) => e.includes(':'));
+            target = [...new Set([...whole, ...parts])].join(',');
+        }
+        seeds[key] = target;
+        if (present && value !== target) force.push(key);
+    }
+    return { seeds, force: force.sort(), own: [...own].sort() };
+}
+const valueHashOf = (v) => stamp.valueHash(v);
+
+// ------------------------------------------------------------------ the excludes (spec 2.5)
+
+// Every stamped folder above the project, nearest first, joined or not: Claude Code loads an ancestor's rules and
+// AGENTS.md into any project below it, so each one's Alfred files are excluded wherever a project sits under it.
+function stampedAncestors(projectRoot, { env = process.env, maxDepth = 8 } = {})
+{
+    const out = [];
+    let at = projectRoot;
+    while (out.length < maxDepth)
+    {
+        const found = findParent(at, { env });
+        if (!found) break;
+        out.push(found.root);
+        at = found.root;
+    }
+    return out;
+}
+
+// An ancestor's Alfred-managed files a child must not load a second time (absolute paths): its library rule copies,
+// the generated rules, and its seeded AGENTS.md while it still hashes to the seed - an edited one is the user's
+// instructions and stays. `ignore instructions <file>` adds one more of the ancestor's files.
+function ancestorExcludes(ancestorRoot, { childIgnores = [] } = {})
+{
+    const { GENERATED_FILES } = require('./selection.js');
+    const seeds = require('./seeds.js');
+    const { hashItem } = require('./library.js');
+    const claudeDir = path.join(ancestorRoot, '.claude');
+    const stampFile = path.join(claudeDir, brand.BRAND.stamp);
+    const rulesDir = path.join(claudeDir, 'rules');
+    const out = [];
+    const library = stamp.readLibrary(stampFile);
+    for (const name of Object.keys((library && library.rules) || {})) out.push(path.join(rulesDir, `${name}.md`));
+    for (const name of GENERATED_FILES)
+    {
+        const file = path.join(rulesDir, `${name}.md`);
+        if (fs.existsSync(file)) out.push(file);
+    }
+    const ledger = stamp.readLedger(stampFile);
+    const held = (ledger && ledger.files && ledger.files['AGENTS.md']) || '';
+    if (held)
+    {
+        const seed = seeds.locateSeed(ancestorRoot, stamp.readInstructionsFile(stampFile), held);
+        try { if (seed && hashItem(seed) === held) out.push(seed); }
+        catch { /* unreadable: no seed to exclude */ }
+    }
+    for (const i of childIgnores)
+    {
+        if (i.category !== 'instructions') continue;
+        const file = path.join(ancestorRoot, ...i.name.split('/'));
+        if (fs.existsSync(file)) out.push(file);
+    }
+    return [...new Set(out)];
+}
+
+const GLOB_META = new Set(['*', '?', '[', '{', '}', '(', ')']);
+
+// One `claudeMdExcludes` glob per path, in the form probed on macOS 2.1.310 and Windows 2.1.309
+// (docs/workspace-layering-evidence.md): a metacharacter as a one-character class (`[(]`), never a `\` escape, which
+// missed on brackets; and where the filesystem folds case, every cased letter as a class of both cases (`[aA]`, `[üÜ]`
+// too), since Windows matched the typed spelling case-sensitively. `]`, the space and `.` need nothing.
+function excludeGlobs(paths, platform = process.platform)
+{
+    const folds = platform === 'win32' || platform === 'darwin';
+    const out = [];
+    for (const p of paths)
+    {
+        let spelled = fs.existsSync(p) ? realOf(p) : p;
+        spelled = platform === 'win32' ? spelled.replace(/\\/g, '/') : spelled.split(path.sep).join('/');
+        let glob = '';
+        for (const c of spelled)
+        {
+            if (GLOB_META.has(c)) { glob += `[${c}]`; continue; }
+            const lo = c.toLowerCase();
+            const up = c.toUpperCase();
+            glob += folds && lo !== up && [...lo].length === 1 && [...up].length === 1 ? `[${lo}${up}]` : c;
+        }
+        out.push(glob);
+    }
+    return [...new Set(out)];
+}
+
 module.exports = {
     CATEGORIES, parseWorkspace, renderWorkspace, viewOf,
     setParent, addChild, removeChild, addIgnore, removeIgnore,
     ancestorEnv, workspacePath, readWorkspace, writeWorkspace, moveWorkspace,
     realKey, findParent, sameRepo, isCheckout, joinVerdict, chain, subtree, rescan,
+    planLines, effectiveLists, delta, ownPicksAfter, childEnv, stampedAncestors, ancestorExcludes, excludeGlobs,
 };

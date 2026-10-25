@@ -878,5 +878,5 @@ function droppedEntries({ before, after, listing = [], deps = {}, marketplace })
 
 module.exports = {
     addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, moveGeneratedRules, awarenessDocs, respellRenamed, respellOwnPlan, respellOwnApply, respellRosterSeats, respellDocsRoot, generatedRules, instructionFiles, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
-    adoptHooks, adoptAlways, readBack, planInventory, itemScopes, leftOut, droppedEntries, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE, GENERATED_RULES, FORMER_PLUGINS,
+    adoptHooks, adoptAlways, readBack, planInventory, itemScopes, leftOut, droppedEntries, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE, GENERATED_RULES, GENERATED_FILES, FORMER_PLUGINS,
 };
