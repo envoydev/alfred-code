@@ -146,14 +146,25 @@ const FILE_KINDS = ['hooks', 'skills', 'agents'];
 const ROOT_FILES = ['AGENTS.md', 'CLAUDE.md', 'navigation-context.yml'];
 // A model id holds no dot, so its window's dotted path (settings.js compactAt) splits back into three keys; custom memory's
 // switch-off is a top-level key.
-const SETTINGS_PATH = /^(?:attribution\.(?:commit|pr|sessionUrl)|worktree\.baseRef|modelSettings\.[a-z0-9][a-z0-9-]{0,99}\.autoCompactWindow|autoMemoryEnabled)$/;
+// A workspace row is one MEMBER of an array (settings.js syncMembers), keyed by the member's own hash, so two members never
+// share a ledger key.
+const SETTINGS_PATH = /^(?:attribution\.(?:commit|pr|sessionUrl)|worktree\.baseRef|modelSettings\.[a-z0-9][a-z0-9-]{0,99}\.autoCompactWindow|autoMemoryEnabled|(?:claudeMdExcludes|permissions\.additionalDirectories|disabledMcpjsonServers)\[[0-9a-f]{64}\])$/;
 const MCP_SCOPES = ['local', 'user'];
+// Workspace layering (spec 2.2): the one account settings key D5 writes, the MCP rows a child copies from its root
+// (release 2) and the wraps it put in place of a registration, each by scope.
+const ACCOUNT_FILES = ['settings.json'];
+const ACCOUNT_KEYS = ['pluginConfigs.cc-plugin-agents-md@builtin.options.instructionFiles'];
+const WRAP_SCOPES = ['local', 'project', 'user'];
 const emptyLedger = () => ({ env: {}, deny: [], hooks: [], mcp: {}, mcpAt: {}, files: {}, settings: {} });
 
 function renderLedger(ledger)
 {
-    const { env = {}, deny = [], hooks = [], mcp = {}, mcpAt = {}, files = {}, settings = {} } = ledger;
+    const { env = {}, deny = [], hooks = [], mcp = {}, mcpAt = {}, files = {}, settings = {}, account = {}, workspaceMcp = {}, workspaceWrap = {} } = ledger;
     const pairs = (map) => Object.entries(map || {}).map(([n, h]) => `${n}=${h}`);
+    const scoped = (map) => Object.entries(map || {}).flatMap(([at, keys]) => pairs(keys).map((kv) => `${at}:${kv}`));
+    // The workspace kinds write a line only when they hold a row, so a standalone stamp stays byte for byte as before.
+    const optional = [['managed-account', scoped(account)], ['workspace-mcp', scoped(workspaceMcp)], ['workspace-wrap', scoped(workspaceWrap)]]
+        .filter(([, rows]) => rows.length).map(([key, rows]) => `${key}: ${rows.join(',')}`);
     return [
         `managed-env: ${Object.entries(env).flatMap(([file, keys]) => pairs(keys).map((kv) => `${file}:${kv}`)).join(',')}`,
         `managed-deny: ${deny.map((d) => `${d.file}:${d.entry}`).join(',')}`,
@@ -161,6 +172,7 @@ function renderLedger(ledger)
         `managed-mcp: ${[...pairs(mcp), ...Object.entries(mcpAt || {}).flatMap(([scope, map]) => pairs(map).map((kv) => `${scope}:${kv}`))].join(',')}`,
         `managed-files: ${pairs(files).join(',')}`,
         `managed-settings: ${Object.entries(settings || {}).flatMap(([file, keys]) => pairs(keys).map((kv) => `${file}:${kv}`)).join(',')}`,
+        ...optional,
     ];
 }
 
@@ -172,10 +184,10 @@ function readLedger(file)
 {
     let text = '';
     try { text = fs.readFileSync(file, 'utf8'); } catch { return null; }
-    if (!/^managed-(env|deny|hooks|mcp|files|settings):/m.test(text)) return null;
+    if (!/^(?:managed-(?:env|deny|hooks|mcp|files|settings|account)|workspace-(?:mcp|wrap)):/m.test(text)) return null;
     const items = (key) =>
     {
-        const m = new RegExp(`^managed-${key}: ?(.*)$`, 'm').exec(text);
+        const m = new RegExp(`^${key.includes('-') ? key : `managed-${key}`}: ?(.*)$`, 'm').exec(text);
         return m ? m[1].split(',').map((s) => s.trim()).filter(Boolean) : null;
     };
     const cut = (s, sep) => { const i = s.indexOf(sep); return i < 0 ? [s, ''] : [s.slice(0, i), s.slice(i + 1)]; };
@@ -219,6 +231,26 @@ function readLedger(file)
         const parts = rel.split('/');
         return HEX.test(h) && (ROOT_FILES.includes(rel) || (parts.length === 2 && FILE_KINDS.includes(parts[0]) && validItemName(parts[1])));
     }));
+    // The workspace kinds join the read only where their line is present.
+    const scopedRows = (key, scopes, valid) =>
+    {
+        const list = items(key);
+        if (!list) return undefined;
+        const map = {};
+        for (const item of list)
+        {
+            const [at, rest] = cut(item, ':');
+            const [name, hash] = cut(rest, '=');
+            if (scopes.includes(at) && valid(name) && HEX.test(hash)) (map[at] ||= {})[name] = hash;
+        }
+        return map;
+    };
+    const account = scopedRows('account', ACCOUNT_FILES, (k) => ACCOUNT_KEYS.includes(k));
+    const workspaceMcp = scopedRows('workspace-mcp', MCP_SCOPES, validItemName);
+    const workspaceWrap = scopedRows('workspace-wrap', WRAP_SCOPES, validItemName);
+    if (account) out.account = account;
+    if (workspaceMcp) out.workspaceMcp = workspaceMcp;
+    if (workspaceWrap) out.workspaceWrap = workspaceWrap;
     return out;
 }
 
@@ -227,7 +259,7 @@ function readLedger(file)
 const secretsLine = (by, ms) => { const who = by === null ? `run-${ms}` : by; return who ? `secrets: dual ${who}` : 'secrets: dual'; };
 function renderStamp(fields)
 {
-    const { repoUrl, ref, sha, version, installed, installedMs, action, scope, initialised, hooks, hooksRoute, seatsRoute, alwaysRules, picked = {}, stoodDown = [], mcpDenied = [], toolIgnores = {}, library = {}, ledger = null, data = null, instructionsFile = '' } = fields;
+    const { repoUrl, ref, sha, version, installed, installedMs, action, scope, initialised, hooks, hooksRoute, seatsRoute, alwaysRules, picked = {}, stoodDown = [], mcpDenied = [], toolIgnores = {}, library = {}, ledger = null, data = null, instructionsFile = '', ownPicks = null, ownEnv = null, instructionsBoth = '' } = fields;
     const hashes = (map) => Object.entries(map || {}).map(([n, h]) => `${n}=${h}`).join(',');
     return [
         '# alfred-code install stamp - machine-local, written by the alfred-code installer.',
@@ -258,6 +290,9 @@ function renderStamp(fields)
         ...(data && data.kept ? ['data-move: kept'] : []),
         ...(data && data.secrets ? [secretsLine(data.secrets.by, installedMs)] : []),
         ...(['agents', 'claude'].includes(instructionsFile) ? [`instructions-file: ${instructionsFile}`] : []),
+        ...(Array.isArray(ownPicks) ? [`own-picks: ${[...new Set(ownPicks)].map((l) => l.replace(' ', '/')).sort().join(',')}`] : []),
+        ...(Array.isArray(ownEnv) ? [`own-env: ${[...new Set(ownEnv)].sort().join(',')}`] : []),
+        ...(instructionsBoth === 'declined' ? ['instructions-both: declined'] : []),
         `library-skills: ${hashes(library.skills)}`,
         `library-agents: ${hashes(library.agents)}`,
         `library-rules: ${hashes(library.rules)}`,
@@ -283,7 +318,7 @@ function writeStamp(opts)
 {
     const {
         source, action, scope, configDir, projectRoot, hooksCatalog, hooksRoute, seatsRoute, picked, stoodDown, mcpDenied, toolIgnores, library, ledger, data,
-        instructionsFile = '', version = '', now = new Date(), log = () => {}, note = () => {},
+        instructionsFile = '', ownPicks = null, ownEnv = null, instructionsBoth = '', version = '', now = new Date(), log = () => {}, note = () => {},
     } = opts;
     const initialised = opts.initialised || initialisedValue({ claudeDir: stampDir({ projectRoot }) });
 
@@ -310,7 +345,7 @@ function writeStamp(opts)
             action, scope, initialised,
             hooks: shippedHooks(hooksCatalog), hooksRoute, seatsRoute,
             alwaysRules: always.rules, picked, stoodDown, mcpDenied, toolIgnores, library, ledger, data,
-            instructionsFile,
+            instructionsFile, ownPicks, ownEnv, instructionsBoth,
         }));
     }
     catch (err) { note(`stamp could not be written to ${dest} (${err.message})`); return null; }
@@ -328,6 +363,56 @@ function readPicked(file)
     if (!/^picked-(skills|agents):/m.test(text)) return null;
     const list = (key) => ((new RegExp(`^${key}: (.*)$`, 'm').exec(text) || [])[1] || '').split(',').map((s) => s.trim()).filter(Boolean);
     return { skills: list('picked-skills'), agents: list('picked-agents') };
+}
+
+// Workspace layering (spec 2.2): the picks that are this project's own (`own-picks: <category>/<name>,...`) and the env
+// keys it set itself (`own-env:`), each null when the line is absent - no line is the first child run, an empty line
+// is an answer. An entry of any other shape is dropped (the N1 rule: a stamp is project text).
+const OWN_CATEGORIES = ['skill', 'agent', 'rule', 'hook', 'mcp', 'plugin'];
+function lineOf(file, key)
+{
+    let text = '';
+    try { text = fs.readFileSync(file, 'utf8'); } catch { return null; }
+    const m = new RegExp(`^${key}:[ \\t]?(.*)$`, 'm').exec(text);
+    return m ? m[1].split(',').map((s) => s.trim()).filter(Boolean) : null;
+}
+
+function readOwnPicks(file)
+{
+    const items = lineOf(file, 'own-picks');
+    if (!items) return items;
+    return items.map((s) => s.split('/')).filter((p) => p.length === 2 && OWN_CATEGORIES.includes(p[0]) && validItemName(p[1])).map(([c, n]) => `${c} ${n}`);
+}
+
+function readOwnEnv(file)
+{
+    const items = lineOf(file, 'own-env');
+    return items ? items.filter((k) => ENV_KEY.test(k)) : items;
+}
+
+// 'declined' when the D5 ask was answered 'Leave it' for this project, else ''.
+const readInstructionsBoth = (file) => ((lineOf(file, 'instructions-both') || [])[0] === 'declined' ? 'declined' : '');
+
+// One `key: value` line set, replaced or (value null) removed in place, the rest of the stamp left byte for byte - for
+// the workspace CLI, which answers an ask between installer runs. A new line goes before `library-skills:`. True when
+// the file changed.
+function markLine(file, key, value)
+{
+    let text;
+    try { text = fs.readFileSync(file, 'utf8'); } catch { return false; }
+    const re = new RegExp(`^${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:.*(?:\r?\n|$)`, 'm');
+    const line = value === null ? '' : `${key}: ${value}\n`;
+    let next;
+    if (re.test(text)) next = text.replace(re, line);
+    else if (value === null) return false;
+    else
+    {
+        const at = text.search(/^library-skills:/m);
+        next = at < 0 ? `${text}${text.endsWith('\n') || !text ? '' : '\n'}${line}` : `${text.slice(0, at)}${line}${text.slice(at)}`;
+    }
+    if (next === text) return false;
+    fs.writeFileSync(file, next);
+    return true;
 }
 
 // I3 (R47): the `scope:` line alone - what `update` with no `--scope` resolves against, since the
@@ -646,7 +731,7 @@ module.exports = {
     writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways,
     readPicked, readLibrary, readLedger, renderLedger, emptyLedger, readToolIgnores, valueHash, entryHash, LEDGER_FILES, readStampScope, readHooksRoute, readSeatsRoute, markHooksRoute, readStoodDown, readMcpDenied, readVersion, readInstalledAt, readInstructionsFile, readInstructionsAnswer, validItemName,
     readInitialised, initialisedValue, isInitialised, installState, markInitialised, legacySignature, legacyUnstamped, worktreeMain, installScope, readDataLines,
-    accountDir,
+    accountDir, readOwnPicks, readOwnEnv, readInstructionsBoth, markLine, ACCOUNT_KEYS,
 };
 
 // `node scripts/install/stamp.js state [projectRoot]` - the router's read: one word on stdout, and for

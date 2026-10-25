@@ -52,6 +52,7 @@ function write(p, opts = {})
         library: opts.library,
         ledger: opts.ledger,
         hooksRoute: opts.hooksRoute,
+        ownPicks: opts.ownPicks, ownEnv: opts.ownEnv, instructionsBoth: opts.instructionsBoth,
         version: opts.version || '1.0.0',
         now: new Date('2026-09-22T10:00:00.000Z'),
         log: (m) => logs.push(m), note: (m) => logs.push(m),
@@ -742,4 +743,100 @@ test('readDataLines reads secrets: dual <by>, a bare line as by \'\', and any ot
         fs.writeFileSync(file, `data-root: .alfred\n${text}`);
         assert.deepStrictEqual(stamp.readDataLines(file).secrets, want, JSON.stringify(text));
     }
+});
+
+// ------------------------------------------------------------------ workspace layering (spec 2.2)
+
+const stampMod = require('./install/stamp.js');
+const HASH = (c) => c.repeat(64);
+
+test('install-stamp: own-picks and own-env round-trip; an empty line differs from no line', () =>
+{
+    const { dest, text } = write(project(), { ownPicks: ['skill typescript', 'agent planner'], ownEnv: ['ALFRED_CODE_SCORER'], instructionsBoth: 'declined' });
+    assert.match(text, /^own-picks: agent\/planner,skill\/typescript$/m, 'the stamp spells a line category/name, sorted');
+    assert.match(text, /^own-env: ALFRED_CODE_SCORER$/m);
+    assert.match(text, /^instructions-both: declined$/m);
+    assert.ok(text.indexOf('own-picks:') < text.indexOf('library-skills:'), 'the own lines sit before the library lines');
+    assert.deepStrictEqual(stampMod.readOwnPicks(dest), ['agent planner', 'skill typescript']);
+    assert.deepStrictEqual(stampMod.readOwnEnv(dest), ['ALFRED_CODE_SCORER']);
+    assert.strictEqual(stampMod.readInstructionsBoth(dest), 'declined');
+    const empty = write(project(), { ownPicks: [], ownEnv: [] });
+    assert.match(empty.text, /^own-picks: $/m);
+    assert.deepStrictEqual(stampMod.readOwnPicks(empty.dest), []);
+    assert.deepStrictEqual(stampMod.readOwnEnv(empty.dest), []);
+    const none = write(project());
+    assert.strictEqual(stampMod.readOwnPicks(none.dest), null);
+    assert.strictEqual(stampMod.readOwnEnv(none.dest), null);
+    assert.strictEqual(stampMod.readInstructionsBoth(none.dest), '');
+});
+
+test('install-stamp: an own-picks entry of any other shape is dropped (the N1 rule)', () =>
+{
+    const file = path.join(project().base, 'odd.stamp');
+    fs.writeFileSync(file, 'sha: x\nown-picks: skill/ok,skill/../x,colour/red,agent/a b\nown-env: ALFRED_CODE_A,not-a-key\n');
+    assert.deepStrictEqual(stampMod.readOwnPicks(file), ['skill ok']);
+    assert.deepStrictEqual(stampMod.readOwnEnv(file), ['ALFRED_CODE_A']);
+});
+
+test('install-stamp: readLedger keeps a stamp holding only managed-account or workspace-mcp rows and validates their keys', () =>
+{
+    const key = 'pluginConfigs.cc-plugin-agents-md@builtin.options.instructionFiles';
+    const file = path.join(project().base, 'acct.stamp');
+    fs.writeFileSync(file, `sha: x\nmanaged-account: settings.json:${key}=${HASH('a')},settings.json:theme=${HASH('b')},other.json:${key}=${HASH('c')}\n`);
+    assert.deepStrictEqual(readLedger(file).account, { 'settings.json': { [key]: HASH('a') } });
+    const mcp = path.join(project().base, 'mcp.stamp');
+    fs.writeFileSync(mcp, `sha: x\nworkspace-mcp: local:github=${HASH('d')},project:x=${HASH('e')},user:y=${HASH('f')}\nworkspace-wrap: local:github=${HASH('1')},project:z=${HASH('2')},global:q=${HASH('3')}\n`);
+    const got = readLedger(mcp);
+    assert.deepStrictEqual(got.workspaceMcp, { local: { github: HASH('d') }, user: { y: HASH('f') } });
+    assert.deepStrictEqual(got.workspaceWrap, { local: { github: HASH('1') }, project: { z: HASH('2') } });
+});
+
+test('install-stamp: the workspace ledger kinds render only when non-empty and read back exactly', () =>
+{
+    const key = 'pluginConfigs.cc-plugin-agents-md@builtin.options.instructionFiles';
+    const ledger = { ...emptyLedger(), account: { 'settings.json': { [key]: HASH('a') } }, workspaceMcp: { local: { github: HASH('b') } }, workspaceWrap: {} };
+    const { dest, text } = write(project(), { ledger });
+    assert.match(text, new RegExp(`^managed-account: settings\\.json:${key.replace(/[.@-]/g, '\\$&')}=a{64}$`, 'm'));
+    assert.match(text, /^workspace-mcp: local:github=b{64}$/m);
+    assert.doesNotMatch(text, /^workspace-wrap:/m, 'an empty kind writes no line');
+    const back = readLedger(dest);
+    assert.deepStrictEqual(back.account, ledger.account);
+    assert.deepStrictEqual(back.workspaceMcp, ledger.workspaceMcp);
+    assert.strictEqual(Object.hasOwn(back, 'workspaceWrap'), false, 'a kind with no line is not in the read');
+});
+
+test('install-stamp: SETTINGS_PATH reads array-member rows', () =>
+{
+    const file = path.join(project().base, 'members.stamp');
+    fs.writeFileSync(file, `sha: x\nmanaged-settings: settings.local.json:claudeMdExcludes[${HASH('a')}]=${HASH('a')},settings.json:permissions.additionalDirectories[${HASH('b')}]=${HASH('b')},settings.local.json:disabledMcpjsonServers[${HASH('c')}]=${HASH('c')},settings.local.json:claudeMdExcludes[zz]=${HASH('d')}\n`);
+    assert.deepStrictEqual(readLedger(file).settings, {
+        'settings.local.json': { [`claudeMdExcludes[${HASH('a')}]`]: HASH('a'), [`disabledMcpjsonServers[${HASH('c')}]`]: HASH('c') },
+        'settings.json': { [`permissions.additionalDirectories[${HASH('b')}]`]: HASH('b') },
+    });
+});
+
+test('install-stamp: a standalone stamp renders byte-identical to today\'s', () =>
+{
+    const before = write(project(), { ledger: emptyLedger(), picked: { skills: ['a'], agents: [] } }).text;
+    const after = write(project(), { ledger: emptyLedger(), picked: { skills: ['a'], agents: [] }, ownPicks: null, ownEnv: null, instructionsBoth: '' }).text;
+    assert.strictEqual(after.replace(/p-\d+/g, ''), before.replace(/p-\d+/g, ''));
+    assert.doesNotMatch(after, /^(own-picks|own-env|instructions-both|managed-account|workspace-mcp|workspace-wrap):/m);
+});
+
+test('install-stamp: markLine adds, replaces and removes one line and leaves the rest', () =>
+{
+    const { dest } = write(project(), { ledger: emptyLedger() });
+    const original = fs.readFileSync(dest, 'utf8');
+    assert.strictEqual(stampMod.markLine(dest, 'instructions-both', 'declined'), true);
+    const added = fs.readFileSync(dest, 'utf8');
+    assert.ok(added.indexOf('instructions-both: declined\n') < added.indexOf('library-skills:'));
+    assert.strictEqual(added.replace('instructions-both: declined\n', ''), original, 'nothing else moved');
+    assert.strictEqual(stampMod.markLine(dest, 'instructions-both', 'declined'), false, 'the same value changes nothing');
+    stampMod.markLine(dest, 'managed-account', `settings.json:k=${HASH('a')}`);
+    stampMod.markLine(dest, 'managed-account', `settings.json:k=${HASH('b')}`);
+    assert.strictEqual((fs.readFileSync(dest, 'utf8').match(/^managed-account:/gm) || []).length, 1);
+    stampMod.markLine(dest, 'instructions-both', null);
+    stampMod.markLine(dest, 'managed-account', null);
+    assert.strictEqual(fs.readFileSync(dest, 'utf8'), original);
+    assert.strictEqual(stampMod.markLine(path.join(TMP, 'no-such.stamp'), 'x', 'y'), false);
 });
