@@ -39,6 +39,8 @@ Every later call passes the same `--root`, `--session` and `--slug`.
    - `release <id>` - the pass below;
    - `regrade <id>` - `start --regrade-of <id>`, then step 5 over the same draft;
    - `revise` - step 8, then `start` again (a new round), step 4 and step 5;
+   - `offer-fix <id> recommend <choice>` - Fix on a pass below; nothing is released yet;
+   - `fix <id>` - step 8 over the findings its `Fixable:` line names, then `start` (a new round), step 4 and step 5;
    - `ask-continue <id> recommend <choice>` or `withhold-final <id> recommend <choice>` - Release and withhold below;
    - `final <id>` - the output stays withheld; say so with the lines it printed;
    - `incomplete <id>` - the Fallback's retry.
@@ -59,7 +61,7 @@ The outputs, their producers, rubrics, runs and docs are the table in `reference
 
 ## Release and withhold
 
-- `release`: the output goes where it goes today - the plan file to its path, the verdict into the findings file and the reply, the plan or the answer into the reply - followed by the `Scored:` line `next` printed and, when it printed one, the `Open:` line. A SELF grade's pass adds 'independent review recommended before acting on it'.
+- `release`: the output goes where it goes today - the plan file to its path, the verdict into the findings file and the reply, the plan or the answer into the reply - followed by the `Scored:` line `next` printed and, when it printed one, the `Open:` line. After a fix, what goes out is the draft at the path its `Fix:` line names, and that line follows the others. A SELF grade's pass adds 'independent review recommended before acting on it'.
 - `ask-continue` / `withhold-final`: nothing is released or acted on - the plan file is not written to its real path, the work does not start, a flow does not route on the report, a pick's or an upgrade's ask is not put. The reply holds the `Scored: ... NOT PASSED ...` line `next` printed, then ONE AskUserQuestion call of at most 4 questions (plain-text options where the harness lacks the tool): the continue question first, then the open BLOCKERs, then the MATERIALs in rank order, one question each. Findings past the fourth are listed in the reply one line each with their fix, and go into `answers.md` as `recommended fix applied` unless the user's Other text says otherwise.
 
 The continue question, its numbers from `next`'s `Ceiling:` and `Findings:` lines:
@@ -91,6 +93,20 @@ Record the continue answer with `decide --choice <accept|revise|answer|keep>` - 
 - `answer` - write the answers to `answers.md`; the next `start` joins them to TASK and opens attempt 2, a full run of its own; there is no attempt 3;
 - `keep` - the best draft stays withheld at the path `next` printed.
 
+## Fix on a pass
+
+`offer-fix` comes on a pass under the level plus 15 that holds a MATERIAL finding one revision can close; a pass of 95 or over at the defaults, or one with nothing closable, is released at once. Nothing is released while it is asked: the reply holds the `Scored: ... fix offered ...` and `Open:` lines `next` printed, then ONE AskUserQuestion call (plain-text options where the harness lacks the tool):
+
+```ask
+The <output> passed at <S>/100 (level <n>) with <k> MATERIAL finding(s) one revision can close - <the Fixable line>. Fix them before it goes out?
+- 'Fix them first (Recommended)' - one revision and one more grade; the revision goes out only if it still passes with fewer MATERIAL findings, else this draft does
+- 'Use it as it is' - it goes out now at <S>, the findings named on its Open line
+```
+
+- On `recommend release` (no run left under the cap) 'Use it as it is' carries the mark and comes first, and 'Fix them first' says it buys one run past the cap.
+- Record the answer with `decide --choice <fix|release>`, then run `next` again: `fix` prints `fix <id>` (step 7), `release` the release.
+- Under `--auto-mode` no ask is put: `next` takes its own recommendation and prints `fix <id>` or the release.
+
 ## Fallback
 
 - `start` exits 4 (no session id, or `${CLAUDE_SESSION_ID}` reached you unsubstituted): rerun it with `--session self`, which prints `session: self-<hex>` - pass that id to every later call - and grade with `--self`.
@@ -102,3 +118,4 @@ Record the continue answer with `decide --choice <accept|revise|answer|keep>` - 
 - A plan file written, a verdict stamped or an answer sent while the line was in context, with no `Scored:` line.
 - A score file the author wrote with no `self:` line, or a total in the reply the script did not print.
 - A revise after `next` printed an ask, or an option marked `(Recommended)` that `next` did not name.
+- A plan file written or an output sent between an `offer-fix` and its `decide`.

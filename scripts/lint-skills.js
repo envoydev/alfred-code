@@ -167,10 +167,10 @@ const NON_SKILL_TOKENS = new Set([
     'windows-desktop',
     'macos-desktop',
     'appium-mcp',
-    // habits-output-scorer's output ids (scorecard.js OUTPUTS), two of the moves its `next` prints, and the two diagnoser
+    // habits-output-scorer's output ids (scorecard.js OUTPUTS), three of the moves its `next` prints, and the two diagnoser
     // seats its outputs table names - outputs, script words and seats, not skills.
     'designer-plan', 'root-cause', 'inline-plan', 'topic-explainer', 'upgrade-plan',
-    'ask-continue', 'withhold-final',
+    'ask-continue', 'withhold-final', 'offer-fix',
     'issue-diagnoser-ci', 'issue-diagnoser-runtime',
 ]);
 

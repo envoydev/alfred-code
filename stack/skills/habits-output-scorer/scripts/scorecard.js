@@ -218,12 +218,13 @@ function readFindings(lines) {
       title: (cut < 0 ? rest : rest.slice(0, cut)).replace(/\*\*/g, '').replace(/[\s.:;,-]+$/, '').trim(),
       missing: FIELDS.filter((f) => !have.has(f)),
       needs: fix ? [...item.text.slice(fix.index).matchAll(NEEDS_RE)].map((n) => n[1]).filter(Boolean) : [],
+      closable: fix ? /\[closable\]/i.test(item.text.slice(fix.index)) : false,
     };
   }) };
 }
 
 function grade({ scoreText, rubric, level = 80, self = false }) {
-  const bad = (exit, why) => ({ exit, why, total: null, verdict: null, blockers: 0, open: [], flipped: [], ceiling: null, needs: [], discarded: [] });
+  const bad = (exit, why) => ({ exit, why, total: null, verdict: null, blockers: 0, open: [], fixable: [], flipped: [], ceiling: null, needs: [], discarded: [] });
   const file = readScoreFile(scoreText);
   if (self) {
     if (file.self === null) return bad(3, '--self needs a score file whose first line is `self: <reason>`');
@@ -275,6 +276,8 @@ function grade({ scoreText, rubric, level = 80, self = false }) {
     blockers: blockers.length,
     blocked: blockers.map((f) => f.title),
     open: kept.filter((f) => f.severity === 'MATERIAL').map((f) => f.title),
+    // the MATERIALs whose Fix the author can close from what the seat had - what the fix-on-pass offer names
+    fixable: kept.filter((f) => f.severity === 'MATERIAL' && f.closable).map((f) => f.title),
     flipped,
     ceiling,
     needs: [...new Set([...rowNeeds, ...kept.flatMap((f) => f.needs)])],
@@ -346,9 +349,10 @@ function slugContext(args, env = process.env, allocate = false) {
 }
 
 // rounds.log: the header lines, one grade line per grade (`<attempt> <round> <id>[ regrade-of|retry-of <id>]`), and the
-// loop's marks - `released`, `asked`, `bought`, `final`.
+// loop's marks - `released`, `asked`, `bought`, `final`, `fixing` (with the count of grades before it, so the revision
+// is the first grade after it).
 function readLog(file) {
-  const log = { output: null, target: null, grades: [], released: null, accepted: false, final: null, bought: [], newest: '' };
+  const log = { output: null, target: null, grades: [], released: null, accepted: false, final: null, bought: [], offered: [], fixing: null, newest: '' };
   const gradeRe = new RegExp(`^(\\d+) (\\d+) (${ID_RE})(?: (regrade-of|retry-of) (${ID_RE}))?$`);
   for (const raw of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
     const line = raw.trim();
@@ -361,6 +365,8 @@ function readLog(file) {
     else if ((m = new RegExp(`^released (${ID_RE})( accepted below the level)?$`).exec(line))) { log.released = log.released || m[1]; log.accepted = log.accepted || !!m[2]; }
     else if ((m = new RegExp(`^final (${ID_RE})$`).exec(line))) log.final = log.final || m[1];
     else if ((m = new RegExp(`^bought (${ID_RE})$`).exec(line))) log.bought.push(m[1]);
+    else if ((m = new RegExp(`^asked (${ID_RE}) offer-fix$`).exec(line))) log.offered.push(m[1]);
+    else if ((m = new RegExp(`^fixing (${ID_RE})$`).exec(line))) log.fixing = log.fixing || { id: m[1], at: log.grades.length };
   }
   return log;
 }
@@ -477,6 +483,7 @@ function roundsIn(ctx, log, attempt, rubric, level) {
       blocker: valid.some((r) => r.blockers > 0),
       blocked: unique(valid.flatMap((r) => r.blocked)),
       open: unique(valid.flatMap((r) => r.open)),
+      fixable: unique(valid.flatMap((r) => r.fixable)),
       discarded: unique(valid.flatMap((r) => r.discarded.map((d) => `${d.id} ${d.severity} (no ${d.missing.join(', ')})`))),
     };
   });
@@ -497,7 +504,23 @@ function runNext(args) {
   const attemptOf = (id) => (log.grades.find((g) => g.id === id) || { attempt: newestAttempt(log) }).attempt;
   const roundNamed = (id) => roundsIn(ctx, log, attemptOf(id), rubric, level).find((r) => r.id === id) || null;
   const scored = (r, mark) => `Scored: ${r.value}/100 (level ${level}) - ${mark ? `${mark} - ` : ''}${runs} run(s) - ${r.self ? 'SELF' : 'independent'} - ${log.output}`;
-  const released = (r) => [scored(r, log.accepted ? 'accepted below the level' : ''), ...(r.open.length ? [`Open: ${r.open.join('; ')}`] : [])];
+  const openLine = (r) => (r.open.length ? [`Open: ${r.open.join('; ')}`] : []);
+  const released = (r) => [scored(r, log.accepted ? 'accepted below the level' : ''), ...openLine(r)];
+  // After a `fixing` mark (the user's ruling, 2026-10-25): the revision goes out only when it passes with fewer MATERIAL
+  // findings than the draft it revised, else that draft does - so a fix never ships a worse output. Null until the
+  // revision has a grade line; `incomplete` while none of its grades is valid.
+  const fixOutcome = () => {
+    const orig = roundNamed(log.fixing.id);
+    const first = log.grades[log.fixing.at];
+    if (!orig || !first) return null;
+    const rev = roundsIn(ctx, log, first.attempt, rubric, level).find((r) => r.grades.some((g) => g.id === first.id));
+    if (!rev.valid.length) return { incomplete: rev.id };
+    const why = rev.blocker ? 'the revision carries a BLOCKER'
+      : rev.value < level ? `the revision scored ${rev.value}, under the level`
+        : rev.open.length >= orig.open.length ? `the revision left ${rev.open.length} of ${orig.open.length} MATERIAL open` : null;
+    const r = why ? orig : rev;
+    return { round: r, line: `Fix: ${why ? `not kept - ${why}` : `kept - ${rev.open.length} of ${orig.open.length} MATERIAL left`} - release the draft at ${r.draft}` };
+  };
   const withheld = (r) => [
     `Ceiling: ${r.ceiling}/100 (level ${level}) - ${r.needs.length ? r.needs.join('; ') : 'nothing closable left'}`,
     `Findings: ${r.blocked.length} BLOCKER, ${r.open.length} MATERIAL`,
@@ -511,6 +534,20 @@ function runNext(args) {
   } else if (log.released) {
     named = roundNamed(log.released);
     out.push(`release ${log.released}`, ...(named && named.valid.length ? released(named) : []));
+    const fix = log.fixing && fixOutcome();
+    if (fix && fix.line) out.push(fix.line);
+  } else if (log.fixing) {
+    const fix = fixOutcome();
+    if (!fix) {
+      named = roundNamed(log.fixing.id);
+      out.push(`fix ${log.fixing.id}`, `Fixable: ${named ? named.fixable.join('; ') : 'none'}`);
+    } else if (fix.incomplete) {
+      out.push(`incomplete ${fix.incomplete}`);
+    } else {
+      named = fix.round;
+      fs.appendFileSync(ctx.logFile, `released ${fix.round.id}\n`);
+      out.push(`release ${fix.round.id}`, ...released(fix.round), fix.line);
+    }
   } else {
     const attempt = newestAttempt(log);
     const rounds = roundsIn(ctx, log, attempt, rubric, level);
@@ -521,7 +558,21 @@ function runNext(args) {
     const bought = log.bought.filter((id) => ids.has(id)).length;
     const used = ids.size;
     const cap = cap0 + bought;
-    if (passing) {
+    // The fix-on-pass offer (the user's three zones, 2026-10-25): a pass inside the noise band holding a MATERIAL whose Fix
+    // is [closable] is offered one more revision - recommended while a run is left, the release otherwise; 95 and over at
+    // the defaults, or nothing closable, releases at once. inline-plan runs once and is never offered.
+    const offer = passing && OUTPUTS[log.output].runs !== 1 && passing.value < level + NOISE_BAND && passing.fixable.length > 0;
+    const choice = used < cap ? 'fix' : 'release';
+    if (offer && !args.auto) {
+      named = passing;
+      if (!log.offered.includes(passing.id)) fs.appendFileSync(ctx.logFile, `asked ${passing.id} offer-fix\n`);
+      out.push(`offer-fix ${passing.id} recommend ${choice}`, `Fixable: ${passing.fixable.join('; ')}`, scored(passing, 'fix offered'), ...openLine(passing));
+    } else if (offer && choice === 'fix') {
+      // under --auto the script takes its own recommendation and puts no ask
+      named = passing;
+      fs.appendFileSync(ctx.logFile, `${log.offered.includes(passing.id) ? '' : `asked ${passing.id} offer-fix\n`}fixing ${passing.id}\n`);
+      out.push(`fix ${passing.id}`, `Fixable: ${passing.fixable.join('; ')}`);
+    } else if (passing) {
       named = passing;
       fs.appendFileSync(ctx.logFile, `released ${passing.id}\n`);
       out.push(`release ${passing.id}`, ...released(passing));
@@ -560,15 +611,23 @@ function runNext(args) {
 }
 
 // The user's answer to the newest `asked` line (R28): accept releases below the level, marked; revise buys one run;
-// keep is final; answer writes nothing and leaves attempt 2 to `start` once answers.md exists.
+// keep is final; answer writes nothing and leaves attempt 2 to `start` once answers.md exists. A fix-on-pass offer takes
+// fix (the revision is owed, past the cap too) or release (the graded draft goes out).
 function runDecide(args) {
   const ctx = slugContext(args);
   if (!isFile(ctx.logFile)) fail(2, `no rounds.log for slug ${ctx.slug} - run start first`);
   const log = readLog(ctx.logFile);
-  const m = new RegExp(`^asked (${ID_RE}) (ask-continue|withhold-final)$`).exec(log.newest);
+  const m = new RegExp(`^asked (${ID_RE}) (ask-continue|withhold-final|offer-fix)$`).exec(log.newest);
   if (!m) fail(2, 'nothing is asked - run next first');
   const [, id, action] = m;
   const choice = args.choice || '';
+  if (action === 'offer-fix') {
+    if (choice !== 'fix' && choice !== 'release') fail(2, `offer-fix takes fix or release, not '${choice}'`);
+    const line = choice === 'fix' ? `fixing ${id}` : `released ${id}`;
+    fs.appendFileSync(ctx.logFile, `${line}\n`);
+    process.stdout.write(`${line}\n`);
+    return 0;
+  }
   if (!['accept', 'revise', 'answer', 'keep'].includes(choice)) fail(2, `--choice '${choice}' is not accept, revise, answer or keep`);
   if (action === 'withhold-final' && (choice === 'revise' || choice === 'answer')) fail(2, `withhold-final takes accept or keep, not ${choice}`);
   const attempt = (log.grades.find((g) => g.id === id) || { attempt: newestAttempt(log) }).attempt;

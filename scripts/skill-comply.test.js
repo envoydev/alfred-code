@@ -604,6 +604,14 @@ test('an output-scorer trace grades the seat, the script\'s next before the plan
 
     const third = jsonl([user('plan it'), seat(), next(), say(withheld), answers(), seat(), next(), say(withheld), answers()]);
     assert.deepStrictEqual(failing(sc.grade(exp, third, { level: 'plain' })), ['one-more-attempt']);
+
+    // the fix-on-pass offer: no plan until the answer's release line, whichever draft that release names
+    const offered = 'Scored: 88/100 (level 80) - fix offered - 1 run(s) - independent - designer-plan';
+    const jumped = jsonl([user('plan it'), seat(), next(), say(offered), plan()]);
+    assert.deepStrictEqual(failing(sc.grade(exp, jumped, { level: 'plain' })), ['no-plan-while-fix-offered']);
+    const waited = jsonl([user('plan it'), seat(), next(), say(offered), seat(), next(),
+        say('Scored: 90/100 (level 80) - 2 run(s) - independent - designer-plan'), plan()]);
+    assert.deepStrictEqual(failing(sc.grade(exp, waited, { level: 'plain' })), []);
 });
 
 test('check: every shipped expectation is valid and its quotes are still in the skill', () =>

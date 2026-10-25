@@ -567,6 +567,8 @@ test('scorer backstop: a withheld output whose continue ask is open (rounds.log 
   backed('W1', 'asked ab12cd34 ask-continue');
   assert.strictEqual(scorer([typed('go'), T1('W1')], `withheld\nScored: 71/100 (level 80) - NOT PASSED`, { session_id: 'W1' }), 0);
   assert.strictEqual(ledgerRows('scorer-receipt-unbacked').filter((r) => /W1/.test(JSON.stringify(r))).length, 0);
+  backed('W2', 'asked ab12cd34 offer-fix');                                                        // the fix-on-pass ask, open
+  assert.strictEqual(scorer([typed('go'), T1('W2')], 'offered\nScored: 88/100 (level 80) - fix offered - 1 run(s)', { session_id: 'W2' }), 0);
 });
 test('scorer backstop: a typed stack (T4) is held once with the switch off; the name in inline code is not (AC25)', () => {
   for (const [i, t] of [typed('/task-version-upgrade /habits-output-scorer upgrade to .NET 10'), typed('using habits-output-scorer, explain closures'),

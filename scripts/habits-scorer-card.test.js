@@ -246,9 +246,9 @@ const next = (slug, extra = []) => cli(['next', ...at(slug), '--level', '80', '-
 const decide = (slug, choice) => cli(['decide', ...at(slug), '--choice', choice]);
 
 test('next: a pass releases the best passing round, appends released, and a re-run prints the same, writing nothing (AC15, R28)', () => {
-    graded('p1', { total: 70 }); const b = graded('p1', { total: 92, material: 'Rollback unnamed' });
+    graded('p1', { total: 70 }); const b = graded('p1', { total: 96, material: 'Rollback unnamed' });
     const out = next('p1');
-    assert.deepStrictEqual(out.slice(0, 3), [`release ${b}`, 'Scored: 92/100 (level 80) - 2 run(s) - independent - designer-plan', 'Open: Rollback unnamed']);
+    assert.deepStrictEqual(out.slice(0, 3), [`release ${b}`, 'Scored: 96/100 (level 80) - 2 run(s) - independent - designer-plan', 'Open: Rollback unnamed']);
     const after = fs.readFileSync(log('p1'), 'utf8'); assert.match(after, new RegExp(`^released ${b}$`, 'm'));
     assert.deepStrictEqual(next('p1'), out); assert.strictEqual(fs.readFileSync(log('p1'), 'utf8'), after);
 });
@@ -324,6 +324,63 @@ test('decide: answer writes nothing and attempt 2 waits for answers.md; answer i
     assert.match(next('f1')[0], /^withhold-final /);                                                // attempt 2: a ceiling too low (R19)
     assert.strictEqual(decide('f1', 'answer').status, 2);
     assert.strictEqual(decide('f1', 'revise').status, 2);
+});
+// The fix-on-pass ask (the user's three zones, 2026-10-25): a pass under level + 15 holding a MATERIAL whose Fix is
+// [closable] is offered one more revision, recommended while a run is left; 95 and over, or no closable MATERIAL, releases.
+const NEEDS_MATERIAL = '- [MATERIAL] M2 Owner unnamed. Failure: f Trigger: t Cost: c Evidence: e Fix: x [needs: the rollback owner]';
+const draftAt = (slug, id) => path.join(dir(slug), `${id}.draft.md`);
+test('next: a pass 80-94 with a closable MATERIAL offers the fix, recommended while a run is left; 95+, none closable or inline-plan release', () => {
+    const id = graded('w1', { total: 88, material: 'Rollback unnamed' });
+    const out = next('w1');
+    assert.deepStrictEqual(out, [`offer-fix ${id} recommend fix`, 'Fixable: Rollback unnamed',
+        'Scored: 88/100 (level 80) - fix offered - 1 run(s) - independent - designer-plan', 'Open: Rollback unnamed']);
+    const after = fs.readFileSync(log('w1'), 'utf8'); assert.match(after, new RegExp(`asked ${id} offer-fix\\n$`)); assert.doesNotMatch(after, /^released/m);
+    assert.deepStrictEqual(next('w1'), out); assert.strictEqual(fs.readFileSync(log('w1'), 'utf8'), after);
+    for (const [slug, total] of [['w2', 80], ['w3', 94]]) {
+        const at80 = graded(slug, { total, material: 'Rollback unnamed' }); assert.strictEqual(next(slug)[0], `offer-fix ${at80} recommend fix`, slug);
+    }
+    const top = graded('w4', { total: 95, material: 'Rollback unnamed' }); assert.strictEqual(next('w4')[0], `release ${top}`);
+    const owed = graded('w5', { total: 88, findings: [NEEDS_MATERIAL] }); assert.deepStrictEqual(next('w5').slice(0, 3), [`release ${owed}`,
+        'Scored: 88/100 (level 80) - 1 run(s) - independent - designer-plan', 'Open: Owner unnamed']);
+    const inline = graded('w6', { total: 88, material: 'Rollback unnamed', output: 'inline-plan' }); assert.strictEqual(next('w6')[0], `release ${inline}`);
+    const capped = graded('w7', { total: 88, material: 'Rollback unnamed' }); assert.strictEqual(next('w7', ['--rounds', '1'])[0], `offer-fix ${capped} recommend release`);
+});
+test('next --auto: the fix-on-pass recommendation is taken with no ask - fix while a run is left, else the release', () => {
+    const id = graded('y1', { total: 88, material: 'Rollback unnamed' });
+    assert.deepStrictEqual(next('y1', ['--auto']), [`fix ${id}`, 'Fixable: Rollback unnamed']);
+    assert.match(fs.readFileSync(log('y1'), 'utf8'), new RegExp(`asked ${id} offer-fix\\nfixing ${id}\\n$`));
+    assert.deepStrictEqual(next('y1', ['--auto']), [`fix ${id}`, 'Fixable: Rollback unnamed']);   // until the revision is graded
+    const capped = graded('y2', { total: 88, material: 'Rollback unnamed' });
+    assert.strictEqual(next('y2', ['--auto', '--rounds', '1'])[0], `release ${capped}`);
+});
+test('decide on an offer: fix marks fixing and next prints fix; release releases the graded draft; the other choices exit 2 either way', () => {
+    const id = graded('z1', { total: 88, material: 'Rollback unnamed' }); next('z1');
+    assert.strictEqual(decide('z1', 'accept').status, 2); assert.strictEqual(decide('z1', 'keep').status, 2);
+    const fix = decide('z1', 'fix'); assert.deepStrictEqual([fix.status, fix.stdout], [0, `fixing ${id}\n`]);
+    assert.deepStrictEqual(next('z1'), [`fix ${id}`, 'Fixable: Rollback unnamed']);
+    const r = graded('z2', { total: 88, material: 'Rollback unnamed' }); next('z2');
+    assert.strictEqual(decide('z2', 'release').stdout, `released ${r}\n`);
+    assert.deepStrictEqual(next('z2'), [`release ${r}`, 'Scored: 88/100 (level 80) - 1 run(s) - independent - designer-plan', 'Open: Rollback unnamed']);
+    graded('z3', { total: 60, ceiling: 78 }); next('z3');                                          // a continue ask takes neither fix nor release
+    for (const choice of ['fix', 'release']) assert.strictEqual(decide('z3', choice).status, 2, choice);
+});
+test('next after a fix: the revision goes out only when it passes with fewer MATERIAL findings, else the graded draft does, its path named', () => {
+    graded('g1', { total: 88, material: 'Rollback unnamed' }); next('g1'); decide('g1', 'fix');
+    const f = graded('g1', { total: 90 });
+    const kept = next('g1');
+    assert.deepStrictEqual(kept, [`release ${f}`, 'Scored: 90/100 (level 80) - 2 run(s) - independent - designer-plan',
+        `Fix: kept - 0 of 1 MATERIAL left - release the draft at ${draftAt('g1', f)}`]);
+    assert.match(fs.readFileSync(log('g1'), 'utf8'), new RegExp(`^released ${f}$`, 'm')); assert.deepStrictEqual(next('g1'), kept);
+    for (const [slug, revision, why] of [['g2', { total: 75 }, 'the revision scored 75, under the level'],
+        ['g3', { total: 92, material: 'Rollback unnamed' }, 'the revision left 1 of 1 MATERIAL open'],
+        ['g4', { total: 99, blocker: true }, 'the revision carries a BLOCKER']]) {
+        const orig = graded(slug, { total: 88, material: 'Rollback unnamed' }); next(slug); decide(slug, 'fix'); graded(slug, revision);
+        assert.deepStrictEqual(next(slug), [`release ${orig}`, 'Scored: 88/100 (level 80) - 2 run(s) - independent - designer-plan', 'Open: Rollback unnamed',
+            `Fix: not kept - ${why} - release the draft at ${draftAt(slug, orig)}`], slug);
+    }
+    graded('g5', { total: 88, material: 'Rollback unnamed' }); next('g5'); decide('g5', 'fix');
+    const u = graded('g5', { total: 95, unsealed: true }); assert.strictEqual(next('g5')[0], `incomplete ${u}`);
+    graded('g5', { total: 91, retryOf: u }); assert.strictEqual(next('g5')[0], `release ${u}`);       // the retry grades the same revision
 });
 
 // The eight rubrics and the outputs table. full(output, na) grades a sealed card over the real rubric through
