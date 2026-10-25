@@ -256,10 +256,12 @@ test('next: a release names a finding its grade discarded (R33)', () => {
     graded('x1', { total: 92, findings: ['- [BLOCKER] B1 Drops rows. Failure: f Trigger: t Evidence: e Fix: x'] });
     assert.ok(next('x1').includes('Discarded: B1 BLOCKER (no Cost)'));
 });
-test('next: a round-0 fail outside the band revises; 1-5 under the level regrades once, and the mean decides (AC15)', () => {
-    graded('r1', { total: 70 }); assert.strictEqual(next('r1')[0], 'revise');
-    const id = graded('r2', { total: 77 }); assert.strictEqual(next('r2')[0], `regrade ${id}`);
-    graded('r2', { total: 85, regradeOf: id }); assert.strictEqual(next('r2')[0], `release ${id}`);   // mean 81
+test('next: a round-0 fail outside the band revises; 1-15 under the level regrades once, and the mean decides (AC15, AC8)', () => {
+    // 15 is the spread measured over the strong fixtures, each graded three times (docs/habits-scorer-evidence.md)
+    graded('r1', { total: 64 }); assert.strictEqual(next('r1')[0], 'revise');
+    const id = graded('r2', { total: 65 }); assert.strictEqual(next('r2')[0], `regrade ${id}`);
+    graded('r2', { total: 95, regradeOf: id }); assert.strictEqual(next('r2')[0], `release ${id}`);   // mean 80
+    const top = graded('r3', { total: 79 }); assert.strictEqual(next('r3')[0], `regrade ${top}`);
 });
 test('next: an inline-plan fail never regrades and asks after its one run, whatever --rounds says (AC15, R18)', () => {
     const id = graded('i1', { total: 78, output: 'inline-plan' });
@@ -268,26 +270,26 @@ test('next: an inline-plan fail never regrades and asks after its one run, whate
 test('next: a 4-point gain stalls; the cap counts the regrade; --rounds 4 lifts it (AC15, R18)', () => {
     graded('s1', { total: 60 }); const b = graded('s1', { total: 64 });
     assert.strictEqual(next('s1')[0], `ask-continue ${b} recommend accept`);                      // a stall names the best round
-    graded('c1', { total: 70 }); assert.strictEqual(next('c1')[0], 'revise');
+    graded('c1', { total: 60 }); assert.strictEqual(next('c1')[0], 'revise');
     const r1 = graded('c1', { total: 78 }); assert.strictEqual(next('c1')[0], `regrade ${r1}`);
     graded('c1', { total: 78, regradeOf: r1 });                                                    // three grade lines in attempt 1
     assert.strictEqual(next('c1')[0], `ask-continue ${r1} recommend accept`);
-    graded('c2', { total: 70 }); next('c2'); const q = graded('c2', { total: 78 }); next('c2'); graded('c2', { total: 78, regradeOf: q });
+    graded('c2', { total: 60 }); next('c2'); const q = graded('c2', { total: 78 }); next('c2'); graded('c2', { total: 78, regradeOf: q });
     assert.strictEqual(next('c2', ['--rounds', '4'])[0], 'revise');
 });
 test('next: attempt 2 ends in withhold-final, never compares with attempt 1, and an unlogged or unsealed grade counts as R9 says', () => {
-    graded('a1', { total: 70, ceiling: 78 }); next('a1'); fs.writeFileSync(answers('a1'), 'x\n');
-    graded('a1', { total: 72 }); assert.strictEqual(next('a1')[0], 'revise');                      // attempt 2 round 0, no stall vs 70
+    graded('a1', { total: 60, ceiling: 78 }); next('a1'); fs.writeFileSync(answers('a1'), 'x\n');
+    graded('a1', { total: 62 }); assert.strictEqual(next('a1')[0], 'revise');                      // attempt 2 round 0, no stall vs 60
     fs.writeFileSync(path.join(dir('a1'), 'ffffffff.score.md'), card100(100));                    // no rounds.log line names it
     const u = graded('a1', { total: 95, unsealed: true }); assert.strictEqual(next('a1')[0], `incomplete ${u}`);
     graded('a1', { total: 74, retryOf: u });                                                       // the retry: 3 grade lines in attempt 2
     assert.match(next('a1')[0], /^withhold-final [0-9a-f]{8} recommend accept$/);
 });
 test('next: a ceiling under the level, or under 5 above the total, asks instead of revising (R16, AC21)', () => {
-    const id = graded('k1', { total: 70, ceiling: 78 });
+    const id = graded('k1', { total: 60, ceiling: 78 });
     assert.deepStrictEqual(next('k1').slice(0, 4), [`ask-continue ${id} recommend answer`, 'Ceiling: 78/100 (level 80) - the retention period',
-        'Findings: 0 BLOCKER, 0 MATERIAL', `Scored: 70/100 (level 80) - NOT PASSED after 1 run(s) - withheld at ${path.join(dir('k1'), `${id}.draft.md`)}`]);
-    const j = graded('k2', { total: 70, ceiling: 74 }); assert.match(next('k2')[0], new RegExp(`^ask-continue ${j} `));
+        'Findings: 0 BLOCKER, 0 MATERIAL', `Scored: 60/100 (level 80) - NOT PASSED after 1 run(s) - withheld at ${path.join(dir('k1'), `${id}.draft.md`)}`]);
+    const j = graded('k2', { total: 60, ceiling: 64 }); assert.match(next('k2')[0], new RegExp(`^ask-continue ${j} `));
 });
 test('next --auto: revise first at the cap with a BLOCKER, then keep; accept with no BLOCKER; never answer (AC26, R19)', () => {
     for (const t of [50, 52, 53]) graded('u1', { total: t, blocker: true, ceiling: 70 });
@@ -306,19 +308,19 @@ test('next without --auto: revise is recommended at most once per attempt (AC26)
     assert.match(next('v1')[0], /recommend keep$/);
 });
 test('decide: accept releases below the level, marked; revise buys one run; keep is final; nothing asked exits 2 (AC21, R28)', () => {
-    const id = graded('d1', { total: 70, ceiling: 78 }); next('d1'); decide('d1', 'accept');
-    assert.deepStrictEqual(next('d1').slice(0, 2), [`release ${id}`, 'Scored: 70/100 (level 80) - accepted below the level - 1 run(s) - independent - designer-plan']);
+    const id = graded('d1', { total: 60, ceiling: 78 }); next('d1'); decide('d1', 'accept');
+    assert.deepStrictEqual(next('d1').slice(0, 2), [`release ${id}`, 'Scored: 60/100 (level 80) - accepted below the level - 1 run(s) - independent - designer-plan']);
     assert.match(fs.readFileSync(log('d1'), 'utf8'), new RegExp(`^released ${id} accepted below the level$`, 'm'));
-    graded('d2', { total: 70, ceiling: 78 }); next('d2'); decide('d2', 'revise');
+    graded('d2', { total: 60, ceiling: 78 }); next('d2'); decide('d2', 'revise');
     assert.strictEqual(next('d2')[0], 'revise');
-    const k = graded('d3', { total: 70, ceiling: 78 }); next('d3'); decide('d3', 'keep');
+    const k = graded('d3', { total: 60, ceiling: 78 }); next('d3'); decide('d3', 'keep');
     assert.strictEqual(next('d3')[0], `final ${k}`);
     graded('d4', { total: 70 }); assert.strictEqual(decide('d4', 'accept').status, 2);
 });
 test('decide: answer writes nothing and attempt 2 waits for answers.md; answer in attempt 2 and revise after withhold-final exit 2', () => {
-    graded('f1', { total: 70, ceiling: 78 }); next('f1'); const before = fs.readFileSync(log('f1'), 'utf8');
+    graded('f1', { total: 60, ceiling: 78 }); next('f1'); const before = fs.readFileSync(log('f1'), 'utf8');
     assert.match(decide('f1', 'answer').stdout, /answers\.md, then start/); assert.strictEqual(fs.readFileSync(log('f1'), 'utf8'), before);
-    fs.writeFileSync(answers('f1'), 'x\n'); graded('f1', { total: 70, ceiling: 78 });
+    fs.writeFileSync(answers('f1'), 'x\n'); graded('f1', { total: 60, ceiling: 78 });
     assert.match(next('f1')[0], /^withhold-final /);                                                // attempt 2: a ceiling too low (R19)
     assert.strictEqual(decide('f1', 'answer').status, 2);
     assert.strictEqual(decide('f1', 'revise').status, 2);

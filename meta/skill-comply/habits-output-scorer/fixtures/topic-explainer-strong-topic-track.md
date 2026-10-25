@@ -7,41 +7,42 @@ explain like for a 6-year-old what an index in a database is
 
 ## DRAFT
 
-**The short answer.** An index is a list at the back of a big book that tells you which page a thing is on, so you can jump straight there instead of reading every page.
+**The short answer.** A helper list that shows where facts hide is an index. It helps the computer find facts very fast.
 
-**Picture it like this.** Think of a big picture book about animals. The book's pages are the database, where all the facts live. The list at the back - 'cat: page 12, dog: page 30' - is the index. Your finger running down the list is the computer looking something up. Where the picture breaks: a real book's list is written once, but a database writes its index again every time a new fact is added.
+**Picture it like this.** Mia has a big book about animals. It has one hundred pages of animal facts. At the back sits a little helper list. It says 'cat: page 12' and 'dog: page 30'. The big book is like a computer's box of facts. Grown-ups call that box of facts a database. Mia's finger on the list is the computer looking. Here the picture breaks a little bit. Mia's list was written once and never changes. The computer fixes its list each time a fact arrives.
 
 **How it works, step by step.**
 
-1. The database keeps its facts in rows, like pages in a book - so there can be very many of them.
-2. Without an index, finding 'dog' means looking at every row, one by one - slow, like reading the whole book.
-3. An index is a second, sorted list of one thing (like animal names), each with where its row is - sorted, so it is quick to search.
-4. To find 'dog', the computer looks in the sorted list first, then jumps to the row - only a few looks instead of thousands.
-5. When a new animal is added, the list is updated too - that is the small price for fast finding.
+1. The box of facts keeps its facts in rows. A row is one line of facts, like one page. That gives every fact its own spot to point at.
+2. With no helper list, Mia reads every single page. The dog could be on the very last page. So that takes a very, very long time.
+3. The helper list keeps the animal names from A to Z. Because of that order, Mia can jump near the right letter.
+4. Next to each name sits its page number. That number tells Mia where to go.
+5. To find the dog, Mia looks in the list first. The list is short, so looking there is quick. Then she jumps right to page 30.
+6. A new animal means one new line on the list. That small chore keeps the finding fast.
 
-**A worked example.** A library has 1,000 cards, one per book. You want the book called 'Frog Song'. Without an index you turn over cards until you find it - maybe 1,000 turns. With an index sorted A to Z, you open near F, then near 'Fr', then you are there - about 10 turns.
+**A worked example.** Mia's library has one thousand book cards. She wants the book called 'Frog Song'. With no list, she turns card after card after card. That could take one thousand turns! With a list from A to Z, she opens near F. Then she finds 'Fr', and then 'Frog Song'. That takes only about ten turns.
 
-**Where you see it in real life.** The list at the back of a school book; a phone's contact list sorted by name; the letters on the side of a dictionary.
+**Where you see it in real life.** The list at the back of a school book. The names in a phone, from A to Z. The little letters on the side of a dictionary.
 
 **Common mix-ups.**
 
-- Wrong idea: 'an index holds all the facts again'. That is not right - it holds only the one thing it sorts and where to find the rest. It feels right because it is a second list.
+- Wrong idea: 'the helper list keeps all the facts again'. That is not right. It keeps just one thing, like names. Next to each name is where the rest lives. It feels right because it is a second list.
 
 **Recap.**
 
-- An index is a sorted list that points to where things are.
-- It makes finding fast.
-- It costs a little work every time something is added.
+- An index is a helper list that points the way.
+- It makes finding things very fast.
+- It needs a tiny update for every new fact.
 
 **Check yourself.**
 
-1. What would happen if the book had no list at the back and you wanted 'dog'?
-2. Your class has a box of 300 drawings, each with the artist's name. How could you make finding one artist's drawing quick?
+1. What happens if Mia's book has no list at the back?
+2. Your class has three hundred drawings in one box. How could you find one artist's drawing quickly?
 
-Answers: 1. You would have to look through every page until you found it. 2. Make a list of names sorted A to Z, each with the drawing's number in the box - an index.
+Answers: 1. Mia looks at every page until she finds it. 2. Write the artists' names from A to Z, each with its drawing's number. That list is an index!
 
 **Words to know.**
 
-- Database - a place a computer keeps lots of facts, neatly in rows.
-- Row - one fact or record, like one page or one card.
-- Index - a sorted list that tells you where each row is.
+- Database - a computer's big box of facts.
+- Row - one line of facts, like one page.
+- Index - a helper list that says where each row is.

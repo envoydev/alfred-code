@@ -3,7 +3,7 @@
 
 ## TASK
 
-Create a ticket: cancelling an order whose id contains a dash fails with a 500.
+Create a ticket: cancelling an order whose id contains a dash fails with a 500 - our log shows `SqliteError: no such column: o` for `POST /orders/o-17/cancel`.
 
 ## DRAFT
 
@@ -14,7 +14,7 @@ Create a ticket: cancelling an order whose id contains a dash fails with a 500.
 ```markdown
 ## Problem
 
-Cancelling an order whose id contains a dash fails with HTTP 500. `POST /orders/o-17/cancel` logs `SqliteError: no such column: o`; an id without a dash is reported to cancel normally.
+Cancelling an order whose id contains a dash fails with HTTP 500. The reporter's log for `POST /orders/o-17/cancel` shows `SqliteError: no such column: o`.
 
 ## Steps to reproduce
 
@@ -38,5 +38,5 @@ Cancelling an order whose id contains a dash fails with HTTP 500. `POST /orders/
 ## Notes
 
 - Is the lookup's SQL built from the id as text? Check before relying on it - the error suggests the id is read as SQL.
-- Do ids without a dash really cancel in the same build? Confirm with the reporter.
+- Do ids without a dash cancel normally in the same build? Confirm with the reporter.
 ```

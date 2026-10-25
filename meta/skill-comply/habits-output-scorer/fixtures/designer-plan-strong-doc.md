@@ -11,7 +11,7 @@ Document in ARCHITECTURE.md how an order moves from placed to cancelled, includi
 
 Oriented: ARCHITECTURE.md 'Layers' and 'Data' read; LSP documentSymbol on src/orders/orderService.js; grep for `shipped` over src/ (one hit, src/orders/orderService.js:14); markdown-style loaded; preference and assessment docs read (ARCHITECTURE-PREFERENCES.md A1, CODE-ASSESSMENT.md W1 - neither governs this page)
 Asked: "Document in ARCHITECTURE.md how an order moves from placed to cancelled, including the rule that a shipped order cannot be cancelled. Documentation only - no code changes."
-Build: none - documentation only; the check is the read-back below
+Build: `npm test` - the project's gate, unchanged by a documentation plan; each card's own check is the read-back below
 Resume: next task 1
 
 ## Fit

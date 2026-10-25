@@ -29,9 +29,9 @@ const { execFileSync } = require('node:child_process');
 
 const BLOCKER_CAP = 60;
 const SELF_CAP = 99;
-// A fail this close under the level is graded once more by a fresh seat before the round is decided on the mean - 5
-// until the grader's spread is measured (spec S8).
-const NOISE_BAND = 5;
+// A fail this close under the level is graded once more by a fresh seat before the round is decided on the mean - the
+// widest spread three Sonnet grades of one strong draft gave (one 15-point check flipping), docs/habits-scorer-evidence.md.
+const NOISE_BAND = 15;
 // A revise has to gain this much over the round before it, or the loop asks instead.
 const STALL = 5;
 const SLUG_RE = /^[a-z0-9-]{1,40}$/;
