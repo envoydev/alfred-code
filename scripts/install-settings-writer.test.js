@@ -391,6 +391,77 @@ test('settings-env: a seed:false row is never written', () =>
     assert.strictEqual(JSON.parse(fs.readFileSync(path.join(own, 'settings.json'), 'utf8')).env.ALFRED_CODE_WORKSPACE, '1', 'the user\'s value stays');
 });
 
+// ------------------------------------------------------------------ the workspace pass-down (Task 8)
+
+const SC = 'ALFRED_CODE_SCORER';
+
+test('settings-env: a child seeds a catalog key from the parent\'s value, not the default', () =>
+{
+    const { env, logs } = envPass({}, { workspaceEnv: { seeds: { [SC]: '1', ALFRED_CODE_HOOKS_OFF: 'guard-ungated-commit:push' }, force: [] } });
+    assert.strictEqual(env[SC], '1', 'the catalog default was seeded over the root\'s value');
+    assert.ok(logs.includes(`  settings.json env: ${SC} seeded from the workspace root (1)`), logs.join('\n'));
+    assert.strictEqual(env.ALFRED_CODE_HOOKS_OFF, 'guard-ungated-commit:push', 'the hooks-off seed is the workspace\'s');
+    assert.strictEqual(env.ALFRED_CODE_HISTORY, '3', 'a key the workspace does not seed takes the catalog default');
+});
+
+test('settings-env: a forced key is rewritten when its value differs from the seed', () =>
+{
+    const ws = { seeds: { [SC]: '1', ALFRED_CODE_HISTORY: '5' }, force: [SC] };
+    const { env, logs } = envPass({ [SC]: '0', ALFRED_CODE_HISTORY: '7' }, { workspaceEnv: ws });
+    assert.strictEqual(env[SC], '1', 'the forced key kept its old value');
+    assert.ok(logs.some((l) => l === `  settings.json env: ${SC} '0' -> '1' (the workspace root's value)`), logs.join('\n'));
+    assert.strictEqual(env.ALFRED_CODE_HISTORY, '7', 'a seeded key that is not forced is absent-only');
+    const same = envPass({ [SC]: '1' }, { workspaceEnv: ws });
+    assert.ok(!same.logs.some((l) => l.includes(`${SC} '`)), 'an equal value is no rewrite');
+    const absent = envPass({}, { workspaceEnv: { seeds: {}, force: [SC] } });
+    assert.strictEqual(absent.env[SC], '0', 'a forced key absent from this file is seeded as today, never forced in');
+    const answered = envPass({ ALFRED_CODE_HOOKS_OFF: 'guard-answer' }, { hooksAnswered: true, hooksOff: ['guard-answer'],
+        workspaceEnv: { seeds: { ALFRED_CODE_HOOKS_OFF: '' }, force: ['ALFRED_CODE_HOOKS_OFF'] } });
+    assert.strictEqual(answered.env.ALFRED_CODE_HOOKS_OFF, 'guard-answer', 'the walk answered the hooks layer: the answer wins over the workspace');
+    const unanswered = envPass({ ALFRED_CODE_HOOKS_OFF: 'guard-answer' }, { workspaceEnv: { seeds: { ALFRED_CODE_HOOKS_OFF: 'guard-answer,docs-session:block' }, force: ['ALFRED_CODE_HOOKS_OFF'] } });
+    assert.strictEqual(unanswered.env.ALFRED_CODE_HOOKS_OFF, 'guard-answer,docs-session:block', 'a forced hooks-off list follows the workspace');
+});
+
+test('settings-env: a key in neither seeds nor force behaves as today', () =>
+{
+    const start = () => ({ ALFRED_CODE_HISTORY: '5', [SC]: '0' });
+    const today = envPass(start()).env;
+    assert.deepStrictEqual(envPass(start(), { workspaceEnv: { seeds: {}, force: [] } }).env, today);
+    assert.deepStrictEqual(envPass(start(), { workspaceEnv: null }).env, today);
+    assert.deepStrictEqual(envPass(start(), { workspaceEnv: { seeds: { ALFRED_CODE_INSTRUMENT: '1' }, force: [] } }).env, { ...today, ALFRED_CODE_INSTRUMENT: '1' });
+});
+
+test('settings-env: the ledger records a forced write at its hash, so the next run sees no hand edit', () =>
+{
+    const { valueHash: hashOf } = require('./install/stamp.js');
+    const file = settingsFile({ env: { [SC]: '0' } });
+    const first = write(file, { workspaceEnv: { seeds: { [SC]: '1' }, force: [SC] }, docsVersioning: { seed: 'git' }, ledger: { prior: null, releaseHooks: [] } });
+    assert.strictEqual(first.data.env[SC], '1');
+    assert.strictEqual(first.result.managed.env['settings.json'][SC], hashOf('1'), 'the ledger kept the old value\'s hash');
+    const prior = { env: first.result.managed.env, deny: [], hooks: [] };
+    const second = write(file, { workspaceEnv: { seeds: { [SC]: '1' }, force: [] }, docsVersioning: { seed: 'git' }, ledger: { prior, releaseHooks: [] } });
+    assert.strictEqual(second.data.env[SC], '1');
+    assert.strictEqual(second.result.managed.env['settings.json'][SC], hashOf('1'), 'the next run did not carry the row');
+    assert.ok(!second.logs.some((l) => l.includes(`${SC} changed since the stack wrote it`)), second.logs.join('\n'));
+});
+
+test('settings-env: a local-scope child whose team settings.json sets ALFRED_CODE_SCORER=0 keeps it: the parent\'s 1 is neither seeded nor forced into settings.local.json', () =>
+{
+    const ws = require('./install/workspace.js');
+    const dir = path.join(TMP, `team-${seq++}`, '.claude');
+    fs.mkdirSync(dir, { recursive: true });
+    const shared = { env: { [SC]: '0' } };
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify(shared));
+    const local = path.join(dir, 'settings.local.json');
+    const workspaceEnv = ws.childEnv({ catalog: CATALOG, parentEnv: { [SC]: '1' }, childEnv: {}, beneath: shared.env, ownPrior: null });
+    assert.ok(!Object.hasOwn(workspaceEnv.seeds, SC) && !workspaceEnv.force.includes(SC), JSON.stringify(workspaceEnv));
+    writeSettings({ file: local, catalog: CATALOG, migrations: MIGRATIONS, inheritedEnv: shared.env, docsVersioning: { seed: 'git' }, workspaceEnv });
+    assert.ok(!Object.hasOwn(JSON.parse(fs.readFileSync(local, 'utf8')).env, SC), 'the parent\'s value shadows the team\'s for this machine');
+    writeSettings({ file: local, catalog: CATALOG, migrations: MIGRATIONS, inheritedEnv: shared.env, docsVersioning: { seed: 'git' }, workspaceEnv: { seeds: { [SC]: '1' }, force: [SC] } });
+    assert.ok(!Object.hasOwn(JSON.parse(fs.readFileSync(local, 'utf8')).env, SC), 'a forced key only the file beneath holds was written over it');
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8')), shared, 'settings.json was written');
+});
+
 test('settings-env: the retired sentry auth key goes, and the SENTRY_* keys stay', () =>
 {
     const migrations = envMigrations(require('../meta/migrations.json'));

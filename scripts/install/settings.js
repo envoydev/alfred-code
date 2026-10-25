@@ -514,7 +514,10 @@ function foldEnv(env, migrations, log, label, { baseCsv = null, alsoInto = null,
 // C8: a PERSONAL_KEYS value always goes to the overlay when there is one, and leaves this file.
 // `sharedKeys` (C5): a decision that shapes committed state lands in THIS file even when the overlay
 // holds the key - the hooks copy route's HOOKS_OFF complement, which is the committed wiring's mirror.
-function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath, autoCompact = null, memory = null, hooksOff, hooksAnswered, renamedHooks = {}, inherited, overlay, overlayUnreadable = false, sharedKeys = [], log, label = 'settings.json', overlayLabel = 'settings.local.json', stackWrote = null })
+// `workspaceEnv` (a joined child, workspace.js childEnv): `seeds` replaces a catalog default with the workspace root's
+// value, and a `force` key THIS file holds at another value is rewritten to it - a key only the file beneath holds is
+// never in either, and a decision this run took (a flag, the hooks walk's answer) wins over both.
+function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath, autoCompact = null, memory = null, hooksOff, hooksAnswered, renamedHooks = {}, inherited, overlay, overlayUnreadable = false, sharedKeys = [], log, label = 'settings.json', overlayLabel = 'settings.local.json', stackWrote = null, workspaceEnv = null })
 {
     let changed = renameEnv(env, migrations, log, label);
     const beneath = inherited && typeof inherited === 'object' && !Array.isArray(inherited) ? { ...inherited } : {};
@@ -527,6 +530,17 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
         offWithTiers(held, migrations, log, overlayLabel, { only: isStackKey, stackWrote });
         retireAndReseed(held, migrations, log, overlayLabel, isStackKey, stackWrote);
     }
+    const wsSeeds = workspaceEnv && workspaceEnv.seeds && typeof workspaceEnv.seeds === 'object' ? workspaceEnv.seeds : {};
+    const wsForce = new Set(workspaceEnv && Array.isArray(workspaceEnv.force) ? workspaceEnv.force : []);
+    const fromRoot = (key) => Object.hasOwn(wsSeeds, key);
+    // A forced key this file holds at another value takes the workspace root's.
+    const follow = (key) =>
+    {
+        if (!wsForce.has(key) || !fromRoot(key) || !Object.hasOwn(env, key) || env[key] === wsSeeds[key]) return false;
+        log(`  ${label} env: ${key} '${env[key]}' -> '${wsSeeds[key]}' (the workspace root's value)`);
+        env[key] = wsSeeds[key];
+        return true;
+    };
     const heldHere = (key) => Boolean(held) && isStackKey(key) && key in held && !sharedKeys.includes(key);
     const present = (key) => key in env || key in beneath;
     // Where a decision about `key` lands: the overlay when it holds the key, else this file.
@@ -594,10 +608,11 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
         if (row.key === 'ALFRED_CODE_MEMORY' && memory && memory.value && !heldHere(row.key)) continue;                  // decided above
         if (row.key === 'ALFRED_CODE_DOCS_VERSIONING') continue;   // a decision, below
         if (row.key === 'ALFRED_CODE_HOOKS_OFF') continue;         // answered-wins, below
-        if (present(row.key)) continue;
-        env[row.key] = row.default;
+        if (present(row.key)) { if (follow(row.key)) changed = true; continue; }
+        const seed = fromRoot(row.key) ? wsSeeds[row.key] : row.default;
+        env[row.key] = seed;
         changed = true;
-        log(`  ${label} env: ${row.key} seeded (${row.default === '' ? 'empty' : row.default})`);
+        log(`  ${label} env: ${row.key} seeded ${fromRoot(row.key) ? 'from the workspace root ' : ''}(${seed === '' ? 'empty' : seed})`);
     }
 
     // The docs versioning DECISION. `--docs-versioning` writes over a value already there; without
@@ -639,8 +654,14 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
             const now = was.split(',').map((h) => { const bare = h.trim().replace(/\.js$/i, '').toLowerCase(); return Object.hasOwn(renamedHooks, bare) ? renamedHooks[bare] : h; }).join(',');
             if (now !== was) { into.ALFRED_CODE_HOOKS_OFF = now; if (mine) changed = true; log(`  ${lab} env: ALFRED_CODE_HOOKS_OFF = ${now} (a renamed hook re-spelled)`); }
         }
-        if (!present('ALFRED_CODE_HOOKS_OFF'))
-        { env.ALFRED_CODE_HOOKS_OFF = ''; changed = true; log(`  ${label} env: ALFRED_CODE_HOOKS_OFF seeded (empty - every hook runs)`); }
+        if (follow('ALFRED_CODE_HOOKS_OFF')) changed = true;
+        else if (!present('ALFRED_CODE_HOOKS_OFF'))
+        {
+            const off = fromRoot('ALFRED_CODE_HOOKS_OFF') ? wsSeeds.ALFRED_CODE_HOOKS_OFF : '';
+            env.ALFRED_CODE_HOOKS_OFF = off;
+            changed = true;
+            log(`  ${label} env: ALFRED_CODE_HOOKS_OFF seeded ${fromRoot('ALFRED_CODE_HOOKS_OFF') ? 'from the workspace root ' : ''}(${off || 'empty - every hook runs'})`);
+        }
     }
 
     return changed;
@@ -774,7 +795,7 @@ function writeSettings(opts)
         agentDeny = [], agentAllow = [],
         mcpOff = [], dropEmptyApprovals = false, catalog = [], migrations = {},
         docsVersioning, docsPath = null, dataPath = null, autoCompact = null, memory = null, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null, renamed = null,
-        inheritedOverrides = null, sharedFile = null, sharedKeys = [], attribution = null, worktreeBase = null, compactWindows = null, ledger = {},
+        inheritedOverrides = null, sharedFile = null, sharedKeys = [], attribution = null, worktreeBase = null, compactWindows = null, ledger = {}, workspaceEnv = null,
         log = () => {}, note = () => {},
     } = opts;
     // R10: the last run's ledger (null - no stamp, or one from before it: the fallback) and the hook
@@ -938,7 +959,7 @@ function writeSettings(opts)
         return names.some((n) => rows[n] === valueHash(value));
     };
     if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, docsPath, dataPath, autoCompact, memory, hooksOff, hooksAnswered, renamedHooks: (renamed && renamed.hooks) || {}, inherited: inheritedEnv, overlay, overlayUnreadable: localUnreadable, sharedKeys, log, label,
-        overlayLabel: localFile ? path.basename(localFile) : undefined, stackWrote })) changed = true;
+        overlayLabel: localFile ? path.basename(localFile) : undefined, stackWrote, workspaceEnv })) changed = true;
     // The auto-compact window per model (compactWindowSeeds). Claude Code reads it at session START only - measured
     // 2026-10-14: written mid-session it changed nothing in print or interactive mode, set before the start it compacted
     // at 76k of a 100k window - so it is this project's standing setting, never a per-run one, written in the project's
