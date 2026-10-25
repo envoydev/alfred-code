@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const BODY = fs.readFileSync(path.join(__dirname, '..', 'stack', 'skills', 'habits-create-ticket', 'SKILL.md'), 'utf8').replace(/\s+/g, ' ');
 
-test('create-ticket: each ticket is also a file under the docs root, written after the scorer released it (item 5)', () => {
+test('habits-create-ticket: each ticket is also a file under the docs root, written after the scorer released it (item 5)', () => {
   assert.match(BODY, /`<docs root>\/tickets\/<slug>\.md`/);
   assert.match(BODY, /`<type>-<area>-<short>`/);
   assert.match(BODY, /at most 60 characters/);
