@@ -25,7 +25,7 @@ Grades a `habits-explain-topic` answer - the walkthrough, or the within-budget a
 ## Checks
 
 - **A1** (8.34) - the first sentence answers the question.
-- **A2** (8.34) - the depth and level match what the user's words asked in context - 'like for a 6-year-old', 'for a child', 'more details', 'go deeper', 'step by step', in any language - judged from TASK at the skill's three levels, never from a keyword list.
+- **A2** (8.34) - the depth and level match what the user's words asked in context - 'like for a 6-year-old', 'for a child', 'more details', 'go deeper', 'step by step', in any language - judged from TASK at the skill's four levels, never from a keyword list. At the child level: a story with a character, sentences of about 8-10 words, and an everyday name before every technical word.
 - **A3** (8.34) - the analogy is mapped part by part, with its limit. n/a: a within-budget answer.
 - **A4** (8.34) - numbered steps, one idea each, each saying why. n/a: a within-budget answer.
 - **A5** (8.33) - a worked example with concrete details; on the code track each snippet matches its file, which you re-read. n/a: a within-budget answer.

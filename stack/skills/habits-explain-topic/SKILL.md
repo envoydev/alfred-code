@@ -16,7 +16,7 @@ A general idea asked about this project ('how does the retry here back off?') ta
 
 ## When to use
 
-- Explains any topic - a concept, a process, a technology, or this project's code, a bug in it or a design trade-off - for someone new to it: an everyday analogy and where it breaks, numbered steps, a worked example, the common mix-ups, a recap, check-yourself questions, a glossary, and an offline HTML diagram when the topic has a shape; depth adjustable from ELI5 to expert.
+- Explains any topic - a concept, a process, a technology, or this project's code, a bug in it or a design trade-off - for someone new to it: an everyday analogy and where it breaks, numbered steps, a worked example, the common mix-ups, a recap, check-yourself questions, a glossary, an offline HTML diagram when the topic has a shape, and every walkthrough saved under the docs root's `explanations/` beside an offline page; depth adjustable from a child's story to expert.
 - Use ONLY where the user asked for depth ('teach me', 'ELI5', 'in detail', 'step by step', 'walk me through'), because a bare 'explain X', 'what is X' or 'how does this work' is capped like any other answer, and a request to FIX a failure is a fix, run on the root-cause habit.
 - Do NOT fire on quick lookups answerable in a sentence, on writing or editing code or documents, or on formal code review.
 
@@ -73,7 +73,7 @@ Use these parts and headings, in this order; drop one that adds nothing to this 
 3. **How it works, step by step** - a numbered list, one idea per step, each saying what happens and why. 3-7 steps; group more into stages, since a newcomer holds only a few new pieces at once.
 4. **A worked example** - one specific case followed through every step, with real numbers, names or objects. A beginner learns more from one fully worked case than from the abstract rule.
 5. **Where you see it in real life** - two or three everyday places the reader meets the idea.
-6. **The diagram** - when one was made: its path and one line on what to look at first.
+6. **The diagram** - when one was made: the page's path (Saving it, below) and one line on what to look at first.
 7. **Common mix-ups** - for each: the wrong idea, a plain statement that it is wrong, the right idea, and why the wrong one feels right. Naming a misconception and refuting it corrects it better than explaining the right idea alone.
 8. **Going deeper** (optional) - the precise version with the correct technical terms, now that the intuition exists. Concrete to abstract, never the reverse.
 9. **Recap** - three to five bullets with the key ideas.
@@ -107,19 +107,30 @@ Build it as one self-contained HTML file with inline SVG and plain CSS - no exte
 - **Accessible**: keep `role="img"` with a filled `<title>` and `<desc>`, so a screen reader can describe it.
 - **Layout**: plan the coordinates on a grid first, leave at least 20 units of padding inside the viewBox, and point arrows the way of the flow or the cause.
 
-Write it to `<docs root>/tutorial/<topic-slug>.html`, the folder made when absent, unless the user names another place.
+It goes into the run's page, `<docs root>/explanations/<topic-slug>.<level>.html` (Saving it, below).
 
-Check it before handing it over:
+## Saving it
 
-1. Re-read the file: every tag closed, every `id` unique, every `aria-labelledby` id present, every element inside the viewBox, and no two boxes or labels overlapping (compare x, y, width, height).
-2. Each label fits its box (about 0.6 x the font size per character), and the step numbers and words match the text.
-3. Render it where the run can - open it in a browser, or screenshot it with a headless browser - and look at it. Where nothing can render it, say it was checked by reading the code and ask the user to open it.
-4. Fix what failed, then check again.
+Every run saves its walkthrough, so the user can review it later: under `<docs root>/explanations/` (the docs root is `<data root>/docs`, `.alfred/docs` by default; the folder made when absent), unless the user names another place, two files named for the topic and the level - `child`, `eli5`, `intermediate` or `expert`:
+
+- `<docs root>/explanations/<topic-slug>.<level>.md` - the walkthrough as sent, opening with `Topic:`, `Level:`, `Created:` and, on the code track, `Captured: <branch>@<short-sha>`, since it quotes code that drifts.
+- `<docs root>/explanations/<topic-slug>.<level>.html` - the page: the steps, the diagram when the topic has a shape, and Check yourself as questions to click.
+
+The slug carries the topic's words in lower-case `[a-z0-9-]`. A new level on the same topic writes a new pair, the same level rewrites its pair, and a different topic whose slug is taken takes `-2`, then `-3`. The answer ends with one line naming both paths.
+
+Build the page from `references/page-template.md`: Check yourself becomes radio questions whose feedback shows on a click through CSS alone, with no script, and the answers and Words to know sit in `<details>` reveals. Check it before handing it over:
+
+1. Re-read the file: every tag closed, every `id` unique, every `aria-labelledby` id present; in a diagram, every element inside the viewBox and no two boxes or labels overlapping (compare x, y, width, height).
+2. Each diagram label fits its box (about 0.6 x the font size per character), and the step numbers and words match the text.
+3. Each question has exactly one option marked `data-right`, and every `label for=` names an input `id` that exists.
+4. Render it where the run can - open it in a browser, or screenshot it with a headless browser - and look at it. Where nothing can render it, say it was checked by reading the code and ask the user to open it.
+5. Fix what failed, then check again.
 
 ## Depth
 
 The reader can move depth up or down, and you follow:
 
+- **Child / 'like I'm six'** - the child level: a story with a character and an object a six-year-old has held, told in sentences of about 8-10 words; no technical word until it has an everyday name, then one closing line 'grown-ups call this X'; two everyday examples. The story's mechanism is the real one - simplify, never falsify.
 - **ELI5 / 'explain like I'm new'** - lean harder on the analogy, gloss every term, take smaller steps; sentences of about 15 words, common words, and a physical example the reader has seen, touched or done.
 - **Intermediate (default)** - analogy plus precise mechanism, standard one-line term glosses. On the code track: the reader knows general programming but is new to THIS stack and THIS codebase - explain the stack's machinery (what `ChangeDetectorRef` or `IHostedService` does here), never what a variable or a loop is.
 - **Expert / 'I know the basics, go deep'** - one short analogy for the core idea, then the beginner parts cut to a line each or skipped, the words spent on edge cases, performance and failure modes: scaffolding an expert does not need slows them down.
@@ -162,6 +173,7 @@ Fix any line that fails:
 - [ ] Facts are right, uncertainty is labelled, nothing is invented
 - [ ] Recap plus 2-4 Check yourself questions, answers after (topic track)
 - [ ] Diagram, if any: one idea, title, caption, direct labels, contrast, dark mode, phone width, nothing external, checked
+- [ ] The walkthrough and its page saved under explanations/, the page checked: one right option per question, every label's input, rendered
 - [ ] The length is in proportion to the question
 ```
 

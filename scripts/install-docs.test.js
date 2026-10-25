@@ -1030,3 +1030,7 @@ test('the tools.js children read the data root this run resolved, over an export
 });
 
 test('tickets/ is a stack docs folder (item 5)', () => { assert.ok(docs.STACK_DOCS.has('tickets')); });
+
+test('explanations/ and the old tutorial/ are stack docs folders (item 6)', () => {
+  for (const n of ['explanations', 'tutorial']) assert.ok(docs.STACK_DOCS.has(n), n);
+});

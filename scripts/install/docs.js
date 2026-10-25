@@ -1053,6 +1053,7 @@ function migrateLayout({ projectRoot, docsPath, dataPath, log = () => {} })
     const groups = [];
     const group = (from, to) => { let g = groups.find((x) => x.from === from && x.to === to); if (!g) groups.push(g = { from, to, pairs: [] }); return g; };
     const sources = [];
+    const notFolders = [];
     for (const m of LAYOUT.LAYOUT_MOVES)
     {
         if (m.removeIfEmpty) continue;
@@ -1067,7 +1068,8 @@ function migrateLayout({ projectRoot, docsPath, dataPath, log = () => {} })
             }
             continue;
         }
-        if (!isDir(from)) continue;
+        // A file where a folder move expects a folder is no old home of the stack's: left, and named every run.
+        if (!isDir(from)) { if (fs.existsSync(from)) notFolders.push([from, path.join(m.base === 'data' ? dataBase : docsBase, ...(m.split ? 'state' : m.to).split('/'))]); continue; }
         sources.push(from);
         if (m.split === 'flow')
         {
@@ -1099,6 +1101,11 @@ function migrateLayout({ projectRoot, docsPath, dataPath, log = () => {} })
     };
     const gitMv = (a, b) => rt.execCommand('git', ['-C', projectRoot, 'mv', '--', rel(a), rel(b)], { stdio: 'ignore' });
     const lines = [];
+    for (const [from, to] of notFolders)
+    {
+        out.kept.push(rel(from));
+        lines.push(`  layout: kept ${rel(from)} - a file where a folder moving to ${rel(to)} belongs`);
+    }
     try
     {
         for (const g of groups)
@@ -1301,7 +1308,7 @@ function filesUnder(dir)
 // migration below still moves on (DOCS_MIGRATIONS, the usage report, layout.js LAYOUT_MOVES), the first-look map, and
 // any folder holding a watch.json (a domain by definition). Everything else under the root is the project's.
 const STACK_DOCS = new Set([
-    'architecture', 'code-style', 'preferences', 'decisions', 'tickets', 'awareness', 'work', 'quality', 'ORIENTATION.md', '.branches',
+    'architecture', 'code-style', 'preferences', 'decisions', 'tickets', 'explanations', 'awareness', 'work', 'quality', 'ORIENTATION.md', '.branches',
     ...DOCS_MIGRATIONS.map(([from]) => from.split('/')[0]), USAGE_REPORT_OLD, ...LAYOUT.LAYOUT_MOVES.map((m) => m.from),
 ]);
 function stackEntry(base, e)

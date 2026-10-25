@@ -115,7 +115,7 @@ test('approvalPath puts a plan\'s stamp in its own folder; approvalStamps lists 
 test('LAYOUT_MOVES is the spec\'s move map, frozen', () =>
 {
     const froms = layout.LAYOUT_MOVES.map((m) => m.from).sort();
-    assert.deepStrictEqual(froms, ['.branches', 'cross-project-tasks', 'diagnoses', 'docs-log.jsonl', 'flow', 'history', 'hook-blocks', 'loops', 'plans', 'related-context', 'specs', 'test-coverage', 'tools-usage', 'usage-report']);
+    assert.deepStrictEqual(froms, ['.branches', 'cross-project-tasks', 'diagnoses', 'docs-log.jsonl', 'flow', 'history', 'hook-blocks', 'loops', 'plans', 'related-context', 'specs', 'test-coverage', 'tools-usage', 'tutorial', 'usage-report']);
     assert.ok(Object.isFrozen(layout.LAYOUT_MOVES));
     const by = Object.fromEntries(layout.LAYOUT_MOVES.map((m) => [m.from, m]));
     assert.strictEqual(by.flow.split, 'flow');
@@ -132,4 +132,9 @@ test('the module loads with nothing beside it', () =>
     const loaded = require(path.join(dir, 'layout.js'));
     assert.strictEqual(typeof loaded.findState, 'function');
     fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('LAYOUT_MOVES moves the old tutorial folder to explanations (item 6)', () =>
+{
+    assert.ok(layout.LAYOUT_MOVES.some((m) => m.from === 'tutorial' && m.base === 'docs' && m.to === 'explanations'));
 });

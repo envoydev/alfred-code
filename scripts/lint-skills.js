@@ -97,9 +97,11 @@ const NON_SKILL_TOKENS = new Set([
     'memory-service', 'windows-mcp', 'macos-mcp',
     // the AGENTS.md check's row kind for an older seed's rules list (scripts/agents-md-check.js) - a row kind, not a skill.
     'stack-rules',
-    // habits-explain-topic's diagram rules: a CSS media feature and an SVG accessibility attribute - not skills.
+    // habits-explain-topic's diagram and page rules: a CSS media feature, an SVG accessibility attribute and the page's
+    // right-answer attribute - not skills.
     'prefers-color-scheme',
     'aria-labelledby',
+    'data-right',
     // the old bare mode word the task, capture and loop skills name as starting nothing (`/loop-code-quality --auto-mode` is the flag) - not a skill.
     'auto-mode',
     // the commit-gate hook, referenced by name from the git preferences seed and task-verify-code - a hook, not a skill.

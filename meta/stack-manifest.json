@@ -14,7 +14,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "habits-explain-topic",
-      "note": "senior-mentor explainer for any topic on a depth ask: this project's code (bug/concept/trade-off) via a real-file walkthrough, anything else as a layered answer (analogy and its limit, steps, worked example, mix-ups, recap, check-yourself, glossary), an offline inline-SVG diagram under <docs root>/tutorial/; depth ELI5/intermediate/expert"
+      "note": "senior-mentor explainer for any topic on a depth ask: this project's code (bug/concept/trade-off) via a real-file walkthrough, anything else as a layered answer (analogy and its limit, steps, worked example, mix-ups, recap, check-yourself, glossary), each run saved under <docs root>/explanations/ as the walkthrough and an offline no-script page (inline-SVG diagram, click-to-check questions); depth child/ELI5/intermediate/expert"
     },
     {
       "repo": "envoydev/alfred-code",

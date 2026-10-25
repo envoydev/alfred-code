@@ -106,6 +106,7 @@ const LAYOUT_MOVES = Object.freeze([
     { from: 'related-context', base: 'docs', to: 'work/cross-project-tasks' },
     { from: 'test-coverage', base: 'docs', to: 'quality/test-coverage' },
     { from: 'loops', base: 'docs', to: 'quality/loops' },
+    { from: 'tutorial', base: 'docs', to: 'explanations' },   // the explainer's folder (item 6, 2026-10-25)
     { from: '.branches', removeIfEmpty: true },
 ].map(Object.freeze));
 

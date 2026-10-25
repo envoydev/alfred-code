@@ -346,6 +346,10 @@ function tableOf(md) {
 const pickFields = (row) => ({ skills: row.skills, seats: row.seats, rubric: row.rubric, runs: row.runs === '`ALFRED_CODE_SCORER_ROUNDS`' ? 'rounds' : Number(row.runs), automatic: row.automatic === 'yes', docs: row.docs });
 const SIX_DOCS = ['ARCHITECTURE.md', 'PERSONAL-CODE-PREFERENCES.md', 'ARCHITECTURE-PREFERENCES.md', 'PROJECT-CODE-PREFERENCES.md', 'CODE-ASSESSMENT.md', 'ARCHITECTURE-ASSESSMENT.md'];
 
+test('the topic-explainer rubric grades the child level under A2 (item 6)', () => {
+    assert.match(read('stack/skills/habits-output-scorer/references/rubric-topic-explainer.md'), /child level/);
+    assert.ok(rubricOf('topic-explainer').checks.A2, 'A2 still parses');
+});
 test('every rubric parses, sums to 100, and has the spec\'s check count; OUTPUTS names it', () => {
     for (const [output, n] of RUBRICS) {
         const r = rubricOf(output);

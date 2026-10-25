@@ -400,3 +400,12 @@ the title, `Type:`, `Created:`, `Status: draft` (`filed <ID or URL>` once filed 
 Description - and names the file on a `Saved:` line below the chat block. `tickets/` is a stack docs folder: it moves
 with the data root, and in a hand-set docs root a team's own `tickets/` is named among the moves and stays only with
 `--docs-root-leave tickets`. Update refreshes the skill copy; nothing else to report.
+
+## after 2.10.1 - the explainer gains a child level and saves every walkthrough
+
+`habits-explain-topic` has a child level now ('like I'm six': a short story in sentences of about 8-10 words, an
+everyday name before every technical word). Every run saves two files under `<docs root>/explanations/`:
+`<topic-slug>.<level>.md`, the walkthrough as sent, and `<topic-slug>.<level>.html`, an offline page with the
+steps, the diagram when the topic has a shape and Check yourself as questions to click - no script, nothing loaded.
+Update moves an older `<docs root>/tutorial/` there (a `layout:` line); a file already at its path under
+`explanations/` stays where it was and is named. Report the layout line.
