@@ -66,7 +66,7 @@ Open a `.cs`, `.ts` or template file and the matching house style attaches on it
 | `git push --force` to `main`, `master` or `develop` | blocks it |
 | `git reset --hard` over uncommitted work | blocks it and names what would be lost |
 | `cat .env` | shows the keys, with the values masked |
-| read the project's secrets in `.alfred/.sensitive-data` | can't read the file, and a printed value is masked (its exact text - leak protection, not a wall) - a command that needs one gets it in its environment |
+| read the project's secrets in `.alfred/.secrets` | can't read the file, and a printed value is masked (its exact text - leak protection, not a wall) - a command that needs one gets it in its environment |
 | commit a large change that was never reviewed | blocks it until the review runs |
 | loosen `.eslintrc` so a failing check passes | blocks it - fix the code, not the check |
 | write into another repository | blocks it and writes a task card instead |

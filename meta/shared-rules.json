@@ -8146,6 +8146,19 @@
           "marker": "line is in context, the FIRST action before releasing"
         }
       ]
+    },
+    "secret-file-names": {
+      "_note": "The project secret store has two names (item 3, 2026-10-25): .secrets from this release, .sensitive-data until every install has moved. data-root.js owns the list (the installer, init plan and preflight read it); the secret guard ships apart from stack/mcp on the copy route, so it carries the same line inline. A third name, or a change of order (.secrets is found first), is two edits.",
+      "owner": {
+        "file": "stack/mcp/data-root.js",
+        "marker": "const SECRET_FILES = Object.freeze(['.secrets', '.sensitive-data']);"
+      },
+      "sites": [
+        {
+          "file": "stack/hooks/guard-secret-value.js",
+          "marker": "const SECRET_FILES = Object.freeze(['.secrets', '.sensitive-data']);"
+        }
+      ]
     }
   }
 }

@@ -505,11 +505,13 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     the block rate skips like the probe rows (2.1.5 M17). The row carries the payload's `permissionMode` when it has one
     (audit 2026-10-10 C09: an auto-mode classifier gave one rewritten call no verdict and stalled it 80s, 1 of 89
     rewrites in that session) - the rate a denial-in-auto would be decided on; the dispatcher's `zsh-quote` row does too.
-    THE PROJECT'S SENSITIVE DATA (the user's ruling of 2026-10-13: per project, model-blind): `<data root>/.sensitive-data`,
-    a dotenv the user fills by hand, in the checkout the call runs in, else its main worktree (`sensitiveFile`, memory.js
+    THE PROJECT'S SENSITIVE DATA (the user's ruling of 2026-10-13: per project, model-blind): `<data root>/.secrets`
+    (`.sensitive-data` before item 3, 2026-10-25: both names read for 2.x, `.secrets` first; a `.secrets` is the store only
+    where its path, as written or real, ends in `<data root>/.secrets`, so a project's own one elsewhere - nektos/act's
+    default `--secret-file` - is neither masked by name nor refused by mention, `isDataRootSecrets`), a dotenv the user fills by hand, in the checkout the call runs in, else its main worktree (`sensitiveFile`, memory.js
     `projectRootOf`; the root from `ALFRED_CODE_DATA_PATH`, relative and `..`-free, else `.alfred`). Its kind is `sensitive` by
     NAME: every value is a credential whatever its key (`DB_HOST` too), so a Read and a Grep of its content block and a dump
-    becomes the redacted view with every value masked; the stream masker reads a line out of it - a walk's `<path>/.sensitive-data:N:`
+    becomes the redacted view with every value masked; the stream masker reads a line out of it - a walk's `<path>/.secrets:N:` (either name)
     prefix, `git grep`'s, a diff header naming it - by the same rule, a line that is no `KEY=value` pair masked whole (audit
     2026-10-20 H3: a walk through the store and a diff of a tracked store printed every value raw), so the probe finds it
     and the stage is piped. A shell command NAMING it is refused unless it only looks

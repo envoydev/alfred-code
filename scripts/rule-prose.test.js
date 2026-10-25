@@ -501,7 +501,7 @@ test('RU03: the credentials section keeps its constraints and leaves the ask, th
     for (const gone of ['ROTATE_ASK', 'once per exposure', 'SECRET-READ-ALLOW', 'When the VALUE', 'nested key', 'Read rules cover'])
         assert.ok(!sec.includes(gone), `the always-on copy still carries '${gone}'`);
     for (const kept of ['End the turn on the ask (rotate now / acknowledge and defer), never on prose.', "(the secret guard's `--presence` view - its denial prints the command)",
-        'a pasted one may do the job it was pasted for, inline in that one call', '`.sensitive-data`', '`--with-sensitive`', 'never a fragment of the value',
+        'a pasted one may do the job it was pasted for, inline in that one call', '`.secrets`', '`--with-sensitive`', 'never a fragment of the value',
         'Each rotation option names its site, action and command itself'])
         assert.ok(sec.includes(kept), `the constraint '${kept}' stays`);
     assert.ok(squash(rule('alfred-security')).includes('`guard-secret-value.js` covers those by content'), 'the coverage line is a maintainer note');

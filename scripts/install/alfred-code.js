@@ -67,10 +67,11 @@ const SHELL_SEED_RETIRED = 'the shell installers were removed in 2.0.0 - unset A
 // permissions.deny, the Read-tool half of the credential gate. A bare name matches at any depth (gitignore semantics,
 // code.claude.com/docs/en/permissions: 'Read(.env)' and 'Read(**/.env)' are equivalent) and reaches the Read tool, Grep and
 // Glob best-effort, and the Bash file commands Claude Code recognizes (cat, head, tail, sed, tee) - never a command that
-// reads a file without naming it, so guard-secret-value.js stays the shell's gate. `.sensitive-data` is the project's own
-// store under the data root (stack/mcp/data-root.js). RETIRED_DENY are the four ACCOUNT-settings entries releases up to
+// reads a file without naming it, so guard-secret-value.js stays the shell's gate. `.secrets` is the project's own store
+// under the data root (stack/mcp/data-root.js), `.sensitive-data` its name before item 3 - both denied until 3.0, since an
+// install keeps the old name until its second update. RETIRED_DENY are the four ACCOUNT-settings entries releases up to
 // 0.2.62 wrote; they are dropped on every run, by exact string.
-const SECRET_DENY = ['Read(.env)', 'Read(.env.*)', 'Read(*.pem)', 'Read(*.pfx)', 'Read(*.p12)', 'Read(*.key)', 'Read(.sensitive-data)'];
+const SECRET_DENY = ['Read(.env)', 'Read(.env.*)', 'Read(*.pem)', 'Read(*.pfx)', 'Read(*.p12)', 'Read(*.key)', 'Read(.secrets)', 'Read(.sensitive-data)'];
 // The tool denies 2.5.0 to 2.10.0 wrote: the memory server's unused tools (audit 2026-10-14 PL8) and Playwright MCP's
 // browser_run_code_unsafe (audit 2026-10-21 mcps T1-2), in both route spellings. The stack ships no MCP server since 2.10.1,
 // so no run writes one; each stays a SHIPPED deny, so the ledger pass lifts a row an earlier run wrote (settings.js).
@@ -483,6 +484,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         }
 
         // --- the run ---------------------------------------------------------------
+        // The store's rename (item 3), before the move so a root change carries the name it lands under.
+        const secrets = secretsStep({ projectRoot, info: dataInfo, log });
         // The data move: the project's sensitive data, carried inline with a root change (planDataMove).
         const dataPlan = planDataMove({
             projectRoot, info: dataInfo,
@@ -575,7 +578,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             toolIgnores: ctx.toolIgnores || stampLayer.readToolIgnores(stampFile),
             library: ctx.library || { skills: {}, agents: {}, rules: {} },
             ledger: ledgerOf(ctx),
-            data: { root: dataInfo.root, pending: dataPlan.pending, kept: dataPlan.kept },
+            data: { root: dataInfo.root, pending: dataPlan.pending, kept: dataPlan.kept, secrets },
             instructionsFile: ctx.instructionsAnswer,
         });
 
@@ -781,10 +784,37 @@ function sensitiveFile(ctx, root)
 {
     let r;
     try { r = dataRoot.ensureSensitiveFile({ projectDir: ctx.projectRoot, root }); }
-    catch (err) { ctx.note(`${root}/.sensitive-data could not be written (${err.code || err.message}) - create it by hand, one KEY=value per line`); return; }
-    if (r === 'written') ctx.log(`  sensitive data: ${root}/.sensitive-data written - empty, gitignored; put KEY=value lines in it by hand`);
-    else if (r === 'exposed') ctx.log(`  !! sensitive data: ${root}/.sensitive-data not written - git would commit it (the data root's .gitignore is the project's own); ignore it, then run /alfred-code:update`);
-    else if (r === 'blocked') ctx.log(`  !! sensitive data: ${root}/.sensitive-data is not a file - nothing written`);
+    catch (err) { ctx.note(`${root}/${dataRoot.SECRETS_FILE} could not be written (${err.code || err.message}) - create it by hand, one KEY=value per line`); return; }
+    if (r === 'written') ctx.log(`  sensitive data: ${root}/${dataRoot.SECRETS_FILE} written - empty, gitignored; put KEY=value lines in it by hand`);
+    else if (r === 'exposed') ctx.log(`  !! sensitive data: ${root}/${dataRoot.SECRETS_FILE} not written - git would commit it (the data root's .gitignore is the project's own); ignore it, then run /alfred-code:update`);
+    else if (r === 'blocked') ctx.log(`  !! sensitive data: ${root}/${dataRoot.SECRETS_FILE} is not a file - nothing written`);
+}
+
+// THE STORE'S RENAME, in two phases (item 3, 2026-10-25): `.sensitive-data` becomes `.secrets`. The first run on this
+// release only records `secrets: dual <by>` and says the rename is next; the rename runs once the stamp holds that line
+// AND this run is another session's than the one that wrote it (an unset or empty session id differs from every `by`) - a
+// session opened before the update may still run a guard that knows only the old name, so the session that updated never
+// renames under it. Returns the stamp's { by }: as recorded, else null (this run).
+function secretsStep({ projectRoot, info, log })
+{
+    const sid = process.env.CLAUDE_CODE_SESSION_ID || '';
+    const rec = info.recorded.secrets;
+    const roots = [...new Set([info.prior, info.root].filter(Boolean))];
+    if (rec && (!sid || rec.by !== sid))
+    {
+        for (const r of dataRoot.renameSecrets({ projectDir: projectRoot, roots }))
+        {
+            const at = (name) => `${r.root}/${name}`;
+            if (r.state === 'renamed') log(`  sensitive: renamed .sensitive-data -> .secrets - restart any session opened before this update (${r.root})`);
+            else if (r.state === 'both') log(`  !! sensitive: ${at('.sensitive-data')} and ${at('.secrets')} both exist - merge by hand, then delete the old`);
+            else if (r.state === 'exposed') log(`  !! sensitive: ${at('.secrets')} would not be ignored - ${at('.sensitive-data')} kept`);
+            else if (r.state === 'blocked') log(`  !! sensitive: ${at('.secrets')} is not a file - ${at('.sensitive-data')} kept`);
+            else if (r.state === 'failed') log(`  !! sensitive: ${at('.sensitive-data')} not renamed (${r.why}) - the next update tries again`);
+        }
+    }
+    else if (roots.some((root) => { try { return fs.lstatSync(path.join(projectRoot, ...root.split('/'), dataRoot.LEGACY_SECRETS_FILE)).isFile(); } catch { return false; } }))
+        log('  sensitive: .sensitive-data becomes .secrets at the next update');
+    return { by: rec ? rec.by : (sid || null) };
 }
 
 // The data root's own files, once the docs root is settled: its `.gitignore` (written by ignoreStep - the
@@ -801,6 +831,11 @@ function dataRootLayer(ctx, docsPath)
     {
         adoptCredentials(ctx, root, docsPath);
         sensitiveFile(ctx, root);
+        // a store renamed to `.secrets` (this run or an earlier one) is named so in the run book, wherever the docs root is
+        let n = 0;
+        try { n = dataRoot.repointRunBooks({ projectDir: projectRoot, docsPath, root }); }
+        catch (err) { note(`the run book could not be re-pointed at ${root}/${dataRoot.SECRETS_FILE} (${err.code || err.message}) - edit its credentials line by hand`); }
+        if (n) log(`  sensitive: run book re-pointed at ${root}/${dataRoot.SECRETS_FILE} (${n})`);
     }
     // The project's own tree-walking tools skip the data root (tool-ignores.js): one marked line per ignore file.
     ctx.toolIgnores = toolIgnoresLayer.ensureToolIgnores({ projectRoot, root, prior: stampLayer.readToolIgnores(ctx.stampFile), log, note });
@@ -817,7 +852,7 @@ function dataRootLayer(ctx, docsPath)
 function resolveDataRoot({ args, claudeDir, projectRoot, log })
 {
     const stampRead = stampLayer.stampFiles({ projectRoot }).read;
-    const recorded = stampRead ? stampLayer.readDataLines(stampRead) : { root: '', pending: [], kept: false };
+    const recorded = stampRead ? stampLayer.readDataLines(stampRead) : { root: '', pending: [], kept: false, secrets: null };
     let current = recorded.root || dataRoot.DATA_ROOT_DEFAULT;
     let invalid = false;
     for (const name of ['settings.local.json', 'settings.json'])
@@ -854,7 +889,15 @@ function planDataMove({ projectRoot, info, answer, stamped, log, note })
     const moved = [];
     const left = [];
     // A sensitive-data move an earlier run could not make (a clash, a failed rename) is retried; any other class is dropped.
-    let pending = info.recorded.pending.filter((p) => p.cls === 'sensitive' && isFile(p.from) && p.to === dataRoot.targetOf(p.cls, info.root));
+    // It moves the store its prior root holds now, under that store's name - a pending line recorded before item 3's rename
+    // names `.sensitive-data`, which the rename may have made `.secrets` since.
+    let pending = info.recorded.pending.filter((p) => p.cls === 'sensitive' && dataRoot.rootOfPlace(p.cls, p.to) === info.root).map((p) =>
+    {
+        // a `from` under no data root names no store: never the project root, where a project's own `.secrets` sits
+        const prior = dataRoot.rootOfPlace(p.cls, p.from);
+        const found = prior && dataRoot.findSecretsFile(projectRoot, prior);
+        return found && { cls: p.cls, from: found.rel, to: dataRoot.targetOf(p.cls, info.root, found.name) };
+    }).filter((p) => p && isFile(p.from));
     let kept = info.recorded.kept && answer !== 'move';
     if (answer === 'keep') { kept = true; pending = []; }
     const inline = (row) =>
@@ -867,12 +910,14 @@ function planDataMove({ projectRoot, info, answer, stamped, log, note })
     pending = pending.filter((p) => !inline(p));
     const rows = stamped ? dataRoot.dataMovePlan({ projectRoot, root: info.root, prior: info.prior }) : [];
     const same = (a, b) => a.cls === b.cls && a.from === b.from && a.to === b.to;
+    // the store a clash found at the target root, under whichever name it has there
+    const heldAt = (row) => (dataRoot.findSecretsFile(projectRoot, info.root) || { rel: row.to }).rel;
     const open = rows.filter((r) => !pending.some((p) => same(p, r)));
     if (answer === 'move')
     {
         for (const row of open)
         {
-            if (row.conflict) { note(`data root: ${row.from} not moved - ${row.to} already holds data; move or remove one of them, then run /alfred-code:update --data-move move`); continue; }
+            if (row.conflict) { note(`data root: ${row.from} not moved - ${heldAt(row)} already holds data; move or remove one of them, then run /alfred-code:update --data-move move`); continue; }
             if (!inline(row)) pending.push({ cls: row.cls, from: row.from, to: row.to });
         }
     }
@@ -880,7 +925,7 @@ function planDataMove({ projectRoot, info, answer, stamped, log, note })
     {
         // A clash is no offer: a move would overwrite nothing, so it never runs until one side is cleared.
         for (const row of open.filter((r) => r.conflict))
-            if (!info.recorded.pending.some((p) => same(p, row))) log(`data root: ${row.from} still holds data beside ${row.to} - remove or merge it; nothing moved`);
+            if (!info.recorded.pending.some((p) => same(p, row))) log(`data root: ${row.from} still holds data beside ${heldAt(row)} - remove or merge it; nothing moved`);
         const offered = open.filter((r) => !r.conflict);
         if (offered.length) log(`data root: ${offered.map((r) => r.from).join(', ')} sit outside ${info.root} - /alfred-code:update offers the move to ${info.root} (--data-move move|keep); nothing moved`);
     }

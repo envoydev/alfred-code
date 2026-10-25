@@ -105,9 +105,9 @@ test('pending lines: rendered and read back; a server\'s line an older release w
 
 // ------------------------------------------------------------------ the project's sensitive data (2026-10-13)
 
-test('sensitive data: its place is <root>/.sensitive-data; a root change moves the file and nothing else does', () =>
+test('sensitive data: its place is <root>/.secrets (an old <root>/.sensitive-data read too); a root change moves the file and nothing else does', () =>
 {
-    assert.strictEqual(dr.targetOf('sensitive', '.data'), '.data/.sensitive-data');
+    assert.strictEqual(dr.targetOf('sensitive', '.data'), '.data/.secrets');
     assert.strictEqual(dr.rootOfPlace('sensitive', 'var/data/.sensitive-data'), 'var/data');
     const p = fresh('sensitive-plan');
     put(path.join(p, '.alfred', '.sensitive-data'), 'K=v\n');
@@ -144,7 +144,7 @@ const IGNORED = () => true;
 // The store's pairs as the installer reads them - UTF-16 LE behind its BOM, else UTF-8 - the values unquoted.
 function storeOf(p, root = '.alfred')
 {
-    return dr.storeValues(fs.readFileSync(path.join(p, ...root.split('/'), dr.SENSITIVE_FILE)));
+    return dr.storeValues(fs.readFileSync(path.join(p, ...root.split('/'), (dr.findSecretsFile(p, root) || { name: dr.SECRETS_FILE }).name)));
 }
 function oldCapture(p, { cred = 'ADMIN_EMAIL=me@x.io\nADMIN_PASSWORD="pa55 w0rd"\n', docs = '.alfred/docs' } = {})
 {
@@ -158,15 +158,15 @@ test('old credentials: a run book\'s credentials.local.env moves into a new stor
     const p = fresh('adopt-new');
     oldCapture(p);
     const r = dr.adoptCredentials({ projectDir: p, check: IGNORED });
-    assert.deepStrictEqual(r, { state: 'moved', from: '.alfred/docs/project-capabilities/credentials.local.env', to: '.alfred/.sensitive-data', keys: ['ADMIN_EMAIL', 'ADMIN_PASSWORD'], added: ['ADMIN_EMAIL', 'ADMIN_PASSWORD'], repointed: 2 });
-    const store = path.join(p, '.alfred', '.sensitive-data');
+    assert.deepStrictEqual(r, { state: 'moved', from: '.alfred/docs/project-capabilities/credentials.local.env', to: '.alfred/.secrets', keys: ['ADMIN_EMAIL', 'ADMIN_PASSWORD'], added: ['ADMIN_EMAIL', 'ADMIN_PASSWORD'], repointed: 2 });
+    const store = path.join(p, '.alfred', '.secrets');
     assert.deepStrictEqual(storeOf(p), { ADMIN_EMAIL: 'me@x.io', ADMIN_PASSWORD: 'pa55 w0rd' }, 'the values as written, quotes and all');
     if (process.platform !== 'win32') assert.strictEqual(fs.statSync(store).mode & 0o777, 0o600, 'a new store is the user\'s alone');
     assert.ok(fs.readFileSync(path.join(p, '.alfred', '.gitignore'), 'utf8').startsWith(dr.DATA_IGNORE_HEAD), 'the root ignores it');
     assert.ok(!fs.existsSync(path.join(CAP(p), 'credentials.local.env')));
     assert.strictEqual(fs.readFileSync(path.join(CAP(p), '.gitignore'), 'utf8'), 'credentials.local.env\n');
     const book = fs.readFileSync(path.join(CAP(p), 'PROJECT-CAPABILITIES.md'), 'utf8');
-    assert.match(book, /Credentials live in: `\.alfred\/\.sensitive-data`, key `ADMIN_PASSWORD`/);
+    assert.match(book, /Credentials live in: `\.alfred\/\.secrets`, key `ADMIN_PASSWORD`/);
     assert.doesNotMatch(book, /credentials\.local\.env/);
     assert.deepStrictEqual(dr.adoptCredentials({ projectDir: p, check: IGNORED }).state, 'absent', 'a re-run finds nothing to move');
 });
@@ -194,12 +194,12 @@ test('old credentials: nothing moves into a store git would commit, a store that
     const p = fresh('adopt-exposed');
     oldCapture(p);
     assert.strictEqual(dr.adoptCredentials({ projectDir: p, check: () => false }).state, 'exposed');
-    assert.ok(fs.existsSync(path.join(CAP(p), 'credentials.local.env')) && !fs.existsSync(path.join(p, '.alfred', '.sensitive-data')));
+    assert.ok(fs.existsSync(path.join(CAP(p), 'credentials.local.env')) && !fs.existsSync(path.join(p, '.alfred', '.secrets')));
     assert.strictEqual(dr.adoptCredentials({ projectDir: p, check: () => null }).state, 'moved', 'no repository: nothing to commit it to');
     const q = fresh('adopt-dir');
     oldCapture(q);
-    fs.mkdirSync(path.join(q, '.alfred', '.sensitive-data'), { recursive: true });
-    assert.strictEqual(dr.adoptCredentials({ projectDir: q, check: IGNORED }).state, 'blocked');
+    fs.mkdirSync(path.join(q, '.alfred', '.secrets'), { recursive: true });
+    assert.strictEqual(dr.adoptCredentials({ projectDir: q, check: IGNORED }).state, 'blocked', 'a folder under the name a new store takes');
     const e = fresh('adopt-empty');
     oldCapture(e, { cred: '# nothing here\n\n' });
     assert.strictEqual(dr.adoptCredentials({ projectDir: e, check: IGNORED }).state, 'empty');
@@ -212,7 +212,7 @@ test('old credentials: empty values carry as keys to fill; a custom docs root an
     const p = fresh('adopt-custom');
     oldCapture(p, { cred: 'APP_TEST_USER=\nAPP_TEST_PASSWORD=\n', docs: 'docs' });
     const r = dr.adoptCredentials({ projectDir: p, root: 'var/data', docsPath: 'docs', check: IGNORED });
-    assert.deepStrictEqual([r.state, r.to, r.repointed], ['moved', 'var/data/.sensitive-data', 2]);
+    assert.deepStrictEqual([r.state, r.to, r.repointed], ['moved', 'var/data/.secrets', 2]);
     assert.deepStrictEqual(storeOf(p, 'var/data'), { APP_TEST_USER: '', APP_TEST_PASSWORD: '' });
     const w = fresh('adopt-utf16');
     oldCapture(w);
@@ -246,3 +246,72 @@ test('writeText: an EPERM over an existing file is rewritten in place; a missing
 });
 
 // ------------------------------------------------------------------ the navigation server's own config
+
+test('secrets file: .secrets first, .sensitive-data second, a folder is neither (item 3)', () =>
+{
+    const dir = fresh('secrets-find');
+    assert.strictEqual(dr.findSecretsFile(dir, '.alfred'), null);
+    fs.mkdirSync(path.join(dir, '.alfred', '.secrets'), { recursive: true });
+    assert.strictEqual(dr.findSecretsFile(dir, '.alfred'), null, 'a folder under the new name is no store');
+    put(path.join(dir, '.alfred', '.sensitive-data'), 'K=v\n');
+    assert.deepStrictEqual(dr.findSecretsFile(dir, '.alfred'), { rel: '.alfred/.sensitive-data', name: '.sensitive-data' });
+    fs.rmSync(path.join(dir, '.alfred', '.secrets'), { recursive: true });
+    put(path.join(dir, '.alfred', '.secrets'), 'K=v\n');
+    assert.strictEqual(dr.findSecretsFile(dir, '.alfred').name, '.secrets');
+    assert.strictEqual(dr.targetOf('sensitive', '.alfred'), '.alfred/.secrets');
+    assert.strictEqual(dr.rootOfPlace('sensitive', '.data/.sensitive-data'), '.data');
+    assert.strictEqual(dr.rootOfPlace('sensitive', '.data/.secrets'), '.data');
+});
+
+test('phase 1 writes no .secrets beside an old .sensitive-data: ensure, adopt and the move keep the found name (item 3)', () =>
+{
+    const dir = fresh('secrets-phase1');
+    put(path.join(dir, '.alfred', '.sensitive-data'), 'K=v\n');
+    assert.strictEqual(dr.ensureSensitiveFile({ projectDir: dir, check: () => true }), 'present');
+    assert.ok(!fs.existsSync(path.join(dir, '.alfred', '.secrets')));
+    put(path.join(dir, '.alfred', 'docs', 'project-capabilities', 'credentials.local.env'), 'T=1\n');
+    assert.strictEqual(dr.adoptCredentials({ projectDir: dir, check: () => true }).to, '.alfred/.sensitive-data');
+    assert.ok(!fs.existsSync(path.join(dir, '.alfred', '.secrets')));
+    assert.deepStrictEqual(dr.dataMovePlan({ projectRoot: dir, root: '.data', prior: '.alfred' }),
+        [{ cls: 'sensitive', from: '.alfred/.sensitive-data', to: '.data/.sensitive-data', conflict: false }]);
+    const empty = fresh('secrets-none');
+    assert.strictEqual(dr.ensureSensitiveFile({ projectDir: empty, check: () => true }), 'written');
+    assert.ok(fs.existsSync(path.join(empty, '.alfred', '.secrets')));
+});
+
+test('renameSecrets: renames where git ignores the new name, refuses both / exposed / blocked (item 3)', () =>
+{
+    const dir = fresh('secrets-rename');
+    put(path.join(dir, '.alfred', '.sensitive-data'), 'K=v\n');
+    assert.strictEqual(dr.renameSecrets({ projectDir: dir, roots: ['.alfred'], check: () => true })[0].state, 'renamed');
+    assert.strictEqual(fs.readFileSync(path.join(dir, '.alfred', '.secrets'), 'utf8'), 'K=v\n');
+    assert.ok(!fs.existsSync(path.join(dir, '.alfred', '.sensitive-data')));
+    put(path.join(dir, '.alfred', '.sensitive-data'), 'X=y\n');
+    assert.strictEqual(dr.renameSecrets({ projectDir: dir, roots: ['.alfred'], check: () => true })[0].state, 'both');
+    assert.strictEqual(fs.readFileSync(path.join(dir, '.alfred', '.sensitive-data'), 'utf8'), 'X=y\n', 'neither file changes');
+    const open = fresh('secrets-exposed');
+    put(path.join(open, '.alfred', '.sensitive-data'), 'K=v\n');
+    assert.strictEqual(dr.renameSecrets({ projectDir: open, roots: ['.alfred'], check: () => false })[0].state, 'exposed');
+    assert.ok(fs.existsSync(path.join(open, '.alfred', '.sensitive-data')));
+    const folder = fresh('secrets-folder');
+    put(path.join(folder, '.alfred', '.sensitive-data'), 'K=v\n');
+    fs.mkdirSync(path.join(folder, '.alfred', '.secrets'));
+    assert.strictEqual(dr.renameSecrets({ projectDir: folder, roots: ['.alfred'], check: () => true })[0].state, 'blocked');
+    assert.strictEqual(dr.renameSecrets({ projectDir: fresh('secrets-empty'), roots: ['.alfred'], check: () => true })[0].state, 'none');
+});
+
+test('repointRunBooks: both run-book line shapes under the given docs root, never another path or a store not renamed (item 3)', () =>
+{
+    const dir = fresh('secrets-repoint');
+    const book = path.join(dir, 'team-docs', 'awareness', 'PROJECT-AWARENESS.md');
+    put(book, 'Credentials live in: `.alfred/.sensitive-data`, key `API_KEY`\nCredentials: keys in .alfred/.sensitive-data, ignored: yes\nSee also notes/.sensitive-data-howto.md\n');
+    put(path.join(dir, '.alfred', '.sensitive-data'), 'K=v\n');
+    assert.strictEqual(dr.repointRunBooks({ projectDir: dir, docsPath: 'team-docs', root: '.alfred' }), 0, 'not renamed yet: nothing moves');
+    fs.renameSync(path.join(dir, '.alfred', '.sensitive-data'), path.join(dir, '.alfred', '.secrets'));
+    assert.strictEqual(dr.repointRunBooks({ projectDir: dir, docsPath: 'team-docs', root: '.alfred' }), 2);
+    const text = fs.readFileSync(book, 'utf8');
+    assert.match(text, /Credentials live in: `\.alfred\/\.secrets`/);
+    assert.match(text, /keys in \.alfred\/\.secrets, ignored/);
+    assert.match(text, /notes\/\.sensitive-data-howto\.md/, 'a path under another folder is not the store');
+    assert.strictEqual(dr.repointRunBooks({ projectDir: dir, docsPath: 'team-docs', root: '.alfred' }), 0, 'a second run changes nothing');
+});

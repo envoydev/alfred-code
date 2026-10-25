@@ -29,7 +29,7 @@
 //                                           install: arrives | renamed | offer | off | unknown;
 //                                           'new: none' if none)
 //   data-move: offer <root>\tfrom=<places>[\tconflicts=<n>] | none (<why>)
-//                                           (the project's sensitive-data file under an earlier data root;
+//                                           (the project's secrets file under an earlier data root;
 //                                           a project install only. The docs move unasked since 2.8.0, and
 //                                           the stack ships no server whose data could move since 2.10.1)
 //   docs-move: offer <from> -> <to>\tmoves=<names>\tstack=<n>\town=<names|none> | none (<why>)
@@ -451,7 +451,7 @@ function runLogMode(logFile)
     console.log(`restart: ${(changed || otherRelease || (hooks > 0 && !hooksLive) || docsMoved) ? 'yes' : 'no'}`);
 }
 
-// The data move, from the rules the installer applies (docs.dataOffer): the sensitive-data file a root change left under
+// The data move, from the rules the installer applies (docs.dataOffer): the secrets file a root change left under
 // the earlier root.
 function dataMoveLine({ root, claudeDir, stampFile })
 {

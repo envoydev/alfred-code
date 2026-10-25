@@ -82,10 +82,18 @@ The stores and what each holds, where the docs root and the data root live, and 
 - **One data root for the project's data** (2.1.0, the user's decision of 2026-09-29): `ALFRED_CODE_DATA_PATH`,
   default `.alfred` at the project root - relative, never under `.claude/`, no space, no `..` (`data-root.js
   checkDataPath`) - holds the docs (`<root>/docs`), the hooks' state and ledgers (`<root>/state`, `<root>/statistics`,
-  `stack/hooks/layout.js`) and the project's sensitive data (`<root>/.sensitive-data`, a dotenv the user fills by hand -
+  `stack/hooks/layout.js`) and the project's sensitive data (`<root>/.secrets`, a dotenv the user fills by hand -
   2026-10-13; every install writes it absent-only with one comment line and no key, only where git keeps it out,
-  `data-root.js ensureSensitiveFile`; the secret guard keeps its values out of the chat, and `Read(.sensitive-data)` is
-  in the shipped deny, a bare name matching at any depth per code.claude.com/docs/en/permissions). What an older
+  `data-root.js ensureSensitiveFile`; the secret guard keeps its values out of the chat, and `Read(.secrets)` and
+  `Read(.sensitive-data)` are in the shipped deny, a bare name matching at any depth per code.claude.com/docs/en/permissions).
+  THE RENAME (item 3, 2026-10-25): its name was `.sensitive-data`, and 2.x reads both, `.secrets` first (`data-root.js
+  SECRET_FILES` / `findSecretsFile`, pinned as `secret-file-names`). Two phases, so a session opened before the update
+  never loses the store mid-run: the first run beside an old file writes `secrets: dual <by>` into the stamp (`by` the
+  session id, else `run-<installed-ms>`, kept as first written) and no `.secrets`; a later run whose session is not `by`
+  renames the file alone (`renameSecrets`, at the prior root and the current one, only where git ignores `.secrets`),
+  re-points the run book (`repointRunBooks`) and prints the restart line. Both names present, a non-file at `.secrets` or
+  an unignored target keeps the old file and says so with `!!`. A fresh install writes `.secrets` and the line at once.
+  The way back after a release is a forward fix, never a revert: a reader of the old name alone leaves `.secrets` unguarded. What an older
   release's servers left there - the navigation index, browser profiles holding session cookies, a project memory
   database - is no longer the stack's: never moved or deleted, kept out of git by the root's `/*`. `stack/mcp/data-root.js`
   is the one home of every place, read by the installer, init's plan and the preflight. `<root>/.gitignore` is `/*` plus
@@ -94,7 +102,7 @@ The stores and what each holds, where the docs root and the data root live, and 
   docs and the versioning seed would read every fresh project as `local` (a `preferences/` domain holding only the git
   doc the install seeds casts no vote either - `docs.docsVersioningSeed`), and the file re-includes itself so it is
   committed and a teammate's clone has it. The installer keeps it current (`docs.ensureDataIgnore`). THE MOVE: the docs
-  move inline and unasked (the drain above); the sensitive-data file is the one other class that moves, inline with a
+  move inline and unasked (the drain above); the secrets file (either name) is the one other class that moves, inline with a
   root change, into a root whose `.gitignore` is written first. `update-preflight.js` prints `data-move: offer <root>
   from=...` when an earlier root the stamp names still holds it; update asks ONE question (move recommended, keep, or a
   typed folder), the answer is `--data-move move|keep` (`--docs-move` read for one release) and `--data-path <folder>`;
@@ -124,7 +132,7 @@ The stores and what each holds, where the docs root and the data root live, and 
   `watch.json`, then `docs.migrateAwareness` re-spells its section ids and moves its branch versions; the generated
   `alfred-awareness.md` `@`-imports it so every session loads it at its start): a
   credential appears there only as WHERE it lives - an env var, a vault item, or a key in the
-  project's `<data root>/.sensitive-data` (the capture writes its keys empty only when the file is absent) - never
+  project's `<data root>/.secrets` (the capture writes its keys empty only when the file is absent) - never
   as a value. The capture's own `credentials.local.env` before 2026-10-13 is moved into that store by every install
   run (`data-root.js adoptCredentials`, the user's call: one credential home, by update) - the values read and written
   by the installer, never printed, the run book's line re-pointed; a key the store holds with another value, a store

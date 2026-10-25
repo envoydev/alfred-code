@@ -17,7 +17,7 @@
 const ENUMS = {
     scope: { values: ['', 'project', 'user', 'local'], text: "--scope must be 'project', 'user' or 'local'" },
     docsVersioning: { values: ['', 'git', 'local'], text: "--docs-versioning must be 'git' or 'local'" },
-    // The answer to the data move (docs.dataOffer): 'move' carries the sensitive-data file under the data root;
+    // The answer to the data move (docs.dataOffer): 'move' carries the secrets file under the data root;
     // 'keep' leaves it where it is and no later update offers again. Not given, nothing moves. `--docs-move` is the
     // 2.0.0 spelling, read for one release.
     dataMove: { values: ['', 'move', 'keep'], text: "--data-move must be 'move' or 'keep'" },

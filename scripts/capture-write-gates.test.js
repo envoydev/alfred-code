@@ -190,7 +190,7 @@ test('audit 2026-10-14 SKC05: the login ask names the KEY= handoff, never a writ
     const ask = (raw.match(/```ask\nHow does an agent log in\?[\s\S]*?```/) || [''])[0];
     assert.ok(ask, 'the login ask is a template');
     const first = ask.split('\n').find((l) => l.startsWith('- '));
-    assert.match(first, /\(Recommended\)' - the report hands one `KEY=` line per key for `<data root>\/\.sensitive-data`/, 'the recommended option names the handoff');
+    assert.match(first, /\(Recommended\)' - the report hands one `KEY=` line per key for `<data root>\/\.secrets`/, 'the recommended option names the handoff');
     assert.doesNotMatch(ask, /its keys, empty, in/, 'no promised write');
     const ref = squash(read('stack/skills/capture-awareness/references/project.md'));
     assert.ok(ref.includes('The capture writes it only when the login answer asked for the keys and it is absent (an install older than that)') && ref.includes('every value EMPTY'), 'the absent-file write stays the stated exception');

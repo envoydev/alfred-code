@@ -6,7 +6,7 @@
       "key": "ALFRED_CODE_DATA_PATH",
       "default": ".alfred",
       "ask": true,
-      "what": "the ONE folder, relative to the project, where Alfred Code keeps this project's data: the docs (`<root>/docs`), the hooks' machine state (`<root>/state`, the seats' handoff notes among it), the ledgers (`<root>/statistics`) and the sensitive-data store (`<root>/.sensitive-data`). Default `.alfred` at the project root - outside `.claude/`, where Claude Code prompts for every write. Its own `.gitignore` keeps everything but the docs out of git. Changing it (configure) MOVES the data inline: the docs and the sensitive-data store. No space, no `..`, never under `.claude/`.",
+      "what": "the ONE folder, relative to the project, where Alfred Code keeps this project's data: the docs (`<root>/docs`), the hooks' machine state (`<root>/state`, the seats' handoff notes among it), the ledgers (`<root>/statistics`) and the secrets store (`<root>/.secrets`, `.sensitive-data` before). Default `.alfred` at the project root - outside `.claude/`, where Claude Code prompts for every write. Its own `.gitignore` keeps everything but the docs out of git. Changing it (configure) MOVES the data inline: the docs and the secrets store. No space, no `..`, never under `.claude/`.",
       "validate": {
         "type": "relative-path"
       }

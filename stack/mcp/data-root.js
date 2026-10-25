@@ -23,8 +23,13 @@ const engineServer = (engine) => `${engine}-control`;
 const ENGINE_SERVER = new RegExp(`^(${ENGINES.join('|')})-control$`);
 const engineOfServer = (name) => (ENGINE_SERVER.exec(String(name)) || [])[1];
 // The project's own secret store, a dotenv the user fills by hand (the user's ruling of 2026-10-13): every value in it is
-// a credential to stack/hooks/guard-secret-value.js.
-const SENSITIVE_FILE = '.sensitive-data';
+// a credential to stack/hooks/guard-secret-value.js. Named `.secrets` from item 3 (2026-10-25); `.sensitive-data`, its
+// first name, is read until every install has moved, and while a file of either name is there nothing writes the other.
+// SENSITIVE_FILE stays an alias of the new name for the 2.x line. The guard carries the list inline (secret-file-names
+// in meta/shared-rules.json).
+const SECRET_FILES = Object.freeze(['.secrets', '.sensitive-data']);
+const [SECRETS_FILE, LEGACY_SECRETS_FILE] = SECRET_FILES;
+const SENSITIVE_FILE = SECRETS_FILE;
 
 // ------------------------------------------------------------------ the setting
 
@@ -88,20 +93,31 @@ function dataRootOf({ env = process.env, projectDir } = {})
     return checked.ok ? { root: checked.value, source: 'setting' } : { root: DATA_ROOT_DEFAULT, source: 'invalid', why: checked.why };
 }
 
-// Where a class of the stack's data lives under a root: only `sensitive` (the .sensitive-data FILE, which a root change
-// takes along) since 2.10.1 - null for any other class.
-function targetOf(cls, root = DATA_ROOT_DEFAULT)
+// Where a class of the stack's data lives under a root: only `sensitive` (the secrets FILE, which a root change takes
+// along) since 2.10.1 - null for any other class. `name` is the store's name where one was found (findSecretsFile).
+function targetOf(cls, root = DATA_ROOT_DEFAULT, name = SECRETS_FILE)
 {
-    return cls === 'sensitive' ? `${root}/${SENSITIVE_FILE}` : null;
+    return cls === 'sensitive' ? `${root}/${name}` : null;
 }
-// The data root a class's place sits under - the inverse of targetOf; null for a 2.0.0 place or a foreign one.
+// The data root a class's place sits under - the inverse of targetOf, either store name; null for a 2.0.0 place or a
+// foreign one.
 function rootOfPlace(cls, rel)
 {
-    const place = targetOf(cls, '');
-    if (!place) return null;
-    const suffix = place.slice(1);   // '.sensitive-data'
-    const root = String(rel || '').endsWith(`/${suffix}`) ? rel.slice(0, -(suffix.length + 1)) : '';
+    if (cls !== 'sensitive') return null;
+    const name = SECRET_FILES.find((n) => String(rel || '').endsWith(`/${n}`));
+    const root = name ? rel.slice(0, -(name.length + 1)) : '';
     return root && checkDataPath(root).ok ? root : null;
+}
+// The store under a root, `.secrets` before `.sensitive-data`: { rel, name }, or null when neither is a regular file - a
+// folder or a link under the name is no store.
+function findSecretsFile(projectDir, root = DATA_ROOT_DEFAULT)
+{
+    for (const name of SECRET_FILES)
+    {
+        const rel = targetOf('sensitive', relOf(root), name);
+        if (isFile(path.join(projectDir, ...rel.split('/')))) return { rel, name };
+    }
+    return null;
 }
 
 // ------------------------------------------------------------------ the root's own .gitignore
@@ -260,11 +276,11 @@ const storeValues = (buf) => Object.fromEntries(dotenvPairs(dotenvText(buf)).map
 const SENSITIVE_DEFAULT = "# alfred-code: this project's sensitive data - KEY=value, one per line; gitignored, and its values never reach the chat\n";
 function ensureSensitiveFile({ projectDir, root = DATA_ROOT_DEFAULT, check = gitIgnores })
 {
-    const file = path.join(projectDir, ...String(root).split('/'), SENSITIVE_FILE);
-    if (isFile(file)) return 'present';
+    if (findSecretsFile(projectDir, root)) return 'present';
+    const file = path.join(projectDir, ...String(root).split('/'), SECRETS_FILE);
     try { fs.lstatSync(file); return 'blocked'; }
     catch { /* absent: ours to write */ }
-    if (check(projectDir, `${relOf(root)}/${SENSITIVE_FILE}`) === false) return 'exposed';
+    if (check(projectDir, `${relOf(root)}/${SECRETS_FILE}`) === false) return 'exposed';
     fs.mkdirSync(path.dirname(file), { recursive: true });
     try { fs.writeFileSync(file, SENSITIVE_DEFAULT, { flag: 'wx', mode: 0o600 }); }
     catch (err) { if (err.code === 'EEXIST') return 'present'; throw err; }
@@ -284,7 +300,7 @@ function adoptCredentials({ projectDir, root = DATA_ROOT_DEFAULT, docsPath = `${
     const folder = path.resolve(projectDir, String(docsPath), 'project-capabilities');   // a docs root the user set may be absolute
     const fromAbs = path.join(folder, OLD_CREDENTIALS);
     const rel = (p) => path.relative(projectDir, p).split(path.sep).join('/');
-    const toAbs = path.join(projectDir, ...root.split('/'), SENSITIVE_FILE);
+    const toAbs = path.join(projectDir, ...root.split('/'), (findSecretsFile(projectDir, root) || { name: SECRETS_FILE }).name);
     const at = { from: rel(fromAbs), to: rel(toAbs) };
     if (!isFile(fromAbs)) return { state: 'absent', ...at };
     let pairs;
@@ -341,6 +357,46 @@ function adoptCredentials({ projectDir, root = DATA_ROOT_DEFAULT, docsPath = `${
     }
     return { state: 'moved', ...at, keys, added, repointed };
 }
+// The rename's second phase (item 3): `<root>/.sensitive-data` becomes `<root>/.secrets` - the file alone. Only where git
+// keeps the new name out (or there is no repository) and nothing sits under it; a store under both names is the user's
+// to merge. [{ root, state: 'renamed' | 'both' | 'exposed' | 'blocked' | 'none' }] - 'failed' too, with `why`, when the
+// rename itself refused.
+function renameSecrets({ projectDir, roots, check = gitIgnores })
+{
+    return roots.map((root) =>
+    {
+        const at = (name) => path.join(projectDir, ...String(root).split('/'), name);
+        if (!isFile(at(LEGACY_SECRETS_FILE))) return { root, state: 'none' };
+        let taken = true;
+        try { fs.lstatSync(at(SECRETS_FILE)); } catch { taken = false; }
+        if (taken) return { root, state: isFile(at(SECRETS_FILE)) ? 'both' : 'blocked' };
+        if (check(projectDir, `${relOf(root)}/${SECRETS_FILE}`) === false) return { root, state: 'exposed' };
+        const r = moveEntry(at(LEGACY_SECRETS_FILE), at(SECRETS_FILE), { file: true });
+        return r.state === 'moved' ? { root, state: 'renamed' } : { root, state: 'failed', why: r.why || r.state };
+    });
+}
+// The run book names the store by its path: once `<root>/.secrets` is the store and no `<root>/.sensitive-data` is left,
+// each `<root>/.sensitive-data` in the three run book homes under the docs root (adoptCredentials' list) becomes
+// `<root>/.secrets` - only the root's own path, never one inside a longer path. Returns how many it re-pointed.
+const RUN_BOOKS = ['awareness/PROJECT-AWARENESS.md', 'project-awareness/PROJECT-AWARENESS.md', 'project-capabilities/PROJECT-CAPABILITIES.md'];
+function repointRunBooks({ projectDir, docsPath, root = DATA_ROOT_DEFAULT })
+{
+    const base = path.join(projectDir, ...relOf(root).split('/'));
+    if (!isFile(path.join(base, SECRETS_FILE)) || isFile(path.join(base, LEGACY_SECRETS_FILE))) return 0;
+    const esc = relOf(root).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const old = new RegExp(`(?<![\\w./\\\\-])${esc}/\\.sensitive-data(?![\\w/\\\\-]|\\.\\w)`, 'g');
+    let n = 0;
+    for (const rel of RUN_BOOKS)
+    {
+        const book = path.resolve(projectDir, String(docsPath), ...rel.split('/'));
+        let text;
+        try { text = fs.readFileSync(book, 'utf8'); } catch { continue; }
+        let k = 0;
+        const next = text.replace(old, () => { k += 1; return `${relOf(root)}/${SECRETS_FILE}`; });
+        if (k) { writeText(book, next); n += k; }
+    }
+    return n;
+}
 // git's answer for a path: true ignored, false not ignored (or tracked), null no repository / no git.
 function gitIgnores(projectDir, rel)
 {
@@ -350,15 +406,14 @@ function gitIgnores(projectDir, rel)
 
 // ------------------------------------------------------------------ the move plan and the pending record
 
-// One row when the sensitive-data file sits under the PRIOR root (a root change) and not under this one - the one thing
-// a root change moves. `conflict` when the target already holds a file too.
+// One row when the secrets file sits under the PRIOR root (a root change) - the one thing a root change moves, under the
+// name it has. `conflict` when the target root already holds a store of either name.
 function dataMovePlan({ projectRoot, root, prior = null })
 {
-    const abs = (rel) => path.join(projectRoot, ...rel.split('/'));
     if (!prior || prior === root) return [];
-    const from = targetOf('sensitive', prior);
-    const to = targetOf('sensitive', root);
-    return isFile(abs(from)) ? [{ cls: 'sensitive', from, to, conflict: isFile(abs(to)) }] : [];
+    const found = findSecretsFile(projectRoot, prior);
+    if (!found) return [];
+    return [{ cls: 'sensitive', from: found.rel, to: targetOf('sensitive', root, found.name), conflict: Boolean(findSecretsFile(projectRoot, root)) }];
 }
 
 // `data-pending: sensitive <from> -> <to>` - a sensitive-data move an earlier run could not make, retried by the next. Read
@@ -378,7 +433,7 @@ function readPending(text)
 }
 
 module.exports = {
-    DATA_ROOT_DEFAULT, SENSITIVE_FILE, adoptCredentials, ENGINES, engineServer, engineOfServer, ENGINE_SERVER, settingFrom,
+    DATA_ROOT_DEFAULT, SENSITIVE_FILE, SECRETS_FILE, LEGACY_SECRETS_FILE, SECRET_FILES, findSecretsFile, renameSecrets, repointRunBooks, adoptCredentials, ENGINES, engineServer, engineOfServer, ENGINE_SERVER, settingFrom,
     checkDataPath, dataRootOf, targetOf, rootOfPlace,
     DATA_IGNORE_HEAD, DOCS_STATE_IGNORE, docsInsideRoot, dataIgnoreText, ensureRootIgnore, SENSITIVE_DEFAULT, ensureSensitiveFile, storeValues,
     writeText, moveEntry, movePlace, dataMovePlan, renderPending, readPending,

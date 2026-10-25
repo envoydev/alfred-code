@@ -15,7 +15,7 @@ Written at every scope:
   - the `attribution` keys - commit, PR and session-link attribution off, each only where the project set none.
 - **`.claude/settings.local.json`** - the same keys at local scope. At project or user scope too, for a stack key this file already holds, since it applies over `settings.json` - and custom memory's `autoMemoryEnabled: false` when this file holds the `ALFRED_CODE_MEMORY=custom` choice.
 - **`.claude/alfred-code.stamp`** - the source revision, your picks and a ledger of every write.
-- **`.alfred/`** (the data root, `ALFRED_CODE_DATA_PATH`) - the docs, the hooks' state, the seats' handoff notes and the sensitive-data file. Its own `.gitignore` keeps everything but the docs out of git.
+- **`.alfred/`** (the data root, `ALFRED_CODE_DATA_PATH`) - the docs, the hooks' state, the seats' handoff notes and the secrets file (`.secrets`, `.sensitive-data` before). Its own `.gitignore` keeps everything but the docs out of git.
 
 Written later, or only on one route:
 

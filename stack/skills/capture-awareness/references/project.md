@@ -19,7 +19,7 @@ guessing. The repo answers first; the user fills only what the repo cannot show.
 
 Never ask for a credential's VALUE, and the doc never holds one - not in an ask, not in the doc, not in the
 report. The doc records the login steps and WHERE it lives - an environment variable, a key in a gitignored local
-file (the project's sensitive data, `<data root>/.sensitive-data`, first), a vault item - and the user puts the
+file (the project's sensitive data, `<data root>/.secrets`, first), a vault item - and the user puts the
 value there by hand. A value the user pastes anyway is never written anywhere: redact it as `<redacted>`, record
 only where it should live, and follow the security baseline's credential rule (the rotation ask). A seat that needs
 the value to log in checks the file for presence (the secret guard's `--presence`) and goes through that guard's
@@ -111,7 +111,7 @@ lives, never by value. Before a local start, run the Data target check; before a
 - Reach: <the URL and port, the window, or the CLI entry>
 - Log in: <numbered steps - the screen, the fields, the role to pick - or 'no login, the app is open'>
 - Accounts: <one line per role - its purpose and the user name's home>
-- Credentials live in: <env var `<NAME>` | `<data root>/.sensitive-data`, key `<NAME>` | vault item `<name>`> - checked for presence, never printed; a browser login through a browser server started with the sensitive data as its secrets (Playwright MCP's `--secrets <data root>/.sensitive-data`) types the KEY name (`<NAME>`) in `browser_type` / `browser_fill_form`, which the server fills from the store and shows as `<secret>NAME</secret>` - read that marker in the first fill's result before concluding - no marker means the server holds no store, so ask the user to sign in, never retype the key; a key added after the server started needs a reconnect (`/mcp`) first; any other typed value goes through the secret guard's ask
+- Credentials live in: <env var `<NAME>` | `<data root>/.secrets`, key `<NAME>` | vault item `<name>`> - checked for presence, never printed; a browser login through a browser server started with the sensitive data as its secrets (Playwright MCP's `--secrets <data root>/.secrets`) types the KEY name (`<NAME>`) in `browser_type` / `browser_fill_form`, which the server fills from the store and shows as `<secret>NAME</secret>` - read that marker in the first fill's result before concluding - no marker means the server holds no store, so ask the user to sign in, never retype the key; a key added after the server started needs a reconnect (`/mcp`) first; any other typed value goes through the secret guard's ask
 
 ## Flows to verify
 <!-- id: flows-to-verify -->
@@ -166,14 +166,14 @@ from a compose file:
 
 ## The keys in the sensitive data
 
-The project's sensitive data, `<data root>/.sensitive-data` (`.alfred` unless `ALFRED_CODE_DATA_PATH` names another
-root), exists from the install on - one comment line, no key - so a capture normally finds it present and hands
+The project's sensitive data, `<data root>/.secrets` (`.alfred` unless `ALFRED_CODE_DATA_PATH` names another
+root; `.sensitive-data` on an install no update has renamed yet, the same file under its old name), exists from the install on - one comment line, no key - so a capture normally finds it present and hands
 each key as a `KEY=` line the user adds. Present, it is the user's - never read, rewritten or appended to (the
 secret guard refuses each); the session's `Sensitive data:` line lists its keys, and a key the doc needs that it
 lacks is a `KEY=` line the report hands the user to add.
 
 The capture writes it only when the login answer asked for the keys and it is absent (an install older than that),
-after proving it is ignored: `git check-ignore -q <data root>/.sensitive-data` exits 0 - the root's own `.gitignore`
+after proving it is ignored: `git check-ignore -q <data root>/.secrets` exits 0 - the root's own `.gitignore`
 covers it. Any other exit writes nothing: the doc points at an environment variable and the report names
 `/alfred-code:update`, which writes that `.gitignore`. Outside git there is nothing to commit it to; say so. One key
 per account the answer named, every value EMPTY; the secret guard holds every value in the file as a credential,

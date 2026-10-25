@@ -764,7 +764,7 @@
       "file": "guard-secret-value.js",
       "matcher": "@SessionStart",
       "event": "",
-      "note": "the project's sensitive data (<data root>/.sensitive-data, a dotenv the user fills by hand) by KEY only, and the run that uses it (--with-sensitive) - silent when there is none; every value is a credential there, so a Read is blocked, a dump masked and a source or copy refused"
+      "note": "the project's sensitive data (<data root>/.secrets, .sensitive-data before; a dotenv the user fills by hand) by KEY only, and the run that uses it (--with-sensitive) - silent when there is none; every value is a credential there, so a Read is blocked, a dump masked and a source or copy refused"
     },
     {
       "file": "guard-unapproved-dispatch.js",

@@ -221,7 +221,7 @@ test('the default sensitive data: written once with its one comment line, never 
 {
     const root = repo();
     docs.ensureDataIgnore({ projectRoot: root, root: '.alfred', docsPath: '.alfred/docs', mode: 'git' });
-    const file = path.join(root, '.alfred', '.sensitive-data');
+    const file = path.join(root, '.alfred', '.secrets');
     assert.strictEqual(dataRoot.ensureSensitiveFile({ projectDir: root, root: '.alfred' }), 'written');
     assert.strictEqual(fs.readFileSync(file, 'utf8'), dataRoot.SENSITIVE_DEFAULT);
     assert.match(dataRoot.SENSITIVE_DEFAULT, /^# [^\n]*\n$/, 'one comment line');
@@ -234,9 +234,9 @@ test('the default sensitive data: written once with its one comment line, never 
 
     const exposed = repo();
     assert.strictEqual(dataRoot.ensureSensitiveFile({ projectDir: exposed, root: '.alfred' }), 'exposed', 'no .gitignore keeps it out: nothing written');
-    assert.ok(!fs.existsSync(path.join(exposed, '.alfred', '.sensitive-data')));
+    assert.ok(!fs.existsSync(path.join(exposed, '.alfred', '.secrets')));
     const dir = repo();
-    fs.mkdirSync(path.join(dir, '.alfred', '.sensitive-data'), { recursive: true });
+    fs.mkdirSync(path.join(dir, '.alfred', '.secrets'), { recursive: true });
     assert.strictEqual(dataRoot.ensureSensitiveFile({ projectDir: dir, root: '.alfred', check: () => true }), 'blocked');
     const noGit = path.join(TMP, `nogit-${seq++}`);
     fs.mkdirSync(noGit, { recursive: true });

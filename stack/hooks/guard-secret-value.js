@@ -218,7 +218,12 @@ const NETRC_FILE = /(?:^|[\\/])[._]netrc$/i;
 const NPMRC_FILE = /(?:^|[\\/])\.npmrc$/i;
 const NAMES_A_KEY = /(?:^|[._-])(?:signing|public|pub)[_-]?key$|publickeytoken$/i;
 const KEY_STORE = 'key store';
-const SENSITIVE_FILE = '.sensitive-data';
+// The project's secret store has two names (item 3, 2026-10-25): `.secrets` from this release, `.sensitive-data` until
+// every install has moved (stack/mcp/data-root.js, pinned as secret-file-names). `.sensitive-data` is the store by its
+// name alone; `.secrets` only directly under the data root (isDataRootSecrets), since a project keeps a `.secrets` of
+// its own too - the file nektos/act reads.
+const SECRET_FILES = Object.freeze(['.secrets', '.sensitive-data']);
+const [SECRETS_FILE, LEGACY_SECRETS_FILE] = SECRET_FILES;
 const KEYSTORE_FILE = /\.(?:p12|pfx|jks|jceks|keystore|bks|kdbx)$|^\.mylogin\.cnf$|^(?:credentials|access_tokens)\.db$/i;
 const PEM_BEGIN_LINE = /^\s*-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----\s*$/;
 const GPG_PRIVATE = /^\s*(?:Key:\s*)?\((?:\d+:)?(?:protected-)?private-key\b/m;
@@ -234,7 +239,7 @@ function kindByName(file) {
   if (/(?:^|\.)htpasswd$/.test(b)) return 'htpasswd';
   if (NETRC_FILE.test(String(file))) return 'netrc';
   if (b === '.vault-token') return 'token';
-  if (b === SENSITIVE_FILE) return 'sensitive';
+  if (b === LEGACY_SECRETS_FILE || (b === SECRETS_FILE && isDataRootSecrets(file))) return 'sensitive';
   if (b === '.yarnrc') return 'spaced';
   if (NPMRC_FILE.test(String(file))) return 'ini';
   if (/^(?:\.terraformrc|terraform\.rc)$/.test(b) || /^(?:tf|tfvars|hcl)$/.test(e)) return 'hcl';
@@ -473,7 +478,7 @@ function hclPairs(lines) {
   }
   return out;
 }
-// The project's own secret store (`<data root>/.sensitive-data`, the user's ruling of 2026-10-13): a dotenv whose EVERY
+// The project's own secret store (`<data root>/.secrets`, `.sensitive-data` before; the user's ruling of 2026-10-13): a dotenv whose EVERY
 // value is a credential, whatever its key is called - DB_HOST and API_URL included, since the user put them there.
 const sensitivePairs = (lines) => lines.map((l) => l.match(DOTENV_LINE)).filter(Boolean).map((m) => [m[1], unquote(m[2]), 'always']);
 const READERS = {
@@ -915,21 +920,35 @@ function maskFormatText(text, file, mask, count) {
 
 
 // ---- the project's sensitive data: where it is, and the run that uses it -------------------------
-// `<data root>/.sensitive-data` (ALFRED_CODE_DATA_PATH, default .alfred) in the checkout the command runs in, else in the
+// `<data root>/.secrets`, else `.sensitive-data` (ALFRED_CODE_DATA_PATH, default .alfred) in the checkout the command runs in, else in the
 // main worktree beside it - a gitignored file a new worktree does not have. Its values are kept out of the chat by accident:
 // a Read is blocked and a shell dump is masked (the 'sensitive' kind above), and a command that needs them runs through
 // --with-sensitive, which puts them in that command's environment and masks each one's EXACT text in its output - an
 // encoded, split or reversed print is not caught, so this is leak protection, never a wall against a deliberate read.
-function sensitiveFile(start = process.cwd()) {
+// The data root as the settings name it: relative and `..`-free, else `.alfred`.
+function dataRootRel() {
   const raw = String(envOf(process.env, 'DATA_PATH') || '').trim().replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
-  const root = raw && !pathMod.isAbsolute(raw) && !raw.split('/').includes('..') ? raw : '.alfred';
+  return raw && !pathMod.isAbsolute(raw) && !raw.split('/').includes('..') ? raw : '.alfred';
+}
+// A `.secrets` is the store when it sits directly in a folder whose path ends in the data root (`.alfred/.secrets`, a
+// custom root's `var/data/.secrets`) - by the path as written, a diff header's or a walk's line included, or by its real
+// path. A project's own `.secrets` beside its sources is not.
+function isDataRootSecrets(file) {
+  const tail = `${dataRootRel()}/${SECRETS_FILE}`;
+  const ends = (p) => { const s = String(p).replace(/\\/g, '/'); return s === tail || s.endsWith(`/${tail}`); };
+  if (ends(file)) return true;
+  try { return ends(fs.realpathSync(file)); } catch { return false; }
+}
+function sensitiveFile(start = process.cwd()) {
+  const root = dataRootRel();
   let places = [start];
   try {
     const { projectRootOf } = require(pathMod.join(__dirname, 'layout.js'));
     const r = projectRootOf(start);
     places = [...new Set([r.checkout, r.project])];
   } catch { /* no layout.js beside the hook: the start directory alone */ }
-  const at = places.map((p) => pathMod.join(p, ...root.split('/'), SENSITIVE_FILE));
+  // the checkout's own store before its main worktree's, `.secrets` before `.sensitive-data` in each
+  const at = places.flatMap((p) => SECRET_FILES.map((name) => pathMod.join(p, ...root.split('/'), name)));
   return at.find((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } }) || at[0];
 }
 // The project's store as a real path, or null when it does not exist - what a tree-taking verb on a folder above it carries.
@@ -1186,7 +1205,7 @@ function lineRedactor(grep = false, literals = false) {
   // raw, though the start line says a printed value is masked): every live value whatever its key, and a line that is no
   // `KEY=value` pair whole - the store is the user's, its format no promise.
   const SENSITIVE_PAIR = /^(\s*(?:export\s+)?[A-Za-z_][\w.-]*\s*=\s*)(.*?)\s*$/;
-  const SENSITIVE_PREFIX = /^(?:[A-Za-z]:)?(?:[^\s:]*:)?(?:[^\s:]*[\\/])?\.sensitive-data(?::\d+){0,2}[:-]/;
+  const SENSITIVE_PREFIX = /^(?:[A-Za-z]:)?(?:[^\s:]*:)?(?:[^\s:]*[\\/])?(?:\.sensitive-data|\.secrets)(?::\d+){0,2}[:-]/;
   const sensitiveBody = (body) => {
     if (!body.trim() || COMMENT_LINE.test(body)) return body;
     const p = body.match(SENSITIVE_PAIR);
@@ -3035,8 +3054,9 @@ if (isShellTool(payload.tool_name)) {
       `credential, so it is judged the safe way. Split it into smaller commands, or flatten the nesting.\n`);
   }
   // a data heredoc's body is text the command writes (a plan line naming the store), never a step (the 2026-10-17 usage
-  // audit); a body a shell or runtime runs is still read for the name
-  refuseSensitiveMention([judged, ...runBodies.map((h) => h.body)].join('\n'), judged);
+  // audit); a body a shell or runtime runs is still read for the name, and a shell's body is steps too - `.secrets` is
+  // refused only by what an operand resolves to (item 3)
+  refuseSensitiveMention([judged, ...runBodies.map((h) => h.body)].join('\n'), [judged, ...runBodies.filter((h) => !h.runtime).map((h) => h.body)].join('\n'));
   process.exit(0);
 }
 
@@ -3072,14 +3092,14 @@ function refuseSensitiveMention(text, steps = text) {
       return GIT_LOOKS.test(words[i] || '');
     }
     if (/^(?:grep|rg|egrep|fgrep|cut|awk|sed|jq)$/.test(v)) return isReducer(String(stage).trim());
-    if (/^(?:echo|printf)$/.test(v)) return !/\$\(|`|<\(/.test(stage) && !/>\s*\S*\.sensitive-data\b/.test(stage);
+    if (/^(?:echo|printf)$/.test(v)) return !/\$\(|`|<\(/.test(stage) && !/>\s*\S*(?:\.sensitive-data|\.secrets)\b/.test(stage);
     return false;
   };
   const SENSITIVE_ARCHIVE = /^(?:tar|gtar|bsdtar|zip|7z|7za|7zz|rar|cpio|pax|rsync|scp|compress-archive)$/i;
   const joinQuoted = (s) => String(s).replace(/(["'])([^"'\n]*)\1/g, '$2');
   const refuse = (verb) => {
     global.BLOCK_DETAIL = { branch: 'sensitive-data', matched: String(verb || '').slice(0, 40) };
-    block('Blocked: this command names the project\'s sensitive data (.sensitive-data under the data root). Its values never\n' +
+    block('Blocked: this command names the project\'s sensitive data (.secrets under the data root, .sensitive-data before). Its values never\n' +
       'enter a shell or a file the chat can read - a source, a copy or a print would put them there. Its keys:\n' +
       `  node "${__filename}" --presence <that file>\n` +
       'A command that needs the values gets them in its own environment, each printed as <KEY>:\n' +
@@ -3104,7 +3124,8 @@ function refuseSensitiveMention(text, steps = text) {
   }
   // the spelled name: each operand resolved the way the dump half resolves it
   let budget = 64;
-  const isStore = (p) => baseOf(p) === SENSITIVE_FILE || baseOf(realOf(p)) === SENSITIVE_FILE;
+  // `.sensitive-data` by its name, `.secrets` only under the data root (a project's own `.secrets` is no store)
+  const isStore = (p) => baseOf(p) === LEGACY_SECRETS_FILE || baseOf(realOf(p)) === LEGACY_SECRETS_FILE || isDataRootSecrets(p) || isDataRootSecrets(realOf(p));
   // Every anchor the operand exists at, never the first alone: the project dir's own data root (no store) listed before the
   // cwd's hid the cwd's store from a tree-taking verb.
   const statAll = (p) => {
@@ -3115,6 +3136,9 @@ function refuseSensitiveMention(text, steps = text) {
     return out;
   };
   const judgeStage = (stage, depth, pipedOn) => {
+    // a `$(...)` or backtick body runs as steps of its own (item 3: `echo "$(source .alfred/.secrets; ...)"` named no
+    // literal the mention pass reads)
+    if (depth < 2) for (const body of substitutions(stage)) judgeAll(body, depth + 1);
     // an assignment-only step binds its name for the steps after it, in order (assignedValue)
     const toks = shellTokens(stage.trim());
     if (toks.length && toks.every((t) => /^[A-Za-z_]\w*=/.test(t))) {
@@ -3186,7 +3210,11 @@ function refuseSensitiveMention(text, steps = text) {
       budget--;
       for (const p of candidatePaths(value)) for (const hit of statAll(p)) {
         if (!hit.dir && isStore(hit.at)) refuse(verb);
-        if (hit.dir && bundles && !excludes([SENSITIVE_FILE])) { try { if (fs.statSync(pathMod.join(hit.at, SENSITIVE_FILE)).isFile()) refuse(verb); } catch { /* not here */ } }
+        if (hit.dir && bundles) for (const name of SECRET_FILES) {
+          const f = pathMod.join(hit.at, name);
+          if (excludes([name]) || (name === SECRETS_FILE && !isDataRootSecrets(f))) continue;
+          try { if (fs.statSync(f).isFile()) refuse(verb); } catch { /* not here */ }
+        }
         if (hit.dir && storeAt && raw !== destination) {
           const d = realOf(hit.at);
           const rel = pathMod.relative(d, storeAt);

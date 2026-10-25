@@ -23,15 +23,18 @@ process.env.ALFRED_CODE_DOCS_PATH = path.join(TMP, 'ledger');
 const TOKEN = 'tok-' + 'a1b2'.repeat(6);
 const STORE = `# the project's own\nexport API_TOKEN="${TOKEN}"\nDB_HOST=db.internal\nPORT=80\n`;
 
-// A project with a store under its data root; `root` is the data root's folder.
-function project(name, { text = STORE, root = '.alfred' } = {})
+// A project with a store under its data root; `root` is the data root's folder, `file` the store's name - `.secrets`
+// from item 3 (2026-10-25), `.sensitive-data` until every install has moved - so each case runs once per name.
+function project(name, { text = STORE, root = '.alfred', file = '.sensitive-data' } = {})
 {
-    const dir = path.join(TMP, name);
+    const dir = path.join(TMP, `${name}${file}`);
     fs.mkdirSync(path.join(dir, ...root.split('/')), { recursive: true });
-    const file = path.join(dir, ...root.split('/'), '.sensitive-data');
-    if (text !== null) fs.writeFileSync(file, text);
-    return { dir, file };
+    const at = path.join(dir, ...root.split('/'), file);
+    if (text !== null) fs.writeFileSync(at, text);
+    return { dir, file: at };
 }
+const NAMES = ['.secrets', '.sensitive-data'];
+const RE = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const run = (payload, env = {}) => spawnSync(process.execPath, [HOOK], { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, ...env } });
 const updated = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.updatedInput.command; } catch { return null; } };
 const verdict = (r) => (r.status === 2 ? 2 : updated(r) != null ? 'rewrite' : r.status);
@@ -44,19 +47,22 @@ fs.writeFileSync(PRINT, "const [how, ...keys] = process.argv.slice(2);\nfor (con
 const wrapped = (cwd, line, env = {}) => spawnSync(process.execPath, [HOOK, '--with-sensitive', '--', line], { cwd, encoding: 'utf8', env: { ...process.env, ...env } });
 const node = (...args) => [`"${process.execPath}"`, `"${PRINT}"`, ...args].join(' ');
 
-test('sensitive data: a Read of the store is blocked, whatever its keys are called', () =>
+for (const FILE of NAMES)
 {
-    const { dir, file } = project('read');
+test(`sensitive data: a Read of the store is blocked, whatever its keys are called [${FILE}]`, () =>
+{
+    const { dir, file } = project('read', { file: FILE });
     assert.strictEqual(run({ tool_name: 'Read', tool_input: { file_path: file }, cwd: dir, session_id: 'suite' }).status, 2);
     // DB_HOST alone is no credential by name - in the store it is one all the same.
-    const host = project('read-host', { text: 'DB_HOST=db.internal\n' });
+    const host = project('read-host', { text: 'DB_HOST=db.internal\n', file: FILE });
     assert.strictEqual(run({ tool_name: 'Read', tool_input: { file_path: host.file }, cwd: host.dir, session_id: 'suite' }).status, 2, 'every value in the store is a credential');
     assert.strictEqual(run({ tool_name: 'Grep', tool_input: { pattern: 'API', path: file, output_mode: 'content' }, cwd: dir, session_id: 'suite' }).status, 2, 'a Grep of its content too');
+    assert.strictEqual(run({ tool_name: 'Grep', tool_input: { pattern: 'DB_HOST', path: host.file, output_mode: 'content' }, cwd: host.dir, session_id: 'suite' }).status, 2, 'a Grep naming a key no credential pattern names');
 });
 
-test('sensitive data: a shell dump becomes the redacted view, and that view masks every value', () =>
+test(`sensitive data: a shell dump becomes the redacted view, and that view masks every value [${FILE}]`, () =>
 {
-    const { dir, file } = project('dump');
+    const { dir, file } = project('dump', { file: FILE });
     for (const command of [`cat "${file}"`, `head -5 "${file}"`, `grep API "${file}"`, `cat "${file}" | sort`])
     {
         const r = run({ tool_name: 'Bash', tool_input: { command }, cwd: dir, session_id: 'suite' });
@@ -73,10 +79,10 @@ test('sensitive data: a shell dump becomes the redacted view, and that view mask
     assert.ok(!keys.stdout.includes(TOKEN), keys.stdout);
 });
 
-test('sensitive data: a command naming the store is refused - source, copy, add, print; a look at it passes', () =>
+test(`sensitive data: a command naming the store is refused - source, copy, add, print; a look at it passes [${FILE}]`, () =>
 {
-    const { dir, file } = project('mention');
-    const rel = '.alfred/.sensitive-data';
+    const { dir, file } = project('mention', { file: FILE });
+    const rel = `.alfred/${FILE}`;
     for (const command of [`source ${rel}`, `. ./${rel} && ./deploy.sh`, `cp ${rel} /tmp/out`, `git add ${rel}`, `export $(xargs < ${rel})`, `rm ${rel}`])
         assert.notStrictEqual(bash(dir, command), 0, command);
     for (const command of [`test -f ${rel} && echo yes`, `[ -s ${rel} ]`, `ls -la ${rel}`, `wc -l ${rel}`, 'ls -la .alfred', `echo ${rel}.example`,
@@ -89,10 +95,10 @@ test('sensitive data: a command naming the store is refused - source, copy, add,
 // The 2026-10-17 usage audit: three refusals of commands that read no value - git's own check that the store is ignored
 // (the session-start warning's check), a plan line naming the store and its KEYS, and a count-only host check chained to a
 // build. Each passes now; the same verbs feeding a reader, a shell heredoc and a redirect onto the store stay refused.
-test('sensitive data: a git look, a name in written text and a count-only check pass; piped on or run they do not', () =>
+test(`sensitive data: a git look, a name in written text and a count-only check pass; piped on or run they do not [${FILE}]`, () =>
 {
-    const { dir } = project('looks');
-    const rel = '.alfred/.sensitive-data';
+    const { dir } = project('looks', { file: FILE });
+    const rel = `.alfred/${FILE}`;
     for (const command of [`git check-ignore -q ${rel}`, `git check-ignore -q ${rel} || echo NOT-IGNORED`, `git -C . check-ignore -v ${rel}`, `git status --short ${rel}`,
         `cat >> plan.md <<'EOF'\n- the deploy reads DB_HOST and API_TOKEN from ${rel} (names only)\nEOF`, `echo "keys DB_HOST, API_TOKEN live in ${rel}"`,
         `grep -c prod ${rel} && npm run build`, `grep -qi 'DB_HOST=.*prod' ${rel} || npm run start`, `grep -ci prod ${rel}; npm run build`, `cut -d= -f1 ${rel}`])
@@ -106,9 +112,13 @@ test('sensitive data: a git look, a name in written text and a count-only check 
 // Audit 2026-10-14 HK11 (replays sens.js, sens2.js): the refusal read the literal name only, so a glob, a quoted split or the
 // folder holding the store passed while the dump half resolved the same globs. Each replayed shape is refused now; an
 // ordinary command on the data root or the project passes.
-test('sensitive data: a glob, a quoted split or an archive / add / copy of the folder holding the store is refused (HK11)', () =>
+test(`sensitive data: a glob, a quoted split or an archive / add / copy of the folder holding the store is refused (HK11) [${FILE}]`, () =>
 {
-    const { dir } = project('spelled');
+    const { dir } = project('spelled', { file: FILE });
+    // the name as the shell would spell it: a glob of its head, a quoted split, a brace list
+    const G = `${FILE.slice(0, 5)}*`;
+    const SPLIT = `${FILE.slice(0, 4)}""${FILE.slice(4)}`;
+    const BRACE = `${FILE.slice(0, 5)}{${FILE.slice(5)},}`;
     fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
     fs.writeFileSync(path.join(dir, 'src', 'a.js'), '1\n');
     fs.mkdirSync(path.join(dir, '.alfred', 'docs'), { recursive: true });
@@ -116,31 +126,31 @@ test('sensitive data: a glob, a quoted split or an archive / add / copy of the f
     // The session's project dir keeps its own data root with no store (its statistics/ ledger, 2.8.0): an operand is judged
     // at every anchor it names, so `.alfred` there never hides the one in the cwd that holds the store.
     fs.mkdirSync(path.join(process.env.CLAUDE_PROJECT_DIR, '.alfred', 'statistics'), { recursive: true });
-    for (const command of ['source .alfred/.sens*', 'set -a; . .alfred/.sens*; set +a; npm run migrate', 'source .alfred/.sens* && echo $DB_HOST',
-        'tar cf - .alfred | tar xOf -', 'tar cf - .alfred | tar tvf -', 'docker compose --env-file .alfred/.sens* up -d', 'docker compose --env-file=.alfred/.sens* up',
-        'git add -f .alfred/.sens*', 'zip -r /tmp/a.zip .alfred && unzip -p /tmp/a.zip', 'cp -r .alfred /tmp/bk', 'rsync -a .alfred/ /tmp/bk/',
-        "cat .alfred/'.sensitive-data'", 'cat .alfred/.sensitive""-data', 'cd .alfred && source .sens*', 'cd .alfred && git add -f .',
-        "bash -c 'source .alfred/.sens*'", 'ln -s .alfred/.sens* env.local', 'mv .alfred/.sens{itive-data,} /tmp/'])
+    for (const command of [`source .alfred/${G}`, `set -a; . .alfred/${G}; set +a; npm run migrate`, `source .alfred/${G} && echo $DB_HOST`,
+        'tar cf - .alfred | tar xOf -', 'tar cf - .alfred | tar tvf -', `docker compose --env-file .alfred/${G} up -d`, `docker compose --env-file=.alfred/${G} up`,
+        `git add -f .alfred/${G}`, 'zip -r /tmp/a.zip .alfred && unzip -p /tmp/a.zip', 'cp -r .alfred /tmp/bk', 'rsync -a .alfred/ /tmp/bk/',
+        `cat .alfred/'${FILE}'`, `cat .alfred/${SPLIT}`, `cd .alfred && source ${G}`, 'cd .alfred && git add -f .',
+        `bash -c 'source .alfred/${G}'`, `ln -s .alfred/${G} env.local`, `mv .alfred/${BRACE} /tmp/`])
         assert.strictEqual(bash(dir, command), 2, command);
     // a link to the store is the store, by its real path
-    fs.symlinkSync(path.join(dir, '.alfred', '.sensitive-data'), path.join(dir, 'env.link'));
+    fs.symlinkSync(path.join(dir, '.alfred', FILE), path.join(dir, 'env.link'));
     assert.strictEqual(bash(dir, 'source env.link'), 2, 'a symlink resolves to the store');
-    for (const command of ['ls -la .alfred', 'ls .alfred/.sens*', 'test -f .alfred/.sens* && echo y', 'git add .', 'git add -A', 'git add .alfred/docs/x.md',
+    for (const command of ['ls -la .alfred', `ls .alfred/${G}`, `test -f .alfred/${G} && echo y`, 'git add .', 'git add -A', 'git add .alfred/docs/x.md',
         'tar czf /tmp/src.tgz src', 'cp -r src /tmp/src-copy', 'cp .alfred/docs/x.md /tmp/', 'zip -r /tmp/docs.zip .alfred/docs', 'find .alfred -name "*.md"',
-        'cd .alfred && ls', 'git status', "git commit -m 'note: the store stays out of git'", 'echo .alfred/.sensitive-data.example',
-        "cat > notes.md <<'EOF'\nsource .alfred/.sens*\nEOF"])
+        'cd .alfred && ls', 'git status', "git commit -m 'note: the store stays out of git'", `echo .alfred/${FILE}.example`,
+        `cat > notes.md <<'EOF'\nsource .alfred/${G}\nEOF`])
         assert.strictEqual(bash(dir, command), 0, command);
-    const r = run({ tool_name: 'Bash', tool_input: { command: 'source .alfred/.sens*' }, cwd: dir, session_id: 'suite' });
+    const r = run({ tool_name: 'Bash', tool_input: { command: `source .alfred/${G}` }, cwd: dir, session_id: 'suite' });
     assert.match(r.stderr, /--with-sensitive/, 'the same refusal, naming the run that uses the values');
 });
 
-test('--with-sensitive: the values are in the command\'s environment and each prints as <KEY>; the exit code is the command\'s', () =>
+test(`--with-sensitive: the values are in the command's environment and each prints as <KEY>; the exit code is the command's [${FILE}]`, () =>
 {
-    const { dir } = project('wrap');
+    const { dir } = project('wrap', { file: FILE });
     const out = wrapped(dir, node('out', 'API_TOKEN', 'DB_HOST', 'PORT'));
     assert.strictEqual(out.status, 0, out.stderr);
     assert.strictEqual(out.stdout.replace(/\r/g, ''), 'API_TOKEN=<API_TOKEN>\nDB_HOST=<DB_HOST>\nPORT=80\n', 'a value under 4 characters is not masked');
-    assert.match(out.stderr, /3 value\(s\) from .*\.sensitive-data in the environment \(API_TOKEN, DB_HOST, PORT\)/);
+    assert.match(out.stderr, new RegExp(`3 value\\(s\\) from .*${RE(FILE)} in the environment \\(API_TOKEN, DB_HOST, PORT\\)`));
     assert.ok(!out.stderr.includes(TOKEN));
     const err = wrapped(dir, node('err', 'API_TOKEN'));
     assert.match(err.stderr, /API_TOKEN=<API_TOKEN>/, 'stderr is masked too');
@@ -149,6 +159,7 @@ test('--with-sensitive: the values are in the command\'s environment and each pr
     const own = wrapped(dir, node('hex', 'API_TOKEN'), { API_TOKEN: 'from-the-shell' });
     assert.strictEqual(own.stdout.trim(), `API_TOKEN=${Buffer.from(TOKEN).toString('hex')}`, 'the run asked for the project\'s value: the file wins');
 });
+}
 
 test('--with-sensitive: no store runs the command and says so; no command is a usage error', () =>
 {
@@ -162,50 +173,52 @@ test('--with-sensitive: no store runs the command and says so; no command is a u
     assert.match(bare.stderr, /usage:/);
 });
 
-test('session start: the store\'s KEYS and the run that uses them, never a value; silent with none, an empty one, or garbage', () =>
+for (const FILE of NAMES)
 {
-    const { dir } = project('start');
+test(`session start: the store's KEYS and the run that uses them, never a value; silent with none, an empty one, or garbage [${FILE}]`, () =>
+{
+    const { dir } = project('start', { file: FILE });
     const said = context(started(dir));
-    assert.match(said, /^Sensitive data: \.alfred\/\.sensitive-data holds API_TOKEN, DB_HOST, PORT - /);
+    assert.match(said, new RegExp(`^Sensitive data: \\.alfred/${RE(FILE)} holds API_TOKEN, DB_HOST, PORT - `));
     assert.match(said, /--with-sensitive -- "<command line>"/);
     // audit 2026-10-14 PL2: the browser takes the store as its --secrets file, so a login types the KEY name
     assert.match(said, /In the browser, type a KEY name in browser_type \/ browser_fill_form: the browser server fills its value and shows it as <secret>KEY<\/secret>\./);
     for (const value of [TOKEN, 'db.internal']) assert.ok(!said.includes(value), said);
     for (const [name, text] of [['start-none', null], ['start-empty', ''], ['start-garbage', '\u0000\u0001 not a dotenv {"a":1}\n']])
     {
-        const r = started(project(name, { text }).dir);
+        const r = started(project(name, { text, file: FILE }).dir);
         assert.strictEqual(r.status, 0, name);
         assert.strictEqual(r.stdout, '', `${name}: ${r.stdout}`);
     }
 });
 
-test('session start: a store git would commit is said - not ignored, or tracked; the data root\'s own .gitignore quiets it', () =>
+test(`session start: a store git would commit is said - not ignored, or tracked; the data root's own .gitignore quiets it [${FILE}]`, () =>
 {
     const git = (dir, ...args) => execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { cwd: dir, stdio: 'pipe' });
-    const { dir } = project('start-git');
+    const { dir } = project('start-git', { file: FILE });
     git(dir, 'init', '-q');
-    assert.match(context(started(dir)), /WARNING: git does not ignore \.alfred\/\.sensitive-data/);
+    assert.match(context(started(dir)), new RegExp(`WARNING: git does not ignore \\.alfred/${RE(FILE)}`));
     fs.writeFileSync(path.join(dir, '.alfred', '.gitignore'), dataRoot.dataIgnoreText({ root: '.alfred', docsPath: '.alfred/docs' }));
     assert.doesNotMatch(context(started(dir)), /WARNING/, 'the root\'s own .gitignore covers it');
-    git(dir, 'add', '-f', '.alfred/.sensitive-data');
+    git(dir, 'add', '-f', `.alfred/${FILE}`);
     assert.match(context(started(dir)), /WARNING: git does not ignore .*untrack it with git rm --cached/, 'a tracked store is said even under an ignore rule');
 });
 
-test('session start and --with-sensitive: a custom data root, and a linked worktree reading its main checkout\'s store', () =>
+test(`session start and --with-sensitive: a custom data root, and a linked worktree reading its main checkout's store [${FILE}]`, () =>
 {
-    const custom = project('start-custom', { root: 'var/data' });
-    assert.match(context(started(custom.dir, { ALFRED_CODE_DATA_PATH: 'var/data' })), /^Sensitive data: var\/data\/\.sensitive-data holds API_TOKEN/);
+    const custom = project('start-custom', { root: 'var/data', file: FILE });
+    assert.match(context(started(custom.dir, { ALFRED_CODE_DATA_PATH: 'var/data' })), new RegExp(`^Sensitive data: var/data/${RE(FILE)} holds API_TOKEN`));
     assert.strictEqual(started(custom.dir).stdout, '', 'the default root holds none');
     assert.strictEqual(started(custom.dir, { ALFRED_CODE_DATA_PATH: '../outside' }).stdout, '', 'a root outside the project is never read');
     const git = (dir, ...args) => execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { cwd: dir, stdio: 'pipe' });
-    const { dir: main } = project('wt-main');
+    const { dir: main } = project('wt-main', { file: FILE });
     git(main, 'init', '-q');
     fs.writeFileSync(path.join(main, 'README.md'), 'x\n');
     git(main, 'add', 'README.md');
     git(main, 'commit', '-qm', 'x');
     fs.mkdirSync(path.join(main, '.claude'), { recursive: true });
     fs.writeFileSync(path.join(main, '.claude', 'alfred-code.stamp'), 'sha: abc\n');
-    const wt = path.join(TMP, 'wt-linked');
+    const wt = path.join(TMP, `wt-linked${FILE}`);
     git(main, 'worktree', 'add', '-q', wt);
     assert.match(context(started(wt)), /holds API_TOKEN, DB_HOST, PORT/, 'a new worktree has no store of its own: the main checkout\'s is the one');
     assert.strictEqual(wrapped(wt, node('out', 'API_TOKEN')).stdout.trim(), 'API_TOKEN=<API_TOKEN>');
@@ -213,16 +226,16 @@ test('session start and --with-sensitive: a custom data root, and a linked workt
 
 // The installer reads the store through data-root.js (the old credentials' clash check), the guard through its own parser
 // (the hooks ship apart from stack/mcp on the copy route): one fixture, one answer.
-test('sensitive data: the guard and data-root.js read one store the same way - BOM, CRLF, export, quotes, comments, = in a value', () =>
+test(`sensitive data: the guard and data-root.js read one store the same way - BOM, CRLF, export, quotes, comments, = in a value [${FILE}]`, () =>
 {
     const text = '\uFEFF# comment\r\nexport A_ONE="quoted value"\r\nB_TWO=\'single\'\r\n  C_THREE = spaced  \r\nD_URL=postgres://u:p@h/db?x=1\r\nE_EMPTY=\r\n;not a key\r\n';
-    const { dir, file } = project('twin', { text });
+    const { dir, file } = project('twin', { text, file: FILE });
     const read = dataRoot.storeValues(fs.readFileSync(file));
     assert.deepStrictEqual(read, { A_ONE: 'quoted value', B_TWO: 'single', C_THREE: 'spaced', D_URL: 'postgres://u:p@h/db?x=1', E_EMPTY: '' });
     const r = wrapped(dir, node('hex', ...Object.keys(read)));
     const guard = Object.fromEntries(r.stdout.trim().split(/\r?\n/).map((l) => l.split('=')).map(([k, hex]) => [k, Buffer.from(hex, 'hex').toString()]));
     assert.deepStrictEqual(guard, read, r.stderr);
-    const utf16 = project('twin-utf16', { text: null });
+    const utf16 = project('twin-utf16', { text: null, file: FILE });
     fs.writeFileSync(utf16.file, Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('K_ONE=wide value\r\n', 'utf16le')]));
     assert.deepStrictEqual(dataRoot.storeValues(fs.readFileSync(utf16.file)), { K_ONE: 'wide value' });
     assert.strictEqual(wrapped(utf16.dir, node('hex', 'K_ONE')).stdout.trim(), `K_ONE=${Buffer.from('wide value').toString('hex')}`);
@@ -230,24 +243,24 @@ test('sensitive data: the guard and data-root.js read one store the same way - B
 
 // audit 2026-10-20 C17 (fabea019): after a refusal the model built the store's name in pieces; the dump and the copy then
 // passed unjudged. A name assembled from literals the same command assigned resolves before either check.
-test('audit 2026-10-20 C17: a store name built by concatenation is masked when printed and refused when carried', () => {
-    const { dir } = project('concat');
-    const built = 'f=".sensitive"; f="$f-data"; ';
+test(`audit 2026-10-20 C17: a store name built by concatenation is masked when printed and refused when carried [${FILE}]`, () => {
+    const { dir } = project('concat', { file: FILE });
+    const built = `f="${FILE.slice(0, 5)}"; f="\${f}${FILE.slice(5)}"; `;
     const out = run({ tool_name: 'Bash', tool_input: { command: `${built}cat ".alfred/$f"` }, cwd: dir, session_id: 'suite' });
-    assert.match(updated(out) || '', /--redacted ".*\.alfred[\\/]\.sensitive-data"/, 'the print becomes the masked view');
+    assert.match(updated(out) || '', new RegExp(`--redacted ".*\\.alfred[\\\\/]${RE(FILE)}"`), 'the print becomes the masked view');
     assert.strictEqual(bash(dir, `${built}cp ".alfred/$f" /tmp/x`), 2, 'a copy is refused');
     assert.strictEqual(bash(dir, `${built}source ".alfred/$f"`), 2, 'a source is refused');
     assert.strictEqual(bash(dir, `${built}cp ".alfred/$f" /tmp/x; f=other`), 2, 'a later reassignment does not hide it');
     assert.strictEqual(bash(dir, `${built}git check-ignore -q ".alfred/$f"; echo ignored=$?`), 0, 'a look still passes (the evidence shape)');
-    assert.strictEqual(bash(dir, 'f=".sensitive"; f="$f-notes"; cat ".alfred/$f" 2>/dev/null'), 0, 'another name built the same way is no store');
+    assert.strictEqual(bash(dir, `f="${FILE.slice(0, 5)}"; f="\${f}-notes"; cat ".alfred/$f" 2>/dev/null`), 0, 'another name built the same way is no store');
 });
 
 // Audit 2026-10-20 H3: a walk through the store and a diff of a tracked store printed every value raw - the stream masker
 // had no store kind, though the session start says a printed value is masked. Now a line out of the store is masked by
 // its path or its diff header, whatever its key, so the probe finds it and the stage is piped.
-test('H3: a walk through the store and a git stream of it mask every value', { skip: process.platform === 'win32' && 'sh pipeline' }, () =>
+test(`H3: a walk through the store and a git stream of it mask every value [${FILE}]`, { skip: process.platform === 'win32' && 'sh pipeline' }, () =>
 {
-    const { dir } = project('h3-walk');
+    const { dir } = project('h3-walk', { file: FILE });
     fs.writeFileSync(path.join(dir, 'app.js'), 'const host = process.env.DB_HOST;\n');
     const sh = (command) => spawnSync('sh', ['-c', command], { cwd: dir, encoding: 'utf8' });
     for (const command of ['grep -rn DB_HOST .', 'grep -rn internal .'])
@@ -256,14 +269,14 @@ test('H3: a walk through the store and a git stream of it mask every value', { s
         assert.ok(out && out.includes('--redact-stdin'), `${command}: the walk reaches the store, so it is piped - ${out}`);
         const r = sh(out);
         assert.ok(!r.stdout.includes('db.internal'), `${command}: printed raw - ${r.stdout}`);
-        assert.match(r.stdout, /\.sensitive-data:\d+:DB_HOST=<set \(11 chars\)>/, r.stdout);
+        assert.match(r.stdout, new RegExp(`${RE(FILE)}:\\d+:DB_HOST=<set \\(11 chars\\)>`), r.stdout);
     }
     assert.strictEqual(bash(dir, 'grep -rn no_such_word_anywhere .'), 0, 'a walk that prints nothing of the store runs as written');
     // a store tracked by hand: the diff header names it, and every changed value is masked
     const g = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
     g('init', '-q'); g('config', 'user.email', 't@example.com'); g('config', 'user.name', 't');
     g('add', '-f', '.'); g('commit', '-qm', 'init');
-    fs.writeFileSync(path.join(dir, '.alfred', '.sensitive-data'), STORE.replace('db.internal', 'db2.internal') + 'PLAIN line no pair\n');
+    fs.writeFileSync(path.join(dir, '.alfred', FILE), STORE.replace('db.internal', 'db2.internal') + 'PLAIN line no pair\n');
     const out = updated(run({ tool_name: 'Bash', tool_input: { command: 'git diff' }, cwd: dir, session_id: 'suite' }));
     assert.ok(out && out.includes('--redact-stdin'), `a diff of the tracked store is piped - ${out}`);
     const r = sh(out);
@@ -271,3 +284,4 @@ test('H3: a walk through the store and a git stream of it mask every value', { s
     assert.match(r.stdout, /^\+DB_HOST=<set \(12 chars\)>$/m, r.stdout);
     assert.match(r.stdout, /^\+<sensitive-data line>$/m, r.stdout);
 });
+}

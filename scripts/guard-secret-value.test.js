@@ -2809,3 +2809,20 @@ test('guard-secret-value: a long run of spaces in one stage is judged in bounded
   assert.ok(docs.work > 40000, `the heredoc lines read are charged (${docs.work})`);
   assert.ok(docs.ms < 1500, `a line of 10,000 heredocs judged in ${Math.round(docs.ms)}ms`);
 });
+
+test('both store names are all-secret; the project\'s own .secrets passes, the data-root store does not (item 3, Review Focus 1)', () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'secrets-names-'));
+  const at = (command) => verdict(run({ tool_name: 'Bash', tool_input: { command }, cwd: dir, session_id: 'suite' }, { CLAUDE_PROJECT_DIR: dir }));
+  const readOf = (file) => run({ tool_name: 'Read', tool_input: { file_path: file }, cwd: dir, session_id: 'suite' }, { CLAUDE_PROJECT_DIR: dir }).status;
+  fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
+  for (const name of ['.secrets', '.sensitive-data']) {
+    fs.writeFileSync(path.join(dir, '.alfred', name), 'DB_HOST=db.internal\n');
+    assert.strictEqual(readOf(path.join(dir, '.alfred', name)), 2, `${name}: a Read of the store is refused`);
+    assert.notStrictEqual(at(`cat .alfred/${name}`), 0, `${name}: a dump is rewritten or refused, never run as written`);
+    assert.strictEqual(at(`source .alfred/${name}`), 2, `${name}: a command naming the store is refused`);
+  }
+  fs.writeFileSync(path.join(dir, '.secrets'), '# the project\'s own act secrets\n');
+  for (const cmd of ['act --secret-file .secrets', 'docker run --env-file .secrets img', 'cp .secrets.example .secrets', 'git rm --cached .secrets'])
+    assert.notStrictEqual(at(cmd), 2, cmd);
+  assert.strictEqual(at('tar cf - .'), 2, 'a tree above the data-root store is still refused');
+});

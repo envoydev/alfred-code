@@ -51,7 +51,7 @@
 //
 // `data-root` is the project's data root this run left in effect (ALFRED_CODE_DATA_PATH, stack/mcp/data-root.js):
 // the next run's baseline for a root change, even one made by hand in settings. `data-pending` is each move of the
-// sensitive-data file a run could not make inline (`sensitive <from> -> <to>`), kept until the file has left `from`;
+// secrets file a run could not make inline (`sensitive <from> -> <to>`), kept until the file has left `from`;
 // an earlier release's server-data line is no longer read. `data-move: kept` is the user's answer to keep the old
 // layout - no later update offers the move again (configure still can).
 //
@@ -222,6 +222,9 @@ function readLedger(file)
     return out;
 }
 
+// Item 3's phased rename, `secrets: dual <by>`: the run that first wrote it, kept as recorded by every later run - `by`
+// null is this run, named by its session id where the caller had one, else by its install time.
+const secretsLine = (by, ms) => { const who = by === null ? `run-${ms}` : by; return who ? `secrets: dual ${who}` : 'secrets: dual'; };
 function renderStamp(fields)
 {
     const { repoUrl, ref, sha, version, installed, installedMs, action, scope, initialised, hooks, hooksRoute, seatsRoute, alwaysRules, picked = {}, stoodDown = [], mcpDenied = [], toolIgnores = {}, library = {}, ledger = null, data = null, instructionsFile = '' } = fields;
@@ -253,6 +256,7 @@ function renderStamp(fields)
         ...(data && data.root ? [`data-root: ${data.root}`] : []),
         ...(data ? require('../../stack/mcp/data-root.js').renderPending(data.pending || []) : []),
         ...(data && data.kept ? ['data-move: kept'] : []),
+        ...(data && data.secrets ? [secretsLine(data.secrets.by, installedMs)] : []),
         ...(['agents', 'claude'].includes(instructionsFile) ? [`instructions-file: ${instructionsFile}`] : []),
         `library-skills: ${hashes(library.skills)}`,
         `library-agents: ${hashes(library.agents)}`,
@@ -432,14 +436,17 @@ function readMcpDenied(file)
     if (!m) return [];
     return m[1].split(',').map((s) => /^(project|local):(.+)$/.exec(s.trim())).filter((e) => e && validItemName(e[2])).map(([, scope, name]) => ({ scope, name }));
 }
-// The data lines - { root: '' when none, pending: [], kept } with no stamp or none of them.
+// The data lines - { root: '' when none, pending: [], kept, secrets } with no stamp or none of them. `secrets` is item 3's
+// `secrets: dual <by>` as { by } (`by` '' for a bare line), null with none or any other value.
 function readDataLines(file)
 {
     let text = '';
-    try { text = fs.readFileSync(file, 'utf8'); } catch { return { root: '', pending: [], kept: false }; }
+    try { text = fs.readFileSync(file, 'utf8'); } catch { return { root: '', pending: [], kept: false, secrets: null }; }
     const dr = require('../../stack/mcp/data-root.js');
     const root = (/^data-root: *(\S+) *$/m.exec(text) || [])[1] || '';
-    return { root: dr.checkDataPath(root).ok ? root : '', pending: dr.readPending(text), kept: /^data-move: *kept *$/m.test(text) };
+    const dual = /^secrets: *dual(?: +(\S+))? *$/m.exec(text);
+    return { root: dr.checkDataPath(root).ok ? root : '', pending: dr.readPending(text), kept: /^data-move: *kept *$/m.test(text),
+        secrets: dual ? { by: dual[1] || '' } : null };
 }
 
 // The instruction file's name the user answered (`instructions-file: agents|claude`) - '' with no stamp, no line or a

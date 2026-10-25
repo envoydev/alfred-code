@@ -82,7 +82,7 @@ test('credentials: never asked for in chat, never in the doc - the doc names whe
     const skill = squash(ref);
     assert.ok(skill.includes('Never ask for a credential\'s VALUE'), 'the reference forbids asking for a value');
     assert.ok(skill.includes('the doc never holds one'), 'the reference forbids a value in the doc');
-    assert.match(skill, /WHERE it lives - an environment variable, a key in a gitignored local file \(the project's sensitive data, `<data root>\/\.sensitive-data`, first\), a vault item/);
+    assert.match(skill, /WHERE it lives - an environment variable, a key in a gitignored local file \(the project's sensitive data, `<data root>\/\.secrets`, first\), a vault item/);
     // A pasted value is stopped, redacted and never written - the security baseline's rotation ask follows.
     assert.match(skill, /A value the user pastes anyway is never written anywhere: redact it as `<redacted>`/);
     // The deterministic check before the report, over the doc - never the sensitive data, which holds values by design.
@@ -99,8 +99,8 @@ test('credentials: never asked for in chat, never in the doc - the doc names whe
     assert.ok(tpl, 'the keys are spelled in references/project.md');
     assert.ok(!VALUE_RE.test(tpl[1]), 'every template key is empty');
     assert.match(tpl[1], /^[A-Z_]*PASSWORD=$/m, 'a password key, empty');
-    assert.match(ref, /`<data root>\/\.sensitive-data`, key `<NAME>`/, 'the doc names the store and the key');
-    assert.match(skill, /after proving it is ignored: `git check-ignore -q <data root>\/\.sensitive-data` exits 0/, 'the ignore is proven before the write, not assumed');
+    assert.match(ref, /`<data root>\/\.secrets`, key `<NAME>`/, 'the doc names the store and the key');
+    assert.match(skill, /after proving it is ignored: `git check-ignore -q <data root>\/\.secrets` exits 0/, 'the ignore is proven before the write, not assumed');
     assert.match(skill, /never read, rewritten or appended to/, 'a store that exists is the user\'s');
     // One credential home: the old file is named only as what the next install moves into the store.
     assert.doesNotMatch(body(), /credentials\.local\.env/);
@@ -132,7 +132,7 @@ test('M14 the value check catches env, YAML and lower-case password keys, and ne
             `STRIPE_API_KEY: ${values[4]}`,
             'ADMIN_PASSWORD=',
             'SMTP_PASSWORD: <in the vault>',
-            '- Credentials live in: `.alfred/.sensitive-data`, key `ADMIN_PASSWORD` - checked for presence',
+            '- Credentials live in: `.alfred/.secrets`, key `ADMIN_PASSWORD` - checked for presence',
         ].join('\n') + '\n');
         const cmd = block[1].split('<docs-path>').join(dir);
         const r = spawnSync('bash', ['-c', cmd], { encoding: 'utf8' });

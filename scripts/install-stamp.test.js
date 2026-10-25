@@ -732,3 +732,14 @@ test('install-stamp: the ledger round-trips settings.local.json:autoMemoryEnable
     assert.match(text, /^managed-settings: .*settings\.local\.json:autoMemoryEnabled=[0-9a-f]{64}$/m);
     assert.deepStrictEqual(readLedger(dest), ledger);
 });
+
+test('readDataLines reads secrets: dual <by>, a bare line as by \'\', and any other value as none (item 3)', () =>
+{
+    const stamp = require('./install/stamp.js');
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'stamp-secrets-')), 'alfred-code.stamp');
+    for (const [text, want] of [['secrets: dual S1\n', { by: 'S1' }], ['secrets: dual run-1730000000000\n', { by: 'run-1730000000000' }], ['secrets: dual\n', { by: '' }], ['secrets: maybe\n', null], ['', null]])
+    {
+        fs.writeFileSync(file, `data-root: .alfred\n${text}`);
+        assert.deepStrictEqual(stamp.readDataLines(file).secrets, want, JSON.stringify(text));
+    }
+});

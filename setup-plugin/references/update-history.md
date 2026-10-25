@@ -370,6 +370,21 @@ the user decides: answer the open decisions, accept it marked, one more revision
 `guard-answer:scorer` or `guard-stop-contract:scorer` in `ALFRED_CODE_HOOKS_OFF` switches the whole scorer off. Update
 seeds the four keys absent-only, so a value the project set stays; report the seeded lines.
 
+## after 2.10.1 - .sensitive-data becomes .secrets
+
+The project's secrets file is `<data root>/.secrets` now (`.alfred/.secrets` by default); `.sensitive-data` was its
+name. Every 2.x release reads both, `.secrets` first, and the shipped deny carries `Read(.secrets)` beside
+`Read(.sensitive-data)`. The rename takes two updates, so a session opened before it never loses the file mid-run: the
+first update beside an old file records `secrets: dual` in the stamp, writes no `.secrets` and prints
+`sensitive: .sensitive-data becomes .secrets at the next update`; the next update, from another session, renames the
+file (its bytes unchanged), re-points the run book's path and prints `sensitive: renamed .sensitive-data -> .secrets -
+restart any session opened before this update`. Report that line and tell the user to restart those sessions. An `!!`
+line - both files present, `.secrets` not a file, or a `.secrets` git would not ignore - keeps the old file: report it,
+since the next update tries again only once the user has merged the two and deleted the old one, cleared the path or
+ignored it. A project's own `.secrets` outside the data root is not touched. There is no way back by downgrading: an
+older release reads only `.sensitive-data`, so a renamed file would sit unguarded under it - the way back is a forward
+fix in a later release.
+
 ## after 2.10.1 - capture-first-look leaves the stack
 
 The provisional-map skill no longer ships: `/alfred-code:init` runs the architecture capture, which writes the real

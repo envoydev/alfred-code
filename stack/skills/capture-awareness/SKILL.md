@@ -99,7 +99,7 @@ How is the app started and reached for a manual check? The repo shows: <start co
 
 ```ask
 How does an agent log in? The repo shows: <a login route, an auth config - or no login>. Never type a password here - via Other, type the login steps, the account's role and WHERE its credentials already live (an env var, a file and key, a vault item).
-- 'A test account - name its keys and I add them to the sensitive data (Recommended)' - the report hands one `KEY=` line per key for `<data root>/.sensitive-data`; the doc points at them
+- 'A test account - name its keys and I add them to the sensitive data (Recommended)' - the report hands one `KEY=` line per key for `<data root>/.secrets`; the doc points at them
 - 'No login - the app is open' - the section says so
 - 'Unknown for now' - the section says unknown; the next capture asks again
 ```
@@ -177,7 +177,7 @@ Project:     <created | refreshed | appended | current | kept> - <docs-path>/awa
 From repo:   <the files DISCOVER read the facts from, or not run>
 Asked:       <each question asked with the answer's label, or none>
 Unknown:     <the run-book sections or lines still unknown, or none>
-Credentials: <where each account's credentials live, by name only | keys in <data root>/.sensitive-data, ignored: yes | no login>
+Credentials: <where each account's credentials live, by name only | keys in <data root>/.secrets, ignored: yes | no login>
 Value check: <no hit | <n> hit(s) replaced with where the value lives | not run>
 Watch:       <the cited file> -> <the sections it names, or not run>
 Related:     <created | refreshed | kept | none recorded> - <n> entries, rewritten <names>, kept <names>; first_read <n> of <n> verified; skipped <locations, or none>

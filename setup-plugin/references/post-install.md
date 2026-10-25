@@ -55,7 +55,7 @@ touches no committed file). The lines, minus anything the project already covers
   place answer), the re-include keeps nothing and `.claude/*` stands alone.
 - `.alfred/` - the data root (`ALFRED_CODE_DATA_PATH`), outside `.claude/` because Claude Code prompts
   for every write there: the docs (`.alfred/docs/`), the hooks' state and the seats' handoff notes
-  (`.alfred/state/`) and the project's sensitive data (`.alfred/.sensitive-data`). Its ONE `.gitignore` keeps everything but `docs/` out
+  (`.alfred/state/`) and the project's sensitive data (`.alfred/.secrets`). Its ONE `.gitignore` keeps everything but `docs/` out
   of git, so while the docs are committed it needs no line here, and it carries the docs' rules too, written
   from `ALFRED_CODE_DOCS_VERSIONING`: `local` keeps them out of git, `git` (a fresh project's default) commits
   them and keeps only the hooks' machine state out. No folder under it carries a `.gitignore` of the stack's;
