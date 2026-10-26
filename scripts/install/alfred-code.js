@@ -103,7 +103,7 @@ const RETIRED_DENY = [
 // The hook ENGINES, the layout module they share and the window table are copied beside the hooks rather than wired: 22
 // bodies shared with cursor-stack run `node .claude/hooks/docs.js`, and the history start block
 // points at `node .claude/hooks/history.js rulings`.
-const HOOK_ENGINES = ['docs.js', 'history.js', 'layout.js', 'handoff.js', 'model-windows.json'];
+const HOOK_ENGINES = ['docs.js', 'history.js', 'layout.js', 'handoff.js', 'secret-chain.js', 'model-windows.json'];
 // I12: the serena context the full copy route copied into the project's .claude up to 2.10.0 - no run copies it now,
 // so the ledger prunes an unchanged copy (pruneDroppedCopies).
 const NAV_CONTEXT = 'navigation-context.yml';

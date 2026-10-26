@@ -8202,6 +8202,10 @@
         {
           "file": "stack/hooks/guard-secret-value.js",
           "marker": "const SECRET_FILES = Object.freeze(['.secrets', '.sensitive-data']);"
+        },
+        {
+          "file": "stack/hooks/secret-chain.js",
+          "marker": "const SECRET_FILES = Object.freeze(['.secrets', '.sensitive-data']);"
         }
       ]
     },

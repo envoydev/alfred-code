@@ -13,6 +13,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync, execFileSync } = require('node:child_process');
 const dataRoot = require('../stack/mcp/data-root.js');
+const secretChain = require('../stack/hooks/secret-chain.js');
 
 const HOOK = path.join(__dirname, '..', 'stack', 'hooks', 'guard-secret-value.js');
 const TMP = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'guard-sensitive-')));
@@ -226,19 +227,22 @@ test(`session start and --with-sensitive: a custom data root, and a linked workt
 });
 
 // The installer reads the store through data-root.js (the old credentials' clash check), the guard through its own parser
-// (the hooks ship apart from stack/mcp on the copy route): one fixture, one answer.
-test(`sensitive data: the guard and data-root.js read one store the same way - BOM, CRLF, export, quotes, comments, = in a value [${FILE}]`, () =>
+// and the workspace chain through secret-chain.js (the hooks ship apart from stack/mcp on the copy route): one fixture,
+// one answer.
+test(`sensitive data: the guard, secret-chain.js and data-root.js read one store the same way - BOM, CRLF, export, quotes, comments, = in a value [${FILE}]`, () =>
 {
     const text = '\uFEFF# comment\r\nexport A_ONE="quoted value"\r\nB_TWO=\'single\'\r\n  C_THREE = spaced  \r\nD_URL=postgres://u:p@h/db?x=1\r\nE_EMPTY=\r\n;not a key\r\n';
     const { dir, file } = project('twin', { text, file: FILE });
     const read = dataRoot.storeValues(fs.readFileSync(file));
     assert.deepStrictEqual(read, { A_ONE: 'quoted value', B_TWO: 'single', C_THREE: 'spaced', D_URL: 'postgres://u:p@h/db?x=1', E_EMPTY: '' });
+    assert.deepStrictEqual(secretChain.readStore(file), read, 'secret-chain.js reads the store as data-root.js does');
     const r = wrapped(dir, node('hex', ...Object.keys(read)));
     const guard = Object.fromEntries(r.stdout.trim().split(/\r?\n/).map((l) => l.split('=')).map(([k, hex]) => [k, Buffer.from(hex, 'hex').toString()]));
     assert.deepStrictEqual(guard, read, r.stderr);
     const utf16 = project('twin-utf16', { text: null, file: FILE });
     fs.writeFileSync(utf16.file, Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('K_ONE=wide value\r\n', 'utf16le')]));
     assert.deepStrictEqual(dataRoot.storeValues(fs.readFileSync(utf16.file)), { K_ONE: 'wide value' });
+    assert.deepStrictEqual(secretChain.readStore(utf16.file), { K_ONE: 'wide value' });
     assert.strictEqual(wrapped(utf16.dir, node('hex', 'K_ONE')).stdout.trim(), `K_ONE=${Buffer.from('wide value').toString('hex')}`);
 });
 

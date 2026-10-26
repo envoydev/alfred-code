@@ -1211,7 +1211,7 @@ test('seed: on the plugin route the copied engines still run, with no copy-route
         });
         return { files: fs.readdirSync(path.join(repo, '.claude', 'hooks')).sort(), runs };
     } });
-    assert.deepStrictEqual(result.files, ['docs.js', 'handoff.js', 'history.js', 'layout.js', 'model-windows.json', 'package.json'], 'only the engines, the window table and the CommonJS marker');
+    assert.deepStrictEqual(result.files, ['docs.js', 'handoff.js', 'history.js', 'layout.js', 'model-windows.json', 'package.json', 'secret-chain.js'], 'only the engines, the window table and the CommonJS marker');
     for (const run of result.runs)
     {
         assert.strictEqual(run.status, 0, `${run.file}: ${run.stderr}`);
@@ -1309,7 +1309,7 @@ test('seed plan: --print-plan over a project with cut plugins prints no removal 
     assert.ok(!/plugin pruned|add it back:|plugin removed/.test(out), out.split('\n').filter((l) => /plugin pruned|add it back:|plugin removed/.test(l)).join('\n'));
 });
 
-const HOOK_ENGINES = ['docs.js', 'history.js', 'layout.js', 'handoff.js', 'model-windows.json', 'package.json'];
+const HOOK_ENGINES = ['docs.js', 'history.js', 'layout.js', 'handoff.js', 'secret-chain.js', 'model-windows.json', 'package.json'];
 function hooksRouteSandbox(prefix, selection = 'skill markdown-style\n')
 {
     const os = require('node:os');
