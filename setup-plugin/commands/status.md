@@ -41,7 +41,7 @@ env reads below use the STACK VIEW: `settings.json`'s `env` with every `ALFRED_C
 
 ## 2. General info - always, before the question
 
-One table, no ask - it is six rows and every other area reads against it:
+One table, no ask - it is seven rows and every other area reads against it:
 
 | item | value |
 |---|---|
@@ -51,6 +51,7 @@ One table, no ask - it is six rows and every other area reads against it:
 | data root | .alfred (default) |
 | docs root | .alfred/docs (default) |
 | initialised | 2026-09-24 |
+| workspace | child of .. - own 3, ignored 1 - load check clean 2026-10-25 |
 
 - `stack version`: the stamp's version and commit - `alfred-code.stamp` (`no stamp - source never
   resolved at install time` when it is not there).
@@ -64,6 +65,11 @@ One table, no ask - it is six rows and every other area reads against it:
   `data move kept` when the stamp says `data-move: kept`.
 - `docs root`: `<data root>/docs` - `ALFRED_CODE_DATA_PATH` from the scope file, `(default)` when absent; a leftover `ALFRED_CODE_DOCS_PATH` (retired in 2.8.0) shows instead, marked `(leftover - /alfred-code:update moves the docs and removes it)`.
 - `initialised`: the stamp's `initialised:` line - a date, or `pending` (run `/alfred-code:init`).
+- `workspace`: one call, `node "${CLAUDE_PLUGIN_ROOT}/scripts/workspace.js" status --root . ; node
+  "${CLAUDE_PLUGIN_ROOT}/scripts/workspace.js" children --root .`. `workspace: parent <rel>` -> `child of <rel> - own
+  <n>, ignored <n> - load check <state> <at>` (the counts of its `own:` and `ignored:` lines, its `check:` line, `never`
+  when none ran); `child:` lines -> `root of <n> children` (`, <n> gone` for each `gone` one); both when both; neither ->
+  `standalone`. A `!!` line it prints is pasted under the table.
 
 ## 3. One question - what else to show
 
@@ -96,6 +102,10 @@ the whole table as one uninterrupted block - a table never spans tool calls and 
 interleaves its rows (fragments render as broken, misaligned pieces). Every table ends with a
 `total: N` line. Read everything from disk at render time - never from memory or a prior run's
 output.
+
+**In a child** (the general table's `workspace` row says `child of`), every table below gains a `from` column after
+its name: `own` for a row the `own:` line names (`<category> <name>`), `ignored` for one the `ignored:` line names -
+listed though it is not installed, since the parent holds it - and `from root` for every other installed row.
 
 **Skills and agents** - the ROUTE decides the set. With the core `alfred-code` entry enabled in
 the plugins listing, the installed set is what those plugins CARRY - `node

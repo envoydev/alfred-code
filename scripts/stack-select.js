@@ -350,6 +350,10 @@ function emitTable(graph, layer, opts)
     const noteOf = (name) => ((((opts.recs || {}).general || {}).notes || {})[layer] || {})[name];
 
     const installed = opts.installed ? new Set(opts.installed[layer] || []) : null;
+    // A child's parent read-back (--inherited): a row it holds is `from root`, and in installed mode one the child does
+    // not hold is `ignored` - the walk turns an unpick of the first into an ignore line, a pick of the second into its removal.
+    const inherited = opts.inherited ? new Set(opts.inherited[layer] || []) : null;
+    const fromRoot = (name) => Boolean(inherited && inherited.has(name));
     const orphanSet = new Set((opts.orphans || []).filter(o => o.category === layer.slice(0, -1)).map(o => o.name));
     const orphanWhy = {};
     for (const o of opts.orphans || []) if (o.category === layer.slice(0, -1)) orphanWhy[o.name] = o.why;
@@ -360,7 +364,7 @@ function emitTable(graph, layer, opts)
         let status, why;
         if (installed)
         {
-            status = orphanSet.has(name) ? 'orphaned' : installed.has(name) ? 'yes' : '-';
+            status = orphanSet.has(name) ? 'orphaned' : installed.has(name) ? (fromRoot(name) ? 'from root' : 'yes') : fromRoot(name) ? 'ignored' : '-';
             // installed mode keeps its yes/orphaned/- states; evidence informs the why column
             // when nothing stronger claims it - a not-installed row showing 'MassTransit in
             // src/Api.csproj' tells the user the project uses what the install lacks.
@@ -371,6 +375,7 @@ function emitTable(graph, layer, opts)
         }
         else if (dependencyPlugins.has(name)) { status = 'dependency'; why = dependencyWhy(name); }
         else if (reasons[name]) { status = 'required'; why = reasons[name]; }
+        else if (fromRoot(name)) { status = 'from root'; why = noteOf(name) || '-'; }
         else
         {
             // evidence sits below required (a closure lock is a fact of the selection) and
@@ -737,7 +742,8 @@ function main(argv)
         const recs = rawRecs;
         const foundFile = readJsonSoft('--found', arg('--found'));
         const evidence = foundFile ? (foundFile.found || foundFile) : null;
-        const table = emitTable(graph, tableLayer, { raw, recs, stacks, installed, orphans, evidence });
+        const inherited = normalizeInventory(readJson('--inherited', arg('--inherited')));
+        const table = emitTable(graph, tableLayer, { raw, recs, stacks, installed, orphans, evidence, inherited });
         if (table === null) { console.error(`stack-select: unknown table layer '${tableLayer}'`); process.exit(2); }
         process.stdout.write(table);
     }

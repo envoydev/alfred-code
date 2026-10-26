@@ -59,7 +59,8 @@ rows` when none). A close with no receipt is a step 6 that did not run (audit 20
 ## 7. Post-check
 
 Every line below is READ from something already in context - step 2's output, the one post-install grep, and the
-step-3 `--log` call. Nothing here is stated from memory, and nothing needs another call but the hygiene check.
+step-3 `--log` call. Nothing here is stated from memory, and nothing needs another call but the hygiene check and,
+after a cascade, the load check.
 
 Report the version delta, then what THIS install refreshed: step 2's `changed-here:` line (the release's own
 `changed:` beside it when they differ - 'skills 9 here of the release's 10'), naming the paths from the compare's own
@@ -105,6 +106,13 @@ NEW-ITEMS line (what arrived, what was taken, what stays off - say where that sw
   and apply the answer with `--apply gitignore` or `--apply exclude`, reporting its `applied` /
   `current` line. A `none (...)` line is not reported. Unattended, take the Recommended option and log
   it.
+- **WORKSPACE** - read only when `$TMP/cascade.txt` exists (`update-workspace.md` ran the cascade): append
+  `; [ -f "$TMP/cascade.txt" ] && cat "$TMP/cascade.txt"` to the hygiene call. One row per project from its
+  `cascade: <rel><TAB><state>` line - `<rel>`, its version from step 2's plan row, and `updated` / `unchanged` /
+  `failed` / `skipped` / `gone` - each `!!` line under it verbatim, then the `cascade: done ...` line. Then ONE call,
+  `node "$TMP/repo/scripts/workspace.js" check-loads --root <rel>` for each `updated` child, joined by ` ; ` (each is
+  one logged-out `claude -p` in a throwaway account, up to 90 s), and paste every `!!` line it prints. A `loaded twice`
+  line, and each `failed` or `skipped` child, puts `/alfred-code:update in <rel>` on the follow-ups card.
 - **SERVERS** - the `mcp servers:` block the grep caught (an install an earlier release gave MCP servers, on its
   first update onto 2.10.1 or later), verbatim: the removed line, each `add it back:` line, any `mcp <name>: kept` line and the
   `mcp data:` line. No block: say nothing.

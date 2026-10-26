@@ -95,8 +95,15 @@ comparable banner by banner; the content varies, the skeleton never does.
   `--print-plan` run writes nothing:
 
   ```bash
-  node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only --print-plan --plan-out "$TMP/installed.json" > "$TMP/plan.out" 2>&1
+  node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only --print-plan --plan-out "$TMP/installed.json" > "$TMP/plan.out" 2>&1 ; node "$TMP/repo/scripts/workspace.js" status --root . | grep '^workspace: parent '
   ```
+
+  `workspace: parent none` - a standalone install, nothing more. `workspace: parent <rel>` - a child: read the parent's
+  set once, `(cd "<rel>" && node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope "$(node
+  "$TMP/repo/scripts/install/stamp.js" scope .)" --installed-only --print-plan --plan-out "$TMP/parent.json" >
+  "$TMP/parent.out" 2>&1) ; echo "parent-read: $?"`, and every `--table` call of the walk adds `--inherited
+  "$TMP/parent.json"`, so its rows read `from root` and `ignored` (`references/walk.md`). A `parent-read:` other than 0
+  walks without it and says the inherited rows could not be marked.
 
   Then read the two offers this run may ask about, with no compare: `node "$TMP/repo/scripts/update-preflight.js"
   --offers --root .` prints a `data-move:` line (step 8's data question) - `offer ...` or `none (<why>)` - then an
@@ -241,7 +248,8 @@ to, that local file, since it applies over `settings.json`). Read each row's `ke
 front of the user in its own words; do not carry a copy of the rows here, or the walk shows five
 values on the day the catalog holds six. **Never print, echo back, or ask for a credential VALUE.** A key matching the catalog's `secret_key_pattern`, or a row flagged `secret: true`, is reported as `set (N chars)` or `absent` and nothing else - not as a shown default, not in a table, not in a question. A value that must be set is set by the user in the file itself, or with a copy-ready command they run in their own terminal; it never travels through the chat. Measured: seven credential exposures in one corpus. The installer seeds every row only when ABSENT, so this
 step is the one place they change deliberately. A row whose key is missing from the file is one the
-release INTRODUCED - offer it with the catalog's default; a row's `renamed_from` still present on
+release INTRODUCED - offer it with the catalog's default. A row with `"seed": false` is never MISSING and never
+offered: it is set only in the launch environment or by hand (`ALFRED_CODE_WORKSPACE`). A row's `renamed_from` still present on
 disk is the old spelling, and accepting it moves the value, never resets it. `ALFRED_CODE_DOCS_VERSIONING`
 is the ONE row this does not apply to when it is missing: its value is DETECTED, not constant, so offering
 the catalog's `git` there would write it over a project whose docs are kept out of git - the switch the
@@ -391,6 +399,11 @@ Otherwise, run the installer **from the snapshot**, passing it back with `--sour
 lands the same revision step 1 previewed. One fixed capture form, always - `2>&1 | tee
 "$TMP/install.log"` on the call itself, so the post-install read below has a file that was actually
 written (the shared contract is in `source-protocol.md`'s 'Capture the installer's own output').
+
+**In a child, the ignores before the call.** A dropped `from root` item is an ignore of the parent's item and an
+added `ignored` one takes its ignore back: one call before the installer, `node "$TMP/repo/scripts/workspace.js" ignore
+--root . --add '<category> <name>'` per dropped `from root` row and `--remove` per added `ignored` row, joined by ` ; `,
+its lines reported. The delta's own `--drop` / `--add` lines still go on the installer call.
 
 **Before the call, the placement answer.** The installer runs only after the walk's last ask - 'Where each
 optional item installs' (`references/walk.md`) - was answered, or when the walk asked none (nothing optional

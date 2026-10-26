@@ -286,6 +286,8 @@ test('cascade refuses an answers entry outside the allow-list before that projec
     assert.ok(!runs().some((l) => l.startsWith(`${at('ws/web')} `)));
     fs.writeFileSync(answers, '[1, 2]');
     assert.strictEqual(cli('cascade', '--root', at('ws'), '--source', src, '--answers', answers).code, 2);
+    fs.rmSync(answers);
+    assert.match(cli('cascade', '--root', at('ws'), '--source', src, '--answers', answers).out, /^cascade: done 3 updated, 0 failed, 0 skipped$/m, 'an answers file never written is no answer');
 });
 
 test('cascade with ALFRED_CODE_WORKSPACE=0 runs nothing', () =>
@@ -310,4 +312,22 @@ test('account-instructions --remove --hash takes the key with no stamp left to r
     assert.strictEqual(cli('account-instructions', '--root', one('ws/api'), '--remove', '--hash', hash).out, 'instructions-both: removed\n');
     assert.ok(!fs.readFileSync(path.join(acct, 'settings.json'), 'utf8').includes('instructionFiles'));
     fs.rmSync(acct, { recursive: true, force: true });
+});
+
+test('plan in a standalone project prints its row and spawns nothing', () =>
+{
+    const at = tree({ alone: { stamp: true, git: true } });
+    const { src, runs } = fakeSource();
+    const r = cli('plan', '--root', at('alone'), '--source', src);
+    assert.strictEqual(r.out, 'workspace-plan: 1 projects\nproject: .\tscope=project\tversion=?->9.9.9\tadd=-\tdrop=-\n');
+    assert.deepStrictEqual(runs(), []);
+});
+
+test('plan with ALFRED_CODE_WORKSPACE=0 lists only this project and reads nothing back', () =>
+{
+    const at = cascadeTree();
+    const { src, runs } = fakeSource();
+    const r = spawnSync(process.execPath, [CLI, 'plan', '--root', at('ws'), '--source', src, '--rescan'], { encoding: 'utf8', env: { ...ENV, ALFRED_CODE_WORKSPACE: '0' } });
+    assert.strictEqual(r.stdout, 'workspace-plan: off - ALFRED_CODE_WORKSPACE is 0\n');
+    assert.deepStrictEqual(runs(), []);
 });

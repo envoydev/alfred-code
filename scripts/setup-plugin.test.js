@@ -1428,3 +1428,50 @@ test('update-walk: unattended, ask-local keeps the AGENTS.md answer instead of t
     const body = flat(fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'update-walk.md'), 'utf8'));
     assert.match(body, /Unattended, take the Recommended option.*except on `update=ask-local`, which takes 'Keep the AGENTS\.md answer'/);
 });
+
+// Workspace layering (spec section 3): each new stop is a template whose Recommended option is listed first - lint 61
+// holds the counts and the mark; these hold the option each one recommends.
+const firstOption = (text, question) =>
+{
+    const m = text.match(new RegExp(`^[ \\t]*\`\`\`ask[ \\t]*\\n[ \\t]*${question}[^\\n]*\\n[ \\t]*- '([^\\n]*?)' - `, 'm'));
+    return m ? m[1] : null;
+};
+test('setup-plugin: every new ask is a template with one Recommended option, listed first', () =>
+{
+    const walk = refBody('update-walk');
+    assert.strictEqual(firstOption(walk, 'Join the workspace at'), 'Join (Recommended)');
+    assert.strictEqual(firstOption(walk, 'Load CLAUDE\\.md and AGENTS\\.md both'), 'Load both (Recommended)');
+    const cascade = refBody('update-workspace');
+    assert.strictEqual(firstOption(cascade, 'Answer each project'), 'Take the recommended (Recommended)');
+    assert.strictEqual(firstOption(cascade, 'Join these installed projects'), 'Join as children (Recommended)');
+    assert.strictEqual(firstOption(refBody('init-bootstrap'), 'Load CLAUDE\\.md and AGENTS\\.md both'), 'Load both (Recommended)');
+    const child = refBody('init-child');
+    assert.strictEqual(firstOption(child, 'Where should the stack\'s plugins be enabled in this child'), 'local (Recommended)');
+    assert.strictEqual(firstOption(child, 'Ignore these machine-local paths in this clone'), '.git/info/exclude (Recommended)');
+    // the child text is read only on child=yes, so a standalone install carries none of it
+    assert.match(flat(refBody('init-install')), /grep -q 'child=yes' "\$TMP\/parent\.txt" && cat "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/init-child\.md"/);
+});
+
+test('update-workspace.md is cat only behind a workspace line', () =>
+{
+    const walk = flat(refBody('update-walk'));
+    const cats = walk.match(/[^;]*cat "\$TMP\/plan\.txt" "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/update-workspace\.md"/g) || [];
+    assert.strictEqual(cats.length, 1, 'one read of update-workspace.md, in step 2\'s call');
+    assert.match(cats[0], /^ grep -qE '\^workspace-plan: \(\[2-9\]\|\[0-9\]\{2,\}\) \|\^gone: \|\^rescan: ' "\$TMP\/plan\.txt" && cat /, 'only behind a second project, a gone child or a rescan row');
+    assert.match(walk, /node "\$TMP\/repo\/scripts\/workspace\.js" plan --root \. --source "\$TMP\/repo" > "\$TMP\/plan\.txt" ;/);
+});
+
+test('validate and configure never offer a seed:false row', () =>
+{
+    const sentence = /A row with `"seed": false` is never MISSING and never offered: it is set only in the launch environment or by hand \(`ALFRED_CODE_WORKSPACE`\)\./;
+    assert.match(flat(cmdBody('validate')), sentence);
+    assert.match(flat(cmdBody('configure')), sentence);
+});
+
+test('update-close reads the cascade rows and runs check-loads only when cascade.txt exists', () =>
+{
+    const close = flat(refBody('update-close'));
+    assert.match(close, /\[ -f "\$TMP\/cascade\.txt" \] && cat "\$TMP\/cascade\.txt"/, 'the rows are read only when the cascade ran');
+    assert.match(close, /node "\$TMP\/repo\/scripts\/workspace\.js" check-loads --root <rel>/, 'check-loads per updated child');
+    assert.match(close, /`updated` \/ `unchanged` \/ `failed` \/ `skipped` \/ `gone`/);
+});

@@ -33,8 +33,11 @@ install owes (only the releases between its stamp and the snapshot, from `setup-
 a snapshot without the script prints an error - read nothing more for it and go on):
 
 ```bash
-node "$TMP/repo/scripts/update-preflight.js" --snapshot "$TMP/repo" --root . ; node "$TMP/repo/scripts/install/release-notes.js" --root .
+node "$TMP/repo/scripts/update-preflight.js" --snapshot "$TMP/repo" --root . ; node "$TMP/repo/scripts/install/release-notes.js" --root . ; node "$TMP/repo/scripts/workspace.js" plan --root . --source "$TMP/repo" > "$TMP/plan.txt" ; grep -qE '^workspace-plan: ([2-9]|[0-9]{2,}) |^gone: |^rescan: ' "$TMP/plan.txt" && cat "$TMP/plan.txt" "${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/update-workspace.md"
 ```
+
+(The last two read the workspace: with children below, their rows and `update-workspace.md`, the cascade's walk;
+standalone, nothing. Add `--rescan` to `plan` when the user asks to find installed projects below.)
 
 (The preflight reads the scope's settings as the installer does - `settings.local.json` laid over `settings.json` at
 local scope, and at every other scope the stack keys `settings.local.json` holds. A fork install passes `--repo <owner/name>`; a
@@ -174,6 +177,28 @@ answer, so the next update asks no more. The log names each rename. Unattended, 
 and its git history - except on `update=ask-local`, which takes 'Keep the AGENTS.md answer': the Recommended one writes over
 the user's own answer, and an unattended run replaces nothing of theirs (review 2026-10-23).
 
+**The workspace - in the same AskUserQuestion call as the other asks, one question each.** On `workspace: join <rel>`
+(a folder above holds an install this project never joined; `rejoin`: its parent no longer lists it):
+
+```ask
+Join the workspace at <rel>? This project then takes that install's skills, seats, rules and env, and can ignore any of them.
+- 'Join (Recommended)' - the parent's set applies from this run; configure ignores an item later
+- 'Stay standalone' - parent none is written, so no update asks again
+```
+
+Run `node "$TMP/repo/scripts/workspace.js" join --root . --answer join|none` before the installer call; on exit 3 (the
+parent's file was locked) say the join is offered again at the next update. On `instructions-both: ask` (a CLAUDE.md
+above a joined child, and the account loads only one of the two files):
+
+```ask
+Load CLAUDE.md and AGENTS.md both, in every project of this account? A parent folder holds a CLAUDE.md, so this child's AGENTS.md is skipped there.
+- 'Load both (Recommended)' - one key in the account's settings.json, removed again by the last uninstall that recorded it
+- 'Leave it' - nothing is written and no project of this account asks again
+```
+
+'Load both' runs `node "$TMP/repo/scripts/workspace.js" account-instructions --root . --apply`, 'Leave it' the same with
+`--decline`. Unattended, both take the Recommended option.
+
 ## 3. Fast path - refresh in place (the common case)
 
 Run the installer; it reads the install back itself, closes new dependencies through `stack-select.js`, and logs
@@ -227,6 +252,7 @@ restart for the hook delta.
 
 Then:
 
+- With `$TMP/plan.txt` naming a child, run `update-workspace.md`'s cascade call now.
 - Reconcile the project's AGENTS.md (`update-close.md`'s step 6).
 - Report per its step 7.
 - On the copy route, NAME every `installed-only: adopting hook <name>` line in the report with what it blocks; a

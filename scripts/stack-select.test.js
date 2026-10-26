@@ -1098,3 +1098,27 @@ test('no prereq for an unknown forge', () => {
     for (const plan of [{ action: 'none' }, { action: 'present', cli: 'gh' }, { action: 'brew', cli: 'glab', formula: 'glab' }, undefined])
         assert.deepStrictEqual(evaluatePrereqs(sel, { ...fullEnv, forgeCli: plan }, { forgeCli: true }).warnings, [], JSON.stringify(plan));
 });
+
+// Workspace layering (plan Task 15): a child's walk reads its parent's set through --inherited, the parent's read-back.
+test("stack-select --table marks a row the parent holds 'from root' in fresh mode", () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const { execFileSync } = require('node:child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'inherited-'));
+    const sel = path.join(dir, 'raw.json');
+    const inh = path.join(dir, 'parent.json');
+    const inv = path.join(dir, 'inv.json');
+    fs.writeFileSync(sel, JSON.stringify({ skills: [], rules: ['alfred-navigation'], agents: [], mcps: [], plugins: [], hooks: [] }));
+    fs.writeFileSync(inh, JSON.stringify({ skills: ['sqlite', 'javascript'], rules: [], agents: [], mcps: [], plugins: [{ name: 'alfred-code' }], hooks: [], root: 'x', failures: 0 }));
+    fs.writeFileSync(inv, JSON.stringify({ skills: ['sqlite', 'npm'], rules: [], agents: [], mcps: [], plugins: [], hooks: [] }));
+    const script = path.join(__dirname, 'stack-select.js');
+    const graphPath = path.join(__dirname, '..', 'meta', 'stack-graph.json');
+    const statusOf = (out, name) => { const l = out.split('\n').find((x) => x.split('|')[1] && x.split('|')[1].trim() === name); return l && l.split('|')[2].trim(); };
+    const table = (...extra) => execFileSync('node', [script, '--selection', sel, '--graph', graphPath, '--table', 'skills', ...extra], { encoding: 'utf8' });
+    const fresh = table('--inherited', inh);
+    assert.strictEqual(statusOf(fresh, 'sqlite'), 'from root', fresh);
+    assert.strictEqual(statusOf(table(), 'sqlite'), '-', 'no parent, no mark');
+    const installed = table('--inherited', inh, '--installed', inv);
+    assert.deepStrictEqual(['sqlite', 'javascript', 'npm'].map((n) => statusOf(installed, n)), ['from root', 'ignored', 'yes'], installed);
+    fs.rmSync(dir, { recursive: true, force: true });
+});

@@ -59,7 +59,8 @@ grep at 258k context to confirm this shape):
    you, and it is **never redirected to a file** - the table comes back IN the tool result:
    - FRESH: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table <layer> --recs <recommendations.json> --stacks <confirmed,csv> --found "$TMP/found.json"`
    - DELTA: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table <layer> --installed "$TMP/installed.json" --dropped "$TMP/dropped.json" --found "$TMP/found.json"`
-     (omit `--found` when no evidence scan ran). A not-installed row whose reason column carries a
+     (omit `--found` when no evidence scan ran; in a child of an installed folder add `--inherited
+     "$TMP/parent.json"`, the parent's read-back). A not-installed row whose reason column carries a
      matched signal is the project telling you it uses what the install lacks - an informed add
      candidate, never an auto-add.
 
@@ -95,7 +96,8 @@ grep at 258k context to confirm this shape):
    FRESH rows are labeled `required` (closure-locked, reason in the last column), `evidence` (the
    scan matched a signal - PRE-SELECTED, the matched signal as the reason, droppable like any
    seed), `recommended` / `stack:<name>` (seeded, droppable), `added` (the user's own pick), `-`
-   (not selected). Recommended = the union of `always` + each confirmed stack in
+   (not selected), and in a child `from root` (the parent install holds it - kept unless unpicked, and an unpick is an
+   ignore line, never a drop). Recommended = the union of `always` + each confirmed stack in
    `$TMP/repo/meta/recommendations.json`, pre-selected:
 
    ```
@@ -108,7 +110,8 @@ grep at 258k context to confirm this shape):
    ```
 
    DELTA rows are labeled in the `installed` column - `yes`, `orphaned` (with the cascade origin)
-   or `-` - and the `required by` column carries the lock reason for a kept item something else
+   or `-`, and in a child `from root` (installed because the parent holds it) or `ignored` (the parent holds it and this
+   child ignores it) - and the `required by` column carries the lock reason for a kept item something else
    kept needs:
 
    ```

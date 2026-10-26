@@ -26,6 +26,8 @@ One call, nothing changed: `node "$TMP/repo/scripts/install/alfred-code.js" upda
 - `capture: <skill> - run: read <SKILL.md> | done: <output> exists | skip: <why>` - the three
   captures in their fixed order, each only when the install lists its skill AND its seat
   (`capture-awareness` has none, and runs whenever it is installed - each of its parts decides from disk).
+- `instructions-both: ask` - a joined child with a CLAUDE.md above it, while the account loads only one of the two
+  files there; step 4 asks it. `instructions-both: not asked - ...` is said in one line and asks nothing.
 
 Nothing is inferred beyond those lines: a machine item the plan does not name is not this run's.
 
@@ -75,6 +77,17 @@ Navigation in files?
 - 'Agent decides, the stack's order (Recommended)' - every session and agent starts with the order the modes line shows (LSP then a scoped grep, or the grep alone where no language server covers the project).
 - 'Custom, rank your own tools now' - your ranking leads the main session; a server you rank reaches the main session only, and the agents use your built-in ranks.
 ```
+
+On step 2's `instructions-both: ask` line, the same call carries a third question:
+
+```ask
+Load CLAUDE.md and AGENTS.md both, in every project of this account? A parent folder holds a CLAUDE.md, so this child's AGENTS.md is skipped there.
+- 'Load both (Recommended)' - one key in the account's settings.json, removed again by the last uninstall that recorded it
+- 'Leave it' - nothing is written and no project of this account asks again
+```
+
+'Load both' runs `node "$TMP/repo/scripts/workspace.js" account-instructions --root . --apply` and 'Leave it' the same
+with `--decline` - report its `instructions-both:` line verbatim.
 
 - **Custom navigation:** read `$TMP/repo/stack/skills/capture-preferences/references/tools-area.md` (through Bash) and follow it inline for the navigation job alone - its step 4 asks navigation's question only, even with one server candidate, since the user chose Custom - start to finish, its `lint` and `order` included.
 - **Custom memory:** follow the same file for the memory job alone, the same way, then run `node "$TMP/repo/stack/skills/capture-preferences/scripts/tools.js" modes --project . --memory custom` - the mode is written only by the call below, so this previews what custom would use. A memory line saying `no memory tool is reachable` means nothing would hold the lessons: apply `default` instead and say `No memory tool is ranked and reachable, so memory stays native (Claude's default place).`
@@ -145,7 +158,7 @@ is answered by the run itself, never AskUserQuestion, by one rule:
   it. A multi-select ask takes the options its question names as the default, a destructive one left out.
 - Log each answer as one line, `unattended: <question> -> <choice>`, with `(<why>)` when the choice is
   not the Recommended option. Step 2's plan already carries the lines for init's own asks (machine
-  installs, memory, navigation, AGENTS.md) - apply exactly those, never re-judge them; an ask with no line is one step 4
+  installs, memory, navigation, both instruction files, AGENTS.md) - apply exactly those, never re-judge them; an ask with no line is one step 4
   does not put.
 - The stack's files are read through the Bash tool, never the Read tool (above): outside the working
   directory the Read tool asks first, and here nobody answers.

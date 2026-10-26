@@ -1229,6 +1229,9 @@ const SETUP_ASK_TEMPLATES = {
     // +7: screen A's scope, root, profile and forge CLI asks (the GitHub CLI ask until 2026-10-23), step 2's permission mode, step 10's blockers and the
     // git-hygiene ask (audit 2026-10-21 commands T2-12). -1: the profile ask, with --space (the user's ruling of 2026-10-23).
     'setup-plugin/references/init-install.md': 9,
+    // a child install's scope ask and its local-scope git-hygiene ask, read only on `child=yes` (workspace layering,
+    // 2026-10-26 - init-install.md is already past the Bash output cap, so a standalone install carries neither).
+    'setup-plugin/references/init-child.md': 2,
     // the instruction files' place, one template per `instructions:` case - read by init's step 1 and configure's step 12
     // (2026-10-21); +3: the name, one per `instructions-file:` files= case (the user's ask of 2026-10-21, after 2.9.0);
     // +1: update's rename-first name ask for a never-asked .claude/CLAUDE.md install (the user's rulings of 2026-10-22).
@@ -1250,7 +1253,10 @@ const SETUP_ASK_TEMPLATES = {
     // +1: the hand-set docs root ask (the user's answer of 2026-10-20).
     // +2: the new-items ask, one template per case (audit 2026-10-21 commands T2-12).
     // -1: the old-seed rename ask - the walk asks instructions-place.md's name templates instead (2026-10-22).
-    'setup-plugin/references/update-walk.md': 4,
+    // +2: the workspace join ask and the account's both-instruction-files ask (workspace layering, 2026-10-26).
+    'setup-plugin/references/update-walk.md': 6,
+    // the children's asks and the rescan join, read only when the plan names a second project (workspace layering, 2026-10-26).
+    'setup-plugin/references/update-workspace.md': 2,
     'setup-plugin/references/update-close.md': 2,
     // audit 2026-10-21 commands T2-12: the prune confirm and the guard-hook adoption ask; uninstall's confirm; status's
     // area pick; init's machine-install ask.
@@ -1258,8 +1264,9 @@ const SETUP_ASK_TEMPLATES = {
     // +1: the unedited instruction-file seed's own delete question (the user's ask of 2026-10-23).
     'setup-plugin/commands/uninstall.md': 2,
     'setup-plugin/commands/status.md': 1,
-    // +2: step 4's memory and navigation asks (spec P1 + P2, 2026-10-24).
-    'setup-plugin/references/init-bootstrap.md': 3,
+    // +2: step 4's memory and navigation asks (spec P1 + P2, 2026-10-24). +1: the account's both-instruction-files ask
+    // in a joined child (workspace layering, 2026-10-26).
+    'setup-plugin/references/init-bootstrap.md': 4,
     // validate's AGENTS.md check ask, 'Leave them' recommended and first (audit 2026-10-11, session 6288ad94). +2: step 2's
     // detection confirm and its dispute follow-up, which was asked in plain text (audit 2026-10-21 commands T2-08).
     // +3: the layer and environment consent rounds and the install audit's high-row ask (T2-12).

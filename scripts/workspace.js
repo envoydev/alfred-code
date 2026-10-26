@@ -270,6 +270,12 @@ function planVerb(out)
 {
     const top = rootArg();
     const source = sourceArg();
+    // Off, update reads no cascade text: no tree, no projection, nothing cascades.
+    if (!ws.workspaceOn({ env, projectRoot: top }))
+    {
+        out('workspace-plan: off - ALFRED_CODE_WORKSPACE is 0');
+        return;
+    }
     let snapshot = '?';
     try { snapshot = JSON.parse(fs.readFileSync(path.join(source, 'setup-plugin', '.claude-plugin', 'plugin.json'), 'utf8')).version || '?'; }
     catch { /* a snapshot with no plugin.json names no version */ }
@@ -279,14 +285,28 @@ function planVerb(out)
     {
         out(`workspace-plan: ${rows.filter((r) => r.state === 'ok').length} projects`);
         const plans = new Map();
+        const parents = new Set(rows.map((r) => r.parentRel).filter((r) => r !== null));
         for (const [i, row] of rows.entries())
         {
             if (row.state !== 'ok') continue;
+            // The top project's own changes and asks are its walk's (the preflight printed them): its read-back is taken
+            // only to project its children, so a standalone update spawns nothing here.
+            if (row.parentRel === null)
+            {
+                if (parents.has(row.rel))
+                {
+                    const got = readBack(row.root, source, path.join(tmp, `${i}.json`), null);
+                    if (got.plan) plans.set(row.rel, got.file);
+                    else out(`!! workspace-plan: the read-back of . failed (${got.why}) - no child is projected`);
+                }
+                out(`project: .\tscope=${stamp.installScope(row.root)}\tversion=${stamp.readVersion(stamp.stampFiles({ projectRoot: row.root }).read) || '?'}->${snapshot}\tadd=-\tdrop=-`);
+                continue;
+            }
             const version = stamp.readVersion(stamp.stampFiles({ projectRoot: row.root }).read) || '?';
-            const parentPlan = row.parentRel === null ? null : plans.get(row.parentRel);
+            const parentPlan = plans.get(row.parentRel);
             let add = '?';
             let drop = '?';
-            let why = row.parentRel !== null && !parentPlan ? `no projection - ${row.parentRel} could not be read` : null;
+            let why = !parentPlan ? `no projection - ${row.parentRel} could not be read` : null;
             if (!why)
             {
                 const got = readBack(row.root, source, path.join(tmp, `${i}.json`), parentPlan);
@@ -405,7 +425,8 @@ function cascade(out)
     const top = rootArg();
     const source = sourceArg();
     const file = arg('--answers');
-    const answers = file ? readAnswers(file, { absentOk: false }) : {};
+    // An absent file is a walk that answered nothing: each offer stays an offer.
+    const answers = file ? readAnswers(file, { absentOk: true }) : {};
     if (!ws.workspaceOn({ env, projectRoot: top }))
     {
         out('cascade: off - ALFRED_CODE_WORKSPACE is 0');

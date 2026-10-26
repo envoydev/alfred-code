@@ -311,7 +311,8 @@ table of the actionable rows only - an install whose env already matches gets th
   and the hooks' state, so a new value without the move would strand them - name
   `/alfred-code:configure` (its data question moves them) in its reason column; a missing key is written
   back by the next update from the stamp's `data-root:` line.
-  Every other MISSING row still offers the catalog default unchanged.
+  Every other MISSING row still offers the catalog default unchanged. A row with `"seed": false` is never MISSING and
+  never offered: it is set only in the launch environment or by hand (`ALFRED_CODE_WORKSPACE`).
 - **OLD NAME** - a row's `renamed_from` still present in the file. Accepting MOVES the value to the
   new key and drops the old one; nothing is deleted and no default is written over it. The
   installers apply the same rename on their next run, so an unaccepted row is not lost, only later.
@@ -541,6 +542,16 @@ closed as 'your call' in prose. A ruling recorded earlier (memory, an answer in 
 when it names THIS credential in THIS file; then the row is one report line, 'rotation: left as you ruled',
 and any other credential row is still the ask (one run skipped it on a ruling about a different file, and its
 close was blocked and re-sent - audit 2026-10-20 C16, b1c22192).
+
+Then, in a child of an installed folder, the load check - one logged-out `claude -p` in a throwaway account dir,
+which names every file above this project that loads twice:
+
+```bash
+node "$TMP/repo/scripts/workspace.js" status --root . | grep -q '^workspace: parent \.\.' && node "$TMP/repo/scripts/workspace.js" check-loads --root .
+```
+
+Nothing printed is a standalone project. Paste every `check-loads:` line in the same fenced block, with no ask; a `!!
+check-loads: <file> loaded twice` row's fix is `/alfred-code:update`, on the close.
 
 Then the tool order's rows, from the preferences capture's own script:
 
