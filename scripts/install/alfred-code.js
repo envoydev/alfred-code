@@ -2178,6 +2178,13 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
     settings.removeManagedSettings({ claudeDir, ledger, shippedDeny: SHIPPED_DENY, mcpRemoved: removed, scope, log, note });
     uninstallLayer.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), library: stampLayer.readLibrary(file) || {}, files: ledger.files || {}, instructionsKind: stampLayer.readInstructionsFile(file), seed: instructionsSeed, log });
     toolIgnoresLayer.removeToolIgnores({ projectRoot, record: stampLayer.readToolIgnores(file), log, note });
+    // Workspace layering (spec 2.6): a parent's children read as standalone, a child leaves its parent, and D5's account
+    // key goes with the last project on the account that records it. This project's own file sits under the root the
+    // stamp records - the settings pass above already took ALFRED_CODE_DATA_PATH out.
+    workspace.releaseChildren({ projectRoot, env, dataRoot: keptRoot, log: (m) => log(`  ${m}`), note });
+    workspace.leaveParent({ projectRoot, env, dataRoot: keptRoot, log: (m) => log(`  ${m}`), note });
+    const accountHash = ((ledger.account || {})['settings.json'] || {})[workspace.INSTRUCTION_KEY];
+    if (accountHash) dropAccountKey({ projectRoot, configDir, accountFile, hash: accountHash, log, note });
     const stillOff = ['settings.json', 'settings.local.json'].filter((n) => readJson(path.join(claudeDir, n)).autoMemoryEnabled === false);
     log(`  kept, yours or your data: the instruction file (AGENTS.md or CLAUDE.md) if you filled it in or kept it, and the data root ${keptRoot}/ - the docs, and whatever an earlier release's servers left there${stillOff.length ? `; autoMemoryEnabled: false stays in ${stillOff.join(' and ')} - yours, so Claude's own memory stays off until you remove it` : ''}`);
     if (failures()) { log(`  stamp kept - ${path.basename(file)} still lists what is left; run uninstall again to finish`); return 0; }
@@ -2185,6 +2192,28 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
     log(`  stamp removed: ${path.basename(file)} - every item the ledger listed is gone, or named above as kept`);
     try { if (!fs.readdirSync(claudeDir).length) fs.rmdirSync(claudeDir); } catch { /* the project's own .claude stays */ }
     return 0;
+}
+
+// D5's key at uninstall: removed at its hash only while no other project the account file lists records it. An account
+// file that cannot be read tells no other holder apart, so the key stays and the line names the way to take it later.
+function dropAccountKey({ projectRoot, configDir, accountFile, hash, log, note })
+{
+    const held = workspace.lastHolder({ accountFile, projectRoot });
+    if (held.state === 'unreadable')
+    {
+        log(`  !! workspace: the account's instructionFiles key kept - ${accountFile} could not be read, so the other projects that record it cannot be told; once none does, remove ${workspace.INSTRUCTION_KEY} from ${path.join(configDir, 'settings.json')}, or run workspace.js account-instructions --root ${projectRoot} --remove --hash ${hash} from the Alfred Code snapshot`);
+        return;
+    }
+    if (!held.last)
+    {
+        const roots = held.others.map((f) => path.dirname(path.dirname(f)));
+        log(`  workspace: the account's instructionFiles key kept - ${roots.length} other project${roots.length === 1 ? ' still records' : 's still record'} it: ${roots.join(', ')}`);
+        return;
+    }
+    const r = workspace.removeAccountInstructions({ configDir, hash });
+    if (r.removed) log("  workspace: the account's instructionFiles key removed - no other project records it");
+    else if (/not valid JSON|could not be written/.test(r.why)) note(`workspace: the account's instructionFiles key was not removed - ${r.why}`);
+    else if (r.why !== 'absent') log(`  workspace: the account's instructionFiles key kept - ${r.why}`);
 }
 
 function summarise(ctx, failures)

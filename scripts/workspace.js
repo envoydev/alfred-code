@@ -98,24 +98,9 @@ function register(out, root = rootArg(), dataRoot = dataPathArg())
 
 function unregister(out)
 {
-    const root = rootArg();
-    const own = ws.readWorkspace(root, { env });
-    if (!own.view.parent)
-    {
-        out('workspace: no parent line - nothing to remove');
-        return;
-    }
-    const parent = path.resolve(root, ...own.view.parent.split('/'));
-    if (fs.existsSync(parent))
-    {
-        const childRel = relPosix(realOf(parent), root);
-        const up = ws.writeWorkspace(parent, (m) => ws.removeChild(m, childRel), { env: ws.ancestorEnv(env) });
-        if (!up.ok) throw new Exit(up.why === 'locked' ? 3 : 1, `!! workspace: the workspace file in ${own.view.parent} could not be changed (${up.why}) - nothing was removed`);
-        if (up.wrote) out(`workspace: child ${childRel} removed from ${own.view.parent}`);
-    }
-    const here = ws.writeWorkspace(root, (m) => ws.setParent(m, null), { env });
-    if (!here.ok) throw new Exit(here.why === 'locked' ? 3 : 1, `!! workspace: this project's workspace file could not be changed (${here.why})`);
-    out(`workspace: parent ${own.view.parent} removed`);
+    const r = ws.leaveParent({ projectRoot: rootArg(), env, log: out });
+    if (r.why) throw new Exit(r.why === 'locked' ? 3 : 1, `!! ${r.line}`);
+    if (!r.left) out('workspace: no parent line - nothing to remove');
 }
 
 function join(out)
@@ -205,7 +190,7 @@ function accountInstructions(out)
         for (const s of stamps)
         {
             if (s.file && stamp.markLine(s.file, key, value)) marked += 1;
-            else if (!s.file || !fs.existsSync(s.file)) out(`!! workspace: no stamp in ${s.root} - not recorded there`);
+            else if (value !== null && (!s.file || !fs.existsSync(s.file))) out(`!! workspace: no stamp in ${s.root} - not recorded there`);
         }
         return marked;
     };
@@ -232,7 +217,10 @@ function accountInstructions(out)
         out(`instructions-both: set - recorded in ${markAll('managed-account', row(r.hash))} stamp(s)`);
         return;
     }
-    const held = stamps.map((s) => ((((s.file && stamp.readLedger(s.file)) || {}).account || {})['settings.json'] || {})[ws.INSTRUCTION_KEY]).find(Boolean);
+    // --hash: the key's hash where no stamp records it any more (a finished uninstall prints it).
+    const given = arg('--hash');
+    if (given !== undefined && !/^[0-9a-f]{64}$/.test(given)) throw bad('--hash takes the 64-character sha256 the uninstall printed');
+    const held = given || stamps.map((s) => ((((s.file && stamp.readLedger(s.file)) || {}).account || {})['settings.json'] || {})[ws.INSTRUCTION_KEY]).find(Boolean);
     if (!held)
     {
         out('instructions-both: no named stamp records the account key - nothing removed');

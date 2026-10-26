@@ -296,3 +296,18 @@ test('cascade with ALFRED_CODE_WORKSPACE=0 runs nothing', () =>
     assert.strictEqual(r.stdout, 'cascade: off - ALFRED_CODE_WORKSPACE is 0\n');
     assert.deepStrictEqual(runs(), []);
 });
+
+test('account-instructions --remove --hash takes the key with no stamp left to record it', () =>
+{
+    const one = joined();
+    const acct = ENV.CLAUDE_CONFIG_DIR;
+    fs.rmSync(acct, { recursive: true, force: true });
+    assert.strictEqual(cli('account-instructions', '--root', one('ws/api'), '--apply').code, 0);
+    fs.rmSync(path.join(one('ws/api'), '.claude', 'alfred-code.stamp'));
+    const hash = valueHash(JSON.stringify('claude-md-and-agents-md'));
+    assert.strictEqual(cli('account-instructions', '--root', one('ws/api'), '--remove', '--hash', 'f'.repeat(64)).out, "instructions-both: not removed - changed since it was written - kept as the user's\n");
+    assert.strictEqual(cli('account-instructions', '--root', one('ws/api'), '--remove', '--hash', 'nope').code, 2);
+    assert.strictEqual(cli('account-instructions', '--root', one('ws/api'), '--remove', '--hash', hash).out, 'instructions-both: removed\n');
+    assert.ok(!fs.readFileSync(path.join(acct, 'settings.json'), 'utf8').includes('instructionFiles'));
+    fs.rmSync(acct, { recursive: true, force: true });
+});

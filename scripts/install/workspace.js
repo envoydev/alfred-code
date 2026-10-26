@@ -973,6 +973,53 @@ function lastHolder({ accountFile, projectRoot })
 }
 const readOr = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch { return ''; } };
 
+// ------------------------------------------------------------------ uninstall (spec 2.6)
+
+// A parent's uninstall: each direct child that names it loses its `parent` line and its stamp's `own-picks:` /
+// `own-env:` lines, so it reads as standalone and every item it holds is its own; the parent's `child` lines go
+// with them. A gone child has nothing to release. Returns the released children's lines.
+function releaseChildren({ projectRoot, env = process.env, dataRoot, log = () => {}, note = () => {} })
+{
+    const root = realOf(projectRoot);
+    const released = [];
+    for (const rel of readWorkspace(root, { env, dataRoot }).view.children)
+    {
+        const child = path.join(root, ...rel.split('/'));
+        if (!isDir(child) || !isStamped(child)) continue;
+        const points = (m) => { const v = viewOf(m).parent; return v && realKey(path.resolve(child, ...v.split('/'))) === realKey(root); };
+        const r = writeWorkspace(child, (m) => (points(m) ? setParent(m, null) : m), { env: ancestorEnv(env) });
+        if (!r.ok) { note(`workspace: ${rel} could not be released (${r.why}) - run uninstall again`); continue; }
+        const childStamp = stamp.stampFiles({ projectRoot: child }).read;
+        if (childStamp) for (const key of ['own-picks', 'own-env']) stamp.markLine(childStamp, key, null);
+        log(`workspace: released ${rel} - it reads as standalone now, every item it holds its own`);
+        released.push(rel);
+    }
+    if (released.length) writeWorkspace(root, (m) => { for (const rel of released) removeChild(m, rel); return m; }, { env, dataRoot });
+    return released;
+}
+
+// A child's uninstall, and the CLI's unregister: the parent's `child` line first, then this project's `parent` line.
+// { left } or { left: false, why, line } - `why` is writeWorkspace's, `line` the sentence that names it.
+function leaveParent({ projectRoot, env = process.env, dataRoot, log = () => {}, note = () => {} })
+{
+    const root = realOf(projectRoot);
+    const own = readWorkspace(root, { env, dataRoot });
+    if (!own.view.parent) return { left: false };
+    const parent = path.resolve(root, ...own.view.parent.split('/'));
+    const failed = (why, line) => { note(line); return { left: false, why, line }; };
+    if (isDir(parent))
+    {
+        const childRel = relPosix(realOf(parent), root);
+        const up = writeWorkspace(parent, (m) => removeChild(m, childRel), { env: ancestorEnv(env) });
+        if (!up.ok) return failed(up.why, `workspace: the workspace file in ${own.view.parent} could not be changed (${up.why}) - nothing was removed`);
+        if (up.wrote) log(`workspace: child ${childRel} removed from ${own.view.parent}`);
+    }
+    const here = writeWorkspace(root, (m) => setParent(m, null), { env, dataRoot });
+    if (!here.ok) return failed(here.why, `workspace: this project's workspace file could not be changed (${here.why})`);
+    log(`workspace: parent ${own.view.parent} removed`);
+    return { left: true };
+}
+
 // ------------------------------------------------------------------ the exclude check (spec 3)
 
 // The managed settings file and its drop-in folder sit in one system directory per OS
@@ -1093,5 +1140,5 @@ module.exports = {
     planLines, effectiveLists, delta, ownPicksAfter, childEnv, stampedAncestors, ancestorExcludes, excludeGlobs,
     readPlan, prepare, listLines, envStep, workspaceStep,
     INSTRUCTION_KEY, accountPaths, claudeMdAbove, accountStamps, instructionsBothState, instructionsBothLine, applyAccountInstructions, removeAccountInstructions, lastHolder,
-    managedSettingsFile, checkLoads,
+    releaseChildren, leaveParent, managedSettingsFile, checkLoads,
 };

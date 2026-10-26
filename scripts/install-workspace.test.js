@@ -570,3 +570,79 @@ test('--rescan lists a stamped project with no parent line (AC13)', POSIX_ONLY, 
     assert.doesNotMatch(r.outs[3], /^rescan: api$/m);
     assert.match(r.outs[3], /^workspace-plan: 2 projects$/m, 'a rescan row is an offer, not a project of the cascade');
 });
+
+// ------------------------------------------------------------------ uninstall (plan Task 14)
+
+const KEY = 'instructionFiles';
+const accountKey = (work) => (((json(path.join(work, 'acct', 'settings.json')) || {}).pluginConfigs || {})['cc-plugin-agents-md@builtin'] || {}).options?.[KEY];
+// D5's yes in each named child, and the account file listing them, as Claude Code keeps it.
+function applyAccount(work, rels, accountText)
+{
+    const roots = rels.flatMap((rel) => ['--root', at(work, rel)]);
+    rt.execCommand(process.execPath, [CLI, 'account-instructions', ...roots, '--apply'], { env: { ...process.env, ...acct(work) }, encoding: 'utf8' });
+    fs.writeFileSync(path.join(work, 'acct', '.claude.json'), accountText ?? JSON.stringify({ projects: Object.fromEntries(rels.map((rel) => [at(work, rel), {}])) }));
+}
+
+test('uninstall at ws: each child keeps every item, its parent line is gone, the grandchild is untouched (AC10)', POSIX_ONLY, () =>
+{
+    const r = scenario([
+        { at: '.', after: (work) => { join(work, 'api'); join(work, 'web'); } },
+        { at: 'api', sel: `${ROOT_SEL}skill ${OWN}\n`, after: (work) => join(work, 'api/tool', { parent: 'api' }) },
+        { at: 'api/tool' },
+        { at: 'web', after: (work) => tree(work, 'api/tool') },
+        { at: '.', act: 'uninstall', after: (work) => ({
+            api: readOr(path.join(at(work, 'api'), '.alfred', 'workspace')), web: readOr(path.join(at(work, 'web'), '.alfred', 'workspace')),
+            root: readOr(path.join(at(work), '.alfred', 'workspace')), own: lineOf(stampOf(work, 'api'), 'own-picks'), ownEnv: lineOf(stampOf(work, 'api'), 'own-env'),
+            skills: [hasSkill(work, 'api', 'javascript'), hasSkill(work, 'api', OWN), hasSkill(work, 'web', 'javascript')],
+            tool: tree(work, 'api/tool'), rootStamp: fs.existsSync(path.join(at(work), '.claude', 'alfred-code.stamp')),
+        }) },
+        update('api', { after: (work) => ({ excludes: excludesOf(work, 'api'), skills: [hasSkill(work, 'api', 'javascript'), hasSkill(work, 'api', OWN)] }) }),
+    ]);
+    const got = r.steps[4];
+    assert.strictEqual(got.rootStamp, false, r.outs[4]);
+    assert.strictEqual(got.api, 'child tool\n', r.outs[4]);
+    assert.strictEqual(got.web, '');
+    assert.ok(!/^child /m.test(got.root || ''), `the root still lists a child:\n${got.root}`);
+    assert.deepStrictEqual([got.own, got.ownEnv], [null, null], 'a released child reads as standalone: every pick its own');
+    assert.deepStrictEqual(got.skills, [true, true, true]);
+    assert.strictEqual(got.tool, r.steps[3], 'the grandchild kept every file');
+    assert.match(r.outs[4], /workspace: released api - /);
+    assert.match(r.outs[4], /workspace: released web - /);
+    // the next update of a released child removes its stale excludes, and keeps every item
+    assert.deepStrictEqual(r.steps[5].excludes, [], r.outs[5]);
+    assert.deepStrictEqual(r.steps[5].skills, [true, true]);
+});
+
+test('uninstall in a child removes its child line from the parent and its excludes (AC9)', POSIX_ONLY, () =>
+{
+    const r = scenario([
+        { at: '.', after: (work) => { join(work, 'api'); join(work, 'web'); fs.writeFileSync(path.join(at(work), 'CLAUDE.md'), '# team\n'); } },
+        { at: 'api' },
+        { at: 'web', after: (work) => { applyAccount(work, ['api', 'web']); return [accountKey(work), excludesOf(work, 'api').length]; } },
+        { at: 'api', act: 'uninstall', after: (work) => ({ root: readOr(path.join(at(work), '.alfred', 'workspace')), excludes: excludesOf(work, 'api'), key: accountKey(work), parent: readOr(path.join(at(work, 'api'), '.alfred', 'workspace')) }) },
+        { at: 'web', act: 'uninstall', after: (work) => ({ root: readOr(path.join(at(work), '.alfred', 'workspace')), key: accountKey(work) }) },
+    ]);
+    assert.deepStrictEqual(r.steps[2], ['claude-md-and-agents-md', r.steps[2][1]]);
+    assert.ok(r.steps[2][1] > 0, 'the child held excludes before');
+    const first = r.steps[3];
+    assert.strictEqual(first.root, 'child web\n', r.outs[3]);
+    assert.deepStrictEqual(first.excludes, [], r.outs[3]);
+    assert.ok(!/^parent /m.test(first.parent || ''), r.outs[3]);
+    assert.strictEqual(first.key, 'claude-md-and-agents-md', 'another child still records the key');
+    assert.match(r.outs[3], /instructionFiles key kept - 1 other project still records it: .*\/ws\/web/, r.outs[3]);
+    assert.strictEqual(r.steps[4].root, '', r.outs[4]);
+    assert.strictEqual(r.steps[4].key, undefined, r.outs[4]);
+    assert.match(r.outs[4], /instructionFiles key removed - no other project records it/, r.outs[4]);
+});
+
+test('uninstall in a child with the account file unreadable keeps the account key and prints the remove command', POSIX_ONLY, () =>
+{
+    const r = scenario([
+        { at: '.', after: (work) => { join(work, 'api'); fs.writeFileSync(path.join(at(work), 'CLAUDE.md'), '# team\n'); } },
+        { at: 'api', after: (work) => applyAccount(work, ['api'], '{ not json') },
+        { at: 'api', act: 'uninstall', after: (work) => accountKey(work) },
+    ]);
+    assert.strictEqual(r.steps[2], 'claude-md-and-agents-md', r.outs[2]);
+    assert.match(r.outs[2], /!! workspace: the account's instructionFiles key kept - .*\.claude\.json could not be read.*account-instructions --root \S+ --remove --hash [0-9a-f]{64}/, r.outs[2]);
+    assert.doesNotMatch(r.outs[2], /stamp kept/, 'the unread account file does not hold the uninstall back');
+});
