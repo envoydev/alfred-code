@@ -77,3 +77,49 @@ path with a space failed with `Settings file not found`. The environment held on
 
 The verdict matches macOS. The class form excludes from either typed case, non-ASCII letters included. The backslash
 form misses on case and on brackets. A9 holds on Windows too.
+
+## Release 2 - MCP probes A7, A8, A10, A11 (2026-10-26, Claude Code 2.1.310 macOS, 2.1.309 Windows 11 VM)
+
+`docs/workspace-layering-matrix/mcp-probe.js`, each run in a throwaway `CLAUDE_CONFIG_DIR` and `HOME`, logged out. `<S>`
+is the throwaway tree. The test server writes its cwd and whether `ALFRED_CODE_DATA_PATH` is in its env, and speaks no
+protocol.
+
+macOS:
+
+```text
+PASS A7: 'add-json -s local probe <json>' exit 0, entry under key '/private<S>/ws/api'
+RESULT A7: stored entry vs sent - added [], dropped [], changed []
+RESULT A7/A8 (darwin): child typed as '<S>/ws/api', real '/private<S>/ws/api', key '/private<S>/ws/api'
+RESULT A7: option last ('add-json probe2 <json> -s local') exit 0, stored
+RESULT A10: claude -p exit 1 (auth stop); server started yes, cwd the child, settings env ALFRED_CODE_DATA_PATH present
+  log: [DEBUG] MCP server "a10": Starting connection with timeout of 30000ms
+RESULT A11 control: project server alone started [project] (exit 1) - valid
+RESULT A11: both registered, started [local] (exit 1)
+```
+
+Windows (run as SYSTEM through `prlctl exec`, `TEMP` inside the work folder; the A8 rows `--keys` from a typed cwd):
+
+```text
+PASS A7: 'add-json -s local probe <json>' exit 0, entry under key 'C:/mcpw/tmp/<S>/ws/api'
+RESULT A7: stored entry vs sent - added [], dropped [], changed []
+RESULT A7: option last ('add-json probe2 <json> -s local') exit 0, stored
+RESULT A10: claude -p exit 1 (auth stop); server started yes, cwd the child, settings env ALFRED_CODE_DATA_PATH present
+RESULT A11 control: project server alone started [project] (exit 1) - valid
+RESULT A11: both registered, started [local] (exit 1)
+RESULT A8: add-json from 'C:\mcpw\keys\child' exit 0
+RESULT A8: projects key stored as 'C:/mcpw/keys/child'
+RESULT A8: add-json from 'C:\MCPW\KEYS\CHILD' exit 0
+RESULT A8: projects key stored as 'C:/MCPW/KEYS/CHILD'
+```
+
+Verdicts:
+
+- A7 holds: `-s local` before the name is accepted (and after it), and the entry is stored exactly as sent on both.
+- A8: the `projects` key is the cwd Claude Code starts in - the REAL path on macOS (`/private/var/...` for a `/var/...`
+  cwd), the path AS TYPED on Windows with `\` written as `/` and the typed case kept. The parent matcher compares each
+  key and the parent root by real path, case-folded on darwin and win32, `\` as `/`; two matches change nothing.
+- A10 holds: a stdio server starts before the logged-out auth stop, in the session's project folder, with the project
+  settings' `env` in its environment. No logged-in run was needed (R7).
+- A11 holds: with the project server approved, the LOCAL entry of the same name starts.
+- A3 NOT RUN - needs an interactive approval: open a session in a child under a root whose .mcp.json holds a server,
+  approve it, then open one in a second child and see whether it asks again.
