@@ -445,3 +445,39 @@ test('workspace chain: under the kill switch the parent\'s values do not flow, a
         assert.match(context(started(at('ws/api'), env)), /^Sensitive data: \.alfred\/\.secrets holds A - /, `${how}: the start line names the project's own keys alone`);
     }
 });
+
+// R9 (AC21): the runner passes a server's stdout unmasked and secret-chain.js returns the values raw, so a command line
+// naming either, whatever its path, is refused and pointed to --with-sensitive. Only the store refusal's looks pass.
+const shellVerdict = (tool, cwd, command) => verdict(run({ tool_name: tool, tool_input: { command }, cwd, session_id: 'suite' }));
+test('workspace chain: a Bash, PowerShell or Monitor command naming secrets-run.js is denied, pointing to --with-sensitive (R9)', () =>
+{
+    const { dir } = project('engine-run', { file: '.secrets' });
+    for (const command of ['node .claude/hooks/secrets-run.js -- x', '.claude/hooks/secrets-run.js -- x', 'bash -c \'node .claude/hooks/secrets-run.js -- x\'',
+        'cp .claude/hooks/secrets-run.js r.js', 'git diff stack/hooks/secrets-run.js', 'NODE_OPTIONS= node "/abs/path/secrets-run.js" -- npx server'])
+        for (const tool of ['Bash', 'PowerShell', 'Monitor']) assert.strictEqual(shellVerdict(tool, dir, command), 2, `${tool}: ${command}`);
+    const r = run({ tool_name: 'Bash', tool_input: { command: 'node .claude/hooks/secrets-run.js -- x' }, cwd: dir, session_id: 'suite' });
+    assert.match(r.stderr, /--with-sensitive -- "<command line>"/);
+    assert.match(r.stderr, /secrets-run\.js/);
+});
+
+test('workspace chain: a command naming secret-chain.js is denied, inline or in a runtime heredoc (R9)', () =>
+{
+    const { dir } = project('engine-chain', { file: '.secrets' });
+    for (const command of [`node -e "console.log(require('./.claude/hooks/secret-chain.js').chainOf('.').values)"`,
+        `node <<'EOF'\nconsole.log(require('./.claude/hooks/secret-chain.js').chainOf('.').values)\nEOF`,
+        `python3 - <<'EOF'\nimport subprocess; print(subprocess.run(['node', '-e', "require('./stack/hooks/secret-chain.js')"]))\nEOF`])
+        assert.strictEqual(bash(dir, command), 2, command);
+});
+
+test('workspace chain: the looks list passes a command naming either engine (R9)', () =>
+{
+    const { dir } = project('engine-looks', { file: '.secrets' });
+    for (const name of ['secrets-run.js', 'secret-chain.js'])
+        for (const command of [`ls -l .claude/hooks/${name}`, `stat .claude/hooks/${name}`, `wc -l .claude/hooks/${name}`, `test -f .claude/hooks/${name} && echo yes`,
+            `git ls-files .claude/hooks/${name}`, `echo ${name}`, `cat > notes.md <<'EOF'\nthe launcher is ${name}\nEOF`])
+            assert.strictEqual(bash(dir, command), 0, command);
+    assert.strictEqual(bash(dir, 'node scripts/workspace.js status'), 0);
+    assert.strictEqual(bash(dir, 'node --test scripts/secrets-run.test.js'), 0, 'a test file named after the runner is not the runner');
+    assert.strictEqual(bash(dir, 'ls .claude/hooks/secrets-run.js | xargs -I{} node {} -- server'), 2, 'a look piped on is a use');
+    assert.strictEqual(bash(dir, 'node $(ls .claude/hooks/secret-chain.js) x'), 2);
+});

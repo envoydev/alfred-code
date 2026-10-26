@@ -3105,6 +3105,8 @@ if (isShellTool(payload.tool_name)) {
   const command = stripHeredocsOf(raw, code);
   judged = command;
   runBodies = code;
+  // the secrets engines by name (R9), before a rewrite below ends the run
+  refuseEngineMention([command, ...code.map((h) => h.body)].join('\n'));
   // A whole-environment dump is replaced WHERE IT STANDS - its filter and every other step kept - and the
   // result is judged like any command, so a credential printed elsewhere still takes its own form.
   // A git command that prints file content gets the stream redactor piped in the same way (redactGitStages).
@@ -3140,6 +3142,49 @@ if (isShellTool(payload.tool_name)) {
   process.exit(0);
 }
 
+// A stage that only LOOKS at a named store (or engine), reading no value. The 2026-10-17 usage audit's false refusals:
+// git's own looks at a path (is it ignored, tracked, which attributes - `git check-ignore -q` is the check the
+// session-start warning itself runs), a count-only or quiet grep or another reducer (isReducer: a count, a key-name
+// list), and an echo / printf whose words NAME the store - text, unless a substitution in it runs something or its
+// output is redirected onto the store. Each only as the LAST stage of its pipe: a name printed into `| xargs cat` is a read.
+function sensitiveLooks(words, stage, pipedOn) {
+  const SENSITIVE_LOOKS = new Set(['test', '[', '[[', 'ls', 'stat', 'wc', 'Test-Path', 'Get-Item', 'Get-ChildItem']);
+  const GIT_LOOKS = /^(?:check-ignore|check-attr|ls-files|status)$/;
+  const v = baseOf(words[0] || '');
+  if (SENSITIVE_LOOKS.has(v)) return true;
+  if (pipedOn) return false;
+  if (v === 'git') {
+    let i = 1;
+    while (i < words.length && words[i].startsWith('-')) i += /^-[Cc]$|^--(?:git-dir|work-tree)$/.test(words[i]) ? 2 : 1;
+    return GIT_LOOKS.test(words[i] || '');
+  }
+  if (/^(?:grep|rg|egrep|fgrep|cut|awk|sed|jq)$/.test(v)) return isReducer(String(stage).trim());
+  if (/^(?:echo|printf)$/.test(v)) return !/\$\(|`|<\(/.test(stage) && !/>\s*\S*(?:\.sensitive-data|\.secrets)\b/i.test(stage);
+  return false;
+}
+// R9 (workspace layering, release 2, AC21): a command line NAMING secrets-run.js or secret-chain.js, whatever its path,
+// is refused and pointed to --with-sensitive - the runner passes a server's stdout unmasked and the chain reader returns
+// the values raw, so either hands the chain over. Read in the command and in the heredoc bodies a shell or runtime runs,
+// before any rewrite; only the looks above pass. A script FILE a runtime runs is not read - the store's residual too.
+function refuseEngineMention(text) {
+  if (allowAll) return;
+  const ENGINE = /(?:^|[^\w.-])(secrets-run|secret-chain)\.js(?![\w.-])/i;
+  const parts = String(text).split(/(\|\||&&|[;&|\n])/);
+  for (let i = 0; i < parts.length; i += 2) {
+    const joined = parts[i].replace(/(["'])([^"'\n]*)\1/g, '$2');
+    const m = joined.match(ENGINE);
+    if (!m || /guard-secret-value\.js/.test(parts[i])) continue;
+    const words = joined.trim().split(/\s+/).filter((w) => !/^[A-Za-z_]\w*=/.test(w) && w !== 'sudo' && w !== '!');
+    // every look only as the LAST stage, `ls` and `test` too: `ls <runner> | xargs -I{} node {}` runs it
+    if (parts[i + 1] !== '|' && sensitiveLooks(words, joined, false)) continue;
+    global.BLOCK_DETAIL = { branch: 'secrets-engine', matched: `${m[1]}.js` };
+    block(`Blocked: this command names ${m[1]}.js, the workspace secrets engine - the MCP launcher passes a server's stdout\n` +
+      'unmasked and the chain reader returns every value raw, so neither runs from a shell the chat can read. A command\n' +
+      'that needs the values gets them in its own environment, both streams masked, each value printed as <KEY>:\n' +
+      `  node "${__filename}" --with-sensitive -- "<command line>"\n` +
+      'An MCP server gets them through its registration (/alfred-code:configure offers the wrap), never a shell run.\n');
+  }
+}
 // The project's .sensitive-data named by a command the judge above let through unchanged: a `source` of it (every value
 // then sits in the shell, where a print of a key no credential pattern names - DB_HOST - shows it), a copy under another
 // name (which no longer reads as the store), a move or a delete. An existence check (test, [, [[, ls, stat, wc) and the
@@ -3166,26 +3211,7 @@ function refuseSensitiveMention(text, steps = text) {
   const MENTION = new RegExp(`(?:^|[^\\w.-])(?:\\.sensitive-data|${ROOT}[\\\\/]\\.secrets)(?![\\w.-])`, 'i');
   const BARE = /(?:^|[^\w.-])\.secrets(?![\w.-])/i;
   const ROOT_WORD = new RegExp(`(?:^|[^\\w.-])${ROOT}(?![\\w.-])`, 'i');
-  const SENSITIVE_LOOKS = new Set(['test', '[', '[[', 'ls', 'stat', 'wc', 'Test-Path', 'Get-Item', 'Get-ChildItem']);
-  // The 2026-10-17 usage audit's false refusals, each reading no value: git's own looks at a path (is it ignored, tracked,
-  // which attributes - `git check-ignore -q` is the check the session-start warning itself runs), a count-only or quiet
-  // grep or another reducer (isReducer: a count, a key-name list), and an echo / printf whose words NAME the store - text,
-  // unless a substitution in it runs something or its output is redirected onto the store. Each only as the LAST stage of
-  // its pipe: a name printed into `| xargs cat` is a read.
-  const GIT_LOOKS = /^(?:check-ignore|check-attr|ls-files|status)$/;
-  const looks = (words, stage, pipedOn) => {
-    const v = baseOf(words[0] || '');
-    if (SENSITIVE_LOOKS.has(v)) return true;
-    if (pipedOn) return false;
-    if (v === 'git') {
-      let i = 1;
-      while (i < words.length && words[i].startsWith('-')) i += /^-[Cc]$|^--(?:git-dir|work-tree)$/.test(words[i]) ? 2 : 1;
-      return GIT_LOOKS.test(words[i] || '');
-    }
-    if (/^(?:grep|rg|egrep|fgrep|cut|awk|sed|jq)$/.test(v)) return isReducer(String(stage).trim());
-    if (/^(?:echo|printf)$/.test(v)) return !/\$\(|`|<\(/.test(stage) && !/>\s*\S*(?:\.sensitive-data|\.secrets)\b/i.test(stage);
-    return false;
-  };
+  const looks = sensitiveLooks;
   const SENSITIVE_ARCHIVE = /^(?:tar|gtar|bsdtar|zip|7z|7za|7zz|rar|cpio|pax|rsync|scp|compress-archive)$/i;
   const refuse = (verb) => {
     global.BLOCK_DETAIL = { branch: 'sensitive-data', matched: String(verb || '').slice(0, 40) };
