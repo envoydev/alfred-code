@@ -1452,6 +1452,16 @@ test('setup-plugin: every new ask is a template with one Recommended option, lis
     assert.match(flat(refBody('init-install')), /grep -q 'child=yes' "\$TMP\/parent\.txt" && cat "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/init-child\.md"/);
 });
 
+test('init-child: the local-scope hygiene lines come from git-hygiene.js --local-child, read and applied (AC8)', () =>
+{
+    const child = refBody('init-child');
+    const hy = child.slice(child.indexOf('## Git hygiene at `local` scope'));
+    assert.match(hy, /`node "\$TMP\/repo\/scripts\/git-hygiene\.js" --root \. --local-child`/);
+    assert.match(hy, /`node "\$TMP\/repo\/scripts\/git-hygiene\.js" --root \. --local-child --apply exclude\|gitignore`/);
+    assert.match(hy, /\.prettierignore/);
+    assert.match(hy, /no `!\.claude\/AGENTS\.md` re-include/);
+});
+
 test('update-workspace.md is cat only behind a workspace line', () =>
 {
     const walk = flat(refBody('update-walk'));

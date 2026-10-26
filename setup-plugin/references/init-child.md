@@ -58,8 +58,10 @@ again at the next update. The ignores are written either way, so they apply once
 
 ## Git hygiene at `local` scope
 
-At `local` scope the post-check's git-hygiene ask is this template, the clone's own exclude file first, with
-`.claude/*` and `/<data root>/` among its lines; at `project` or `user` scope it stays as `init-install.md` writes it.
+At `local` scope the post-check's git-hygiene ask is this template, the clone's own exclude file first; at `project` or
+`user` scope it stays as `init-install.md` writes it. Its lines are `.claude/*`, with no `!.claude/AGENTS.md` re-include,
+plus `/<path>` for each `git-hygiene: offer <path>` line of `node "$TMP/repo/scripts/git-hygiene.js" --root . --local-child`:
+here it offers the data root whatever the docs mode, and a `.prettierignore` the install created.
 
 ```ask
 Ignore these machine-local paths in this clone? <the exact lines>. The install is local, so the committed .gitignore is the team's.
@@ -68,5 +70,5 @@ Ignore these machine-local paths in this clone? <the exact lines>. The install i
 - 'Skip' - nothing is written
 ```
 
-The data root's line goes through `node "$TMP/repo/scripts/git-hygiene.js" --root . --apply exclude|gitignore`, as in
-`init-install.md`.
+Write `.claude/*` to the chosen file as `init-install.md` does; the offered lines go through ONE call of
+`node "$TMP/repo/scripts/git-hygiene.js" --root . --local-child --apply exclude|gitignore`.

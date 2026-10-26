@@ -9,7 +9,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
-const { dataRootOffer, applyIgnore } = require('./git-hygiene.js');
+const { dataRootOffer, toolIgnoreOffer, applyIgnore } = require('./git-hygiene.js');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'git-hygiene-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
@@ -84,6 +84,45 @@ test('apply: a root with committed docs is never written', () =>
     const root = repo({ env: { ALFRED_CODE_DOCS_VERSIONING: 'git' } });
     assert.strictEqual(applyIgnore({ projectRoot: root, home: 'gitignore' }).state, 'none');
     assert.ok(!fs.existsSync(path.join(root, '.gitignore')));
+});
+
+// A workspace child installed at local scope: the stamp's scope, the data root's workspace file with its parent line.
+const CHILD = { '.alfred/.gitignore': DATA_IGNORE, '.alfred/workspace': 'parent ..\n', '.claude/alfred-code.stamp': 'scope: local\ntool-ignores: .prettierignore=created\n', '.prettierignore': '# alfred-code\n/.claude/\n' };
+
+test('--local-child in a local workspace child: the data root is offered with committed docs, and a .prettierignore the run created beside it (AC8)', () =>
+{
+    const root = repo({ env: { ALFRED_CODE_DOCS_VERSIONING: 'git' }, files: CHILD });
+    assert.match(dataRootOffer({ projectRoot: root }).why, /are committed/, 'without the flag: as today');
+    assert.strictEqual(toolIgnoreOffer({ projectRoot: root }).state, 'none', 'without the flag: as today');
+    const o = dataRootOffer({ projectRoot: root, localChild: true });
+    assert.deepStrictEqual([o.state, o.root], ['offer', '.alfred']);
+    assert.match(o.why, /local install in a workspace/);
+    const t = toolIgnoreOffer({ projectRoot: root, localChild: true });
+    assert.deepStrictEqual([t.state, t.file], ['offer', '.prettierignore']);
+    const out = execFileSync(process.execPath, [path.join(__dirname, 'git-hygiene.js'), '--root', root, '--local-child'], { encoding: 'utf8' });
+    assert.match(out, /^git-hygiene: offer \.alfred\/\t.*\ngit-hygiene: offer \.prettierignore\t/);
+    assert.strictEqual(applyIgnore({ projectRoot: root, home: 'exclude' }).state, 'none', 'without the flag nothing is written');
+    const r = applyIgnore({ projectRoot: root, home: 'exclude', localChild: true });
+    assert.deepStrictEqual([r.state, r.lines], ['applied', ['/.alfred/', '/.prettierignore']]);
+    assert.ok(ignored(root, '.alfred/docs/a.md') && ignored(root, '.prettierignore'));
+    assert.ok(!fs.existsSync(path.join(root, '.gitignore')), 'the exclude home touches no committed file');
+    assert.strictEqual(applyIgnore({ projectRoot: root, home: 'exclude', localChild: true }).state, 'none', 'both now ignored: nothing offered');
+});
+
+test('--local-child at project scope, without a parent line, or with the .prettierignore tracked, offers as today', () =>
+{
+    const project = repo({ env: { ALFRED_CODE_DOCS_VERSIONING: 'git' }, files: { ...CHILD, '.claude/alfred-code.stamp': 'scope: project\ntool-ignores: .prettierignore=created\n' } });
+    assert.match(dataRootOffer({ projectRoot: project, localChild: true }).why, /are committed/);
+    assert.strictEqual(toolIgnoreOffer({ projectRoot: project, localChild: true }).state, 'none');
+    const standalone = repo({ env: { ALFRED_CODE_DOCS_VERSIONING: 'git' }, files: { ...CHILD, '.alfred/workspace': 'parent none\n' } });
+    assert.match(dataRootOffer({ projectRoot: standalone, localChild: true }).why, /are committed/);
+    assert.strictEqual(toolIgnoreOffer({ projectRoot: standalone, localChild: true }).state, 'none');
+    const tracked = repo({ env: { ALFRED_CODE_DOCS_VERSIONING: 'git' }, files: CHILD });
+    git(tracked, 'add', '.prettierignore');
+    assert.strictEqual(toolIgnoreOffer({ projectRoot: tracked, localChild: true }).state, 'none');
+    assert.strictEqual(dataRootOffer({ projectRoot: tracked, localChild: true }).state, 'offer');
+    const appended = repo({ env: { ALFRED_CODE_DOCS_VERSIONING: 'git' }, files: { ...CHILD, '.claude/alfred-code.stamp': 'scope: local\ntool-ignores: .prettierignore=appended\n' } });
+    assert.strictEqual(toolIgnoreOffer({ projectRoot: appended, localChild: true }).state, 'none', 'a file the project had is the project\'s');
 });
 
 test('cli: one line, a usage error on an unknown home', () =>
