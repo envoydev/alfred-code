@@ -710,13 +710,16 @@ function prepare({ projectRoot, env = process.env, args, sourceDir, rt = runtime
     const base = { on: true, parent: null, members: [], ignores: [], parentLines: null, ownPrior: read ? stamp.readOwnPicks(read) : null, ownEnvPrior: read ? stamp.readOwnEnv(read) : null, parentEnv: {} };
     if (args.action === 'uninstall' || !workspaceOn({ env, projectRoot })) return { ...base, on: false };
     const checked = args.dataPath ? dataRootMod.checkDataPath(args.dataPath) : null;
-    const ownDataRoot = checked && checked.ok ? checked.value : undefined;
+    // The file sits at --data-path once init registered there; on a root change it is still at the current root until
+    // moveWorkspace carries it after this run's install, so an absent file there reads the current root's.
+    const chosen = checked && checked.ok ? checked.value : undefined;
+    const ownDataRoot = chosen !== undefined && readWorkspace(projectRoot, { env, dataRoot: chosen }).state === 'absent' ? undefined : chosen;
     const own = readWorkspace(projectRoot, { env, dataRoot: ownDataRoot });
     const where = own.file ? relPosix(realOf(projectRoot), own.file) : 'the workspace file';
     for (const raw of own.view.unknown) log(`  !! workspace: ${where} line '${raw}' is not understood - left as it is`);
     const { members, notes } = chain(projectRoot, { env, ownDataRoot });
     for (const n of notes) log(`  ${n}`);
-    const at = { ...base, members, ignores: own.view.ignores };
+    const at = { ...base, members, ignores: own.view.ignores, fileRoot: ownDataRoot };
     if (!members.length)
     {
         if (args.parentPlan) log('  !! workspace: --parent-plan ignored - this project is not a joined child');
@@ -751,6 +754,34 @@ function prepare({ projectRoot, env = process.env, args, sourceDir, rt = runtime
     at.parentLines = planLines(got.plan);
     at.parentEnv = settingsEnv(parent.root);
     return at;
+}
+
+// A child's own word on what it inherits, kept in its workspace file so the next run's delta keeps it: a --drop of a
+// line the parent holds becomes an `ignore` line, an --add of an ignored line lifts it (configure writes them first;
+// validate and a hand-run update never did). Returns the ignores this run reads.
+function recordWord({ projectRoot, env = process.env, dataRoot, parentLines, ignores = [], drops = [], adds = [], log = () => {} })
+{
+    const lineOf = (i) => `${i.category} ${i.name}`;
+    const has = new Set(ignores.map(lineOf));
+    const split = (l) => { const [category, name] = String(l).split(' '); return { category, name }; };
+    const known = (l) => { const { category, name } = split(l); return ['skill', 'agent', 'rule', 'hook', 'plugin'].includes(category) && isIgnoreName(category, name); };
+    const ignore = uniqSorted(drops.filter((l) => known(l) && parentLines.includes(l) && !has.has(l)));
+    const lift = uniqSorted(adds.filter((l) => has.has(l)));
+    if (!ignore.length && !lift.length) return ignores;
+    const r = writeWorkspace(projectRoot, (m) =>
+    {
+        for (const l of ignore) addIgnore(m, split(l).category, split(l).name);
+        for (const l of lift) removeIgnore(m, split(l).category, split(l).name);
+        return m;
+    }, { env, dataRoot });
+    if (!r.ok)
+    {
+        log(`  !! workspace: the ignore lines could not be written (${r.why}) - the next update takes ${[...ignore, ...lift].join(', ')} from the parent as before`);
+        return ignores;
+    }
+    for (const l of ignore) log(`  workspace: ignore ${l} written - the parent's ${l} stays out of this project`);
+    for (const l of lift) log(`  workspace: ignore ${l} removed - this project takes it from its parent again`);
+    return [...ignores.filter((i) => !lift.includes(lineOf(i))), ...ignore.map(split)];
 }
 
 // The run's set as `<category> <name>` lines, from the lists it installs.
@@ -887,6 +918,8 @@ function accountValue(configDir)
 // path, while neither the account's key nor any decline on the account answers it.
 function instructionsBothState({ projectRoot, env = process.env, configDir, accountFile })
 {
+    // The kill switch freezes the workspace and asks nothing (AC16): no account key is offered either.
+    if (!workspaceOn({ env, projectRoot })) return 'off';
     if (!chain(projectRoot, { env }).members.length) return 'standalone';
     if (!claudeMdAbove(projectRoot, { env })) return 'not-needed';
     const held = accountValue(configDir);
@@ -982,11 +1015,14 @@ function releaseChildren({ projectRoot, env = process.env, dataRoot, log = () =>
 {
     const root = realOf(projectRoot);
     const released = [];
+    const stale = [];
     for (const rel of readWorkspace(root, { env, dataRoot }).view.children)
     {
         const child = path.join(root, ...rel.split('/'));
         if (!isDir(child) || !isStamped(child)) continue;
         const points = (m) => { const v = viewOf(m).parent; return v && realKey(path.resolve(child, ...v.split('/'))) === realKey(root); };
+        // A child that names another parent is that parent's: its line here is stale, and it is left as it is.
+        if (!points(readWorkspace(child, { env: ancestorEnv(env) }).model)) { stale.push(rel); continue; }
         const r = writeWorkspace(child, (m) => (points(m) ? setParent(m, null) : m), { env: ancestorEnv(env) });
         if (!r.ok) { note(`workspace: ${rel} could not be released (${r.why}) - run uninstall again`); continue; }
         const childStamp = stamp.stampFiles({ projectRoot: child }).read;
@@ -994,7 +1030,7 @@ function releaseChildren({ projectRoot, env = process.env, dataRoot, log = () =>
         log(`workspace: released ${rel} - it reads as standalone now, every item it holds its own`);
         released.push(rel);
     }
-    if (released.length) writeWorkspace(root, (m) => { for (const rel of released) removeChild(m, rel); return m; }, { env, dataRoot });
+    if (released.length || stale.length) writeWorkspace(root, (m) => { for (const rel of [...released, ...stale]) removeChild(m, rel); return m; }, { env, dataRoot });
     return released;
 }
 
@@ -1147,11 +1183,12 @@ function checkLoads({ projectRoot, env = process.env, configDir, claudeBin = 'cl
         }
         let listed = false;
         for (const m of text.matchAll(AGENTS_LOADED)) { listed = true; loaded.push(...m[1].split(/, (?=[\\/]|[A-Za-z]:[\\/])/)); }
-        const found = listed ? null : AGENTS_FOUND.exec(text);
+        const found = listed || !settings.pluginConfigs ? null : AGENTS_FOUND.exec(text);
         if (found)
         {
-            // More kept than the files the excludes leave: the excluded ones load. Which of them, the log cannot say -
-            // every one is named, and one update writes them all.
+            // The keyed mode only (a CLAUDE.md silences the default mode's scan, measured): more kept than the files the
+            // excludes leave means the excluded ones load. Which of them, the log cannot say - every one is named, and one
+            // update writes them all.
             const onDisk = agentsOnDisk(root);
             const shut = onDisk.filter((p) => excluded.has(realKey(p)));
             if (Number(found[1]) > onDisk.length - shut.length) loaded.push(...shut);
@@ -1168,7 +1205,7 @@ module.exports = {
     ancestorEnv, workspacePath, readWorkspace, writeWorkspace, moveWorkspace,
     realKey, findParent, sameRepo, isCheckout, joinVerdict, joinLine, chain, subtree, rescan,
     planLines, effectiveLists, delta, ownPicksAfter, childEnv, stampedAncestors, ancestorExcludes, excludeGlobs,
-    readPlan, prepare, listLines, envStep, workspaceStep,
+    readPlan, prepare, recordWord, listLines, envStep, workspaceStep,
     INSTRUCTION_KEY, accountPaths, claudeMdAbove, accountStamps, instructionsBothState, instructionsBothLine, applyAccountInstructions, removeAccountInstructions, lastHolder,
     releaseChildren, leaveParent, managedSettingsFile, checkLoads,
 };

@@ -107,9 +107,11 @@ NEW-ITEMS line (what arrived, what was taken, what stays off - say where that sw
   `current` line. A `none (...)` line is not reported. Unattended, take the Recommended option and log
   it.
 - **WORKSPACE** - read only when `$TMP/cascade.txt` exists (`update-workspace.md` ran the cascade): append
-  `; [ -f "$TMP/cascade.txt" ] && cat "$TMP/cascade.txt"` to the hygiene call. One row per project from its
-  `cascade: <rel><TAB><state>` line - `<rel>`, its version from step 2's plan row, and `updated` / `unchanged` /
-  `failed` / `skipped` / `gone` - each `!!` line under it verbatim, then the `cascade: done ...` line. Then ONE call,
+  `; [ -f "$TMP/cascade.txt" ] && cat "$TMP/cascade.txt"` to the hygiene call. A `cascade.txt` with no
+  `cascade: done` line is a cascade still running: wait for its completion notice and read it again. One row per
+  project from its `cascade: <rel><TAB><state>` line - `<rel>`, its version from step 2's plan row, and `updated` /
+  `unchanged` / `failed` / `skipped` / `gone` - each `!!` line under it verbatim, then the `cascade: done ...` line.
+  Then ONE call,
   `node "$TMP/repo/scripts/workspace.js" check-loads --root <rel>` for each `updated` child, joined by ` ; ` (each is
   one logged-out `claude -p` in a throwaway account, up to 90 s), and paste every `!!` line it prints. A `loaded twice`
   line, and each `failed` or `skipped` child, puts `/alfred-code:update in <rel>` on the follow-ups card.

@@ -203,8 +203,8 @@ test('answer merges, replaces and refuses', () =>
 });
 
 // A stand-in installer: a --print-plan run writes the folder's read-back, any other run touches .claude/runs and prints
-// `say`. Every call is logged as '<real cwd> <args>'.
-function fakeSource(say = '')
+// `say`; a run in a folder named `hangIn` blocks for 30 s first. Every call is logged as '<real cwd> <args>'.
+function fakeSource(say = '', { hangIn = '' } = {})
 {
     const src = fs.mkdtempSync(path.join(TMP, 'src-'));
     fs.mkdirSync(path.join(src, 'scripts', 'install'), { recursive: true });
@@ -221,6 +221,7 @@ function fakeSource(say = '')
         "    fs.writeFileSync(a[a.indexOf('--plan-out') + 1], JSON.stringify({ root: ws.realKey(process.cwd()), skills: ['javascript'], before: ['skill javascript'], failures: 0, unreadable: [], blind: false }));",
         '    process.exit(0);',
         '}',
+        `if (${JSON.stringify(hangIn)} && path.basename(process.cwd()) === ${JSON.stringify(hangIn)}) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 30000);`,
         "fs.appendFileSync(path.join(process.cwd(), '.claude', 'runs'), 'x');",
         `process.stdout.write(${JSON.stringify(say)});`,
         '',
@@ -246,6 +247,15 @@ test('cascade reads each parent back once, after its own run, and passes it to t
     assert.deepStrictEqual(calls, [[at('ws'), 'plan'], [at('ws/api'), 'run'], [at('ws/api'), 'plan'], [at('ws/api/tool'), 'run'], [at('ws/web'), 'run']]);
     for (const l of runs().filter((x) => !x.includes('--print-plan')))
         assert.match(l, / update --source \S+ --scope project --installed-only --keep-pins --parent-plan \S+$/, l);
+});
+
+test('cascade writes each row as it finishes, so a call stopped mid-run leaves the rows it got to', () =>
+{
+    const at = cascadeTree();
+    const { src } = fakeSource('==> done\n', { hangIn: 'web' });
+    const r = spawnSync(process.execPath, [CLI, 'cascade', '--root', at('ws'), '--source', src], { encoding: 'utf8', env: ENV, timeout: 8000 });
+    assert.strictEqual(r.signal, 'SIGTERM', 'the call was stopped while web ran');
+    assert.strictEqual(r.stdout, 'cascade: api\tupdated\ncascade: api/tool\tupdated\n');
 });
 
 test('cascade marks a run failed on its summary line even though it exits 0', () =>

@@ -364,6 +364,57 @@ test('a data-root move at the root carries its workspace file, and the child\'s 
     assert.strictEqual(r.steps[4], true, r.outs[4]);
 });
 
+test('a joined child that moves its data root and adds an own pick in the same run keeps its chain and records the pick', POSIX_ONLY, () =>
+{
+    // prepare read the workspace file at the new root before moveWorkspace carried it there: no chain, the own lines
+    // carried unchanged, and the pick dropped by the next update's delta (the final review, finding 2).
+    const r = scenario([
+        { at: '.', after: (work) => join(work, 'api') },
+        { at: 'api', sel: `${ROOT_SEL}skill ${OWN}\n` },
+        update('api', { args: ['--data-path', '.kid-data', '--data-move', 'move', '--add', `skill ${X}`], after: (work) => ({
+            own: lineOf(stampOf(work, 'api'), 'own-picks'), file: readOr(path.join(at(work, 'api'), '.kid-data', 'workspace')),
+        }) }),
+        update('api', { after: (work) => ({ x: hasSkill(work, 'api', X), js: hasSkill(work, 'api', 'javascript') }) }),
+    ]);
+    assert.match(r.steps[2].file || '', /^parent \.\.$/m, r.outs[2]);
+    assert.match(r.steps[2].own || '', new RegExp(`skill/${X}`), r.outs[2]);
+    assert.deepStrictEqual(r.steps[3], { x: true, js: true }, r.outs[3]);
+});
+
+test('a child\'s --drop of an item its parent holds writes the ignore line, so the next update keeps it out; an --add lifts it (validate, a hand-run update)', POSIX_ONLY, () =>
+{
+    const wsFile = (work) => readOr(path.join(at(work, 'api'), '.alfred', 'workspace'));
+    const r = scenario([
+        { at: '.', after: (work) => join(work, 'api') },
+        { at: 'api', sel: `${ROOT_SEL}skill ${OWN}\n` },
+        update('api', { args: ['--drop', 'skill javascript'], after: (work) => ({ file: wsFile(work), js: hasSkill(work, 'api', 'javascript') }) }),
+        update('api', { after: (work) => hasSkill(work, 'api', 'javascript') }),
+        update('api', { args: ['--print-plan', '--add', 'skill javascript'], after: (work) => wsFile(work) }),
+        update('api', { args: ['--add', 'skill javascript'], after: (work) => ({ file: wsFile(work), js: hasSkill(work, 'api', 'javascript'), own: lineOf(stampOf(work, 'api'), 'own-picks') }) }),
+    ]);
+    assert.match(r.steps[2].file || '', /^ignore skill javascript$/m, r.outs[2]);
+    assert.strictEqual(r.steps[2].js, false);
+    assert.strictEqual(r.steps[3], false, `the next update brought it back:\n${r.outs[3]}`);
+    assert.match(r.steps[4] || '', /^ignore skill javascript$/m, 'a print-plan writes nothing');
+    assert.doesNotMatch(r.steps[5].file || '', /ignore skill javascript/, r.outs[5]);
+    assert.strictEqual(r.steps[5].js, true);
+    assert.doesNotMatch(r.steps[5].own || '', /skill\/javascript/, 'taken from the parent again, not an own pick');
+});
+
+test('a child install with --parent-plan takes the parent\'s set even when its selection left a row out, and never an ignored one', POSIX_ONLY, () =>
+{
+    // init-child.md keeps every from-root row in raw.json; the installer no longer relies on the model doing so.
+    const r = scenario([
+        { at: '.', sel: `${ROOT_SEL}skill ${X}\n`, after: (work) => { join(work, 'api'); edit(work, 'api', (m) => wsLib.addIgnore(m, 'skill', X)); } },
+        planStep('root.json'),
+        { at: 'api', sel: `skill ${OWN}\n`, args: (work) => ['--parent-plan', path.join(work, 'root.json')], after: (work) => ({
+            js: hasSkill(work, 'api', 'javascript'), x: hasSkill(work, 'api', X), own: lineOf(stampOf(work, 'api'), 'own-picks'),
+        }) },
+    ]);
+    assert.deepStrictEqual([r.steps[2].js, r.steps[2].x], [true, false], r.outs[2]);
+    assert.strictEqual(r.steps[2].own, `skill/${OWN}`);
+});
+
 test('a child registered under a chosen data root installs with that root and inherits', POSIX_ONLY, () =>
 {
     const r = scenario([

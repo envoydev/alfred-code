@@ -60,12 +60,16 @@ before the cascade; a `!!` line names one that could not join, and the rest stil
 
 ## The cascade - after this project's own installer run
 
-Right after step 3's installer call (the slow path's step 5 on that path) and before the close, ONE call with the
-Bash tool's timeout at 600000 (each child is one installer run):
+Right after step 3's installer call (the slow path's step 5 on that path) and before the close, ONE call with
+`timeout: 600000` (each child is one installer run):
 
 ```bash
 node "$TMP/repo/scripts/workspace.js" cascade --root . --source "$TMP/repo" --answers "$TMP/answers.json" > "$TMP/cascade.txt" 2>&1
 ```
+
+Each row reaches `$TMP/cascade.txt` as its project finishes. A cascade that outruns it comes back BACKGROUNDED and
+keeps running: never start it again (two cascades would update the same children at once). Wait for its completion
+notice, then go on.
 
 It updates every child top-down at its own scope, each from its parent's fresh read-back, with that project's answers
 and `--keep-pins`. A failed project skips everything below it, a child that does not name its parent back is skipped

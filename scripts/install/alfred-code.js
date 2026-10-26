@@ -370,6 +370,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // Workspace layering (workspace.js prepare): the chain, this project's ignores and own lines, and the parent's set.
         const wsPrep = workspace.prepare({ projectRoot, env, args, sourceDir: resolved.dir, rt, log, note });
         const userAdds = [...args.add];
+        const userDrops = [...args.drop];
         // This run's own read-back could not see the stack's plugin rows (selection.readBack `blind`).
         let readBlind = false;
         let installedBefore = null;
@@ -417,6 +418,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 log("  !! workspace: this project's plugin listing could not be read - nothing inherited is added or dropped this run");
             else if (wsPrep.parentLines)
             {
+                if (!args.printPlan)
+                    wsPrep.ignores = workspace.recordWord({ projectRoot, env, dataRoot: wsPrep.fileRoot, parentLines: wsPrep.parentLines, ignores: wsPrep.ignores, drops: userDrops, adds: userAdds, log });
                 const own = wsPrep.ownPrior ?? back.lines.filter((l) => !wsPrep.parentLines.includes(l));
                 const d = workspace.delta({ effective: workspace.effectiveLists({ parentLines: wsPrep.parentLines, ignores: wsPrep.ignores, own }), installed: back.lines });
                 for (const l of d.add) if (!args.add.includes(l)) args.add.push(l);
@@ -476,6 +479,13 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             try { text = fs.readFileSync(args.selection, 'utf8'); }
             catch { err(`selection file not found: ${args.selection}\n`); return 1; }
             picked = selection.parseSelection(selection.renameLines(selection.dropFormerPicks({ lines: text.split('\n'), log, said: formerSaid }), renaming).join('\n'));
+            // A joined child installs its parent's set minus its ignores whatever rows the walk's selection kept.
+            if (wsPrep.parentLines)
+            {
+                const inherited = workspace.effectiveLists({ parentLines: wsPrep.parentLines, ignores: wsPrep.ignores }).filter((l) => !picked.has(l));
+                for (const l of inherited) picked.add(l);
+                if (inherited.length) log(`  workspace: from ${wsPrep.parent.rel} - ${inherited.length} row(s) the selection left out taken from the parent`);
+            }
             answered = { hooks: [...picked].some((l) => l.startsWith('hook ')), agents: true };
         }
         if (picked) lists = selection.applySelection(lists, picked);

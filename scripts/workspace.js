@@ -523,10 +523,10 @@ function checkLoadsVerb(out)
 
 const VERBS = { parent: parentVerb, register: (out) => register(out), unregister, join, ignore, children, status, 'account-instructions': accountInstructions, plan: planVerb, answer, cascade, 'check-loads': checkLoadsVerb };
 
+// Each line is written as it is made: a cascade that outruns its caller's budget leaves the rows it finished.
 function main()
 {
-    const lines = [];
-    const out = (line) => lines.push(line);
+    const out = (line) => process.stdout.write(`${line}\n`);
     let code = 0;
     try
     {
@@ -537,10 +537,9 @@ function main()
     catch (e)
     {
         if (!(e instanceof Exit)) throw e;
-        lines.push(e.message);
+        out(e.message);
         code = e.code;
     }
-    if (lines.length) process.stdout.write(lines.join('\n') + '\n');
     return code;
 }
 

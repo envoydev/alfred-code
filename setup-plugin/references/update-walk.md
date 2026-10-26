@@ -37,7 +37,8 @@ node "$TMP/repo/scripts/update-preflight.js" --snapshot "$TMP/repo" --root . ; n
 ```
 
 (The last two read the workspace: with children below, their rows and `update-workspace.md`, the cascade's walk;
-standalone, nothing. Add `--rescan` to `plan` when the user asks to find installed projects below.)
+standalone, nothing. Add `--rescan` to `plan` when the user asks to find installed projects below.) Pass
+`timeout: 600000` to this call: `plan` reads each parent back, one installer run per project with children.
 
 (The preflight reads the scope's settings as the installer does - `settings.local.json` laid over `settings.json` at
 local scope, and at every other scope the stack keys `settings.local.json` holds. A fork install passes `--repo <owner/name>`; a

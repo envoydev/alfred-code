@@ -123,12 +123,18 @@ test('a seed AGENTS.md inside the comma-separated loaded list is a miss (the lin
 test('with the instructionFiles key the log names no file: a found count past the files left after the excludes names the excluded ones (AC30)', () =>
 {
     // On disk: the child's own AGENTS.md, the root's filled AGENTS.md, the root's seed (excluded) - two load when clean.
-    const lay = (s) => { put(path.join(s.child, 'AGENTS.md'), '# own\n'); put(path.join(s.root, 'AGENTS.md'), '# the team\n'); return s; };
+    const key = { pluginConfigs: { 'cc-plugin-agents-md@builtin': { options: { instructionFiles: 'claude-md-and-agents-md' } } } };
+    const lay = (s) => { put(path.join(s.child, 'AGENTS.md'), '# own\n'); put(path.join(s.root, 'AGENTS.md'), '# the team\n'); put(path.join(s.configDir, 'settings.json'), key); return s; };
     assert.deepStrictEqual(lay(setup({ found: 2 })).check(), { state: 'clean', misses: [] });
     const twice = lay(setup({ found: 3 }));
     assert.deepStrictEqual(twice.check(), { state: 'misses', misses: [path.join(twice.real.root, '.claude', 'AGENTS.md')] });
     const listed = lay(setup({ found: 3, agents: (r) => `${path.join(r.child, 'AGENTS.md')}, ${path.join(r.root, 'AGENTS.md')}` }));
     assert.strictEqual(listed.check().state, 'clean', 'a loaded list, when the log has one, is read over the count');
+    // The count-only line is the keyed mode's shape: with no key passed, a count is never read as loads.
+    const bare = setup({ found: 3 });
+    put(path.join(bare.child, 'AGENTS.md'), '# own\n');
+    put(path.join(bare.root, 'AGENTS.md'), '# the team\n');
+    assert.deepStrictEqual(bare.check(), { state: 'clean', misses: [] });
 });
 
 test('no no-credentials line means authenticated and nothing else (AC30)', () =>

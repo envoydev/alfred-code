@@ -612,6 +612,31 @@ test('the state is ask only in a child with a CLAUDE.md on its path (its own inc
     for (const s of ['set', 'declined', 'not-needed', 'standalone']) assert.strictEqual(ws.instructionsBothLine(s), null, s);
 });
 
+test('the kill switch asks nothing: off in the launch env or in the child\'s settings, the state is off and prints no line (AC16)', () =>
+{
+    const f = d5();
+    assert.strictEqual(ws.instructionsBothState({ projectRoot: f.at('home/ws/api'), env: { ...f.env, ALFRED_CODE_WORKSPACE: '0' }, configDir: f.configDir, accountFile: f.accountFile }), 'off');
+    fs.writeFileSync(path.join(f.at('home/ws/api'), '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_WORKSPACE: '0' } }));
+    assert.strictEqual(stateOf(f), 'off');
+    assert.strictEqual(ws.instructionsBothLine('off'), null);
+});
+
+test('releaseChildren leaves a listed child that names another parent as it was - its own lines kept, never named released', () =>
+{
+    // ws lists g/x, but x's parent line names g: a stale line in ws, and x is g's child.
+    const at = tree({ 'home': {}, 'home/ws': { stamp: true, file: 'child g\nchild g/x\n' }, 'home/ws/g': { stamp: true, file: 'parent ..\nchild x\n' }, 'home/ws/g/x': { stamp: true, file: 'parent ..\n' } });
+    markStamp(at('home/ws/g/x'), 'own-picks: skill/npm');
+    markStamp(at('home/ws/g/x'), 'own-env: ALFRED_CODE_SCORER');
+    const logs = [];
+    const released = ws.releaseChildren({ projectRoot: at('home/ws'), env: {}, log: (l) => logs.push(l) });
+    assert.deepStrictEqual(released, ['g']);
+    const xStamp = fs.readFileSync(path.join(at('home/ws/g/x'), '.claude', 'alfred-code.stamp'), 'utf8');
+    assert.match(xStamp, /^own-picks: skill\/npm$/m);
+    assert.match(xStamp, /^own-env: ALFRED_CODE_SCORER$/m);
+    assert.match(fs.readFileSync(path.join(at('home/ws/g/x'), '.alfred', 'workspace'), 'utf8'), /^parent \.\.$/m);
+    assert.ok(!logs.some((l) => /released g\/x/.test(l)), logs.join('\n'));
+});
+
 test('apply keeps every other key value-equal and keeps the indent, CRLF and BOM', () =>
 {
     const other = { model: 'opus', pluginConfigs: { other: { options: { a: 1 } } }, env: { X: '1' } };

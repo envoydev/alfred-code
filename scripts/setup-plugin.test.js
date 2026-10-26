@@ -1471,6 +1471,17 @@ test('update-workspace.md is cat only behind a workspace line', () =>
     assert.match(walk, /node "\$TMP\/repo\/scripts\/workspace\.js" plan --root \. --source "\$TMP\/repo" > "\$TMP\/plan\.txt" ;/);
 });
 
+test('the plan and the cascade calls carry the 10-minute budget, and a cascade that outruns it is waited for, never re-run', () =>
+{
+    const walk = flat(refBody('update-walk'));
+    assert.match(walk, /Pass `timeout: 600000` to this call: `plan` reads each parent back/, 'step 2 gives the plan call the budget its read-backs need');
+    const cascade = flat(refBody('update-workspace'));
+    assert.match(cascade, /ONE call with `timeout: 600000`/);
+    assert.match(cascade, /A cascade that outruns it comes back BACKGROUNDED and keeps running: never start it again \(two cascades would update the same children at once\)\. Wait for its completion notice, then go on/);
+    const close = flat(refBody('update-close'));
+    assert.match(close, /A `cascade\.txt` with no `cascade: done` line is a cascade still running: wait for its completion notice and read it again/);
+});
+
 test('validate and configure never offer a seed:false row', () =>
 {
     const sentence = /A row with `"seed": false` is never MISSING and never offered: it is set only in the launch environment or by hand \(`ALFRED_CODE_WORKSPACE`\)\./;
