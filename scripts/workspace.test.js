@@ -752,3 +752,27 @@ test('with CLAUDE_CONFIG_DIR unset, the projects list is read from <HOME>/.claud
         for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
     }
 });
+
+// ------------------------------------------------------------------ D2: the parent's local registrations (release 2)
+
+test('parentRegistrations finds the parent\'s key case-folded with \\ as /, and says unreadable, ambiguous or nokey otherwise', () =>
+{
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(TMP, 'reg-')));
+    const file = path.join(root, '.claude.json');
+    const servers = { a: { type: 'stdio', command: 'node', args: [] } };
+    const read = (data) => { fs.writeFileSync(file, typeof data === 'string' ? data : JSON.stringify(data)); return ws.parentRegistrations({ accountFile: file, parentRoot: root }); };
+    assert.deepStrictEqual(read({ projects: { [root]: { mcpServers: servers } }, mcpServers: { u: {} } }), { state: 'ok', servers, keys: [root], user: { u: {} } });
+    const typed = root.toUpperCase().split('/').join('\\');
+    assert.strictEqual(read({ projects: { [typed]: { mcpServers: servers } } }).state, 'ok', 'a key typed in another case with backslashes is the folder');
+    assert.deepStrictEqual(read({ projects: { [typed]: { mcpServers: servers } } }).servers, servers);
+    assert.strictEqual(read({ projects: { [`${root}/`]: { mcpServers: servers } } }).state, 'ok', 'a trailing separator');
+    const two = read({ projects: { [root]: { mcpServers: servers }, [root.toUpperCase()]: {} } });
+    assert.deepStrictEqual([two.state, two.servers, two.keys.length], ['ambiguous', {}, 2]);
+    assert.deepStrictEqual(read({ projects: { [path.join(root, 'other')]: { mcpServers: servers } } }).state, 'nokey');
+    assert.deepStrictEqual(read({ projects: { [root]: {} } }), { state: 'ok', servers: {}, keys: [root], user: {} }, 'a key with no servers holds none');
+    for (const bad of ['{ not json', '[]', '7', ''])
+        assert.strictEqual(read(bad).state, 'unreadable', JSON.stringify(bad));
+    assert.strictEqual(read(`\uFEFF${JSON.stringify({ projects: { [root]: { mcpServers: servers } } })}`).state, 'ok', 'a leading BOM is json-file.js\'s to strip');
+    fs.rmSync(file);
+    assert.strictEqual(ws.parentRegistrations({ accountFile: file, parentRoot: root }).state, 'nokey', 'no account file holds no key');
+});

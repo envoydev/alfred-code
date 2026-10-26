@@ -155,6 +155,10 @@ const MCP_SCOPES = ['local', 'user'];
 const ACCOUNT_FILES = ['settings.json'];
 const ACCOUNT_KEYS = ['pluginConfigs.cc-plugin-agents-md@builtin.options.instructionFiles'];
 const WRAP_SCOPES = ['local', 'project', 'user'];
+// A server name in those two kinds follows Claude Code's own rule (plan R5) - an item name's lowercase rule would drop a
+// copy of `GitHub` or `my_server` from the ledger.
+const SERVER_NAME = /^[A-Za-z0-9_-]+$/;
+const validServerName = (name) => typeof name === 'string' && SERVER_NAME.test(name);
 const emptyLedger = () => ({ env: {}, deny: [], hooks: [], mcp: {}, mcpAt: {}, files: {}, settings: {} });
 
 function renderLedger(ledger)
@@ -246,8 +250,8 @@ function readLedger(file)
         return map;
     };
     const account = scopedRows('account', ACCOUNT_FILES, (k) => ACCOUNT_KEYS.includes(k));
-    const workspaceMcp = scopedRows('workspace-mcp', MCP_SCOPES, validItemName);
-    const workspaceWrap = scopedRows('workspace-wrap', WRAP_SCOPES, validItemName);
+    const workspaceMcp = scopedRows('workspace-mcp', MCP_SCOPES, validServerName);
+    const workspaceWrap = scopedRows('workspace-wrap', WRAP_SCOPES, validServerName);
     if (account) out.account = account;
     if (workspaceMcp) out.workspaceMcp = workspaceMcp;
     if (workspaceWrap) out.workspaceWrap = workspaceWrap;
@@ -729,7 +733,7 @@ function markInitialised(claudeDir, now = new Date())
 
 module.exports = {
     writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways,
-    readPicked, readLibrary, readLedger, renderLedger, emptyLedger, readToolIgnores, valueHash, entryHash, LEDGER_FILES, readStampScope, readHooksRoute, readSeatsRoute, markHooksRoute, readStoodDown, readMcpDenied, readVersion, readInstalledAt, readInstructionsFile, readInstructionsAnswer, validItemName,
+    readPicked, readLibrary, readLedger, renderLedger, emptyLedger, readToolIgnores, valueHash, entryHash, SERVER_NAME, validServerName, LEDGER_FILES, readStampScope, readHooksRoute, readSeatsRoute, markHooksRoute, readStoodDown, readMcpDenied, readVersion, readInstalledAt, readInstructionsFile, readInstructionsAnswer, validItemName,
     readInitialised, initialisedValue, isInitialised, installState, markInitialised, legacySignature, legacyUnstamped, worktreeMain, installScope, readDataLines,
     accountDir, readOwnPicks, readOwnEnv, readInstructionsBoth, markLine, ACCOUNT_KEYS,
 };

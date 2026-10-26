@@ -24,7 +24,8 @@ function scrubStackEnv(env)
 }
 
 // `account: true` swaps the recording claude stub for one that keeps the account file as the real CLI does: `mcp add`
-// writes the registration (its `-e` pairs as env) and says 'already exists' over a held name, `mcp remove` deletes it (a
+// writes the registration (its `-e` pairs as env) and says 'already exists' over a held name, `mcp add-json` writes the
+// entry it is handed (a stdio one gaining `type`, as the CLI stores it), `mcp remove` deletes it (a
 // miss exits 1), `mcp get` prints a held one and exits 1 on a miss - so the ledger each run writes is the one the next reads.
 const ACCOUNT_STUB = `'use strict';
 const fs = require('node:fs');
@@ -65,6 +66,22 @@ if (verb === 'add')
         if (h >= 0) { const kv = words[h + 1]; servers[name].headers = { [kv.slice(0, kv.indexOf(':')).trim()]: kv.slice(kv.indexOf(':') + 1).trim() }; }
     }
     else servers[name] = { type: 'stdio', command: words[0], args: words.slice(1), env };
+    write(scope);
+}
+else if (verb === 'add-json')
+{
+    // \`mcp add-json -s <scope> <name> <json>\`: stored in the CLI's own shape - a stdio entry gains its type - so a suite
+    // never meets a CLI that keeps the JSON as sent. CLAUDE_STUB_ADDJSON_FAIL echoes the JSON on stderr and exits 1.
+    const words = [...rest];
+    let scope = 'local';
+    for (const flag of ['-s', '--scope']) { const at = words.indexOf(flag); if (at >= 0) { scope = words[at + 1]; words.splice(at, 2); } }
+    const [name, json] = words;
+    if (process.env.CLAUDE_STUB_ADDJSON_FAIL) { process.stderr.write('Invalid configuration: ' + json + '\\n'); process.exit(1); }
+    let entry;
+    try { entry = JSON.parse(json); } catch { process.stderr.write('Invalid JSON\\n'); process.exit(1); }
+    const servers = (holder(scope).mcpServers ||= {});
+    if (servers[name]) { process.stderr.write('MCP server ' + name + ' already exists in ' + scope + ' config\\n'); process.exit(1); }
+    servers[name] = entry.type ? entry : { type: 'stdio', ...entry };
     write(scope);
 }
 else if (verb === 'remove')

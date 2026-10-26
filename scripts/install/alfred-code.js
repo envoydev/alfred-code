@@ -563,7 +563,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             retiredServers: { removed: [], backs: new Map(), projectPruned: false },
             // A-M2/M3: the account file a user- or local-scope registration lives in, the registrations
             // read from each scope (once per run), and the names kept as another server's.
-            accountFile,
+            accountFile, backupDirs,
             mcpRegs: {}, mcpForeign: new Map(), mcpSaid: new Set(),
             // The deniedMcpServers entries an earlier release wrote (the stamp's mcp-denied: line).
             mcpDenied: { prior: stampLayer.readMcpDenied(stampFile), now: null },
@@ -2007,10 +2007,10 @@ function ledgerOf(ctx)
         mcpAt,
         files: managedFiles(ctx),
         settings: settingsKeys,
-        // Workspace layering: the CLI records the D5 key (and release 2 the copied servers and wraps) between runs, and
-        // the stamp is rebuilt from these fields, so each is carried as recorded.
+        // Workspace layering: the CLI records the D5 key (and release 2 the wraps) between runs, and the stamp is rebuilt
+        // from these fields, so each is carried as recorded; the copied servers are what the workspace step left.
         ...(prior.account ? { account: prior.account } : {}),
-        ...(prior.workspaceMcp ? { workspaceMcp: prior.workspaceMcp } : {}),
+        ...(ctx.workspaceMcp !== undefined ? (ctx.workspaceMcp ? { workspaceMcp: ctx.workspaceMcp } : {}) : prior.workspaceMcp ? { workspaceMcp: prior.workspaceMcp } : {}),
         ...(prior.workspaceWrap ? { workspaceWrap: prior.workspaceWrap } : {}),
     };
 }
@@ -2184,6 +2184,13 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
     }
     // M4: read before the settings pass removes ALFRED_CODE_DATA_PATH - the stamp's record first.
     const keptRoot = stampLayer.readDataLines(file).root || dataRoot.dataRootOf({ env: {}, projectDir: projectRoot }).root;
+    // D2's copies of a parent's local registrations: each at its row hash removed, one changed here kept as the user's.
+    const copied = (ledger.workspaceMcp || {}).local || {};
+    if (Object.keys(copied).length)
+    {
+        uninstallLayer.removeScopedMcp({ mcpAt: { local: copied }, cli, log, note, readAt: (at) => mcp.registrationsAt({ scope: at, accountFile, projectRoot }) });
+        fs.rmSync(path.join(projectRoot, ...keptRoot.split('/'), 'state', 'workspace-mcp.json'), { force: true });
+    }
     liftMemorySwitchOff({ sourceDir: path.join(__dirname, '..', '..'), stampFile: file, claudeDir, scope, ledger, log, note });
     settings.removeManagedSettings({ claudeDir, ledger, shippedDeny: SHIPPED_DENY, mcpRemoved: removed, scope, log, note });
     uninstallLayer.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), library: stampLayer.readLibrary(file) || {}, files: ledger.files || {}, instructionsKind: stampLayer.readInstructionsFile(file), seed: instructionsSeed, log });

@@ -791,6 +791,15 @@ test('install-stamp: readLedger keeps a stamp holding only managed-account or wo
     assert.deepStrictEqual(got.workspaceWrap, { local: { github: HASH('1') }, project: { z: HASH('2') } });
 });
 
+test('install-stamp: a workspace server row takes Claude Code\'s name rule, an item\'s lowercase rule never (R5)', () =>
+{
+    const file = path.join(project().base, 'names.stamp');
+    fs.writeFileSync(file, `sha: x\nworkspace-mcp: local:GitHub_x=${HASH('a')},local:my-srv2=${HASH('b')},local:bad.name=${HASH('c')},local:a b=${HASH('d')}\nworkspace-wrap: user:Linear=${HASH('e')},local:x/y=${HASH('f')}\n`);
+    const got = readLedger(file);
+    assert.deepStrictEqual(got.workspaceMcp, { local: { GitHub_x: HASH('a'), 'my-srv2': HASH('b') } });
+    assert.deepStrictEqual(got.workspaceWrap, { user: { Linear: HASH('e') } });
+});
+
 test('install-stamp: the workspace ledger kinds render only when non-empty and read back exactly', () =>
 {
     const key = 'pluginConfigs.cc-plugin-agents-md@builtin.options.instructionFiles';

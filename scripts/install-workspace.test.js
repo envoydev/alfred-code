@@ -64,10 +64,10 @@ function join(work, rel, { dataRoot, parent = '.' } = {})
 const edit = (work, rel, mutate, dataRoot) => assert.ok(wsLib.writeWorkspace(at(work, rel), mutate, { env: acct(work), dataRoot }).ok);
 
 // One sandbox, one step per entry: { at, act, sel, args: [] | (work) => [], env, before(work), after(work) }.
-function scenario(steps, { plugins = PLUGINS, prepare = () => {} } = {})
+function scenario(steps, { plugins = PLUGINS, prepare = () => {}, account = false } = {})
 {
     return seedRun(steps.map((s) => s.act || 'install'), '', {
-        plugins,
+        plugins, account,
         seed: steps.map((s) => s.seed || SEED),
         cwds: steps.map((s) => path.join('ws', ...(s.at && s.at !== '.' ? s.at.split('/') : []))),
         env: steps.map((s) => s.env || {}),
@@ -696,4 +696,292 @@ test('uninstall in a child with the account file unreadable keeps the account ke
     assert.strictEqual(r.steps[2], 'claude-md-and-agents-md', r.outs[2]);
     assert.match(r.outs[2], /!! workspace: the account's instructionFiles key kept - .*\.claude\.json could not be read.*account-instructions --root \S+ --remove --hash [0-9a-f]{64}/, r.outs[2]);
     assert.doesNotMatch(r.outs[2], /stamp kept/, 'the unread account file does not hold the uninstall back');
+});
+
+// ------------------------------------------------------------------ release 2, D2: the parent's local MCP registrations
+// The account stub keeps `.claude.json` as the CLI does: local scope is `projects[<real path>]`, an add-json entry is stored
+// with its `type`. Each case writes the root's registrations itself, as a session in the root would have.
+
+const accountOf = (work) => path.join(work, 'acct', '.claude.json');
+const keyAt = (work, rel) => fs.realpathSync(at(work, rel));
+const localOf = (work, rel) => ((((json(accountOf(work)) || {}).projects || {})[keyAt(work, rel)]) || {}).mcpServers || {};
+function putLocal(work, rel, servers)
+{
+    const data = json(accountOf(work)) || {};
+    const entry = ((data.projects ||= {})[keyAt(work, rel)] ||= {});
+    entry.mcpServers = { ...(entry.mcpServers || {}), ...servers };
+    for (const [n, v] of Object.entries(servers)) if (v === null) delete entry.mcpServers[n];
+    fs.mkdirSync(path.dirname(accountOf(work)), { recursive: true });
+    fs.writeFileSync(accountOf(work), JSON.stringify(data, null, 2));
+}
+const putAccount = (work, mutate) => { const data = json(accountOf(work)) || {}; mutate(data); fs.writeFileSync(accountOf(work), JSON.stringify(data, null, 2)); };
+const mcpCalls = (work) => (readOr(path.join(work, 'claude-calls.log'), '') || '').split('\n').filter((l) => /^mcp (add-json|remove) /.test(l));
+const stateOf = (work, rel) => json(path.join(at(work, rel), '.alfred', 'state', 'workspace-mcp.json'));
+const rowsOf = (work, rel) => lineOf(stampOf(work, rel), 'workspace-mcp');
+const rowMap = (line) => Object.fromEntries((line || '').split(',').filter(Boolean).map((r) => r.replace(/^local:/, '').split('=')));
+const hashOf = (entry) => stampLib.entryHash(entry);
+const runnerOf = (work, rel) => path.join(keyAt(work, rel), '.claude', 'hooks', 'secrets-run.js');
+const SRV = { type: 'stdio', command: 'node', args: ['srv.js', '--stdio'], env: { MODE: 'one' } };
+const mcpState = (work) => ({ calls: mcpCalls(work), local: localOf(work, 'api'), rows: rowsOf(work, 'api'), state: stateOf(work, 'api') });
+const d2 = (steps) => scenario(steps, { account: true });
+
+let fresh;
+const freshRun = () => (fresh ||= d2([
+    { at: '.', after: (work) =>
+    {
+        join(work, 'api');
+        putLocal(work, '.', {
+            srv: SRV,
+            run: { type: 'stdio', command: 'node', args: [runnerOf(work, '.'), '--', 'tool', '--stdio'], env: {} },
+            'bad.name': SRV,
+            rel: { type: 'stdio', command: './bin/server', args: [], env: {} },
+            mine: SRV, theirs: SRV, proj: SRV,
+        });
+        putLocal(work, 'api', { mine: { type: 'stdio', command: 'node', args: ['own.js'], env: {} } });
+        putAccount(work, (d) => { d.mcpServers = { theirs: { type: 'stdio', command: 'node', args: ['user.js'], env: {} } }; });
+        fs.writeFileSync(path.join(at(work, 'api'), '.mcp.json'), `${JSON.stringify({ mcpServers: { proj: { command: 'node', args: ['p.js'] } } }, null, 2)}\n`);
+    } },
+    { at: 'api', after: (work) => ({ ...mcpState(work), parent: localOf(work, '.'), runner: runnerOf(work, 'api') }) },
+    update('api', { after: mcpState }),
+]));
+
+test('D2: a child copies its parent\'s local server once; a second run changes nothing (AC22)', POSIX_ONLY, () =>
+{
+    const r = freshRun();
+    const got = r.steps[1];
+    const adds = got.calls.filter((l) => l.startsWith('mcp add-json '));
+    assert.deepStrictEqual(adds.map((l) => l.split(' ').slice(0, 5).join(' ')).sort(), ['mcp add-json -s local run', 'mcp add-json -s local srv'], r.outs[1]);
+    assert.deepStrictEqual(got.local.srv, got.parent.srv, 'the copy is the parent\'s entry');
+    assert.deepStrictEqual(rowMap(got.rows), { run: hashOf(got.local.run), srv: hashOf(got.local.srv) }, r.outs[1]);
+    assert.deepStrictEqual(got.state, { run: hashOf(got.parent.run), srv: hashOf(got.parent.srv) });
+    assert.match(r.outs[1], /mcp srv: copied/);
+    for (const bit of ['srv.js', '"command"', '"args"', '--stdio']) assert.ok(!r.outs[1].includes(bit), `the log holds ${bit}:\n${r.outs[1]}`);
+    const again = r.steps[2];
+    assert.deepStrictEqual(again.calls, got.calls, 'the second run made an mcp call');
+    assert.deepStrictEqual([again.local, again.rows, again.state], [got.local, got.rows, got.state], r.outs[2]);
+});
+
+test('D2: the runner path is re-pointed to the child\'s own', POSIX_ONLY, () =>
+{
+    const got = freshRun().steps[1];
+    assert.deepStrictEqual(got.local.run.args, [got.runner, '--', 'tool', '--stdio']);
+});
+
+test('D2: a name outside [A-Za-z0-9_-] is named and not copied (R5)', POSIX_ONLY, () =>
+{
+    const r = freshRun();
+    assert.ok(!Object.hasOwn(r.steps[1].local, 'bad.name'));
+    assert.match(r.outs[1], /mcp "bad\.name": not copied - /);
+});
+
+test('D2: a parent entry with a relative command is named and not copied (R8)', POSIX_ONLY, () =>
+{
+    const r = freshRun();
+    assert.ok(!Object.hasOwn(r.steps[1].local, 'rel'));
+    assert.match(r.outs[1], /mcp rel: not copied - its command is a relative path/);
+});
+
+test('D2: a server registered in the child at any scope is not copied', POSIX_ONLY, () =>
+{
+    const r = freshRun();
+    const got = r.steps[1];
+    assert.deepStrictEqual(got.local.mine.args, ['own.js'], 'the child\'s own local entry stays');
+    assert.ok(!Object.hasOwn(got.local, 'theirs') && !Object.hasOwn(got.local, 'proj'));
+    assert.ok(!got.calls.some((l) => / (mine|theirs|proj) /.test(l)), got.calls.join('\n'));
+    assert.match(r.outs[1], /mcp mine: not copied - this project registers its own \(local scope\)/);
+    assert.match(r.outs[1], /mcp theirs: not copied - this project registers its own \(user scope\)/);
+    assert.match(r.outs[1], /mcp proj: not copied - this project registers its own \(project scope\)/);
+});
+
+test('D2: a changed parent entry at hash is removed and added again; one changed by hand is kept and named', POSIX_ONLY, () =>
+{
+    const r = d2([
+        { at: '.', after: (work) => { join(work, 'api'); putLocal(work, '.', { a: SRV, b: SRV }); } },
+        { at: 'api', after: mcpState },
+        update('api', {
+            before: (work) => { putLocal(work, '.', { a: { ...SRV, args: ['srv.js', '--v2'] } }); putLocal(work, 'api', { b: { ...SRV, env: { MODE: 'mine' } } }); },
+            after: (work) => ({ ...mcpState(work), parent: localOf(work, '.') }),
+        }),
+    ]);
+    const got = r.steps[2];
+    const made = got.calls.slice(r.steps[1].calls.length).map((l) => l.split(' ').slice(0, 5).join(' '));
+    assert.deepStrictEqual(made, ['mcp remove a -s local', 'mcp add-json -s local a'], r.outs[2]);
+    assert.deepStrictEqual(got.local.a, got.parent.a);
+    assert.strictEqual(got.local.b.env.MODE, 'mine', 'the hand-changed copy is kept');
+    assert.deepStrictEqual(rowMap(got.rows), { a: hashOf(got.local.a) }, 'the hand-changed copy left the ledger');
+    assert.strictEqual(got.state.a, hashOf(got.parent.a));
+    assert.match(r.outs[2], /mcp b: kept - /);
+});
+
+test('D2: a CLI that stores the entry in its own shape reads as at hash; a lost state file re-makes the copy once', POSIX_ONLY, () =>
+{
+    const BARE = { command: 'node', args: ['bare.js'] };
+    const r = d2([
+        { at: '.', after: (work) => { join(work, 'api'); putLocal(work, '.', { bare: BARE }); } },
+        { at: 'api', after: mcpState },
+        update('api', { after: mcpState }),
+        update('api', { before: (work) => fs.rmSync(path.join(at(work, 'api'), '.alfred', 'state', 'workspace-mcp.json')), after: mcpState }),
+        update('api', { after: mcpState }),
+    ]);
+    assert.deepStrictEqual(r.steps[1].local.bare, { type: 'stdio', ...BARE }, 'the stub stores its own shape');
+    assert.strictEqual(r.steps[2].calls.length, r.steps[1].calls.length, r.outs[2]);
+    const remade = r.steps[3].calls.slice(r.steps[2].calls.length).map((l) => l.split(' ').slice(0, 5).join(' '));
+    assert.deepStrictEqual(remade, ['mcp remove bare -s local', 'mcp add-json -s local bare'], r.outs[3]);
+    assert.deepStrictEqual(r.steps[3].state, { bare: hashOf(BARE) });
+    assert.strictEqual(r.steps[4].calls.length, r.steps[3].calls.length, r.outs[4]);
+});
+
+test('D2: ignore mcp removes the copy; a parent server gone removes it; a parent key absent keeps it', POSIX_ONLY, () =>
+{
+    const r = d2([
+        { at: '.', after: (work) => { join(work, 'api'); putLocal(work, '.', { a: SRV, b: SRV, c: SRV }); } },
+        { at: 'api', after: mcpState },
+        update('api', { before: (work) => { edit(work, 'api', (m) => wsLib.addIgnore(m, 'mcp', 'a')); putLocal(work, '.', { b: null }); }, after: mcpState }),
+        update('api', { before: (work) => putAccount(work, (d) => { delete d.projects[keyAt(work, '.')]; }), after: mcpState }),
+    ]);
+    assert.deepStrictEqual(Object.keys(r.steps[1].local).sort(), ['a', 'b', 'c'], r.outs[1]);
+    const gone = r.steps[2].calls.slice(r.steps[1].calls.length);
+    assert.deepStrictEqual(gone.sort(), ['mcp remove a -s local', 'mcp remove b -s local'], r.outs[2]);
+    assert.deepStrictEqual(Object.keys(r.steps[2].local), ['c']);
+    assert.deepStrictEqual(Object.keys(rowMap(r.steps[2].rows)), ['c']);
+    assert.strictEqual(r.steps[3].calls.length, r.steps[2].calls.length, r.outs[3]);
+    assert.deepStrictEqual([r.steps[3].local, r.steps[3].rows], [r.steps[2].local, r.steps[2].rows]);
+    assert.match(r.outs[3], /!! workspace: \S*\.claude\.json holds no entry for \.\. - /);
+});
+
+test('D2: an empty chain while the workspace is on changes no copy and keeps its rows; a rejoin refreshes at hash', POSIX_ONLY, () =>
+{
+    const r = d2([
+        { at: '.', after: (work) => { join(work, 'api'); putLocal(work, '.', { a: SRV }); } },
+        { at: 'api', after: mcpState },
+        update('api', { before: (work) => edit(work, '.', (m) => wsLib.removeChild(m, 'api')), after: mcpState }),
+        update('api', { before: (work) => { edit(work, '.', (m) => wsLib.addChild(m, 'api')); putLocal(work, '.', { a: { ...SRV, args: ['v2'] } }); }, after: mcpState }),
+    ]);
+    assert.strictEqual(r.steps[2].calls.length, r.steps[1].calls.length, r.outs[2]);
+    assert.deepStrictEqual([r.steps[2].local, r.steps[2].rows], [r.steps[1].local, r.steps[1].rows]);
+    assert.strictEqual((r.outs[2].match(/no linked parent/g) || []).length, 1, r.outs[2]);
+    assert.match(r.outs[2], /no linked parent - the copied MCP registration a is kept as it is/);
+    const remade = r.steps[3].calls.slice(r.steps[2].calls.length).map((l) => l.split(' ').slice(0, 5).join(' '));
+    assert.deepStrictEqual(remade, ['mcp remove a -s local', 'mcp add-json -s local a'], r.outs[3]);
+    assert.deepStrictEqual(r.steps[3].local.a.args, ['v2']);
+});
+
+test('D2: an unreadable, replaced or two-key account file changes nothing and prints its !! line (AC22)', POSIX_ONLY, () =>
+{
+    const saved = {};
+    const r = d2([
+        { at: '.', after: (work) => { join(work, 'api'); putLocal(work, '.', { a: SRV }); } },
+        { at: 'api', after: mcpState },
+        update('api', {
+            before: (work) => { saved.text = readOr(accountOf(work)); putLocal(work, '.', { a: { ...SRV, args: ['v2'] } }); saved.changed = readOr(accountOf(work)); fs.writeFileSync(accountOf(work), '{ not json'); },
+            after: (work) => { const got = { calls: mcpCalls(work), rows: rowsOf(work, 'api') }; fs.writeFileSync(accountOf(work), saved.changed); return got; },
+        }),
+        update('api', {
+            before: (work) => { fs.mkdirSync(path.join(work, 'acct', 'backups'), { recursive: true }); fs.writeFileSync(path.join(work, 'acct', 'backups', `.claude.json.corrupted.${Date.now() + 1000}`), '{}'); },
+            after: (work) => { const got = mcpState(work); fs.rmSync(path.join(work, 'acct', 'backups'), { recursive: true, force: true }); return got; },
+        }),
+        update('api', {
+            before: (work) => putAccount(work, (d) => { d.projects[keyAt(work, '.').toUpperCase()] = { mcpServers: { a: SRV } }; }),
+            after: mcpState,
+        }),
+    ]);
+    const before = r.steps[1];
+    for (const [i, line] of [[2, /!! workspace: \S*\.claude\.json could not be read - no MCP registration was copied from \.\. or removed/],
+        [3, /!! workspace: \S*\.claude\.json was replaced since the last run .*- no MCP registration was copied from \.\. or removed/],
+        [4, /!! workspace: \S*\.claude\.json holds 2 entries for \.\. .*- no MCP registration was copied from \.\. or removed/]])
+    {
+        assert.strictEqual(r.steps[i].calls.length, before.calls.length, `run ${i} made an mcp call:\n${r.outs[i]}`);
+        assert.strictEqual(r.steps[i].rows, before.rows, r.outs[i]);
+        assert.match(r.outs[i], line);
+    }
+    assert.deepStrictEqual(r.steps[4].local.a, SRV, 'the copy kept its first shape');
+});
+
+test('D2: a failing add-json prints the !! line and no CLI output', POSIX_ONLY, () =>
+{
+    const TOKEN = 'tok-d2-0123456789abcdef';
+    const r = d2([
+        { at: '.', after: (work) => { join(work, 'api'); putLocal(work, '.', { a: { type: 'stdio', command: 'node', args: ['a.js'], env: { API_TOKEN: TOKEN } } }); } },
+        { at: 'api', env: { CLAUDE_STUB_ADDJSON_FAIL: '1' }, after: mcpState },
+    ]);
+    const got = r.steps[1];
+    assert.match(r.outs[1], /!! mcp a: copy failed \(exit 1\)/);
+    for (const bit of [TOKEN, 'a.js', '"command"', 'Invalid configuration']) assert.ok(!r.outs[1].includes(bit), `the log holds ${bit}`);
+    assert.strictEqual(got.rows, null, 'no row for a copy that was not made');
+    assert.ok(!Object.hasOwn(got.local, 'a'));
+    assert.strictEqual(got.calls.filter((l) => l.startsWith('mcp add-json -s local a ')).length, 1);
+});
+
+test('D2: ignore mcp for a parent .mcp.json server writes a disabledMcpjsonServers member, ledgered, and removes it when lifted', POSIX_ONLY, () =>
+{
+    const disabledOf = (work) => (json(path.join(at(work, 'api'), '.claude', 'settings.local.json')) || {}).disabledMcpjsonServers;
+    const settingsRows = (work) => lineOf(stampOf(work, 'api'), 'managed-settings') || '';
+    const r = d2([
+        { at: '.', after: (work) => { join(work, 'api'); fs.writeFileSync(path.join(at(work), '.mcp.json'), `${JSON.stringify({ mcpServers: { shared: { command: 'node', args: ['s.js'] } } }, null, 2)}\n`); } },
+        { at: 'api', after: disabledOf },
+        update('api', { before: (work) => edit(work, 'api', (m) => wsLib.addIgnore(m, 'mcp', 'shared')), after: (work) => ({ disabled: disabledOf(work), rows: settingsRows(work), excludes: excludesOf(work, 'api').length }) }),
+        update('api', { before: (work) => edit(work, 'api', (m) => wsLib.removeIgnore(m, 'mcp', 'shared')), after: (work) => ({ disabled: disabledOf(work), rows: settingsRows(work), excludes: excludesOf(work, 'api').length }) }),
+    ]);
+    const h = stampLib.valueHash('shared');
+    assert.strictEqual(r.steps[1], undefined, 'nothing is disabled before the ignore line');
+    assert.deepStrictEqual(r.steps[2].disabled, ['shared'], r.outs[2]);
+    assert.ok(r.steps[2].rows.includes(`settings.local.json:disabledMcpjsonServers[${h}]=${h}`), r.steps[2].rows);
+    assert.ok(r.steps[2].excludes > 0, 'the excludes rows stay beside it');
+    assert.strictEqual(r.steps[3].disabled, undefined, r.outs[3]);
+    assert.ok(!r.steps[3].rows.includes('disabledMcpjsonServers'), r.steps[3].rows);
+    assert.strictEqual(r.steps[3].excludes, r.steps[2].excludes);
+});
+
+test('D2: the retire path never touches a workspace-mcp row', POSIX_ONLY, () =>
+{
+    const r = d2([
+        { at: '.', after: (work) => { join(work, 'api'); putLocal(work, '.', { a: SRV }); } },
+        { at: 'api', after: mcpState },
+        update('api', {
+            before: (work) => { const f = path.join(at(work, 'api'), '.claude', 'alfred-code.stamp'); fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/^version: .*$/m, 'version: 2.10.0')); },
+            after: mcpState,
+        }),
+    ]);
+    assert.strictEqual(r.steps[2].calls.length, r.steps[1].calls.length, r.outs[2]);
+    assert.deepStrictEqual([r.steps[2].local, r.steps[2].rows], [r.steps[1].local, r.steps[1].rows]);
+    assert.ok(r.steps[2].rows, 'the row is there');
+});
+
+test('D2: uninstall in the child removes its copies at hash and keeps a changed one', POSIX_ONLY, () =>
+{
+    const r = d2([
+        { at: '.', after: (work) => { join(work, 'api'); putLocal(work, '.', { a: SRV, b: SRV }); } },
+        { at: 'api', after: mcpState },
+        { at: 'api', act: 'uninstall', before: (work) => putLocal(work, 'api', { b: { ...SRV, env: { MODE: 'mine' } } }), after: (work) => ({ ...mcpState(work), stamp: fs.existsSync(path.join(at(work, 'api'), '.claude', 'alfred-code.stamp')) }) },
+    ]);
+    const got = r.steps[2];
+    assert.deepStrictEqual(got.calls.slice(r.steps[1].calls.length), ['mcp remove a -s local'], r.outs[2]);
+    assert.deepStrictEqual(Object.keys(got.local), ['b']);
+    assert.match(r.outs[2], /mcp b: kept - /);
+    assert.strictEqual(got.state, null, 'the state file goes with the copies');
+    assert.strictEqual(got.stamp, false, r.outs[2]);
+});
+
+test('D2: uninstall at the root strips the children\'s workspace-mcp rows and leaves the registrations', POSIX_ONLY, () =>
+{
+    const r = d2([
+        { at: '.', after: (work) => { join(work, 'api'); putLocal(work, '.', { a: SRV }); } },
+        { at: 'api', after: mcpState },
+        { at: '.', act: 'uninstall', after: mcpState },
+    ]);
+    assert.ok(r.steps[1].rows, r.outs[1]);
+    assert.strictEqual(r.steps[2].rows, null, r.outs[2]);
+    assert.deepStrictEqual(r.steps[2].local, r.steps[1].local, 'the copies stay as the user\'s own');
+    assert.strictEqual(r.steps[2].calls.length, r.steps[1].calls.length, r.outs[2]);
+});
+
+test('D2: the kill switch copies and removes nothing', POSIX_ONLY, () =>
+{
+    const r = d2([
+        { at: '.', after: (work) => { join(work, 'api'); putLocal(work, '.', { a: SRV }); } },
+        { at: 'api', after: mcpState },
+        update('api', { env: { ALFRED_CODE_WORKSPACE: '0' }, before: (work) => putLocal(work, '.', { a: { ...SRV, args: ['v2'] }, c: SRV }), after: mcpState }),
+    ]);
+    assert.strictEqual(r.steps[2].calls.length, r.steps[1].calls.length, r.outs[2]);
+    assert.deepStrictEqual([r.steps[2].local, r.steps[2].rows, r.steps[2].state], [r.steps[1].local, r.steps[1].rows, r.steps[1].state]);
 });

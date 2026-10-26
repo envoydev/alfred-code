@@ -822,16 +822,22 @@ function workspaceStep(ctx)
     const w = ctx.workspace || { on: false, members: [], ownPrior: null, ownEnvPrior: null };
     ctx.ownPicks = w.ownPrior;
     ctx.ownEnv = w.ownEnvPrior;
-    if (!w.on) return { created: false };
-    const want = excludeGlobs(stampedAncestors(ctx.projectRoot, { env: ctx.env }).flatMap((root) => ancestorExcludes(root, { childIgnores: w.ignores })), process.platform);
+    if (!w.on) { mcpStep(ctx); return { created: false }; }
+    const ancestors = stampedAncestors(ctx.projectRoot, { env: ctx.env });
+    const want = excludeGlobs(ancestors.flatMap((root) => ancestorExcludes(root, { childIgnores: w.ignores })), process.platform);
     const prior = ((ctx.ledger && ctx.ledger.settings) || {})['settings.local.json'] || {};
     const { syncMembers, MEMBER_PATH } = require('./settings.js');
-    // A standalone project - nothing stamped above, no excludes recorded - leaves settings.local.json alone.
-    const recorded = Object.keys(prior).some((row) => { const m = MEMBER_PATH.exec(row); return m && m[1] === 'claudeMdExcludes'; });
-    const r = want.length || recorded
-        ? syncMembers({ file: path.join(ctx.claudeDir, 'settings.local.json'), arrayPath: 'claudeMdExcludes', want: uniqSorted(want), prior, log: ctx.log, note: ctx.note })
-        : { rows: {}, created: false };
-    ctx.workspaceRows = r.rows;
+    // A standalone project - nothing stamped above, nothing recorded - leaves settings.local.json alone.
+    const recorded = (arrayPath) => Object.keys(prior).some((row) => { const m = MEMBER_PATH.exec(row); return m && m[1] === arrayPath; });
+    const sync = (arrayPath, list) => (list.length || recorded(arrayPath)
+        ? syncMembers({ file: path.join(ctx.claudeDir, 'settings.local.json'), arrayPath, want: uniqSorted(list), prior, log: ctx.log, note: ctx.note })
+        : { rows: {}, created: false });
+    const r = sync('claudeMdExcludes', want);
+    // `ignore mcp <name>` for a server in an ancestor's .mcp.json, which reaches this project natively (probe P2): the
+    // entry that hides it here. Every stamped folder above counts, linked or not, as for the excludes.
+    const d = sync('disabledMcpjsonServers', mcpJsonIgnores(ancestors, w.ignores));
+    ctx.workspaceRows = { ...r.rows, ...d.rows };
+    mcpStep(ctx);
     if (w.members.length)
     {
         const final = listLines(ctx.lists);
@@ -840,7 +846,168 @@ function workspaceStep(ctx)
             : null;
         if (ctx.workspaceOwnEnv) ctx.ownEnv = ctx.workspaceOwnEnv;
     }
-    return { created: Boolean(r.created) };
+    return { created: Boolean(r.created || d.created) };
+}
+
+// ------------------------------------------------------------------ D2, the parent's local MCP registrations (spec 4)
+
+const ignoredMcp = (ignores) => (ignores || []).filter((i) => i.category === 'mcp').map((i) => i.name);
+// The `ignore mcp` names some ancestor's .mcp.json registers.
+function mcpJsonIgnores(ancestors, ignores)
+{
+    const names = ignoredMcp(ignores);
+    if (!names.length) return [];
+    const mcp = require('./mcp.js');
+    const held = ancestors.map((root) => mcp.registrationsAt({ scope: 'project', mcpFile: path.join(root, '.mcp.json'), projectRoot: root }).servers);
+    return names.filter((n) => held.some((servers) => Object.hasOwn(servers, n)));
+}
+
+// A folder's account-file key, compared case-folded with `\` as `/` (A8: Windows keeps the case typed at `cd`).
+const foldKey = (p) => String(p).replace(/\\/g, '/').replace(/(.)\/+$/, '$1').toLowerCase();
+// The account file's local-scope registrations for `root`: { state, servers, keys, user } - state 'ok', 'unreadable' (the
+// file cannot be read, parsed or is no object), 'ambiguous' (two or more `projects` keys name the folder) or 'nokey' (none
+// does, or there is no file); `user` is the top-level (user-scope) list. Read only, through json-file.js.
+function localRegistrations({ accountFile, root })
+{
+    const none = (state, keys = [], user = {}) => ({ state, servers: {}, keys, user });
+    let text;
+    try { text = fs.readFileSync(accountFile, 'utf8'); }
+    catch (e) { return none(e.code === 'ENOENT' ? 'nokey' : 'unreadable'); }
+    let data;
+    try { data = parseJson(text); }
+    catch { return none('unreadable'); }
+    if (!isObj(data)) return none('unreadable');
+    const user = isObj(data.mcpServers) ? data.mcpServers : {};
+    const projects = isObj(data.projects) ? data.projects : {};
+    const want = new Set([foldKey(path.resolve(root)), foldKey(realOf(root))]);
+    const keys = Object.keys(projects).filter((k) => want.has(foldKey(k)) || want.has(foldKey(realOf(k))));
+    if (keys.length > 1) return none('ambiguous', keys, user);
+    if (!keys.length) return none('nokey', keys, user);
+    const held = projects[keys[0]];
+    return { state: 'ok', servers: isObj(held) && isObj(held.mcpServers) ? held.mcpServers : {}, keys, user };
+}
+const parentRegistrations = ({ accountFile, parentRoot }) => localRegistrations({ accountFile, root: parentRoot });
+
+// Plan R8: a command that is a relative path would start inside the child (Claude starts a server in the session's
+// folder, A10). A bare name is a PATH lookup, and `~` / `$` open a path the shell or the CLI expands.
+const relativeCommand = (entry) => typeof entry.command === 'string' && /[\\/]/.test(entry.command) && !/^[~$]/.test(entry.command)
+    && !path.posix.isAbsolute(entry.command) && !path.win32.isAbsolute(entry.command);
+
+function readState(file)
+{
+    const data = readJson(file);
+    return Object.fromEntries(Object.entries(isObj(data) ? data : {}).filter(([n, h]) => stamp.validServerName(n) && /^[0-9a-f]{64}$/.test(String(h))));
+}
+function writeState(file, state, was)
+{
+    if (JSON.stringify(state) === JSON.stringify(was)) return;
+    if (!Object.keys(state).length) { fs.rmSync(file, { force: true }); return; }
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `${JSON.stringify(state, null, 2)}\n`);
+}
+
+// After the excludes: each local-scope registration of the parent (members[0]) not ignored here and not registered here
+// at any scope is copied with `claude mcp add-json -s local` (cwd = this project), a runner path naming the parent's
+// secrets-run.js re-pointed to this project's own, and recorded as a `workspace-mcp` row at the hash of the entry READ
+// BACK (R11); the parent's entry hash goes into <data root>/state/workspace-mcp.json. A copy at its row hash whose parent
+// entry changed, or whose state row is gone, is made again; one the parent dropped, or this project now ignores, is
+// removed; one not at its hash is the user's - kept, named, and out of the ledger. Nothing is copied or removed while the
+// workspace is off, the chain is empty, the CLI is missing, or the account file cannot be trusted (unreadable, replaced
+// since the stamp, two keys or none for the parent): the rows stay as recorded. No line carries the JSON (spec 4).
+function mcpStep(ctx)
+{
+    const w = ctx.workspace || { on: false, members: [], ignores: [] };
+    const prior = { ...(((ctx.ledger && ctx.ledger.workspaceMcp) || {}).local || {}) };
+    const record = (rows) => { ctx.workspaceMcp = Object.keys(rows).length ? { local: rows } : null; };
+    record(prior);
+    if (!w.on) return;
+    const names = Object.keys(prior).sort();
+    if (!w.members.length)
+    {
+        const one = names.length === 1;
+        if (names.length) ctx.log(`  workspace: no linked parent - the copied MCP registration${one ? '' : 's'} ${names.join(', ')} ${one ? 'is kept as it is' : 'are kept as they are'}; a parent's next update takes ${one ? 'it' : 'them'} on again`);
+        return;
+    }
+    if (!ctx.hasClaude) return;
+    const mcp = require('./mcp.js');
+    const parent = w.members[0];
+    const from = parent.rel;
+    const stop = (what) => ctx.log(`  !! workspace: ${what} - no MCP registration was copied from ${from} or removed`);
+    const reg = parentRegistrations({ accountFile: ctx.accountFile, parentRoot: parent.root });
+    if (reg.state === 'unreadable') return stop(`${ctx.accountFile} could not be read`);
+    const loss = mcp.accountLoss({ backups: mcp.accountBackups(ctx.backupDirs || []), stamped: stamp.readInstalledAt(ctx.stampFile) });
+    if (loss.why === 'replaced') return stop(`${ctx.accountFile} was replaced since the last run (the claude CLI kept the old one as ${loss.backup})`);
+    if (reg.state === 'ambiguous') return stop(`${ctx.accountFile} holds ${reg.keys.length} entries for ${from} (${reg.keys.join(', ')})`);
+    if (reg.state === 'nokey') { if (names.length) stop(`${ctx.accountFile} holds no entry for ${from}`); return; }
+    const hereRead = () => localRegistrations({ accountFile: ctx.accountFile, root: ctx.projectRoot });
+    const here = hereRead();
+    if (here.state !== 'ok' && here.state !== 'nokey') return stop(`${ctx.accountFile} holds ${here.keys.length} entries for this project (${here.keys.join(', ')})`);
+    const project = mcp.registrationsAt({ scope: 'project', mcpFile: ctx.mcpFile, projectRoot: ctx.projectRoot }).servers;
+    const ignored = new Set(ignoredMcp(w.ignores));
+    const stateFile = path.join(ctx.projectRoot, ctx.dataInfo.root, 'state', 'workspace-mcp.json');
+    const state = readState(stateFile);
+    const runnerFrom = realKey(path.join(parent.root, '.claude', 'hooks', 'secrets-run.js'));
+    const runnerTo = path.join(realOf(ctx.projectRoot), '.claude', 'hooks', 'secrets-run.js');
+    const point = (v) => (typeof v === 'string' && /secrets-run\.js$/i.test(v) && realKey(path.resolve(parent.root, v)) === runnerFrom ? runnerTo : v);
+    const repoint = (entry) => ({ ...entry, ...(entry.command !== undefined ? { command: point(entry.command) } : {}), ...(Array.isArray(entry.args) ? { args: entry.args.map(point) } : {}) });
+    // The exit status is the line's (`!! mcp <name>: <action> failed (exit <N>)`), so the CLI is spawned here: nothing it
+    // prints is shown, since add-json's error repeats the JSON it was handed.
+    const call = (argv) =>
+    {
+        const r = ctx.rt.spawnCommand('claude', argv, { cwd: ctx.projectRoot, env: ctx.cliEnv, encoding: 'utf8' });
+        return { ok: !r.error && r.status === 0, code: r.error ? 'not started' : r.signal ? `signal ${r.signal}` : `exit ${r.status}` };
+    };
+    const rows = {};
+    const next = {};
+    const settled = new Set();
+    for (const name of Object.keys(reg.servers).sort())
+    {
+        const entry = reg.servers[name];
+        if (!stamp.validServerName(name)) { ctx.log(`  mcp ${JSON.stringify(name)}: not copied - a server name takes letters, digits, _ and - only`); continue; }
+        if (ignored.has(name) || !isObj(entry)) continue;
+        const ours = Object.hasOwn(prior, name);
+        const own = ['local', 'project', 'user'].find((at) => Object.hasOwn(at === 'local' ? here.servers : at === 'project' ? project : here.user, name));
+        if (!ours && own) { ctx.log(`  mcp ${name}: not copied - this project registers its own (${own} scope)`); continue; }
+        if (relativeCommand(entry)) { ctx.log(`  mcp ${name}: not copied - its command is a relative path, which would start inside this project`); continue; }
+        settled.add(name);
+        const parentHash = stamp.entryHash(entry);
+        const held = here.servers[name];
+        if (ours && held)
+        {
+            if (stamp.entryHash(held) !== prior[name]) { ctx.log(`  mcp ${name}: kept - changed here since it was copied from ${from}, so it is yours; to take ${from}'s again: claude mcp remove ${name} -s local`); continue; }
+            if (state[name] === parentHash) { rows[name] = prior[name]; next[name] = parentHash; continue; }
+            const gone = call(['mcp', 'remove', name, '-s', 'local']);
+            if (!gone.ok)
+            {
+                ctx.note(`mcp ${name}: remove failed (${gone.code}) - the copy stays as it was; run update again`);
+                rows[name] = prior[name];
+                if (state[name]) next[name] = state[name];
+                continue;
+            }
+        }
+        const made = call(['mcp', 'add-json', '-s', 'local', name, JSON.stringify(repoint(entry))]);
+        if (!made.ok) { ctx.note(`mcp ${name}: copy failed (${made.code})`); continue; }
+        const back = hereRead().servers[name];
+        if (!back) { ctx.note(`mcp ${name}: copied, but ${ctx.accountFile} does not hold it here - not recorded`); continue; }
+        rows[name] = stamp.entryHash(back);
+        next[name] = parentHash;
+        ctx.log(`  mcp ${name}: ${!ours ? 'copied' : state[name] ? `copied again - its entry in ${from} changed` : 'copied again - no record of the entry it was made from'} (from ${from}, local scope)`);
+    }
+    for (const name of names)
+    {
+        if (settled.has(name)) continue;
+        const held = here.servers[name];
+        if (!held) continue;
+        if (stamp.entryHash(held) !== prior[name]) { ctx.log(`  mcp ${name}: kept - changed here since it was copied from ${from}, so it is yours`); continue; }
+        const why = ignored.has(name) ? `ignore mcp ${name}` : Object.hasOwn(reg.servers, name) ? `${from}'s entry is no longer copied` : `${from} no longer registers it`;
+        const gone = call(['mcp', 'remove', name, '-s', 'local']);
+        if (gone.ok) { ctx.log(`  mcp ${name}: removed - ${why}`); continue; }
+        ctx.note(`mcp ${name}: remove failed (${gone.code}) - run update again`);
+        rows[name] = prior[name];
+        if (state[name]) next[name] = state[name];
+    }
+    writeState(stateFile, next, state);
+    record(rows);
 }
 
 // ------------------------------------------------------------------ D5, the account instruction key (spec 3)
@@ -1022,11 +1189,14 @@ function releaseChildren({ projectRoot, env = process.env, dataRoot, log = () =>
         if (!isDir(child) || !isStamped(child)) continue;
         const points = (m) => { const v = viewOf(m).parent; return v && realKey(path.resolve(child, ...v.split('/'))) === realKey(root); };
         // A child that names another parent is that parent's: its line here is stale, and it is left as it is.
-        if (!points(readWorkspace(child, { env: ancestorEnv(env) }).model)) { stale.push(rel); continue; }
+        const held = readWorkspace(child, { env: ancestorEnv(env) });
+        if (!points(held.model)) { stale.push(rel); continue; }
         const r = writeWorkspace(child, (m) => (points(m) ? setParent(m, null) : m), { env: ancestorEnv(env) });
         if (!r.ok) { note(`workspace: ${rel} could not be released (${r.why}) - run uninstall again`); continue; }
         const childStamp = stamp.stampFiles({ projectRoot: child }).read;
-        if (childStamp) for (const key of ['own-picks', 'own-env']) stamp.markLine(childStamp, key, null);
+        // Its D2 copies stay as the user's own registrations: the rows and the parent hashes they were made from go.
+        if (childStamp) for (const key of ['own-picks', 'own-env', 'workspace-mcp']) stamp.markLine(childStamp, key, null);
+        if (held.file) fs.rmSync(path.join(path.dirname(held.file), 'state', 'workspace-mcp.json'), { force: true });
         log(`workspace: released ${rel} - it reads as standalone now, every item it holds its own`);
         released.push(rel);
     }
@@ -1205,7 +1375,7 @@ module.exports = {
     ancestorEnv, workspacePath, readWorkspace, writeWorkspace, moveWorkspace,
     realKey, findParent, sameRepo, isCheckout, joinVerdict, joinLine, chain, subtree, rescan,
     planLines, effectiveLists, delta, ownPicksAfter, childEnv, stampedAncestors, ancestorExcludes, excludeGlobs,
-    readPlan, prepare, recordWord, listLines, envStep, workspaceStep,
+    readPlan, prepare, recordWord, listLines, envStep, workspaceStep, parentRegistrations, mcpStep,
     INSTRUCTION_KEY, accountPaths, claudeMdAbove, accountStamps, instructionsBothState, instructionsBothLine, applyAccountInstructions, removeAccountInstructions, lastHolder,
     releaseChildren, leaveParent, managedSettingsFile, checkLoads,
 };
