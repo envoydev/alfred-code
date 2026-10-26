@@ -973,6 +973,118 @@ function lastHolder({ accountFile, projectRoot })
 }
 const readOr = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch { return ''; } };
 
+// ------------------------------------------------------------------ the exclude check (spec 3)
+
+// The managed settings file and its drop-in folder sit in one system directory per OS
+// (https://code.claude.com/docs/en/managed-settings, 'Deploy a managed settings file': macOS
+// /Library/Application Support/ClaudeCode/, Linux and WSL /etc/claude-code/, Windows C:\Program Files\ClaudeCode\ - the
+// legacy C:\ProgramData path is not read). An MDM profile, an HKLM value or a server-managed policy is no file here; an
+// auth key one of them sets is the residual the no-credentials line still catches.
+function managedSettingsFile(platform = process.platform, env = process.env)
+{
+    if (platform === 'darwin') return '/Library/Application Support/ClaudeCode/managed-settings.json';
+    if (platform === 'win32') return path.win32.join(env.ProgramFiles || 'C:\\Program Files', 'ClaudeCode', 'managed-settings.json');
+    return '/etc/claude-code/managed-settings.json';
+}
+
+// The process gets these names from the caller's env and nothing else (the probes' method,
+// docs/workspace-layering-evidence.md); CLAUDE_CONFIG_DIR, HOME and USERPROFILE are the throwaway ones.
+const PROBE_ENV = ['PATH', 'TMPDIR', 'SystemRoot', 'TEMP', 'TMP', 'APPDATA', 'LOCALAPPDATA'];
+const AUTH_KEYS = ['apiKeyHelper', 'awsAuthRefresh', 'awsCredentialExport'];
+const AUTH_ENV = /^(ANTHROPIC_(API_KEY|AUTH_TOKEN|BASE_URL)|CLAUDE_CODE_(OAUTH_TOKEN|USE_BEDROCK|USE_VERTEX|USE_FOUNDRY)|AWS_\w+|GOOGLE_APPLICATION_CREDENTIALS)$/;
+// The debug-log strings the probes recorded verbatim (Claude Code 2.1.309 / 2.1.310).
+const NO_CREDENTIALS = 'Skipped: no usable OAuth, WIF, or API key';
+const AGENTS_LOADED = /AGENTS\.md loaded: (.+?)\s*$/gm;
+
+// The first settings layer the probe reads that could authenticate before a line is checked, as '<file> sets <key>'.
+function authLayer(projectRoot, managedFile)
+{
+    const dropIns = path.join(path.dirname(managedFile), 'managed-settings.d');
+    let drops = [];
+    try { drops = fs.readdirSync(dropIns).filter((n) => n.endsWith('.json')).sort().map((n) => path.join(dropIns, n)); }
+    catch { /* no drop-in folder */ }
+    const files = [path.join(projectRoot, '.claude', 'settings.json'), path.join(projectRoot, '.claude', 'settings.local.json'), managedFile, ...drops];
+    for (const file of files)
+    {
+        const data = readJson(file);
+        if (!isObj(data)) continue;
+        const label = relPosix(projectRoot, file).startsWith('..') ? file : relPosix(projectRoot, file);
+        const key = AUTH_KEYS.find((k) => data[k] !== undefined && data[k] !== null && data[k] !== '');
+        if (key) return `${label} sets ${key}`;
+        const envKey = isObj(data.env) ? Object.keys(data.env).find((k) => AUTH_ENV.test(k)) : null;
+        if (envKey) return `${label} sets env.${envKey}`;
+    }
+    return null;
+}
+
+const pickEnv = (env, name) =>
+{
+    const key = process.platform === 'win32' ? Object.keys(env).find((k) => k.toLowerCase() === name.toLowerCase()) : name;
+    return key !== undefined ? env[key] : undefined;
+};
+
+// One logged-out `claude -p hi` in the project: every loaded file an ancestor's excludes cover, and every ancestor seed
+// AGENTS.md the built-in plugin's debug line names, is a miss. Never inside a session - it costs one CLI start.
+function checkLoads({ projectRoot, env = process.env, configDir, claudeBin = 'claude', rt = runtime, now = () => new Date(), managedFile = managedSettingsFile() } = {})
+{
+    const root = realOf(projectRoot);
+    const finish = (result) =>
+    {
+        const file = readWorkspace(root, { env }).file;
+        if (file)
+        {
+            try
+            {
+                fs.mkdirSync(path.join(path.dirname(file), 'state'), { recursive: true });
+                fs.writeFileSync(path.join(path.dirname(file), 'state', 'workspace-check.json'), `${JSON.stringify({ at: now().toISOString(), state: result.state, misses: result.misses })}\n`);
+            }
+            catch { /* the record is a convenience for status; the result stands without it */ }
+        }
+        return result;
+    };
+    const ancestors = stampedAncestors(root, { env });
+    if (!ancestors.length) return finish({ state: 'skipped', misses: [], why: 'no installed folder above this project' });
+    const skip = authLayer(root, managedFile);
+    if (skip) return finish({ state: 'skipped', misses: [], why: skip });
+    const ignores = readWorkspace(root, { env }).view.ignores;
+    const excluded = new Map(ancestors.flatMap((a) => ancestorExcludes(a, { childIgnores: ignores })).map((p) => [realKey(p), realOf(p)]));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'alfred-check-loads-'));
+    try
+    {
+        const home = path.join(tmp, 'home');
+        const events = path.join(tmp, 'events');
+        for (const dir of [home, events, path.join(tmp, 'acct')]) fs.mkdirSync(dir, { recursive: true });
+        // One file per event: two hooks appending to one file at once both failed on Windows (the probes).
+        const hook = path.join(tmp, 'hook.js');
+        fs.writeFileSync(hook, `let s = '';\nprocess.stdin.on('data', (d) => { s += d; }).on('end', () => require('node:fs').writeFileSync(require('node:path').join(${JSON.stringify(events)}, \`\${Date.now()}-\${process.pid}-\${Math.random().toString(36).slice(2)}.json\`), s));\n`);
+        const settings = { hooks: { InstructionsLoaded: [{ hooks: [{ type: 'command', command: `"${process.execPath}" "${hook}"` }] }] } };
+        // The account's AGENTS.md setting, that key alone: the probe loads AGENTS.md the way the user's sessions do.
+        const held = accountValue(configDir || accountPaths(env).configDir);
+        const entry = held.data && isObj(held.data.pluginConfigs) ? held.data.pluginConfigs[INSTRUCTION_IDS[0]] : undefined;
+        if (entry !== undefined) settings.pluginConfigs = { [INSTRUCTION_IDS[0]]: entry };
+        const settingsFile = path.join(tmp, 'hooks.json');
+        fs.writeFileSync(settingsFile, JSON.stringify(settings));
+        const log = path.join(tmp, 'run.log');
+        const probeEnv = { CLAUDE_CONFIG_DIR: path.join(tmp, 'acct'), HOME: home, USERPROFILE: home };
+        for (const name of PROBE_ENV) { const v = pickEnv(env, name); if (v !== undefined) probeEnv[name] = v; }
+        const r = rt.spawnCommand(claudeBin, ['-p', 'hi', '--debug', '--debug-file', log, '--settings', settingsFile], { cwd: root, env: probeEnv, encoding: 'utf8', stdio: 'pipe', timeout: 90000 });
+        let text;
+        try { text = fs.readFileSync(log, 'utf8'); }
+        catch { return finish({ state: 'error', misses: [], why: r.error ? `claude did not start (${r.error.message})` : 'the probe wrote no debug log' }); }
+        if (!text.includes(NO_CREDENTIALS)) return finish({ state: 'authenticated', misses: [] });
+        const loaded = [];
+        for (const name of fs.readdirSync(events).sort())
+        {
+            try { const p = JSON.parse(fs.readFileSync(path.join(events, name), 'utf8')).file_path; if (typeof p === 'string') loaded.push(p); }
+            catch { /* a half-written event file names nothing */ }
+        }
+        for (const m of text.matchAll(AGENTS_LOADED)) loaded.push(m[1]);
+        const misses = [...new Set(loaded.map((p) => excluded.get(realKey(p))).filter(Boolean))];
+        return finish({ state: misses.length ? 'misses' : 'clean', misses });
+    }
+    finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+}
+
 module.exports = {
     CATEGORIES, workspaceOn, parseWorkspace, renderWorkspace, viewOf,
     setParent, addChild, removeChild, addIgnore, removeIgnore,
@@ -981,4 +1093,5 @@ module.exports = {
     planLines, effectiveLists, delta, ownPicksAfter, childEnv, stampedAncestors, ancestorExcludes, excludeGlobs,
     readPlan, prepare, listLines, envStep, workspaceStep,
     INSTRUCTION_KEY, accountPaths, claudeMdAbove, accountStamps, instructionsBothState, instructionsBothLine, applyAccountInstructions, removeAccountInstructions, lastHolder,
+    managedSettingsFile, checkLoads,
 };

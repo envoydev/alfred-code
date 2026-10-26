@@ -13,6 +13,7 @@
 //   plan        update's cascade, before it runs: each project's row, projected add and drop, and its own asks
 //   answer      one project's answers to those asks, merged into the answers file the cascade reads
 //   cascade     the update itself, every child top-down from its parent's read-back - a failed parent skips its subtree
+//   check-loads the exclude check: one logged-out `claude -p` here, naming every ancestor file that loaded twice
 //
 // Exit 0 on success, 2 with a `!!` line on bad input, 3 when the parent's file is locked, 1 when a write failed.
 
@@ -498,7 +499,20 @@ function cascade(out)
     out(`cascade: done ${count.updated} updated, ${count.failed} failed, ${count.skipped} skipped`);
 }
 
-const VERBS = { parent: parentVerb, register: (out) => register(out), unregister, join, ignore, children, status, 'account-instructions': accountInstructions, plan: planVerb, answer, cascade };
+// --claude and --managed-file are the tests' seams; a real run takes `claude` from PATH and the OS's managed file.
+function checkLoadsVerb(out)
+{
+    const root = rootArg();
+    const r = ws.checkLoads({ projectRoot: root, env, claudeBin: arg('--claude', 'claude'), managedFile: arg('--managed-file', ws.managedSettingsFile()) });
+    if (r.state === 'skipped') { out(`check-loads: skipped - ${r.why}`); return; }
+    out("check-loads: probe run - this project's own hooks ran, as in any session here");
+    if (r.state === 'clean') out('check-loads: clean');
+    else if (r.state === 'authenticated') out('!! check-loads: the probe authenticated');
+    else if (r.state === 'misses') for (const m of r.misses) out(`!! check-loads: ${m} loaded twice - run /alfred-code:update`);
+    else out(`!! check-loads: the probe failed - ${r.why}`);
+}
+
+const VERBS = { parent: parentVerb, register: (out) => register(out), unregister, join, ignore, children, status, 'account-instructions': accountInstructions, plan: planVerb, answer, cascade, 'check-loads': checkLoadsVerb };
 
 function main()
 {
