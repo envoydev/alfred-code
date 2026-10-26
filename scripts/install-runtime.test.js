@@ -146,6 +146,19 @@ test('install-runtime: resolveWin walks PATH in order, each entry through PATHEX
     assert.strictEqual(resolveWin('x.cmd', { Path: '"C:\\Program Files\\t";C:\\u' }, files('C:\\Program Files\\t\\x.cmd').isFile), 'C:\\Program Files\\t\\x.cmd');
 });
 
+test('install-runtime: resolveWin takes an absolute path as it stands - process.execPath, a --claude path - and through PATHEXT when it has no extension', () =>
+{
+    // The workspace cascade, the parent read-back and check-loads --claude name their command by full path: joined onto
+    // each PATH entry it was never found, and every one failed on Windows (the release 1 matrix, Windows 11 VM).
+    const node = files('C:\\Program Files\\nodejs\\node.exe');
+    assert.strictEqual(resolveWin('C:\\Program Files\\nodejs\\node.exe', { PATH: 'C:\\bin' }, node.isFile), 'C:\\Program Files\\nodejs\\node.exe');
+    assert.strictEqual(resolveWin('C:\\Program Files\\nodejs\\node.exe', {}, node.isFile), 'C:\\Program Files\\nodejs\\node.exe', 'no PATH needed');
+    assert.ok(!node.seen.some((p) => p.startsWith('C:\\bin')), 'no PATH entry is tried for a full path');
+    assert.strictEqual(resolveWin('C:\\u\\claude', { PATH: 'C:\\bin' }, files('C:\\u\\claude', 'C:\\u\\claude.cmd').isFile), 'C:\\u\\claude.cmd', 'the sh shim beside it is never the one');
+    assert.strictEqual(resolveWin('\\\\Mac\\share\\claude.exe', {}, files('\\\\Mac\\share\\claude.exe').isFile), '\\\\Mac\\share\\claude.exe', 'a UNC path too');
+    assert.strictEqual(resolveWin('C:\\gone\\node.exe', { PATH: 'C:\\bin' }, files('C:\\bin\\node.exe').isFile), '', 'a full path that is not there is not found elsewhere');
+});
+
 test('install-runtime: resolveWin never looks in the current directory - an empty or relative PATH entry is skipped (M5)', () =>
 {
     const here = files('claude.cmd', '.\\claude.cmd', path.win32.join(process.cwd(), 'claude.cmd'), 'bin\\claude.cmd');

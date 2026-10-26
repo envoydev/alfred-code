@@ -69,10 +69,13 @@ function setup({ events = () => [], agents = null, noCreds = true, found = null 
     }
     const real = { root: fs.realpathSync.native(root), child: fs.realpathSync.native(child) };
     const dump = path.join(top, 'dump');
-    const bin = path.join(top, 'claude-fake.js');
-    fs.writeFileSync(bin, FAKE, { mode: 0o755 });
+    const fake = path.join(top, 'claude-fake.js');
+    fs.writeFileSync(fake, FAKE, { mode: 0o755 });
+    // Windows starts no .js: the fake goes behind a .cmd shim that hands on %*, the way npm ships claude there.
+    const bin = process.platform === 'win32' ? path.join(top, 'claude-fake.cmd') : fake;
+    if (bin !== fake) fs.writeFileSync(bin, `@"${process.execPath}" "${fake}" %*\r\n`);
     const agentsPath = agents ? agents(real) : null;
-    fs.writeFileSync(`${bin}.json`, JSON.stringify({ dump, events: events(real), agents: agentsPath, noCreds, found }));
+    fs.writeFileSync(`${fake}.json`, JSON.stringify({ dump, events: events(real), agents: agentsPath, noCreds, found }));
     const configDir = path.join(top, 'acct');
     const managedFile = path.join(top, 'managed', 'managed-settings.json');
     const env = { PATH: process.env.PATH, HOME: path.join(top, 'caller-home'), CLAUDE_CONFIG_DIR: configDir, TMPDIR: process.env.TMPDIR };
