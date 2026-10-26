@@ -946,11 +946,18 @@ function dataRootRel() {
 // custom root's `var/data/.secrets`) - by the path as written, a diff header's or a walk's line included, or by its real
 // path. A project's own `.secrets` beside its sources is not. In any letter case (final review 2026-10-25 C2): a
 // case-insensitive disk - macOS, Windows - opens the store as `.alfred/.SECRETS` or `.ALFRED/.secrets` too.
+// A workspace ancestor's `.secrets` at its own data root is the store too (release 2), by real path - only a file of that
+// name reads the chain.
 function isDataRootSecrets(file) {
   const tail = `${dataRootRel()}/${SECRETS_FILE}`.toLowerCase();
   const ends = (p) => { const s = String(p).replace(/\\/g, '/').toLowerCase(); return s === tail || s.endsWith(`/${tail}`); };
   if (ends(file)) return true;
-  try { return ends(fs.realpathSync(file)); } catch { return false; }
+  let real;
+  try { real = fs.realpathSync(file); } catch { return false; }
+  if (ends(real)) return true;
+  if (baseOf(real).toLowerCase() !== SECRETS_FILE) return false;
+  const at = real.toLowerCase();
+  return sensitiveStores().some((s) => s.toLowerCase() === at);
 }
 function sensitiveFile(start = process.cwd()) {
   const root = dataRootRel();
@@ -964,12 +971,59 @@ function sensitiveFile(start = process.cwd()) {
   const at = places.flatMap((p) => SECRET_FILES.map((name) => pathMod.join(p, ...root.split('/'), name)));
   return at.find((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } }) || at[0];
 }
-// The project's store as a real path, or null when it does not exist - what a tree-taking verb on a folder above it carries.
-function sensitiveStore() {
-  try {
-    const f = sensitiveFile((payload && typeof payload.cwd === 'string' && payload.cwd) || process.cwd());
-    return fs.statSync(f).isFile() ? realOf(f) : null;
-  } catch { return null; }
+// The workspace chain (release 2): secret-chain.js beside the hook reads the project's own store and each linked
+// ancestor's at its own data root; without it (an older copy route) the project's own store alone.
+function secretChain() {
+  if (secretChain.mod === undefined) {
+    try { secretChain.mod = require(pathMod.join(__dirname, 'secret-chain.js')); } catch { secretChain.mod = null; }
+  }
+  return secretChain.mod;
+}
+const isStoreFile = (f) => { try { return fs.statSync(f).isFile(); } catch { return false; } };
+// The values a run in `start` gets: { values, from: { KEY: rel }, files: { rel: file } } - '.' is the project's own store,
+// '..' and up an ancestor's; the nearest value of a key wins.
+function sensitiveChain(start = process.cwd()) {
+  const mod = secretChain();
+  if (mod) {
+    try {
+      const c = mod.chainOf(start, { env: process.env });
+      return { values: c.values, from: c.from, files: Object.fromEntries(c.stores.map((s) => [s.rel, s.file])) };
+    } catch { /* the project's own store below */ }
+  }
+  const file = sensitiveFile(start);
+  if (!isStoreFile(file)) return { values: {}, from: {}, files: {} };
+  let values = {};
+  try { values = sensitiveValues(file); } catch { /* unreadable: no values */ }
+  return { values, from: Object.fromEntries(Object.keys(values).map((k) => [k, '.'])), files: { '.': file } };
+}
+// Every store a deny covers, from where the call runs: the project's own and each linked ancestor's, whatever the kill
+// switch says - it stops the values, never the deny. [{ file, root, real }], read once per run.
+function denyStores() {
+  if (denyStores.list) return denyStores.list;
+  let start = process.cwd();
+  try { if (payload && typeof payload.cwd === 'string' && payload.cwd) start = payload.cwd; } catch { /* a CLI mode */ }
+  let list = null;
+  const mod = secretChain();
+  if (mod) { try { list = mod.storesOf(start, { env: process.env, forDeny: true }); } catch { list = null; } }
+  if (!list) {
+    const f = sensitiveFile(start);
+    list = isStoreFile(f) ? [{ file: f, root: null, real: realOf(f) }] : [];
+  }
+  return (denyStores.list = list);
+}
+// Those stores as real paths - what a tree-taking verb on a folder above one, or a find reaching one, carries.
+function sensitiveStores() {
+  return [...new Set(denyStores().map((s) => s.real))];
+}
+// The data roots those stores sit under, relative to their own project ('.alfred', 'var/data') - the mention pass's words.
+function sensitiveRoots() {
+  const out = new Set();
+  for (const s of denyStores()) {
+    if (!s.root) continue;
+    const rel = pathMod.relative(s.root, pathMod.dirname(s.file)).split(pathMod.sep).join('/');
+    if (rel && !rel.startsWith('..') && !pathMod.isAbsolute(rel)) out.add(rel);
+  }
+  return [...out];
 }
 function sensitiveValues(file) {
   const out = {};
@@ -996,13 +1050,19 @@ if (process.argv[2] === '--with-sensitive') {
   }
   const quote = (w) => (process.platform === 'win32' ? (/[\s"&|<>^]/.test(w) ? `"${w.replace(/"/g, '\\"')}"` : w) : (/^[\w@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, `'\\''`)}'`));
   const line = words.length === 1 ? words[0] : words.map(quote).join(' ');
-  const file = sensitiveFile();
-  let values = {};
-  try { values = sensitiveValues(file); } catch { process.stderr.write(`# with-sensitive: ${file} not found - the command runs without it\n`); }
+  // the workspace chain's values, nearest first (release 2, AC20) - a parent's value is masked like the project's own
+  const chain = sensitiveChain(process.cwd());
+  const values = chain.values;
+  if (!Object.keys(chain.files).length) process.stderr.write(`# with-sensitive: ${sensitiveFile()} not found - the command runs without it\n`);
   const keys = Object.keys(values);
   const masks = Object.entries(values).filter(([, v]) => v.length >= MASK_MIN).sort((a, b) => b[1].length - a[1].length);
-  const maskLine = (s) => masks.reduce((acc, [k, v]) => acc.split(v).join(`<${k}>`), s);
-  if (keys.length) process.stderr.write(`# with-sensitive: ${keys.length} value(s) from ${file} in the environment (${keys.join(', ')}), each shown as <KEY> in this output\n`);
+  const maskLine = secretChain() ? secretChain().masker(values, MASK_MIN) : (s) => masks.reduce((acc, [k, v]) => acc.split(v).join(`<${k}>`), s);
+  const sources = Object.keys(chain.files).map((rel) => [rel, keys.filter((k) => chain.from[k] === rel)]).filter(([, ks]) => ks.length);
+  if (sources.length === 1 && sources[0][0] === '.') process.stderr.write(`# with-sensitive: ${keys.length} value(s) from ${chain.files['.']} in the environment (${keys.join(', ')}), each shown as <KEY> in this output\n`);
+  else if (sources.length) {
+    const shown = (f) => pathMod.relative(process.cwd(), f).split(pathMod.sep).join('/');
+    process.stderr.write(`# with-sensitive: ${keys.length} value(s) in the environment (${sources.map(([rel, ks]) => `${shown(chain.files[rel])}: ${ks.join(', ')}`).join('; ')}), each shown as <KEY> in this output\n`);
+  }
   const { spawn } = require('child_process');
   const child = spawn(line, { shell: true, env: { ...process.env, ...values }, stdio: ['inherit', 'pipe', 'pipe'] });
   const pipe = (from, to) => {
@@ -1368,20 +1428,27 @@ try {
 if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/null - nothing to judge
 // SessionStart: the project's sensitive data by KEY only, and the run that uses it - nothing when there is none.
 if (payload.hook_event_name === 'SessionStart') {
-  const file = sensitiveFile(payload.cwd || process.cwd());
-  let keys = [];
-  try { keys = Object.keys(sensitiveValues(file)); } catch { /* none: nothing to say */ }
+  const cwd = payload.cwd || process.cwd();
+  // the workspace chain's KEYS by source (release 2): '<own store> holds A; from ..: B; from ../..: C', the project's own
+  // first, an ancestor's by its folder; never a value
+  const chain = sensitiveChain(cwd);
+  const keys = Object.keys(chain.values);
   if (keys.length) {
-    const rel = pathMod.relative(payload.cwd || process.cwd(), file).split(pathMod.sep).join('/');
+    const file = chain.files['.'];
+    const rel = file ? pathMod.relative(cwd, file).split(pathMod.sep).join('/') : null;
+    const holds = Object.keys(chain.files).map((at) => [at, keys.filter((k) => chain.from[k] === at)]).filter(([, ks]) => ks.length)
+      .map(([at, ks]) => (at === '.' ? `${rel} holds ${ks.join(', ')}` : `from ${at}: ${ks.join(', ')}`)).join('; ');
     // The data root's own .gitignore covers the file; one a user wrote elsewhere, or tracked by hand, is said here -
     // a commit would publish every value. git's status 1 is 'not ignored' (a tracked file too); 128 is no repository.
     let exposed = '';
     try {
-      const r = require('child_process').spawnSync(...require('./hook-prelude.js').gitSafe(['check-ignore', '-q', '--', pathMod.basename(file)], { cwd: pathMod.dirname(file), timeout: 5000, stdio: 'ignore' }));
-      if (r.status === 1) exposed = ` WARNING: git does not ignore ${rel} (or it is tracked) - a commit publishes every value; tell the user to add it to .gitignore, and to untrack it with git rm --cached if it is tracked.`;
+      if (file) {
+        const r = require('child_process').spawnSync(...require('./hook-prelude.js').gitSafe(['check-ignore', '-q', '--', pathMod.basename(file)], { cwd: pathMod.dirname(file), timeout: 5000, stdio: 'ignore' }));
+        if (r.status === 1) exposed = ` WARNING: git does not ignore ${rel} (or it is tracked) - a commit publishes every value; tell the user to add it to .gitignore, and to untrack it with git rm --cached if it is tracked.`;
+      }
     } catch { /* no git: nothing to commit it with */ }
     process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext:
-      `Sensitive data: ${rel} holds ${keys.join(', ')} - kept out of the chat: a Read is blocked and a printed value is masked, but only its exact text, so never print one in another form (encoded, split, reversed) and never ask the user to paste one. A command that needs them: node "${__filename}" --with-sensitive -- "<command line>" - they are in its environment, and each prints as <KEY> in its output. In the browser, type a KEY name in browser_type / browser_fill_form: the browser server fills its value and shows it as <secret>KEY</secret>.${exposed}` } }));
+      `Sensitive data: ${holds} - kept out of the chat: a Read is blocked and a printed value is masked, but only its exact text, so never print one in another form (encoded, split, reversed) and never ask the user to paste one. A command that needs them: node "${__filename}" --with-sensitive -- "<command line>" - they are in its environment, and each prints as <KEY> in its output. In the browser, type a KEY name in browser_type / browser_fill_form: the browser server fills its value and shows it as <secret>KEY</secret>.${exposed}` } }));
   }
   process.exit(0);
 }
@@ -3091,7 +3158,11 @@ function refuseSensitiveMention(text, steps = text) {
   // 'r')` ended on a comma): `.sensitive-data` anywhere; `.secrets` behind its data root, which no resolver need follow
   // (`"$(pwd)/.alfred/.secrets"`, `$R/...`, a script's own string), or bare in a pipe whose stages name the data root
   // (`ls -a .alfred | grep .secrets | xargs ...`) - a project's own `.secrets` elsewhere is no store.
-  const ROOT = dataRootRel().split('/').map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[\\\\/]');
+  // Each workspace ancestor's data root counts as well (release 2: `../var/data/.secrets`), read only when the text names
+  // a store at all.
+  const joinQuoted = (s) => String(s).replace(/(["'])([^"'\n]*)\1/g, '$2');
+  const roots = [...new Set([dataRootRel(), ...(/\.(?:secrets|sensitive-data)/i.test(joinQuoted(text)) ? sensitiveRoots() : [])])];
+  const ROOT = `(?:${roots.map((r) => r.split('/').map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[\\\\/]')).join('|')})`;
   const MENTION = new RegExp(`(?:^|[^\\w.-])(?:\\.sensitive-data|${ROOT}[\\\\/]\\.secrets)(?![\\w.-])`, 'i');
   const BARE = /(?:^|[^\w.-])\.secrets(?![\w.-])/i;
   const ROOT_WORD = new RegExp(`(?:^|[^\\w.-])${ROOT}(?![\\w.-])`, 'i');
@@ -3116,7 +3187,6 @@ function refuseSensitiveMention(text, steps = text) {
     return false;
   };
   const SENSITIVE_ARCHIVE = /^(?:tar|gtar|bsdtar|zip|7z|7za|7zz|rar|cpio|pax|rsync|scp|compress-archive)$/i;
-  const joinQuoted = (s) => String(s).replace(/(["'])([^"'\n]*)\1/g, '$2');
   const refuse = (verb) => {
     global.BLOCK_DETAIL = { branch: 'sensitive-data', matched: String(verb || '').slice(0, 40) };
     block('Blocked: this command names the project\'s sensitive data (.secrets under the data root, .sensitive-data before). Its values never\n' +
@@ -3163,8 +3233,8 @@ function refuseSensitiveMention(text, steps = text) {
   const globOf = (g, flags) => new RegExp(`^${String(g).split('').map((ch) => (ch === '*' ? '.*' : ch === '?' ? '.' : ch.replace(/[.+^${}()|[\]\\]/g, '\\$&'))).join('')}$`, flags);
   const judgeFind = (args, fed) => {
     if (!fed && !args.some((w) => FIND_ACT.test(w))) return;
-    const store = sensitiveStore();
-    if (!store) return;
+    const stores = sensitiveStores();
+    if (!stores.length) return;
     let k = 0;
     while (k < args.length && /^-[HLPEXdsx]$/.test(args[k])) k++;
     const first = args.findIndex((w, j) => j >= k && /^[-(!]/.test(w));
@@ -3175,7 +3245,7 @@ function refuseSensitiveMention(text, steps = text) {
       if (/^-i?(?:name|path|wholename)$/.test(args[j])) tests.push({ re: globOf(args[j + 1] || '', /^-i/.test(args[j]) ? 'i' : ''), path: !/name$/.test(args[j]) || /wholename$/.test(args[j]) });
       else if (args[j] === '-maxdepth' && /^\d+$/.test(args[j + 1] || '')) depth = Number(args[j + 1]);
     }
-    for (const s of starts.length ? starts : ['.']) for (const p of candidatePaths(s)) for (const hit of statAll(p)) {
+    for (const s of starts.length ? starts : ['.']) for (const p of candidatePaths(s)) for (const hit of statAll(p)) for (const store of stores) {
       const rel = hit.dir ? pathMod.relative(realOf(hit.at), store) : '';
       if (!rel || rel.startsWith('..') || pathMod.isAbsolute(rel)) continue;
       const segs = rel.split(pathMod.sep);
@@ -3257,7 +3327,7 @@ function refuseSensitiveMention(text, steps = text) {
     const takesTree = creates && (SENSITIVE_ARCHIVE.test(verb) && !copies ? true
       : copies ? (recursive || /^(?:ditto|robocopy|xcopy)$/i.test(verb))
       : verb === 'git' && sub === 'add' && args.some((w) => /^--force$|^-[A-Za-z]*f[A-Za-z]*$/.test(w)));
-    const storeAt = takesTree ? sensitiveStore() : null;
+    const storesAt = takesTree ? sensitiveStores() : [];
     for (let i = 0; i < args.length; i++) {
       const raw = args[i];
       if (EXCLUDE_FLAG.test(raw)) { i++; continue; }
@@ -3274,10 +3344,12 @@ function refuseSensitiveMention(text, steps = text) {
           if (excludes([name]) || (name === SECRETS_FILE && !isDataRootSecrets(f))) continue;
           try { if (fs.statSync(f).isFile()) refuse(verb); } catch { /* not here */ }
         }
-        if (hit.dir && storeAt && raw !== destination) {
+        if (hit.dir && storesAt.length && raw !== destination) {
           const d = realOf(hit.at);
-          const rel = pathMod.relative(d, storeAt);
-          if (rel && !rel.startsWith('..') && !pathMod.isAbsolute(rel) && !excludes(rel.split(pathMod.sep))) refuse(verb);
+          for (const storeAt of storesAt) {
+            const rel = pathMod.relative(d, storeAt);
+            if (rel && !rel.startsWith('..') && !pathMod.isAbsolute(rel) && !excludes(rel.split(pathMod.sep))) refuse(verb);
+          }
         }
       }
     }
