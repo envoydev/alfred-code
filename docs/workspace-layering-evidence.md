@@ -25,6 +25,21 @@ env -i PATH="$PATH" HOME=<S>/home CLAUDE_CONFIG_DIR=<S>/acct TMPDIR="$TMPDIR" \
   - AGENTS.md: `[cc-plugin-agents-md] $.ui.log (to debug): no CLAUDE.md found; AGENTS.md loaded: <path>`
   - nothing found: `$.fs.ancestors (cc-plugin-agents-md): AGENTS.md, .claude/AGENTS.md found 0 of 10 directories`
 
+## The AGENTS.md lines with and without the account key (2026-10-26, Claude Code 2.1.310, macOS)
+
+The release 1 matrix (AC30) ran `check-loads` with the real CLI on a root `<S>/ws` (a filled `AGENTS.md`, the seeded
+`.claude/AGENTS.md`) and its git child `<S>/ws/api` (its own `.claude/AGENTS.md`), no CLAUDE.md anywhere:
+
+- No `pluginConfigs` key: one line names every file loaded, `', '`-separated -
+  `[cc-plugin-agents-md] $.ui.log (to debug): no CLAUDE.md found; AGENTS.md loaded: <S>/ws/AGENTS.md, <S>/ws/api/.claude/AGENTS.md`.
+- The account's `instructionFiles: claude-md-and-agents-md` passed through `--settings`: no `loaded:` line and no
+  CLAUDE.md scan line, only the count the scan kept after the excludes -
+  `$.fs.ancestors (cc-plugin-agents-md): AGENTS.md, .claude/AGENTS.md found 2 of 9 directories` with the child's
+  excludes, `found 3 of 9` with the seed's row taken out. The project is 10 folders deep: the filesystem root is not
+  scanned.
+
+So `check-loads` splits the list, and with no list compares the count with the files on disk the excludes leave.
+
 ## The exclude-glob escape (2026-10-25 22:08Z, Claude Code 2.1.310, macOS)
 
 `claudeMdExcludes` in the kid's `.claude/settings.local.json` named `r1.md`, `.claude/AGENTS.md` and `r2.md`, all by

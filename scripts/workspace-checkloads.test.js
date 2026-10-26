@@ -40,6 +40,7 @@ for (const file of cfg.events)
             log.push('InstructionsLoaded:session_start [' + h.command + '] completed with status 0');
         }
 }
+if (cfg.found !== null) log.push('$.fs.ancestors (cc-plugin-agents-md): AGENTS.md, .claude/AGENTS.md found ' + cfg.found + ' of 9 directories');
 if (cfg.agents) log.push('[cc-plugin-agents-md] $.ui.log (to debug): no CLAUDE.md found; AGENTS.md loaded: ' + cfg.agents);
 if (cfg.noCreds) log.push('${NO_CREDS}');
 fs.writeFileSync(at('--debug-file'), log.join('\\n') + '\\n');
@@ -47,7 +48,7 @@ process.exit(1);
 `;
 
 // ws (stamped, one library rule copy and a seeded AGENTS.md) with the git child ws/api joined below it.
-function setup({ events = () => [], agents = null, noCreds = true } = {})
+function setup({ events = () => [], agents = null, noCreds = true, found = null } = {})
 {
     const top = fs.mkdtempSync(path.join(TMP, 't-'));
     const root = path.join(top, 'ws');
@@ -71,7 +72,7 @@ function setup({ events = () => [], agents = null, noCreds = true } = {})
     const bin = path.join(top, 'claude-fake.js');
     fs.writeFileSync(bin, FAKE, { mode: 0o755 });
     const agentsPath = agents ? agents(real) : null;
-    fs.writeFileSync(`${bin}.json`, JSON.stringify({ dump, events: events(real), agents: agentsPath, noCreds }));
+    fs.writeFileSync(`${bin}.json`, JSON.stringify({ dump, events: events(real), agents: agentsPath, noCreds, found }));
     const configDir = path.join(top, 'acct');
     const managedFile = path.join(top, 'managed', 'managed-settings.json');
     const env = { PATH: process.env.PATH, HOME: path.join(top, 'caller-home'), CLAUDE_CONFIG_DIR: configDir, TMPDIR: process.env.TMPDIR };
@@ -108,6 +109,23 @@ test('an ancestor seed AGENTS.md named by the debug load line is a miss', () =>
     assert.deepStrictEqual(s.check(), { state: 'misses', misses: [path.join(s.real.root, '.claude', 'AGENTS.md')] });
     const own = setup({ agents: (r) => path.join(r.child, 'AGENTS.md') });
     assert.strictEqual(own.check().state, 'clean', 'the project\'s own AGENTS.md is no miss');
+});
+
+test('a seed AGENTS.md inside the comma-separated loaded list is a miss (the line Claude Code 2.1.310 writes)', () =>
+{
+    const s = setup({ agents: (r) => `${path.join(r.child, '.claude', 'AGENTS.md')}, ${path.join(r.root, '.claude', 'AGENTS.md')}` });
+    assert.deepStrictEqual(s.check(), { state: 'misses', misses: [path.join(s.real.root, '.claude', 'AGENTS.md')] });
+});
+
+test('with the instructionFiles key the log names no file: a found count past the files left after the excludes names the excluded ones (AC30)', () =>
+{
+    // On disk: the child's own AGENTS.md, the root's filled AGENTS.md, the root's seed (excluded) - two load when clean.
+    const lay = (s) => { put(path.join(s.child, 'AGENTS.md'), '# own\n'); put(path.join(s.root, 'AGENTS.md'), '# the team\n'); return s; };
+    assert.deepStrictEqual(lay(setup({ found: 2 })).check(), { state: 'clean', misses: [] });
+    const twice = lay(setup({ found: 3 }));
+    assert.deepStrictEqual(twice.check(), { state: 'misses', misses: [path.join(twice.real.root, '.claude', 'AGENTS.md')] });
+    const listed = lay(setup({ found: 3, agents: (r) => `${path.join(r.child, 'AGENTS.md')}, ${path.join(r.root, 'AGENTS.md')}` }));
+    assert.strictEqual(listed.check().state, 'clean', 'a loaded list, when the log has one, is read over the count');
 });
 
 test('no no-credentials line means authenticated and nothing else (AC30)', () =>

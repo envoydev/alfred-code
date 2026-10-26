@@ -1041,7 +1041,27 @@ const AUTH_KEYS = ['apiKeyHelper', 'awsAuthRefresh', 'awsCredentialExport'];
 const AUTH_ENV = /^(ANTHROPIC_(API_KEY|AUTH_TOKEN|BASE_URL)|CLAUDE_CODE_(OAUTH_TOKEN|USE_BEDROCK|USE_VERTEX|USE_FOUNDRY)|AWS_\w+|GOOGLE_APPLICATION_CREDENTIALS)$/;
 // The debug-log strings the probes recorded verbatim (Claude Code 2.1.309 / 2.1.310).
 const NO_CREDENTIALS = 'Skipped: no usable OAuth, WIF, or API key';
+// The default mode names what it loaded as one ', '-separated list; with the account's instructionFiles key set (both
+// files) it names no file, only how many the scan kept after the excludes.
 const AGENTS_LOADED = /AGENTS\.md loaded: (.+?)\s*$/gm;
+const AGENTS_FOUND = /\(cc-plugin-agents-md\): AGENTS\.md, \.claude[\\/]AGENTS\.md found (\d+) of \d+ directories/;
+
+// Every AGENTS.md and .claude/AGENTS.md on disk in the project's folder and each folder above it, the filesystem root
+// left out - the folders the built-in plugin scans (2.1.310 logged 9 of them for a project 10 folders deep).
+function agentsOnDisk(root)
+{
+    const out = [];
+    for (let dir = root; path.dirname(dir) !== dir; dir = path.dirname(dir))
+    {
+        for (const rel of ['AGENTS.md', path.join('.claude', 'AGENTS.md')])
+        {
+            const p = path.join(dir, rel);
+            try { if (fs.statSync(p).isFile()) out.push(p); }
+            catch { /* none here */ }
+        }
+    }
+    return out;
+}
 
 // The first settings layer the probe reads that could authenticate before a line is checked, as '<file> sets <key>'.
 function authLayer(projectRoot, managedFile)
@@ -1125,7 +1145,17 @@ function checkLoads({ projectRoot, env = process.env, configDir, claudeBin = 'cl
             try { const p = JSON.parse(fs.readFileSync(path.join(events, name), 'utf8')).file_path; if (typeof p === 'string') loaded.push(p); }
             catch { /* a half-written event file names nothing */ }
         }
-        for (const m of text.matchAll(AGENTS_LOADED)) loaded.push(m[1]);
+        let listed = false;
+        for (const m of text.matchAll(AGENTS_LOADED)) { listed = true; loaded.push(...m[1].split(/, (?=[\\/]|[A-Za-z]:[\\/])/)); }
+        const found = listed ? null : AGENTS_FOUND.exec(text);
+        if (found)
+        {
+            // More kept than the files the excludes leave: the excluded ones load. Which of them, the log cannot say -
+            // every one is named, and one update writes them all.
+            const onDisk = agentsOnDisk(root);
+            const shut = onDisk.filter((p) => excluded.has(realKey(p)));
+            if (Number(found[1]) > onDisk.length - shut.length) loaded.push(...shut);
+        }
         const misses = [...new Set(loaded.map((p) => excluded.get(realKey(p))).filter(Boolean))];
         return finish({ state: misses.length ? 'misses' : 'clean', misses });
     }
