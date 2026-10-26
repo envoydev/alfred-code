@@ -372,6 +372,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const userAdds = [...args.add];
         // This run's own read-back could not see the stack's plugin rows (selection.readBack `blind`).
         let readBlind = false;
+        let installedBefore = null;
         if (args.installedOnly)
         {
             const raw = rawListing ?? readRaw();
@@ -410,6 +411,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             }
             leftOut = selection.leftOut({ parked: back.parked, deny: back.deny });
             readBlind = Boolean(back.blind);
+            installedBefore = back.lines;
             // A joined child follows its parent: what the parent holds minus what this project ignores, plus its own picks.
             if (wsPrep.parentLines && back.blind)
                 log("  !! workspace: this project's plugin listing could not be read - nothing inherited is added or dropped this run");
@@ -498,7 +500,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 });
                 // What a child's read-back checks before it trusts this set (workspace.js readPlan): which folder it is
                 // from, whether its listing was seen, the failures so far, and a settings file read as {} without a word.
-                Object.assign(inv, { root: workspace.realKey(projectRoot), blind: !hasClaude || readBlind, failures, unreadable: settings.unreadableSettings(claudeDir) });
+                // `before`, the set this run read back, is what workspace.js plan diffs the projection against.
+                Object.assign(inv, { root: workspace.realKey(projectRoot), blind: !hasClaude || readBlind, failures, unreadable: settings.unreadableSettings(claudeDir), before: installedBefore });
                 fs.writeFileSync(args.planOut, JSON.stringify(inv, null, 2) + '\n');
             }
             return 0;

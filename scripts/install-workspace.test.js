@@ -13,6 +13,9 @@ const wsLib = require('./install/workspace.js');
 const stampLib = require('./install/stamp.js');
 const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 
+const SEED = path.join(__dirname, 'install', 'alfred-code.js');
+const CLI = path.join(__dirname, 'workspace.js');
+
 const PLUGINS = JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true, scope: 'user' }]);
 const ROOT_SEL = 'skill javascript\nrule alfred-security\nrule alfred-navigation\n';
 const X = 'sqlite';   // outside the closure of the root's always rules (markdown-docs pulls markdown-style and docs-as-code)
@@ -65,6 +68,7 @@ function scenario(steps, { plugins = PLUGINS, prepare = () => {} } = {})
 {
     return seedRun(steps.map((s) => s.act || 'install'), '', {
         plugins,
+        seed: steps.map((s) => s.seed || SEED),
         cwds: steps.map((s) => path.join('ws', ...(s.at && s.at !== '.' ? s.at.split('/') : []))),
         env: steps.map((s) => s.env || {}),
         args: steps.map((s, i) => (repo, work) =>
@@ -80,6 +84,8 @@ function scenario(steps, { plugins = PLUGINS, prepare = () => {} } = {})
 }
 const update = (rel, extra = {}) => ({ at: rel, act: 'update', ...extra, args: (work) => ['--installed-only', ...(typeof extra.args === 'function' ? extra.args(work) : extra.args || [])] });
 const planStep = (file) => update('.', { args: (work) => ['--print-plan', '--plan-out', path.join(work, file)] });
+// A workspace.js verb run as a step: seedRun hands it --source <this tree>, and the verb ignores --selection.
+const cli = (verb, extra = {}) => ({ at: '.', seed: CLI, act: verb, ...extra, args: (work) => ['--root', '.', ...(typeof extra.args === 'function' ? extra.args(work) : extra.args || [])] });
 
 // Every file under `dir` with its size and sha256, a stamp read without its two run times.
 function treeHash(dir, skip = [])
@@ -437,4 +443,130 @@ test('a nested project with parent none still gets the root\'s excludes, and a c
         assert.ok(r.steps[i].want.length > 0);
         for (const g of r.steps[i].want) assert.ok(r.steps[i].got.includes(g), `run ${i}: no exclude for ${g}\n${r.outs[i]}`);
     }
+});
+
+// ------------------------------------------------------------------ the cascade (plan Task 12)
+
+const tree = (work, rel) => treeHash(path.join(at(work, rel), '.claude')) + treeHash(path.join(at(work, rel), '.alfred'));
+
+test('plan lists the tree top-down with projected add and drop', POSIX_ONLY, () =>
+{
+    const r = scenario([
+        { at: '.', after: (work) => { join(work, 'api'); join(work, 'web'); edit(work, 'web', (m) => wsLib.addIgnore(m, 'skill', X)); } },
+        { at: 'api' },
+        { at: 'web' },
+        update('api'),
+        update('web'),
+        update('.', { args: ['--add', `skill ${X}`] }),
+        cli('plan'),
+    ]);
+    const out = r.outs[6];
+    assert.match(out, /^workspace-plan: 3 projects$/m, out);
+    const row = (rel) => new RegExp(`^project: ${rel.replace('.', '\\.')}\\tscope=project\\tversion=(\\S+)->\\1\\tadd=([^\\t]+)\\tdrop=(\\S+)$`, 'm').exec(out);
+    assert.deepStrictEqual([row('.')?.[2], row('.')?.[3]], ['-', '-'], out);
+    assert.deepStrictEqual([row('api')?.[2], row('api')?.[3]], [`skill ${X}`, '-'], out);
+    assert.deepStrictEqual([row('web')?.[2], row('web')?.[3]], ['-', '-'], 'an ignored item is no projected add');
+    assert.ok(out.indexOf('project: .\t') < out.indexOf('project: api\t') && out.indexOf('project: api\t') < out.indexOf('project: web\t'), out);
+});
+
+test('cascade: a failed mid-level parent skips its subtree while the sibling updates (AC6)', POSIX_ONLY, () =>
+{
+    const r = scenario([
+        { at: '.', after: (work) => { join(work, 'api'); join(work, 'web'); } },
+        { at: 'api', after: (work) => join(work, 'api/tool', { parent: 'api' }) },
+        { at: 'api/tool' },
+        { at: 'web' },
+        update('api'),
+        update('api/tool'),
+        update('web'),
+        update('.', { args: ['--add', `skill ${X}`], after: (work) =>
+        {
+            fs.writeFileSync(path.join(at(work, 'api'), '.claude', 'settings.local.json'), '{ not json');
+            return tree(work, 'api/tool');
+        } }),
+        cli('cascade', { after: (work) => ({ tool: tree(work, 'api/tool'), toolX: hasSkill(work, 'api/tool', X), webX: hasSkill(work, 'web', X) }) }),
+    ]);
+    const out = r.outs[8];
+    assert.match(out, /^cascade: api\tfailed$/m, out);
+    assert.match(out, /^cascade: api\/tool\tskipped$/m, out);
+    assert.match(out, /^cascade: web\tupdated$/m, out);
+    assert.match(out, /^cascade: done 1 updated, 1 failed, 1 skipped$/m, out);
+    assert.strictEqual(r.steps[8].tool, r.steps[7], 'the skipped child kept every file');
+    assert.deepStrictEqual([r.steps[8].toolX, r.steps[8].webX], [false, true]);
+});
+
+test('cascade: a deleted child is gone and loses its line (AC6)', POSIX_ONLY, () =>
+{
+    const r = scenario([
+        { at: '.', after: (work) => { join(work, 'api'); join(work, 'web'); } },
+        { at: 'api' },
+        { at: 'web', after: (work) => fs.rmSync(at(work, 'web'), { recursive: true, force: true }) },
+        cli('cascade', { after: (work) => readOr(path.join(at(work), '.alfred', 'workspace')) }),
+    ]);
+    assert.match(r.outs[3], /^cascade: web\tgone$/m, r.outs[3]);
+    assert.match(r.outs[3], /^cascade: api\t(updated|unchanged)$/m, r.outs[3]);
+    assert.strictEqual(r.steps[3], 'child api\n');
+});
+
+test('cascade applies one project\'s answer and no other\'s', POSIX_ONLY, () =>
+{
+    // A store an earlier root left behind: the stamp names .old as the data root, and .old holds the secrets file.
+    const strand = (work, rel) =>
+    {
+        const dir = at(work, rel);
+        fs.mkdirSync(path.join(dir, '.old'), { recursive: true });
+        fs.renameSync(path.join(dir, '.alfred', '.secrets'), path.join(dir, '.old', '.secrets'));
+        const file = path.join(dir, '.claude', 'alfred-code.stamp');
+        fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^data-root: .*$/m, 'data-root: .old'));
+    };
+    const answers = (work) => path.join(work, 'answers.json');
+    const has = (work, rel, file) => fs.existsSync(path.join(at(work, rel), ...file.split('/')));
+    const r = scenario([
+        { at: '.', after: (work) => { join(work, 'api'); join(work, 'web'); } },
+        { at: 'api' },
+        { at: 'web' },
+        update('api'),
+        update('web', { after: (work) => { strand(work, 'api'); strand(work, 'web'); } }),
+        cli('plan'),
+        cli('cascade', {
+            before: (work) => fs.writeFileSync(answers(work), JSON.stringify({ web: ['--data-move', 'move'] })),
+            args: (work) => ['--answers', answers(work)],
+            after: (work) => ({ webMoved: has(work, 'web', '.alfred/.secrets') && !has(work, 'web', '.old/.secrets'), apiStray: has(work, 'api', '.old/.secrets') }),
+        }),
+    ]);
+    const offer = /^ {2}data-move: offer \.alfred\tfrom=\.old\/\.secrets$/;
+    const asksOf = (out, rel) => out.split(/^project: /m).find((b) => b.startsWith(`${rel}\t`)).split('\n').slice(1);
+    assert.ok(asksOf(r.outs[5], 'api').some((l) => offer.test(l)), r.outs[5]);
+    assert.ok(asksOf(r.outs[5], 'web').some((l) => offer.test(l)), r.outs[5]);
+    // api had no entry, so its run got no --data-move and its stray store stayed where it was.
+    assert.deepStrictEqual(r.steps[6], { webMoved: true, apiStray: true }, r.outs[6]);
+});
+
+test('a mid-level parent with an unknown workspace line still cascades', POSIX_ONLY, () =>
+{
+    const r = scenario([
+        { at: '.', after: (work) => join(work, 'api') },
+        { at: 'api', after: (work) => { join(work, 'api/tool', { parent: 'api' }); fs.appendFileSync(path.join(at(work, 'api'), '.alfred', 'workspace'), 'frobnicate x\n'); } },
+        { at: 'api/tool' },
+        update('api'),
+        update('api/tool'),
+        update('.', { args: ['--add', `skill ${X}`] }),
+        cli('cascade', { after: (work) => hasSkill(work, 'api/tool', X) }),
+    ]);
+    assert.match(r.outs[6], /^cascade: api\tupdated$/m, r.outs[6]);
+    assert.match(r.outs[6], /^cascade: api\/tool\tupdated$/m, r.outs[6]);
+    assert.strictEqual(r.steps[6], true);
+});
+
+test('--rescan lists a stamped project with no parent line (AC13)', POSIX_ONLY, () =>
+{
+    const r = scenario([
+        { at: '.', after: (work) => join(work, 'api') },
+        { at: 'api' },
+        { at: 'web' },
+        cli('plan', { args: ['--rescan'] }),
+    ]);
+    assert.match(r.outs[3], /^rescan: web$/m, r.outs[3]);
+    assert.doesNotMatch(r.outs[3], /^rescan: api$/m);
+    assert.match(r.outs[3], /^workspace-plan: 2 projects$/m, 'a rescan row is an offer, not a project of the cascade');
 });

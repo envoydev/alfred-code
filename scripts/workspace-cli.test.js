@@ -172,3 +172,127 @@ test('an unknown verb is bad input', () =>
     assert.strictEqual(r.code, 2);
     assert.match(r.out, /^!! workspace: /m);
 });
+
+test('answer merges, replaces and refuses', () =>
+{
+    const file = path.join(fs.mkdtempSync(path.join(TMP, 'ans-')), 'answers.json');
+    const ans = (...a) => cli('answer', '--file', file, ...a);
+    assert.strictEqual(ans('--project', '.', '--', '--data-move', 'keep').code, 0);
+    assert.strictEqual(ans('--project', 'api', '--', '--data-move', 'keep', '--instructions-file', 'agents').code, 0);
+    assert.strictEqual(ans('--project', 'api', '--', '--data-move', 'move', '--add', 'skill sqlite').code, 0);
+    assert.strictEqual(ans('--project', 'api', '--', '--add', 'rule alfred-docs').code, 0);
+    assert.strictEqual(ans('--project', 'api/tool', '--', '--docs-root-move', 'move', '--docs-root-leave', 'adr,notes').code, 0);
+    const want = {
+        '.': ['--data-move', 'keep'],
+        api: ['--data-move', 'move', '--instructions-file', 'agents', '--add', 'skill sqlite', '--add', 'rule alfred-docs'],
+        'api/tool': ['--docs-root-move', 'move', '--docs-root-leave', 'adr,notes'],
+    };
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf8')), want);
+    const before = fs.readFileSync(file, 'utf8');
+    for (const refused of [['--scope', 'user'], ['--data-move', 'maybe'], ['--docs-root-leave', 'a'], ['--add', 'colour blue'], ['--data-move'], []])
+    {
+        const r = ans('--project', 'api', '--', ...refused);
+        assert.strictEqual(r.code, 2, `${refused.join(' ')}: ${r.out}`);
+        assert.match(r.out, /^!! workspace: /m);
+        assert.strictEqual(fs.readFileSync(file, 'utf8'), before, refused.join(' '));
+    }
+    assert.strictEqual(ans('--project', '../out', '--', '--data-move', 'move').code, 2);
+    fs.writeFileSync(file, '{ not json');
+    assert.strictEqual(ans('--project', '.', '--', '--data-move', 'move').code, 2, 'an answers file that does not parse is refused, never replaced');
+    assert.strictEqual(fs.readFileSync(file, 'utf8'), '{ not json');
+});
+
+// A stand-in installer: a --print-plan run writes the folder's read-back, any other run touches .claude/runs and prints
+// `say`. Every call is logged as '<real cwd> <args>'.
+function fakeSource(say = '')
+{
+    const src = fs.mkdtempSync(path.join(TMP, 'src-'));
+    fs.mkdirSync(path.join(src, 'scripts', 'install'), { recursive: true });
+    fs.mkdirSync(path.join(src, 'setup-plugin', '.claude-plugin'), { recursive: true });
+    fs.writeFileSync(path.join(src, 'setup-plugin', '.claude-plugin', 'plugin.json'), '{ "version": "9.9.9" }\n');
+    fs.writeFileSync(path.join(src, 'scripts', 'install', 'alfred-code.js'), [
+        "const fs = require('node:fs');",
+        "const path = require('node:path');",
+        `const ws = require(${JSON.stringify(path.join(__dirname, 'install', 'workspace.js'))});`,
+        'const a = process.argv.slice(2);',
+        `fs.appendFileSync(${JSON.stringify(path.join(src, 'runs.log'))}, fs.realpathSync.native(process.cwd()) + ' ' + a.join(' ') + '\\n');`,
+        "if (a.includes('--print-plan'))",
+        '{',
+        "    fs.writeFileSync(a[a.indexOf('--plan-out') + 1], JSON.stringify({ root: ws.realKey(process.cwd()), skills: ['javascript'], before: ['skill javascript'], failures: 0, unreadable: [], blind: false }));",
+        '    process.exit(0);',
+        '}',
+        "fs.appendFileSync(path.join(process.cwd(), '.claude', 'runs'), 'x');",
+        `process.stdout.write(${JSON.stringify(say)});`,
+        '',
+    ].join('\n'));
+    const runs = () => { try { return fs.readFileSync(path.join(src, 'runs.log'), 'utf8').split('\n').filter(Boolean); } catch { return []; } };
+    return { src, runs };
+}
+const cascadeTree = () => tree({
+    ws: { stamp: true, file: 'child api\nchild web\n' },
+    'ws/api': { stamp: true, git: true, file: 'parent ..\nchild tool\n' },
+    'ws/api/tool': { stamp: true, git: true, file: 'parent ..\n' },
+    'ws/web': { stamp: true, git: true, file: 'parent ..\n' },
+});
+
+test('cascade reads each parent back once, after its own run, and passes it to the children', () =>
+{
+    const at = cascadeTree();
+    const { src, runs } = fakeSource('==> done\n');
+    const r = cli('cascade', '--root', at('ws'), '--source', src);
+    assert.strictEqual(r.code, 0, r.out);
+    assert.strictEqual(r.out, 'cascade: api\tupdated\ncascade: api/tool\tupdated\ncascade: web\tupdated\ncascade: done 3 updated, 0 failed, 0 skipped\n');
+    const calls = runs().map((l) => [l.split(' ')[0], l.includes('--print-plan') ? 'plan' : 'run']);
+    assert.deepStrictEqual(calls, [[at('ws'), 'plan'], [at('ws/api'), 'run'], [at('ws/api'), 'plan'], [at('ws/api/tool'), 'run'], [at('ws/web'), 'run']]);
+    for (const l of runs().filter((x) => !x.includes('--print-plan')))
+        assert.match(l, / update --source \S+ --scope project --installed-only --keep-pins --parent-plan \S+$/, l);
+});
+
+test('cascade marks a run failed on its summary line even though it exits 0', () =>
+{
+    const at = cascadeTree();
+    const { src, runs } = fakeSource('==>   !! settings.local.json is not valid JSON - left as it is\n==>   1 step(s) reported a failure above - the rest of the run completed\n');
+    const r = cli('cascade', '--root', at('ws'), '--source', src);
+    assert.strictEqual(r.code, 0, r.out);
+    assert.match(r.out, /^cascade: api\tfailed\n  !! settings\.local\.json is not valid JSON - left as it is\ncascade: api\/tool\tskipped\ncascade: web\tfailed\n/, r.out);
+    assert.match(r.out, /^cascade: done 0 updated, 2 failed, 1 skipped$/m);
+    assert.ok(!runs().some((l) => l.startsWith(`${at('ws/api/tool')} `)), 'the skipped child never ran');
+    const bare = fakeSource('  1 step(s) reported a failure above - the rest of the run completed\n');
+    assert.match(cli('cascade', '--root', at('ws'), '--source', bare.src).out, /^cascade: web\tfailed$/m, 'the summary line without the log prefix counts too');
+});
+
+test('cascade skips a listed child whose own parent line does not point back', () =>
+{
+    const at = cascadeTree();
+    fs.writeFileSync(path.join(at('ws/web'), '.alfred', 'workspace'), 'parent none\n');
+    const { src, runs } = fakeSource();
+    const r = cli('cascade', '--root', at('ws'), '--source', src);
+    assert.match(r.out, /^!! cascade: web does not name \. as its parent - skipped; join it again or run workspace\.js unregister there\ncascade: web\tskipped$/m, r.out);
+    assert.ok(!runs().some((l) => l.startsWith(`${at('ws/web')} `)));
+    assert.strictEqual(fs.readFileSync(path.join(at('ws/web'), '.alfred', 'workspace'), 'utf8'), 'parent none\n');
+    assert.ok(!fs.existsSync(path.join(at('ws/web'), '.claude', 'runs')));
+    assert.match(r.out, /^cascade: done 2 updated, 0 failed, 1 skipped$/m);
+});
+
+test('cascade refuses an answers entry outside the allow-list before that project runs', () =>
+{
+    const at = cascadeTree();
+    const answers = path.join(fs.mkdtempSync(path.join(TMP, 'ans-')), 'answers.json');
+    fs.writeFileSync(answers, JSON.stringify({ web: ['--scope', 'user'], api: ['--data-move', 'keep'] }));
+    const { src, runs } = fakeSource();
+    const r = cli('cascade', '--root', at('ws'), '--source', src, '--answers', answers);
+    assert.match(r.out, /^!! cascade: the answers for web hold --scope - not an answer the cascade passes; skipped\ncascade: web\tskipped$/m, r.out);
+    assert.ok(runs().some((l) => l.startsWith(`${at('ws/api')} `) && l.endsWith(' --data-move keep')));
+    assert.ok(!runs().some((l) => l.startsWith(`${at('ws/web')} `)));
+    fs.writeFileSync(answers, '[1, 2]');
+    assert.strictEqual(cli('cascade', '--root', at('ws'), '--source', src, '--answers', answers).code, 2);
+});
+
+test('cascade with ALFRED_CODE_WORKSPACE=0 runs nothing', () =>
+{
+    const at = cascadeTree();
+    const { src, runs } = fakeSource();
+    const r = spawnSync(process.execPath, [CLI, 'cascade', '--root', at('ws'), '--source', src], { encoding: 'utf8', env: { ...ENV, ALFRED_CODE_WORKSPACE: '0' } });
+    assert.strictEqual(r.stdout, 'cascade: off - ALFRED_CODE_WORKSPACE is 0\n');
+    assert.deepStrictEqual(runs(), []);
+});

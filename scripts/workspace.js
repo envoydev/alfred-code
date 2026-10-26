@@ -10,23 +10,32 @@
 //   children    the direct children, `ok` or `gone`, for uninstall
 //   status      the parent, the own, ignored and inherited lines, and the last load check
 //   account-instructions  D5's account key: check, apply, decline or remove
+//   plan        update's cascade, before it runs: each project's row, projected add and drop, and its own asks
+//   answer      one project's answers to those asks, merged into the answers file the cascade reads
+//   cascade     the update itself, every child top-down from its parent's read-back - a failed parent skips its subtree
 //
 // Exit 0 on success, 2 with a `!!` line on bad input, 3 when the parent's file is locked, 1 when a write failed.
 
+const crypto = require('node:crypto');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const ws = require('./install/workspace.js');
 const stamp = require('./install/stamp.js');
 const rt = require('./install/runtime.js');
+const { parseArgs } = require('./install/args.js');
+const { BRAND } = require('./install/brand.js');
 const { checkDataPath } = require('../stack/mcp/data-root.js');
 
+// This CLI's own flags stop at `--`; what follows is `answer`'s installer arguments.
+const own = process.argv.indexOf('--') < 0 ? process.argv : process.argv.slice(0, process.argv.indexOf('--'));
 function arg(name, fallback)
 {
-    const i = process.argv.indexOf(name);
-    return i >= 0 ? process.argv[i + 1] : fallback;
+    const i = own.indexOf(name);
+    return i >= 0 ? own[i + 1] : fallback;
 }
-const args = (name) => process.argv.flatMap((a, i) => (a === name && i + 1 < process.argv.length ? [process.argv[i + 1]] : []));
-const has = (name) => process.argv.includes(name);
+const args = (name) => own.flatMap((a, i) => (a === name && i + 1 < own.length ? [own[i + 1]] : []));
+const has = (name) => own.includes(name);
 
 class Exit extends Error
 {
@@ -235,7 +244,261 @@ function accountInstructions(out)
     out(r.removed ? 'instructions-both: removed' : `instructions-both: not removed - ${r.why}`);
 }
 
-const VERBS = { parent: parentVerb, register: (out) => register(out), unregister, join, ignore, children, status, 'account-instructions': accountInstructions };
+// ------------------------------------------------------------------ the cascade
+
+function sourceArg()
+{
+    const source = arg('--source');
+    if (!source) throw bad('--source <repo> is required');
+    if (!fs.existsSync(path.join(source, 'scripts', 'install', 'alfred-code.js'))) throw bad(`--source ${source} holds no scripts/install/alfred-code.js`);
+    return path.resolve(source);
+}
+
+const csv = (lines) => (lines.length ? lines.join(',') : '-');
+const installer = (source) => path.join(source, 'scripts', 'install', 'alfred-code.js');
+
+// A project's read-back through the installer's own --print-plan, from `parentPlan` when it is a child: { file, plan }
+// or { why } - Task 9's checks (failures, an unreadable settings file, a blind listing) included.
+function readBack(root, source, file, parentPlan)
+{
+    const r = rt.spawnCommand(process.execPath, [installer(source), 'update', '--source', source, '--scope', stamp.installScope(root), '--installed-only',
+        '--print-plan', '--plan-out', file, ...(parentPlan ? ['--parent-plan', parentPlan] : [])], { cwd: root, encoding: 'utf8', stdio: 'pipe', timeout: 120000 });
+    if (r.error || r.status !== 0) return { why: r.error ? r.error.message : `the read-back exited ${r.status}` };
+    const read = ws.readPlan(file);
+    return read.plan ? { file, plan: read.plan } : { why: read.why };
+}
+
+const ASK = [/^data-move: offer /, /^docs-move: offer /, /^instructions-file: .*\bupdate=ask/, /^instructions-both: ask$/, /^workspace: join /];
+
+// The project's own asks, as update-preflight prints them for it.
+function asksOf(root)
+{
+    const r = rt.spawnCommand(process.execPath, [path.join(__dirname, 'update-preflight.js'), '--asks', '--root', root], { cwd: root, encoding: 'utf8', stdio: 'pipe', timeout: 60000 });
+    return String(r.stdout || '').split('\n').filter((l) => ASK.some((re) => re.test(l)));
+}
+
+function planVerb(out)
+{
+    const top = rootArg();
+    const source = sourceArg();
+    let snapshot = '?';
+    try { snapshot = JSON.parse(fs.readFileSync(path.join(source, 'setup-plugin', '.claude-plugin', 'plugin.json'), 'utf8')).version || '?'; }
+    catch { /* a snapshot with no plugin.json names no version */ }
+    const rows = ws.subtree(top, { env });
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'workspace-plan-'));
+    try
+    {
+        out(`workspace-plan: ${rows.filter((r) => r.state === 'ok').length} projects`);
+        const plans = new Map();
+        for (const [i, row] of rows.entries())
+        {
+            if (row.state !== 'ok') continue;
+            const version = stamp.readVersion(stamp.stampFiles({ projectRoot: row.root }).read) || '?';
+            const parentPlan = row.parentRel === null ? null : plans.get(row.parentRel);
+            let add = '?';
+            let drop = '?';
+            let why = row.parentRel !== null && !parentPlan ? `no projection - ${row.parentRel} could not be read` : null;
+            if (!why)
+            {
+                const got = readBack(row.root, source, path.join(tmp, `${i}.json`), parentPlan);
+                if (got.plan)
+                {
+                    plans.set(row.rel, got.file);
+                    const after = ws.planLines(got.plan);
+                    const before = Array.isArray(got.plan.before) ? got.plan.before : after;
+                    add = csv(after.filter((l) => !before.includes(l)));
+                    drop = csv(before.filter((l) => !after.includes(l)));
+                }
+                else why = `no projection - ${got.why}`;
+            }
+            out(`project: ${row.rel}\tscope=${stamp.installScope(row.root)}\tversion=${version}->${snapshot}\tadd=${add}\tdrop=${drop}`);
+            if (why) out(`  !! ${why}`);
+            for (const l of asksOf(row.root)) out(`  ${l}`);
+        }
+        for (const row of rows.filter((r) => r.state === 'gone')) out(`gone: ${row.rel}`);
+        if (has('--rescan')) for (const rel of ws.rescan(top, { env })) out(`rescan: ${rel}`);
+    }
+    finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+}
+
+// Each ask line plan prints, and the installer flag that answers it.
+const ANSWER_FLAGS = ['--data-move', '--docs-root-move', '--docs-root-leave', '--instructions-file', '--instructions-at', '--add'];
+const projectRel = (rel) => rel === '.' || (/^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/.test(rel) && rel.split('/').every((p) => p !== '.' && p !== '..'));
+
+// [flag, value, ...] checked as the installer checks it; the line that refuses it, or null.
+function answersRefused(list)
+{
+    if (!Array.isArray(list) || list.length % 2 || list.some((v) => typeof v !== 'string')) return 'is not <flag> <value> pairs';
+    for (let i = 0; i < list.length; i += 2) if (!ANSWER_FLAGS.includes(list[i])) return `hold ${list[i]} - not an answer the cascade passes`;
+    // As the cascade passes them: after --installed-only, which an --add needs.
+    try { parseArgs(['update', '--installed-only', ...list]); }
+    catch (e) { if (e.usage) return e.message; throw e; }
+    return null;
+}
+
+function readAnswers(file, { absentOk })
+{
+    let text;
+    try { text = fs.readFileSync(file, 'utf8'); }
+    catch (e) { if (absentOk && e.code === 'ENOENT') return {}; throw bad(`the answers file ${file} could not be read`); }
+    let data;
+    try { data = JSON.parse(text); }
+    catch { throw bad(`the answers file ${file} does not parse - left as it is`); }
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw bad(`the answers file ${file} is not a { "<project>": [...] } map - left as it is`);
+    return data;
+}
+
+function answer(out)
+{
+    const file = arg('--file');
+    const rel = arg('--project');
+    if (!file || !rel) throw bad('answer takes --file <json> --project <rel> -- <flag> <value>...');
+    if (!projectRel(rel)) throw bad(`--project ${rel} is not a path inside the top project`);
+    const at = process.argv.indexOf('--');
+    const given = at < 0 ? [] : process.argv.slice(at + 1);
+    if (!given.length) throw bad('answer takes at least one <flag> <value> after --');
+    const refusedGiven = answersRefused(given);
+    if (refusedGiven) throw bad(`the answer ${refusedGiven}`);
+    const data = readAnswers(file, { absentOk: true });
+    const merged = Array.isArray(data[rel]) ? [...data[rel]] : [];
+    for (let i = 0; i < given.length; i += 2)
+    {
+        const [flag, value] = [given[i], given[i + 1]];
+        // Each --add is its own item; any other flag holds one value, the newest.
+        const held = flag === '--add' ? merged.findIndex((v, j) => j % 2 === 0 && v === flag && merged[j + 1] === value) : merged.findIndex((v, j) => j % 2 === 0 && v === flag);
+        if (held < 0) merged.push(flag, value);
+        else merged[held + 1] = value;
+    }
+    const refused = answersRefused(merged);
+    if (refused) throw bad(`the answers for ${rel} would ${refused} - the file is left as it was`);
+    data[rel] = merged;
+    const tmp = `${file}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`);
+    fs.renameSync(tmp, file);
+    out(`answer: ${rel} ${merged.join(' ')}`);
+}
+
+// What a run changed: every file under .claude/ and the workspace file, by path, size and sha256 - the stamp read
+// without its two run times, which every run rewrites.
+function treeHash(root)
+{
+    const rows = [];
+    const add = (file, label) =>
+    {
+        let body;
+        try { body = fs.readFileSync(file); }
+        catch { return; }
+        if (path.basename(file) === BRAND.stamp) body = Buffer.from(String(body).replace(/^installed(?:-ms)?:.*$/gm, ''));
+        rows.push(`${label} ${body.length} ${crypto.createHash('sha256').update(body).digest('hex')}`);
+    };
+    const walk = (dir, rel) =>
+    {
+        let entries;
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
+        catch { return; }
+        for (const e of entries.sort((a, b) => a.name.localeCompare(b.name)))
+        {
+            const p = path.join(dir, e.name);
+            if (e.isDirectory() && !e.isSymbolicLink()) walk(p, `${rel}/${e.name}`);
+            else add(p, `${rel}/${e.name}`);
+        }
+    };
+    walk(path.join(root, '.claude'), '.claude');
+    const own = ws.readWorkspace(root, { env }).file;
+    if (own) add(own, 'workspace');
+    return rows.join('\n');
+}
+
+const FAILED_LINE = /^(?:==>)?\s*\d+ step\(s\) reported a failure above/m;
+
+function cascade(out)
+{
+    const top = rootArg();
+    const source = sourceArg();
+    const file = arg('--answers');
+    const answers = file ? readAnswers(file, { absentOk: false }) : {};
+    if (!ws.workspaceOn({ env, projectRoot: top }))
+    {
+        out('cascade: off - ALFRED_CODE_WORKSPACE is 0');
+        return;
+    }
+    const rows = ws.subtree(top, { env });
+    const byRel = new Map(rows.map((r) => [r.rel, r]));
+    const hasChildren = new Set(rows.map((r) => r.parentRel).filter((r) => r !== null));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'workspace-cascade-'));
+    const plans = new Map();
+    const blocked = new Set();
+    const count = { updated: 0, failed: 0, skipped: 0 };
+    const row = (rel, state) => { out(`cascade: ${rel}\t${state}`); if (state in count) count[state] += 1; };
+    try
+    {
+        // The top project ran before the cascade (update's own run): its read-back is taken once, here.
+        const topBack = readBack(top, source, path.join(tmp, '0.json'), null);
+        if (topBack.plan) plans.set('.', topBack.file);
+        else
+        {
+            out(`!! cascade: the read-back of . failed (${topBack.why}) - every child is skipped`);
+            blocked.add('.');
+        }
+        for (const [i, r] of rows.entries())
+        {
+            if (r.depth === 0) continue;
+            if (blocked.has(r.parentRel)) { blocked.add(r.rel); row(r.rel, 'skipped'); continue; }
+            const parent = byRel.get(r.parentRel);
+            if (r.state === 'gone')
+            {
+                const line = r.parentRel === '.' ? r.rel : r.rel.slice(r.parentRel.length + 1);
+                ws.writeWorkspace(parent.root, (m) => ws.removeChild(m, line), { env: r.parentRel === '.' ? env : ws.ancestorEnv(env) });
+                row(r.rel, 'gone');
+                continue;
+            }
+            const first = ws.chain(r.root, { env: ws.ancestorEnv(env), maxDepth: 1 }).members[0];
+            if (!first || ws.realKey(first.root) !== ws.realKey(parent.root))
+            {
+                out(`!! cascade: ${r.rel} does not name ${r.parentRel} as its parent - skipped; join it again or run workspace.js unregister there`);
+                blocked.add(r.rel);
+                row(r.rel, 'skipped');
+                continue;
+            }
+            const given = answers[r.rel] === undefined ? [] : answers[r.rel];
+            const refused = answersRefused(given);
+            if (refused)
+            {
+                out(`!! cascade: the answers for ${r.rel} ${refused}; skipped`);
+                blocked.add(r.rel);
+                row(r.rel, 'skipped');
+                continue;
+            }
+            const before = treeHash(r.root);
+            const run = rt.spawnCommand(process.execPath, [installer(source), 'update', '--source', source, '--scope', stamp.installScope(r.root), '--installed-only', '--keep-pins',
+                '--parent-plan', plans.get(r.parentRel), ...given], { cwd: r.root, encoding: 'utf8', stdio: 'pipe', timeout: 600000 });
+            const said = String(run.stdout || '');
+            let failed = Boolean(run.error) || run.status !== 0 || FAILED_LINE.test(said);
+            let why = [];
+            if (failed) why = said.split('\n').filter((l) => /^==>\s+!! /.test(l)).map((l) => `  ${l.replace(/^==>\s+/, '')}`);
+            if (run.error) why.push(`  !! ${run.error.message}`);
+            else if (run.status !== 0) why.push(`  !! the run exited ${run.status}`);
+            if (!failed && hasChildren.has(r.rel))
+            {
+                const back = readBack(r.root, source, path.join(tmp, `${i}.json`), plans.get(r.parentRel));
+                if (back.plan) plans.set(r.rel, back.file);
+                else { failed = true; why = [`  !! the read-back after the run failed (${back.why})`]; }
+            }
+            if (failed)
+            {
+                blocked.add(r.rel);
+                row(r.rel, 'failed');
+                for (const l of why.slice(0, 5)) out(l);
+                continue;
+            }
+            row(r.rel, treeHash(r.root) === before ? 'unchanged' : 'updated');
+        }
+    }
+    finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+    out(`cascade: done ${count.updated} updated, ${count.failed} failed, ${count.skipped} skipped`);
+}
+
+const VERBS = { parent: parentVerb, register: (out) => register(out), unregister, join, ignore, children, status, 'account-instructions': accountInstructions, plan: planVerb, answer, cascade };
 
 function main()
 {

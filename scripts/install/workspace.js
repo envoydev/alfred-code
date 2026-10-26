@@ -391,6 +391,23 @@ function joinVerdict(projectRoot, { env = process.env, exec = runtime.execComman
     return { parent, ok: true };
 }
 
+// update's join ask (spec 3): `workspace: join <rel>` for a checkout below an installed folder whose file names no parent
+// yet, `\trejoin` once its parent line stands but the parent no longer lists it (hop rule 4 alone - AC18's recovery, the
+// consent left with the person). Null otherwise, and with the switch off.
+function joinLine(projectRoot, { env = process.env, exec = runtime.execCommand } = {})
+{
+    if (!workspaceOn({ env, projectRoot })) return null;
+    const v = joinVerdict(projectRoot, { env, exec });
+    if (!v.ok) return null;
+    const view = readWorkspace(projectRoot, { env }).view;
+    if (view.parentNone) return null;
+    if (!view.parent) return `workspace: join ${v.parent.rel}`;
+    const linked = chain(projectRoot, { env, maxDepth: 1 });
+    if (linked.members.length) return null;
+    if (realKey(path.resolve(realOf(projectRoot), ...view.parent.split('/'))) !== realKey(v.parent.root)) return null;
+    return linked.notes.some((n) => n.endsWith('does not list this folder as a child')) ? `workspace: join ${v.parent.rel}\trejoin` : null;
+}
+
 // The project's ancestors through its `parent` lines, nearest first. A hop counts only to a real strict ancestor that
 // holds a stamp and whose own file lists this folder as `child` (the N1 rule): project text alone can never pull an
 // unrelated folder - or its secrets - into the chain. The first refused hop ends it with one `!!` note, returned for
@@ -960,7 +977,7 @@ module.exports = {
     CATEGORIES, workspaceOn, parseWorkspace, renderWorkspace, viewOf,
     setParent, addChild, removeChild, addIgnore, removeIgnore,
     ancestorEnv, workspacePath, readWorkspace, writeWorkspace, moveWorkspace,
-    realKey, findParent, sameRepo, isCheckout, joinVerdict, chain, subtree, rescan,
+    realKey, findParent, sameRepo, isCheckout, joinVerdict, joinLine, chain, subtree, rescan,
     planLines, effectiveLists, delta, ownPicksAfter, childEnv, stampedAncestors, ancestorExcludes, excludeGlobs,
     readPlan, prepare, listLines, envStep, workspaceStep,
     INSTRUCTION_KEY, accountPaths, claudeMdAbove, accountStamps, instructionsBothState, instructionsBothLine, applyAccountInstructions, removeAccountInstructions, lastHolder,

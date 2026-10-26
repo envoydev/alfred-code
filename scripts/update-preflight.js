@@ -42,6 +42,8 @@
 //                                           answer, a CLAUDE.local.md, and what the update does - seeds.js
 //                                           instructionsFileLine; a project install only)
 //   env-keys: <comma-separated key names>   (or 'env-keys: none')
+//   workspace: join <rel>[\trejoin]          (a checkout below an installed folder it has not joined, or whose parent
+//                                           no longer lists it - workspace.js joinLine; a project install only)
 //   unattended: on                          (only with ALFRED_CODE_UNATTENDED=1)
 //
 // Exit codes are stamp-compare's, passed through so the caller's branching is unchanged:
@@ -52,6 +54,9 @@
 // asks, a project install only):
 //   instructions: none | <claude|root|split> <file> ...   (the AGENTS.md / CLAUDE.md files at the root and in .claude/)
 //   instructions-file: ...                  (the full read's line above)
+//
+// `--asks` prints the per-project ask lines alone (data-move, docs-move, instructions-file, instructions-both, workspace
+// join - no --snapshot, no compare): the workspace cascade's plan, one call per project.
 //
 // `--log <installer-log>` is a SEPARATE post-install mode (no --snapshot needed): it reads the
 // installer's own log - the command already captures it via the fixed `tee "$TMP/install.log"`
@@ -544,9 +549,9 @@ function main()
 
     const snapshot = arg('--snapshot');
     const offerOnly = process.argv.includes('--offers');
-    if (!snapshot && !offerOnly)
+    if (!snapshot && !offerOnly && !process.argv.includes('--asks'))
     {
-        console.error('usage: update-preflight.js --snapshot <extracted-repo-dir> [--stamp <stamp-file>] [--root <install root>] [--settings <settings.json>] [--config-dir <account dir>] [--repo <owner/name>] [--fixture <compare.json>] [--listing <plugin-list.json>] [--marketplace <name>]\n       update-preflight.js --offers [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --log <installer-log> [--hooks <n>] [--running <the session\'s plugin root>] [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --respell [--apply] [--root <install root>]\n       update-preflight.js --inventory <installed.json>');
+        console.error('usage: update-preflight.js --snapshot <extracted-repo-dir> [--stamp <stamp-file>] [--root <install root>] [--settings <settings.json>] [--config-dir <account dir>] [--repo <owner/name>] [--fixture <compare.json>] [--listing <plugin-list.json>] [--marketplace <name>]\n       update-preflight.js --offers [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --asks [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --log <installer-log> [--hooks <n>] [--running <the session\'s plugin root>] [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --respell [--apply] [--root <install root>]\n       update-preflight.js --inventory <installed.json>');
         process.exit(1);
     }
     const root = arg('--root', '.');
@@ -566,6 +571,22 @@ function main()
     const stampScope = readStampScope(stampFile);
     const settingsFile = arg('--settings', accountDir ? path.join(claudeDir, 'settings.json') : settingsLib.settingsTarget(claudeDir, stampScope === 'local' ? 'local' : 'project'));
     const layered = arg('--settings') || accountDir ? null : settingsLib.readBackSettings(claudeDir, 'local');
+    // The workspace cascade's per-project asks (workspace.js plan), one child at a time - no compare, no network: the
+    // release-added items are the root's one ask, which the children inherit.
+    if (process.argv.includes('--asks'))
+    {
+        if (accountDir) return;
+        const ws = require('./install/workspace.js');
+        const seeds = require('./install/seeds.js');
+        console.log(dataMoveLine({ root, claudeDir, stampFile, stampScope }));
+        console.log(docsMoveLine({ root, claudeDir, stampFile }));
+        console.log(seeds.instructionsFileLine(path.resolve(root), require('./install/stamp.js').readInstructionsAnswer(stampFile)));
+        const both = ws.instructionsBothLine(ws.instructionsBothState({ projectRoot: path.resolve(root), env: process.env, ...ws.accountPaths(process.env) }));
+        if (both) console.log(both);
+        const join = fs.existsSync(stampFile) ? ws.joinLine(path.resolve(root), { env: process.env }) : null;
+        if (join) console.log(join);
+        return;
+    }
     // configure reads the two offers alone - no compare, no network.
     if (offerOnly)
     {
@@ -631,6 +652,8 @@ function main()
         const ws = require('./install/workspace.js');
         const both = ws.instructionsBothLine(ws.instructionsBothState({ projectRoot: path.resolve(root), env: process.env, ...ws.accountPaths(process.env) }));
         if (both) console.log(both);
+        const join = fs.existsSync(stampFile) ? ws.joinLine(path.resolve(root), { env: process.env }) : null;
+        if (join) console.log(join);
     }
 
     const keys = settings && settings.env ? Object.keys(settings.env).sort() : [];

@@ -887,3 +887,62 @@ test('update-preflight prints instructions-both: ask in a child', () =>
     assert.doesNotMatch(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile], env).out, /instructions-both/, 'a standalone project is never asked');
 });
 
+
+// The join ask (AC13, AC18, AC27): a nested standalone checkout is offered the join, `parent none` ends the offer, and a
+// child whose back-reference was deleted by hand is offered the rejoin.
+function nestedPreflight({ parentLine = null, childLine = null } = {})
+{
+    const { snap, install, fixtureFile } = scaffold();
+    const parent = path.dirname(install);
+    fs.mkdirSync(path.join(parent, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(parent, '.claude', 'alfred-code.stamp'), 'sha: aaa111\nversion: 0.2.60\n');
+    execFileSync('git', ['init', '-q', install]);
+    for (const [dir, line] of [[parent, parentLine], [install, childLine]])
+    {
+        if (line === null) continue;
+        fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
+        fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), line);
+    }
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(parent, 'acct') };
+    delete env.ALFRED_CODE_UNATTENDED;
+    delete env.ALFRED_CODE_WORKSPACE;
+    const full = (extra = {}) => run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile], { ...env, ...extra }).out;
+    const asks = (extra = {}) => run(['--asks', '--root', install], { ...env, ...extra }).out;
+    return { install, parent, env, full, asks };
+}
+
+test('update-preflight prints workspace: join only for a nested standalone project, and nothing after parent none', () =>
+{
+    const p = nestedPreflight();
+    assert.match(p.full(), /^workspace: join \.\.$/m);
+    assert.match(p.asks(), /^workspace: join \.\.$/m);
+    const unattended = p.full({ ALFRED_CODE_UNATTENDED: '1' });
+    assert.ok(unattended.indexOf('workspace: join') < unattended.indexOf('unattended: on'), unattended);
+    assert.doesNotMatch(p.full({ ALFRED_CODE_WORKSPACE: '0' }), /^workspace:/m, 'the kill switch asks nothing');
+    fs.mkdirSync(path.join(p.install, '.alfred'), { recursive: true });
+    fs.writeFileSync(path.join(p.install, '.alfred', 'workspace'), 'parent none\n');
+    assert.doesNotMatch(p.full(), /^workspace:/m);
+    assert.doesNotMatch(p.asks(), /^workspace:/m);
+    const joined = nestedPreflight({ parentLine: 'child project\n', childLine: 'parent ..\n' });
+    assert.doesNotMatch(joined.full(), /^workspace:/m, 'a joined child is asked nothing');
+});
+
+test('update-preflight prints no workspace line in a project with nothing installed above it', () =>
+{
+    const { snap, install, fixtureFile } = scaffold();
+    execFileSync('git', ['init', '-q', install]);
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(path.dirname(install), 'acct') };
+    delete env.ALFRED_CODE_WORKSPACE;
+    assert.doesNotMatch(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile], env).out, /^workspace:/m);
+    assert.doesNotMatch(run(['--asks', '--root', install], env).out, /^workspace:/m);
+});
+
+test('a child whose child line was deleted by hand gets workspace: join .. rejoin, and join --answer join brings the line back', () =>
+{
+    const p = nestedPreflight({ parentLine: '', childLine: 'parent ..\n' });
+    assert.match(p.full(), /^workspace: join \.\.\trejoin$/m);
+    const joined = execFileSync('node', [path.join(__dirname, 'workspace.js'), 'join', '--root', p.install, '--answer', 'join'], { encoding: 'utf8', env: p.env });
+    assert.match(joined, /join: join\n$/);
+    assert.strictEqual(fs.readFileSync(path.join(p.parent, '.alfred', 'workspace'), 'utf8'), 'child project\n');
+    assert.doesNotMatch(p.full(), /^workspace:/m);
+});
