@@ -111,6 +111,15 @@ The stores and what each holds, where the docs root and the data root live, and 
   move stays as `data-pending: sensitive <from> -> <to>` for the next run; a `data-pending:` line an earlier release
   wrote for a server's launcher is dropped, the data left where it is. The stamp's `data-root:` line is the next run's
   baseline, so a root changed by hand is still found.
+- **The workspace file and the load check live in the data root** (workspace layering, release 1, 2026-10-26):
+  `<data root>/workspace` holds the project's `parent <rel>` / `parent none`, `child <rel>` and `ignore <category>
+  <name>` lines (`install/workspace.js readWorkspace` / `writeWorkspace`, through a lock beside it). It moves with the
+  root on every run that changes it, on or off (`workspace.moveWorkspace` - `planDataMove` carries only the store), a parent's file is read under the parent's own root, and an ancestor's
+  is read with an env that keeps only the account (`ancestorEnv`), so this project's `ALFRED_CODE_DATA_PATH` never
+  points into a parent. `workspace.js check-loads` writes its last result, whatever the state, to `<data root>/state/
+  workspace-check.json`, which `status` reads. Both stay out of git through the root's `/*`. Uninstall takes out the
+  `parent` and `child` lines on both sides (`leaveParent`, `releaseChildren`) and leaves the rest of the file, as it
+  leaves the data root.
 - **Two stores, split by durability** (hard rule). The committed architecture docs
   (`<docs-path>/architecture/ARCHITECTURE.md` + `references/`, owned by
   `capture-architecture`) are the DURABLE truth every seat reads to orient, refreshed

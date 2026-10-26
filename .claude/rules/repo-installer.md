@@ -200,6 +200,37 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   its content did not change, and otherwise keeps its BOM, line ending, indent and key order and every top-level key
   besides `mcpServers` (`mcp.keepMcpOrder`, re-verify 4 T4). `scripts/install-mcp-retire.test.js` pins it.
 
+- **Workspace layering (release 1, 2026-10-26, unreleased).** A project installed inside an installed folder can join it as a CHILD: it takes the parent's set and
+  env, adds its own picks and can ignore any inherited item. The record is `<data root>/workspace` (`repo-memory-data.md`)
+  - `parent <rel>` here and `child <rel>` in the parent; a parent counts only while its `child` line points back (hop
+  rule N1, `install/workspace.js chain`), and the walk stops at depth 8. The installer touches it at TWO points:
+  `workspace.prepare` before the run reads its own set (the parent's lines from `--parent-plan`, or from the parent's own
+  `update --installed-only --print-plan`; any doubt - a failed or blind read-back, a plan from another folder - leaves
+  `parentLines` null, so nothing inherited is added or dropped) with `envStep` seeding and forcing the parent's env
+  (`childEnv`: never the data root, the docs mode or a `seed: false` row), and `workspaceStep` after the settings pass -
+  the `claudeMdExcludes` rows for every stamped folder above (linked or not) in `settings.local.json`, ledgered as array
+  members, and the stamp's `own-picks:` / `own-env:` lines that tell a child's own from what it inherits. A child's
+  `--drop` of a line its parent holds writes that `ignore` line and an `--add` of an ignored one lifts it
+  (`recordWord`, never on `--print-plan`), so validate and a hand-run update stick; an install with `--parent-plan`
+  adds the parent's set minus the ignores itself, whatever rows the walk's selection kept. It never
+  writes a `child` line into a parent: only `workspace.js register` / `join` do, the back-reference being the consent.
+  `scripts/workspace.js` is the one CLI the bodies call (`parent`, `register`, `join`, `ignore`, `children`, `status`,
+  `account-instructions`, `plan`, `answer`, `cascade`, `check-loads`): init reads `references/init-child.md` only on
+  `child=yes`, update's step 2 reads `references/update-workspace.md` only when `plan` names a second project, a gone
+  child or a rescan row, and `cascade` runs each child top-down from its parent's fresh read-back (a failed project
+  skips its subtree, a run is failed on its summary line since the installer exits 0). `workspace.js` writes each
+  line as it is made, so a cascade that outruns the Bash call's 10 minutes leaves the rows it finished, and the walk
+  waits for a backgrounded one instead of starting a second. `check-loads` proves the excludes
+  with one logged-out `claude -p` in a throwaway account: rules by the `InstructionsLoaded` events, AGENTS.md by the
+  built-in plugin's debug lines - a `', '`-separated `loaded:` list in the default mode, and with the account key set
+  only a kept count, checked against the files on disk (`docs/workspace-layering-evidence.md`). A local-scope child's
+  init hygiene ask passes `git-hygiene.js --local-child`, which offers the data root whatever the docs mode and a
+  `.prettierignore` the run created; update and configure pass no flag. Every workspace spawn of `process.execPath`
+  goes through `rt.spawnCommand`, which on Windows takes a full path as that file (`resolveWin`, the release 1
+  matrix). D5, the account's `instructionFiles` key, is asked once per
+  account and ledgered as `managed-account:`; the last uninstall that records it removes it (`lastHolder`). The switch
+  is `ALFRED_CODE_WORKSPACE` (`seed: false`, never written): `0` freezes everything - no lookup, ask, cascade or delta,
+  and nothing it wrote is removed.
 - **Everything installs from ONE source snapshot** per run (`install/source.js`, `createSource`), resolved in
   this order: a handed `--source`; the PLUGIN CACHE; the release archive
   (`releases/latest/download`, with a `RELEASE-SOURCE` file naming commit + version); a shallow clone
