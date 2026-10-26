@@ -8204,6 +8204,32 @@
           "marker": "const SECRET_FILES = Object.freeze(['.secrets', '.sensitive-data']);"
         }
       ]
+    },
+    "data-path-setting": {
+      "_note": "How a script outside a session reads an ALFRED_CODE_ setting (env, then the project's settings.local.json, settings.json, the account) - data-root.js's settingFrom, copied byte for byte into the hooks' layout.js for the workspace chain (release 2), which cannot require stack/mcp/.",
+      "owner": {
+        "file": "stack/mcp/data-root.js",
+        "marker": "function settingFrom({ env, projectDir, suffix, key })\n{\n    const read = key ? (e) => e[key] : (e) => envOf(e, suffix);\n    const own = String(read(env) || '').trim();\n    if (own || !projectDir) return own;\n    const account = env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');\n    for (const file of [\n        path.join(projectDir, '.claude', 'settings.local.json'),\n        path.join(projectDir, '.claude', 'settings.json'),\n        path.join(account, 'settings.json'),\n    ])\n    {\n        try\n        {\n            const value = String(read((JSON.parse(fs.readFileSync(file, 'utf8')) || {}).env || {}) || '').trim();\n            if (value) return value;\n        }\n        catch { /* absent, unreadable or malformed: the next file answers */ }\n    }\n    return '';\n}"
+      },
+      "sites": [
+        {
+          "file": "stack/hooks/layout.js",
+          "marker": "function settingFrom({ env, projectDir, suffix, key })\n{\n    const read = key ? (e) => e[key] : (e) => envOf(e, suffix);\n    const own = String(read(env) || '').trim();\n    if (own || !projectDir) return own;\n    const account = env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');\n    for (const file of [\n        path.join(projectDir, '.claude', 'settings.local.json'),\n        path.join(projectDir, '.claude', 'settings.json'),\n        path.join(account, 'settings.json'),\n    ])\n    {\n        try\n        {\n            const value = String(read((JSON.parse(fs.readFileSync(file, 'utf8')) || {}).env || {}) || '').trim();\n            if (value) return value;\n        }\n        catch { /* absent, unreadable or malformed: the next file answers */ }\n    }\n    return '';\n}"
+        }
+      ]
+    },
+    "data-path-check": {
+      "_note": "Which data roots are usable - data-root.js's checkDataPath, copied byte for byte into the hooks' layout.js so the workspace chain refuses the roots the installer refuses.",
+      "owner": {
+        "file": "stack/mcp/data-root.js",
+        "marker": "function checkDataPath(raw)\n{\n    const value = String(raw ?? '').trim().replace(/\\\\/g, '/').replace(/\\/{2,}/g, '/').replace(/^(\\.\\/)+/, '').replace(/\\/+$/, '');\n    if (!value) return { ok: false, why: 'the data root is empty' };\n    if (value.startsWith('/') || /^[A-Za-z]:/.test(value)) return { ok: false, why: `${value} is absolute - the data root is a folder inside the project` };\n    if (/\\s/.test(value)) return { ok: false, why: `${value} holds a space - the navigation server's home reaches cmd.exe unquoted on Windows` };\n    if (/[$%`\"'*?<>|:]/.test(value)) return { ok: false, why: `${value} holds a character a shell or a server placeholder would read` };\n    const parts = value.split('/');\n    if (parts.some((p) => p === '.' || p === '..')) return { ok: false, why: `${value} has a . or .. segment - the data root stays inside the project` };\n    if (parts[0] === '.claude') return { ok: false, why: `${value} is under .claude/, where Claude Code prompts for every write` };\n    if (parts[0] === '.git') return { ok: false, why: `${value} is under .git/` };\n    return { ok: true, value };\n}"
+      },
+      "sites": [
+        {
+          "file": "stack/hooks/layout.js",
+          "marker": "function checkDataPath(raw)\n{\n    const value = String(raw ?? '').trim().replace(/\\\\/g, '/').replace(/\\/{2,}/g, '/').replace(/^(\\.\\/)+/, '').replace(/\\/+$/, '');\n    if (!value) return { ok: false, why: 'the data root is empty' };\n    if (value.startsWith('/') || /^[A-Za-z]:/.test(value)) return { ok: false, why: `${value} is absolute - the data root is a folder inside the project` };\n    if (/\\s/.test(value)) return { ok: false, why: `${value} holds a space - the navigation server's home reaches cmd.exe unquoted on Windows` };\n    if (/[$%`\"'*?<>|:]/.test(value)) return { ok: false, why: `${value} holds a character a shell or a server placeholder would read` };\n    const parts = value.split('/');\n    if (parts.some((p) => p === '.' || p === '..')) return { ok: false, why: `${value} has a . or .. segment - the data root stays inside the project` };\n    if (parts[0] === '.claude') return { ok: false, why: `${value} is under .claude/, where Claude Code prompts for every write` };\n    if (parts[0] === '.git') return { ok: false, why: `${value} is under .git/` };\n    return { ok: true, value };\n}"
+        }
+      ]
     }
   }
 }
