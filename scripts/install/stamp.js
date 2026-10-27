@@ -137,7 +137,8 @@ const valueHash = (value) => crypto.createHash('sha256').update(String(value)).d
 const stable = (v) => (Array.isArray(v) ? v.map(stable)
     : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, stable(v[k])])) : v);
 const entryHash = (entry) => valueHash(JSON.stringify(stable(entry)));
-const LEDGER_FILES = ['settings.json', 'settings.local.json'];
+// `.variables` (workspace roles and variables, D5): the stack's variables moved there in 3.0.0, their env rows with them.
+const LEDGER_FILES = ['settings.json', 'settings.local.json', '.variables'];
 const HEX = /^[0-9a-f]{64}$/;
 const ENV_KEY = /^[A-Z][A-Z0-9_]*$/;
 const FILE_KINDS = ['hooks', 'skills', 'agents'];
@@ -148,7 +149,7 @@ const ROOT_FILES = ['AGENTS.md', 'CLAUDE.md', 'navigation-context.yml'];
 // switch-off is a top-level key.
 // A workspace row is one MEMBER of an array (settings.js syncMembers), keyed by the member's own hash, so two members never
 // share a ledger key.
-const SETTINGS_PATH = /^(?:attribution\.(?:commit|pr|sessionUrl)|worktree\.baseRef|modelSettings\.[a-z0-9][a-z0-9-]{0,99}\.autoCompactWindow|autoMemoryEnabled|(?:claudeMdExcludes|permissions\.additionalDirectories|disabledMcpjsonServers)\[[0-9a-f]{64}\])$/;
+const SETTINGS_PATH = /^(?:attribution\.(?:commit|pr|sessionUrl)|worktree\.baseRef|modelSettings\.[a-z0-9][a-z0-9-]{0,99}\.autoCompactWindow|autoMemoryEnabled|(?:claudeMdExcludes|permissions\.additionalDirectories|permissions\.deny|disabledMcpjsonServers)\[[0-9a-f]{64}\])$/;
 const MCP_SCOPES = ['local', 'user'];
 // Workspace layering (spec 2.2): the one account settings key D5 writes, the MCP rows a child copies from its root
 // (release 2) and the wraps it put in place of a registration, each by scope.
@@ -396,6 +397,9 @@ function readOwnEnv(file)
 
 // 'declined' when the D5 ask was answered 'Leave it' for this project, else ''.
 const readInstructionsBoth = (file) => ((lineOf(file, 'instructions-both') || [])[0] === 'declined' ? 'declined' : '');
+// True when a join answered between runs left this project's 2.12 values in settings for the next run to prune
+// (workspace.js pruneOnJoin); the stamp that run writes carries no such line.
+const readJoinPrune = (file) => (lineOf(file, 'join-prune') || [])[0] === 'settings';
 
 // One `key: value` line set, replaced or (value null) removed in place, the rest of the stamp left byte for byte - for
 // the workspace CLI, which answers an ask between installer runs. A new line goes before `library-skills:`. True when
@@ -735,7 +739,7 @@ module.exports = {
     writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways,
     readPicked, readLibrary, readLedger, renderLedger, emptyLedger, readToolIgnores, valueHash, entryHash, SERVER_NAME, validServerName, LEDGER_FILES, readStampScope, readHooksRoute, readSeatsRoute, markHooksRoute, readStoodDown, readMcpDenied, readVersion, readInstalledAt, readInstructionsFile, readInstructionsAnswer, validItemName,
     readInitialised, initialisedValue, isInitialised, installState, markInitialised, legacySignature, legacyUnstamped, worktreeMain, installScope, readDataLines,
-    accountDir, readOwnPicks, readOwnEnv, readInstructionsBoth, markLine, ACCOUNT_KEYS,
+    accountDir, readOwnPicks, readOwnEnv, readInstructionsBoth, readJoinPrune, markLine, ACCOUNT_KEYS,
 };
 
 // `node scripts/install/stamp.js state [projectRoot]` - the router's read: one word on stdout, and for

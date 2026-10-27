@@ -289,9 +289,64 @@ function sameRepoWorktree(t) {
   const top = gitTopOf(t);
   return !!top && commonGitDir(top) === rootCommon;
 }
+// R8 (release 3): a linked workspace member's memory folder is read-only from here (D3) - every member's, every match
+// past 200 characters - so it is judged before the account-dir allowance that holds it. A folder that is also one of this
+// project's own (a shared account-level value) is its own memory, and so is one of its own nested inside a member's.
+let memoryDirs;
+function memoryOf() {
+  if (memoryDirs !== undefined) return memoryDirs;
+  memoryDirs = { members: [], own: [] };
+  try {
+    if (!layout || typeof layout.memoryDirsOf !== 'function' || !layout.workspaceOn({ env: process.env, projectRoot: ROOT })) return memoryDirs;
+    const own = layout.memoryDirsOf(ROOT).map(realish);
+    const ownKeys = new Set(own.map(fold));
+    const members = [];
+    for (const m of layout.workspaceChain(layout.chainProjectOf(ROOT)).members) {
+      for (const d of layout.memoryDirsOf(m.root)) {
+        const dir = realish(d);
+        // A folder holding this project is no member memory to it (a deny there would bar its own files).
+        if (!ownKeys.has(fold(dir)) && !inside(ROOT, dir)) members.push({ dir, root: m.root });
+      }
+    }
+    memoryDirs = { members, own };
+  } catch { /* fail open: no member memory to guard */ }
+  return memoryDirs;
+}
+function memberMemory(t) {
+  const { members, own } = memoryOf();
+  const hit = members.find((m) => inside(t, m.dir));
+  return hit && !own.some((o) => inside(o, hit.dir) && inside(t, o)) ? hit : null;
+}
+// The memory folder the user's own settings name outside the account dir (the managed or account settings.json,
+// never a file a clone can carry), whatever the switch says - unless it holds the project or the home folder, which
+// would swallow the gate (the containment rule above).
+let trustedMemory;
+function ownMemory(t) {
+  if (trustedMemory === undefined) {
+    trustedMemory = null;
+    try {
+      const dir = layout && typeof layout.trustedMemoryDir === 'function' ? layout.trustedMemoryDir(ROOT) : null;
+      if (dir && !inside(ROOT, realish(dir)) && !(HOME && inside(HOME, realish(dir)))) trustedMemory = realish(dir);
+    } catch { /* fail closed: no allowance */ }
+  }
+  return trustedMemory !== null && inside(t, trustedMemory);
+}
+function memoryBlock(what, shown, hit) {
+  global.BLOCK_DETAIL = { branch: 'ancestor-memory' };
+  const { own } = memoryOf();
+  const mine = own.length === 1 ? `This project's own memory is ${own[0]}.`
+    : own.length ? `This project's own memory: ${own.join(', ')}.` : 'This project has no memory folder of its own yet.';
+  process.stderr.write(
+    `Blocked: ${what} targets '${shown}', the memory of ${hit.root} - a workspace member's memory is read-only from a\n` +
+    `project below it. ${mine} A note that member should keep is written from its own session.`,
+  );
+  process.exit(2);
+}
 function allowed(target) {
   const t = realish(target);
   if (inside(t, ROOT)) return true;
+  if (memberMemory(t)) return false;
+  if (ownMemory(t)) return true;
   if (effectiveAllow.some((d) => inside(t, d))) return true;
   if (receiptRoots.some((d) => inside(t, d))) return true; // the user's 'allow' for this session
   if (spaceOk && fold(t).startsWith(fold(spacePrefix))) return true;
@@ -361,6 +416,8 @@ function otherProjectRoot(target) {
 }
 // `shown` is the token the session wrote (or the resolved path after a cd); `abs` is where it lands.
 function block(what, shown, abs = shown) {
+  const hit = memberMemory(realish(abs));
+  if (hit) memoryBlock(what, shown, hit);
   const other = otherProjectName(abs);
   // The main block names its branch like the unread one below (audit 2026-10-20, the hooks track's minor list: every
   // other row of this guard carried none, so the ledger could not split a file-tool write from a shell one).

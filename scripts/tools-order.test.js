@@ -726,6 +726,25 @@ test('modes: under default, the switch-off in effect is named, a shadowed one is
     finally { s.done(); }
 });
 
+// T12c (AC22): the mode is one of the stack's variables, read through the loader - the project's .variables included.
+test('configure\'s memory area reports custom from .variables', () =>
+{
+    const s = sandbox();
+    try
+    {
+        const vars = (text) => s.write(path.join(s.root, '.alfred', '.variables'), text);
+        vars('ALFRED_CODE_MEMORY=custom\n');
+        settingsAt(s, { enabledPlugins: STACK, autoMemoryEnabled: false });
+        assert.strictEqual(tools.memoryMode({ projectRoot: s.root, env: s.env }), 'custom');
+        assert.strictEqual(tools.modeLines({ projectRoot: s.root, env: s.env })[0], `memory: custom - ${MEM_TOOLS}; Claude's own memory is off`);
+        // The team's custom in .variables keeps its switch-off for a developer whose settings.local.json answers default.
+        settingsAt(s, { env: { ALFRED_CODE_MEMORY: 'default' } }, 'settings.local.json');
+        const lines = tools.modeLines({ projectRoot: s.root, env: s.env });
+        assert.match(lines[1], /^memory: autoMemoryEnabled is false in \.claude\/settings\.json - the team's custom memory switch-off/, lines.join('\n'));
+    }
+    finally { s.done(); }
+});
+
 test('memoryMode reads Custom and bogus as default', () =>
 {
     const s = sandbox();
@@ -897,6 +916,49 @@ test('a pre-2.10.1 stamp\'s switch-off in the run\'s own file is named as the ol
             stamp(version, scope);
             assert.strictEqual(line(), 'memory: autoMemoryEnabled is false in .claude/settings.json - yours; native memory stays off until you remove it', why);
         }
+    }
+    finally { s.done(); }
+});
+
+// Release 3, T4 (R3): a child reads its workspace root's TOOLS-PREFERENCES.md where it has none; no capture verb does.
+function wsTools({ childFile = 'parent ..\n' } = {})
+{
+    // .native: Windows CI's temp is an 8.3 name (RUNNER~1) and the readers report the long one.
+    const work = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'tools-ws-')));
+    const put = (rel, text) => { const f = path.join(work, ...rel.split('/')); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text); };
+    put('ws/.claude/alfred-code.stamp', 'sha: x\n'); put('ws/.alfred/workspace', 'child api\n');
+    put('ws/api/.claude/alfred-code.stamp', 'sha: x\n'); put('ws/api/.alfred/workspace', childFile);
+    put('ws/api/.claude/settings.json', JSON.stringify({ enabledPlugins: STACK }));
+    put(`ws/${DOC_REL}`, ['# Tools preferences', '', 'Updated: 2026-10-24', '', '## T7 - Code navigation', '<!-- id: t7 -->', '- Job: navigation', '- Order: LSP > Grep', ''].join('\n'));
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(work, 'config') };
+    delete env.ALFRED_CODE_MEMORY; delete env.ALFRED_CODE_DATA_PATH; delete env.ALFRED_CODE_WORKSPACE;
+    return { work, api: path.join(work, 'ws', 'api'), rootDoc: path.join(work, 'ws', ...DOC_REL.split('/')), env, put, done: () => fs.rmSync(work, { recursive: true, force: true }) };
+}
+
+test('the tools order reads the root\'s TOOLS-PREFERENCES.md when the child has none; ignore doc gives it none', () =>
+{
+    const s = wsTools();
+    const ig = wsTools({ childFile: 'parent ..\nignore doc TOOLS-PREFERENCES.md\n' });
+    try
+    {
+        assert.strictEqual(tools.orderFor({ projectRoot: s.api, env: s.env }).doc?.abs, s.rootDoc);
+        assert.strictEqual(tools.suggestOnce(s.api), false, 'an inherited doc is a doc: no suggestion');
+        assert.strictEqual(tools.orderFor({ projectRoot: ig.api, env: ig.env }).doc, null);
+        assert.strictEqual(tools.orderFor({ projectRoot: s.api, env: { ...s.env, ALFRED_CODE_WORKSPACE: '0' } }).doc, null, 'the kill switch reads only the child\'s own');
+    }
+    finally { s.done(); ig.done(); }
+});
+
+test('capture lint, validate and tools.js next never read an ancestor\'s doc - next numbers from the child\'s own', () =>
+{
+    const s = wsTools();
+    try
+    {
+        assert.strictEqual(tools.readToolsDoc(s.api), null, 'the default list is the child\'s own');
+        const next = spawnSync(process.execPath, [TOOLS, 'next', '--project', s.api], { cwd: s.api, env: s.env, encoding: 'utf8' });
+        assert.match(next.stdout, /^Next: T1$/m, next.stdout + next.stderr);
+        const lint = spawnSync(process.execPath, [TOOLS, 'lint', '--project', s.api], { cwd: s.api, env: s.env, encoding: 'utf8' });
+        assert.doesNotMatch(lint.stdout + lint.stderr, /T7/);
     }
     finally { s.done(); }
 });

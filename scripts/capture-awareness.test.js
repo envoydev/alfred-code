@@ -210,9 +210,14 @@ test('the seats that run the app read the run book first', () =>
 
 test('the docs engine: one awareness domain - the run book sectioned and watched, the sibling doc linted, the inventory not owned', () =>
 {
-    const watch = read('references/project.md').match(/```json\n([\s\S]*?)\n```/);
-    assert.ok(watch, 'references/project.md spells the watch.json');
-    assert.deepStrictEqual(JSON.parse(watch[1]).notOwned, ['AGENTS-AWARENESS.md'], 'the shape keeps the script\'s doc out of the engine');
+    // Since 2026-10-27 the reference spells the run book's entries `docs.js watch-merge` takes, each kind prefixed
+    // `run book: `; the `notOwned` row that keeps the script's doc out of the engine is the script's own.
+    const block = read('references/project.md').match(/```json\n([\s\S]*?)\n```/);
+    assert.ok(block, 'references/project.md spells the run book\'s watch entries');
+    const entries = JSON.parse(block[1]);
+    assert.ok(entries.length && entries.every((e) => e.kind.startsWith('run book: ') && e.sections.every((s) => s.startsWith('PROJECT-AWARENESS#'))), 'every entry is a run book entry');
+    assert.match(squash(read('references/project.md')), /The `notOwned` entry for `AGENTS-AWARENESS\.md` is the script's/, 'the shape keeps the script\'s doc out of the engine');
+    const watch = [null, `${JSON.stringify({ notOwned: ['AGENTS-AWARENESS.md'], watch: entries }, null, 2)}\n`];
     // Filled the way a run fills it: the stamp, and each covers line with the files DISCOVER read -
     // package.json under Build, the compose file under the others that declare one.
     let heading = '';

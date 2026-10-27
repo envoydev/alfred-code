@@ -476,6 +476,13 @@ test('install-scope: a local install moved to project scope drops its seeded key
             // a personal path that must never reach the committed file.
             const file = path.join(repo, '.claude', 'settings.local.json');
             const local = JSON.parse(fs.readFileSync(file, 'utf8'));
+            // An older local install: the stack's variables and their ledger rows in settings.local.json (3.0.0 moved
+            // them to .variables).
+            const vars = path.join(repo, '.alfred', '.variables');
+            Object.assign(local.env, (require('../stack/hooks/layout.js').readDotenv(vars) || {}).values || {});
+            fs.rmSync(vars);
+            const stamp = path.join(repo, '.claude', 'alfred-code.stamp');
+            fs.writeFileSync(stamp, fs.readFileSync(stamp, 'utf8').replace(/(^managed-env: *|,)\.variables:/gm, '$1settings.local.json:'));
             Object.assign(local.env, {
                 ALFRED_CODE_DOCS_PATH: 'docs/mine', ALFRED_CODE_TURN_CHECK: '1',
                 ALFRED_CODE_HOOKS_OFF: 'guard-answer', ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '/elsewhere/other-repo',
@@ -486,6 +493,7 @@ test('install-scope: a local install moved to project scope drops its seeded key
         inspect: (repo) => ({
             shared: json(repo, path.join('.claude', 'settings.json')),
             local: json(repo, path.join('.claude', 'settings.local.json')),
+            vars: (require('../stack/hooks/layout.js').readDotenv(path.join(repo, '.alfred', '.variables')) || {}).values || {},
         }),
     });
     assert.match(outs[1], /action: update \[scope=project,/, outs[1]);
@@ -497,7 +505,8 @@ test('install-scope: a local install moved to project scope drops its seeded key
     }, 'the user\'s values stay local, untouched, and every seeded stack key left');
     assert.ok(!JSON.stringify(result.shared).includes('/elsewhere/other-repo'), 'a personal path reached the committed settings.json');
     assert.ok(!JSON.stringify(result.shared).includes('docs/mine'), 'a local value moved into settings.json');
-    assert.strictEqual(result.shared.env.ALFRED_CODE_TURN_CHECK, '0', 'settings.json keeps its own value');
+    assert.strictEqual(result.vars.ALFRED_CODE_TURN_CHECK, '0', 'settings.json\'s own value moved into .variables (AC10)');
+    assert.ok(!('ALFRED_CODE_TURN_CHECK' in result.shared.env));
     // What Claude Code resolves: the local file over the shared one.
     const effective = { ...result.shared.env, ...result.local.env };
     assert.strictEqual(effective.ALFRED_CODE_HOOKS_OFF, 'guard-answer', 'the hook the user switched off came back on');
@@ -566,6 +575,10 @@ test('install-scope: a move off local removes an older shipped seed and the docs
             if (i !== 0) return null;
             const file = path.join(repo, '.claude', 'settings.local.json');
             const local = JSON.parse(fs.readFileSync(file, 'utf8'));
+            // An older local install kept the stack's variables in settings.local.json (3.0.0 moved them to .variables).
+            const vars = path.join(repo, '.alfred', '.variables');
+            Object.assign(local.env, (require('../stack/hooks/layout.js').readDotenv(vars) || {}).values || {});
+            fs.rmSync(vars);
             assert.strictEqual(local.env.ALFRED_CODE_DOCS_VERSIONING, 'local', 'the rule answered local for docs git ignores');
             local.env.ALFRED_CODE_CONTEXT_WINDOW_FOR_200K = '150000';
             fs.writeFileSync(file, JSON.stringify(local));

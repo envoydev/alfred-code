@@ -200,23 +200,38 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   its content did not change, and otherwise keeps its BOM, line ending, indent and key order and every top-level key
   besides `mcpServers` (`mcp.keepMcpOrder`, re-verify 4 T4). `scripts/install-mcp-retire.test.js` pins it.
 
-- **Workspace layering (release 1, 2026-10-26, unreleased).** A project installed inside an installed folder can join it as a CHILD: it takes the parent's set and
-  env, adds its own picks and can ignore any inherited item. The record is `<data root>/workspace` (`repo-memory-data.md`)
+- **Workspace layering (2026-10-26, on by default from 3.0.0).** A project installed inside an installed folder can join it as a CHILD: it takes the parent's set and
+  the variables it reads through the chain, adds its own picks and can ignore any inherited item. Every project has a
+  ROLE - `role root|standalone` in its file, or a `parent` line (`roleOf`; no line reads `standalone (not asked)`) - and
+  `above <rel>|none` records the tree it was asked against, so the role ask (`roleAsk`) comes back only when that
+  changes: init asks it before screen A, configure offers it in the Environment area, and update's preflight prints
+  `workspace: role-ask <case> <rel>` for the walk to ask. The record is `<data root>/workspace` (`repo-memory-data.md`)
   - `parent <rel>` here and `child <rel>` in the parent; a parent counts only while its `child` line points back (hop
   rule N1, `install/workspace.js chain`), and the walk stops at depth 8. The installer touches it at TWO points:
   `workspace.prepare` before the run reads its own set (the parent's lines from `--parent-plan`, or from the parent's own
   `update --installed-only --print-plan`; any doubt - a failed or blind read-back, a plan from another folder - leaves
-  `parentLines` null, so nothing inherited is added or dropped) with `envStep` seeding and forcing the parent's env
-  (`childEnv`: never the data root, the docs mode or a `seed: false` row), and `workspaceStep` after the settings pass -
+  `parentLines` null, so nothing inherited is added or dropped) with `envPlan` (`ctx.childEnv`) telling the settings
+  pass what a child seeds - only the defaults of its `ignore env` keys; the hook loader (`layout.variablesOf`) reads
+  the rest from each member's `.variables` at load, never `MEMBER_NEVER` (the docs mode, the switch) nor a member's
+  whole-hook `HOOKS_OFF` entry, and a 2.12 child's copies still at their ledger hash go - and `workspaceStep` after the settings pass -
   the `claudeMdExcludes` rows for every stamped folder above (linked or not) in `settings.local.json`, ledgered as array
-  members, and the stamp's `own-picks:` / `own-env:` lines that tell a child's own from what it inherits. A child's
+  members, and the stamp's `own-picks:` / `own-env:` lines that tell a child's own from what it inherits; in a linked
+  child it syncs `permissions.additionalDirectories` to the ancestor docs roots (none past an `ignore docs root` here or
+  in a nearer member) and `permissions.deny` to an `Edit(//<path>/**)` row over each of them and over every member's
+  memory folder that is not the child's own (`ancestorAccess`, `editDenyRule`, `//c/...` on Windows; release 3); then
+  `mcpHint` prints one `mcp <name>:` line per member's local-scope server this project cannot see - a hint, never a
+  copy (D8; an earlier release's copies stay as the user's registrations, only their record goes). Joining prunes
+  the child's own seeds a member answers (`pruneOnJoin`); leaving - configure's leave, or the parent's uninstall
+  (`releaseChildren`) - first writes every value the child read through the chain into its own `.variables`
+  (`keepOnLeave`), so nothing it reads changes. A child's
   `--drop` of a line its parent holds writes that `ignore` line and an `--add` of an ignored one lifts it
   (`recordWord`, never on `--print-plan`), so validate and a hand-run update stick; an install with `--parent-plan`
   adds the parent's set minus the ignores itself, whatever rows the walk's selection kept. It never
   writes a `child` line into a parent: only `workspace.js register` / `join` do, the back-reference being the consent.
-  `scripts/workspace.js` is the one CLI the bodies call (`parent`, `register`, `join`, `ignore`, `children`, `status`,
-  `account-instructions`, `plan`, `answer`, `cascade`, `check-loads`): init reads `references/init-child.md` only on
-  `child=yes`, update's step 2 reads `references/update-workspace.md` only when `plan` names a second project, a gone
+  `scripts/workspace.js` is the one CLI the bodies call (`parent`, `register`, `unregister`, `join`, `role`, `ignore`,
+  `children`, `status`, `account-instructions`, `plan`, `answer`, `cascade`, `check-loads`): init reads
+  `references/init-role.md` beside `role --when init` and `references/init-child.md` only on its Child answer,
+  every role change runs `role --answer <answer>`, update's step 2 reads `references/update-workspace.md` only when `plan` names a second project, a gone
   child or a rescan row, and `cascade` runs each child top-down from its parent's fresh read-back (a failed project
   skips its subtree, a run is failed on its summary line since the installer exits 0). `workspace.js` writes each
   line as it is made, so a cascade that outruns the Bash call's 10 minutes leaves the rows it finished, and the walk
@@ -229,9 +244,10 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   goes through `rt.spawnCommand`, which on Windows takes a full path as that file (`resolveWin`, the release 1
   matrix). D5, the account's `instructionFiles` key, is asked once per
   account and ledgered as `managed-account:`; the last uninstall that records it removes it (`lastHolder`). The switch
-  is `ALFRED_CODE_WORKSPACE` (`seed: false`, never written), OFF until 3.0.0 (the user's answer of 2026-10-27): a launch
-  `0` freezes it whatever the settings say, else the project's settings `env` value decides, else the launch value, and
-  only a `1` turns it on; off freezes everything - no lookup, ask, cascade or delta, and nothing it wrote is removed.
+  is `ALFRED_CODE_WORKSPACE` (`seed: false`, never written), ON by default from 3.0.0 (D9, `layout.switchValueOn`): a
+  launch `0` freezes it whatever the files say, else the project's own value decides (settings.local.json, its
+  `.variables`, the settings `env`, so a file `0` beats a launch `1`), else the launch value, and only a `0` turns it
+  off; off freezes everything - no lookup, ask, cascade or delta, and nothing it wrote is removed.
 - **Everything installs from ONE source snapshot** per run (`install/source.js`, `createSource`), resolved in
   this order: a handed `--source`; the PLUGIN CACHE; the release archive
   (`releases/latest/download`, with a `RELEASE-SOURCE` file naming commit + version); a shallow clone
@@ -250,9 +266,10 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   the protocol's two snippets), covered by `scripts/source-cache.test.js` and
   `scripts/install-source.test.js`. A first run BOOTSTRAPS: no cache on a plugin route installs the
   core first so its cache serves the same run. Every run takes the LATEST: the seed (no `--source`)
-  and both protocol snippets refresh the catalog and `plugin update` EVERY installed stack entry at
-  its own scope BEFORE the cache is read - a refreshed catalog alone never moves the cache, and an
-  entry left behind would launch naming files its older version lacks. `--print-plan` changes no
+  and both protocol snippets refresh the catalog and `plugin update` the installed CORE at each of
+  its scopes BEFORE the cache is read - a refreshed catalog alone never moves the cache. Only the core:
+  every other entry the stack shipped is retired, and another plugin the catalog lists (preferred-tools)
+  is the user's, never updated by the stack (the user's ruling of 2026-10-27). `--print-plan` changes no
   plugin.
 - **One download per RUN.** The plugin commands resolve the snapshot themselves and pass it with
   `--source`; the script never deletes a borrowed source (`owned` in `scripts/install/source.js` is

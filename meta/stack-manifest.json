@@ -44,12 +44,12 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "capture-architecture-quality",
-      "note": "deliberate pros/cons capture over the architecture map - dispatches architecture-analyzer per module, reasons a gated, tiered strengths/weaknesses assessment in the main session, writes docs/quality/ARCHITECTURE-ASSESSMENT.md fresh every run (never versioned - quality/ carries no watch.json, so the docs engine never treats it as a domain); reads the decision log, never writes it; model-invocable behind a run gate, and the quality loop invokes it"
+      "note": "deliberate pros/cons capture over the architecture map - dispatches architecture-analyzer per module, reasons a gated, tiered strengths/weaknesses assessment in the main session, writes docs/quality/ARCHITECTURE-ASSESSMENT.md fresh every run (never versioned - quality/ is a recomputed domain: its watch.json, written through docs.js watch-merge, asks a session's close about each located entry, never a branch version); reads the decision log, never writes it; model-invocable behind a run gate, and the quality loop invokes it"
     },
     {
       "repo": "envoydev/alfred-code",
       "name": "capture-code-quality",
-      "note": "deliberate code-quality capture - dispatches code-quality-analyzer per module against the loops/ numbered prompts, the convention rules and PROJECT-CODE-PREFERENCES.md (no loops/ -> says so, judges the other two), gates and tiers the findings in the main session, writes docs/quality/CODE-ASSESSMENT.md fresh every run (never versioned - quality/ carries no watch.json), every finding tied to file:line and its rule; reads the decision log, never writes it"
+      "note": "deliberate code-quality capture - dispatches code-quality-analyzer per module against the loops/ numbered prompts, the convention rules and PROJECT-CODE-PREFERENCES.md (no loops/ -> says so, judges the other two), gates and tiers the findings in the main session, writes docs/quality/CODE-ASSESSMENT.md fresh every run (never versioned - CODE-ASSESSMENT.md is notOwned in the recomputed quality/ domain), every finding tied to file:line and its rule; reads the decision log, never writes it"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -1075,7 +1075,7 @@
       "file": "instrument-tool-usage.js",
       "matcher": ".*",
       "event": "",
-      "note": "wired env-gated: a plain node spawn that exits at its own env check unless ALFRED_CODE_INSTRUMENT=1 (seeded \"0\" in settings env - flip it for a measured run; see README)"
+      "note": "wired env-gated: a plain node spawn that exits at its own env check unless ALFRED_CODE_INSTRUMENT=1 (seeded \"0\" in .variables - flip it for a measured run; see README)"
     }
   ],
   "plugins": [

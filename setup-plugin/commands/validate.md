@@ -283,19 +283,23 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
   `installed but disabled for this project` - and its accept action is `claude plugin enable
   <name> --scope <the install's scope>`, never an install and never an uninstall. A DISABLED plugin the user leaves alone is a
   deliberate choice and is not re-raised in the close.
-## 8. Environment - the settings.json env block against this release
+## 8. Environment - the stack's values against this release
 
-The one layer that is not an artifact: the values this stack owns in the scope's settings.json
-`env`. Read the rows from the snapshot's `$TMP/repo/meta/environment.json` and the current block
-from the scope's file (`.claude/settings.local.json` laid over `.claude/settings.json` at local
-scope, else `.claude/settings.json` with every `ALFRED_CODE_*` key `settings.local.json` holds laid
-over it - such a key is fixed in that local file, where it applies), then show one
+The one layer that is not an artifact: the values this stack owns - each catalog variable in the project's
+`<data root>/.variables`, and `ALFRED_CODE_DATA_PATH` and `ALFRED_CODE_HOOKS_OFF` in the scope's settings `env`. Read
+the rows from the snapshot's `$TMP/repo/meta/environment.json`; the variables from ONE `node
+"$TMP/repo/scripts/variables.js" show --root .` (`<KEY>=<value> (<source>)` per key - `own`, `from <rel>`,
+`settings.local.json` or `default` - then its `!! variables:` notes: a HOOKS_OFF line in `.variables` that is not
+read, a key the loader never reads, a key named like a credential with the `.secrets` to keep it in; paste every note
+under the table, never a value); the two settings keys, and any OLD NAME or RETIRED key an older install left there,
+from the scope's file (`.claude/settings.local.json` laid over `.claude/settings.json` at local scope, else
+`.claude/settings.json` with every `ALFRED_CODE_*` key `settings.local.json` holds laid over it). Then show one
 table of the actionable rows only - an install whose env already matches gets the single line
 `environment: nothing to reconcile` and you move on. **Never print, echo back, or ask for a credential VALUE.** A key matching the catalog's `secret_key_pattern`, or a row flagged `secret: true`, is reported as `set (N chars)` or `absent` and nothing else - not as a shown default, not in a table, not in a question. A value that must be set is set by the user in the file itself, or with a copy-ready command they run in their own terminal; it never travels through the chat. Measured: seven credential exposures in one corpus.
 
 
 
-- **MISSING** - a catalog row with no key in the file. This is the release-introduced case: a
+- **MISSING** - a catalog row `show` reads as `default` (no file holds it). This is the release-introduced case: a
   variable added upstream after this install was made, which no artifact diff can surface because
   it was never a file. Reason column: `not set - introduced after this install`. The catalog carries no version per row, so never print one.
   `ALFRED_CODE_DOCS_VERSIONING` is the ONE exception to 'offer the catalog default': its value is DETECTED, not
@@ -333,10 +337,11 @@ restate the outcome in one line:
 Environment: <n> rows to write - apply them?
 - 'Accept all (Recommended)' - every listed row is written in step 10, only those keys touched
 - 'Add missing only' - only the absent keys are written; a key already set is kept
-- 'Skip' - the env block stays as it is
+- 'Skip' - the values stay as they are
 ```
  Accepted rows
-are written in step 10 as a merge touching ONLY those keys, everything else in the file preserved.
+are written in step 10: MISSING and INVALID rows through `variables.js set`, an OLD NAME or RETIRED key as a merge on
+the settings file that holds it, touching ONLY those keys.
 
 ## 9. Judgment review - corroborated non-use, convention conflicts, corroborated need
 
@@ -435,14 +440,16 @@ dormancy alone is never a removal argument.
 ## 10. Apply - the same paths init's install phase and configure use
 
 Build the final selection = the installed set, PLUS every accepted add, MINUS every accepted
-remove, written to `$TMP/final.json` in the inventory's shape. Step 9's accepted environment rows
-are applied here too, as a merge on the scope's settings.json touching ONLY those keys - seeds and
-renames included - and named in the post-check the same way an added artifact is. An accepted
-MISSING `ALFRED_CODE_DOCS_VERSIONING` row is the one exception: never fold it into that generic
-merge - write it by running `node "$TMP/repo/scripts/stamp-docs-root.js" <project root> --seed-versioning`
+remove, written to `$TMP/final.json` in the inventory's shape. Step 8's accepted environment rows
+are applied here too - MISSING and INVALID ones with ONE `node "$TMP/repo/scripts/variables.js" set --root . --scope
+<scope> KEY=value ...`, which writes each where it takes effect and names the file; an OLD NAME or RETIRED key as a
+merge on the settings file that holds it, touching ONLY those keys - and named in the post-check the same way an added
+artifact is. An accepted
+MISSING `ALFRED_CODE_DOCS_VERSIONING` row is the one exception: never fold it into that
+`variables.js set` - write it by running `node "$TMP/repo/scripts/stamp-docs-root.js" <project root> --seed-versioning`
 (it reads and writes the stamp's scope file, as the installer does), which re-probes at the write instead of trusting the
 table's preview a step stale, and report its printed line. Every other accepted row still goes
-through the generic merge. Emit + prereq-check it -
+through `variables.js set` or that merge. Emit + prereq-check it -
 `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/final.json" --graph "$TMP/repo/meta/stack-graph.json" --emit "$TMP/selection.txt" --check`,
 output to `$TMP/select.out` - then:
 

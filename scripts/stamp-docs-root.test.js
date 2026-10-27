@@ -126,6 +126,11 @@ const gitIn = (root, ...args) => execFileSync('git', ['-c', 'user.email=t@e.com'
 // condition that an existing install is never switched silently is then machine-checked, not advisory prose.
 const reprobe = (root, seeded = 'local') => execFileSync('node', [SCRIPT, root, '--reprobe-versioning', seeded], { encoding: 'utf8' });
 const envOf = root => JSON.parse(fs.readFileSync(path.join(root, '.claude', 'settings.json'), 'utf8')).env;
+// Since 3.0.0 the key is one of the stack's variables (workspace roles and variables, D5): the seed and the re-probe
+// write <data root>/.variables, and the decision they guard is the team's - .variables, then settings.json beneath it.
+const varsFile = root => path.join(root, '.alfred', '.variables');
+const varsIn = root => { try { return Object.fromEntries(fs.readFileSync(varsFile(root), 'utf8').split('\n').filter(Boolean).map(l => l.split('='))); } catch { return {}; } };
+const teamOf = root => varsIn(root).ALFRED_CODE_DOCS_VERSIONING ?? envOf(root).ALFRED_CODE_DOCS_VERSIONING;
 
 // `domain` names the ONE folder the committed docs live in - 'architecture' carries no watch.json (it is
 // grandfathered in), any other folder is a domain only because of the watch.json written beside its doc.
@@ -146,10 +151,10 @@ test('--reprobe-versioning re-reads the mode at the docs path that ended up in t
     try
     {
         assert.match(reprobe(root), /docs versioning re-probed at docs\/: 'git'/);
-        assert.strictEqual(envOf(root).ALFRED_CODE_DOCS_VERSIONING, 'git');
+        assert.strictEqual(teamOf(root), 'git');
         assert.match(reprobe(root, 'git'), /docs versioning already 'git' at docs\//, 'a second run says so and rewrites nothing');
         assert.match(reprobe(root), /holds 'git', not the 'local'/, 'and the same command twice stops at the guard');
-        assert.strictEqual(envOf(root).ALFRED_CODE_DOCS_VERSIONING, 'git');
+        assert.strictEqual(teamOf(root), 'git');
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
@@ -164,12 +169,12 @@ test('--reprobe-versioning reads committed docs in any domain, and a watch-less 
     try
     {
         assert.match(reprobe(style), /docs versioning re-probed at docs\/: 'git'/, 'code-style/ alone is committed docs');
-        assert.strictEqual(envOf(style).ALFRED_CODE_DOCS_VERSIONING, 'git');
+        assert.strictEqual(teamOf(style), 'git');
         fs.rmSync(path.join(quality, 'docs', 'quality', 'watch.json'));   // the findings folder never carries one
         fs.mkdirSync(path.join(quality, 'docs', 'architecture'));
         fs.writeFileSync(path.join(quality, 'docs', 'architecture', 'ARCHITECTURE.md'), '# Map\n');   // an UNTRACKED domain beside it
         assert.match(reprobe(quality), /docs versioning already 'local' at docs\//, 'a folder with no watch.json is no domain, so the untracked architecture/ decides');
-        assert.strictEqual(envOf(quality).ALFRED_CODE_DOCS_VERSIONING, 'local');
+        assert.strictEqual(teamOf(quality), 'local');
     }
     finally { for (const d of [style, quality]) fs.rmSync(d, { recursive: true, force: true }); }
 });
@@ -222,8 +227,8 @@ test('--seed-versioning writes the probed value when the key is absent', () => {
         gitIn(uncommitted, 'init', '-q', '-b', 'develop', '.');
         fs.mkdirSync(path.join(uncommitted, 'docs', 'architecture'), { recursive: true });
         fs.writeFileSync(path.join(uncommitted, 'docs', 'architecture', 'ARCHITECTURE.md'), '# Map\n');
-        assert.match(seed(uncommitted), /settings\.json env: ALFRED_CODE_DOCS_VERSIONING seeded 'local' at docs\/ - the docs are kept out of git/);
-        assert.strictEqual(envOf(uncommitted).ALFRED_CODE_DOCS_VERSIONING, 'local');
+        assert.match(seed(uncommitted), /\.alfred\/\.variables: ALFRED_CODE_DOCS_VERSIONING seeded 'local' at docs\/ - the docs are kept out of git/);
+        assert.strictEqual(varsIn(uncommitted).ALFRED_CODE_DOCS_VERSIONING, 'local');
 
         // absent + a fresh, non-ignored root -> git
         gitIn(fresh, 'init', '-q', '-b', 'develop', '.');
@@ -231,7 +236,7 @@ test('--seed-versioning writes the probed value when the key is absent', () => {
         gitIn(fresh, 'add', '-A');
         gitIn(fresh, 'commit', '-qm', 'seed');
         assert.match(seed(fresh), /ALFRED_CODE_DOCS_VERSIONING seeded 'git' at docs\/ - the docs are not kept out of git/);
-        assert.strictEqual(envOf(fresh).ALFRED_CODE_DOCS_VERSIONING, 'git');
+        assert.strictEqual(varsIn(fresh).ALFRED_CODE_DOCS_VERSIONING, 'git');
 
         // absent + a folder-only ignore pattern naming the root itself, root not created -> local (the trailing-slash probe)
         gitIn(ignored, 'init', '-q', '-b', 'develop', '.');
@@ -240,7 +245,7 @@ test('--seed-versioning writes the probed value when the key is absent', () => {
         gitIn(ignored, 'add', '-A');
         gitIn(ignored, 'commit', '-qm', 'seed');
         assert.match(seed(ignored), /ALFRED_CODE_DOCS_VERSIONING seeded 'local' at docs\/ - the docs are kept out of git/);
-        assert.strictEqual(envOf(ignored).ALFRED_CODE_DOCS_VERSIONING, 'local');
+        assert.strictEqual(varsIn(ignored).ALFRED_CODE_DOCS_VERSIONING, 'local');
         assert.ok(!fs.existsSync(path.join(ignored, 'docs')), 'the probe never creates the root it is checking');
     }
     finally { for (const d of [uncommitted, fresh, ignored]) fs.rmSync(d, { recursive: true, force: true }); }
@@ -288,19 +293,18 @@ test('--seed-versioning refuses JSON of the wrong shape: no write, a message, ex
     }
 });
 
-test('--seed-versioning preserves every other env key and merges only the one it owns', () => {
-    const root = makeProject(JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs', ALFRED_CODE_INSTRUMENT: '1' } }));
+test('--seed-versioning keeps every other .variables line and adds only the one it owns', () => {
+    const root = makeProject(JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs' } }));
     try
     {
         gitIn(root, 'init', '-q', '-b', 'develop', '.');
         fs.writeFileSync(path.join(root, 'README.md'), '# repo\n');
         gitIn(root, 'add', '-A');
         gitIn(root, 'commit', '-qm', 'seed');
+        fs.mkdirSync(path.dirname(varsFile(root)), { recursive: true });
+        fs.writeFileSync(varsFile(root), '# mine\nALFRED_CODE_INSTRUMENT=1\n');
         seed(root);
-        const env = envOf(root);
-        assert.strictEqual(env.ALFRED_CODE_DOCS_VERSIONING, 'git');
-        assert.strictEqual(env.ALFRED_CODE_INSTRUMENT, '1', 'an unrelated key survives the merge');
-        assert.strictEqual(env.ALFRED_CODE_DOCS_PATH, 'docs');
+        assert.strictEqual(fs.readFileSync(varsFile(root), 'utf8'), '# mine\nALFRED_CODE_INSTRUMENT=1\nALFRED_CODE_DOCS_VERSIONING=git\n');
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
@@ -338,7 +342,7 @@ test('--claude-dir stamps a global install from the account dir itself', () => {
 // installer does at the install's scope. A local-scope install (the stamp's `scope: local`) lays
 // settings.local.json over settings.json, so a docs path set only in the personal file is the root, and
 // a seeded decision goes to the file that scope writes. Any other scope never reads the personal file.
-test('a local-scope install: the root and the versioning seed come from, and go to, settings.local.json (R87)', () => {
+test('a local-scope install: the root comes from settings.local.json and the versioning seed goes to its untracked .variables (R87)', () => {
     const root = makeProject(JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/shared' } }));
     const claudeDir = path.join(root, '.claude');
     const localFile = path.join(claudeDir, 'settings.local.json');
@@ -362,30 +366,33 @@ test('a local-scope install: the root and the versioning seed come from, and go 
         gitIn(root, 'add', 'README.md');
         gitIn(root, 'commit', '-qm', 'seed');
         const shared = fs.readFileSync(path.join(claudeDir, 'settings.json'), 'utf8');
-        assert.match(seed(root), /settings\.local\.json env: ALFRED_CODE_DOCS_VERSIONING seeded 'git' at docs\/mine\//);
-        assert.strictEqual(JSON.parse(fs.readFileSync(localFile, 'utf8')).env.ALFRED_CODE_DOCS_VERSIONING, 'git');
+        const personal = fs.readFileSync(localFile, 'utf8');
+        assert.match(seed(root), /\.alfred\/\.variables: ALFRED_CODE_DOCS_VERSIONING seeded 'git' at docs\/mine\//);
+        assert.strictEqual(varsIn(root).ALFRED_CODE_DOCS_VERSIONING, 'git', 'a local install keeps its variables in its untracked .variables');
         assert.strictEqual(fs.readFileSync(path.join(claudeDir, 'settings.json'), 'utf8'), shared, 'settings.json untouched');
-        assert.match(seed(root), /already 'git' - nothing seeded/, 'the local value is the decision now');
+        assert.strictEqual(fs.readFileSync(localFile, 'utf8'), personal, 'settings.local.json untouched');
+        assert.match(seed(root), /already 'git' - nothing seeded/, 'the seeded value is the decision now');
 
         // A decision held in settings.json beneath is a decision at local scope too: nothing seeded over it.
-        fs.writeFileSync(localFile, JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/mine' } }));
+        fs.rmSync(varsFile(root));
         fs.writeFileSync(path.join(claudeDir, 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/shared', ALFRED_CODE_DOCS_VERSIONING: 'local' } }));
         assert.match(seed(root), /already 'local' - nothing seeded/);
 
-        // The re-probe reads the local view and writes the local file.
+        // The re-probe reads the local view and writes where the value is: settings.local.json holds it, so there.
         fs.writeFileSync(localFile, JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/mine', ALFRED_CODE_DOCS_VERSIONING: 'local' } }));
         assert.match(reprobe(root), /docs versioning re-probed at docs\/mine\/: 'git'/);
         assert.strictEqual(JSON.parse(fs.readFileSync(localFile, 'utf8')).env.ALFRED_CODE_DOCS_VERSIONING, 'git');
         assert.strictEqual(envOf(root).ALFRED_CODE_DOCS_VERSIONING, 'local', 'the shared value is left as it was');
+        assert.ok(!fs.existsSync(varsFile(root)), 'and no .variables is written beside it');
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
-// C7 (R101 N9): at project scope the stored decision is read from settings.json ALONE (the shared-only
-// read in scopedSettings). A personal ALFRED_CODE_DOCS_VERSIONING in settings.local.json must not make
+// C7 (R101 N9): at project scope the stored decision is read from the team's files ALONE - .variables, then
+// settings.json (the loader's 'team' layers). A personal ALFRED_CODE_DOCS_VERSIONING in settings.local.json must not make
 // --seed-versioning answer 'already decided': the committed file would never get the key, and every
 // teammate would run on the fallback. The personal value is left as it is.
-test('--seed-versioning at project scope seeds settings.json even when settings.local.json holds a value (C7)', () => {
+test('--seed-versioning at project scope seeds the team\'s .variables even when settings.local.json holds a value (C7)', () => {
     const root = makeProject(JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs' } }));
     const claudeDir = path.join(root, '.claude');
     const localFile = path.join(claudeDir, 'settings.local.json');
@@ -399,9 +406,44 @@ test('--seed-versioning at project scope seeds settings.json even when settings.
         gitIn(root, 'commit', '-qm', 'seed');
         const out = seed(root);
         assert.doesNotMatch(out, /already 'local'/, 'the personal value answered for the committed file');
-        assert.match(out, /settings\.json env: ALFRED_CODE_DOCS_VERSIONING seeded 'git' at docs\//);
-        assert.strictEqual(envOf(root).ALFRED_CODE_DOCS_VERSIONING, 'git');
+        assert.match(out, /\.alfred\/\.variables: ALFRED_CODE_DOCS_VERSIONING seeded 'git' at docs\//);
+        assert.strictEqual(varsIn(root).ALFRED_CODE_DOCS_VERSIONING, 'git');
         assert.deepStrictEqual(JSON.parse(fs.readFileSync(localFile, 'utf8')), { env: { ALFRED_CODE_DOCS_VERSIONING: 'local' } }, 'the personal file is untouched');
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+// T12c (AC22): the seed and the re-probe write the project's .variables through the variables writer - settings.json,
+// where the key lived before 3.0.0, is left byte for byte.
+test('stamp-docs-root --seed-versioning writes .variables and leaves settings.json byte-identical', () => {
+    const root = makeProject(JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs' }, permissions: { allow: ['Bash(ls)'] } }, null, 2));
+    try
+    {
+        gitIn(root, 'init', '-q', '-b', 'develop', '.');
+        fs.writeFileSync(path.join(root, 'README.md'), '# repo\n');
+        gitIn(root, 'add', 'README.md');
+        gitIn(root, 'commit', '-qm', 'seed');
+        const before = fs.readFileSync(path.join(root, '.claude', 'settings.json'));
+        assert.match(seed(root), /stamp-docs-root: \.alfred\/\.variables: ALFRED_CODE_DOCS_VERSIONING seeded 'git' at docs\//);
+        assert.strictEqual(fs.readFileSync(varsFile(root), 'utf8'), 'ALFRED_CODE_DOCS_VERSIONING=git\n');
+        assert.deepStrictEqual(fs.readFileSync(path.join(root, '.claude', 'settings.json')), before);
+        assert.match(seed(root), /already 'git' - nothing seeded/, 'the .variables value is the decision on the next run');
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('stamp-docs-root --reprobe-versioning writes .variables and leaves settings.json byte-identical', () => {
+    const root = projectWithCommittedDocs('docs', 'local');
+    try
+    {
+        // The 3.0.0 shape: the decision in .variables, settings.json with no copy of it.
+        fs.writeFileSync(path.join(root, '.claude', 'settings.json'), `${JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs' } }, null, 2)}\n`);
+        fs.mkdirSync(path.dirname(varsFile(root)), { recursive: true });
+        fs.writeFileSync(varsFile(root), 'ALFRED_CODE_DOCS_VERSIONING=local\n');
+        const before = fs.readFileSync(path.join(root, '.claude', 'settings.json'));
+        assert.match(reprobe(root), /docs versioning re-probed at docs\/: 'git'/);
+        assert.strictEqual(fs.readFileSync(varsFile(root), 'utf8'), 'ALFRED_CODE_DOCS_VERSIONING=git\n');
+        assert.deepStrictEqual(fs.readFileSync(path.join(root, '.claude', 'settings.json')), before);
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

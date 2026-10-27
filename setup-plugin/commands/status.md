@@ -66,10 +66,14 @@ One table, no ask - it is seven rows and every other area reads against it:
 - `docs root`: `<data root>/docs` - `ALFRED_CODE_DATA_PATH` from the scope file, `(default)` when absent; a leftover `ALFRED_CODE_DOCS_PATH` (retired in 2.8.0) shows instead, marked `(leftover - /alfred-code:update moves the docs and removes it)`.
 - `initialised`: the stamp's `initialised:` line - a date, or `pending` (run `/alfred-code:init`).
 - `workspace`: one call, `node "${CLAUDE_PLUGIN_ROOT}/scripts/workspace.js" status --root . ; node
-  "${CLAUDE_PLUGIN_ROOT}/scripts/workspace.js" children --root .`. `workspace: parent <rel>` -> `child of <rel> - own
-  <n>, ignored <n> - load check <state> <at>` (the counts of its `own:` and `ignored:` lines, its `check:` line, `never`
-  when none ran); `child:` lines -> `root of <n> children` (`, <n> gone` for each `gone` one); both when both; neither ->
-  `standalone`. A `!!` line it prints is pasted under the table.
+  "${CLAUDE_PLUGIN_ROOT}/scripts/workspace.js" children --root .`. Its first line, `role: <role>`, opens the row:
+  `child of <rel>`, `root of <n> children`, `root, no child yet`, `standalone`, `standalone (not asked)` or
+  `workspace off`. A child adds ` - own <n>, ignored <n> - load check <state> <at>` (the counts of its `own:` and
+  `ignored:` lines, its `check:` line, `never` when none ran); a `gone` child line adds `, <n> gone`. Pasted under the
+  table as they are: a child's `docs:` and `memory:` lines (the ancestor docs roots it reads and the workspace root's
+  memory index, `ignored` where its file takes them out, `-` for none), each `secrets: <KEY> own|from <rel>` line (the
+  secrets chain by key and source, never a value),
+  each `mcp <name>:` line (a member's local-scope server this project cannot see) and each `!!` line.
 
 ## 3. One question - what else to show
 
@@ -240,19 +244,22 @@ nothing here - no record reaches it, and no registered marketplace serves it fro
 nothing; `unreached: unknown` adds the line under the table (measured: a project's settings enabled a plugin
 whose only record was another project's, and the session searched for its tools three times).
 
-**Environment** - the install's knobs, one row each, from the STACK VIEW (`settings.local.json` over
-`settings.json` key by key, at every scope). The rows are the catalog's: read `${CLAUDE_PLUGIN_ROOT}/meta/environment.json`
-and print one row per `env` entry - its `key`, the value the stack view holds, and its `what` cut to one clause - never a
-copied list, which drifts (2026-10-21: a copy here had lost five of the catalog's rows). `ALFRED_CODE_HOOKS_OFF` prints
-its `<hook>:<part>` entries, or none:
+**Environment** - the install's knobs, one row each. The variables come from ONE
+`node "${CLAUDE_PLUGIN_ROOT}/scripts/variables.js" show --root .` - `<KEY>=<value> (<source>)` per key, the source
+`own` (this project's `.variables`), `from <rel>` (a workspace member's), `settings.local.json` or `default` - and its
+`!! variables:` notes go under the table as they are; `ALFRED_CODE_DATA_PATH` and `ALFRED_CODE_HOOKS_OFF` come from the
+STACK VIEW (`settings.local.json` over `settings.json` key by key, at every scope). The rows are the catalog's: read
+`${CLAUDE_PLUGIN_ROOT}/meta/environment.json` and print one row per `env` entry - its `key`, its value and source, and
+its `what` cut to one clause - never a copied list, which drifts (2026-10-21: a copy here had lost five of the
+catalog's rows). `ALFRED_CODE_HOOKS_OFF` prints its `<hook>:<part>` entries, or none:
 
 | item | value |
 |---|---|
-| <each catalog key> | <value>, or `<default> (default)` - <its what, one clause> |
+| <each catalog key> | <value> (<source>) - <its what, one clause> |
 
-Mark `(default)` when the key is absent and a house default applies. The catalog's rows are the keys the stack SEEDS;
-any other `ALFRED_CODE_*` key the file carries (`ALFRED_CODE_ALLOW_WRITE_OUTSIDE`, a key a newer
-release added) gets its own row, value as written - this table is not a filter. A key matching the
+A `default` source means no file holds the key and the house default applies. The catalog's rows are the keys the stack SEEDS;
+any other `ALFRED_CODE_*` key a settings file or `.variables` carries (`ALFRED_CODE_ALLOW_WRITE_OUTSIDE`, a key a
+newer release added) gets its own row, value as written - this table is not a filter. A key matching the
 catalog's `secret_key_pattern` (`meta/environment.json`) or a row flagged `secret: true` is printed
 as `set (N chars)` or `absent`, never by value. This table names values only - changing them is `configure`'s environment area.
 
@@ -302,7 +309,7 @@ the seat handoff notes still on the bus (`node .claude/hooks/handoff.js left` - 
 |---|---|---|---|
 | architecture/ARCHITECTURE.md | yes | main@a1b2c3d, 2026-07-24 | 2026-07-24 |
 | architecture/watch.json | yes | - | 2026-07-24 |
-| quality/ARCHITECTURE-ASSESSMENT.md | yes | as of main@a1b2c3d, 2026-07-24 (recomputed, not a domain) | 2026-07-24 |
+| quality/ARCHITECTURE-ASSESSMENT.md | yes | as of main@a1b2c3d, 2026-07-24 (recomputed domain) | 2026-07-24 |
 | quality/CODE-ASSESSMENT.md | no | - | - |
 | preferences/PROJECT-CODE-PREFERENCES.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
 | preferences/GIT-PREFERENCES.md | yes | - | 2026-07-25 |
@@ -316,7 +323,7 @@ the seat handoff notes still on the bus (`node .claude/hooks/handoff.js left` - 
 
 `captured` is the doc's own `Captured:` stamp line read from the file (the related-projects
 awareness doc stamps per entry - show the newest); the two `quality/` docs carry no `Captured:` stamp at all -
-each recomputes every run with no domain of its own, so this column shows its `As of:` freshness
+each recomputes every run (`quality/` is a recomputed domain, never versioned), so this column shows its `As of:` freshness
 line instead; `file updated` is the file's mtime date. A `Captured:` stamp older than the file
 mtime is normal (loops edit docs without re-capturing) - render both, judge nothing. Rows are
 fixed - a capture never run shows `no`, so the user sees what is MISSING as clearly as what

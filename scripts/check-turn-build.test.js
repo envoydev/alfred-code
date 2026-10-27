@@ -79,6 +79,7 @@ test('turn-build: history-session\'s Stop runs the check with its own gates; eit
     const first = viaHistory();
     assert.strictEqual(first.status, 2, first.stderr);
     assert.match(first.stderr, /^This turn changed source files and the build check for them fails - tsc --noEmit -p tsconfig\.json \(in \.\)\.\nThe first 3 error line\(s\):/);
+    assert.match(first.stderr, /ALFRED_CODE_TURN_CHECK=0 in the data root's \.variables switches it off/, 'the switch lives in .variables since 3.0.0, not the settings env');
     for (const env of [{ ALFRED_CODE_HISTORY: '0' }, { ALFRED_CODE_HOOKS_OFF: 'history-session' }])
     {
         p.write('src/a.ts');

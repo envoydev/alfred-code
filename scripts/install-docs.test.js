@@ -174,7 +174,7 @@ test('migration: an EXISTING watch.json is never overwritten, a dangling link in
     assert.deepStrictEqual(out.switched, [], 'a dangling watch.json symlink was replaced - it is still theirs');
 });
 
-test('migration: quality/ and related-context/ are watch-less BY DESIGN and stay that way', () =>
+test('migration: the installer writes no watch.json into quality/ or related-context/ - only the assessment\'s capture knows its entries', () =>
 {
     const root = project({ files: {
         '.claude/docs/architecture/ASSESSMENT.md': '# q\n',
@@ -239,6 +239,89 @@ test('migration: an absent docs root is nothing to do, never a crash', () =>
 {
     assert.deepStrictEqual(docs.migrateDocsDomains({ projectRoot: path.join(TMP, 'nope'), docsPath: '.claude/docs' }),
         { moved: [], switched: [], repointed: [], awareness: NO_AWARENESS, preferences: PREFS_RESULT('none') });
+});
+
+// D6 (every project-derived doc is watched, 2026-10-27): an assessment written before quality/ had a watch stays outside
+// the engine until its capture runs again, so every run names it - and writes nothing for it: only the capture knows
+// the entries.
+const D6_LINE = '!! quality/ARCHITECTURE-ASSESSMENT.md predates its watch - run /capture-architecture-quality to put it under the session-close docs check';
+const d6Lines = (logs) => logs.filter((l) => l.includes('predates its watch')).map((l) => l.trim());
+
+test('D6: an assessment with no quality/watch.json is named once per run, and nothing is written under quality/', () =>
+{
+    const root = project({ files: { '.claude/docs/quality/ARCHITECTURE-ASSESSMENT.md': '# a\n' } });
+    for (const run of [1, 2])
+    {
+        const logs = [];
+        docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs', log: (m) => logs.push(m) });
+        assert.deepStrictEqual(d6Lines(logs), [D6_LINE], `run ${run}`);
+    }
+    assert.deepStrictEqual(fs.readdirSync(path.join(root, '.claude/docs/quality')), ['ARCHITECTURE-ASSESSMENT.md']);
+    assert.strictEqual(docs.assessmentWatchLine({ projectRoot: root, docsPath: '.claude/docs', log: () => {} }), true);
+});
+
+// The way back (the docs-watch design, Rollout; AC19): a code revert alone would leave a recomputed quality/watch.json
+// for an engine that reads it as an ordinary domain, so the migration deletes it - but only beside an engine with no
+// refRecomputed, which makes it dormant in the release that ships it.
+const ENGINE_TEXT = fs.readFileSync(path.join(__dirname, '..', 'stack', 'hooks', 'docs.js'), 'utf8');
+const OLD_ENGINE = "'use strict';\n// an engine from before recomputed domains\nfunction watchOfUncached() { return {}; }\n";
+const RECOMPUTED = '{\n  "recomputed": true,\n  "notOwned": ["CODE-ASSESSMENT.md", "references/**"],\n  "watch": []\n}\n';
+const qualityOf = (root) => path.join(root, '.claude/docs/quality');
+const qualityFiles = (root) => Object.fromEntries(fs.readdirSync(qualityOf(root)).sort().map((f) => [f, fs.readFileSync(path.join(qualityOf(root), f), 'utf8')]));
+
+test('migration dormant beside this engine: a recomputed quality/watch.json is byte-identical after', () =>
+{
+    const root = project({ files: { '.claude/docs/quality/watch.json': RECOMPUTED, '.claude/docs/quality/ARCHITECTURE-ASSESSMENT.md': '# a\n' } });
+    docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs', engineText: ENGINE_TEXT });
+    assert.strictEqual(fs.readFileSync(path.join(qualityOf(root), 'watch.json'), 'utf8'), RECOMPUTED);
+    assert.strictEqual(docs.revertRecomputed({ projectRoot: root, docsPath: '.claude/docs', engineText: ENGINE_TEXT }), false);
+});
+
+test('the way back: beside an engine with no refRecomputed only a recomputed quality/watch.json goes, nothing else changes', () =>
+{
+    const root = project({ files: {
+        '.claude/docs/quality/watch.json': RECOMPUTED,
+        '.claude/docs/quality/ARCHITECTURE-ASSESSMENT.md': '# a\n',
+        '.claude/docs/quality/CODE-ASSESSMENT.md': '# c\n',
+    } });
+    const before = qualityFiles(root);
+    const logs = [];
+    docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs', engineText: OLD_ENGINE, log: (m) => logs.push(m) });
+    const after = qualityFiles(root);
+    delete before['watch.json'];
+    assert.deepStrictEqual(after, before, 'only watch.json left quality/');
+    assert.ok(logs.some((l) => /quality\/watch\.json removed/.test(l)), 'the removal is said');
+    // A second run has nothing left to remove.
+    assert.strictEqual(docs.revertRecomputed({ projectRoot: root, docsPath: '.claude/docs', engineText: OLD_ENGINE }), false);
+});
+
+test('the way back: a watch.json without the key, an unparseable one, no engine text and no quality/ are left alone', () =>
+{
+    const plain = project({ files: { '.claude/docs/quality/watch.json': '{\n  "watch": []\n}\n' } });
+    const falsy = project({ files: { '.claude/docs/quality/watch.json': '{"recomputed":"yes"}\n' } });
+    const garbage = project({ files: { '.claude/docs/quality/watch.json': '{not json' } });
+    const unread = project({ files: { '.claude/docs/quality/watch.json': RECOMPUTED } });
+    for (const [root, text] of [[plain, OLD_ENGINE], [falsy, OLD_ENGINE], [garbage, OLD_ENGINE], [unread, null]])
+    {
+        const before = qualityFiles(root);
+        assert.strictEqual(docs.revertRecomputed({ projectRoot: root, docsPath: '.claude/docs', engineText: text }), false, root);
+        assert.deepStrictEqual(qualityFiles(root), before, root);
+    }
+    for (const root of [project(), path.join(TMP, 'no-docs-root-2')])
+        assert.strictEqual(docs.revertRecomputed({ projectRoot: root, docsPath: '.claude/docs', engineText: OLD_ENGINE }), false);
+});
+
+test('D6: nothing named and nothing thrown with the watch present, with no quality/ and with no docs root', () =>
+{
+    const watched = project({ files: { '.claude/docs/quality/ARCHITECTURE-ASSESSMENT.md': '# a\n', '.claude/docs/quality/watch.json': '{"recomputed":true}\n' } });
+    const noQuality = project({ files: { '.claude/docs/architecture/ARCHITECTURE.md': '# m\n' } });
+    for (const root of [watched, noQuality, path.join(TMP, 'no-docs-root')])
+    {
+        const logs = [];
+        docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs', log: (m) => logs.push(m) });
+        assert.deepStrictEqual(d6Lines(logs), [], root);
+        assert.strictEqual(docs.assessmentWatchLine({ projectRoot: root, docsPath: '.claude/docs', log: () => {} }), false, root);
+    }
 });
 
 // 2026-10-10: a 0.2.x project kept the orientation doc loose at the docs root - its pre-folder home - and the data

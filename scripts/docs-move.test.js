@@ -428,7 +428,7 @@ test('installer: tracked docs move as staged renames, and an ignored old root st
             fs.writeFileSync(f, JSON.stringify(st, null, 2));
             return null;
         },
-        inspect: (r) => ({ versioning: envOf(r, 'settings.json').ALFRED_CODE_DOCS_VERSIONING, status: git(r, 'status', '--porcelain', '--untracked-files=all', '--', '.alfred/docs') }),
+        inspect: (r) => ({ versioning: require('../stack/hooks/layout.js').variablesOf(r, { env: { CLAUDE_CONFIG_DIR: path.join(path.dirname(r), 'acct') } }).values.ALFRED_CODE_DOCS_VERSIONING, status: git(r, 'status', '--porcelain', '--untracked-files=all', '--', '.alfred/docs') }),
     });
     assert.match(ignored.outs[1], /ALFRED_CODE_DOCS_VERSIONING 'git' -> 'local' \(the old root was kept out of git\)/, ignored.outs[1]);
     assert.deepStrictEqual(ignored.result, { versioning: 'local', status: '' });

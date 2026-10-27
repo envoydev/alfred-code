@@ -181,8 +181,15 @@ function contextOf(start) {
   // Each doc is read where it first sits: the home's folder, then the other checkouts' - a doc git keeps out (the personal
   // ones, audit 2026-10-21 Q-1) exists only in the main checkout, never in a linked worktree.
   const prefsDirs = [...new Set([home, ...roots].map(prefsAt))];
+  let up;
   return {
     home, bases, prefs: prefsAt(home), prefsDirs,
+    // R4b: each linked workspace member's preferences, after the own ones - read on first use only, since this context is
+    // built on every hook call.
+    get ancestorDirs() {
+      if (up === undefined) { try { up = layout && layout.ancestorPrefsDirs ? layout.ancestorPrefsDirs(home) : []; } catch { up = []; } }
+      return up;
+    },
     dataRel: relTo(dataRootRel()), docsRel: relTo(docsRootRel()),
     plans: (layout ? layout.planDirs(home) : [path.resolve(home, docsRootRel(), 'work', 'plans'), path.resolve(home, docsRootRel(), 'plans')]).map(relTo),
   };
@@ -216,7 +223,31 @@ function readDoc(ctx, d) {
     try { st = fs.lstatSync(path.join(dir, d.file)); } catch { continue; }
     return st.isSymbolicLink() || !st.isFile() ? null : readFile(ctx, d, path.join(dir, d.file));
   }
+  // R3: no own copy - the nearest linked member's, unless an `ignore doc` skips the file there. It is marked an ancestor's.
+  for (const { dir, skip } of ctx.ancestorDirs || []) {
+    if (skip.has(d.file)) continue;
+    let st;
+    try { st = fs.lstatSync(path.join(dir, d.file)); } catch { continue; }
+    const doc = st.isSymbolicLink() || !st.isFile() ? null : readFile(ctx, d, path.join(dir, d.file));
+    return doc && { ...doc, ancestor: true };
+  }
   return null;
+}
+// The copy of a doc that applies here, as readDoc picks it, without reading it: an own copy first, else an ancestor's.
+function docPathOf(ctx, d) {
+  const has = (dir) => { try { fs.lstatSync(path.join(dir, d.file)); return true; } catch { return false; } };
+  const own = (ctx.prefsDirs || [ctx.prefs]).find(has);
+  if (own) return path.join(own, d.file);
+  const up = (ctx.ancestorDirs || []).find((a) => !a.skip.has(d.file) && has(a.dir));
+  return up ? path.join(up.dir, d.file) : null;
+}
+// Inside a preferences folder this session reads: its own, or - for a path under a folder named `preferences` alone, so
+// the chain is read only then (R4b) - a linked member's.
+function inPrefs(ctx, p) {
+  const P = real(p);
+  if (ctx.prefsDirs.some((dir) => inside(real(dir), P))) return true;
+  if (!P.split(/[\\/]/).includes(PREFS)) return false;
+  return (ctx.ancestorDirs || []).some((a) => inside(real(a.dir), P));
 }
 function readFile(ctx, d, file) {
   try {
@@ -310,6 +341,8 @@ function seedLocked() {
 }
 // A section of the project doc not pasted: its show line where the engine can serve it, else the file to read.
 function refOf(ctx, doc, s) {
+  // R4: an ancestor's section is read where it sits - `docs.js show` resolves in this project's docs root.
+  if (doc.ancestor) return `Read ${doc.path} ('${s.heading}')`;
   const engine = fs.existsSync(path.join(ctx.home, '.claude', 'hooks', 'docs.js')) && fs.existsSync(path.join(ctx.prefs, 'watch.json'));
   return engine && s.id ? `\`node .claude/hooks/docs.js show ${doc.file.replace(/\.md$/, '')}#${s.id}\`` : `${doc.rel} ('${s.heading}')`;
 }
@@ -541,8 +574,16 @@ function blockRow(ctx, input, kind, reason, extra = {}) {
 const docOfPath = (ctx, abs) => {
   const P = fold(real(abs));
   const rel = relOf(ctx, abs);
-  return ALL_DOCS.find((d) => ctx.prefsDirs.some((dir) => fold(real(path.join(dir, d.file))) === P)
-    || (rel !== null && fold(rel) === fold(`${ctx.docsRel}/${PREFS}/${d.file}`))) || null;
+  const own = ALL_DOCS.find((d) => ctx.prefsDirs.some((dir) => fold(real(path.join(dir, d.file))) === P)
+    || (rel !== null && fold(rel) === fold(`${ctx.docsRel}/${PREFS}/${d.file}`)));
+  if (own) return own;
+  // R4b: an ancestor's copy marks a doc only where it is the copy that applies - this project holds none of its own.
+  const base = path.basename(P);
+  return ALL_DOCS.find((d) => {
+    if (fold(d.file) !== base) return false;
+    const at = docPathOf(ctx, d);
+    return Boolean(at) && fold(real(at)) === P;
+  }) || null;
 };
 // What a Read marks: the doc when the read reaches all of it (no range, or a range from line 1 past its last line).
 function readMarks(ctx, t, cwd) {
@@ -626,7 +667,7 @@ function shellReads(ctx, command, cwd) {
   try { words = shellReader.commandWords(command); } catch { return null; }
   let expand = (t) => t;
   try { const scan = shellReader.scanShell(String(command), {}); expand = (t) => scan.expandVars(t); } catch { /* no expansion: a $ argument stays unseen */ }
-  const outsidePrefs = (p) => !ctx.prefsDirs.some((dir) => inside(real(dir), real(p)));
+  const outsidePrefs = (p) => !inPrefs(ctx, p);
   const onDisk = (raw) => {
     let a = String(raw).replace(/^['"]|['"]$/g, '');
     if (a.includes('$')) { try { a = String(expand(a)); } catch { return null; } }
@@ -778,6 +819,38 @@ function personalPush(ctx) {
   }
   return `The user's personal preferences - ${doc.rel}, pushed at every session start and after each compaction. They bind `
     + `this session as alfred-preferences.md ranks them:\n\n${shown}`;
+}
+
+// R6/R7 (release 3): the workspace root's memory index at a child's main start. Claude Code swaps a hook context past
+// 10,000 characters for a path and a preview, so the index is sized last, by what the other parts used, with a 500 margin:
+// its first 60 lines, then 6 KB of UTF-8, then the room left, each cut at a line; under 300 left, the path alone.
+const MEMORY_ROOM = 9500;
+const MEMORY_LINES = 60;
+const MEMORY_BYTES = 6144;
+const MEMORY_FLOOR = 300;
+const cutAtLine = (s, fits) => {
+  let at = s.length;
+  while (at > 0 && !fits(s.slice(0, at))) at = s.lastIndexOf('\n', at - 1);
+  return at > 0 ? s.slice(0, at) : '';
+};
+// `used`: the characters the rest of the start's additionalContext holds, the separator before this part included.
+function memoryLine(file, text, used) {
+  const head = `Workspace root memory (read-only): ${file}`;
+  const left = MEMORY_ROOM - used - head.length - 1;
+  if (left < MEMORY_FLOOR) return head;
+  let body = String(text).replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').split('\n').slice(0, MEMORY_LINES).join('\n').trimEnd();
+  body = cutAtLine(body, (x) => Buffer.byteLength(x, 'utf8') <= MEMORY_BYTES);
+  body = cutAtLine(body, (x) => x.length <= left);
+  return body ? `${head}\n${body}` : head;
+}
+function memoryText(ctx, used) {
+  let dir = null;
+  try { dir = layout && layout.workspaceMemoryOf ? layout.workspaceMemoryOf(ctx.home) : null; } catch { dir = null; }
+  if (!dir) return '';
+  const file = path.join(dir, 'MEMORY.md');
+  let text = '';
+  try { text = fs.readFileSync(file, 'utf8'); } catch { return ''; }
+  return text.trim() ? memoryLine(file, text, used) : '';
 }
 
 // A seat's start, or a typed review's: the docs it judges against (`seat` from seatDocs), every section of the project doc
@@ -933,7 +1006,9 @@ function main() {
     }
     // The personal doc leads: in an output Claude Code caps, the tools line is the part to lose; the host lines are short.
     const personal = personalPush(ctx);
-    const text = [personal, toolsText(ctx, null), hostText()].filter(Boolean).join('\n\n');
+    const rest = [personal, toolsText(ctx, null), hostText()].filter(Boolean).join('\n\n');
+    const memory = memoryText(ctx, rest ? rest.length + 2 : 0);
+    const text = [rest, memory].filter(Boolean).join('\n\n');
     // A measurement, never a block (`mode`): the usage analyzer's preferences claim reads it (item 7, 2026-10-25).
     if (personal) blockRow(ctx, input, 'preferences-push', `probe: preferences-push - ${PERSONAL_DOC.file}, ${personal.length} chars`, { mode: 'probe' });
     if (text) emit('SessionStart', { additionalContext: text });
@@ -1000,7 +1075,7 @@ function main() {
       const raw = t[READ_PATH.get(name)];
       const p = typeof raw === 'string' && raw ? real(path.resolve(cwd, raw)) : '';
       if (name === 'Read' && !p) return;
-      if (p && ctx.prefsDirs.some((dir) => inside(real(dir), p))) return;   // the docs themselves are never held
+      if (p && inPrefs(ctx, p)) return;   // the docs themselves, the ancestors' included, are never held
     }
     const seat = reader();
     if (seat) seatHold(ctx, input, files, marks, seat, name === 'Grep');
@@ -1063,7 +1138,7 @@ function main() {
   emit('PreToolUse', { permissionDecision: 'deny', permissionDecisionReason: reasons.join('\n\n') });
 }
 
-module.exports = { hostLines, parseDoc, scopeOf, clean, codeNeeds, codeReason, gitReason, gitWrites, exempt, contextOf, relOf, personalPush, seatPush, seatDocs, shellMarks, shellReads, CODE_DOCS, GIT_DOC, PERSONAL_DOC, INLINE_CAP, PUSH_CAP };
+module.exports = { hostLines, parseDoc, scopeOf, clean, codeNeeds, codeReason, gitReason, gitWrites, exempt, contextOf, relOf, personalPush, seatPush, seatDocs, shellMarks, shellReads, memoryLine, CODE_DOCS, GIT_DOC, PERSONAL_DOC, INLINE_CAP, PUSH_CAP, MEMORY_ROOM };
 if (require.main === module) {
   try { main(); } catch { /* fail open: a hand-over hook never blocks on its own error */ }
 }

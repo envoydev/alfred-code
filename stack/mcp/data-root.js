@@ -156,14 +156,17 @@ function docsInsideRoot({ root, docsPath })
     const rel = path.posix.relative(relOf(root), relOf(docsPath));
     return rel && !rel.startsWith('..') && !path.posix.isAbsolute(rel) ? rel : '';
 }
-function dataIgnoreText({ root, docsPath, mode })
+// `scope` project or user re-includes the stack's variables (workspace roles and variables, D6): those scopes share their
+// settings, so the team shares `.variables` too. A local install, and the hooks' own write (no scope), keep it out.
+function dataIgnoreText({ root, docsPath, mode, scope })
 {
     const rel = docsInsideRoot({ root, docsPath });
-    if (!rel) return `${DATA_IGNORE_HEAD}\n*\n!/.gitignore\n`;
-    if (mode === 'local') return `${DATA_IGNORE_HEAD}; the docs under it are too (ALFRED_CODE_DOCS_VERSIONING=local)\n/*\n!/.gitignore\n`;
+    const kept = `!/.gitignore\n${scope === 'project' || scope === 'user' ? '!/.variables\n' : ''}`;
+    if (!rel) return `${DATA_IGNORE_HEAD}\n*\n${kept}`;
+    if (mode === 'local') return `${DATA_IGNORE_HEAD}; the docs under it are too (ALFRED_CODE_DOCS_VERSIONING=local)\n/*\n${kept}`;
     const state = DOCS_STATE_IGNORE.map((l) => (l.startsWith('#') ? l : `/${rel}${l}`));
     return `${DATA_IGNORE_HEAD}; the docs under it are committed (ALFRED_CODE_DOCS_VERSIONING=git) but for the lines below\n`
-        + `/*\n!/.gitignore\n!/${rel.split('/')[0]}/\n${state.join('\n')}\n`;
+        + `/*\n${kept}!/${rel.split('/')[0]}/\n${state.join('\n')}\n`;
 }
 
 // Before the sensitive-data file lands in a root: the file is written only when absent (the installer keeps it current),
@@ -176,7 +179,10 @@ function ensureRootIgnore({ projectDir, root, env = process.env })
     const file = path.join(base, '.gitignore');
     if (fs.existsSync(file)) return 'present';
     const docsPath = settingFrom({ env, projectDir, suffix: 'DOCS_PATH' }) || `${root}/docs`;
-    const mode = String(settingFrom({ env, projectDir, suffix: 'DOCS_VERSIONING' }) || '').trim().toLowerCase();
+    // The docs mode is one of the stack's variables (D4): the hooks' loader reads it, the project's .variables first.
+    let mode = '';
+    try { mode = String(require(path.join(__dirname, '..', 'hooks', 'layout.js')).variablesOf(projectDir, { env }).values.ALFRED_CODE_DOCS_VERSIONING || '').trim().toLowerCase(); }
+    catch { /* no loader beside it: the committed shape */ }
     fs.mkdirSync(base, { recursive: true });
     // `wx`: another run at the same moment may have written it - its file stands.
     try { fs.writeFileSync(file, dataIgnoreText({ root, docsPath, mode }), { flag: 'wx' }); }

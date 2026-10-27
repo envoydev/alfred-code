@@ -62,6 +62,16 @@ One that genuinely reads as two areas is asked as one question naming both readi
 
 Read the area's doc first; it may not exist. Write each preference as one entry in `references/doc-shape.md`'s shape: a short title, `Rule:` in the imperative, `Scope:`, `Why:` in the user's words when they gave one (else the plain consequence - never invented history). Its id is what `<script> next --area <area>` prints - one past the highest the doc has used, its `Retired:` line included, so an id is never reused; a second entry in the same area takes the number after it. Add a `Check:` only when a regex over named globs catches a violation with few false hits; a preference no regex catches has none and stays a seat's judgment. A personal entry never has one - there is no code to grep - and its `Scope:` is a plain area (`every answer`, `commit messages`). Field names stay English (`Rule:`, `Scope:`, `Why:`, `Except:`, `Check:`) - `lint` and the hooks read them; the text is the user's words, in their language.
 
+When the user's words name one case - a type, a file, an API, a single call such as 'use `IDateTimeService`, not `new DateTime`' - the entry's `Rule:` is the general rule behind it, here 'use the app's own abstraction for a capability, never the raw API it wraps', and the user's case goes on an `- Example:` line. When the words could mean the one case or the general rule and nothing in them settles it, ask:
+
+```ask
+'<the preference>' can bind this one case or every case like it. Which did you mean?
+- 'Every case like it (Recommended)' - the entry's Rule: is '<the general rule>', with yours as its example
+- 'Only this case' - the entry's Rule: is '<the words as given>', and nothing else is bound
+```
+
+Under auto-run this ask goes out with no `(Recommended)` mark, so it waits for the user: a rule every later session follows is theirs to widen.
+
 ### 3. CONFLICT CHECK
 
 Read what the preference could contradict: for a personal entry, the house answer and interaction rules (`alfred-interaction.md`), the personal doc itself and the git doc's locked entries ('just commit when you are done' weakens the consent entry); for the others, the house convention skills for the files in its scope, `<docs-path>/preferences/PROJECT-CODE-PREFERENCES.md`, the architecture map, the git doc's locked entries and the project's AGENTS.md. A preference that would weaken security, input validation, error handling or accessibility, or open a hook's gate, never binds there, and no entry weakens a `locked` one - `alfred-preferences.md` says so - so tell the user in one line before writing it, and never record it as if it would. A clash the language or a tool forces (C# extension methods must sit in a static class) is asked once per clash:
@@ -104,7 +114,7 @@ The personal doc holds <n> chars, over its 3,000 cap - every session start pays 
 
 ### 5. MEASURE
 
-`<script> check --all --area <area>` for each area the run touched but personal (it has no `Check:`): count each new or changed entry's `violation:` lines - how many places break it today. Fix none of them here; the quality loops and the next task do.
+`<script> check --all --area <area>` for each area the run touched but personal (it has no `Check:`): count each new or changed entry's `violation:` lines - how many places break it today. Fix none of them here; the quality loops and the next task do. The check prints a `by hand:` line after its summary naming each entry with no `Check:`; a review that quotes it must judge every id a `by hand:` line names, and every entry a `skipped:` line names, against its diff - here the run only reports how many entries the line names, on the `Check:` line.
 
 ### 6. REPORT
 
@@ -113,7 +123,7 @@ A tools run reports in `references/tools-area.md`'s shape instead, its `Order:` 
 ```
 Docs: <doc> - <ids added | changed | removed>; overrides <what a preference beats, or none>
 Conflicts: <the sources step 3 read> - <each clash asked and its answer | none>
-Check: <id> <n> violations[, <id> <n> violations] | none with a Check:
+Check: <id> <n> violations[, <id> <n> violations] | none with a Check:[; by hand: <n>]
 Reach: <each reach: line, verbatim> | no code or architecture entry touched
 Lint: <the script's lint: line, verbatim>
 ```

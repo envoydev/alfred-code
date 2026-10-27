@@ -82,7 +82,11 @@ The stores and what each holds, where the docs root and the data root live, and 
 - **One data root for the project's data** (2.1.0, the user's decision of 2026-09-29): `ALFRED_CODE_DATA_PATH`,
   default `.alfred` at the project root - relative, never under `.claude/`, no space, no `..` (`data-root.js
   checkDataPath`) - holds the docs (`<root>/docs`), the hooks' state and ledgers (`<root>/state`, `<root>/statistics`,
-  `stack/hooks/layout.js`) and the project's sensitive data (`<root>/.secrets`, a dotenv the user fills by hand -
+  `stack/hooks/layout.js`), the stack's variables (`<root>/.variables`, 3.0.0: every catalog `ALFRED_CODE_*` key but
+  `DATA_PATH` and the guard key `HOOKS_OFF`, which stay in the settings files; written by the installer and
+  `scripts/variables.js set`, ledgered as `.variables` rows; tracked by git at project and user scope, whose
+  `<root>/.gitignore` carries `!/.variables` - D6, `data-root.js dataIgnoreText` - and kept out at local scope; the
+  hooks' loader `layout.variablesOf` reads it) and the project's sensitive data (`<root>/.secrets`, a dotenv the user fills by hand -
   2026-10-13; every install writes it absent-only with one comment line and no key, only where git keeps it out,
   `data-root.js ensureSensitiveFile`; the secret guard keeps its values out of the chat, and `Read(.secrets)` and
   `Read(.sensitive-data)` are in the shipped deny, a bare name matching at any depth per code.claude.com/docs/en/permissions).
@@ -112,14 +116,26 @@ The stores and what each holds, where the docs root and the data root live, and 
   wrote for a server's launcher is dropped, the data left where it is. The stamp's `data-root:` line is the next run's
   baseline, so a root changed by hand is still found.
 - **The workspace file and the load check live in the data root** (workspace layering, release 1, 2026-10-26):
-  `<data root>/workspace` holds the project's `parent <rel>` / `parent none`, `child <rel>` and `ignore <category>
+  `<data root>/workspace` holds the project's `parent <rel>` or `role root|standalone` (`parent none` reads as
+  standalone), `above <rel>|none` (the tree its role was asked against), `child <rel>` and `ignore <category>
   <name>` lines (`install/workspace.js readWorkspace` / `writeWorkspace`, through a lock beside it). It moves with the
   root on every run that changes it, on or off (`workspace.moveWorkspace` - `planDataMove` carries only the store), a parent's file is read under the parent's own root, and an ancestor's
   is read with an env that keeps only the account (`ancestorEnv`), so this project's `ALFRED_CODE_DATA_PATH` never
   points into a parent. `workspace.js check-loads` writes its last result, whatever the state, to `<data root>/state/
   workspace-check.json`, which `status` reads. Both stay out of git through the root's `/*`. Uninstall takes out the
-  `parent` and `child` lines on both sides (`leaveParent`, `releaseChildren`) and leaves the rest of the file, as it
-  leaves the data root.
+  `parent` and `child` lines on both sides (`leaveParent`, `releaseChildren`, which first writes each child's
+  inherited values into its own `.variables`) and leaves the rest of the file, as it leaves the data root.
+- **A child reads its ancestors' docs and memory, never writes them** (workspace layering, release 3, 2026-10-27). An
+  ancestor's docs root is `layout.docsRootOf` - its own settings' leftover `ALFRED_CODE_DOCS_PATH`, else `<its data
+  root>/docs`, never the child's env. Its memory folder is `layout.memoryDirsOf`, Claude Code's own rule: the first
+  string `autoMemoryDirectory` (the managed drop-ins last first, the managed file, the member's `settings.local.json`, its
+  `settings.json`, the account's; a leading `~` is the home folder), else `<account>/projects/<name>/memory`, `<name>`
+  its git top (a linked worktree's main checkout) with every character outside `[A-Za-z0-9]` as `-`; past 200
+  characters Claude Code appends `-<hash>`, so the existing `<first 200>-*` folders are listed (probe A5,
+  `docs/workspace-layering-evidence.md`), and `CLAUDE_CODE_PROJECT_DIR_NAME` set means none. The line a child's start
+  shows is `layout.workspaceMemoryOf`: the top member's folder, none past an `ignore memory root`, unless exactly one
+  folder matches, or when it is one of the child's own. The install opens the docs roots and denies their edit
+  (`repo-installer.md`); the hooks read them and guard the memory (`repo-hooks.md`).
 - **Two stores, split by durability** (hard rule). The committed architecture docs
   (`<docs-path>/architecture/ARCHITECTURE.md` + `references/`, owned by
   `capture-architecture`) are the DURABLE truth every seat reads to orient, refreshed
@@ -147,7 +163,10 @@ The stores and what each holds, where the docs root and the data root live, and 
   by the installer, never printed, the run book's line re-pointed; a key the store holds with another value, a store
   git would commit (`git check-ignore`) or one that is not a file moves nothing and is said every run until fixed. The findings (`quality/ARCHITECTURE-ASSESSMENT.md`, `quality/CODE-ASSESSMENT.md`, owned by the
   two `*-quality` captures) are the opposite of durable - recomputed fresh every run, so
-  `quality/` carries no `watch.json` and is no docs domain. A doc an older capture left at a former home moves on
+  `quality/` is a RECOMPUTED domain (`"recomputed": true` in its `watch.json`, written only by `capture-architecture-quality`
+  through `docs.js watch-merge`): the assessment's located entries are asked at a session's close, set in place on every
+  branch, picked after the durable docs and never credited as a docs read; `CODE-ASSESSMENT.md` is `notOwned` there. An
+  assessment older than its watch is named by update (`docs.assessmentWatchLine`), never given one by the installer. A doc an older capture left at a former home moves on
   update (`docs.migrateDocsDomains`, absent-only: `PROJECT-CODE-STYLE.md`, `architecture/ASSESSMENT.md`, and the
   orientation doc from `related-context/` or loose at the root, its pre-folder home), and each generated rule naming
   the old path is re-pointed whenever the doc sits only at its new home - the project's own AGENTS.md / CLAUDE.md is

@@ -87,6 +87,47 @@ function toolIgnoreOffer({ projectRoot, localChild: asked = false })
     return { state: 'offer', file, why: 'the install created it for Prettier in a local install in a workspace', top };
 }
 
+// git-hygiene's own comment above the data root's line - the mark that the line is the stack's, so an update may rewrite it.
+const OWN_COMMENT = '# alfred-code: the data root (ALFRED_CODE_DATA_PATH) is machine-local';
+// At project and user scope the stack's variables are committed (workspace roles and variables, D6), and git cannot
+// re-include a file under an ignored folder: the root's contents are ignored instead, the file re-included.
+const sharedScope = (projectRoot) =>
+{
+    const stamp = require('./install/stamp.js');
+    return ['project', 'user'].includes(stamp.readStampScope(stamp.stampFiles({ projectRoot }).read));
+};
+const rootLines = (line, shared) => (shared ? [`${line}*`, `!${line}.variables`] : [line]);
+
+// An earlier `/<root>/` line this script wrote (its comment right above it), in the project's .gitignore or the repo's
+// exclude file, becomes the `/<root>/*` and `!/<root>/.variables` pair. A line of the user's own is never touched.
+// Returns the files rewritten.
+function rewriteOwnLine({ projectRoot, root })
+{
+    const files = [path.join(projectRoot, '.gitignore')];
+    try { files.push(path.resolve(projectRoot, git(['rev-parse', '--git-path', 'info/exclude'], projectRoot))); }
+    catch { /* no repository: the .gitignore alone */ }
+    const done = [];
+    for (const file of files)
+    {
+        let text;
+        try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+        const eol = text.includes('\r\n') ? '\r\n' : '\n';
+        const lines = text.split(/\r?\n/);
+        let changed = false;
+        for (let i = lines.length - 1; i > 0; i--)
+        {
+            const line = lines[i].trim();
+            if (lines[i - 1].trim() !== OWN_COMMENT || !line.startsWith('/') || !line.endsWith(`/${root}/`)) continue;
+            lines.splice(i, 1, ...rootLines(line, true));
+            changed = true;
+        }
+        if (!changed) continue;
+        fs.writeFileSync(file, lines.join(eol));
+        done.push(file);
+    }
+    return done;
+}
+
 // The lines go to the project's own `.gitignore` (committed - the team shares it) or the repo's
 // `.git/info/exclude` (this clone only, no committed file touched). Anchored, so a nested folder of the same
 // name elsewhere is untouched; the exclude file's patterns are relative to the top level.
@@ -94,8 +135,9 @@ function applyIgnore({ projectRoot, home, localChild: asked = false })
 {
     const offer = dataRootOffer({ projectRoot, localChild: asked });
     const tool = toolIgnoreOffer({ projectRoot, localChild: asked });
+    const shared = !asked && sharedScope(projectRoot);
     const wanted = [
-        ...(offer.state === 'offer' ? [{ name: `${offer.root}/`, top: offer.top, comment: 'the data root (ALFRED_CODE_DATA_PATH) is machine-local' }] : []),
+        ...(offer.state === 'offer' ? [{ name: `${offer.root}/`, top: offer.top, comment: OWN_COMMENT.slice('# alfred-code: '.length), shared }] : []),
         ...(tool.state === 'offer' ? [{ name: tool.file, top: tool.top, comment: 'the .prettierignore this local install created' }] : []),
     ];
     if (!wanted.length) return { state: 'none', why: offer.why };
@@ -114,13 +156,13 @@ function applyIgnore({ projectRoot, home, localChild: asked = false })
     let text = '';
     try { text = fs.readFileSync(file, 'utf8'); } catch { text = ''; }
     const have = new Set(text.split(/\r?\n/).map((l) => l.trim()));
-    const add = wanted.map((w) => ({ ...w, line: `${anchor(w.top)}${w.name}` })).filter((w) => !have.has(w.line));
+    const add = wanted.map((w) => ({ ...w, lines: rootLines(`${anchor(w.top)}${w.name}`, w.shared) })).filter((w) => !w.lines.every((l) => have.has(l)));
     if (!add.length) return { state: 'current', file };
     const eol = text.includes('\r\n') ? '\r\n' : '\n';
     const lead = text && !/\r?\n$/.test(text) ? eol : '';
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.appendFileSync(file, `${lead}${add.map((w) => `# alfred-code: ${w.comment}${eol}${w.line}${eol}`).join('')}`);
-    const lines = add.map((w) => w.line);
+    fs.appendFileSync(file, `${lead}${add.map((w) => `# alfred-code: ${w.comment}${eol}${w.lines.join(eol)}${eol}`).join('')}`);
+    const lines = add.flatMap((w) => w.lines);
     return { state: 'applied', file, line: lines.join(' '), lines };
 }
 
@@ -163,4 +205,4 @@ if (require.main === module)
     require('../stack/hooks/hook-prelude.js').blockingStdio();
     process.exitCode = main();
 }
-module.exports = { dataRootOffer, toolIgnoreOffer, applyIgnore };
+module.exports = { dataRootOffer, toolIgnoreOffer, applyIgnore, rewriteOwnLine, OWN_COMMENT };

@@ -12,7 +12,7 @@ own picks and ignores, and its own scope.
   this project's set do to that child; `?` with an indented `!! no projection - <why>` means its read-back failed, and
   the cascade skips it and everything below it.
 - Indented under a row, that project's own asks, as its own update would print them: `data-move: offer`,
-  `docs-move: offer`, `instructions-file: ... update=ask*`, `instructions-both: ask`, `workspace: join`.
+  `docs-move: offer`, `instructions-file: ... update=ask*`, `instructions-both: ask`, `workspace: role-ask <case> <rel>`.
 - `gone: <rel>` - a listed child folder that no longer holds an install; the cascade removes its line.
 - `rescan: <rel>` - with `--rescan`, an installed project below with no parent line.
 
@@ -32,8 +32,9 @@ Answer each project's own questions the recommended way? <each project: its rel 
 
 The Recommended answer per ask: `data-move: offer` -> `--data-move move`; `docs-move: offer` -> `--docs-root-move move`;
 `instructions-file:` -> the name template `instructions-place.md` names for its `update=` verdict, its Recommended value
-as `--instructions-file agents|claude` (`update=ask-local` passes none); `workspace: join` -> `node
-"$TMP/repo/scripts/workspace.js" join --root <rel> --answer join`, run now, never through the answers file. A child's
+as `--instructions-file agents|claude` (`update=ask-local` passes none); `workspace: role-ask` -> the first `ask:` line of
+`node "$TMP/repo/scripts/workspace.js" role --root <rel> --when update`, its answer run now as `node
+"$TMP/repo/scripts/workspace.js" role --root <rel> --answer <answer>`, never through the answers file. A child's
 `instructions-both: ask` is the walk's one account question: ask it once and pass every such project as its own
 `--root` to the one `account-instructions` call. 'Pick per project' opens ONE AskUserQuestion call of up to four
 questions, one per ask, each option the walk's template for that ask; more asks take a second call.

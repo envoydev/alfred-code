@@ -129,16 +129,17 @@ function stubClaude(home, listing, lands) {
 }
 const claudeCalls = (home) => { try { return fs.readFileSync(path.join(home, 'claude-calls.log'), 'utf8').split('\n').filter(Boolean); } catch { return []; } };
 const CORE_ROW = (scope, version) => JSON.stringify([{ id: 'alfred-code@envoydev', version, scope, enabled: true }]);
-// Every installed stack entry is updated, each at its own scope - the refreshed catalog is what Claude
-// Code launches, so an entry left on its old version can name a file that version lacks. Not another
-// project's row, and not the official marketplace's plugin of the same name.
+// The core is updated at its own scope, and nothing else: a retired stack entry (serena) is pruned by the run, and
+// preferred-tools - listed in the same catalog from its own repo - is the user's, updated on its own (the user's
+// ruling of 2026-10-27). Not another project's row, and not the official marketplace's plugin of the same name.
 const STACK_ROWS = (home) => JSON.stringify([
     { id: 'alfred-code@envoydev', version: '0.10.0', scope: 'user', enabled: true },
     { id: 'serena@envoydev', version: '0.10.0', scope: 'project', enabled: true, projectPath: fs.realpathSync(home) },
     { id: 'serena@envoydev', version: '0.9.0', scope: 'project', enabled: true, projectPath: '/elsewhere/another-project' },
     { id: 'serena@claude-plugins-official', version: '3.0.0', scope: 'user', enabled: true },
+    { id: 'preferred-tools@envoydev', version: '0.1.0', scope: 'project', enabled: true, projectPath: fs.realpathSync(home) },
 ]);
-const WANT_UPDATES = ['plugin update alfred-code@envoydev --scope user -y', 'plugin update serena@envoydev --scope project -y'];
+const WANT_UPDATES = ['plugin update alfred-code@envoydev --scope user -y'];
 const updatesIn = (home) => claudeCalls(home).filter((c) => /^plugin update /.test(c)).sort();
 
 test("the protocol's bash snippet updates the core FIRST, takes the entry that lands, and says what was running", POSIX_STUB, () => {

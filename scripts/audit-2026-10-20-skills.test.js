@@ -138,7 +138,7 @@ test('C44: the run book names the reconnect, the setup scripts and each flow\'s 
 test('C46: the per-item gaps', () =>
 {
     assert.match(flat(read('stack/skills/habits-create-ticket/SKILL.md')), /named an existing empty or placeholder ticket and asked to put the content in it: that request is the confirmation/);
-    assert.match(flat(read('stack/skills/habits-plan-writing/SKILL.md')), /A card ticked `DONE` collapses to its title, its status line and one evidence pointer/);
+    assert.match(flat(read('stack/skills/habits-plan-writing/SKILL.md')), /A card ticked `DONE` collapses to its title, its status line, its `estimate:` line and one evidence pointer/);
     const rc = read('stack/skills/habits-root-cause/SKILL.md');
     assert.match(rc, /^description: ".*build or auth error.*"$/m);
     assert.match(flat(rc), /Each option names the measured quantity it changes/);

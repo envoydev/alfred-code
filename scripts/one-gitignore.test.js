@@ -242,3 +242,24 @@ test('the default sensitive data: written once with its one comment line, never 
     fs.mkdirSync(noGit, { recursive: true });
     assert.strictEqual(dataRoot.ensureSensitiveFile({ projectDir: noGit, root: '.alfred', check: () => null }), 'written', 'outside git there is nothing to commit it to');
 });
+
+test('a local-scope run keeps the !/.variables line a team committed in the data root file', () =>
+{
+    const root = repo();
+    const file = path.join(root, '.alfred', '.gitignore');
+    docs.ensureDataIgnore({ projectRoot: root, root: '.alfred', docsPath: '.alfred/docs', mode: 'git', scope: 'project' });
+    put(root, '.alfred/.variables', 'ALFRED_CODE_MEMORY=custom\n');
+    const git = (...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: root, encoding: 'utf8' });
+    git('add', '.alfred/.gitignore', '.alfred/.variables');
+    git('commit', '-q', '-m', 'team');
+    const team = fs.readFileSync(file, 'utf8');
+    assert.match(team, /^!\/\.variables$/m);
+    docs.ensureDataIgnore({ projectRoot: root, root: '.alfred', docsPath: '.alfred/docs', mode: 'git', scope: 'local' });
+    assert.strictEqual(fs.readFileSync(file, 'utf8'), team, 'the tracked file is the team\'s: a local run leaves the line');
+    assert.deepStrictEqual(status(root), []);
+
+    const solo = repo();
+    docs.ensureDataIgnore({ projectRoot: solo, root: '.alfred', docsPath: '.alfred/docs', mode: 'git', scope: 'project' });
+    docs.ensureDataIgnore({ projectRoot: solo, root: '.alfred', docsPath: '.alfred/docs', mode: 'git', scope: 'local' });
+    assert.doesNotMatch(fs.readFileSync(path.join(solo, '.alfred', '.gitignore'), 'utf8'), /^!\/\.variables$/m, 'an untracked file is this machine\'s: local scope keeps .variables out');
+});

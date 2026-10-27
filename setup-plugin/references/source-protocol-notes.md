@@ -12,8 +12,8 @@ plugins run from: no probe, no archive.
 
 - **Latest first.** Only `claude plugin update` lands a newer version dir (a refreshed catalog does not, and this
   marketplace has auto-update off - code.claude.com/docs/en/discover-plugins). So the resolve refreshes the
-  `envoydev` catalog and updates EVERY installed stack entry at its OWN scope before it picks: an entry left on
-  its old version can name a file that version lacks (docs/uv-python-pin-evidence.md). It keeps the core's
+  `envoydev` catalog and updates the installed CORE at each of its scopes before it picks - the stack's one entry
+  since 2.10.1; another plugin the catalog lists (preferred-tools) is the user's and updates on its own. It keeps the core's
   version from BEFORE that update as `running=` - the one this session loaded.
 - The pick is the NEWEST valid version dir across marketplaces (the dir names are versions, sorted as versions),
   valid only with both `stack/skills` and `stack/agents` and no `.orphaned_at` mark. No second cache of the

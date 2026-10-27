@@ -2,32 +2,42 @@
 
 ## Contents
 
-- **Why this doc lives outside the docs-domain engine** - `quality/` is recomputed, never versioned
+- **Why this doc is a recomputed domain** - `quality/` is rebuilt whole each run and watched, never versioned
 - **`<docs-path>/decisions/` - the domain a person writes, this skill only reads** - the shape that
   makes gate question 4 answerable at all, and the one document family this engine refuses to write
 - **The findings gate** - the four questions a candidate must pass before it is a finding
 - **The count rule** - an output, never a target, in both directions
 - **The three buckets** - every surviving item lands in exactly one
 - **The shape** - Strengths, Must fix, Worth knowing, Deliberate tradeoffs, Proposed decisions, Summary
-- **Format discipline** - the budget, and why there is no per-branch section protocol here
-- **Write mechanics** - the stamp, the folder, the single overwrite
+- **Sections, ids and covers** - what the engine sees, and the resolved line a session's close writes
+- **Format discipline** - the budget, the section cap, and why there is no per-branch section protocol here
+- **Write mechanics** - the stamp, the folder, the single overwrite, the watch merge and its two checks
 
-## Why this doc lives outside the docs-domain engine
+## Why this doc is a recomputed domain
 
-`<docs-path>/quality/` carries no `watch.json`, so `domains()` in `.claude/hooks/docs.js` never picks it up - it
-is not a docs domain at all. That is deliberate: weaknesses and strengths are a function of the map plus the
-code, recomputable on demand for whatever branch you are on. A domain exists to make a doc survive a branch
-switch (git versioning, or a local overlay folded back at merge) - and there is nothing here worth making
-survive, because the next run reproduces it from source. Versioning a recomputed doc would be storing a cache
-and calling it a record. No `<!-- id: -->` / `<!-- covers: -->` comment lines, no section-level stamp, no
-`docs.js set`, no `docs.js lint` pass, no branch-overlay question at session end - none of that machinery applies
-here, and this skill never invokes it. On a project that commits its docs, plain git tracks the file exactly like
-any other tracked file, with no per-branch overlay; on a project whose docs root is local-only, this file is
-local too, same as the rest of the root.
+`<docs-path>/quality/watch.json` carries `"recomputed": true`, so `domains()` in `.claude/hooks/docs.js` picks the
+folder up as a docs domain of one kind: a cache its capture rebuilds whole, never a record. Weaknesses and
+strengths are a function of the map plus the code, recomputable on demand for whatever branch you are on, so the
+engine keeps from it what a record needs:
+
+- **No branch versions.** `docs.js set` writes this doc in place on every branch, never into an overlay: the
+  capture replaces it wholesale wherever it runs, and an overlay would shadow the next capture's fresh text.
+- **Durable first.** Every docs ask and the first-change gate pick the durable docs' sections first; an entry here
+  takes a slot only when fewer durable sections hit.
+- **No versioning vote.** The docs-versioning seed never counts this domain.
+- **No standing as a docs source.** Reading the assessment never counts as the docs read the first-change gate
+  asks for, and the gate never pastes it.
+
+What the watch buys: a session that changes a file a Strength or Must-fix entry is located in is asked at its
+close whether the entry still holds, so a fixed weakness reads resolved instead of open until the next capture.
+The domain's `notOwned` entry keeps the engine off `CODE-ASSESSMENT.md`, which `capture-code-quality` recomputes
+whole, and off `references/**`, both captures' spill detail. On a project that commits its docs, plain git tracks
+the file like any other; on a local-only docs root it is local too, and a rewrite at a session's close is seen from
+every branch at once - which is why the resolved line names its branch.
 
 ## <docs-path>/decisions/ - the domain a person writes, this skill only reads
 
-Unlike `quality/`, `<docs-path>/decisions/` IS a docs domain: it carries its own `watch.json`, so
+Unlike `quality/`, `<docs-path>/decisions/` is a durable docs domain - a record: it carries its own `watch.json`, so
 `domains()` in `.claude/hooks/docs.js` picks it up and the engine sections, lints and watches it like
 any other - with one deliberate difference, declared in that same `watch.json`.
 
@@ -106,7 +116,7 @@ Before ANY candidate is recorded as a weakness, answer all four explicitly; an u
 
 - **Never pad upward.** No observation is promoted to a weakness, and no minor to a major, to make the doc look thorough. Zero gate-passing weaknesses is a valid, complete result on a healthy codebase - state it plainly.
 - **Never truncate downward.** EVERY candidate that passed the gate is recorded - twenty-five real weaknesses means the doc carries twenty-five; dropping one because a list is getting long is silent data loss the next run cannot detect. Strengths the same: every genuine one, not a round number.
-- **Length is handled by ranking and spilling, never by deletion.** Order by blast radius so the top is actionable at a glance; spill entry detail to `<docs-path>/quality/references/` topic files (recomputed with the doc and no docs domain, so the spill is a cache like the doc itself; the map's `architecture/references/` stays the map's). The entry itself stays. The threshold that triggers the spill is in *Format discipline* below - ~300 lines, `wc -l`-checked after the write; without a number this rule never fires.
+- **Length is handled by ranking and spilling, never by deletion.** Order by blast radius so the top is actionable at a glance; spill entry detail to `<docs-path>/quality/references/` topic files (recomputed with the doc and `notOwned` in its domain, so the spill is a cache like the doc itself; the map's `architecture/references/` stays the map's). The entry itself stays. The threshold that triggers the spill is in *Format discipline* below - ~300 lines, `wc -l`-checked after the write; without a number this rule never fires.
 
 ## The three buckets - every surviving item lands in exactly one
 
@@ -136,12 +146,51 @@ No bucket has a size limit. **Worth knowing retirement rule** - what stops the l
 - **Proposed decisions** - a repeatedly-declined Must-fix entry, a tradeoff this run judged worth recording, or a recorded decision a user preference breaks (both named), shaped ready to accept: the claim, the reason, what it costs. This skill NEVER writes to the decision log; a person accepts a proposal by writing it themselves, at which point the next run's gate question 4 picks it up and the entry moves out of Must fix.
 - **Summary** - the per-bucket and Must-fix tier tally, the top few highest-leverage fixes, and the over-build line: the over-build entries by title and tag, biggest cut first, closing `net: -N lines, -M dependencies possible` (`net: none` when the lens found nothing that passed the gate).
 
+## Sections, ids and covers
+
+Each bucket is a `##` heading with its id comment - strengths, must-fix, worth-knowing, deliberate-tradeoffs,
+proposed-decisions, summary - and the entries under it are the engine's sections:
+
+- **Each Strength and Must-fix entry** is a `###` section with a covers line; its body is the entry exactly as The shape
+  section above lays it out.
+- **Each Deliberate tradeoff and Proposed decision** is a `###` section with no covers line: each runs to several
+  lines, and a section apiece keeps every bucket under the engine's 6,000-character section cap. Tradeoffs come
+  from `decisions/`, which watches its own records.
+- **Worth knowing** stays one line per entry, uncovered: a minor note going stale costs a reader little.
+- **The Summary** carries no covers line.
+
+The W3 entry above opens:
+
+```markdown
+### W3 - Invoicing queries Orders' persistence entities across the module boundary
+<!-- id: invoicing-reads-orders-entities -->
+<!-- covers: src/Invoicing/InvoiceBuilder.cs, src/Orders/Order.cs -->
+```
+
+**The id is the slug of the entry's title**, never its W- or S-number: a re-rank renumbers, and a watch entry keyed
+on a number would point at another entry after the next run. Two titles with one slug take `-2`, `-3` in doc
+order. Write the ids yourself, never through `docs.js seed-ids`, and name them in the watch entries exactly as
+written.
+
+**Covers are files.** Turn each entry's located code (`located: Invoicing/InvoiceBuilder -> Orders.Order` names
+types and modules) into the file paths the analyzer seats reported for them. An entry located only at module level
+takes the module folder's glob (`src/Invoicing/**`). An entry with no located file has no covers line and no watch entry -
+never a guessed glob.
+
+**A section rewritten at a session's close** keeps the entry's shape. A change that removed the weakness rewrites
+the body to one line - `Resolved by <what changed>, <YYYY-MM-DD> - the next capture drops it.`, with ` on <branch>`
+after the change when the session is on a branch other than mainline - and keeps the heading, so the id and its
+watch entry stay valid. The Summary's tally waits for the next capture, which recomputes it.
+
 ## Format discipline - the budget
 
 This doc is read at intake by every `loop-architecture-quality` round, so its weight is paid again each
 time - and a rule with no threshold never fires.
 
 - **Target: ~300 lines.** Double the map's, because an entry carries reasoning the map does not - but a number, and a checked one: `wc -l` it after the write, and over target run the spill pass. Spilling is not deleting: the entry's title, tier, one-line cost and its Remediation and Strength-check fields stay inline; the supporting detail - the located-code walkthrough, the measurement, the alternatives weighed - moves to `<docs-path>/quality/references/<topic>.md` and the entry links it. Ranking still comes first, so the top of the doc is actionable before anything is spilled.
+- **Each section under 6,000 characters** - the engine's section cap. A `###` entry past it spills its detail as
+  above; the Worth knowing bucket past it moves its overflow lines to `<docs-path>/quality/references/worth-knowing.md`
+  and links it.
 - **No per-round history in this doc, ever.** Not '3 rounds inline, then archive' like a versioned doc gets - none at all. A running log of what changed round to round is exactly the kind of thing that belongs to a record, not a cache; recomputing this file fresh every run means there is no 'round' to log inside it. A project that wants that history keeps it in `loop-architecture-quality`'s own report trail, never here.
 
 ## Write mechanics
@@ -155,9 +204,32 @@ Never Edit or `sed` it into shape: the old text is no draft to patch, whatever a
 
 Open the doc with a freshness line for the human reader - `As of: <branch>@<short-sha>, <YYYY-MM-DD>` (`+dirty`
 appended when the working tree holds uncommitted changes). It never skips a run, unlike the `Captured:` stamp on a
-real domain doc: only the INLINE verify-and-rewrite path and the quality loop's reuse ask read it, both offered
+durable domain doc: only the INLINE verify-and-rewrite path and the quality loop's reuse ask read it, both offered
 through an ask, and both only when its sha is HEAD on a clean tree.
 
-Create `<docs-path>/quality/` only when absent. Write ONLY `<docs-path>/quality/ARCHITECTURE-ASSESSMENT.md` - never source,
-never the map, never the decision log. After the write, `wc -l` it against the ~300-line target above and run
-the spill pass now if it is over.
+Create `<docs-path>/quality/` only when absent. Write ONLY `<docs-path>/quality/ARCHITECTURE-ASSESSMENT.md`, its
+spill files and `quality/watch.json` through the merge below - never source, never the map, never the decision log.
+After the write, `wc -l` it against the ~300-line target above and run the spill pass now if it is over.
+
+**The watch, after the doc.** Pipe one entry per Strength and Must-fix section - `"weakness: <id>"` or
+`"strength: <id>"`, its covers as the globs, its ref as the section - to the engine's merge:
+
+```bash
+node .claude/hooks/docs.js watch-merge quality --seed '{"recomputed":true,"notOwned":["CODE-ASSESSMENT.md","references/**"]}' --kinds 'weakness: ' 'strength: ' <<'EOF'
+[
+  { "kind": "weakness: invoicing-reads-orders-entities", "globs": ["src/Invoicing/InvoiceBuilder.cs", "src/Orders/Order.cs"], "sections": ["ARCHITECTURE-ASSESSMENT#invoicing-reads-orders-entities"] }
+]
+EOF
+```
+
+It replaces exactly the entries whose kind starts with one of the two prefixes and keeps every other entry and
+key, so an entry a person added survives every run; the seed writes `recomputed` and `notOwned` where the file lacks
+them - a file this merge creates included - and never changes one already there. Never write `watch.json` whole.
+Then two checks, both before the report: `node .claude/hooks/docs.js lint quality` prints no PROBLEM line, and
+`node .claude/hooks/docs.js watch <one located file>` names its entry. A red result is this run's own finding,
+fixed before the report.
+
+**An engine older than the merge** - the project's `.claude/hooks/docs.js` copy predates this skill until
+`/alfred-code:update` - answers with a line that opens `usage: docs.js where` instead of `watch-merge quality: ...`:
+skip the merge and both checks for this run, and say so in the report. The doc is written, unwatched. On a current
+engine, a line opening `watch-merge:` is this call's own error - fix the call and run it again.

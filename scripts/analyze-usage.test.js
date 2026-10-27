@@ -1023,6 +1023,17 @@ test('turn-check advice: a project that already set ALFRED_CODE_TURN_CHECK=1 get
   assert.strictEqual(junk.json.advise, true);
 });
 
+// T12c (AC22): TURN_CHECK is one of the stack's variables - the advice reads it through the loader, .variables included.
+test('--turn-check-advice advises nothing when .variables holds TURN_CHECK=1', () => {
+  const c = turnCheckCorpus([[doneRow({}), doneRow({}), doneRow({})]]);
+  fs.mkdirSync(path.join(c.root, '.alfred'), { recursive: true });
+  fs.writeFileSync(path.join(c.root, '.alfred', '.variables'), 'ALFRED_CODE_TURN_CHECK=1\n');
+  const on = turnCheck(c);
+  assert.strictEqual(on.json.on, true, JSON.stringify(on.json));
+  assert.strictEqual(on.json.advise, false);
+  assert.strictEqual(on.text, '');
+});
+
 // Matrix F-BOM follow-up (2.1.6, V1): the settings reads behind the advice go through the shared BOM-stripping reader - a BOM'd
 // project settings file that already sets ALFRED_CODE_TURN_CHECK=1 read as no setting, so the row advised what was on.
 test('turn-check advice: a BOM\'d settings file that sets ALFRED_CODE_TURN_CHECK=1 gets no row, and a BOM plus garbage is no setting (V1)', () => {

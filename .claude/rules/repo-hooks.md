@@ -32,7 +32,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   the rm, secret, force-push and desktop exec guards stay live, writing no row - R54, R86 - plus the dispatch guard's
   implementer gate, M9. Known ceiling: such a repo still lists all 45 core seats, 13,008 characters of
   descriptions in every session's first call where 2.0.0 listed 9, since no deny is written into a repo the
-  stack never touched - revisit when a plugin's agents can be scoped per project); and a Cursor host, judged from the PAYLOAD alone (`cursor_version`, or a camelCase event name - never Cursor's environment variables, which a `claude` session in its terminal inherits): Cursor loads Claude hooks by default and turns a Stop block into an unbounded follow-up, so only the rm, secret, force-push and desktop exec guards run there and every other hook stands down silently, no ledger row. Each non-protective hook makes the call itself, `cursorStandDown(payload, __filename)`, right after parsing its own payload (no stdin is read or patched by the prelude; a test fails a hook file that lacks it). All fail open. Beside the gates,
+  stack never touched - revisit when a plugin's agents can be scoped per project); and a Cursor host, judged from the PAYLOAD alone (`cursor_version`, or a camelCase event name - never Cursor's environment variables, which a `claude` session in its terminal inherits): Cursor loads Claude hooks by default and turns a Stop block into an unbounded follow-up, so only the rm, secret, force-push and desktop exec guards run there and every other hook stands down silently, no ledger row. Each non-protective hook makes the call itself, `cursorStandDown(payload, __filename)`, right after parsing its own payload (no stdin is read or patched by the prelude; a test fails a hook file that lacks it). All fail open. Before the gates, loading the prelude applies the stack's variables to the hook's
+  `process.env` (`layout.applyVariables`, 3.0.0): the project's `settings.local.json`, its `.variables`, the settings
+  `env`, the launch env, then each workspace member's `.variables` - so a hook reads `process.env.ALFRED_CODE_*` as
+  before, whichever file holds the value. Beside the gates,
   The csv opt-out reads a hook's OLD name too (`HOOK_RENAMED`, the manifest's `renamed.hooks` copied inline and held equal
   by `hook-prelude.test.js`: `guard-answer-length` still switches guard-answer off - audit 2026-10-20, the hooks track's
   minor list). AN ASK NOBODY ANSWERED (ruling S3, 2026-10-20): Claude Code 2.1.304 closes an AskUserQuestion left idle past
@@ -1301,6 +1304,18 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     held), `.claude/` and `.git/`. It holds with nobody at the terminal - it asks nothing, it hands content over - writes one
     block row per hold (`kind` `code`, `git` or `git+code`), and fails open: malformed state reads as no record and is
     rewritten.
+  - A workspace child's start and writes (release 3, 2026-10-27; `layout.js` resolves every path, the switch at `0`
+    turns all of it off). `docs-session.js` names each linked ancestor whose docs root holds a domain, nearest first -
+    `Workspace root docs (read-only): <abs docs root> - <areas>`, the areas by `docs.js domains()`'s rule - in the main
+    session only, and in a child with no domain of its own too; `ignore docs root` here or in a nearer member drops it.
+    `preferences-session.js` reads a doc the child lacks from each ancestor's preferences folder after its own
+    (`layout.ancestorPrefsDirs`, `ignore doc <file>` skipping one) and points a hold at it by absolute path, and its main
+    start adds the workspace root's memory index: `Workspace root memory (read-only): <dir>/MEMORY.md`, then the first 60
+    lines, 6 KB of UTF-8 and the room the personal doc, the tool order and the host lines left of 9,500 characters, each
+    cut at a line, the path alone under 300 left (Claude Code swaps a hook context past 10,000 characters for a preview).
+    `guard-cross-project-write.js` denies a write into ANY linked member's memory folder before the account-dir allowance,
+    with no allow route (branch `ancestor-memory`, the block naming the child's own memory); a folder the child also owns
+    stays writable.
   - `history-session.js` (`SessionStart` + `Stop`) with its engine `history.js` (copied beside it, not
     wired; its Stop process also runs the turn build check, above) - a machine-local record per session under `<data root>/state/history/` (no `.gitignore` of its own since 2026-10-13 - the data root's
     one file keeps it out, and an update removes the `*` file earlier releases wrote; no `watch.json`, so no docs domain): at `Stop` it

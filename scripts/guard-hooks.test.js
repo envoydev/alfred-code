@@ -5099,3 +5099,142 @@ test('guard-read-whole-file: a line of here-strings is charged to the work budge
   }
   assert.equal(once(`python3 - <<< 'print(1)'`).status, 0, 'one here-string still passes');
 });
+
+// ---- release 3, T7: a workspace member's memory folder is read-only from a child (R8) ----------------------------------
+function memWs() {
+  // .native: Windows CI's temp is an 8.3 name (RUNNER~1); the memory folder is named from the long one.
+  const top = fs.realpathSync.native(fs.mkdtempSync(path.join(TMP, 'xp-mem-')));
+  const at = (rel) => path.join(top, ...rel.split('/'));
+  const put = (rel, text) => { fs.mkdirSync(path.dirname(at(rel)), { recursive: true }); fs.writeFileSync(at(rel), text); };
+  put('ws/.claude/alfred-code.stamp', 'sha: x\n'); put('ws/.alfred/workspace', 'child api\n');
+  put('ws/api/.claude/alfred-code.stamp', 'sha: x\n'); put('ws/api/.alfred/workspace', 'parent ..\nchild tool\n');
+  put('ws/api/tool/.claude/alfred-code.stamp', 'sha: x\n'); put('ws/api/tool/.alfred/workspace', 'parent ..\n');
+  for (const d of ['ws', 'ws/api', 'ws/api/tool']) spawnSync('git', ['init', '-q'], { cwd: at(d) });
+  const home = at('home');
+  const acct = path.join(home, '.claude');
+  fs.mkdirSync(acct, { recursive: true });
+  const mem = (rel) => path.join(acct, 'projects', at(rel).normalize('NFC').replace(/[^A-Za-z0-9]/g, '-'), 'memory');
+  const run = (rel, payload, extra = {}) => {
+    const env = { ...process.env, CLAUDE_PROJECT_DIR: at(rel), CLAUDE_CONFIG_DIR: acct, HOME: home, USERPROFILE: home, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ...extra };
+    delete env.CLAUDE_CODE_PROJECT_DIR_NAME;
+    if (!('ALFRED_CODE_WORKSPACE' in extra)) delete env.ALFRED_CODE_WORKSPACE;
+    return spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], { cwd: at(rel), input: JSON.stringify({ cwd: at(rel), ...payload }), encoding: 'utf8', env });
+  };
+  const write = (rel, file, extra) => run(rel, { tool_name: 'Write', tool_input: { file_path: file, content: 'x' } }, extra);
+  return { top, at, put, home, acct, mem, run, write, rm: () => fs.rmSync(top, { recursive: true, force: true }) };
+}
+
+test('guard-cross-project-write: a child\'s Write, Edit and Bash echo >> into the root\'s memory folder are denied, naming the child\'s own memory; the root\'s own session passes', () => {
+  const w = memWs();
+  try {
+    const target = path.join(w.mem('ws'), 'MEMORY.md');
+    for (const r of [w.write('ws/api', target), w.run('ws/api', { tool_name: 'Edit', tool_input: { file_path: target, old_string: 'a', new_string: 'b' } }), w.run('ws/api', { tool_name: 'Bash', tool_input: { command: `echo note >> '${target}'` } })]) {
+      assert.equal(r.status, 2, r.stderr);
+      assert.match(r.stderr, /memory/, r.stderr);
+      assert.ok(r.stderr.includes(w.mem('ws/api')), `names the child's own memory: ${r.stderr}`);
+      assert.doesNotMatch(r.stderr, /AskUserQuestion/, 'no allow route');
+    }
+    assert.equal(w.write('ws', target).status, 0, 'the root writes its own memory');
+  } finally { w.rm(); }
+});
+
+test('guard-cross-project-write: a ~ path and a symlinked path into the root\'s memory are denied; the child\'s own memory and the kill switch pass', () => {
+  const w = memWs();
+  try {
+    const name = path.basename(path.dirname(w.mem('ws')));
+    const tilde = w.run('ws/api', { tool_name: 'Bash', tool_input: { command: `echo note >> ~/.claude/projects/${name}/memory/MEMORY.md` } });
+    assert.equal(tilde.status, 2, tilde.stderr);
+    assert.match(tilde.stderr, /memory of/);
+    fs.mkdirSync(w.mem('ws'), { recursive: true });
+    if (process.platform !== 'win32') {
+      fs.symlinkSync(w.mem('ws'), w.at('link'));
+      const linked = w.write('ws/api', path.join(w.at('link'), 'MEMORY.md'));
+      assert.equal(linked.status, 2, linked.stderr);
+      assert.match(linked.stderr, /memory of/);
+    }
+    assert.equal(w.write('ws/api', path.join(w.mem('ws/api'), 'MEMORY.md')).status, 0, 'its own memory');
+    assert.equal(w.write('ws/api', path.join(w.mem('ws'), 'MEMORY.md'), { ALFRED_CODE_WORKSPACE: '0' }).status, 0, 'the kill switch: a chain of one');
+  } finally { w.rm(); }
+});
+
+test('guard-cross-project-write: ws/api/tool cannot write into ws/api\'s memory either; a child whose autoMemoryDirectory is the root\'s folder writes its own memory', () => {
+  const w = memWs();
+  try {
+    for (const rel of ['ws/api', 'ws']) {
+      const r = w.write('ws/api/tool', path.join(w.mem(rel), 'MEMORY.md'));
+      assert.equal(r.status, 2, `${rel}: ${r.stderr}`);
+      assert.match(r.stderr, /memory of/);
+    }
+    w.put('ws/api/.claude/settings.local.json', JSON.stringify({ autoMemoryDirectory: w.mem('ws') }));
+    assert.equal(w.write('ws/api', path.join(w.mem('ws'), 'MEMORY.md')).status, 0, 'the same folder is its own memory');
+  } finally { w.rm(); }
+});
+
+test('guard-cross-project-write: a child\'s linked worktree, with no workspace file of its own, cannot write into the root\'s memory either', () => {
+  const w = memWs();
+  try {
+    w.put('ws/api/.gitignore', '.alfred/\ntool/\n');
+    const git = (...args) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: w.at('ws/api'), encoding: 'utf8' });
+    git('add', '.gitignore', '.claude');
+    git('commit', '-qm', 'i');
+    git('worktree', 'add', '-q', w.at('api-wt'), '-b', 'feat');
+    assert.ok(!fs.existsSync(w.at('api-wt/.alfred')), 'the worktree holds no workspace file');
+    const r = w.write('api-wt', path.join(w.mem('ws'), 'MEMORY.md'));
+    assert.equal(r.status, 2, r.stderr);
+    assert.match(r.stderr, /memory of/);
+    assert.equal(w.write('api-wt', path.join(w.mem('ws/api'), 'MEMORY.md')).status, 0, 'its own memory, keyed by the main checkout');
+  } finally { w.rm(); }
+});
+
+test('guard-cross-project-write: a root whose autoMemoryDirectory holds the child is no memory to the child: a write beside it takes the ordinary cross-project route', () => {
+  const w = memWs();
+  try {
+    w.put('ws/.claude/settings.local.json', JSON.stringify({ autoMemoryDirectory: w.at('ws') }));
+    const r = w.write('ws/api', w.at('ws/notes.md'));
+    assert.doesNotMatch(r.stderr, /memory of/, r.stderr);
+  } finally { w.rm(); }
+});
+
+test('guard-cross-project-write: an autoMemoryDirectory the account settings name outside the account dir is writable - a root, a child, the switch at 0, a renamed project folder', () => {
+  const w = memWs();
+  try {
+    fs.writeFileSync(path.join(w.acct, 'settings.json'), JSON.stringify({ autoMemoryDirectory: w.at('mem/shared') }));
+    for (const [rel, extra] of [['ws', {}], ['ws/api', {}], ['ws/api', { ALFRED_CODE_WORKSPACE: '0' }], ['ws/api', { CLAUDE_CODE_PROJECT_DIR_NAME: 'renamed' }]]) {
+      const r = w.write(rel, path.join(w.at('mem/shared'), 'MEMORY.md'), extra);
+      assert.equal(r.status, 0, `${rel} ${JSON.stringify(extra)}: ${r.stderr}`);
+    }
+  } finally { w.rm(); }
+});
+
+test('guard-cross-project-write: an autoMemoryDirectory a repo can ship opens nothing - settings.json or settings.local.json naming ~/.ssh or a folder beside the project', () => {
+  const w = memWs();
+  try {
+    const ssh = path.join(w.home, '.ssh');
+    w.put('ws/api/.claude/settings.json', JSON.stringify({ autoMemoryDirectory: '~/.ssh' }));
+    assert.equal(w.write('ws/api', path.join(ssh, 'authorized_keys')).status, 2, 'a committed settings.json');
+    w.put('ws/api/.claude/settings.local.json', JSON.stringify({ autoMemoryDirectory: w.at('mem/api') }));
+    assert.equal(w.write('ws/api', path.join(w.at('mem/api'), 'MEMORY.md')).status, 2, 'a settings.local.json, which a repo can commit too');
+  } finally { w.rm(); }
+});
+
+test('guard-cross-project-write: an account autoMemoryDirectory holding the project or the home folder opens nothing beside them', () => {
+  const w = memWs();
+  try {
+    fs.writeFileSync(path.join(w.acct, 'settings.json'), JSON.stringify({ autoMemoryDirectory: w.at('ws') }));
+    assert.equal(w.write('ws/api', w.at('ws/notes.md')).status, 2, 'a folder holding the project');
+    fs.writeFileSync(path.join(w.acct, 'settings.json'), JSON.stringify({ autoMemoryDirectory: '~/' }));
+    assert.equal(w.write('ws/api', path.join(w.home, 'notes.md')).status, 2, 'the home folder');
+  } finally { w.rm(); }
+});
+
+test('guard-cross-project-write: a root with its own autoMemoryDirectory under a user-level one is still denied', () => {
+  const w = memWs();
+  try {
+    fs.writeFileSync(path.join(w.acct, 'settings.json'), JSON.stringify({ autoMemoryDirectory: '~/.claude/shared-mem' }));
+    w.put('ws/.claude/settings.json', JSON.stringify({ autoMemoryDirectory: '~/.claude/shared-mem/ws' }));
+    const r = w.write('ws/api', path.join(w.acct, 'shared-mem', 'ws', 'MEMORY.md'));
+    assert.equal(r.status, 2, r.stderr);
+    assert.match(r.stderr, /memory of/);
+    assert.equal(w.write('ws/api', path.join(w.acct, 'shared-mem', 'MEMORY.md')).status, 0, 'the child\'s own user-level memory');
+  } finally { w.rm(); }
+});

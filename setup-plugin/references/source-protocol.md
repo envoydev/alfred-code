@@ -14,7 +14,7 @@ failed download, a multi-release gap, a same-version re-release, old version dir
 
 The core's cache entry at `<config>/plugins/cache/<marketplace>/alfred-code/<version>/` is the WHOLE repo, with
 no `RELEASE-SOURCE` and no `.git`: its version is its own `setup-plugin/.claude-plugin/plugin.json`, its revision
-the `v<version>` tag - never probe for `RELEASE-SOURCE` there. The resolve updates every installed stack entry
+the `v<version>` tag - never probe for `RELEASE-SOURCE` there. The resolve updates the installed core
 first (latest first), picks the newest valid version dir, and copies it to `$TMP/repo`: the run works in that
 copy, never in the cache.
 
@@ -41,8 +41,8 @@ WAS=""        # LATEST first: only `plugin update` lands a newer cache entry, an
 MKT=""        # the marketplace key the core is listed under
 if command -v claude >/dev/null 2>&1; then
   claude plugin marketplace update envoydev >/dev/null 2>&1
-  # every stack entry installed for THIS project or the account, this project's rows first: "<scope> <id> <version>", each by its own id
-  ROWS=$(claude plugin list --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const fs=require("fs"),R=p=>{try{return fs.realpathSync(p)}catch{return require("path").resolve(p)}},here=R(process.cwd());let a=JSON.parse(s);a=(Array.isArray(a)?a:a.installed||[]).filter(x=>/@envoydev$/.test(x.id||"")&&x.scope&&(!x.projectPath||R(x.projectPath)===here));a.sort((x,y)=>(y.projectPath?1:0)-(x.projectPath?1:0));for(const x of a)console.log(x.scope+" "+x.id+" "+x.version)}catch{}})')
+  # the core installed for THIS project or the account, at each scope, this project's rows first: "<scope> <id> <version>" - another plugin the catalog lists (preferred-tools) updates on its own
+  ROWS=$(claude plugin list --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const fs=require("fs"),R=p=>{try{return fs.realpathSync(p)}catch{return require("path").resolve(p)}},here=R(process.cwd());let a=JSON.parse(s);a=(Array.isArray(a)?a:a.installed||[]).filter(x=>/^alfred-code@envoydev$/.test(x.id||"")&&x.scope&&(!x.projectPath||R(x.projectPath)===here));a.sort((x,y)=>(y.projectPath?1:0)-(x.projectPath?1:0));for(const x of a)console.log(x.scope+" "+x.id+" "+x.version)}catch{}})')
   WAS=$(printf '%s\n' "$ROWS" | awk '$2~/^alfred-code@/{print $3;exit}')
   MKT=$(printf '%s\n' "$ROWS" | awk '$2~/^alfred-code@/{sub(/^[^@]*@/,"",$2);print $2;exit}')
   printf '%s\n' "$ROWS" | while read -r SCOPE ID _; do [ -n "$ID" ] && claude plugin update "$ID" --scope "$SCOPE" -y </dev/null >/dev/null 2>&1; done

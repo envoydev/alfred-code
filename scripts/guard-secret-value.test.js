@@ -417,6 +417,28 @@ test('guard-secret-value: the Read tool on a file that holds a credential is blo
   assert.equal(read(path.join('.claude', 'settings-secret.json')), 2, 'a relative file_path resolves against CLAUDE_PROJECT_DIR');
 });
 
+// D7 (workspace roles and variables, AC17): `.variables` is no store and holds no catalog key the pattern calls secret,
+// so the guard reads it as any file - until a hand-added credential key makes it a credential file by content. The guard
+// key is read from the settings only: a HOOKS_OFF line in `.variables` switches nothing off.
+test('guard-secret-value: .variables passes a Read and a cat, .secrets stays denied, a hand-added credential key makes it a credential file, and its HOOKS_OFF line switches nothing off (D7)', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'vars-'));
+  fs.mkdirSync(path.join(root, '.alfred'), { recursive: true });
+  const vars = path.join(root, '.alfred', '.variables');
+  const secrets = path.join(root, '.alfred', '.secrets');
+  fs.writeFileSync(secrets, `API_TOKEN=${FAKE_TOKEN}\n`);
+  fs.writeFileSync(vars, 'ALFRED_CODE_SCORER_LEVEL=90\nALFRED_CODE_CORRECTION_NUDGE=inject\nALFRED_CODE_DOCS_VERSIONING=git\n');
+  const env = { CLAUDE_PROJECT_DIR: root };
+  assert.equal(read(vars, env), 0, 'a Read of .variables');
+  assert.equal(bash(`cat ${vars}`, env), 0, 'a cat of .variables');
+  assert.equal(read(secrets, env), 2, '.secrets stays denied');
+  assert.equal(read(secrets, { ...env, ALFRED_CODE_HOOKS_OFF: 'guard-secret-value' }), 0, 'control: the settings key does switch the guard off');
+  fs.appendFileSync(vars, 'ALFRED_CODE_HOOKS_OFF=guard-secret-value\n');
+  assert.equal(read(secrets, env), 2, 'a HOOKS_OFF line in .variables leaves the guard running');
+  fs.appendFileSync(vars, `ALFRED_CODE_X_TOKEN=${FAKE_TOKEN}\n`);
+  assert.equal(read(vars, env), 2, 'a credential key makes .variables a credential file');
+  assert.equal(bash(`cat ${vars}`, env), REWRITE, 'the shell gets the redacted view');
+});
+
 test('guard-secret-value: a runtime printing an environment variable is the same leak as echo $VAR', () => {
   assert.equal(bash('node -e "console.log(process.env.SENTRY_ACCESS_TOKEN)"'), REWRITE, 'process.env.NAME');
   assert.equal(bash('node -p process.env.SENTRY_ACCESS_TOKEN'), REWRITE, 'node -p of one variable');

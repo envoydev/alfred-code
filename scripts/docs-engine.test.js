@@ -2431,3 +2431,241 @@ test('a preferences/ folder with watch.json {} is a domain; docs.js show CODE-PR
     assert.doesNotMatch(lint.stdout + lint.stderr, /CODE-PREFERENCES/, 'the Updated: line is no missing stamp');
   } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
 });
+
+// The docs-watch-every-domain spec (2026-10-27): quality/ becomes a RECOMPUTED domain - watched, so a close asks for
+// its sections, but written in place, never voting on versioning, and never taking a durable section's slot.
+const QUALITY = (recomputed, extra = {}) => JSON.stringify({ recomputed, notOwned: ['CODE-ASSESSMENT.md', 'references/**'], watch: [{ kind: 'weakness: x', globs: ['src/Api/Orders/**'], sections: ['ARCHITECTURE-ASSESSMENT#x'] }], ...extra }, null, 2);
+const ASSESSMENT = '# Architecture assessment\n\n' + section('x', 'src/Api/Orders/**', 'Refunds bypass the ledger.');
+function qualityRepo(recomputed, opts = {}) {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n', ...(opts.files || {}) }, docs: opts.docs || { 'references/patterns.md': PATTERNS } });
+  r.write('.claude/docs/quality/watch.json', typeof recomputed === 'string' && recomputed.startsWith('{') ? recomputed : QUALITY(recomputed));
+  r.write('.claude/docs/quality/ARCHITECTURE-ASSESSMENT.md', opts.assessment || ASSESSMENT);
+  return r;
+}
+
+test('recomputed writes a feature-branch set in place (AC2)', () => {
+  const r = qualityRepo(true);
+  try {
+    r.git('switch', '-qc', 'feat/x');
+    const out = r.cli(['set', 'ARCHITECTURE-ASSESSMENT#x'], '## x\n<!-- id: x -->\n<!-- covers: src/Api/Orders/** -->\nResolved by the ledger call, 2026-10-27 - the next capture drops it.\n');
+    assert.strictEqual(out.status, 0, out.stdout + out.stderr);
+    assert.match(r.read('.claude/docs/quality/ARCHITECTURE-ASSESSMENT.md'), /Resolved by the ledger call/);
+    assert.ok(!r.exists('.claude/docs/.branches/feat-x/quality'), 'no overlay for a recomputed domain');
+    assert.strictEqual(r.cli(['set', 'quality/ARCHITECTURE-ASSESSMENT#x'], '## x\n<!-- id: x -->\nQualified spelling.\n').status, 0);
+    assert.match(r.read('.claude/docs/quality/ARCHITECTURE-ASSESSMENT.md'), /Qualified spelling/);
+    assert.ok(!r.exists('.claude/docs/.branches'), 'no overlay for either spelling');
+  } finally { r.rm(); }
+});
+
+test('recomputed must be a boolean (AC3)', () => {
+  const r = qualityRepo('yes');
+  try {
+    assert.match(r.cli(['lint', 'quality']).stdout, /quality\/watch\.json recomputed must be true or false/);
+    r.git('switch', '-qc', 'feat/x');
+    assert.strictEqual(r.cli(['set', 'ARCHITECTURE-ASSESSMENT#x'], '## x\n<!-- id: x -->\nChanged.\n').status, 0);
+    assert.ok(r.exists('.claude/docs/.branches/feat-x/quality/ARCHITECTURE-ASSESSMENT/x.md'), 'read as false: the overlay as today');
+    assert.match(r.read('.claude/docs/quality/ARCHITECTURE-ASSESSMENT.md'), /Refunds bypass the ledger/);
+  } finally { r.rm(); }
+});
+
+test('malformed recomputed domain: watch as an object is a lint problem, domains() does not throw', () => {
+  const r = qualityRepo(JSON.stringify({ recomputed: true, watch: {} }));
+  try {
+    assert.match(r.cli(['lint', 'quality']).stdout, /quality\/watch\.json watch must be a list/);
+    const docs = requireEngine(r.root);
+    assert.ok(docs.domains().includes('quality'));
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
+test('notOwned spares CODE-ASSESSMENT and references (AC5)', () => {
+  const r = qualityRepo(true);
+  try {
+    r.write('.claude/docs/quality/CODE-ASSESSMENT.md', '# Code assessment\n\n## No id here\nText.\n');
+    r.write('.claude/docs/quality/references/x.md', '# Reference\n\n## Loose\nText.\n');
+    const lint = r.cli(['lint', 'quality']).stdout;
+    assert.doesNotMatch(lint, /CODE-ASSESSMENT|references\/x/, lint);
+    assert.match(r.cli(['set', 'CODE-ASSESSMENT#x'], '## x\n<!-- id: x -->\nNo.\n').stdout, /maintained by another skill/);
+  } finally { r.rm(); }
+});
+
+test('sourceRoots unchanged by a recomputed domain (AC7)', () => {
+  const r = repo({ files: { 'app/a.cs': 'class A {}\n' } });
+  try {
+    r.write('.claude/docs/architecture/watch.json', JSON.stringify({ sourceRoots: ['app'] }));
+    const before = requireEngine(r.root).loadWatch().sourceRoots;
+    delete require.cache[ENGINE_PATH];
+    r.write('.claude/docs/quality/watch.json', QUALITY(true));
+    assert.deepStrictEqual(requireEngine(r.root).loadWatch().sourceRoots, before);
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
+test('a recomputed domain casts no versioning vote: a committed quality/ beside an untracked architecture/ is local', () => {
+  const r = qualityRepo(true);
+  try {
+    r.git('add', '-f', '.claude/docs/quality');
+    r.git('commit', '-qm', 'quality');
+    const docs = requireEngine(r.root);
+    assert.strictEqual(docs.docsMode(), 'local');
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
+test('where puts the durable section first (AC12)', () => {
+  const files = {};
+  for (let i = 0; i < 60; i++) files[`src/Api/Misc/M${i}.cs`] = 'class M {}\n';
+  const r = qualityRepo(true, {
+    files,
+    docs: { 'ARCHITECTURE.md': section('everything', 'src/**', 'All routes return the envelope.') },
+    assessment: '# Architecture assessment\n\n' + section('x', 'src/Api/Orders/Refund.cs', 'Refunds bypass the ledger.'),
+  });
+  try {
+    const out = r.cli(['where', 'src/Api/Orders/Refund.cs']).stdout.trim().split('\n');
+    assert.match(out[0], /^ARCHITECTURE#everything /, out.join(' | '));
+    assert.ok(out.some((l) => l.startsWith('ARCHITECTURE-ASSESSMENT#x ')), 'the recomputed section fills a slot left');
+  } finally { r.rm(); }
+});
+
+test('namingSections keeps before it caps', () => {
+  const r = qualityRepo(true, {
+    docs: { 'ARCHITECTURE.md': section('map', '', `The entry point is src/a.cs, ${'and it wires every module. '.repeat(20)}`) },
+    assessment: '# Architecture assessment\n\n' + ['w1', 'w2', 'w3'].map((id) => section(id, '', 'src/a.cs is too big.')).join('\n'),
+  });
+  try {
+    const docs = requireEngine(r.root);
+    assert.deepStrictEqual(docs.namingSections(['src/a.cs'], 3, (s) => s.domain !== 'quality').map((s) => s.id), ['ARCHITECTURE#map']);
+    assert.strictEqual(docs.namingSections(['src/a.cs'], 3).length, 3, 'no keep: today\'s answer');
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
+test('outgrown skips a recomputed domain', () => {
+  const r = repo({ files: { 'src/a.cs': 'class A {}\n' } });
+  try {
+    const head = r.git('rev-parse', '--short', 'HEAD');
+    const stamped = (id) => `## ${id}\n<!-- id: ${id} -->\n<!-- covers: src/a.cs -->\n<!-- captured: ${head} -->\nText.\n`;
+    r.write('.claude/docs/architecture/ARCHITECTURE.md', `# Map\n\n${stamped('map')}`);
+    r.write('.claude/docs/quality/watch.json', QUALITY(true));
+    r.write('.claude/docs/quality/ARCHITECTURE-ASSESSMENT.md', `# Architecture assessment\n\n${stamped('weak')}`);
+    r.write('src/a.cs', 'class A { int x; }\n');
+    r.git('commit', '-qam', 'change');
+    assert.match(r.cli(['status']).stdout, /^outgrown sections: 1$/m);
+  } finally { r.rm(); }
+});
+
+const AW = '.claude/docs/awareness/watch.json';
+const entry = (kind, sections, globs = ['src/**']) => ({ kind, globs, sections });
+const merge = (r, domain, flags, entries) => r.cli(['watch-merge', domain, ...flags], typeof entries === 'string' ? entries : JSON.stringify(entries));
+
+test('watch-merge replaces only its scope, keeps a hand-added entry and unknown keys, prints its counts (AC15)', () => {
+  const r = repo();
+  try {
+    r.write(AW, JSON.stringify({ sourceRoots: ['src'], extra: { keep: true }, watch: [
+      entry('seam with a', ['RELATED-PROJECTS-AWARENESS#a']),
+      entry('run book: build', ['PROJECT-AWARENESS#build']),
+      entry('hand-added', ['RELATED-PROJECTS-AWARENESS#notes']),
+    ] }));
+    const out = merge(r, 'awareness', ['--kinds', 'run book: '], [entry('run book: test', ['PROJECT-AWARENESS#test'], ['Makefile'])]);
+    assert.strictEqual(out.status, 0, out.stdout + out.stderr);
+    assert.strictEqual(out.stdout.trim(), 'watch-merge awareness: kept 2, replaced 1 with 1');
+    const j = JSON.parse(r.read(AW));
+    assert.deepStrictEqual(j.watch.map((e) => e.kind), ['seam with a', 'run book: test', 'hand-added'], 'spliced where the replaced one stood');
+    assert.deepStrictEqual([j.sourceRoots, j.extra], [['src'], { keep: true }]);
+    assert.ok(r.read(AW).startsWith('{\n  "'), 'two-space indentation');
+  } finally { r.rm(); }
+});
+
+test('watch-merge refuses an out-of-scope entry, unparseable stdin, an unparseable file and no selector, bytes unchanged (AC15)', () => {
+  const r = repo();
+  try {
+    const text = JSON.stringify({ watch: [entry('run book: build', ['PROJECT-AWARENESS#build'])] });
+    r.write(AW, text);
+    for (const [flags, input] of [
+      [['--kinds', 'run book: '], [entry('other', ['PROJECT-AWARENESS#x'])]],
+      [['--kinds', 'run book: '], 'not json'],
+      [['--kinds', 'run book: '], '{"kind":"run book: x"}'],
+      [[], [entry('run book: x', ['PROJECT-AWARENESS#x'])]],
+    ]) {
+      const out = merge(r, 'awareness', flags, input);
+      assert.strictEqual(out.status, 1, `${flags} ${input}: ${out.stdout}`);
+      assert.strictEqual(r.read(AW), text);
+    }
+    r.write(AW, '{ broken');
+    assert.strictEqual(merge(r, 'awareness', ['--kinds', 'run book: '], []).status, 1);
+    assert.strictEqual(r.read(AW), '{ broken');
+  } finally { r.rm(); }
+});
+
+test('watch-merge per sibling: --kind keeps the other sibling, an empty array drops one (AC15)', () => {
+  const r = repo();
+  try {
+    r.write(AW, JSON.stringify({ watch: [entry('seam with a', ['RELATED-PROJECTS-AWARENESS#a']), entry('seam with b', ['RELATED-PROJECTS-AWARENESS#b'])] }));
+    assert.strictEqual(merge(r, 'awareness', ['--kind', 'seam with a'], [entry('seam with a', ['RELATED-PROJECTS-AWARENESS#a'], ['api/**'])]).status, 0);
+    assert.deepStrictEqual(JSON.parse(r.read(AW)).watch.map((e) => [e.kind, e.globs[0]]), [['seam with a', 'api/**'], ['seam with b', 'src/**']]);
+    assert.strictEqual(merge(r, 'awareness', ['--kind', 'seam with b'], []).stdout.trim(), 'watch-merge awareness: kept 1, replaced 1 with 0');
+    assert.deepStrictEqual(JSON.parse(r.read(AW)).watch.map((e) => e.kind), ['seam with a']);
+  } finally { r.rm(); }
+});
+
+test('watch-merge --doc takes in an older free-text entry and keeps one naming another doc too (AC15)', () => {
+  const r = repo();
+  try {
+    r.write(AW, JSON.stringify({ watch: [
+      entry('build and test commands', ['PROJECT-AWARENESS#build']),
+      entry('mixed', ['PROJECT-AWARENESS#build', 'RELATED-PROJECTS-AWARENESS#a']),
+    ] }));
+    const out = merge(r, 'awareness', ['--kinds', 'run book: ', '--doc', 'PROJECT-AWARENESS'], [entry('run book: build and test commands', ['PROJECT-AWARENESS#build'])]);
+    assert.strictEqual(out.stdout.trim(), 'watch-merge awareness: kept 1, replaced 1 with 1');
+    assert.deepStrictEqual(JSON.parse(r.read(AW)).watch.map((e) => e.kind), ['run book: build and test commands', 'mixed']);
+  } finally { r.rm(); }
+});
+
+test('watch-merge of the same entries still moves the file\'s time, so the close knows the capture ran (final review I1)', () => {
+  const r = repo();
+  try {
+    const entries = [entry('run book: build', ['PROJECT-AWARENESS#build'])];
+    assert.strictEqual(merge(r, 'awareness', ['--kinds', 'run book: '], entries).status, 0);
+    const before = r.read(AW);
+    const old = new Date(Date.now() - 3600 * 1000);
+    fs.utimesSync(`${r.root}/${AW}`, old, old);
+    const out = merge(r, 'awareness', ['--kinds', 'run book: '], entries);
+    assert.strictEqual(out.stdout.trim(), 'watch-merge awareness: kept 0, replaced 1 with 1');
+    assert.strictEqual(r.read(AW), before, 'the bytes are unchanged');
+    assert.ok(fs.statSync(`${r.root}/${AW}`).mtimeMs > Date.now() - 60 * 1000, 'the time is now');
+  } finally { r.rm(); }
+});
+
+test('watch-merge creates a missing file holding only the merged entries (AC15)', () => {
+  const r = repo();
+  try {
+    assert.strictEqual(merge(r, 'awareness', ['--kinds', 'run book: '], [entry('run book: build', ['PROJECT-AWARENESS#build'])]).status, 0);
+    assert.deepStrictEqual(JSON.parse(r.read(AW)), { watch: [entry('run book: build', ['PROJECT-AWARENESS#build'])] });
+  } finally { r.rm(); }
+});
+
+test('watch-merge seeds a new file, never changes a key the file holds, refuses a bad seed (AC20)', () => {
+  const r = repo();
+  const Q = '.claude/docs/quality/watch.json';
+  const seed = '{"recomputed":true,"notOwned":["CODE-ASSESSMENT.md","references/**"]}';
+  try {
+    const weak = [entry('weakness: refunds', ['ARCHITECTURE-ASSESSMENT#refunds'])];
+    assert.strictEqual(merge(r, 'quality', ['--seed', seed, '--kinds', 'weakness: '], weak).status, 0);
+    assert.deepStrictEqual(JSON.parse(r.read(Q)), { recomputed: true, notOwned: ['CODE-ASSESSMENT.md', 'references/**'], watch: weak });
+    r.write(Q, JSON.stringify({ recomputed: false, watch: [] }));
+    assert.strictEqual(merge(r, 'quality', ['--seed', seed, '--kinds', 'weakness: '], weak).status, 0);
+    const j = JSON.parse(r.read(Q));
+    assert.strictEqual(j.recomputed, false, 'a person\'s false is kept');
+    assert.deepStrictEqual(j.notOwned, ['CODE-ASSESSMENT.md', 'references/**'], 'a key the file lacked is added');
+    const held = r.read(Q);
+    for (const bad of ['[]', '[1]', '"x"', '{"watch":[]}', '{ broken']) {
+      assert.strictEqual(merge(r, 'quality', ['--seed', bad, '--kinds', 'weakness: '], weak).status, 1, bad);
+      assert.strictEqual(r.read(Q), held);
+    }
+  } finally { r.rm(); }
+});
+
+test('watch-merge writes atomically: no temp file is left beside watch.json', () => {
+  const r = repo();
+  try {
+    r.write('.claude/docs/awareness/PROJECT-AWARENESS.md', '# Run book\n');
+    assert.strictEqual(merge(r, 'awareness', ['--kinds', 'run book: '], [entry('run book: build', ['PROJECT-AWARENESS#build'])]).status, 0);
+    assert.deepStrictEqual(fs.readdirSync(path.join(r.root, '.claude/docs/awareness')).sort(), ['PROJECT-AWARENESS.md', 'watch.json']);
+  } finally { r.rm(); }
+});

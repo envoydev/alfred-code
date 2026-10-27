@@ -74,8 +74,9 @@ test('I10: the desktop gate is one wired hook, counted everywhere the hooks are 
   assert.match(claude(), /all eighteen, generated from the manifest's `hooks\[\]`/);
   assert.match(claude(), /`guard-desktop-exec\.js` \(PreToolUse on the desktop server types' two process launchers, `App` and `Shell`, under any\s+registration name/);
   assert.match(claude(), /type's code runner `browser_run_code_unsafe` the same way/);
-  assert.doesNotMatch(read('README.md'), /seventeen/);
-  assert.doesNotMatch(read('docs/install-footprint.md'), /seventeen/);
+  // The stale hook count, never the word itself: the footprint counts seventeen references.
+  assert.doesNotMatch(read('README.md'), /seventeen (?:wired |stack )?hooks/);
+  assert.doesNotMatch(read('docs/install-footprint.md'), /seventeen (?:wired |stack )?hooks/);
   // The walk's own count follows the manifest's hook files (hooks track H6, 2026-10-21: the pin forbade 'all eighteen'
   // from the days eighteen was stale, and preferences-session made it right again).
   const words = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',

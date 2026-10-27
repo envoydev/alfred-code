@@ -11,10 +11,11 @@ effort it does not need to spend.
 Before a FIX writes new code, climb the ladder and stop at the first rung that holds:
 
 1. Does this need to exist at all? Speculative -> out of scope, do not build it.
-2. Does the stdlib, runtime, or a native framework feature already do it?
-3. Does an existing helper in this repo, or an already-referenced package, already do it? Search first - duplicated logic is itself a finding; consolidate to the existing seam, never fork a second copy.
-4. Can it be one line?
-5. Only then: the minimum code that works.
+2. Does the app's own seam for the capability already do it? A capability the project wraps (clock, file system, logging, settings, a process, the network) goes through that abstraction; a member it lacks is added to the interface, its implementation and a test.
+3. Does the stdlib, runtime, or a native framework feature already do it?
+4. Does an existing helper in this repo, or an already-referenced package, already do it? Search first - duplicated logic is itself a finding; consolidate to the existing seam, never fork a second copy.
+5. Can it be one line?
+6. Only then: the minimum code that works.
 
 ## Edit, never re-emit
 

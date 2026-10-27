@@ -26,6 +26,15 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
+// The stack's variables (D4) set on the process env before the first read: the hooks' loader, at ../../../hooks/ in the
+// plugin and in a project's .claude/ (bundle-gate.js's route); a copy with no loader beside it reads the env as it is.
+let loader = null;
+try
+{
+    loader = require(path.join(__dirname, '..', '..', '..', 'hooks', 'layout.js'));
+    loader.applyVariables(process.env.CLAUDE_PROJECT_DIR || loader.projectRootOf(process.cwd()).checkout);
+}
+catch { /* the process env as it stands */ }
 
 const BLOCKER_CAP = 60;
 const SELF_CAP = 99;
@@ -113,14 +122,12 @@ function projectRoot(flag, env = process.env, cwd = process.cwd()) {
   if (env.CLAUDE_PROJECT_DIR) return env.CLAUDE_PROJECT_DIR;
   try { return execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || cwd; } catch { return cwd; }
 }
-// The stack's setting in the hooks' order: the environment, then the project's settings.local.json, then settings.json.
+// The stack's setting as the hooks read it at `root`: the loader's winner (settings.local.json, the project's .variables,
+// settings.json, the account file, the env, then a linked workspace member's .variables - spec D4); without the loader,
+// the env as it stands.
 function setting(suffix, env = process.env, root = projectRoot(undefined, env)) {
-  let value = envOf(env, suffix);
-  for (const f of ['settings.local.json', 'settings.json']) {
-    if (value) break;
-    try { value = envOf(JSON.parse(fs.readFileSync(path.join(root, '.claude', f), 'utf8')).env || {}, suffix); } catch { /* absent or unreadable */ }
-  }
-  return value;
+  if (!loader) return envOf(env, suffix);
+  return envOf(loader.variablesOf(root, { env }).values, suffix);
 }
 const levelOf = (value, env = process.env, root) => wholeIn(value, 60, 100, null) ?? wholeIn(setting('SCORER_LEVEL', env, root), 60, 100, 80);
 const roundsOf = (value, env = process.env, root) => wholeIn(value, 1, 10, null) ?? wholeIn(setting('SCORER_ROUNDS', env, root), 1, 10, 3);

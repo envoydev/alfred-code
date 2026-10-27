@@ -6,14 +6,28 @@
   },
   "metadata": {
     "description": "Claude Code agent stack - skills, agents, rules, hooks, and MCP servers, installed and updated via the alfred-code plugin.",
-    "version": "2.12.0"
+    "version": "3.0.0"
   },
   "plugins": [
+    {
+      "name": "preferred-tools",
+      "source": {
+        "source": "github",
+        "repo": "envoydev/preferred-tools",
+        "ref": "main"
+      },
+      "description": "The MCP servers and Claude Code plugins its owner has tested and likes, with their install, update, rename and fix procedures: /preferred-tools:install, /preferred-tools:configure, /preferred-tools:update and /preferred-tools:fix.",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "category": "development"
+    },
     {
       "name": "alfred-code",
       "source": "./",
       "description": "The Claude Code stack, guided: init installs it from scratch into a project and, typed again after the restart, bootstraps it once (tools, status line, captures, AGENTS.md), update refreshes an existing install and prunes what upstream removed, configure adjusts the selection (add or drop), validate reconciles an install to the project - prunes what its framework does not use and adds what the detected stacks are missing - all drive a dependency-complete selection with a prerequisite check; status shows the install read-only, per-area tables; uninstall removes what the install ledger says the stack wrote, and nothing of the user's.",
-      "version": "2.12.0",
+      "version": "3.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"

@@ -6,7 +6,10 @@ require('./hook-test-env').isolateHookSuite({ ownTmp: true }); // its per-sessio
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
-const { repo, section } = require('./docs-fixture');
+const os = require('node:os');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+const { repo, section, HOOKS } = require('./docs-fixture');
 
 let n = 0;
 const sid = () => `docs-test-${process.pid}-${++n}`;
@@ -2435,4 +2438,270 @@ test('G8: a seat\'s start block names conflict markers too', () => {
   try {
     assert.match(ctx(r.hook({ hook_event_name: 'SubagentStart', session_id: sid(), agent_id: 'a9', agent_type: 'dotnet-implementer' })), /The docs need a repair before they are trusted: merge conflict markers/);
   } finally { r.rm(); }
+});
+
+// ---- docs-watch-every-domain (2026-10-27): a RECOMPUTED quality/ is asked at the close only, after the durable docs ----
+const QPATH = '.claude/docs/quality';
+const weak = (id, globs) => ({ kind: `weakness: ${id}`, globs, sections: [`ARCHITECTURE-ASSESSMENT#${id}`] });
+const assessed = (rows) => `# Architecture assessment\n\n${rows.map(([id, covers, body]) => section(id, covers, body || `Weak point ${id}.`)).join('\n')}`;
+function qrepo({ files = {}, archDocs = { 'references/patterns.md': PATTERNS, 'watch.json': WATCH() }, quality = [], rows = [] } = {}) {
+  const r = repo({ tracked: true, files: { 'src/Api/Program.cs': 'app.Run();\n', 'src/Api/Orders/Refund.cs': 'class Refund {}\n', 'src/Legacy/Old.cs': 'class Old {}\n', ...files }, docs: archDocs });
+  r.write(`${QPATH}/watch.json`, JSON.stringify({ recomputed: true, notOwned: ['CODE-ASSESSMENT.md', 'references/**'], watch: quality }));
+  r.write(`${QPATH}/ARCHITECTURE-ASSESSMENT.md`, assessed(rows));
+  r.git('add', '-A');
+  r.git('commit', '-qm', 'quality');
+  return r;
+}
+const askedIds = (reason) => [...String(reason).matchAll(/ set (\S+) --expect/g)].map((m) => m[1]);
+const stopReason = (r, s, env) => { const out = r.hook(stopEv(s), env); return out.stdout ? JSON.parse(out.stdout).reason : ''; };
+const PROGRAM = (r) => r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
+
+test('recomputed: a weakness change is asked at the close (AC1)', () => {
+  const r = qrepo({ quality: [weak('w1', ['src/Legacy/**'])], rows: [['w1', 'src/Legacy/**']] });
+  try {
+    const s = sid(); start(r, s);
+    r.write('src/Legacy/Old.cs', 'class Old { int x; }\n');
+    const reason = stopReason(r, s);
+    assert.deepStrictEqual(askedIds(reason), ['ARCHITECTURE-ASSESSMENT#w1']);
+    assert.match(reason, /^Docs check: you changed src\/Legacy\/Old\.cs\n/);
+  } finally { r.rm(); }
+});
+
+test('recomputed: the save line per domain under local versioning on a feature branch (AC4)', () => {
+  const r = qrepo({ quality: [weak('w1', ['src/Legacy/**', 'src/Api/Program.cs'])], rows: [['w1', 'src/Legacy/**']] });
+  const LOCAL = { ALFRED_CODE_DOCS_VERSIONING: 'local' };
+  try {
+    r.git('switch', '-qc', 'feat/x');
+    const a = sid(); start(r, a, LOCAL);
+    r.write('src/Legacy/Old.cs', 'class Old { int x; }\n');
+    const only = stopReason(r, a, LOCAL);
+    assert.match(only, /\n {9}and it lands in the shared docs at once\. Nothing to commit\./);
+    assert.doesNotMatch(only, /stored for branch/);
+    const b = sid(); start(r, b, LOCAL);
+    PROGRAM(r);
+    const mixed = stopReason(r, b, LOCAL);
+    assert.deepStrictEqual(askedIds(mixed), ['patterns#orders', 'ARCHITECTURE-ASSESSMENT#w1']);
+    assert.match(mixed, /and it is stored for branch feat\/x only\. It moves into the\n {9}shared docs by itself once this branch is merged\. Nothing to commit\.\n {9}ARCHITECTURE-ASSESSMENT#w1 is rewritten from the code, so it lands in the shared docs at once\./);
+  } finally { r.rm(); }
+});
+
+test('a seam change asks the related-projects section, a manifest change the run book (AC6)', () => {
+  const r = qrepo({ files: { 'package.json': '{}\n', 'src/Api/Contracts/Order.cs': 'class Order {}\n' } });
+  try {
+    r.write('.claude/docs/awareness/watch.json', JSON.stringify({ notOwned: ['references/**'], watch: [
+      { kind: 'run book: build and test commands', globs: ['package.json'], sections: ['PROJECT-AWARENESS#build'] },
+      { kind: 'seam with x', globs: ['src/Api/Contracts/**'], sections: ['RELATED-PROJECTS-AWARENESS#x'] },
+    ] }));
+    r.write('.claude/docs/awareness/PROJECT-AWARENESS.md', `# Run book\n\n${section('build', 'package.json', 'Build with npm run build.')}`);
+    r.write('.claude/docs/awareness/RELATED-PROJECTS-AWARENESS.md', `# Related projects\n\n${section('x', 'src/Api/Contracts/**', 'Project x reads the Order contract.')}`);
+    r.git('add', '-A'); r.git('commit', '-qm', 'awareness');
+    const a = sid(); start(r, a);
+    r.write('src/Api/Contracts/Order.cs', 'class Order { int Id; }\n');
+    assert.deepStrictEqual(askedIds(stopReason(r, a)), ['RELATED-PROJECTS-AWARENESS#x']);
+    const b = sid(); start(r, b);
+    r.write('package.json', '{ "name": "x" }\n');
+    assert.deepStrictEqual(askedIds(stopReason(r, b)), ['PROJECT-AWARENESS#build']);
+  } finally { r.rm(); }
+});
+
+test('recomputed: the two pools at and around the cap, durable first (AC14)', () => {
+  const P = ['a', 'b', 'c'].map((x) => section(x, '', `Rule ${x}.`)).join('\n');
+  const archOf = (n) => ({ 'references/p.md': P, 'references/patterns.md': PATTERNS, 'watch.json': JSON.stringify({ watch: n ? [{ kind: 'root', globs: ['src/Api/Program.cs'], sections: ['p#a', 'p#b', 'p#c'].slice(0, n) }] : [] }) });
+  const ws = (n) => ['w1', 'w2', 'w3', 'w4'].slice(0, n);
+  const run = (arch, q) => {
+    const r = qrepo({ archDocs: archOf(arch), quality: ws(q).map((id) => weak(id, ['src/Api/Program.cs'])), rows: ws(q).map((id) => [id, '']) });
+    try { const s = sid(); start(r, s); PROGRAM(r); return askedIds(stopReason(r, s)); } finally { r.rm(); }
+  };
+  assert.deepStrictEqual(run(3, 1), ['p#a', 'p#b', 'p#c'], '3 + 1');
+  assert.deepStrictEqual(run(2, 2), ['p#a', 'p#b', 'ARCHITECTURE-ASSESSMENT#w1'], '2 + 2');
+  assert.deepStrictEqual(run(1, 1), ['p#a', 'ARCHITECTURE-ASSESSMENT#w1'], '1 + 1');
+  assert.deepStrictEqual(run(0, 4), ['ARCHITECTURE-ASSESSMENT#w1', 'ARCHITECTURE-ASSESSMENT#w2', 'ARCHITECTURE-ASSESSMENT#w3'], '0 + 4');
+});
+
+test('recomputed: three weakness sections naming the file do not crowd out a durable one naming it (AC14)', () => {
+  const r = qrepo({
+    archDocs: { 'references/boot.md': section('entry', 'src/Api/Program.cs', 'src/Api/Program.cs wires every module.'), 'watch.json': JSON.stringify({ watch: [{ kind: 'root', globs: ['src/Api/Program.cs'], sections: ['boot#entry'] }] }) },
+    quality: ['w1', 'w2', 'w3'].map((id) => weak(id, ['src/Api/Program.cs'])),
+    rows: ['w1', 'w2', 'w3'].map((id) => [id, 'src/Api/Program.cs', `src/Api/Program.cs is big (${id}).`]),
+  });
+  try {
+    const s = sid(); start(r, s); PROGRAM(r);
+    assert.deepStrictEqual(askedIds(stopReason(r, s)), ['boot#entry', 'ARCHITECTURE-ASSESSMENT#w1', 'ARCHITECTURE-ASSESSMENT#w2']);
+  } finally { r.rm(); }
+});
+
+test('recomputed: reading the assessment earns no gate credit; a weakness-only target is held with nothing pasted (AC16)', () => {
+  const r = qrepo({ quality: [weak('w1', ['src/Legacy/**'])], rows: [['w1', 'src/Legacy/**']], archDocs: { 'references/patterns.md': PATTERNS, 'ARCHITECTURE.md': '# Map\n\nThe map.\n' } });
+  const edit = (s, f = 'src/Api/Orders/Refund.cs') => r.hook(pre('Edit', { file_path: f }, s));
+  try {
+    const a = sid(); r.hook(pre('Read', { file_path: `${r.root}/${QPATH}/ARCHITECTURE-ASSESSMENT.md` }, a));
+    assert.ok(denied(edit(a)), 'a Read of the assessment is no docs read');
+    const b = sid(); r.hook(pre('Bash', { command: 'node .claude/hooks/docs.js show ARCHITECTURE-ASSESSMENT#w1' }, b));
+    assert.ok(denied(edit(b)), 'nor a show of one of its sections');
+    r.write('.claude/docs/plans/fix.md', '# Plan\n\nOriented: ARCHITECTURE-ASSESSMENT#w1\n\n## Tasks\n');
+    const c = sid(); r.hook(pre('Read', { file_path: `${r.root}/.claude/docs/plans/fix.md` }, c));
+    assert.ok(denied(edit(c)), 'nor a plan whose Oriented line names one');
+    const d = sid(); r.hook(pre('Read', { file_path: `${r.root}/.claude/docs/architecture/ARCHITECTURE.md` }, d));
+    assert.ok(!denied(edit(d)), 'a durable doc read releases the gate');
+    const e = sid();
+    const held = edit(e, 'src/Legacy/Old.cs');
+    assert.ok(denied(held));
+    assert.doesNotMatch(held.stdout, /ARCHITECTURE-ASSESSMENT|here it is/);
+    assert.ok(denied(edit(e, 'src/Legacy/Old.cs')), 'nothing went onto gate.consults: the next edit is held again');
+  } finally { r.rm(); }
+});
+
+test('recomputed: a docs root holding only a recomputed domain runs no docs hook (AC16)', () => {
+  const r = repo({ tracked: true, files: { 'src/Legacy/Old.cs': 'class Old {}\n' } });
+  try {
+    r.write(`${QPATH}/watch.json`, JSON.stringify({ recomputed: true, watch: [weak('w1', ['src/Legacy/**'])] }));
+    r.write(`${QPATH}/ARCHITECTURE-ASSESSMENT.md`, assessed([['w1', 'src/Legacy/**']]));
+    r.git('add', '-A'); r.git('commit', '-qm', 'quality');
+    const s = sid();
+    for (const out of [r.hook({ hook_event_name: 'SessionStart', session_id: s }), r.hook(pre('Edit', { file_path: 'src/Legacy/Old.cs' }, s))]) assert.deepStrictEqual([out.status, out.stdout], [0, '']);
+    r.write('src/Legacy/Old.cs', 'class Old { int x; }\n');
+    const out = r.hook(stopEv(s));
+    assert.deepStrictEqual([out.status, out.stdout], [0, '']);
+  } finally { r.rm(); }
+});
+
+test('recomputed: a seat is never asked a weakness section, even one naming its file; the close asks it, not the seat\'s durable one (AC17)', () => {
+  const r = qrepo({ quality: [weak('w1', ['src/Api/Program.cs'])], rows: [['w1', 'src/Api/Program.cs', 'src/Api/Program.cs is big.']] });
+  try {
+    const s = sid(); start(r, s, GIT);
+    r.hook(subStart(s, 'agent-q1'), GIT);
+    touchBy(r, s, 'q1');
+    const back = r.hook(handBack(s, 'q1', 'status: DONE'), GIT);
+    assert.ok(denied(back), back.stdout);
+    assert.deepStrictEqual(askedIds(JSON.parse(back.stdout).hookSpecificOutput.permissionDecisionReason), ['patterns#orders']);
+    assert.deepStrictEqual(askedIds(stopReason(r, s, GIT)), ['ARCHITECTURE-ASSESSMENT#w1']);
+  } finally { r.rm(); }
+});
+
+test('recomputed: the close skips a hit the capture saw this session; a later change, no capture, and a deletion keep it (AC17)', () => {
+  const r = qrepo({ quality: [weak('w1', ['src/Legacy/**'])], rows: [['w1', 'src/Legacy/**']] });
+  const at = (rel, sec) => { const t = new Date(Date.now() + sec * 1000); fs.utimesSync(`${r.root}/${rel}`, t, t); };
+  const W = `${QPATH}/watch.json`;
+  try {
+    const saw = sid(); start(r, saw);
+    r.write('src/Legacy/Old.cs', 'class Old { int a; }\n'); at('src/Legacy/Old.cs', 0); at(W, 5);
+    assert.strictEqual(r.hook(stopEv(saw)).stdout, '', 'the capture ran after the change');
+    const later = sid(); start(r, later);
+    r.write('src/Legacy/Old.cs', 'class Old { int b; }\n'); at(W, 5); at('src/Legacy/Old.cs', 10);
+    assert.deepStrictEqual(askedIds(stopReason(r, later)), ['ARCHITECTURE-ASSESSMENT#w1'], 'changed after the capture');
+    const none = sid(); start(r, none);
+    r.write('src/Legacy/Old.cs', 'class Old { int c; }\n'); at(W, -3600);
+    assert.deepStrictEqual(askedIds(stopReason(r, none)), ['ARCHITECTURE-ASSESSMENT#w1'], 'no capture this session');
+    const gone = sid(); start(r, gone);
+    r.git('rm', '-qf', 'src/Legacy/Old.cs'); at(W, 5);
+    assert.deepStrictEqual(askedIds(stopReason(r, gone)), ['ARCHITECTURE-ASSESSMENT#w1'], 'a deleted file keeps the hit');
+  } finally { r.rm(); }
+});
+
+test('recomputed: the start block names no recomputed domain', () => {
+  const r = qrepo({ quality: [weak('w1', ['src/Legacy/**'])], rows: [['w1', 'src/Legacy/**']] });
+  try {
+    assert.match(ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() })), /The docs live under `\.claude\/docs\/` \(architecture\)\./);
+  } finally { r.rm(); }
+});
+
+// D4: a preference entry whose Scope: the session's change emptied is named at the close, never rewritten.
+const ARCH_PREFS_DOC = '.claude/docs/preferences/ARCHITECTURE-PREFERENCES.md';
+const PREFS_A2 = '# Architecture preferences\n\n## A2 - Legacy stays frozen\n<!-- id: A2 -->\n- Rule: no new code in the legacy folder.\n- Scope: src/Gone/**\n';
+const goneRepo = () => {
+  const r = qrepo({ files: { 'src/Gone/x.cs': 'class X {}\n', 'src/Gone/y.cs': 'class Y {}\n' } });
+  r.write(ARCH_PREFS_DOC, PREFS_A2);
+  r.git('add', '-A'); r.git('commit', '-qm', 'prefs');
+  return r;
+};
+test('a dead Scope is named at the close, and blocks once with no watch hit (AC21)', () => {
+  const r = goneRepo();
+  try {
+    const keep = sid(); start(r, keep);
+    r.git('rm', '-q', 'src/Gone/x.cs');
+    assert.strictEqual(r.hook(stopEv(keep)).stdout, '', 'the glob still reaches y.cs');
+    const edit = sid(); start(r, edit);
+    r.write('src/Gone/y.cs', 'class Y { int z; }\n');
+    assert.strictEqual(r.hook(stopEv(edit)).stdout, '', 'nothing vanished');
+    const dead = sid(); start(r, dead);
+    r.git('rm', '-qf', 'src/Gone/y.cs');
+    const reason = stopReason(r, dead);
+    assert.match(reason, /ARCHITECTURE-PREFERENCES\.md A2 - its Scope: `src\/Gone\/\*\*` reaches no file since this session's change - ask the user to run \/capture-preferences to re-scope A2/);
+    assert.deepStrictEqual(askedIds(reason), [], 'no watch hit: only the Scope line');
+    assert.strictEqual(r.hook(stopEv(dead)).stdout, '', 'once per session');
+    assert.strictEqual(r.read(ARCH_PREFS_DOC), PREFS_A2, 'the user\'s words are never rewritten');
+  } finally { r.rm(); }
+});
+
+test('a dead Scope is named in every documented spelling: a folder, a bare path, a file-name glob, a rooted glob (final review I2)', () => {
+  for (const scope of ['src/Gone/', 'src/Gone', '*.gone.cs', '/src/Gone/**']) {
+    const r = qrepo({ files: { 'src/Gone/x.gone.cs': 'class X {}\n' } });
+    try {
+      r.write(ARCH_PREFS_DOC, PREFS_A2.replace('src/Gone/**', scope));
+      r.git('add', '-A'); r.git('commit', '-qm', 'prefs');
+      const s = sid(); start(r, s);
+      r.git('rm', '-qf', 'src/Gone/x.gone.cs');
+      const scopeRe = scope.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      assert.match(stopReason(r, s), new RegExp(`A2 - its Scope: \`${scopeRe}\` reaches no file`), scope);
+    } finally { r.rm(); }
+  }
+});
+
+test('a dead Scope with no preferences engine beside the hooks adds nothing (AC21)', () => {
+  const r = goneRepo();
+  const hooks = fs.mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'hooks-copy-'));
+  const { HOOKS } = require('./docs-fixture');
+  fs.cpSync(HOOKS, `${hooks}/hooks`, { recursive: true });
+  const run = (payload) => require('node:child_process').spawnSync(process.execPath, [`${hooks}/hooks/docs-session.js`], { cwd: r.root, input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: r.root, ALFRED_CODE_DOCS_PATH: '.claude/docs', ALFRED_CODE_DOCS_VERSIONING: '' } });
+  try {
+    const s = sid();
+    run({ hook_event_name: 'SessionStart', session_id: s });
+    run(pre('Bash', { command: 'npm run generate' }, s));
+    r.git('rm', '-qf', 'src/Gone/x.cs', 'src/Gone/y.cs');
+    assert.deepStrictEqual([run(stopEv(s)).stdout], [''], 'fail-open: no engine, no line');
+  } finally { r.rm(); fs.rmSync(hooks, { recursive: true, force: true }); }
+});
+
+// R5 (release 3): a linked child's start names each ancestor's docs root and its areas, read-only.
+function wsDocs({ rootAreas = ['architecture', 'preferences'], childArch = true, childFile = 'parent ..\n' } = {}) {
+  // .native: Windows CI's temp is an 8.3 name (RUNNER~1) and the readers report the long one.
+  const top = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'docs-ws-')));
+  const put = (rel, text) => { const f = path.join(top, ...rel.split('/')); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text); };
+  put('ws/.claude/alfred-code.stamp', 'sha: x\n');
+  put('ws/.alfred/workspace', 'child api\n');
+  for (const a of rootAreas) put(`ws/.alfred/docs/${a}/${a === 'architecture' ? 'ARCHITECTURE.md' : 'watch.json'}`, a === 'architecture' ? '# A\n' : '{}\n');
+  put('ws/.alfred/docs/references/watch.json', '{}\n');
+  put('ws/api/.claude/alfred-code.stamp', 'sha: x\n');
+  put('ws/api/.alfred/workspace', childFile);
+  if (childArch) put('ws/api/.alfred/docs/architecture/ARCHITECTURE.md', '# Api\n');
+  const api = path.join(top, 'ws', 'api');
+  spawnSync('git', ['init', '-q'], { cwd: api });
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: api, CLAUDE_CONFIG_DIR: path.join(top, 'cfg') };
+  for (const k of ['ALFRED_CODE_DOCS_PATH', 'ALFRED_CODE_WORKSPACE', 'ALFRED_CODE_DATA_PATH']) delete env[k];
+  const hook = (payload, extra = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'docs-session.js')], { cwd: api, input: JSON.stringify({ hook_event_name: 'SessionStart', session_id: sid(), cwd: api, ...payload }), encoding: 'utf8', env: { ...env, ...extra } });
+  return { docs: path.join(top, 'ws', '.alfred', 'docs'), hook, rm: () => fs.rmSync(top, { recursive: true, force: true }) };
+}
+
+test('a child\'s start names the root\'s docs root and areas, read-only; a child with no domain of its own still gets the line', () => {
+  const w = wsDocs();
+  const bare = wsDocs({ childArch: false });
+  try {
+    const out = w.hook({});
+    assert.ok(ctx(out).includes(`Workspace root docs (read-only): ${w.docs} - architecture, preferences`), out.stdout + out.stderr);
+    const alone = ctx(bare.hook({}));
+    assert.strictEqual(alone.split('\n')[0], `Workspace root docs (read-only): ${bare.docs} - architecture, preferences`);
+    assert.doesNotMatch(alone, /How this project is documented/);
+  } finally { w.rm(); bare.rm(); }
+});
+
+test('no workspace docs line: a root with no domain, a seat\'s start, the kill switch, ignore docs root', () => {
+  const none = wsDocs({ rootAreas: [] });
+  const w = wsDocs();
+  const ig = wsDocs({ childFile: 'parent ..\nignore docs root\n' });
+  try {
+    assert.doesNotMatch(ctx(none.hook({})) || '', /Workspace root docs/);
+    assert.doesNotMatch(ctx(w.hook({ agent_id: 'seat-1' })) || '', /Workspace root docs/);
+    assert.doesNotMatch(ctx(w.hook({}, { ALFRED_CODE_WORKSPACE: '0' })) || '', /Workspace root docs/);
+    assert.doesNotMatch(ctx(ig.hook({})) || '', /Workspace root docs/);
+  } finally { none.rm(); w.rm(); ig.rm(); }
 });

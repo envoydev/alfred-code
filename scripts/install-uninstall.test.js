@@ -173,6 +173,36 @@ test('removePlugins: the stack\'s rows at project or local scope are uninstalled
     assert.deepStrictEqual(userCalls, [], 'a user-scope install is never uninstalled from here');
 });
 
+// The stack's marketplace also lists preferred-tools from its own GitHub repo: a row of it shares the stack key but is
+// not the stack's, and the matrix of 2026-10-27 saw uninstall take it with the core.
+test('removePlugins: a foreign entry under the stack key stays installed; foreignEntries reads it from the snapshot', () =>
+{
+    const plugins = require('./install/plugins.js');
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'foreign-'));
+    try
+    {
+        assert.deepStrictEqual([...plugins.foreignEntries(tmp)], [], 'no marketplace.json names none');
+        fs.mkdirSync(path.join(tmp, '.claude-plugin'));
+        fs.writeFileSync(path.join(tmp, '.claude-plugin', 'marketplace.json'), '{ not json');
+        assert.deepStrictEqual([...plugins.foreignEntries(tmp)], [], 'an unreadable one names none');
+        fs.writeFileSync(path.join(tmp, '.claude-plugin', 'marketplace.json'), JSON.stringify({ plugins: [
+            { name: 'alfred-code', source: './' },
+            { name: 'preferred-tools', source: { source: 'github', repo: 'envoydev/preferred-tools', ref: 'main' } },
+        ] }));
+        const foreign = plugins.foreignEntries(tmp);
+        assert.deepStrictEqual([...foreign], ['preferred-tools']);
+
+        const rows = [
+            { name: 'alfred-code', marketplace: 'envoydev', scope: 'project', version: '2.12.0', enabled: true },
+            { name: 'preferred-tools', marketplace: 'envoydev', scope: 'project', version: '0.1.0', enabled: true },
+        ];
+        const calls = [];
+        uninstall.removePlugins({ rows, market: 'envoydev', scope: 'project', foreign, cli: (a) => { calls.push(a.join(' ')); return true; }, log: () => {} });
+        assert.deepStrictEqual(calls, ['plugin uninstall alfred-code@envoydev --scope project -y']);
+    }
+    finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+});
+
 // End to end through the Node seed and a recording `claude`: install on the default plugin route, the
 // user adds their own hook, server and key, then uninstall.
 const LISTING = JSON.stringify([

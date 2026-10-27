@@ -988,6 +988,8 @@ test('no surface names an old skill or seat outside the rename\'s own homes', ()
     {
         const rel = path.relative(ROOT, full).split(path.sep).join('/');
         if (/^docs\/[^/]*-evidence\.md$/.test(rel) || rel === 'docs/ecc-comparison-2026-09-20.md' || rel === 'scripts/install-renames.test.js' || rel === 'scripts/fixtures/retired-rules.js') return;
+        // the user's hand-kept diagram of the scorer's plan, drawn before the stack-modes rename: a record of its time
+        if (rel === 'docs/habits-scorer-flow.html') return;
         // recorded transcripts are what a session wrote at the time, and the conformance readers match the name they hold
         // (the stack-modes spec of 2026-10-27, AC10) - only that one old name, nowhere else
         const recorded = /^scripts\/fixtures\/conformance\//.test(rel) || rel === 'scripts/conformance.test.js' || rel === 'meta/conformance.json';

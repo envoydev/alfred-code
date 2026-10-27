@@ -7,8 +7,9 @@
 //     new one, so an existing install's file is relocated ONCE, byte-identical, and NEVER over a
 //     file already at the new path. A folder becomes a domain the engine sees only when it holds a
 //     `watch.json`, so a moved document stayed invisible until its capture re-ran - two of the
-//     three get the minimal `{}` written for them. `quality/` is watch-less BY DESIGN and is left alone: it is
-//     recomputed every run. The working papers that sat in `related-context/` move to `work/cross-project-tasks/`
+//     three get the minimal `{}` written for them. `quality/` is left alone: it is a recomputed domain whose
+//     `watch.json` only its capture can write (the entries are the assessment's own), so an assessment that predates
+//     it is named (assessmentWatchLine). The working papers that sat in `related-context/` move to `work/cross-project-tasks/`
 //     with the 2.8.0 layout (migrateLayout).
 //
 //   - THE VERSIONING SEED. `ALFRED_CODE_DOCS_VERSIONING` says HOW the docs follow a branch: `git`
@@ -60,10 +61,18 @@ const realGit = (projectRoot) => ({
     },
 });
 
+// A domain whose watch.json says `"recomputed": true` (quality/: rewritten whole by its capture) casts no versioning
+// vote, as in docs.js keptOutOfGit (the docs-watch-every-domain spec, AC13); a watch.json that does not parse votes.
+function recomputedDomain(dir)
+{
+    try { return JSON.parse(fs.readFileSync(path.join(dir, 'watch.json'), 'utf8')).recomputed === true; }
+    catch { return false; }
+}
+
 // `local` ONLY when the docs are demonstrably kept out of git: no domain is tracked, AND either a
 // domain exists (so there is something to have committed) or git ignores the docs root outright.
 // Everything else, a fresh project included, is `git`. The git doc every install seeds (2026-10-21) is the stack's
-// text, so a preferences domain holding nothing else casts no vote.
+// text, so a preferences domain holding nothing else casts no vote, and neither does a recomputed domain.
 function docsVersioningSeed({ projectRoot, docsPath, git })
 {
     const g = git || realGit(projectRoot);
@@ -76,7 +85,7 @@ function docsVersioningSeed({ projectRoot, docsPath, git })
         try { return fs.readdirSync(`${base}/${name}`).every((f) => f === 'watch.json' || f === GIT_DOC); }
         catch { return false; }
     };
-    const names = domains(base).filter((name) => !seedOnly(name));
+    const names = domains(base).filter((name) => !seedOnly(name) && !recomputedDomain(`${base}/${name}`));
     const committed = names.some((name) => g.tracked(`${base}/${name}`));
     const keptOut = !committed && (names.length > 0 || g.ignored(parts.join('/')));
     return keptOut ? 'local' : 'git';
@@ -179,7 +188,7 @@ function lastHome(to)
 
 // `rules` are the generated rules (selection.generatedRules), `instructions` the project's own AGENTS.md /
 // CLAUDE.md files to name - see repointDocs.
-function migrateDocsDomains({ projectRoot, docsPath, dataPath = null, rules = [], instructions = [], log = () => {}, spawn = spawnSync })
+function migrateDocsDomains({ projectRoot, docsPath, dataPath = null, rules = [], instructions = [], engineText = null, log = () => {}, spawn = spawnSync })
 {
     // resolve, not join: a docs root the user set may be absolute (migrateUsageReport and migratePlans read it so too)
     const base = path.resolve(projectRoot, String(docsPath || '').replace(/\/+$/, ''));
@@ -202,7 +211,48 @@ function migrateDocsDomains({ projectRoot, docsPath, dataPath = null, rules = []
         if (switchOnDomain(path.join(base, dir), doc, { log })) switched.push(dir);
     const repointed = repointDocs({ projectRoot, docsPath, base, rules, instructions, log });
     const awareness = migrateAwareness({ projectRoot, base, docsPath, rules, log });
+    revertRecomputed({ projectRoot, docsPath, engineText, log });
+    assessmentWatchLine({ projectRoot, docsPath, log });
     return { moved, switched, repointed, awareness, preferences };
+}
+
+// The way back (the docs-watch design, Rollout): an engine from before recomputed domains reads a recomputed
+// quality/watch.json as an ordinary domain - it would vote on versioning, take branch overlays and compete for ask
+// slots. So beside such an engine, and only there, the file goes and nothing else does; the capture writes it again
+// if recomputed domains return. The probe is the TEXT of the engine this run copies (`engineText`), never a require,
+// since loading docs.js resolves the docs root. Dormant while that engine knows refRecomputed, and on no text at all.
+function revertRecomputed({ projectRoot, docsPath, engineText, log = () => {} })
+{
+    if (typeof engineText !== 'string' || /\brefRecomputed\b/.test(engineText)) return false;
+    const file = path.resolve(projectRoot, String(docsPath || '').replace(/\/+$/, ''), 'quality', 'watch.json');
+    let data;
+    try { data = parseJson(fs.readFileSync(file, 'utf8')); }
+    catch { return false; }
+    if (!data || typeof data !== 'object' || Array.isArray(data) || data.recomputed !== true) return false;
+    try { fs.rmSync(file); }
+    catch (err)
+    {
+        log(`  !! docs migration (quality): ${file} could not be removed (${err.code || err.message}) - delete it by hand, this engine reads it as an ordinary domain`);
+        return false;
+    }
+    log('  docs migration (quality): quality/watch.json removed - this engine has no recomputed domains; /capture-architecture-quality writes it again when they return');
+    return true;
+}
+
+// An assessment written before quality/ became a recomputed domain has no sections and no watch.json, so it stays
+// outside the engine until its capture runs again (the docs-watch design, D6). The line repeats on every run until
+// then and writes nothing: only the capture knows the entries. Returns whether it was named.
+function assessmentWatchLine({ projectRoot, docsPath, log = () => {} })
+{
+    const quality = path.resolve(projectRoot, String(docsPath || '').replace(/\/+$/, ''), 'quality');
+    try
+    {
+        if (!fs.statSync(path.join(quality, 'ARCHITECTURE-ASSESSMENT.md')).isFile()) return false;
+        if (fs.existsSync(path.join(quality, 'watch.json'))) return false;
+    }
+    catch { return false; }
+    log('  !! quality/ARCHITECTURE-ASSESSMENT.md predates its watch - run /capture-architecture-quality to put it under the session-close docs check');
+    return true;
 }
 
 // A section ref is spelled `KEY#id`, `KEY.md#id` or with its folder in front; a key inside a longer one is no ref
@@ -1483,7 +1533,7 @@ function moveDocsRoot({ projectRoot, plan })
 const { DATA_IGNORE_HEAD, dataIgnoreText, docsInsideRoot } = require('../../stack/mcp/data-root.js');
 
 // 'written' | 'replaced' | 'current' | 'kept' (the project's own file).
-function ensureDataIgnore({ projectRoot, root, docsPath, mode, log = () => {} })
+function ensureDataIgnore({ projectRoot, root, docsPath, mode, scope, log = () => {} })
 {
     const base = path.join(projectRoot, ...normRoot(root).split('/'));
     const file = path.join(base, '.gitignore');
@@ -1500,9 +1550,16 @@ function ensureDataIgnore({ projectRoot, root, docsPath, mode, log = () => {} })
             log(`  data root: git tracks docs under ${shown} - they stay visible to git (versioning local; docs.js status reports the disagreement)`);
         }
     }
-    const want = dataIgnoreText({ root, docsPath, mode: shape });
     let have = null;
     try { have = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n'); } catch { have = null; }
+    // A local-scope run never drops the `.variables` re-include from a file git tracks: the team committed it with theirs.
+    let keepVariables = false;
+    if (scope === 'local' && have !== null && /^!\/\.variables$/m.test(have))
+    {
+        try { keepVariables = String(rt.execCommand('git', ['ls-files', '--', `${normRoot(root)}/.gitignore`], { cwd: projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })).trim() !== ''; }
+        catch { keepVariables = false; }
+    }
+    const want = dataIgnoreText({ root, docsPath, mode: shape, scope: keepVariables ? 'project' : scope });
     if (have === want) return 'current';
     if (have !== null && !have.startsWith(DATA_IGNORE_HEAD))
     {
@@ -1602,7 +1659,7 @@ function dataOfferLine(offer)
 }
 
 module.exports = {
-    domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, lspCoverageLines, migrateAwareness, inventoryToDoc, ensureDocsIgnore, migrateUsageReport, migratePlans, docsMovePlan, docsMoveViews, moveDocsRoot,
+    domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, assessmentWatchLine, revertRecomputed, lspCoverageLines, migrateAwareness, inventoryToDoc, ensureDocsIgnore, migrateUsageReport, migratePlans, docsMovePlan, docsMoveViews, moveDocsRoot,
     ensureDataIgnore, dataIgnoreText, pruneDataRoot, pruneNestedIgnores, dataOffer, dataOfferLine, migrateLayout,
     DOCS_IGNORE, DOCS_IGNORE_FORMER, DOCS_MIGRATIONS, DOCS_SWITCH_ON, RESERVED, LEGACY_DOCS_ROOT, DATA_IGNORE_HEAD, OS_LITTER, STACK_DOCS,
 };

@@ -175,7 +175,7 @@ test('177c5743#5: a documentation plan has its own card - target, change, eviden
 {
     const pw = read('stack/skills/habits-plan-writing/SKILL.md');
     const card = (/A documentation plan[\s\S]*?```text\n([\s\S]*?)```/.exec(pw) || [])[1] || '';
-    assert.deepStrictEqual([...card.matchAll(/^- (\w+):/gm)].map((m) => m[1]), ['status', 'target', 'change', 'evidence', 'verification']);
+    assert.deepStrictEqual([...card.matchAll(/^- (\w+):/gm)].map((m) => m[1]), ['status', 'target', 'change', 'evidence', 'verification', 'estimate']);
     assert.match(flat(pw), /four fields in place of `files`, `anchors`, `traps`, `test`, `acceptance` and `log_points`/);
 });
 

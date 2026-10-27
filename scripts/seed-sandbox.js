@@ -202,4 +202,27 @@ function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {
     finally { fs.rmSync(work, { recursive: true, force: true }); }
 }
 
-module.exports = { seedRun, POSIX_ONLY, scrubStackEnv };
+// A release's own tree, for an update over an older install: one `git archive` of `tag` per test file, removed at exit;
+// null where the checkout has no such tag (a shallow CI clone), which `skipWithout` turns into a skip.
+const EXPORTS = new Map();
+function releaseExport(tag)
+{
+    if (EXPORTS.has(tag)) return EXPORTS.get(tag);
+    if (!EXPORTS.size) process.on('exit', () => { for (const dir of EXPORTS.values()) if (dir) fs.rmSync(dir, { recursive: true, force: true }); });
+    let dir = null;
+    try
+    {
+        rt.execCommand('git', ['rev-parse', '-q', '--verify', `refs/tags/${tag}`], { cwd: ROOT, stdio: 'ignore' });
+        dir = fs.mkdtempSync(path.join(os.tmpdir(), `alfred-export-${tag}-`));
+        const tar = path.join(dir, 'export.tar');
+        rt.execCommand('git', ['archive', '--format=tar', '-o', tar, tag], { cwd: ROOT, stdio: 'ignore' });
+        rt.execCommand('tar', ['-xf', tar, '-C', dir], { stdio: 'ignore' });
+        fs.rmSync(tar, { force: true });
+    }
+    catch { if (dir) fs.rmSync(dir, { recursive: true, force: true }); dir = null; }
+    EXPORTS.set(tag, dir);
+    return dir;
+}
+const skipWithout = (tag) => ({ ...POSIX_ONLY, skip: POSIX_ONLY.skip || (!releaseExport(tag) && `no ${tag} tag in this checkout`) });
+
+module.exports = { seedRun, POSIX_ONLY, scrubStackEnv, releaseExport, skipWithout };
