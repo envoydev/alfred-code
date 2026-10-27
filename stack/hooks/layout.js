@@ -258,6 +258,14 @@ function wsLine(raw)
         if (value === 'none') return { key: 'parent', kind: 'parent-none', raw: line };
         if (/^\.\.(\/\.\.)*$/.test(value)) return { key: 'parent', kind: 'parent', value, raw: line };
     }
+    else if (word === 'role')
+    {
+        if (value === 'root' || value === 'standalone') return { key: 'role', kind: 'role', value };
+    }
+    else if (word === 'above')
+    {
+        if (value === 'none' || /^\.\.(\/\.\.)*$/.test(value)) return { key: 'above', kind: 'above', value };
+    }
     else if (word === 'child')
     {
         if (value !== '' && !value.startsWith('/') && !/[:\\]/.test(value) && wsSegmentsOk(value)) return { key: `child ${value}`, kind: 'child', value };
@@ -623,6 +631,6 @@ function applyVariables(projectRoot, env = process.env)
 module.exports = {
     dataRoot, docsRoot, flowKind, statePath, statsPath, legacyStatePath, legacyStatsPath, findState, findStats, planDirs, LAYOUT_MOVES,
     PLAN_ID, planIdOf, approvalPath, approvalStamps, projectRootOf, gitTopOf, worktreeMain, holdsRecord, dirKey,
-    settingFrom, checkDataPath, dataRootOf, workspaceOn, ownWorkspace, workspaceChain,
+    settingFrom, checkDataPath, dataRootOf, workspaceOn, wsLine, ownWorkspace, workspaceChain,
     VARIABLE_KEYS, MEMBER_NEVER, DOTENV_LINE, COMMENT_LINE, unquote, readDotenv, readText, mainCounterpart, variablesOf, hooksOffOf, applyVariables,
 };

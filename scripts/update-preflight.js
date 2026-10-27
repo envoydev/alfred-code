@@ -42,8 +42,9 @@
 //                                           answer, a CLAUDE.local.md, and what the update does - seeds.js
 //                                           instructionsFileLine; a project install only)
 //   env-keys: <comma-separated key names>   (or 'env-keys: none')
-//   workspace: join <rel>[\trejoin]          (a checkout below an installed folder it has not joined, or whose parent
-//                                           no longer lists it - workspace.js joinLine; a project install only)
+//   workspace: role-ask <case> <rel>        (the tree around the project changed since its role was answered: never,
+//                                           above, rejoin, parent-gone or between - workspace.js roleAsk, whose
+//                                           options `workspace.js role --when update` prints; a project install only)
 //   unattended: on                          (only with ALFRED_CODE_UNATTENDED=1)
 //
 // Exit codes are stamp-compare's, passed through so the caller's branching is unchanged:
@@ -583,8 +584,8 @@ function main()
         console.log(seeds.instructionsFileLine(path.resolve(root), require('./install/stamp.js').readInstructionsAnswer(stampFile)));
         const both = ws.instructionsBothLine(ws.instructionsBothState({ projectRoot: path.resolve(root), env: process.env, ...ws.accountPaths(process.env) }));
         if (both) console.log(both);
-        const join = fs.existsSync(stampFile) ? ws.joinLine(path.resolve(root), { env: process.env }) : null;
-        if (join) console.log(join);
+        const ask = fs.existsSync(stampFile) ? ws.roleAsk(path.resolve(root), { env: process.env, when: 'update' }) : null;
+        if (ask) console.log(`workspace: role-ask ${ask.case} ${ask.rel}`);
         return;
     }
     // configure reads the two offers alone - no compare, no network.
@@ -657,8 +658,8 @@ function main()
         const ws = require('./install/workspace.js');
         const both = ws.instructionsBothLine(ws.instructionsBothState({ projectRoot: path.resolve(root), env: process.env, ...ws.accountPaths(process.env) }));
         if (both) console.log(both);
-        const join = fs.existsSync(stampFile) ? ws.joinLine(path.resolve(root), { env: process.env }) : null;
-        if (join) console.log(join);
+        const ask = fs.existsSync(stampFile) ? ws.roleAsk(path.resolve(root), { env: process.env, when: 'update' }) : null;
+        if (ask) console.log(`workspace: role-ask ${ask.case} ${ask.rel}`);
     }
 
     const keys = settings && settings.env ? Object.keys(settings.env).sort() : [];

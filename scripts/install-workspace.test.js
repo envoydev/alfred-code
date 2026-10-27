@@ -268,6 +268,87 @@ test('a 2.12.0 tree with the switch at 1: own-env keys land in the child\'s file
     assert.deepStrictEqual(after.off, ['docs-session:gate', 'guard-ungated-commit:push'], 'the root\'s part entry still reaches the child');
 });
 
+// D5's leave (AC15): every value the child read through the chain is written into its own file first, so nothing
+// changes; with the parent's stamp gone there is no chain to read, the keys that go to the defaults are named, and the
+// next update seeds them as a standalone's.
+test('AC15: leaving keeps every effective value; with ws deleted the child is seeded as standalone and names the keys that went to defaults', POSIX_ONLY, () =>
+{
+    const LEVEL = 'ALFRED_CODE_SCORER_LEVEL';
+    const read = (work) => ({ effective: effectiveOf(work, 'api'), vars: varsOf(work, 'api'), from: layoutLib.variablesOf(at(work, 'api'), { env: acct(work) }).from, ws: readOr(path.join(at(work, 'api'), '.alfred', 'workspace')) });
+    const r = scenario([
+        { at: '.', after: (work) => { setVar(work, '.', { [LEVEL]: '90' }); join(work, 'api'); } },
+        { at: 'api', after: read },
+        cli('role', { at: 'api', args: ['--answer', 'leave:standalone'], after: read }),
+    ]);
+    const [before, after] = [r.steps[1], r.steps[2]];
+    assert.strictEqual(before.effective[LEVEL], '90', r.outs[1]);
+    assert.strictEqual(before.from[LEVEL], '..', 'read through the chain before the leave');
+    assert.deepStrictEqual(after.effective, before.effective, r.outs[2]);
+    assert.strictEqual(after.vars[LEVEL], '90', 'the root\'s value now sits in the child\'s own file');
+    assert.ok(!Object.values(after.from).includes('..'), JSON.stringify(after.from));
+    assert.strictEqual(after.ws, 'role standalone\nabove ..\n');
+
+    const gone = scenario([
+        { at: '.', after: (work) => join(work, 'api') },
+        { at: 'api', after: (work) => { fs.rmSync(path.join(at(work), '.claude', 'alfred-code.stamp')); return varsOf(work, 'api'); } },
+        cli('role', { at: 'api', args: ['--when', 'update'] }),
+        cli('role', { at: 'api', args: ['--answer', 'leave:standalone'], after: read }),
+        update('api', { after: read }),
+    ]);
+    const held = Object.keys(gone.steps[1]);
+    assert.match(gone.outs[2], /^ask: Become standalone \(Recommended\)\tleave:standalone$/m, gone.outs[2]);
+    const named = /^workspace: \.\. is gone - (\d+) values read the stack's defaults here now \(([A-Z0-9_, ]+)\); the next update seeds them$/m.exec(gone.outs[3]);
+    assert.ok(named, gone.outs[3]);
+    const defaults = named[2].split(', ');
+    assert.strictEqual(Number(named[1]), defaults.length);
+    assert.ok(defaults.length > 0 && defaults.every((k) => !held.includes(k)), `${held} / ${defaults}`);
+    assert.ok(!defaults.includes('ALFRED_CODE_DOCS_VERSIONING') && !defaults.includes('ALFRED_CODE_WORKSPACE'));
+    assert.strictEqual(gone.steps[3].ws, 'role standalone\nabove none\n');
+    const seeded = gone.steps[4].vars;
+    const fresh = Object.keys(seeded).filter((k) => !held.includes(k));
+    assert.ok(fresh.length > 0 && fresh.every((k) => defaults.includes(k)), `the update seeded the named keys: ${fresh}`);
+    assert.ok(!Object.values(gone.steps[4].from).includes('..'));
+});
+
+// AC24: a 2.12.0 standalone below a 3.0.0 root joins - at update by the Recommended answer, and through configure - and
+// D5's prune leaves it its typed value and DOCS_VERSIONING only; leaving writes the root's value back into its file.
+test('AC24: a 2.12.0 standalone joined at update and through configure reads SCORER_LEVEL=90 from ws, keeps its typed CORRECTION_NUDGE=inject, holds no other seeded key, keeps DOCS_VERSIONING; leaving writes SCORER_LEVEL=90 back', skipWithout('v2.12.0'), () =>
+{
+    const old = releaseExport('v2.12.0');
+    const OLD = old && { seed: path.join(old, 'scripts', 'install', 'alfred-code.js'), source: old };
+    const LEVEL = 'ALFRED_CODE_SCORER_LEVEL';
+    const NUDGE = 'ALFRED_CODE_CORRECTION_NUDGE';
+    const read = (work) => ({ effective: effectiveOf(work, 'api'), vars: varsOf(work, 'api'), from: layoutLib.variablesOf(at(work, 'api'), { env: acct(work) }).from });
+    for (const when of ['update', 'configure'])
+    {
+        const pick = (work) =>
+        {
+            const ask = wsLib.roleAsk(at(work, 'api'), { env: acct(work), when });
+            const i = when === 'update' ? 0 : ask.options.indexOf('Join ..');
+            assert.ok(i >= 0, JSON.stringify(ask));
+            if (when === 'update') assert.deepStrictEqual([ask.case, ask.options[0]], ['never', 'Join .. (Recommended)']);
+            return ['--answer', ask.answers[i]];
+        };
+        const r = scenario([
+            { at: '.', ...OLD },
+            { at: 'api', ...OLD, after: (work) => setEnv(work, 'api', 'settings.json', { [NUDGE]: 'inject' }) },
+            update('.', { after: (work) => setVar(work, '.', { [LEVEL]: '90' }) }),
+            update('api', { after: read }),
+            cli('role', { at: 'api', args: pick, after: read }),
+            cli('role', { at: 'api', args: ['--answer', 'leave:standalone'], after: read }),
+        ]);
+        const [joined, left] = [r.steps[4], r.steps[5]];
+        assert.ok(r.steps[3].vars.ALFRED_CODE_DOCS_VERSIONING !== undefined, `${when}: the 2.12.0 seeds moved into the file: ${r.outs[3]}`);
+        assert.strictEqual(joined.effective[LEVEL], '90', `${when}: ${r.outs[4]}`);
+        assert.strictEqual(joined.from[LEVEL], '..', when);
+        assert.deepStrictEqual(Object.keys(joined.vars).sort(), [NUDGE, 'ALFRED_CODE_DOCS_VERSIONING'].sort(), `${when}: ${JSON.stringify(joined.vars)}`);
+        assert.strictEqual(joined.vars[NUDGE], 'inject');
+        assert.match(r.outs[4], /^workspace: 2 of this project's values kept as its own \(.*\) - \d+ stack seeds? dropped, so the workspace's value reaches it$/m, r.outs[4]);
+        assert.strictEqual(left.vars[LEVEL], '90', `${when}: leaving wrote the root's value back: ${r.outs[5]}`);
+        assert.deepStrictEqual(left.effective, joined.effective, when);
+    }
+});
+
 test('a parent read-back that fails adds and drops nothing and prints one !! line', POSIX_ONLY, () =>
 {
     const r = scenario([

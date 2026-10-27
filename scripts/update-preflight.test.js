@@ -907,8 +907,8 @@ test('update-preflight prints instructions-both: ask in a child', () =>
 });
 
 
-// The join ask (AC13, AC18, AC27): a nested standalone checkout is offered the join, `parent none` ends the offer, and a
-// child whose back-reference was deleted by hand is offered the rejoin.
+// The role ask (roles spec D2, AC3, AC4): a nested checkout never asked gets `role-ask never`, a 2.12 `parent none` and
+// any answer end it, and a child whose back-reference was deleted by hand gets `role-ask rejoin`.
 function nestedPreflight({ parentLine = null, childLine = null } = {})
 {
     const { snap, install, fixtureFile } = scaffold();
@@ -930,20 +930,34 @@ function nestedPreflight({ parentLine = null, childLine = null } = {})
     return { install, parent, env, full, asks };
 }
 
-test('update-preflight prints workspace: join only for a nested standalone project, and nothing after parent none', () =>
+test('update-preflight prints workspace: role-ask never for a nested project never asked, never a join line, and nothing after parent none', () =>
 {
     const p = nestedPreflight();
-    assert.match(p.full(), /^workspace: join \.\.$/m);
-    assert.match(p.asks(), /^workspace: join \.\.$/m);
+    assert.match(p.full(), /^workspace: role-ask never \.\.$/m);
+    assert.match(p.asks(), /^workspace: role-ask never \.\.$/m);
+    assert.doesNotMatch(p.full() + p.asks(), /^workspace: join /m);
     const unattended = p.full({ ALFRED_CODE_UNATTENDED: '1' });
-    assert.ok(unattended.indexOf('workspace: join') < unattended.indexOf('unattended: on'), unattended);
+    assert.ok(unattended.indexOf('workspace: role-ask') < unattended.indexOf('unattended: on'), unattended);
     assert.doesNotMatch(p.full({ ALFRED_CODE_WORKSPACE: '0' }), /^workspace:/m, 'the kill switch asks nothing');
     fs.mkdirSync(path.join(p.install, '.alfred'), { recursive: true });
     fs.writeFileSync(path.join(p.install, '.alfred', 'workspace'), 'parent none\n');
-    assert.doesNotMatch(p.full(), /^workspace:/m);
+    assert.doesNotMatch(p.full(), /^workspace:/m, 'a 2.12 parent none was answered');
     assert.doesNotMatch(p.asks(), /^workspace:/m);
     const joined = nestedPreflight({ parentLine: 'child project\n', childLine: 'parent ..\n' });
     assert.doesNotMatch(joined.full(), /^workspace:/m, 'a joined child is asked nothing');
+});
+
+test('AC3: after either answer to role-ask never, two updates print no role-ask and change no project file', () =>
+{
+    for (const answer of ['join:..', 'standalone'])
+    {
+        const p = nestedPreflight();
+        execFileSync('node', [path.join(__dirname, 'workspace.js'), 'role', '--root', p.install, '--answer', answer], { encoding: 'utf8', env: p.env });
+        const files = () => ['.alfred/workspace', '.claude/alfred-code.stamp'].map((f) => [p.parent, p.install].map((d) => { try { return fs.readFileSync(path.join(d, f), 'utf8'); } catch { return null; } }));
+        const before = files();
+        for (let i = 0; i < 2; i++) assert.doesNotMatch(p.full() + p.asks(), /^workspace: role-ask/m, `${answer}: update ${i + 1}`);
+        assert.deepStrictEqual(files(), before, `${answer}: no file changed`);
+    }
 });
 
 test('update-preflight prints no workspace line in a project with nothing installed above it', () =>
@@ -956,12 +970,12 @@ test('update-preflight prints no workspace line in a project with nothing instal
     assert.doesNotMatch(run(['--asks', '--root', install], env).out, /^workspace:/m);
 });
 
-test('a child whose child line was deleted by hand gets workspace: join .. rejoin, and join --answer join brings the line back', () =>
+test('a child whose child line was deleted by hand gets workspace: role-ask rejoin .., and role --answer rejoin brings the line back', () =>
 {
     const p = nestedPreflight({ parentLine: '', childLine: 'parent ..\n' });
-    assert.match(p.full(), /^workspace: join \.\.\trejoin$/m);
-    const joined = execFileSync('node', [path.join(__dirname, 'workspace.js'), 'join', '--root', p.install, '--answer', 'join'], { encoding: 'utf8', env: p.env });
-    assert.match(joined, /join: join\n$/);
+    assert.match(p.full(), /^workspace: role-ask rejoin \.\.$/m);
+    const joined = execFileSync('node', [path.join(__dirname, 'workspace.js'), 'role', '--root', p.install, '--answer', 'rejoin'], { encoding: 'utf8', env: p.env });
+    assert.match(joined, /^role: child of \.\.$/m);
     assert.strictEqual(fs.readFileSync(path.join(p.parent, '.alfred', 'workspace'), 'utf8'), 'child project\n');
     assert.doesNotMatch(p.full(), /^workspace:/m);
 });

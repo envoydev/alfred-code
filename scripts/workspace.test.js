@@ -723,3 +723,152 @@ test('hintLine names the server and its folder, with the approve-once clause onl
     assert.strictEqual(ws.hintLine('srv', '..'), ws.hintLine('srv', '..', { approval: true }), 'the default is the probed verdict');
     assert.match(ws.hintLine('a b', '../..'), /^mcp "a b": registered for \.\.\/\.\. only .*claude mcp get "a b" in \.\.\/\.\./, 'a name the CLI would split is quoted');
 });
+
+// ------------------------------------------------------------------ T13: the role (roles spec D1, D2, D5's join and leave)
+
+const { execFileSync: run } = require('node:child_process');
+const layoutLib = require('../stack/hooks/layout.js');
+const stampLib = require('./install/stamp.js');
+const ON = { CLAUDE_CONFIG_DIR: path.join(TMP, 'acct'), ALFRED_CODE_WORKSPACE: '1' };
+// { rel: { stamp, git, file, vars } } under a fresh folder; returns rel -> real path.
+const roleTree = (spec) =>
+{
+    const top = fs.mkdtempSync(path.join(TMP, 'r-'));
+    for (const [rel, o] of Object.entries(spec))
+    {
+        const dir = path.join(top, ...rel.split('/'));
+        fs.mkdirSync(dir, { recursive: true });
+        if (o.git) run('git', ['init', '-q'], { cwd: dir });
+        if (o.stamp) { fs.mkdirSync(path.join(dir, '.claude'), { recursive: true }); fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), typeof o.stamp === 'string' ? o.stamp : 'sha: x\n'); }
+        if (o.file !== undefined || o.vars !== undefined) fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
+        if (o.file !== undefined) fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), o.file);
+        if (o.vars !== undefined) fs.writeFileSync(path.join(dir, '.alfred', '.variables'), o.vars);
+    }
+    return (rel = '.') => fs.realpathSync.native(path.join(top, ...rel.split('/')));
+};
+const asked = (root, when, env = ON) => { const a = ws.roleAsk(root, { env, when }); return a && { case: a.case, rel: a.rel, options: a.options }; };
+
+test('AC1: the file round-trips role root, role standalone, above .. and above none; parent none reads as role standalone and is rewritten; wsLine and parseLine agree on every kind', () =>
+{
+    for (const text of ['role root\nabove ..\nchild api\n', 'role standalone\nabove none\nignore skill x\n', 'parent ..\nabove ../..\n'])
+        assert.strictEqual(ws.renderWorkspace(ws.parseWorkspace(text)), text);
+    const v = ws.viewOf(ws.parseWorkspace('role root\nabove ..\nchild api\n'));
+    assert.deepStrictEqual([v.role, v.above, v.children], ['root', '..', ['api']]);
+    const s = ws.viewOf(ws.parseWorkspace('role standalone\nabove none\n'));
+    assert.deepStrictEqual([s.role, s.above], ['standalone', 'none']);
+    assert.deepStrictEqual(ws.viewOf(ws.parseWorkspace('role child\nabove x\nrole\n')).unknown, ['role child', 'above x', 'role'], 'only the two roles and a run of .. or none');
+    const root = project('parent none\nignore skill x\n');
+    assert.strictEqual(ws.readWorkspace(root, { env: {} }).view.role, 'standalone');
+    assert.ok(ws.writeWorkspace(root, (m) => ws.addIgnore(m, 'skill', 'y'), { env: {} }).wrote);
+    assert.strictEqual(fs.readFileSync(fileOf(root), 'utf8'), 'role standalone\nignore skill x\nignore skill y\n', 'rewritten at the next write');
+    const lines = ['role root', 'role standalone', 'role child', 'role', 'above ..', 'above ../..', 'above none', 'above x', 'above /abs',
+        'parent ..', 'parent none', 'parent x', 'child api', 'child ../a', 'ignore skill x', 'ignore colour x', 'ignore docs root', '# c', '', 'colour red'];
+    for (const line of lines)
+    {
+        const a = ws.parseLine(line);
+        const b = layoutLib.wsLine(line);
+        assert.strictEqual(b.kind, a.kind, line);
+        assert.strictEqual(b.value, a.value, line);
+    }
+});
+
+test('roleOf: child of .., root of 2 children, a root with no child, standalone, and standalone not asked', () =>
+{
+    const at = roleTree({
+        ws: { stamp: true, file: 'child api\nchild web\n' }, 'ws/api': { stamp: true, git: true, file: 'parent ..\n' }, 'ws/web': { stamp: true, git: true, file: 'parent ..\n' },
+        solo: { stamp: true, git: true, file: 'role root\nabove none\n' }, alone: { stamp: true, git: true, file: 'role standalone\nabove none\n' }, fresh: { stamp: true, git: true },
+    });
+    assert.deepStrictEqual(ws.roleOf(at('ws/api'), { env: ON }), { kind: 'child', rel: '..', children: 0, asked: true });
+    assert.deepStrictEqual(ws.roleOf(at('ws'), { env: ON }), { kind: 'root', children: 2, asked: false });
+    assert.deepStrictEqual(ws.roleOf(at('solo'), { env: ON }), { kind: 'root', children: 0, asked: true });
+    assert.deepStrictEqual(ws.roleOf(at('alone'), { env: ON }), { kind: 'standalone', asked: true });
+    assert.deepStrictEqual(ws.roleOf(at('fresh'), { env: ON }), { kind: 'standalone', asked: false });
+    assert.strictEqual(ws.roleText(ws.roleOf(at('ws'), { env: ON })), 'root of 2 children');
+    assert.strictEqual(ws.roleText(ws.roleOf(at('ws/api'), { env: ON })), 'child of ..');
+    assert.strictEqual(ws.roleText(ws.roleOf(at('fresh'), { env: ON })), 'standalone (not asked)');
+    assert.strictEqual(ws.roleText(ws.roleOf(at('alone'), { env: ON })), 'standalone');
+});
+
+test('AC2: init\'s options - Child first under a root, Root first in a plain folder, Standalone first in a git checkout, the why line and Standalone first inside the parent\'s repo', () =>
+{
+    const at = roleTree({ ws: { stamp: true }, 'ws/api': { git: true }, plain: {}, repo: { git: true }, top: { stamp: true, git: true }, 'top/sub': {} });
+    assert.deepStrictEqual(asked(at('ws/api'), 'init'), { case: 'init-child', rel: '..', options: ['Child of .. (Recommended)', 'Standalone', 'Root'] });
+    assert.deepStrictEqual(asked(at('plain'), 'init'), { case: 'init-none', rel: null, options: ['Root (Recommended)', 'Standalone'] });
+    assert.deepStrictEqual(asked(at('repo'), 'init'), { case: 'init-none', rel: null, options: ['Standalone (Recommended)', 'Root'] });
+    const why = ws.roleAsk(at('top/sub'), { env: ON, when: 'init' });
+    assert.deepStrictEqual([why.case, why.rel, why.options], ['init-why', '..', ['Standalone (Recommended)', 'Root']]);
+    assert.match(why.why, /^\.\. is the same git repository/);
+    assert.strictEqual(ws.roleAsk(at('ws/api'), { env: { ...ON, ALFRED_CODE_WORKSPACE: '0' }, when: 'init' }), null, 'at 0 nothing is asked');
+});
+
+test('AC4: a stamped folder above a standalone asks once, Keep quiets it; a deleted parent offers Become standalone first; a lost child line offers Rejoin first; a folder between offers Stay first; never answered offers Join first', () =>
+{
+    const at = roleTree({
+        ws: { stamp: true, file: 'child mid/deep\n' }, 'ws/alone': { stamp: true, git: true, file: 'role standalone\nabove none\n' },
+        'ws/fresh': { stamp: true, git: true }, 'ws/lost': { stamp: true, git: true, file: 'parent ..\n' },
+        'ws/mid': { stamp: true }, 'ws/mid/deep': { stamp: true, git: true, file: 'parent ../..\nabove ../..\n' },
+        gone: {}, 'gone/kid': { stamp: true, git: true, file: 'parent ..\n' },
+    });
+    assert.deepStrictEqual(asked(at('ws/alone'), 'update'), { case: 'above', rel: '..', options: ['Join .. (Recommended)', 'Keep standalone'] });
+    assert.ok(ws.writeWorkspace(at('ws/alone'), (m) => ws.setAbove(m, '..'), { env: ON }).wrote);
+    assert.strictEqual(asked(at('ws/alone'), 'update'), null, 'Keep wrote above .., so the same tree is never asked again');
+    assert.deepStrictEqual(asked(at('ws/fresh'), 'update'), { case: 'never', rel: '..', options: ['Join .. (Recommended)', 'Stay standalone'] });
+    assert.deepStrictEqual(asked(at('ws/lost'), 'update'), { case: 'rejoin', rel: '..', options: ['Rejoin .. (Recommended)', 'Become standalone'] });
+    assert.deepStrictEqual(asked(at('gone/kid'), 'update'), { case: 'parent-gone', rel: '..', options: ['Become standalone (Recommended)'] });
+    assert.deepStrictEqual(asked(at('ws/mid/deep'), 'update'), { case: 'between', rel: '..', options: ['Stay child of ../.. (Recommended)', 'Join ..'] });
+    assert.strictEqual(asked(at('ws/fresh'), 'update', { ...ON, ALFRED_CODE_WORKSPACE: '0' }), null);
+    const a = ws.roleAsk(at('ws/lost'), { env: ON, when: 'update' });
+    assert.deepStrictEqual(a.answers, ['rejoin', 'leave:standalone'], 'each option carries the --answer it runs');
+});
+
+test('AC5 asks: configure lists Keep first for a standalone, a root and a child', () =>
+{
+    const at = roleTree({
+        ws: { stamp: true, file: 'child kid\n' }, 'ws/kid': { stamp: true, git: true, file: 'parent ..\n' },
+        'ws/alone': { stamp: true, git: true, file: 'role standalone\nabove ..\n' }, 'ws/boss': { stamp: true, git: true, file: 'role root\nabove ..\n' },
+    });
+    assert.deepStrictEqual(asked(at('ws/alone'), 'configure').options, ['Keep (Recommended)', 'Join ..', 'Become a root']);
+    assert.deepStrictEqual(asked(at('ws/boss'), 'configure').options, ['Keep (Recommended)', 'Join ..', 'Become standalone']);
+    assert.deepStrictEqual(asked(at('ws/kid'), 'configure').options, ['Keep (Recommended)', 'Leave and become standalone', 'Leave and become a root']);
+    assert.deepStrictEqual(asked(at('ws'), 'configure').options, ['Keep (Recommended)', 'Become standalone'], 'nothing above to join');
+});
+
+// D5's join and leave: a joiner's stack seeds leave its own file (they would beat the members); what it typed stays.
+test('pruneOnJoin drops each key still at its ledger hash, keeps a typed or changed one, never DOCS_VERSIONING, and names the count kept', () =>
+{
+    const H = stampLib.valueHash;
+    const stampText = `sha: x\nmanaged-env: .variables:ALFRED_CODE_SCORER_LEVEL=${H('80')},.variables:ALFRED_CODE_HISTORY=${H('5')},.variables:ALFRED_CODE_DOCS_VERSIONING=${H('git')},settings.json:ALFRED_CODE_DATA_PATH=${H('.alfred')}\n`;
+    const at = roleTree({ p: { stamp: stampText, git: true, vars: '# mine\nALFRED_CODE_SCORER_LEVEL=80\nALFRED_CODE_HISTORY=9\nALFRED_CODE_DOCS_VERSIONING=git\nALFRED_CODE_CORRECTION_NUDGE=inject\n' } });
+    const lines = [];
+    const got = ws.pruneOnJoin(at('p'), { env: ON, log: (l) => lines.push(l) });
+    assert.deepStrictEqual(got, { dropped: ['ALFRED_CODE_SCORER_LEVEL'], own: ['ALFRED_CODE_HISTORY', 'ALFRED_CODE_DOCS_VERSIONING', 'ALFRED_CODE_CORRECTION_NUDGE'] });
+    assert.strictEqual(fs.readFileSync(path.join(at('p'), '.alfred', '.variables'), 'utf8'), '# mine\nALFRED_CODE_HISTORY=9\nALFRED_CODE_DOCS_VERSIONING=git\nALFRED_CODE_CORRECTION_NUDGE=inject\n');
+    const ledger = stampLib.readLedger(path.join(at('p'), '.claude', 'alfred-code.stamp'));
+    assert.deepStrictEqual(Object.keys(ledger.env['.variables']).sort(), ['ALFRED_CODE_DOCS_VERSIONING', 'ALFRED_CODE_HISTORY'], 'the dropped key\'s row goes with it');
+    assert.deepStrictEqual(lines, ['workspace: 3 of this project\'s values kept as its own (ALFRED_CODE_HISTORY, ALFRED_CODE_DOCS_VERSIONING, ALFRED_CODE_CORRECTION_NUDGE) - 1 stack seed dropped, so the workspace\'s value reaches it']);
+});
+
+test('keepOnLeave writes each value read through the chain into the child\'s file, a seed with its ledger row; with the parent gone it names the keys that read their defaults', () =>
+{
+    const H = stampLib.valueHash;
+    const at = roleTree({
+        ws: { stamp: `sha: x\nmanaged-env: .variables:ALFRED_CODE_HISTORY=${H('5')}\n`, file: 'child api\n', vars: 'ALFRED_CODE_SCORER_LEVEL=90\nALFRED_CODE_HISTORY=5\n' },
+        'ws/api': { stamp: 'sha: x\nmanaged-env: \n', git: true, file: 'parent ..\n', vars: 'ALFRED_CODE_CORRECTION_NUDGE=inject\n' },
+    });
+    const before = layoutLib.variablesOf(at('ws/api'), { env: { ...ON } }).values;
+    const got = ws.keepOnLeave(at('ws/api'), { env: ON, log: () => {} });
+    assert.deepStrictEqual(got.written.sort(), ['ALFRED_CODE_HISTORY', 'ALFRED_CODE_SCORER_LEVEL']);
+    assert.deepStrictEqual(got.defaults, []);
+    assert.strictEqual(fs.readFileSync(path.join(at('ws/api'), '.alfred', '.variables'), 'utf8'), 'ALFRED_CODE_CORRECTION_NUDGE=inject\nALFRED_CODE_SCORER_LEVEL=90\nALFRED_CODE_HISTORY=5\n');
+    const ledger = stampLib.readLedger(path.join(at('ws/api'), '.claude', 'alfred-code.stamp'));
+    assert.deepStrictEqual(ledger.env['.variables'], { ALFRED_CODE_HISTORY: H('5') }, 'the root\'s seed stays a seed; its typed 90 is the child\'s own now');
+    const own = { ...ON, ALFRED_CODE_WORKSPACE: '0' };
+    assert.deepStrictEqual(layoutLib.variablesOf(at('ws/api'), { env: own }).values.ALFRED_CODE_SCORER_LEVEL, before.ALFRED_CODE_SCORER_LEVEL, 'the value reads the same with the chain cut');
+
+    const gone = roleTree({ kid: { stamp: 'sha: x\n', git: true, file: 'parent ..\n', vars: 'ALFRED_CODE_DOCS_VERSIONING=git\n' } });
+    const lines = [];
+    const g = ws.keepOnLeave(gone('kid'), { env: ON, log: (l) => lines.push(l) });
+    assert.deepStrictEqual(g.written, []);
+    assert.ok(g.defaults.includes('ALFRED_CODE_SCORER_LEVEL') && !g.defaults.includes('ALFRED_CODE_DOCS_VERSIONING') && !g.defaults.includes('ALFRED_CODE_WORKSPACE'), g.defaults.join(','));
+    assert.match(lines.join('\n'), /^workspace: \.\. is gone - \d+ values read the stack's defaults here now \(ALFRED_CODE_/m);
+});
