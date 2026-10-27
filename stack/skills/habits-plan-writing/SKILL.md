@@ -44,6 +44,7 @@ Resume: next task 1
 - test: <the test written first, and the assertion that fails before the slice lands>
 - acceptance: `<command>` - <the green it must show>
 - log_points: <where, level, identifiers> | none - <reason>
+- estimate: <N>m
 
 ## Decisions
 
@@ -65,6 +66,7 @@ Resume: next task 1
 - `test:` is written first and fails for the reason the card names before the slice lands. A card
   with no test of its own says why (`test: covered by task 2`, `test: none - config only`).
 - `acceptance:` is a command someone can run and a result they can read; 'works' is not a result.
+- `estimate:` is the working minutes the slice takes the agent that builds it, not wall-clock time: the test, the code, the card's gate and one fix pass. Time spent waiting (a CI run, a deploy, an answer) is not counted. One whole number in steps of 5, never a range. A card with no estimate is not forecast, so the line is optional; a plan that carries any carries one on every card. A card's estimate is rewritten in the same edit that changes its scope (`files`, `test`, `acceptance`) or adds or splits it, and only while the card is `TODO`. From `IN_PROGRESS` on it is frozen, because the forecast compares finished cards with their original estimates: scope found mid-build becomes a new card with its own estimate.
 - Work `Asked:` does not name never becomes a card: it is one `## Optional` line, marked Recommended or Not worth it
   with the reason, unless the user asked for it (a Decision carries `asked: <the answer>`) or the request cannot be
   met safely without it - then it is a card, and a Decision says why.
@@ -72,7 +74,7 @@ Resume: next task 1
 
 A documentation plan - pages, sections or docs files, no product code - takes the documentation card:
 four fields in place of `files`, `anchors`, `traps`, `test`, `acceptance` and `log_points`, the status
-marks and header unchanged.
+marks, the `estimate:` line and the header unchanged.
 
 ```text
 ### Task 1 - <the page or section, and what changes in it>
@@ -82,6 +84,7 @@ marks and header unchanged.
 - change: <what a reader will find different, one or two lines>
 - evidence: <the code, config or source each claim rests on - file:symbol or URL> located this session
 - verification: <how the result is checked - a read-back of the written or published page, a link check>
+- estimate: <N>m
 ```
 
 ## What the build and the gates add
@@ -100,7 +103,7 @@ stamped later by the flow that owns it, never pre-filled:
   the modes (`Resume: step 4 BUILD - mode session - next task 2`), rewritten at every stop too.
 - `Completed: <date>` with the per-task evidence table, which closes the file.
 
-A card ticked `DONE` collapses to its title, its status line and one evidence pointer - its hypothesis logs,
+A card ticked `DONE` collapses to its title, its status line, its `estimate:` line and one evidence pointer - its hypothesis logs,
 measurement rows and probes go, since every resume reads the file and every later message carries it. A resume
 reads the header, the `Resume:` line and the open cards, never the closed ones whole.
 
