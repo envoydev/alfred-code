@@ -210,7 +210,9 @@ function pairsOf(input)
 
 // D5's routing for each pair. An empty value (`KEY=`) removes the key. { written, toLocal, toSettings, refused }: the keys
 // each way - `toSettings` at project or user scope where git ignores the file (D6), so the value still reaches the team.
-function set(projectRoot, pairs, { scope, env = process.env, log = console.log } = {})
+// `team`: the value is the team's (the docs-versioning seed at project scope, C7) - a key settings.local.json holds is
+// still written to the shared file, and the developer's own file is left as it is.
+function set(projectRoot, pairs, { scope, env = process.env, log = console.log, team = false } = {})
 {
     const root = path.resolve(projectRoot);
     const runScope = scope || stamp.installScope(root);
@@ -236,7 +238,7 @@ function set(projectRoot, pairs, { scope, env = process.env, log = console.log }
             refuse(key, '- the value has a credential\'s shape; a credential goes in the data root\'s .secrets - not written');
             continue;
         }
-        if (heldLocally(local, key))
+        if (!team && heldLocally(local, key))
         {
             if (value === null) delete local.data.env[key];
             else local.data.env[key] = value;

@@ -407,3 +407,29 @@ test('A10: every catalog row\'s reader resolves its default with no file, no set
         assert.deepStrictEqual(unset, atDefault, `${row.key}: nothing set reads ${JSON.stringify(unset)}, the default reads ${JSON.stringify(atDefault)}`);
     }
 });
+
+// T12c: a script that decides what the TEAM's files hold (the docs-versioning seed, the team's memory switch-off) reads
+// the project's own files alone - a session's process env carries settings.local.json's values, so 'all' would let a
+// personal value answer for the committed file (C7).
+test('layers files reads settings.local.json, .variables and settings.json only; team skips settings.local.json too', () =>
+{
+    const acct = path.join(TMP, 'acct-layers');
+    fs.mkdirSync(acct, { recursive: true });
+    fs.writeFileSync(path.join(acct, 'settings.json'), JSON.stringify({ env: { [K('TURN_CHECK')]: '1' } }));
+    const at = three({
+        ws: { vars: `${K('SCORER_LEVEL')}=64\n` },
+        api: { vars: `${K('HISTORY')}=8\n`, settings: { env: { [K('MEMORY')]: 'custom' } }, local: { env: { [K('HISTORY')]: '5', [K('MEMORY')]: 'default' } } },
+    });
+    const env = { ...ON, CLAUDE_CONFIG_DIR: acct, [K('INSTRUMENT')]: '0' };
+    const pick = (v) => [v.values[K('HISTORY')], v.values[K('MEMORY')], v.values[K('SCORER_LEVEL')], v.values[K('TURN_CHECK')], v.values[K('INSTRUMENT')]];
+    assert.deepStrictEqual(pick(layout.variablesOf(at('ws/api'), { env: { ...env } })), ['5', 'default', '64', '1', '0'], 'all: every layer and the member');
+    assert.deepStrictEqual(pick(layout.variablesOf(at('ws/api'), { env: { ...env }, layers: 'files' })), ['5', 'default', undefined, undefined, undefined], 'files: no member, account or process env');
+    assert.deepStrictEqual(pick(layout.variablesOf(at('ws/api'), { env: { ...env }, layers: 'team' })), ['8', 'custom', undefined, undefined, undefined], 'team: settings.local.json skipped');
+});
+
+test('a BOM\'d settings.json and settings.local.json are read like any other', () =>
+{
+    const at = tree({ 'p': { stamp: true, settings: `\uFEFF${JSON.stringify({ env: { [K('TURN_CHECK')]: '1' } })}`, local: `\uFEFF${JSON.stringify({ env: { [K('HISTORY')]: '4' } })}` } });
+    const v = varsOf(at('p'), OFF);
+    assert.deepStrictEqual([v.values[K('TURN_CHECK')], v.values[K('HISTORY')]], ['1', '4']);
+});

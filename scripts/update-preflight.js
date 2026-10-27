@@ -626,10 +626,15 @@ function main()
     const localFile = path.join(claudeDir, 'settings.local.json');
     const localStack = settingsFile === localFile || arg('--settings') ? null
         : { env: Object.fromEntries(Object.entries((readJson(localFile) || {}).env || {}).filter(([k]) => settingsLib.isStackKey(k))) };
+    // Since 3.0.0 the stack's variables sit in <data root>/.variables (spec D5): an env detect on one of them reads the
+    // project's own files through the hooks' loader too, so a key only .variables holds still fires its migration.
+    const loaded = accountDir || arg('--settings') ? null
+        : { env: require('../stack/hooks/layout.js').variablesOf(path.resolve(root), { env: {}, layers: 'files' }).values };
     let fired = 0;
     for (const e of entries)
     {
-        if (!detects(e, root, settings) && !(localStack && isEnvDetect(e) && detects(e, root, localStack))) continue;
+        if (!detects(e, root, settings) && !(localStack && isEnvDetect(e) && detects(e, root, localStack))
+            && !(loaded && isEnvDetect(e) && detects(e, root, loaded))) continue;
         fired += 1;
         console.log(`migration: ${e.id}\t${detectKind(e)}`);
         // Every field the caller ACTS on, for the entries that actually fired - so the catalog

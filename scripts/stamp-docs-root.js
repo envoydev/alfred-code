@@ -22,6 +22,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 const { envOf } = require('../stack/hooks/hook-prelude.js');
+const layout = require('../stack/hooks/layout.js');
+const { parseJson } = require('./install/json-file.js');
 
 const DEFAULT_DATA_ROOT = '.alfred';
 const STAMP_RE = /(This install's root: `)[^`]*(`)/;
@@ -50,14 +52,54 @@ function scopedSettings(root)
     const claudeDir = path.join(root, '.claude');
     const { stampFile } = require('./install/brand.js');
     const { readStampScope } = require('./install/stamp.js');
-    const { settingsTarget, readBackSettings } = require('./install/settings.js');
+    const { settingsTarget } = require('./install/settings.js');
     const scope = readStampScope(stampFile(claudeDir).read || '') === 'local' ? 'local' : 'project';
-    const env = readBackSettings(claudeDir, scope, { sharedOnly: true }).env;
     return {
         file: settingsTarget(claudeDir, scope),
-        env: env && typeof env === 'object' && !Array.isArray(env) ? env : {},
+        scope,
         docs: String(require('./install/copy.js').resolveDocsRoot(root, scope)).replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''),
     };
+}
+
+// What is wrong with the scope's settings file, or null when it is absent or a JSON object with an env object (or none):
+// a decision held in a file nobody can parse is unknown, so neither the seed nor the re-probe writes over it.
+function unreadable(file)
+{
+    let text;
+    try { text = fs.readFileSync(file, 'utf8'); }
+    catch (err) { return err.code === 'ENOENT' ? null : `cannot read ${file}`; }
+    let data;
+    try { data = parseJson(text); }
+    catch { return `cannot read ${file}`; }
+    // An array is typeof 'object' too, and a string env threw under strict mode - each shape is named, never written past.
+    const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+    if (!isObject(data)) return `${file} is not a JSON object`;
+    if (data.env !== undefined && !isObject(data.env)) return `${file} has an env that is not a JSON object`;
+    return null;
+}
+
+// The docs-versioning decision (one of the stack's variables, D4) as the scope's files hold it, through the hooks'
+// loader: at local scope the project's three files, else the two the team shares - a personal settings.local.json value
+// never answers for the committed one (C7). The process env is not read: a session carries settings.local.json's values.
+function decided(root, scope)
+{
+    return envOf(layout.variablesOf(root, { env: {}, layers: scope === 'local' ? 'files' : 'team' }).values, 'DOCS_VERSIONING');
+}
+
+// Writes the decision through the variables writer: the project's .variables (settings.local.json where a local-scope
+// install holds the key there, settings.json where git ignores the data root), the team's file at project scope even
+// where settings.local.json holds the key (C7). Returns where it landed, or null when it was refused (the writer's
+// `!!` line says why).
+function writeDecision(root, scope, value)
+{
+    const variables = require('./install/variables.js');
+    const lines = [];
+    const got = variables.set(root, [`ALFRED_CODE_DOCS_VERSIONING=${value}`], { scope, team: scope !== 'local', log: (l) => lines.push(String(l)) });
+    for (const l of lines) if (l.startsWith('!!')) console.log(l);
+    if (got.refused.length) return null;
+    if (got.toLocal.length) return 'settings.local.json env';
+    if (got.toSettings.length) return 'settings.json env';
+    return path.relative(root, variables.fileOf(root)).split(path.sep).join('/');
 }
 
 // The installer hashes alfred-docs-root.md AFTER it substitutes the placeholder (R29) - this
@@ -145,7 +187,7 @@ function probeVersioning(root, docs)
     return docs && rt.spawnCommand('git', ['check-ignore', '-q', '--', `${docs}/`], quiet).status === 0 ? 'local' : 'git';
 }
 
-// ALFRED_CODE_DOCS_VERSIONING is seeded by that rule, probed at the docs path the settings file
+// ALFRED_CODE_DOCS_VERSIONING is seeded by that rule, probed at the docs path the settings
 // held when the INSTALL ran. On the setup route the user's chosen docs root is applied AFTER that, so a key seeded
 // against the old path can describe the wrong folder. The walk that MOVES the path re-probes here, in the same
 // step that re-stamps the rule, and only when its own run seeded the key: a value an earlier install wrote is a
@@ -161,13 +203,10 @@ function reprobeVersioning(root, seeded)
         console.log("stamp-docs-root: --reprobe-versioning needs the value the install seeded ('git' or 'local') - nothing re-probed");
         return;
     }
-    const { file: settingsFile, env: view, docs } = scopedSettings(root);
-    let data;
-    try { data = JSON.parse(fs.readFileSync(settingsFile, 'utf8')); }
-    catch { console.log(`stamp-docs-root: cannot read ${settingsFile} - docs versioning left as it is`); return; }
-    if (!data || typeof data !== 'object' || Array.isArray(data) || (data.env !== undefined && (!data.env || typeof data.env !== 'object' || Array.isArray(data.env))))
-    { console.log(`stamp-docs-root: ${settingsFile} is not a JSON object with an env object - docs versioning left as it is`); return; }
-    const stored = envOf(view, 'DOCS_VERSIONING');
+    const { file: settingsFile, scope, docs } = scopedSettings(root);
+    const bad = unreadable(settingsFile);
+    if (bad) { console.log(`stamp-docs-root: ${bad} - docs versioning left as it is`); return; }
+    const stored = decided(root, scope);
     if (!stored)
     {
         console.log('stamp-docs-root: no ALFRED_CODE_DOCS_VERSIONING in the env block - nothing to re-probe');
@@ -189,48 +228,30 @@ function reprobeVersioning(root, seeded)
         console.log(`stamp-docs-root: docs versioning already '${value}' at ${docs}/ - unchanged`);
         return;
     }
-    data.env = data.env || {};
-    data.env.ALFRED_CODE_DOCS_VERSIONING = value;
-    fs.writeFileSync(settingsFile, `${JSON.stringify(data, null, 2)}\n`);
+    if (!writeDecision(root, scope, value)) { console.log(`stamp-docs-root: docs versioning left as '${stored}' at ${docs}/ - the re-probed '${value}' was not written`); return; }
     console.log(`stamp-docs-root: docs versioning re-probed at ${docs}/: '${value}'`);
 }
 
 // The MISSING-row case `validate.md` (and any other reader) uses instead of the environment.json catalog default:
 // that default is a CONSTANT ('git'), but this one key is DETECTED - writing the constant over a project whose docs
 // are kept out of git is the exact silent switch the rule exists to prevent. Present already: left byte-for-byte,
-// same guard as reprobeVersioning's 'a decision is never touched'. Merges only this one key.
+// same guard as reprobeVersioning's 'a decision is never touched'. Writes only this one key, through the variables writer.
 function seedVersioning(root)
 {
-    const { file: settingsFile, env: view, docs } = scopedSettings(root);
-    let data;
-    try { data = JSON.parse(fs.readFileSync(settingsFile, 'utf8')); }
-    catch { console.log(`stamp-docs-root: cannot read ${settingsFile} - nothing seeded`); return; }
-    // An array is typeof 'object' too, and a property set on one is dropped by JSON.stringify - so without
-    // the isArray checks a top-level [] or an `env: []` printed 'seeded' while writing nothing, and a string
-    // `env` threw under strict mode, breaking the exit-0 promise. Each shape refuses before any write.
-    const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
-    if (!isObject(data))
+    const { file: settingsFile, scope, docs } = scopedSettings(root);
+    const bad = unreadable(settingsFile);
+    if (bad) { console.log(`stamp-docs-root: ${bad} - nothing seeded`); return; }
+    const stored = decided(root, scope);
+    if (stored)
     {
-        console.log(`stamp-docs-root: ${settingsFile} is not a JSON object - nothing seeded`);
-        return;
-    }
-    if (data.env !== undefined && !isObject(data.env))
-    {
-        console.log(`stamp-docs-root: ${settingsFile} has an env that is not a JSON object - nothing seeded`);
-        return;
-    }
-    const decided = envOf(view, 'DOCS_VERSIONING');
-    if (decided)
-    {
-        console.log(`stamp-docs-root: ALFRED_CODE_DOCS_VERSIONING already '${decided}' - nothing seeded`);
+        console.log(`stamp-docs-root: ALFRED_CODE_DOCS_VERSIONING already '${stored}' - nothing seeded`);
         return;
     }
     const value = probeVersioning(root, docs);
     const why = value === 'local' ? 'the docs are kept out of git' : 'the docs are not kept out of git';
-    data.env = data.env || {};
-    data.env.ALFRED_CODE_DOCS_VERSIONING = value;
-    fs.writeFileSync(settingsFile, `${JSON.stringify(data, null, 2)}\n`);
-    console.log(`stamp-docs-root: ${path.basename(settingsFile)} env: ALFRED_CODE_DOCS_VERSIONING seeded '${value}' at ${docs}/ - ${why}`);
+    const where = writeDecision(root, scope, value);
+    if (!where) { console.log('stamp-docs-root: ALFRED_CODE_DOCS_VERSIONING not written - nothing seeded'); return; }
+    console.log(`stamp-docs-root: ${where}: ALFRED_CODE_DOCS_VERSIONING seeded '${value}' at ${docs}/ - ${why}`);
 }
 
 if (require.main === module)

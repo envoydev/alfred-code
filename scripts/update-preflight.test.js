@@ -109,6 +109,25 @@ test('settings_env_value fires only on the exact seeded value; an unknown detect
     assert.ok(!out.includes('from-the-future'), 'a detect kind this release does not know never claims a detection');
 });
 
+// T12c (AC22): since 3.0.0 the stack's variables sit in <data root>/.variables - an env detect on one of them reads the
+// project's files through the loader, so a value only .variables holds still fires its migration.
+test('a preflight settings_env_value row matches a key only .variables holds', () => {
+    const migrations = [
+        { id: 'level-reseed', detect: { settings_env_value: { key: 'ALFRED_CODE_SCORER_LEVEL', equals: '70' } } },
+        { id: 'history-retired', detect: { settings_env_key: 'ALFRED_CODE_HISTORY' } },
+    ];
+    const s = scaffold({ migrations, settings: { env: {} } });
+    fs.mkdirSync(path.join(s.install, '.alfred'), { recursive: true });
+    fs.writeFileSync(path.join(s.install, '.alfred', '.variables'), 'ALFRED_CODE_SCORER_LEVEL=70\nALFRED_CODE_HISTORY=4\n');
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(s.install, 'no-account') };
+    for (const k of Object.keys(env)) if (k.startsWith('ALFRED_CODE_')) delete env[k];
+    const out = run(['--snapshot', s.snap, '--root', s.install, '--fixture', s.fixtureFile], env).out;
+    assert.match(out, /^migration: level-reseed\tsettings_env_value$/m, out);
+    assert.match(out, /^migration: history-retired\tsettings_env_key$/m, out);
+    fs.writeFileSync(path.join(s.install, '.alfred', '.variables'), 'ALFRED_CODE_SCORER_LEVEL=80\n');
+    assert.match(run(['--snapshot', s.snap, '--root', s.install, '--fixture', s.fixtureFile], env).out, /^migrations: none detected$/m, 'another value does not fire');
+});
+
 test('settings_env_all fires only when every key holds the value, and names the off edit', () => {
     const migrations = [{ id: 'default-off-with-the-tiers',
         detect: { settings_env_all: { keys: ['ALFRED_CODE_A', 'ALFRED_CODE_B'], equals: '0' } },

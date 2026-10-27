@@ -3433,10 +3433,12 @@ function turnCheckAdvice(sessionsDir, projectRoot, exclude = new Map()) {
   const root = path.resolve(projectRoot);
   const account = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
   const readSettings = (f) => { try { const d = parseJson(fs.readFileSync(f, 'utf8')); return d && typeof d === 'object' ? d : {}; } catch { return {}; } };
-  // The hooks see local over project over account, so the same order answers here; junk is no setting.
+  // The data and docs paths are settings keys: the hooks see local over project over account, so the same order answers
+  // here; junk is no setting. TURN_CHECK is one of the stack's variables: the hooks' loader answers it (D4).
   const envs = [path.join(root, '.claude', 'settings.local.json'), path.join(root, '.claude', 'settings.json'), path.join(account, 'settings.json')]
     .map((f) => { const env = readSettings(f).env; return env && typeof env === 'object' ? env : {}; });
   const setting = (suffix) => [...envs, process.env].map((env) => envOf(env, suffix)).find((v) => v !== undefined && v !== '');
+  const { variablesOf } = require(path.join(__dirname, '..', 'stack', 'hooks', 'layout.js'));
   // Review finding 9: the strict hook profile runs the Stop build check whatever TURN_CHECK says, so it
   // is advised nothing. A hook reads the profile as CLAUDE_PLUGIN_OPTION_HOOK_PROFILE; the shell a command
   // body runs this from has no such variable, so the account settings' pluginConfigs - the one file
@@ -3445,7 +3447,7 @@ function turnCheckAdvice(sessionsDir, projectRoot, exclude = new Map()) {
   const stored = Object.entries(configs && typeof configs === 'object' ? configs : {})
     .filter(([id]) => id.split('@')[0] === CORE_PLUGIN).map(([, c]) => c && c.options && c.options.hook_profile).find((v) => typeof v === 'string' && v);
   const profile = hookProfile({ CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: process.env.CLAUDE_PLUGIN_OPTION_HOOK_PROFILE || stored || '' });
-  const on = String(setting('TURN_CHECK') || '').trim() === '1' || profile === 'strict';
+  const on = String(envOf(variablesOf(root, { env: process.env }).values, 'TURN_CHECK') || '').trim() === '1' || profile === 'strict';
   // 2.8.0: the ledgers live in the data root's statistics/ (stack/hooks/layout.js); a session's file not moved there yet
   // is read from the pre-2.8.0 docs root
   const { dataRoot } = require(path.join(__dirname, '..', 'stack', 'hooks', 'layout.js'));

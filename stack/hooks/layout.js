@@ -459,7 +459,8 @@ function settingsEnv(file)
     try
     {
         if (!fs.statSync(file, { throwIfNoEntry: false })) return null;
-        const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+        // A Windows editor's BOM is no reason to drop the file's values (Claude Code reads it).
+        const data = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
         return data && typeof data === 'object' && data.env && typeof data.env === 'object' && !Array.isArray(data.env) ? data.env : null;
     }
     catch { return null; }
@@ -519,13 +520,15 @@ function ownVariables(checkout, env, mainOf, checkoutData)
 
 // Steps 1 to 4 for every key - the project alone, what the switch is read from. Step 4 outside a session reads what a
 // session lays over its launch env: the project's settings.json, then the account's (in a hook the two agree).
-function ownLayers(projectRoot, env)
+// `layers` 'files' reads the project's own three files alone, 'team' its two shared ones (see variablesOf).
+function ownLayers(projectRoot, env, layers = 'all')
 {
     const checkout = path.resolve(projectRoot);
     const claude = path.join(checkout, '.claude');
-    const local = settingsEnv(path.join(claude, 'settings.local.json'));
+    const all = layers === 'all';
+    const local = layers === 'team' ? null : settingsEnv(path.join(claude, 'settings.local.json'));
     const shared = settingsEnv(path.join(claude, 'settings.json'));
-    const account = settingsEnv(path.join(env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'settings.json'));
+    const account = all ? settingsEnv(path.join(env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'settings.json')) : null;
     let main;
     const mainOf = () => (main === undefined ? (main = mainCounterpart(checkout)) : main);
     // dataRootOf's answer from the three files already read (settingFrom's order: the env, local, shared, account).
@@ -538,7 +541,7 @@ function ownLayers(projectRoot, env)
     const notes = fileNotes(own.read, own.place === checkout ? '.variables' : '.variables of the main worktree');
     for (const key of VARIABLE_KEYS)
     {
-        if (key === SWITCH_KEY && String(env[key]) === '0') { values[key] = '0'; from[key] = 'env'; continue; }
+        if (all && key === SWITCH_KEY && String(env[key]) === '0') { values[key] = '0'; from[key] = 'env'; continue; }
         let value = valueIn(local, key);
         if (value !== undefined)
         {
@@ -549,7 +552,7 @@ function ownLayers(projectRoot, env)
         }
         value = own.read ? valueIn(own.read.values, key) : undefined;
         if (value !== undefined) { values[key] = value; from[key] = 'own'; continue; }
-        value = valueIn(shared, key) ?? valueIn(account, key) ?? valueIn(env, key);
+        value = valueIn(shared, key) ?? valueIn(account, key) ?? (all ? valueIn(env, key) : undefined);
         if (value !== undefined) { values[key] = value; from[key] = 'env'; }
     }
     return { checkout, main: mainOf, dataRoot, local, shared, values, from, notes };
@@ -558,13 +561,13 @@ function ownLayers(projectRoot, env)
 // The whole read: every key's winner, where it came from, the notes, and the merged HOOKS_OFF csv (D4): the project's
 // entries (settings.local.json over settings.json, R99) plus each member's `<hook>:<part>` entries - a member's
 // whole-hook entry never reaches a child (release 1) - up to an `ignore env ALFRED_CODE_HOOKS_OFF`.
-function resolveVariables(projectRoot, env)
+function resolveVariables(projectRoot, env, which = 'all')
 {
-    const layers = ownLayers(projectRoot, env);
+    const layers = ownLayers(projectRoot, env, which);
     const { values, from, notes } = layers;
     const hooksOffAt = (local, shared) => csvOf(local && Object.hasOwn(local, HOOKS_OFF_KEY) ? local[HOOKS_OFF_KEY] : (shared || {})[HOOKS_OFF_KEY]);
     const hooksOff = hooksOffAt(layers.local, layers.shared);
-    if (switchValueOn(values[SWITCH_KEY]))
+    if (which === 'all' && switchValueOn(values[SWITCH_KEY]))
     {
         const project = layers.main() || layers.checkout;
         const chain = workspaceChain(project, { env, startData: project === layers.checkout ? layers.dataRoot : undefined });
@@ -591,9 +594,12 @@ function resolveVariables(projectRoot, env)
     return { values, from, notes, hooksOff: [...new Set(hooksOff)].join(',') };
 }
 
-function variablesOf(projectRoot, { env = process.env } = {})
+// `layers`: 'all' (the D4 order, what a hook reads), 'files' (the project's settings.local.json, .variables and
+// settings.json - no account file, process env or member: a session's env carries settings.local.json's values, so a
+// script deciding what a file holds reads the files) or 'team' (the two files a teammate shares, no settings.local.json).
+function variablesOf(projectRoot, { env = process.env, layers = 'all' } = {})
 {
-    const { values, from, notes } = resolveVariables(projectRoot, env);
+    const { values, from, notes } = resolveVariables(projectRoot, env, layers);
     return { values, from, notes };
 }
 const hooksOffOf = (projectRoot, { env = process.env } = {}) => resolveVariables(projectRoot, env).hooksOff;

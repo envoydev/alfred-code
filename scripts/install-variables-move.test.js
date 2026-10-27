@@ -322,6 +322,21 @@ test('a move off local adds !/.variables and the file is then tracked; an update
     assert.deepStrictEqual(Object.keys(steps[2].vars).sort(), [...SEEDED].sort());
 });
 
+// T12c (AC22): copy.js reads the docs mode through the loader, so the ignore step sees the value this run just wrote into
+// .variables - at local scope too, where a project's docs are kept out of git only when the flag says so.
+for (const [scope, mode, shape] of [['project', 'git', /the docs under it are committed \(ALFRED_CODE_DOCS_VERSIONING=git\)/], ['local', 'local', /the docs under it are too \(ALFRED_CODE_DOCS_VERSIONING=local\)/]])
+{
+    test(`a fresh install with --docs-versioning ${mode} writes the ${mode}-shaped data ignore (${scope} scope)`, POSIX_ONLY, () =>
+    {
+        const { result } = seedRun('install', SEL, {
+            plugins: PLUGINS, args: ['--scope', scope, '--docs-versioning', mode],
+            inspect: (repo) => ({ ignore: readOr(path.join(repo, '.alfred', '.gitignore')), vars: varsOf(repo) }),
+        });
+        assert.strictEqual(result.vars.ALFRED_CODE_DOCS_VERSIONING, mode);
+        assert.match(result.ignore || '', shape, result.ignore);
+    });
+}
+
 test('ensureRootIgnore writes no !/.variables', () =>
 {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'root-ignore-'));

@@ -65,6 +65,20 @@ test('set routes a key settings.local.json holds to that file and prints the var
     assert.ok(log.lines.includes('variables: ALFRED_CODE_HISTORY set in .claude/settings.local.json (it overrides .variables here)'), log.lines.join('\n'));
 });
 
+// T12c, C7: a seed of the TEAM's value (stamp-docs-root's --seed-versioning at project scope) writes the shared file even
+// where a developer's settings.local.json holds the key - their file is theirs and stays as it was.
+test('set with team: true writes .variables where settings.local.json holds the key, and leaves that file byte-identical', (t) =>
+{
+    const { dir, env } = sandbox(t);
+    const root = project(dir);
+    put(localOf(root), `${JSON.stringify({ env: { ALFRED_CODE_DOCS_VERSIONING: 'local' } }, null, 2)}\n`);
+    const before = read(localOf(root));
+    const got = variables.set(root, ['ALFRED_CODE_DOCS_VERSIONING=git'], { env, log: logger(), team: true });
+    assert.deepStrictEqual(got, { written: ['ALFRED_CODE_DOCS_VERSIONING'], toLocal: [], toSettings: [], refused: [] });
+    assert.strictEqual(read(varsOf(root)), 'ALFRED_CODE_DOCS_VERSIONING=git\n');
+    assert.strictEqual(read(localOf(root)), before);
+});
+
 test('a local-scope set on a git-tracked .variables writes nothing and prints the tracked line (AC16)', (t) =>
 {
     const { dir, env } = sandbox(t);
