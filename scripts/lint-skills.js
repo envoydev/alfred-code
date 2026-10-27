@@ -2290,26 +2290,29 @@ function main()
         }
     }
 
-    // 31. guard-secret-value.js judges a key by meta/environment.json's `secret_key_pattern`; the
-    //     hook ships into projects without meta/, so it carries a copy - and the copy must be
-    //     byte-identical, or a key the catalog calls secret is one the guard lets through.
+    // 31. guard-secret-value.js judges a key by meta/environment.json's `secret_key_pattern`, and layout.js names a
+    //     `.variables` key by it (D7); both ship into projects without meta/, so each carries a copy - and the copy
+    //     must be byte-identical, or a key the catalog calls secret is one the guard lets through.
     try
     {
         const envCatalog = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'environment.json'), 'utf8'));
-        const hookSrc = fs.readFileSync(path.join(ROOT, 'stack', 'hooks', 'guard-secret-value.js'), 'utf8');
-        const m = hookSrc.match(/const SECRET_KEY_SOURCE = '([^']*)'/);
-        if (!m)
+        for (const file of ['guard-secret-value.js', 'layout.js'])
         {
-            flag('guard-secret-value.js: no `const SECRET_KEY_SOURCE = \'...\'` literal - the environment.json parity check has nothing to compare');
-        }
-        else if (m[1] !== envCatalog.secret_key_pattern)
-        {
-            flag(`guard-secret-value.js SECRET_KEY_SOURCE '${m[1]}' differs from meta/environment.json secret_key_pattern '${envCatalog.secret_key_pattern}'`);
+            const hookSrc = fs.readFileSync(path.join(ROOT, 'stack', 'hooks', file), 'utf8');
+            const m = hookSrc.match(/const SECRET_KEY_SOURCE = '([^']*)'/);
+            if (!m)
+            {
+                flag(`${file}: no \`const SECRET_KEY_SOURCE = '...'\` literal - the environment.json parity check has nothing to compare`);
+            }
+            else if (m[1] !== envCatalog.secret_key_pattern)
+            {
+                flag(`${file} SECRET_KEY_SOURCE '${m[1]}' differs from meta/environment.json secret_key_pattern '${envCatalog.secret_key_pattern}'`);
+            }
         }
     }
     catch (err)
     {
-        flag(`guard-secret-value.js / meta/environment.json parity check could not read its inputs: ${err.message}`);
+        flag(`the secret_key_pattern parity check (guard-secret-value.js, layout.js) could not read its inputs: ${err.message}`);
     }
 
     // 29. The capabilities usage policy carries a content stamp, and the stamp matches the block.

@@ -173,6 +173,8 @@ function status(out)
     catch { /* no load check has run here */ }
     out(check && check.state && check.at ? `check: ${check.state} ${check.at}` : 'check: never');
     for (const line of ws.hintLines(root, { env })) out(line);
+    // variables.js show's notes (D7): a guard key, a key never read, a key named like a credential - never a value.
+    for (const note of require('../stack/hooks/layout.js').variablesOf(root, { env }).notes) out(note);
 }
 
 function accountInstructions(out)

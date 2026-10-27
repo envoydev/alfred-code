@@ -482,15 +482,22 @@ const valueIn = (from, key) =>
 };
 const csvOf = (v) => String(v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 
-// What one `.variables` file says beyond its values: each line that is no pair, and each ALFRED_CODE_ key the loader
-// never reads from a file (D7).
-function fileNotes(read, label)
+// Keys whose value is a credential - the SAME string as meta/environment.json `secret_key_pattern` (lint check 31 holds
+// the copies equal): a file holding one is a credential file to the secret guard, so its note points to the store.
+const SECRET_KEY_SOURCE = '(TOKEN|SECRET|KEY|PASSWORD|PASSWD|DSN|CREDENTIAL|AUTH)$';
+const SECRET_KEY_RE = new RegExp(SECRET_KEY_SOURCE, 'i');
+
+// What one `.variables` file says beyond its values: each line that is no pair, each key named like a credential (with
+// the `.secrets` beside it), and each other ALFRED_CODE_ key the loader never reads from a file (D7). Never a value.
+function fileNotes(read, label, secrets)
 {
     if (!read) return [];
     const notes = read.bad.map((n) => `!! variables: ${label} line ${n} is not a KEY=value line - not read`);
     for (const key of Object.keys(read.values))
     {
-        if (!/^ALFRED_CODE_[A-Za-z0-9_]+$/.test(key) || VARIABLE_SET.has(key)) continue;
+        if (VARIABLE_SET.has(key)) continue;
+        if (SECRET_KEY_RE.test(key)) { notes.push(`!! variables: ${key} in ${label} looks like a credential - keep it in ${secrets}`); continue; }
+        if (!/^ALFRED_CODE_[A-Za-z0-9_]+$/.test(key)) continue;
         notes.push(key === HOOKS_OFF_KEY
             ? `!! variables: ${HOOKS_OFF_KEY} in ${label} is not read - it lives in .claude/settings.json`
             : `!! variables: ${key} in ${label} is not read - only the stack's variables are; a guard switch stays in .claude/settings.json`);
@@ -546,7 +553,7 @@ function ownLayers(projectRoot, env, layers = 'all')
     const own = ownVariables(checkout, env, mainOf, dataRoot);
     const values = {};
     const from = {};
-    const notes = fileNotes(own.read, own.place === checkout ? '.variables' : '.variables of the main worktree');
+    const notes = fileNotes(own.read, own.place === checkout ? '.variables' : '.variables of the main worktree', `${dataRoot}/.secrets`);
     for (const key of VARIABLE_KEYS)
     {
         if (all && key === SWITCH_KEY && String(env[key]) === '0') { values[key] = '0'; from[key] = 'env'; continue; }
@@ -584,7 +591,7 @@ function resolveVariables(projectRoot, env, which = 'all')
         {
             const file = path.join(member.root, ...member.dataRoot.split('/'), '.variables');
             const read = readDotenv(file);
-            notes.push(...fileNotes(read, `.variables of ${member.rel}`));
+            notes.push(...fileNotes(read, `.variables of ${member.rel}`, `${member.rel}/${member.dataRoot}/.secrets`));
             for (const key of VARIABLE_KEYS)
             {
                 if (values[key] !== undefined || MEMBER_NEVER.has(key) || skip.has(key) || !read) continue;

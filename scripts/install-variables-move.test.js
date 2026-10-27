@@ -107,6 +107,33 @@ test('AC7: the user\'s own .alfred/ line keeps the keys in settings.json and nam
     assert.match(out, /!! variables: \.alfred\/\.variables is ignored by \.gitignore:2 - the keys are kept in settings\.json; ignore \/\.alfred\/\* and re-include !\/\.alfred\/\.variables, then update/, out);
 });
 
+// AC17: the guard key never moves (D7) - a fresh install over a settings file that holds it, and an update over v2.12.0.
+const OFF = 'ALFRED_CODE_HOOKS_OFF';
+const putOff = (repo) =>
+{
+    const f = path.join(repo, '.claude', 'settings.json');
+    const data = json(f) || {};
+    data.env = { ...(data.env || {}), [OFF]: 'docs-session:gate' };
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    fs.writeFileSync(f, `${JSON.stringify(data, null, 2)}\n`);
+};
+test('AC17: HOOKS_OFF is in settings.json after a fresh install, never in .variables', POSIX_ONLY, () =>
+{
+    const { outs, steps } = seedRun(['install'], SEL, { plugins: PLUGINS, prepare: (repo) => putOff(repo), each: (repo) => ({ env: envIn(repo, 'settings.json'), vars: varsOf(repo) }) });
+    assert.strictEqual(steps[0].env[OFF], 'docs-session:gate', outs[0]);
+    assert.ok(Object.keys(steps[0].vars).length > 0 && !Object.hasOwn(steps[0].vars, OFF), JSON.stringify(steps[0].vars));
+});
+
+test('AC17: HOOKS_OFF is in settings.json after an update over v2.12.0, never in .variables', skipWithout('v2.12.0'), () =>
+{
+    const { outs, steps } = seedRun(['install', 'update'], SEL, {
+        plugins: PLUGINS, ...over('v2.12.0', 1), args: [[], ['--installed-only']],
+        each: (repo, i) => { if (i === 0) putOff(repo); return { env: envIn(repo, 'settings.json'), vars: varsOf(repo) }; },
+    });
+    assert.strictEqual(steps[1].env[OFF], 'docs-session:gate', outs[1]);
+    assert.ok(Object.keys(steps[1].vars).length > 0 && !Object.hasOwn(steps[1].vars, OFF), JSON.stringify(steps[1].vars));
+});
+
 for (const scope of ['project', 'user', 'local'])
 {
     test(`AC8: an update over a v2.12.0 export at ${scope} scope keeps every effective value, carries each ledger row to .variables at its hash, and a second update changes no file`, skipWithout('v2.12.0'), () =>

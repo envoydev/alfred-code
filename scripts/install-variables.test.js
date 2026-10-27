@@ -96,6 +96,21 @@ test('a local-scope set on a git-tracked .variables writes nothing and prints th
     assert.deepStrictEqual(variables.set(root, ['ALFRED_CODE_HISTORY=9'], { env, scope: 'project', log: () => {} }).written, ['ALFRED_CODE_HISTORY']);
 });
 
+test('show prints the HOOKS_OFF line, the not-read line and the credential line for a hand-edited .variables, never a value (AC17)', (t) =>
+{
+    const { dir, env } = sandbox(t);
+    const root = project(dir);
+    put(varsOf(root), `ALFRED_CODE_HISTORY=4\nALFRED_CODE_HOOKS_OFF=guard-secret-value\nALFRED_CODE_CONFIG_PROTECT=0\nALFRED_CODE_X_TOKEN=${TOKEN}\n`);
+    const run = cli(['show', '--root', root], env);
+    assert.strictEqual(run.status, 0, run.stderr);
+    const out = run.stdout + run.stderr;
+    assert.match(out, /^!! variables: ALFRED_CODE_HOOKS_OFF in \.variables is not read - it lives in \.claude\/settings\.json$/m);
+    assert.match(out, /^!! variables: ALFRED_CODE_CONFIG_PROTECT in \.variables is not read - only the stack's variables are; a guard switch stays in \.claude\/settings\.json$/m);
+    assert.match(out, /^!! variables: ALFRED_CODE_X_TOKEN in \.variables looks like a credential - keep it in \.alfred\/\.secrets$/m);
+    assert.strictEqual((out.match(/ALFRED_CODE_X_TOKEN/g) || []).length, 1, 'one line for the key: the credential line, not the not-read line too');
+    assert.ok(!out.includes(TOKEN) && !out.includes('guard-secret-value'), 'no value printed');
+});
+
 test('set ALFRED_CODE_HOOKS_OFF=x exits 1 naming settings.json', (t) =>
 {
     const { dir, env } = sandbox(t);
