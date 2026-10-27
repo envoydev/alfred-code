@@ -123,8 +123,8 @@ function stamp(root)
 // docs path relative to `root`, forward slashes; the ignore probe asks `<docs>/` so a directory-only pattern matches a
 // root that does not exist yet. Every DOMAIN is probed, never architecture/ alone: a watch.json is what makes a folder
 // a domain (architecture/ is grandfathered in without one), so a project documented only in preferences/, decisions/ or
-// awareness/ is an ordinary shape. Same rule as docs.js domains(), reserved names and all; a watch-less folder
-// like quality/ is no domain and no vote.
+// awareness/ is an ordinary shape. Same rule as docs.js domains(), reserved names and all; a watch-less folder is no
+// domain and no vote, and a domain whose watch.json says `"recomputed": true` (quality/) is a domain with no vote.
 function probeVersioning(root, docs)
 {
     const base = `${root.replace(/\\/g, '/').replace(/\/+$/, '')}/${docs}`;
@@ -135,6 +135,7 @@ function probeVersioning(root, docs)
             .filter(e => e.isDirectory() && !e.name.startsWith('.') && !['references', 'history'].includes(e.name))
             .map(e => e.name)
             .filter(n => n === 'architecture' || fs.existsSync(path.join(base, n, 'watch.json')))
+            .filter(n => { try { return JSON.parse(fs.readFileSync(path.join(base, n, 'watch.json'), 'utf8')).recomputed !== true; } catch { return true; } })
             .sort();
     }
     catch { domainDirs = []; }

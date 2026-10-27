@@ -60,10 +60,18 @@ const realGit = (projectRoot) => ({
     },
 });
 
+// A domain whose watch.json says `"recomputed": true` (quality/: rewritten whole by its capture) casts no versioning
+// vote, as in docs.js keptOutOfGit (the docs-watch-every-domain spec, AC13); a watch.json that does not parse votes.
+function recomputedDomain(dir)
+{
+    try { return JSON.parse(fs.readFileSync(path.join(dir, 'watch.json'), 'utf8')).recomputed === true; }
+    catch { return false; }
+}
+
 // `local` ONLY when the docs are demonstrably kept out of git: no domain is tracked, AND either a
 // domain exists (so there is something to have committed) or git ignores the docs root outright.
 // Everything else, a fresh project included, is `git`. The git doc every install seeds (2026-10-21) is the stack's
-// text, so a preferences domain holding nothing else casts no vote.
+// text, so a preferences domain holding nothing else casts no vote, and neither does a recomputed domain.
 function docsVersioningSeed({ projectRoot, docsPath, git })
 {
     const g = git || realGit(projectRoot);
@@ -76,7 +84,7 @@ function docsVersioningSeed({ projectRoot, docsPath, git })
         try { return fs.readdirSync(`${base}/${name}`).every((f) => f === 'watch.json' || f === GIT_DOC); }
         catch { return false; }
     };
-    const names = domains(base).filter((name) => !seedOnly(name));
+    const names = domains(base).filter((name) => !seedOnly(name) && !recomputedDomain(`${base}/${name}`));
     const committed = names.some((name) => g.tracked(`${base}/${name}`));
     const keptOut = !committed && (names.length > 0 || g.ignored(parts.join('/')));
     return keptOut ? 'local' : 'git';

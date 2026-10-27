@@ -27,6 +27,8 @@ const MIGRATIONS = require('../meta/migrations.json');
 const ARCH = { 'architecture/ARCHITECTURE.md': '# Map\n' };
 const STYLE = { 'code-style/CODE-STYLE.md': '# Style\n', 'code-style/watch.json': '{}\n' };
 const QUALITY = { 'quality/ARCHITECTURE-ASSESSMENT.md': '# Findings\n' };   // no watch.json: no domain, no vote
+// A RECOMPUTED domain (the docs-watch-every-domain spec, AC13): a domain, watched, yet no vote either way.
+const RQUALITY = { 'quality/ARCHITECTURE-ASSESSMENT.md': '# Findings\n', 'quality/watch.json': '{ "recomputed": true, "watch": [] }\n' };
 
 // committed / untracked are paths UNDER the docs root. `declared` is a value already in settings.json.
 const SCENARIOS = [
@@ -47,6 +49,13 @@ const SCENARIOS = [
     { name: 'one tracked domain beside an untracked one', committed: ARCH, untracked: STYLE, want: 'git' },
     { name: 'a committed watch-less folder only (quality/)', committed: QUALITY, want: 'git' },
     { name: 'a committed watch-less folder beside an untracked domain', committed: QUALITY, untracked: ARCH, want: 'local' },
+    { name: 'a committed recomputed domain beside an untracked domain', committed: RQUALITY, untracked: ARCH, want: 'local' },
+    { name: 'an untracked recomputed domain alone, root ignored', ignore: '.claude/\n', untracked: RQUALITY, want: 'local' },
+    // git answers check-ignore 'not ignored' for a folder holding a tracked file, so a force-added recomputed doc reads as
+    // a root the project commits - the same answer in every home, the ignore state as git reports it
+    { name: 'a force-added recomputed domain alone under an ignored root', ignore: '.claude/\n', committed: RQUALITY, want: 'git' },
+    { name: 'a committed recomputed domain alone, root not ignored', committed: RQUALITY, want: 'git' },
+    { name: 'an untracked recomputed domain alone, root not ignored', untracked: RQUALITY, want: 'git' },
     { name: 'a tracked domain force-added under an ignored root', ignore: '.claude/\n', committed: ARCH, want: 'git' },
     { name: 'declared local over committed docs', committed: ARCH, declared: 'local', want: 'local' },
     { name: 'declared git over an ignored root', ignore: '.claude/\n', untracked: ARCH, declared: 'git', want: 'git' },
