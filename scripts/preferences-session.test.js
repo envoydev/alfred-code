@@ -322,6 +322,19 @@ test('the hand-over leaves out each entry\'s Check: line and keeps its Why:', ()
     finally { p.rm(); }
 });
 
+test('an Example: line rides along at the first edit, the Check: line does not', () =>
+{
+    const p = project({ docs: { 'PERSONAL-CODE-PREFERENCES.md': codeDoc(entry('c1', 'The app\'s own seams', '- Rule: use the app\'s own abstraction for a capability, never the raw API it wraps.\n- Scope: every language\n- Example: use IDateTimeService, not new DateTime\n- Check: regex `new DateTime\\(` in `src/**/*.cs`')) } });
+    try
+    {
+        const text = reason(p.hook(edit('src/app.ts', sid())));
+        assert.match(text, /use the app's own abstraction for a capability/);
+        assert.match(text, /- Example: use IDateTimeService, not new DateTime/, 'the case shows what the rule means');
+        assert.doesNotMatch(text, /Check:/, 'the Check: is the script\'s data, never pasted');
+    }
+    finally { p.rm(); }
+});
+
 test('an entry whose Scope: globs miss the edited file is named, and handed over at the first edit they reach', () =>
 {
     const p = project({ docs: { 'PERSONAL-CODE-PREFERENCES.md': codeDoc(

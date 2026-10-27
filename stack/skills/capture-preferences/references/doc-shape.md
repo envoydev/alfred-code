@@ -44,6 +44,7 @@ Retired: C1
 - `Scope:` - globs or a plain area, comma-separated. Globs decide which edits the first-edit hold hands the entry over for - a glob with no `/` matches the file name (`*.cs`), a path with no glob character everything under it (`api/`); a plain area, or no `Scope:`, is handed over for every edit. A glob that reaches no file hides its entry from every edit, so `lint` notes one and every update names it; `reach` shows what each pattern takes - a count, the file types, a few paths - so one aimed at the wrong existing folder shows, the capture asks the user to confirm each new glob's reach, and `lint` and every update name a `Check:` that measures files its `Scope:` does not reach.
 - `Why:` - one line.
 - `Except:` - the waivers, `;`-separated. The only place a waiver lives.
+- `Example:` - optional: the user's case, in their words; no script reads it.
 - `Check:` - optional, in the grammar below; never on a personal entry (`lint` flags one). It is the script's data: the hook never hands it over.
 - The field names stay English - `lint` and the hooks read them; the text is the user's words, in their language. A fenced block is the entry's text: a `## ` line or a field inside one is an example, never read.
 
